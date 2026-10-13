@@ -490,6 +490,10 @@ func detachFixedSecret(cred *model.Credential, req DetachCredentialRequest) (*Ca
 			if req.PrivateKey == "" {
 				return nil, ErrCredentialSecretRequired
 			}
+			// 操作者貼上的私鑰：先擋下解析不了的，免得進了改密流程才在遠端操作途中失敗
+			if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+				return nil, err
+			}
 			return &CandidateSecret{PrivateKey: material.Adopt([]byte(req.PrivateKey))}, nil
 		}
 		if req.Password == "" {

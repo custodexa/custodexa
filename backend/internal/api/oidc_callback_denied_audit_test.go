@@ -288,3 +288,67 @@ func TestOIDCCallbackPreboundDeletedAccount(t *testing.T) {
 	assertRequestContext(t, row, "/api/v1/auth/oidc/callback", http.StatusFound)
 	assertRequestContext(t, revoked[0], "/api/v1/auth/oidc/callback", http.StatusFound)
 }
+
+// TestOIDCCallbackCodeExchangeFailedSlug 換權杖失敗導回 oidc_code_exchange_failed（設定面的說明），
+// 未知 state 仍導回 oidc_flow_invalid（其他失敗維持原狀）
+func TestOIDCCallbackCodeExchangeFailedSlug(t *testing.T) {
+	env := setupCallbackDeniedEnv(t)
+	flow := model.OIDCFlowState{
+		State: "state-exchange", Nonce: "nonce-exchange", PKCEVerifier: "verifier",
+		ProviderID: env.provider.ID, AuthEpoch: env.provider.AuthEpoch,
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	if err := env.db.Create(&flow).Error; err != nil {
+		t.Fatalf("seed flow: %v", err)
+	}
+	r := gin.New()
+	r.GET("/api/v1/auth/oidc/callback", env.h.Callback)
+	get := func(query string) string {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?"+query, nil)
+		req.RemoteAddr = oidcAuditRemoteAddr
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusFound {
+			t.Fatalf("callback 應 302 導回，實得 %d", w.Code)
+		}
+		return w.Header().Get("Location")
+	}
+	// 授權碼未在假身分提供者登錄：token 端點回 invalid_grant
+	if loc := get("state=state-exchange&code=never-staged"); !strings.HasSuffix(loc, "/login#sso_error=oidc_code_exchange_failed") {
+		t.Fatalf("換權杖失敗應導回 #sso_error=oidc_code_exchange_failed，實得 %s", loc)
+	}
+	if loc := get("state=state-unknown&code=x"); !strings.HasSuffix(loc, "/login#sso_error=oidc_flow_invalid") {
+		t.Fatalf("未知 state 應維持 #sso_error=oidc_flow_invalid，實得 %s", loc)
+	}
+}
+
+// TestOIDCPublicMethodsAndListRedirect 登入方法清單帶 ldap 陣列（未接目錄服務時為空）；
+// 管理端提供者列表在頂層帶回呼網址，新增頁據此顯示
+func TestOIDCPublicMethodsAndListRedirect(t *testing.T) {
+	env := setupCallbackDeniedEnv(t)
+	r := gin.New()
+	r.GET("/methods", env.h.LoginMethods)
+	r.GET("/providers", env.h.List)
+	read := func(path string) map[string]json.RawMessage {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s = %d", path, w.Code)
+		}
+		var out map[string]json.RawMessage
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("%s 回應非 JSON: %v", path, err)
+		}
+		return out
+	}
+	if got := string(read("/methods")["ldap"]); got != "[]" {
+		t.Fatalf("未接目錄服務時 ldap 應為 []，實得 %s", got)
+	}
+	list := read("/providers")
+	if got := string(list["redirect_uri"]); got != `"https://bastion.example.com/api/v1/auth/oidc/callback"` {
+		t.Fatalf("redirect_uri = %s", got)
+	}
+	if got := string(list["redirect_uri_state"]); got != `"ready"` {
+		t.Fatalf("redirect_uri_state = %s", got)
+	}
+}

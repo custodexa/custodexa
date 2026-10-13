@@ -22,6 +22,8 @@ MSG_usage_images_from_value='不認得的映像來源「%s」；請選 auto 或 
 MSG_usage_images_from_command='--images-from 只適用於 install 或帶目標的 upgrade。'
 MSG_usage_images_from_conflict='--images-from source 不可與 --images 同時使用。'
 MSG_usage_backup_only='選項 %s 只適用於 backup。請見：custodexa.sh --help'
+MSG_usage_backup_restore_only='選項 %s 只適用於 backup 與 restore。
+請見：custodexa.sh --help'
 MSG_legacy_refused='這是舊版 git clone 部署，custodexa.sh 無法在此目錄安裝或升級。
 沒有變更部署檔案或服務。
 
@@ -83,8 +85,8 @@ MSG_help_language='顯示語言
     custodexa.sh --lang zh-TW          繁體中文
     custodexa.sh --lang ja             日本語
     custodexa.sh --lang en             English
-  或在 sudo 下保留系統語系：
-    sudo env LANG=zh_TW.UTF-8 custodexa.sh'
+  以 sudo 執行時同樣加 --lang，在安裝目錄下：
+    sudo ./custodexa.sh --lang zh-TW'
 
 # ---- 發行清單、安裝標題、時間 ----
 MSG_manifest_missing='找不到發行清單 %s。安裝包可能不完整，請重新下載。'
@@ -355,6 +357,7 @@ MSG_status_backup='最近一次 %s（%s，%s）'
 MSG_status_backup_upgrade='升級前自動備份'
 MSG_status_backup_script='custodexa.sh backup'
 MSG_status_backup_external='自備備份'
+MSG_status_backup_unrecorded='來源未記錄'
 MSG_status_backup_none='沒有備份紀錄'
 MSG_status_backup_encrypted='%s（已加密）'
 MSG_status_days_0='今天'
@@ -956,6 +959,8 @@ MSG_up_bk_unrecorded='備份檔已完成：%s
 MSG_st_gone_unchecked='確認舊版已停止（服務已停止；外接資料庫的連線數腳本查不到，
 請確認沒有其他主機的後端連著這個資料庫，例如備援主機）'
 MSG_up_no_space_hint='可以：把舊的備份檔搬到別處後刪除。'
+MSG_up_no_space_images='新版映像的空間不足：需要 %s，
+%s 只剩 %s。沒有停止任何服務。'
 MSG_up_ext_major_sep='／'
 MSG_up_ext_own_version='這次無法由腳本備份外接資料庫：外接資料庫是 PostgreSQL %s，
 這個版本沒有同主版本的匯出工具。第 7 步只能用你自己的備份。'

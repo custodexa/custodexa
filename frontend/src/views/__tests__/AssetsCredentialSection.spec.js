@@ -278,4 +278,65 @@ describe('進階選項', () => {
     expect(advanced(wrapper).vm.expanded).toBe(true)
     expect(wrapper.find('[data-test="asset-advanced-mark"]').text()).toContain('修正')
   })
+
+  // 私鑰欄在登入憑證區，不在收合區：錯誤掛在該欄下方，不展開進階、不另出頁頂提示
+  const privateKeyCases = [
+    {
+      name: '貼成公鑰：改說「這看起來是公鑰」',
+      key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK7q0w9Vb3mZ2xY4pLr8sTn1cQe5uHf0dGj6kWm2aBcD deploy@laptop',
+      expected: '這看起來是公鑰，請貼上私鑰。',
+    },
+    {
+      name: '其他無法辨識：用該碼的譯文',
+      key: '-----BEGIN OPENSSH PRIVATE KEY-----',
+      expected: '私鑰無法辨識。',
+    },
+  ]
+  for (const tc of privateKeyCases) {
+    it(`私鑰錯誤顯示在私鑰欄下方（${tc.name}）`, async () => {
+      const wrapper = await mountPage()
+      wrapper.vm.handleCreate()
+      await flushPromises()
+
+      const keyError = {
+        response: {
+          status: 400,
+          data: {
+            code: 'VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID',
+            error: '私鑰無法辨識',
+            field: 'private_key',
+          },
+        },
+      }
+      createAsset.mockRejectedValueOnce(keyError)
+      Object.assign(wrapper.vm.form, {
+        name: 'web-prod-01', protocol: 'ssh', host: '10.20.3.21', port: 22,
+        credential_mode: 'dedicated', username: 'deploy', private_key: tc.key,
+      })
+      await flushPromises()
+      await wrapper.vm.handleSubmit()
+      await flushPromises()
+
+      // 全域 toast 交由欄位呈現：只對這個錯誤關閉
+      const skip = createAsset.mock.calls.at(-1)[1].skipErrorToast
+      expect(skip(keyError)).toBe(true)
+      expect(skip({ response: { status: 409, data: { code: 'VALIDATION_ASSET_NAME_EXISTS' } } })).toBe(false)
+
+      const item = wrapper.find('[data-test="credential-private-key"]').element.closest('.el-form-item')
+      expect(item.classList.contains('is-error')).toBe(true)
+      // 錯誤字的顯示經元件庫去抖動，等它出現
+      await vi.waitFor(() => expect(item.querySelector('.el-form-item__error')).not.toBeNull())
+      expect(item.querySelector('.el-form-item__error').textContent).toContain(tc.expected)
+      expect(advanced(wrapper).vm.expanded).toBe(false)
+      expect(wrapper.find('[data-test="asset-advanced-mark"]').exists()).toBe(false)
+      // 對話框維持開啟、已填內容保留
+      expect(wrapper.find('.dialog-stub').exists()).toBe(true)
+      expect(wrapper.vm.form.private_key).toBe(tc.key)
+
+      // 改了私鑰內容就撤掉錯誤
+      wrapper.vm.form.private_key = tc.key + 'x'
+      await flushPromises()
+      expect(item.classList.contains('is-error')).toBe(false)
+    })
+  }
 })

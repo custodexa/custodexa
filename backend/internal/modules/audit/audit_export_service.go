@@ -4,9 +4,11 @@ import (
 	"archive/zip"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -170,9 +172,37 @@ type ExportManifest struct {
 	SignedReason string `json:"signed_reason,omitempty"`
 	// Disclosures 這個包能證明什麼、不能證明什麼（機器碼＋說明）
 	Disclosures []ExportDisclosure `json:"disclosures,omitempty"`
+	// SkippedRecordings 範圍內有錄影紀錄、但錄影本體讀不到而未收錄的會話，逐筆附原因
+	// （missing／unreadable，不含路徑或錯誤字樣）。選取會話類別時恆在（無略過為空陣列），
+	// 收包方據此分得出「沒有略過」與「沒有記錄」；未選會話類別或事件報告模式缺席
+	SkippedRecordings *[]SkippedRecording `json:"skipped_recordings,omitempty"`
 	// NoteCodes 各段的範圍說明**機器碼**（如 audit_logs 的資產關聯起始邊界）。
 	// 存碼不存散文：這份包的說明文字須能三語呈現，且須受 i18n 守衛檢查
 	NoteCodes map[string]string `json:"note_codes,omitempty"`
+}
+
+// 證據包略過錄影的原因（對外只有這兩類）。
+const (
+	SkipReasonMissing    = "missing"
+	SkipReasonUnreadable = "unreadable"
+)
+
+// SkippedRecording manifest 中一筆被略過的錄影。
+type SkippedRecording struct {
+	SessionID uint   `json:"session_id"`
+	Reason    string `json:"reason"`
+}
+
+// skipReasonOf 讀不到的錄影對應的略過原因；空字串＝本來就沒有錄影，不列。
+func skipReasonOf(err error) string {
+	switch {
+	case errors.Is(err, ErrExportRecordingAbsent):
+		return ""
+	case errors.Is(err, ErrExportRecordingMissing):
+		return SkipReasonMissing
+	default:
+		return SkipReasonUnreadable
+	}
 }
 
 // AuditExportService 稽核證據匯出打包（PCI 10.5.1）
@@ -650,13 +680,25 @@ func (s *AuditExportService) writeRecordings(zw *zip.Writer, filter *ExportFilte
 	}
 
 	written := 0
+	skipped := []SkippedRecording{}
+	// skip 讀不到的錄影：不阻斷整包，但逐筆記入 manifest（細部原因只進日誌）
+	skip := func(sid uint, err error) {
+		reason := skipReasonOf(err)
+		if reason == "" {
+			return
+		}
+		log.Printf("[AuditExport] 略過錄影（session=%d，reason=%s）: %v", sid, reason, err)
+		skipped = append(skipped, SkippedRecording{SessionID: sid, Reason: reason})
+	}
 	for _, sid := range sessionIDs {
 		protocol, err := s.recordings.RecordingProtocol(sid)
 		if err != nil {
-			continue // 無錄影或檔案缺失，跳過（不阻斷整包）
+			skip(sid, err)
+			continue
 		}
 		stream, err := s.recordings.GetRecordingStream(sid)
 		if err != nil {
+			skip(sid, err)
 			continue
 		}
 		name := fmt.Sprintf("recordings/session-%d%s", sid, recordingExt(protocol))
@@ -672,6 +714,7 @@ func (s *AuditExportService) writeRecordings(zw *zip.Writer, filter *ExportFilte
 	}
 	manifest.Counts["recordings"] = written
 	manifest.Truncated["recordings"] = truncated
+	manifest.SkippedRecordings = &skipped
 	return nil
 }
 

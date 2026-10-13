@@ -87,7 +87,7 @@ const clearSessionAndRedirect = () => {
 
 // 回應攔截器：全域唯一的 API 錯誤 toast 來源。
 // 後端統一以 {"error": <使用者可讀訊息>} 回應，呼叫端需自行呈現錯誤時
-// 以 { skipErrorToast: true } 關閉全域 toast。
+// 以 { skipErrorToast: true } 關閉全域 toast（或給 (error) => boolean 只關特定錯誤）。
 request.interceptors.response.use(
   (response) => {
     return response.data
@@ -154,7 +154,11 @@ request.interceptors.response.use(
 
     // 423 帳號鎖定一律由登入/MFA 視圖以 inline locked-alert 明示（含剩餘策略文案），
     // 攔截器不再重複 toast——避免同一鎖定錯誤顯示兩次。
-    if (!error.config?.skipErrorToast && httpStatus !== 423) {
+    // skipErrorToast 也可給函式：呼叫端只接手特定錯誤（例如掛到某個欄位下方），
+    // 其餘照常 toast
+    const skipToast = error.config?.skipErrorToast
+    const skipped = typeof skipToast === 'function' ? skipToast(error) : skipToast
+    if (!skipped && httpStatus !== 423) {
       ElMessage.error(message)
     }
     return Promise.reject(error)

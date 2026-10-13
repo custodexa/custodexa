@@ -1,8 +1,10 @@
 # credential-library Specification
 
 ## Purpose
-TBD - created by archiving change credential-library. Update Purpose after archive.
+集中保管 SSH 私鑰、密碼等連線憑證：以憑證實體與密文版本保存、掛載到資產帳號後由後端代為使用，涵蓋範圍轉換、引用檢查、人工輸入私鑰的可解析驗證，以及憑證庫頁的可見性與授權；前端始終不接觸明文憑證。
+
 ## Requirements
+
 ### Requirement: 憑證實體與範圍
 
 系統 SHALL 以「憑證」為登入秘密的唯一真相，資產帳號只以外鍵引用之。憑證 SHALL 持有：名稱、範圍、
@@ -357,3 +359,42 @@ SHALL NOT 回傳憑證識別、憑證名稱或憑證範圍——共用關係本�
 - **WHEN** 對已完成轉換的資料庫再次執行同一轉換
 - **THEN** 版本標記使其不被再次執行，資料不變，SHALL NOT 產生第二批憑證
 
+### Requirement: 人工輸入的私鑰須可解析
+
+操作者輸入私鑰的每個入口 SHALL 於加密落庫前，以與 SSH 連線相同的解析函式驗證該私鑰可解析為簽章金鑰；
+無法解析者（格式錯誤、內容不完整、貼成公鑰、受 passphrase 保護等）SHALL 以 400 與機器可讀錯誤碼
+`VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID` 拒絕，該請求 SHALL NOT 寫入任何資料列（含資產、掛載、憑證與密文版本）。
+
+入口 SHALL 涵蓋：建立資產時直填私鑰（頂層簡寫或內嵌憑證）、更新資產時帶入私鑰、新增資產帳號時直填私鑰、
+更新資產帳號時帶入私鑰、建立共用憑證、對既有憑證直接寫入新密文、單台脫離共用時自訂新私鑰。
+更新類入口（含對既有憑證直接寫入新密文）SHALL 只在本次請求帶有非空私鑰時驗證；未帶私鑰或私鑰為空字串 SHALL 視為沿用現行私鑰，SHALL NOT 因而重驗庫內既有的私鑰。
+
+系統產生的私鑰（整組改密、拆分輪替、改密計劃與批次產生的新金鑰）SHALL NOT 經此驗證。
+
+系統 SHALL NOT 支援受 passphrase 保護的私鑰；拒絕訊息 SHALL 說明需先移除 passphrase。
+所有對外輸出（含錯誤回應）SHALL NOT 含解析函式的原始錯誤文字或私鑰內容；原始錯誤 SHALL 只寫入伺服端日誌，私鑰內容 SHALL NOT 寫入任何日誌。
+
+#### Scenario: 建立資產時私鑰格式錯誤被擋
+
+- **WHEN** admin 建立 SSH 資產並直填帳號名與一段格式錯誤的私鑰
+- **THEN** 回 400 與 `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`，資產、專用憑證、密文版本與掛載皆未建立
+
+#### Scenario: 受 passphrase 保護的私鑰被擋
+
+- **WHEN** admin 建立共用憑證，貼上以 passphrase 加密的私鑰
+- **THEN** 回 400 與 `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`，譯文說明需先移除 passphrase，憑證未建立
+
+#### Scenario: 可解析的私鑰照常收下
+
+- **WHEN** admin 於任一入口貼上未加密的 OpenSSH、PKCS#1 或 PKCS#8 格式私鑰
+- **THEN** 請求成功，行為與變更前一致
+
+#### Scenario: 只改密碼不重驗既有私鑰
+
+- **WHEN** 某資產帳號庫內既有的私鑰無法解析，admin 更新該帳號，請求只帶新密碼、私鑰未帶或為空字串
+- **THEN** 不對庫內既有私鑰做驗證，更新照常成功，既有私鑰密文原樣保留
+
+#### Scenario: 系統產生的新金鑰不受影響
+
+- **WHEN** 對 SSH 金鑰型憑證執行整組改密，系統產生新金鑰並寫回
+- **THEN** 寫回流程不經人工輸入的私鑰驗證，改密結果與變更前一致

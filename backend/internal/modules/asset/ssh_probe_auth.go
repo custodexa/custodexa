@@ -2,7 +2,6 @@ package asset
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/sshmaterial"
@@ -16,8 +15,9 @@ const ErrorCodePrivateKeyInvalid = "private_key_invalid"
 var (
 	// errProbeNoSecret 就位版本既無私鑰也無密碼：無從認證，不撥號
 	errProbeNoSecret = errors.New("帳號無可用的私鑰或密碼")
-	// errProbePrivateKeyInvalid 私鑰無法解析：正式連線同樣會失敗，不撥號
-	errProbePrivateKeyInvalid = errors.New("私鑰無法解析")
+	// errProbePrivateKeyInvalid 私鑰無法解析：正式連線同樣會失敗，不撥號。
+	// 直接沿用共用 sentinel：撥測、寫入驗證與正式連線用同一份判準
+	errProbePrivateKeyInvalid = ErrPrivateKeyInvalid
 )
 
 // sshProbeAuthMethods 依帳號秘密組裝 SSH 撥測的認證方式。
@@ -38,10 +38,11 @@ func sshProbeAuthMethods(password *sshmaterial.Password, privateKey *material.Se
 	var methods []ssh.AuthMethod
 
 	if !privateKey.IsEmpty() {
-		signer, err := material.Use(privateKey, ssh.ParsePrivateKey)
+		// ParsePrivateKey 失敗時已包裝 ErrPrivateKeyInvalid；原始解析錯誤可能帶
+		// 金鑰格式細節，只留在 error 供伺服端日誌，不進回應
+		signer, err := material.Use(privateKey, ParsePrivateKey)
 		if err != nil {
-			// 原始解析錯誤可能帶金鑰格式細節，只包進 error 供伺服端日誌，不進回應
-			return nil, fmt.Errorf("%w: %v", errProbePrivateKeyInvalid, err)
+			return nil, err
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}

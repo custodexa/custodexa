@@ -92,11 +92,12 @@ export function downloadK8sFile(id, params) {
  * @param {number} data.group_id - 分組 ID（選填）
  * @returns {Promise}
  */
-export function createAsset(data) {
+export function createAsset(data, config = {}) {
   return request({
     url: '/assets',
     method: 'post',
     data,
+    ...config,
   })
 }
 

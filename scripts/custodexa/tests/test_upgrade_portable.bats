@@ -515,6 +515,64 @@ du_is() { printf '%s\n' "$2" >"$DB/du.$(printf '%s' "$ROOT/$1" | tr / -)"; }
   no_stop
 }
 
+# images_need <free KiB> [over]: that much free space where backups go; the new release's images
+# (cx_mf_needed_bytes: their sizes three times over) need one byte more than it with "over", else
+# the sizes stay (1,000 bytes each) and fit.
+images_need() {
+  local mf=$ROOT/releases/1.13.2/MANIFEST.json want others
+  host_free / "$1"
+  [ "${2:-}" = over ] || return 0
+  [ $((($1 * 1024 + 1) % 3)) -eq 0 ] || { echo "images_need: $1 KiB plus one byte is not three times a size" >&2; return 1; }
+  want=$((($1 * 1024 + 1) / 3))
+  others=$(jq '[.images | to_entries[] | select(.key != "backend") | .value.platforms.amd64.size] | add' "$mf")
+  jq --argjson s $((want - others)) '.images.backend.platforms.amd64.size = $s | .images.backend.platforms.arm64.size = $s' \
+    "$mf" >"$mf.new"
+  /usr/bin/mv "$mf.new" "$mf"
+}
+
+@test "upgrade (bundled) --backup-ref: space for the new images and not for a backup is enough; the backup is not estimated" {
+  # 14 KiB free hold the images (12,000 bytes), not the backup; no database size is asked for.
+  fresh ui
+  printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
+  images_need 14
+  TZ=UTC full_run en --backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc
+  [ "$status" -eq 0 ] && [[ $output == *"Custodexa upgrade preview"* ]] || { echo "$output"; return 1; }
+  ! grep -q pg_database_size "$FAKE_DOCKER_LOG" || { grep pg_database_size "$FAKE_DOCKER_LOG"; return 1; }
+}
+
+@test "upgrade (bundled) --backup-ref: the new images one byte more than the free space are refused before any stop" {
+  fresh ui
+  printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
+  images_need 14 over || return 1
+  TZ=UTC full_run en --backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc
+  [ "$status" -eq 1 ] && [[ $output == *"[FAIL] Not enough space for the new images: "*" needed,
+       $ROOT/backups has "*" free. Nothing was stopped."* ]] || { echo "$output"; return 1; }
+  [[ $output != *"Custodexa upgrade preview"* && $output != *"Not enough space for the backup"* ]] || { echo "$output"; return 1; }
+  ! grep -q pg_database_size "$FAKE_DOCKER_LOG" || return 1
+  no_stop
+}
+
+@test "upgrade (external) --backup-ref: the new images one byte more than the free space are refused before any stop; no size asked for" {
+  fresh_ext online 17.6
+  printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
+  images_need 20 over || return 1
+  : >"$DB/db-runs"
+  TZ=UTC full_run en --backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc
+  [ "$status" -eq 1 ] && [[ $output == *"[FAIL] Not enough space for the new images: "* ]] || { echo "$output"; return 1; }
+  [[ $output != *"Custodexa upgrade preview"* ]] || return 1
+  ! grep -q 'psql size' "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
+  no_stop
+}
+
+@test "upgrade (bundled): without --backup-ref the same free space is refused for the backup, before any stop" {
+  fresh ui
+  images_need 14
+  full_run en
+  [ "$status" -eq 1 ] && [[ $output == *"[FAIL] Not enough space for the backup:"* ]] || { echo "$output"; return 1; }
+  [[ $output != *"Custodexa upgrade preview"* ]] || return 1
+  no_stop
+}
+
 @test "upgrade (external): the preview's downtime counts packing and reading the file back (27 to 54 minutes, 15 to 30 before)" {
   fresh_ext online 17.6
   run bash "$ROOT/releases/1.13.2/custodexa.sh" upgrade --lang en </dev/null
@@ -526,6 +584,26 @@ du_is() { printf '%s\n' "$2" >"$DB/du.$(printf '%s' "$ROOT/$1" | tr / -)"; }
   [[ $output == *"certificates. About 35.8 GB; 211 GB free where backups go"* ]] || { echo "$output"; return 1; }
   # The query for the connections in progress went through the client.
   grep -q " $(pgc_id 17) psql count.active$" "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
+}
+
+@test "upgrade (bundled) --backup-ref: the preview names the own backup, no full backup, and its downtime counts no backup (4 to 8 minutes)" {
+  local l
+  for l in en zh-TW; do
+    fresh ui
+    printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
+    TZ=UTC full_run "$l" --backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc
+    [ "$status" -eq 0 ] || { echo "$l: $output"; return 1; }
+    case $l in
+      en)
+        [[ $output == *"  2. Use the backup of your own given with --backup-ref; the script
+     makes none this time"* && $output != *"Full backup"* ]] \
+          && [[ $output == *"  - Expect 4 to 8 minutes of downtime. Nobody can connect meanwhile,"* ]] ;;
+      zh-TW)
+        [[ $output == *"  2. 使用你以 --backup-ref 指定的自備備份，腳本這次不另做備份"* && $output != *"完整備份"* ]] \
+          && [[ $output == *"  - 預計停機 4 到 8 分鐘。停機期間無法連線，進行中的連線會中斷"* ]] ;;
+    esac || { echo "$l: $output"; return 1; }
+    ! compgen -G "$ROOT/backups/custodexa-backup-*" >/dev/null || { ls -lA "$ROOT/backups"; return 1; }
+  done
 }
 
 # tpl_env <value>: TLS_NGINX_TEMPLATE in .env.
@@ -650,4 +728,69 @@ tpl_env() { printf 'TLS_NGINX_TEMPLATE=%s\n' "$1" >>"$ROOT/.env"; }
       WHERE datname = current_database() AND usename = current_user
       AND pid <> pg_backend_pid()"
 EOF
+}
+
+# ---------- the source of the latest backup in status, from what the script wrote ----------
+
+# status_in <lang>: the deployment's status.
+status_in() { run bash "$ROOT/custodexa.sh" status --lang "$1" </dev/null; }
+# ts_now <timestamp>: the timestamp the clock gives a backup or a log from here on (after clock).
+ts_now() { sed -i "s/echo 20260930-101502/echo $1/" "$FAKES/date"; }
+# same_backup_id: last_upgrade.backup_id is there and names the latest backup.
+same_backup_id() {
+  [ -n "$(st last_upgrade.backup_id)" ] && [ "$(st last_upgrade.backup_id)" = "$(st last_backup.id)" ] \
+    || { cat "$ROOT/state.json"; return 1; }
+}
+
+@test "status after an upgrade: its backup is the automatic one before the upgrade; after a backup run, custodexa.sh backup" {
+  fresh ui
+  full_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  same_backup_id || return 1
+  status_in en
+  [[ $output == *"(automatic, before the upgrade;"* ]] || { echo "$output"; return 1; }
+  status_in zh-TW
+  [[ $output == *"（升級前自動備份，"* ]] || { echo "$output"; return 1; }
+  # A backup run afterwards, at another time.
+  ts_now 20261001-090000
+  backup_run en --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(st last_backup.id)" = 20261001-090000 ] || { cat "$ROOT/state.json"; return 1; }
+  status_in en
+  [[ $output == *"(custodexa.sh backup;"* ]] || { echo "$output"; return 1; }
+}
+
+@test "status after an upgrade with --backup-ref: your own backup; last_upgrade.backup_id names it" {
+  fresh ui
+  printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
+  TZ=UTC full_run en --backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(st last_backup.kind)" = external ] && same_backup_id || return 1
+  status_in en
+  [[ $output == *"(your own backup;"* ]] || { echo "$output"; return 1; }
+}
+
+@test "status after a second upgrade ended between recording its backup and the next step: the automatic backup before the upgrade" {
+  rm -rf "${BATS_TEST_TMPDIR:?}"/*
+  upgraded_twice_host ui || return 1
+  local first
+  first=$(st last_upgrade.backup)
+  [ -n "$first" ] || { cat "$ROOT/state.json"; return 1; }
+  printf '{"status":"ok","version":"1.16.0"}\n' >"$UP/health"
+  clock 0 3 0 41 0 4 0 11
+  ts_now 20261001-090000
+  # The script ends (SIGKILL) as it removes the temporary links of its backup file: after
+  # state.json recorded the new backup, before last_upgrade.backup is set.
+  # shellcheck disable=SC2016 # expanded by the fake
+  fake rm 'case " $* " in *"/custodexa-backup-"*".tar.sha256 "*) kill -9 "$PPID"; exit 1 ;; esac
+exec /bin/rm "$@"'
+  run bash "$ROOT/releases/1.16.0/custodexa.sh" upgrade --lang en --yes </dev/null
+  /bin/rm -f "$FAKES/rm"
+  [ "$status" -ne 0 ] || { echo "$output"; return 1; }
+  # It ended there: the new backup on record, last_upgrade.backup still the first upgrade's.
+  [ "$(st last_backup.id)" = 20261001-090000 ] && [[ $(st last_backup.file) == */custodexa-backup-1.13.2-20261001-090000.tar ]] \
+    && [ "$(st last_upgrade.backup)" = "$first" ] || { cat "$ROOT/state.json"; return 1; }
+  same_backup_id || return 1
+  status_in en
+  [[ $output == *"(automatic, before the upgrade;"* ]] || { echo "$output"; return 1; }
 }

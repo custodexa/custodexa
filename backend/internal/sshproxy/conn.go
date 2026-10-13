@@ -64,9 +64,11 @@ func authMethods(cfg ConnConfig) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 
 	if !cfg.PrivateKey.IsEmpty() {
-		signer, err := material.Use(cfg.PrivateKey, ssh.ParsePrivateKey)
+		// 與寫入驗證、SFTP、連線測試同一個解析函式；失敗時回包裝
+		// asset.ErrPrivateKeyInvalid 的錯誤，由 dialErrorCode 分類為私鑰無法解析
+		signer, err := material.Use(cfg.PrivateKey, asset.ParsePrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("解析私鑰失敗: %w", err)
+			return nil, err
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}

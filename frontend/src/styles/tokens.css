@@ -47,6 +47,12 @@
   --ot-success: #4ec47a;
   --ot-warning: #d9a93e;
   --ot-danger: #e5604f;
+  /* Danger is split by use the same way as primary: --ot-danger is the text
+     step (error copy, status marks) and carries white text at only 3.4:1, so
+     filled danger buttons take the fill step instead (white 4.9:1, hover 5.9:1).
+     Never put white text on --ot-danger. */
+  --ot-danger-fill: #c4473a;
+  --ot-danger-fill-hover: #b03d31;
   --ot-info: #14b8a6;
 
   /* Brand mark backing (Light Gray badge so the navy icon stays visible) */

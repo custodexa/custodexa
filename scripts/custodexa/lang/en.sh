@@ -25,6 +25,8 @@ MSG_usage_images_from_value='Unknown image source "%s"; choose auto or source.'
 MSG_usage_images_from_command='--images-from is only for install or upgrade with a target.'
 MSG_usage_images_from_conflict='--images-from source cannot be combined with --images.'
 MSG_usage_backup_only='Option %s is only for backup. See: custodexa.sh --help'
+MSG_usage_backup_restore_only='Option %s is only for backup and restore.
+See: custodexa.sh --help'
 MSG_legacy_refused='This is an older git clone deployment. custodexa.sh cannot install
 or upgrade here. Deployment files and services are unchanged.
 
@@ -105,8 +107,8 @@ MSG_help_language='Language
     custodexa.sh --lang zh-TW          繁體中文 (Traditional Chinese)
     custodexa.sh --lang ja             日本語 (Japanese)
     custodexa.sh --lang en             English
-  Or keep the system language under sudo:
-    sudo env LANG=zh_TW.UTF-8 custodexa.sh'
+  Under sudo, add --lang the same way, from the install directory:
+    sudo ./custodexa.sh --lang en'
 
 # ---- release manifest, install title, durations ----
 MSG_manifest_missing='The release manifest %s is missing. The package may be incomplete;
@@ -402,6 +404,7 @@ MSG_status_backup='Latest %s (%s; %s)'
 MSG_status_backup_upgrade='automatic, before the upgrade'
 MSG_status_backup_script='custodexa.sh backup'
 MSG_status_backup_external='your own backup'
+MSG_status_backup_unrecorded='source not recorded'
 MSG_status_backup_none='No backup on record'
 MSG_status_backup_encrypted='%s (encrypted)'
 MSG_status_days_0='today'
@@ -1169,6 +1172,8 @@ script cannot count connections on the external
 database: make sure no backend on another host,
 such as a standby, is connected to it)'
 MSG_up_no_space_hint='You can move older backup files elsewhere and delete them here.'
+MSG_up_no_space_images='Not enough space for the new images: %s needed,
+%s has %s free. Nothing was stopped.'
 MSG_up_ext_major_sep='/'
 MSG_up_ext_own_version='The script cannot back up the external database this time: it runs
 PostgreSQL %s, and this release has no export tool of that major

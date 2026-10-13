@@ -221,6 +221,25 @@ describe('SshTerminal', () => {
     wrapper.unmount()
   })
 
+  it('私鑰無法解析的 code 顯示該碼譯文，不顯示「無法連線到目標主機」', async () => {
+    const wrapper = mountTerminal()
+    await layoutReady(wrapper)
+
+    WebSocketMock.instances[0].receive({
+      type: 'error',
+      code: 'RULE_SSH_PRIVATE_KEY_INVALID',
+      data: 'zh fallback 原文',
+    })
+    await wrapper.vm.$nextTick()
+
+    const translated = t('apiError.RULE_SSH_PRIVATE_KEY_INVALID')
+    expect(translated).not.toBe('apiError.RULE_SSH_PRIVATE_KEY_INVALID')
+    expect(wrapper.text()).toContain(translated)
+    expect(wrapper.text()).not.toContain('zh fallback 原文')
+    expect(wrapper.text()).not.toContain(t('apiError.RULE_SSH_UNREACHABLE'))
+    wrapper.unmount()
+  })
+
   it('error 訊息帶未知 code 時退回 data 文案', async () => {
     const wrapper = mountTerminal()
     await layoutReady(wrapper)

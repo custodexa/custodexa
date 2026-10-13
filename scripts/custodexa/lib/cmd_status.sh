@@ -229,6 +229,37 @@ cmd_status_images() {
 }
 
 # ---------- backup ----------
+
+# cmd_status_backup_source <kind> <id>: where the latest backup came from, by what state.json
+# records. An own backup is only ever recorded by an upgrade. The upgrade saves the id of its
+# backup with the backup's record (last_upgrade.backup_id); without it (state.json of an earlier
+# release) the path the upgrade recorded as its backup is compared with the latest backup's (its
+# file, else its folder). Anything else is not known: never guessed as a backup run.
+cmd_status_backup_source() {
+  local kind=$1 id=$2 bid path mine
+  if [ "$kind" = external ]; then
+    cx_msg status_backup_external
+    return
+  fi
+  bid=$(cx_state_get last_upgrade.backup_id)
+  if [ -n "$bid" ]; then
+    if [ "$id" = "$bid" ]; then cx_msg status_backup_upgrade; else cx_msg status_backup_script; fi
+    return
+  fi
+  if [ -z "$(cx_state_get last_upgrade.result)" ]; then
+    cx_msg status_backup_script
+    return
+  fi
+  path=$(cx_state_get last_upgrade.backup)
+  mine=$(cx_state_get last_backup.file)
+  [ -n "$mine" ] || mine=$(cx_state_get last_backup.dir)
+  if [ -n "$path" ] && [ "$path" = "$mine" ]; then
+    cx_msg status_backup_upgrade
+  else
+    cx_msg status_backup_unrecorded
+  fi
+}
+
 cmd_status_backup() {
   local taken kind id days what when mark=OK size file line
   cmd_status_section backup
@@ -239,13 +270,7 @@ cmd_status_backup() {
   fi
   kind=$(cx_state_get last_backup.kind)
   id=$(cx_state_get last_backup.id)
-  if [ "$kind" = external ]; then
-    what=$(cx_msg status_backup_external)
-  elif [ -n "$id" ] && [ "$id" = "$(cx_state_get last_upgrade.backup_id)" ]; then
-    what=$(cx_msg status_backup_upgrade)
-  else
-    what=$(cx_msg status_backup_script)
-  fi
+  what=$(cmd_status_backup_source "$kind" "$id")
   days=$(cmd_status_days_ago "$taken")
   case $days in
     "") when="" ;;

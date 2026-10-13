@@ -167,7 +167,7 @@
 
 ### Requirement: 備份問答與輸出三語一致
 
-`backup` 的預覽、問答、進度、完成、失敗與中斷畫面 SHALL 以 zh-TW、en、ja 三語提供，三語訊息鍵集與參數數量 SHALL 相同；狀態標記沿用 ASCII 字樣。主選單已安裝狀態的備份項目 SHALL 維持原編號並以新標籤表示產出可攜備份檔。`--help` SHALL 列出 `--with-recordings` 與 `--passphrase-file`，且只有 `backup` 接受這兩個旗標，其他子命令收到時 SHALL 以用法錯誤結束。`status` 的最近備份 SHALL 顯示備份檔路徑與大小，加密的備份註明已加密，舊格式紀錄照常顯示資料夾。可攜檔、資料夾與自備備份三種紀錄指標 SHALL 互斥：寫入其中一種時清掉另兩種留下的指標，`status` SHALL NOT 把一次備份的時間與另一次備份的路徑配在一起。
+`backup` 的預覽、問答、進度、完成、失敗與中斷畫面 SHALL 以 zh-TW、en、ja 三語提供，三語訊息鍵集與參數數量 SHALL 相同；狀態標記沿用 ASCII 字樣。主選單已安裝狀態的備份項目 SHALL 維持原編號並以新標籤表示產出可攜備份檔。`--help` SHALL 列出 `--with-recordings` 與 `--passphrase-file`。`--with-recordings` 只有 `backup` 接受，`--passphrase-file` 只有 `backup` 與 `restore` 接受；其他子命令收到時 SHALL 以用法錯誤結束且不做任何事，訊息 SHALL 列出實際接受該旗標的子命令。`status` 的最近備份 SHALL 顯示備份檔路徑與大小，加密的備份註明已加密，舊格式紀錄照常顯示資料夾。`status` 的最近備份 SHALL 標示來源：自備備份、升級前自動備份或 `custodexa.sh backup`；來源 SHALL 依狀態檔記下的事實判定（升級記下的備份識別，或升級記下的備份路徑與最近備份相同），無從判定時 SHALL 顯示來源未記錄，SHALL NOT 推定為手動備份。可攜檔、資料夾與自備備份三種紀錄指標 SHALL 互斥：寫入其中一種時清掉另兩種留下的指標，`status` SHALL NOT 把一次備份的時間與另一次備份的路徑配在一起。
 
 #### Scenario: 三語畫面逐字比對
 - **WHEN** 以三種語言各執行一次成功的互動備份
@@ -184,6 +184,18 @@
 #### Scenario: 其他子命令不接受備份旗標
 - **WHEN** 維運執行 `load <離線包> --with-recordings`
 - **THEN** 腳本以用法錯誤結束，不載入任何映像
+
+#### Scenario: 用錯子命令的加密密語檔
+- **WHEN** 維運執行 `upgrade --passphrase-file <檔案>`
+- **THEN** 腳本以用法錯誤結束，訊息說明這個選項只適用於 `backup` 與 `restore`，不呼叫 Docker、不寫紀錄檔、不取鎖、狀態檔不變
+
+#### Scenario: 升級後再手動備份的來源標示
+- **WHEN** 一次由腳本備份的升級完成後執行 `status`，接著執行一次 `backup` 再執行 `status`
+- **THEN** 第一次 `status` 的最近備份標示為升級前自動備份，第二次標示為 `custodexa.sh backup`
+
+#### Scenario: 舊狀態檔無法判定來源
+- **WHEN** 狀態檔沒有升級記下的備份識別，有升級紀錄，且升級記下的備份路徑與最近備份不同
+- **THEN** `status` 的最近備份顯示來源未記錄，時間與路徑照常顯示
 
 ### Requirement: 備份產物為單一可攜檔且適用外接資料庫
 

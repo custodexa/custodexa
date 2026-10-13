@@ -323,8 +323,7 @@
         ref="panelRef"
         type="ldap"
         :source-id="directoryId"
-        :testing="testing"
-        @test="handleTest"
+        :ldap-test="ldapTest.panelInput.value"
         @status="applyStatus"
       />
     </template>
@@ -347,6 +346,7 @@ import { resolveApiError } from '@/api/error'
 import { riskLabel } from '@/utils/transportDisplay'
 import { sameLdapEndpoint } from '@/utils/ldapUrl'
 import { getIdentitySources } from '@/api/identitySources'
+import { useLdapTestRecord, ldapComparable } from '@/composables/useLdapTestRecord'
 import {
   getLDAPDirectory,
   updateLDAPDirectory,
@@ -428,6 +428,7 @@ const formRules = computed(() => ({
 const snapshotOf = () => JSON.stringify(form)
 const savedSnapshot = ref(snapshotOf())
 const isDirty = computed(() => snapshotOf() !== savedSnapshot.value)
+const ldapTest = useLdapTestRecord(form, () => ldapComparable(JSON.parse(savedSnapshot.value)))
 
 const subtitle = computed(() =>
   lastLoginAt.value
@@ -643,17 +644,20 @@ const handleTest = async () => {
   testError.value = ''
   testResult.value = null
   testing.value = true
+  const ticket = ldapTest.begin()
   try {
-    testResult.value = await withTransportGate(
+    const result = await withTransportGate(
       (acknowledged) =>
         testLDAPDirectory({ ...basePayload(), risk_acknowledged: acknowledged }, {
           skipErrorToast: true,
         }),
       'ldapDirectory.testRiskConfirm'
     )
+    if (ldapTest.accept(ticket, result)) testResult.value = result
   } catch (error) {
     const resp = error?.response
     if (!resp) return
+    ldapTest.accept(ticket, null)
     testError.value =
       resp.data?.code === GATE_STRICT_REJECT
         ? t('ldapDirectory.testStrictRejected')

@@ -57,13 +57,16 @@ export function exchangeSSOTicket(ticket, browserSecret) {
 }
 
 /**
- * 列出全部 OIDC provider（admin only；回應不含 client_secret 的任何形式）
- * @returns {Promise} { data: OIDCProviderDTO[] }
+ * 列出全部 OIDC provider（admin only；回應不含 client_secret 的任何形式）。
+ * 頂層另帶 redirect_uri／redirect_uri_state（回呼網址對所有提供者相同）
+ * @param {{ quiet?: boolean }} [opts] quiet：失敗不跳通知（呼叫端自行降級）
+ * @returns {Promise} { data: OIDCProviderDTO[], redirect_uri, redirect_uri_state }
  */
-export function getOIDCProviders() {
+export function getOIDCProviders(opts = {}) {
   return request({
     url: '/oidc-providers',
     method: 'get',
+    skipErrorToast: opts.quiet === true,
   })
 }
 

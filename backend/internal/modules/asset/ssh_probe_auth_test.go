@@ -12,6 +12,7 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -38,14 +39,31 @@ func setupSSHProbeFixture(t *testing.T) *sshProbeFixture {
 	return &sshProbeFixture{csFixture: f, host: host, port: port}
 }
 
-// sshAsset 建一台指向靶機（或指定位址）的 SSH 資產，秘密依參數決定
+// sshAsset 建一台指向靶機（或指定位址）的 SSH 資產，秘密依參數決定。
+//
+// 無法解析的私鑰會被建立入口擋下，故先以一把可解析的鑰匙建立，再直寫就位版本的
+// 私鑰密文換成指定內容——模擬寫入驗證上線前就已在庫的壞私鑰。
 func (f *sshProbeFixture) sshAsset(t *testing.T, name, host string, port int, password, privateKey string) uint {
 	t.Helper()
+	createKey := privateKey
+	unparsable := ValidatePrivateKey(privateKey) != nil
+	if unparsable {
+		createKey, _ = testKeyPair(t, "probe-placeholder")
+	}
 	a, err := f.assets.Create(context.Background(), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: port,
-		Username: "root", Password: password, PrivateKey: privateKey, CreatedBy: 1,
+		Username: "root", Password: password, PrivateKey: createKey, CreatedBy: 1,
 	})
 	require.NoError(t, err)
+	if unparsable {
+		var account model.AssetAccount
+		require.NoError(t, f.db.Where("asset_id = ?", a.ID).First(&account).Error)
+		require.NotNil(t, account.EffectiveVersionID)
+		enc, eerr := f.assets.crypto.EncryptFor(context.Background(), keyvault.RefCredentialVersionPrivateKey, privateKey)
+		require.NoError(t, eerr)
+		require.NoError(t, f.db.Model(&model.CredentialSecretVersion{}).
+			Where("id = ?", *account.EffectiveVersionID).Update("private_key_enc", enc).Error)
+	}
 	return a.ID
 }
 

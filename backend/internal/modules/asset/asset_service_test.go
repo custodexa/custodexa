@@ -229,7 +229,8 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
 
-	privateKey := "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----"
+	// 寫入路徑會驗證私鑰可解析，故以執行期產生的真鑰建立
+	privateKey, _ := testKeyPair(t, "create-with-key")
 	req := &CreateAssetRequest{
 		Name:       "ssh-server",
 		Protocol:   model.ProtocolSSH,

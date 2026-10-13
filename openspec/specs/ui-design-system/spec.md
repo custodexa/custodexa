@@ -212,3 +212,25 @@ Every `button` element SHALL declare an explicit `type`. HTML defaults an undecl
 #### Scenario: Action button outside a form
 - **WHEN** a button triggers an action that is not a form submission
 - **THEN** it declares `type="button"` regardless of whether a form element currently encloses it
+
+### Requirement: Filled danger actions use a dedicated fill step
+Enabled filled (non-plain, non-text, non-link) danger buttons, including the confirm button of every destructive confirmation, SHALL render with a danger fill step token distinct from the semantic danger text color, and SHALL NOT be overridden by the primary fill rule even when the underlying component also marks the button as primary. The white label on the danger fill step and on its hover/active step SHALL meet WCAG AA contrast (≥4.5:1). Disabled danger buttons SHALL keep the existing disabled styling and are outside the fill and contrast requirements above. The semantic danger token used for text, status marks, and error copy SHALL keep its existing value.
+
+#### Scenario: Destructive confirm button is red, not primary blue
+- **WHEN** a user opens any destructive confirmation on the dark theme
+- **THEN** the confirm button's computed background color equals the danger fill step, not the primary fill color
+
+#### Scenario: Danger fill contrast
+- **WHEN** the danger fill step and its hover step are measured against a white label
+- **THEN** each contrast ratio is at least 4.5:1
+
+### Requirement: Detached overlays inherit the application typography
+The application sans-serif font stack SHALL be declared at the document body level, so that overlays mounted outside the application root (message boxes, drawers, notifications, dialogs) render with the same font family as the main view. Areas that intentionally use a monospace font (terminal, code, data cells) SHALL keep declaring it explicitly and SHALL NOT be changed by this inheritance.
+
+#### Scenario: Confirmation dialog matches main view font
+- **WHEN** a user on the English interface opens a confirmation dialog in a browser whose default font is a serif face
+- **THEN** the dialog is mounted outside the application root, its computed font family equals that of the application root and resolves to the application sans-serif stack, and no serif face is used
+
+#### Scenario: Terminal keeps its monospace font
+- **WHEN** a user opens an SSH terminal session after the change
+- **THEN** the terminal renders with its configured monospace font as before

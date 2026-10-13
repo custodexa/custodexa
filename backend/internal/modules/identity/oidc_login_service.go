@@ -32,6 +32,12 @@ var (
 	// 仍成立），區分只給呼叫端內部用——此路徑無須接觸 IdP、不受 flow state 容量
 	// 限制，是最便宜的洪水面，其失敗須走聚合審計而非逐筆落庫（3.7a）
 	ErrOIDCFlowStateNotFound = fmt.Errorf("%w", ErrOIDCFlowInvalid)
+	// ErrOIDCCodeExchangeFailed 向身分提供者以授權碼換權杖失敗。
+	//
+	// **包裝 ErrOIDCFlowInvalid**：既有比對與兌換端的回應不變；只有回呼導回登入頁時
+	// 據此給出「設定面」的說明——這類失敗多半是用戶端密碼錯誤或過期，
+	// 重試不會改變結果，說成「流程已失效」會把人引到錯的方向
+	ErrOIDCCodeExchangeFailed = fmt.Errorf("%w", ErrOIDCFlowInvalid)
 	// ErrOIDCFlowCapacity flow state 全表容量已達上限，暫不接受新流程。
 	//
 	// **拒新不淘舊**：淘汰既有列會讓洪水把正常進行中的流程掃掉（使用者正在
@@ -464,7 +470,7 @@ func (s *OIDCLoginService) callback(ctx context.Context, state, code string,
 	tok, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(flow.PKCEVerifier))
 	if err != nil {
 		trail.flowError(p.ID, "code_exchange_failed")
-		return nil, ErrOIDCFlowInvalid
+		return nil, ErrOIDCCodeExchangeFailed
 	}
 	rawIDToken, ok := tok.Extra("id_token").(string)
 	if !ok || rawIDToken == "" {

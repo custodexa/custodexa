@@ -700,6 +700,134 @@ func TestOIDCProviderAdminCannotWidenSharedToDedicated(t *testing.T) {
 	}
 }
 
+// Scenario: 撤回自己的收緊標記／撤回後以新判定驗證規則／內建清單來源撤回收緊標記／
+// 未帶收緊標記的更新不觸發放寬檢查
+//
+// force_shared 三態：不帶＝不變更；true＝收緊；false＝撤回自己的收緊（或部署已宣告
+// 專用時清除），兩者皆清回 NULL。未曾收緊的共用來源送 false 仍是放寬企圖。
+func TestOIDCProviderForceSharedWithdrawal(t *testing.T) {
+	const dedicatedIssuer = "https://idp.example.com"
+	const google = "https://accounts.google.com"
+	emailOnlyJIT := func(r *OIDCProviderRequest) {
+		r.AdmissionMode = string(model.AdmissionJITWithRules)
+		r.AdmissionRules = `{"email_domain":["corp.example"],"email_verified":true}`
+	}
+	assertNullForceShared := func(t *testing.T, db *gorm.DB, id uint) {
+		t.Helper()
+		if fs := reloadProvider(t, db, id).ForceShared; fs != nil {
+			t.Errorf("force_shared 應清回 NULL, got %v", *fs)
+		}
+	}
+	assertKind := func(t *testing.T, dto *OIDCProviderDTO, kind, source string) {
+		t.Helper()
+		if dto.IssuerKind != kind || dto.IssuerKindSource != source {
+			t.Errorf("判定 = %q/%q, want %q/%q", dto.IssuerKind, dto.IssuerKindSource, kind, source)
+		}
+	}
+
+	t.Run("(a) 未宣告 issuer 先收緊再撤回：成功、清回 NULL、判定回到未宣告", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), nil, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(nil))
+		if _, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(true)}); err != nil {
+			t.Fatalf("收緊: %v", err)
+		}
+		dto, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(false)})
+		if err != nil {
+			t.Fatalf("撤回應成功: %v", err)
+		}
+		assertNullForceShared(t, db, p.ID)
+		assertKind(t, dto, "shared", "unknown_default")
+	})
+
+	t.Run("(b) 同 (a) 但同一請求附僅 email 網域的自動供應規則：依共用判定被拒、DB 仍為 true", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), nil, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(nil))
+		if _, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(true)}); err != nil {
+			t.Fatalf("收緊: %v", err)
+		}
+		req := &OIDCProviderRequest{ForceShared: boolPtr(false)}
+		emailOnlyJIT(req)
+		if _, err := svc.Update(p.ID, req); !errors.Is(err, ErrAdmissionSharedNeedsOrgRule) {
+			t.Fatalf("撤回＋僅 email 網域 → %v, want ErrAdmissionSharedNeedsOrgRule", err)
+		}
+		if fs := reloadProvider(t, db, p.ID).ForceShared; fs == nil || !*fs {
+			t.Errorf("被拒的請求不得改動 force_shared, got %v", fs)
+		}
+	})
+
+	t.Run("(c) 從未收緊的未宣告 issuer 送 false：仍為放寬企圖", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), nil, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(nil))
+		if _, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(false)}); !errors.Is(err, ErrOIDCSharedCannotWiden) {
+			t.Errorf("→ %v, want ErrOIDCSharedCannotWiden", err)
+		}
+		assertNullForceShared(t, db, p.ID)
+	})
+
+	t.Run("(d) 只改名稱不帶 force_shared：成功且收緊標記不變", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), nil, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(nil))
+		dto, err := svc.Update(p.ID, &OIDCProviderRequest{Name: "renamed"})
+		if err != nil {
+			t.Fatalf("只改名稱應成功: %v", err)
+		}
+		assertNullForceShared(t, db, p.ID)
+		assertKind(t, dto, "shared", "unknown_default")
+		if dto.Name != "renamed" {
+			t.Errorf("name = %q, want renamed", dto.Name)
+		}
+	})
+
+	t.Run("(e) 部署已宣告專用者送 false：成功、寫 NULL、判定為部署宣告的專用", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), []string{dedicatedIssuer}, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(nil))
+		dto, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(false)})
+		if err != nil {
+			t.Fatalf("部署已宣告者送 false 應成功: %v", err)
+		}
+		assertNullForceShared(t, db, p.ID)
+		assertKind(t, dto, "dedicated", "deploy_declared")
+	})
+
+	t.Run("(f) 部署已宣告且原為 true，撤回同時設僅 email 網域的自動供應：以撤回後的判定驗證而成功", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), []string{dedicatedIssuer}, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(nil))
+		if _, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(true)}); err != nil {
+			t.Fatalf("收緊: %v", err)
+		}
+		req := &OIDCProviderRequest{ForceShared: boolPtr(false)}
+		emailOnlyJIT(req)
+		dto, err := svc.Update(p.ID, req)
+		if err != nil {
+			t.Fatalf("撤回後應以專用判定驗證規則: %v", err)
+		}
+		assertNullForceShared(t, db, p.ID)
+		assertKind(t, dto, "dedicated", "deploy_declared")
+	})
+
+	t.Run("(g) 內建清單 issuer 且原為 true 送 false：成功、清回 NULL、判定仍為內建清單", func(t *testing.T) {
+		_, _, db := setupOIDCEnv(t)
+		svc := newProviderSvcFor(db, testEgress(), nil, "https://bastion.example.com")
+		p := mustCreateProvider(t, svc, providerReq(func(r *OIDCProviderRequest) { r.Issuer = google }))
+		if err := db.Model(&model.OIDCProvider{}).Where("id = ?", p.ID).
+			Update("force_shared", true).Error; err != nil {
+			t.Fatalf("直接寫入 true: %v", err)
+		}
+		dto, err := svc.Update(p.ID, &OIDCProviderRequest{ForceShared: boolPtr(false)})
+		if err != nil {
+			t.Fatalf("內建清單來源撤回應成功: %v", err)
+		}
+		assertNullForceShared(t, db, p.ID)
+		assertKind(t, dto, "shared", "builtin_list")
+	})
+}
+
 // --- Requirement: 停用/啟用生命週期與世代語義 ---
 
 // Scenario: 重新啟用不復活舊憑證 ＋ 同 Requirement 的散文條款

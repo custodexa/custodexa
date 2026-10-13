@@ -18,19 +18,22 @@ import { epLocale } from '@/i18n/element-plus'
 }
 
 #app {
-  font-family: var(--ot-font-sans);
   font-size: var(--ot-font-size-md);
   color: var(--ot-text-primary);
   background-color: var(--ot-bg-page);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   height: 100vh;
 }
 
+/* Font family and smoothing live on body, not #app: message boxes, drawers,
+   notifications and dialogs are mounted on body outside #app and would fall
+   back to the browser default (a serif face on some platforms). */
 body {
   margin: 0;
   padding: 0;
   height: 100vh;
   background-color: var(--ot-bg-page);
+  font-family: var(--ot-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 </style>

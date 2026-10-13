@@ -1,6 +1,12 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-12（每日審閱單日明細的 Event 與操作日誌列表／單筆加 `reason_code`、`reason_params`；計數物件與 `daily_reviews.csv` 尾端加 `high_risk_criteria`；OIDC callback 失敗 slug 加 `oidc_account_removed`、`oidc_user_inactive`；刪除使用者作廢其外部身分綁定，審計列帶被刪帳號名稱與作廢數。路由未變）
+> 最後更新：2026-10-13（`GET /sessions/:id` 詳情與事件報告 `sessions.csv` 的 `recording_state` 同名不同義，兩處各補一句區分。路由未變）
+> 前次更新：2026-10-13（登入方法清單加 `ldap`（啟用中的目錄，只含識別碼）；OIDC provider 列表頂層加 `redirect_uri`／`redirect_uri_state`；狀態彙總的 `last_success` 加 `account_removed`；回呼失敗 slug 加 `oidc_code_exchange_failed`。路由未變）
+> 前次更新：2026-10-13（身分來源狀態彙總加 `last_attempt`、`last_success`、`discovery_checked_at`、`last_login_groups_at`、`groups_unknown_at`、`group_attr_configured`、`source_updated_at`、`login_test_url`、`login_test_state`；探索預覽加 `issuer_matches`、`id_token_signing_alg_values_supported`、`signing_alg_compatible`。路由未變）
+> 前次更新：2026-10-13（錄影可讀性：本機錄影檔存在但讀不到時，metadata、下載、串流與 rtoken 串流一律回 500 `INTERNAL_RECORDING_FILE_UNREADABLE`，不存在回 404 `NOTFOUND_RECORDING_FILE`，下載不再回轉址或純文字 403；`GET /sessions/:id` 詳情加 `recording_state`／`recording_source`；證據包 manifest 加 `skipped_recordings`。路由未變）
+> 前次更新：2026-10-13（OIDC provider 補寫 `force_shared` 三態：未帶＝不變更、`true`＝收緊、`false`＝撤回自己的收緊並清回未表態；未曾收緊的共用來源送 `false` 仍回 400。路由未變）
+> 前次更新：2026-10-13（人工輸入私鑰的寫入入口（建立／更新資產、新增／更新資產帳號、建立共用憑證、直接寫入密文、單台脫離共用自訂私鑰）加 400 `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`；終端撥號與檔案管理遇私鑰無法解析改回 `RULE_SSH_PRIVATE_KEY_INVALID`（檔案管理為 400）。路由未變）
+> 前次更新：2026-10-12（每日審閱單日明細的 Event 與操作日誌列表／單筆加 `reason_code`、`reason_params`；計數物件與 `daily_reviews.csv` 尾端加 `high_risk_criteria`；OIDC callback 失敗 slug 加 `oidc_account_removed`、`oidc_user_inactive`；刪除使用者作廢其外部身分綁定，審計列帶被刪帳號名稱與作廢數。路由未變）
 > 前次更新：2026-10-11（PCI DSS 10.4.1 改以每日簽核的運作紀錄判定：判定結果加 `insufficient_data`、摘要加同名格、四個理由碼、判定上的 `signoff` 運作紀錄；套用預覽加 `notes`；證據包加 `daily_reviews.csv` 與清單檔 `daily_reviews` 段；合規報告 ZIP 對含此條文的組加 `daily_reviews.csv`；高危操作白名單只計寫入類動作、安全政策預覽改記為讀取；升級前的簽核 `alerts_after_sign` 為 `null`。路由未變）
 > 前次更新：2026-10-11（每日審閱簽核改版：依業務時區切日、可補簽指定所屬日、新增待簽清單／單日明細／期間統計端點與 11 個錯誤碼；`GET /audit-logs` 加 `end_before`；`daily_review_overdue` 通知改列出全部未簽日）
 > 前次更新：2026-10-06（`POST /seal/authorize` 在已解封時一律回 409 `SEAL_ALREADY_UNSEALED`；`POST /auth/login` 的帳號含控制字元時回 401 而非 500）
@@ -1100,13 +1106,16 @@ GET /api/v1/auth/methods
 
 **回應** (200):
 ```json
-{"local": true, "oidc": [{"id": 1, "name": "公司 Entra ID"}, {"id": 2, "name": "Okta"}]}
+{"local": true, "oidc": [{"id": 1, "name": "公司 Entra ID"}, {"id": 2, "name": "Okta"}], "ldap": [{"id": 3}]}
 ```
+
+`ldap` 只列啟用中的目錄、只含識別碼，供登入測試連結（`/login?source=ldap:<id>`）判斷目錄是否仍在
+登入頁；停用、已刪除與不存在三者都是「不在清單」，對外不可區分。目錄清單讀取失敗時為空陣列。
 
 只回識別與顯示所需欄位——**不含 issuer／client_id 等設定值**。
 **停用者與設定不完整者皆不列出**（否則按鈕看得到、按下去必失敗）；
 未設 `PUBLIC_BASE_URL` 時 `oidc` 恆為空陣列（fail-close）。
-清單讀取失敗**不阻斷登入頁**：回 `{"local": true, "oidc": []}`，前端降級為只顯示本地表單。
+清單讀取失敗**不阻斷登入頁**：回 `{"local": true, "oidc": [], "ldap": [...]}`，前端降級為只顯示本地表單。
 
 ### 登入前告示
 
@@ -1170,7 +1179,8 @@ POST /api/v1/auth/oidc/exchange
    `oidc_provider_error`（IdP 端回報錯誤）／`oidc_flow_invalid`（state/code 缺漏、流程狀態
    無效或過期、驗證失敗——**成因刻意收斂，不洩漏 IdP 內部狀態**）／`oidc_admission_denied`／
    `oidc_username_conflict`／`oidc_provider_unavailable`／`oidc_account_removed`（僅允許已綁定身分登入的
-   provider，此人原有的帳號已被刪除，須由管理者重新建立帳號並綁定）／`oidc_user_inactive`（對應的帳號已停用）。
+   provider，此人原有的帳號已被刪除，須由管理者重新建立帳號並綁定）／`oidc_user_inactive`（對應的帳號已停用）／`oidc_code_exchange_failed`（以授權碼向提供者換權杖失敗，
+   多半是用戶端密碼錯誤或過期，屬設定面、重試不會改變結果）。
    前端據 slug 顯示可行動訊息。
 
 3. **exchange**：SPA 讀出 fragment 後立即 `history.replaceState` 抹除，再兌換正式登入回應。
@@ -1246,6 +1256,15 @@ POST   /api/v1/oidc-providers/discovery-preview
 四鍵各自去頭尾空白、長度上限 64、不得含空白、**不折疊大小寫**；違反回 400
 `VALIDATION_OIDC_PROVIDER_PAYLOAD`。
 
+**`force_shared` 的三態**（管理者收緊意圖；回應不回本值，只回現算的 `issuer_kind`／`issuer_kind_source`）：
+- **未帶或 `null`＝本次不變更**。建立時即存為未表態。介面沒有動到這個開關時不送此鍵。
+- **`true`＝收緊**：一律以多組織共用的規則把關。收緊永遠允許。
+- **`false`＝撤回自己的收緊**：PUT 時，該 provider 原本存的是 `true`，或其 issuer 已由部署層
+  宣告為專用，則接受並清回未表態（`NULL`）。撤回後判定依下方「回應語義」所列的優先序現算，未經部署層宣告者仍為
+  `shared`；同一請求的准入規則以撤回後的判定驗證。
+- 從未收緊、且系統判定為共用的 provider 收到 `false`（建立或更新）回 400
+  `VALIDATION_OIDC_SHARED_WIDEN`：共用身分域不能由管理者改判為專用，專用只能由部署層宣告。
+
 **回應**（列表為 `{"data": [...]}`；單筆 201／200）:
 ```json
 {
@@ -1282,7 +1301,9 @@ POST   /api/v1/oidc-providers/discovery-preview
 - `redirect_uri` 是**要登記到提供者端的回呼位址**，由對外基準網址算出、不落庫；
   `redirect_uri_state` 值域 `ready`｜`base_url_unset`，後者表示尚未設定對外基準網址、
   回呼網址無從算出（介面應據此指出要先設什麼，而不是顯示一個空字串）。
-  兩欄一併出現在列表回應上（**不只詳情**）。
+  兩欄一併出現在列表回應上（**不只詳情**）。列表回應的頂層另帶同名兩欄
+  （`{"data": [...], "redirect_uri": "…", "redirect_uri_state": "ready"}`）：回呼網址對所有提供者相同，
+  新增頁還沒有單筆可讀時取這裡的值。
 
 **約束與錯誤**:
 - `issuer` 與 `client_id` 組成身分域，**建後不可變**（PUT 送出不同值回 400
@@ -1319,7 +1340,19 @@ POST   /api/v1/oidc-providers/discovery-preview
   "last_login_groups_count": 5,
   "rule_count": 3, "enabled_rule_count": 2,
   "last_recompute_matched_users": 12,
-  "warnings": [{"code": "MAPPING_SOURCE_ATTR_UNSET_WITH_RULES"}]
+  "warnings": [{"code": "MAPPING_SOURCE_ATTR_UNSET_WITH_RULES"}],
+  "last_attempt": {
+    "at": "2026-10-13T06:28:11Z", "outcome": "denied",
+    "reason_code": "admission_tid", "username": "chen.y@example.com", "window_days": 30
+  },
+  "last_success": {"at": "2026-10-13T06:20:02Z", "mapping_eligible": true, "account_removed": false},
+  "discovery_checked_at": "2026-10-13T01:12:40Z",
+  "last_login_groups_at": "2026-10-13T06:20:02Z",
+  "groups_unknown_at": null,
+  "group_attr_configured": true,
+  "source_updated_at": "2026-10-12T09:00:00Z",
+  "login_test_url": "https://bastion.example.com/login?source=oidc:4",
+  "login_test_state": "ready"
 }
 ```
 
@@ -1329,7 +1362,39 @@ POST   /api/v1/oidc-providers/discovery-preview
   獨立動作**（重新探索、測試連線），由操作者按下去才發生。
 - **無從觀測的燈號回 `null`**（介面呈現為「尚無資料」）——不知道不得畫成綠色。
   `last_login_groups_seen` 為 null 即代表此來源尚無登入紀錄可判讀。
-- `discovery_reachable` 取自探索文件的快取，快取為空時為 null。
+- `discovery_reachable` 取自探索文件的快取，快取為空時為 null；`discovery_checked_at` 是同一份
+  快取的取得時間（只讀快取，不撥號），快取為空或已不新鮮時為 null。
+- `last_attempt`：近 30 天內經這個來源最近一次登入嘗試，取自稽核紀錄（登入事件），窗內沒有
+  任何嘗試時為 null。`window_days` 回時間窗天數（30），供介面寫出「近 N 天沒有登入嘗試」。
+  - `outcome`：`success`／`pending`（身分提供者驗證通過，等待第二因素或變更密碼）／`denied`／`failed`。
+  - `reason_code` 為受控機器碼，介面依碼查白話原因：`success`、`pending_mfa`、
+    `pending_mfa_enrollment`、`pending_password_change`、`source_denied`、`admission_tid`、
+    `admission_hd`、`admission_email_domain`、`admission_email_verified`、`admission_not_prebound`、
+    `admission_rules_noncompliant`、`code_exchange_failed`、`id_token_missing`、`id_token_invalid`、
+    `provider_unavailable`、`internal_error`、`provider_error`、`username_conflict`、
+    `account_removed`、`user_inactive`、`unknown`。
+  - `reason_detail` 只在兩個碼出現，且只取白名單值，名單外一律為 `other`：
+    `admission_rules_noncompliant` 為 `shared_needs_org_rule`／`empty_rule_set`／`consumer_tenant`／
+    `email_needs_verified`／`unknown_rule`／`invalid_rules`／`other`；`provider_error` 為
+    `access_denied`／`invalid_scope`／`unauthorized_client`／`server_error`／
+    `temporarily_unavailable`／`login_required`／`interaction_required`／`consent_required`／`other`。
+  - `event` 只在 `reason_code=unknown` 時出現，為稽核事件名；不符 `^[a-z0-9_]{1,64}$` 即省略。
+  - `provider_error`、`provider_error_description` 只在 `reason_code=provider_error` 時出現。
+    **`provider_error_description` 是身分提供者自報的文字**，不是本系統的判讀；回應前截為
+    200 個字元（以字元計，不切斷多位元組字元）。用戶端須以純文字呈現。
+  - `username` 為稽核列的帳號名稱，沒有時為空字串。
+- `last_success`：同一時間窗內最近一次成功類登入（`success` 或 `pending`）的時間，與該帳號目前
+  是否適用群組映射（`mapping_eligible`；本地帳號綁定外部身分者為 `false`，帳號已不存在亦為
+  `false`），以及該帳號是否已刪除（`account_removed`，介面據此不把它說成本地帳號）。窗內沒有時為 null。
+- `last_login_groups_at`：最近一次群組觀測快照的時間（不是帳號的最近登入時間），沒有快照時為
+  null；快照本身不受 30 天窗限制。`groups_unknown_at`：30 天窗內最近一次登入讀不到完整群組資料
+  的時間，沒有時為 null。
+- `group_attr_configured`：來源有沒有設群組宣告名，直接取自設定，不需等登入。
+- `source_updated_at`：來源設定最近一次變更的時間。介面以它判斷最近一次登入是否早於設定變更。
+- `login_test_url`／`login_test_state`：登入測試連結，以對外基準網址組成
+  （`{基準網址}/login?source=oidc:{id}`），只含來源型別與編號。`login_test_state` 為 `ready`
+  （有連結）、`base_url_unset`（對外基準網址未設定，連結為 null）、`source_disabled`
+  （來源停用，連結為 null）。基準網址未設定優先於來源停用。
 
 **探索預覽** `POST /oidc-providers/discovery-preview`，主體 `{"issuer": "https://…"}`：
 以填在表單裡、**尚未儲存**的 issuer 取一次探索文件，回其端點與宣告／scope 清單，供設定頁
@@ -1339,8 +1404,18 @@ POST   /api/v1/oidc-providers/discovery-preview
 {"issuer": "…", "authorization_endpoint": "…", "token_endpoint": "…", "jwks_uri": "…",
  "userinfo_endpoint": "…",
  "claims_supported": ["sub", "email", "name", "groups"],
- "scopes_supported": ["openid", "profile", "email", "groups"]}
+ "scopes_supported": ["openid", "profile", "email", "groups"],
+ "id_token_signing_alg_values_supported": ["RS256"],
+ "issuer_matches": true, "signing_alg_compatible": true}
 ```
+
+回應另帶兩項檢查，預告登入時才會遇到的失敗（不改狀態碼、不新增錯誤碼）：
+
+- `issuer_matches`：探索文件宣告的 `issuer` 與輸入值（去掉結尾斜線後）逐字相同。登入時會強制
+  這項完整字串比對，為 `false` 時登入必定失敗。
+- `signing_alg_compatible`：文件宣告的 `id_token_signing_alg_values_supported` 與本系統允許的
+  簽章演算法（RS256、ES256）有交集；文件未宣告時為 `true`（登入時沿用本系統的允許集合）。
+- `id_token_signing_alg_values_supported` 照抄文件宣告，未宣告時為空陣列。
 
 取不到或不是合法探索文件時回 502 `OIDC_DISCOVERY_PREVIEW_FAILED`；issuer 不合信任邊界時
 沿用既有的 issuer 驗證錯誤碼。**`claims_supported` 與 `scopes_supported` 是提供者自報的**，
@@ -1453,8 +1528,13 @@ warn 檔位缺 `risk_acknowledged` 拒存（400，碼與 syslog／通知通道�
 `group_attr_readable`（連線測試的群組屬性抽樣結果），`discovery_reachable` 恆為 `null`；
 提供者那一端反過來。同樣**一律不對外撥號**。**目前 `connection_ok` 與 `group_attr_readable`
 兩欄也恆為 `null`**：
-連線測試的結果不落庫，本端點沒有可讀的來源，介面呈現為「尚無資料」。要判讀連線與群組屬性
-是否可讀，用 `POST /ldap-directory/test`（那是操作者按下去才發生的主動動作）。
+連線測試的結果不落庫，本端點沒有可讀的來源。要判讀連線與群組屬性是否可讀，用
+`POST /ldap-directory/test`（那是操作者按下去才發生的主動動作），介面以該頁最近一次測試的
+結果與時間呈現這兩項。
+目錄這一端另回 `last_login_groups_at`、`group_attr_configured`（是否設了群組屬性名）、
+`source_updated_at`、`login_test_url`／`login_test_state`（連結為 `{基準網址}/login?source=ldap:{id}`），
+語義同提供者端；`last_attempt`、`last_success`、`discovery_checked_at` 恆為 `null`，
+`groups_unknown_at` 依同一套 30 天窗查法回報。
 目錄尚未設定時回 404 `NOTFOUND_LDAP_DIRECTORY`。
 
 **錯誤揭露的收斂**：撥號失敗一律回單一 `connect_failed`，**不細分** DNS／逾時／拒絕／TLS——
@@ -1712,7 +1792,11 @@ POST /api/v1/assets
 **建資產不對目標主機寫入任何秘密**。兩種來源同時出現回 400 `VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`；
 指定的憑證不是共用範圍回 409 `RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING`；改密進行中回 409
 `RULE_CREDENTIAL_ROTATION_ACTIVE`；帶已移除的 `copy_from_account_id` 回 400
-`VALIDATION_ACCOUNT_COPY_FROM_REMOVED`。認證類型 `auth_method` **不在本端點的請求上**，
+`VALIDATION_ACCOUNT_COPY_FROM_REMOVED`。直填的私鑰（頂層或內嵌）無法解析為可用的簽章金鑰時
+（格式錯誤、內容不完整、貼成公鑰、設有 passphrase）回 400 `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`，
+不建立任何資料列；此碼的回應頂層另帶 `"field": "private_key"`（資產帳號、憑證庫入口同），供表單把錯誤標在私鑰欄；系統不支援設有 passphrase 的私鑰。判準與 SSH 連線所用的解析相同。
+`PUT /assets/:id` 帶非空 `private_key` 時同樣檢查並回同一碼；未帶或空字串＝沿用現行私鑰，不重驗。
+認證類型 `auth_method` **不在本端點的請求上**，
 要設定它請走資產帳號端點 `POST /assets/:id/accounts`。掛載列的語義見「資產帳號（憑證掛載列）」。
 
 **協議別驗證**:
@@ -1973,6 +2057,8 @@ no-op（不寫稽核），否則在同一交易內先清舊預設再設新預設
 `VALIDATION_ACCOUNT_USERNAME_RESERVED`(400，`@` 前綴為授權別名保留命名空間)、
 `VALIDATION_ACCOUNT_USERNAME_TOO_LONG`(400)、`VALIDATION_ACCOUNT_NOTE_TOO_LONG`(400)、
 `VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`(400)、`VALIDATION_ACCOUNT_COPY_FROM_REMOVED`(400)、
+`VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`(400，新增或更新時帶入的私鑰無法解析：格式錯誤、內容不完整或設有
+passphrase；更新時私鑰未帶或空字串＝沿用現行私鑰，不重驗)、
 `VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE`(400，共用憑證的登入帳號名不可改)、
 `CONFLICT_ACCOUNT_USERNAME`(409，同資產同名)、`CONFLICT_ACCOUNT_DEFAULT`(409，併發撞 partial unique index)、
 `RULE_ACCOUNT_DEFAULT_REQUIRED`(400)、`RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET`(409)、
@@ -2318,6 +2404,7 @@ SSH 金鑰）是兩件事。值域 `sql`｜`domain`，未帶＝`sql`；**1.0 只
 | 路徑參數 | `VALIDATION_INVALID_CREDENTIAL_ID`、`VALIDATION_INVALID_ROTATION_ID`、`VALIDATION_INVALID_ROTATION_MEMBER_ID` |
 | 名稱 | `VALIDATION_CREDENTIAL_NAME_REQUIRED`／`_TOO_LONG`／`_INVALID`、`CONFLICT_CREDENTIAL_NAME` |
 | 範圍與型別 | `VALIDATION_CREDENTIAL_SCOPE_INVALID`、`VALIDATION_CREDENTIAL_SECRET_TYPE_INVALID`、`VALIDATION_CREDENTIAL_SECRET_REQUIRED`、`VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID` |
+| 私鑰 | `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`（400；建立共用憑證、直接寫入密文、單台脫離共用的自訂私鑰無法解析：格式錯誤、內容不完整或設有 passphrase。直接寫入密文時私鑰為空＝自現行版本帶過，不重驗） |
 | 帳號名與認證類型 | `VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE`；帳號名本身的檢核沿用既有的 `VALIDATION_ACCOUNT_USERNAME_*` 三碼與 `VALIDATION_ACCOUNT_NOTE_TOO_LONG`；認證類型沿用 `VALIDATION_ACCOUNT_AUTH_METHOD`／`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED` |
 | 來源二擇一 | `VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`、`VALIDATION_ACCOUNT_COPY_FROM_REMOVED` |
 | 改密請求 | `VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID`、`VALIDATION_CREDENTIAL_DETACH_SOURCE_INVALID` |
@@ -2349,6 +2436,8 @@ SSH 首連記錄 host key，之後指紋不符即拒線（SSH 終端、SFTP、SS
 > 未授權（無 connect）與政策攔截統一回 404「資產不存在」（不洩漏存在性；申請入口在資產列表，
 > 檔案端點僅擋不引導）。
 > 遠端路徑必須為絕對路徑且不得包含 `..`（否則 400）；遠端操作失敗回 502。
+> 帳號的私鑰無法解析（格式錯誤、內容不完整或設有 passphrase）時回 400 `RULE_SSH_PRIVATE_KEY_INVALID`
+> （與終端連線同碼），不回該動作的失敗碼，回應不含解析原文。
 > 五個端點均接受選填 query `session_id`：自某會話的檔案分頁進入時
 > 沿用該會話的資產帳號連線；省略＝檔案管理獨立入口，走預設帳號。非本人或非該資產的
 > `session_id` 一律 404 `NOTFOUND_SESSION`（fail-close，不退回預設帳號）。
@@ -2451,11 +2540,26 @@ agent 會話（`actor_kind=agent`）的列表與詳情另帶兩個唯讀名稱�
 ### 詳情 / 活動 / 統計 / 終止
 
 ```
-GET  /api/v1/sessions/:id            → Session
+GET  /api/v1/sessions/:id            → Session＋recording_state／recording_source
 GET  /api/v1/sessions/active         → [Session]（純陣列，無封套）
 GET  /api/v1/sessions/statistics     → {"active_sessions": 5, "today_sessions": 50, "total_sessions": 1000}
 POST /api/v1/sessions/:id/terminate  → {}
 ```
+
+**詳情的錄影可讀狀態**（只在 `GET /sessions/:id`；列表與活動連線不帶）:
+
+| 欄位 | 值域 | 說明 |
+|---|---|---|
+| `recording_state` | `available`／`missing`／`unreadable` | 錄影本體目前讀不讀得到。`has_recording=false` 時不出現 |
+| `recording_source` | `local`／`offsite` | 只在 `available` 時出現：由本機交付，或需先自離機副本取回 |
+
+- 判定是**唯讀探測**：只檢查本機檔存在、是一般檔、開得了（開即關，不讀內容）；本機不可用而該錄影已排入離機保存時，
+  只讀帳冊列判斷有無可用副本（有則 `available`＋`offsite`；帳冊判為完整性不符為 `unreadable`；
+  沒有副本時依本機狀況為 `missing` 或 `unreadable`）。**不觸發離機取回、不發網路請求**。
+- 探測無法下結論時（例如帳冊查詢失敗）兩欄都**省略**，詳情照常回 200；原因只記伺服器日誌。
+- 權限與詳情相同（`session:view`），不產生錄影取證稽核列——看詳情不等於調閱錄影。
+- 列表的 `has_recording` 依持久化欄位，不逐列檢查檔案；列表顯示有錄影而詳情顯示讀不到時，以詳情為準。
+- 事件報告 ZIP 的 `sessions.csv` 也有一欄 `recording_state`，但值域是 `available`／`purged`／`none`，依持久化欄位與保留期清理水位推算，不檢查檔案；兩者同名不同義，不可互相代換。
 
 終止需 admin（403 否則）；已關閉的 session 回 400。
 
@@ -2937,19 +3041,41 @@ GET /api/v1/sessions/:id/recording
   "created_at": "2026-07-01T10:00:00Z",
   "protocol": "ssh",
   "username": "admin",
-  "asset_name": "Server1"
+  "asset_name": "Server1",
+  "source": "local"
 }
 ```
+
+`source`：本體來源 `local`／`offsite`（見〈來源判定與離機退路〉）；離機時 `file_size` 取帳冊記載的大小。
 
 ### 下載 / 串流
 
 ```
-GET /api/v1/sessions/:id/recording/download   （audit:view；attachment）
+GET /api/v1/sessions/:id/recording/download   （audit:view；attachment；支援 HTTP Range）
 GET /api/v1/sessions/:id/recording/stream     （audit:view；支援 HTTP Range）
 ```
 
-- 串流 Content-Type：`.cast` 為 `application/x-asciicast`、`.guac` 為 `application/octet-stream`
-- 下載一律標 `application/x-asciicast`（含 `.guac`，為現行程式碼行為）
+- Content-Type：`.cast` 為 `application/x-asciicast`，`.guac` 等其餘格式為 `application/octet-stream`
+- 下載以 `Content-Disposition: attachment` 交付，檔名取會話的錄影檔名
+
+### 錄影可讀性判定
+
+metadata、下載、串流與 rtoken 串流四個請求共用同一個判定：本機錄影檔須**存在、是一般檔、開得了**
+（判定只開檔即關，不讀內容）。對外只分兩類，細部原因（權限、是否為目錄等）只記伺服器日誌，不進回應與稽核：
+
+| 情境 | 狀態碼 | 機器碼 |
+|---|---|---|
+| 錄影檔不存在 | 404 | `NOTFOUND_RECORDING_FILE` |
+| 錄影檔存在但讀不到：權限不足、取得檔案資訊失敗、路徑不是一般檔（例如是目錄）、開檔失敗 | 500 | `INTERNAL_RECORDING_FILE_UNREADABLE` |
+
+- 錄影未排入離機保存、或離機沒有可取回的副本時，四個請求對同一份本機錄影回相同的狀態碼與機器碼；
+  回應一律為錯誤信封（JSON），不交付任何錄影位元組，不回轉址或純文字錯誤。
+- 串流與下載在**實際開啟要交付的檔案**時再依同一規則分類（判定之後檔案被刪回 404、被換成目錄回 500），
+  `.typescript` 錄影改交付的轉檔快取 `.cast` 亦同。
+- 已排入離機保存者，本機讀不到時改由離機副本交付（見下一節）；離機沒有副本時，本機讀不到回 500
+  `INTERNAL_RECORDING_FILE_UNREADABLE`，本機缺檔回 404 `NOTFOUND_RECORDING_FILE`。
+- 既有差異：下載對已排入離機者比對整檔雜湊、metadata 與串流不比對，故「大小相同而內容被改」的本機檔，
+  下載會退到離機、串流仍交付本機。
 
 ### 來源判定與離機退路
 
@@ -2977,9 +3103,8 @@ GET /api/v1/sessions/:id/recording/stream     （audit:view；支援 HTTP Range�
 **只在離機來源時標記**——本機來源的稽核列與離機功能上線前逐位元組相同，
 「未設定＝行為完全不變」在稽核面沒有例外。
 
-> **`source` 不出現在錄影元數據回應內。** `GET /sessions/:id/recording` 的回應形狀未因離機功能改變
-> （欄位如上一節），它描述的是這個會話的錄影本身，而非某一次交付的來源。會話層的離機狀態
-> 請讀 Session 回應的 `offsite_status`（見 [Session API](#session-api)）。
+> 錄影元數據回應的 `source` 描述該次判定的本體來源；會話層的離機狀態請讀 Session 回應的
+> `offsite_status`（見 [Session API](#session-api)）。
 
 ### 錄影 token 串流（播放器建議路徑）
 
@@ -4622,7 +4747,7 @@ GET /api/v1/audit-export
 
 **ZIP 內容（事件報告模式，本端點同步產出）**: 逐類別各一個 CSV，第一欄一律為紀錄編號
 `record_ref`（格式 `<類別>:<編號>`，與時間軸事件 id 同源，可回系統查對原始紀錄）。
-- `sessions.csv` — 含 `recording_state`（`available`／`purged`／`none`）與 `recording_error`；**不含錄影本體**
+- `sessions.csv` — 含 `recording_state`（`available`／`purged`／`none`）與 `recording_error`；**不含錄影本體**。此欄依持久化欄位與保留期清理水位推算（`purged`＝已過清理水位），不檢查檔案；與 `GET /sessions/:id` 詳情的 `recording_state`（`available`／`missing`／`unreadable`，唯讀探測檔案當下讀不讀得到）同名不同義
 - `commands.csv` — 含 `command_seq`、`command`
 - `audit_logs.csv`／`file_transfers.csv` — 同表互斥切分（後者為 `resource=file`）
 - `clipboard_events.csv` — 含 `direction` 與 `content_length`；**不含內容**
@@ -4641,7 +4766,7 @@ GET /api/v1/audit-export
   稽核據 `result_status`＋`result_reason` 判讀「這句到底生效了沒有」：
   `partial` 與 `effect_unknown` 都不得讀成成功或未發生
 - `clipboard_contents.json` — 剪貼簿**解密全文**，逐筆含 `record_ref`／`id`／`session_id`／`occurred_at`／`direction`／`content_status`／`content_length`／`content`（缺口列 `content_status=failed`、`content` 鍵缺席）〔類別 `clipboard`〕
-- `recordings/session-<id>.<ext>` — 有錄影的會話本體（`.cast`/`.guac`；逐檔跳過缺失，不阻斷整包）〔類別 `session`〕
+- `recordings/session-<id>.<ext>` — 有錄影的會話本體（`.cast`/`.guac`；讀不到的逐筆略過、不阻斷整包，並列入 manifest `skipped_recordings`）〔類別 `session`〕
 - `alerts.csv`／`file_transfers.csv` — 無本體之類別以**事件事實**列入（重用事件報告的寫入器）〔類別 `alert`／`file_transfer`〕
 - `daily_reviews.csv` — 每日簽核紀錄，**不隨類別篩選、不隨樞紐改變**（每日審閱涵蓋全部安全事件），事件報告不收。
   時間窗內、起訖與時間窗有交集且已結束的所屬日，凡在啟用範圍內或有簽核紀錄者各一列——**未簽與尚未到期的日子也是一列**。
@@ -4684,6 +4809,7 @@ GET /api/v1/audit-export
 | `signed`／`signed_reason` | 是否已簽章；未簽時給機器碼原因（**不靜默省略**） |
 | `disclosures[]` | 這個包能證明什麼、不能證明什麼（`code`＋選用 `params`；`export.proves.*` 全數排在 `export.limit.*` 之前）；兩種模式恆含 `export.limit.csv_formula_escape`（CSV 儲存格已轉義）。證據包含明文剪貼簿內容時，**明載本包含明文內容**（僅 `content_available>0` 時寫入——全缺口包不宣告，宣告即假警報） |
 | `note_codes` | 各段的範圍說明機器碼（如資產關聯的歷史邊界） |
+| `skipped_recordings` | 證據包選取會話類別時**恆出現**（無略過為空陣列）：範圍內有錄影紀錄、但錄影本體讀不到而未收錄的會話，逐筆 `session_id`＋`reason`（`missing`＝錄影檔不存在且無可取回的副本；`unreadable`＝存在但讀不到，含路徑不是一般檔與離機取回失敗）。不含檔案路徑或錯誤字樣；會話本來就沒有錄影者不列。未選會話類別或事件報告模式不出現。在 manifest 雜湊與簽章涵蓋範圍內 |
 
 **manifest 內零散文**：`coverage[].note_code`、`disclosures[].code`、`note_codes`
 一律只給機器碼與參數，不含任何自然語言句子（後端零散文出站，三語才可能齊備）。
@@ -5463,8 +5589,10 @@ Upgrade: websocket
 - 憑證後端解密注入（SSH）；mysql/postgres/redis/mssql 以本地 CLI 子程序 + PTY 代理；k8s 走 kubectl exec/logs
 - SSH 握手/CLI 啟動在 WS 升級前完成；失敗時對 WS 升級請求改為升級後送 `{"type":"error", "code", "data"}` 再關閉
   （瀏覽器讀不到握手失敗的 HTTP body），非 WS 請求維持一般 HTTP 錯誤（502 為主）。
-  SSH 撥號失敗帶 `RULE_SSH_*` code（`HOST_KEY_CHANGED`／`AUTH_FAILED`／`DIAL_TIMEOUT`／`UNREACHABLE`，
-  入 apierror registry 受三語完備性守衛）；k8s/database 啟動失敗僅帶 `data` zh 文案
+  SSH 撥號失敗帶 `RULE_SSH_*` code（`HOST_KEY_CHANGED`／`PRIVATE_KEY_INVALID`／`AUTH_FAILED`／`DIAL_TIMEOUT`／`UNREACHABLE`，
+  入 apierror registry 受三語完備性守衛）；k8s/database 啟動失敗僅帶 `data` zh 文案。
+  `RULE_SSH_PRIVATE_KEY_INVALID`＝帳號的私鑰無法解析（格式錯誤、內容不完整或設有 passphrase），尚未向目標主機出示認證；
+  此時 `data` 為該碼的 zh fallback 全文，不含解析原文。`RULE_SSH_AUTH_FAILED` 專指目標主機拒絕了出示的認證
 - 兌換時重載狀態（殘窗收斂）：使用者停用/鎖定即擋；資產停用回 403＋`{reason: "asset_disabled"}`（簽發後停用者同擋）；
   來源不在允許來源網段回 403＋`{code: "AUTH_SOURCE_NOT_ALLOWED", reason: "source_not_allowed"}`（**兌換當下現讀清單，不信簽發時的判定**）
 - 全模態 asciinema 錄製；指令稽核與阻斷（K8s logs 唯讀模態除外）；接入即時監看 room

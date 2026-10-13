@@ -1,6 +1,8 @@
 package identity_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -283,5 +285,39 @@ func TestProviderDetailRedirectURIUnsetIsIdentifiable(t *testing.T) {
 	}
 	if dto.ConfigComplete {
 		t.Fatal("未設基準網址時 config_complete 應為 false")
+	}
+}
+
+// TestLoginDirectoriesListsOnlyEnabled 登入頁的目錄清單：啟用中才列、只含識別碼；
+// 停用與已刪除皆不列（對外不可區分）。
+func TestLoginDirectoriesListsOnlyEnabled(t *testing.T) {
+	db := setupMappingDB(t)
+	svc := mappingService(db, audit.NewTxSink())
+	if got, err := svc.LoginDirectories(); err != nil || len(got) != 0 {
+		t.Fatalf("無目錄時 = %+v（err=%v），want 空", got, err)
+	}
+	dir := seedDirectory(t, db, "memberOf")
+	got, err := svc.LoginDirectories()
+	if err != nil || len(got) != 1 || got[0].ID != dir.ID {
+		t.Fatalf("啟用中 = %+v（err=%v），want 只有 %d", got, err, dir.ID)
+	}
+	raw, _ := json.Marshal(got)
+	if string(raw) != fmt.Sprintf(`[{"id":%d}]`, dir.ID) {
+		t.Fatalf("清單只能含識別碼，實得 %s", raw)
+	}
+	if err := db.Model(dir).Update("enabled", false).Error; err != nil {
+		t.Fatalf("停用: %v", err)
+	}
+	if got, err := svc.LoginDirectories(); err != nil || len(got) != 0 {
+		t.Fatalf("停用時 = %+v（err=%v），want 空", got, err)
+	}
+	if err := db.Model(dir).Update("enabled", true).Error; err != nil {
+		t.Fatalf("啟用: %v", err)
+	}
+	if err := db.Delete(dir).Error; err != nil {
+		t.Fatalf("刪除: %v", err)
+	}
+	if got, err := svc.LoginDirectories(); err != nil || len(got) != 0 {
+		t.Fatalf("已刪除時 = %+v（err=%v），want 空", got, err)
 	}
 }

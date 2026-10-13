@@ -1,149 +1,177 @@
 <template>
   <div class="panel">
-    <div class="panel__title">
-      {{ $t('identitySources.preflight.title') }}
-    </div>
-    <div class="panel__lead">
-      {{ isDirectory
-        ? $t('identitySources.preflight.leadLdap')
-        : $t('identitySources.preflight.leadOidc') }}
-    </div>
-
-    <!-- 第一塊：靜態檢核卡。**這一塊是提示，不是自動化**——本系統不代為
-         呼叫提供者的管理介面，只把該做的事列清楚並附可複製的值 -->
-    <div class="panel__section-head">
-      {{ isDirectory
-        ? $t('identitySources.preflight.checklistLdap')
-        : $t('identitySources.preflight.checklistOidc') }}
-    </div>
-    <div
-      v-for="item in checklist"
-      :key="item.key"
-      class="panel__item"
-    >
-      <div class="panel__item-main">
-        <div class="panel__item-title">
-          {{ item.title }}
-        </div>
-        <div
-          v-if="item.value"
-          class="panel__item-value"
-        >
-          {{ item.value }}
-        </div>
-        <div
-          v-if="item.hint"
-          class="panel__item-hint"
-        >
-          {{ item.hint }}
-        </div>
-        <div
-          v-if="item.entraHint"
-          class="panel__item-hint"
-          data-test="preflight-entra-hint"
-        >
-          {{ item.entraHint }}
-        </div>
-      </div>
-      <el-button
-        v-if="item.copyable"
-        type="primary"
-        size="small"
-        link
-        @click="copy(item.value)"
-      >
-        {{ $t('common.copy') }}
-      </el-button>
-    </div>
-
-    <el-divider />
-
-    <!-- 第二塊：本系統自驗的狀態燈。一支彙總端點回齊，不由前端拼多支——
-         分散成多支會讓燈號之間出現不同時點的混合狀態 -->
-    <div class="panel__section-head">
-      {{ $t('identitySources.preflight.statusHead') }}
-    </div>
-    <div
-      v-if="statusUnavailable"
-      class="panel__pending"
-    >
-      {{ $t('identitySources.backendPending') }}
-    </div>
-    <div
-      v-else-if="statusNotConfigured"
-      class="panel__pending"
-    >
-      {{ $t('identitySources.preflight.sourceNotConfigured') }}
-    </div>
-    <div
-      v-for="light in lights"
-      :key="light.key"
-      class="panel__light"
-    >
+    <div class="panel__header">
+      <span class="panel__title">{{ $t('identitySources.preflight.title') }}</span>
       <span
-        class="panel__dot"
-        :class="`panel__dot--${light.state}`"
-      />
-      <div class="panel__light-body">
-        <span>{{ light.text }}</span>
-        <div
-          v-if="light.sub"
-          class="panel__item-hint"
-        >
-          {{ light.sub }}
+        v-if="updatedAt"
+        class="panel__updated"
+        data-test="preflight-updated-at"
+      >{{ $t('identitySources.preflight.updatedAt', { time: formatShortDateTime(updatedAt) }) }}</span>
+      <span class="panel__spacer" />
+      <el-button
+        v-if="sourceId"
+        size="small"
+        data-test="preflight-refresh"
+        @click="fetchStatus"
+      >
+        <RefreshCw class="panel__btn-icon" />
+        {{ $t('identitySources.preflight.refresh') }}
+      </el-button>
+      <button
+        type="button"
+        class="panel__collapse"
+        data-test="preflight-collapse"
+        @click="collapsed = !collapsed"
+      >
+        <component
+          :is="collapsed ? ChevronRight : ChevronDown"
+          class="panel__btn-icon"
+        />
+        {{ $t(collapsed ? 'common.expand' : 'common.collapse') }}
+      </button>
+    </div>
+
+    <template v-if="!collapsed">
+      <!-- 總結句：由燈號在前端合成，回答「設定對了沒」 -->
+      <div
+        v-if="summary"
+        class="panel__summary"
+        :class="`panel__summary--${summary.state}`"
+        data-test="preflight-summary"
+      >
+        <component
+          :is="ICONS[summary.state]"
+          class="panel__icon"
+        />
+        <div>
+          <div class="panel__summary-text">
+            {{ summaryText }}
+          </div>
+          <div
+            v-if="summary.detail"
+            class="panel__hint"
+          >
+            {{ $t(summary.detail.key) }}
+          </div>
         </div>
       </div>
-    </div>
 
-    <el-divider />
+      <!-- 第一塊：提供者／目錄端要配合的事。OIDC 只留回呼網址，各欄取值見左側說明 -->
+      <template v-if="!isDirectory">
+        <div class="panel__section-head">
+          {{ $t('identitySources.preflight.oidc.redirect') }}
+        </div>
+        <div class="panel__box">
+          <code
+            class="panel__mono"
+            data-test="preflight-redirect"
+          >{{ redirectText }}</code>
+          <el-button
+            v-if="redirect.uri"
+            size="small"
+            data-test="preflight-redirect-copy"
+            @click="copy(redirect.uri)"
+          >
+            <Copy class="panel__btn-icon" />
+            {{ $t('common.copy') }}
+          </el-button>
+        </div>
+        <div
+          class="panel__hint"
+          data-test="preflight-guide-hint"
+        >
+          {{ $t('identitySources.preflight.oidc.guideHint') }}
+        </div>
+      </template>
+      <template v-else>
+        <div class="panel__section-head">
+          {{ $t('identitySources.preflight.checklistLdap') }}
+        </div>
+        <div
+          v-for="k in LDAP_CHECKLIST"
+          :key="k"
+          class="panel__item"
+        >
+          <div>{{ $t(`identitySources.preflight.ldap.${k}`) }}</div>
+          <div class="panel__hint">
+            {{ $t(`identitySources.preflight.ldap.${k}Hint`) }}
+          </div>
+        </div>
+      </template>
 
-    <!-- 第三塊：主動測試 -->
-    <div class="panel__section-head">
-      {{ $t('identitySources.preflight.testHead') }}
-    </div>
-    <div class="panel__buttons">
-      <el-button
-        v-if="!isDirectory"
-        :loading="discovering"
-        @click="$emit('rediscover')"
+      <el-divider />
+
+      <div class="panel__section-head">
+        {{ $t('identitySources.preflight.statusHead') }}
+      </div>
+      <div
+        v-if="statusUnavailable || statusNotConfigured"
+        class="panel__hint"
       >
-        {{ $t('identitySources.preflight.rediscover') }}
-      </el-button>
-      <el-button
-        v-else
-        :loading="testing"
-        @click="$emit('test')"
-      >
-        {{ $t('identitySources.testConnection') }}
-      </el-button>
-      <el-button
-        :disabled="!sourceId"
-        @click="openLoginTest"
-      >
-        {{ $t('identitySources.preflight.loginTest') }}
-      </el-button>
-    </div>
-    <!-- 登入測試是真實登入，按鈕下方明寫後果：不做任何形式的假登入 -->
-    <div class="panel__warning">
-      {{ isDirectory
-        ? $t('identitySources.preflight.loginTestNoticeLdap')
-        : $t('identitySources.preflight.loginTestNoticeOidc') }}
-    </div>
+        {{ $t(statusUnavailable ? 'identitySources.backendPending' : 'identitySources.preflight.sourceNotConfigured') }}
+      </div>
+      <PreflightLightRow
+        v-for="l in lights"
+        :key="l.key"
+        :light="l"
+        :discovering="discovering"
+        @rediscover="$emit('rediscover')"
+      />
+
+      <template v-if="sourceId">
+        <template v-if="!isDirectory">
+          <el-divider />
+          <PreflightLastAttempt
+            :attempt="status?.last_attempt || null"
+            :window-days="status?.last_attempt?.window_days || 30"
+            :wait-state="waiting.state.value"
+          />
+        </template>
+        <el-divider />
+        <PreflightLoginTest
+          :type="type"
+          :state="status?.login_test_state || ''"
+          :url="status?.login_test_url || ''"
+          @copied="waiting.arm"
+        />
+      </template>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import {
+  CircleCheck,
+  TriangleAlert,
+  CircleDashed,
+  CircleMinus,
+  RefreshCw,
+  Copy,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-vue-next'
 import i18n, { t } from '@/i18n'
-import { formatDateTime } from '@/utils/format'
+import { formatShortDateTime } from '@/utils/format'
 import { apiErrorSummary } from '@/api/redact'
+import { getOIDCProviders } from '@/api/oidc'
+import { useLoginTestWaiting } from '@/composables/useLoginTestWaiting'
 import {
   getSourceStatus,
   isNotImplemented,
   errorCode,
   CODE_LDAP_DIRECTORY_NOT_FOUND,
 } from '@/api/identitySources'
+import PreflightLastAttempt from './PreflightLastAttempt.vue'
+import PreflightLoginTest from './PreflightLoginTest.vue'
+import PreflightLightRow from './PreflightLightRow.vue'
+import { computeLights, computeSummary } from './preflightLights'
+
+const ICONS = { ok: CircleCheck, warn: TriangleAlert, gray: CircleDashed, neutral: CircleMinus }
+const LDAP_CHECKLIST = ['readGroupAttr', 'baseDnCovers']
+// 自動重抓的節流間隔：切回視窗即更新，但同一面板 10 秒內至多一次
+const AUTO_REFRESH_MS = 10000
 
 const props = defineProps({
   type: { type: String, required: true },
@@ -151,170 +179,102 @@ const props = defineProps({
   // 回呼網址由對外基準網址算出，隨來源詳情回；未設基準網址時是可辨識的狀態而非空字串
   redirectUri: { type: String, default: '' },
   redirectUriState: { type: String, default: '' },
-  // Entra 來源：回呼網址與群組宣告兩項追加「在 Entra 的哪裡設定」
-  entra: { type: Boolean, default: false },
+  // 本頁最近一次探索預覽（useDiscoveryPreview 的 panelInput）
+  discovery: { type: Object, default: null },
+  // 本頁最近一次目錄測試連線（useLdapTestRecord 的 panelInput）
+  ldapTest: { type: Object, default: null },
   discovering: { type: Boolean, default: false },
-  testing: { type: Boolean, default: false },
 })
 
 // status：把這一支彙總的結果原封往上送。頁面標頭的「最近成功登入」與面板燈號
 // 同源同時點，父層不另打一次請求——多打一次就會出現兩個時點混在同一畫面上
-const emit = defineEmits(['rediscover', 'test', 'status'])
+const emit = defineEmits(['rediscover', 'status'])
 
 const logFailure = (event, error) => console.error(...apiErrorSummary(event, error))
 
 const status = ref(null)
+const updatedAt = ref('')
 const statusUnavailable = ref(false)
-// 目錄尚未設定：路由存在且回答了「沒有這個資源」。與端點缺席分開呈現，
-// 否則管理者讀到的是「系統還沒做這塊」而不是「這裡還沒設定」
+// 目錄尚未設定：路由存在且回答了「沒有這個資源」。與端點缺席分開呈現
 const statusNotConfigured = ref(false)
+const collapsed = ref(false)
 
 const isDirectory = computed(() => props.type === 'ldap')
 
-const pendingValue = computed(() => t('identitySources.backendPending'))
-
-const checklist = computed(() => {
-  if (isDirectory.value) {
-    return [
-      {
-        key: 'read_group_attr',
-        title: t('identitySources.preflight.ldap.readGroupAttr'),
-        hint: t('identitySources.preflight.ldap.readGroupAttrHint'),
-      },
-      {
-        key: 'base_dn_covers',
-        title: t('identitySources.preflight.ldap.baseDnCovers'),
-        hint: t('identitySources.preflight.ldap.baseDnCoversHint'),
-      },
-    ]
+// 新增頁還沒有單筆詳情可讀：回呼網址改取提供者列表頂層的同一個值（對所有提供者相同）
+const listRedirect = ref({ uri: '', state: '' })
+const redirect = computed(() =>
+  props.redirectUri || props.redirectUriState
+    ? { uri: props.redirectUri, state: props.redirectUriState }
+    : listRedirect.value
+)
+const loadListRedirect = async () => {
+  if (isDirectory.value || props.sourceId || props.redirectUri || props.redirectUriState) return
+  try {
+    const res = await getOIDCProviders({ quiet: true })
+    listRedirect.value = { uri: res?.redirect_uri || '', state: res?.redirect_uri_state || '' }
+  } catch (error) {
+    logFailure('oidc_provider_list_failed', error)
   }
-  const redirect = props.redirectUri
-    ? props.redirectUri
-    : props.redirectUriState === 'base_url_unset'
-      ? t('identitySources.preflight.oidc.redirectUnset')
-      : pendingValue.value
-  // 只列本系統實際會用到的登記項：列一個系統不會使用的位址，會讓管理者
-  // 以為對應的能力存在
-  return [
-    {
-      key: 'redirect',
-      title: t('identitySources.preflight.oidc.redirect'),
-      value: redirect,
-      copyable: Boolean(props.redirectUri),
-      entraHint: props.entra ? t('identitySources.preflight.oidc.entraRedirect') : '',
-    },
-    {
-      key: 'app_type',
-      title: t('identitySources.preflight.oidc.appType'),
-      hint: t('identitySources.preflight.oidc.appTypeHint'),
-    },
-    {
-      key: 'groups_claim',
-      title: t('identitySources.preflight.oidc.groupsClaim'),
-      hint: t('identitySources.preflight.oidc.groupsClaimHint'),
-      entraHint: props.entra ? t('identitySources.preflight.oidc.entraGroupsClaim') : '',
-    },
-    {
-      key: 'secret',
-      title: t('identitySources.preflight.oidc.secret'),
-      hint: t('identitySources.preflight.oidc.secretHint'),
-    },
-  ]
+}
+
+const redirectText = computed(() => {
+  if (redirect.value.uri) return redirect.value.uri
+  return redirect.value.state === 'base_url_unset'
+    ? t('identitySources.preflight.oidc.redirectUnset')
+    : t('identitySources.backendPending')
 })
 
-// 三態燈號：true 綠、false 黃、null 或缺欄為灰（尚無資料）。
-// **不知道不得畫成綠色**——缺欄與「驗過且通過」是兩件事
-const lightOf = (value) => (value === true ? 'ok' : value === false ? 'warn' : 'unknown')
+const lights = computed(() =>
+  computeLights({
+    type: props.type,
+    status: status.value,
+    discovery: props.discovery,
+    ldapTest: props.ldapTest,
+    fmt: (v) => (v ? formatShortDateTime(v) : ''),
+    hasKey: (k) => i18n.global.te(k),
+  })
+)
 
-const unknownSub = computed(() => t('identitySources.preflight.noData'))
-
-const lights = computed(() => {
-  const s = status.value || {}
-  const out = []
-  if (isDirectory.value) {
-    out.push({
-      key: 'connection',
-      state: lightOf(s.connection_ok),
-      text: t('identitySources.preflight.light.connection'),
-      sub: s.connection_ok === undefined || s.connection_ok === null ? unknownSub.value : '',
-    })
-    out.push({
-      key: 'group_attr_readable',
-      state: lightOf(s.group_attr_readable),
-      text: t('identitySources.preflight.light.groupAttrReadable'),
-      sub:
-        s.group_attr_readable === undefined || s.group_attr_readable === null
-          ? unknownSub.value
-          : '',
-    })
-  } else {
-    out.push({
-      key: 'discovery',
-      state: lightOf(s.discovery_reachable),
-      text: t('identitySources.preflight.light.discovery'),
-      sub: s.discovery_reachable === undefined || s.discovery_reachable === null
-        ? unknownSub.value
-        : '',
-    })
+// 等待這次登入的結果時，總結句不沿用上一次嘗試推得的結論
+const summary = computed(() => {
+  if (!props.sourceId || !status.value) return null
+  if (waiting.state.value === 'waiting') {
+    return { state: 'gray', text: { key: 'identitySources.preflight.attempt.waiting', params: {} } }
   }
-  out.push({
-    key: 'credential',
-    state: lightOf(s.credential_set),
-    text: t('identitySources.preflight.light.credential'),
-    sub: s.credential_set === undefined || s.credential_set === null ? unknownSub.value : '',
-  })
-  out.push({
-    key: 'groups_seen',
-    state: lightOf(s.last_login_groups_seen),
-    text: t('identitySources.preflight.light.groupsSeen'),
-    sub:
-      s.last_login_groups_seen === true
-        ? t('identitySources.preflight.light.groupsSeenCount', {
-          count: s.last_login_groups_count ?? 0,
-          time: s.last_login_at ? formatDateTime(s.last_login_at) : '',
-        })
-        : s.last_login_groups_seen === false
-          ? t('identitySources.preflight.light.groupsSeenNone')
-          : unknownSub.value,
-  })
-  out.push({
-    key: 'rules',
-    state: typeof s.rule_count === 'number' ? 'ok' : 'unknown',
-    text:
-      typeof s.rule_count === 'number'
-        ? t('identitySources.preflight.light.rules', {
-          count: s.rule_count,
-          enabled: s.enabled_rule_count ?? 0,
-          matched: s.last_recompute_matched_users ?? 0,
-        })
-        : t('identitySources.preflight.light.rulesUnknown'),
-    sub: typeof s.rule_count === 'number' ? '' : unknownSub.value,
-  })
-  for (const w of s.warnings || []) {
-    const key = `warnings.${w.code}`
-    out.push({
-      key: `warn_${w.code}`,
-      state: 'warn',
-      text: i18n.global.te(key) ? t(key) : t('identitySources.preflight.light.warningGeneric'),
-      sub: t('identitySources.preflight.light.warningAction'),
-    })
-  }
-  return out
+  return computeSummary({ type: props.type, lights: lights.value, status: status.value })
 })
 
+const summaryText = computed(() => {
+  const s = summary.value?.text
+  if (!s) return ''
+  const params = { ...s.params }
+  if (s.itemKey) params.first = t(s.itemKey)
+  if (s.nameKey) params.name = t(s.nameKey)
+  return t(s.key, params)
+})
+
+// 回覆帶序號：較舊的請求晚到時丟棄，不蓋掉較新的狀態
+let seq = 0
 const fetchStatus = async () => {
+  const mine = ++seq
   if (!props.sourceId) {
     status.value = null
+    updatedAt.value = ''
     statusUnavailable.value = false
     statusNotConfigured.value = false
     emit('status', null)
     return
   }
   try {
-    status.value = await getSourceStatus(props.type, props.sourceId)
+    const next = await getSourceStatus(props.type, props.sourceId)
+    if (mine !== seq) return
+    status.value = next
+    updatedAt.value = new Date().toISOString()
     statusUnavailable.value = false
     statusNotConfigured.value = false
   } catch (error) {
+    if (mine !== seq) return
     status.value = null
     statusUnavailable.value = isNotImplemented(error)
     statusNotConfigured.value = errorCode(error) === CODE_LDAP_DIRECTORY_NOT_FOUND
@@ -323,6 +283,34 @@ const fetchStatus = async () => {
     }
   }
   emit('status', status.value)
+}
+
+// 切回視窗自動重抓：兩個視窗並排時頁面始終可見，只有 focus 會觸發，所以兩者都聽。
+// 節流期間的觸發不丟掉，期滿補抓一次（多次觸發只補一次）
+let lastAuto = -Infinity
+let trailing = null
+const autoRefresh = () => {
+  if (!props.sourceId || trailing) return
+  const wait = lastAuto + AUTO_REFRESH_MS - Date.now()
+  if (wait <= 0) {
+    lastAuto = Date.now()
+    fetchStatus()
+    return
+  }
+  trailing = setTimeout(() => {
+    trailing = null
+    lastAuto = Date.now()
+    fetchStatus()
+  }, wait)
+}
+// 複製過測試連結之後切回：由等待流程接手（短暫輪詢直到看到這次登入），否則照一般節流重抓
+const waiting = useLoginTestWaiting({ fetch: () => fetchStatus(), current: () => status.value })
+watch(status, waiting.observe)
+const onReturn = () => {
+  if (!waiting.onReturn()) autoRefresh()
+}
+const onVisibility = () => {
+  if (document.visibilityState === 'visible') onReturn()
 }
 
 const copy = async (value) => {
@@ -334,137 +322,72 @@ const copy = async (value) => {
   }
 }
 
-// 登入測試開新分頁走真實登入頁並預選此來源：不在本頁內另造一條登入路徑
-const openLoginTest = () => {
-  window.open(`/login?source=${props.type}:${props.sourceId}`, '_blank', 'noopener')
-}
+watch(() => props.sourceId, () => {
+  waiting.reset()
+  fetchStatus()
+})
+onMounted(() => {
+  fetchStatus()
+  loadListRedirect()
+  window.addEventListener('focus', onReturn)
+  document.addEventListener('visibilitychange', onVisibility)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', onReturn)
+  document.removeEventListener('visibilitychange', onVisibility)
+  clearTimeout(trailing)
+  trailing = null
+  waiting.reset()
+})
 
-watch(() => props.sourceId, fetchStatus)
-onMounted(fetchStatus)
-
-defineExpose({ refresh: fetchStatus })
+defineExpose({ refresh: fetchStatus, lights, summary })
 </script>
 
 <style scoped>
-/* 面板常駐右欄且自身可捲：內容比視窗高時若跟著整頁捲，底部的測試按鈕會被
-   頁底固定動作列蓋住——那正是這一塊最需要按到的兩顆鍵 */
+/* 黏住與捲動由右欄整欄負責（SourceDetailLayout），面板本身照內容長高 */
 .panel {
-  position: sticky;
-  top: var(--ot-space-md);
-  /* 扣掉頁首、標題列與頁底固定動作列的高度：面板的最後一句是登入測試的後果
-     警語，它不能落在動作列底下（那是永遠捲不到的位置） */
-  max-height: calc(100vh - 280px);
-  overflow-y: auto;
   background-color: var(--ot-bg-surface);
   border: 1px solid var(--ot-border-subtle);
   border-radius: var(--ot-radius-lg);
   padding: var(--ot-space-md);
 }
-
-.panel__title {
-  font-weight: 600;
-  color: var(--ot-text-primary);
-}
-
-.panel__lead {
-  margin-top: 4px;
-  margin-bottom: var(--ot-space-md);
+.panel__header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ot-space-sm); }
+.panel__title { font-weight: 600; color: var(--ot-text-primary); }
+.panel__updated, .panel__hint { color: var(--ot-text-secondary); font-size: var(--ot-font-size-xs); line-height: 1.6; }
+.panel__spacer { flex: 1; }
+.panel__btn-icon { width: 14px; height: 14px; margin-right: 4px; }
+.panel__collapse {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--ot-text-secondary);
   font-size: var(--ot-font-size-xs);
-  line-height: 1.6;
+  cursor: pointer;
 }
-
-.panel__section-head {
-  margin-bottom: var(--ot-space-sm);
-  color: var(--ot-text-secondary);
-  font-size: var(--ot-font-size-xs);
-}
-
-.panel__item {
+.panel__summary {
   display: flex;
-  align-items: flex-start;
-  gap: var(--ot-space-xs);
-  margin-bottom: var(--ot-space-sm);
+  gap: var(--ot-space-sm);
+  margin: var(--ot-space-md) 0;
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-md);
 }
-
-.panel__item-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.panel__item-title {
-  font-size: var(--ot-font-size-sm);
-  line-height: 1.5;
-}
-
-.panel__item-value {
-  font-family: var(--ot-font-mono, monospace);
-  font-size: var(--ot-font-size-xs);
-  color: var(--ot-text-secondary);
-  word-break: break-all;
-}
-
-.panel__item-hint {
-  color: var(--ot-text-secondary);
-  font-size: var(--ot-font-size-xs);
-  line-height: 1.6;
-}
-
-.panel__light {
+.panel__icon { width: 16px; height: 16px; margin-top: 3px; flex-shrink: 0; }
+.panel__summary--ok { border-color: var(--ot-success); color: var(--ot-success); }
+.panel__summary--warn { border-color: var(--ot-warning); color: var(--ot-warning); }
+.panel__summary--gray { color: var(--ot-text-secondary); }
+.panel__summary-text { font-weight: 600; color: var(--ot-text-primary); line-height: 1.6; }
+.panel__section-head { margin: var(--ot-space-sm) 0 var(--ot-space-xs); font-weight: 600; color: var(--ot-text-primary); }
+.panel__box {
   display: flex;
-  align-items: flex-start;
-  gap: var(--ot-space-xs);
-  margin-bottom: var(--ot-space-sm);
-  font-size: var(--ot-font-size-sm);
+  align-items: center;
+  gap: var(--ot-space-sm);
+  padding: var(--ot-space-xs) var(--ot-space-sm);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-md);
 }
-
-.panel__light-body {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.5;
-}
-
-.panel__dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.panel__dot--ok {
-  background-color: var(--el-color-success);
-}
-
-.panel__dot--warn {
-  background-color: var(--ot-warning, #e6a23c);
-}
-
-/* 未知不得畫成綠色，也不是失敗：灰色代表「還沒有資料可說」 */
-.panel__dot--unknown {
-  background-color: var(--ot-text-disabled);
-}
-
-.panel__pending {
-  margin-bottom: var(--ot-space-sm);
-  color: var(--ot-text-secondary);
-  font-size: var(--ot-font-size-xs);
-}
-
-.panel__buttons {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ot-space-xs);
-}
-
-.panel__buttons :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
-.panel__warning {
-  margin-top: var(--ot-space-xs);
-  color: var(--ot-warning, #e6a23c);
-  font-size: var(--ot-font-size-xs);
-  line-height: 1.6;
-}
+.panel__mono { flex: 1; min-width: 0; font-family: var(--ot-font-mono); font-size: var(--ot-font-size-xs); word-break: break-all; }
+.panel__item { margin-bottom: var(--ot-space-sm); font-size: var(--ot-font-size-sm); }
 </style>

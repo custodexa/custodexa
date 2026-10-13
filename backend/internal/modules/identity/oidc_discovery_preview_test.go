@@ -137,3 +137,69 @@ func TestDiscoveryPreviewDoesNotPersist(t *testing.T) {
 		t.Fatalf("既有 provider 被預覽改動：%+v → %+v", before, after)
 	}
 }
+
+// newCustomDiscoveryServer 文件內容由 build 決定（參數為伺服器自己的網址）
+func newCustomDiscoveryServer(t *testing.T, build func(base string) string) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(build(srv.URL)))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestDiscoveryPreviewIssuerAndAlgChecks 預覽另回登入時才會被強制的兩項檢查：
+// 文件 issuer 與輸入是否一致、簽章演算法與本系統允許集合是否有交集。
+// 兩項不通過時預覽仍回成功（那是要顯示給管理者看的內容）。
+func TestDiscoveryPreviewIssuerAndAlgChecks(t *testing.T) {
+	db := setupMappingDB(t)
+	svc := mappingService(db, audit.NewTxSink())
+
+	doc := func(issuerSuffix, algs string) func(string) string {
+		return func(base string) string {
+			out := `{"issuer":"` + base + issuerSuffix + `","authorization_endpoint":"` + base + `/auth"`
+			if algs != "" {
+				out += `,"id_token_signing_alg_values_supported":` + algs
+			}
+			return out + `}`
+		}
+	}
+	cases := []struct {
+		name       string
+		build      func(string) string
+		inputExtra string
+		wantMatch  bool
+		wantCompat bool
+		wantAlgs   int
+	}{
+		{"(a) 一致且宣告 RS256", doc("", `["RS256"]`), "", true, true, 1},
+		{"(b) 文件 issuer 多一段路徑", doc("/v2.0", `["RS256"]`), "", false, true, 1},
+		{"(c) 只宣告 HS256", doc("", `["HS256"]`), "", true, false, 1},
+		{"(d) 未宣告演算法", doc("", ""), "", true, true, 0},
+		{"(e) 輸入帶結尾斜線", doc("", `["RS256","ES256"]`), "/", true, true, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newCustomDiscoveryServer(t, tc.build)
+			out, err := svc.PreviewDiscovery(t.Context(), testEgress(), srv.URL+tc.inputExtra, mappingTestActor)
+			if err != nil {
+				t.Fatalf("檢查不通過也必須回成功: %v", err)
+			}
+			if out.IssuerMatches != tc.wantMatch {
+				t.Fatalf("issuer_matches = %v，want %v（文件 issuer=%q）", out.IssuerMatches, tc.wantMatch, out.Issuer)
+			}
+			if out.SigningAlgCompatible != tc.wantCompat {
+				t.Fatalf("signing_alg_compatible = %v，want %v", out.SigningAlgCompatible, tc.wantCompat)
+			}
+			if len(out.IDTokenSigningAlgs) != tc.wantAlgs {
+				t.Fatalf("宣告的演算法 = %v，want %d 項", out.IDTokenSigningAlgs, tc.wantAlgs)
+			}
+		})
+	}
+}

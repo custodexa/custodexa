@@ -23,9 +23,29 @@ type SessionServiceInterface interface {
 	GetStatistics() (map[string]interface{}, error)
 }
 
+// RecordingStateProber 詳情頁的錄影可讀判定（唯讀探測，不取回離機副本）。
+// 由 `*session.RecordingService` 滿足；nil＝未接線，詳情回應不帶可讀欄位。
+type RecordingStateProber interface {
+	ProbeRecordingState(sess *model.Session) (session.RecordingProbe, bool)
+}
+
 // SessionHandler Session API handler
 type SessionHandler struct {
 	sessionService SessionServiceInterface
+	// recordingProbe 只供詳情（Get）使用；列表與活動連線不得呼叫——
+	// 列表查詢不逐列碰檔案系統
+	recordingProbe RecordingStateProber
+}
+
+// SetRecordingProbe 接上錄影可讀探測（組裝根）。
+func (h *SessionHandler) SetRecordingProbe(p RecordingStateProber) { h.recordingProbe = p }
+
+// sessionDetailResponse 詳情回應：會話列＋錄影可讀狀態。
+// 兩欄皆 omitempty：無錄影、探測無法下結論或未接線時整欄缺席
+type sessionDetailResponse struct {
+	*model.Session
+	RecordingState  string `json:"recording_state,omitempty"`
+	RecordingSource string `json:"recording_source,omitempty"`
 }
 
 // NewSessionHandler 創建 Session handler
@@ -138,7 +158,24 @@ func (h *SessionHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, sess)
+	c.JSON(http.StatusOK, h.withRecordingState(sess))
+}
+
+// withRecordingState 詳情回應附上錄影可讀狀態。探測失敗只影響這兩欄，
+// 詳情照常回應；可讀時才帶來源
+func (h *SessionHandler) withRecordingState(sess *model.Session) any {
+	if h.recordingProbe == nil || sess == nil || !sess.HasRecording {
+		return sess
+	}
+	probe, ok := h.recordingProbe.ProbeRecordingState(sess)
+	if !ok {
+		return sess
+	}
+	resp := sessionDetailResponse{Session: sess, RecordingState: probe.State}
+	if probe.State == session.RecordingStateAvailable {
+		resp.RecordingSource = probe.Source
+	}
+	return resp
 }
 
 // GetActive 取得所有活動 Session

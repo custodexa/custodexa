@@ -71,6 +71,17 @@ export function formatDateTime(datetime) {
   return `${formatted} (${utcOffsetLabel(date)})`
 }
 
+// 窄欄（例如身分來源的接通前確認面板）用的短時間：同年 `MM/DD HH:mm`，
+// 跨年才帶年份。數字格式三語通用，不帶時區標示
+export function formatShortDateTime(datetime, now = new Date()) {
+  if (!datetime) return '-'
+  const date = new Date(datetime)
+  if (!isValidDate(date)) return '-'
+  const pad = (n) => String(n).padStart(2, '0')
+  const md = `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return date.getFullYear() === now.getFullYear() ? md : `${date.getFullYear()}/${md}`
+}
+
 export function formatDate(datetime) {
   if (!datetime) return '-'
   const date = new Date(datetime)

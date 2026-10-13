@@ -92,26 +92,12 @@
       <p>{{ $t('asciiPlayer.loading') }}</p>
     </div>
 
-    <!-- Error Overlay -->
-    <div
+    <!-- Error Overlay：依錄影端點的機器碼呈現白話說明（不留函式庫的錯誤圖示） -->
+    <RecordingPlaybackError
       v-if="error"
-      class="player-overlay player-error"
-    >
-      <el-result
-        icon="error"
-        :title="$t('player.loadFailedTitle')"
-        :sub-title="error"
-      >
-        <template #extra>
-          <el-button
-            type="primary"
-            @click="retryLoad"
-          >
-            {{ $t('player.reload') }}
-          </el-button>
-        </template>
-      </el-result>
-    </div>
+      :failure="error"
+      @reload="retryLoad"
+    />
   </div>
 </template>
 
@@ -122,6 +108,8 @@ import { LoaderCircle, CirclePlay, CirclePause, Maximize } from 'lucide-vue-next
 import * as AsciinemaPlayer from 'asciinema-player'
 import 'asciinema-player/dist/bundle/asciinema-player.css'
 import { t } from '@/i18n'
+import RecordingPlaybackError from '@/components/recording/RecordingPlaybackError.vue'
+import { readErrorEnvelope, playbackFailure } from '@/utils/recordingReadability'
 
 const props = defineProps({
   recordingUrl: {
@@ -167,6 +155,29 @@ const speed = ref(1)
 const isSeeking = ref(false)
 
 let updateInterval = null
+
+// 錄影內容由本元件自行取得一次，再以 data 交給播放器（不讓函式庫自己抓 URL）：
+// 函式庫抓取失敗只會畫一個錯誤圖示、拿不到回應本體的機器碼。自行取得才能
+// 依機器碼顯示說明；同一份內容在變速重建時重用，一次播放只發一次取證請求
+let recordingData = null
+
+const loadRecordingText = async () => {
+  if (recordingData?.url === props.recordingUrl) return recordingData.text
+  const response = await fetch(props.recordingUrl)
+  if (!response.ok) {
+    const failure = playbackFailure(await readErrorEnvelope(response), response.status)
+    throw Object.assign(new Error(failure.detail), { failure })
+  }
+  const text = await response.text()
+  recordingData = { url: props.recordingUrl, text }
+  return text
+}
+
+const toFailure = (err) => err?.failure || {
+  problem: null,
+  title: t('player.loadFailedTitle'),
+  detail: err?.message || t('player.initFailed'),
+}
 
 // 本次掛載是否已回報過定位結果（避免變速重建時重複回報）
 let startAtReported = false
@@ -229,10 +240,12 @@ const initPlayer = async () => {
       throw new Error(t('player.containerNotReady'))
     }
 
+    // 先取得內容：讀不到時不建立播放器，直接顯示說明
+    const text = await loadRecordingText()
 
     // Create player instance
     const playerInstance = AsciinemaPlayer.create(
-      props.recordingUrl,
+      { data: text },
       playerRef.value,
       {
         cols: 80,
@@ -315,7 +328,7 @@ const initPlayer = async () => {
     loading.value = false
   } catch (err) {
     console.error('[AsciinemaPlayer] 初始化失敗:', err)
-    error.value = err.message || t('player.initFailed')
+    error.value = toFailure(err)
     loading.value = false
   }
 }
@@ -396,7 +409,7 @@ const handleSpeedChange = async (value) => {
     try { player.value.dispose() } catch { /* 忽略 */ }
     player.value = null
     await nextTick()
-    const inst = AsciinemaPlayer.create(props.recordingUrl, playerRef.value, {
+    const inst = AsciinemaPlayer.create({ data: await loadRecordingText() }, playerRef.value, {
       cols: 80, rows: 24, autoPlay: false, loop: false, fit: 'width',
       terminalFontSize: 'small', controls: false, speed: value,
       startAt: pos,
@@ -445,8 +458,9 @@ const formatTime = (seconds) => {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
-// Retry loading
+// Retry loading（重新取得內容）
 const retryLoad = () => {
+  recordingData = null
   initPlayer()
 }
 
@@ -529,10 +543,6 @@ onBeforeUnmount(() => {
   margin-top: 20px;
   font-size: 16px;
   color: #999;
-}
-
-.player-error {
-  color: var(--ot-text-primary);
 }
 
 .custom-controls {

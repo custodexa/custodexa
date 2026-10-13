@@ -105,6 +105,7 @@ export function getRecordingStats() {
 
 /**
  * 下載 Session 錄製檔案
+ * 失敗時的錯誤本體是 Blob，全域 toast 讀不出機器碼；改由呼叫端解析後呈現
  * @param {number} id - Session ID
  * @returns {Promise}
  */
@@ -113,6 +114,7 @@ export function downloadRecording(id) {
     url: `/sessions/${id}/recording/download`,
     method: 'get',
     responseType: 'blob',
+    skipErrorToast: true,
   })
 }
 

@@ -105,26 +105,12 @@
       <p>{{ $t('guacPlayer.loading') }}</p>
     </div>
 
-    <!-- Error Overlay -->
-    <div
+    <!-- Error Overlay：依錄影端點的機器碼呈現白話說明（不顯示 HTTP 狀態列原文） -->
+    <RecordingPlaybackError
       v-if="error"
-      class="player-overlay player-error"
-    >
-      <el-result
-        icon="error"
-        :title="$t('player.loadFailedTitle')"
-        :sub-title="error"
-      >
-        <template #extra>
-          <el-button
-            type="primary"
-            @click="retryLoad"
-          >
-            {{ $t('player.reload') }}
-          </el-button>
-        </template>
-      </el-result>
-    </div>
+      :failure="error"
+      @reload="retryLoad"
+    />
   </div>
 </template>
 
@@ -134,6 +120,8 @@ import { ElMessage } from 'element-plus'
 import { LoaderCircle, CirclePlay, CirclePause, Maximize } from 'lucide-vue-next'
 import { t } from '@/i18n'
 import { getAccessToken } from '@/utils/session'
+import RecordingPlaybackError from '@/components/recording/RecordingPlaybackError.vue'
+import { readErrorEnvelope, playbackFailure } from '@/utils/recordingReadability'
 
 // 使用全局 Guacamole 對象（由 index.html 中的 guacamole-1.5.5.min.js 提供）
 const Guacamole = window.Guacamole
@@ -284,7 +272,9 @@ const initPlayer = async () => {
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      // 錯誤本體是錯誤信封：依機器碼給白話說明；解析不了退回通用文案
+      const failure = playbackFailure(await readErrorEnvelope(response), response.status)
+      throw Object.assign(new Error(failure.detail), { failure })
     }
 
     const blob = await response.blob()
@@ -319,7 +309,11 @@ const initPlayer = async () => {
     }
   } catch (err) {
     console.error('[GuacamolePlayer] 初始化失敗:', err)
-    error.value = err.message || t('player.initFailed')
+    error.value = err?.failure || {
+      problem: null,
+      title: t('player.loadFailedTitle'),
+      detail: err?.message || t('player.initFailed'),
+    }
     loading.value = false
   }
 }
@@ -379,7 +373,11 @@ const setupEventListeners = () => {
   // onerror event
   recording.value.onerror = (message) => {
     console.error('[GuacamolePlayer] Error:', message)
-    error.value = message || t('guacPlayer.playbackError')
+    error.value = {
+      problem: null,
+      title: t('guacPlayer.playbackError'),
+      detail: message || t('guacPlayer.playbackError'),
+    }
     loading.value = false
     ElMessage.error(t('guacPlayer.playbackErrorDetail', { message }))
   }
@@ -643,10 +641,6 @@ onBeforeUnmount(() => {
   margin-top: 20px;
   font-size: 16px;
   color: #666;
-}
-
-.player-error {
-  color: #333;
 }
 
 .custom-controls {

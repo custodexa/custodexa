@@ -147,7 +147,10 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	assets, accounts, creds := newCredentialServices(t)
 	_ = creds
 
-	const key = "test-private-key-material-rotated"
+	// 寫入路徑會驗證私鑰可解析，故三次寫入各用一把執行期產生的真鑰
+	key, _ := testKeyPair(t, "pk-audit-create")
+	rotatedKey, _ := testKeyPair(t, "pk-audit-rotated")
+	viaAssetKey, _ := testKeyPair(t, "pk-audit-via-asset")
 
 	// (a) 建立事件：資產建立時直接帶私鑰
 	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
@@ -161,7 +164,7 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	// (b) 帳號更新事件（asset_account_service.go 的 Update 寫入點）
 	var account model.AssetAccount
 	require.NoError(t, db.Where("asset_id = ?", asset.ID).First(&account).Error)
-	rotated := key + "\n"
+	rotated := rotatedKey
 	_, err = accounts.Update(adminCtx(), asset.ID, account.ID,
 		&UpdateAssetAccountRequest{PrivateKey: &rotated})
 	require.NoError(t, err)
@@ -169,7 +172,7 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	assert.Contains(t, update.Fields, "private_key", "私鑰輪替須留下欄位名")
 
 	// (c) 資產表單透明轉寫（syncDefaultAccountFromAsset 寫入點）
-	viaAsset := key + "\n\n"
+	viaAsset := viaAssetKey
 	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{PrivateKey: &viaAsset})
 	require.NoError(t, err)
 
@@ -187,6 +190,8 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	var rows []model.AuditLog
 	require.NoError(t, db.Find(&rows).Error)
 	for _, row := range rows {
-		assert.NotContains(t, row.Details, key, "審計不得含私鑰內容")
+		for _, k := range []string{key, rotatedKey, viaAssetKey} {
+			assert.NotContains(t, row.Details, k, "審計不得含私鑰內容")
+		}
 	}
 }

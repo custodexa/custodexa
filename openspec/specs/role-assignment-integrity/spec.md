@@ -1,7 +1,7 @@
 # role-assignment-integrity Specification
 
 ## Purpose
-TBD - created by archiving change role-assignment-integrity. Update Purpose after archive.
+確保角色指派與自動化主體憑證的狀態不被繞過系統直接竄改：指派變更與審計列同交易寫入，狀態表以正規化快照納入檢查點鏈，於封章、驗證（含排程自動驗證）與管理角色登入簽發權杖前三個時機對帳，比對不符時發出失效事件，並在驗證頁逐項呈現。
 ## Requirements
 ### Requirement: 狀態表登記清單
 

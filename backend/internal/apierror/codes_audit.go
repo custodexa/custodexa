@@ -225,8 +225,10 @@ var (
 	CodeInternalRecordingTokenIssue    = register("INTERNAL_RECORDING_TOKEN_ISSUE", Descriptor{ZhFallback: "簽發錄影 token 失敗"})
 	CodeInternalRecordingFileOpen      = register("INTERNAL_RECORDING_FILE_OPEN", Descriptor{ZhFallback: "開啟錄製檔案失敗"})
 	CodeInternalRecordingFileStat      = register("INTERNAL_RECORDING_FILE_STAT", Descriptor{ZhFallback: "取得檔案資訊失敗"})
-	CodeInternalRecordingStatsQuery    = register("INTERNAL_RECORDING_STATS_QUERY", Descriptor{ZhFallback: "取得統計資訊失敗"})
-	CodeInternalRecordingDelete        = register("INTERNAL_RECORDING_DELETE", Descriptor{ZhFallback: "刪除錄製檔案失敗"})
+	// 錄影檔存在但讀不到（權限不足、取得檔案資訊失敗、路徑不是一般檔）。細部原因只進伺服器日誌
+	CodeInternalRecordingFileUnreadable = register("INTERNAL_RECORDING_FILE_UNREADABLE", Descriptor{ZhFallback: "錄影檔無法讀取"})
+	CodeInternalRecordingStatsQuery     = register("INTERNAL_RECORDING_STATS_QUERY", Descriptor{ZhFallback: "取得統計資訊失敗"})
+	CodeInternalRecordingDelete         = register("INTERNAL_RECORDING_DELETE", Descriptor{ZhFallback: "刪除錄製檔案失敗"})
 
 	CodeInternalAuditLogQuery                = register("INTERNAL_AUDIT_LOG_QUERY", Descriptor{ZhFallback: "查詢稽核日誌失敗"})
 	CodeInternalAuditLogResourceHistoryQuery = register("INTERNAL_AUDIT_LOG_RESOURCE_HISTORY_QUERY", Descriptor{ZhFallback: "查詢資源稽核歷史失敗"})

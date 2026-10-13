@@ -58,6 +58,8 @@ beforeEach(() => {
   createdOptions.length = 0
   instances.length = 0
   instances.__nextDuration = 300
+  // 播放器先自行取得錄影內容再交給函式庫
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{"version":2}\n', { status: 200 })))
 })
 
 afterEach(() => {

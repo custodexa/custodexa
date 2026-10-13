@@ -10,7 +10,8 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createHash } from 'node:crypto'
 import Login from '../Login.vue'
-import { getAccessToken, resetSessionForTests } from '@/utils/session'
+import { getAccessToken, resetSessionForTests, setAccessToken } from '@/utils/session'
+import { login as loginApi } from '@/api/auth'
 import { SSO_SECRET_KEY } from '@/utils/sso'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
@@ -271,6 +272,7 @@ describe('Login SSO 區塊', () => {
   it.each([
     ['oidc_account_removed', '您在本系統的帳號已被管理者刪除', '請聯絡管理者重新建立帳號並綁定您的外部身分'],
     ['oidc_user_inactive', '您的帳號已停用', '請聯絡管理者重新啟用帳號'],
+    ['oidc_code_exchange_failed', '無法向身分提供者完成登入', '常見原因是用戶端密碼錯誤或已過期，請通知系統管理員'],
   ])('sso_error=%s 顯示專屬標題與提示，且不給重新發起（重試不會改變結果）', async (slug, title, hint) => {
     setHash(`#sso_error=${slug}`)
     const wrapper = mountLogin()
@@ -314,5 +316,80 @@ describe('Login SSO 區塊', () => {
 
     expect(exchangeSSOTicketMock).not.toHaveBeenCalled()
     expect(replaceStateSpy).not.toHaveBeenCalled()
+  })
+})
+
+// 登入測試連結（?source=）：只標示、不自動發起；格式不符一律忽略；
+// 已登入時不掛載任何登入操作，避免在同一個瀏覽器換掉目前的登入
+describe('Login 登入測試標示', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    sessionStorage.clear()
+    vi.clearAllMocks()
+    getAuthMethodsMock.mockResolvedValue({ local: true, oidc: PROVIDERS, ldap: [{ id: 1 }] })
+    getLoginBannerMock.mockResolvedValue({ enabled: false })
+    assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    assignSpy.mockRestore()
+    window.history.replaceState({}, '', '/login')
+  })
+
+  const mountWithSource = async (source) => {
+    window.history.replaceState({}, '', `/login?source=${source}`)
+    const wrapper = mountLogin()
+    await flushPromises()
+    return wrapper
+  }
+
+  it('oidc:<在清單>：該按鈕排第一並加標示，不自動發起', async () => {
+    const wrapper = await mountWithSource('oidc:7')
+    const buttons = wrapper.findAll('.sso-btn')
+    expect(buttons[0].text()).toContain('使用 Google Workspace 登入')
+    expect(buttons[0].classes()).toContain('sso-btn--testing')
+    expect(buttons[0].find('.sso-test-badge').text()).toBe('測試中的登入方式')
+    expect(wrapper.findAll('.sso-test-badge')).toHaveLength(1)
+    expect(assignSpy).not.toHaveBeenCalled()
+  })
+
+  it('oidc:<不在清單>：說明要測的方式不在登入頁', async () => {
+    const wrapper = await mountWithSource('oidc:99')
+    expect(wrapper.find('[data-test="login-test-notListed"]').exists()).toBe(true)
+    expect(wrapper.findAll('.sso-test-badge')).toHaveLength(0)
+  })
+
+  it('ldap:1：帳密表單上方說明這是目錄帳號的測試', async () => {
+    const wrapper = await mountWithSource('ldap:1')
+    expect(wrapper.find('[data-test="login-test-ldap"]').text()).toContain('這是目錄帳號的登入測試')
+    expect(wrapper.find('input').attributes('placeholder')).toBe('目錄帳號')
+  })
+
+  it('ldap:<不在清單>（停用、已刪除或不存在）：說明不在登入頁，不提示輸入目錄帳號', async () => {
+    const wrapper = await mountWithSource('ldap:4')
+    expect(wrapper.find('[data-test="login-test-notListed"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="login-test-ldap"]').exists()).toBe(false)
+    expect(wrapper.find('input').attributes('placeholder')).toBe('使用者名稱')
+  })
+
+  it('格式不符（oidc:abc、x:1）：沒有任何標示', async () => {
+    for (const source of ['oidc:abc', 'x:1']) {
+      const wrapper = await mountWithSource(source)
+      expect(wrapper.find('[data-test^="login-test-"]').exists(), source).toBe(false)
+      expect(wrapper.findAll('.sso-test-badge'), source).toHaveLength(0)
+      wrapper.unmount()
+    }
+  })
+
+  it('已登入且帶 source：沒有帳密輸入框與任何單一登入按鈕，只顯示說明，不發起任何登入', async () => {
+    setAccessToken('abc')
+    const wrapper = await mountWithSource('oidc:7')
+    expect(wrapper.find('[data-test="login-test-authed"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    expect(wrapper.findAll('input')).toHaveLength(0)
+    expect(wrapper.findAll('.sso-btn')).toHaveLength(0)
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(loginApi).not.toHaveBeenCalled()
   })
 })

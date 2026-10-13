@@ -48,6 +48,9 @@ func dialErrorCode(err error) apierror.ErrCode {
 	switch {
 	case errors.Is(err, asset.ErrHostKeyChanged):
 		return apierror.CodeSSHHostKeyChanged
+	// 私鑰無法解析排在認證失敗之前：尚未向目標出示任何認證，與目標拒絕認證是兩回事
+	case errors.Is(err, asset.ErrPrivateKeyInvalid):
+		return apierror.CodeSSHPrivateKeyInvalid
 	case errors.Is(err, ErrAuthFailed):
 		return apierror.CodeSSHAuthFailed
 	case errors.Is(err, ErrDialTimeout):

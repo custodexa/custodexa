@@ -39,6 +39,20 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
+  it('已登入開帶合法 source 的登入測試連結：停在 /login，不導向儀表板', async () => {
+    setAccessToken('abc')
+    await guard({ path: '/login', meta: {}, query: { source: 'oidc:4' } }, route('/'), next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('已登入且 source 缺席或格式不符：照舊導到 /dashboard', async () => {
+    setAccessToken('abc')
+    await guard({ path: '/login', meta: {}, query: {} }, route('/'), next)
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+    await guard({ path: '/login', meta: {}, query: { source: 'oidc:abc' } }, route('/'), next)
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+  })
+
   it('allows authenticated user on protected routes', async () => {
     setAccessToken('abc')
     await guard(route('/assets', { requiresAuth: true }), route('/'), next)

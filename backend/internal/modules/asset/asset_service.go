@@ -566,6 +566,11 @@ func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetReques
 		return nil, ErrUsernameRequired
 	}
 
+	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查
+	if err := ValidatePrivateKey(privateKey); err != nil {
+		return nil, err
+	}
+
 	// K8s 綁 namespace（連線時選 pod，故 pod/container 不在此強制）
 	if req.Protocol == model.ProtocolK8s && req.K8sNamespace == "" {
 		return nil, ErrK8sTargetRequired
@@ -1319,6 +1324,12 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	// 憑證欄位透明轉寫 default 帳號：舊前端／腳本仍打 PUT /assets/:id 帶
 	// password/private_key，語義不變，但密文只落**憑證的密文版本列**，
 	// assets 與掛載列的內嵌憑證欄位都不再寫入。
+	// 只在本次帶了非空私鑰時驗證；未帶或空字串＝沿用現行私鑰，不重驗庫內既有的
+	if req.PrivateKey != nil {
+		if err := ValidatePrivateKey(*req.PrivateKey); err != nil {
+			return nil, err
+		}
+	}
 	var passwordEnc, privateKeyEnc string
 	if req.Password != nil && *req.Password != "" {
 		encryptedPassword, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, *req.Password)

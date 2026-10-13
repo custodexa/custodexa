@@ -3,6 +3,9 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import i18n from '@/i18n'
 import OIDCSourceDetail from '../OIDCSourceDetail.vue'
+import PreflightPanel from '../components/PreflightPanel.vue'
+import { createOIDCProvider, updateOIDCProvider } from '@/api/oidc'
+import { forceSharedPatch } from '@/utils/oidcProvider'
 
 enableAutoUnmount(afterEach)
 
@@ -56,8 +59,6 @@ const ENTRA_FIELD_KEYS = [
   'identitySources.oidc.entra.tid',
   'identitySources.oidc.entra.emailDomain',
   'identitySources.oidc.entra.emailVerified',
-  'identitySources.preflight.oidc.entraRedirect',
-  'identitySources.preflight.oidc.entraGroupsClaim',
 ]
 
 const detailView = (issuer, overrides = {}) => ({
@@ -82,6 +83,12 @@ const mountPage = () =>
       stubs: { 'router-link': { template: '<a><slot /></a>' } },
     },
   })
+
+// 提供者選擇器：Entra 提示與群組引導依選擇器而非 issuer
+const chooseProvider = async (wrapper, provider) => {
+  await wrapper.find(`[data-test="provider-option-${provider}"]`).trigger('click')
+  await flushPromises()
+}
 
 // el-input 把非 class／style 的屬性交給內層 input；兩種落點都認
 const groupsClaimInput = (wrapper) => {
@@ -123,8 +130,7 @@ describe('OIDCSourceDetail：Entra 來源的設定引導', () => {
   it('Entra 下輸入群組宣告名不自動勾 groups 範圍', async () => {
     const wrapper = mountPage()
     await flushPromises()
-    wrapper.vm.form.issuer = ENTRA_ISSUER
-    await flushPromises()
+    await chooseProvider(wrapper, 'entra')
 
     await groupsClaimInput(wrapper).setValue('groups')
     await flushPromises()
@@ -162,8 +168,7 @@ describe('OIDCSourceDetail：Entra 來源的設定引導', () => {
     // 載入既有設定時不悄悄改授權範圍
     expect(wrapper.vm.form.scopeExtras).toContain('groups')
 
-    wrapper.vm.form.issuer = OTHER_ISSUER
-    await flushPromises()
+    await chooseProvider(wrapper, 'other')
     expect(wrapper.find('[data-test="entra-groups-scope-warning"]').exists()).toBe(false)
   })
 
@@ -177,8 +182,7 @@ describe('OIDCSourceDetail：Entra 來源的設定引導', () => {
     expect(wrapper.find('[data-test="groups-scope-hint"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain(hint)
 
-    wrapper.vm.form.issuer = OTHER_ISSUER
-    await flushPromises()
+    await chooseProvider(wrapper, 'other')
     const shown = wrapper.find('[data-test="groups-scope-hint"]')
     expect(shown.exists()).toBe(true)
     expect(shown.text()).toBe(hint)
@@ -220,5 +224,244 @@ describe('OIDCSourceDetail：Entra 來源的設定引導', () => {
     expect(section.find('.el-table').exists()).toBe(false)
     expect(section.text()).not.toContain('新增規則')
     expect(section.text()).not.toContain('Add rule')
+  })
+})
+
+// 新增與儲存：填好必填欄後直接呼叫儲存，取出送出的請求本文
+const fillRequired = (wrapper, issuer = ENTRA_ISSUER) => {
+  wrapper.vm.form.name = 'corp'
+  wrapper.vm.form.issuer = issuer
+  wrapper.vm.form.client_id = 'cid'
+}
+
+const mountEdit = async (issuer, source, kind = 'shared') => {
+  route.params = { id: '11' }
+  getDetailMock.mockResolvedValue(
+    detailView(issuer, {
+      admission_mode: 'prebound_only',
+      admission_rules: '{}',
+      enabled: false,
+      issuer_kind: kind,
+      issuer_kind_source: source,
+    })
+  )
+  const wrapper = mountPage()
+  await flushPromises()
+  return wrapper
+}
+
+const switchInput = (wrapper) => wrapper.find('[data-test="force-shared-switch"]')
+
+describe('OIDCSourceDetail：收緊開關只在切換時送出', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    route.params = {}
+    getIdentitySourcesMock.mockResolvedValue({ data: [] })
+    createOIDCProvider.mockResolvedValue({ data: { id: 21 } })
+    updateOIDCProvider.mockResolvedValue({ data: { id: 11 } })
+  })
+
+  it('(a) 新增頁不碰開關送出：建立請求不含 force_shared 鍵', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    fillRequired(wrapper)
+    await wrapper.vm.handleSave(true)
+    await flushPromises()
+
+    expect(createOIDCProvider).toHaveBeenCalledTimes(1)
+    expect(createOIDCProvider.mock.calls[0][0]).not.toHaveProperty('force_shared')
+  })
+
+  it('(b) 編輯判定為未宣告的來源只改名稱：更新請求不含 force_shared 鍵', async () => {
+    const wrapper = await mountEdit(ENTRA_ISSUER, 'unknown_default')
+    wrapper.vm.form.name = 'renamed'
+    await wrapper.vm.handleSave(true)
+    await flushPromises()
+
+    expect(updateOIDCProvider).toHaveBeenCalledTimes(1)
+    const payload = updateOIDCProvider.mock.calls[0][1]
+    expect(payload.name).toBe('renamed')
+    expect(payload).not.toHaveProperty('force_shared')
+  })
+
+  it('(c) 編輯已收緊的來源並關閉開關：送 force_shared:false', async () => {
+    const wrapper = await mountEdit(ENTRA_ISSUER, 'admin_forced')
+    expect(wrapper.vm.form.force_shared).toBe(true)
+    await switchInput(wrapper).trigger('click')
+    await flushPromises()
+    expect(wrapper.vm.form.force_shared).toBe(false)
+
+    await wrapper.vm.handleSave(true)
+    await flushPromises()
+    expect(updateOIDCProvider.mock.calls[0][1].force_shared).toBe(false)
+  })
+
+  it('(d) 編輯部署已宣告專屬的來源並開啟開關：送 force_shared:true', async () => {
+    const wrapper = await mountEdit(OTHER_ISSUER, 'deploy_declared', 'dedicated')
+    expect(wrapper.vm.form.force_shared).toBe(false)
+    await switchInput(wrapper).trigger('click')
+    await flushPromises()
+
+    await wrapper.vm.handleSave(true)
+    await flushPromises()
+    expect(updateOIDCProvider.mock.calls[0][1].force_shared).toBe(true)
+  })
+
+  it('(e) forceSharedPatch 四種組合：只有值不同於基準時才帶', () => {
+    expect(forceSharedPatch(false, false)).toEqual({})
+    expect(forceSharedPatch(true, true)).toEqual({})
+    expect(forceSharedPatch(true, false)).toEqual({ force_shared: false })
+    expect(forceSharedPatch(false, true)).toEqual({ force_shared: true })
+  })
+})
+
+describe('OIDCSourceDetail：系統判定段與收緊開關的出現時機', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    route.params = {}
+    getIdentitySourcesMock.mockResolvedValue({ data: [] })
+  })
+
+  const CASES = [
+    { source: 'unknown_default', kind: 'shared', issuer: OTHER_ISSUER, toggle: null },
+    { source: 'builtin_list', kind: 'shared', issuer: 'https://accounts.google.com', toggle: null },
+    { source: 'deploy_declared', kind: 'dedicated', issuer: OTHER_ISSUER, toggle: false },
+    { source: 'admin_forced', kind: 'shared', issuer: OTHER_ISSUER, toggle: true },
+  ]
+
+  for (const c of CASES) {
+    it(`判定來源 ${c.source}：顯示對應判定與原因，開關${c.toggle === null ? '不出現' : c.toggle ? '出現且為開' : '出現且為關'}`, async () => {
+      const wrapper = await mountEdit(c.issuer, c.source, c.kind)
+
+      const verdict = wrapper.find('[data-test="issuer-verdict"]')
+      expect(verdict.exists()).toBe(true)
+      expect(verdict.find('[data-test="verdict-kind"]').text()).toBe(t(`oidcProviders.issuerKind.${c.kind}`))
+      expect(verdict.find('[data-test="verdict-reason"]').text()).toBe(t(`identitySources.oidc.verdict.plain.${c.source}`))
+      expect(wrapper.find('[data-test="verdict-new-hint"]').exists()).toBe(false)
+
+      const item = wrapper.find('[data-test="force-shared-item"]')
+      if (c.toggle === null) {
+        expect(item.exists()).toBe(false)
+      } else {
+        expect(item.exists()).toBe(true)
+        expect(switchInput(wrapper).classes('is-checked')).toBe(c.toggle)
+        expect(switchInput(wrapper).classes('is-disabled')).toBe(false)
+      }
+      // 舊的欄位說明把租戶端點舉為專屬的例子，與實際判定相反，不得再出現
+      expect(wrapper.text()).not.toContain(t('oidcProviders.issuerKindColumnTooltip'))
+    })
+  }
+
+  it('Entra＋未宣告顯示補充句；其他提供者或其他來源不顯示', async () => {
+    const note = '[data-test="verdict-entra-note"]'
+    let wrapper = await mountEdit(ENTRA_ISSUER, 'unknown_default')
+    expect(wrapper.find(note).exists()).toBe(true)
+    expect(wrapper.find(note).text()).toBe(t('identitySources.oidc.verdict.entraNote'))
+
+    await chooseProvider(wrapper, 'other')
+    expect(wrapper.find(note).exists()).toBe(false)
+    wrapper.unmount()
+
+    wrapper = await mountEdit(ENTRA_ISSUER, 'admin_forced')
+    expect(wrapper.find(note).exists()).toBe(false)
+  })
+
+  it('新增頁：無判定段、無開關，顯示「儲存後會顯示系統判定」', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="issuer-verdict"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="force-shared-item"]').exists()).toBe(false)
+    const hint = wrapper.find('[data-test="verdict-new-hint"]')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toBe(t('identitySources.oidc.verdict.newHint'))
+  })
+})
+
+describe('OIDCSourceDetail：Entra 判斷依提供者選擇器', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    route.params = {}
+    getIdentitySourcesMock.mockResolvedValue({ data: [] })
+  })
+
+  it('選擇器為其他 OIDC 而 issuer 是 Entra 網址：不顯示 Entra 提示', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    wrapper.vm.form.issuer = ENTRA_ISSUER
+    wrapper.vm.form.admission_mode = 'jit_with_rules'
+    await wrapper.find('[data-test="provider-guide-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.vm.provider).toBe('other')
+    const text = wrapper.text()
+    for (const key of ENTRA_FIELD_KEYS) {
+      expect(text, key).not.toContain(t(key))
+    }
+    // 面板不再依提供者分支：Entra 的取值說明只在左側
+    expect(wrapper.findComponent(PreflightPanel).props()).not.toHaveProperty('entra')
+  })
+
+  it('選 Entra 而 issuer 空白：選擇器為 Entra、左側顯示 Entra 說明，接通前確認不收 entra', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    await chooseProvider(wrapper, 'entra')
+    wrapper.vm.form.admission_mode = 'jit_with_rules'
+    await flushPromises()
+
+    expect(wrapper.vm.form.issuer).toBe('')
+    expect(wrapper.vm.provider).toBe('entra')
+    expect(wrapper.find('[data-test="provider-option-entra"]').classes()).toContain('is-active')
+    expect(wrapper.findComponent(PreflightPanel).props()).not.toHaveProperty('entra')
+    expect(wrapper.findComponent(PreflightPanel).find('[data-test="preflight-entra-hint"]').exists()).toBe(false)
+    // 取值說明開著時以說明面板呈現，欄位下方不重複
+    expect(wrapper.find('[data-test="provider-guide"]').text()).toContain(t('identitySources.oidc.guide.entra.issuer'))
+    expect(wrapper.text()).not.toContain(t('identitySources.oidc.entra.issuer'))
+
+    // 收合說明後，各欄改顯示 Entra 提示
+    await wrapper.find('[data-test="provider-guide-toggle"]').trigger('click')
+    await flushPromises()
+    const text = wrapper.text()
+    for (const key of ENTRA_FIELD_KEYS) {
+      expect(text, key).toContain(t(key))
+    }
+  })
+})
+
+describe('OIDCSourceDetail：Google 的群組引導', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    route.params = {}
+    getIdentitySourcesMock.mockResolvedValue({ data: [] })
+  })
+
+  it('Google＋填群組宣告名：不自動勾 groups、不顯示自動勾選通知與缺範圍提示，顯示 Google 說明', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    await chooseProvider(wrapper, 'google')
+
+    // 欄位在 Google 下停用；以程式填值模擬既有設定或貼上
+    expect(groupsClaimInput(wrapper).attributes('disabled')).toBeDefined()
+    wrapper.vm.form.groups_claim = 'groups'
+    await flushPromises()
+
+    expect(wrapper.vm.form.scopeExtras).not.toContain('groups')
+    const text = wrapper.text()
+    expect(text).not.toContain(t('identitySources.oidc.groupsScopeAutoAdded'))
+    expect(text).not.toContain(t('identitySources.oidc.groupsScopeMissingHint'))
+    expect(wrapper.find('[data-test="google-groups-note"]').text()).toBe(t('identitySources.oidc.google.groupsClaimNote'))
+  })
+
+  it('其他 OIDC＋填群組宣告名：照舊自動勾選並顯示通知', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    await chooseProvider(wrapper, 'other')
+
+    await groupsClaimInput(wrapper).setValue('groups')
+    await flushPromises()
+
+    expect(wrapper.vm.form.scopeExtras).toContain('groups')
+    expect(wrapper.text()).toContain(t('identitySources.oidc.groupsScopeAutoAdded'))
+    expect(wrapper.find('[data-test="google-groups-note"]').exists()).toBe(false)
   })
 })

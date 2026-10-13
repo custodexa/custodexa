@@ -214,6 +214,10 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 	if req.Password == "" && req.PrivateKey == "" {
 		return nil, ErrCredentialSecretRequired
 	}
+	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查
+	if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+		return nil, err
+	}
 
 	// 加密在交易外先做（純 CPU／可能觸及 KMS，不佔 DB 交易）
 	var passwordEnc, privateKeyEnc string
@@ -584,6 +588,10 @@ type SetCredentialSecretRequest struct {
 func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCredentialSecretRequest) (*CredentialDTO, error) {
 	if req == nil || (req.Password == "" && req.PrivateKey == "") {
 		return nil, ErrCredentialSecretRequired
+	}
+	// 只驗本次帶來的私鑰；私鑰為空＝自現行版本原樣帶過，不重驗庫內既有的
+	if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+		return nil, err
 	}
 	var passwordEnc, privateKeyEnc string
 	if req.Password != "" {

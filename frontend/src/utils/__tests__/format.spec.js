@@ -5,6 +5,7 @@ import {
   formatDurationSeconds,
   formatRelativeTime,
   formatBytes,
+  formatShortDateTime,
 } from '../format'
 import i18n, { DEFAULT_LOCALE } from '@/i18n'
 
@@ -154,5 +155,19 @@ describe('formatBytes（錄影佔用顯示）', () => {
     expect(formatBytes(null)).toBe('0 B')
     expect(formatBytes(undefined)).toBe('0 B')
     expect(formatBytes(-1)).toBe('0 B')
+  })
+})
+
+describe('formatShortDateTime（窄欄短時間）', () => {
+  const now = new Date(2026, 9, 13, 20, 0, 0)
+  it('同年：月/日 時:分，不帶秒與時區', () => {
+    expect(formatShortDateTime(new Date(2026, 9, 13, 14, 5, 59), now)).toBe('10/13 14:05')
+  })
+  it('跨年才帶年份', () => {
+    expect(formatShortDateTime(new Date(2025, 11, 31, 23, 59), now)).toBe('2025/12/31 23:59')
+  })
+  it('空值與無效值回 -', () => {
+    expect(formatShortDateTime('', now)).toBe('-')
+    expect(formatShortDateTime('not-a-date', now)).toBe('-')
   })
 })

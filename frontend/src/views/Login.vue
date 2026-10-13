@@ -105,8 +105,9 @@
         {{ t('login.ssoExchanging') }}
       </div>
 
+      <LoginTestNotice :kind="testSource.notice.value" />
       <el-form
-        v-if="step === 'credentials'"
+        v-if="step === 'credentials' && !testSource.blocked.value"
         ref="loginFormRef"
         :model="loginForm"
         :rules="rules"
@@ -115,7 +116,7 @@
         <el-form-item prop="username">
           <el-input
             v-model="loginForm.username"
-            :placeholder="t('login.usernamePlaceholder')"
+            :placeholder="t(testSource.isLdap.value ? 'login.testSource.usernamePlaceholder' : 'login.usernamePlaceholder')"
             :prefix-icon="User"
           />
         </el-form-item>
@@ -284,7 +285,7 @@
       </div>
 
       <div
-        v-else
+        v-else-if="step === 'mfa'"
         class="mfa-panel"
       >
         <p class="mfa-hint">
@@ -326,22 +327,27 @@
            縱向滿寬按鈕：provider 數成長時自然往下排，不像橫排小 icon 會換行崩壞。
            `/auth/methods` 失敗或回空即整區不渲染（降級為只顯示本地表單） -->
       <div
-        v-if="step === 'credentials' && ssoProviders.length > 0"
+        v-if="step === 'credentials' && ssoProviders.length > 0 && !testSource.blocked.value"
         class="sso-section"
       >
         <div class="sso-divider">
           <span class="sso-divider-text">{{ t('login.ssoDivider') }}</span>
         </div>
         <el-button
-          v-for="provider in ssoProviders"
+          v-for="provider in testSource.ordered.value"
           :key="provider.id"
           class="sso-btn"
+          :class="{ 'sso-btn--testing': testSource.isTarget(provider) }"
           size="large"
           :loading="ssoStartingId === provider.id"
           :disabled="ssoExchanging"
           @click="handleSSOLogin(provider)"
         >
           {{ t('login.ssoButton', { name: provider.name }) }}
+          <span
+            v-if="testSource.isTarget(provider)"
+            class="sso-test-badge"
+          >{{ t('login.testSource.badge') }}</span>
         </el-button>
       </div>
     </div>
@@ -358,6 +364,8 @@ import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'
 import MfaQrCode from '@/components/MfaQrCode.vue'
 import LoginBanner from '@/components/LoginBanner.vue'
+import LoginTestNotice from '@/components/LoginTestNotice.vue'
+import { useLoginTestSource } from '@/composables/useLoginTestSource'
 import {
   login,
   verifyMFA,
@@ -394,6 +402,8 @@ const SSO_ERROR_SLUGS = new Set([
   // 帳號已被刪除（僅預綁模式）／帳號已停用：都需管理者處理，重試不會改變結果
   'oidc_account_removed',
   'oidc_user_inactive',
+  // 換權杖失敗：多半是用戶端密碼錯誤或過期，屬設定面，重試不會改變結果
+  'oidc_code_exchange_failed',
 ])
 
 const { t, te, locale } = useI18n()
@@ -446,6 +456,8 @@ const changeForm = ref({
 
 // SSO（OIDC）狀態：provider 清單、發起中的 provider、交棒兌換中、失敗呈現
 const ssoProviders = ref([])
+const loginDirectories = ref([])
+const testSource = useLoginTestSource(ssoProviders, { directories: loginDirectories })
 const ssoStartingId = ref(0)
 const ssoExchanging = ref(false)
 const ssoError = ref('')
@@ -760,6 +772,7 @@ const clearSSOError = () => {
 const loadAuthMethods = async () => {
   try {
     const res = await getAuthMethods()
+    loginDirectories.value = Array.isArray(res?.ldap) ? res.ldap : []
     ssoProviders.value = Array.isArray(res?.oidc) ? res.oidc : []
   } catch (error) {
     ssoProviders.value = []
@@ -1013,8 +1026,36 @@ onMounted(() => {
   color: var(--ot-primary);
 }
 
+/* 脈絡提示，不是警告：細框、淡底、小 info 圖示；標題用主文字色粗體、內文用次要色 */
 .insecure-transport-alert {
   margin-bottom: var(--ot-space-md);
+  align-items: flex-start;
+  padding: 10px 12px;
+  background-color: color-mix(in srgb, var(--ot-info) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ot-info) 25%, transparent);
+}
+
+.insecure-transport-alert :deep(.el-alert__icon) {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  color: var(--ot-info);
+}
+
+.insecure-transport-alert :deep(.el-alert__title) {
+  font-weight: 600;
+  color: var(--ot-text-primary);
+  padding-right: var(--ot-space-md);
+}
+
+.insecure-transport-alert :deep(.el-alert__description) {
+  color: var(--ot-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.insecure-transport-alert :deep(.el-alert__close-btn) {
+  color: var(--ot-text-secondary);
 }
 
 .locked-alert {
@@ -1090,6 +1131,8 @@ onMounted(() => {
   margin-left: 0;
 }
 
+.sso-btn--testing { border-color: var(--ot-primary); }
+.sso-test-badge { margin-left: 8px; padding: 0 6px; border: 1px solid var(--ot-primary); border-radius: var(--ot-radius-sm); color: var(--ot-primary); font-size: var(--ot-font-size-xs); }
 /* el-button 相鄰時預設帶左外距，縱向排列須歸零 */
 .sso-btn + .sso-btn {
   margin-left: 0;

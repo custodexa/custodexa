@@ -10,6 +10,7 @@ import {
   ensureSealPhase,
 } from '../utils/sealPhase'
 import { ensureSession } from '../utils/session'
+import { parseLoginTestSource } from '../composables/useLoginTestSource'
 import { canEnter, entryMeta, entrySubject, hasEntryRule } from './entryRules'
 
 const routes = [
@@ -427,7 +428,8 @@ export function createAuthGuard() {
 
     if (to.meta.requiresAuth && !authed) {
       next('/login')
-    } else if (to.path === '/login' && authed) {
+    } else if (to.path === '/login' && authed && !parseLoginTestSource(to.query?.source)) {
+      // 帶合法 source 的登入測試連結放行：由登入頁說明要改用無痕視窗，不掛載任何登入操作
       next('/dashboard')
     } else if (hasEntryRule(to.meta)) {
       // 入口規則與側欄選單同一個來源（router/entryRules.js 的 canEnter）：

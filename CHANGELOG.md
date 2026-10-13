@@ -2,6 +2,128 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.4 — identity source setup checks, readable recordings and private key checks (2026-10-13)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.4`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### New capabilities
+
+- The add and edit pages of an OIDC source start with a Provider choice: Microsoft Entra ID,
+  Google or Other OIDC. It shows where to find each value at that provider, with the full
+  steps folded below. Choosing Google on a new source fills in the issuer
+  `https://accounts.google.com`. On an existing source the choice is detected from the issuer.
+  The choice itself is not saved; it controls the guide and the provider-specific parts of
+  the form.
+- The edit page of an OIDC source shows the system verdict, shared across organizations or
+  dedicated to this organization, with the reason. The "Always treat as shared across
+  organizations" switch appears only where it has an effect: on sources the deployment
+  declares dedicated, and on sources where it is on. Turning it off returns the source to the
+  verdict the system would otherwise make.
+- The "Before you connect" panel on identity source pages answers whether the source is set up
+  correctly:
+  - "Run discovery again" updates the discovery light with the result and its time. It also
+    checks that the issuer the provider declares matches the one entered, and that the
+    signing algorithms its discovery document declares include one this system accepts. A
+    failed check lists possible causes.
+  - The sign-in test is a link to copy and open in a private window or another browser. The
+    link is built from the public base URL. When that URL is not set or the source is
+    disabled, the panel gives the reason instead of a link. The sign-in page marks the sign-in
+    option the link names, and a browser that is already signed in stays on the sign-in page
+    with an explanation.
+  - For OIDC sources, a new block shows the last sign-in attempt through the source in the
+    past 30 days: the result, time, username, the reason in plain words and what to do next.
+    An error reported by the provider is shown as the provider's own text.
+  - The credential light is now called Client secret. After a sign-in it shows whether the
+    token exchange with the provider succeeded.
+  - The group data light shows when the groups were observed. It says so separately when no
+    groups claim is set, when the last sign-in did not return complete group data, and when
+    the account that signed in does not use group mapping.
+  - The mapping rules light is not shown as passed when there are no rules or all of them are
+    disabled.
+  - For LDAP directories, the connection and group attribute lights show the result of "Test
+    connection" on the page, with its time.
+  - The panel has a Refresh button and reloads when its window regains focus. After a sign-in
+    test it waits up to about 15 seconds for the new attempt to appear.
+
+### What changes for deployers
+
+- A private key that cannot be parsed is refused when it is entered on an asset, an asset
+  account or a shared credential, with 400 `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID`. This
+  includes keys protected by a passphrase, which are not supported; remove the passphrase
+  before entering the key.
+- The upgrade leaves private keys already stored unchanged. A stored key that cannot be parsed
+  is reported when it is used to connect.
+- `status` shows "source not recorded" as the backup source when the state file, as written by
+  releases before 1.17.4, cannot tell whether the latest backup was taken by an upgrade.
+- API changes:
+  - `GET /api/v1/sessions/:id` adds `recording_state` (`available`, `missing` or `unreadable`)
+    for a session with a recording, and `recording_source` (`local` or `offsite`) when the
+    recording is available. The check does not retrieve the offsite copy. When the state
+    cannot be determined, both fields are left out. Session lists do not include them.
+  - When no offsite copy is available, recording metadata, stream and download requests answer
+    404 `NOTFOUND_RECORDING_FILE` when the recording file does not exist and 500
+    `INTERNAL_RECORDING_FILE_UNREADABLE` when it exists but cannot be read. The answer is a JSON error body; the download no longer answers
+    with a redirect or a plain-text 403.
+  - Evidence package manifests add `skipped_recordings` when sessions are among the exported
+    data types: one entry per recording within the export's recording limit that was skipped
+    because it was missing or could not be opened, with `session_id` and `reason` (`missing` or
+    `unreadable`). The list is empty when nothing was skipped.
+  - `VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID` answers carry `"field": "private_key"` at the
+    top level.
+  - Terminal connections and file management report `RULE_SSH_PRIVATE_KEY_INVALID` when the
+    account's private key cannot be parsed; file management answers it with 400.
+  - `GET /api/v1/oidc-providers/:id/status` adds `last_attempt`, `last_success`,
+    `discovery_checked_at`, `last_login_groups_at`, `groups_unknown_at`,
+    `group_attr_configured`, `source_updated_at`, `login_test_url` and `login_test_state`.
+    `GET /api/v1/ldap-directory/status` adds the same fields, with `last_attempt`,
+    `last_success` and `discovery_checked_at` always null.
+  - `POST /api/v1/oidc-providers/discovery-preview` adds `issuer_matches`,
+    `id_token_signing_alg_values_supported` and `signing_alg_compatible`.
+  - `GET /api/v1/oidc-providers` adds `redirect_uri` and `redirect_uri_state` at the top
+    level.
+  - `GET /api/v1/auth/methods` adds `ldap`, listing enabled directories by `id` only.
+  - The OIDC callback can redirect with `sso_error` set to `oidc_code_exchange_failed`.
+  - `PUT /api/v1/oidc-providers/:id` with `force_shared: false` clears the setting on a
+    provider where it was `true`. For a shared provider where it was never `true`, `false` is
+    still refused with 400 `VALIDATION_OIDC_SHARED_WIDEN`.
+
+### Fixes
+
+- An OIDC source the system treats as shared across organizations, such as a Microsoft Entra
+  ID issuer with a tenant ID, can be created and edited with the "Always treat as shared
+  across organizations" switch left off.
+- When the token exchange with the provider fails, the sign-in page says that sign-in could
+  not be completed and that a wrong or expired client secret is the usual cause.
+- Choosing Google no longer adds the `groups` scope when a groups claim is filled in. The page
+  says that Google ID tokens carry no groups claim.
+- When a recording file is missing or cannot be read, the session detail page says so in the
+  recording status, disables the download button with the reason, and replaces the player with
+  an explanation and a next step. When playback fails partway, the players for text and
+  graphical sessions show the reason in words, and so does a failed download.
+- Evidence package export skips recordings that are missing or cannot be opened, and lists
+  each skipped recording with its reason in the manifest.
+- Terminal connections and file management report a private key that cannot be parsed as a
+  private key problem, not as an unreachable host or a failed file action. In the new asset
+  dialog the error appears under the SSH private key field, with a separate hint when a public
+  key was pasted.
+- With `--backup-ref`, item 2 of the upgrade preview says that your own backup is used and the
+  script makes none, whether the database is bundled or external. The downtime estimate
+  leaves out backup time, and the space check counts only the new images.
+- `status` shows a backup taken by an upgrade as "automatic, before the upgrade".
+- `--passphrase-file` with a subcommand other than `backup` or `restore` says that the option
+  is only for backup and restore.
+- The language section of `custodexa.sh --help` shows `--lang` under sudo as well, for example
+  `sudo ./custodexa.sh --lang en` from the install directory.
+- Confirm buttons for destructive actions are red, with white text that keeps at least 4.5:1
+  contrast.
+- Message boxes, drawers, notifications and dialogs use the same typeface as the rest of the
+  interface.
+- When a session ends on an http address, the sign-in page says that if this happens about
+  every 15 minutes, the way of connecting may keep the browser from saving the sign-in, and
+  asks the user to tell the system administrator.
+
 ## 1.17.3 — evidence package export from the Operation Logs page (2026-10-13)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

@@ -3,6 +3,7 @@ package identity
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -36,11 +37,22 @@ type IdentitySourceService struct {
 	// discovery 供狀態彙總讀取探索文件的快取新鮮度（只讀快取、不撥號）。
 	// 未注入時探索燈號一律回 null
 	discovery *OIDCDiscoveryService
+
+	// publicBaseURL 對外基準網址（與回呼網址同一來源），組登入測試連結用
+	publicBaseURL string
+
+	// now 時間來源（測試以此固定查詢時間窗）
+	now func() time.Time
 }
 
 // NewIdentitySourceService 建立身分來源管理面服務
 func NewIdentitySourceService(db *gorm.DB, auditTx port.TxSink) *IdentitySourceService {
-	return &IdentitySourceService{db: db, auditTx: auditTx}
+	return &IdentitySourceService{db: db, auditTx: auditTx, now: time.Now}
+}
+
+// SetPublicBaseURL 注入對外基準網址（登入測試連結以它組成）
+func (s *IdentitySourceService) SetPublicBaseURL(base string) {
+	s.publicBaseURL = strings.TrimRight(strings.TrimSpace(base), "/")
 }
 
 // SetDiscovery 注入 discovery 服務（狀態彙總的探索燈號來源）
@@ -204,6 +216,70 @@ type SourceStatus struct {
 	EnabledRuleCount     int64                 `json:"enabled_rule_count"`
 	LastRecomputeMatched int64                 `json:"last_recompute_matched_users"`
 	Warnings             []SourceStatusWarning `json:"warnings"`
+
+	// LastAttempt 身分提供者：時間窗內最近一次登入嘗試（目錄恆為 null）
+	LastAttempt *LastAttempt `json:"last_attempt"`
+	// LastSuccess 身分提供者：時間窗內最近一次成功類登入（目錄恆為 null）
+	LastSuccess *LastSuccess `json:"last_success"`
+	// DiscoveryCheckedAt 身分提供者：系統最近一次取得探索文件的時間（只讀快取）
+	DiscoveryCheckedAt *time.Time `json:"discovery_checked_at"`
+	// LastLoginGroupsAt 最近一次群組觀測快照的時間（不是帳號的最近登入時間）
+	LastLoginGroupsAt *time.Time `json:"last_login_groups_at"`
+	// GroupsUnknownAt 時間窗內最近一次登入讀不到完整群組的時間
+	GroupsUnknownAt *time.Time `json:"groups_unknown_at"`
+	// GroupAttrConfigured 來源是否設了群組屬性名／宣告名
+	GroupAttrConfigured bool `json:"group_attr_configured"`
+	// SourceUpdatedAt 來源設定最近一次變更的時間
+	SourceUpdatedAt time.Time `json:"source_updated_at"`
+	// LoginTestURL 登入測試連結（以對外基準網址組成；不可用時為 null）
+	LoginTestURL *string `json:"login_test_url"`
+	// LoginTestState ready／base_url_unset／source_disabled
+	LoginTestState string `json:"login_test_state"`
+}
+
+// 登入測試連結的三種狀態（機器碼，文案由用戶端依碼決定）
+const (
+	LoginTestStateReady          = "ready"
+	LoginTestStateBaseURLUnset   = "base_url_unset"
+	LoginTestStateSourceDisabled = "source_disabled"
+)
+
+// fillLoginTest 組登入測試連結：基準網址未設定或來源停用時不給連結
+func (s *IdentitySourceService) fillLoginTest(out *SourceStatus, sourceType string,
+	sourceID uint, enabled bool) {
+	switch {
+	case s.publicBaseURL == "":
+		out.LoginTestState = LoginTestStateBaseURLUnset
+	case !enabled:
+		out.LoginTestState = LoginTestStateSourceDisabled
+	default:
+		u := fmt.Sprintf("%s/login?source=%s:%d", s.publicBaseURL, sourceType, sourceID)
+		out.LoginTestURL = &u
+		out.LoginTestState = LoginTestStateReady
+	}
+}
+
+// LoginDirectory 登入頁可用的目錄（未認證可讀，只含識別碼）
+type LoginDirectory struct {
+	ID uint `json:"id"`
+}
+
+// LoginDirectories 未認證可讀的目錄清單：只列啟用中的目錄、只回識別碼。
+//
+// 與單一登入的登入方法清單同一條界線：停用、已刪除與從未存在三者都是「不在清單」，
+// 對外不可區分。登入頁據此判斷目錄帳號的登入測試連結是否仍然有效
+func (s *IdentitySourceService) LoginDirectories() ([]LoginDirectory, error) {
+	if s == nil || s.db == nil {
+		return []LoginDirectory{}, nil
+	}
+	dir, err := ldapDirectoryLiveRow(s.db)
+	if err != nil {
+		return nil, fmt.Errorf("讀取目錄設定失敗: %w", err)
+	}
+	if dir == nil || !dir.Enabled {
+		return []LoginDirectory{}, nil
+	}
+	return []LoginDirectory{{ID: dir.ID}}, nil
 }
 
 // DirectoryStatus 目錄（單例）的狀態彙總
@@ -219,9 +295,11 @@ func (s *IdentitySourceService) DirectoryStatus() (*SourceStatus, error) {
 		return nil, ErrMappingSourceNotFound
 	}
 	out := &SourceStatus{
-		CredentialSet: dir.BindPasswordEnc != "",
-		Warnings:      []SourceStatusWarning{},
+		CredentialSet:   dir.BindPasswordEnc != "",
+		Warnings:        []SourceStatusWarning{},
+		SourceUpdatedAt: dir.UpdatedAt,
 	}
+	s.fillLoginTest(out, "ldap", dir.ID, dir.Enabled)
 	// 連線與群組屬性抽樣兩盞燈取自連線測試，而狀態彙總不撥號（見檔頭），
 	// 故未觀測即 null，由介面上的「測試連線」動作填補
 	if err := s.fillCommon(out, model.RoleMappingChannelKindDirectory, dir.ID,
@@ -249,21 +327,28 @@ func (s *IdentitySourceService) ProviderStatus(providerID uint) (*SourceStatus, 
 	}
 	p := &rows[0]
 	out := &SourceStatus{
-		CredentialSet: p.ClientSecretEnc != "",
-		Warnings:      []SourceStatusWarning{},
+		CredentialSet:   p.ClientSecretEnc != "",
+		Warnings:        []SourceStatusWarning{},
+		SourceUpdatedAt: p.UpdatedAt,
 	}
 	if s.discovery != nil {
 		reachable := s.discovery.CachedReachable(p)
 		if reachable != nil {
 			out.DiscoveryReachable = reachable
 		}
+		out.DiscoveryCheckedAt = s.discovery.CachedFetchedAt(p)
 	}
+	s.fillLoginTest(out, "oidc", p.ID, p.Enabled)
 	if err := s.fillCommon(out, model.RoleMappingChannelKindProvider, p.ID,
 		p.GroupsClaim != ""); err != nil {
 		return nil, err
 	}
 	var err error
 	out.LastLoginAt, err = s.providerLastLogin(p.ID)
+	if err != nil {
+		return nil, err
+	}
+	out.LastAttempt, out.LastSuccess, err = s.providerAttempts(p.ID, s.now())
 	if err != nil {
 		return nil, err
 	}
@@ -297,12 +382,17 @@ func (s *IdentitySourceService) fillCommon(out *SourceStatus, kind string,
 	}
 	out.LastRecomputeMatched = matched
 
-	seen, count, err := s.groupObservation(channel)
+	seen, count, at, err := s.groupObservation(channel)
 	if err != nil {
 		return err
 	}
 	out.LastLoginGroupsSeen = seen
 	out.LastLoginGroupsCount = count
+	out.LastLoginGroupsAt = at
+	out.GroupAttrConfigured = attrSet
+	if out.GroupsUnknownAt, err = s.groupsUnknownAt(channel, s.now()); err != nil {
+		return err
+	}
 
 	// 有啟用中的規則卻沒設群組屬性名／宣告名：規則永遠不命中。
 	// 與登入側的跳過事件是同一件事的兩層訊號
@@ -317,30 +407,32 @@ func (s *IdentitySourceService) fillCommon(out *SourceStatus, kind string,
 //
 // 快照只在已知態寫入（未知態覆蓋會抹掉「上次成功讀到什麼」這個唯一的診斷線索），
 // 故查無快照即回 null——那是「尚無登入觀測」，不是「登入了但沒帶到群組」。
-func (s *IdentitySourceService) groupObservation(channel string) (*bool, int, error) {
+func (s *IdentitySourceService) groupObservation(channel string) (*bool, int, *time.Time, error) {
 	type snapshot struct {
 		GroupSnapshotGroups string
+		GroupSnapshotAt     time.Time
 	}
 	var rows []snapshot
 	if err := s.db.Model(&model.User{}).
-		Select("group_snapshot_groups").
+		Select("group_snapshot_groups, group_snapshot_at").
 		Where("group_snapshot_channel = ? AND group_snapshot_at IS NOT NULL", channel).
 		Order("group_snapshot_at DESC").Limit(1).Scan(&rows).Error; err != nil {
-		return nil, 0, fmt.Errorf("讀取群組觀測快照失敗: %w", err)
+		return nil, 0, nil, fmt.Errorf("讀取群組觀測快照失敗: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}
+	at := rows[0].GroupSnapshotAt
 	var groups []string
 	if rows[0].GroupSnapshotGroups != "" {
 		if err := json.Unmarshal([]byte(rows[0].GroupSnapshotGroups), &groups); err != nil {
 			// 快照是診斷用的自報值，解不開時不讓它擋住整支狀態查詢
 			seen := false
-			return &seen, 0, nil
+			return &seen, 0, &at, nil
 		}
 	}
 	seen := len(groups) > 0
-	return &seen, len(groups), nil
+	return &seen, len(groups), &at, nil
 }
 
 // mappingWarningSourceAttrUnsetWithRules／mappingWarningGroupsScopeMissing

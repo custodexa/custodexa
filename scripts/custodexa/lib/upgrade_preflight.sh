@@ -168,10 +168,22 @@ cx_up_pre_old_images() {
 
 # cx_up_pre_space: the backup file (with the recordings), its largest member and 1 GB (cx_pb_space)
 # plus the new images, against the free space where backups go. The images may live on another
-# disk; counting them here only ever asks for more. An external database the script cannot reach
-# this time has nothing to estimate.
+# disk; counting them here only ever asks for more. With --backup-ref the script makes no backup
+# (cx_up_backup), so only the new images are counted and nothing is estimated, whatever the
+# database. An external database the script cannot reach this time has nothing to estimate.
 cx_up_pre_space() {
-  local images
+  local images free
+  if cx_br_flags_given; then
+    images=$(cx_mf_needed_bytes "$(cx_arch 2>/dev/null || printf amd64)")
+    free=$(cx_free_bytes "$CX_ROOT/backups")
+    free=${free:-0}
+    cx_log CHECK "space images=$images free=$free (own backup given)"
+    [ "$images" -gt "$free" ] || return 0
+    cx_line FAIL "$(cx_msg up_no_space_images "$(cx_size_human "$images")" "$CX_ROOT/backups" "$(cx_size_human "$free")")"
+    cx_up_par "$(cx_msg up_no_space_hint)"
+    cx_up_par "$(cx_msg pb_no_space_ls "ls -l $CX_ROOT/backups/")"
+    return "$CX_EXIT_FAILED"
+  fi
   cx_db_ready || return 0
   if ! cx_bk_estimate; then
     cx_line FAIL "$(cx_msg bk_db_unreachable)"
@@ -382,14 +394,15 @@ cx_up_preview_body() {
   esac
   printf '\n%s\n' "$(cx_msg up_will)"
   printf '%s\n' "$(cx_msg up_will_1)"
-  if ! cx_db_ready; then
-    # An external database without a client: the backup given with --backup-ref, or only an own
-    # backup possible this time (the reason closes the preview).
-    if cx_br_flags_given; then
-      printf '%s\n' "$(cx_msg up_will_2_ref)"
-    else
-      printf '%s\n' "$(cx_msg up_will_2_own)"
-    fi
+  # Row 2 says how step 7 backs up (the same conditions as cx_up_backup), whatever the database:
+  # the backup given with --backup-ref; only an own backup possible this time (an external
+  # database without a client; the reason closes the preview); else the script's full backup.
+  # The downtime counts the time of a backup only when the script makes it.
+  if cx_br_flags_given; then
+    printf '%s\n' "$(cx_msg up_will_2_ref)"
+    m=1
+  elif ! cx_db_ready; then
+    printf '%s\n' "$(cx_msg up_will_2_own)"
     m=1
   else
     printf '%s\n' "$(cx_msg up_will_2 "$(cx_size_human "$CX_BK_NEED")" "$(cx_size_human "$CX_BK_FREE")")"

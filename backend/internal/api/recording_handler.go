@@ -78,6 +78,9 @@ func (h *RecordingHandler) GetRecordingMetadata(c *gin.Context) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeRecordingFileNotFound, nil)
 			return
 		}
+		if respondRecordingUnreadable(c, err) {
+			return
+		}
 
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingMetadataQuery, err)
 		return
@@ -111,6 +114,9 @@ func (h *RecordingHandler) DownloadRecording(c *gin.Context) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeRecordingFileNotFound, nil)
 			return
 		}
+		if respondRecordingUnreadable(c, err) {
+			return
+		}
 		if code := offsiteFailureCode(err); code != "" {
 			apierror.Respond(c, http.StatusConflict, code, nil)
 			return
@@ -119,7 +125,14 @@ func (h *RecordingHandler) DownloadRecording(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileQuery, err)
 		return
 	}
-	filePath := res.Path
+	// 自行開檔後以 ServeContent 交付，不經 http.ServeFile：後者遇權限錯誤自回
+	// 純文字 403、遇目錄自回 301 轉址，兩者都繞過錯誤碼信封。
+	// 交付檔在此再經同一個開檔檢查（判定之後可能被刪或被換）
+	file, info, ok := openDeliverableRecording(c, res.Path)
+	if !ok {
+		return
+	}
+	defer file.Close()
 
 	// 設定檔案名稱（**取會話的錄影檔名，不是暫存檔名**）
 	fileName := res.Name
@@ -132,8 +145,40 @@ func (h *RecordingHandler) DownloadRecording(c *gin.Context) {
 	c.Header("Content-Type", contentType)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileName))
 
-	// 發送檔案
-	c.File(filePath)
+	// 發送檔案（支援 Range）
+	http.ServeContent(c.Writer, c.Request, fileName, info.ModTime(), file)
+}
+
+// beforeRecordingDeliverOpen 交付開檔前的測試縫：測試在「判定之後、開檔之前」
+// 這個窗口動手（刪檔、換成目錄），驗證交付端自己分類而不沿用判定結果。
+// 正式路徑為空函式。
+var beforeRecordingDeliverOpen = func(string) {}
+
+// respondRecordingUnreadable 錄影檔無法讀取 → 500＋INTERNAL_RECORDING_FILE_UNREADABLE。
+// 細部原因（errno、是否為目錄）經 RespondInternal 只進伺服器日誌。
+func respondRecordingUnreadable(c *gin.Context, err error) bool {
+	if !errors.Is(err, session.ErrRecordingUnreadable) {
+		return false
+	}
+	apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileUnreadable, err)
+	return true
+}
+
+// openDeliverableRecording 開啟實際要交付的錄影檔（串流、下載、轉檔快取共用）。
+// 不存在 → 404 NOTFOUND_RECORDING_FILE；開檔其他錯誤、fstat 失敗、不是一般檔
+// → 500 INTERNAL_RECORDING_FILE_UNREADABLE。失敗時已回應，呼叫端直接返回。
+func openDeliverableRecording(c *gin.Context, filePath string) (*os.File, os.FileInfo, bool) {
+	beforeRecordingDeliverOpen(filePath)
+	file, info, err := session.OpenRecordingFile(filePath)
+	if err != nil {
+		if errors.Is(err, session.ErrRecordingNotFound) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeRecordingFileNotFound, nil)
+			return nil, nil, false
+		}
+		respondRecordingUnreadable(c, err)
+		return nil, nil, false
+	}
+	return file, info, true
 }
 
 // StreamRecording 串流播放錄製檔案（支援 HTTP Range）
@@ -326,6 +371,9 @@ func (h *RecordingHandler) serveRecordingForSession(c *gin.Context, sessionID ui
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeRecordingFileNotFound, nil)
 			return
 		}
+		if respondRecordingUnreadable(c, err) {
+			return
+		}
 		if code := offsiteFailureCode(err); code != "" {
 			// 離機側的可辨識失敗（完整性不符、世代查無、憑證已撤銷）：
 			// **零位元組交付**＋機器碼，不退回「盡力播本機」
@@ -365,9 +413,9 @@ func (h *RecordingHandler) serveRecordingForSession(c *gin.Context, sessionID ui
 	if strings.HasSuffix(filePath, ".typescript") {
 		castPath := strings.TrimSuffix(filePath, ".typescript") + ".cast"
 
-		// Check if .cast already exists
-		if _, err := os.Stat(castPath); err == nil {
-			// .cast exists, serve it
+		// Check if .cast already exists。存在但讀不到（含是目錄）同樣交給交付檢查
+		// 分類，不落到轉檔、也不交付 0 位元組
+		if _, err := os.Stat(castPath); err == nil || !os.IsNotExist(err) {
 			h.serveCastFile(c, castPath)
 			return
 		}
@@ -412,20 +460,12 @@ func (h *RecordingHandler) serveRecordingForSession(c *gin.Context, sessionID ui
 
 // serveCastFile serves a .cast file with proper headers and Range support
 func (h *RecordingHandler) serveCastFile(c *gin.Context, filePath string) {
-	// 開啟檔案
-	file, err := os.Open(filePath)
-	if err != nil {
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileOpen, err)
+	// 開檔＋fstat＋是一般檔（分類見 openDeliverableRecording）
+	file, fileInfo, ok := openDeliverableRecording(c, filePath)
+	if !ok {
 		return
 	}
 	defer file.Close()
-
-	// 獲取檔案資訊
-	fileInfo, err := file.Stat()
-	if err != nil {
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileStat, err)
-		return
-	}
 
 	// 設定 MIME 類型
 	c.Header("Content-Type", "application/x-asciicast")
@@ -437,20 +477,12 @@ func (h *RecordingHandler) serveCastFile(c *gin.Context, filePath string) {
 
 // serveGuacFile serves a .guac file (Guacamole recording) with proper headers and Range support
 func (h *RecordingHandler) serveGuacFile(c *gin.Context, filePath string) {
-	// 開啟檔案
-	file, err := os.Open(filePath)
-	if err != nil {
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileOpen, err)
+	// 開檔＋fstat＋是一般檔（分類見 openDeliverableRecording）
+	file, fileInfo, ok := openDeliverableRecording(c, filePath)
+	if !ok {
 		return
 	}
 	defer file.Close()
-
-	// 獲取檔案資訊
-	fileInfo, err := file.Stat()
-	if err != nil {
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileStat, err)
-		return
-	}
 
 	// 設定 MIME 類型為 application/octet-stream（Guacamole 協議二進制格式）
 	c.Header("Content-Type", "application/octet-stream")

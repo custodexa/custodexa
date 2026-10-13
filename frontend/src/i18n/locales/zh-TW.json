@@ -190,7 +190,8 @@
       "oidc_provider_error": "身分提供者回報登入未完成",
       "oidc_flow_invalid": "登入流程已失效",
       "oidc_account_removed": "您在本系統的帳號已被管理者刪除",
-      "oidc_user_inactive": "您的帳號已停用"
+      "oidc_user_inactive": "您的帳號已停用",
+      "oidc_code_exchange_failed": "無法向身分提供者完成登入"
     },
     "ssoSlugHint": {
       "oidc_admission_denied": "請聯絡管理員確認您的帳號是否屬於允許的組織範圍。",
@@ -199,10 +200,20 @@
       "oidc_provider_error": "您可能取消了授權，或提供者拒絕了這次登入。可重新發起再試一次。",
       "oidc_flow_invalid": "登入連結只能使用一次且有時效，請重新發起登入。",
       "oidc_account_removed": "此登入方式只允許管理者預先綁定的人登入。請聯絡管理者重新建立帳號並綁定您的外部身分。",
-      "oidc_user_inactive": "請聯絡管理者重新啟用帳號。"
+      "oidc_user_inactive": "請聯絡管理者重新啟用帳號。",
+      "oidc_code_exchange_failed": "常見原因是用戶端密碼錯誤或已過期，請通知系統管理員。"
     },
-    "insecureTransportTitle": "安全提示：登入狀態不會保存",
-    "insecureTransportBody": "使用 http 連線，將不保存登入狀態（15 分鐘需重新登入）"
+    "insecureTransportTitle": "登入狀態已結束，請重新登入",
+    "insecureTransportBody": "如果在這個網址大約每 15 分鐘就得重新登入一次，可能是連線方式讓瀏覽器無法保存登入狀態，請告知系統管理員。",
+    "testSource": {
+      "usernamePlaceholder": "目錄帳號",
+      "badge": "測試中的登入方式",
+      "notListed": "要測試的登入方式目前不在登入頁，可能已停用或設定不完整。",
+      "ldap": "這是目錄帳號的登入測試，請輸入目錄帳號與密碼。",
+      "authedTitle": "你目前已登入",
+      "authedBody": "這是登入測試連結。要測試，請用無痕視窗或另一個瀏覽器開啟這個連結；在這裡登入會換掉你目前的登入。",
+      "backToDashboard": "回到儀表板"
+    }
   },
   "api": {
     "requestFailed": "請求失敗",
@@ -1121,7 +1132,8 @@
         "create": "新增共用憑證…",
         "meta": "{username} · {type} · {count} 台",
         "createdNotListed": "新憑證與這台資產的協議不相容，未加入清單。"
-      }
+      },
+      "privateKeyLooksPublic": "這看起來是公鑰，請貼上私鑰。私鑰的第一行是「-----BEGIN」開頭的標示行。"
     },
     "editDrawer": {
       "basicSection": "基本資料",
@@ -2148,6 +2160,48 @@
   "asciiPlayer": {
     "loading": "正在載入錄製內容...",
     "speedChangeFailed": "速度變更失敗"
+  },
+  "recordingReadability": {
+    "state": {
+      "unreadable": "錄影檔無法讀取",
+      "missing": "錄影檔不存在"
+    },
+    "downloadDisabled": {
+      "unreadable": "目前讀不到錄影檔，暫時無法下載。請系統管理員檢查錄影儲存位置的權限。",
+      "missing": "錄影檔已不在儲存位置，無法下載。"
+    },
+    "offsiteHint": "錄影存放在離機保存處，播放與下載前要先取回，可能需要較久。",
+    "card": {
+      "unreadable": {
+        "title": "目前讀不到這場連線的錄影檔",
+        "body": "系統有這場連線的錄影紀錄，但目前讀不到錄影檔。這不代表沒有錄到。",
+        "next": "下一步：請系統管理員檢查錄影儲存位置的權限。"
+      },
+      "missing": {
+        "title": "錄影檔已不在儲存位置",
+        "body": "系統有這場連線的錄影紀錄，但錄影檔已不在儲存位置，可能已被清除或遺失。",
+        "next": "下一步：若有設定離機保存，請查看連線資訊中的離機保存狀態，確認是否有副本。"
+      }
+    },
+    "adminInfo": "給管理員的資訊",
+    "sessionIdLabel": "連線編號",
+    "errorCodeLabel": "錯誤碼",
+    "playback": {
+      "unreadable": {
+        "title": "播放中斷：目前讀不到錄影檔",
+        "detail": "錄影檔在播放途中變得無法讀取。可以重新載入播放器再試；若仍無法播放，請系統管理員檢查錄影儲存位置的權限。"
+      },
+      "missing": {
+        "title": "播放中斷：錄影檔已不在儲存位置",
+        "detail": "錄影檔在播放途中被移除，可能已被清除或遺失。若有設定離機保存，請查看離機保存狀態。"
+      },
+      "reload": "重新載入播放器"
+    },
+    "download": {
+      "unreadable": "下載失敗：目前讀不到錄影檔，請系統管理員檢查錄影儲存位置的權限。",
+      "missing": "下載失敗：錄影檔已不在儲存位置，可能已被清除或遺失。",
+      "failed": "下載失敗：{reason}"
+    }
   },
   "monitorTerminal": {
     "backToSessions": "返回連線列表",
@@ -3951,6 +4005,7 @@
     "INTERNAL_RECORDING_FILE_OPEN": "開啟錄製檔案失敗",
     "INTERNAL_RECORDING_FILE_QUERY": "取得錄製檔案失敗",
     "INTERNAL_RECORDING_FILE_STAT": "取得檔案資訊失敗",
+    "INTERNAL_RECORDING_FILE_UNREADABLE": "錄影檔無法讀取",
     "INTERNAL_RECORDING_METADATA_QUERY": "取得錄製中繼資料失敗",
     "INTERNAL_RECORDING_STATS_QUERY": "取得統計資訊失敗",
     "INTERNAL_RECORDING_TOKEN_ISSUE": "簽發錄影 token 失敗",
@@ -4173,6 +4228,7 @@
     "RULE_SSH_DIAL_TIMEOUT": "連線目標主機逾時",
     "RULE_SSH_ENDPOINT_MOVED": "SSH 不再經由此端點，請使用原生終端端點 GET /api/v1/ssh",
     "RULE_SSH_HOST_KEY_CHANGED": "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯絡管理員重置 host key",
+    "RULE_SSH_PRIVATE_KEY_INVALID": "這個帳號設定的私鑰無法使用（格式錯誤或設有保護密碼），請聯絡管理員更換私鑰。",
     "RULE_SSH_UNREACHABLE": "無法連線到目標主機",
     "RULE_STATS_UNSUPPORTED": "目標主機不支援指標採集",
     "RULE_TRANSFER_DENIED": "資料傳輸已被安全政策禁止（{action}，來源：{reason}）",
@@ -4259,6 +4315,7 @@
     "VALIDATION_CREDENTIAL_NAME_INVALID": "憑證名稱不得含換行或控制字元",
     "VALIDATION_CREDENTIAL_NAME_REQUIRED": "共用憑證必須提供名稱",
     "VALIDATION_CREDENTIAL_NAME_TOO_LONG": "憑證名稱超過長度上限（128 字元）",
+    "VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID": "私鑰無法辨識。請貼上完整的私鑰內容，包含開頭與結尾的標示行。設有保護密碼（passphrase）的私鑰目前不支援，請先移除保護密碼。",
     "VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID": "憑證的協定族不在允許值域內",
     "VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID": "改密模式僅允許整組同一組或每台各自隨機",
     "VALIDATION_CREDENTIAL_SCOPE_INVALID": "憑證範圍僅允許專用或共用",
@@ -4940,14 +4997,187 @@
       "groupsScopeAutoAdded": "已一併勾選 groups 範圍（在進階段可調整）。",
       "groupsScopeMissingHint": "授權範圍不含 groups，多數提供者因此不會發出群組宣告。",
       "entra": {
-        "issuer": "Entra：應用程式註冊 → 你的應用程式 → 概觀，複製「目錄 (租用戶) 識別碼」，填成 https://login.microsoftonline.com/<目錄 (租用戶) 識別碼>/v2.0。",
-        "clientId": "Entra：同一個概觀頁的「應用程式 (用戶端) 識別碼」，不是下方的「物件識別碼」。",
-        "secret": "Entra：憑證及祕密 → 用戶端密碼 → 新增用戶端密碼，複製「值」欄位，不是旁邊那串 ID。值只在建立當下顯示一次。",
-        "groupsClaim": "Entra：權杖設定 → 新增群組宣告，勾選「安全性群組」後儲存，這裡填 groups。Entra 不需要 groups 授權範圍，也不接受。",
-        "groupsScopeRejected": "Entra 不支援 groups 授權範圍，勾選後登入會被拒絕（AADSTS650053）。群組請改在 Entra 的權杖設定開啟，並取消此勾選。",
-        "tid": "Entra：填概觀頁的「目錄 (租用戶) 識別碼」。",
-        "emailVerified": "Entra 的身分權杖不帶 email_verified，開啟後所有人都會被拒。請改用租戶識別（tid）。",
-        "emailDomain": "此規則一併要求 email_verified，Entra 不帶此宣告，因此不會通過。請改用租戶識別（tid）。"
+        "issuer": "Entra：「應用程式註冊（App registrations）」→ 你的應用程式 →「概觀（Overview）」，複製「目錄 (租用戶) 識別碼（Directory (tenant) ID）」，填成 https://login.microsoftonline.com/<目錄 (租用戶) 識別碼>/v2.0。",
+        "clientId": "Entra：同一個「概觀（Overview）」頁的「應用程式 (用戶端) 識別碼（Application (client) ID）」，不是同頁的「物件識別碼（Object ID）」。",
+        "secret": "Entra：「憑證及祕密（Certificates & secrets）」→「用戶端密碼（Client secrets）」→「新增用戶端密碼（New client secret）」，複製「值（Value）」欄位。值只在建立當下顯示一次。期限最長 24 個月、微軟建議少於 12 個月，到期後登入會失敗（AADSTS7000222）。",
+        "groupsClaim": "Entra：「權杖設定（Token configuration）」→「新增群組宣告（Add groups claim）」，勾選「安全性群組（Security groups）」後儲存，這裡填 groups。Entra 不需要 groups 授權範圍；權杖裡是群組的物件識別碼。",
+        "groupsScopeRejected": "Entra 的 OpenID Connect 範圍只有 openid、email、profile、offline_access，不含 groups。群組請改在 Entra 的「權杖設定（Token configuration）」開啟，並取消此勾選。",
+        "tid": "Entra：填「概觀（Overview）」頁的「目錄 (租用戶) 識別碼（Directory (tenant) ID）」。",
+        "emailVerified": "Entra 的身分權杖宣告清單沒有 email_verified，開啟後所有人都會被拒。請改用租戶識別（tid）。",
+        "emailDomain": "此規則一併要求 email_verified，Entra 的身分權杖宣告清單沒有此宣告，因此不會通過。請改用租戶識別（tid）。"
+      },
+      "provider": {
+        "label": "提供者",
+        "entra": "Microsoft Entra ID",
+        "google": "Google",
+        "other": "其他 OIDC",
+        "hintNew": "選擇你的身分提供者以顯示取值說明。只影響說明，不會儲存。",
+        "hintEdit": "依 Issuer 帶出。改選只影響取值說明，不會儲存。"
+      },
+      "guide": {
+        "title": "在 {provider} 取得各欄位的值",
+        "fullSteps": "完整步驟",
+        "stepCount": "{n} 步",
+        "otherIntro": "一般提供者的後台介面各家不同，這裡列出本系統對提供者的要求。",
+        "field": {
+          "issuer": "Issuer",
+          "clientId": "Client ID",
+          "secret": "Client Secret",
+          "redirect": "回呼網址",
+          "admission": "准入規則",
+          "groups": "群組",
+          "restrict": "限制可登入者",
+          "clientIdSecret": "Client ID／Secret",
+          "flow": "流程",
+          "scopes": "授權範圍"
+        },
+        "entra": {
+          "issuer": "在應用程式「概觀（Overview）」頁複製「目錄 (租用戶) 識別碼（Directory (tenant) ID）」，填成 https://login.microsoftonline.com/<識別碼>/v2.0；不要用 common、organizations、consumers。",
+          "clientId": "同一頁的「應用程式 (用戶端) 識別碼（Application (client) ID）」，不是同頁的「物件識別碼（Object ID）」。",
+          "secret": "「憑證及祕密（Certificates & secrets）」→「用戶端密碼（Client secrets）」→「新增用戶端密碼（New client secret）」，複製「值（Value）」；值離開頁面後就看不到。期限最長 24 個月、微軟建議少於 12 個月，到期後登入會失敗（AADSTS7000222）。",
+          "redirect": "把本頁「登記回呼網址」貼到 Entra 的「Authentication」→「重新導向 URI 設定（Redirect URI configuration）」→「新增重新導向 URI（Add Redirect URI）」→「Web」，按「設定（Configure）」。",
+          "admission": "「租戶識別（tid）」填同一個「目錄 (租用戶) 識別碼（Directory (tenant) ID）」；Entra 身分權杖的宣告清單沒有 email_verified，請用 tid 規則。",
+          "groups": "在「權杖設定（Token configuration）」→「新增群組宣告（Add groups claim）」勾「安全性群組（Security groups）」，本系統填 groups；權杖裡是群組的物件識別碼。",
+          "restrict": "在「企業應用程式（Enterprise apps）」把「需要指派？（Assignment required?）」設為「是（Yes）」再到「使用者和群組（Users and groups）」指派人員；全域管理員不受這個設定限制。"
+        },
+        "google": {
+          "issuer": "選 Google 時已自動填入 https://accounts.google.com。",
+          "clientId": "在「Clients」頁點進該用戶端即可看到。",
+          "secret": "只在建立用戶端當下顯示一次，請馬上複製。",
+          "redirect": "加到用戶端的「Authorized redirect URIs」，須完全一致，生效可能要等 5 分鐘到幾小時。",
+          "admission": "「Google 組織網域（hd）」填 Google Workspace 網域；個人 Gmail 沒有 hd，會被擋下。",
+          "groups": "Google 的身分權杖沒有群組宣告，「群組 claim 名稱」請留空。",
+          "restrict": "「Audience」選「Internal」只讓組織成員登入，限隸屬 Google Cloud 組織的專案。"
+        },
+        "other": {
+          "issuer": "必須是 https 開頭的網址。",
+          "clientIdSecret": "在提供者端建立「網頁應用程式」類型的用戶端；本系統只支援用戶端密碼這種驗證方式。",
+          "redirect": "在提供者端登記本頁「登記回呼網址」顯示的網址。",
+          "flow": "本系統用授權碼流程並帶 PKCE（S256），提供者要支援這兩者。",
+          "scopes": "除 openid 外只能選 profile、email、groups。",
+          "groups": "群組只會從身分權杖讀取，提供者要把群組放進身分權杖，不能只放在 userinfo。"
+        },
+        "stepGroup": {
+          "create": "建立應用程式",
+          "issuer": "Issuer",
+          "clientId": "Client ID",
+          "secret": "Client Secret",
+          "redirect": "回呼網址",
+          "entraTid": "准入規則：租戶識別（tid）",
+          "entraGroups": "群組（選用）",
+          "entraRestrict": "限制誰可以登入（選用）",
+          "googleClient": "建立用戶端與回呼網址",
+          "googleIssuerClientId": "Issuer 與 Client ID",
+          "googleHd": "准入規則：Google 組織網域（hd）",
+          "googleGroups": "群組"
+        },
+        "steps": {
+          "entra": {
+            "s1": "以至少「應用程式開發人員」的身分登入 Microsoft Entra 系統管理中心（entra.microsoft.com）。",
+            "s2": "進入 Entra ID →「應用程式註冊（App registrations）」，按「新增註冊（New registration）」。",
+            "s3": "名稱自訂，使用者登入時會看到它。",
+            "s4": "「支援的帳戶類型（Supported account types）」選只限貴組織租用戶的那一項，英文介面寫「Single tenant only - <your tenant>」，較舊的介面寫「Accounts in this organizational directory only」。",
+            "s5": "按「註冊（Register）」，畫面會跳到這個應用程式的「概觀（Overview）」頁。",
+            "s6": "在「概觀（Overview）」頁複製「目錄 (租用戶) 識別碼（Directory (tenant) ID）」。",
+            "s7": "Issuer 填 https://login.microsoftonline.com/<目錄 (租用戶) 識別碼>/v2.0。",
+            "s8": "不要填 common、organizations、consumers 這三種網址，它們會讓其他組織或個人帳號也能登入。",
+            "s9": "Client ID 填同一頁的「應用程式 (用戶端) 識別碼（Application (client) ID）」。",
+            "s10": "同一頁還有一個「物件識別碼（Object ID）」，那是應用程式在租用戶內的編號，不要填它。",
+            "s11": "左側選「憑證及祕密（Certificates & secrets）」→「用戶端密碼（Client secrets）」→「新增用戶端密碼（New client secret）」。",
+            "s12": "填一段描述並選到期時間，最長 24 個月，微軟建議少於 12 個月。",
+            "s13": "按「新增（Add）」後，複製「值（Value）」那一欄。",
+            "s14": "離開這個頁面後就看不到這個值了，請馬上貼進本系統。",
+            "s16": "密碼到期後登入會失敗（錯誤碼 AADSTS7000222），請在到期前新增一組，並更新本系統的 Client Secret。",
+            "s17": "微軟建議正式環境改用憑證，本系統目前只支援用戶端密碼。",
+            "s18": "本系統的回呼網址顯示在本頁「登記回呼網址」，格式是 <對外基準網址>/api/v1/auth/oidc/callback。",
+            "s19": "如果該欄空白，代表部署時沒有設定對外基準網址，請先請部署人員設定。",
+            "s20": "在 Entra 左側選「Authentication」→「重新導向 URI 設定（Redirect URI configuration）」分頁 →「新增重新導向 URI（Add Redirect URI）」→ 選「Web」。",
+            "s21": "在「重新導向 URI（Redirect URI）」欄貼上本系統的回呼網址，按「設定（Configure）」。",
+            "s22": "舊版介面的路徑是「平台設定（Platform configurations）」→「新增平台（Add a platform）」→「Web」→「重新導向 URI（Redirect URIs）」。",
+            "s23": "網址必須是 https 開頭，大小寫要和本系統顯示的一致。",
+            "s24": "網址對不上時，登入頁會出現錯誤碼 AADSTS50011。",
+            "s25": "「租戶識別（tid）」填 Issuer 步驟裡的「目錄 (租用戶) 識別碼（Directory (tenant) ID）」。",
+            "s26": "不要填 9188040d-6c67-4c5b-b112-36a304b66dad，那是個人 Microsoft 帳戶共用的租用戶。",
+            "s27": "Entra 身分權杖的宣告清單沒有 email_verified，所以 Entra 來源請改用 tid 規則。",
+            "s28": "要依 Entra 群組指派角色時，在應用程式左側選「權杖設定（Token configuration）」→「新增群組宣告（Add groups claim）」→ 勾「安全性群組（Security groups）」→「儲存（Save）」。",
+            "s29": "本系統的「群組 claim 名稱」填 groups。",
+            "s30": "Entra 放進權杖的是群組的物件識別碼，不是群組名稱，對應規則請用物件識別碼。",
+            "s31": "一個人所屬的群組（含巢狀群組）超過 200 個時，Entra 不會放群組清單。",
+            "s32": "這種情況可改選「指派給應用程式的群組（Groups assigned to the application）」，但這個選項不含巢狀群組，使用者必須直接屬於被指派的群組。",
+            "s33": "不需要勾 groups 授權範圍，Entra 的 OpenID Connect 範圍只有 openid、email、profile、offline_access。",
+            "s35": "預設情況下，租用戶內所有人都能登入這個應用程式。",
+            "s36": "要限制時，到 Entra ID →「企業應用程式（Enterprise apps）」→「所有應用程式（All applications）」，選這個應用程式。",
+            "s37": "在「屬性（Properties）」把「需要指派？（Assignment required?）」設為「是（Yes）」，按「儲存（Save）」。",
+            "s38": "再到「使用者和群組（Users and groups）」→「新增使用者/群組（Add user/group）」，選好人員或群組後按「指派（Assign）」。",
+            "s39": "沒被指派的人登入時會看到錯誤碼 AADSTS50105。",
+            "s40": "全域管理員不受這個設定限制。"
+          },
+          "google": {
+            "s1": "到 Google Cloud Console 的 Google Auth Platform 頁面，第一次使用按「GET STARTED」。",
+            "s2": "「Audience」選「Internal」，只讓貴組織的成員登入。",
+            "s3": "組織以外的人登入時會看到 org_internal 錯誤。",
+            "s4": "只有隸屬 Google Cloud 組織的專案才能選「Internal」。",
+            "s5": "到「Clients」頁，按「Create Client」，類型選「Web application」。",
+            "s6": "在「Authorized redirect URIs」加入本頁「登記回呼網址」顯示的網址，按「Create」。",
+            "s7": "網址必須是 https，而且要和本系統顯示的完全一致，包括大小寫和結尾的斜線。",
+            "s8": "改完設定可能要等 5 分鐘到幾小時才生效。",
+            "s9": "Issuer 填 https://accounts.google.com。",
+            "s10": "Client ID 在「Clients」頁點進該用戶端就能看到。",
+            "s11": "Client Secret 只在建立用戶端的當下顯示一次，請馬上複製貼進本系統。",
+            "s12": "之後主控台只會顯示密碼的最後四個字元。",
+            "s13": "密碼遺失時，用「client secret rotation」新增一組，改好本系統後再停用舊的。",
+            "s15": "用戶端連續六個月沒被使用或修改，Google 會自動刪除它，刪除前 30 天會寄信通知。",
+            "s16": "「Google 組織網域（hd）」填貴組織 Google Workspace 的網域。",
+            "s17": "網域清單在 Google Admin console 的「Menu」→「Account」→「Domains」→「Manage domains」。",
+            "s19": "個人 Gmail 帳號沒有 hd，會被這條規則擋下。",
+            "s20": "不要只靠 Email 網域判斷是不是組織成員，Google 建議改看 hd。",
+            "s21": "Google 的身分權杖沒有群組宣告。",
+            "s22": "本系統只從身分權杖讀群組，所以 Google 來源無法依群組指派角色，「群組 claim 名稱」請留空。",
+            "s23": "授權範圍不要勾 groups，Google 支援的範圍是 openid、email、profile。"
+          }
+        }
+      },
+      "verdict": {
+        "title": "系統判定",
+        "newHint": "儲存後會顯示系統對這個網址的判定。",
+        "plain": {
+          "unknown_default": "這個登入網址沒有宣告為貴組織專用，其他組織的帳號也可能經由同一個網址登入，所以系統用較嚴的規則把關。",
+          "builtin_list": "這個登入網址屬於任何人都能註冊帳號的公共登入服務（系統內建清單），一律用較嚴的規則把關，無法改判為本組織專屬。",
+          "deploy_declared": "部署人員已宣告這個登入網址只給貴組織使用。",
+          "admin_forced": "已在本頁開啟「強制視為多組織共用」。"
+        },
+        "entraNote": "共用判定不代表禁止登入；使用自動建立帳號模式時，每次登入仍須符合租戶等准入規則。",
+        "showDetails": "顯示技術細節",
+        "hideDetails": "隱藏技術細節",
+        "detailSource": "判定來源：{label}（{code}）",
+        "detailIssuer": "登入網址（issuer）：{issuer}",
+        "sourceLabel": {
+          "unknown_default": "未宣告",
+          "builtin_list": "內建清單",
+          "deploy_declared": "部署宣告",
+          "admin_forced": "本頁強制"
+        },
+        "detail": {
+          "unknown_default": "部署設定 OIDC_DEDICATED_ISSUERS 沒有列出這個網址。若您已在部署設定中宣告，請檢查拼寫是否一致，以及是否已重新啟動全部服務副本。",
+          "builtin_list": "這個網址在系統內建的公共登入服務清單上；內建清單優先於部署設定 OIDC_DEDICATED_ISSUERS 的宣告。",
+          "deploy_declared": "部署設定 OIDC_DEDICATED_ISSUERS 列出了這個網址。",
+          "admin_forced": "本頁的強制設定優先於部署設定 OIDC_DEDICATED_ISSUERS 的宣告；關閉後依部署宣告或保守預設重新判定。"
+        }
+      },
+      "forceSharedToggle": {
+        "on": "開",
+        "off": "關",
+        "hintOn": "關閉後回到系統原本的判定，儲存後顯示在上方。",
+        "hintOff": "開啟後改用較嚴的規則把關：自動建立帳號時，准入規則必須包含租戶或組織網域條件。之後可以再關閉。"
+      },
+      "entraAssist": {
+        "label": "只有目錄 (租用戶) 識別碼（Directory (tenant) ID）？貼在這裡幫你組成網址",
+        "composed": "已組成 Issuer 網址，並帶入准入規則的「租戶識別（tid）」。",
+        "composedKeptTid": "已組成 Issuer 網址；准入規則的「租戶識別（tid）」原本已有值，未變更。",
+        "formatWarning": "這個網址和常見的 Entra 格式（https://login.microsoftonline.com/<識別碼>/v2.0）不同，請再確認一次。仍可儲存。"
+      },
+      "google": {
+        "groupsClaimNote": "Google 的身分權杖沒有群組宣告，Google 來源無法依群組指派角色。"
       }
     },
     "ldap": {
@@ -4979,28 +5209,15 @@
     },
     "preflight": {
       "title": "接通前確認",
-      "leadOidc": "左邊是本系統的設定，這裡是身分提供者端要配合的事。",
-      "leadLdap": "左邊是本系統的設定，這裡是目錄端要配合的事。",
-      "checklistOidc": "在身分提供者端完成",
       "checklistLdap": "在目錄端完成",
-      "statusHead": "本系統驗到的狀態",
-      "testHead": "測試",
-      "noData": "尚無資料",
+      "statusHead": "設定檢查",
       "rediscover": "重新探索",
-      "loginTest": "以此來源登入測試",
       "loginTestNoticeOidc": "登入測試是真實登入：會依准入模式建立帳號並寫入稽核記錄。",
       "loginTestNoticeLdap": "登入測試是真實登入：會建立目錄使用者的本系統帳號並寫入稽核記錄。",
       "oidc": {
-        "redirect": "登記回呼網址",
+        "redirect": "在提供者端登記這個回呼網址",
         "redirectUnset": "尚未設定對外基準網址，回呼網址無法算出",
-        "appType": "應用類型選「網頁」，帳號類型選對租戶",
-        "appTypeHint": "選錯會讓特定使用者登不進來。",
-        "groupsClaim": "在提供者端開啟群組宣告",
-        "groupsClaimHint": "群組來自目錄同步時，部分提供者需以運算式取得。",
-        "secret": "記下密鑰與其到期日",
-        "secretHint": "提供者端通常只顯示一次。",
-        "entraRedirect": "Entra：Authentication（新版顯示為 Authentication (Preview)）→ 重新導向 URI 設定 → 新增重新導向 URI → Web。舊版介面為新增平台 → Web。",
-        "entraGroupsClaim": "Entra：權杖設定 → 新增群組宣告 → 安全性群組。一個人所屬群組超過 200 個時，Entra 不帶群組清單，系統會保留其既有映射角色；大型組織建議改選「指派給應用程式的群組」。"
+        "guideHint": "各欄取值步驟見左側說明。"
       },
       "ldap": {
         "readGroupAttr": "服務帳號可讀取使用者的群組屬性",
@@ -5009,19 +5226,234 @@
         "baseDnCoversHint": "不在搜尋起點之下的帳號無法登入。"
       },
       "light": {
-        "connection": "連線與 bind 通過",
-        "groupAttrReadable": "抽樣使用者可讀群組屬性",
-        "discovery": "探索文件可達",
-        "credential": "憑證已設定",
-        "groupsSeen": "最近一次登入帶到群組資料",
-        "groupsSeenCount": "取得 {count} 個群組",
-        "groupsSeenNone": "最近一次登入未帶到任何群組資料",
-        "rules": "映射規則 {count} 條（啟用 {enabled} 條），最近重算命中 {matched} 人",
-        "rulesUnknown": "映射規則數",
+        "groupsSeenCount": "取得 {count} 個群組（{time} 觀測）。",
+        "rulesUnknown": "尚無資料。",
         "warningGeneric": "此來源有需要處理的設定問題",
-        "warningAction": "請到群組映射區段補上設定。"
+        "warningAction": "請到群組映射區段補上設定。",
+        "discOkLocal": "本頁 {time} 檢查：可以取得，Issuer 與你填的一致，簽章演算法相容。",
+        "discOkCached": "系統於 {time} 登入時取得。要現在再檢查一次，按「重新探索」。",
+        "discUnsaved": "這是表單目前網址的結果，尚未儲存。",
+        "discUnreachable": "本頁 {time} 檢查：取不到探索文件，登入會失敗。",
+        "discCausesHead": "可能的原因：",
+        "discCauses": {
+          "typo": "網址打錯，例如租戶識別碼少一段（提供者會回「找不到」）。",
+          "egress": "本系統連不出去，例如防火牆擋住或需要代理。",
+          "internal": "網址指到內部位址，被出站政策擋下（部署時可設定允許清單）。",
+          "temporary": "提供者暫時沒有回應，稍後再按一次。"
+        },
+        "discInvalid": "本頁 {time} 檢查：Issuer 網址的格式不符。",
+        "discInvalidHead": "請確認：",
+        "discInvalidCauses": {
+          "https": "要以 https:// 開頭。正式環境不接受 http://。",
+          "query": "不能帶查詢字串（?）或錨點（#）。"
+        },
+        "discError": "本頁 {time} 檢查：沒有完成，請稍後再按一次「重新探索」。",
+        "discUnchecked": "尚未檢查。按「重新探索」立即檢查。",
+        "discIssuerMismatch": "本頁 {time} 檢查：可以取得，但提供者宣告的 Issuer 和你填的不同，登入會失敗。",
+        "discEntered": "你填的",
+        "discDeclared": "提供者宣告的",
+        "discSupported": "本系統支援",
+        "discIssuerHint": "兩者要一字不差（結尾斜線除外）。提供者宣告的值帶有 {placeholder} 這類佔位字時，表示你填的是多組織共用的網址，請改填含本組織租戶識別碼的網址；其他情形請改成提供者宣告的值。改完儲存，再按「重新探索」。",
+        "discAlgIncompatible": "本頁 {time} 檢查：可以取得，但提供者用的簽章演算法本系統不支援，登入會失敗。",
+        "discAlgHint": "請在提供者端把身分權杖的簽章改為 RS256 或 ES256。",
+        "discStale": "設定已變更，結果已過期，請再按重新探索。",
+        "credUnset": "尚未填入用戶端密碼。",
+        "credVerified": "已填入，並於 {time} 的登入中驗證可用。",
+        "credExchangeFailed": "最近一次登入（{time}）換權杖失敗，密碼可能錯誤或已過期。",
+        "credUnverified": "已填入，尚未經登入驗證。",
+        "credRetest": "設定在最近一次登入之後改過，請再測一次。",
+        "groupsEmpty": "{time} 的登入沒有帶到任何群組。",
+        "groupsIncomplete": "{time} 的登入讀不到完整的群組資料（例如群組過多被提供者省略，或宣告格式不是清單），既有映射角色保留不動。",
+        "groupsLocalAccount": "{time} 登入的帳號是本地帳號，不讀群組；請用由這個來源建立的帳號測試。",
+        "groupsAccountRemoved": "{time} 登入的帳號已刪除，無法判斷群組；請再用這個來源的帳號登入一次。",
+        "groupsNotConfigured": "沒有設定群組宣告，不使用群組映射。",
+        "groupsNone": "尚無登入觀測。",
+        "rulesAll": "{count} 條規則，全部啟用；最近一次重算命中 {matched} 人。",
+        "rulesSome": "{count} 條規則（啟用 {enabled} 條）；最近一次重算命中 {matched} 人。",
+        "rulesNone": "尚未設定映射規則。不使用群組映射時可忽略。",
+        "rulesAllDisabled": "{count} 條規則都已停用。",
+        "ldapUntested": "尚未測試。按左下「測試連線」。",
+        "ldapStale": "設定已變更，結果已過期，請再測一次。",
+        "ldapUnsaved": "測的是表單目前的值，尚未儲存。",
+        "ldapConnOk": "本頁 {time} 測試：連線與服務帳號登入（bind）都成功。",
+        "ldapBindFailed": "本頁 {time} 測試：連得上目錄，但服務帳號登入（bind）失敗。請確認服務帳號的 DN 與密碼。",
+        "ldapDialFailed": "本頁 {time} 測試：連不上目錄。請確認目錄網址、連接埠與網路。",
+        "ldapAttrOk": "本頁 {time} 測試：抽樣的使用者讀得到 {attr}。",
+        "ldapAttrUnreadable": "本頁 {time} 測試：抽樣的使用者讀不到 {attr}。服務帳號可能沒有讀取這個屬性的權限。",
+        "ldapAttrNoUsers": "本頁 {time} 測試：搜尋起點下沒有比對到使用者，無法抽樣。",
+        "ldapAttrSearchFailed": "本頁 {time} 測試：搜尋使用者失敗，沒有抽樣。請確認搜尋起點與使用者篩選條件。",
+        "ldapAttrNoSample": "連線未通過，沒有抽樣。",
+        "ldapAttrUnset": "未設定群組屬性，不使用群組映射。"
       },
-      "sourceNotConfigured": "此來源尚未設定"
+      "sourceNotConfigured": "此來源尚未設定",
+      "updatedAt": "{time} 更新",
+      "refresh": "重新整理",
+      "word": {
+        "ok": "通過",
+        "warn": "需處理",
+        "unverified": "尚未驗證",
+        "indeterminate": "無法判斷",
+        "notUsed": "未使用",
+        "disabled": "未啟用",
+        "expired": "已過期",
+        "unchecked": "尚未檢查",
+        "retest": "待重測",
+        "untested": "尚未測試",
+        "notSet": "未設定"
+      },
+      "label": {
+        "discovery": "探索文件（Issuer 網址）",
+        "credential": "用戶端密碼",
+        "groups": "群組資料",
+        "rules": "映射規則",
+        "connection": "連線與 bind",
+        "groupAttr": "抽樣使用者可讀群組屬性"
+      },
+      "summary": {
+        "okOidc": "設定正確：最近一次登入成功，系統檢查全部通過。",
+        "okLdap": "連線測試通過。",
+        "warn": "有 {count} 項需要處理：{first}。",
+        "unknownNoAttempt": "還不能確定設定正確：近 {days} 天沒有人經這個來源登入。",
+        "unknownLight": "還不能確定設定正確：「{name}」還沒有確認。",
+        "ldapUntested": "還沒測試連線：按左下「測試連線」，結果會出現在這裡。",
+        "item": {
+          "discoveryUnreachable": "取不到探索文件",
+          "discoveryInvalid": "Issuer 網址的格式不符",
+          "discoveryError": "探索檢查沒有完成",
+          "issuerMismatch": "提供者宣告的 Issuer 和你填的不同",
+          "algIncompatible": "提供者用的簽章演算法本系統不支援",
+          "admission": "最近一次登入被准入規則擋下",
+          "providerError": "身分提供者拒絕了最近一次登入",
+          "attemptFailed": "最近一次登入沒有成功",
+          "credentialUnset": "尚未填入用戶端密碼",
+          "credentialExchange": "用戶端密碼可能錯誤或已過期",
+          "groupsEmpty": "最近一次登入沒有帶到任何群組",
+          "groupsIncomplete": "最近一次登入讀不到完整的群組資料",
+          "warning": "此來源有需要處理的設定問題",
+          "ldapConnection": "連不上目錄",
+          "ldapBind": "服務帳號登入（bind）失敗",
+          "ldapSearch": "搜尋使用者失敗",
+          "ldapAttrUnreadable": "抽樣的使用者讀不到群組屬性"
+        },
+        "detail": {
+          "admission": "連線與密碼都沒問題，提供者已確認這個人的身分；擋下的是本系統的准入規則。",
+          "providerError": "多半要到提供者端處理，本系統的設定不用改。",
+          "credentialExchange": "最近一次登入在換權杖這一步失敗。",
+          "noAttempt": "用最下方的測試連結登入一次，結果會出現在這裡。"
+        }
+      },
+      "test": {
+        "head": "登入測試",
+        "intro": "用這個連結，以這個來源的帳號實際登入一次：",
+        "copy": "複製連結",
+        "privateWindow": "請用無痕視窗或另一個瀏覽器開啟。在這個視窗登入，會換掉你目前的管理者登入。",
+        "autoRefresh": "登入完回到這裡，面板會自動更新。",
+        "baseUrlUnset": "無法產生測試連結：尚未設定對外基準網址（PUBLIC_BASE_URL）。請完成部署設定並重新啟動服務，再回到這裡。",
+        "sourceDisabled": "來源啟用後才能測試。停用的來源不會出現在登入頁。"
+      },
+      "attempt": {
+        "title": "最近一次登入",
+        "account": "帳號",
+        "none": "近 {days} 天沒有經這個來源的登入嘗試。",
+        "showDetails": "顯示技術細節",
+        "hideDetails": "隱藏技術細節",
+        "field": {
+          "event": "事件",
+          "rule": "未通過的規則",
+          "sub": "子碼",
+          "reasonCode": "原因碼",
+          "providerCode": "提供者代碼",
+          "providerDescription": "身分提供者自報"
+        },
+        "missingToggle": "剛才的測試沒有出現在這裡？",
+        "compareTime": "先比對上方時間是不是剛才那次測試。",
+        "waiting": "正在等待這次登入的結果…",
+        "waitTimeout": "沒有收到這次登入的紀錄。",
+        "missingHead": "剛用測試連結登入卻沒有出現新紀錄，可能是：",
+        "missing": {
+          "providerBlocked": "提供者在它自己的頁面就擋下了（例如回呼網址沒有登記、帳號沒有被指派到這個應用程式）；",
+          "discovery": "登入在發起時或回到本系統時取不到提供者的探索文件，這兩個階段本系統不留紀錄（看上方探索燈）；",
+          "sameBrowser": "測試連結開在已登入的瀏覽器，沒有真的進行登入。"
+        },
+        "missingTail": "請看測試視窗裡提供者頁面或本系統登入頁上顯示的錯誤。",
+        "label": {
+          "success": "成功",
+          "pending": "等待後續步驟",
+          "admission": "准入未通過",
+          "providerDenied": "提供者拒絕",
+          "providerError": "提供者回報錯誤",
+          "unknown": "未完成",
+          "failed": "失敗",
+          "denied": "已拒絕"
+        },
+        "reason": {
+          "success": "登入成功。",
+          "pending_mfa": "身分提供者驗證通過，等待第二因素驗證。提供者端設定沒問題。",
+          "pending_mfa_enrollment": "身分提供者驗證通過，等待註冊第二因素。提供者端設定沒問題。",
+          "pending_password_change": "身分提供者驗證通過，等待變更密碼。提供者端設定沒問題。",
+          "source_denied": "身分提供者驗證通過，但登入來源位址不在允許範圍內。",
+          "admission_tid": "租戶不符：這個帳號所屬的組織，不在准入規則允許的租戶清單中。",
+          "admission_hd": "組織網域不符或缺少：個人 Gmail 帳號沒有組織網域，會被擋下。",
+          "admission_email_domain": "email 網域不在准入清單中。",
+          "admission_email_verified": "提供者沒有表明這個 email 已驗證。",
+          "admission_not_prebound": "這個外部帳號還沒綁定本系統帳號，而目前只允許已綁定的帳號登入。",
+          "admission_rules_noncompliant": "准入規則目前不符合要求，系統已停止自動建立帳號：{detail}",
+          "code_exchange_failed": "用授權碼向提供者換權杖失敗。",
+          "id_token_missing": "提供者沒有回傳身分權杖。",
+          "id_token_invalid": "身分權杖驗證失敗。",
+          "provider_unavailable": "登入過程中這個來源被停用或設定已變更。",
+          "internal_error": "系統查詢帳號時發生錯誤。",
+          "provider_error": "身分提供者回報了錯誤，代碼見技術細節。",
+          "username_conflict": "帳號名稱與既有的本系統帳號相同，系統不會接管既有帳號。",
+          "account_removed": "綁定的帳號已被刪除。",
+          "user_inactive": "帳號已停用。",
+          "unknown": "登入未完成。"
+        },
+        "advice": {
+          "source_denied": "提供者端設定沒問題，請檢查存取來源限制。",
+          "admission_tid": "請確認准入規則填的是本組織的目錄（租用戶）識別碼；如果這個帳號本來就不該登入，可以不用處理。",
+          "admission_email_verified": "Entra 不提供這個宣告，請改用租戶識別規則。",
+          "admission_not_prebound": "請先在使用者頁綁定，或改用自動建立帳號。",
+          "code_exchange_failed": "最常見是用戶端密碼錯了或已過期：到提供者端產生新密碼，填入左側 Client Secret 並儲存，再測一次。其次是回呼網址與提供者端登記的不一致。",
+          "id_token_invalid": "請確認 Client ID 與 Issuer 和提供者端一致，並確認伺服器時間正確。",
+          "provider_unavailable": "請再試一次。",
+          "internal_error": "請查看伺服器日誌。",
+          "username_conflict": "請調整帳號名稱對應，或先處理既有帳號。"
+        },
+        "detail": {
+          "admission_rules_noncompliant": {
+            "shared_needs_org_rule": "多組織共用的來源需要租戶或組織網域規則。",
+            "empty_rule_set": "沒有任何規則。",
+            "consumer_tenant": "填的是個人帳號租戶。",
+            "email_needs_verified": "只用 email 網域時須要求 email 已驗證。",
+            "unknown_rule": "規則無法解析。",
+            "invalid_rules": "規則無法解析。",
+            "other": "規則無法解析。"
+          },
+          "provider_error": {
+            "access_denied": "身分提供者拒絕授權，例如這個帳號沒有被指派到這個應用程式。",
+            "invalid_scope": "提供者不接受本系統要求的某個授權範圍。",
+            "unauthorized_client": "提供者不允許這個應用程式使用這種登入方式。",
+            "server_error": "提供者暫時故障。",
+            "temporarily_unavailable": "提供者暫時無法服務。",
+            "login_required": "需要使用者在提供者端完成登入。",
+            "interaction_required": "需要使用者在提供者端完成操作。",
+            "consent_required": "需要使用者在提供者端同意授權。",
+            "other": "身分提供者回報了錯誤，代碼見技術細節。"
+          }
+        },
+        "providerAdvice": {
+          "access_denied": "到提供者端確認這個帳號（或它所屬的群組）已被指派到應用程式，再測一次。",
+          "invalid_scope": "檢查左側的授權範圍，移除提供者不支援的項目。",
+          "unauthorized_client": "到提供者端確認這個應用程式允許授權碼流程。",
+          "server_error": "稍後再測一次。",
+          "temporarily_unavailable": "稍後再測一次。",
+          "login_required": "在測試視窗裡照提供者頁面的指示完成，再測一次。",
+          "interaction_required": "在測試視窗裡照提供者頁面的指示完成，再測一次。",
+          "consent_required": "在測試視窗裡照提供者頁面的指示完成，再測一次。",
+          "other": "請用這個代碼查提供者的文件，或看測試視窗裡提供者頁面顯示的訊息。"
+        }
+      }
     }
   },
   "externalIdentities": {

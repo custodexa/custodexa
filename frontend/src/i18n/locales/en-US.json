@@ -190,7 +190,8 @@
       "oidc_provider_error": "The identity provider reported that sign-in was not completed",
       "oidc_flow_invalid": "The sign-in flow is no longer valid",
       "oidc_account_removed": "Your account in this system has been deleted by an administrator",
-      "oidc_user_inactive": "Your account has been disabled"
+      "oidc_user_inactive": "Your account has been disabled",
+      "oidc_code_exchange_failed": "Sign-in could not be completed with the identity provider"
     },
     "ssoSlugHint": {
       "oidc_admission_denied": "Please contact your administrator to confirm whether your account belongs to an allowed organization.",
@@ -199,10 +200,20 @@
       "oidc_provider_error": "You may have cancelled the authorization, or the provider rejected this sign-in. You can start again.",
       "oidc_flow_invalid": "Sign-in links are single-use and time-limited. Please start the sign-in again.",
       "oidc_account_removed": "This sign-in method only allows people an administrator has linked in advance. Ask your administrator to recreate your account and link your external identity.",
-      "oidc_user_inactive": "Ask your administrator to re-enable your account."
+      "oidc_user_inactive": "Ask your administrator to re-enable your account.",
+      "oidc_code_exchange_failed": "This is usually caused by a wrong or expired client secret. Please notify your system administrator."
     },
-    "insecureTransportTitle": "Security notice: sign-in will not be kept",
-    "insecureTransportBody": "This site is opened over http, so sign-in state is not kept (re-login every 15 minutes)."
+    "insecureTransportTitle": "Your sign-in has ended. Please sign in again",
+    "insecureTransportBody": "If you have to sign in again about every 15 minutes at this address, the way you connect may be keeping your browser from saving your sign-in. Please let your system administrator know.",
+    "testSource": {
+      "usernamePlaceholder": "Directory username",
+      "badge": "Sign-in method under test",
+      "notListed": "The sign-in method to test is not on the sign-in page right now. It may be disabled or not fully set up.",
+      "ldap": "This is a directory account sign-in test. Enter a directory username and password.",
+      "authedTitle": "You are already signed in",
+      "authedBody": "This is a sign-in test link. To test, open it in a private window or another browser. Signing in here would replace your current sign-in.",
+      "backToDashboard": "Back to dashboard"
+    }
   },
   "api": {
     "requestFailed": "Request failed",
@@ -1121,7 +1132,8 @@
         "create": "New shared credential...",
         "meta": "{username} · {type} · {count} hosts",
         "createdNotListed": "The new credential does not match this asset's protocol, so it is not in the list."
-      }
+      },
+      "privateKeyLooksPublic": "This looks like a public key. Paste the private key instead. Its first line starts with \"-----BEGIN\"."
     },
     "editDrawer": {
       "basicSection": "Basics",
@@ -2148,6 +2160,48 @@
   "asciiPlayer": {
     "loading": "Loading the recording...",
     "speedChangeFailed": "Failed to change the playback speed"
+  },
+  "recordingReadability": {
+    "state": {
+      "unreadable": "Recording file can't be read",
+      "missing": "Recording file not found"
+    },
+    "downloadDisabled": {
+      "unreadable": "The recording file can't be read right now, so it can't be downloaded. Ask your system administrator to check the permissions on the recording storage location.",
+      "missing": "The recording file is no longer in the storage location, so it can't be downloaded."
+    },
+    "offsiteHint": "This recording is kept in offsite storage. It has to be retrieved before playback or download, which may take longer.",
+    "card": {
+      "unreadable": {
+        "title": "The recording file for this session can't be read right now",
+        "body": "The system has a record of this session's recording, but can't read the recording file right now. This doesn't mean nothing was recorded.",
+        "next": "Next step: ask your system administrator to check the permissions on the recording storage location."
+      },
+      "missing": {
+        "title": "The recording file is no longer in the storage location",
+        "body": "The system has a record of this session's recording, but the recording file is no longer in the storage location. It may have been cleaned up or lost.",
+        "next": "Next step: if offsite storage is set up, check the offsite copy status in the session information to see whether a copy exists."
+      }
+    },
+    "adminInfo": "For administrators",
+    "sessionIdLabel": "Session ID",
+    "errorCodeLabel": "Error code",
+    "playback": {
+      "unreadable": {
+        "title": "Playback stopped: the recording file can't be read",
+        "detail": "The recording file became unreadable during playback. Reload the player to try again; if it still won't play, ask your system administrator to check the permissions on the recording storage location."
+      },
+      "missing": {
+        "title": "Playback stopped: the recording file is no longer in the storage location",
+        "detail": "The recording file was removed during playback. It may have been cleaned up or lost. If offsite storage is set up, check the offsite copy status."
+      },
+      "reload": "Reload player"
+    },
+    "download": {
+      "unreadable": "Download failed: the recording file can't be read right now. Ask your system administrator to check the permissions on the recording storage location.",
+      "missing": "Download failed: the recording file is no longer in the storage location. It may have been cleaned up or lost.",
+      "failed": "Download failed: {reason}"
+    }
   },
   "monitorTerminal": {
     "backToSessions": "Back to Sessions",
@@ -3951,6 +4005,7 @@
     "INTERNAL_RECORDING_FILE_OPEN": "Failed to open recording file",
     "INTERNAL_RECORDING_FILE_QUERY": "Failed to get recording file",
     "INTERNAL_RECORDING_FILE_STAT": "Failed to get file info",
+    "INTERNAL_RECORDING_FILE_UNREADABLE": "Recording file can't be read",
     "INTERNAL_RECORDING_METADATA_QUERY": "Failed to get recording metadata",
     "INTERNAL_RECORDING_STATS_QUERY": "Failed to get statistics",
     "INTERNAL_RECORDING_TOKEN_ISSUE": "Failed to issue recording token",
@@ -4173,6 +4228,7 @@
     "RULE_SSH_DIAL_TIMEOUT": "Connection to the target host timed out",
     "RULE_SSH_ENDPOINT_MOVED": "SSH no longer goes through this endpoint; use the native terminal endpoint GET /api/v1/ssh",
     "RULE_SSH_HOST_KEY_CHANGED": "Host key has changed; the connection was refused. If the host was genuinely reinstalled, ask an administrator to reset its host key",
+    "RULE_SSH_PRIVATE_KEY_INVALID": "The private key set for this account can't be used (wrong format or protected by a passphrase). Ask an administrator to replace the private key.",
     "RULE_SSH_UNREACHABLE": "Unable to reach the target host",
     "RULE_STATS_UNSUPPORTED": "The target host does not support metrics collection",
     "RULE_TRANSFER_DENIED": "This data transfer is blocked by security policy ({action}, source: {reason})",
@@ -4259,6 +4315,7 @@
     "VALIDATION_CREDENTIAL_NAME_INVALID": "Credential name must not contain line breaks or control characters",
     "VALIDATION_CREDENTIAL_NAME_REQUIRED": "A shared credential requires a name",
     "VALIDATION_CREDENTIAL_NAME_TOO_LONG": "Credential name exceeds the 128-character limit",
+    "VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID": "The private key can't be recognized. Paste the whole private key, including its first and last marker lines. Private keys protected by a passphrase aren't supported yet; remove the passphrase first.",
     "VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID": "The credential protocol family is outside the allowed set",
     "VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID": "The rotation mode must be either one shared secret for the whole group, or a separate random secret per host",
     "VALIDATION_CREDENTIAL_SCOPE_INVALID": "Credential scope must be dedicated or shared",
@@ -4941,13 +4998,186 @@
       "groupsScopeMissingHint": "The groups scope is not requested, so most providers will not emit group claims.",
       "entra": {
         "issuer": "Entra: App registrations → your application → Overview. Copy the Directory (tenant) ID and enter https://login.microsoftonline.com/<Directory (tenant) ID>/v2.0.",
-        "clientId": "Entra: the Application (client) ID on the same Overview page, not the Object ID below it.",
-        "secret": "Entra: Certificates & secrets → Client secrets → New client secret. Copy the Value column, not the Secret ID next to it. The value is shown only once, right after it is created.",
-        "groupsClaim": "Entra: Token configuration → Add groups claim. Select Security groups, save, and enter groups here. Entra does not need the groups scope and does not accept it.",
-        "groupsScopeRejected": "Entra does not support the groups scope; with it selected, sign-in is rejected (AADSTS650053). Enable groups in Entra's Token configuration instead and clear this checkbox.",
+        "clientId": "Entra: the Application (client) ID on the same Overview page, not the Object ID on that page.",
+        "secret": "Entra: Certificates & secrets → Client secrets → New client secret. Copy the Value column. The value is shown only once, right after it is created. The lifetime is at most 24 months and Microsoft recommends less than 12; once it expires, sign-in fails (AADSTS7000222).",
+        "groupsClaim": "Entra: Token configuration → Add groups claim. Select Security groups, save, and enter groups here. Entra does not need the groups scope; the token carries the groups' object IDs.",
+        "groupsScopeRejected": "Entra's OpenID Connect scopes are only openid, email, profile and offline_access; groups is not one of them. Enable groups in Entra's Token configuration instead and clear this checkbox.",
         "tid": "Entra: enter the Directory (tenant) ID from the Overview page.",
-        "emailVerified": "Entra ID tokens do not carry email_verified, so turning this on rejects everyone. Use the tenant ID (tid) rule instead.",
-        "emailDomain": "This rule also requires email_verified, which Entra does not send, so it never passes. Use the tenant ID (tid) rule instead."
+        "emailVerified": "The Entra ID token claim list has no email_verified, so turning this on rejects everyone. Use the tenant ID (tid) rule instead.",
+        "emailDomain": "This rule also requires email_verified, which is not in the Entra ID token claim list, so it never passes. Use the tenant ID (tid) rule instead."
+      },
+      "provider": {
+        "label": "Provider",
+        "entra": "Microsoft Entra ID",
+        "google": "Google",
+        "other": "Other OIDC",
+        "hintNew": "Choose your identity provider to see where to find each value. This only changes the guide; it is not saved.",
+        "hintEdit": "Detected from the issuer. Changing it only changes the setup guide; it is not saved."
+      },
+      "guide": {
+        "title": "Where to find each value in {provider}",
+        "fullSteps": "Full steps",
+        "stepCount": "{n} steps",
+        "otherIntro": "Provider admin consoles differ, so this lists what this system requires of the provider.",
+        "field": {
+          "issuer": "Issuer",
+          "clientId": "Client ID",
+          "secret": "Client Secret",
+          "redirect": "Redirect URI",
+          "admission": "Admission rules",
+          "groups": "Groups",
+          "restrict": "Restrict who can sign in",
+          "clientIdSecret": "Client ID / Secret",
+          "flow": "Flow",
+          "scopes": "Scopes"
+        },
+        "entra": {
+          "issuer": "On the app's Overview page, copy the Directory (tenant) ID and enter https://login.microsoftonline.com/<ID>/v2.0. Do not use common, organizations or consumers.",
+          "clientId": "The Application (client) ID on the same page, not the Object ID on that page.",
+          "secret": "Certificates & secrets → Client secrets → New client secret, then copy the Value; it is never displayed again after you leave the page. The lifetime is at most 24 months and Microsoft recommends less than 12; once it expires, sign-in fails (AADSTS7000222).",
+          "redirect": "Paste the redirect URI shown on this page into Entra under Authentication → Redirect URI configuration → Add Redirect URI → Web, then select Configure.",
+          "admission": "Enter the same Directory (tenant) ID under Tenant ID (tid). The Entra ID token claim list has no email_verified, so use the tid rule.",
+          "groups": "Under Token configuration → Add groups claim, select Security groups and enter groups here; the token carries the groups' object IDs.",
+          "restrict": "In Enterprise apps, set Assignment required? to Yes, then assign people under Users and groups. Global Administrators are not subject to this setting."
+        },
+        "google": {
+          "issuer": "Choosing Google fills in https://accounts.google.com.",
+          "clientId": "Open the client on the Clients page to see it.",
+          "secret": "Shown only once, when the client is created. Copy it right away.",
+          "redirect": "Add it to the client's Authorized redirect URIs. It must match exactly, and changes may take 5 minutes to a few hours to take effect.",
+          "admission": "Enter your Google Workspace domain under Google hosted domain (hd). Personal Gmail accounts have no hd and are blocked.",
+          "groups": "Google ID tokens have no groups claim. Leave Groups claim name empty.",
+          "restrict": "Set Audience to Internal to allow only members of your organization. Available only to projects that belong to a Google Cloud organization."
+        },
+        "other": {
+          "issuer": "Must be an https URL.",
+          "clientIdSecret": "Create a web application client at the provider. This system supports client secrets only.",
+          "redirect": "Register the redirect URI shown on this page at the provider.",
+          "flow": "This system uses the authorization code flow with PKCE (S256); the provider must support both.",
+          "scopes": "Besides openid, only profile, email and groups can be selected.",
+          "groups": "Groups are read only from the ID token. The provider must put groups in the ID token, not only in userinfo."
+        },
+        "stepGroup": {
+          "create": "Create the application",
+          "issuer": "Issuer",
+          "clientId": "Client ID",
+          "secret": "Client Secret",
+          "redirect": "Redirect URI",
+          "entraTid": "Admission rule: Tenant ID (tid)",
+          "entraGroups": "Groups (optional)",
+          "entraRestrict": "Restrict who can sign in (optional)",
+          "googleClient": "Create the client and redirect URI",
+          "googleIssuerClientId": "Issuer and Client ID",
+          "googleHd": "Admission rule: Google hosted domain (hd)",
+          "googleGroups": "Groups"
+        },
+        "steps": {
+          "entra": {
+            "s1": "Sign in to the Microsoft Entra admin center (entra.microsoft.com) as at least an Application Developer.",
+            "s2": "Go to Entra ID → App registrations and select New registration.",
+            "s3": "Enter any name; users see it when they sign in.",
+            "s4": "Under Supported account types, choose the option limited to your organization's tenant: \"Single tenant only - <your tenant>\", or \"Accounts in this organizational directory only\" in the older UI.",
+            "s5": "Select Register. The app's Overview page opens.",
+            "s6": "On the Overview page, copy the Directory (tenant) ID.",
+            "s7": "Set Issuer to https://login.microsoftonline.com/<Directory (tenant) ID>/v2.0.",
+            "s8": "Do not use the common, organizations or consumers addresses; they let other organizations or personal accounts sign in.",
+            "s9": "Set Client ID to the Application (client) ID on the same page.",
+            "s10": "The same page also shows an Object ID, which identifies the app within your tenant. Do not use it.",
+            "s11": "In the left menu, select Certificates & secrets → Client secrets → New client secret.",
+            "s12": "Enter a description and choose an expiry: at most 24 months, and Microsoft recommends less than 12 months.",
+            "s13": "Select Add, then copy the Value column.",
+            "s14": "The value is never displayed again after you leave the page, so paste it into this system right away.",
+            "s16": "Once the secret expires, sign-in fails (error AADSTS7000222). Add a new one before it expires and update the Client Secret here.",
+            "s17": "Microsoft recommends certificates for production; this system currently supports client secrets only.",
+            "s18": "This system's redirect URI is shown on this page under \"Register the redirect URI\", in the form <public base URL>/api/v1/auth/oidc/callback.",
+            "s19": "If it is empty, the public base URL was not set at deployment. Ask your deployment team to set it first.",
+            "s20": "In Entra's left menu, select Authentication → the Redirect URI configuration tab → Add Redirect URI → Web.",
+            "s21": "Paste this system's redirect URI into the Redirect URI field and select Configure.",
+            "s22": "In the older UI, the path is Platform configurations → Add a platform → Web → Redirect URIs.",
+            "s23": "The URI must start with https, and its case must match what this system shows.",
+            "s24": "If the URI does not match, the sign-in page shows error AADSTS50011.",
+            "s25": "Under Tenant ID (tid), enter the Directory (tenant) ID from the Issuer steps.",
+            "s26": "Do not enter 9188040d-6c67-4c5b-b112-36a304b66dad; it is the tenant shared by personal Microsoft accounts.",
+            "s27": "The Entra ID token claim list has no email_verified, so use the tid rule for Entra sources.",
+            "s28": "To assign roles by Entra group, in the app's left menu select Token configuration → Add groups claim → Security groups → Save.",
+            "s29": "Enter groups as this system's Groups claim name.",
+            "s30": "Entra puts the groups' object IDs in the token, not group names. Use object IDs in mapping rules.",
+            "s31": "When a person belongs to more than 200 groups (including nested groups), Entra leaves the group list out.",
+            "s32": "In that case you can choose Groups assigned to the application instead, but that option excludes nested groups; users must be direct members of an assigned group.",
+            "s33": "Do not select the groups scope. Entra's OpenID Connect scopes are only openid, email, profile and offline_access.",
+            "s35": "By default, everyone in the tenant can sign in to the app.",
+            "s36": "To restrict it, go to Entra ID → Enterprise apps → All applications and select the app.",
+            "s37": "Under Properties, set Assignment required? to Yes and select Save.",
+            "s38": "Then go to Users and groups → Add user/group, choose people or groups, and select Assign.",
+            "s39": "People who are not assigned see error AADSTS50105 when they sign in.",
+            "s40": "Global Administrators are not subject to this setting."
+          },
+          "google": {
+            "s1": "In the Google Cloud Console, open the Google Auth Platform page. On first use, click GET STARTED.",
+            "s2": "Set Audience to Internal so that only members of your organization can sign in.",
+            "s3": "People outside the organization see an org_internal error.",
+            "s4": "Only projects that belong to a Google Cloud organization can choose Internal.",
+            "s5": "On the Clients page, click Create Client and choose Web application.",
+            "s6": "Under Authorized redirect URIs, add the redirect URI shown on this page and click Create.",
+            "s7": "The URI must use https and match what this system shows exactly, including case and any trailing slash.",
+            "s8": "Changes may take 5 minutes to a few hours to take effect.",
+            "s9": "Set Issuer to https://accounts.google.com.",
+            "s10": "To see the Client ID, open the client on the Clients page.",
+            "s11": "The Client Secret is shown only once, when the client is created. Copy it into this system right away.",
+            "s12": "Afterwards, the console shows only its last four characters.",
+            "s13": "If you lose it, use client secret rotation to add a new one, update this system, then disable the old one.",
+            "s15": "Google automatically deletes a client that has been inactive for six months, and emails you 30 days before deletion.",
+            "s16": "Under Google hosted domain (hd), enter your organization's Google Workspace domain.",
+            "s17": "The domain list is in the Google Admin console under Menu → Account → Domains → Manage domains.",
+            "s19": "Personal Gmail accounts have no hd and are blocked by this rule.",
+            "s20": "Do not rely on the email domain alone to identify organization members; Google recommends checking hd.",
+            "s21": "Google ID tokens have no groups claim.",
+            "s22": "This system reads groups only from the ID token, so Google sources cannot assign roles by group. Leave Groups claim name empty.",
+            "s23": "Do not select the groups scope; Google supports openid, email and profile."
+          }
+        }
+      },
+      "verdict": {
+        "title": "System verdict",
+        "newHint": "The system verdict for this address appears after you save.",
+        "plain": {
+          "unknown_default": "This sign-in address is not declared as used only by your organization. Accounts from other organizations may sign in through the same address, so the system applies stricter rules.",
+          "builtin_list": "This sign-in address belongs to a public sign-in service where anyone can create an account (built-in list), so stricter rules always apply and it cannot be treated as dedicated to your organization.",
+          "deploy_declared": "Your deployment team has declared this sign-in address as used only by your organization.",
+          "admin_forced": "\"Always treat as shared across organizations\" is turned on on this page."
+        },
+        "entraNote": "A shared verdict does not block sign-in. In auto-provisioning mode, every sign-in must still meet the admission rules, such as the tenant.",
+        "showDetails": "Show technical details",
+        "hideDetails": "Hide technical details",
+        "detailSource": "Determined by: {label} ({code})",
+        "detailIssuer": "Sign-in address (issuer): {issuer}",
+        "sourceLabel": {
+          "unknown_default": "not declared",
+          "builtin_list": "built-in list",
+          "deploy_declared": "deployment declaration",
+          "admin_forced": "forced on this page"
+        },
+        "detail": {
+          "unknown_default": "The deployment setting OIDC_DEDICATED_ISSUERS does not list this address. If you did declare it, check the spelling and whether every service replica has been restarted.",
+          "builtin_list": "This address is on the built-in list of public sign-in services, which takes precedence over declarations in the deployment setting OIDC_DEDICATED_ISSUERS.",
+          "deploy_declared": "The deployment setting OIDC_DEDICATED_ISSUERS lists this address.",
+          "admin_forced": "The setting on this page takes precedence over declarations in the deployment setting OIDC_DEDICATED_ISSUERS. Once it is turned off, the verdict follows the deployment declaration or the conservative default again."
+        }
+      },
+      "forceSharedToggle": {
+        "on": "On",
+        "off": "Off",
+        "hintOn": "Turning it off returns to the verdict the system would otherwise make; it appears above after you save.",
+        "hintOff": "Turning it on applies stricter rules: for auto-provisioning, the admission rules must include a tenant or organization domain condition. You can turn it off again later."
+      },
+      "entraAssist": {
+        "label": "Only have the Directory (tenant) ID? Paste it here to build the address",
+        "composed": "The issuer address has been built, and the admission rule Tenant ID (tid) has been filled in.",
+        "composedKeptTid": "The issuer address has been built. The admission rule Tenant ID (tid) already had a value and was left unchanged.",
+        "formatWarning": "This address differs from the usual Entra format (https://login.microsoftonline.com/<ID>/v2.0). Please check it again. You can still save."
+      },
+      "google": {
+        "groupsClaimNote": "Google ID tokens have no groups claim, so Google sources cannot assign roles by group."
       }
     },
     "ldap": {
@@ -4979,28 +5209,15 @@
     },
     "preflight": {
       "title": "Before you connect",
-      "leadOidc": "The settings on the left are ours. These are the things to do on the identity provider side.",
-      "leadLdap": "The settings on the left are ours. These are the things to do on the directory side.",
-      "checklistOidc": "Complete on the identity provider",
       "checklistLdap": "Complete on the directory",
-      "statusHead": "What this system verified",
-      "testHead": "Tests",
-      "noData": "No data yet",
+      "statusHead": "Setup checks",
       "rediscover": "Run discovery again",
-      "loginTest": "Sign-in test with this source",
       "loginTestNoticeOidc": "The sign-in test is a real sign-in: it creates an account according to the admission mode and writes to the audit log.",
       "loginTestNoticeLdap": "The sign-in test is a real sign-in: it creates the directory user's account here and writes to the audit log.",
       "oidc": {
-        "redirect": "Register the redirect URI",
+        "redirect": "Register this redirect URI with the provider",
         "redirectUnset": "The public base URL is not set, so the redirect URI cannot be derived",
-        "appType": "Choose the Web application type and the right account type",
-        "appTypeHint": "The wrong choice keeps some people from signing in.",
-        "groupsClaim": "Enable the groups claim at the provider",
-        "groupsClaimHint": "When groups are synchronized from a directory, some providers need an expression to emit them.",
-        "secret": "Record the client secret and its expiry",
-        "secretHint": "Providers usually show it only once.",
-        "entraRedirect": "Entra: Authentication (shown as Authentication (Preview) in the new experience) → Redirect URI configuration → Add Redirect URI → Web. In the old experience: Add a platform → Web.",
-        "entraGroupsClaim": "Entra: Token configuration → Add groups claim → Security groups. When a person belongs to more than 200 groups, Entra leaves the group list out and the system keeps that person's existing mapped roles; large organizations should consider Groups assigned to the application instead."
+        "guideHint": "Where to find each value: see the guide on the left."
       },
       "ldap": {
         "readGroupAttr": "The service account can read each user's group attribute",
@@ -5009,19 +5226,234 @@
         "baseDnCoversHint": "Accounts outside the search base cannot sign in."
       },
       "light": {
-        "connection": "Connection and bind succeeded",
-        "groupAttrReadable": "The sampled user's group attribute is readable",
-        "discovery": "The discovery document is reachable",
-        "credential": "Credentials are set",
-        "groupsSeen": "The last sign-in carried group data",
-        "groupsSeenCount": "{count} groups seen",
-        "groupsSeenNone": "The last sign-in carried no group data",
-        "rules": "{count} mapping rules ({enabled} enabled), {matched} people matched on the last recomputation",
-        "rulesUnknown": "Mapping rule count",
+        "groupsSeenCount": "{count} groups received (observed {time}).",
+        "rulesUnknown": "No data yet.",
         "warningGeneric": "This source has a setting that needs attention",
-        "warningAction": "Fill it in from the group mapping section."
+        "warningAction": "Fill it in from the group mapping section.",
+        "discOkLocal": "Checked on this page at {time}: reachable, the issuer matches what you entered, and the signing algorithms are compatible.",
+        "discOkCached": "Retrieved by the system during a sign-in at {time}. To check again now, click \"Run discovery again\".",
+        "discUnsaved": "This result is for the URL currently in the form, which is not saved yet.",
+        "discUnreachable": "Checked on this page at {time}: the discovery document could not be retrieved, so sign-in will fail.",
+        "discCausesHead": "Possible causes:",
+        "discCauses": {
+          "typo": "The URL has a typo, for example part of the tenant ID is missing (the provider answers \"not found\").",
+          "egress": "This system cannot reach the internet, for example a firewall blocks it or a proxy is required.",
+          "internal": "The URL points to an internal address and the outbound policy blocks it (an allow list can be set at deployment).",
+          "temporary": "The provider is not responding right now. Try again later."
+        },
+        "discInvalid": "Checked on this page at {time}: the issuer URL is not in a valid format.",
+        "discInvalidHead": "Check that:",
+        "discInvalidCauses": {
+          "https": "It starts with https://. Production does not accept http://.",
+          "query": "It has no query string (?) or fragment (#)."
+        },
+        "discError": "Checked on this page at {time}: the check did not finish. Click \"Run discovery again\" later.",
+        "discUnchecked": "Not checked yet. Click \"Run discovery again\" to check now.",
+        "discIssuerMismatch": "Checked on this page at {time}: reachable, but the issuer declared by the provider differs from what you entered, so sign-in will fail.",
+        "discEntered": "You entered",
+        "discDeclared": "Provider declares",
+        "discSupported": "Supported here",
+        "discIssuerHint": "The two must match exactly (except for a trailing slash). If the declared value contains a placeholder such as {placeholder}, you entered a URL shared by many organizations: use the URL that contains your organization's tenant ID instead. Otherwise, change it to the declared value. Save, then run discovery again.",
+        "discAlgIncompatible": "Checked on this page at {time}: reachable, but the provider's signing algorithm is not supported here, so sign-in will fail.",
+        "discAlgHint": "On the provider side, change the ID token signing algorithm to RS256 or ES256.",
+        "discStale": "The setting has changed and this result is out of date. Run discovery again.",
+        "credUnset": "The client secret has not been entered.",
+        "credVerified": "Entered, and confirmed working by the sign-in at {time}.",
+        "credExchangeFailed": "The last sign-in ({time}) failed to exchange tokens. The secret may be wrong or expired.",
+        "credUnverified": "Entered, not yet confirmed by a sign-in.",
+        "credRetest": "The settings changed after the last sign-in. Test again.",
+        "groupsEmpty": "The sign-in at {time} returned no groups.",
+        "groupsIncomplete": "The sign-in at {time} did not return complete group data (for example, the provider left out groups because there were too many, or the claim is not a list). Existing mapped roles are kept.",
+        "groupsLocalAccount": "The account that signed in at {time} is a local account, so groups are not read. Test with an account created from this source.",
+        "groupsAccountRemoved": "The account that signed in at {time} has been deleted, so groups cannot be determined. Sign in once more with an account from this source.",
+        "groupsNotConfigured": "No groups claim is set, so group mapping is not used.",
+        "groupsNone": "No sign-in observed yet.",
+        "rulesAll": "{count} rules, all enabled. The last recomputation matched {matched} people.",
+        "rulesSome": "{count} rules ({enabled} enabled). The last recomputation matched {matched} people.",
+        "rulesNone": "No mapping rules yet. You can ignore this if you do not use group mapping.",
+        "rulesAllDisabled": "All {count} rules are disabled.",
+        "ldapUntested": "Not tested yet. Click \"Test connection\" at the bottom left.",
+        "ldapStale": "The settings have changed and this result is out of date. Test again.",
+        "ldapUnsaved": "This tested the values currently in the form, which are not saved yet.",
+        "ldapConnOk": "Tested on this page at {time}: the connection and the service account sign-in (bind) both succeeded.",
+        "ldapBindFailed": "Tested on this page at {time}: the directory is reachable, but the service account sign-in (bind) failed. Check the service account DN and password.",
+        "ldapDialFailed": "Tested on this page at {time}: the directory cannot be reached. Check the directory URL, port and network.",
+        "ldapAttrOk": "Tested on this page at {time}: {attr} is readable on the sampled user.",
+        "ldapAttrUnreadable": "Tested on this page at {time}: {attr} cannot be read on the sampled user. The service account may lack permission to read this attribute.",
+        "ldapAttrNoUsers": "Tested on this page at {time}: no users matched under the search base, so nothing was sampled.",
+        "ldapAttrSearchFailed": "Tested on this page at {time}: the user search failed, so nothing was sampled. Check the search base and the user filter.",
+        "ldapAttrNoSample": "The connection did not pass, so nothing was sampled.",
+        "ldapAttrUnset": "No group attribute is set, so group mapping is not used."
       },
-      "sourceNotConfigured": "This source is not configured yet"
+      "sourceNotConfigured": "This source is not configured yet",
+      "updatedAt": "Updated {time}",
+      "refresh": "Refresh",
+      "word": {
+        "ok": "Passed",
+        "warn": "Needs action",
+        "unverified": "Not verified yet",
+        "indeterminate": "Cannot tell",
+        "notUsed": "Not used",
+        "disabled": "Disabled",
+        "expired": "Out of date",
+        "unchecked": "Not checked yet",
+        "retest": "Test again",
+        "untested": "Not tested yet",
+        "notSet": "Not set"
+      },
+      "label": {
+        "discovery": "Discovery document (issuer URL)",
+        "credential": "Client secret",
+        "groups": "Group data",
+        "rules": "Mapping rules",
+        "connection": "Connection and bind",
+        "groupAttr": "Sampled user's group attribute is readable"
+      },
+      "summary": {
+        "okOidc": "Set up correctly: the last sign-in succeeded and every check passed.",
+        "okLdap": "The connection test passed.",
+        "warn": "Needs action ({count}): {first}.",
+        "unknownNoAttempt": "Not confirmed yet: no one has signed in through this source in the last {days} days.",
+        "unknownLight": "Not confirmed yet: \"{name}\" has not been verified.",
+        "ldapUntested": "Connection not tested yet: click \"Test connection\" at the bottom left and the result appears here.",
+        "item": {
+          "discoveryUnreachable": "the discovery document could not be retrieved",
+          "discoveryInvalid": "the issuer URL is not in a valid format",
+          "discoveryError": "the discovery check did not finish",
+          "issuerMismatch": "the issuer declared by the provider differs from what you entered",
+          "algIncompatible": "the provider's signing algorithm is not supported here",
+          "admission": "the last sign-in was blocked by an admission rule",
+          "providerError": "the identity provider rejected the last sign-in",
+          "attemptFailed": "the last sign-in did not succeed",
+          "credentialUnset": "the client secret has not been entered",
+          "credentialExchange": "the client secret may be wrong or expired",
+          "groupsEmpty": "the last sign-in returned no groups",
+          "groupsIncomplete": "the last sign-in did not return complete group data",
+          "warning": "this source has a setting that needs attention",
+          "ldapConnection": "the directory cannot be reached",
+          "ldapBind": "the service account sign-in (bind) failed",
+          "ldapSearch": "the user search failed",
+          "ldapAttrUnreadable": "the sampled user's group attribute cannot be read"
+        },
+        "detail": {
+          "admission": "The connection and the client secret work, and the provider confirmed who this person is. The block comes from this system's admission rules.",
+          "providerError": "This usually needs to be fixed on the provider's side. No change is needed here.",
+          "credentialExchange": "The last sign-in failed at the token exchange step.",
+          "noAttempt": "Sign in once with the test link at the bottom and the result appears here."
+        }
+      },
+      "test": {
+        "head": "Sign-in test",
+        "intro": "Use this link to sign in once with an account from this source:",
+        "copy": "Copy link",
+        "privateWindow": "Open it in a private window or another browser. Signing in from this window replaces your current administrator sign-in.",
+        "autoRefresh": "Come back here after signing in. The panel updates on its own.",
+        "baseUrlUnset": "No test link can be made: the public base URL (PUBLIC_BASE_URL) is not set. Finish the deployment setting, restart the service, then come back here.",
+        "sourceDisabled": "You can test once the source is enabled. Disabled sources do not appear on the sign-in page."
+      },
+      "attempt": {
+        "title": "Last sign-in",
+        "account": "Account",
+        "none": "No sign-in attempts through this source in the last {days} days.",
+        "showDetails": "Show technical details",
+        "hideDetails": "Hide technical details",
+        "field": {
+          "event": "Event",
+          "rule": "Failed rule",
+          "sub": "Subcode",
+          "reasonCode": "Reason code",
+          "providerCode": "Provider code",
+          "providerDescription": "Reported by the identity provider"
+        },
+        "missingToggle": "Your test sign-in is not showing here?",
+        "compareTime": "First check whether the time above is the test you just ran.",
+        "waiting": "Waiting for the result of this sign-in…",
+        "waitTimeout": "No record of this sign-in was received.",
+        "missingHead": "If you just signed in with the test link and no new record appears, possible reasons are:",
+        "missing": {
+          "providerBlocked": "The provider blocked it on its own page (for example, the redirect URI is not registered, or the account is not assigned to this application).",
+          "discovery": "The provider's discovery document could not be retrieved when the sign-in started or returned here. These two steps leave no record (see the discovery check above).",
+          "sameBrowser": "The test link was opened in a browser that is already signed in, so no sign-in actually happened."
+        },
+        "missingTail": "Check the error shown on the provider's page or on this system's sign-in page in the test window.",
+        "label": {
+          "success": "Succeeded",
+          "pending": "Waiting for next step",
+          "admission": "Admission denied",
+          "providerDenied": "Provider denied",
+          "providerError": "Provider reported an error",
+          "unknown": "Not completed",
+          "failed": "Failed",
+          "denied": "Denied"
+        },
+        "reason": {
+          "success": "Signed in successfully.",
+          "pending_mfa": "The identity provider verified the user, who is now completing second-factor verification. The provider's setup is fine.",
+          "pending_mfa_enrollment": "The identity provider verified the user, who now needs to enroll a second factor. The provider's setup is fine.",
+          "pending_password_change": "The identity provider verified the user, who now needs to change the password. The provider's setup is fine.",
+          "source_denied": "The identity provider verified the user, but the sign-in came from an address that is not allowed.",
+          "admission_tid": "Tenant mismatch: this account's organization is not in the tenant list allowed by the admission rules.",
+          "admission_hd": "The organization domain does not match or is missing: personal Gmail accounts have no organization domain and are blocked.",
+          "admission_email_domain": "The email domain is not in the admission list.",
+          "admission_email_verified": "The provider did not state that this email is verified.",
+          "admission_not_prebound": "This external account is not linked to an account here yet, and only linked accounts may sign in right now.",
+          "admission_rules_noncompliant": "The admission rules do not currently meet the requirements, so automatic account creation has stopped: {detail}",
+          "code_exchange_failed": "Exchanging the authorization code for tokens with the provider failed.",
+          "id_token_missing": "The provider did not return an ID token.",
+          "id_token_invalid": "The ID token failed verification.",
+          "provider_unavailable": "This source was disabled or its settings changed during the sign-in.",
+          "internal_error": "An error occurred while looking up the account.",
+          "provider_error": "The identity provider reported an error. The code is in the technical details.",
+          "username_conflict": "The username matches an existing account here. The existing account is not taken over.",
+          "account_removed": "The linked account has been deleted.",
+          "user_inactive": "The account is disabled.",
+          "unknown": "The sign-in did not complete."
+        },
+        "advice": {
+          "source_denied": "The provider's setup is fine. Check the access source restrictions.",
+          "admission_tid": "Check that the admission rule uses your organization's Directory (tenant) ID. If this account should not sign in, no action is needed.",
+          "admission_email_verified": "Entra does not provide this claim. Use a tenant ID rule instead.",
+          "admission_not_prebound": "Link it on the Users page first, or switch to automatic account creation.",
+          "code_exchange_failed": "Most often the client secret is wrong or expired: create a new secret at the provider, enter it in Client Secret on the left, save, and test again. Less often, the redirect URI differs from the one registered with the provider.",
+          "id_token_invalid": "Check that the Client ID and issuer match the provider, and that the server clock is correct.",
+          "provider_unavailable": "Try again.",
+          "internal_error": "Check the server log.",
+          "username_conflict": "Adjust the username mapping, or deal with the existing account first."
+        },
+        "detail": {
+          "admission_rules_noncompliant": {
+            "shared_needs_org_rule": "a source shared by many organizations needs a tenant or organization domain rule.",
+            "empty_rule_set": "there are no rules.",
+            "consumer_tenant": "the tenant entered is the personal account tenant.",
+            "email_needs_verified": "when only email domains are used, verified email must be required.",
+            "unknown_rule": "the rules cannot be parsed.",
+            "invalid_rules": "the rules cannot be parsed.",
+            "other": "the rules cannot be parsed."
+          },
+          "provider_error": {
+            "access_denied": "The identity provider denied authorization, for example because this account is not assigned to this application.",
+            "invalid_scope": "The provider does not accept one of the scopes this system requests.",
+            "unauthorized_client": "The provider does not allow this application to use this sign-in method.",
+            "server_error": "The provider had a temporary failure.",
+            "temporarily_unavailable": "The provider is temporarily unavailable.",
+            "login_required": "The user needs to complete sign-in at the provider.",
+            "interaction_required": "The user needs to complete a step at the provider.",
+            "consent_required": "The user needs to grant consent at the provider.",
+            "other": "The identity provider reported an error. The code is in the technical details."
+          }
+        },
+        "providerAdvice": {
+          "access_denied": "At the provider, make sure this account (or one of its groups) is assigned to the application, then test again.",
+          "invalid_scope": "Check the scopes on the left and remove any the provider does not support.",
+          "unauthorized_client": "At the provider, make sure the application allows the authorization code flow.",
+          "server_error": "Test again later.",
+          "temporarily_unavailable": "Test again later.",
+          "login_required": "Follow the instructions on the provider's page in the test window, then test again.",
+          "interaction_required": "Follow the instructions on the provider's page in the test window, then test again.",
+          "consent_required": "Follow the instructions on the provider's page in the test window, then test again.",
+          "other": "Look up this code in the provider's documentation, or check the message on the provider's page in the test window."
+        }
+      }
     }
   },
   "externalIdentities": {

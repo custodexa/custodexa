@@ -207,6 +207,9 @@ cx_up_script_backup() {
   cx_bk_take upgrade cx_up_bk_cb || { cx_up_bk_failed; return 1; }
   CX_UP_BACKUP=backups/$CX_PB_NAME
   cx_pb_record_file
+  # Saved with the new last_backup.*: status tells this backup from one the backup command makes
+  # later, even if the run ends before last_upgrade.backup is set.
+  cx_state_set last_upgrade.backup_id "$CX_BK_TS"
   if ! cx_state_save "$CX_ROOT/state.json"; then
     cx_log FAIL "state.json not written after the commit"
     printf '\n'

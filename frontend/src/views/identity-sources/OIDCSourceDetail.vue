@@ -30,6 +30,12 @@
       show-icon
     />
 
+    <OIDCProviderSelector
+      v-model="provider"
+      :is-edit="isEdit"
+      @select="onProviderSelect"
+    />
+
     <el-form
       ref="formRef"
       v-loading="loading"
@@ -81,7 +87,19 @@
               {{ azureMultiTenantWarning }}
             </div>
             <div
-              v-if="isEntra"
+              v-if="entraFormatWarning"
+              class="field-warning"
+              data-test="entra-format-warning"
+            >
+              {{ $t('identitySources.oidc.entraAssist.formatWarning') }}
+            </div>
+            <EntraIssuerAssist
+              v-if="isEntra && !isEdit"
+              :status="entraAssistStatus"
+              @compose="composeFromTenant"
+            />
+            <div
+              v-if="isEntra && showFieldHints"
               class="field-hint"
             >
               {{ $t('identitySources.oidc.entra.issuer') }}
@@ -101,7 +119,7 @@
               :placeholder="$t('oidcProviders.clientIdPlaceholder')"
             />
             <div
-              v-if="isEntra"
+              v-if="isEntra && showFieldHints"
               class="field-hint"
             >
               {{ $t('identitySources.oidc.entra.clientId') }}
@@ -151,7 +169,7 @@
               {{ $t('identitySources.oidc.secretHint') }}
             </div>
             <div
-              v-if="isEntra"
+              v-if="isEntra && showFieldHints"
               class="field-hint"
             >
               {{ $t('identitySources.oidc.entra.secret') }}
@@ -256,15 +274,27 @@
               :label="$t('identitySources.oidc.groupsClaim')"
             >
               <!-- 不放預設字樣：灰字 groups 看起來像已填值，實際上是空的 -->
+              <!-- Google 的身分權杖沒有群組宣告：停用此欄。既有值仍可清除，清空後即停用 -->
               <el-input
                 v-model="form.groups_claim"
                 data-test="groups-claim-input"
+                :disabled="isGoogle && !form.groups_claim"
               />
-              <div class="field-hint">
+              <div
+                v-if="isGoogle"
+                class="field-hint"
+                data-test="google-groups-note"
+              >
+                {{ $t('identitySources.oidc.google.groupsClaimNote') }}
+              </div>
+              <div
+                v-else
+                class="field-hint"
+              >
                 {{ $t('identitySources.oidc.groupsClaimHint') }}
               </div>
               <div
-                v-if="isEntra"
+                v-if="isEntra && showFieldHints"
                 class="field-hint"
               >
                 {{ $t('identitySources.oidc.entra.groupsClaim') }}
@@ -278,7 +308,7 @@
                 {{ $t('identitySources.oidc.groupsScopeAutoAdded') }}
               </div>
               <div
-                v-else-if="!isEntra && form.groups_claim && !form.scopeExtras.includes('groups')"
+                v-else-if="isOther && form.groups_claim && !form.scopeExtras.includes('groups')"
                 class="field-warning"
               >
                 {{ $t('identitySources.oidc.groupsScopeMissingHint') }}
@@ -293,6 +323,14 @@
         :title="$t('identitySources.section.admission')"
         :hint="$t('identitySources.oidc.admissionHint')"
       >
+        <OIDCIssuerVerdict
+          :is-edit="isEdit"
+          :kind="issuerKind"
+          :source="issuerKindSource"
+          :issuer="form.issuer"
+          :entra="isEntra"
+        />
+
         <el-form-item :label="$t('oidcProviders.admissionMode')">
           <el-radio-group v-model="form.admission_mode">
             <el-radio value="prebound_only">
@@ -344,7 +382,7 @@
                 :placeholder="$t('oidcProviders.ruleListPlaceholder')"
               />
               <div
-                v-if="isEntra"
+                v-if="isEntra && showFieldHints"
                 class="field-hint"
               >
                 {{ $t('identitySources.oidc.entra.tid') }}
@@ -406,10 +444,22 @@
           </div>
         </template>
 
-        <el-form-item :label="$t('oidcProviders.forceShared')">
-          <el-switch v-model="form.force_shared" />
+        <!-- 只在有作用時出現：部署已宣告專屬（可開啟收緊）或已收緊（可關閉撤回）。
+             判定已是共用時開關開或關都不改變把關，不顯示以免被誤讀成「關＝本組織專屬」 -->
+        <el-form-item
+          v-if="showForceToggle"
+          :label="$t('oidcProviders.forceShared')"
+          data-test="force-shared-item"
+        >
+          <el-switch
+            v-model="form.force_shared"
+            data-test="force-shared-switch"
+            :active-text="$t(`identitySources.oidc.forceSharedToggle.${form.force_shared ? 'on' : 'off'}`)"
+          />
           <div class="field-hint">
-            {{ $t('oidcProviders.forceSharedHint') }}
+            {{ form.force_shared
+              ? $t('identitySources.oidc.forceSharedToggle.hintOn')
+              : $t('identitySources.oidc.forceSharedToggle.hintOff') }}
           </div>
         </el-form-item>
       </SourceSection>
@@ -435,7 +485,7 @@
             {{ $t('oidcProviders.scopesHint') }}
           </div>
           <div
-            v-if="!isEntra"
+            v-if="isOther"
             class="field-hint"
             data-test="groups-scope-hint"
           >
@@ -453,13 +503,17 @@
     </el-form>
 
     <template #panel>
+      <OIDCProviderGuide
+        v-model:open="guideOpen"
+        :provider="provider"
+      />
       <PreflightPanel
         ref="panelRef"
         type="oidc"
         :source-id="providerId"
         :redirect-uri="redirectUri"
         :redirect-uri-state="redirectUriState"
-        :entra="isEntra"
+        :discovery="preview.panelInput.value"
         :discovering="discovering"
         @rediscover="runDiscovery"
         @status="applyStatus"
@@ -469,26 +523,39 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import SourceDetailLayout from './components/SourceDetailLayout.vue'
-import SourceSection from './components/SourceSection.vue'
+import SourceSection, { SOURCE_SECTION_OPEN_KEY } from './components/SourceSection.vue'
 import GroupMappingEntry from './components/GroupMappingEntry.vue'
 import PreflightPanel from './components/PreflightPanel.vue'
+import OIDCProviderSelector from './components/OIDCProviderSelector.vue'
+import OIDCProviderGuide from './components/OIDCProviderGuide.vue'
+import OIDCIssuerVerdict from './components/OIDCIssuerVerdict.vue'
+import EntraIssuerAssist from './components/EntraIssuerAssist.vue'
 import { t } from '@/i18n'
 import { formatDateTime } from '@/utils/format'
 import { confirmDestructive } from '@/utils/confirm'
 import { withRiskGate } from '@/utils/mappingRiskGate'
-import { isEntraIssuer } from '@/utils/entraIssuer'
+import {
+  PROVIDER_ENTRA,
+  PROVIDER_GOOGLE,
+  PROVIDER_OTHER,
+  GOOGLE_ISSUER,
+  detectProvider,
+  isGoogleIssuer,
+  composeEntraIssuer,
+  looksLikeEntraTenantIssuer,
+  forceSharedPatch,
+} from '@/utils/oidcProvider'
 import { apiErrorSummary } from '@/api/redact'
 import { resolveApiError } from '@/api/error'
 import { createOIDCProvider, updateOIDCProvider } from '@/api/oidc'
+import { useDiscoveryPreview } from '@/composables/useDiscoveryPreview'
 import {
   getOIDCProviderDetail,
   getIdentitySources,
-  previewOIDCDiscovery,
-  isNotImplemented,
 } from '@/api/identitySources'
 
 // 多租戶端點：探索文件的 issuer 字面帶佔位符，嚴格比對必失敗。輸入當下就診斷
@@ -506,11 +573,11 @@ const providerId = computed(() => {
   return id === undefined || id === null || id === '' ? null : id
 })
 const isEdit = computed(() => providerId.value !== null)
+provide(SOURCE_SECTION_OPEN_KEY, (index) => isEdit.value || [1, 4].includes(index))
 
 const loading = ref(false)
 const loadFailed = ref(false)
 const saving = ref(false)
-const discovering = ref(false)
 const formError = ref('')
 const formRef = ref(null)
 const panelRef = ref(null)
@@ -527,8 +594,6 @@ const applyStatus = (s) => {
 }
 const redirectUri = ref('')
 const redirectUriState = ref('')
-const discovery = ref(null)
-const discoveryError = ref('')
 const limitationOpen = ref(false)
 
 const emptyRules = () => ({ tid: [], hd: [], email_domain: [], email_verified: false })
@@ -569,6 +634,13 @@ const formRules = computed(() => ({
 const snapshotOf = () => JSON.stringify(form)
 const savedSnapshot = ref(snapshotOf())
 const isDirty = computed(() => snapshotOf() !== savedSnapshot.value)
+const preview = useDiscoveryPreview({
+  currentIssuer: () => form.issuer,
+  savedIssuer: () => JSON.parse(savedSnapshot.value).issuer,
+  sourceKey: () => providerId.value,
+  onError: (error) => logFailure('oidc_discovery_preview_failed', error),
+})
+const { result: discovery, errorText: discoveryError, running: discovering, run: runDiscovery } = preview
 
 const subtitle = computed(() =>
   lastLoginAt.value
@@ -580,11 +652,40 @@ const lastSavedText = computed(() =>
   savedAt.value ? t('identitySources.lastSaved', { time: formatDateTime(savedAt.value) }) : ''
 )
 
-// Entra 來源：各欄追加「去 Entra 哪裡取值」，且不索取 groups 授權範圍
-const isEntra = computed(() => isEntraIssuer(form.issuer))
+// 提供者選擇器（畫面狀態，不持久化、不送出）：決定取值說明、各欄提供者提示與群組範圍的引導。
+// 新增頁預設「其他 OIDC」；編輯頁依 issuer 帶出（只在首次載入時帶，之後尊重管理者的改選）
+const provider = ref(PROVIDER_OTHER)
+const providerDerived = ref(false)
+const isEntra = computed(() => provider.value === PROVIDER_ENTRA)
+const isGoogle = computed(() => provider.value === PROVIDER_GOOGLE)
+const isOther = computed(() => provider.value === PROVIDER_OTHER)
+
+// 取值說明開著時，欄位下方不重複同一家的取值提示；新增頁預設展開、編輯頁預設收合
+const guideOpen = ref(!isEdit.value)
+const showFieldHints = computed(() => !guideOpen.value)
+
+// 系統判定（伺服端現算）與收緊開關的載入基準：沒動開關就不送 force_shared
+const issuerKind = ref('')
+const issuerKindSource = ref('')
+const forceSharedBase = ref(false)
+const showForceToggle = computed(
+  () => isEdit.value && ['deploy_declared', 'admin_forced'].includes(issuerKindSource.value)
+)
+
+const entraAssistStatus = ref('')
 
 const azureMultiTenantWarning = computed(() =>
   AZURE_MULTI_TENANT.test(form.issuer || '') ? t('oidcProviders.azureMultiTenantWarning') : ''
+)
+
+// 不像常見的 Entra 網址只提醒、不擋儲存：日後格式若有變動仍可照新網址填
+const entraFormatWarning = computed(
+  () =>
+    !isEdit.value &&
+    isEntra.value &&
+    Boolean(form.issuer.trim()) &&
+    !azureMultiTenantWarning.value &&
+    !looksLikeEntraTenantIssuer(form.issuer)
 )
 
 const discoveryRows = computed(() => {
@@ -624,8 +725,9 @@ watch(
   (next, prev) => {
     if (applyingView.value) return
     if (!next || prev) return
-    // Entra 不接受 groups 範圍（帶了登入即被拒），群組宣告改由其權杖設定開啟
-    if (isEntra.value) return
+    // Entra 的 OpenID Connect 範圍不含 groups，群組宣告改由其權杖設定開啟；
+    // Google 的身分權杖沒有群組宣告，勾了範圍也拿不到
+    if (isEntra.value || isGoogle.value) return
     if (form.scopeExtras.includes('groups')) return
     form.scopeExtras = [...form.scopeExtras, 'groups']
     groupsScopeAutoAdded.value = true
@@ -651,6 +753,13 @@ const applyView = (view) => {
     ? view.admission_mode
     : 'prebound_only'
   form.force_shared = view.issuer_kind_source === 'admin_forced'
+  forceSharedBase.value = form.force_shared
+  issuerKind.value = view.issuer_kind || ''
+  issuerKindSource.value = view.issuer_kind_source || ''
+  if (!providerDerived.value) {
+    provider.value = detectProvider(view.issuer)
+    providerDerived.value = true
+  }
   form.rules = parseRules(view.admission_rules)
 
   hasSecret.value = view.has_secret === true
@@ -680,31 +789,37 @@ const fetchProvider = async () => {
   }
 }
 
-const runDiscovery = async () => {
-  const issuer = form.issuer.trim()
-  if (!issuer) return
-  discovering.value = true
-  discoveryError.value = ''
-  try {
-    discovery.value = await previewOIDCDiscovery(issuer)
-  } catch (error) {
-    discovery.value = null
-    discoveryError.value = isNotImplemented(error)
-      ? t('identitySources.oidc.discoveryPending')
-      : resolveApiError(
-        error?.response?.data,
-        error?.response?.status,
-        t('identitySources.oidc.discoveryFailed')
-      )
-    logFailure('oidc_discovery_preview_failed', error)
-  } finally {
-    discovering.value = false
-  }
-}
-
 // issuer 失焦即自動探索：管理者不必先猜端點長什麼樣再回頭核對
 const autoDiscover = () => {
   if (!discovery.value && /^https:\/\//i.test(form.issuer.trim())) runDiscovery()
+}
+
+// 選擇器改選。新增頁選 Google：issuer 空白或不是 Google 就填入並照失焦時的規則自動探索；
+// 編輯頁不動 issuer（改既有來源的 issuer 是另一件事，不由選擇器順手做）
+const onProviderSelect = (next) => {
+  entraAssistStatus.value = ''
+  if (next !== PROVIDER_GOOGLE || isEdit.value) return
+  if (isGoogleIssuer(form.issuer)) return
+  form.issuer = GOOGLE_ISSUER
+  preview.clear()
+  autoDiscover()
+}
+
+// Entra 識別碼輔助：組成 issuer，准入規則的租戶識別沒有值時一併帶入（已有值不覆蓋）
+const composeFromTenant = (tenantId) => {
+  const issuer = composeEntraIssuer(tenantId)
+  if (!issuer) return
+  if (form.issuer.trim() !== issuer) {
+    form.issuer = issuer
+    preview.clear()
+    autoDiscover()
+  }
+  if (form.rules.tid.length === 0) {
+    form.rules.tid = [tenantId.trim()]
+    entraAssistStatus.value = 'composed'
+  } else if (entraAssistStatus.value !== 'composed') {
+    entraAssistStatus.value = 'composedKeptTid'
+  }
 }
 
 const cancelSecretReset = () => {
@@ -777,7 +892,7 @@ const handleSave = async (nextEnabled) => {
     groups_claim: form.groups_claim.trim(),
     admission_mode: form.admission_mode,
     admission_rules: buildRulesJSON(),
-    force_shared: form.force_shared,
+    ...forceSharedPatch(forceSharedBase.value, form.force_shared),
     enabled: nextEnabled === true,
   }
   if (!isEdit.value) {

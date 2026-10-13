@@ -416,7 +416,7 @@ after_picker() {
   # has_switch <label>: the output names --lang for each language and the sudo alternative.
   has_switch() {
     [[ $output == *"custodexa.sh --lang zh-TW "*"繁體中文"* && $output == *"custodexa.sh --lang ja "*"日本語"* ]] \
-      && [[ $output == *"custodexa.sh --lang en "* && $output == *"sudo env LANG="*"custodexa.sh"* ]] \
+      && [[ $output == *"custodexa.sh --lang en "* && $output == *"sudo ./custodexa.sh --lang $l"* && $output != *"sudo env LANG"* ]] \
       || { echo "no language switch in: $1"; echo "$output"; return 1; }
   }
   for l in $LANGS; do
@@ -433,7 +433,7 @@ after_picker() {
   # The menu's Help: [4] when not installed, [8] when installed.
   fake_commands
   menu_run en $'4\n0'
-  has_switch "menu help, not installed"
+  l=en has_switch "menu help, not installed"
   package_state
   for l in $LANGS; do
     menu_run "$l" $'8\n0'
@@ -447,7 +447,7 @@ after_picker() {
 # Threat: an option meant for the backup accepted by another command, which then does something
 # without it; or a passphrase file made in a way that leaves the passphrase in the shell history.
 
-@test "flags: --with-recordings and --passphrase-file are usage errors outside backup, nothing done" {
+@test "flags: --with-recordings outside backup and --passphrase-file outside backup and restore are usage errors, nothing done" {
   package_state
   cp "$ROOT/state.json" "$BATS_TEST_TMPDIR/state.before"
   use_fake_docker
@@ -455,7 +455,7 @@ after_picker() {
   # nothing_done <label>: exit 2 with the reason, no docker call, no log, no lock, state.json as it was.
   nothing_done() {
     [ "$status" -eq 2 ] || { echo "$1: exit $status"; echo "$output"; return 1; }
-    [[ $output == *"is only for backup"* ]] || { echo "$1: $output"; return 1; }
+    [[ $output == *"is only for backup."* || $output == *"is only for backup and restore."* ]] || { echo "$1: $output"; return 1; }
     [ ! -s "$FAKE_DOCKER_LOG" ] || { echo "$1: docker was called"; cat "$FAKE_DOCKER_LOG"; return 1; }
     [ ! -e "$ROOT/logs" ] && [ ! -e "$ROOT/.custodexa.lock" ] || { echo "$1: something was started"; return 1; }
     cmp -s "$ROOT/state.json" "$BATS_TEST_TMPDIR/state.before" || { echo "$1: state.json changed"; return 1; }
@@ -465,7 +465,8 @@ after_picker() {
   [[ $output == *'Option --with-recordings is only for backup.'* ]] || { echo "$output"; return 1; }
   run "$ROOT/custodexa.sh" upgrade --passphrase-file x --lang en </dev/null
   nothing_done "upgrade --passphrase-file" || return 1
-  [[ $output == *'Option --passphrase-file is only for backup.'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'[FAIL] Option --passphrase-file is only for backup and restore.
+       See: custodexa.sh --help'* ]] || { echo "$output"; return 1; }
   for c in install status start stop "upgrade 1.13.2"; do
     # shellcheck disable=SC2086 # the command and its argument
     run "$ROOT/custodexa.sh" $c --with-recordings --yes --lang en </dev/null
@@ -479,6 +480,18 @@ after_picker() {
   [ "$status" -eq 2 ] && [[ $output == *"選項 --with-recordings 只適用於 backup。"* ]] || { echo "$output"; return 1; }
   run "$ROOT/custodexa.sh" load "$BATS_TEST_TMPDIR/b.tar" --with-recordings --lang ja </dev/null
   [ "$status" -eq 2 ] && [[ $output == *"オプション --with-recordings は backup 専用です。"* ]] || { echo "$output"; return 1; }
+  run "$ROOT/custodexa.sh" upgrade --passphrase-file x --lang zh-TW </dev/null
+  [ "$status" -eq 2 ] && [[ $output == *"[FAIL] 選項 --passphrase-file 只適用於 backup 與 restore。
+       請見：custodexa.sh --help"* ]] || { echo "$output"; return 1; }
+  run "$ROOT/custodexa.sh" upgrade --passphrase-file x --lang ja </dev/null
+  [ "$status" -eq 2 ] && [[ $output == *"[FAIL] オプション --passphrase-file は backup と restore 専用です。
+       custodexa.sh --help を参照してください。"* ]] || { echo "$output"; return 1; }
+  # The width check above measures the templates; with the option in, each line still fits.
+  for l in $LANGS; do
+    run env LC_ALL=C.UTF-8 bash -c '. "$1"; [ -n "${MSG_usage_backup_restore_only:-}" ] || exit 1
+      printf "$MSG_usage_backup_restore_only\n" --passphrase-file | wc -L' _ "$SRC/lang/$l.sh"
+    [ "$status" -eq 0 ] && [ "$output" -le 73 ] || { echo "[$l] $output wide"; return 1; }
+  done
   # --passphrase-file needs its file.
   for tail in "" "--yes"; do
     # shellcheck disable=SC2086
@@ -507,9 +520,9 @@ after_picker() {
 
 # The keys this release adds or rewrites for the backup. Each renders every argument it is given in
 # each language, so a placeholder lost or swapped in one language shows here.
-BACKUP_KEYS="usage_backup_only run_backup_unfinished run_backup_unfinished_nodir run_backup_upgrade
+BACKUP_KEYS="usage_backup_only usage_backup_restore_only run_backup_unfinished run_backup_unfinished_nodir run_backup_upgrade
   help_cmd_backup help_opt_with_recordings help_opt_passphrase_file help_passphrase_file_make menu_backup
-  status_backup_encrypted pb_step_audit pb_step_start pb_step_verify pb_step_pack pb_done pb_sidecar
+  status_backup_encrypted status_backup_unrecorded pb_step_audit pb_step_start pb_step_verify pb_step_pack pb_done pb_sidecar
   pb_summary pb_db_bundled pb_mode_env pb_mode_ui pb_mode_kms pb_mode_hsm pb_kek_in pb_kek_out pb_kek_kms
   pb_warn_kek_fp pb_warn_fps pb_warn_rec pb_warn_plain pb_warn_plain_kek pb_svc_back pb_svc_ui pb_svc_kms
   pb_svc_timeout pb_failed pb_valid pb_after_both pb_after_state pb_after_partial pb_sig_valid pb_sig_both
@@ -534,7 +547,7 @@ EXTERNAL_KEYS="up_will_2_ref up_will_2_own pb_summary_ext pb_ext_tool pb_ext_con
   up_bk_file up_bk_unrecorded st_gone_unchecked up_no_space_hint up_ext_major_sep up_ext_own_version
   up_ext_own_image up_ext_own_connect up_ext_own_unsupported up_ext_ni_version up_ext_ni_image
   up_ext_ni_connect up_ext_ni_unsupported up_ext_ni_order up_ext_ni_1 up_ext_ni_2 up_ext_ni_3
-  up_ext_ni_3_notls up_ext_ni_4 up_ext_ni_flags"
+  up_ext_ni_3_notls up_ext_ni_4 up_ext_ni_flags up_no_space_images"
 
 @test "messages: each backup and restore key renders every argument it is given, x1 y2 ..., in each language" {
   local l k

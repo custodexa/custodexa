@@ -172,7 +172,7 @@ For the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 
 
 | Step | What happens | Manual counterpart |
 |---|---|---|
-| 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the backup and the new images. With an external database, first the database itself (below) | §2.0 |
+| 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the new images and for the backup (with `--backup-ref` the script takes no backup, so only the images count). With an external database, first the database itself (below) | §2.0 |
 | 2 | Obtains and verifies the new images | §2.2 |
 | 3 | Preview and confirmation; the running services have not been stopped yet | |
 | 4 | Waits up to 120 seconds for the audit queue to reach 0. When the queue cannot be read, it passes only a system that reports itself sealed and was not unsealed since its container started; anything else stops the run with the service still running and nothing changed | §2.3 step 3, §2.4 |

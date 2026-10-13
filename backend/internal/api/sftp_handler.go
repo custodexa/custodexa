@@ -578,6 +578,9 @@ func respondSFTPError(c *gin.Context, err error, actionCode apierror.ErrCode) {
 	case errors.Is(err, asset.ErrAssetNoUsableAccount):
 		// 零帳號資產：可行動的設定問題（400），不是遠端操作失敗（502）
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountNoneUsable, nil)
+	case errors.Is(err, asset.ErrPrivateKeyInvalid):
+		// 私鑰無法解析：設定問題（400），與終端撥號同碼；不帶 cause，解析原文只進伺服端日誌
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeSSHPrivateKeyInvalid, nil)
 	case errors.Is(err, asset.ErrAssetAccountNotFound):
 		// 會話帳號已被刪除／不屬該資產（session_id 路徑的 fail-close）：
 		// 與帳號 CRUD 端點同碼同狀態，不洩漏存在性、不回泛化的 502

@@ -38,7 +38,10 @@ var (
 	CodeCredentialSecretRequired    = register("VALIDATION_CREDENTIAL_SECRET_REQUIRED", Descriptor{ZhFallback: "建立共用憑證必須提供密碼或私鑰"})
 	// 共用憑證的登入帳號名不可改：改名等於讓每一台掛載的登入身分同時變動，
 	// 而遠端主機上的帳號並不會跟著改
-	CodeCredentialUsernameImmutable   = register("VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE", Descriptor{ZhFallback: "共用憑證的登入帳號名建立後不可修改，請另建憑證並重新掛載"})
+	CodeCredentialUsernameImmutable = register("VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE", Descriptor{ZhFallback: "共用憑證的登入帳號名建立後不可修改，請另建憑證並重新掛載"})
+	// 人工輸入的私鑰無法解析（格式錯誤、內容不完整、貼成公鑰、受 passphrase 保護）：
+	// 資產、資產帳號與憑證庫的私鑰寫入入口共用此碼，私鑰最終都落到憑證的密文版本
+	CodeCredentialPrivateKeyInvalid   = register("VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID", Descriptor{ZhFallback: "私鑰無法辨識。請貼上完整的私鑰內容，包含開頭與結尾的標示行。設有保護密碼（passphrase）的私鑰目前不支援，請先移除保護密碼。"})
 	CodeCredentialProtocolFamily      = register("VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID", Descriptor{ZhFallback: "憑證的協定族不在允許值域內"})
 	CodeCredentialDetachSourceInvalid = register("VALIDATION_CREDENTIAL_DETACH_SOURCE_INVALID", Descriptor{ZhFallback: "新秘密來源僅允許隨機產生或自訂"})
 	// 改密模式：整組換同一組秘密，或每台各自隨機並解除共用
@@ -69,7 +72,7 @@ var (
 	// 憑證不存在、已刪除，或對操作者不可見——三者共用一碼（見檔頭）
 	CodeCredentialNotFound = register("NOTFOUND_CREDENTIAL", Descriptor{ZhFallback: "憑證不存在"})
 	// 掛載不存在或不屬於路徑上的憑證
-	CodeCredentialBindingNotFound = register("NOTFOUND_CREDENTIAL_BINDING", Descriptor{ZhFallback: "掛載不存在或不屬於該憑證"})
+	CodeCredentialBindingNotFound  = register("NOTFOUND_CREDENTIAL_BINDING", Descriptor{ZhFallback: "掛載不存在或不屬於該憑證"})
 	CodeCredentialRotationNotFound = register("NOTFOUND_CREDENTIAL_ROTATION",
 		Descriptor{ZhFallback: "改密輪次不存在"})
 	CodeCredentialRotationMemberNotFound = register("NOTFOUND_CREDENTIAL_ROTATION_MEMBER",

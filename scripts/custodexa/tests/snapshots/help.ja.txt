@@ -103,5 +103,5 @@ SOP」と「バックアップとリストア」を参照してください。
     custodexa.sh --lang ja             日本語
     custodexa.sh --lang zh-TW          繁體中文
     custodexa.sh --lang en             English
-  sudo でシステムの言語を保つ場合：
-    sudo env LANG=ja_JP.UTF-8 custodexa.sh
+  sudo で実行するときも同様に --lang を付けます（インストールディレクトリで）：
+    sudo ./custodexa.sh --lang ja

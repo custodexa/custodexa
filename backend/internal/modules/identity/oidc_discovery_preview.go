@@ -43,6 +43,18 @@ type OIDCDiscoveryPreview struct {
 	UserinfoEndpoint      string   `json:"userinfo_endpoint"`
 	ClaimsSupported       []string `json:"claims_supported"`
 	ScopesSupported       []string `json:"scopes_supported"`
+	// IDTokenSigningAlgs 文件宣告的身分權杖簽章演算法（照抄，未宣告即空）
+	IDTokenSigningAlgs []string `json:"id_token_signing_alg_values_supported"`
+
+	// 以下兩項是登入時才會被強制的檢查，預覽先算給管理者看：
+	// 不通過時預覽仍回成功並附文件宣告的值，不改以錯誤碼表達。
+	//
+	// IssuerMatches 文件宣告的 issuer 與輸入（去結尾斜線）逐字相同。
+	// 登入時的探索會強制完整字串一致，不一致即無法登入
+	IssuerMatches bool `json:"issuer_matches"`
+	// SigningAlgCompatible 宣告的演算法與本系統允許集合有交集；未宣告視為相容
+	//（與登入時「未宣告即沿用本地集合」的判定一致）
+	SigningAlgCompatible bool `json:"signing_alg_compatible"`
 }
 
 // 探索預覽的審計事件碼（Details.event）
@@ -115,6 +127,12 @@ func fetchDiscoveryPreview(ctx context.Context, client *http.Client,
 	if doc.Issuer == "" {
 		return nil, fmt.Errorf("探索文件未宣告 issuer")
 	}
+	// 文件值不去斜線：登入時是拿去斜線後的輸入與文件值做完整字串比對
+	doc.IssuerMatches = doc.Issuer == issuer
+	doc.SigningAlgCompatible = len(intersectSigningAlgs(oidcSignatureAlgs, doc.IDTokenSigningAlgs)) > 0
+	if doc.IDTokenSigningAlgs == nil {
+		doc.IDTokenSigningAlgs = []string{}
+	}
 	return &doc, nil
 }
 
@@ -180,4 +198,20 @@ func (s *OIDCDiscoveryService) CachedReachable(p *model.OIDCProvider) *bool {
 	}
 	reachable := true
 	return &reachable
+}
+
+// CachedFetchedAt 快取內探索文件的取得時間（**只讀快取，不撥號**）。
+// 判定條件與 CachedReachable 相同；沒有新鮮項目即 nil
+func (s *OIDCDiscoveryService) CachedFetchedAt(p *model.OIDCProvider) *time.Time {
+	if s.CachedReachable(p) == nil {
+		return nil
+	}
+	s.mu.Lock()
+	c, ok := s.cache[p.ID]
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	at := c.fetchedAt
+	return &at
 }

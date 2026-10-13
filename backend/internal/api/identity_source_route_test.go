@@ -189,3 +189,47 @@ func TestDiscoveryPreviewRequiresAdmin(t *testing.T) {
 	assert.NotEqual(t, http.StatusForbidden, code, "管理者不應被權限擋下")
 	assert.NotEqual(t, http.StatusUnauthorized, code, "管理者不應被認證擋下")
 }
+
+// TestOIDCProviderStatusRequiresAdmin 狀態彙總限管理權限。
+//
+// 這支端點會回最近一次登入嘗試（取自稽核），掛錯權限即等於把稽核內容開給
+// 非管理者。auditor 與一般使用者都必須被擋下；經完整 RegisterRoutes 驗鏈上的守門。
+func TestOIDCProviderStatusRequiresAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	installEpochGateDB(t, 1, 7, 8)
+
+	const secret = "provider-status-gate-secret"
+	authService := identity.NewAuthService(secret, time.Minute)
+	providers := identity.NewOIDCProviderService(database.DB, nil,
+		&identity.OIDCEgressPolicy{}, nil, "https://bastion.example.com")
+	handler := NewOIDCHandler(providers, nil, "https://bastion.example.com", nil)
+	handler.SetIdentitySources(identity.NewIdentitySourceService(database.DB, audit.NewTxSink()))
+
+	r := gin.New()
+	handler.RegisterRoutes(r.Group("/api/v1"), authService)
+	mgr := crypto.NewJWTManager(secret, time.Minute)
+
+	get := func(token string) int {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/oidc-providers/5/status", nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	assert.Equal(t, http.StatusUnauthorized, get(""), "未認證的請求不得到達狀態彙總")
+	auditorToken, err := mgr.GenerateToken(8, "auditor1", "au@example.com", "auditor", crypto.AuthContext{})
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, get(auditorToken), "auditor 不得到達狀態彙總")
+	userToken, err := mgr.GenerateToken(7, "normaluser", "u@example.com", "user", crypto.AuthContext{})
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, get(userToken), "一般使用者不得到達狀態彙總")
+
+	adminToken, err := mgr.GenerateToken(1, "admin", "a@example.com", "admin", crypto.AuthContext{})
+	assert.NoError(t, err)
+	code := get(adminToken)
+	assert.NotEqual(t, http.StatusForbidden, code, "管理者不應被權限擋下")
+	assert.NotEqual(t, http.StatusUnauthorized, code, "管理者不應被認證擋下")
+}

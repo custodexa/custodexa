@@ -573,12 +573,19 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	}
 	forceShared := p.ForceShared
 	if req.ForceShared != nil {
-		// 放寬企圖須**拒絕並回明確錯誤**（spec L169-171），不得靜默接受
-		if err := s.rejectSharedWidening(p.Issuer, req.ForceShared); err != nil {
-			return nil, err
+		if s.clearsForceShared(&p, *req.ForceShared) {
+			// 撤回自己先前的收緊，或部署已宣告專用時清除表態：一律寫回「未表態」。
+			// 同一請求的規則驗證必須用撤回後的值，不得沿用原列的 true
+			forceShared = nil
+			updates["force_shared"] = nil
+		} else {
+			// 放寬企圖須**拒絕並回明確錯誤**（spec L169-171），不得靜默接受
+			if err := s.rejectSharedWidening(p.Issuer, req.ForceShared); err != nil {
+				return nil, err
+			}
+			forceShared = req.ForceShared
+			updates["force_shared"] = req.ForceShared
 		}
-		forceShared = req.ForceShared
-		updates["force_shared"] = req.ForceShared
 	}
 	shared := EffectiveIssuerKind(p.Issuer, forceShared, s.deployDedicatedIssuers)
 	if err := ValidateAdmissionConfig(mode, rules, shared); err != nil {
@@ -676,13 +683,31 @@ func invalidationReason(disabling, secretRotated bool) string {
 	}
 }
 
+// clearsForceShared 判斷更新請求的 force_shared=false 是否屬於「清回未表態」：
+//   - 原列已存 true：管理者撤回自己先前的收緊。撤回後判定依優先序現算，
+//     未經部署層宣告者仍為共用，故不構成放寬
+//   - 部署層已宣告專用（不在內建清單）：false 與 NULL 判定相同，存 NULL 以符三態語義
+//
+// 其餘的 false（從未收緊的共用來源）不屬此類，交由 rejectSharedWidening 拒絕。
+func (s *OIDCProviderService) clearsForceShared(p *model.OIDCProvider, requested bool) bool {
+	if requested {
+		return false
+	}
+	if p.ForceShared != nil && *p.ForceShared {
+		return true
+	}
+	return !EffectiveIssuerKind(p.Issuer, nil, s.deployDedicatedIssuers)
+}
+
 // rejectSharedWidening 「共用身分域不可被放寬為專用」（spec L169-171）。
 //
 // 判準是「送出 force_shared=false 之後，系統的**現算**判定是否仍為共用」：
 //   - 內建共用清單成員（Google／Entra common 等）→ 仍為共用 → 拒絕
 //   - 未知 issuer（fail-close 預設共用、無部署宣告）→ 仍為共用 → 拒絕
 //   - 部署層已宣告專用者 → 判定即為專用，force_shared=false 與系統判定一致 → 放行
-//     （這是管理者撤回自己先前 force_shared=true 收緊的正當途徑）
+//
+// 更新期的撤回（原列已存 true）與部署宣告下的清除由 clearsForceShared 先行處理，
+// 不會走到這裡；建立期沒有原列，未曾收緊的共用來源送 false 一律拒絕。
 func (s *OIDCProviderService) rejectSharedWidening(issuer string, forceShared *bool) error {
 	if forceShared == nil || *forceShared {
 		return nil // 未表態，或表態為「收緊為共用」——收緊一律允許

@@ -82,6 +82,8 @@
         v-if="protocol === 'ssh'"
         :label="t('assets.privateKey')"
         prop="private_key"
+        :error="privateKeyError"
+        class="private-key-item"
       >
         <el-input
           v-model="model.private_key"
@@ -151,6 +153,8 @@ const props = defineProps({
   showPrivileged: { type: Boolean, default: false },
   assetName: { type: String, default: '' },
   compact: { type: Boolean, default: false },
+  // 伺服端指到私鑰欄的錯誤（已譯文），顯示在該欄下方；空字串＝無錯
+  privateKeyError: { type: String, default: '' },
 })
 
 const { t } = useI18n()
@@ -219,6 +223,12 @@ defineExpose({ dedicatedNote, sharedHint, onModeChange, onPickerLoaded })
 
 .mode-group {
   margin-bottom: var(--ot-space-md);
+}
+
+/* 私鑰錯誤是兩行長句：改成佔位排版，不疊到下方的說明框 */
+.private-key-item :deep(.el-form-item__error) {
+  position: static;
+  padding-top: var(--ot-space-xs);
 }
 
 .auth-select {

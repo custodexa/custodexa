@@ -226,8 +226,9 @@ cx_br_noninteractive() {
 }
 
 # cx_br_record <id>: the accepted own backup: backups/<id>/external.txt (the answers as
-# given, any language) and last_backup.* in state.json. A value state.json cannot hold (not
-# printable ASCII) is kept in the file only and state.json points there.
+# given, any language), last_backup.* and last_upgrade.backup_id in state.json. A value
+# state.json cannot hold (not printable ASCII) is kept in the file only and state.json points
+# there.
 cx_br_record() {
   local id=$1 dir=$CX_ROOT/backups/$1 k v ptr
   (umask 077 && mkdir -p "$CX_ROOT/backups" "$dir") || return 1
@@ -256,6 +257,9 @@ cx_br_record() {
   # Values of an earlier script backup do not describe this one.
   cx_state_set last_backup.size_bytes ""
   cx_state_set last_backup.snapshot_usable ""
+  # Only the upgrade records an own backup; saved with the new last_backup.* (as the script's
+  # backup is), so last_upgrade.backup_id always names the backup of the latest upgrade.
+  cx_state_set last_upgrade.backup_id "$id"
   cx_state_save "$CX_ROOT/state.json"
   cx_log BACKUP "kind=external id=$id time=\"$CX_BR_TIME\" stopped_at=$CX_BR_STOP_ISO"
   cx_log BACKUP "external_ref=\"$CX_BR_REF\" external_restore=\"$CX_BR_RESTORE\""

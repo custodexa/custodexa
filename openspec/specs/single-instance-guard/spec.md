@@ -1,7 +1,7 @@
 # single-instance-guard Specification
 
 ## Purpose
-TBD - created by archiving change single-instance-guard. Update Purpose after archive.
+防止兩個平台實例同時對同一份資料運作：啟動時取得互斥鎖、被攔下時顯示持鎖者指紋與救援指令、確認啟動須比對當下持鎖者的確認碼並留稽核，執行期持續驗證鎖並在失鎖時告知，健康檢查形狀維持不變，並說明守衛能保證與不能保證的範圍。
 
 ## Requirements
 

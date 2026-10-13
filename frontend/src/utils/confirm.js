@@ -13,6 +13,11 @@
  *
  * 另附 `confirmButtonClass: el-button--danger`：破壞性確認鈕與一般確認鈕在視覺上
  * 分色，避免「所有確認框長得一樣」而被無意識連按。
+ *
+ * 顏色從哪來：Element Plus 的確認鈕型別寫死為 primary，沒有選項可改（`type` 只換圖示），
+ * 所以按鈕會同時帶 `el-button--primary` 與這裡加上的 `el-button--danger`。實際底色由
+ * `styles/dark-theme.css` 決定：主色實底規則排除帶 danger 的按鈕，實心 danger 規則
+ * 套 `--ot-danger-fill` 實底階。確認鈕變回藍色時要查的是那兩條規則，不是這裡的選項。
  */
 import { ElMessageBox } from 'element-plus'
 

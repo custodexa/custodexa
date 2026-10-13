@@ -224,7 +224,9 @@ var (
 	CodeSSHHostKeyChanged = register("RULE_SSH_HOST_KEY_CHANGED", Descriptor{ZhFallback: "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯絡管理員重置 host key"})
 	CodeSSHAuthFailed     = register("RULE_SSH_AUTH_FAILED", Descriptor{ZhFallback: "SSH 認證失敗，請確認資產憑證"})
 	CodeSSHDialTimeout    = register("RULE_SSH_DIAL_TIMEOUT", Descriptor{ZhFallback: "連線目標主機逾時"})
-	CodeSSHUnreachable    = register("RULE_SSH_UNREACHABLE", Descriptor{ZhFallback: "無法連線到目標主機"})
+	// 就位版本的私鑰無法解析：尚未向目標主機出示任何認證，與目標拒絕認證（AUTH_FAILED）分開
+	CodeSSHPrivateKeyInvalid = register("RULE_SSH_PRIVATE_KEY_INVALID", Descriptor{ZhFallback: "這個帳號設定的私鑰無法使用（格式錯誤或設有保護密碼），請聯絡管理員更換私鑰。"})
+	CodeSSHUnreachable       = register("RULE_SSH_UNREACHABLE", Descriptor{ZhFallback: "無法連線到目標主機"})
 )
 
 // --- INTERNAL_* (generalized 5xx / service-unavailable; cause logged server-side) ---

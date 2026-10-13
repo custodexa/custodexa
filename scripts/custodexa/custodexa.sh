@@ -231,11 +231,11 @@ cx_main() {
       ;;
   esac
   # The recordings are a choice of the backup alone, the passphrase file of the backup and the
-  # restore; the restore's own options belong to it alone. Any other command stops before it does
-  # anything.
+  # restore (the message names both); the restore's own options belong to it alone. Any other
+  # command stops before it does anything.
   if [ "$CX_COMMAND" != backup ]; then
     [ "$CX_WITH_RECORDINGS" = 0 ] || cx_die "$CX_EXIT_USAGE" usage_backup_only --with-recordings
-    [ -z "$CX_PASSPHRASE_FILE" ] || [ "$CX_COMMAND" = restore ] || cx_die "$CX_EXIT_USAGE" usage_backup_only --passphrase-file
+    [ -z "$CX_PASSPHRASE_FILE" ] || [ "$CX_COMMAND" = restore ] || cx_die "$CX_EXIT_USAGE" usage_backup_restore_only --passphrase-file
   fi
   if [ "$CX_COMMAND" != restore ] && [ -n "$CX_RS_GIVEN" ]; then
     local first=${CX_RS_GIVEN# }

@@ -13,15 +13,12 @@
           <el-icon><ArrowLeft /></el-icon>
           {{ $t('sessionDetail.backToList') }}
         </el-button>
-        <el-button
+        <RecordingDownloadButton
           v-if="session?.has_recording"
-          type="primary"
+          :blocked-state="recordingBlocked"
           :loading="downloading"
-          @click="handleDownload"
-        >
-          <el-icon><Download /></el-icon>
-          {{ $t('sessionDetail.downloadRecording') }}
-        </el-button>
+          @download="handleDownload"
+        />
       </template>
     </PageHeader>
 
@@ -153,30 +150,8 @@
             {{ session.client_ip || '-' }}
           </el-descriptions-item>
           <el-descriptions-item :label="$t('sessionDetail.recordingStatus')">
-            <!-- 錄影失敗誠實標示：
-                 失敗與「本來就無錄製」是兩回事，須帶原因可辨 -->
-            <el-tooltip
-              v-if="session.recording_error"
-              :content="$t('sessions.recordingErrorTooltip', { error: auditCauseLabel(session.recording_error) })"
-              placement="top"
-            >
-              <el-tag type="danger">
-                {{ $t('sessionDetail.noRecordingFailed') }}
-              </el-tag>
-            </el-tooltip>
-            <el-tag
-              v-else-if="session.has_recording"
-              type="success"
-            >
-              <el-icon><CirclePlay /></el-icon>
-              {{ $t('sessionDetail.hasRecording') }}
-            </el-tag>
-            <el-tag
-              v-else
-              type="info"
-            >
-              {{ $t('sessionDetail.noRecording') }}
-            </el-tag>
+            <!-- 錄影失敗、讀不到、有錄影（含離機來源提示）、無錄影四種呈現 -->
+            <RecordingStatusTag :session="session" />
           </el-descriptions-item>
           <!-- 離機保存（evidence-offsite-storage）：錄影狀態旁的第二個事實——
                「這份證據有沒有離開這台機器」。
@@ -298,9 +273,15 @@
               :title="$t('sessionDetail.consoleRecordingNote')"
             />
 
+            <!-- 錄影檔讀不到：以說明區塊取代播放器，不取錄影 token、不掛播放器 -->
+            <RecordingUnavailableCard
+              v-if="recordingBlocked"
+              :state="recordingBlocked"
+              :session-id="session.id"
+            />
             <!-- 文字終端錄製回放（SSH 與資料庫 CLI，asciicast 格式） -->
             <div
-              v-if="isTextTerminal(session.protocol)"
+              v-else-if="isTextTerminal(session.protocol)"
               class="player-wrapper"
             >
               <!-- 等 recordingUrl（一次性 token 取得後才有值）就緒才掛載播放器，
@@ -778,7 +759,6 @@ import {
   Download,
   LoaderCircle,
   Lock,
-  CirclePlay,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
@@ -787,6 +767,10 @@ const evidenceTab = ref('recording')
 import AsciinemaPlayer from '@/components/AsciinemaPlayer.vue'
 import GuacamolePlayer from '@/components/GuacamolePlayer.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import RecordingDownloadButton from '@/components/recording/RecordingDownloadButton.vue'
+import RecordingStatusTag from '@/components/recording/RecordingStatusTag.vue'
+import RecordingUnavailableCard from '@/components/recording/RecordingUnavailableCard.vue'
+import { blockedRecordingState, readErrorEnvelope, downloadFailureMessage } from '@/utils/recordingReadability'
 import CommandCell from '@/components/audit/CommandCell.vue'
 import { isDegradedRow } from '@/constants/command-degrade'
 import { getSession, getRecordingUrl, getRecordingToken, recordingStreamUrlByToken, downloadRecording } from '@/api/sessions'
@@ -798,9 +782,6 @@ import { getAgentTask } from '@/api/agentTasks'
 import { getEndReasonText, getEndReasonTagType } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t, currentLocale } from '@/i18n'
-// recording_error 存機器碼（cause code），
-// 散文僅存量資料才有——auditCauseLabel 未知值原樣回傳，兩者共存不需分支
-import { auditCauseLabel } from '@/constants/audit-enums'
 import {
   resultStatusLabel,
   resultStatusTagType,
@@ -838,6 +819,8 @@ const fetchTaskReason = async () => {
 // The ledger rows carry no target of their own; this session supplies its asset and account.
 const ledgerTargets = computed(() => session.value ? { [session.value.id]: { asset: session.value.asset?.name || '', account: session.value.account_username || '' } } : {})
 const downloading = ref(false)
+// 錄影檔讀不到（unreadable／missing）；null＝可讀或後端未給判定（維持現行行為）
+const recordingBlocked = computed(() => blockedRecordingState(session.value))
 const commands = ref([])
 const blockedAlerts = ref([])
 const commandTimeline = computed(() => {
@@ -1154,7 +1137,7 @@ const revealClipboardContent = async (row) => {
 
 // 降級列能不能給「查看該時段錄影」這個下一步：沒有錄影就不能，文案須據實改口
 const commandRecordingState = computed(() =>
-  session.value?.has_recording && hasPlayer.value ? 'available' : 'unavailable'
+  session.value?.has_recording && hasPlayer.value && !recordingBlocked.value ? 'available' : 'unavailable'
 )
 
 // ---------------------------------------------------------------------------
@@ -1277,6 +1260,9 @@ const seek = computed(() => {
   if (!session.value.has_recording) {
     return { present: true, level: 'warning', message: t('sessionDetail.seekNoRecording') }
   }
+  if (recordingBlocked.value) {
+    return { present: true, level: 'warning', message: t(`recordingReadability.state.${recordingBlocked.value}`) }
+  }
   if (!hasPlayer.value) {
     return {
       present: true,
@@ -1341,7 +1327,7 @@ const recordingUrl = ref('')
 
 async function loadRecordingUrl() {
   recordingUrl.value = ''
-  if (!session.value || !session.value.has_recording) {
+  if (!session.value || !session.value.has_recording || recordingBlocked.value) {
     return
   }
   try {
@@ -1354,7 +1340,7 @@ async function loadRecordingUrl() {
 
 // Computed recording stream URL for RDP (guacamole player - uses fetch with Bearer token)
 const recordingStreamUrl = computed(() => {
-  if (!session.value || !session.value.has_recording) {
+  if (!session.value || !session.value.has_recording || recordingBlocked.value) {
     return ''
   }
   // GuacamolePlayer will use fetch with Authorization header
@@ -1449,6 +1435,7 @@ const handleDownload = async () => {
     ElMessage.warning(t('sessionDetail.noRecordingContent'))
     return
   }
+  if (recordingBlocked.value) return
 
   try {
     downloading.value = true
@@ -1476,7 +1463,9 @@ const handleDownload = async () => {
 
     ElMessage.success(t('sessionDetail.downloaded'))
   } catch (err) {
-    console.error('[SessionDetail] 下載失敗:', err)
+    // 錯誤本體是 Blob（responseType: 'blob'）：先解析成錯誤信封再依機器碼給文案
+    console.error('[SessionDetail] 下載失敗:', err?.response?.status)
+    ElMessage.error(downloadFailureMessage(await readErrorEnvelope(err?.response?.data), err?.response?.status))
   } finally {
     downloading.value = false
   }

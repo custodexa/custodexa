@@ -1,19 +1,31 @@
 package sshproxy
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/k8sproxy"
+	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/ssh"
 )
 
 // TestK8sDialCode k8sproxy 分類（K8sError.Kind）→ apierror code 映射
@@ -134,5 +146,183 @@ func TestWriteDialErrorHTTP(t *testing.T) {
 	}
 	if resp["error"] != "SSH 認證失敗，請確認資產憑證" {
 		t.Errorf("error = %v, want SSH 認證失敗文案", resp["error"])
+	}
+}
+
+// rejectingSSHTarget 行程內 SSH 靶機：接受交握、拒絕任何公鑰認證。
+// accepted 計數 TCP 連線、keyAttempts 計數收到的公鑰認證嘗試。
+func rejectingSSHTarget(t *testing.T) (string, int, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	_, hostPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("host key: %v", err)
+	}
+	hostSigner, err := ssh.NewSignerFromKey(hostPriv)
+	if err != nil {
+		t.Fatalf("host signer: %v", err)
+	}
+	var accepted, keyAttempts atomic.Int32
+	cfg := &ssh.ServerConfig{
+		PublicKeyCallback: func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error) {
+			keyAttempts.Add(1)
+			return nil, errors.New("public key not authorized")
+		},
+	}
+	cfg.AddHostKey(hostSigner)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			nc, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted.Add(1)
+			go func() {
+				defer nc.Close()
+				_ = nc.SetDeadline(time.Now().Add(10 * time.Second))
+				_, _, _, _ = ssh.NewServerConn(nc, cfg)
+			}()
+		}
+	}()
+	host, portStr, _ := net.SplitHostPort(ln.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+	return host, port, &accepted, &keyAttempts
+}
+
+// dialTerminalWithPrivateKey 走實際建連流程：資產指向靶機、預設帳號的就位版本放入
+// 指定私鑰（直寫密文，模擬寫入驗證上線前已在庫的私鑰），簽發 connect token 後以
+// 瀏覽器 WebSocket 兌換，回傳第一個 WS 訊息。
+func dialTerminalWithPrivateKey(t *testing.T, privateKey string) (Message, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	h, db, _ := setupPolicyGateTest(t)
+	seedGateFixture(t, db)
+	setGroupPolicy(t, db, 1, model.AccessPolicyOpen)
+	if err := db.AutoMigrate(&model.AssetHostKey{}); err != nil {
+		t.Fatalf("migrate host keys: %v", err)
+	}
+	h.HostKeys = asset.NewHostKeyService(db)
+
+	host, port, accepted, keyAttempts := rejectingSSHTarget(t)
+	if err := db.Model(&model.Asset{}).Where("id = ?", 1).
+		Updates(map[string]any{"host": host, "port": port}).Error; err != nil {
+		t.Fatalf("point asset at target: %v", err)
+	}
+	enc, err := aesColumnCodec(t, make([]byte, 32)).EncryptFor(context.Background(),
+		keyvault.RefCredentialVersionPrivateKey, privateKey)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	cred := model.Credential{Scope: model.CredentialScopeDedicated, Username: "root",
+		SecretType: model.ChangeSecretTypeSSHKey, ProtocolFamily: model.ProtocolFamilySSH}
+	if err := db.Create(&cred).Error; err != nil {
+		t.Fatalf("seed credential: %v", err)
+	}
+	ver := model.CredentialSecretVersion{CredentialID: cred.ID, VersionNo: 1,
+		SecretType: model.ChangeSecretTypeSSHKey, PrivateKeyEnc: enc,
+		CreatedReason: model.CredentialVersionReasonManual}
+	if err := db.Create(&ver).Error; err != nil {
+		t.Fatalf("seed version: %v", err)
+	}
+	if err := db.Create(&model.AssetAccount{AssetID: 1, Username: "root", IsDefault: true,
+		CredentialID: cred.ID, EffectiveVersionID: &ver.ID}).Error; err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+
+	code, resp, _ := issueToken(h, 1, model.RoleUser, 1)
+	if code != http.StatusOK {
+		t.Fatalf("簽發應成功: code=%d resp=%v", code, resp)
+	}
+	token, _ := resp["connect_token"].(string)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/ssh", h.HandleSSH)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ssh?cols=80&rows=24&connect_token=" + url.QueryEscape(token)
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		status := 0
+		if wsResp != nil {
+			status = wsResp.StatusCode
+		}
+		t.Fatalf("WS 升級應成功: err=%v status=%d", err, status)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	_, raw, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("讀取 error 訊息失敗: %v", err)
+	}
+	var msg Message
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("error 訊息非合法 JSON: %v (%s)", err, raw)
+	}
+	return msg, accepted, keyAttempts
+}
+
+// TestDialPrivateKeyInvalidSurfacesOverWS 私鑰無法解析（格式錯誤、受 passphrase 保護）
+// 經實際建連流程送達：碼為 RULE_SSH_PRIVATE_KEY_INVALID、data 與該碼的 zh fallback
+// 完全相等，且靶機沒收到任何連線。
+func TestDialPrivateKeyInvalidSurfacesOverWS(t *testing.T) {
+	desc, ok := apierror.DescriptorOf(apierror.CodeSSHPrivateKeyInvalid)
+	if !ok || desc.ZhFallback == "" {
+		t.Fatal("RULE_SSH_PRIVATE_KEY_INVALID 須已登記且有 zh fallback")
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("keygen: %v", err)
+	}
+	encBlock, err := ssh.MarshalPrivateKeyWithPassphrase(priv, "dial", []byte("secret-phrase"))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	cases := map[string]string{
+		"Malformed":  "-----BEGIN OPENSSH PRIVATE KEY-----\nbroken\n",
+		"Passphrase": string(pem.EncodeToMemory(encBlock)),
+	}
+	for name, key := range cases {
+		t.Run(name, func(t *testing.T) {
+			msg, accepted, _ := dialTerminalWithPrivateKey(t, key)
+			if msg.Type != MsgError {
+				t.Fatalf("Type = %q, want %q", msg.Type, MsgError)
+			}
+			if msg.Code != string(apierror.CodeSSHPrivateKeyInvalid) {
+				t.Fatalf("Code = %q, want %s", msg.Code, apierror.CodeSSHPrivateKeyInvalid)
+			}
+			if msg.Data != desc.ZhFallback {
+				t.Fatalf("Data = %q, want registry zh fallback %q", msg.Data, desc.ZhFallback)
+			}
+			if msg.Data == "解析私鑰失敗" {
+				t.Fatalf("Data 不得是截斷後的舊訊息")
+			}
+			if n := accepted.Load(); n != 0 {
+				t.Fatalf("私鑰無法解析時不得撥號，靶機收到 %d 條連線", n)
+			}
+		})
+	}
+}
+
+// TestDialRejectedPublicKeyStaysAuthFailed 可解析但被目標拒絕的私鑰仍歸認證失敗，
+// 與私鑰無法解析明確區分。
+func TestDialRejectedPublicKeyStaysAuthFailed(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("keygen: %v", err)
+	}
+	block, err := ssh.MarshalPrivateKey(priv, "dial-rejected")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	msg, _, keyAttempts := dialTerminalWithPrivateKey(t, string(pem.EncodeToMemory(block)))
+	if msg.Code != string(apierror.CodeSSHAuthFailed) {
+		t.Fatalf("Code = %q, want %s (data=%q)", msg.Code, apierror.CodeSSHAuthFailed, msg.Data)
+	}
+	if keyAttempts.Load() == 0 {
+		t.Fatal("前提：靶機應收到公鑰認證嘗試")
 	}
 }

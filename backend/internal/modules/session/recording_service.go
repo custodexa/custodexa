@@ -16,6 +16,7 @@ import (
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/recorder"
 	"gorm.io/gorm"
@@ -26,7 +27,53 @@ var (
 	ErrRecordingNotFound = errors.New("錄製檔案不存在")
 	// ErrSessionHasNoRecording Session 沒有錄製檔案
 	ErrSessionHasNoRecording = errors.New("Session 沒有錄製檔案")
+	// ErrRecordingUnreadable 錄製檔案存在但讀不到（權限不足、取得檔案資訊失敗、
+	// 路徑不是一般檔）。對外只有這一類，細部原因只進伺服器日誌
+	ErrRecordingUnreadable = errors.New("錄製檔案無法讀取")
 )
+
+// classifyLocalFileErr 把本機錄影檔的 stat／open 錯誤分成對外兩類：
+// 不存在 → ErrRecordingNotFound；其餘 → ErrRecordingUnreadable。
+// 原始錯誤以 %v 附在訊息後供日誌排查，`errors.Is` 只認得那個哨兵。
+func classifyLocalFileErr(err error) error {
+	if os.IsNotExist(err) {
+		return fmt.Errorf("%w: %v", ErrRecordingNotFound, err)
+	}
+	return fmt.Errorf("%w: %v", ErrRecordingUnreadable, err)
+}
+
+// OpenRecordingFile 開啟要交付的錄影檔：開檔＋fstat＋確認是一般檔。
+//
+// 串流、下載、轉檔快取與證據包裝入**一律**經此開檔，分類與來源判定同一規則：
+// 開檔回不存在 → ErrRecordingNotFound；開檔其他錯誤、fstat 失敗、不是一般檔
+// → ErrRecordingUnreadable。判定與交付之間檔案可能被刪或被換，交付端不能
+// 假設判定過的那一刻仍然成立。
+//
+// 開檔前先 stat 一次並擋下非一般檔：對具名管道等特殊檔直接開檔會卡住。
+// 成功時呼叫端負責 Close。
+func OpenRecordingFile(path string) (*os.File, os.FileInfo, error) {
+	pre, err := os.Stat(path)
+	if err != nil {
+		return nil, nil, classifyLocalFileErr(err)
+	}
+	if !pre.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("%w: 不是一般檔（mode=%s）", ErrRecordingUnreadable, pre.Mode().Type())
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, classifyLocalFileErr(err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, fmt.Errorf("%w: %v", ErrRecordingUnreadable, err)
+	}
+	if !info.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, fmt.Errorf("%w: 不是一般檔（mode=%s）", ErrRecordingUnreadable, info.Mode().Type())
+	}
+	return f, info, nil
+}
 
 // OffsiteRetriever 離機取回面（消費者側窄介面）。
 //
@@ -118,9 +165,12 @@ func (s *RecordingService) GetRecordingBySessionID(sessionID uint) (filePath str
 //	本機 stat＋open 成功 ∧ 大小 ≥ 帳冊 size            → 本機
 //	  （圖形錄影的尾段使本機**合法地**比上傳版長，不是異常）
 //	本機大小 < 帳冊 size                                 → 離機，退路 local_truncated
-//	本機 stat 失敗／open 失敗                            → 離機，退路 local_missing／local_unreadable
+//	本機 stat 失敗／open 失敗／不是一般檔                → 離機，退路 local_missing／local_unreadable
 //	整檔路徑（verifyHash）大小相等而雜湊不符             → 離機，退路 local_divergent
-//	未離機且本機缺檔                                     → 既有錯誤（零改動）
+//	離機無副本：退路 local_unreadable                    → ErrRecordingUnreadable
+//	離機無副本：其餘退路                                 → ErrRecordingNotFound
+//	未離機：本機缺檔                                     → ErrRecordingNotFound
+//	未離機：stat 其他錯誤、不是一般檔、開不了            → ErrRecordingUnreadable
 //
 // verifyHash 只在**整檔路徑**（證據包裝入、下載）為真：那些路徑本就逐位元組讀完
 // 整個檔案，順手算雜湊幾乎免費；串流播放不算——為了播一個 Range 去讀完整檔
@@ -152,16 +202,21 @@ func (s *RecordingService) resolveFor(sess *model.Session, verifyHash bool) (Res
 
 	info, statErr := os.Stat(sess.RecordingPath)
 
-	// 未組裝離機子系統或本會話從未排入：逐字維持既有行為
-	// （錯誤映射沿 GetRecordingMetadata 的既有形態：不存在→ErrRecordingNotFound，
-	// 其餘 stat 錯誤→包裝上拋）
+	// 未組裝離機子系統或本會話從未排入：本機檔就是唯一來源。
+	// 判定涵蓋「存在」「是一般檔」「開得了」三項（開即關、不讀內容），
+	// 對外只分不存在與無法讀取兩類；細部原因只進日誌
 	if s.offsite == nil || sess.OffsiteObjectID == nil {
 		if statErr != nil {
-			if os.IsNotExist(statErr) {
-				return ResolvedRecording{}, ErrRecordingNotFound
-			}
-			return ResolvedRecording{}, fmt.Errorf("取得檔案資訊失敗: %w", statErr)
+			err := classifyLocalFileErr(statErr)
+			logLocalRecordingProblem(sess.ID, err)
+			return ResolvedRecording{}, err
 		}
+		f, _, openErr := OpenRecordingFile(sess.RecordingPath)
+		if openErr != nil {
+			logLocalRecordingProblem(sess.ID, openErr)
+			return ResolvedRecording{}, openErr
+		}
+		f.Close()
 		return ResolvedRecording{Path: sess.RecordingPath, Source: RecordingSourceLocal,
 			Size: info.Size(), ModTime: info.ModTime(),
 			Name: filepath.Base(sess.RecordingPath)}, nil
@@ -174,9 +229,15 @@ func (s *RecordingService) resolveFor(sess *model.Session, verifyHash bool) (Res
 		if !os.IsNotExist(statErr) {
 			fallback = FallbackLocalUnreadable
 		}
+	case !info.Mode().IsRegular():
+		// 路徑是目錄等非一般檔：本機沒有可交付的錄影，退到離機
+		fallback = FallbackLocalUnreadable
 	default:
 		if f, openErr := os.Open(sess.RecordingPath); openErr != nil {
 			fallback = FallbackLocalUnreadable
+			if os.IsNotExist(openErr) {
+				fallback = FallbackLocalMissing // stat 之後被刪
+			}
 		} else {
 			fallback = s.localAnomaly(f, info, *sess.OffsiteObjectID, verifyHash)
 			f.Close()
@@ -190,9 +251,13 @@ func (s *RecordingService) resolveFor(sess *model.Session, verifyHash bool) (Res
 
 	fetched, err := s.offsite.Fetch(context.Background(), *sess.OffsiteObjectID)
 	if err != nil {
-		// 帳冊沒有可取回的副本時，對外仍收斂為既有的「錄影檔不存在」——
+		// 帳冊沒有可取回的副本：依本機的狀況回答。本機檔在但讀不到時回
+		// 「無法讀取」——說成「不存在」會把儲存設定問題誤報為證據遺失。
 		// 離機側的失敗細分只進審計與帳冊
 		if errors.Is(err, offsite.ErrNoOffsiteCopy) {
+			if fallback == FallbackLocalUnreadable {
+				return ResolvedRecording{}, ErrRecordingUnreadable
+			}
 			return ResolvedRecording{}, ErrRecordingNotFound
 		}
 		return ResolvedRecording{}, err
@@ -200,6 +265,12 @@ func (s *RecordingService) resolveFor(sess *model.Session, verifyHash bool) (Res
 	return ResolvedRecording{Path: fetched.Path, Source: RecordingSourceOffsite,
 		Fallback: fallback, Size: fetched.Size, ModTime: fetched.UploadedAt,
 		Name: filepath.Base(sess.RecordingPath)}, nil
+}
+
+// logLocalRecordingProblem 本機錄影檔讀不到時記下細部原因（errno 字樣、是否為目錄）。
+// 只進伺服器日誌：回應與審計 Details 都不帶這些細節。
+func logLocalRecordingProblem(sessionID uint, err error) {
+	log.Printf("[RecordingService] 本機錄影檔不可交付（session=%d）: %v", sessionID, err)
 }
 
 // localAnomaly 本機檔異常的判定（回空字串＝本機可用）。
@@ -236,13 +307,14 @@ func (s *RecordingService) localAnomaly(f *os.File, info os.FileInfo, objectID u
 func (s *RecordingService) GetRecordingStream(sessionID uint) (io.ReadCloser, error) {
 	res, err := s.ResolveRecording(sessionID, true)
 	if err != nil {
-		return nil, err
+		return nil, classifyForExport(err)
 	}
 
-	// 開啟檔案
-	file, err := os.Open(res.Path)
+	// 開啟檔案（與 HTTP 交付同一個開檔檢查：被換成目錄或讀不到時回分類過的錯誤，
+	// 不讓呼叫端在 io.Copy 中途才失敗）
+	file, _, err := OpenRecordingFile(res.Path)
 	if err != nil {
-		return nil, fmt.Errorf("開啟錄製檔案失敗: %w", err)
+		return nil, classifyForExport(err)
 	}
 
 	return file, nil
@@ -588,7 +660,23 @@ func (s *RecordingService) GetRecordingMetadata(sessionID uint) (*RecordingMetad
 func (s *RecordingService) RecordingProtocol(sessionID uint) (string, error) {
 	meta, err := s.GetRecordingMetadata(sessionID)
 	if err != nil {
-		return "", err
+		return "", classifyForExport(err)
 	}
 	return meta.Protocol, nil
+}
+
+// classifyForExport 為匯出端（audit 模組）的錯誤加上它宣告的分類哨兵，
+// 原錯誤仍在鏈上（`errors.Is` 對本包哨兵照樣成立）。分類決定證據包 manifest
+// 的略過原因：不存在→missing、無法讀取→unreadable、本來就沒有錄影→不列；
+// 其餘（離機取回失敗等）不加分類，由匯出端視為無法讀取。
+func classifyForExport(err error) error {
+	switch {
+	case errors.Is(err, ErrRecordingNotFound):
+		return fmt.Errorf("%w: %w", audit.ErrExportRecordingMissing, err)
+	case errors.Is(err, ErrRecordingUnreadable):
+		return fmt.Errorf("%w: %w", audit.ErrExportRecordingUnreadable, err)
+	case errors.Is(err, ErrSessionHasNoRecording), errors.Is(err, ErrSessionNotFound):
+		return fmt.Errorf("%w: %w", audit.ErrExportRecordingAbsent, err)
+	}
+	return err
 }

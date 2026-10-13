@@ -603,6 +603,7 @@
           :protocol="form.protocol"
           :windows-openssh="windowsSshEnabled"
           :asset-name="form.name"
+          :private-key-error="privateKeyError"
           @update:model="Object.assign(form, $event)"
         />
         <AssetAdvancedFields
@@ -1138,6 +1139,12 @@ const form = reactive({
   rotation_ssh_port: ROTATION_SSH_DEFAULT_PORT,
 })
 
+// 伺服端指到私鑰欄的錯誤，顯示在該欄下方；改了私鑰內容就撤掉
+const privateKeyError = ref('')
+watch(() => form.private_key, () => {
+  privateKeyError.value = ''
+})
+
 // ssh 資產的 Windows 開關與通道欄位互為表裡
 const windowsSshEnabled = computed({
   get: () => form.rotation_channel === 'windows_ssh',
@@ -1437,6 +1444,7 @@ const resetForm = () => {
   form.username = ''
   form.password = ''
   form.private_key = ''
+  privateKeyError.value = ''
   form.description = ''
   form.tags = ''
   form.tagList = []
@@ -1731,7 +1739,8 @@ const handleSubmit = async () => {
       await updateAsset(form.id, data)
       ElMessage.success(t('assets.updated'))
     } else {
-      await createAsset(data)
+      // 私鑰欄的錯誤改掛在欄位下方，不另出頁頂提示
+      await createAsset(data, { skipErrorToast: isPrivateKeyFieldError })
       // 未掛任何節點的資產落在「未分組」，提示去向（走查實證：不提示會以為資產消失）
       ElMessage.success(form.node_ids.length ? t('assets.created') : t('assets.createdUngrouped'))
     }
@@ -1747,6 +1756,13 @@ const handleSubmit = async () => {
       // 驗證錯誤，不需要處理
       return
     }
+    if (isPrivateKeyFieldError(error)) {
+      const { data, status } = error.response
+      privateKeyError.value = looksLikePublicKey(form.private_key)
+        ? t('assets.credentialSection.privateKeyLooksPublic')
+        : resolveApiError(data, status)
+      return
+    }
     // 伺服端把錯誤指到收合起來的欄位時要展開：紅字掛在看不見的欄位上，
     // 使用者只會看到一個沒有理由的失敗
     if (isAdvancedFieldError(error)) {
@@ -1760,13 +1776,34 @@ const handleSubmit = async () => {
 
 // 基本資料四欄以外的驗證錯誤都當作收合區的事：欄位名對得上就照它，
 // 對不上時寧可展開（多展開一次的代價，遠小於讓人對著看不見的欄位重試）
+// 登入憑證區的欄位不在收合區內，錯誤直接掛在該欄
 const BASIC_FIELDS = ['name', 'protocol', 'host', 'port']
+const CREDENTIAL_FIELDS = ['private_key']
+
+// field 可在 params（訊息模板的插值）或回應頂層（純欄位指向）
+function errorField(error) {
+  const data = error?.response?.data
+  return data?.params?.field ?? data?.field
+}
 
 function isAdvancedFieldError(error) {
   const status = error?.response?.status
   if (status !== 400 && status !== 409 && status !== 422) return false
-  const field = error?.response?.data?.params?.field
-  return !field || !BASIC_FIELDS.includes(field)
+  const field = errorField(error)
+  return !field || (!BASIC_FIELDS.includes(field) && !CREDENTIAL_FIELDS.includes(field))
+}
+
+function isPrivateKeyFieldError(error) {
+  return error?.response?.status === 400 && errorField(error) === 'private_key'
+}
+
+// 貼成公鑰是最常見的誤貼：單行、以金鑰型別名開頭。只用來挑一句更貼切的說明，
+// 私鑰能不能用仍由伺服端判定
+const PUBLIC_KEY_RE = /^(ssh-(ed25519|rsa|dss)|ecdsa-sha2-nistp\d+|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) \S+/
+
+function looksLikePublicKey(value) {
+  const text = (value || '').trim()
+  return !text.includes('\n') && PUBLIC_KEY_RE.test(text)
 }
 
 // 處理刪除

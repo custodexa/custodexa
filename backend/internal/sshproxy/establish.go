@@ -162,13 +162,19 @@ func (h *Handler) establishTerminal(req establishRequest) (*EstablishedTerminal,
 		})
 		if err != nil {
 			log.Printf("[SSHProxy] SSH 連線失敗: assetID=%d, err=%v", assetID, err)
-			// Dial 已分類為使用者語言（逾時/認證/不可達）；
-			// 僅「解析私鑰失敗: %w」帶庫原文，截斷至動作描述避免洩漏
+			code := dialErrorCode(err)
+			// 私鑰無法解析：錯誤訊息帶解析函式原文，data 改取該碼的 zh fallback 全文，
+			// 舊前端與缺譯文時才看得到原因與處理方式
+			if code == apierror.CodeSSHPrivateKeyInvalid {
+				return nil, dialFailure(code, zhFallbackOf(code))
+			}
+			// 其餘分類 Dial 已轉為使用者語言（逾時/認證/不可達）；
+			// 帶 ": " 的包裝錯誤截斷至動作描述，避免底層原文外洩
 			msg := err.Error()
 			if idx := strings.Index(msg, ": "); idx > 0 {
 				msg = msg[:idx]
 			}
-			return nil, dialFailure(dialErrorCode(err), msg)
+			return nil, dialFailure(code, msg)
 		}
 		conn = sshConn
 		sshClient = sshConn.Client()

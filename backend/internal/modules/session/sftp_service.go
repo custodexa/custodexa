@@ -278,9 +278,10 @@ func dialSFTP(ctx context.Context, creds *asset.AssetCredentials, password *sshm
 	defer password.Destroy()
 	var methods []ssh.AuthMethod
 	if !creds.PrivateKey.IsEmpty() {
-		signer, err := material.Use(creds.PrivateKey, ssh.ParsePrivateKey)
+		// 與寫入驗證、終端撥號同一個解析函式；失敗時回包裝 asset.ErrPrivateKeyInvalid 的錯誤
+		signer, err := material.Use(creds.PrivateKey, asset.ParsePrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("解析私鑰失敗: %w", err)
+			return nil, err
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}

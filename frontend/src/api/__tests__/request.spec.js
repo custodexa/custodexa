@@ -108,6 +108,23 @@ describe('response interceptor', () => {
     expect(ElMessage.error).not.toHaveBeenCalled()
   })
 
+  it('skipErrorToast predicate suppresses only the errors it accepts', async () => {
+    const onlyField = (e) => e.response?.data?.field === 'private_key'
+    const fieldErr = {
+      ...makeError(400, { error: '私鑰無法辨識', field: 'private_key' }),
+      config: { skipErrorToast: onlyField },
+    }
+    await expect(responseHandler.rejected(fieldErr)).rejects.toBeTruthy()
+    expect(ElMessage.error).not.toHaveBeenCalled()
+
+    const otherErr = {
+      ...makeError(409, { error: '名稱已存在' }),
+      config: { skipErrorToast: onlyField },
+    }
+    await expect(responseHandler.rejected(otherErr)).rejects.toBeTruthy()
+    expect(ElMessage.error).toHaveBeenCalledWith('名稱已存在')
+  })
+
   it('does not toast 423 (account locked shown inline by login/MFA views)', async () => {
     await expect(
       responseHandler.rejected(makeError(423, { error: '帳號已鎖定', code: 'AUTH_ACCOUNT_LOCKED' }))

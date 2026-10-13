@@ -106,5 +106,5 @@ Language
     custodexa.sh --lang zh-TW          繁體中文 (Traditional Chinese)
     custodexa.sh --lang ja             日本語 (Japanese)
     custodexa.sh --lang en             English
-  Or keep the system language under sudo:
-    sudo env LANG=zh_TW.UTF-8 custodexa.sh
+  Under sudo, add --lang the same way, from the install directory:
+    sudo ./custodexa.sh --lang en

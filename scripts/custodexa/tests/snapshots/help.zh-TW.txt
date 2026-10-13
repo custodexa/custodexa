@@ -73,5 +73,5 @@ restore 的選項
     custodexa.sh --lang zh-TW          繁體中文
     custodexa.sh --lang ja             日本語
     custodexa.sh --lang en             English
-  或在 sudo 下保留系統語系：
-    sudo env LANG=zh_TW.UTF-8 custodexa.sh
+  以 sudo 執行時同樣加 --lang，在安裝目錄下：
+    sudo ./custodexa.sh --lang zh-TW

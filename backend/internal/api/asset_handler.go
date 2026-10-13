@@ -153,6 +153,17 @@ func tagValidationCode(err error) (apierror.ErrCode, bool) {
 	return "", false
 }
 
+// respondPrivateKeyInvalid 私鑰無法解析的共用出口（資產、資產帳號、憑證庫）。
+// 回應頂層帶 field 指出出錯的是私鑰欄，表單據此把錯誤掛在該欄下方，
+// 不必猜是哪一區。field 走 Meta 而非 params：params 只承載訊息模板的插值，
+// 這句訊息沒有插值位置。
+func respondPrivateKeyInvalid(c *gin.Context) {
+	apierror.Write(c, http.StatusBadRequest, apierror.ErrorResponse{
+		Code: apierror.CodeCredentialPrivateKeyInvalid,
+		Meta: map[string]any{"field": "private_key"},
+	})
+}
+
 // respondAssetError 資產寫入端點的統一錯誤出口：已知 sentinel 依 errors.Is 映射
 // 到機器碼（狀態碼與遷移前逐一相同），未知一律 RespondInternal（成因只落日誌）。
 // internalCode 為該端點的 INTERNAL_ASSET_<VERB> 碼。
@@ -180,6 +191,9 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountUsernameTooLong, nil)
 	case errors.Is(err, asset.ErrAssetNameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeAssetNameExists, nil)
+	case errors.Is(err, asset.ErrPrivateKeyInvalid):
+		// 原始解析錯誤不帶出：可能含金鑰格式細節
+		respondPrivateKeyInvalid(c)
 	case errors.Is(err, asset.ErrInvalidProtocol):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidProtocol, nil)
 	case errors.Is(err, asset.ErrInvalidRDPSecurity):

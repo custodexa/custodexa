@@ -1,7 +1,7 @@
 # evidence-offsite-storage Specification
 
 ## Purpose
-TBD - created by archiving change evidence-offsite-storage. Update Purpose after archive.
+把會話錄影與證據包產物另存到外部物件儲存：設定預設不影響既有部署，上傳具冪等、期限與重試，取回先驗證完整性再送出，並以保管帳冊與保管鏈事件記錄每份證據在本機與遠端之間的去向，同時明列平台不負責的遠端治理邊界。
 ## Requirements
 ### Requirement: 離機儲存的設定與零影響預設
 

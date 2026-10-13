@@ -155,7 +155,14 @@ func (h *OIDCHandler) List(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalOIDCProviderList, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": rows})
+	// 回呼網址對所有提供者相同，另在頂層回：新增頁還沒有單筆詳情可讀
+	redirect, state := "", identity.RedirectURIStateReady
+	if uri, err := h.providers.RedirectURI(); err == nil {
+		redirect = uri
+	} else {
+		state = identity.RedirectURIStateBaseURLUnset
+	}
+	c.JSON(http.StatusOK, gin.H{"data": rows, "redirect_uri": redirect, "redirect_uri_state": state})
 }
 
 // Get 單筆 provider 詳情（回呼網址與宣告對應四欄隨它回）
@@ -279,14 +286,20 @@ func (h *OIDCHandler) Delete(c *gin.Context) {
 // 只回識別與顯示所需欄位——不含 issuer/client_id 等設定值。停用者與設定不完整者
 // 皆不列出（否則按鈕看得到、按下去必失敗）
 func (h *OIDCHandler) LoginMethods(c *gin.Context) {
+	// 目錄清單只供登入測試連結判斷來源是否仍在登入頁；讀取失敗降級為空，不影響登入
+	dirs, dirErr := h.sources.LoginDirectories()
+	if dirErr != nil {
+		log.Printf("[OIDC] 讀取目錄清單失敗: %v", dirErr)
+		dirs = []identity.LoginDirectory{}
+	}
 	methods, err := h.providers.ListLoginMethods()
 	if err != nil {
 		// 清單失敗不得阻斷登入頁：前端會降級為只顯示本地表單
 		log.Printf("[OIDC] 讀取登入方法清單失敗: %v", err)
-		c.JSON(http.StatusOK, gin.H{"local": true, "oidc": []identity.LoginMethod{}})
+		c.JSON(http.StatusOK, gin.H{"local": true, "oidc": []identity.LoginMethod{}, "ldap": dirs})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"local": true, "oidc": methods})
+	c.JSON(http.StatusOK, gin.H{"local": true, "oidc": methods, "ldap": dirs})
 }
 
 // Begin 發起 OIDC 登入（302 至 IdP）。
@@ -550,6 +563,8 @@ func oidcErrorSlug(err error) string {
 		return "oidc_account_removed"
 	case errors.Is(err, identity.ErrUserInactive):
 		return "oidc_user_inactive"
+	case errors.Is(err, identity.ErrOIDCCodeExchangeFailed):
+		return "oidc_code_exchange_failed"
 	default:
 		return "oidc_flow_invalid"
 	}

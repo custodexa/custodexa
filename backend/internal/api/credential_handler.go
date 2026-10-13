@@ -235,6 +235,9 @@ func respondCredentialError(c *gin.Context, internalCode apierror.ErrCode, err e
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialProtocolFamily, nil)
 	case errors.Is(err, asset.ErrCredentialDetachSourceInvalid):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialDetachSourceInvalid, nil)
+	// 人工輸入的私鑰無法解析：與資產、資產帳號入口同碼；原始解析錯誤不帶出
+	case errors.Is(err, asset.ErrPrivateKeyInvalid):
+		respondPrivateKeyInvalid(c)
 	// 帳號名的既有檢核在憑證上沿用同一套規則，故沿用既有帳號名碼
 	case errors.Is(err, asset.ErrAssetAccountUsernameInvalid):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountUsernameInvalid, nil)

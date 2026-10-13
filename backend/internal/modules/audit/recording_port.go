@@ -1,6 +1,9 @@
 package audit
 
-import "io"
+import (
+	"errors"
+	"io"
+)
 
 // 錄影讀取／清理的**消費者側窄介面**（C↔E 環反轉）。
 //
@@ -37,10 +40,25 @@ import "io"
 // session 側因此新增一個薄方法 `RecordingProtocol`（export budget 登記 1 項），
 // 語義逐字等同「取 metadata、失敗即回錯、成功回 Protocol」。
 
+// 匯出端對讀不到的錄影的分類（消費者側宣告的哨兵錯誤）。
+//
+// RecordingReader 的實作者回錯時以 `errors.Is` 可對上其中之一，匯出端據以決定
+// manifest 的略過原因；對不上的錯誤一律視為無法讀取（離機取回失敗等）。
+// 宣告在 audit 側而非 import session 的錯誤值：audit 不得依賴 session。
+var (
+	// ErrExportRecordingMissing 錄影檔不存在（且無可取回的副本）→ 略過原因 missing
+	ErrExportRecordingMissing = errors.New("錄影檔不存在")
+	// ErrExportRecordingUnreadable 錄影檔存在但讀不到 → 略過原因 unreadable
+	ErrExportRecordingUnreadable = errors.New("錄影檔無法讀取")
+	// ErrExportRecordingAbsent 會話本來就沒有錄影或會話不存在 → 沒有東西被略過，不列
+	ErrExportRecordingAbsent = errors.New("會話沒有錄影")
+)
+
 // RecordingReader 錄影讀取面（匯出用）。
 type RecordingReader interface {
 	// RecordingProtocol 取該會話錄影的協定別（決定匯出檔副檔名）。
-	// 回 error 表示無錄影或檔案缺失——呼叫端 SHALL 沿用現況處置（跳過該筆，不阻斷整包）。
+	// 回 error 表示無錄影、檔案缺失或讀不到——呼叫端跳過該筆、不阻斷整包，
+	// 並依上方哨兵錯誤把略過原因記入 manifest。
 	RecordingProtocol(sessionID uint) (string, error)
 
 	// GetRecordingStream 取錄影位元流。呼叫端負責 Close。

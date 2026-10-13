@@ -3,7 +3,9 @@
 ## Purpose
 
 SSH 資產的原生 xterm.js 終端直連與 PTY 互動：連線收口與憑證後端化、指令阻斷警告以碼化控制幀送達並三軌（錄影／即時監看／審計 tap）留痕、使用者可見文字走機器碼查譯的三語支援、以及終端出口中文字面量的常駐守衛。SSH 已退出 guacd，指令審計與 asciicast 錄製由自有終端代理承擔。
+
 ## Requirements
+
 ### Requirement: Native SSH text-stream session
 The system SHALL establish SSH sessions through a backend-native SSH client (PTY over WebSocket text stream) rendered by xterm.js in the browser. SSH sessions MUST NOT be relayed through guacd.
 
@@ -75,7 +77,9 @@ SSH 終端於行動環境（粗指標裝置或窄視窗）SHALL 顯示快捷鍵�
 - **THEN** 快捷鍵列不渲染
 
 ### Requirement: WS 撥號失敗原因透傳
-`GET /api/v1/ssh` 於 WebSocket 升級前的終端連線建立失敗（SSH 撥號、k8s exec 建立、database CLI 啟動）時，後端 SHALL 嘗試升級 WebSocket 並以 `type:"error"` 訊息送出失敗原因後關閉連線；SSH 撥號失敗 SHALL 依既有分類（host key 變更／認證失敗／逾時／不可達）附機器可讀 `code` 欄（登記於 `internal/apierror` registry，命名空間 `RULE_SSH_*`），`data` 欄 SHALL 為 zh fallback 文案。WebSocket 升級失敗時 SHALL 退回既有 HTTP JSON 錯誤回應。前端 SHALL 以 code 查當前語言譯文顯示（`apiError.*` 三層降級），SHALL NOT 一律顯示籠統的連線失敗文案。
+`GET /api/v1/ssh` 於 WebSocket 升級前的終端連線建立失敗（SSH 撥號、k8s exec 建立、database CLI 啟動）時，後端 SHALL 嘗試升級 WebSocket 並以 `type:"error"` 訊息送出失敗原因後關閉連線；SSH 撥號失敗 SHALL 依既有分類（host key 變更／私鑰無法解析／認證失敗／逾時／不可達）附機器可讀 `code` 欄（登記於 `internal/apierror` registry，命名空間 `RULE_SSH_*`），`data` 欄 SHALL 為 zh fallback 文案。WebSocket 升級失敗時 SHALL 退回既有 HTTP JSON 錯誤回應。前端 SHALL 以 code 查當前語言譯文顯示（`apiError.*` 三層降級），SHALL NOT 一律顯示籠統的連線失敗文案。
+
+「私鑰無法解析」指就位版本含私鑰，但系統無法將其解析為可用的簽章金鑰（格式錯誤、內容不完整、受 passphrase 保護等），此時尚未向目標主機出示任何認證。此情形 SHALL 回 `RULE_SSH_PRIVATE_KEY_INVALID`，SHALL NOT 歸為不可達（`RULE_SSH_UNREACHABLE`），亦 SHALL NOT 歸為認證失敗（`RULE_SSH_AUTH_FAILED`，該碼專指目標主機拒絕了所出示的認證）。判定所用的解析函式 SHALL 與憑證寫入時的私鑰驗證為同一個。此分類的 `data` 欄 SHALL 為 `RULE_SSH_PRIVATE_KEY_INVALID` 於 registry 登記的 zh fallback 文案全文，SHALL NOT 取自錯誤訊息。所有對外輸出（含 WS 錯誤幀的 `data` 與 HTTP 錯誤回應）SHALL NOT 含解析函式的原始錯誤文字或私鑰內容；原始錯誤 SHALL 只寫入伺服端日誌，私鑰內容 SHALL NOT 寫入任何日誌。
 
 #### Scenario: host key 變更經 WS 送達
 - **WHEN** 資產 host key 與記錄不符導致 SSH 撥號被拒，且客戶端為瀏覽器 WebSocket
@@ -84,6 +88,14 @@ SSH 終端於行動環境（粗指標裝置或窄視窗）SHALL 顯示快捷鍵�
 #### Scenario: 認證失敗分類送達
 - **WHEN** 資產憑證錯誤導致 SSH 撥號認證失敗
 - **THEN** 前端收到 `code:"RULE_SSH_AUTH_FAILED"` 並顯示對應譯文，而非籠統 connectFailed
+
+#### Scenario: 私鑰無法解析分類送達
+- **WHEN** 資產帳號的就位版本含一把格式錯誤或受 passphrase 保護的私鑰，使用者自瀏覽器開啟終端
+- **THEN** WS 收到 `{type:"error", code:"RULE_SSH_PRIVATE_KEY_INVALID", data:<該碼的 zh fallback 全文>}` 後連線關閉，`data` 不含原始解析錯誤，目標主機未收到任何認證嘗試；前端顯示當前語言的「私鑰無法使用」譯文，而非「無法連線到目標主機」
+
+#### Scenario: 金鑰被目標主機拒絕仍為認證失敗
+- **WHEN** 資產帳號的私鑰可正常解析，但其公鑰未列在目標主機的授權清單中
+- **THEN** 前端收到 `code:"RULE_SSH_AUTH_FAILED"`，與私鑰無法解析明確區分
 
 #### Scenario: 非 WS 客戶端維持 HTTP 語義
 - **WHEN** 撥號失敗且請求非有效 WebSocket 升級請求
@@ -170,3 +182,13 @@ SSH 終端於行動環境（粗指標裝置或窄視窗）SHALL 顯示快捷鍵�
 - **WHEN** 守衛測試套件執行
 - **THEN** 該 allowlist 為空、守衛留在測試套件常駐，英文字面量盲區已於本規格與守衛註解明載
 
+### Requirement: SFTP 撥號遇私鑰無法解析時回專屬錯誤碼
+檔案管理（SFTP）各動作建立 SSH 連線時，若就位版本含私鑰但無法以與憑證寫入驗證相同的解析函式解析（格式錯誤、內容不完整、受 passphrase 保護等），後端 SHALL 回 400 與機器可讀碼 `RULE_SSH_PRIVATE_KEY_INVALID`，SHALL NOT 回該動作的失敗碼（如讀取目錄失敗）或 502。錯誤回應 SHALL NOT 含解析函式的原始錯誤文字或私鑰內容；原始錯誤 SHALL 只寫入伺服端日誌，私鑰內容 SHALL NOT 寫入任何日誌。
+
+#### Scenario: SFTP 列目錄遇格式錯誤的私鑰
+- **WHEN** 資產帳號的就位版本含一把格式錯誤的私鑰，使用者開啟檔案管理列出目錄
+- **THEN** 回 400 與 `RULE_SSH_PRIVATE_KEY_INVALID`，回應本文不含原始解析錯誤，目標主機未收到任何認證嘗試
+
+#### Scenario: SFTP 遇受 passphrase 保護的私鑰
+- **WHEN** 資產帳號的就位版本含一把以 passphrase 加密的私鑰，使用者執行任一 SFTP 動作
+- **THEN** 回 400 與 `RULE_SSH_PRIVATE_KEY_INVALID`，與格式錯誤同碼

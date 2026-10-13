@@ -706,6 +706,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 只讀 discovery 的快取（不撥號），故一併注入
 	identitySourceService := identity.NewIdentitySourceService(database.DB, auditTxSink)
 	identitySourceService.SetDiscovery(oidcDiscovery)
+	identitySourceService.SetPublicBaseURL(cfg.OIDC.PublicBaseURL)
 	mark("oidcServices")
 
 	// 匯出簽章服務（10.3.4）：首啟自動生成 Ed25519 金鑰，
@@ -1655,6 +1656,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		s.authorizationService)
 
 	sessionHandler := api.NewSessionHandler(s.sessionService)
+	sessionHandler.SetRecordingProbe(s.recordingService)
 	myConnectionHandler := api.NewMyConnectionHandler(session.NewMyConnectionService(s.sessionService))
 
 	// 註冊指令審計路由（command-audit）：單會話指令流 + 跨會話搜尋

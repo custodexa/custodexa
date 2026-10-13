@@ -170,8 +170,17 @@ defineEmits(['save', 'test'])
   min-width: 0;
 }
 
+/* 右欄整欄黏在可視區上緣、自身可捲：表單很長時面板仍看得到。
+   頁底動作列（約 50px 高＋上下間距）會蓋住右欄最底下那一段，
+   故右欄底部留出與動作列等高的空間，捲到底時最後一行落在動作列之上 */
 .source-detail__aside {
+  --source-detail-actions-space: 76px;
+  position: sticky;
+  top: var(--ot-space-md);
   width: 340px;
+  max-height: calc(100vh - var(--ot-header-height, 56px) - 2 * var(--ot-space-md));
+  overflow-y: auto;
+  padding-bottom: var(--source-detail-actions-space);
   flex-shrink: 0;
 }
 
@@ -182,7 +191,11 @@ defineEmits(['save', 'test'])
   }
 
   .source-detail__aside {
+    position: static;
     width: 100%;
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 0;
   }
 }
 

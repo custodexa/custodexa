@@ -4,6 +4,7 @@ import ElementPlus, { ElMessage } from 'element-plus'
 import Login from '../Login.vue'
 import { getAccessToken, resetSessionForTests } from '@/utils/session'
 import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
+import i18n from '@/i18n'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -431,8 +432,53 @@ describe('Login — 明文連線的登入說明', () => {
     await flushPromises()
 
     expect(wrapper.find('.insecure-transport-alert').exists()).toBe(true)
-    expect(wrapper.text()).toContain('登入狀態不會保存')
-    expect(wrapper.text()).toContain('15 分鐘需重新登入')
+    expect(wrapper.text()).toContain('登入狀態已結束')
+    expect(wrapper.text()).toContain('大約每 15 分鐘就得重新登入')
+  })
+
+  // 觸發條件在新分頁開啟已失效的登入狀態時也成立（健康部署照樣會走到），
+  // 所以文案只能是條件式：說「如果…可能是…請告知管理員」，不得斷言本連線不保存登入狀態，
+  // 標題也不能像安全事故。逐語以真實 locale 檔驗三個成分與禁用句。
+  it.each([
+    {
+      locale: 'zh-TW',
+      markers: ['如果', '可能', '告知系統管理員'],
+      banned: ['不會保存', '不保存', '將無法保存'],
+      bannedTitle: ['安全提示'],
+    },
+    {
+      locale: 'en-US',
+      markers: ['If', 'may', 'administrator'],
+      banned: ['will not be saved', "won't be saved", 'is not saved'],
+      bannedTitle: ['Security notice', 'Security'],
+    },
+    {
+      locale: 'ja-JP',
+      markers: ['場合', '可能性', '管理者'],
+      banned: ['保存されません', '保存しません'],
+      bannedTitle: ['セキュリティ'],
+    },
+  ])('$locale：內文為條件式並含告知管理員，標題不像安全事故', async ({ locale, markers, banned, bannedTitle }) => {
+    i18n.global.locale.value = locale
+    recordInsecureTransportRelogin()
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    const alert = wrapper.find('.insecure-transport-alert')
+    expect(alert.exists()).toBe(true)
+    const title = alert.find('.el-alert__title').text()
+    const body = alert.find('.el-alert__description').text()
+    expect(title.length).toBeGreaterThan(0)
+    for (const m of markers) {
+      expect(body, `${locale} 內文應含「${m}」`).toContain(m)
+    }
+    for (const b of banned) {
+      expect(body, `${locale} 內文不得含斷言句「${b}」`).not.toContain(b)
+    }
+    for (const b of bannedTitle) {
+      expect(title, `${locale} 標題不得含「${b}」`).not.toContain(b)
+    }
   })
 
   // 寫給被登出的人看，不是寫給讀組態的人看：cookie／Secure／環境變數／政策鍵名

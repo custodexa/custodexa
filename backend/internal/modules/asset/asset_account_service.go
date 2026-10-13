@@ -520,6 +520,10 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 	if err := validateAccountNote(req.Note); err != nil {
 		return nil, err
 	}
+	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查
+	if err := ValidatePrivateKey(source.PrivateKey); err != nil {
+		return nil, err
+	}
 	authMethod, authErr := normalizeAccountAuthMethod(source.AuthMethod)
 	if authErr != nil {
 		return nil, authErr
@@ -716,6 +720,12 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 	}
 	if _, err := s.assets.GetByID(assetID); err != nil {
 		return nil, err
+	}
+	// 只在本次帶了非空私鑰時驗證；未帶或空字串＝沿用現行私鑰，不重驗庫內既有的
+	if req.PrivateKey != nil {
+		if err := ValidatePrivateKey(*req.PrivateKey); err != nil {
+			return nil, err
+		}
 	}
 	// 加密在交易外先做（純 CPU／可能觸及 KMS，不佔 DB 交易與資產鎖）
 	var passwordEnc, privateKeyEnc string

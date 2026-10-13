@@ -528,7 +528,7 @@ recordings_ready() { chown 1000:0 "$1" && chmod 2770 "$1"; }
     last_backup.id 20260930-021504 last_backup.kind script last_backup.taken_at 2026-09-30T02:17:55+0800 \
     last_backup.dir backups/20260930-021504 last_backup.size_bytes 19434727014 \
     last_upgrade.from 1.13.0 last_upgrade.to 1.13.2 last_upgrade.result succeeded last_upgrade.step 13 \
-    last_upgrade.finished_at 2026-09-30T02:31:12+0800 last_upgrade.backup_id 20260930-021504
+    last_upgrade.finished_at 2026-09-30T02:31:12+0800 last_upgrade.backup backups/20260930-021504
   for c in postgres guacd backend frontend tls-init tls-proxy; do echo "custodexa-$c sha256:0$c"; done >"$SIM/containers"
   echo sealed >"$SIM/seal-state"
   echo 1.13.2 >"$SIM/health-version"
@@ -546,6 +546,45 @@ recordings_ready() { chown 1000:0 "$1" && chmod 2770 "$1"; }
   done
   [ "$(tree_print "$ROOT")" = "$before" ] || { diff <(printf '%s\n' "$before") <(tree_print "$ROOT"); return 1; }
   status_calls_read_only
+}
+
+# A state.json written before last_upgrade.backup_id existed (1.17.3 and earlier) can only be made by
+# hand: an upgrade on record, the latest backup and what the upgrade recorded as its backup.
+# old_state [key value...]: that state.json with the keys given added.
+old_state() {
+  printf '{\n  "format": "2"\n}\n' >"$ROOT/state.json"
+  state_put last_backup.id 20260930-021504 last_backup.kind script last_backup.taken_at 2026-09-30T02:17:55+0800 \
+    last_upgrade.from 1.13.0 last_upgrade.to 1.13.2 last_upgrade.result succeeded last_upgrade.step 13 "$@"
+}
+# backup_section <lang>: the backup section of status for that state.json, its lines joined.
+backup_section() {
+  bash -c '. "$1/lib/common.sh"; CX_LANG_FLAG=$3; cx_load_libs "$1"; . "$1/lib/cmd_status.sh"
+    CX_ROOT=$2; cx_state_load "$2/state.json"; cmd_status_backup' _ "$SRC" "$ROOT" "$1" | tr -s ' \n' ' '
+}
+# source_is <zh-TW> <en> <ja>: the source of the latest backup as each language shows it.
+source_is() {
+  local s
+  s=$(backup_section zh-TW) && [[ $s == *"$1"* ]] || { echo "[zh-TW] $s"; return 1; }
+  s=$(backup_section en) && [[ $s == *"($2;"* ]] || { echo "[en] $s"; return 1; }
+  s=$(backup_section ja) && [[ $s == *"（$3、"* ]] || { echo "[ja] $s"; return 1; }
+}
+
+@test "status, a state.json of before: the upgrade recorded the latest backup file as its own; automatic, before the upgrade" {
+  old_state last_backup.file backups/custodexa-backup-1.13.0-20260930-021504.tar \
+    last_upgrade.backup backups/custodexa-backup-1.13.0-20260930-021504.tar
+  source_is "（升級前自動備份，" "automatic, before the upgrade" "アップグレード前の自動バックアップ"
+}
+
+@test "status, a state.json of before: with a file on record the folder is not compared; source not recorded" {
+  old_state last_backup.file backups/custodexa-backup-1.13.2-20261001-090000.tar last_backup.dir backups/20260930-021504 \
+    last_upgrade.backup backups/20260930-021504
+  source_is "（來源未記錄，" "source not recorded" "取得元の記録なし"
+}
+
+@test "status, a state.json of before: the upgrade recorded another backup than the latest; source not recorded, not guessed" {
+  old_state last_backup.file backups/custodexa-backup-1.13.2-20261001-090000.tar \
+    last_upgrade.backup backups/custodexa-backup-1.13.0-20260930-021504.tar
+  source_is "（來源未記錄，" "source not recorded" "取得元の記録なし"
 }
 
 @test "status after a real install: each reminder and fault is a warning (exit 4); none left, exit 0" {

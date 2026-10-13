@@ -25,6 +25,8 @@ MSG_usage_images_from_command='--images-from は install または対象を指�
 MSG_usage_images_from_conflict='--images-from source と --images は併用できません。'
 MSG_usage_backup_only='オプション %s は backup 専用です。
 custodexa.sh --help を参照してください。'
+MSG_usage_backup_restore_only='オプション %s は backup と restore 専用です。
+custodexa.sh --help を参照してください。'
 MSG_legacy_refused='これは旧 git clone 配置です。このディレクトリでは custodexa.sh による
 インストールやアップグレードはできません。
 配置ファイルとサービスは変更していません。
@@ -107,8 +109,8 @@ MSG_help_language='表示言語
     custodexa.sh --lang ja             日本語
     custodexa.sh --lang zh-TW          繁體中文
     custodexa.sh --lang en             English
-  sudo でシステムの言語を保つ場合：
-    sudo env LANG=ja_JP.UTF-8 custodexa.sh'
+  sudo で実行するときも同様に --lang を付けます（インストールディレクトリで）：
+    sudo ./custodexa.sh --lang ja'
 
 # ---- リリースマニフェスト、インストール見出し、所要時間 ----
 MSG_manifest_missing='リリースマニフェスト %s がありません。パッケージが不完全な
@@ -418,6 +420,7 @@ MSG_status_backup='最新 %s（%s、%s）'
 MSG_status_backup_upgrade='アップグレード前の自動バックアップ'
 MSG_status_backup_script='custodexa.sh backup'
 MSG_status_backup_external='自前のバックアップ'
+MSG_status_backup_unrecorded='取得元の記録なし'
 MSG_status_backup_none='バックアップの記録がありません'
 MSG_status_backup_encrypted='%s（暗号化済み）'
 MSG_status_days_0='今日'
@@ -1216,6 +1219,9 @@ MSG_st_gone_unchecked='旧バージョンの停止を確認（サービスは停
 接続していないことを確認してください）'
 MSG_up_no_space_hint='古いバックアップファイルを別の場所へ移してから、
 ここで削除してください。'
+MSG_up_no_space_images='新しいイメージ用の空き容量が足りません：%s 必要ですが、
+%s の空きは %s です。
+サービスは停止していません。'
 MSG_up_ext_major_sep='／'
 MSG_up_ext_own_version='今回は外部データベースをスクリプトでバックアップできません。
 外部データベースは PostgreSQL %s で、このリリースには同じメジャー

@@ -60,6 +60,9 @@ func respondAccountError(c *gin.Context, internalCode apierror.ErrCode, err erro
 		// 來源不可見與來源不存在共用一碼：分流即成為「哪些 account id 存在」的探測器
 		errors.Is(err, asset.ErrAssetAccountSourceForbidden):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetAccountSourceNotFound, nil)
+	case errors.Is(err, asset.ErrPrivateKeyInvalid):
+		// 與資產、憑證庫入口同碼；原始解析錯誤不帶出
+		respondPrivateKeyInvalid(c)
 	// 憑證來源二擇一、已退場的複製參數、共用憑證的單台寫密：三者都是請求形狀
 	// 或規則層的攔截，回機器碼而非讓它落 500
 	case errors.Is(err, asset.ErrCredentialSourceAmbiguous):

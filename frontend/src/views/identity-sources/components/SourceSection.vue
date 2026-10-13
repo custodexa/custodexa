@@ -24,18 +24,25 @@
   </section>
 </template>
 
+<script>
+/** 所在頁以 provide 此鍵提供 (index) => boolean，決定各段預設展開與否 */
+export const SOURCE_SECTION_OPEN_KEY = Symbol('sourceSectionOpen')
+</script>
+
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 
-defineProps({
+const props = defineProps({
   index: { type: Number, required: true },
   title: { type: String, required: true },
   hint: { type: String, default: '' },
 })
 
-// 預設全部展開：設定頁的預設狀態不該要求管理者先找到再點開
-const open = ref(true)
+// 預設展開：設定頁的預設狀態不該要求管理者先找到再點開。所在頁可提供
+// 「哪幾段預設展開」的判斷（例如新增頁只展開必填的段落），沒提供即全部展開
+const defaultOpen = inject(SOURCE_SECTION_OPEN_KEY, null)
+const open = ref(defaultOpen ? defaultOpen(props.index) : true)
 </script>
 
 <style scoped>
@@ -85,5 +92,10 @@ const open = ref(true)
 
 .source-section__body {
   padding: var(--ot-space-md);
+}
+
+/* 開關右側只放目前狀態一個字，以一般文字色呈現，不隨開啟改成強調色 */
+.source-section__body :deep(.el-switch__label.is-active) {
+  color: var(--ot-text-primary);
 }
 </style>

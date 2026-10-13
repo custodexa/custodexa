@@ -72,14 +72,29 @@ html.dark {
    AA (~5.8:1 on primary light-5 #2d4c89) while still reading as muted */
 /* Filled primary buttons take the brand fill step: white text on #2563eb is 5.2:1.
    --ot-primary is the text step (links, selected items, outlines) and never carries
-   white text; plain / text / link variants keep the text step. */
-html.dark .el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+   white text; plain / text / link variants keep the text step.
+   A button that is also marked danger is skipped here: the message box confirm
+   button is always primary and gets danger only as an extra class, so without
+   this exclusion destructive confirmations would render blue. */
+html.dark .el-button--primary:not(.el-button--danger):not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
   --el-button-bg-color: var(--ot-primary-fill);
   --el-button-border-color: var(--ot-primary-fill);
   --el-button-hover-bg-color: var(--ot-primary-fill-hover);
   --el-button-hover-border-color: var(--ot-primary-fill-hover);
   --el-button-active-bg-color: var(--ot-primary-fill-hover);
   --el-button-active-border-color: var(--ot-primary-fill-hover);
+}
+/* Filled danger buttons take the danger fill step: white text on #c4473a is
+   4.9:1 (5.9:1 on hover). --ot-danger is the text step and stays for copy and
+   marks. Covers destructive confirmations and page-level danger actions.
+   The white label comes from Element Plus's own danger button variables. */
+html.dark .el-button--danger:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+  --el-button-bg-color: var(--ot-danger-fill);
+  --el-button-border-color: var(--ot-danger-fill);
+  --el-button-hover-bg-color: var(--ot-danger-fill-hover);
+  --el-button-hover-border-color: var(--ot-danger-fill-hover);
+  --el-button-active-bg-color: var(--ot-danger-fill-hover);
+  --el-button-active-border-color: var(--ot-danger-fill-hover);
 }
 .el-button--primary.is-disabled,
 .el-button--primary.is-disabled:hover,

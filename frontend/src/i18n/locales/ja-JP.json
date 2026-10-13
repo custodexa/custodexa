@@ -190,7 +190,8 @@
       "oidc_provider_error": "ID プロバイダーからログイン未完了の通知がありました",
       "oidc_flow_invalid": "ログイン手続きは無効になりました",
       "oidc_account_removed": "このシステムのアカウントは管理者によって削除されました",
-      "oidc_user_inactive": "アカウントは無効化されています"
+      "oidc_user_inactive": "アカウントは無効化されています",
+      "oidc_code_exchange_failed": "ID プロバイダーとのサインインを完了できませんでした"
     },
     "ssoSlugHint": {
       "oidc_admission_denied": "お使いのアカウントが許可された組織に属しているか、管理者にご確認ください。",
@@ -199,10 +200,20 @@
       "oidc_provider_error": "認可をキャンセルしたか、プロバイダーがこのログインを拒否した可能性があります。やり直せます。",
       "oidc_flow_invalid": "ログインリンクは一度きり、かつ有効期限があります。ログインをやり直してください。",
       "oidc_account_removed": "このログイン方法では、管理者が事前に紐付けた人だけがログインできます。管理者にアカウントの再作成と外部 ID の紐付けを依頼してください。",
-      "oidc_user_inactive": "管理者にアカウントの再有効化を依頼してください。"
+      "oidc_user_inactive": "管理者にアカウントの再有効化を依頼してください。",
+      "oidc_code_exchange_failed": "多くの場合、クライアントシークレットが誤っているか期限切れです。システム管理者に連絡してください。"
     },
-    "insecureTransportTitle": "セキュリティ通知：ログイン状態は保持されません",
-    "insecureTransportBody": "http 接続のためログイン状態は保持されません（15 分ごとに再ログインが必要です）"
+    "insecureTransportTitle": "ログイン状態が終了しました。もう一度ログインしてください",
+    "insecureTransportBody": "このアドレスで約 15 分ごとにログインし直す必要がある場合、接続方法によってブラウザがログイン状態を保存できない可能性があります。システム管理者に連絡してください。",
+    "testSource": {
+      "usernamePlaceholder": "ディレクトリのユーザー名",
+      "badge": "テスト中のサインイン方法",
+      "notListed": "テスト対象のサインイン方法は現在サインインページにありません。無効化されているか、設定が不完全な可能性があります。",
+      "ldap": "これはディレクトリアカウントのサインインテストです。ディレクトリのユーザー名とパスワードを入力してください。",
+      "authedTitle": "すでにサインインしています",
+      "authedBody": "これはサインインテスト用のリンクです。テストするには、シークレットウィンドウまたは別のブラウザーでこのリンクを開いてください。ここでサインインすると、現在のサインインが置き換わります。",
+      "backToDashboard": "ダッシュボードに戻る"
+    }
   },
   "api": {
     "requestFailed": "リクエストに失敗しました",
@@ -1121,7 +1132,8 @@
         "create": "共用認証情報を新規作成…",
         "meta": "{username} · {type} · {count} 台",
         "createdNotListed": "新しい認証情報はこの資産のプロトコルと合わないため、一覧には入りません。"
-      }
+      },
+      "privateKeyLooksPublic": "これは公開鍵のようです。秘密鍵を貼り付けてください。秘密鍵の 1 行目は「-----BEGIN」で始まる行です。"
     },
     "editDrawer": {
       "basicSection": "基本情報",
@@ -2148,6 +2160,48 @@
   "asciiPlayer": {
     "loading": "録画を読み込んでいます...",
     "speedChangeFailed": "再生速度の変更に失敗しました"
+  },
+  "recordingReadability": {
+    "state": {
+      "unreadable": "録画ファイルを読み取れません",
+      "missing": "録画ファイルがありません"
+    },
+    "downloadDisabled": {
+      "unreadable": "現在、録画ファイルを読み取れないため、ダウンロードできません。録画の保存場所の権限を確認するよう、システム管理者に依頼してください。",
+      "missing": "録画ファイルが保存場所にないため、ダウンロードできません。"
+    },
+    "offsiteHint": "この録画はオフサイト保管先にあります。再生やダウンロードの前に取り出す必要があるため、時間がかかる場合があります。",
+    "card": {
+      "unreadable": {
+        "title": "現在、この接続の録画ファイルを読み取れません",
+        "body": "この接続の録画記録はありますが、現在録画ファイルを読み取れません。録画されていなかったという意味ではありません。",
+        "next": "次の対応：録画の保存場所の権限を確認するよう、システム管理者に依頼してください。"
+      },
+      "missing": {
+        "title": "録画ファイルが保存場所にありません",
+        "body": "この接続の録画記録はありますが、録画ファイルが保存場所にありません。削除されたか、失われた可能性があります。",
+        "next": "次の対応：オフサイト保管を設定している場合は、接続情報のオフサイト保管の状態でコピーの有無を確認してください。"
+      }
+    },
+    "adminInfo": "管理者向け情報",
+    "sessionIdLabel": "接続番号",
+    "errorCodeLabel": "エラーコード",
+    "playback": {
+      "unreadable": {
+        "title": "再生が中断されました：録画ファイルを読み取れません",
+        "detail": "再生中に録画ファイルを読み取れなくなりました。プレーヤーを再読み込みしてもう一度お試しください。それでも再生できない場合は、録画の保存場所の権限を確認するよう、システム管理者に依頼してください。"
+      },
+      "missing": {
+        "title": "再生が中断されました：録画ファイルが保存場所にありません",
+        "detail": "再生中に録画ファイルが削除されました。削除されたか、失われた可能性があります。オフサイト保管を設定している場合は、オフサイト保管の状態を確認してください。"
+      },
+      "reload": "プレーヤーを再読み込み"
+    },
+    "download": {
+      "unreadable": "ダウンロードに失敗しました：現在、録画ファイルを読み取れません。録画の保存場所の権限を確認するよう、システム管理者に依頼してください。",
+      "missing": "ダウンロードに失敗しました：録画ファイルが保存場所にありません。削除されたか、失われた可能性があります。",
+      "failed": "ダウンロードに失敗しました：{reason}"
+    }
   },
   "monitorTerminal": {
     "backToSessions": "接続一覧に戻る",
@@ -3951,6 +4005,7 @@
     "INTERNAL_RECORDING_FILE_OPEN": "録画ファイルのオープンに失敗しました",
     "INTERNAL_RECORDING_FILE_QUERY": "録画ファイルの取得に失敗しました",
     "INTERNAL_RECORDING_FILE_STAT": "ファイル情報の取得に失敗しました",
+    "INTERNAL_RECORDING_FILE_UNREADABLE": "録画ファイルを読み取れません",
     "INTERNAL_RECORDING_METADATA_QUERY": "録画メタデータの取得に失敗しました",
     "INTERNAL_RECORDING_STATS_QUERY": "統計情報の取得に失敗しました",
     "INTERNAL_RECORDING_TOKEN_ISSUE": "録画トークンの発行に失敗しました",
@@ -4173,6 +4228,7 @@
     "RULE_SSH_DIAL_TIMEOUT": "接続先ホストへの接続がタイムアウトしました",
     "RULE_SSH_ENDPOINT_MOVED": "SSH はこのエンドポイントを経由しません。ネイティブ端末エンドポイント GET /api/v1/ssh をご利用ください",
     "RULE_SSH_HOST_KEY_CHANGED": "ホストキーが変更されたため、接続を拒否しました。ホストを再構築した場合は、管理者にホストキーのリセットを依頼してください",
+    "RULE_SSH_PRIVATE_KEY_INVALID": "このアカウントに設定された秘密鍵を使用できません（形式の誤り、または保護パスワードが設定されています）。管理者に秘密鍵の交換を依頼してください。",
     "RULE_SSH_UNREACHABLE": "接続先ホストに到達できません",
     "RULE_STATS_UNSUPPORTED": "接続先ホストはメトリクス収集に対応していません",
     "RULE_TRANSFER_DENIED": "このデータ転送はセキュリティポリシーにより禁止されています（{action}、出所：{reason}）",
@@ -4259,6 +4315,7 @@
     "VALIDATION_CREDENTIAL_NAME_INVALID": "認証情報の名前に改行や制御文字を含めることはできません",
     "VALIDATION_CREDENTIAL_NAME_REQUIRED": "共有認証情報には名前が必要です",
     "VALIDATION_CREDENTIAL_NAME_TOO_LONG": "認証情報の名前が上限の 128 文字を超えています",
+    "VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID": "秘密鍵を認識できません。先頭と末尾の区切り行を含め、秘密鍵の内容をすべて貼り付けてください。保護パスワード（パスフレーズ）が設定された秘密鍵は現在サポートしていません。先にパスフレーズを解除してください。",
     "VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID": "認証情報のプロトコル系統が許可された範囲外です",
     "VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID": "パスワード変更モードは、グループ全体で同一のシークレットか、ホストごとにランダム生成のいずれかです",
     "VALIDATION_CREDENTIAL_SCOPE_INVALID": "認証情報の範囲は専用または共有のみです",
@@ -4940,14 +4997,187 @@
       "groupsScopeAutoAdded": "groups スコープも併せて選択しました（「詳細設定」で変更できます）。",
       "groupsScopeMissingHint": "groups スコープが要求されていないため、多くのプロバイダーはグループクレームを発行しません。",
       "entra": {
-        "issuer": "Entra：アプリの登録 → 対象のアプリ → 概要 で「ディレクトリ (テナント) ID」をコピーし、https://login.microsoftonline.com/<ディレクトリ (テナント) ID>/v2.0 の形式で入力します。",
-        "clientId": "Entra：同じ概要ページの「アプリケーション (クライアント) ID」です。その下の「オブジェクト ID」ではありません。",
-        "secret": "Entra：証明書とシークレット → クライアント シークレット → 新しいクライアント シークレット で作成し、「値」列をコピーします。隣の「シークレット ID」ではありません。値は作成直後に一度しか表示されません。",
-        "groupsClaim": "Entra：トークン構成 → グループ要求の追加 で「セキュリティ グループ」を選択して保存し、ここには groups と入力します。Entra では groups スコープは不要で、受け付けられません。",
-        "groupsScopeRejected": "Entra は groups スコープに対応していないため、選択したままではサインインが拒否されます（AADSTS650053）。グループは Entra のトークン構成で有効にし、このチェックを外してください。",
-        "tid": "Entra：概要ページの「ディレクトリ (テナント) ID」を入力します。",
-        "emailVerified": "Entra の ID トークンには email_verified が含まれないため、有効にすると全員が拒否されます。テナント ID（tid）のルールを使ってください。",
-        "emailDomain": "このルールは email_verified も必須としますが、Entra はこの claim を送らないため通過しません。テナント ID（tid）のルールを使ってください。"
+        "issuer": "Entra：「アプリの登録（App registrations）」→ 対象のアプリ →「概要（Overview）」で「ディレクトリ (テナント) ID（Directory (tenant) ID）」をコピーし、https://login.microsoftonline.com/<ディレクトリ (テナント) ID>/v2.0 の形式で入力します。",
+        "clientId": "Entra：同じ「概要（Overview）」ページの「アプリケーション (クライアント) ID（Application (client) ID）」です。同じページの「オブジェクト ID（Object ID）」ではありません。",
+        "secret": "Entra：「証明書とシークレット（Certificates & secrets）」→「クライアント シークレット（Client secrets）」→「新しいクライアント シークレット（New client secret）」で作成し、「値（Value）」列をコピーします。値は作成直後に一度しか表示されません。有効期限は最長 24 か月で、Microsoft は 12 か月未満を推奨しています。期限切れ後はサインインに失敗します（AADSTS7000222）。",
+        "groupsClaim": "Entra：「トークン構成（Token configuration）」→「グループ要求の追加（Add groups claim）」で「セキュリティ グループ（Security groups）」を選択して保存し、ここには groups と入力します。Entra では groups スコープは不要です。トークンに入るのはグループのオブジェクト ID です。",
+        "groupsScopeRejected": "Entra の OpenID Connect のスコープは openid、email、profile、offline_access だけで、groups は含まれません。グループは Entra の「トークン構成（Token configuration）」で有効にし、このチェックを外してください。",
+        "tid": "Entra：「概要（Overview）」ページの「ディレクトリ (テナント) ID（Directory (tenant) ID）」を入力します。",
+        "emailVerified": "Entra の ID トークンのクレーム一覧には email_verified がないため、有効にすると全員が拒否されます。テナント識別子（tid）のルールを使ってください。",
+        "emailDomain": "このルールは email_verified も必須としますが、Entra の ID トークンのクレーム一覧にはこの claim がないため通過しません。テナント識別子（tid）のルールを使ってください。"
+      },
+      "provider": {
+        "label": "プロバイダー",
+        "entra": "Microsoft Entra ID",
+        "google": "Google",
+        "other": "その他の OIDC",
+        "hintNew": "ID プロバイダーを選ぶと、各項目の値の取得方法が表示されます。説明が変わるだけで、保存はされません。",
+        "hintEdit": "Issuer から判定しました。選び直しても取得方法の説明が変わるだけで、保存はされません。"
+      },
+      "guide": {
+        "title": "{provider} で各項目の値を取得する",
+        "fullSteps": "詳しい手順",
+        "stepCount": "{n} 手順",
+        "otherIntro": "一般的なプロバイダーは管理画面がそれぞれ異なるため、ここでは本システムがプロバイダーに求める要件を示します。",
+        "field": {
+          "issuer": "Issuer",
+          "clientId": "Client ID",
+          "secret": "Client Secret",
+          "redirect": "リダイレクト URI",
+          "admission": "受け入れ規則",
+          "groups": "グループ",
+          "restrict": "サインインできる人の制限",
+          "clientIdSecret": "Client ID／Secret",
+          "flow": "フロー",
+          "scopes": "スコープ"
+        },
+        "entra": {
+          "issuer": "アプリの「概要（Overview）」ページで「ディレクトリ (テナント) ID（Directory (tenant) ID）」をコピーし、https://login.microsoftonline.com/<ID>/v2.0 の形式で入力します。common、organizations、consumers は使いません。",
+          "clientId": "同じページの「アプリケーション (クライアント) ID（Application (client) ID）」です。同じページの「オブジェクト ID（Object ID）」ではありません。",
+          "secret": "「証明書とシークレット（Certificates & secrets）」→「クライアント シークレット（Client secrets）」→「新しいクライアント シークレット（New client secret）」で作成し、「値（Value）」をコピーします。ページを離れると値は二度と表示されません。有効期限は最長 24 か月で、Microsoft は 12 か月未満を推奨しています。期限切れ後はサインインに失敗します（AADSTS7000222）。",
+          "redirect": "このページの「リダイレクト URI を登録する」の値を、Entra の「Authentication」→「リダイレクト URI 構成（Redirect URI configuration）」→「リダイレクト URI の追加（Add Redirect URI）」→「Web」に貼り付け、「構成（Configure）」を選択します。",
+          "admission": "「テナント識別子（tid）」には同じ「ディレクトリ (テナント) ID（Directory (tenant) ID）」を入力します。Entra の ID トークンのクレーム一覧には email_verified がないため、tid ルールを使います。",
+          "groups": "「トークン構成（Token configuration）」→「グループ要求の追加（Add groups claim）」で「セキュリティ グループ（Security groups）」を選び、本システムには groups と入力します。トークンに入るのはグループのオブジェクト ID です。",
+          "restrict": "「エンタープライズ アプリケーション（Enterprise apps）」で「割り当てが必要ですか?（Assignment required?）」を「はい（Yes）」にし、「ユーザーとグループ（Users and groups）」で利用者を割り当てます。全体管理者にはこの設定が適用されません。"
+        },
+        "google": {
+          "issuer": "Google を選ぶと https://accounts.google.com が自動で入力されます。",
+          "clientId": "「Clients」ページで対象のクライアントを開くと表示されます。",
+          "secret": "クライアントを作成した時に一度だけ表示されます。すぐにコピーしてください。",
+          "redirect": "クライアントの「Authorized redirect URIs」に追加します。完全に一致している必要があり、反映まで 5 分から数時間かかることがあります。",
+          "admission": "「Google 組織ドメイン（hd）」に Google Workspace のドメインを入力します。個人の Gmail には hd がないため拒否されます。",
+          "groups": "Google の ID トークンにはグループクレームがありません。「グループ claim 名」は空欄にしてください。",
+          "restrict": "「Audience」で「Internal」を選ぶと組織のメンバーだけがサインインできます。Google Cloud 組織に属するプロジェクトのみ選択できます。"
+        },
+        "other": {
+          "issuer": "https で始まる URL である必要があります。",
+          "clientIdSecret": "プロバイダー側で「Web アプリケーション」種別のクライアントを作成します。本システムが対応するクライアント認証はクライアントシークレットのみです。",
+          "redirect": "このページの「リダイレクト URI を登録する」に表示された URL をプロバイダー側に登録します。",
+          "flow": "本システムは PKCE（S256）付きの認可コードフローを使います。プロバイダーは両方に対応している必要があります。",
+          "scopes": "openid のほかに選べるのは profile、email、groups だけです。",
+          "groups": "グループは ID トークンからのみ読み取ります。プロバイダーはグループを userinfo だけでなく ID トークンに含める必要があります。"
+        },
+        "stepGroup": {
+          "create": "アプリケーションを作成する",
+          "issuer": "Issuer",
+          "clientId": "Client ID",
+          "secret": "Client Secret",
+          "redirect": "リダイレクト URI",
+          "entraTid": "受け入れ規則：テナント識別子（tid）",
+          "entraGroups": "グループ（任意）",
+          "entraRestrict": "サインインできる人を制限する（任意）",
+          "googleClient": "クライアントとリダイレクト URI を作成する",
+          "googleIssuerClientId": "Issuer と Client ID",
+          "googleHd": "受け入れ規則：Google 組織ドメイン（hd）",
+          "googleGroups": "グループ"
+        },
+        "steps": {
+          "entra": {
+            "s1": "少なくとも「アプリケーション開発者」として Microsoft Entra 管理センター（entra.microsoft.com）にサインインします。",
+            "s2": "Entra ID →「アプリの登録（App registrations）」に移動し、「新規登録（New registration）」を選択します。",
+            "s3": "名前は任意です。利用者はサインイン時にこの名前を目にします。",
+            "s4": "「サポートされているアカウントの種類（Supported account types）」では自組織のテナントに限る項目を選びます。英語の画面では「Single tenant only - <your tenant>」、以前の画面では「Accounts in this organizational directory only」です。",
+            "s5": "「登録（Register）」を選択すると、このアプリの「概要（Overview）」ページが開きます。",
+            "s6": "「概要（Overview）」ページで「ディレクトリ (テナント) ID（Directory (tenant) ID）」をコピーします。",
+            "s7": "Issuer には https://login.microsoftonline.com/<ディレクトリ (テナント) ID>/v2.0 を入力します。",
+            "s8": "common、organizations、consumers の 3 種類の URL は使いません。他の組織や個人アカウントもサインインできてしまいます。",
+            "s9": "Client ID には同じページの「アプリケーション (クライアント) ID（Application (client) ID）」を入力します。",
+            "s10": "同じページには「オブジェクト ID（Object ID）」もあります。これはテナント内でアプリを識別する番号なので、入力しません。",
+            "s11": "左側で「証明書とシークレット（Certificates & secrets）」→「クライアント シークレット（Client secrets）」→「新しいクライアント シークレット（New client secret）」を選択します。",
+            "s12": "説明を入力して有効期限を選びます。最長 24 か月で、Microsoft は 12 か月未満を推奨しています。",
+            "s13": "「追加（Add）」を選択したら、「値（Value）」列をコピーします。",
+            "s14": "このページを離れると値は二度と表示されないため、すぐに本システムへ貼り付けてください。",
+            "s16": "シークレットの期限が切れるとサインインに失敗します（エラー コード AADSTS7000222）。期限前に新しいものを追加し、本システムの Client Secret を更新してください。",
+            "s17": "Microsoft は本番環境では証明書の使用を推奨していますが、本システムは現在クライアントシークレットのみに対応しています。",
+            "s18": "本システムのリダイレクト URI はこのページの「リダイレクト URI を登録する」に表示されます。形式は <外部公開のベース URL>/api/v1/auth/oidc/callback です。",
+            "s19": "空欄の場合は、デプロイ時に外部公開のベース URL が設定されていません。先にデプロイ担当者に設定を依頼してください。",
+            "s20": "Entra の左側で「Authentication」→「リダイレクト URI 構成（Redirect URI configuration）」タブ →「リダイレクト URI の追加（Add Redirect URI）」→「Web」を選択します。",
+            "s21": "「リダイレクト URI（Redirect URI）」欄に本システムのリダイレクト URI を貼り付け、「構成（Configure）」を選択します。",
+            "s22": "以前の画面では「プラットフォーム構成（Platform configurations）」→「プラットフォームの追加（Add a platform）」→「Web」→「リダイレクト URI（Redirect URIs）」です。",
+            "s23": "URI は https で始まり、大文字と小文字も本システムの表示と一致している必要があります。",
+            "s24": "URI が一致しないと、サインイン画面にエラー コード AADSTS50011 が表示されます。",
+            "s25": "「テナント識別子（tid）」には Issuer の手順で控えた「ディレクトリ (テナント) ID（Directory (tenant) ID）」を入力します。",
+            "s26": "9188040d-6c67-4c5b-b112-36a304b66dad は入力しません。個人用 Microsoft アカウントが共用するテナントです。",
+            "s27": "Entra の ID トークンのクレーム一覧には email_verified がないため、Entra のソースでは tid ルールを使います。",
+            "s28": "Entra のグループでロールを割り当てる場合は、アプリの左側で「トークン構成（Token configuration）」→「グループ要求の追加（Add groups claim）」→「セキュリティ グループ（Security groups）」を選び、「保存（Save）」します。",
+            "s29": "本システムの「グループ claim 名」には groups と入力します。",
+            "s30": "Entra がトークンに入れるのはグループ名ではなくグループのオブジェクト ID です。マッピング規則にもオブジェクト ID を使います。",
+            "s31": "所属グループ（入れ子のグループを含む）が 200 を超える利用者については、Entra はグループ一覧を含めません。",
+            "s32": "その場合は「アプリケーションに割り当てられたグループ（Groups assigned to the application）」を選べますが、入れ子のグループは含まれず、利用者は割り当てられたグループに直接所属している必要があります。",
+            "s33": "groups スコープは選択しません。Entra の OpenID Connect のスコープは openid、email、profile、offline_access だけです。",
+            "s35": "既定では、テナント内の全員がこのアプリにサインインできます。",
+            "s36": "制限するには、Entra ID →「エンタープライズ アプリケーション（Enterprise apps）」→「すべてのアプリケーション（All applications）」で対象のアプリを選びます。",
+            "s37": "「プロパティ（Properties）」で「割り当てが必要ですか?（Assignment required?）」を「はい（Yes）」にし、「保存（Save）」を選択します。",
+            "s38": "続いて「ユーザーとグループ（Users and groups）」→「ユーザー/グループの追加（Add user/group）」で利用者またはグループを選び、「割り当て（Assign）」を選択します。",
+            "s39": "割り当てられていない利用者には、サインイン時にエラー コード AADSTS50105 が表示されます。",
+            "s40": "全体管理者にはこの設定が適用されません。"
+          },
+          "google": {
+            "s1": "Google Cloud Console の Google Auth Platform ページを開きます。初めて使う場合は「GET STARTED」をクリックします。",
+            "s2": "「Audience」で「Internal」を選び、自組織のメンバーだけがサインインできるようにします。",
+            "s3": "組織外の利用者がサインインすると org_internal エラーが表示されます。",
+            "s4": "「Internal」を選べるのは Google Cloud 組織に属するプロジェクトだけです。",
+            "s5": "「Clients」ページで「Create Client」をクリックし、種別に「Web application」を選びます。",
+            "s6": "「Authorized redirect URIs」にこのページの「リダイレクト URI を登録する」に表示された URL を追加し、「Create」をクリックします。",
+            "s7": "URI は https である必要があり、大文字と小文字、末尾のスラッシュも含めて本システムの表示と完全に一致させます。",
+            "s8": "設定の変更が反映されるまで 5 分から数時間かかることがあります。",
+            "s9": "Issuer には https://accounts.google.com を入力します。",
+            "s10": "Client ID は「Clients」ページで対象のクライアントを開くと表示されます。",
+            "s11": "Client Secret はクライアントを作成した時に一度だけ表示されます。すぐにコピーして本システムに貼り付けてください。",
+            "s12": "その後、コンソールにはシークレットの末尾 4 文字しか表示されません。",
+            "s13": "シークレットを紛失した場合は「client secret rotation」で新しいものを追加し、本システムを更新してから古いものを無効にします。",
+            "s15": "6 か月間使用も変更もされていないクライアントは Google が自動的に削除します。削除の 30 日前にメールで通知されます。",
+            "s16": "「Google 組織ドメイン（hd）」には自組織の Google Workspace のドメインを入力します。",
+            "s17": "ドメインの一覧は Google Admin console の「Menu」→「Account」→「Domains」→「Manage domains」にあります。",
+            "s19": "個人の Gmail アカウントには hd がないため、このルールで拒否されます。",
+            "s20": "メールドメインだけで組織のメンバーかどうかを判断せず、hd を確認するよう Google は推奨しています。",
+            "s21": "Google の ID トークンにはグループクレームがありません。",
+            "s22": "本システムは ID トークンからのみグループを読み取るため、Google のソースではグループによるロール割り当てができません。「グループ claim 名」は空欄にしてください。",
+            "s23": "groups スコープは選択しません。Google が対応するスコープは openid、email、profile です。"
+          }
+        }
+      },
+      "verdict": {
+        "title": "システム判定",
+        "newHint": "保存すると、このアドレスに対するシステムの判定が表示されます。",
+        "plain": {
+          "unknown_default": "このサインインアドレスは自組織専用として宣言されていません。他の組織のアカウントも同じアドレスからサインインできる可能性があるため、システムはより厳しいルールで判定します。",
+          "builtin_list": "このサインインアドレスは誰でもアカウントを作成できる公開のサインインサービス（組み込みリスト）に属するため、常により厳しいルールで判定し、自組織専用に変更することはできません。",
+          "deploy_declared": "デプロイ担当者が、このサインインアドレスを自組織専用として宣言しています。",
+          "admin_forced": "本ページで「常に複数組織共用として扱う」が有効になっています。"
+        },
+        "entraNote": "共用と判定されてもサインインが禁止されるわけではありません。自動作成モードでは、サインインのたびにテナントなどの受け入れ規則を満たす必要があります。",
+        "showDetails": "技術的な詳細を表示",
+        "hideDetails": "技術的な詳細を隠す",
+        "detailSource": "判定の根拠：{label}（{code}）",
+        "detailIssuer": "サインインアドレス（issuer）：{issuer}",
+        "sourceLabel": {
+          "unknown_default": "未宣言",
+          "builtin_list": "組み込みリスト",
+          "deploy_declared": "デプロイ層の宣言",
+          "admin_forced": "本ページで強制"
+        },
+        "detail": {
+          "unknown_default": "デプロイ設定 OIDC_DEDICATED_ISSUERS にこのアドレスは含まれていません。宣言済みの場合は、綴りの一致と全レプリカの再起動を確認してください。",
+          "builtin_list": "このアドレスは組み込みの公開サインインサービスのリストに含まれています。組み込みリストはデプロイ設定 OIDC_DEDICATED_ISSUERS の宣言より優先されます。",
+          "deploy_declared": "デプロイ設定 OIDC_DEDICATED_ISSUERS にこのアドレスが含まれています。",
+          "admin_forced": "本ページの強制設定はデプロイ設定 OIDC_DEDICATED_ISSUERS の宣言より優先されます。無効にすると、デプロイ層の宣言または安全側の既定値で改めて判定します。"
+        }
+      },
+      "forceSharedToggle": {
+        "on": "オン",
+        "off": "オフ",
+        "hintOn": "無効にするとシステム本来の判定に戻ります。保存後に上に表示されます。",
+        "hintOff": "有効にするとより厳しいルールで判定します。自動作成では、受け入れ規則にテナントまたは組織ドメインの条件が必要です。後で無効に戻せます。"
+      },
+      "entraAssist": {
+        "label": "「ディレクトリ (テナント) ID（Directory (tenant) ID）」しかない場合は、ここに貼り付けると URL を組み立てます",
+        "composed": "Issuer の URL を組み立て、受け入れ規則の「テナント識別子（tid）」にも入力しました。",
+        "composedKeptTid": "Issuer の URL を組み立てました。受け入れ規則の「テナント識別子（tid）」には既に値があったため変更していません。",
+        "formatWarning": "この URL は一般的な Entra の形式（https://login.microsoftonline.com/<ID>/v2.0）と異なります。もう一度確認してください。このまま保存することもできます。"
+      },
+      "google": {
+        "groupsClaimNote": "Google の ID トークンにはグループクレームがないため、Google のソースではグループによるロール割り当てができません。"
       }
     },
     "ldap": {
@@ -4979,28 +5209,15 @@
     },
     "preflight": {
       "title": "接続前の確認",
-      "leadOidc": "左は本システムの設定です。ここはアイデンティティプロバイダー側で対応することです。",
-      "leadLdap": "左は本システムの設定です。ここはディレクトリ側で対応することです。",
-      "checklistOidc": "アイデンティティプロバイダー側で完了",
       "checklistLdap": "ディレクトリ側で完了",
-      "statusHead": "本システムが確認した状態",
-      "testHead": "テスト",
-      "noData": "データがまだありません",
+      "statusHead": "設定チェック",
       "rediscover": "再探索",
-      "loginTest": "このソースでサインインテスト",
       "loginTestNoticeOidc": "サインインテストは実際のサインインです。受け入れモードに従ってアカウントを作成し、監査記録に書き込みます。",
       "loginTestNoticeLdap": "サインインテストは実際のサインインです。ディレクトリ利用者の本システム上のアカウントを作成し、監査記録に書き込みます。",
       "oidc": {
-        "redirect": "リダイレクト URI を登録する",
+        "redirect": "このリダイレクト URI をプロバイダー側に登録する",
         "redirectUnset": "外部公開のベース URL が未設定のため、リダイレクト URI を算出できません",
-        "appType": "アプリケーション種別は「Web」、アカウント種別は対象テナントを選ぶ",
-        "appTypeHint": "選択を誤ると一部の利用者がサインインできません。",
-        "groupsClaim": "プロバイダー側でグループクレームを有効にする",
-        "groupsClaimHint": "グループがディレクトリ同期由来の場合、式による取得が必要なプロバイダーもあります。",
-        "secret": "クライアントシークレットと有効期限を控える",
-        "secretHint": "プロバイダー側では通常 1 度しか表示されません。",
-        "entraRedirect": "Entra：Authentication → リダイレクト URI 構成 → リダイレクト URI の追加 → Web。旧画面では 認証 → プラットフォームの追加 → Web。",
-        "entraGroupsClaim": "Entra：トークン構成 → グループ要求の追加 → セキュリティ グループ。所属グループが 200 を超える利用者には Entra がグループ一覧を送らず、本システムはその利用者の既存のマッピングロールを保持します。大規模な組織では「アプリケーションに割り当てられたグループ」を推奨します。"
+        "guideHint": "各項目の取得手順は左側の説明を参照してください。"
       },
       "ldap": {
         "readGroupAttr": "サービスアカウントが利用者のグループ属性を読み取れる",
@@ -5009,19 +5226,234 @@
         "baseDnCoversHint": "検索起点の配下にないアカウントはサインインできません。"
       },
       "light": {
-        "connection": "接続と bind に成功",
-        "groupAttrReadable": "抽出した利用者のグループ属性を読み取り可能",
-        "discovery": "ディスカバリー文書に到達可能",
-        "credential": "資格情報が設定済み",
-        "groupsSeen": "直近のサインインでグループ情報を取得",
-        "groupsSeenCount": "{count} 件のグループを取得",
-        "groupsSeenNone": "直近のサインインではグループ情報を取得していません",
-        "rules": "マッピング規則 {count} 件（有効 {enabled} 件）、直近の再計算で {matched} 人が一致",
-        "rulesUnknown": "マッピング規則数",
+        "groupsSeenCount": "{count} 件のグループを取得（{time} に観測）。",
+        "rulesUnknown": "データがまだありません。",
         "warningGeneric": "このソースには対応が必要な設定があります",
-        "warningAction": "グループマッピングの区画で設定してください。"
+        "warningAction": "グループマッピングの区画で設定してください。",
+        "discOkLocal": "このページで {time} に確認：取得でき、Issuer は入力値と一致し、署名アルゴリズムも互換です。",
+        "discOkCached": "システムが {time} のサインイン時に取得しました。今すぐ再確認するには「再探索」を押してください。",
+        "discUnsaved": "これはフォームに入力中の URL の結果で、まだ保存されていません。",
+        "discUnreachable": "このページで {time} に確認：ディスカバリー文書を取得できず、サインインは失敗します。",
+        "discCausesHead": "考えられる原因：",
+        "discCauses": {
+          "typo": "URL の入力誤り。たとえばテナント ID が一部欠けている（プロバイダーは「見つからない」と返します）。",
+          "egress": "本システムから外部に接続できない。たとえばファイアウォールで遮断されている、プロキシが必要。",
+          "internal": "URL が内部アドレスを指しており、送信ポリシーで遮断された（デプロイ時に許可リストを設定できます）。",
+          "temporary": "プロバイダーが一時的に応答していない。しばらくしてからもう一度押してください。"
+        },
+        "discInvalid": "このページで {time} に確認：Issuer URL の形式が正しくありません。",
+        "discInvalidHead": "次を確認してください：",
+        "discInvalidCauses": {
+          "https": "https:// で始まること。本番環境では http:// は使えません。",
+          "query": "クエリ文字列（?）やフラグメント（#）を含めないこと。"
+        },
+        "discError": "このページで {time} に確認：確認が完了しませんでした。しばらくしてから「再探索」を押してください。",
+        "discUnchecked": "未確認です。「再探索」を押すとすぐに確認します。",
+        "discIssuerMismatch": "このページで {time} に確認：取得できましたが、プロバイダーが宣言する Issuer が入力値と異なるため、サインインは失敗します。",
+        "discEntered": "入力値",
+        "discDeclared": "プロバイダーの宣言値",
+        "discSupported": "本システムの対応",
+        "discIssuerHint": "両者は完全に一致する必要があります（末尾のスラッシュを除く）。宣言値に {placeholder} のようなプレースホルダーが含まれる場合は、複数組織で共用する URL を入力しています。自組織のテナント ID を含む URL に変えてください。それ以外の場合は宣言値に合わせてください。保存してから「再探索」を押してください。",
+        "discAlgIncompatible": "このページで {time} に確認：取得できましたが、プロバイダーの署名アルゴリズムに本システムは対応していないため、サインインは失敗します。",
+        "discAlgHint": "プロバイダー側で ID トークンの署名を RS256 または ES256 に変更してください。",
+        "discStale": "設定が変更されたため、この結果は期限切れです。もう一度「再探索」を押してください。",
+        "credUnset": "クライアントシークレットが未入力です。",
+        "credVerified": "入力済みで、{time} のサインインで有効であることを確認しました。",
+        "credExchangeFailed": "直近のサインイン（{time}）でトークン交換に失敗しました。シークレットが誤っているか期限切れの可能性があります。",
+        "credUnverified": "入力済みですが、まだサインインで確認されていません。",
+        "credRetest": "直近のサインインの後に設定が変更されました。もう一度テストしてください。",
+        "groupsEmpty": "{time} のサインインではグループを 1 件も取得できませんでした。",
+        "groupsIncomplete": "{time} のサインインでは完全なグループ情報を取得できませんでした（たとえばグループが多すぎてプロバイダーが省略した、またはクレームの形式がリストではない）。既存のマッピング済みロールはそのまま保持されます。",
+        "groupsLocalAccount": "{time} にサインインしたのはローカルアカウントのため、グループは読み取りません。このソースから作成されたアカウントでテストしてください。",
+        "groupsAccountRemoved": "{time} にサインインしたアカウントは削除済みのため、グループを判断できません。このソースのアカウントでもう一度サインインしてください。",
+        "groupsNotConfigured": "グループクレームが未設定のため、グループマッピングは使用しません。",
+        "groupsNone": "サインインの観測はまだありません。",
+        "rulesAll": "規則 {count} 件、すべて有効。直近の再計算で {matched} 人が一致。",
+        "rulesSome": "規則 {count} 件（有効 {enabled} 件）。直近の再計算で {matched} 人が一致。",
+        "rulesNone": "マッピング規則はまだありません。グループマッピングを使わない場合は無視して構いません。",
+        "rulesAllDisabled": "規則 {count} 件はすべて無効です。",
+        "ldapUntested": "未テストです。左下の「接続テスト」を押してください。",
+        "ldapStale": "設定が変更されたため、この結果は期限切れです。もう一度テストしてください。",
+        "ldapUnsaved": "テストしたのはフォームに入力中の値で、まだ保存されていません。",
+        "ldapConnOk": "このページで {time} にテスト：接続とサービスアカウントのサインイン（bind）はどちらも成功しました。",
+        "ldapBindFailed": "このページで {time} にテスト：ディレクトリには接続できましたが、サービスアカウントのサインイン（bind）に失敗しました。サービスアカウントの DN とパスワードを確認してください。",
+        "ldapDialFailed": "このページで {time} にテスト：ディレクトリに接続できません。ディレクトリの URL、ポート、ネットワークを確認してください。",
+        "ldapAttrOk": "このページで {time} にテスト：抽出した利用者の {attr} を読み取れました。",
+        "ldapAttrUnreadable": "このページで {time} にテスト：抽出した利用者の {attr} を読み取れません。サービスアカウントにこの属性の読み取り権限がない可能性があります。",
+        "ldapAttrNoUsers": "このページで {time} にテスト：検索起点の配下に一致する利用者がいないため、抽出できません。",
+        "ldapAttrSearchFailed": "このページで {time} にテスト：利用者の検索に失敗したため、抽出していません。検索起点と利用者フィルターを確認してください。",
+        "ldapAttrNoSample": "接続に合格しなかったため、抽出していません。",
+        "ldapAttrUnset": "グループ属性が未設定のため、グループマッピングは使用しません。"
       },
-      "sourceNotConfigured": "このソースは未設定です"
+      "sourceNotConfigured": "このソースは未設定です",
+      "updatedAt": "{time} 更新",
+      "refresh": "再読み込み",
+      "word": {
+        "ok": "合格",
+        "warn": "要対応",
+        "unverified": "未検証",
+        "indeterminate": "判定不可",
+        "notUsed": "未使用",
+        "disabled": "無効",
+        "expired": "期限切れ",
+        "unchecked": "未確認",
+        "retest": "再テスト待ち",
+        "untested": "未テスト",
+        "notSet": "未設定"
+      },
+      "label": {
+        "discovery": "ディスカバリー文書（Issuer URL）",
+        "credential": "クライアントシークレット",
+        "groups": "グループ情報",
+        "rules": "マッピング規則",
+        "connection": "接続と bind",
+        "groupAttr": "抽出した利用者のグループ属性を読み取り可能"
+      },
+      "summary": {
+        "okOidc": "設定は正しく完了しています：直近のサインインは成功し、すべてのチェックに合格しました。",
+        "okLdap": "接続テストに合格しました。",
+        "warn": "対応が必要な項目が {count} 件あります：{first}。",
+        "unknownNoAttempt": "設定が正しいかまだ確認できません：直近 {days} 日間、このソースでサインインした人がいません。",
+        "unknownLight": "設定が正しいかまだ確認できません：「{name}」が未確認です。",
+        "ldapUntested": "接続はまだテストしていません：左下の「接続テスト」を押すと、結果がここに表示されます。",
+        "item": {
+          "discoveryUnreachable": "ディスカバリー文書を取得できません",
+          "discoveryInvalid": "Issuer URL の形式が正しくありません",
+          "discoveryError": "ディスカバリーの確認が完了しませんでした",
+          "issuerMismatch": "プロバイダーが宣言する Issuer が入力値と異なります",
+          "algIncompatible": "プロバイダーの署名アルゴリズムに本システムは対応していません",
+          "admission": "直近のサインインが受け入れ規則で拒否されました",
+          "providerError": "ID プロバイダーが直近のサインインを拒否しました",
+          "attemptFailed": "直近のサインインは成功しませんでした",
+          "credentialUnset": "クライアントシークレットが未入力です",
+          "credentialExchange": "クライアントシークレットが誤っているか期限切れの可能性があります",
+          "groupsEmpty": "直近のサインインでグループを 1 件も取得できませんでした",
+          "groupsIncomplete": "直近のサインインで完全なグループ情報を取得できませんでした",
+          "warning": "このソースには対応が必要な設定があります",
+          "ldapConnection": "ディレクトリに接続できません",
+          "ldapBind": "サービスアカウントのサインイン（bind）に失敗しました",
+          "ldapSearch": "利用者の検索に失敗しました",
+          "ldapAttrUnreadable": "抽出した利用者のグループ属性を読み取れません"
+        },
+        "detail": {
+          "admission": "接続とシークレットに問題はなく、プロバイダーは本人であることを確認済みです。拒否したのは本システムの受け入れ規則です。",
+          "providerError": "多くの場合プロバイダー側での対応が必要です。本システムの設定を変える必要はありません。",
+          "credentialExchange": "直近のサインインはトークン交換の段階で失敗しました。",
+          "noAttempt": "一番下のテストリンクで一度サインインすると、結果がここに表示されます。"
+        }
+      },
+      "test": {
+        "head": "サインインテスト",
+        "intro": "このリンクで、このソースのアカウントで実際に一度サインインしてください：",
+        "copy": "リンクをコピー",
+        "privateWindow": "シークレットウィンドウまたは別のブラウザーで開いてください。このウィンドウでサインインすると、現在の管理者のサインインが置き換わります。",
+        "autoRefresh": "サインイン後にここへ戻ると、パネルが自動で更新されます。",
+        "baseUrlUnset": "テストリンクを作成できません：外部公開のベース URL（PUBLIC_BASE_URL）が未設定です。デプロイ設定を済ませてサービスを再起動してから、ここに戻ってください。",
+        "sourceDisabled": "ソースを有効にするとテストできます。無効なソースはサインインページに表示されません。"
+      },
+      "attempt": {
+        "title": "直近のサインイン",
+        "account": "アカウント",
+        "none": "直近 {days} 日間、このソースでのサインイン試行はありません。",
+        "showDetails": "技術的な詳細を表示",
+        "hideDetails": "技術的な詳細を隠す",
+        "field": {
+          "event": "イベント",
+          "rule": "不合格の規則",
+          "sub": "サブコード",
+          "reasonCode": "理由コード",
+          "providerCode": "プロバイダーのコード",
+          "providerDescription": "ID プロバイダーの自己申告"
+        },
+        "missingToggle": "さきほどのテストがここに表示されませんか？",
+        "compareTime": "まず、上の時刻がさきほどのテストかどうかを確認してください。",
+        "waiting": "今回のサインインの結果を待っています…",
+        "waitTimeout": "今回のサインインの記録は届きませんでした。",
+        "missingHead": "テストリンクでサインインしたのに新しい記録が表示されない場合、次の可能性があります：",
+        "missing": {
+          "providerBlocked": "プロバイダーが自身のページで拒否した（たとえばリダイレクト URI が未登録、アカウントがこのアプリケーションに割り当てられていない）。",
+          "discovery": "サインインの開始時または本システムへの戻り時にプロバイダーのディスカバリー文書を取得できなかった。この 2 つの段階は記録が残りません（上のディスカバリーの確認を参照）。",
+          "sameBrowser": "テストリンクをサインイン済みのブラウザーで開いたため、実際にはサインインしていない。"
+        },
+        "missingTail": "テストウィンドウのプロバイダーのページ、または本システムのサインインページに表示されたエラーを確認してください。",
+        "label": {
+          "success": "成功",
+          "pending": "次の手順を待機中",
+          "admission": "受け入れ不可",
+          "providerDenied": "プロバイダーが拒否",
+          "providerError": "プロバイダーがエラーを報告",
+          "unknown": "未完了",
+          "failed": "失敗",
+          "denied": "拒否"
+        },
+        "reason": {
+          "success": "サインインに成功しました。",
+          "pending_mfa": "ID プロバイダーの認証は通過し、第二要素の確認待ちです。プロバイダー側の設定に問題はありません。",
+          "pending_mfa_enrollment": "ID プロバイダーの認証は通過し、第二要素の登録待ちです。プロバイダー側の設定に問題はありません。",
+          "pending_password_change": "ID プロバイダーの認証は通過し、パスワード変更待ちです。プロバイダー側の設定に問題はありません。",
+          "source_denied": "ID プロバイダーの認証は通過しましたが、サインイン元のアドレスが許可範囲外です。",
+          "admission_tid": "テナント不一致：このアカウントの組織は、受け入れ規則で許可されたテナントの一覧にありません。",
+          "admission_hd": "組織ドメインが一致しないか、ありません：個人の Gmail アカウントには組織ドメインがないため拒否されます。",
+          "admission_email_domain": "email のドメインが受け入れ一覧にありません。",
+          "admission_email_verified": "プロバイダーはこの email が確認済みであることを示していません。",
+          "admission_not_prebound": "この外部アカウントは本システムのアカウントとまだ紐付いておらず、現在は紐付け済みのアカウントのみサインインできます。",
+          "admission_rules_noncompliant": "受け入れ規則が現在の要件を満たしていないため、アカウントの自動作成を停止しています：{detail}",
+          "code_exchange_failed": "認可コードを使ったプロバイダーとのトークン交換に失敗しました。",
+          "id_token_missing": "プロバイダーが ID トークンを返しませんでした。",
+          "id_token_invalid": "ID トークンの検証に失敗しました。",
+          "provider_unavailable": "サインインの途中でこのソースが無効化されたか、設定が変更されました。",
+          "internal_error": "アカウントの照会中にエラーが発生しました。",
+          "provider_error": "ID プロバイダーがエラーを報告しました。コードは技術的な詳細にあります。",
+          "username_conflict": "ユーザー名が本システムの既存アカウントと同じです。既存アカウントは引き継ぎません。",
+          "account_removed": "紐付けられたアカウントは削除されています。",
+          "user_inactive": "アカウントは無効化されています。",
+          "unknown": "サインインは完了しませんでした。"
+        },
+        "advice": {
+          "source_denied": "プロバイダー側の設定に問題はありません。アクセス元の制限を確認してください。",
+          "admission_tid": "受け入れ規則に自組織のディレクトリ（テナント）ID が入っているか確認してください。このアカウントが本来サインインすべきでない場合は、対応は不要です。",
+          "admission_email_verified": "Entra はこのクレームを提供しません。テナント ID の規則を使ってください。",
+          "admission_not_prebound": "先にユーザーページで紐付けるか、アカウントの自動作成に切り替えてください。",
+          "code_exchange_failed": "最も多いのはクライアントシークレットの誤りや期限切れです。プロバイダー側で新しいシークレットを作成し、左側の Client Secret に入力して保存してから、もう一度テストしてください。次に多いのは、リダイレクト URI がプロバイダー側の登録と一致していないことです。",
+          "id_token_invalid": "Client ID と Issuer がプロバイダー側と一致しているか、サーバーの時刻が正しいかを確認してください。",
+          "provider_unavailable": "もう一度お試しください。",
+          "internal_error": "サーバーのログを確認してください。",
+          "username_conflict": "ユーザー名の対応付けを調整するか、先に既存アカウントを処理してください。"
+        },
+        "detail": {
+          "admission_rules_noncompliant": {
+            "shared_needs_org_rule": "複数組織で共用するソースにはテナントまたは組織ドメインの規則が必要です。",
+            "empty_rule_set": "規則が 1 件もありません。",
+            "consumer_tenant": "個人アカウント用のテナントが入力されています。",
+            "email_needs_verified": "email ドメインのみを使う場合は email の確認済みを必須にする必要があります。",
+            "unknown_rule": "規則を解析できません。",
+            "invalid_rules": "規則を解析できません。",
+            "other": "規則を解析できません。"
+          },
+          "provider_error": {
+            "access_denied": "ID プロバイダーが認可を拒否しました。たとえばこのアカウントがこのアプリケーションに割り当てられていません。",
+            "invalid_scope": "プロバイダーが本システムの要求するスコープのいずれかを受け付けません。",
+            "unauthorized_client": "プロバイダーがこのアプリケーションにこのサインイン方式を許可していません。",
+            "server_error": "プロバイダーで一時的な障害が発生しました。",
+            "temporarily_unavailable": "プロバイダーが一時的に利用できません。",
+            "login_required": "利用者がプロバイダー側でサインインを完了する必要があります。",
+            "interaction_required": "利用者がプロバイダー側で操作を完了する必要があります。",
+            "consent_required": "利用者がプロバイダー側で同意する必要があります。",
+            "other": "ID プロバイダーがエラーを報告しました。コードは技術的な詳細にあります。"
+          }
+        },
+        "providerAdvice": {
+          "access_denied": "プロバイダー側で、このアカウント（または所属グループ）がアプリケーションに割り当てられているか確認してから、もう一度テストしてください。",
+          "invalid_scope": "左側のスコープを確認し、プロバイダーが対応していない項目を外してください。",
+          "unauthorized_client": "プロバイダー側で、このアプリケーションが認可コードフローを許可しているか確認してください。",
+          "server_error": "しばらくしてからもう一度テストしてください。",
+          "temporarily_unavailable": "しばらくしてからもう一度テストしてください。",
+          "login_required": "テストウィンドウでプロバイダーのページの指示に従って完了してから、もう一度テストしてください。",
+          "interaction_required": "テストウィンドウでプロバイダーのページの指示に従って完了してから、もう一度テストしてください。",
+          "consent_required": "テストウィンドウでプロバイダーのページの指示に従って完了してから、もう一度テストしてください。",
+          "other": "このコードでプロバイダーのドキュメントを調べるか、テストウィンドウのプロバイダーのページに表示されたメッセージを確認してください。"
+        }
+      }
     }
   },
   "externalIdentities": {
