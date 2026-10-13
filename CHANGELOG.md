@@ -2,6 +2,18 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.3 — evidence package export from the Operation Logs page (2026-10-13)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.3`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### Fixes
+
+- Exporting an evidence package from the Operation Logs page now submits it for packaging in
+  the background. The confirmation links to Downloads, where the package can be downloaded
+  once it is ready. Before this release the export button on that page failed.
+
 ## 1.17.2 — reasons for high-risk operations and sign-in after account deletion (2026-10-12)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

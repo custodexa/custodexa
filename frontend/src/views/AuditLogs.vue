@@ -397,7 +397,7 @@
     </el-tabs>
 
     <!-- 詳情對話框 -->
-    <!-- 稽核證據匯出對話框（audit-workflows）：ZIP=日誌+指令+錄影+manifest(SHA-256) -->
+    <!-- 稽核證據匯出對話框（audit-workflows）：送出非同步打包，產物在下載中心取件 -->
     <el-dialog
       v-model="exportDialogVisible"
       :title="$t('auditLogs.exportDialogTitle')"
@@ -719,11 +719,11 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download, RefreshCw } from 'lucide-vue-next'
 import { getAuditLogs } from '@/api/audit'
-import { exportAuditEvidence } from '@/api/auditExport'
+import { buildBundleScope, submitEvidenceBundle } from '@/components/audit/evidenceBundleSubmit'
 import { getAuditFailures } from '@/api/auditFailures'
 import { verifyAuditIntegrity } from '@/api/auditIntegrity'
 import PageHeader from '@/components/PageHeader.vue'
@@ -746,6 +746,7 @@ import { settingLabel } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
 
 const route = useRoute()
+const router = useRouter()
 const activeTab = ref('logs')
 
 // 完整性驗證僅 admin（後端 admin only）；簽核權限 alert:manage＝admin／auditor
@@ -863,7 +864,7 @@ const showDetails = (log) => {
   detailsVisible.value = true
 }
 
-// 稽核證據匯出（audit-workflows）
+// 稽核證據匯出（audit-workflows）：證據包只走非同步 job
 const exportDialogVisible = ref(false)
 const exporting = ref(false)
 const exportTimeRange = ref([])
@@ -877,36 +878,14 @@ const openExportDialog = () => {
 }
 
 const submitExport = async () => {
-  const params = {}
-  if (exportTimeRange.value && exportTimeRange.value.length === 2) {
-    params.start_time = exportTimeRange.value[0]
-    params.end_time = exportTimeRange.value[1]
-  }
-  if (exportForm.value.user_id) params.user_id = exportForm.value.user_id
-  if (exportForm.value.asset_id) params.asset_id = exportForm.value.asset_id
-
-  if (Object.keys(params).length === 0) {
+  const scope = buildBundleScope(exportTimeRange.value, exportForm.value)
+  if (!scope) {
     ElMessage.warning(t('auditLogs.exportScopeRequired'))
     return
   }
-
   exporting.value = true
   try {
-    const blob = await exportAuditEvidence(params)
-    // 觸發瀏覽器下載 ZIP
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `audit-evidence-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.zip`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
-    ElMessage.success(t('auditLogs.exportSuccess'))
-    exportDialogVisible.value = false
-  } catch (error) {
-    // 全域攔截器已 toast 錯誤（C10：頁內不重複）
-    console.error('匯出證據包失敗:', error)
+    if (await submitEvidenceBundle(scope, router)) exportDialogVisible.value = false
   } finally {
     exporting.value = false
   }

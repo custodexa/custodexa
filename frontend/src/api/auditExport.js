@@ -70,14 +70,16 @@ export function getExportSigningPublicKey() {
  * @param {Object} params - { pack: 'evidence_bundle'（必填）,
  *   user_id?|asset_id?|session_id?, subject?, types?, start_time?, end_time? }
  *   （範圍條件至少一項）
+ * @param {Object} [config] - 額外的請求設定（例如 { skipErrorToast: true }）
  * @returns {Promise<{data:Object, deduplicated:boolean}>} 202 Accepted；
  *   deduplicated=true 代表同範圍已有 pending/running 的 job，回的是既有那一份
  */
-export function createAuditExportJob(params) {
+export function createAuditExportJob(params, config = {}) {
   return request({
     url: '/audit-export/jobs',
     method: 'post',
     params,
+    ...config,
   })
 }
 

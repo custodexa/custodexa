@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { reactive } from 'vue'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage, ElNotification } from 'element-plus'
 import AuditLogs from '../AuditLogs.vue'
 
 // 本檔每測掛整頁且從不卸載，殘留元件在 document 上累積，單測耗時隨進度單調
@@ -33,7 +33,7 @@ vi.mock('vue-router', () => ({
 }))
 
 const getAuditLogsMock = vi.fn()
-const exportAuditEvidenceMock = vi.fn()
+const createAuditExportJobMock = vi.fn()
 const getDailyReviewsMock = vi.fn()
 const getDailyReviewStatusMock = vi.fn()
 const getDailyReviewPendingMock = vi.fn()
@@ -48,7 +48,7 @@ vi.mock('@/api/audit', () => ({
 }))
 
 vi.mock('@/api/auditExport', () => ({
-  exportAuditEvidence: (...args) => exportAuditEvidenceMock(...args),
+  createAuditExportJob: (...args) => createAuditExportJobMock(...args),
 }))
 
 vi.mock('@/api/dailyReviews', () => ({
@@ -567,4 +567,83 @@ describe('AuditLogs', () => {
       })
     }
   )
+
+  // 證據包只走非同步 job：同步端點對證據包回 400，對話框要送 job 並導引到下載中心
+  describe('匯出稽核證據包', () => {
+    const RANGE = ['2026-10-01T00:00:00+08:00', '2026-10-08T00:00:00+08:00']
+
+    const lastNotice = () => {
+      const all = document.querySelectorAll('[data-test="export-queued-notice"]')
+      return all[all.length - 1]
+    }
+
+    const submitWithTimeOnly = async () => {
+      setUserRoles(['auditor'])
+      const wrapper = mountAuditLogs()
+      await flushPromises()
+      wrapper.vm.openExportDialog()
+      wrapper.vm.exportTimeRange = [...RANGE]
+      await flushPromises()
+      const submit = wrapper.findAll('button').find((b) => b.text() === '送出打包')
+      expect(submit).toBeTruthy()
+      await submit.trigger('click')
+      await flushPromises()
+      return wrapper
+    }
+
+    afterEach(() => {
+      ElNotification.closeAll()
+    })
+
+    it('只填時間送出時以 job API 發起證據包（pack=evidence_bundle）並關閉對話框', async () => {
+      createAuditExportJobMock.mockResolvedValue({ data: { id: 7 }, deduplicated: false })
+      const wrapper = await submitWithTimeOnly()
+
+      expect(createAuditExportJobMock).toHaveBeenCalledTimes(1)
+      expect(createAuditExportJobMock.mock.calls[0][0]).toEqual({
+        start_time: RANGE[0],
+        end_time: RANGE[1],
+        pack: 'evidence_bundle',
+      })
+      expect(wrapper.vm.exportDialogVisible).toBe(false)
+    })
+
+    it('成功提示「已送出打包」並附前往下載中心的連結', async () => {
+      createAuditExportJobMock.mockResolvedValue({ data: { id: 8 }, deduplicated: false })
+      await submitWithTimeOnly()
+
+      const notice = lastNotice()
+      expect(notice).toBeTruthy()
+      expect(document.body.textContent).toContain('已送出打包')
+      expect(notice.textContent).toContain('完成後可到下載中心取件')
+      const link = notice.querySelector('[data-test="export-go-downloads"]')
+      expect(link.textContent).toBe('前往下載中心')
+      expect(link.getAttribute('href')).toBe('/audit/exports')
+      link.click()
+      expect(routerPushMock).toHaveBeenCalledWith('/audit/exports')
+    })
+
+    it('同範圍已有進行中的工作（deduplicated）時改提示不會重複打包', async () => {
+      createAuditExportJobMock.mockResolvedValue({ data: { id: 8 }, deduplicated: true })
+      await submitWithTimeOnly()
+
+      const notice = lastNotice()
+      expect(document.body.textContent).toContain('同一範圍已有打包中的工作')
+      expect(notice.textContent).toContain('不會重複打包')
+      expect(notice.querySelector('[data-test="export-go-downloads"]')).toBeTruthy()
+    })
+
+    it('400 時顯示後端回傳的錯誤文案、對話框保留', async () => {
+      const errorSpy = vi.spyOn(ElMessage, 'error')
+      createAuditExportJobMock.mockRejectedValue({
+        response: { status: 400, data: { error: '時間窗起點須早於終點' } },
+      })
+      const wrapper = await submitWithTimeOnly()
+
+      expect(createAuditExportJobMock.mock.calls[0][1]).toEqual({ skipErrorToast: true })
+      expect(errorSpy).toHaveBeenCalledWith('時間窗起點須早於終點')
+      expect(wrapper.vm.exportDialogVisible).toBe(true)
+      errorSpy.mockRestore()
+    })
+  })
 })
