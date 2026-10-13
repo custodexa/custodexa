@@ -58,9 +58,14 @@ export function useLoginTestWaiting({ fetch, current, now = () => Date.now() }) 
     baseline = attemptAt(current())
   }
 
+  // 背景輪詢，呼叫端不等待；重抓失敗視同這一輪沒看到新紀錄，照常等下一輪或逾時
   const poll = async (mine) => {
     timer = null
-    await fetch()
+    try {
+      await fetch()
+    } catch {
+      // 失敗原因由 fetch 自行呈現，這裡只確保輪詢不中斷
+    }
     if (mine !== gen) return
     if (isNewer()) {
       baseline = attemptAt(current())
@@ -72,7 +77,7 @@ export function useLoginTestWaiting({ fetch, current, now = () => Date.now() }) 
       state.value = 'timeout'
       return
     }
-    timer = setTimeout(() => poll(mine), WAIT_POLL_MS)
+    timer = setTimeout(() => { void poll(mine) }, WAIT_POLL_MS)
   }
 
   /** 切回本頁時呼叫；回傳 true 表示由這裡接手，呼叫端不必再做一般的自動重抓 */
@@ -81,7 +86,7 @@ export function useLoginTestWaiting({ fetch, current, now = () => Date.now() }) 
     if (state.value === 'waiting') return true
     state.value = 'waiting'
     deadline = now() + WAIT_MAX_MS
-    poll(gen)
+    void poll(gen)
     return true
   }
 

@@ -236,7 +236,7 @@ func pathIDs(re *regexp.Regexp, p *pathRow, action model.AuditAction) ([]uint, b
 	}
 	ids := make([]uint, 0, len(sub)-1)
 	for _, s := range sub[1:] {
-		n, err := strconv.ParseUint(s, 10, 64)
+		n, err := strconv.ParseUint(s, 10, strconv.IntSize)
 		if err != nil || n == 0 {
 			return nil, false
 		}
@@ -259,7 +259,7 @@ func detailUint(details, key string) uint {
 	if !ok {
 		return 0
 	}
-	v, err := strconv.ParseUint(n.String(), 10, 64)
+	v, err := strconv.ParseUint(n.String(), 10, strconv.IntSize)
 	if err != nil {
 		return 0
 	}

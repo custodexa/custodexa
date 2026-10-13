@@ -2,6 +2,7 @@ package audit
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -424,4 +425,23 @@ func TestDailyReviewHighRiskMirrorEdgeCases(t *testing.T) {
 			e.expect(mirrorDay, 1, p)
 		})
 	})
+}
+
+// 路徑與細節欄的編號以平台 uint 的值域解析：上限值可取、超過上限視為取不到
+func TestMirrorIDParsingBoundedByPlatformUint(t *testing.T) {
+	max := strconv.FormatUint(uint64(math.MaxUint), 10)
+	over := max + "0"
+
+	if ids, ok := pathIDs(reAssetPath, &pathRow{Path: "/api/v1/assets/" + max}, ""); !ok || len(ids) != 1 || ids[0] != uint(math.MaxUint) {
+		t.Fatalf("路徑編號上限值應可解析: ids=%v ok=%v", ids, ok)
+	}
+	if ids, ok := pathIDs(reAssetPath, &pathRow{Path: "/api/v1/assets/" + over}, ""); ok {
+		t.Fatalf("路徑編號超過 uint 上限應視為不符: ids=%v", ids)
+	}
+	if got := detailUint(`{"asset_id":`+max+`}`, "asset_id"); got != uint(math.MaxUint) {
+		t.Fatalf("細節欄上限值應可解析: got=%d", got)
+	}
+	if got := detailUint(`{"asset_id":`+over+`}`, "asset_id"); got != 0 {
+		t.Fatalf("細節欄超過 uint 上限應回 0: got=%d", got)
+	}
 }

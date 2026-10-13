@@ -29,7 +29,7 @@
 <script setup>
 // Entra 的 Issuer 輔助：只拿到目錄（租用戶）識別碼的管理者，貼上即組成完整網址。
 // Issuer 欄仍是實際儲存的值、可手動改；這裡只負責代填，不另存任何東西
-import { ref } from 'vue'
+import { ref, useId } from 'vue'
 
 defineProps({
   // 父頁組好後回報的結果：composed／composedKeptTid；空字串＝尚未組成
@@ -38,7 +38,7 @@ defineProps({
 
 const emit = defineEmits(['compose'])
 
-const inputId = `entra-tenant-${Math.random().toString(36).slice(2, 8)}`
+const inputId = `entra-tenant-${useId()}`
 const tenantId = ref('')
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

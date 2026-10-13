@@ -2,6 +2,17 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.5 — maintenance fixes (2026-10-14)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.5`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### Fixes
+
+- Code quality fixes in the sign-in test wait of the "Before you connect" panel, the
+  Microsoft Entra ID issuer helper and daily review record matching. Behavior does not change.
+
 ## 1.17.4 — identity source setup checks, readable recordings and private key checks (2026-10-13)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
