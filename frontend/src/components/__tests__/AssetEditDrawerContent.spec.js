@@ -45,8 +45,11 @@ vi.mock('@/api/assetAccounts', () => ({
 }))
 
 const listCredentialsMock = vi.fn()
+const getCredentialMock = vi.fn()
 vi.mock('@/api/credentials', () => ({
   listCredentials: (...a) => listCredentialsMock(...a),
+  getCredential: (...a) => getCredentialMock(...a),
+  setCredentialSecret: vi.fn(),
   rebindAccountCredential: vi.fn(),
   detachCredentialBinding: vi.fn(),
   createCredential: vi.fn(),
@@ -322,7 +325,7 @@ describe('列動作', () => {
     const actions = columns.find((col) => col.props('label') === '操作')
     expect(actions).toBeTruthy()
     // 固定寬度＝不會被憑證欄吃掉；min-width 才是會被重新分配的那一種
-    expect(actions.props('width')).toBe('216')
+    expect(actions.props('width')).toBe('264')
     expect(actions.props('minWidth')).toBeUndefined()
     expect(actions.props('className')).toBe('actions-col')
   })
@@ -377,6 +380,75 @@ describe('列動作', () => {
     expect(wrapper.find('[data-test="account-remove-21"]').attributes('disabled')).toBeUndefined()
     // 專用列不受這筆共用憑證的輪替影響
     expect(wrapper.find('[data-test="account-rotation-note-22"]').exists()).toBe(false)
+  })
+})
+
+describe('更正共用憑證的登記值', () => {
+  it('共用列有「更正密碼」，專用列沒有（專用列已有編輯憑證）', async () => {
+    const wrapper = await mountContent()
+
+    expect(wrapper.find('[data-test="account-secret-fix-21"]').text()).toBe('更正密碼')
+    expect(wrapper.find('[data-test="account-secret-fix-22"]').exists()).toBe(false)
+    const hint = wrapper.find('[data-test="account-semantics-secret-fix"]').text()
+    expect(hint).toContain('「更正密碼」只改平台登記的值')
+    expect(hint).toContain('共用憑證會一併套用到掛載的每一台')
+  })
+
+  it('金鑰型共用憑證的列動作稱「更正私鑰」', async () => {
+    listCredentialsMock.mockResolvedValue({
+      data: [
+        {
+          id: 110, name: '正式區 root', scope: 'shared', username: 'root',
+          secret_type: 'ssh_key', protocol_family: 'ssh', binding_count: 12,
+          current_version_no: 4, rotation_active: false,
+        },
+      ],
+      total: 1,
+    })
+    const wrapper = await mountContent()
+    expect(wrapper.find('[data-test="account-secret-fix-21"]').text()).toBe('更正私鑰')
+  })
+
+  it('輪替進行中停用，且該列說明涵蓋更正', async () => {
+    listCredentialsMock.mockResolvedValue({
+      data: [
+        {
+          id: 110, name: '正式區 root', scope: 'shared', username: 'root',
+          secret_type: 'password', protocol_family: 'ssh', binding_count: 12,
+          current_version_no: 4, rotation_active: true, active_rotation_id: 77,
+        },
+      ],
+      total: 1,
+    })
+    const wrapper = await mountContent()
+
+    expect(wrapper.find('[data-test="account-secret-fix-21"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="account-rotation-note-21"]').text()).toContain('更正登記值')
+  })
+
+  it('點下去開同一個對話框，帶這台的資產識別讓清單標出「這台」', async () => {
+    getCredentialMock.mockResolvedValue({
+      data: {
+        id: 110, name: '正式區 root', scope: 'shared', username: 'root',
+        secret_type: 'password', protocol_family: 'ssh', current_version_no: 4,
+        bindings: [
+          { account_id: 21, asset_id: 2, asset_name: 'ssh-multi-test', effective_version_no: 4 },
+          { account_id: 31, asset_id: 3, asset_name: 'web-03', effective_version_no: 4 },
+        ],
+      },
+    })
+    const wrapper = await mountContent()
+
+    await wrapper.find('[data-test="account-secret-fix-21"]').trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.findComponent({ name: 'CredentialSecretFixDialog' })
+    expect(dialog.props('modelValue')).toBe(true)
+    expect(dialog.props('credentialId')).toBe(110)
+    expect(dialog.props('currentAssetId')).toBe(2)
+    expect(getCredentialMock).toHaveBeenCalledWith(110)
+    expect(wrapper.find('[data-test="secret-fix-asset-2"]').text()).toContain('（這台）')
+    expect(wrapper.find('[data-test="secret-fix-asset-3"]').text()).not.toContain('這台')
   })
 })
 

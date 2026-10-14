@@ -28,6 +28,7 @@ const listMock = vi.fn()
 const getMock = vi.fn()
 const getRotationMock = vi.fn()
 const convertScopeMock = vi.fn()
+const setSecretMock = vi.fn()
 
 vi.mock('@/api/credentials', () => ({
   listCredentials: (...a) => listMock(...a),
@@ -39,6 +40,7 @@ vi.mock('@/api/credentials', () => ({
   unbindCredential: vi.fn(),
   detachCredentialBinding: vi.fn(),
   convertCredentialScope: (...a) => convertScopeMock(...a),
+  setCredentialSecret: (...a) => setSecretMock(...a),
   startCredentialRotation: vi.fn(),
   getCredentialRotation: (...a) => getRotationMock(...a),
   retryCredentialRotationMember: vi.fn(),
@@ -148,6 +150,7 @@ beforeEach(() => {
     data: { id: 7, status: 'running', mode: 'group', aggregate_state: 'changing', members: [] },
   })
   convertScopeMock.mockResolvedValue({ data: credentialFixture({ id: 11, scope: 'shared' }) })
+  setSecretMock.mockResolvedValue({ id: 1 })
 })
 
 // 專用憑證（單一掛載），用於「轉為共用」那一組案例
@@ -306,7 +309,7 @@ describe('詳情', () => {
     expect(wrapper.text()).toContain('選一筆憑證')
   })
 
-  it('輪替進行中：四個動作都不可執行，且就地說明涵蓋這四個動作', async () => {
+  it('輪替進行中：受影響的動作都不可執行，且就地說明涵蓋這些動作', async () => {
     const wrapper = await mountWithSelection(detailFixture({ rotation_active: true }))
 
     for (const action of ['rotate', 'bind', 'to-dedicated']) {
@@ -320,7 +323,7 @@ describe('詳情', () => {
     expect(reason.exists()).toBe(true)
     expect(reason.text()).toContain('輪替進行中')
     expect(reason.attributes('data-actions').split(' ').sort())
-      .toEqual(['bind', 'delete', 'rotate', 'to-dedicated'])
+      .toEqual(['bind', 'delete', 'rotate', 'secret-fix', 'to-dedicated'])
 
     // 四行一模一樣的字是噪音：只留一行
     expect(wrapper.findAll('.reason')).toHaveLength(1)
@@ -396,5 +399,95 @@ describe('詳情', () => {
 
     expect(wrapper.find('[data-test="rotation-progress"]').exists()).toBe(true)
     expect(getRotationMock).toHaveBeenCalledWith(1, 7)
+  })
+})
+
+describe('更正登記的秘密', () => {
+  it('入口只在共用憑證出現（專用憑證另有資產抽屜的編輯憑證）', async () => {
+    const shared = await mountWithSelection()
+    expect(shared.find('[data-test="action-secret-fix"]').text()).toBe('更正密碼')
+    expect(shared.find('[data-test="detail-secret"]').text()).toContain('已登記（不顯示）')
+    expect(shared.find('[data-test="secret-fix-hint"]').text()).toContain('「改密」會登入每台主機')
+
+    const dedicated = await mountWithSelection(dedicatedDetail())
+    expect(dedicated.find('[data-test="action-secret-fix"]').exists()).toBe(false)
+    expect(dedicated.find('[data-test="detail-secret"]').exists()).toBe(false)
+    expect(dedicated.find('[data-test="secret-fix-hint"]').exists()).toBe(false)
+  })
+
+  it('金鑰型共用憑證的入口稱「更正私鑰」', async () => {
+    const wrapper = await mountWithSelection(detailFixture({ secret_type: 'ssh_key' }))
+    expect(wrapper.find('[data-test="action-secret-fix"]').text()).toBe('更正私鑰')
+  })
+
+  it('輪替進行中入口停用，且就地說明涵蓋它', async () => {
+    const wrapper = await mountWithSelection(detailFixture({ rotation_active: true }))
+
+    expect(wrapper.find('[data-test="action-secret-fix"]').classes()).toContain('is-disabled')
+    const reason = wrapper.find('[data-test="blocked-rotate"]')
+    expect(reason.attributes('data-actions').split(' ')).toContain('secret-fix')
+  })
+
+  it('成功後就地顯示不自動消失的成功說明，並重新取回詳情（版本遞增、每台就位新版）', async () => {
+    const wrapper = await mountWithSelection()
+    const after = detailFixture({
+      current_version_no: 5,
+      bindings: detailFixture().bindings.map((b) => ({
+        ...b, effective_version_no: 5, up_to_date: true,
+      })),
+    })
+    getMock.mockResolvedValue({ data: after, aggregate_state: 'idle' })
+    const callsBefore = getMock.mock.calls.length
+
+    await wrapper.find('[data-test="action-secret-fix"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="secret-fix-password"]').setValue('Right-Pass-1')
+    await wrapper.find('[data-test="secret-fix-confirm"]').setValue('Right-Pass-1')
+    await wrapper.find('[data-test="secret-fix-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(setSecretMock).toHaveBeenCalledWith(1, { password: 'Right-Pass-1' }, expect.any(Object))
+    const success = wrapper.find('[data-test="secret-fix-success"]')
+    expect(success.exists()).toBe(true)
+    expect(success.text()).toContain('已更正，3 台資產下次連線起使用新登記的密碼')
+    expect(success.text()).toContain('平台沒有連到主機確認')
+    expect(getMock.mock.calls.length).toBeGreaterThan(callsBefore)
+    expect(wrapper.find('[data-test="detail-version"]').text()).toBe('v5')
+    for (const accountId of [101, 102, 103]) {
+      expect(wrapper.find(`[data-test="binding-version-${accountId}"]`).text()).toContain('v5')
+    }
+
+    // 換選另一筆憑證時成功說明不跟過去
+    getMock.mockResolvedValue({ data: dedicatedDetail(), aggregate_state: 'idle' })
+    await wrapper.vm.selectCredential({ id: 11 })
+    await flushPromises()
+    expect(wrapper.find('[data-test="secret-fix-success"]').exists()).toBe(false)
+  })
+
+  it('零掛載的共用憑證更正成功：成功提示不提台數與測試連線', async () => {
+    const wrapper = await mountWithSelection(detailFixture({ bindings: [], binding_count: 0 }))
+    await wrapper.find('[data-test="action-secret-fix"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="secret-fix-password"]').setValue('Right-Pass-1')
+    await wrapper.find('[data-test="secret-fix-confirm"]').setValue('Right-Pass-1')
+    await wrapper.find('[data-test="secret-fix-submit"]').trigger('click')
+    await flushPromises()
+
+    const success = wrapper.find('[data-test="secret-fix-success"]')
+    expect(success.exists()).toBe(true)
+    expect(success.text()).toContain('已更正登記的密碼')
+    expect(success.text()).not.toContain('0 台')
+    expect(success.text()).not.toContain('測試連線')
+  })
+
+  it('對話框的改密連結開的是既有的改密對話框', async () => {
+    const wrapper = await mountWithSelection()
+
+    await wrapper.find('[data-test="action-secret-fix"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="secret-fix-rotate-link"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent(CredentialRotateDialog).props('modelValue')).toBe(true)
   })
 })

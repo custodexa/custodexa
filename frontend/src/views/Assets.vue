@@ -1669,11 +1669,15 @@ const handleSubmit = async () => {
     }
 
     // 登入憑證來源二擇一：挑了共用憑證就只送識別，帳號名與秘密都在那一筆憑證上；
-    // 兩種來源同時出現會被伺服端判為意圖不明而整筆拒絕
-    if (!isEdit.value && form.credential_mode === 'shared') {
-      data.credential_id = form.credential_id
-    } else {
-      data.username = form.username
+    // 兩種來源同時出現會被伺服端判為意圖不明而整筆拒絕。
+    // 編輯態兩者都不送：帳號與憑證已在帳號表內各自存檔，再送開抽屜當下的舊帳號名
+    // 會被伺服端拿去回寫預設帳號（換過共用憑證就整筆拒絕，帳號清空時還會補建）
+    if (!isEdit.value) {
+      if (form.credential_mode === 'shared') {
+        data.credential_id = form.credential_id
+      } else {
+        data.username = form.username
+      }
     }
 
     if (['mysql', 'postgres', 'redis', 'mssql'].includes(form.protocol)) {

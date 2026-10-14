@@ -121,3 +121,21 @@ describe('編輯憑證', () => {
     expect(createMock).not.toHaveBeenCalled()
   })
 })
+
+describe('更正入口的導引', () => {
+  it('共用憑證編輯態說明這裡改不了秘密並指向更正；新增態與專用編輯態沒有這句', async () => {
+    const shared = await mountDialog({
+      credential: { id: 9, scope: 'shared', name: 'linux-root', username: 'root', secret_type: 'password', protocol_family: 'ssh', note: '' },
+    })
+    expect(shared.find('[data-test="form-secret-fix-hint"]').text())
+      .toBe('這裡只改名稱與備註。登記的密碼打錯了，請關閉此視窗，改用詳情的「更正密碼」。')
+
+    const create = await mountDialog()
+    expect(create.find('[data-test="form-secret-fix-hint"]').exists()).toBe(false)
+
+    const dedicated = await mountDialog({
+      credential: { id: 10, scope: 'dedicated', name: 'web-01 / app', username: 'app', secret_type: 'password', protocol_family: 'ssh', note: '' },
+    })
+    expect(dedicated.find('[data-test="form-secret-fix-hint"]').exists()).toBe(false)
+  })
+})

@@ -42,6 +42,42 @@
         </div>
       </div>
 
+      <!-- 更正成功的回饋留在面板上，不用會自己消失的提示：平台沒有連到主機確認，
+           「要去哪裡確認」這句話使用者可能要回頭再看一次 -->
+      <div
+        v-if="secretFixResult"
+        class="fix-success"
+        role="status"
+        data-test="secret-fix-success"
+      >
+        <el-icon class="fix-success-icon">
+          <CircleCheck />
+        </el-icon>
+        <div class="fix-success-text">
+          <div class="fix-success-title">
+            {{ secretFixResult.count > 0
+              ? t('credentials.secretFix.successTitle', secretFixResult)
+              : t('credentials.secretFix.successTitleNone', secretFixResult) }}
+          </div>
+          <div
+            v-if="secretFixResult.count > 0"
+            class="fix-success-body"
+            data-test="secret-fix-success-body"
+          >
+            {{ t('credentials.secretFix.successBody') }}
+          </div>
+        </div>
+        <el-button
+          link
+          class="fix-success-close"
+          :aria-label="t('common.close')"
+          data-test="secret-fix-success-close"
+          @click="secretFixResult = null"
+        >
+          <el-icon><X /></el-icon>
+        </el-button>
+      </div>
+
       <dl class="kv">
         <dt>{{ t('credentials.colId') }}</dt>
         <dd
@@ -73,6 +109,26 @@
         <dd>{{ secretTypeLabel }}</dd>
         <dt>{{ t('credentials.detailProtocol') }}</dt>
         <dd>{{ t(`enum.credentialProtocolFamily.${credential.protocol_family}`) }}</dd>
+        <!-- 登記值的更正入口只給共用憑證：專用憑證在資產抽屜已有「編輯憑證」 -->
+        <template v-if="isShared">
+          <dt>{{ t(`credentials.secretFix.rowLabel.${secretKind}`) }}</dt>
+          <dd
+            class="secret-row"
+            data-test="detail-secret"
+          >
+            <span class="muted">{{ t('credentials.secretFix.registered') }}</span>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="!!secretFixBlockedReason"
+              data-test="action-secret-fix"
+              @click="secretFixVisible = true"
+            >
+              {{ secretFixEntry }}
+            </el-button>
+          </dd>
+        </template>
         <dt>{{ t('credentials.detailVersion') }}</dt>
         <dd data-test="detail-version">
           {{ credential.current_version_no
@@ -139,6 +195,14 @@
         >
           {{ reason.text }}
         </p>
+        <!-- 改密與更正的差別常駐在畫面上：使用者是在找不到更正時才誤按改密 -->
+        <p
+          v-if="isShared"
+          class="semantics-hint"
+          data-test="secret-fix-hint"
+        >
+          {{ t('credentials.secretFix.panelHint', { noun: secretNoun, entry: secretFixEntry }) }}
+        </p>
       </div>
 
       <CredentialRotationProgress
@@ -166,6 +230,15 @@
         :credential-name="displayName"
         :binding-count="bindings.length"
         @submitted="onRotationStarted"
+      />
+
+      <CredentialSecretFixDialog
+        v-model="secretFixVisible"
+        :credential-id="credential.id"
+        :credential="credential"
+        :rotate-available="!rotateBlockedReason"
+        @saved="onSecretFixed"
+        @rotate="rotateVisible = true"
       />
 
       <CredentialBindDialog
@@ -254,13 +327,14 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Copy } from 'lucide-vue-next'
+import { CircleCheck, Copy, X } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import CredentialBindingList from './CredentialBindingList.vue'
 import CredentialRotationProgress from './CredentialRotationProgress.vue'
 import CredentialRotateDialog from './CredentialRotateDialog.vue'
 import CredentialDetachDialog from './CredentialDetachDialog.vue'
 import CredentialBindDialog from './CredentialBindDialog.vue'
+import CredentialSecretFixDialog from './CredentialSecretFixDialog.vue'
 import {
   deleteCredential,
   unbindCredential,
@@ -268,7 +342,11 @@ import {
 } from '@/api/credentials'
 import { confirmDestructive } from '@/utils/confirm'
 import { formatDateTime } from '@/utils/format'
-import { AGGREGATE_STATE_TAG_TYPE, credentialDisplayName } from '@/constants/credentials'
+import {
+  AGGREGATE_STATE_TAG_TYPE,
+  credentialDisplayName,
+  credentialSecretKind,
+} from '@/constants/credentials'
 
 const props = defineProps({
   credential: { type: Object, default: null },
@@ -287,6 +365,9 @@ const toSharedVisible = ref(false)
 const toSharedName = ref('')
 const toSharedError = ref('')
 const toSharedSubmitting = ref(false)
+const secretFixVisible = ref(false)
+// 最近一次更正的結果（台數與名詞）；非空即在面板上顯示成功說明
+const secretFixResult = ref(null)
 // 本次操作發起的輪替識別：詳情端點回的是聚合態，不含輪替識別
 const startedRotationId = ref(null)
 
@@ -313,6 +394,17 @@ const secretTypeLabel = computed(() => {
     return t('credentials.secretTypeToken')
   }
   return t(`enum.credentialSecretType.${cred.secret_type}`)
+})
+
+const secretKind = computed(() => credentialSecretKind(props.credential))
+const secretNoun = computed(() => t(`credentials.secretFix.noun.${secretKind.value}`))
+const secretFixEntry = computed(() => t('credentials.secretFix.entry', { noun: secretNoun.value }))
+
+// 伺服端同一道輪替閘門（SetSecret 內 assertNoActiveRotation）：提早說，不是唯一防線
+const secretFixBlockedReason = computed(() => {
+  if (!isShared.value) return ''
+  if (rotationActive.value) return t('credentials.blockedRotationActive')
+  return ''
 })
 
 const rotateBlockedReason = computed(() => {
@@ -360,6 +452,7 @@ const blockedReasons = computed(() => {
     { key: 'bind', text: bindBlockedReason.value },
     { key: 'to-dedicated', text: toDedicatedBlockedReason.value },
     { key: 'to-shared', text: toSharedBlockedReason.value },
+    { key: 'secret-fix', text: secretFixBlockedReason.value },
     { key: 'delete', text: deleteBlockedReason.value },
   ].filter((r) => r.text)
   const grouped = []
@@ -374,7 +467,14 @@ const blockedReasons = computed(() => {
 // 換一筆憑證即丟掉上一筆的輪替識別：那個號碼只對它自己的憑證有意義
 watch(() => props.credential?.id, () => {
   startedRotationId.value = null
+  secretFixResult.value = null
 })
+
+// 成功後詳情要重新取回：現行版本與每台的就位版本都變了
+function onSecretFixed({ count, noun }) {
+  secretFixResult.value = { count, noun }
+  emit('changed')
+}
 
 // 編號是批次匯入時 credential_id 欄要填的值：複製失敗（非安全來源、權限被拒）
 // 時明說，讓使用者改用手動選取，而不是以為已經在剪貼簿裡
@@ -497,6 +597,7 @@ defineExpose({
   rotateVisible, bindVisible, detachVisible, detachTarget, displayName,
   unbind, removeCredential, convertToDedicated, blockedReasons,
   toSharedVisible, toSharedName, toSharedError, openToShared, convertToShared,
+  secretFixVisible, secretFixResult, onSecretFixed,
 })
 </script>
 
@@ -593,6 +694,64 @@ defineExpose({
   margin: 0;
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-disabled);
+  line-height: 1.5;
+}
+
+.secret-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-md);
+}
+
+.muted {
+  color: var(--ot-text-secondary);
+}
+
+.fix-success {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ot-space-sm);
+  flex-shrink: 0;
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  border: 1px solid var(--ot-success);
+  border-radius: var(--ot-radius-md);
+  background: color-mix(in srgb, var(--ot-success) 12%, transparent);
+}
+
+.fix-success-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--ot-success);
+}
+
+.fix-success-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.fix-success-title {
+  font-size: var(--ot-font-size-sm);
+  font-weight: 600;
+  color: var(--ot-text-primary);
+  line-height: 1.6;
+}
+
+.fix-success-body {
+  margin-top: 2px;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+  line-height: 1.6;
+}
+
+.fix-success-close {
+  flex-shrink: 0;
+  color: var(--ot-text-secondary);
+}
+
+.semantics-hint {
+  margin: 0;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
   line-height: 1.5;
 }
 

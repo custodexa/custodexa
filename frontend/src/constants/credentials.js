@@ -93,3 +93,11 @@ export function credentialDisplayName(credential) {
   const asset = sep >= 0 ? raw.slice(0, sep).trim() : ''
   return `${asset || t('credentials.assetRemoved')} / ${username}`
 }
+
+// 更正登記秘密時要更正的是哪一種秘密：只更正憑證本身的那一種。
+// K8s 的 token 存在密碼欄，行為同密碼型，只是名詞不同
+export function credentialSecretKind(credential) {
+  if (credential?.secret_type === 'ssh_key') return 'ssh_key'
+  if (credential?.protocol_family === 'k8s') return 'token'
+  return 'password'
+}

@@ -113,13 +113,16 @@ export function convertCredentialScope(id, data) {
 }
 
 /**
- * 直接寫入新密文（建新版本並立即生效，**不觸碰遠端**；供補登既有密碼）。
+ * 直接寫入新密文（建新版本並立即生效，**不觸碰遠端**；供更正登記錯的秘密）。
+ *
+ * 全部掛載的就位版本在同一交易內一併指向新版本；未帶的那一欄自現行版本原樣帶過。
  * @param {number|string} id - 憑證 ID
- * @param {Object} data - { password, private_key }
+ * @param {Object} data - { password } 或 { private_key }
+ * @param {Object} [config] - 額外 axios 設定（例如 skipErrorToast）
  * @returns {Promise} CredentialDTO
  */
-export function setCredentialSecret(id, data) {
-  return request({ url: `/credentials/${id}/secret`, method: 'post', data })
+export function setCredentialSecret(id, data, config = {}) {
+  return request({ url: `/credentials/${id}/secret`, method: 'post', data, ...config })
 }
 
 /**

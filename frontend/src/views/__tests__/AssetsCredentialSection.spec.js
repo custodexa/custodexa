@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Assets from '../Assets.vue'
-import { createAsset } from '@/api/assets'
+import { createAsset, updateAsset } from '@/api/assets'
 
 // 新增資產表單的登入憑證區塊與進階選項。
 //
@@ -191,6 +191,63 @@ describe('新增資產的登入憑證區塊', () => {
     expect(payload.username).toBe('app')
     expect(payload.password).toBe('s3cr3t')
     expect('credential_id' in payload).toBe(false)
+  })
+
+  // 編輯態的帳號與憑證都在抽屜的帳號表內各自即時存檔。表單若把開抽屜當下的
+  // 舊預設帳號名一併送出，伺服端會拿它回寫預設帳號：剛換上的共用憑證名稱不同
+  // 就整筆拒絕，帳號已全數移除時還會用舊名補建一個沒有秘密的帳號
+  it('編輯態儲存不帶帳號名；新增態仍依來源二擇一', async () => {
+    const wrapper = await mountPage()
+    wrapper.vm.handleEdit({
+      id: 7,
+      name: 'web-07',
+      protocol: 'ssh',
+      host: '10.20.1.17',
+      port: 22,
+      username: 'old-default',
+      active: true,
+    })
+    await flushPromises()
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(updateAsset).toHaveBeenCalledTimes(1)
+    const [id, editPayload] = updateAsset.mock.calls.at(-1)
+    expect(id).toBe(7)
+    expect('username' in editPayload).toBe(false)
+    expect('credential_id' in editPayload).toBe(false)
+
+    wrapper.vm.handleCreate()
+    await flushPromises()
+    Object.assign(wrapper.vm.form, {
+      name: 'web-08',
+      protocol: 'ssh',
+      host: '10.20.1.18',
+      port: 22,
+      credential_mode: 'dedicated',
+      username: 'app',
+      password: 's3cr3t',
+    })
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    let payload = createAsset.mock.calls.at(-1)[0]
+    expect(payload.username).toBe('app')
+
+    wrapper.vm.handleCreate()
+    await flushPromises()
+    Object.assign(wrapper.vm.form, {
+      name: 'web-09',
+      protocol: 'ssh',
+      host: '10.20.1.19',
+      port: 22,
+      credential_mode: 'shared',
+      credential_id: 11,
+    })
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    payload = createAsset.mock.calls.at(-1)[0]
+    expect(payload.credential_id).toBe(11)
+    expect('username' in payload).toBe(false)
   })
 
   it('選定共用憑證後說明句當場說出這台會是第幾台（影響面不能等建完才知道）', async () => {

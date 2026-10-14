@@ -116,6 +116,16 @@
           data-test="form-note"
         />
       </el-form-item>
+
+      <!-- 共用憑證的登記值打錯時，使用者第一個會打開的是這個對話框：
+           在這裡說清楚它改不了秘密，並指向真正的入口 -->
+      <p
+        v-if="isEdit && isShared"
+        class="hint"
+        data-test="form-secret-fix-hint"
+      >
+        {{ t('credentials.secretFix.editHint', { noun: secretNoun, entry: secretFixEntry }) }}
+      </p>
     </el-form>
 
     <template #footer>
@@ -154,6 +164,7 @@ import { createCredential, updateCredential } from '@/api/credentials'
 import {
   CREDENTIAL_PROTOCOL_FAMILY_VALUES,
   CREDENTIAL_SECRET_TYPE_VALUES,
+  credentialSecretKind,
 } from '@/constants/credentials'
 
 const props = defineProps({
@@ -180,6 +191,9 @@ const form = reactive({
 
 const isEdit = computed(() => !!props.credential)
 const isShared = computed(() => (isEdit.value ? props.credential.scope === 'shared' : true))
+const secretNoun = computed(() =>
+  t(`credentials.secretFix.noun.${credentialSecretKind(props.credential)}`))
+const secretFixEntry = computed(() => t('credentials.secretFix.entry', { noun: secretNoun.value }))
 
 const rules = computed(() => ({
   name: [

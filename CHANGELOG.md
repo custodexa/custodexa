@@ -2,6 +2,28 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.7 — correcting a shared credential's registered password (2026-10-14)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.7`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### What's new
+
+- A shared credential whose password or private key was registered wrong can now be corrected
+  in place. The credential details in the Credential library and the shared account rows in the
+  asset edit drawer have a "Correct password" action ("Correct private key" for key
+  credentials). It stores the value you enter as the credential's new version and every asset
+  that uses the credential switches to it. The platform does not sign in to the hosts or change
+  anything on them. The dialog lists the assets the change applies to, and for a password it asks
+  for the value twice. The action is unavailable while the credential is being rotated.
+  "Rotate" still sets a new generated password on the hosts.
+
+### Fixes
+
+- In the asset edit drawer, saving the form after replacing the default account's credential
+  in the accounts table no longer fails with an error about the account name.
+
 ## 1.17.6 — old images removed after an upgrade (2026-10-14)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

@@ -2,7 +2,7 @@
   AssetAccountRows：編輯資產抽屜內的帳號表。
 
   一個資產可以有多個登入身分，每個身分指向一筆憑證：共用（多台共用同一組秘密）
-  或專用（只有這台在用）。表內直接完成新增、改預設、更換憑證、脫離共用與移除，
+  或專用（只有這台在用）。表內直接完成新增、改預設、更正登記值、更換憑證、脫離共用與移除，
   不再另開對話框——原先要疊三層才做得到的事，在這裡是一列。
 
   「移除」與「脫離共用」是兩件事，畫面上必須分得出來：
@@ -70,7 +70,7 @@
       </el-table-column>
       <el-table-column
         :label="t('assetAccounts.colCredential')"
-        min-width="150"
+        min-width="124"
       >
         <template #default="{ row }">
           <span
@@ -136,7 +136,7 @@
            會被其他欄吃掉寬度，第三、四個動作就落到抽屜可視範圍外（要橫捲才看得到） -->
       <el-table-column
         :label="t('common.actions')"
-        width="216"
+        width="264"
         class-name="actions-col"
       >
         <template #default="{ row }">
@@ -164,6 +164,18 @@
               @click="openEditSecret(row)"
             >
               {{ t('assets.editDrawer.editSecret') }}
+            </el-button>
+            <!-- 共用憑證的登記值打錯時的更正：只改平台登記值、不碰主機，整組一併套用 -->
+            <el-button
+              v-else
+              link
+              size="small"
+              type="primary"
+              :disabled="rotationActive(row)"
+              :data-test="`account-secret-fix-${row.id}`"
+              @click="openSecretFix(row)"
+            >
+              {{ secretFixLabel(row) }}
             </el-button>
             <!-- 專用列也能換憑證：把這台改掛到一筆共用憑證上是「這組秘密要跟別台一起管」
                  的唯一入口，只對共用列開放等於逼人先刪掉帳號再重加 -->
@@ -318,7 +330,20 @@
     >
       <div>{{ t('assets.editDrawer.removeHint') }}</div>
       <div>{{ t('assets.editDrawer.detachHint') }}</div>
+      <div
+        v-if="secretFixHint"
+        data-test="account-semantics-secret-fix"
+      >
+        {{ secretFixHint }}
+      </div>
     </div>
+
+    <CredentialSecretFixDialog
+      v-model="secretFixVisible"
+      :credential-id="secretFixTarget ? secretFixTarget.credential_id : 0"
+      :current-asset-id="assetId"
+      @saved="onSecretFixed"
+    />
 
     <CredentialDetachDialog
       v-model="detachVisible"
@@ -353,6 +378,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import AssetAccountAddRow from '@/components/asset/AssetAccountAddRow.vue'
 import CredentialPicker from '@/components/credential/CredentialPicker.vue'
 import CredentialDetachDialog from '@/components/credential/CredentialDetachDialog.vue'
+import CredentialSecretFixDialog from '@/components/credential/CredentialSecretFixDialog.vue'
+import { credentialSecretKind } from '@/constants/credentials'
 
 const props = defineProps({
   assetId: { type: [Number, String], default: null },
@@ -373,6 +400,8 @@ const submitting = ref(false)
 const rotatingIds = ref(new Set())
 // 憑證識別 → 現行版本序號，供逐列判斷就位版本是否落後
 const currentVersions = ref(new Map())
+// 憑證識別 → 共用憑證清單項（秘密型別與協定族），供「更正密碼／更正私鑰」選字
+const sharedCredentials = ref(new Map())
 
 const addDisabled = computed(
   () => adding.value || (props.protocol === 'k8s' && accounts.value.length > 0)
@@ -422,12 +451,15 @@ async function loadCredentialStates() {
     const resp = await listCredentials({ scope: 'shared' })
     const rotating = new Set()
     const versions = new Map()
+    const shared = new Map()
     for (const item of resp?.data || []) {
       if (item.rotation_active) rotating.add(String(item.id))
       versions.set(String(item.id), item.current_version_no || 0)
+      shared.set(String(item.id), item)
     }
     rotatingIds.value = rotating
     currentVersions.value = versions
+    sharedCredentials.value = shared
   } catch (err) {
     console.warn('[AssetAccountRows] 載入憑證狀態失敗:', err)
   }
@@ -552,6 +584,48 @@ async function submitSecret(row) {
   }
 }
 
+// --- 更正共用憑證的登記值（不碰主機；與憑證庫詳情共用同一個對話框）---
+const secretFixVisible = ref(false)
+const secretFixTarget = ref(null)
+
+// 憑證清單還沒回來時退回帳號列自己的旗標判斷型別
+const rowSecretKind = (row) => {
+  const cred = sharedCredentials.value.get(String(row.credential_id))
+  if (cred) return credentialSecretKind(cred)
+  return row.has_private_key ? 'ssh_key' : credentialSecretKind({ protocol_family: props.protocol })
+}
+
+const secretFixLabel = (row) =>
+  t('credentials.secretFix.entry', { noun: t(`credentials.secretFix.noun.${rowSecretKind(row)}`) })
+
+// 常駐說明只在有共用列時出現；表上同時有密碼型與金鑰型時兩個動作名都寫出來
+const secretFixHint = computed(() => {
+  const kinds = [...new Set(
+    accounts.value.filter((row) => row.shared_credential).map(rowSecretKind)
+  )]
+  if (!kinds.length) return ''
+  const actions = kinds
+    .map((kind) => t('credentials.secretFix.actionQuoted', {
+      entry: t('credentials.secretFix.entry', { noun: t(`credentials.secretFix.noun.${kind}`) }),
+    }))
+    .join(t('credentials.secretFix.actionSeparator'))
+  const noun = kinds.length === 1
+    ? t(`credentials.secretFix.noun.${kinds[0]}`)
+    : t('credentials.secretFix.noun.mixed')
+  return t('credentials.secretFix.drawerHint', { actions, noun })
+})
+
+function openSecretFix(row) {
+  secretFixTarget.value = row
+  secretFixVisible.value = true
+}
+
+async function onSecretFixed({ noun }) {
+  ElMessage.success(t('credentials.secretFix.savedToast', { noun }))
+  emit('changed')
+  await reload()
+}
+
 // --- 新增帳號（表內一列）---
 const adding = ref(false)
 
@@ -580,6 +654,9 @@ defineExpose({
   openDetach,
   openEditSecret,
   submitSecret,
+  openSecretFix,
+  secretFixVisible,
+  secretFixTarget,
   handleRemove,
   handleSetDefault,
   rebindCredentialId,
@@ -642,11 +719,17 @@ defineExpose({
   color: var(--el-text-color-secondary);
 }
 
+/* 五個動作要在抽屜寬度內排成一列：按鈕間距只由 gap 決定，
+   不再疊加 el-button 相鄰時的左邊距（疊加後最後一個動作會被推出表格可視範圍） */
 .row-actions {
   display: flex;
   align-items: center;
-  gap: var(--ot-space-xs);
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+.row-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 /* 動作放不下就換行，不省略成「更換憑…」：被切掉的那兩個動作等於不存在 */
