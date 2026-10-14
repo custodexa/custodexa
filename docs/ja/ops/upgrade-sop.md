@@ -150,8 +150,8 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ```bash
 sudo /opt/custodexa/custodexa.sh upgrade                 # 新しいバージョンの確認だけ。何も変更しない
-sudo /opt/custodexa/custodexa.sh upgrade 1.14.0          # ダウンロード、検証、アップグレード
-sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SHA256SUMS を同じ場所に置く
+sudo /opt/custodexa/custodexa.sh upgrade X.Y.Z           # ダウンロード、検証、アップグレード
+sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-X.Y.Z.tar.gz    # SHA256SUMS を同じ場所に置く
 ```
 
 1.14.0 以降、既存の導入先を `--dir` に指定して `get-custodexa.sh` を再実行すると、ファイルを置き換えず、インストール済みの `custodexa.sh` に引き継ぎます。そのメニューでアップグレードを選ぶか、上記のインストール済みスクリプトの `upgrade` コマンドを使います。
@@ -494,7 +494,7 @@ docker compose exec -T backend \
   | grep custodexa_audit_queue_depth
 ```
 
-- **エンドポイント**：`/metrics` は backend 自身の HTTP サービス（コンテナ内の 8080）に載っています。**意図的に `/api` の下に置いていません。** 本番の edge がプロキシするのは `location /api` と `/ws` だけです。加えて本番の compose が外部へ公開するのは nginx の 80 番だけで、backend の 8080 は公開しません。そのためこのエンドポイントは既定のデプロイでは compose のネットワーク内からのみ到達でき、外部からは呼べません。貴組織が backend を直接到達できる内部のネットワークへ別途つないでいる場合（Prometheus による収集のためなど）は、そこから `curl -s http://<backend>:8080/metrics` で取得しても構いません。
+- **エンドポイント**：`/metrics` は backend 自身の HTTP サービス（コンテナ内の 8080）に載っています。**意図的に `/api` の下に置いていません。** 本番の edge がプロキシするのは `location /api` と `/ws` だけです。加えて本番の compose が外部へ公開するのは nginx の 80 番だけで、backend の 8080 は公開しません。そのためこのエンドポイントは既定のデプロイでは compose のネットワーク内からのみ到達でき、外部からは呼べません。貴組織が backend を直接到達できる内部のネットワークへ別途つないでいる場合（Prometheus による収集のためなど）は、そこから `curl -s http://<backend>:8080/metrics` で取得しても構いません。同じホストまたは別のホストからの収集方法は[デプロイ形態の制限：運用メトリクスの取得](./deployment-topology-limits.md#運用メトリクスの取得metrics)にあります。
 - **認証**：環境変数 `METRICS_TOKEN` が空でない場合は `Authorization: Bearer <token>` を付ける必要があります。空の場合は認証なしで露出されます（安全性は「edge がプロキシしないこと」が担います）。
 - **判定の基準**：値が `0` になってから停止するのが望ましいです。本バージョンからは終了の経路がキューを自分で空にします（§3.1 参照）。そのため SIGTERM の時点で値がゼロでなくても、その行が失われることを意味しなくなり、終了が予算の一部をそれらの書き込みに使うことを意味します。`0` を待てば終了は短く済み、退避ファイルに触れることもありません。
 - **このメトリクスはシステムがアンシール済みのときにしか存在しません。** シール済みでも `/metrics` は応答しますが、その中にはシールの状態と単一インスタンスのガードの 2 組しかなく、`custodexa_audit_queue_depth` は `grep` できません。**それはメトリクスの故障ではなく、非同期の監査がまだ起きていないということです**（ほかの業務の構成要素と同じく、アンシールの後に組み立てられる段 2 に属します）。`KEK_PROVIDER=ui`（モード B）を採る場合はとくに遭遇します。backend は再起動のたびにシール済みへ戻るためで、[バックアップとリストア §3.2](./backup-and-restore.md#32-推奨の手順サービスを停止する方法一貫性が最もよい)の定期バックアップの後も同様です。**シール済みでは空にすべき監査のキューがありません。** 先にアンシールしてから、この確認を行ってください。

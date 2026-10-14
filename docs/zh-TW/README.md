@@ -39,27 +39,33 @@ set -o pipefail
 curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
 ```
 
-指定版本及部署目錄時：
+要改用其他部署目錄時，加上 `--dir`：
 
 ```bash
 set -o pipefail
-curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --dir /srv/custodexa
 ```
+
+不帶 `--version` 時安裝最新版。要安裝指定版本，在 `--` 後面加上 `--version <版本>`。
 
 若要先檢視引導腳本，先執行 `curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh`，再執行 `sudo bash get-custodexa.sh`。已有部署時不會覆寫，會交給現有的 `custodexa.sh`。引導腳本只核對 SHA-256；安裝包簽章請依下方步驟手動驗證，映像簽章由 `custodexa.sh` 處理。
 
 在 Bash 或 Zsh 先執行 `set -o pipefail`，引導腳本下載失敗時整段管線才會回報非零結束碼。先下載再執行時，請確認下載成功後才執行第二行。將 `CX_GET_RELEASE_BASE` 指向其他發行端點，表示同時信任該來源的安裝包與 `SHA256SUMS`；雜湊相符本身不證明發行者身分。
 
-若要手動驗證安裝包簽章，從發行頁把 `custodexa-<版本>.tar.gz`、`SHA256SUMS`、
-`SHA256SUMS.sigstore.json` 下載到同一個目錄，先驗證，再解開並安裝（`1.14.0` 換成你下載的版本）：
+若要手動驗證安裝包簽章，把 `custodexa-<版本>.tar.gz`、`SHA256SUMS`、
+`SHA256SUMS.sigstore.json` 下載到同一個目錄，先驗證，再解開並安裝。第一行從發行版的
+`MANIFEST.json` 讀出最新版本；要改用其他版本，直接自行設定，例如 `VERSION=X.Y.Z`：
 
 ```bash
+VERSION=$(curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/MANIFEST.json | sed -n 's/.*"version": *"\([0-9][0-9.]*\)".*/\1/p')
+base=https://github.com/custodexa/custodexa/releases/download/v${VERSION}
+curl -fsSL -O "$base/custodexa-${VERSION}.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
-sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
+sudo tar -xzf "custodexa-${VERSION}.tar.gz" -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -68,13 +74,15 @@ sudo /opt/custodexa/custodexa.sh install
 `custodexa.sh status` 可查看部署狀態，不做任何變更。離線主機、每一步的檢查與目錄結構，
 見[用安裝包安裝](QUICKSTART.md#用安裝包安裝)。
 
+其他指令：`backup` 寫出單一備份檔，可加密、可含錄影；`restore <備份檔>` 還原備份檔；`rollback` 回到上次升級前的版本；`start`、`stop` 啟動或停止整個部署。見[管理腳本做的備份](ops/backup-and-restore.md#38-管理腳本做的備份安裝包部署)。
+
 腳本畫面依系統語系顯示，而 `sudo` 常會重設語系，畫面就會是英文。要繁體中文或日文畫面，
 在任何 `custodexa.sh` 指令加上 `--lang zh-TW` 或 `--lang ja`；要用選單則執行
 `sudo /opt/custodexa/custodexa.sh --lang zh-TW`。
 
 `install --images-from source` 先核對安裝包內原始碼校驗和，再於本機建置 backend 與 frontend；速度較慢，上游映像、基底映像與建置依賴仍須取得，並非完全離線。預設 `auto` 依序嘗試本機、離線包、GHCR、Docker Hub、最後本機建置。無法連到映像倉庫的主機請用對應架構的映像包與 `custodexa.sh load`。
 
-已安裝的部署可用 `sudo /opt/custodexa/custodexa.sh upgrade` 只查詢新版，不變更部署；用 `sudo /opt/custodexa/custodexa.sh upgrade <版本>` 或選單中的升級開始升級。腳本會預覽停機、停止服務，並在自管資料庫時備份；不會自動回退，回到舊版須手動還原升級前備份。見[升級 SOP](../ops/upgrade-sop.md#以管理腳本升級)。舊版 git clone 部署會被 `custodexa.sh` 拒絕；請依[人工遷移段](../ops/upgrade-sop.md#舊原始碼部署的手動遷移)規劃。
+已安裝的部署可用 `sudo /opt/custodexa/custodexa.sh upgrade` 只查詢新版，不變更部署；用 `sudo /opt/custodexa/custodexa.sh upgrade <版本>` 或選單中的升級開始升級。腳本會預覽停機、停止服務並先備份，外接資料庫也包含在備份內。升級成功後，腳本會移除更舊版本的 backend 與 frontend 映像，只保留新版與前一版；加上 `--keep-images`（1.17.6 起）可略過這項清理。要還原映像已移除的舊版備份時，須重新取得該版映像，來源可以是映像倉庫或該版的離線映像包。升級不會自動回退。要回到舊版，執行 `sudo /opt/custodexa/custodexa.sh rollback`：新版沒有改動過資料庫時，它會切回前一版並保留資料；改動過時，它不做任何變更，並印出還原該次升級備份的 `restore` 指令或手動程序。見[升級 SOP](ops/upgrade-sop.md#以管理腳本升級)與[備份與還原 §5.1](ops/backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)。舊版 git clone 部署會被 `custodexa.sh` 拒絕；請依[人工遷移段](ops/upgrade-sop.md#舊原始碼部署的手動遷移)規劃。
 
 從 1.13.x 安裝包部署第一次升到 1.14.0 時，已安裝的 1.13.x 腳本不接受 `--images-from`；不帶此旗標執行，目標版會使用 `auto`。安裝 1.14.0 後，後續升級才可選原始碼建置。
 
@@ -187,7 +195,8 @@ TLS_MODE=provided
 - **握手全部在後端完成**，瀏覽器只是顯示器與鍵盤。這就是「前端拿不到明文憑證」的由來。
   實作見 `backend/internal/proxy/`。
 - **SSH、資料庫 CLI、K8s exec 共用同一條文字終端鏈路**，錄影、指令稽核、阻斷、監看
-  四件事只實作一次，八種協議一致生效。
+  四件事只實作一次，六種文字協議（SSH、MySQL、PostgreSQL、SQL Server、Redis、K8s exec）
+  一致生效。RDP、VNC 會話經 guacd 處理，同樣錄影。
 
 ## AI agent 接入
 
@@ -234,14 +243,14 @@ tag 跟著版本號走：
 - 已發佈的 `X.Y.Z` 不會被覆寫；修正一律以新的修訂版發出。
 
 每顆映像都由本 repo 的發佈 workflow 簽章，並附建置出處證明（provenance）與 SPDX 格式的
-SBOM attestation。驗證時把下列指令中的 `1.13.0` 全部換成你拉取的版本：
+SBOM attestation。驗證前先把 `VERSION` 設成你拉取的版本，例如 `VERSION=X.Y.Z`：
 
 ```bash
-cosign verify ghcr.io/custodexa/backend:1.13.0 \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+cosign verify ghcr.io/custodexa/backend:${VERSION} \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa
-gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa \
+gh attestation verify oci://ghcr.io/custodexa/backend:${VERSION} --repo custodexa/custodexa
+gh attestation verify oci://ghcr.io/custodexa/backend:${VERSION} --repo custodexa/custodexa \
   --predicate-type https://spdx.dev/Document/v2.3
 ```
 

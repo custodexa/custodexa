@@ -156,8 +156,8 @@ A package deployment uses `custodexa.sh upgrade` for the formal upgrade path. Th
 
 ```bash
 sudo /opt/custodexa/custodexa.sh upgrade                 # only checks for a newer version; changes nothing
-sudo /opt/custodexa/custodexa.sh upgrade 1.14.0          # downloads, verifies and upgrades
-sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SHA256SUMS next to it
+sudo /opt/custodexa/custodexa.sh upgrade X.Y.Z           # downloads, verifies and upgrades
+sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-X.Y.Z.tar.gz    # SHA256SUMS next to it
 ```
 
 From 1.14.0, rerunning `get-custodexa.sh` with the existing deployment's `--dir` hands control to its installed `custodexa.sh` without replacing files. Choose Upgrade there or use the installed script's `upgrade` command above.
@@ -510,7 +510,7 @@ docker compose exec -T backend \
 
 - **Endpoint**: `/metrics`, on the backend's own HTTP service (8080 inside the container).
   **It is deliberately not under `/api`**: the production edge proxies only `location /api` and `/ws`. Together with the production compose file publishing only nginx's port 80 and not the backend's 8080, this endpoint is reachable only inside the compose network in a default deployment and cannot be reached from outside.
-  If you attach the backend to a directly reachable internal network of your own (for Prometheus scraping), reading it from there with `curl -s http://<backend>:8080/metrics` works too.
+  If you attach the backend to a directly reachable internal network of your own (for Prometheus scraping), reading it from there with `curl -s http://<backend>:8080/metrics` works too. The supported ways to collect it, from the same host or from another one, are in [Deployment Topology Limits: collecting the operational metrics](./deployment-topology-limits.md#collecting-the-operational-metrics-metrics).
 - **Authentication**: when the `METRICS_TOKEN` environment variable is non-empty, `Authorization: Bearer <token>` is required; when it is empty the endpoint is exposed without authentication (the security of which rests on the edge not proxying it).
 - **Criterion**: prefer to stop once the value is `0`. Since this release the shutdown path drains the queue itself (see §3.1), so a non-zero value at the moment of SIGTERM no longer means those rows are lost; it means the shutdown will spend part of its budget writing them. Waiting for `0` keeps the shutdown short and avoids the fallback file.
 - **This metric exists only once the system is unsealed.** In the sealed state `/metrics` still answers, but it carries only the seal state and single-instance guard groups, and `grep` finds no `custodexa_audit_queue_depth`. **That is not a broken metric; it is asynchronous audit not being up yet** (it belongs, with the other business components, to stage 2, which is assembled only after unseal).

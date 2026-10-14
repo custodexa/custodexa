@@ -42,12 +42,15 @@ curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-c
 ```
 
 It downloads the latest package and `SHA256SUMS`, checks the package SHA-256 before unpacking to
-`/opt/custodexa`, then opens the `custodexa.sh` menu. To pin a release and folder:
+`/opt/custodexa`, then opens the `custodexa.sh` menu. To use another deployment folder, add `--dir`:
 
 ```bash
 set -o pipefail
-curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --dir /srv/custodexa
 ```
+
+Without `--version` the guide installs the latest release. To install a specific release, add
+`--version <version>` after `--`.
 
 To inspect the guide first, download and run the same file:
 
@@ -82,17 +85,25 @@ Each release page lists these files:
 
 Download the package, `SHA256SUMS` and `SHA256SUMS.sigstore.json` into one folder. The image
 bundles are only needed offline (see [Hosts without registry access](#hosts-without-registry-access)).
+In the commands below, the first line reads the latest version from the release's
+`MANIFEST.json`; to use another release, set it yourself instead, for example `VERSION=X.Y.Z`. Run the later steps in the same
+shell so that `VERSION` stays set:
+
+```bash
+VERSION=$(curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/MANIFEST.json | sed -n 's/.*"version": *"\([0-9][0-9.]*\)".*/\1/p')
+base=https://github.com/custodexa/custodexa/releases/download/v${VERSION}
+curl -fsSL -O "$base/custodexa-${VERSION}.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
+```
 
 ### 2. Verify before unpacking
 
 The script checks everything it obtains later, but it cannot vouch for itself: a package that was
-tampered with brings a script that was tampered with. Check the package before you unpack it.
-Replace `1.14.0` with the version you downloaded:
+tampered with brings a script that was tampered with. Check the package before you unpack it:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
 ```
@@ -102,12 +113,12 @@ may be incomplete or damaged; download it again before unpacking. If the second 
 run or the signature does not match, this package's publisher is unverified. This is a manual
 check before unpacking. `install` does not read its result or check the package signature; it
 checks image digests separately and verifies image signatures and provenance when possible.
-You can run the second command on another computer with `cosign` and the same two files.
+You can run the second command on another computer with `cosign` and the same two files, after setting `VERSION` there to the same value.
 
 ### 3. Unpack and install
 
 ```bash
-sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
+sudo tar -xzf "custodexa-${VERSION}.tar.gz" -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -158,7 +169,7 @@ Download the image bundle for the host's architecture as well (`uname -m`: `x86_
 before installing:
 
 ```bash
-sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.14.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-${VERSION}-amd64.tar
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -191,7 +202,7 @@ The deployment folder layout and what the script supports are in
 
 Run `sudo /opt/custodexa/custodexa.sh upgrade` to check for a newer version without changing the deployment. The read-only query does not accept `--images-from`. To upgrade, select a target in the menu or run `sudo /opt/custodexa/custodexa.sh upgrade <version>`; a downloaded package path is also accepted. With an installed 1.14.0 or later script, the menu offers `auto` or `source` for the target, and a command can use `--images-from source` to build the new package's backend and frontend locally. An offline image bundle may be loaded first or passed with `--images <bundle>` when using `auto`.
 
-On the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 1.13.x script starts the upgrade and does not accept `--images-from`; its menu has no image-source choice. Run without that flag and the 1.14.0 target uses `auto`. Source building can be selected for later upgrades after 1.14.0 is installed. The upgrade previews the downtime, stops the application services, and takes a pre-upgrade backup when it owns the database; an external database requires your own consistent backup. There is no automatic rollback. Follow [Upgrade SOP](ops/upgrade-sop.md#upgrading-with-the-management-script) and [Backup and Restore](ops/backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script) before starting. An older git clone deployment is refused; use the [manual migration planning section](ops/upgrade-sop.md#manual-migration-of-an-older-source-deployment).
+On the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 1.13.x script starts the upgrade and does not accept `--images-from`; its menu has no image-source choice. Run without that flag and the 1.14.0 target uses `auto`. Source building can be selected for later upgrades after 1.14.0 is installed. The upgrade previews the downtime, stops the application services, and takes a pre-upgrade backup, which also covers an external database. There is no automatic rollback. To go back, run `rollback`: when the new version has not changed the database, it returns to the previous version and keeps the data; when it has, it changes nothing and prints the `restore` command or manual procedure for the pre-upgrade backup. Follow [Upgrade SOP](ops/upgrade-sop.md#upgrading-with-the-management-script) and [Backup and Restore](ops/backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script) before starting. An older git clone deployment is refused; use the [manual migration planning section](ops/upgrade-sop.md#manual-migration-of-an-older-source-deployment).
 
 ## Source-tree startup for development and evaluation
 
@@ -714,7 +725,8 @@ decided by guacd.**
 - Recording usage is visible in the product (the "Recording Storage Used" card on the dashboard,
   for anyone with audit view permission); collectors can read
   `custodexa_recording_storage_bytes` (on `/metrics`, refreshed every 30 seconds, so the value
-  lags by at most one refresh period).
+  lags by at most one refresh period). How to reach `/metrics`, which a default deployment does not
+  expose outside, is in [Collecting the operational metrics](ops/deployment-topology-limits.md#collecting-the-operational-metrics-metrics).
 - **The system sets no storage cap**: the availability of an audit system should not be held
   hostage by storage volume, and "keep connecting but stop recording" would produce unrecorded
   privileged sessions, neither of which is acceptable. Total disk capacity and the risk of running

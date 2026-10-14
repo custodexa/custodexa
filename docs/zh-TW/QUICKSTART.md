@@ -39,12 +39,14 @@ curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-c
 ```
 
 腳本下載最新版安裝包與 `SHA256SUMS`，解壓前核對安裝包 SHA-256，放入 `/opt/custodexa`，
-然後開啟 `custodexa.sh` 選單。若要指定版本與目錄：
+然後開啟 `custodexa.sh` 選單。要改用其他部署目錄時，加上 `--dir`：
 
 ```bash
 set -o pipefail
-curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --dir /srv/custodexa
 ```
+
+不帶 `--version` 時安裝最新版。要安裝指定版本，在 `--` 後面加上 `--version <版本>`。
 
 若要先檢視腳本，可先下載再執行同一檔案：
 
@@ -76,17 +78,25 @@ sudo bash get-custodexa.sh
 | `custodexa-images-<版本>-amd64.tar`、`custodexa-images-<版本>-arm64.tar` | 單一架構的全部映像，給連不到映像倉庫的主機 |
 
 把安裝包、`SHA256SUMS`、`SHA256SUMS.sigstore.json` 下載到同一個目錄。映像離線包只有離線時
-才需要（見[連不到映像倉庫的主機](#連不到映像倉庫的主機)）。
+才需要（見[連不到映像倉庫的主機](#連不到映像倉庫的主機)）。下列指令的第一行從發行版的
+`MANIFEST.json` 讀出最新版本；要改用其他版本，直接自行設定，例如 `VERSION=X.Y.Z`。
+後續步驟請在同一個 shell 執行，`VERSION` 才會沿用：
+
+```bash
+VERSION=$(curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/MANIFEST.json | sed -n 's/.*"version": *"\([0-9][0-9.]*\)".*/\1/p')
+base=https://github.com/custodexa/custodexa/releases/download/v${VERSION}
+curl -fsSL -O "$base/custodexa-${VERSION}.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
+```
 
 ### 2. 解開前先驗證
 
 腳本會驗證它之後取得的每樣東西，但無法替自己擔保：被竄改的安裝包，帶的也是被竄改的腳本。
-所以要在解開前先驗安裝包。把 `1.14.0` 換成你下載的版本：
+所以要在解開前先驗安裝包：
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
 ```
@@ -94,12 +104,12 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 第一個指令要對每個下載的檔案都印出 `OK`。校驗和不符時，檔案可能下載不完整或損壞，請重新下載後再解開。
 第二個指令無法執行或簽章不符時，這份安裝包的來源未經證實。這是解包前的人工檢查；`install` 不讀取這項結果，
 也不驗證安裝包本身的簽章。`install` 會另行核對映像摘要，並在可行時驗證映像簽章與建置出處。
-也可把相同的兩個檔案拿到有 `cosign` 的電腦上執行第二個指令。
+也可把相同的兩個檔案拿到有 `cosign` 的電腦上執行第二個指令，執行前在那台電腦設定相同的 `VERSION`。
 
 ### 3. 解開並安裝
 
 ```bash
-sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
+sudo tar -xzf "custodexa-${VERSION}.tar.gz" -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -138,7 +148,7 @@ sudo /opt/custodexa/custodexa.sh install
 和 `SHA256SUMS` 放在同一個目錄；解開安裝包後，先載入再安裝：
 
 ```bash
-sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.14.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-${VERSION}-amd64.tar
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -167,7 +177,7 @@ sudo /opt/custodexa/custodexa.sh status
 
 `sudo /opt/custodexa/custodexa.sh upgrade` 只查詢新版，不變更部署；唯讀查詢不接受 `--images-from`。要升級，請在選單選目標，或執行 `sudo /opt/custodexa/custodexa.sh upgrade <版本>`；也可指定下載好的安裝包路徑。已安裝的腳本為 1.14.0 或更新版時，選單可對目標版選 `auto` 或 `source`；指令可加 `--images-from source`，讓新版安裝包的 backend 與 frontend 在本機建置。使用 `auto` 時可先載入離線映像包，或以 `--images <映像包>` 指定。
 
-從 1.13.x 安裝包部署第一次升到 1.14.0 時，由已安裝的 1.13.x 腳本啟動升級；該腳本不接受 `--images-from`，選單也沒有映像來源選項。不帶此旗標執行，1.14.0 目標版會使用 `auto`。安裝 1.14.0 後，後續升級才可選原始碼建置。升級會預覽停機、停止應用服務，自管資料庫時製作升級前備份；外接資料庫必須自行取得一致的備份。腳本不會自動回退。開始前請閱讀[升級 SOP](ops/upgrade-sop.md#以管理腳本升級)與[備份與還原](ops/backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)。舊 git clone 部署會被拒絕；請依[人工遷移規劃段](ops/upgrade-sop.md#舊原始碼部署的手動遷移)處理。
+從 1.13.x 安裝包部署第一次升到 1.14.0 時，由已安裝的 1.13.x 腳本啟動升級；該腳本不接受 `--images-from`，選單也沒有映像來源選項。不帶此旗標執行，1.14.0 目標版會使用 `auto`。安裝 1.14.0 後，後續升級才可選原始碼建置。升級會預覽停機、停止應用服務並製作升級前備份，外接資料庫也包含在備份內。腳本不會自動回退。要回到舊版，執行 `rollback`：新版沒有改動過資料庫時，它會切回前一版並保留資料；改動過時，它不做任何變更，並印出還原升級前備份的 `restore` 指令或手動程序。開始前請閱讀[升級 SOP](ops/upgrade-sop.md#以管理腳本升級)與[備份與還原](ops/backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)。舊 git clone 部署會被拒絕；請依[人工遷移規劃段](ops/upgrade-sop.md#舊原始碼部署的手動遷移)處理。
 
 ## 原始碼樹的開發與試用啟動步驟
 
@@ -603,6 +613,7 @@ multicast；**私有網段預設放行**（目錄服務的常態位置即內網�
 
 - 錄影佔用量在產品內可見（具稽核檢視權限者的主控頁「錄影佔用」卡）；採集端可讀
   `custodexa_recording_storage_bytes`（`/metrics`，每 30 秒刷新，其值最多落後一個刷新週期）。
+  預設部署不對外開放 `/metrics`，取用方式見[取用營運指標](ops/deployment-topology-limits.md#取用營運指標metrics)。
 - **系統不設儲存上限**：稽核系統的可用性不應被儲存量挾持，而「照常建線但不錄影」會產生
   無錄影的特權會話，兩者都不可接受。故磁碟總容量與耗盡風險由你的基礎設施監控承擔；
   請對 `custodexa_recording_storage_bytes` 設成長率或容量門檻告警。

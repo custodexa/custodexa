@@ -205,7 +205,7 @@ guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`�
 
 **自訂編排必須提供這些設定。** 丟棄全部能力後僅加回 `SETUID`、`SETGID`、`CHOWN`、`KILL`、`IPC_LOCK`，並施加上述權限與資源限制。在 Compose 中，鎖頁所需設定為 `cap_add` 包含 `IPC_LOCK`，以及 `ulimits.memlock: -1`；其他編排工具須提供對應的能力與資源限制。任何啟動控制無法施加時，backend 都會退出；鎖頁失敗會回報 `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)`。排查此錯誤時，請核對這些同名設定。
 
-變更 capability 後必須重建 backend 容器，僅重新啟動不會套用新能力集合。`custodexa.sh upgrade` 啟動新版本時會重建它。在安裝包的部署資料夾手動重建時執行 `docker compose --project-directory . up -d --force-recreate backend`；其他 Compose 部署執行 `docker compose up -d --force-recreate backend`。缺少 `KILL` 時，backend 可能無法終止 DB CLI 子行程。本地終端收線等待子行程回收最多一秒；終止或等待失敗、等待逾時會記錄日誌，接著繼續連線清理。單一背景等待會在子行程最終退出時回收它；缺少能力仍可能留下持續運行的子行程。
+變更 capability 後必須重建 backend 容器，僅重新啟動不會套用新能力集合。`custodexa.sh upgrade` 啟動新版本時會重建它。在安裝包的部署資料夾手動重建時執行 `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate backend`；其他 Compose 部署執行 `docker compose up -d --force-recreate backend`。缺少 `KILL` 時，backend 可能無法終止 DB CLI 子行程。本地終端收線等待子行程回收最多一秒；終止或等待失敗、等待逾時會記錄日誌，接著繼續連線清理。單一背景等待會在子行程最終退出時回收它；缺少能力仍可能留下持續運行的子行程。
 
 ## 允許來源網段對部署的影響
 
@@ -372,6 +372,7 @@ guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`�
 - **自動擴縮與無人值守的重啟策略不適用本模式**：它們把一個無法提供服務的行程叫回來。
 - **監控要對已封存狀態告警**，否則凌晨三點的重啟到早上九點才被發現。
   封存期間狀態仍讀得到：`GET /api/v1/seal/status` 與 `/metrics` 的封存那一組。
+  `/metrics` 的取用與採集方式見[取用營運指標](#取用營運指標metrics)。
 
 **解封頁要求什麼，以及這道驗證的邊界。** 管理者在解封頁輸入帳號與密碼，
 拿畫面上顯示的保管處與部署紀錄核對，再重新提供該服務商的憑證。安全評估要納入兩條界線：
@@ -418,6 +419,168 @@ guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`�
 
 稽核紀錄不在本設定的範圍內：為紀錄蓋章的金鑰不受保留期限影響，保管處連不上時紀錄仍寫得進去。
 本設定縮短的是資料金鑰存在於記憶體的時間；操作進行中，記憶體裡仍然會有金鑰與資料原文。
+
+## 取用營運指標（`/metrics`）
+
+backend 在自己的 HTTP 埠（容器內 8080）的 `/metrics` 提供 Prometheus 指標。**預設部署下開 `https://<你的網域>/metrics` 拿到的是網頁介面，不是指標**：backend 的埠沒有發佈到主機，前方的代理也只轉 `/api` 與 `/ws`。這是刻意的預設。這個端點只在部署的 docker 網路內可達；要讓其他主機取得，是另一個決定，而且必須同時設定 token（見下方方式 B）。
+
+- **認證**：`.env` 的 `METRICS_TOKEN` 為空（預設）時免認證。設了值之後，每個請求不論來自何處都要帶 `Authorization: Bearer <token>`；未帶或不符一律回 401，回應體不含任何指標。
+- **系統封存期間**，`/metrics` 只有封存狀態、單實例守衛序列與 Go runtime、process 指標。其餘指標（稽核佇列也在其中）在解封後才出現（[升級 SOP §2.4](./upgrade-sop.md#24-停機前確認稽核佇列已排空)）。
+
+### 臨時查看
+
+在主機上，把請求放進 backend 容器內執行。正式版映像沒有 shell，但保留了 busybox 的 `wget`：
+
+```bash
+# METRICS_TOKEN 為空（預設）
+docker exec custodexa-backend wget -qO- http://127.0.0.1:8080/metrics
+
+# METRICS_TOKEN 有設值：token 取自容器自己的環境變數，
+# 不會出現在主機的命令列上
+docker exec custodexa-backend /bin/busybox sh -c \
+  'wget -qO- --header="Authorization: Bearer $METRICS_TOKEN" http://127.0.0.1:8080/metrics'
+```
+
+結尾加上 `| grep '^custodexa_'` 可只留產品自己的序列。
+
+### 用瀏覽器查看（經 SSH 通道）
+
+backend 容器在 docker 網路上有一個主機連得到的位址。先在主機上讀出位址，再從自己的工作站把本機埠轉過去：
+
+```bash
+# 在主機上
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' custodexa-backend
+
+# 在工作站上，填入上面印出的位址
+ssh -N -L 9180:<backend 位址>:8080 <使用者>@<主機>
+```
+
+接著開 `http://localhost:9180/metrics`。這個位址在容器建立時配發，backend 重建後（升級、還原、改設定）要重新讀一次。瀏覽器不會送 `Authorization` 標頭：有設 `METRICS_TOKEN` 時，改在同一條通道上用 `curl -H "Authorization: Bearer <token>" http://localhost:9180/metrics`。
+
+### 長期採集，方式 A：Prometheus 跑在同一台主機
+
+把 Prometheus 以容器方式接進部署的 docker 網路，以容器名稱採集 backend。主機對外不必多開任何東西，代理也不用改。
+
+網路名稱是 `<compose 專案名>_custodexa-network`。安裝包部署的專案名一律是 `custodexa`（[安裝包部署與管理腳本](#安裝包部署與管理腳本)），因此是 `custodexa_custodexa-network`；原始碼部署的專案名預設是所在目錄名，`COMPOSE_PROJECT_NAME` 有設時以它為準。在主機上確認：
+
+```bash
+docker inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{println $name}}{{end}}' custodexa-backend
+```
+
+最小的 `prometheus.yml`：
+
+```yaml
+scrape_configs:
+  - job_name: custodexa
+    static_configs:
+      - targets: ["custodexa-backend:8080"]
+    # 只在 METRICS_TOKEN 有設值時需要；檔案內只放 token 值本身
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/custodexa-metrics-token
+```
+
+Prometheus 的 compose 檔，放在它自己的目錄：
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:<版本>
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - custodexa
+networks:
+  custodexa:
+    external: true
+    name: custodexa_custodexa-network   # 上面指令印出的名稱
+```
+
+這個網路要先存在 Prometheus 才起得來，所以先啟動 Custodexa。Prometheus 接在網路上時，網路無法移除：對 Custodexa 專案執行 `docker compose down` 之前先停掉 Prometheus，之後再把它啟動。
+
+### 長期採集，方式 B：從另一台主機採集
+
+從另一台主機採集，需要在 https 入口開一條通往 `/metrics` 的路徑，而且**沒有設 `METRICS_TOKEN` 就不得開這條路徑**：少了它，任何連得到這個位址的人都讀得到端點清單、各功能使用量與錯誤率。
+
+**步驟 1：設定 token。** 產生一個值：
+
+```bash
+openssl rand -hex 32
+```
+
+寫進部署目錄的 `.env`，成為 `METRICS_TOKEN=<值>`。backend 在容器建立時讀取 `.env` 的設定，所以要重建容器，只重新啟動不會生效。在安裝包的部署目錄執行 `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate backend`；其他 Compose 部署執行 `docker compose up -d --force-recreate backend`。採 `KEK_PROVIDER=ui` 或 `kms` 時，重建後的 backend 會處於封存狀態，需要解封（[委託金鑰模式](#委託金鑰模式這個部署不是無人值守)）。完成後，「臨時查看」裡不帶 token 的寫法會回 401，帶 token 的寫法則回得出指標。
+
+設了 token 之後，管理腳本升級前等待稽核佇列排空的檢查照常運作：它在 backend 容器內執行，用的是容器本來就有的 token。
+
+**步驟 2：開路徑。** 做得到什麼，取決於部署前方是什麼。
+
+- **內建代理（預設）。** 複製它的範本，並在 `.env` 以 `TLS_NGINX_TEMPLATE` 指向副本，做法見[快速開始：自訂反向代理設定](../QUICKSTART.md#自訂反向代理設定)。安裝包部署要複製的範本是 `current/reverse-proxy/nginx-tls.conf.template`，副本放在 `releases/` 與 `current/` 以外，例如 `tls/custodexa.conf.template`。在副本的 `listen 443` 那個 server 區塊內、`location /` 之前加上：
+
+  ```nginx
+      location = /metrics {
+          set $backend_upstream http://backend:8080;
+          proxy_pass $backend_upstream;
+          proxy_http_version 1.1;
+          proxy_set_header Host $public_host;
+      }
+  ```
+
+  內建代理就在部署的 docker 網路上，所以能以服務名稱連到 backend，名稱在請求時經範本原有的 `resolver` 那行解析。套用方式：安裝包的部署目錄執行 `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate tls-proxy`，其他部署執行 `docker compose up -d --force-recreate tls-proxy`。副本歸你所有：管理腳本做的備份會包含它（[備份與還原 §3.8](./backup-and-restore.md#38-管理腳本做的備份安裝包部署)），升級不會改動它，所以每次升級後要與隨版本附的範本比對一次。
+- **自備 ingress（external ingress overlay）。** 隨附的 compose 檔不替 backend 發佈任何埠。你的 ingress 只有在以容器方式接進部署的 docker 網路時才能轉 `/metrics`，這也是隨附範例能以 `frontend:80` 指到前端的前提；此時把精確路徑 `/metrics` 轉到 `backend:8080` 即可。裝在主機上或跑在另一台機器上的 ingress，只連得到前端發佈的埠，而前端只轉 `/api` 與 `/ws`，所以在隨附的部署形態下它碰不到 `/metrics`。這種情況請改用方式 A，或在部署的 docker 網路上放一個代理容器。
+
+**步驟 3：讓 Prometheus 指向入口。**
+
+```yaml
+scrape_configs:
+  - job_name: custodexa
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/custodexa-metrics-token
+    static_configs:
+      - targets: ["bastion.example.com"]   # TLS_HTTPS_PORT 不是 443 時加上 :<埠>
+    # 自簽模式（TLS_MODE=selfsigned）：信任部署的本地 CA，
+    # 入口在 /custodexa-ca.crt 提供下載
+    # tls_config:
+    #   ca_file: /etc/prometheus/custodexa-ca.crt
+```
+
+token 檔只放 token 值本身，存取規則比照 `.env`。
+
+### 該盯哪些指標
+
+完整清單、標籤與各指標的意義見 [API 規格](../../API_SPEC.md#營運指標端點prometheus)。以下是五條起步用的告警，寫成 Prometheus 規則；持續時間與門檻請依自己的承諾調整：
+
+```yaml
+groups:
+  - name: custodexa
+    rules:
+      # 不在服務中：已封存、解封中，或故障後封存。KEK 模式 ui 與 kms 的
+      # 每一次重啟都會停在這裡，直到有人解封。
+      - alert: CustodexaNotUnsealed
+        expr: custodexa_seal_state{state="unsealed"} != 1
+        for: 5m
+      # 沒能寫進資料庫的稽核列。reason="fallback_file"：已降級寫入檔案，事後可回收；
+      # reason="discarded"：已遺失。
+      - alert: CustodexaAuditRowsDropped
+        expr: increase(custodexa_audit_dropped_total[15m]) > 0
+      # 非同步稽核佇列容量 1000 列；滿了之後，新的列走上一條的路徑。
+      - alert: CustodexaAuditQueueBacklog
+        expr: custodexa_audit_queue_depth > 500
+        for: 5m
+      # 尚未有人審閱的指令告警，依嚴重度分。
+      - alert: CustodexaCommandAlertsUnreviewed
+        expr: sum by (severity) (custodexa_command_alerts_pending) > 0
+        for: 24h
+      # 本實例沒有持有單實例鎖。
+      - alert: CustodexaInstanceLockNotHeld
+        expr: custodexa_instance_guard_held == 0
+        for: 5m
+```
+
+另外加上常見的 `up{job="custodexa"} == 0`，涵蓋整個採集失敗的情況。系統封存期間稽核序列是缺席而不是 0，那幾條規則因此不會響；那個狀態由第一條規則涵蓋。各訊號的判讀：稽核列與降級檔案見[升級 SOP §3.1](./upgrade-sop.md#31-關機時會排空佇列但有時限)，單實例鎖見[升級 SOP §3.4](./upgrade-sop.md#34-執行期失去單實例鎖日誌橫幅與稽核事件的判讀)，系統不設上限的錄影儲存量見[快速開始：儲存監控](../QUICKSTART.md#儲存監控)。
 
 ## 輸出敏感資料偵測：射程與營運判準
 

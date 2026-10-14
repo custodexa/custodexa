@@ -199,8 +199,8 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ```bash
 sudo /opt/custodexa/custodexa.sh upgrade                 # 只查詢有沒有新版，不做任何變更
-sudo /opt/custodexa/custodexa.sh upgrade 1.14.0          # 下載、驗證並升級
-sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SHA256SUMS 放在同一處
+sudo /opt/custodexa/custodexa.sh upgrade X.Y.Z           # 下載、驗證並升級
+sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-X.Y.Z.tar.gz    # SHA256SUMS 放在同一處
 ```
 
 從 1.14.0 起，重新執行 `get-custodexa.sh` 並以 `--dir` 指向既有部署時，腳本不會覆寫檔案，而是交給已安裝的 `custodexa.sh`。請在其選單選升級，或使用上方已安裝腳本的 `upgrade` 指令。
@@ -656,6 +656,7 @@ docker compose exec -T backend \
   此端點在預設部署下只在 compose 網路內可達，自外部打不到。
   若貴方另行把 backend 接進可直達的內部網路（供 Prometheus 採集），
   自該處以 `curl -s http://<backend>:8080/metrics` 取用亦可。
+  同主機或跨主機的採集做法見[部署形態限制：取用營運指標](./deployment-topology-limits.md#取用營運指標metrics)。
 - **認證**：`METRICS_TOKEN` 環境變數非空時，須帶 `Authorization: Bearer <token>`；
   為空時免認證曝光（安全性由「edge 不代理」承擔）。
 - **判準**：值為 `0` 再停機為佳。自本版起，關機路徑會自行排空佇列（見 §3.1），

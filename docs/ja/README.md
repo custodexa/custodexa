@@ -40,28 +40,34 @@ set -o pipefail
 curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
 ```
 
-バージョンと導入先を指定する場合：
+別の導入先を使う場合は `--dir` を付けます：
 
 ```bash
 set -o pipefail
-curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --dir /srv/custodexa
 ```
+
+`--version` を付けなければ最新版を導入します。特定のバージョンを導入する場合は `--` の後に `--version <バージョン>` を加えます。
 
 先にスクリプトを確認する場合は `curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh` の後に `sudo bash get-custodexa.sh` を実行します。既存のデプロイは上書きせず、その `custodexa.sh` に引き継ぎます。案内スクリプトは SHA-256 のみ確認します。パッケージ署名は以下の手順で手動確認し、イメージ署名は `custodexa.sh` が扱います。
 
 Bash または Zsh で先に `set -o pipefail` を実行すると、案内スクリプトのダウンロードに失敗した場合にパイプライン全体がゼロ以外の終了コードを返します。ダウンロード後に実行する場合は、最初のコマンドが成功してから次を実行してください。`CX_GET_RELEASE_BASE` を別のリリース端点に設定すると、その端点のパッケージと `SHA256SUMS` の両方を信頼することになります。ハッシュの一致だけでは発行元の身元は確認できません。
 
-パッケージ署名を手動確認するには、リリースページから `custodexa-<バージョン>.tar.gz`、
-`SHA256SUMS`、`SHA256SUMS.sigstore.json` を同じフォルダーにダウンロードし、検証してから展開してインストールします
-（`1.14.0` はダウンロードしたバージョンに置き換えてください）。
+パッケージ署名を手動確認するには、`custodexa-<バージョン>.tar.gz`、
+`SHA256SUMS`、`SHA256SUMS.sigstore.json` を同じフォルダーにダウンロードし、検証してから展開してインストールします。
+1 行目はリリースの `MANIFEST.json` から最新バージョンを読み取ります。別のバージョンを使う場合は
+`VERSION=X.Y.Z` のように自分で設定してください。
 
 ```bash
+VERSION=$(curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/MANIFEST.json | sed -n 's/.*"version": *"\([0-9][0-9.]*\)".*/\1/p')
+base=https://github.com/custodexa/custodexa/releases/download/v${VERSION}
+curl -fsSL -O "$base/custodexa-${VERSION}.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
-sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
+sudo tar -xzf "custodexa-${VERSION}.tar.gz" -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -71,13 +77,15 @@ sudo /opt/custodexa/custodexa.sh install
 `custodexa.sh status` は何も変更せずにデプロイの状態を表示します。オフラインのホスト、各ステップの確認内容、
 フォルダー構成は[インストールパッケージからのインストール](QUICKSTART.md#インストールパッケージからのインストール)を参照してください。
 
+そのほかのコマンド：`backup` は 1 つのバックアップファイルを書き出します（暗号化と録画の同梱を選べます）。`restore <バックアップファイル>` はそれをリストアします。`rollback` は直前のアップグレードの前のバージョンに戻します。`start` と `stop` はデプロイ全体を起動または停止します。[管理スクリプトによるバックアップ](ops/backup-and-restore.md#38-管理スクリプトによるバックアップパッケージのデプロイ)を参照してください。
+
 スクリプトの画面はシステムの言語で表示されますが、`sudo` ではその設定がリセットされることが多く、その場合は
 英語になります。日本語または繁体字中国語で表示するには、`custodexa.sh` の各コマンドに `--lang ja` または
 `--lang zh-TW` を付けます。メニューを使う場合は `sudo /opt/custodexa/custodexa.sh --lang ja` を実行します。
 
 `install --images-from source` はパッケージ内のソースのチェックサムを確認してから backend と frontend をローカルでビルドします。時間がかかり、上流イメージ、ベースイメージ、ビルド依存関係は別途取得するため、完全なオフライン手段ではありません。既定の `auto` はホスト、オフラインバンドル、GHCR、Docker Hub、ローカルビルドの順に試します。レジストリーに接続できないホストでは、対応するアーキテクチャのバンドルと `custodexa.sh load` を使います。
 
-パッケージのデプロイでは `sudo /opt/custodexa/custodexa.sh upgrade` は新しいバージョンを照会するだけで、デプロイを変更しません。`sudo /opt/custodexa/custodexa.sh upgrade <バージョン>` またはメニューのアップグレードから開始します。スクリプトは停止時間をプレビューし、サービスを停止し、内蔵データベースを使う場合はバックアップを取ります。自動ロールバックはなく、以前のバージョンに戻すにはアップグレード前のバックアップを手動でリストアします。[アップグレード SOP](../ops/upgrade-sop.md#管理スクリプトによるアップグレード)を参照してください。古い git clone デプロイは `custodexa.sh` に拒否されるため、[手動移行の節](../ops/upgrade-sop.md#古いソースデプロイの手動移行)に従って計画してください。
+パッケージのデプロイでは `sudo /opt/custodexa/custodexa.sh upgrade` は新しいバージョンを照会するだけで、デプロイを変更しません。`sudo /opt/custodexa/custodexa.sh upgrade <バージョン>` またはメニューのアップグレードから開始します。スクリプトは停止時間をプレビューし、サービスを停止してバックアップを取ります。外部データベースもバックアップに含まれます。アップグレードが成功すると、古いバージョンの backend と frontend のイメージを削除し、新しいバージョンと 1 つ前のバージョンのものだけを残します。このクリーンアップを省略するには `--keep-images` を付けます（1.17.6 以降）。イメージが削除されたバージョンのバックアップをリストアするには、そのイメージをレジストリまたはそのバージョンのオフラインイメージバンドルから再取得する必要があります。自動ロールバックはありません。元に戻すには `sudo /opt/custodexa/custodexa.sh rollback` を実行します。新しいバージョンがデータベースを変更していなければ、前のバージョンに戻り、データは保持されます。変更していた場合は何も変更せず、そのアップグレードが取ったバックアップをリストアする `restore` コマンドまたは手動の手順を表示します。[アップグレード SOP](ops/upgrade-sop.md#管理スクリプトによるアップグレード)と[バックアップとリストア §5.1](ops/backup-and-restore.md#51-管理スクリプトでアップグレードした後アップグレード前のバージョンに戻す)を参照してください。古い git clone デプロイは `custodexa.sh` に拒否されるため、[手動移行の節](ops/upgrade-sop.md#古いソースデプロイの手動移行)に従って計画してください。
 
 1.13.x のパッケージデプロイから初めて 1.14.0 にアップグレードする場合、インストール済みの 1.13.x スクリプトは `--images-from` を受け付けません。フラグを付けずに実行すると、1.14.0 側は `auto` を使います。1.14.0 のインストール後、以降のアップグレードではソースからのビルドを選べます。
 
@@ -205,8 +213,9 @@ Apache Guacamole（guacd。RDP/VNC のみ）
   キーボードにすぎません。「フロントエンドは平文の資格情報に触れない」が成り立つのはこのためです。
   `backend/internal/proxy/` を参照してください。
 - **SSH、データベース CLI、Kubernetes exec は単一のテキストターミナル基盤を共有します。**
-  録画、コマンド監査、遮断、リアルタイム監視は一度だけ実装され、8 種類のプロトコルすべてに
-  同じかたちで適用されます。
+  録画、コマンド監査、遮断、リアルタイム監視は一度だけ実装され、6 種類のテキストプロトコル
+  （SSH、MySQL、PostgreSQL、SQL Server、Redis、Kubernetes exec）に同じかたちで適用されます。
+  RDP と VNC のセッションは guacd を経由し、録画されます。
 
 ## AI agent からの接続
 
@@ -258,15 +267,15 @@ token のローテーション、インシデント対応、agent の承認設�
 - 公開済みの `X.Y.Z` が上書きされることはありません。修正は新しいパッチリリースとして出します。
 
 各イメージには本リポジトリのリリース workflow による署名があり、ビルドの来歴証明（provenance）と
-SPDX 形式の SBOM attestation が付いています。確認するときは、次のコマンド中の `1.13.0` をすべて
-取得したバージョンに置き換えてください。
+SPDX 形式の SBOM attestation が付いています。確認するときは、先に `VERSION` を取得したバージョンに
+設定してください（例：`VERSION=X.Y.Z`）。
 
 ```bash
-cosign verify ghcr.io/custodexa/backend:1.13.0 \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+cosign verify ghcr.io/custodexa/backend:${VERSION} \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa
-gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa \
+gh attestation verify oci://ghcr.io/custodexa/backend:${VERSION} --repo custodexa/custodexa
+gh attestation verify oci://ghcr.io/custodexa/backend:${VERSION} --repo custodexa/custodexa \
   --predicate-type https://spdx.dev/Document/v2.3
 ```
 

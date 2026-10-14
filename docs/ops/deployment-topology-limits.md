@@ -155,7 +155,7 @@ On 2026-09-12 (Asia/Taipei), with the memory controls above and 15 development s
 
 **Custom orchestration must supply these settings.** Drop all capabilities and add only `SETUID`, `SETGID`, `CHOWN`, `KILL`, and `IPC_LOCK`; also apply the privilege and resource limits listed above. In Compose, the required memory-locking settings are `cap_add` containing `IPC_LOCK` and `ulimits.memlock: -1`. Other orchestrators must supply equivalent capabilities and resource limits. If a startup control cannot be applied, the backend exits; a memory-locking failure reports `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)`. Check those exact settings when diagnosing that error.
 
-After changing capabilities, recreate the backend container; restarting it does not apply the new capability set. `custodexa.sh upgrade` recreates it when it starts the new release. When recreating by hand in a package deployment folder, run `docker compose --project-directory . up -d --force-recreate backend`; for other Compose deployments, run `docker compose up -d --force-recreate backend`. Without `KILL`, the backend may be unable to terminate a DB CLI child. Local terminal closure waits at most one second for child reaping, logs termination or wait failures and timeouts, and then continues connection cleanup. A single background wait reaps the child if it later exits; a missing capability can still leave the child running.
+After changing capabilities, recreate the backend container; restarting it does not apply the new capability set. `custodexa.sh upgrade` recreates it when it starts the new release. When recreating by hand in a package deployment folder, run `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate backend`; for other Compose deployments, run `docker compose up -d --force-recreate backend`. Without `KILL`, the backend may be unable to terminate a DB CLI child. Local terminal closure waits at most one second for child reaping, logs termination or wait failures and timeouts, and then continues connection cleanup. A single background wait reaps the child if it later exits; a missing capability can still leave the child running.
 
 ## How allowed source ranges affect the deployment
 
@@ -260,7 +260,7 @@ Three consequences for planning:
 
 - **Someone has to be reachable for every restart**, the unplanned ones included. Decide who, and how they are called out of hours, before choosing this mode. `ui` mode has always had this property; from this release `kms` shares it. `env` is the one mode that restarts unattended, and it pays for that with the master key sitting in cleartext on the host.
 - **Automatic scaling and unattended restart policies do not fit this mode**: they bring back a process that cannot serve.
-- **Monitoring has to alert on the sealed state**, or a restart at 03:00 is found at 09:00. The state is readable while sealed, from `GET /api/v1/seal/status` and from the seal group in `/metrics`.
+- **Monitoring has to alert on the sealed state**, or a restart at 03:00 is found at 09:00. The state is readable while sealed, from `GET /api/v1/seal/status` and from the seal group in `/metrics`. How to reach `/metrics` and collect it is in [Collecting the operational metrics](#collecting-the-operational-metrics-metrics).
 
 **What the unseal page asks for, and the boundary of that check.** The administrator signs in on the unseal page with a username and password, checks the custodian shown there against the deployment record, and supplies that provider's credentials again. Two limits belong in a security assessment:
 
@@ -285,6 +285,168 @@ Settle two things before turning it on:
 On local key modes — the master key comes from an environment variable, or an administrator enters it at startup — the setting is still available and still shortens how long the data key is kept. What it does not change is the master key itself, which is in the process's memory throughout in those modes.
 
 Audit records are outside this setting: the key that stamps them is not subject to the retention period, so records can still be written while the custodian is unreachable. What the setting shortens is the time the data key is present in memory; during an operation, memory still holds keys and unencrypted data.
+
+## Collecting the operational metrics (`/metrics`)
+
+The backend serves Prometheus metrics at `/metrics` on its own HTTP port, 8080 inside the container. **In a default deployment, `https://<your domain>/metrics` returns the web interface, not metrics**: the backend's port is not published on the host, and the proxies in front of it forward only `/api` and `/ws`. This is the intended default. The endpoint is reachable only from inside the deployment's docker network, and making it reachable from other hosts is a separate decision that comes with a token (method B below).
+
+- **Authentication**: with `METRICS_TOKEN` in `.env` empty (the default), the endpoint answers without authentication. Once it has a value, every request needs `Authorization: Bearer <token>`, wherever it comes from; a missing or wrong token gets 401 with no metrics in the body.
+- **While the system is sealed**, `/metrics` carries only the seal state, the single-instance guard series and the Go runtime and process metrics. The others, the audit queue among them, appear once the system is unsealed ([Upgrade SOP §2.4](./upgrade-sop.md#24-confirm-the-audit-queue-has-drained-before-stopping)).
+
+### Looking at the values once
+
+On the host, run the request inside the backend container. Its image has no shell, but it keeps the busybox `wget`:
+
+```bash
+# METRICS_TOKEN empty (the default)
+docker exec custodexa-backend wget -qO- http://127.0.0.1:8080/metrics
+
+# METRICS_TOKEN set: the token is read from the container's own environment,
+# so it never appears on the host's command line
+docker exec custodexa-backend /bin/busybox sh -c \
+  'wget -qO- --header="Authorization: Bearer $METRICS_TOKEN" http://127.0.0.1:8080/metrics'
+```
+
+Add `| grep '^custodexa_'` to keep only the product's own series.
+
+### Looking at them in a browser, through an SSH tunnel
+
+The backend container has an address on the docker network that the host can reach. Read it on the host, then forward a local port to it from your workstation:
+
+```bash
+# On the host
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' custodexa-backend
+
+# On your workstation, with the address printed above
+ssh -N -L 9180:<backend address>:8080 <user>@<host>
+```
+
+Then open `http://localhost:9180/metrics`. The address is assigned when the container is created, so read it again after the backend has been recreated (an upgrade, a restore, a settings change). A browser sends no `Authorization` header: with `METRICS_TOKEN` set, use `curl -H "Authorization: Bearer <token>" http://localhost:9180/metrics` through the same tunnel instead.
+
+### Continuous collection, method A: Prometheus on the same host
+
+Run Prometheus as a container attached to the deployment's docker network and scrape the backend by its container name. Nothing is opened outside the host, and no proxy changes.
+
+The network is named `<compose project>_custodexa-network`. A package deployment always uses the project `custodexa` ([Package deployments and the management script](#package-deployments-and-the-management-script)), which gives `custodexa_custodexa-network`; a source deployment's project is its directory name unless `COMPOSE_PROJECT_NAME` says otherwise. Confirm the name on the host:
+
+```bash
+docker inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{println $name}}{{end}}' custodexa-backend
+```
+
+A minimal `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: custodexa
+    static_configs:
+      - targets: ["custodexa-backend:8080"]
+    # Only when METRICS_TOKEN is set; the file holds the token value alone
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/custodexa-metrics-token
+```
+
+A compose file for Prometheus, kept in its own folder:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:<version>
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - custodexa
+networks:
+  custodexa:
+    external: true
+    name: custodexa_custodexa-network   # the name the command above printed
+```
+
+The network has to exist before Prometheus starts, so start Custodexa first. While Prometheus is attached, the network cannot be removed: stop Prometheus before a `docker compose down` of the Custodexa project, and start it again afterwards.
+
+### Continuous collection, method B: scraping from another host
+
+Scraping from another host needs a route to `/metrics` through the https entry point, and **that route must not be opened without `METRICS_TOKEN`**: without it, anyone who can reach the address reads the endpoint inventory, per-feature usage and error rates.
+
+**Step 1: set the token.** Generate a value:
+
+```bash
+openssl rand -hex 32
+```
+
+Write it into `.env` in the deployment folder as `METRICS_TOKEN=<value>`. The backend takes its settings from `.env` when its container is created, so recreate it; a restart is not enough. In a package deployment folder, run `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate backend`; for other Compose deployments, run `docker compose up -d --force-recreate backend`. With `KEK_PROVIDER=ui` or `kms`, the recreated backend comes up sealed and needs an unseal ([Delegated key mode](#delegated-key-mode-the-deployment-is-not-unattended)). Afterwards, the plain request from "Looking at the values once" is answered with 401, and the variant with the token returns the metrics.
+
+The management script's check before an upgrade, which waits for the audit queue to drain, keeps working with a token set: it runs inside the backend container and uses the token the container already holds.
+
+**Step 2: open the route.** What is possible depends on what sits in front of the deployment.
+
+- **The built-in proxy (the default).** Copy its template and point `TLS_NGINX_TEMPLATE` in `.env` at the copy, as in [Quick Start: customizing the reverse proxy configuration](../QUICKSTART.md#customizing-the-reverse-proxy-configuration). In a package deployment the template to copy is `current/reverse-proxy/nginx-tls.conf.template`, and the copy goes outside `releases/` and `current/`, for example `tls/custodexa.conf.template`. In the copy, add this inside the `listen 443` server block, before `location /`:
+
+  ```nginx
+      location = /metrics {
+          set $backend_upstream http://backend:8080;
+          proxy_pass $backend_upstream;
+          proxy_http_version 1.1;
+          proxy_set_header Host $public_host;
+      }
+  ```
+
+  The built-in proxy is on the deployment's docker network, so it reaches the backend by service name, resolved at request time through the `resolver` line the template already has. Apply it with `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate tls-proxy` in a package deployment folder, or `docker compose up -d --force-recreate tls-proxy` elsewhere. The copy is yours: backups taken by the management script include it ([Backup and Restore §3.8](./backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments)), and an upgrade does not change it, so compare it with the shipped template after each upgrade.
+- **Your own ingress (the external ingress overlay).** The shipped compose files publish no port for the backend. Your ingress can route `/metrics` only when it runs as a container attached to the deployment's docker network, the same condition under which the shipped examples address the frontend as `frontend:80`; it then sends the exact path `/metrics` to `backend:8080`. An ingress installed on the host or running on another machine reaches only the port the frontend publishes, and the frontend forwards only `/api` and `/ws`, so in the shipped topology it cannot reach `/metrics`. Use method A in that case, or put a proxy container on the deployment's docker network.
+
+**Step 3: point Prometheus at the entry point.**
+
+```yaml
+scrape_configs:
+  - job_name: custodexa
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/custodexa-metrics-token
+    static_configs:
+      - targets: ["bastion.example.com"]   # add :<port> when TLS_HTTPS_PORT is not 443
+    # Self-signed mode (TLS_MODE=selfsigned): trust the deployment's local CA,
+    # which the entry point serves at /custodexa-ca.crt
+    # tls_config:
+    #   ca_file: /etc/prometheus/custodexa-ca.crt
+```
+
+The token file holds the token value alone. Keep it under the same access rules as `.env`.
+
+### Which metrics to watch
+
+The full list, with labels and the meaning of each, is in the [API reference (Traditional Chinese)](../API_SPEC.md#營運指標端點prometheus). Five alerts to start from, as Prometheus rules; adjust the durations and thresholds to your own commitments:
+
+```yaml
+groups:
+  - name: custodexa
+    rules:
+      # Not serving: sealed, unsealing, or sealed after a fault. Every restart in
+      # KEK modes ui and kms lands here until someone unseals.
+      - alert: CustodexaNotUnsealed
+        expr: custodexa_seal_state{state="unsealed"} != 1
+        for: 5m
+      # Audit rows that did not reach the database. reason="fallback_file": written to
+      # the fallback file and recoverable; reason="discarded": lost.
+      - alert: CustodexaAuditRowsDropped
+        expr: increase(custodexa_audit_dropped_total[15m]) > 0
+      # The asynchronous audit queue holds 1000 rows; when it is full, new rows take the path above.
+      - alert: CustodexaAuditQueueBacklog
+        expr: custodexa_audit_queue_depth > 500
+        for: 5m
+      # Command alerts nobody has reviewed yet, by severity.
+      - alert: CustodexaCommandAlertsUnreviewed
+        expr: sum by (severity) (custodexa_command_alerts_pending) > 0
+        for: 24h
+      # This instance does not hold the single-instance lock.
+      - alert: CustodexaInstanceLockNotHeld
+        expr: custodexa_instance_guard_held == 0
+        for: 5m
+```
+
+Add the usual `up{job="custodexa"} == 0` for a scrape that fails altogether. The audit series are absent while the system is sealed rather than 0, so their rules stay quiet then; the first rule covers that state. For reading each signal: audit rows and the fallback file in [Upgrade SOP §3.1](./upgrade-sop.md#31-the-queue-is-drained-at-shutdown-with-a-time-limit), the single-instance lock in [Upgrade SOP §3.4](./upgrade-sop.md#34-losing-the-single-instance-lock-at-runtime-reading-the-log-the-banner-and-the-audit-event), and recording storage, which has no built-in cap, in [Quick Start: storage monitoring](../QUICKSTART.md#storage-monitoring).
 
 ## Sensitive output detection: scope and operational checks
 

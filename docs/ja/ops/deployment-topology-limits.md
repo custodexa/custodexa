@@ -131,7 +131,7 @@ guacd サービスは Apache Guacamole の公式イメージ `guacamole/guacd:1.
 
 **独自の編成でも、これらの設定が必要です。** すべての capability を削除してから `SETUID`、`SETGID`、`CHOWN`、`KILL`、`IPC_LOCK` だけを付与し、上記の権限およびリソース制限も適用してください。Compose でメモリロックに必要な設定は、`IPC_LOCK` を含む `cap_add` と `ulimits.memlock: -1` です。他の編成ツールでも同等の capability とリソース制限が必要です。起動時の制御を適用できない場合、バックエンドは終了します。メモリロックの失敗時には `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)` と表示されます。このエラーを調べる際は、これらの設定名を確認してください。
 
-capability を変更した後は backend コンテナを再作成してください。再起動だけでは新しい capability 集合は適用されません。`custodexa.sh upgrade` は新しいリリースを起動する際にコンテナを再作成します。パッケージのデプロイフォルダーで手動で再作成する場合は `docker compose --project-directory . up -d --force-recreate backend` を、その他の Compose デプロイでは `docker compose up -d --force-recreate backend` を実行します。`KILL` がない場合、backend は DB CLI 子プロセスを終了できないことがあります。ローカル端末の切断処理は子プロセスの回収を最大 1 秒待ち、終了・待機の失敗やタイムアウトをログに記録して、接続の後処理を続行します。単一のバックグラウンド待機が、後から終了する子プロセスを回収します。capability がない場合、子プロセスが動作し続ける可能性は残ります。
+capability を変更した後は backend コンテナを再作成してください。再起動だけでは新しい capability 集合は適用されません。`custodexa.sh upgrade` は新しいリリースを起動する際にコンテナを再作成します。パッケージのデプロイフォルダーで手動で再作成する場合は `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate backend` を、その他の Compose デプロイでは `docker compose up -d --force-recreate backend` を実行します。`KILL` がない場合、backend は DB CLI 子プロセスを終了できないことがあります。ローカル端末の切断処理は子プロセスの回収を最大 1 秒待ち、終了・待機の失敗やタイムアウトをログに記録して、接続の後処理を続行します。単一のバックグラウンド待機が、後から終了する子プロセスを回収します。capability がない場合、子プロセスが動作し続ける可能性は残ります。
 
 ## 許可送信元範囲がデプロイに与える影響
 
@@ -236,7 +236,7 @@ capability を変更した後は backend コンテナを再作成してくださ
 
 - **再起動のたびに連絡の取れる人が必要です。** 計画外のものも含みます。このモードを選ぶ前に、誰が担当し、時間外はどう呼び出すかを決めてください。`ui` モードはもともとこの性質を持っており、`kms` は本バージョンから同じになります。無人で再起動できるのは `env` だけで、その代償としてマスター鍵がホスト上に平文で置かれます。
 - **自動スケーリングと無人の再起動ポリシーは、このモードに合いません。** サービスを提供できないプロセスを起こし直すだけです。
-- **監視はシール済みの状態でアラートを出す必要があります。** そうでなければ、午前 3 時の再起動に午前 9 時まで気づきません。シール中でも状態は読めます。`GET /api/v1/seal/status` と `/metrics` のシールの組です。
+- **監視はシール済みの状態でアラートを出す必要があります。** そうでなければ、午前 3 時の再起動に午前 9 時まで気づきません。シール中でも状態は読めます。`GET /api/v1/seal/status` と `/metrics` のシールの組です。`/metrics` への到達方法と収集の方法は[運用メトリクスの取得](#運用メトリクスの取得metrics)にあります。
 
 **アンシールのページが求めるものと、その確認の境界。** 管理者はアンシールのページでユーザー名とパスワードを入力し、画面に表示された保管先を導入記録と照合したうえで、その事業者の資格情報を改めて入力します。セキュリティの評価には、次の 2 つの境界を入れてください。
 
@@ -261,6 +261,168 @@ capability を変更した後は backend コンテナを再作成してくださ
 ローカル鍵モード（マスター鍵を環境変数で渡す、または起動時に管理者が入力する）でも、この設定は使え、データ鍵を置いておく時間を同じように短くします。変わらないのはマスター鍵そのもので、これらのモードではマスター鍵は終始プロセスのメモリにあります。
 
 監査記録はこの設定の対象外です。記録に押印する鍵は保持期間の影響を受けないため、保管先に到達できない間も記録は書き込めます。この設定が短くするのはデータ鍵がメモリに存在する時間であり、操作の実行中はメモリに鍵とデータの元の内容が存在します。
+
+## 運用メトリクスの取得（`/metrics`）
+
+backend は自身の HTTP ポート（コンテナ内の 8080）の `/metrics` で Prometheus のメトリクスを提供します。**既定のデプロイでは、`https://<お使いのドメイン>/metrics` を開くと返ってくるのは Web の画面であり、メトリクスではありません。** backend のポートはホストに公開されておらず、前段のプロキシが転送するのは `/api` と `/ws` だけだからです。これは意図した既定の構成です。このエンドポイントに到達できるのはデプロイの docker ネットワークの内側だけであり、ほかのホストから取得できるようにするのは別の判断で、token の設定と一体です（後述の方式 B）。
+
+- **認証**：`.env` の `METRICS_TOKEN` が空（既定）の場合は認証なしで応答します。値を設定すると、どこから来た要求でも `Authorization: Bearer <token>` が必要になります。token がない場合も誤っている場合も 401 を返し、応答本文にメトリクスは含みません。
+- **システムがシール済みの間**、`/metrics` にあるのはシールの状態、単一インスタンスのガードの系列、Go runtime と process のメトリクスだけです。それ以外（監査キューも含みます）はアンシールの後に現れます（[アップグレード SOP §2.4](./upgrade-sop.md#24-停止の前に監査キューが空になったことを確認する)）。
+
+### その場で値を見る
+
+ホスト上で、要求を backend コンテナの中で実行します。本番のイメージにはシェルがありませんが、busybox の `wget` は残っています。
+
+```bash
+# METRICS_TOKEN が空（既定）の場合
+docker exec custodexa-backend wget -qO- http://127.0.0.1:8080/metrics
+
+# METRICS_TOKEN を設定している場合：token はコンテナ自身の環境変数から読むため、
+# ホストのコマンドラインには現れません
+docker exec custodexa-backend /bin/busybox sh -c \
+  'wget -qO- --header="Authorization: Bearer $METRICS_TOKEN" http://127.0.0.1:8080/metrics'
+```
+
+末尾に `| grep '^custodexa_'` を付けると、製品自身の系列だけが残ります。
+
+### ブラウザーで見る（SSH トンネル経由）
+
+backend コンテナは docker ネットワーク上に、ホストから到達できるアドレスを持っています。ホスト上でそのアドレスを読み、作業端末からローカルのポートをそこへ転送します。
+
+```bash
+# ホスト上で
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' custodexa-backend
+
+# 作業端末で。上で表示されたアドレスを入れます
+ssh -N -L 9180:<backend のアドレス>:8080 <ユーザー>@<ホスト>
+```
+
+続けて `http://localhost:9180/metrics` を開きます。このアドレスはコンテナの作成時に割り当てられるため、backend を再作成した後（アップグレード、リストア、設定の変更）は読み直してください。ブラウザーは `Authorization` ヘッダーを送りません。`METRICS_TOKEN` を設定している場合は、同じトンネル越しに `curl -H "Authorization: Bearer <token>" http://localhost:9180/metrics` を使います。
+
+### 継続的な収集、方式 A：同じホストで Prometheus を動かす
+
+Prometheus をコンテナとしてデプロイの docker ネットワークにつなぎ、backend をコンテナ名で収集します。ホストの外へ何も開かず、プロキシも変更しません。
+
+ネットワーク名は `<compose プロジェクト名>_custodexa-network` です。パッケージのデプロイではプロジェクト名が常に `custodexa` なので（[インストールパッケージによるデプロイと管理スクリプト](#インストールパッケージによるデプロイと管理スクリプト)）、`custodexa_custodexa-network` になります。ソースからのデプロイでは、`COMPOSE_PROJECT_NAME` を設定していない限り、プロジェクト名はそのディレクトリー名です。ホスト上で確認します。
+
+```bash
+docker inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{println $name}}{{end}}' custodexa-backend
+```
+
+最小の `prometheus.yml`：
+
+```yaml
+scrape_configs:
+  - job_name: custodexa
+    static_configs:
+      - targets: ["custodexa-backend:8080"]
+    # METRICS_TOKEN を設定している場合のみ。ファイルには token の値だけを入れます
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/custodexa-metrics-token
+```
+
+Prometheus 用の compose ファイル（専用のフォルダーに置きます）：
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:<バージョン>
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - custodexa
+networks:
+  custodexa:
+    external: true
+    name: custodexa_custodexa-network   # 上のコマンドで表示された名前
+```
+
+このネットワークは Prometheus の起動より前に存在している必要があるため、先に Custodexa を起動します。Prometheus がつながっている間はネットワークを削除できません。Custodexa のプロジェクトで `docker compose down` を実行する前に Prometheus を止め、その後で起動し直してください。
+
+### 継続的な収集、方式 B：別のホストから収集する
+
+別のホストから収集するには、https の入口に `/metrics` への経路を開く必要があります。そして**`METRICS_TOKEN` を設定せずにこの経路を開いてはいけません。** token がなければ、そのアドレスに到達できる人は誰でも、エンドポイントの一覧、機能ごとの利用量、エラー率を読めてしまいます。
+
+**手順 1：token を設定します。** 値を生成します。
+
+```bash
+openssl rand -hex 32
+```
+
+デプロイフォルダーの `.env` に `METRICS_TOKEN=<値>` として書き込みます。backend は `.env` の設定をコンテナの作成時に読むため、コンテナを再作成してください。再起動だけでは反映されません。パッケージのデプロイフォルダーでは `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate backend` を、その他の Compose デプロイでは `docker compose up -d --force-recreate backend` を実行します。`KEK_PROVIDER=ui` または `kms` の場合、再作成された backend はシール済みで起動し、アンシールが必要です（[委任型の鍵モード](#委任型の鍵モードこのデプロイは無人運転ではありません)）。その後は、「その場で値を見る」の token なしの形は 401 を返し、token ありの形はメトリクスを返します。
+
+token を設定しても、アップグレード前に監査キューが空になるのを待つ管理スクリプトの確認はそのまま動きます。この確認は backend コンテナの中で実行され、コンテナがすでに持っている token を使うためです。
+
+**手順 2：経路を開きます。** できることは、デプロイの前段に何があるかで決まります。
+
+- **内蔵のプロキシ（既定）。** テンプレートをコピーし、`.env` の `TLS_NGINX_TEMPLATE` でそのコピーを指します。やり方は[クイックスタート：リバースプロキシ設定のカスタマイズ](../QUICKSTART.md#リバースプロキシ設定のカスタマイズ)のとおりです。パッケージのデプロイでコピー元にするテンプレートは `current/reverse-proxy/nginx-tls.conf.template` で、コピーは `releases/` と `current/` の外、たとえば `tls/custodexa.conf.template` に置きます。コピーの `listen 443` の server ブロックの中、`location /` の前に次を加えます。
+
+  ```nginx
+      location = /metrics {
+          set $backend_upstream http://backend:8080;
+          proxy_pass $backend_upstream;
+          proxy_http_version 1.1;
+          proxy_set_header Host $public_host;
+      }
+  ```
+
+  内蔵のプロキシはデプロイの docker ネットワーク上にあるため、サービス名で backend に到達できます。名前はテンプレートにもともとある `resolver` の行によって要求のたびに解決されます。適用は、パッケージのデプロイフォルダーでは `set -a; . ./current/images.env; set +a; docker compose --project-directory . up -d --force-recreate tls-proxy`、それ以外では `docker compose up -d --force-recreate tls-proxy` です。コピーは利用者のものです。管理スクリプトのバックアップには含まれますが（[バックアップとリストア §3.8](./backup-and-restore.md#38-管理スクリプトによるバックアップパッケージのデプロイ)）、アップグレードでは変更されません。アップグレードのたびに、同梱のテンプレートと比べてください。
+- **自前の ingress（external ingress overlay）。** 同梱の compose ファイルは backend のポートを一切公開しません。お使いの ingress が `/metrics` を転送できるのは、コンテナとしてデプロイの docker ネットワークにつながっている場合だけです。同梱の例がフロントエンドを `frontend:80` で指せるのも同じ前提によります。その場合は、パス `/metrics` に完全一致する要求を `backend:8080` へ送ります。ホストに導入した ingress や別のマシンで動く ingress が到達できるのはフロントエンドが公開するポートだけで、フロントエンドが転送するのは `/api` と `/ws` だけです。そのため同梱のデプロイ形態では `/metrics` に届きません。この場合は方式 A を使うか、デプロイの docker ネットワーク上にプロキシのコンテナを置いてください。
+
+**手順 3：Prometheus を入口に向けます。**
+
+```yaml
+scrape_configs:
+  - job_name: custodexa
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/custodexa-metrics-token
+    static_configs:
+      - targets: ["bastion.example.com"]   # TLS_HTTPS_PORT が 443 でなければ :<ポート> を付けます
+    # 自己署名モード（TLS_MODE=selfsigned）：デプロイのローカル CA を信頼します。
+    # CA は入口の /custodexa-ca.crt から取得できます
+    # tls_config:
+    #   ca_file: /etc/prometheus/custodexa-ca.crt
+```
+
+token のファイルには token の値だけを入れ、`.env` と同じアクセス規則で扱います。
+
+### 見ておくべきメトリクス
+
+全体の一覧、ラベル、各メトリクスの意味は [API 仕様（繁体字中国語）](../../API_SPEC.md#營運指標端點prometheus)にあります。出発点として 5 つのアラートを Prometheus のルールで示します。継続時間としきい値は、自組織の約束に合わせて調整してください。
+
+```yaml
+groups:
+  - name: custodexa
+    rules:
+      # サービスを提供していない：シール済み、アンシール中、または障害の後のシール。
+      # KEK モード ui と kms では、再起動のたびに誰かがアンシールするまでここに留まります。
+      - alert: CustodexaNotUnsealed
+        expr: custodexa_seal_state{state="unsealed"} != 1
+        for: 5m
+      # データベースに届かなかった監査の行。reason="fallback_file"：退避ファイルに書かれ、
+      # 後から回収できます。reason="discarded"：失われました。
+      - alert: CustodexaAuditRowsDropped
+        expr: increase(custodexa_audit_dropped_total[15m]) > 0
+      # 非同期の監査キューの容量は 1000 行です。満杯になると、新しい行は上の経路をたどります。
+      - alert: CustodexaAuditQueueBacklog
+        expr: custodexa_audit_queue_depth > 500
+        for: 5m
+      # まだ誰も確認していないコマンドのアラート。重大度ごと。
+      - alert: CustodexaCommandAlertsUnreviewed
+        expr: sum by (severity) (custodexa_command_alerts_pending) > 0
+        for: 24h
+      # このインスタンスが単一インスタンスのロックを持っていない。
+      - alert: CustodexaInstanceLockNotHeld
+        expr: custodexa_instance_guard_held == 0
+        for: 5m
+```
+
+収集そのものが失敗する場合に備えて、一般的な `up{job="custodexa"} == 0` も加えてください。シール済みの間、監査の系列は 0 ではなく存在しないため、それらのルールは鳴りません。その状態は最初のルールが受け持ちます。各信号の読み方は、監査の行と退避ファイルが[アップグレード SOP §3.1](./upgrade-sop.md#31-終了時にキューは空にされますが時間の上限があります)、単一インスタンスのロックが[アップグレード SOP §3.4](./upgrade-sop.md#34-実行中に単一インスタンスロックを失った場合ログバナー監査イベントの読み方)、システムが上限を設けない録画のストレージ量が[クイックスタート：ストレージの監視](../QUICKSTART.md#ストレージの監視)にあります。
 
 ## 出力の機密情報検出：対象範囲と運用上の判定
 

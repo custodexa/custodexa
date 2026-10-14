@@ -40,12 +40,15 @@ curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-c
 ```
 
 最新版のパッケージと `SHA256SUMS` を取得し、展開前にパッケージの SHA-256 を照合して
-`/opt/custodexa` に配置し、`custodexa.sh` のメニューを開きます。バージョンとフォルダーを指定する場合：
+`/opt/custodexa` に配置し、`custodexa.sh` のメニューを開きます。別の導入先を使う場合は `--dir` を付けます：
 
 ```bash
 set -o pipefail
-curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --dir /srv/custodexa
 ```
+
+`--version` を付けなければ最新版を導入します。特定のバージョンを導入する場合は `--` の後に
+`--version <バージョン>` を加えます。
 
 スクリプトを先に確認する場合は、同じファイルをダウンロードしてから実行します。
 
@@ -79,17 +82,24 @@ SHA-256 のみです。パッケージの署名は以下の手順で手動確認
 
 パッケージ、`SHA256SUMS`、`SHA256SUMS.sigstore.json` を同じフォルダーにダウンロードします。
 イメージのオフラインバンドルはオフラインの場合にだけ必要です（[イメージレジストリに接続できないホスト](#イメージレジストリに接続できないホスト)を参照）。
+次のコマンドの 1 行目はリリースの `MANIFEST.json` から最新バージョンを読み取ります。別のバージョンを使う場合は
+`VERSION=X.Y.Z` のように自分で設定してください。`VERSION` を引き継ぐため、以降の手順は同じシェルで実行します。
+
+```bash
+VERSION=$(curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/MANIFEST.json | sed -n 's/.*"version": *"\([0-9][0-9.]*\)".*/\1/p')
+base=https://github.com/custodexa/custodexa/releases/download/v${VERSION}
+curl -fsSL -O "$base/custodexa-${VERSION}.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
+```
 
 ### 2. 展開する前に検証する
 
 スクリプトは後で取得するものをすべて検証しますが、自分自身を保証することはできません。改ざんされた
 パッケージには改ざんされたスクリプトが入っています。そのため展開する前にパッケージを検証します。
-`1.14.0` はダウンロードしたバージョンに置き換えてください。
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
 ```
@@ -99,12 +109,12 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 2 つ目のコマンドを実行できない場合や署名が一致しない場合、このパッケージの発行元は未確認です。
 これは展開前の手動確認です。`install` はその結果を読み取らず、パッケージ自体の署名も検証しません。
 `install` は別途イメージのダイジェストを確認し、可能な場合はイメージの署名とビルド来歴を検証します。
-同じ 2 つのファイルを `cosign` のある別のコンピューターで確認することもできます。
+同じ 2 つのファイルを `cosign` のある別のコンピューターで確認することもできます。その場合は、そのコンピューターでも同じ `VERSION` を設定してから実行します。
 
 ### 3. 展開してインストールする
 
 ```bash
-sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
+sudo tar -xzf "custodexa-${VERSION}.tar.gz" -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -147,7 +157,7 @@ sudo /opt/custodexa/custodexa.sh install
 `arm64`）、`SHA256SUMS` と同じフォルダーに置きます。パッケージを展開した後、インストールの前に読み込みます。
 
 ```bash
-sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.14.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-${VERSION}-amd64.tar
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -179,7 +189,7 @@ sudo /opt/custodexa/custodexa.sh status
 
 `sudo /opt/custodexa/custodexa.sh upgrade` は新しいバージョンを照会するだけで、デプロイを変更しません。この照会には `--images-from` を指定できません。アップグレードするにはメニューで対象を選ぶか、`sudo /opt/custodexa/custodexa.sh upgrade <バージョン>` を実行します。ダウンロード済みのパッケージのパスも指定できます。インストール済みのスクリプトが 1.14.0 以降の場合、メニューで対象の `auto` または `source` を選べます。コマンドに `--images-from source` を付けると、新しいパッケージの backend と frontend をローカルでビルドします。`auto` ではオフラインバンドルを事前に読み込むか、`--images <バンドル>` で指定できます。
 
-1.13.x のパッケージデプロイから初めて 1.14.0 にアップグレードする場合、インストール済みの 1.13.x スクリプトがアップグレードを開始します。このスクリプトは `--images-from` を受け付けず、メニューにもイメージの取得元の選択肢はありません。フラグを付けずに実行すると、1.14.0 側は `auto` を使います。1.14.0 のインストール後、以降のアップグレードではソースからのビルドを選べます。アップグレードは停止時間をプレビューし、アプリケーションサービスを止め、内蔵データベースを使う場合は事前バックアップを取ります。外部データベースでは一貫したバックアップを自分で用意します。自動ロールバックはありません。開始前に[アップグレード SOP](ops/upgrade-sop.md#管理スクリプトによるアップグレード)と[バックアップとリストア](ops/backup-and-restore.md#51-管理スクリプトでアップグレードした後アップグレード前のバージョンに戻す)を読んでください。古い git clone デプロイは拒否されるため、[手動移行の計画](ops/upgrade-sop.md#古いソースデプロイの手動移行)に従ってください。
+1.13.x のパッケージデプロイから初めて 1.14.0 にアップグレードする場合、インストール済みの 1.13.x スクリプトがアップグレードを開始します。このスクリプトは `--images-from` を受け付けず、メニューにもイメージの取得元の選択肢はありません。フラグを付けずに実行すると、1.14.0 側は `auto` を使います。1.14.0 のインストール後、以降のアップグレードではソースからのビルドを選べます。アップグレードは停止時間をプレビューし、アプリケーションサービスを止めて事前バックアップを取ります。外部データベースもバックアップに含まれます。自動ロールバックはありません。元に戻すには `rollback` を実行します。新しいバージョンがデータベースを変更していなければ、前のバージョンに戻り、データは保持されます。変更していた場合は何も変更せず、事前バックアップをリストアする `restore` コマンドまたは手動の手順を表示します。開始前に[アップグレード SOP](ops/upgrade-sop.md#管理スクリプトによるアップグレード)と[バックアップとリストア](ops/backup-and-restore.md#51-管理スクリプトでアップグレードした後アップグレード前のバージョンに戻す)を読んでください。古い git clone デプロイは拒否されるため、[手動移行の計画](ops/upgrade-sop.md#古いソースデプロイの手動移行)に従ってください。
 
 ## 開発・評価用ソースツリーの起動手順
 
@@ -625,6 +635,7 @@ loopback アドレスで接続する必要がある特殊な場面では、`LDAP
 
 - 録画の使用容量は製品内で確認できます（監査の閲覧権限を持つ人のダッシュボードの「録画の使用容量」カード）。収集側は
   `custodexa_recording_storage_bytes` を読めます（`/metrics`、30 秒ごとに更新。値は最大で 1 更新周期ぶん遅れます）。
+  既定のデプロイは `/metrics` を外部に公開しません。到達方法は[運用メトリクスの取得](ops/deployment-topology-limits.md#運用メトリクスの取得metrics)にあります。
 - **システムはストレージの上限を設けません**：監査システムの可用性がストレージ量に人質に取られるべきではなく、かといって「接続は通常どおり作るが録画はしない」のでは
   録画の無い特権セッションが生まれてしまい、どちらも受け入れられないためです。したがってディスク全体の容量と枯渇のリスクは、お使いのインフラ監視が担います。
   `custodexa_recording_storage_bytes` に増加率か容量のしきい値でアラートを設定してください。
