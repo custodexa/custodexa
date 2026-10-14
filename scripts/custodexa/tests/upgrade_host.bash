@@ -402,3 +402,36 @@ pty_up() {
   pty_talk "$out" "bash $ROOT/releases/1.13.2/custodexa.sh upgrade --lang ${PTY_LANG:-en} --no-color$opts" "$@"
 }
 
+
+# ---------- the images on this host (old own images removed after the record) ----------
+
+# old_images [store]: the image list, the references of an image, rmi and the container list
+# answered by the simulated daemon (tests/fakes/daemon-sim, state in $SIM); every other call, the
+# IDs the upgrade itself reads among them, stays with upgrade_stack. The host holds the own images of
+# 1.12.4 (two upgrades back on an upgrade to 1.13.2: made-up IDs), the tags of 1.13.0 (the ID
+# upgraded_host gives every tag, recorded as previous.* by the upgrade) and every image of the
+# published releases by digest; the four services run the release's images.
+UP_OLD_ID=sha256:1111111111111111111111111111111111111111111111111111111111111111
+old_images() {
+  local n
+  export SIM=$BATS_TEST_TMPDIR/sim
+  mkdir -p "$SIM"
+  printf '%s\n' "${1:-classic}" >"$SIM/store"
+  : >"$SIM/containers"
+  {
+    for n in backend frontend; do
+      printf '%s:1.12.4 %s\n' "${UP_IMG_REF[$n]}" "$(up_digest "old-$n")"
+      printf '%s:1.13.0 %s\n' "${UP_IMG_REF[$n]}" "$UP_OLD_ID"
+    done
+    for n in $UP_IMG_NAMES; do
+      printf '%s@%s %s\n' "${UP_IMG_REF[$n]}" "$(up_digest "idx-$n")" "$(up_digest "cfg-$n")"
+      printf 'custodexa-%s %s\n' "$n" "$(up_digest "cfg-$n")" >>"$SIM/containers"
+    done
+  } >"$SIM/images"
+  hook_before "case \"\$1 \${2:-}\" in
+  'image ls' | 'rmi '* | 'ps -aq') exec '$TESTS_DIR/fakes/daemon-sim' \"\$@\" ;;
+  'image inspect') case \$* in *RepoTags*) exec '$TESTS_DIR/fakes/daemon-sim' \"\$@\" ;; esac ;;
+esac"
+}
+# sim_has <ID>: the simulated daemon still holds an image of that ID.
+sim_has() { grep -q " $1\$" "$SIM/images"; }

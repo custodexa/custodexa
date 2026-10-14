@@ -568,6 +568,13 @@ Without a terminal, give `--same-host` (installed host) or `--new-host` (host no
 
 Then the preview says what is restored, what is replaced and kept, the downtime and the space, and what the master key needs. On an installed host, confirm by typing the version after the restore; on a new host, answer `y`.
 
+**Images of versions that were cleaned up.** After an upgrade by the management script, the host keeps only the backend and frontend images of the current and the previous version ([Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)). When you restore a backup of an older version, its images are no longer on the host. After you confirm, the script obtains them in this order: this host, the offline image bundle (`--images`, or `custodexa-images-<version>-<arch>.tar` in the deployment folder or the current folder), the registry (GHCR, then Docker Hub), and a build from the source of that version's release files, whose checksum has to match. Plan for one of these before you start:
+
+- Network access to the registry, or the offline image bundle of the backup's version given with `--images`. Building from source is not an offline choice: the upstream images, base images and build dependencies still have to be obtained.
+- Free space in the Docker data folder: for each image missing from the host, the preview counts three times its compressed size plus 2 GiB, in addition to the space for the working folder, the safety backup and the restored data.
+
+When no source works, the restore stops at its first step, before the services are stopped. The two checks made before you confirm, decrypting an encrypted backup file and reading the database grants, use only images already on this host and download nothing; the cleanup leaves the upstream images they use in place.
+
 **Host values.** `DATA_PATH`, `TLS_DOMAIN`, `TLS_IP_SAN` and `PUBLIC_BASE_URL` describe the host; every other value in `.env` comes from the backup, secrets included.
 
 - On an installed host, the four keep this host's current values, and the preview lists those that differ from the backup.

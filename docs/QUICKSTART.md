@@ -9,6 +9,7 @@
 - Docker 20.10+
 - Docker Compose 2.0+
 - Git (only for running from source)
+- Disk: at least 40 GB free, of which about 10 GB is the Docker data folder (the images of the current and the previous version, plus room for an upgrade). Recordings and backups are counted on top of that; see [Capacity and storage planning](#6-capacity-and-storage-planning) for the growth estimate.
 
 Verify the installation:
 ```bash

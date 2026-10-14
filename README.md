@@ -32,6 +32,8 @@ carry a signature an auditor can verify offline.
 
 For a supported Linux server, the release package and `custodexa.sh` are the installation, backup and upgrade path. `scripts/quickstart.sh` is for development and macOS or Windows evaluation.
 
+Disk: at least 40 GB free, of which about 10 GB is the Docker data folder. Recordings and backups are counted on top of that; the growth estimate is in [Capacity and storage planning](docs/QUICKSTART.md#6-capacity-and-storage-planning).
+
 From 1.14.0, the release download guide fetches the latest package and `SHA256SUMS`, checks the package SHA-256, unpacks it to `/opt/custodexa`, and opens the management menu:
 
 ```bash

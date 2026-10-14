@@ -30,6 +30,8 @@
 
 受支援的 Linux 伺服器以安裝包與 `custodexa.sh` 安裝、備份及升級；`scripts/quickstart.sh` 用於開發和 macOS／Windows 試用。
 
+磁碟：至少 40 GB 可用空間，其中 Docker 資料目錄約需 10 GB。錄影與備份另外計算，增長估算見[容量與儲存規劃](./QUICKSTART.md#6-容量與儲存規劃)。
+
 從 1.14.0 起，發行版的下載引導腳本會取得最新版安裝包與 `SHA256SUMS`、核對安裝包 SHA-256、解壓到 `/opt/custodexa`，再開啟管理選單：
 
 ```bash

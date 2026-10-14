@@ -223,6 +223,30 @@ snapshot_beside_log() {
   [ "$(st current.version)" = 1.16.0 ] && [ "$(st previous.version)" = 1.13.2 ]
 }
 
+@test "two upgrades in a row: the images of the version before the previous one go, the previous and the current stay" {
+  rm -rf "${BATS_TEST_TMPDIR:?}"/*
+  upgraded_twice_host ui || return 1
+  # The first upgrade (1.13.0 -> 1.13.2) ran without a simulated store: it removed nothing.
+  old_images
+  printf '{"status":"ok","version":"1.16.0"}\n' >"$UP/health"
+  clock 0 3 0 41 0 4 0 11
+  : >"$FAKE_DOCKER_LOG"
+  run bash "$ROOT/releases/1.16.0/custodexa.sh" upgrade --lang en --yes </dev/null
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(st current.version)" = 1.16.0 ] && [ "$(st previous.version)" = 1.13.2 ] || return 1
+  # A = 1.13.0 (and the older 1.12.4) removed; B = 1.13.2 is what previous.image_ids names, still here,
+  # so a rollback finds it without loading anything; C = 1.16.0 runs.
+  ! sim_has "$UP_OLD_ID" && ! sim_has "$(up_digest old-backend)" || { cat "$SIM/images"; return 1; }
+  local kv
+  for kv in $(st previous.image_ids) $(st current.image_ids); do
+    sim_has "${kv#*=}" || { echo "missing ${kv%%=*} ${kv#*=}"; return 1; }
+  done
+  sim_has "$(up_digest cfg-postgres)" && sim_has "$(up_digest cfg-guacd)" || return 1
+  ! grep -E $'^ARGS\trmi .*(postgres|guacd)' "$FAKE_DOCKER_LOG" || return 1
+  ! grep -qE $'^ARGS\t(load|pull) ' "$FAKE_DOCKER_LOG" || return 1
+  [[ $output == *"[ OK ] Removed 3 old backend and frontend image(s)"* ]] || { echo "$output"; return 1; }
+}
+
 @test "upgrade backup (bundled): the dump tool is the old release's postgres, its digest from release-MANIFEST.json, not tool-MANIFEST.json" {
   fresh ui
   # The old release's postgres runs the export (its reference among the images the services run).

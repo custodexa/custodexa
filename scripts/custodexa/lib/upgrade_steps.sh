@@ -14,12 +14,15 @@
 #   8  reserved to retain the recorded step numbers of older upgrades
 #   9  state.json: previous.* <- current.*, current.* <- the target; then current -> the target
 #      release and the recordings folder prepared
-#   10 start   11 ready within 180 seconds   12 the checks (lib/post_checks.sh)   13 the record
+#   10 start   11 ready within 180 seconds   12 the checks (lib/post_checks.sh)   13 the record,
+#      then the old own images removed (lib/image_retention.sh) before the closing screen
 # A failure stops where it is and prints what the upgrade guide says for that
 # step; nothing is rolled back on its own. A failure from step 8 on is recorded with its step, and
 # the next upgrade refuses with the same commands (lib/upgrade_preflight.sh).
 # shellcheck source=lib/post_checks.sh
 . "${BASH_SOURCE[0]%/*}/post_checks.sh"
+# shellcheck source=lib/image_retention.sh
+. "${BASH_SOURCE[0]%/*}/image_retention.sh"
 
 CX_UP_D1="" CX_UP_D2="" CX_UP_DRAINED="" CX_UP_SNAP="" CX_UP_BACKUP_DIR="" CX_UP_BACKUP_KIND=""
 CX_UP_BACKUP="" # the backup of this upgrade as recorded: backups/<file>, or backups/<id> for an own one
@@ -387,5 +390,7 @@ cx_up_main() {
   cx_up_at 13 record
   cx_up_end succeeded
   cx_up_step_line OK 13 "$(cx_msg up_step_record)"
+  # Only once the upgrade is on record as succeeded; a failure of any step above has left already.
+  cx_ir_prune
   cx_up_done
 }

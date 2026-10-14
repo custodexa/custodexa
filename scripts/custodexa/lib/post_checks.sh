@@ -236,6 +236,11 @@ cx_up_done() {
   fi
   printf '\n'
   cx_pc_print
+  # The old images removed after the record (lib/image_retention.sh); nothing when none were.
+  if [ "$CX_IR_SKIPPED" = 1 ] || [ "$CX_IR_REMOVED" -gt 0 ] || [ "${#CX_IR_FAILED[@]}" -gt 0 ]; then
+    printf '\n'
+    cx_ir_print
+  fi
   printf '\n%s\n' "$(cx_msg up_todo)"
   url=$(cx_bk_env PUBLIC_BASE_URL)
   case $CX_BK_KEK in

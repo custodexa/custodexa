@@ -2,6 +2,32 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.6 — old images removed after an upgrade (2026-10-14)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.6`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### What changes for deployers
+
+- After a successful upgrade, the management script removes the backend and frontend images
+  of older versions and keeps those of the new version and the previous one, so `rollback`
+  still has what it needs. Upstream images, images used by a container and images that also
+  carry a tag of another repository stay. When images are removed, the final screen gives
+  their number and, when the script can measure it, the space freed. An image that cannot be
+  removed is listed with the `docker rmi` command to run by hand, and the upgrade still counts
+  as succeeded. The upgrade to 1.17.6 already runs this cleanup, including on images left
+  behind by earlier upgrades.
+- `upgrade --keep-images` skips the cleanup. The installed script that starts the upgrade reads
+  the option, so it works from 1.17.6 on. The 1.17.5 script and earlier ones reject it as an
+  unknown option, which means the upgrade to 1.17.6 always runs the cleanup.
+- To restore a backup of a version whose images were removed, the script has to obtain those
+  images again. Plan for registry access, or for that version's offline image bundle, given with
+  `--images` or placed under its standard name in the deployment folder. The Docker data folder
+  also needs room for them. "Backup and Restore", section 5 lists every source.
+- The system requirements now give a minimum of 40 GB free disk, of which about 10 GB is the
+  Docker data folder. Recordings and backups come on top of that.
+
 ## 1.17.5 — maintenance fixes (2026-10-14)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

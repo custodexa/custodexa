@@ -247,3 +247,27 @@
 #### Scenario: 演練紀錄通過
 - **WHEN** 建包時指定 `--rollback-compatible 1.16.1`，演練紀錄的必要欄位齊全、四步皆通過，受測映像 digest 等於本次建包
 - **THEN** 產出的 `MANIFEST.json` 中 `rollback_compatible` 為 `["1.16.1"]`
+
+### Requirement: 升級成功後清除舊版映像
+
+升級第 13 步把結果記為成功之後，腳本 SHALL 清除本產品自建映像（backend、frontend）中不在保留集合內的版本，再印出完成畫面。保留集合 SHALL 以映像 ID 判定，至少包含：state 的 `current` 與 `previous` 兩組 `image_ids`、`tool_image_ids`，`load.image_ids`，`last_rollback` 兩側記錄的映像 ID，執行中與已停止容器所用的映像，以及現行 MANIFEST 上游映像在本機的 ID。上游映像（postgres、guacd、openssl、nginx、pgclient）SHALL NOT 被清除。清除 SHALL 逐一移除參照且不強制刪除；任何一顆刪不掉時 SHALL 列為警告並印出手動指令，升級結果 SHALL 維持成功。給了 `--keep-images` 時 SHALL NOT 清除任何映像，完成畫面 SHALL 說明已略過。完成畫面 SHALL 列出清除的映像數與釋放的空間；沒有可清除的映像時 SHALL NOT 多印清理段落。升級失敗、中斷、或停在任何一步時 SHALL NOT 清除。install、rollback、restore、load SHALL NOT 清除映像。
+
+#### Scenario: 連升兩次後清掉更早的一版
+- **WHEN** 部署由 A 升到 B、再由 B 升到 C，第二次升級成功
+- **THEN** A 版的 backend、frontend 映像被清除，B 與 C 版仍在本機，`rollback` 回到 B 不需要重新載入映像，上游映像一顆都沒有被刪
+
+#### Scenario: 略過清理
+- **WHEN** 以 `upgrade --keep-images` 升級成功
+- **THEN** 沒有任何映像被清除，完成畫面說明已依參數略過清理
+
+#### Scenario: 某顆映像刪不掉
+- **WHEN** 刪除一顆待清除的舊版 backend 時 docker 回報錯誤
+- **THEN** 該映像保留，其餘映像照常清除，完成畫面列出警告與可複製的手動指令，升級結果仍為成功
+
+#### Scenario: 升級失敗不清理
+- **WHEN** 升級在第 11 步因後端未就緒而停下
+- **THEN** 沒有任何映像被清除，`rollback` 所需的上一版映像仍在本機
+
+#### Scenario: 預先載入的下一版不被清除
+- **WHEN** 管理者先以 `load` 載入更新版本的離線映像包，之後升級到另一個版本並成功
+- **THEN** `load.image_ids` 記錄的映像保留在本機

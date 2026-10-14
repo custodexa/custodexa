@@ -25,6 +25,8 @@ MSG_usage_images_from_command='--images-from は install または対象を指�
 MSG_usage_images_from_conflict='--images-from source と --images は併用できません。'
 MSG_usage_backup_only='オプション %s は backup 専用です。
 custodexa.sh --help を参照してください。'
+MSG_usage_upgrade_only='オプション %s は upgrade 専用です。
+custodexa.sh --help を参照してください。'
 MSG_usage_backup_restore_only='オプション %s は backup と restore 専用です。
 custodexa.sh --help を参照してください。'
 MSG_legacy_refused='これは旧 git clone 配置です。このディレクトリでは custodexa.sh による
@@ -89,6 +91,8 @@ MSG_help_opt_images='  --images <パス>        （install、upgrade）使うオ
 MSG_help_opt_images_from='  --images-from <方式>   （install、対象を指定した upgrade）auto または source。
                          既定は auto。source は同梱ソースから
                          自社イメージをビルド'
+MSG_help_opt_keep_images='  --keep-images          （upgrade）古いイメージを残す。既定では現行版と
+                         一つ前の版のイメージだけを残す'
 MSG_help_opt_lang='  --lang <言語>          zh-TW、ja、en。下の「表示言語」を参照'
 MSG_help_opt_no_color='  --no-color             色を使わない'
 MSG_help_opt_version='  --version              スクリプトのバージョンを表示'
@@ -991,6 +995,13 @@ MSG_up_done_rollback='ロールバック    下のバックアップを「バッ
                 第 5 節「リストアの手順」に沿って手動でリストア'
 MSG_up_done_backup='バックアップ    %s'
 MSG_up_done_log='ログファイル    %s'
+MSG_ir_removed='古い backend・frontend イメージを %s 個削除し、%s 空きました。
+現行版と一つ前の版のイメージは残しています。'
+MSG_ir_removed_count='古い backend・frontend イメージを %s 個削除しました。
+現行版と一つ前の版のイメージは残しています。'
+MSG_ir_skipped='--keep-images の指定により、古いイメージは削除していません。'
+MSG_ir_failed='古いイメージの参照 %s 個を削除できませんでした。アップグレード自体は
+成功しています。理由はログファイルにあります。手動で削除するには：'
 MSG_pc_title='確認結果'
 MSG_pc_services_bad='サービス       正常に動作していません：%s'
 MSG_pc_version='バージョン     バックエンドの報告 %s'

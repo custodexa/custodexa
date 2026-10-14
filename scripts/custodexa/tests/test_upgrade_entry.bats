@@ -325,6 +325,73 @@ events_in_order() { # <event>... : each event appears, in this order
   ! grep -qx stop-all "$DB/events"
 }
 
+@test "after the record: the own images two versions back are removed, the closing screen says how many" {
+  fresh ui
+  old_images
+  full_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(st last_upgrade.result)" = succeeded ] || return 1
+  # 1.12.4 is gone; 1.13.0 (previous.image_ids, what a rollback starts) and 1.13.2 stay.
+  ! sim_has "$(up_digest old-backend)" && ! sim_has "$(up_digest old-frontend)" || { cat "$SIM/images"; return 1; }
+  sim_has "$UP_OLD_ID" && sim_has "$(up_digest cfg-backend)" && sim_has "$(up_digest cfg-frontend)" || return 1
+  [[ $(st previous.image_ids) == *"backend=$UP_OLD_ID"* ]] || return 1
+  # No upstream image is ever named to rmi; the removals are on record.
+  [ "$(grep -c $'^ARGS\trmi ' "$FAKE_DOCKER_LOG")" -eq 2 ] || { grep rmi "$FAKE_DOCKER_LOG"; return 1; }
+  ! grep -E $'^ARGS\trmi .*(postgres|guacd)' "$FAKE_DOCKER_LOG" || return 1
+  grep -q 'CMD   docker rmi ghcr.io/custodexa/backend:1.12.4' "$ROOT"/logs/upgrade-*.log || return 1
+  grep -q 'old images removed=2 failed=0' "$ROOT"/logs/upgrade-*.log || return 1
+  # After step 13 and on the closing screen, between the checks and what is still to do.
+  printf '%s\n' "$output" | sed -n '/13\/13/,$p' | grep -q '^\[ OK \] Removed 2 old backend and frontend image(s)' || { echo "$output"; return 1; }
+  [ "$(printf '%s\n' "$output" | grep -n 'Removed 2 old' | cut -d: -f1)" -lt "$(printf '%s\n' "$output" | grep -n '^Still to do' | cut -d: -f1)" ]
+}
+
+@test "a removal the daemon refuses: a warning with the command to copy, the upgrade still succeeded" {
+  fresh ui
+  old_images
+  printf '%s\n' ghcr.io/custodexa/backend:1.12.4 >"$SIM/rmi-fail"
+  full_run zh-TW
+  [ "$status" -eq 0 ] && [ "$(st last_upgrade.result)" = succeeded ] || { echo "$output"; return 1; }
+  sim_has "$(up_digest old-backend)" && ! sim_has "$(up_digest old-frontend)" || return 1
+  [[ $output == *"[ OK ] 已清除 1 個舊版 backend、frontend 映像"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] 有 1 個舊版映像參照無法清除；升級本身已成功"* ]] || { echo "$output"; return 1; }
+  printf '%s\n' "$output" | grep -qxF '    sudo docker rmi ghcr.io/custodexa/backend:1.12.4' || { echo "$output"; return 1; }
+}
+
+@test "a failure at step 11: no image removed, the images a rollback needs still here" {
+  fresh ui
+  old_images
+  touch "$UP/health.rc"
+  full_run en
+  [ "$status" -eq 1 ] && [[ $output == *"step 11/13"* ]] || { echo "$output"; return 1; }
+  ! grep -q $'^ARGS\trmi ' "$FAKE_DOCKER_LOG" || return 1
+  ! grep -q $'^ARGS\timage ls' "$FAKE_DOCKER_LOG" || return 1
+  sim_has "$UP_OLD_ID" && sim_has "$(up_digest old-backend)" || return 1
+  [[ $(st previous.image_ids) == *"backend=$UP_OLD_ID"* ]]
+}
+
+@test "--keep-images: handed over to the target script, nothing removed, the screen says so; upgrade only, in the help of each language" {
+  fresh ui
+  old_images
+  # The running version's script fetches and hands over; the option must reach the target script.
+  run bash "$ROOT/custodexa.sh" upgrade 1.13.2 --lang en --yes --keep-images </dev/null
+  [ "$status" -eq 0 ] && [ "$(st last_upgrade.result)" = succeeded ] || { echo "$output"; return 1; }
+  grep -q -- '--keep-images' "$ROOT"/logs/upgrade-*.log || return 1
+  ! grep -q $'^ARGS\trmi ' "$FAKE_DOCKER_LOG" || return 1
+  sim_has "$(up_digest old-backend)" || return 1
+  printf '%s\n' "$output" | grep -qxF '[SKIP] Old images not removed (--keep-images).' || { echo "$output"; return 1; }
+  run bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/cmd_upgrade.sh"
+    CX_KEEP_IMAGES=1 CX_YES=1; cx_up_handoff_args; [ "${CX_UP_ARGS[*]}" = "--yes --keep-images" ]' _ "$SRC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  for l in en zh-TW ja; do
+    run bash "$ROOT/custodexa.sh" upgrade --help --lang "$l"
+    [[ $output == *"--keep-images"* ]] || { echo "$l: $output"; return 1; }
+    run bash "$ROOT/custodexa.sh" status --help --lang "$l"
+    [[ $output != *"--keep-images"* ]] || { echo "$l status: $output"; return 1; }
+  done
+  run bash "$ROOT/custodexa.sh" status --keep-images --lang en
+  [ "$status" -eq 2 ] && [[ $output == *"Option --keep-images is only for upgrade."* ]] || { echo "$output"; return 1; }
+}
+
 @test "upgrade records a handed-over package signature mismatch in state and log" {
   fresh ui
   export CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=mismatch'

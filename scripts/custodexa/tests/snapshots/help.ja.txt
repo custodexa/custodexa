@@ -54,6 +54,8 @@ Custodexa 管理スクリプト 1.13.0
   --images-from <方式>   （install、対象を指定した upgrade）auto または source。
                          既定は auto。source は同梱ソースから
                          自社イメージをビルド
+  --keep-images          （upgrade）古いイメージを残す。既定では現行版と
+                         一つ前の版のイメージだけを残す
   --lang <言語>          zh-TW、ja、en。下の「表示言語」を参照
   --no-color             色を使わない
   --version              スクリプトのバージョンを表示

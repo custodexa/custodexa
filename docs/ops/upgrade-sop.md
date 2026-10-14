@@ -184,11 +184,20 @@ For the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 
 | 10 | Starts the services | §2.5 |
 | 11 | Waits up to 180 seconds for the backend to answer its health check | §2.5 |
 | 12 | Checks: version, running image IDs, an empty database, `schema_migrations` still containing every earlier row, the counts of `users` and `sessions` unchanged and `audit_logs` not smaller, the four key fingerprints, the single-instance lock, the entry point | §2.5 "The first thing to do after the upgrade", §2.7 |
-| 13 | Records the upgrade and prints the result | §2.7 |
+| 13 | Records the upgrade, removes old images (below) and prints the result | §2.7 |
 
 An empty database at step 12 (the baseline migration in the log, or the user count down from more than one to one or none) stops every service at once, database included, and changes no data folder; the screen says what to check, as in §2.5.
 
 After a successful upgrade the screen lists what is left to people: unsealing, when the master key mode needs it, and the §2.7 checks the script cannot make: audit chain verification, playing a recording from before the upgrade, and a test connection whose commands appear in the audit record. That last check is not optional. Do these before users connect again.
+
+**Old images after the upgrade.** Once step 13 has recorded the upgrade as succeeded, the script removes the backend and frontend images of this product that belong to neither the new version nor the previous one. A deployment then keeps two versions on disk, and `rollback` still finds what it needs. The cleanup covers:
+
+- the repositories the images are obtained from (GHCR and the mirror listed for each image in the release manifest), and the `custodexa-local/backend` and `custodexa-local/frontend` images of a local build;
+- the `custodexa/backend` and `custodexa/frontend` tags that a deployment once run from a git clone leaves behind. A host that has gathered old images over earlier upgrades is cleaned at its next successful upgrade.
+
+It never removes the upstream images (PostgreSQL, guacd, nginx, openssl, the PostgreSQL clients), an image that any container uses, running or stopped, the images recorded by `load` or by the last `rollback`, or an image that also carries a tag of another repository, such as one you added yourself. Images are removed one reference at a time and never with force. One that cannot be removed is listed as a warning with the `docker rmi` command to run by hand; the upgrade stays successful. The final screen gives the number of images removed and the space freed, and says nothing when there was nothing to remove. A failed or interrupted upgrade removes nothing, and neither do `install`, `rollback`, `restore` and `load`.
+
+To keep every image, add `--keep-images` to the `upgrade` command; the final screen then says that the cleanup was skipped. The upgrade is started by the script that is installed, so the flag works only when that script is 1.17.6 or later. An earlier script rejects `--keep-images` as an unknown option, so an upgrade it starts always runs the cleanup. Old versions that were removed have to be obtained again before a restore of their backups, see [Backup and Restore §5](./backup-and-restore.md#restoring-with-restore).
 
 **The backup at step 7.** By default the script takes the stopped backup described in [Backup and Restore §3.8](./backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments): a single backup file in `backups/` that holds the recordings and the script's record as the upgrade found it, and is not encrypted ([The backup an upgrade takes](./backup-and-restore.md#the-backup-an-upgrade-takes)). It asks no questions about the recordings or encryption. On a terminal the script asks first whether it should take this backup, and you can choose your own backup instead, for example a virtual machine or storage snapshot:
 

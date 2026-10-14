@@ -231,7 +231,7 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SH
 | 10 | 啟動服務 | §2.5 |
 | 11 | 最多等 180 秒，直到後端回應健康檢查 | §2.5 |
 | 12 | 核對：版本、執行中的映像 ID、空資料庫、`schema_migrations` 仍包含升級前每一筆、`users` 與 `sessions` 筆數不變且 `audit_logs` 不減、四個金鑰指紋、單實例鎖、對外入口 | §2.5「升級後第一件事」、§2.7 |
-| 13 | 記錄這次升級並印出結果 | §2.7 |
+| 13 | 記錄這次升級、清除舊版映像（見下）並印出結果 | §2.7 |
 
 第 12 步若發現空資料庫（日誌有 baseline migration，或使用者數由多於一個降到一個以下），
 會立即停止所有服務（含資料庫），且不改動任何資料目錄；畫面會說明要核對什麼，與 §2.5 相同。
@@ -239,6 +239,15 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SH
 升級成功後，畫面會列出留給人做的事：主金鑰模式需要時的解封，以及腳本做不到的 §2.7 檢查——
 稽核鏈驗證、播放一段升級前的錄影、建一條測試連線並確認其指令出現在稽核紀錄。最後一項不可省略。
 這些做完再讓使用者連線。
+
+**升級後的舊映像。** 第 13 步把升級記為成功後，腳本會清除本產品的 backend 與 frontend 映像中，既不是新版也不是前一版的部分。部署因此在磁碟上保留兩個版本，`rollback` 要用的映像都還在。清理範圍：
+
+- 映像的取得來源 repository（GHCR，以及發行清單為各映像列出的鏡像），和本機建置的 `custodexa-local/backend`、`custodexa-local/frontend`；
+- 曾以 git clone 方式部署的主機留下的 `custodexa/backend`、`custodexa/frontend` tag。先前幾次升級累積舊映像的主機，會在下一次升級成功時一併清掉。
+
+下列映像一律不清：上游映像（PostgreSQL、guacd、nginx、openssl、PostgreSQL 客戶端）、任何容器（執行中或已停止）使用的映像、`load` 與最近一次 `rollback` 記錄的映像，以及同時掛著其他 repository tag 的映像（例如你自己加的 tag）。映像逐個參照移除，不強制刪除。刪不掉的會列為警告，附上要手動執行的 `docker rmi` 指令，升級結果仍是成功。完成畫面列出清除的映像數與釋放的空間；沒有可清除的映像時不顯示這一段。升級失敗或中斷時不清除，`install`、`rollback`、`restore`、`load` 也不清除。
+
+要保留所有映像，在 `upgrade` 指令加上 `--keep-images`，完成畫面會說明已略過清理。發起升級的是已安裝的腳本，所以這個旗標只有在該腳本為 1.17.6 或更新版時有效；更早的腳本會以未知選項拒絕 `--keep-images`，所以由它發起的升級一律會清理。被清掉的舊版本，日後還原它的備份前需要重新取得，見[備份與還原 §5](./backup-and-restore.md#以-restore-還原)。
 
 **第 7 步的備份。** 預設由腳本做停機備份，內容見
 [備份與還原 §3.8](./backup-and-restore.md#38-管理腳本做的備份安裝包部署)：`backups/` 裡的一個備份檔，含錄影與升級當時腳本的紀錄，且不加密（[升級所做的備份](./backup-and-restore.md#升級所做的備份)）。它不會問錄影或加密的問題。在終端機上，腳本會先問要不要做這份備份，

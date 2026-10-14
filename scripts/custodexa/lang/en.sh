@@ -25,6 +25,7 @@ MSG_usage_images_from_value='Unknown image source "%s"; choose auto or source.'
 MSG_usage_images_from_command='--images-from is only for install or upgrade with a target.'
 MSG_usage_images_from_conflict='--images-from source cannot be combined with --images.'
 MSG_usage_backup_only='Option %s is only for backup. See: custodexa.sh --help'
+MSG_usage_upgrade_only='Option %s is only for upgrade. See: custodexa.sh --help'
 MSG_usage_backup_restore_only='Option %s is only for backup and restore.
 See: custodexa.sh --help'
 MSG_legacy_refused='This is an older git clone deployment. custodexa.sh cannot install
@@ -87,6 +88,8 @@ MSG_help_opt_backup_restore='  --backup-restore <doc> (upgrade) With --backup-re
 MSG_help_opt_images='  --images <path>        (install, upgrade) Offline image bundle to use'
 MSG_help_opt_images_from='  --images-from <mode>   (install, upgrade with target) auto or source;
                          auto is the default, source builds own images locally'
+MSG_help_opt_keep_images='  --keep-images          (upgrade) Keep the old images; by default only the
+                         images of this version and the previous one stay'
 MSG_help_opt_lang='  --lang <language>      zh-TW, ja or en; see Language below'
 MSG_help_opt_no_color='  --no-color             No colors'
 MSG_help_opt_version='  --version              Show the script version'
@@ -949,6 +952,13 @@ MSG_up_done_rollback='Roll back    restore the backup below by hand, as in "Back
              Restore", section 5 "Restore procedure"'
 MSG_up_done_backup='Backup       %s'
 MSG_up_done_log='Log file     %s'
+MSG_ir_removed='Removed %s old backend and frontend image(s), %s freed.
+The images of this version and the previous one stay.'
+MSG_ir_removed_count='Removed %s old backend and frontend image(s).
+The images of this version and the previous one stay.'
+MSG_ir_skipped='Old images not removed (--keep-images).'
+MSG_ir_failed='%s old image reference(s) could not be removed; the upgrade itself
+succeeded, and the log file says why. To remove them by hand:'
 MSG_pc_title='Checks'
 MSG_pc_services_bad='Services        not running as expected: %s'
 MSG_pc_version='Version         the backend reports %s'

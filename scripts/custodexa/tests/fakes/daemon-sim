@@ -11,7 +11,15 @@
 #   registry       "<full repository>@<index digest> <config digest>": what a pull can fetch
 #   down.<host>    pulls from that registry host fail with this text on stderr
 #   load-swap      after `docker load`, the backend tag carries another image ID
-#   containers     "<container name> <image ID>"
+#   containers     "<container name> <image ID>" (stopped ones too; `ps -aq` prints the names)
+#   containers-gone  container names `ps -aq` prints after the others that are gone by the time they
+#                  are inspected (removed in between, e.g. a --rm container)
+#   rmi-fail       references (as given to rmi) whose removal fails with a daemon error
+# Removing images follows what both stores do (measured on Docker 29, see the image retention change):
+#   rmi <reference>  removes that reference; the image goes with its last reference, unless a container
+#                    uses it ("must be forced")
+#   rmi <ID>         refused while the image has references in several repositories or a container
+#                    uses it; otherwise the image and all its references go
 # Exit 99: not handled here, the replay files answer.
 set -u
 sim=${SIM:-$FAKE_DOCKER_REPLAY/sim}
@@ -40,6 +48,55 @@ set_image() { # <full reference> <id>
   mv "$sim/images.new" "$sim/images"
 }
 last() { eval "printf '%s' \"\${$#}\""; }
+# familiar <full reference>: the short form docker prints (docker.io/library/busybox -> busybox).
+familiar() { local r=${1#docker.io/}; printf '%s' "${r#library/}"; }
+# id_of <reference or ID>: the image ID it names, or nothing.
+id_of() {
+  if [[ $1 =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    awk -v i="$1" '$2 == i { print $2; exit }' "$sim/images"
+  else
+    awk -v r="$(norm "$1")" '$1 == r { print $2; exit }' "$sim/images"
+  fi
+}
+repo_of() { # <full reference>: the repository part
+  if [[ $1 == *@* ]]; then printf '%s' "${1%%@*}"; elif [[ ${1##*/} == *:* ]]; then printf '%s' "${1%:*}"; else printf '%s' "$1"; fi
+}
+used_by() { awk -v i="$1" '$2 == i { print $1; exit }' "$sim/containers"; }
+drop_ref() { awk -v r="$1" '$1 != r' "$sim/images" >"$sim/images.new"; mv "$sim/images.new" "$sim/images"; }
+drop_id() { awk -v i="$1" '$2 != i' "$sim/images" >"$sim/images.new"; mv "$sim/images.new" "$sim/images"; }
+rmi_one() { # <reference or ID>
+  local a=$1 id ref c repos
+  id=$(id_of "$a")
+  [ -n "$id" ] || { echo "Error response from daemon: No such image: $a" >&2; return 1; }
+  if [ -f "$sim/rmi-fail" ] && grep -qxF -- "$a" "$sim/rmi-fail"; then
+    echo "Error response from daemon: unable to remove $a: device or resource busy" >&2
+    return 1
+  fi
+  c=$(used_by "$id")
+  if [[ $a =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    repos=$(awk -v i="$id" '$2 == i { print $1 }' "$sim/images" | while read -r r; do repo_of "$r"; echo; done | sort -u | wc -l)
+    if [ "$repos" -gt 1 ]; then
+      echo "Error response from daemon: conflict: unable to delete ${id:7:12} (must be forced) - image is referenced in multiple repositories" >&2
+      return 1
+    fi
+    if [ -n "$c" ]; then
+      echo "Error response from daemon: conflict: unable to delete ${id:7:12} (must be forced) - image is being used by stopped container $c" >&2
+      return 1
+    fi
+    awk -v i="$id" '$2 == i { print $1 }' "$sim/images" | while read -r r; do echo "Untagged: $(familiar "$r")"; done
+    drop_id "$id"
+    echo "Deleted: $id"
+    return 0
+  fi
+  ref=$(norm "$a")
+  if [ "$(awk -v i="$id" '$2 == i' "$sim/images" | wc -l)" -le 1 ] && [ -n "$c" ]; then
+    echo "Error response from daemon: conflict: unable to delete $(familiar "$ref") (must be forced) - container $c is using its referenced image ${id:7:12}" >&2
+    return 1
+  fi
+  drop_ref "$ref"
+  echo "Untagged: $(familiar "$ref")"
+  awk -v i="$id" '$2 == i { f = 1 } END { exit !f }' "$sim/images" || echo "Deleted: $id"
+}
 
 case "${1:-}" in
   info)
@@ -51,14 +108,54 @@ case "${1:-}" in
     fi
     ;;
   image)
-    [ "${2:-}" = inspect ] || exit 99
-    ref=$(norm "$(last "$@")")
-    id=$(awk -v r="$ref" '$1 == r { print $2; exit }' "$sim/images")
+    case ${2:-} in
+      inspect) ;;
+      ls)
+        # -q: one ID per reference, as the classic store prints them; otherwise the --format fields.
+        if [[ " $* " == *" -q "* ]]; then
+          awk '{ print $2 }' "$sim/images"
+          exit 0
+        fi
+        fmt=$(printf '%s\n' "$@" | awk 'p { print; exit } $0 == "--format" { p = 1 }')
+        while read -r r i; do
+          [ -n "$r" ] || continue
+          t='<none>' d='<none>'
+          if [[ $r == *@* ]]; then d=${r#*@}; elif [[ ${r##*/} == *:* ]]; then t=${r##*:}; fi
+          o=${fmt:-'{{.Repository}} {{.Tag}} {{.Digest}} {{.ID}}'}
+          o=${o//'{{.Repository}}'/$(familiar "$(repo_of "$r")")} o=${o//'{{.Tag}}'/$t} o=${o//'{{.Digest}}'/$d} o=${o//'{{.ID}}'/$i}
+          printf '%s\n' "$o"
+        done <"$sim/images"
+        exit 0
+        ;;
+      *) exit 99 ;;
+    esac
+    id=$(id_of "$(last "$@")")
     if [ -z "$id" ]; then
       echo "Error response from daemon: No such image: $(last "$@")" >&2
       exit 1
     fi
+    # The references of the image: tags first, then repository@digest, as docker prints them.
+    if [[ " $* " == *RepoTags* ]]; then
+      awk -v i="$id" '$2 == i && $1 !~ /@/ { print $1 }' "$sim/images" | while read -r r; do printf '%s ' "$(familiar "$r")"; done
+      awk -v i="$id" '$2 == i && $1 ~ /@/ { print $1 }' "$sim/images" | while read -r r; do printf '%s ' "$(familiar "$r")"; done
+      echo
+      exit 0
+    fi
     echo "$id"
+    ;;
+  rmi)
+    shift
+    rc=0
+    for a in "$@"; do
+      case $a in -*) continue ;; esac
+      rmi_one "$a" || rc=1
+    done
+    exit "$rc"
+    ;;
+  ps)
+    [[ " $* " == *" -aq "* ]] || exit 99
+    awk '{ print $1 }' "$sim/containers"
+    [ ! -f "$sim/containers-gone" ] || cat "$sim/containers-gone"
     ;;
   pull)
     ref=$(norm "$(last "$@")")

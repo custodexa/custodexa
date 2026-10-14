@@ -75,6 +75,7 @@ cx_up_handoff_args() {
   [ -z "${CX_LANG_FLAG:-}" ] || CX_UP_ARGS+=(--lang "$CX_LANG_FLAG")
   [ "${CX_YES:-0}" != 1 ] || CX_UP_ARGS+=(--yes)
   [ "${CX_NO_COLOR:-0}" != 1 ] || CX_UP_ARGS+=(--no-color)
+  [ "${CX_KEEP_IMAGES:-0}" != 1 ] || CX_UP_ARGS+=(--keep-images)
   [ -z "${CX_IMAGES:-}" ] || CX_UP_ARGS+=(--images "$CX_IMAGES")
   [ "${CX_IMAGES_FROM_GIVEN:-0}" != 1 ] || CX_UP_ARGS+=(--images-from "$CX_IMAGES_FROM")
   [ -z "${CX_BACKUP_REF:-}" ] || CX_UP_ARGS+=(--backup-ref "$CX_BACKUP_REF")

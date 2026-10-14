@@ -22,6 +22,7 @@ MSG_usage_images_from_value='不認得的映像來源「%s」；請選 auto 或 
 MSG_usage_images_from_command='--images-from 只適用於 install 或帶目標的 upgrade。'
 MSG_usage_images_from_conflict='--images-from source 不可與 --images 同時使用。'
 MSG_usage_backup_only='選項 %s 只適用於 backup。請見：custodexa.sh --help'
+MSG_usage_upgrade_only='選項 %s 只適用於 upgrade。請見：custodexa.sh --help'
 MSG_usage_backup_restore_only='選項 %s 只適用於 backup 與 restore。
 請見：custodexa.sh --help'
 MSG_legacy_refused='這是舊版 git clone 部署，custodexa.sh 無法在此目錄安裝或升級。
@@ -68,6 +69,7 @@ MSG_help_opt_backup_restore='  --backup-restore <位置>（upgrade）與 --backu
 MSG_help_opt_images='  --images <路徑>      （install、upgrade）指定離線映像包'
 MSG_help_opt_images_from='  --images-from <模式> （install、帶目標的 upgrade）auto 或 source；
                        預設 auto；source 從安裝包原始碼建置自家映像'
+MSG_help_opt_keep_images='  --keep-images        （upgrade）保留舊版映像；預設只留現行版與前一版的映像'
 MSG_help_opt_lang='  --lang <語言>         zh-TW、ja、en；見下方「顯示語言」'
 MSG_help_opt_no_color='  --no-color           不使用顏色'
 MSG_help_opt_version='  --version            顯示腳本版本'
@@ -779,6 +781,13 @@ MSG_up_todo_manual='開放使用者連線之前，請手動確認（腳本做不
 MSG_up_done_rollback='需要回退    用下列備份，照「備份與還原」第 5 節「還原程序」手動還原'
 MSG_up_done_backup='備份        %s'
 MSG_up_done_log='紀錄檔      %s'
+MSG_ir_removed='已清除 %s 個舊版 backend、frontend 映像，釋出 %s。
+現行版與前一版的映像都保留。'
+MSG_ir_removed_count='已清除 %s 個舊版 backend、frontend 映像。
+現行版與前一版的映像都保留。'
+MSG_ir_skipped='依 --keep-images，未清除舊版映像。'
+MSG_ir_failed='有 %s 個舊版映像參照無法清除；升級本身已成功，原因見紀錄檔。
+要手動清除可執行：'
 MSG_pc_title='核對結果'
 MSG_pc_services_bad='服務           沒有正常執行：%s'
 MSG_pc_version='版本           後端回報 %s'

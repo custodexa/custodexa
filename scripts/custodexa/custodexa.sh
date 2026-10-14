@@ -34,6 +34,7 @@ CX_BACKUP_REF=""
 CX_BACKUP_TIME=""
 CX_BACKUP_RESTORE=""
 CX_WITH_RECORDINGS=0
+CX_KEEP_IMAGES=0 # upgrade: leave the old images in place (lib/image_retention.sh)
 CX_PASSPHRASE_FILE=""
 CX_LANG_FLAG=""
 # restore only (lib/cmd_restore.sh): the action, the kind of restore and the values it is given.
@@ -60,6 +61,7 @@ cx_parse_args() {
       -h | --help) CX_HELP=1 ;;
       --version) CX_SHOW_VERSION=1 ;;
       --with-recordings) CX_WITH_RECORDINGS=1 ;;
+      --keep-images) CX_KEEP_IMAGES=1 ;;
       --same-host) CX_RS_SAME=1 CX_RS_GIVEN+=" $1" ;;
       --new-host) CX_RS_NEW=1 CX_RS_GIVEN+=" $1" ;;
       --confirm-data-loss) CX_RS_CONFIRM_LOSS=1 CX_RS_GIVEN+=" $1" ;;
@@ -237,6 +239,7 @@ cx_main() {
     [ "$CX_WITH_RECORDINGS" = 0 ] || cx_die "$CX_EXIT_USAGE" usage_backup_only --with-recordings
     [ -z "$CX_PASSPHRASE_FILE" ] || [ "$CX_COMMAND" = restore ] || cx_die "$CX_EXIT_USAGE" usage_backup_restore_only --passphrase-file
   fi
+  [ "$CX_KEEP_IMAGES" = 0 ] || [ "$CX_COMMAND" = upgrade ] || cx_die "$CX_EXIT_USAGE" usage_upgrade_only --keep-images
   if [ "$CX_COMMAND" != restore ] && [ -n "$CX_RS_GIVEN" ]; then
     local first=${CX_RS_GIVEN# }
     cx_die "$CX_EXIT_USAGE" usage_restore_only "${first%% *}"
