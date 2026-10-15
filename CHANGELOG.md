@@ -2,6 +2,51 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.8 — a clearer workspace asset list and a steady remote desktop view (2026-10-15)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.8`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### What's new
+
+- The workspace asset list groups assets in a collapsible tree that follows the asset groups,
+  and each group shows how many assets it holds. The first visit expands the top level, and
+  the browser remembers what you expand or collapse after that.
+- Each row starts with a small protocol icon in place of the uppercase protocol tag, so names
+  get more room. Hovering the icon shows the protocol, and hovering the name shows the full
+  name and the host address. For MySQL, PostgreSQL and SQL Server assets the query console
+  button appears only when the row is hovered, focused or selected.
+- Long names are shortened so that their ends stay visible. A name with a domain keeps the host
+  name in full when it fits and shortens the domain; when the host name itself is too long, the
+  domain is dropped and the host name is shortened in the middle. Other names keep their
+  beginning and end and shorten the middle.
+- The sidebar can be dragged between 200 and 480 px wide (280 px by default), and the browser
+  remembers the width.
+- Search also matches the host address and the group path, and groups with matches expand.
+- A refresh button next to the search box reloads the list. Open connection tabs stay
+  connected.
+- Long tab titles are shortened with the full title on hover, and the last tabs are no longer
+  covered by the tab bar tools.
+
+### Fixes
+
+- A remote desktop no longer keeps shrinking and growing while the mouse rests near its right
+  or bottom edge. This happened in browsers whose scrollbars take up space, such as on Windows.
+  The remote desktop area no longer shows scrollbars, its right and bottom edges are no longer
+  cut off, and resizing the pane no longer sends a Shift key press to the remote host.
+- Connection views keep a 6 px margin on all sides of the workspace content area.
+- The workspace loads every page of your assets instead of stopping at the first 100, and
+  shows a notice if it reaches its load limit. Disabled assets are still not listed.
+- Assets you can only view are labeled "View only". Clicking one explains that you cannot
+  connect, where it used to fail at connection time.
+- Assets that ask for a reason can be opened from the workspace. Clicking one starts the
+  connection and asks for the reason first. They used to be locked there.
+- Clicking an asset that needs an approved request, or whose request is under review, explains
+  why. For one that needs a request, a button opens the Assets page in a new tab with the
+  request form for that asset. These clicks used to do nothing.
+- The database query console toolbar wraps onto a second line in a narrow pane.
+
 ## 1.17.7 — correcting a shared credential's registered password (2026-10-14)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

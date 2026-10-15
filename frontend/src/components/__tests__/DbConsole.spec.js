@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { computed } from 'vue'
 import { mount, enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
@@ -423,3 +425,16 @@ function exportTooltip(wrapper) {
     .find((c) => c.find('.export-wrap').exists())
   return tip?.props('content')
 }
+
+// 窄寬度（側欄拉寬、視窗變窄）時工具列不得把右側按鈕裁掉：允許換行並有列間距
+describe('DbConsole 工具列版面', () => {
+  it('工具列允許換行且設有列間距，資料庫下拉不超出容器', () => {
+    const src = readFileSync(join(process.cwd(), 'src', 'components', 'DbConsole', 'DbConsole.vue'), 'utf8')
+    const toolbar = src.match(/\.console-toolbar\s*\{([^}]*)\}/)
+    expect(toolbar).not.toBeNull()
+    expect(toolbar[1]).toMatch(/flex-wrap:\s*wrap;/)
+    expect(toolbar[1]).toMatch(/gap:\s*\S+\s+\S+;/)
+    const select = src.match(/\.database-select\s*\{([^}]*)\}/)
+    expect(select[1]).toMatch(/max-width:\s*100%;/)
+  })
+})

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 
@@ -603,5 +605,15 @@ describe('SshTerminal mssql 批次終止符提示', () => {
     expect(written).not.toContain('GO 送出批次')
     expect(written).not.toContain(HINT_TEXT)
     wrapper.unmount()
+  })
+})
+
+// 分頁外框已有留白；終端容器只留細縫，兩層合計不得疊成過寬的邊
+describe('SshTerminal 留白', () => {
+  it('終端容器內距為 2px', () => {
+    const src = readFileSync(join(process.cwd(), 'src', 'components', 'SshTerminal.vue'), 'utf8')
+    const block = src.match(/\.terminal-container\s*\{([^}]*)\}/)
+    expect(block).not.toBeNull()
+    expect(block[1]).toMatch(/padding:\s*2px;/)
   })
 })

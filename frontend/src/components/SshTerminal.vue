@@ -681,7 +681,8 @@ function cleanup() {
   position: relative; /* 搜尋列／延遲徽章的定位錨點：使其永遠落在提示條下方 */
   flex: 1 1 auto;
   min-height: 0;
-  padding: 8px;
+  /* 分頁外框已留白，這裡只留貼邊的細縫，避免兩層留白疊加 */
+  padding: 2px;
   box-sizing: border-box;
 }
 

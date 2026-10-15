@@ -336,17 +336,20 @@ defineExpose({ reconnect, unsettled })
   background: var(--el-bg-color);
 }
 
+/* 窄寬度時按鈕群組換到下一行，不被右緣裁切 */
 .console-toolbar {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--ot-space-sm);
+  gap: var(--ot-space-xs) var(--ot-space-sm);
   padding: var(--ot-space-sm);
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .database-select {
   width: 220px;
+  max-width: 100%;
 }
 
 .database-select.is-restricted :deep(.el-select__wrapper) {

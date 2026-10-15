@@ -1,139 +1,29 @@
 <template>
-  <div class="workspace">
-    <!-- 40px 頂欄：連線頁寸土寸金，頂欄只留側欄開關與會話動作，其餘垂直空間讓給終端 -->
-    <div class="workspace-header">
-      <el-button
-        size="small"
-        text
-        class="header-icon"
-        @click="toggleSidebar"
-      >
-        {{ sidebarCollapsed ? '☰' : '◀' }}
-      </el-button>
-      <el-link
-        class="brand-link"
-        :underline="false"
-        @click="openSystem"
-      >
-        {{ BRAND.name }}
-      </el-link>
-      <span class="workspace-hint">{{ $t('menu.workspace') }}</span>
-      <!-- 語言切換：工作區是長駐連線面，切語言免 reload 不斷線 -->
-      <el-dropdown
-        class="workspace-lang"
-        @command="setLanguage"
-      >
-        <span class="workspace-lang-label">{{ LOCALE_LABELS[locale] }}</span>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="l in SUPPORTED_LOCALES"
-              :key="l"
-              :command="l"
-              :disabled="l === locale"
-            >
-              {{ LOCALE_LABELS[l] }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-    </div>
+  <div
+    class="workspace"
+    :class="{ 'is-resizing': resizing }"
+  >
+    <WorkspaceHeader
+      :collapsed="sidebarCollapsed"
+      @toggle-sidebar="toggleSidebar"
+    />
 
     <div class="workspace-body">
-      <!-- 可收合資產側欄 -->
-      <div
+      <!-- 可收合資產側欄：列表、搜尋、存取狀態說明與拖寬都在元件內 -->
+      <WorkspaceAssetSidebar
         v-show="!sidebarCollapsed"
-        class="workspace-sidebar"
-      >
-        <el-input
-          v-model="assetFilter"
-          size="small"
-          :placeholder="$t('workspace.searchAssets')"
-          clearable
-        />
-        <div class="asset-list">
-          <template
-            v-for="section in groupedAssets"
-            :key="section.name"
-          >
-            <div
-              v-if="groupedAssets.length > 1"
-              class="asset-group-label"
-            >
-              {{ section.name }}
-            </div>
-            <div
-              v-for="item in section.assets"
-              :key="item.id"
-              class="asset-item"
-              :class="{ 'is-gated': entryState(item) !== 'open' }"
-              :data-access-state="entryState(item)"
-              role="button"
-              tabindex="0"
-              @click="onAssetClick(item)"
-              @keydown.enter.space.prevent="onAssetClick(item)"
-            >
-              <!-- 名稱是選錯資產的唯一防線：截斷時仍要能以滑鼠取得全名 -->
-              <span
-                class="asset-item-name"
-                :title="item.name"
-              >{{ item.name }}</span>
-              <!-- 需申請／審核中：整列與主控台鈕都不發簽發，指引回資產頁；
-                   本頁是純連線面，不內嵌申請流 -->
-              <el-tooltip
-                v-if="entryState(item) !== 'open'"
-                :content="entryTooltip(item)"
-                placement="top"
-              >
-                <el-icon class="asset-item-gate">
-                  <Lock v-if="entryState(item) === 'locked'" />
-                  <Clock v-else />
-                </el-icon>
-              </el-tooltip>
-              <!-- 查詢主控台入口：只對三種 SQL 方言出現，
-                   與同列的命令列入口同一組存取狀態判準。
-                   側欄只有 220 px，入口用文字會把資產名擠到剩兩三個字元
-                   （日文最甚），所以走與分頁型別同一顆圖示，名稱由 tooltip 給 -->
-              <el-tooltip
-                v-if="isDBConsoleProtocol(item.protocol)"
-                :content="entryState(item) === 'open'
-                  ? $t('workspace.openConsole')
-                  : entryTooltip(item)"
-                placement="top"
-                :enterable="false"
-              >
-                <span class="asset-item-console">
-                  <el-link
-                    type="primary"
-                    :underline="false"
-                    :disabled="entryState(item) !== 'open'"
-                    :aria-label="$t('workspace.console')"
-                    data-test="console-entry"
-                    @click.stop="openConsoleTab(item)"
-                  >
-                    <el-icon><Database /></el-icon>
-                  </el-link>
-                </span>
-              </el-tooltip>
-              <el-tag
-                class="ot-tag-neutral"
-                size="small"
-              >
-                {{ item.protocol.toUpperCase() }}
-              </el-tag>
-            </div>
-          </template>
-          <div
-            v-if="!filteredAssets.length"
-            class="asset-empty"
-          >
-            {{ $t('workspace.noMatchingAssets') }}
-          </div>
-        </div>
-      </div>
+        ref="sidebarRef"
+        :selected-asset-id="selectedAssetId"
+        @open-asset="(asset) => openTab(asset)"
+        @open-console="(asset) => openTab(asset, 'console')"
+        @resizing="resizing = $event"
+      />
 
       <!-- 會話頁籤區 -->
-      <div class="workspace-tabs">
+      <div
+        class="workspace-tabs"
+        :style="{ '--tabbar-tools-width': tabbarReserve + 'px' }"
+      >
         <el-tabs
           v-if="tabs.length"
           v-model="activeKey"
@@ -147,127 +37,44 @@
             :name="tab.key"
           >
             <template #label>
-              <span
-                :class="{ 'tab-disconnected': isDisconnected(tab) }"
-                @contextmenu.prevent="openTabMenu($event, tab.key)"
+              <!-- 標題有最大寬度、單行省略；停留時給完整標題（含手選帳號） -->
+              <el-tooltip
+                :content="tabTitleTip(tab)"
+                placement="bottom"
+                :enterable="false"
+                :show-after="300"
               >
-                <!-- 同一個資產可同時開命令列與主控台，標題文字相同：
-                     分頁型別要靠圖示分辨 -->
-                <el-tooltip
-                  v-if="tab.kind === 'console'"
-                  :content="$t('workspace.consoleTabTip')"
-                  placement="bottom"
-                  :enterable="false"
+                <span
+                  class="tab-label"
+                  :class="{ 'tab-disconnected': isDisconnected(tab) }"
+                  @contextmenu.prevent="openTabMenu($event, tab.key)"
                 >
-                  <el-icon class="tab-kind-icon"><Database /></el-icon>
-                </el-tooltip>
-                {{ isDisconnected(tab) ? $t('workspace.tabDisconnected', { label: tabLabel(tab) }) : tabLabel(tab) }}
-              </span>
+                  <!-- 同一個資產可同時開命令列與主控台，標題文字相同：
+                       分頁型別要靠圖示分辨 -->
+                  <el-icon
+                    class="tab-kind-icon"
+                    role="img"
+                    :aria-label="tab.kind === 'console' ? $t('workspace.consoleTabTip') : protocolFullName(tab.protocol)"
+                  >
+                    <component :is="tabIcon(tab)" />
+                  </el-icon>
+                  <span
+                    class="tab-title"
+                    data-test="tab-title"
+                  >{{ tabDisplayLabel(tab) }}</span>
+                </span>
+              </el-tooltip>
             </template>
           </el-tab-pane>
         </el-tabs>
 
-        <!-- 會話工具：置於頁籤列右端既有空白，
-             操作目前啟用文字終端會話；檔案/監控為 SSH 專屬能力 -->
-        <div
+        <!-- 會話工具：置於頁籤列右端既有空白，操作目前啟用文字終端會話 -->
+        <WorkspaceTabTools
           v-if="activeTermTab"
-          class="tabbar-tools"
-        >
-          <!-- K8s 連線 context（解決「看不出在哪個 ns/pod/container」）-->
-          <span
-            v-if="activeTermTab.protocol === 'k8s'"
-            class="k8s-ctx"
-          >
-            <span class="k8s-ctx__seg"><b>ns</b> {{ activeTermTab.k8sNamespace }}</span>
-            <span class="k8s-ctx__seg"><b>pod</b> {{ activeTermTab.k8sPod }}</span>
-            <span
-              v-if="activeTermTab.k8sContainer"
-              class="k8s-ctx__seg"
-            ><b>ctr</b> {{ activeTermTab.k8sContainer }}</span>
-            <span
-              class="k8s-ctx__badge"
-              :class="activeTermTab.k8sMode === 'logs' ? 'is-logs' : 'is-exec'"
-            >{{ activeTermTab.k8sMode === 'logs' ? $t('workspace.k8sLogsReadonly') : 'exec' }}</span>
-          </span>
-          <el-tooltip :content="$t('workspace.shareSession')">
-            <button
-              type="button"
-              class="tool-btn"
-              :aria-label="$t('workspace.shareSession')"
-              @click="activeTermTab.shareVisible = true"
-            >
-              <el-icon><Share2 /></el-icon>
-            </button>
-          </el-tooltip>
-          <el-tooltip
-            v-if="activeTermTab.protocol === 'ssh'"
-            :content="$t('workspace.fileManager')"
-          >
-            <button
-              type="button"
-              class="tool-btn"
-              :aria-label="$t('workspace.fileManager')"
-              @click="activeTermTab.fileVisible = true"
-            >
-              <el-icon><FolderOpen /></el-icon>
-            </button>
-          </el-tooltip>
-          <el-tooltip
-            v-if="activeTermTab.protocol === 'ssh'"
-            :content="$t('workspace.systemMonitor')"
-          >
-            <button
-              type="button"
-              class="tool-btn"
-              :aria-label="$t('workspace.systemMonitor')"
-              @click="activeTermTab.statsVisible = true"
-            >
-              <el-icon><Activity /></el-icon>
-            </button>
-          </el-tooltip>
-          <el-tooltip :content="$t('workspace.commandSnippets')">
-            <button
-              type="button"
-              class="tool-btn"
-              :aria-label="$t('workspace.commandSnippets')"
-              @click="activeTermTab.snippetVisible = true"
-            >
-              <el-icon><FileCode /></el-icon>
-            </button>
-          </el-tooltip>
-          <el-tooltip
-            v-if="activeTermTab.protocol === 'k8s' && activeTermTab.k8sMode !== 'logs'"
-            :content="$t('workspace.uploadTooltip')"
-          >
-            <button
-              type="button"
-              class="tool-btn"
-              :aria-label="$t('workspace.uploadAria')"
-              @click="triggerK8sUpload"
-            >
-              <el-icon><Upload /></el-icon>
-            </button>
-          </el-tooltip>
-          <el-tooltip
-            v-if="activeTermTab.protocol === 'k8s' && activeTermTab.k8sMode !== 'logs'"
-            :content="$t('workspace.downloadFromContainer')"
-          >
-            <button
-              type="button"
-              class="tool-btn"
-              :aria-label="$t('workspace.downloadFromContainer')"
-              @click="triggerK8sDownload"
-            >
-              <el-icon><Download /></el-icon>
-            </button>
-          </el-tooltip>
-        </div>
-        <input
-          ref="k8sFileInput"
-          type="file"
-          style="display: none"
-          @change="onK8sFileChange"
-        >
+          :tab="activeTermTab"
+          @open-panel="openTabPanel"
+          @width="tabbarToolsWidth = $event"
+        />
 
         <!-- 會話內容常駐 DOM、v-show 切換（保活不斷線） -->
         <div class="tab-panels">
@@ -354,70 +161,12 @@
     </div>
 
     <!-- 頁籤右鍵選單 -->
-    <ul
+    <WorkspaceTabMenu
       v-if="tabMenu.visible"
-      class="tab-context-menu"
-      role="menu"
-      :style="{ left: tabMenu.x + 'px', top: tabMenu.y + 'px' }"
-    >
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuReconnect"
-        @keydown.enter.space.prevent="menuReconnect"
-      >
-        {{ $t('workspace.menuReconnect') }}
-      </li>
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuDuplicate"
-        @keydown.enter.space.prevent="menuDuplicate"
-      >
-        {{ $t('workspace.menuDuplicate') }}
-      </li>
-      <li class="menu-divider" />
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuClose"
-        @keydown.enter.space.prevent="menuClose"
-      >
-        {{ $t('workspace.menuClose') }}
-      </li>
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuCloseOthers"
-        @keydown.enter.space.prevent="menuCloseOthers"
-      >
-        {{ $t('workspace.menuCloseOthers') }}
-      </li>
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuCloseLeft"
-        @keydown.enter.space.prevent="menuCloseLeft"
-      >
-        {{ $t('workspace.menuCloseLeft') }}
-      </li>
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuCloseRight"
-        @keydown.enter.space.prevent="menuCloseRight"
-      >
-        {{ $t('workspace.menuCloseRight') }}
-      </li>
-      <li
-        role="menuitem"
-        tabindex="0"
-        @click="menuCloseAll"
-        @keydown.enter.space.prevent="menuCloseAll"
-      >
-        {{ $t('workspace.menuCloseAll') }}
-      </li>
-    </ul>
+      :x="tabMenu.x"
+      :y="tabMenu.y"
+      @select="onTabMenuSelect"
+    />
 
     <!-- K8s 連線時選 pod 選擇器（全域單例） -->
     <K8sPodSelector
@@ -440,12 +189,10 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { BRAND } from '@/brand'
-import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage, t } from '@/i18n'
-// 工具列 icon 與側欄同取 lucide-vue-next，維持全站 icon 體系一致
-import { Share2, FolderOpen, Activity, FileCode, Upload, Download, Database, Lock, Clock } from 'lucide-vue-next'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { t } from '@/i18n'
+// 分頁型別圖示取 lucide-vue-next，維持全站 icon 體系一致
+import { Database, SquareTerminal, Monitor, Container } from 'lucide-vue-next'
+import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
 import Sortable from 'sortablejs'
 import SshTerminal from '@/components/SshTerminal.vue'
@@ -458,24 +205,28 @@ import SnippetDrawer from '@/components/SnippetDrawer.vue'
 import SessionStatsPanel from '@/components/SessionStatsPanel.vue'
 import ShareDialog from '@/components/ShareDialog.vue'
 import TerminalWatermark from '@/components/TerminalWatermark.vue'
-import { getAssetList, getAsset, uploadK8sFile, downloadK8sFile } from '@/api/assets'
+import WorkspaceAssetSidebar from '@/components/workspace/WorkspaceAssetSidebar.vue'
+import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import WorkspaceTabTools from '@/components/workspace/WorkspaceTabTools.vue'
+import WorkspaceTabMenu from '@/components/workspace/WorkspaceTabMenu.vue'
+import { readStorage, writeStorage } from '@/components/workspace/storage'
+import { getAsset } from '@/api/assets'
 import { listAssetAccounts } from '@/api/assetAccounts'
-import { resolveApiError } from '@/api/error'
 import { moveItem } from '@/utils/move-item'
-import { isTextTerminal, isDBConsoleProtocol } from '@/utils/protocol'
+import { isTextTerminal, protocolIconKind, protocolFullName } from '@/utils/protocol'
 import { closeOthers, closeLeft, closeRight, closeAll } from '@/utils/tab-close'
-import { assetEntryState } from '@/utils/asset-access'
 import { confirmDestructive } from '@/utils/confirm'
-import { useRoles } from '@/composables/useRoles'
 
 const SIDEBAR_COLLAPSED_KEY = 'workspace-sidebar-collapsed'
 
-const { locale } = useI18n()
+const PROTOCOL_ICONS = { terminal: SquareTerminal, desktop: Monitor, database: Database, container: Container }
+
 const route = useRoute()
 
-const assets = ref([])
-const assetFilter = ref('')
-const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1')
+const sidebarRef = ref(null)
+const sidebarCollapsed = ref(readStorage(SIDEBAR_COLLAPSED_KEY) === '1')
+// 側欄拖寬中：整個工作區鎖游標與文字選取
+const resizing = ref(false)
 
 // 頁籤狀態：key 用遞增序號，同資產可多開
 const tabs = ref([])
@@ -491,44 +242,12 @@ const activeTermTab = computed(() =>
   ) || null
 )
 
-// 側欄的存取狀態分化：命令列與主控台兩個入口共用同一判準，不單做一邊
-const { isPrivileged } = useRoles()
+// 目前啟用分頁的資產＝側欄選中列
+const selectedAssetId = computed(() => tabs.value.find((t) => t.key === activeKey.value)?.assetId ?? null)
 
-const entryState = (asset) => assetEntryState(asset, { isPrivileged: isPrivileged.value })
-
-const entryTooltip = (asset) =>
-  entryState(asset) === 'pending'
-    ? t('workspace.accessPendingTip')
-    : t('workspace.accessLockedTip')
-
-const filteredAssets = computed(() => {
-  const term = assetFilter.value.trim().toLowerCase()
-  if (!term) return assets.value
-  return assets.value.filter((a) => a.name.toLowerCase().includes(term))
-})
-
-// 按節點路徑分節：多歸屬資產在每個掛載節點下
-// 各出現一次（與資產頁樹一致）；單一節（全未分組）時不顯示節標題
-const groupedAssets = computed(() => {
-  const ungroupedLabel = t('assets.ungrouped')
-  const sections = new Map()
-  for (const a of filteredAssets.value) {
-    const paths = (a.node_paths || []).length ? a.node_paths : [ungroupedLabel]
-    for (const name of paths) {
-      if (!sections.has(name)) sections.set(name, [])
-      sections.get(name).push(a)
-    }
-  }
-  // 未分組永遠排最後，其餘按路徑字典序（樹形鄰近性）
-  return [...sections.entries()]
-    .sort((x, y) => {
-      const xu = x[0] === ungroupedLabel
-      const yu = y[0] === ungroupedLabel
-      if (xu !== yu) return xu - yu
-      return x[0].localeCompare(y[0])
-    })
-    .map(([name, list]) => ({ name, assets: list }))
-})
+// 側欄的存取狀態判準與說明框都在側欄元件內；這裡只轉接
+const entryState = (asset) => sidebarRef.value?.entryState(asset)
+const loadAssets = () => sidebarRef.value?.loadAssets()
 
 // SSH 終端元件 ref（terminal-snippets）：以 tab.key 索引，供片段注入
 const terminalRefs = new Map()
@@ -553,8 +272,13 @@ function hideTabMenu() {
   if (tabMenu.value.visible) tabMenu.value = { ...tabMenu.value, visible: false }
 }
 
+// 側欄說明框的 Esc／點外關閉由側欄元件自行處理
 function onGlobalKeydown(e) {
   if (e.key === 'Escape') hideTabMenu()
+}
+
+function onDocumentClick() {
+  hideTabMenu()
 }
 
 function menuReconnect() {
@@ -650,6 +374,20 @@ function menuCloseAll() {
   applyCloseResult(closeAll())
 }
 
+const TAB_MENU_ACTIONS = {
+  reconnect: menuReconnect,
+  duplicate: menuDuplicate,
+  close: menuClose,
+  closeOthers: menuCloseOthers,
+  closeLeft: menuCloseLeft,
+  closeRight: menuCloseRight,
+  closeAll: menuCloseAll,
+}
+
+function onTabMenuSelect(command) {
+  TAB_MENU_ACTIONS[command]?.()
+}
+
 // 頁籤拖曳排序：Sortable 掛 el-tabs nav，
 // onEnd 先還原 DOM 再不可變重排，交 Vue 重渲染
 let tabSortable = null
@@ -690,12 +428,12 @@ onBeforeUnmount(() => {
     tabSortable.destroy()
     tabSortable = null
   }
-  document.removeEventListener('click', hideTabMenu)
+  document.removeEventListener('click', onDocumentClick)
   document.removeEventListener('keydown', onGlobalKeydown)
 })
 
 onMounted(async () => {
-  document.addEventListener('click', hideTabMenu)
+  document.addEventListener('click', onDocumentClick)
   document.addEventListener('keydown', onGlobalKeydown)
   await loadAssets()
 
@@ -710,15 +448,6 @@ onMounted(async () => {
     }
   }
 })
-
-async function loadAssets() {
-  try {
-    const response = await getAssetList({ page: 1, page_size: 100 })
-    assets.value = (response.data || []).filter((a) => a.active !== false)
-  } catch (err) {
-    console.error('[Workspace] 載入資產列表失敗:', err)
-  }
-}
 
 // K8s 連線時選 pod：開籤前先跳選擇器，選定 pod/container/模態後才建終端籤
 const podSelectorVisible = ref(false)
@@ -738,16 +467,14 @@ const pendingAccountKind = ref('terminal')
 // 對 B 發簽發。開籤本身不受此限——連開三個分頁是正常操作，不是競態
 let accountSelectorSeq = 0
 
-// 側欄整列 click：受存取狀態分化約束，鎖定／審核中一律不發簽發
-function onAssetClick(asset) {
-  if (entryState(asset) !== 'open') return
-  openTab(asset)
+// 側欄整列 click 與主控台入口：同一組存取狀態判準在側欄元件內，
+// 受限狀態只出說明、不發簽發；可連線時側欄回拋 open-asset／open-console
+function onAssetClick(asset, event) {
+  sidebarRef.value?.activate(asset, 'terminal', event)
 }
 
-// 主控台入口：與整列 click 同判準，帳號分流也走同一條路
-function openConsoleTab(asset) {
-  if (entryState(asset) !== 'open') return
-  openTab(asset, 'console')
+function openConsoleTab(asset, event) {
+  sidebarRef.value?.activate(asset, 'console', event)
 }
 
 async function openTab(asset, kind = 'terminal') {
@@ -854,6 +581,39 @@ function tabLabel(tab) {
     : tab.name
 }
 
+// 分頁列顯示的標題（斷線時附標記）；寬度由 CSS 限制，超出單行省略
+function tabDisplayLabel(tab) {
+  const label = tabLabel(tab)
+  return isDisconnected(tab) ? t('workspace.tabDisconnected', { label }) : label
+}
+
+// 停留提示：完整標題，主控台分頁另註明型別
+function tabTitleTip(tab) {
+  const label = tabDisplayLabel(tab)
+  return tab.kind === 'console' ? t('workspace.tabTitleConsole', { label }) : label
+}
+
+// 分頁型別圖示：主控台＝資料庫；命令列類（含資料庫 CLI）＝終端；k8s＝容器；圖形＝桌面
+function tabIcon(tab) {
+  if (tab.kind === 'console') return Database
+  const kind = protocolIconKind(tab.protocol)
+  return kind === 'database' ? SquareTerminal : PROTOCOL_ICONS[kind]
+}
+
+// 分頁列右側預留工具列寬度：工具列回報實測寬度寫入 CSS 變數，分頁不再被它蓋住
+const tabbarToolsWidth = ref(0)
+// 工具列距右緣 8px，另留 8px 間隔
+const TABBAR_TOOLS_GAP = 16
+const tabbarReserve = computed(() =>
+  (activeTermTab.value && tabbarToolsWidth.value > 0 ? tabbarToolsWidth.value + TABBAR_TOOLS_GAP : 0)
+)
+
+// 工具列按鈕打開目前分頁的對應面板（分享／檔案／指標／片段）
+function openTabPanel(panel) {
+  const tab = activeTermTab.value
+  if (tab) tab[`${panel}Visible`] = true
+}
+
 function onPodSelected(sel) {
   if (pendingK8sAsset.value) {
     createTab(pendingK8sAsset.value, sel)
@@ -866,104 +626,6 @@ function onAccountSelected(account) {
     createTab(pendingAccountAsset.value, null, account, true, pendingAccountKind.value)
     pendingAccountAsset.value = null
     pendingAccounts.value = []
-  }
-}
-
-// K8s 容器檔案上傳（kubectl cp）：傳到容器 /tmp
-const k8sFileInput = ref(null)
-function triggerK8sUpload() {
-  if (k8sFileInput.value) k8sFileInput.value.click()
-}
-async function onK8sFileChange(e) {
-  const file = e.target.files && e.target.files[0]
-  const tab = activeTermTab.value
-  if (!file || !tab) {
-    e.target.value = ''
-    return
-  }
-  // 讓使用者選目標目錄（預設 /tmp）；/tmp 非安全邊界，傳到哪都受容器權限與審計約束
-  let destDir = '/tmp'
-  try {
-    const { value } = await ElMessageBox.prompt(
-      t('workspace.uploadPrompt', { pod: tab.k8sPod, container: tab.k8sContainer }),
-      t('workspace.uploadTitle', { name: file.name }),
-      {
-        inputValue: '/tmp',
-        inputPattern: /^\/.+/,
-        inputErrorMessage: t('workspace.absolutePathRequired'),
-        confirmButtonText: t('workspace.uploadConfirm'),
-        cancelButtonText: t('common.cancel')
-      }
-    )
-    destDir = value
-  } catch {
-    e.target.value = ''
-    return
-  }
-  const fd = new FormData()
-  fd.append('pod', tab.k8sPod)
-  fd.append('container', tab.k8sContainer)
-  fd.append('dest_path', destDir)
-  fd.append('file', file)
-  try {
-    const resp = await uploadK8sFile(tab.assetId, fd)
-    ElMessage.success(t('workspace.uploaded', { path: resp.path, size: resp.size }))
-  } catch (err) {
-    ElMessage.error(
-      resolveApiError(err.response?.data, err.response?.status, t('workspace.uploadFailed'))
-    )
-  } finally {
-    e.target.value = ''
-  }
-}
-
-// K8s 容器檔案下載（kubectl cp）：輸入容器內絕對路徑 → 取回瀏覽器下載
-async function triggerK8sDownload() {
-  const tab = activeTermTab.value
-  if (!tab) return
-  let path
-  try {
-    const { value } = await ElMessageBox.prompt(
-      t('workspace.downloadPrompt', { pod: tab.k8sPod, container: tab.k8sContainer }),
-      t('workspace.downloadTitle'),
-      {
-        inputPlaceholder: '/tmp/example.log',
-        inputPattern: /^\/.+/,
-        inputErrorMessage: t('workspace.absolutePathRequired'),
-        confirmButtonText: t('workspace.downloadConfirm'),
-        cancelButtonText: t('common.cancel')
-      }
-    )
-    path = value
-  } catch {
-    return
-  }
-  try {
-    const blob = await downloadK8sFile(tab.assetId, {
-      pod: tab.k8sPod,
-      container: tab.k8sContainer,
-      path
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = path.split('/').pop() || 'download'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    ElMessage.success(t('workspace.downloaded', { name: a.download }))
-  } catch (err) {
-    // 下載失敗 body 是 Blob，解析回 JSON 取後端精準訊息（如「容器內找不到該檔案：…」）
-    let msg = t('workspace.downloadFailed')
-    const data = err?.response?.data
-    if (data instanceof Blob) {
-      try {
-        const parsed = JSON.parse(await data.text())
-        if (parsed?.error) msg = parsed.error
-      } catch { /* 非 JSON：保留預設訊息 */ }
-    }
-    ElMessage.error(msg)
   }
 }
 
@@ -995,15 +657,11 @@ function isDisconnected(tab) {
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
-  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed.value ? '1' : '0')
-}
-
-function openSystem() {
-  window.open('/', '_blank')
+  writeStorage(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed.value ? '1' : '0')
 }
 
 // 測試掛點：頁籤邏輯不依賴 DOM 互動即可驅動
-defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
+defineExpose({ openTab, onAssetClick, openConsoleTab, closeTab, tabs, activeKey, entryState, loadAssets })
 </script>
 
 <style scoped>
@@ -1015,48 +673,6 @@ defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
   overflow: hidden;
 }
 
-.workspace-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 40px;
-  padding: 0 10px;
-  flex-shrink: 0;
-  background: var(--ot-bg-elevated);
-  border-bottom: 1px solid var(--ot-border);
-}
-
-.header-icon {
-  color: var(--ot-terminal-fg);
-}
-
-.brand-link {
-  font-weight: 600;
-  color: var(--ot-terminal-fg);
-}
-
-.workspace-hint {
-  font-size: 12px;
-  opacity: 0.6;
-  color: var(--ot-terminal-fg);
-}
-
-.workspace-lang {
-  margin-left: auto;
-}
-
-.workspace-lang-label {
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--ot-terminal-fg);
-  opacity: 0.7;
-}
-
-.workspace-lang-label:hover {
-  opacity: 1;
-  color: var(--ot-primary);
-}
-
 .workspace-body {
   display: flex;
   flex: 1;
@@ -1065,77 +681,29 @@ defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
   overflow: hidden;
 }
 
-.workspace-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  /* 名稱、狀態圖示、主控台入口、協議 chip 四段共用同一列；
-     220 px 在日文下連 6 個字元的資產名都留不住 */
-  width: 240px;
-  flex-shrink: 0;
-  padding: 10px;
-  background: var(--ot-bg-surface);
-  border-right: 1px solid var(--ot-border);
+.workspace.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
-.asset-list {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.asset-item {
-  display: flex;
+/* 分頁標題：圖示＋最大寬度 220px 的單行省略 */
+.tab-label {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 7px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--ot-terminal-fg);
+  max-width: 244px;
 }
 
-.asset-item:hover {
-  background: var(--ot-bg-hover);
+.tab-kind-icon {
+  flex-shrink: 0;
+  margin-right: 4px;
 }
 
-.asset-item-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
+.tab-title {
+  display: inline-block;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 需申請／審核中：整列不是連線入口，游標不得暗示可點 */
-.asset-item.is-gated {
-  cursor: default;
-  opacity: 0.7;
-}
-
-.asset-item-gate {
-  flex-shrink: 0;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-}
-
-.asset-item-console {
-  flex-shrink: 0;
-  display: inline-flex;
-  font-size: 13px;
-}
-
-/* 分頁型別圖示：與標題同列，不佔第二行 */
-.tab-kind-icon {
-  margin-right: 4px;
-  vertical-align: -2px;
-}
-
-.asset-empty {
-  padding: 12px;
-  font-size: 12px;
-  opacity: 0.6;
-  color: var(--ot-terminal-fg);
 }
 
 .workspace-tabs {
@@ -1156,6 +724,11 @@ defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
   border: none;
 }
 
+/* 分頁列右側預留工具列的實測寬度（--tabbar-tools-width），分頁捲動區不延伸到工具列下方 */
+.workspace-tabs :deep(.el-tabs__header) {
+  padding-right: var(--tabbar-tools-width, 0px);
+}
+
 .tab-panels {
   position: relative;
   flex: 1;
@@ -1164,98 +737,8 @@ defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
 
 .tab-panel {
   position: absolute;
-  inset: 0;
-}
-
-/* K8s 連線 context（頂部工具列，顯示目前 ns/pod/container/模態）*/
-.k8s-ctx {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-right: 12px;
-  font-size: 12px;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  color: var(--el-text-color-regular);
-  white-space: nowrap;
-}
-.k8s-ctx__seg b {
-  color: var(--el-text-color-secondary);
-  font-weight: 600;
-  margin-right: 3px;
-}
-.k8s-ctx__badge {
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.k8s-ctx__badge.is-exec {
-  color: #60a5fa;
-  background: rgba(59, 130, 246, 0.15);
-}
-.k8s-ctx__badge.is-logs {
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.15);
-}
-
-.tabbar-tools {
-  position: absolute;
-  top: 0;
-  right: 8px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  z-index: 5;
-}
-
-.tool-btn {
-  border: none;
-  background: transparent;
-  color: var(--el-text-color-secondary);
-  cursor: pointer;
-  font-size: 15px;
-  padding: 5px;
-  border-radius: var(--el-border-radius-base);
-  display: flex;
-  align-items: center;
-}
-
-.tool-btn:hover {
-  color: var(--el-color-primary);
-  background: var(--el-fill-color);
-}
-
-.tab-context-menu {
-  position: fixed;
-  z-index: 3000;
-  min-width: 120px;
-  margin: 0;
-  padding: 4px 0;
-  list-style: none;
-  background: var(--el-bg-color-overlay);
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
-  box-shadow: var(--el-box-shadow-light);
-  font-size: 13px;
-}
-
-.tab-context-menu li {
-  padding: 6px 16px;
-  cursor: pointer;
-  color: var(--el-text-color-primary);
-}
-
-.tab-context-menu li:hover {
-  background: var(--el-fill-color-light);
-}
-
-.tab-context-menu .menu-divider {
-  height: 1px;
-  margin: 4px 0;
-  padding: 0;
-  background: var(--el-border-color-lighter);
-  cursor: default;
+  /* 三類連線畫面與主區四邊一致的留白；不加在畫面元件內距，避免疊成兩層 */
+  inset: 6px;
 }
 
 .tab-disconnected {
@@ -1267,13 +750,5 @@ defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
   align-items: center;
   justify-content: center;
   height: 100%;
-}
-
-.asset-group-label {
-  padding: 8px 4px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--el-text-color-secondary);
-  text-transform: uppercase;
 }
 </style>

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import Assets from '../Assets.vue'
 
 // 自 Assets.spec.js 拆出：該檔已 32 案、掛載成本高，
@@ -26,12 +26,22 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 // （慣例同 SessionDetail/AuditLogs/Alerts.spec.js）
 vi.setConfig({ testTimeout: 20_000 })
 
+// 深連結（?edit=、?apply=）以路由 query 驅動：本檔其餘案例 query 為空，行為不變
+const routeQuery = {}
+const routerReplace = vi.fn()
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: routeQuery }),
+  useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
+}))
+
+const getAssetMock = vi.fn()
 const getAssetListMock = vi.fn()
 const getAssetTagsMock = vi.fn()
 const testAssetConnectionMock = vi.fn()
 
 vi.mock('@/api/assets', () => ({
   getAssetList: (...args) => getAssetListMock(...args),
+  getAsset: (...args) => getAssetMock(...args),
   createAsset: vi.fn(),
   updateAsset: vi.fn(),
   deleteAsset: vi.fn(),
@@ -363,4 +373,93 @@ it('帳號不存在錯誤指到該項且保留其他項輸入', async () => {
   await flushPromises(); w.vm.openApplyDialog({ id: 1, name: 'app', access_state: 'approval_required' }); await flushPromises()
   w.vm.applyForm.reason = 'retain'; w.vm.applyForm.duration_minutes = 30; await flushPromises(); await w.vm.submitApply(); await flushPromises()
   expect(w.get('[data-test="quick-item-error"]').text()).toContain('第 1 項'); expect(w.vm.applyVisible).toBe(true); expect(w.vm.applyForm.reason).toBe('retain'); expect(w.vm.applyForm.duration_minutes).toBe(30)
+})
+
+
+// 申請深連結：工作區「前往資產頁申請」帶 ?apply=<id> 開新分頁到此
+describe('Assets 申請深連結 ?apply=', () => {
+  const DETAIL = { id: 32, name: 'db-a', protocol: 'mysql', host: 'h', port: 3306, active: true }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    for (const k of Object.keys(routeQuery)) delete routeQuery[k]
+    setUserRoles(['user'])
+    getAssetTagsMock.mockResolvedValue({ data: [] })
+    getAssetMock.mockResolvedValue(DETAIL)
+  })
+
+  // 詳情端點不帶存取狀態；以名稱查列表取得已標註的同一列
+  const listWith = (row) => {
+    getAssetListMock.mockImplementation((params = {}) =>
+      Promise.resolve(params.search
+        ? { data: [row], total: 1, page: 1, page_size: 100 }
+        : { data: [], total: 0, page: 1, page_size: 20 })
+    )
+  }
+
+  const lastReplaceQuery = () => routerReplace.mock.calls.at(-1)?.[0]?.query
+
+  it('需審核資產：自動開申請對話框，目標為該資產；參數被清除', async () => {
+    routeQuery.apply = '32'
+    routeQuery.keep = 'x'
+    listWith({ ...DETAIL, permission: 'connect', access_state: 'approval_required' })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getAssetMock).toHaveBeenCalledWith(32)
+    expect(getAssetListMock).toHaveBeenCalledWith({ search: 'db-a', page: 1, page_size: 100 })
+    expect(wrapper.vm.applyVisible).toBe(true)
+    expect(wrapper.vm.applyTarget.id).toBe(32)
+    expect(lastReplaceQuery()).toEqual({ keep: 'x' })
+  })
+
+  it.each([
+    ['pending', '審核中'],
+    ['connectable', '已可連線'],
+  ])('狀態已變（%s）：不開對話框，提示目前狀態；參數被清除', async (state, text) => {
+    routeQuery.apply = '32'
+    listWith({ ...DETAIL, permission: 'connect', access_state: state })
+    const infoSpy = vi.spyOn(ElMessage, 'info').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.applyVisible).toBe(false)
+    expect(infoSpy).toHaveBeenCalledTimes(1)
+    expect(infoSpy.mock.calls[0][0]).toContain(text)
+    expect(lastReplaceQuery()).not.toHaveProperty('apply')
+    infoSpy.mockRestore()
+  })
+
+  it('資產不存在或不可視（getAsset 拒絕）：不開對話框、不拋未處理例外；參數被清除', async () => {
+    routeQuery.apply = '999'
+    getAssetMock.mockRejectedValue(Object.assign(new Error('404'), { response: { status: 404 } }))
+    listWith({ ...DETAIL })
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.applyVisible).toBe(false)
+    expect(lastReplaceQuery()).not.toHaveProperty('apply')
+    errSpy.mockRestore()
+  })
+
+  it('非法 id 不查資產，只清參數', async () => {
+    routeQuery.apply = 'abc'
+    listWith({ ...DETAIL })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getAssetMock).not.toHaveBeenCalled()
+    expect(wrapper.vm.applyVisible).toBe(false)
+    expect(lastReplaceQuery()).not.toHaveProperty('apply')
+  })
+
+  it('既有 ?edit= 深連結仍開編輯並清參數', async () => {
+    setUserRoles(['admin'])
+    routeQuery.edit = '32'
+    listWith({ ...DETAIL })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getAssetMock).toHaveBeenCalledWith(32)
+    expect(wrapper.vm.form.id).toBe(32)
+    expect(wrapper.vm.applyVisible).toBe(false)
+    expect(lastReplaceQuery()).not.toHaveProperty('edit')
+  })
 })

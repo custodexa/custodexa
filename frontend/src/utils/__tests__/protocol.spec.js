@@ -8,6 +8,8 @@ import {
   protocolKind,
   protocolKindText,
   protocolKindShortText,
+  protocolIconKind,
+  protocolFullName,
 } from '../protocol'
 
 describe('protocol 分類（與後端 model.ProtocolType 對齊）', () => {
@@ -96,5 +98,36 @@ describe('共用協議人話映射', () => {
     expect(protocolKindText('telnet')).toBe('telnet')
     expect(protocolKindShortText('telnet')).toBe('telnet')
     expect(protocolKindText(undefined)).toBe('')
+  })
+})
+
+describe('側欄協定圖示分類與全名', () => {
+  it.each([
+    ['ssh', 'terminal'],
+    ['telnet', 'terminal'],
+    ['rdp', 'desktop'],
+    ['vnc', 'desktop'],
+    ['mysql', 'database'],
+    ['postgres', 'database'],
+    ['mssql', 'database'],
+    ['redis', 'database'],
+    ['k8s', 'container'],
+  ])('%s → %s', (code, kind) => {
+    expect(protocolIconKind(code)).toBe(kind)
+    expect(protocolIconKind(code.toUpperCase())).toBe(kind)
+  })
+
+  it('未知或缺值協定歸命令列類，不丟例外', () => {
+    expect(protocolIconKind('gopher')).toBe('terminal')
+    expect(protocolIconKind(undefined)).toBe('terminal')
+    expect(protocolIconKind('__proto__')).toBe('terminal')
+  })
+
+  it('全名取自三語文案，未知協定退回大寫代碼', () => {
+    expect(protocolFullName('mssql')).toBe('SQL Server 資料庫')
+    expect(protocolFullName('k8s')).toBe('Kubernetes 容器')
+    expect(protocolFullName('rdp')).toBe('RDP 遠端桌面')
+    expect(protocolFullName('gopher')).toBe('GOPHER')
+    expect(protocolFullName(undefined)).toBe('')
   })
 })

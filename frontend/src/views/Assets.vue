@@ -2014,6 +2014,7 @@ onMounted(() => {
   // 欄位偏好：角色解析之後載入（key 角色分域）
   loadColumnPrefs()
   openEditFromQuery()
+  openApplyFromQuery()
 })
 
 // 資產編輯深連結：?edit=<id> 直開編輯框並捲至
@@ -2037,6 +2038,47 @@ async function openEditFromQuery() {
     const query = { ...route.query }
     delete query.edit
     router?.replace({ query })
+  }
+}
+
+// 申請深連結：?apply=<id> 由工作區「前往資產頁申請」帶來。只在該資產仍需申請時
+// 自動開申請表單；審核中或已可連時改提示目前狀態。404（不存在或不可視）沿用
+// 攔截器的統一呈現、不洩漏存在性。無論結果都清掉參數，重新整理不再觸發
+async function openApplyFromQuery() {
+  const raw = route?.query?.apply
+  if (raw === undefined) return
+  const id = Number(raw)
+  try {
+    if (!Number.isInteger(id) || id <= 0) return
+    const detail = await getAsset(id)
+    const row = await findListedRow(detail)
+    if (needsRequest(row)) {
+      openApplyDialog(row)
+    } else if (isPendingRequest(row)) {
+      ElMessage.info(t('assets.applyLinkPending', { name: row.name }))
+    } else if (row.access_state === 'connectable') {
+      ElMessage.info(t('assets.applyLinkConnectable', { name: row.name }))
+    } else {
+      ElMessage.info(t('assets.applyLinkUnavailable', { name: row.name }))
+    }
+  } catch (err) {
+    console.error('[Assets] 申請深連結載入失敗:', err)
+  } finally {
+    const query = { ...route.query }
+    delete query.apply
+    router?.replace({ query })
+  }
+}
+
+// 資產詳情端點不帶存取狀態標註（那是列表回應的欄位），故以名稱查列表取同一
+// 資產的已標註列；查不到（例如列表另有篩選）時退用詳情，交由狀態判準回退
+async function findListedRow(detail) {
+  try {
+    const resp = await getAssetList({ search: detail.name, page: 1, page_size: 100 })
+    const listed = (resp?.data || []).find((a) => a.id === detail.id)
+    return listed ? { ...detail, ...listed } : detail
+  } catch {
+    return detail
   }
 }
 </script>

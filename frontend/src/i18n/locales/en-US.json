@@ -1454,7 +1454,10 @@
     "credentialPending": "Credential needed",
     "credentialPendingTooltip": "No login credential yet. Ask an administrator to set one under Edit → Accounts.",
     "credentialPendingTooltipAdmin": "No login credential yet. Under Edit → Accounts, pick a shared credential or add one for this asset.",
-    "filterCredentialPending": "Only assets needing a credential"
+    "filterCredentialPending": "Only assets needing a credential",
+    "applyLinkPending": "An access request for \"{name}\" is already under review. There is no need to submit another one.",
+    "applyLinkConnectable": "\"{name}\" is already available to connect. No request is needed.",
+    "applyLinkUnavailable": "Access to \"{name}\" cannot be requested from here."
   },
   "sessions": {
     "headerDesc": "Monitor active sessions and review history. An AI agent is an automated program acting for a person.",
@@ -1853,7 +1856,7 @@
     "loadFailed": "Failed to load asset information"
   },
   "workspace": {
-    "searchAssets": "Search assets",
+    "searchAssets": "Search name or host address",
     "noMatchingAssets": "No matching assets",
     "tabDisconnected": "{label} (Disconnected)",
     "k8sLogsReadonly": "Logs · Read-only",
@@ -1892,7 +1895,39 @@
     "accessPendingTip": "Your access request is under review. You can connect here once it is approved.",
     "closeUnsettledTitle": "Closing the tab ends the connection",
     "closeUnsettledMessage": "{n} console tab(s) have statements with unknown results or uncommitted transactions. Closing ends the connection; every submitted statement has already been written to the audit record.",
-    "closeUnsettledConfirm": "Close tab"
+    "closeUnsettledConfirm": "Close tab",
+    "refreshList": "Refresh list",
+    "refreshing": "Reloading the asset list",
+    "refreshFailed": "Could not refresh the list. Showing the last loaded results.",
+    "listIncomplete": "There are more assets than the load limit. The list is incomplete.",
+    "sidebarResize": "Resize sidebar",
+    "nodeToggle": "Expand or collapse {name}",
+    "hostAddress": "Host {host}",
+    "protocolName": {
+      "ssh": "SSH terminal",
+      "telnet": "Telnet terminal",
+      "rdp": "RDP remote desktop",
+      "vnc": "VNC remote desktop",
+      "mysql": "MySQL database",
+      "postgres": "PostgreSQL database",
+      "mssql": "SQL Server database",
+      "redis": "Redis database",
+      "k8s": "Kubernetes container"
+    },
+    "stateViewOnly": "View only",
+    "stateViewOnlyTip": "View only, cannot connect",
+    "stateReasonTip": "A reason is required when connecting",
+    "stateApprovalTip": "Requires an approved access request",
+    "statePendingTip": "Access request under review",
+    "explainViewOnlyTitle": "This host is view only",
+    "explainViewOnlyBody": "You can see this host in the list, but you do not have permission to connect to it from here. Contact your administrator if you need access.",
+    "explainPendingTitle": "Access request under review",
+    "explainPendingBody": "Your request has been submitted and is waiting for a reviewer. Once it is approved, click the refresh button above the list to connect from here.",
+    "explainApprovalTitle": "This host requires approval",
+    "explainApprovalBody": "Submit an access request on the assets page first. You can connect from here after a reviewer approves it.",
+    "goApply": "Request access on assets page",
+    "explainClose": "Close",
+    "tabTitleConsole": "{label} (query console)"
   },
   "dbConsole": {
     "connecting": "Connecting...",

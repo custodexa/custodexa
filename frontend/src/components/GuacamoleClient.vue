@@ -211,6 +211,12 @@ let remoteFs = null
 // 檔案系統掛載才顯示上傳入口（未啟用 SFTP 的 VNC 不出現，RDP 磁碟就緒前也不出現）
 const hasRemoteFs = ref(false)
 let resizeObserver = null
+// 容器尺寸的單一量測來源（整數 px、向下取整）：連線時送出的尺寸、resize 送出的
+// 尺寸與 fitDisplay 的縮放都以它為準，避免兩組量測（含／不含捲軸、小數 px）
+// 互相矛盾而讓縮放後的畫面大於容器
+let measuredSize = { width: 0, height: 0 }
+// 最後一次實際套用（送往伺服器）的尺寸；量測結果與它相同即不重送、不重算、不重繪
+let appliedSize = { width: 0, height: 0 }
 
 const statusType = computed(() => {
   if (connected.value) return 'success'
@@ -360,18 +366,20 @@ function setupResizeObserver() {
 
   resizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
-      const { width, height } = entry.contentRect
+      const width = Math.floor(entry.contentRect.width)
+      const height = Math.floor(entry.contentRect.height)
       if (width <= 0 || height <= 0) continue
+      measuredSize = { width, height }
 
       // 連線前按下連線鈕但尺寸未就緒：此刻補發起連線
       if (pendingConnect.value) {
         pendingConnect.value = false
-        doConnect(Math.floor(width), Math.floor(height))
+        doConnect(width, height)
         continue
       }
 
       if (connected.value && guacClient) {
-        scheduleResize(Math.floor(width), Math.floor(height))
+        scheduleResize(width, height)
       }
     }
   })
@@ -391,7 +399,10 @@ function scheduleResize(width, height) {
 // 全圖形協議（RDP/VNC）皆同步尺寸：RDP 走 display-update 由伺服器重設解析度，
 // VNC 伺服器框緩衝固定，由 fitDisplay 縮放填滿容器
 function handleResize(width, height) {
-  if (!connected.value || !guacClient) return
+  if (!connected.value || !guacClient || width <= 0 || height <= 0) return
+  // 尺寸未變不重套：重送尺寸、重算縮放或重繪都可能再觸發一次版面變化，形成回饋迴圈
+  if (width === appliedSize.width && height === appliedSize.height) return
+  appliedSize = { width, height }
 
   console.log(`[GuacamoleClient] Resizing ${props.protocol} to ${width}x${height}`)
   debugLastMessage.value = t('guacClient.debugResizing', { width, height })
@@ -404,24 +415,22 @@ function handleResize(width, height) {
     console.error('[GuacamoleClient] Resize error:', err)
   }
   fitDisplay()
-  // RDP 放大後新區域伺服器未重繪（黑屏至下次輸入）→ 同連線後模式 nudge 重繪
-  triggerRdpRepaint()
+  // 放大後的新區域由伺服器回應 display-update 時重繪，此路徑不合成任何輸入
 }
 
-// RDP 顯示激活：推伺服器重繪目前框（連線首幀／resize 放大黑屏，同根因）。
-// 合成 mousemove 對「連線首幀」夠用、對「放大」無效；改補一個協議層無害 Shift 按放
-// （直接走 guac 協議當 RDP 輸入觸發重繪，不輸入任何字元、無副作用），延遲拉長確保伺服器已 resize。
+// RDP 連線首幀黑屏：連線建立後合成一次 mousemove 推伺服器重繪目前框。
+// 只用於首幀；resize 路徑不呼叫，也不合成任何按鍵（反覆送修飾鍵可能在遠端觸發
+// 相黏鍵等系統行為）。
 function triggerRdpRepaint() {
   if (props.protocol !== 'rdp' || !guacClient) return
+  const client = guacClient
   setTimeout(() => {
+    if (client !== guacClient) return
     try {
-      const el = guacClient.getDisplay().getElement()
+      const el = client.getDisplay().getElement()
       el.dispatchEvent(new MouseEvent('mousemove', {
         bubbles: true, cancelable: true, view: window, clientX: 10, clientY: 10
       }))
-      const KEYSYM_SHIFT = 0xffe1
-      guacClient.sendKeyEvent(1, KEYSYM_SHIFT)
-      guacClient.sendKeyEvent(0, KEYSYM_SHIFT)
     } catch (err) {
       console.warn('[GuacamoleClient] RDP 重繪 nudge 失敗:', err)
     }
@@ -453,11 +462,13 @@ function fitDisplay() {
   const remoteHeight = display.getHeight()
   if (remoteWidth === 0 || remoteHeight === 0) return
 
-  const containerWidth = displayContainer.value.clientWidth
-  const containerHeight = displayContainer.value.clientHeight
+  // 與送往伺服器的尺寸同一組量測；不另讀 clientWidth（那組數值與 ResizeObserver
+  // 的取整結果不一致時，縮放後的畫面會比容器大而被裁切）
+  const { width: containerWidth, height: containerHeight } = measuredSize
   if (containerWidth === 0 || containerHeight === 0) return
 
-  const scale = Math.min(containerWidth / remoteWidth, containerHeight / remoteHeight)
+  // 向下取到 1e-4，確保縮放後外框不大於容器
+  const scale = Math.floor(Math.min(containerWidth / remoteWidth, containerHeight / remoteHeight) * 1e4) / 1e4
   display.scale(scale)
 }
 
@@ -492,8 +503,11 @@ function connect() {
 
   // 不使用寫死的 fallback 解析度：容器尚未完成 layout（尺寸為零）時
   // 延後到 ResizeObserver 回報首個非零尺寸再連線
-  const containerWidth = displayContainer.value?.clientWidth || 0
-  const containerHeight = displayContainer.value?.clientHeight || 0
+  // 取整口徑與 ResizeObserver 相同（向下取整）；容器無 padding／border、
+  // 不出捲軸，外框即內容區
+  const rect = displayContainer.value?.getBoundingClientRect()
+  const containerWidth = Math.floor(rect?.width || 0)
+  const containerHeight = Math.floor(rect?.height || 0)
   if (containerWidth === 0 || containerHeight === 0) {
     console.log('[GuacamoleClient] 容器尺寸未就緒，等待 layout 完成後連線')
     pendingConnect.value = true
@@ -520,6 +534,9 @@ async function doConnect(containerWidth, containerHeight) {
     console.log('[GuacamoleClient] 開始連線...', `${containerWidth}x${containerHeight}`)
     displayWidth.value = containerWidth
     displayHeight.value = containerHeight
+    // 連線 URL 帶的尺寸即首次套用的尺寸：之後量到相同值不重送
+    measuredSize = { width: containerWidth, height: containerHeight }
+    appliedSize = { width: containerWidth, height: containerHeight }
 
     // 兩段式連線：先換一次性 token，URL 不帶 JWT；
     // warn 檔命中傳輸風險時內含同意對話框（428→立據→重試），拒絕即中止
@@ -607,8 +624,10 @@ async function doConnect(containerWidth, containerHeight) {
         startPolicyObservation()
         console.log('[GuacamoleClient v6.1] 連線成功')
 
-        // RDP 連線首幀黑屏：nudge 重繪（與 resize 放大黑屏同根因，共用 triggerRdpRepaint）
+        // RDP 連線首幀黑屏：nudge 重繪一次（只在此處呼叫）
         triggerRdpRepaint()
+        // 連線握手期間容器尺寸若已改變（例如收合側欄），補送一次；相同則由守衛略過
+        scheduleResize(measuredSize.width, measuredSize.height)
       } else if (state === Guacamole.Client.State.CONNECTING) {
         console.log('[GuacamoleClient v6.1] 正在連線...')
         debugLastMessage.value = t('guacClient.debugConnecting')
@@ -898,7 +917,10 @@ defineExpose({
   __test__setConnectedClient(client) {
     guacClient = client
     connected.value = true
-  }
+  },
+  // 尺寸同步與縮放：真 ResizeObserver／guacd 在單測環境不可得，直接驅動
+  handleResize,
+  fitDisplay
 })
 </script>
 
@@ -970,9 +992,13 @@ defineExpose({
 .policy-notice-dismiss:hover { color: var(--ot-text-primary); }
 .policy-notice-dismiss:focus-visible { outline: 2px solid var(--ot-primary); outline-offset: 2px; }
 
+/* overflow: hidden——遠端游標圖像移到邊緣時會溢出畫面元素；若容器可捲動，
+   溢出會長出捲軸、縮小可用寬高、觸發 resize 與重新縮放，形成反覆縮放的迴圈。
+   縮放已保證畫面不大於容器，這裡不需要捲動 */
 .display-container {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
   background: transparent; /* 修復：讓 Guacamole Canvas 正確顯示 */
   position: relative;
 }

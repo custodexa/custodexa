@@ -7,8 +7,9 @@
  * 兩條紀律：
  *   1. **前端不另創可見性判準**。此處只把伺服端已經算好的狀態翻成呈現態，
  *      強制點一律在 connect-token 簽發時的政策閘。
- *   2. **欄位缺席回退既有行為**。舊回應、僅具檢視授權者、值域外的新值都回
- *      `open`——入口照常顯示，拒絕發生在簽發點，而不是靜默把入口藏起來。
+ *   2. **欄位缺席回退既有行為**。舊回應、值域外的新值都回 `open`——入口照常
+ *      顯示，拒絕發生在簽發點，而不是靜默把入口藏起來。僅具檢視授權者另由
+ *      列表的 `permission` 欄判讀（`view`），呈現為僅檢視。
  *
  * 管理者與稽核角色不做前端分化：他們的連線資格由後端角色與政策決定，
  * 在此提前鎖定只會製造與實際結果矛盾的畫面。
@@ -40,14 +41,31 @@ export function isAccessPending(asset, { isPrivileged = false } = {}) {
 }
 
 /**
- * 連線入口的三種呈現態：
- *   `open`    照常提供入口（含欄位缺席的回退）
- *   `locked`  需申請：鎖定並指引至資產頁，本頁不內嵌申請流
- *   `pending` 審核中：停用，等待核准
- * @returns {'open'|'locked'|'pending'}
+ * 是否僅具檢視授權（列表回應的 `permission` 欄；特權角色不分化）
+ * @param {object} asset 資產列
+ * @param {{ isPrivileged?: boolean }} viewer 檢視者角色
+ */
+export function isViewOnly(asset, { isPrivileged = false } = {}) {
+  return asset?.active !== false && !isPrivileged && asset?.permission === 'view'
+}
+
+/**
+ * 連線入口的五種呈現態（判定順序即優先序）：
+ *   `view_only` 僅具檢視授權：不發簽發，點擊說明無法連線
+ *   `pending`   申請審核中：不發簽發，點擊說明核准後重新整理即可連
+ *   `approval`  需審核：鎖定，點擊說明並指引到資產頁申請（本頁不內嵌申請流）
+ *   `reason`    需填理由：照常發起連線，由連線流程就地要求填理由
+ *   `open`      照常提供入口（含欄位缺席、特權角色、停用資產的回退）
+ * @returns {'view_only'|'pending'|'approval'|'reason'|'open'}
  */
 export function assetEntryState(asset, viewer = {}) {
+  if (isViewOnly(asset, viewer)) return 'view_only'
   if (isAccessPending(asset, viewer)) return 'pending'
-  if (needsAccessRequest(asset, viewer)) return 'locked'
+  if (needsAccessRequest(asset, viewer)) {
+    return asset.access_state === 'approval_required' ? 'approval' : 'reason'
+  }
   return 'open'
 }
+
+/** 不發起連線票簽發的呈現態（點擊只給說明） */
+export const BLOCKED_ENTRY_STATES = Object.freeze(['view_only', 'pending', 'approval'])

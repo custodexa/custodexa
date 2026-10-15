@@ -1454,7 +1454,10 @@
     "credentialPending": "待配憑證",
     "credentialPendingTooltip": "尚未設定登入憑證。請管理員在「編輯 → 帳號」中指定。",
     "credentialPendingTooltipAdmin": "尚未設定登入憑證。請在「編輯 → 帳號」中指定共用憑證或填寫這台專用的帳號。",
-    "filterCredentialPending": "只看待配憑證"
+    "filterCredentialPending": "只看待配憑證",
+    "applyLinkPending": "「{name}」的連線申請正在審核中，不需要再送一次。",
+    "applyLinkConnectable": "「{name}」目前已可連線，不需要申請。",
+    "applyLinkUnavailable": "「{name}」目前無法從這裡申請連線。"
   },
   "sessions": {
     "headerDesc": "監控活動連線與檢視歷史記錄。AI agent 指代人操作的自動化程式。",
@@ -1853,8 +1856,8 @@
     "loadFailed": "載入資產資訊失敗"
   },
   "workspace": {
-    "searchAssets": "搜尋資產",
-    "noMatchingAssets": "無符合資產",
+    "searchAssets": "搜尋名稱或主機位址",
+    "noMatchingAssets": "沒有符合的資產",
     "tabDisconnected": "{label} (已斷線)",
     "k8sLogsReadonly": "日誌·唯讀",
     "k8sTabLogs": "{pod} · 日誌",
@@ -1892,7 +1895,39 @@
     "accessPendingTip": "連線申請審核中，核准後即可在此連線",
     "closeUnsettledTitle": "關閉分頁將結束連線",
     "closeUnsettledMessage": "有 {n} 個主控台分頁存在結果未知的語句或未提交的交易。關閉即結束連線；已送出的語句都已留下稽核紀錄。",
-    "closeUnsettledConfirm": "關閉分頁"
+    "closeUnsettledConfirm": "關閉分頁",
+    "refreshList": "重新整理列表",
+    "refreshing": "正在重新載入資產列表",
+    "refreshFailed": "列表更新失敗，目前顯示的是上次載入的內容",
+    "listIncomplete": "資產數量超過載入上限，列表未完整載入",
+    "sidebarResize": "調整側欄寬度",
+    "nodeToggle": "展開或收合 {name}",
+    "hostAddress": "主機位址 {host}",
+    "protocolName": {
+      "ssh": "SSH 終端",
+      "telnet": "Telnet 終端",
+      "rdp": "RDP 遠端桌面",
+      "vnc": "VNC 遠端桌面",
+      "mysql": "MySQL 資料庫",
+      "postgres": "PostgreSQL 資料庫",
+      "mssql": "SQL Server 資料庫",
+      "redis": "Redis 資料庫",
+      "k8s": "Kubernetes 容器"
+    },
+    "stateViewOnly": "僅檢視",
+    "stateViewOnlyTip": "只能檢視，無法連線",
+    "stateReasonTip": "連線時需填理由",
+    "stateApprovalTip": "需先申請、經審核後才能連線",
+    "statePendingTip": "連線申請審核中",
+    "explainViewOnlyTitle": "這台主機只能檢視",
+    "explainViewOnlyBody": "你可以在列表看到這台主機，但沒有連線權限，所以無法從這裡開啟連線。需要連線請洽系統管理員。",
+    "explainPendingTitle": "連線申請審核中",
+    "explainPendingBody": "你的申請已送出，正在等審核人審核。核准後按列表上方的重新整理鈕，就能從這裡連線。",
+    "explainApprovalTitle": "這台主機需要審核",
+    "explainApprovalBody": "連線前要先到資產頁提出申請，審核人核准後才能從這裡連線。",
+    "goApply": "前往資產頁申請",
+    "explainClose": "關閉說明",
+    "tabTitleConsole": "{label}（查詢主控台）"
   },
   "dbConsole": {
     "connecting": "正在建立連線...",

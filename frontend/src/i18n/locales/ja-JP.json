@@ -1454,7 +1454,10 @@
     "credentialPending": "資格情報未設定",
     "credentialPendingTooltip": "ログイン資格情報が未設定です。管理者に「編集 → アカウント」での設定を依頼してください。",
     "credentialPendingTooltipAdmin": "ログイン資格情報が未設定です。「編集 → アカウント」で共有資格情報を選ぶか、この資産専用のアカウントを追加してください。",
-    "filterCredentialPending": "資格情報未設定のみ"
+    "filterCredentialPending": "資格情報未設定のみ",
+    "applyLinkPending": "「{name}」の接続申請は審査中です。再度申請する必要はありません。",
+    "applyLinkConnectable": "「{name}」はすでに接続できます。申請は不要です。",
+    "applyLinkUnavailable": "「{name}」はここから接続を申請できません。"
   },
   "sessions": {
     "headerDesc": "アクティブな接続の監視と履歴の確認。AI エージェントは人に代わって操作する自動化プログラムです。",
@@ -1853,7 +1856,7 @@
     "loadFailed": "資産情報の読み込みに失敗しました"
   },
   "workspace": {
-    "searchAssets": "資産を検索",
+    "searchAssets": "名前またはホストアドレスで検索",
     "noMatchingAssets": "一致する資産がありません",
     "tabDisconnected": "{label}（切断済み）",
     "k8sLogsReadonly": "ログ·読み取り専用",
@@ -1892,7 +1895,39 @@
     "accessPendingTip": "接続申請は審査中です。承認されるとここから接続できます",
     "closeUnsettledTitle": "タブを閉じると接続が終了します",
     "closeUnsettledMessage": "結果が不明な文、または未コミットのトランザクションを持つコンソールタブが {n} 件あります。閉じると接続が終了します。送信済みの文はすべて監査記録に残っています。",
-    "closeUnsettledConfirm": "タブを閉じる"
+    "closeUnsettledConfirm": "タブを閉じる",
+    "refreshList": "一覧を再読み込み",
+    "refreshing": "資産一覧を再読み込みしています",
+    "refreshFailed": "一覧を更新できませんでした。前回読み込んだ内容を表示しています",
+    "listIncomplete": "資産数が読み込み上限を超えたため、一覧の一部しか表示されていません",
+    "sidebarResize": "サイドバーの幅を調整",
+    "nodeToggle": "{name} を展開または折りたたむ",
+    "hostAddress": "ホストアドレス {host}",
+    "protocolName": {
+      "ssh": "SSH ターミナル",
+      "telnet": "Telnet ターミナル",
+      "rdp": "RDP リモートデスクトップ",
+      "vnc": "VNC リモートデスクトップ",
+      "mysql": "MySQL データベース",
+      "postgres": "PostgreSQL データベース",
+      "mssql": "SQL Server データベース",
+      "redis": "Redis データベース",
+      "k8s": "Kubernetes コンテナ"
+    },
+    "stateViewOnly": "閲覧のみ",
+    "stateViewOnlyTip": "閲覧のみで接続できません",
+    "stateReasonTip": "接続時に理由の入力が必要です",
+    "stateApprovalTip": "申請して承認されると接続できます",
+    "statePendingTip": "接続申請は審査中です",
+    "explainViewOnlyTitle": "このホストは閲覧のみです",
+    "explainViewOnlyBody": "一覧には表示されますが接続権限がないため、ここから接続できません。接続が必要な場合はシステム管理者にお問い合わせください。",
+    "explainPendingTitle": "接続申請は審査中です",
+    "explainPendingBody": "申請は送信済みで、承認者の審査を待っています。承認後に一覧上部の再読み込みボタンを押すと、ここから接続できます。",
+    "explainApprovalTitle": "このホストには承認が必要です",
+    "explainApprovalBody": "接続する前に資産ページで申請してください。承認者が承認すると、ここから接続できます。",
+    "goApply": "資産ページで申請する",
+    "explainClose": "説明を閉じる",
+    "tabTitleConsole": "{label}（クエリコンソール）"
   },
   "dbConsole": {
     "connecting": "接続しています...",

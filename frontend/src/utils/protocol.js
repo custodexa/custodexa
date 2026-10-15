@@ -52,3 +52,32 @@ export const protocolKindShortText = protocol => {
   const kind = protocolKind(protocol)
   return kind ? t(`enum.protocolKindShort.${kind}`) : String(protocol || '')
 }
+
+// 側欄列首的協定類別圖示：只分四類，協定全名交給 hover 與輔助技術標籤。
+// 與 protocolKind 分開：那一組是「終端／桌面／資料庫」的人話分類，
+// 此處另把 k8s 拆成容器，讓容器叢集在列表上一眼可辨
+const PROTOCOL_ICON_KINDS = {
+  ssh: 'terminal',
+  telnet: 'terminal',
+  rdp: 'desktop',
+  vnc: 'desktop',
+  mysql: 'database',
+  postgres: 'database',
+  mssql: 'database',
+  redis: 'database',
+  k8s: 'container',
+}
+
+/** @returns {'terminal'|'desktop'|'database'|'container'} 未知協定歸命令列類 */
+export const protocolIconKind = protocol => {
+  const code = String(protocol || '').toLowerCase()
+  return Object.hasOwn(PROTOCOL_ICON_KINDS, code) ? PROTOCOL_ICON_KINDS[code] : 'terminal'
+}
+
+/** 協定全名（hover 與 aria-label 用）；未知協定以大寫代碼呈現 */
+export const protocolFullName = protocol => {
+  const code = String(protocol || '').toLowerCase()
+  return Object.hasOwn(PROTOCOL_ICON_KINDS, code)
+    ? t(`workspace.protocolName.${code}`)
+    : String(protocol || '').toUpperCase()
+}

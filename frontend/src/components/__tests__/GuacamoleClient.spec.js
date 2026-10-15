@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import ElementPlus from 'element-plus'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
@@ -9,8 +11,10 @@ enableAutoUnmount(afterEach)
 
 // 元件在 module 層讀取 window.Guacamole，必須在元件 import 前注入 mock。
 // StringReader 立即回放注入的 chunk，StringWriter 記錄送出的文字供斷言
-const { sentClipboard } = vi.hoisted(() => {
+const { sentClipboard, clients } = vi.hoisted(() => {
   const sentClipboard = []
+  // 完整連線流程用的 client：記錄 sendSize／sendKeyEvent 與 display.scale 收到的值
+  const clients = []
 
   class StringReaderMock {
     constructor(stream) {
@@ -35,15 +39,49 @@ const { sentClipboard } = vi.hoisted(() => {
     }
   }
 
+  class ClientMock {
+    static State = { CONNECTING: 1, CONNECTED: 3, DISCONNECTED: 5 }
+    constructor() {
+      clients.push(this)
+      const element = document.createElement('div')
+      this.element = element
+      this.remote = { width: 800, height: 600 }
+      this.scales = []
+      const display = {
+        getElement: () => element,
+        getWidth: () => this.remote.width,
+        getHeight: () => this.remote.height,
+        getScale: () => this.scales.at(-1) ?? 1,
+        scale: (v) => { this.scales.push(v) },
+      }
+      this.getDisplay = () => display
+      this.createClipboardStream = vi.fn(() => ({}))
+      this.sendKeyEvent = vi.fn()
+      this.sendMouseState = vi.fn()
+      this.sendSize = vi.fn()
+      this.connect = vi.fn()
+      this.disconnect = vi.fn()
+    }
+  }
+
   globalThis.window.Guacamole = {
     StringReader: StringReaderMock,
     StringWriter: StringWriterMock,
     WebSocketTunnel: function () {},
-    Client: function () {},
+    Client: ClientMock,
+    Mouse: class {},
+    Keyboard: class {},
   }
 
-  return { sentClipboard }
+  return { sentClipboard, clients }
 })
+
+vi.mock('@/api/connect', () => ({
+  createConnectTokenWithConsent: vi.fn().mockResolvedValue({ connect_token: 'test' }),
+}))
+vi.mock('@/api/files', () => ({
+  getTransferCapabilities: vi.fn().mockResolvedValue({ capabilities: {} }),
+}))
 
 import GuacamoleClient from '../GuacamoleClient.vue'
 
@@ -196,5 +234,143 @@ describe('GuacamoleClient guacd 逾時錯誤查譯', () => {
     expect(wrapper.vm.guacErrorMessage({ code: 519 })).toBe('未知錯誤')
     expect(wrapper.vm.guacErrorMessage(undefined)).toBe('未知錯誤')
     wrapper.unmount()
+  })
+})
+
+// 圖形畫面尺寸同步與縮放：游標停在畫面邊緣時不得出現「出捲軸 → 縮小 → 合成輸入
+// 把游標拉回 → 捲軸消失 → 放大」的回饋迴圈，縮放後的畫面不得大於容器
+describe('GuacamoleClient 尺寸同步與縮放', () => {
+  let resizeCallback
+
+  const mountRdp = () =>
+    mount(GuacamoleClient, {
+      props: { assetId: 77, protocol: 'rdp', assetName: '測試 RDP' },
+      global: { plugins: [ElementPlus] },
+    })
+
+  // 走真實連線流程：ResizeObserver 回報首個尺寸 → 簽發 → 建 client → 狀態 CONNECTED
+  const connectAt = async (width, height) => {
+    const wrapper = mountRdp()
+    resizeCallback([{ contentRect: { width, height } }])
+    await flushPromises()
+    const client = clients.at(-1)
+    return { wrapper, client }
+  }
+
+  const countMouseMoves = (element) => {
+    const moves = []
+    element.addEventListener('mousemove', (e) => moves.push(e))
+    return moves
+  }
+
+  beforeEach(() => {
+    clients.length = 0
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { this.callback = callback }
+      observe(element) { if (element.classList.contains('display-container')) resizeCallback = this.callback }
+      disconnect() {}
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('縮放以量測尺寸為準且向下取整：縮放後外框不大於容器', async () => {
+    const { wrapper, client } = await connectAt(1111.7, 624.9)
+    client.remote = { width: 1126, height: 639 }
+    wrapper.vm.fitDisplay()
+    const scale = client.scales.at(-1)
+    expect(scale).toBeGreaterThan(0)
+    expect(scale * 1126).toBeLessThanOrEqual(1111)
+    expect(scale * 639).toBeLessThanOrEqual(624)
+    // 精度 1e-4，且只比理論值小不到 1e-4
+    expect(Math.round(scale * 1e4)).toBe(scale * 1e4)
+    expect(Math.min(1111 / 1126, 624 / 639) - scale).toBeLessThan(1e-4)
+  })
+
+  it('fitDisplay 不讀 clientWidth／clientHeight（避免與 ResizeObserver 取整不一致）', async () => {
+    const { wrapper, client } = await connectAt(1111, 624)
+    const container = wrapper.find('.display-container').element
+    const reads = vi.fn(() => 9999)
+    Object.defineProperty(container, 'clientWidth', { configurable: true, get: reads })
+    Object.defineProperty(container, 'clientHeight', { configurable: true, get: reads })
+    client.remote = { width: 1126, height: 639 }
+    wrapper.vm.fitDisplay()
+    expect(reads).not.toHaveBeenCalled()
+    expect(client.scales.at(-1) * 1126).toBeLessThanOrEqual(1111)
+  })
+
+  it('連續兩次相同尺寸只送一次 sendSize、只重算一次縮放', async () => {
+    const { wrapper, client } = await connectAt(800, 600)
+    client.onstatechange(3)
+    await flushPromises()
+    client.sendSize.mockClear()
+    const scalesBefore = client.scales.length
+
+    wrapper.vm.handleResize(1000, 700)
+    wrapper.vm.handleResize(1000, 700)
+
+    expect(client.sendSize).toHaveBeenCalledTimes(1)
+    expect(client.sendSize).toHaveBeenCalledWith(1000, 700)
+    expect(client.scales.length - scalesBefore).toBe(1)
+  })
+
+  it('量到與連線時相同的尺寸不重送（連線 URL 的尺寸即首次套用）', async () => {
+    const { client } = await connectAt(800, 600)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    client.onstatechange(3)
+    resizeCallback([{ contentRect: { width: 800.6, height: 600.2 } }])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(client.sendSize).not.toHaveBeenCalled()
+  })
+
+  it('連線後首幀合成重繪恰好一次，且不送任何按鍵', async () => {
+    const { client } = await connectAt(800, 600)
+    const moves = countMouseMoves(client.element)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    client.onstatechange(3)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(moves).toHaveLength(1)
+    expect(client.sendKeyEvent).not.toHaveBeenCalled()
+  })
+
+  it('resize 路徑不合成 mousemove、不送 Shift 等按鍵', async () => {
+    const { client } = await connectAt(800, 600)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    client.onstatechange(3)
+    await vi.advanceTimersByTimeAsync(1000)
+    const moves = countMouseMoves(client.element)
+
+    resizeCallback([{ contentRect: { width: 1024, height: 700 } }])
+    await vi.advanceTimersByTimeAsync(1000)
+    resizeCallback([{ contentRect: { width: 900, height: 650 } }])
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(client.sendSize).toHaveBeenCalledTimes(2)
+    expect(moves).toHaveLength(0)
+    expect(client.sendKeyEvent).not.toHaveBeenCalled()
+  })
+
+  it('握手期間容器尺寸改變時，連線後補送一次新尺寸', async () => {
+    const { client } = await connectAt(800, 600)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    // 尚未 CONNECTED：只記錄量測，不排程
+    resizeCallback([{ contentRect: { width: 1000, height: 600 } }])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(client.sendSize).not.toHaveBeenCalled()
+    client.onstatechange(3)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(client.sendSize).toHaveBeenCalledTimes(1)
+    expect(client.sendSize).toHaveBeenCalledWith(1000, 600)
+  })
+
+  it('畫面容器不捲動：游標圖像溢出不得長出捲軸', () => {
+    const src = readFileSync(join(process.cwd(), 'src', 'components', 'GuacamoleClient.vue'), 'utf8')
+    const block = src.match(/\.display-container\s*\{([^}]*)\}/)
+    expect(block).not.toBeNull()
+    expect(block[1]).toMatch(/overflow:\s*hidden;/)
+    expect(block[1]).not.toMatch(/overflow:\s*(auto|scroll)/)
   })
 })

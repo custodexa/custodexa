@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import Workspace from '../Workspace.vue'
+import WorkspaceAssetSidebar from '@/components/workspace/WorkspaceAssetSidebar.vue'
 import { getAsset, getAssetList } from '@/api/assets'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { listAssetAccounts } from '@/api/assetAccounts'
+import { createConnectToken, createConnectTokenWithConsent } from '@/api/connect'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -14,7 +16,15 @@ enableAutoUnmount(afterEach)
 
 // 會話元件以 stub 取代：工作區測試聚焦頁籤狀態邏輯
 vi.mock('@/components/SshTerminal.vue', () => ({
-  default: { name: 'SshTerminal', props: ['assetId'], template: '<div class="stub-ssh" />' },
+  default: {
+    name: 'SshTerminal',
+    props: ['assetId'],
+    // 掛載計數：重新整理列表不得重建既有分頁元件
+    mounted() {
+      globalThis.__wsSshMounts = (globalThis.__wsSshMounts || 0) + 1
+    },
+    template: '<div class="stub-ssh" />',
+  },
 }))
 vi.mock('@/components/GuacamoleClient.vue', () => ({
   default: { name: 'GuacamoleClient', props: ['assetId', 'protocol', 'assetName'], template: '<div class="stub-guac" />' },
@@ -69,8 +79,18 @@ vi.mock('@/components/AccountSelector.vue', () => ({
 }))
 
 const routeQuery = { asset: undefined }
+const routerPush = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: routeQuery }),
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
+}))
+
+// 簽發只發生在分頁元件（本檔以 stub 取代）；工作區本身不得呼叫
+vi.mock('@/api/connect', () => ({
+  createConnectToken: vi.fn(),
+  createConnectTokenWithConsent: vi.fn(),
+  createTransmissionConsent: vi.fn(),
+  confirmTransmissionRisks: vi.fn(),
 }))
 
 vi.mock('@/api/assets', () => ({
@@ -90,6 +110,8 @@ vi.mock('@/api/assetAccounts', () => ({ listAssetAccounts: vi.fn() }))
 
 const mountWorkspace = () =>
   mount(Workspace, { global: { plugins: [ElementPlus] } })
+// 資產列表由側欄元件持有
+const sidebarAssets = (wrapper) => wrapper.findComponent(WorkspaceAssetSidebar).vm.assets
 
 describe('Workspace 頁籤邏輯', () => {
   beforeEach(() => {
@@ -548,19 +570,19 @@ describe('Workspace 查詢主控台入口', () => {
     expect(wrapper.vm.tabs).toHaveLength(1)
   })
 
-  it('三種存取狀態各自呈現；鎖定與審核中一律不發簽發', async () => {
+  it('存取狀態各自呈現；需審核與審核中一律不發簽發', async () => {
     const wrapper = mountWorkspace()
     await flushPromises()
 
     expect(wrapper.vm.entryState(dbAsset(20))).toBe('open')
-    expect(wrapper.vm.entryState(dbAsset(21))).toBe('locked')
+    expect(wrapper.vm.entryState(dbAsset(21))).toBe('approval')
     expect(wrapper.vm.entryState(dbAsset(22))).toBe('pending')
 
     const rows = wrapper.findAll('.asset-item')
     const stateOf = (name) =>
       rows.find((r) => r.text().includes(name)).attributes('data-access-state')
     expect(stateOf('mysql-a')).toBe('open')
-    expect(stateOf('pg-locked')).toBe('locked')
+    expect(stateOf('pg-locked')).toBe('approval')
     expect(stateOf('mssql-pending')).toBe('pending')
 
     // 兩個入口一起分化：整列與主控台鈕都不得發起簽發
@@ -573,7 +595,7 @@ describe('Workspace 查詢主控台入口', () => {
     expect(wrapper.vm.tabs).toHaveLength(0)
   })
 
-  // 側欄只有一列的寬度：名稱、狀態圖示、主控台入口、協議 chip 共用它。
+  // 側欄只有一列的寬度：名稱、狀態標示、主控台入口共用它。
   // 名稱被擠掉時，同前綴的兩個資產在畫面上就分不出來
   it('側欄資產名截斷時仍給得出全名，主控台入口不佔用名稱的橫向空間', async () => {
     const wrapper = mountWorkspace()
@@ -581,8 +603,7 @@ describe('Workspace 查詢主控台入口', () => {
 
     const row = wrapper.findAll('.asset-item')
       .find((r) => r.text().includes('mysql-a'))
-    const name = row.find('.asset-item-name')
-    expect(name.attributes('title')).toBe('mysql-a')
+    expect(row.attributes('aria-label')).toBe('mysql-a')
 
     // 入口不得再是隨語言變長的文字（日文的「コンソール」會吃掉半個名稱欄）
     const entry = row.find('[data-test="console-entry"]')
@@ -650,5 +671,297 @@ describe('Workspace 查詢主控台入口', () => {
     }
     // 未收束確認必須帶得出筆數（少了佔位符就只剩一句空話）
     expect(load('zh-TW').workspace.closeUnsettledMessage).toContain('{n}')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 側欄：可拖寬、協定圖示、名稱截斷、分組樹、搜尋、存取狀態、重新整理、全量載入
+// ---------------------------------------------------------------------------
+
+// 可控的 ResizeObserver：測試主動送出量測結果
+const roInstances = []
+class ResizeObserverStub {
+  constructor(cb) {
+    this.cb = cb
+    this.els = new Set()
+    roInstances.push(this)
+  }
+  observe(el) { this.els.add(el) }
+  unobserve(el) { this.els.delete(el) }
+  disconnect() { this.els.clear() }
+}
+const fireResize = (match, width) => {
+  for (const ro of roInstances) {
+    const entries = [...ro.els]
+      .filter(match)
+      .map((el) => ({ target: el, contentRect: { width, height: 20 } }))
+    if (entries.length) ro.cb(entries)
+  }
+}
+
+const sidebarStyleWidth = (wrapper) => wrapper.find('.workspace-sidebar').attributes('style') || ''
+
+const resetSidebarEnv = () => {
+  vi.clearAllMocks()
+  routeQuery.asset = undefined
+  localStorage.clear()
+  roInstances.length = 0
+  listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
+}
+
+const withAssets = (list) => getAssetList.mockResolvedValue({ data: list, total: list.length })
+describe('Workspace 側欄收合與拖寬', () => {
+  beforeEach(() => {
+    resetSidebarEnv()
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+  })
+
+  const drag = async (wrapper, from, to) => {
+    await wrapper.find('[data-test="sidebar-resizer"]').trigger('pointerdown', { clientX: from, button: 0 })
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: to }))
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: to }))
+    await flushPromises()
+  }
+
+  it('收合後展開回到上次寬度；鍵盤左右鍵每次 16px 並保存', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await drag(wrapper, 280, 360)
+    wrapper.vm.toggleSidebar()
+    await flushPromises()
+    expect(sidebarStyleWidth(wrapper)).toContain('display: none')
+    wrapper.vm.toggleSidebar()
+    await flushPromises()
+    expect(sidebarStyleWidth(wrapper)).toContain('width: 360px')
+
+    const handle = wrapper.find('[data-test="sidebar-resizer"]')
+    expect(handle.attributes('role')).toBe('separator')
+    expect(handle.attributes('aria-valuenow')).toBe('360')
+    await handle.trigger('keydown', { key: 'ArrowRight' })
+    expect(sidebarStyleWidth(wrapper)).toContain('width: 376px')
+    await handle.trigger('keydown', { key: 'ArrowLeft' })
+    await handle.trigger('keydown', { key: 'ArrowLeft' })
+    expect(localStorage.getItem('custodexa.workspace.sidebarWidth')).toBe('344')
+  })
+})
+
+describe('Workspace 側欄存取狀態與點擊回饋', () => {
+  const STATES = [
+    { id: 30, name: 'view-a', protocol: 'ssh', permission: 'view', access_state: '', active: true },
+    { id: 31, name: 'pending-a', protocol: 'mysql', permission: 'connect', access_state: 'pending', active: true },
+    { id: 32, name: 'approval-a', protocol: 'mysql', permission: 'connect', access_state: 'approval_required', active: true },
+    { id: 33, name: 'reason-a', protocol: 'mysql', permission: 'connect', access_state: 'reason_required', active: true },
+    { id: 34, name: 'open-a', protocol: 'ssh', permission: 'connect', access_state: 'connectable', active: true },
+  ]
+
+  beforeEach(() => {
+    resetSidebarEnv()
+    withAssets(STATES)
+  })
+
+  const rowOf = (wrapper, id) => wrapper.find(`.asset-item[data-asset-id="${id}"]`)
+
+  it.each([
+    [30, 'view_only', '這台主機只能檢視'],
+    [31, 'pending', '連線申請審核中'],
+    [32, 'approval', '這台主機需要審核'],
+  ])('資產 %i（%s）點擊出現說明，不開分頁、不發簽發', async (id, state, title) => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await rowOf(wrapper, id).trigger('click')
+    await flushPromises()
+    const explain = wrapper.find('[data-test="access-explain"]')
+    expect(explain.exists()).toBe(true)
+    expect(explain.attributes('data-state')).toBe(state)
+    expect(explain.text()).toContain(title)
+    expect(listAssetAccounts).not.toHaveBeenCalled()
+    expect(wrapper.vm.tabs).toHaveLength(0)
+    expect(createConnectToken).not.toHaveBeenCalled()
+    expect(createConnectTokenWithConsent).not.toHaveBeenCalled()
+  })
+
+  it('主控台鈕與整列行為一致：需審核出說明、需填理由開主控台分頁', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await rowOf(wrapper, 32).find('[data-test="console-entry"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="access-explain"]').attributes('data-state')).toBe('approval')
+    expect(wrapper.vm.tabs).toHaveLength(0)
+
+    await rowOf(wrapper, 33).find('[data-test="console-entry"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.vm.tabs).toHaveLength(1)
+    expect(wrapper.vm.tabs[0].kind).toBe('console')
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(false)
+  })
+
+  it('需填理由整列點擊照常開分頁（理由由分頁的連線流程就地要求）', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await rowOf(wrapper, 33).trigger('click')
+    await flushPromises()
+    expect(listAssetAccounts).toHaveBeenCalledWith(33, { skipErrorToast: true })
+    expect(wrapper.vm.tabs).toHaveLength(1)
+    expect(wrapper.vm.tabs[0].assetId).toBe(33)
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(false)
+  })
+
+  it('需審核說明框內沒有申請表單欄位；「前往資產頁申請」開新瀏覽器分頁且不動工作區', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await rowOf(wrapper, 34).trigger('click')
+    await flushPromises()
+    const keysBefore = wrapper.vm.tabs.map((t) => t.key)
+    expect(keysBefore).toHaveLength(1)
+
+    await rowOf(wrapper, 32).trigger('click')
+    await flushPromises()
+    const explain = wrapper.find('[data-test="access-explain"]')
+    expect(explain.find('textarea').exists()).toBe(false)
+    expect(explain.find('input').exists()).toBe(false)
+    expect(explain.find('.el-input-number').exists()).toBe(false)
+
+    await explain.find('[data-test="go-apply"]').trigger('click')
+    await flushPromises()
+    expect(openSpy).toHaveBeenCalledTimes(1)
+    expect(openSpy).toHaveBeenCalledWith('/assets?apply=32', '_blank')
+    expect(routerPush).not.toHaveBeenCalled()
+    expect(wrapper.vm.tabs.map((t) => t.key)).toEqual(keysBefore)
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(false)
+    openSpy.mockRestore()
+  })
+
+  it('Esc 關閉說明', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await rowOf(wrapper, 31).trigger('click')
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(true)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(false)
+  })
+})
+
+describe('Workspace 列表全量載入與重新整理', () => {
+  beforeEach(() => {
+    resetSidebarEnv()
+    globalThis.__wsSshMounts = 0
+  })
+
+  it('重新整理：分頁陣列與分頁元件不變、列表換新；載入中按鈕轉圈並停用', async () => {
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await wrapper.vm.openTab({ id: 1, name: 'ssh-a', protocol: 'ssh' })
+    await wrapper.vm.openTab({ id: 1, name: 'ssh-a', protocol: 'ssh' })
+    await flushPromises()
+    const keysBefore = wrapper.vm.tabs.map((t) => t.key)
+    expect(globalThis.__wsSshMounts).toBe(2)
+
+    let release
+    getAssetList.mockImplementationOnce(() => new Promise((r) => { release = r }))
+    const btn = wrapper.find('[data-test="refresh-assets"]')
+    await btn.trigger('click')
+    expect(btn.classes()).toContain('is-loading')
+    expect(btn.attributes('disabled')).toBeDefined()
+    release({
+      data: [
+        { id: 1, name: 'ssh-a', protocol: 'ssh', active: true },
+        { id: 2, name: 'ssh-new', protocol: 'ssh', active: true },
+      ],
+      total: 2,
+    })
+    await flushPromises()
+
+    expect(getAssetList).toHaveBeenCalledTimes(2)
+    expect(sidebarAssets(wrapper).map((a) => a.name)).toEqual(['ssh-a', 'ssh-new'])
+    expect(wrapper.vm.tabs.map((t) => t.key)).toEqual(keysBefore)
+    expect(globalThis.__wsSshMounts).toBe(2)
+    expect(btn.classes()).not.toContain('is-loading')
+  })
+})
+
+describe('Workspace 分頁標題', () => {
+  beforeEach(() => {
+    resetSidebarEnv()
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const LONG = 'prod-payment-gateway-core-api-node-01.acme.internal.example'
+
+  it('長名分頁標題帶省略樣式，提示為全名／名稱@帳號', async () => {
+    listAssetAccounts.mockResolvedValue({
+      data: [
+        { id: 3, username: 'root', is_default: true },
+        { id: 4, username: 'ops', is_default: false },
+      ],
+    })
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await wrapper.vm.openTab({ id: 1, name: LONG, protocol: 'ssh' })
+    await flushPromises()
+    wrapper.vm.onAccountSelected({ id: 4, username: 'ops' })
+    await flushPromises()
+
+    const title = wrapper.find('[data-test="tab-title"]')
+    expect(title.classes()).toContain('tab-title')
+    expect(title.text()).toBe(`${LONG}@ops`)
+    const tips = wrapper.findAllComponents({ name: 'ElTooltip' }).map((c) => c.props('content'))
+    expect(tips).toContain(`${LONG}@ops`)
+
+    await wrapper.vm.openConsoleTab({ id: 1, name: LONG, protocol: 'mysql' })
+    await flushPromises()
+    wrapper.vm.onAccountSelected({ id: 3, username: 'root' })
+    await flushPromises()
+    const tips2 = wrapper.findAllComponents({ name: 'ElTooltip' }).map((c) => c.props('content'))
+    expect(tips2).toContain(`${LONG}@root（查詢主控台）`)
+  })
+
+  it('分頁列右側以 CSS 變數預留工具列實測寬度', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await wrapper.vm.openTab({ id: 1, name: 'ssh-a', protocol: 'ssh' })
+    await flushPromises()
+    expect(wrapper.find('.tabbar-tools').exists()).toBe(true)
+    fireResize((el) => el.classList?.contains('tabbar-tools'), 120)
+    await flushPromises()
+    expect(wrapper.find('.workspace-tabs').attributes('style')).toContain('--tabbar-tools-width: 136px')
+
+    // 樣式規則確實把 header 的 padding-right 綁到這個變數
+    const source = readFileSync(join(process.cwd(), 'src/views/Workspace.vue'), 'utf8')
+    expect(source).toMatch(/\.el-tabs__header\)\s*\{\s*padding-right:\s*var\(--tabbar-tools-width/)
+  })
+})
+
+describe('Workspace 新增文案三語齊備', () => {
+  it('側欄與分頁新鍵在三份 locale 皆存在', () => {
+    const load = (name) =>
+      JSON.parse(readFileSync(join(process.cwd(), 'src/i18n/locales', `${name}.json`), 'utf8'))
+    // 工作區頁面與其拆出的子元件一起掃
+    const dir = join(process.cwd(), 'src/components/workspace')
+    const files = [
+      join(process.cwd(), 'src/views/Workspace.vue'),
+      ...readdirSync(dir).filter((f) => /\.(vue|js)$/.test(f)).map((f) => join(dir, f)),
+    ]
+    expect(files.length).toBeGreaterThan(1)
+    const source = files.map((f) => readFileSync(f, 'utf8')).join('\n')
+    const used = [...source.matchAll(/'(workspace\.[A-Za-z.]+)'/g)].map((m) => m[1])
+    const keys = [...new Set([
+      ...used,
+      ...['ssh', 'telnet', 'rdp', 'vnc', 'mysql', 'postgres', 'mssql', 'redis', 'k8s'].map((p) => `workspace.protocolName.${p}`),
+    ])]
+    expect(keys.length).toBeGreaterThan(20)
+    for (const locale of ['zh-TW', 'en-US', 'ja-JP']) {
+      const dict = load(locale)
+      for (const key of keys) {
+        const value = key.split('.').reduce((o, k) => o?.[k], dict)
+        expect(value, `${locale} 缺 ${key}`).toBeTruthy()
+      }
+    }
   })
 })
