@@ -2,6 +2,19 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.9 — workspace maintenance fixes (2026-10-15)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.9`. From 1.17.0 or later no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### Fixes
+
+- Code quality and accessibility fixes in the workspace. The sidebar resize handle now uses
+  the ARIA slider role with its current width in pixels, and the hidden file input for
+  container uploads has an accessible label. The example path in the container download dialog
+  changed to `/var/log/app.log`. Nothing else changes in what you see or do.
+
 ## 1.17.8 — a clearer workspace asset list and a steady remote desktop view (2026-10-15)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

@@ -735,7 +735,7 @@ describe('Workspace 側欄收合與拖寬', () => {
     expect(sidebarStyleWidth(wrapper)).toContain('width: 360px')
 
     const handle = wrapper.find('[data-test="sidebar-resizer"]')
-    expect(handle.attributes('role')).toBe('separator')
+    expect(handle.attributes('role')).toBe('slider')
     expect(handle.attributes('aria-valuenow')).toBe('360')
     await handle.trigger('keydown', { key: 'ArrowRight' })
     expect(sidebarStyleWidth(wrapper)).toContain('width: 376px')
@@ -840,6 +840,22 @@ describe('Workspace 側欄存取狀態與點擊回饋', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
     expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(false)
+  })
+
+  it('點說明框內不關閉，點框外才關閉', async () => {
+    const wrapper = mount(Workspace, { global: { plugins: [ElementPlus] }, attachTo: document.body })
+    await flushPromises()
+    await rowOf(wrapper, 31).trigger('click')
+    await flushPromises()
+    const body = wrapper.find('.access-explain__body')
+    expect(body.exists()).toBe(true)
+    body.element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(true)
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+    expect(wrapper.find('[data-test="access-explain"]').exists()).toBe(false)
+    wrapper.unmount()
   })
 })
 

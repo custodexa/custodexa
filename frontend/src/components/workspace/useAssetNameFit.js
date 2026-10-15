@@ -27,7 +27,9 @@ function fitLabel(name, width) {
   let n = Math.floor(width / (measurer ? measurer.avg : FALLBACK_CHAR_WIDTH))
   if (n >= text.length) return text
   // 平均字寬只是起點：實際量一次，超出就逐字退，確保尾碼不被 CSS 省略吃掉
-  while (measurer && n > 0 && measurer.width(formatAssetLabel(text, n)) > width) n -= 1
+  if (measurer) {
+    while (n > 0 && measurer.width(formatAssetLabel(text, n)) > width) n -= 1
+  }
   return formatAssetLabel(text, n)
 }
 

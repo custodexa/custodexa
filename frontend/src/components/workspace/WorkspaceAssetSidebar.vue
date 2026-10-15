@@ -97,11 +97,12 @@
     <div
       class="sidebar-resizer"
       :class="{ 'is-active': resizing }"
-      role="separator"
-      aria-orientation="vertical"
+      role="slider"
+      aria-orientation="horizontal"
       :aria-valuenow="sidebarWidth"
       :aria-valuemin="SIDEBAR_MIN_WIDTH"
       :aria-valuemax="SIDEBAR_MAX_WIDTH"
+      :aria-valuetext="sidebarWidth + 'px'"
       :aria-label="$t('workspace.sidebarResize')"
       tabindex="0"
       data-test="sidebar-resizer"
@@ -334,9 +335,10 @@ function activate(asset, kind = 'terminal', event) {
   emit(kind === 'console' ? 'open-console' : 'open-asset', asset)
 }
 
-// 點說明框以外任一處即關閉；點開它的那一列除外（那一下正是開啟動作）
+// 點說明框以外任一處即關閉；點說明框本身、或點開它的那一列除外（那一下正是開啟動作）
 function onDocumentClick(e) {
   if (!explain.value) return
+  if (explainRef.value?.contains?.(e.target)) return
   if (explain.value.anchor?.contains?.(e.target)) return
   closeExplain()
 }

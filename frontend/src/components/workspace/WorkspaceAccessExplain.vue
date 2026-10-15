@@ -10,7 +10,6 @@
     :data-state="state"
     :style="{ top: top + 'px', left: left + 'px' }"
     data-test="access-explain"
-    @click.stop
   >
     <button
       type="button"
@@ -65,7 +64,11 @@ const EXPLAIN_TEXT = {
 
 const rootRef = ref(null)
 
-defineExpose({ focus: () => rootRef.value?.focus?.() })
+// contains：供外層的「點外部即關閉」判斷點擊是否落在說明框內
+defineExpose({
+  focus: () => rootRef.value?.focus?.(),
+  contains: (node) => !!rootRef.value?.contains?.(node),
+})
 </script>
 
 <style scoped>

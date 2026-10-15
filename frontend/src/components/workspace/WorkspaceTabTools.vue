@@ -97,6 +97,7 @@
       ref="k8sFileInput"
       type="file"
       style="display: none"
+      :aria-label="$t('workspace.uploadAria')"
       @change="onK8sFileChange"
     >
   </div>
@@ -199,7 +200,7 @@ async function triggerK8sDownload() {
       t('workspace.downloadPrompt', { pod: tab.k8sPod, container: tab.k8sContainer }),
       t('workspace.downloadTitle'),
       {
-        inputPlaceholder: '/tmp/example.log',
+        inputPlaceholder: '/var/log/app.log',
         inputPattern: /^\/.+/,
         inputErrorMessage: t('workspace.absolutePathRequired'),
         confirmButtonText: t('workspace.downloadConfirm'),
