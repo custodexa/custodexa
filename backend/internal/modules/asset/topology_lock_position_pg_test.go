@@ -113,6 +113,7 @@ func TestTopologyLockPositionPG(t *testing.T) {
 		t.Helper()
 		holder := db.Begin()
 		require.NoError(t, holder.Error)
+		defer holder.Rollback() // 提交後為 no-op；中途失敗時釋放拓撲鎖
 		var holderPID int64
 		require.NoError(t, holder.Raw("SELECT pg_backend_pid()").Scan(&holderPID).Error)
 		require.NoError(t, holder.Exec("SELECT pg_advisory_xact_lock(?, ?)", pgTopologyClassForTest, int32(1)).Error)

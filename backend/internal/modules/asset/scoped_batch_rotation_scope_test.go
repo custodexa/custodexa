@@ -601,6 +601,8 @@ func TestScopedBatchRotationScope(t *testing.T) {
 		}
 		moved := e.assets["bs-in-2"]
 		tx := e.db.Begin()
+		require.NoError(t, tx.Error)
+		defer tx.Rollback() // 提交後為 no-op；中途失敗時釋放拓撲鎖
 		require.NoError(t, authz.LockScopeTopologyTx(tx))
 		require.NoError(t, tx.Model(&model.AssetNode{}).Where("asset_id = ?", moved).
 			Update("node_id", e.nodes["bs-out"]).Error)

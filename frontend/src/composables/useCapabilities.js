@@ -2,6 +2,12 @@ import { computed, ref, shallowRef } from 'vue'
 import { getCurrentUser } from '@/api/auth'
 import { onSessionEnded } from '@/utils/session'
 
+// 與 Array.prototype.sort 預設相同的 UTF-16 碼元序，明示寫出
+const byCodeUnit = (a, b) => {
+  if (a < b) return -1
+  return a > b ? 1 : 0
+}
+
 /**
  * 目前使用者能力的唯一狀態。
  *
@@ -125,7 +131,7 @@ export function useCapabilities() {
     scopeSummary,
     productVersion,
     loadedUserId,
-    permissions: computed(() => (permissionSet.value ? [...permissionSet.value].sort() : [])),
+    permissions: computed(() => (permissionSet.value ? [...permissionSet.value].sort(byCodeUnit) : [])),
     load: loadCapabilities,
     reload: () => loadCapabilities({ force: true }),
     reset: resetCapabilities,

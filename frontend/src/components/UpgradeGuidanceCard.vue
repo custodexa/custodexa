@@ -275,7 +275,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { X, Info, TriangleAlert, RefreshCw, Loader } from 'lucide-vue-next'
 import { te, t } from '@/i18n'
@@ -292,7 +292,7 @@ const { loadedUserId, ready: capabilitiesReady } = useCapabilities()
 const route = useRoute()
 const router = useRouter()
 
-const titleId = `ug-title-${Math.random().toString(36).slice(2, 8)}`
+const titleId = `ug-title-${useId()}`
 const titleRef = ref(null)
 
 const changeSections = computed(() => guidance.sections.value.filter((s) => s.column === 'changes'))

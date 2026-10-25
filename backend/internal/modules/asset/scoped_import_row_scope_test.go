@@ -493,6 +493,7 @@ func TestScopedImportRowScope(t *testing.T) {
    AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`
 		holder := e.db.Begin()
 		require.NoError(t, holder.Error)
+		defer holder.Rollback() // 在 release 之後執行：已提交時為 no-op
 		released := false
 		release := func() {
 			if !released {

@@ -351,7 +351,7 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
     const shrunk = shrunkKeys.map((key) => policyLabel(byKey.value[key]) || key)
     // 系統告警句只在四個資料保留鍵有下調時出現：檢查點保留同為 retention_ 前綴，
     // 它的縮短仍要確認，但不屬於這條告警
-    const dataShrunk = shrunkKeys.some(isRetentionDataKey)
+    const dataShrunk = shrunkKeys.some((key) => isRetentionDataKey(key))
     if (shrunk.length > 0) {
       try {
         // 列表連接隨語言（zh 頓號/en 逗號）；政策 label 為後端字串（change 3 收口）

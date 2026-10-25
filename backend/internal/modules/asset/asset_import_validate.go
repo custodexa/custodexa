@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -39,8 +40,11 @@ func (s *AssetService) loadImportLookups(ctx context.Context, db *gorm.DB, rows 
 		if rows[i].Name != "" {
 			names = append(names, rows[i].Name)
 		}
-		if rows[i].CredentialID != nil && *rows[i].CredentialID > 0 && *rows[i].CredentialID <= int64(^uint32(0)) {
-			credIDs = append(credIDs, uint(*rows[i].CredentialID))
+		if rows[i].CredentialID == nil {
+			continue
+		}
+		if id := *rows[i].CredentialID; id > 0 && id <= math.MaxUint32 {
+			credIDs = append(credIDs, uint(id))
 		}
 	}
 	if len(names) > 0 {
@@ -354,11 +358,12 @@ func validateImportCredential(r *ImportRow, rep *ImportRowReport, lk *importLook
 	if r.CredentialID == nil || parseFailed {
 		return
 	}
-	if *r.CredentialID <= 0 || *r.CredentialID > int64(^uint32(0)) {
+	credID := *r.CredentialID
+	if credID <= 0 || credID > math.MaxUint32 {
 		add(fieldErr(importFieldCredentialID, apierror.CodeAssetImportFieldFormat))
 		return
 	}
-	cred := lk.credentials[uint(*r.CredentialID)]
+	cred := lk.credentials[uint(credID)]
 	// 範圍外（含全域歸屬對範圍化主體）與不存在同形，且排在狀態檢查之前，不回顯名稱
 	if cred == nil || (lk.scope != nil && lk.scope.credOut[cred.ID]) {
 		add(fieldErr(importFieldCredentialID, apierror.CodeCredentialNotFound))

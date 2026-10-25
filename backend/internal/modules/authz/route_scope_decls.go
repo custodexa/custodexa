@@ -75,14 +75,14 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 	const credRead = "憑證讀取服務（以憑證歸屬判定）"
 	const credWrites = "憑證管理服務（交易內以憑證歸屬與明確目標資產判定）"
 	const credOwnershipBatch = "憑證批次改歸（逐筆以歸屬判定，整批原子）"
-	const assetCredentialSource = "資產建立的掛載來源（交易內以憑證歸屬判定）"
+	const assetMountSource = "資產建立的掛載來源（交易內以憑證歸屬判定）"
 	const assetImportRows = "資產批次新增的逐列範圍（預檢逐列判定，提交於交易內重算）"
 	const assetBatch = "資產批次服務（批次交易內逐列判定，搬移另判目的節點）"
-	const authzWrites = "授權規則寫入服務（交易內重解主體並判定）"
-	const authzList = "授權規則列表（檢視者可見節點的集合述詞投影）"
-	const authzView = "授權有效權限檢視（隨檢視者可見節點投影）"
-	const authzTargets = "授權客體候選（資產、節點、標籤皆依檢視者可見節點投影）"
-	const authzSubjects = "授權主體目錄（不依節點範圍，要求至少一筆有效指派）"
+	const ruleWrites = "授權規則寫入服務（交易內重解主體並判定）"
+	const ruleList = "授權規則列表（檢視者可見節點的集合述詞投影）"
+	const ruleView = "授權有效權限檢視（隨檢視者可見節點投影）"
+	const ruleTargets = "授權客體候選（資產、節點、標籤皆依檢視者可見節點投影）"
+	const ruleSubjects = "授權主體目錄（不依節點範圍，要求至少一筆有效指派）"
 	const importEntry = "資產批次新增的進入（預檢逐列判定節點範圍，提交於交易內重算）"
 	const csList = "改密列表（批次、目標、帳號名、候選與計畫皆以集合述詞投影範圍內資產）"
 	const csRead = "改密逐筆讀取服務（批次詳情與計畫記錄只含範圍內目標，不可見與不存在同形）"
@@ -102,15 +102,15 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 		{Method: "DELETE", Path: "/api/v1/approver-scopes/:id", Source: ReqSourcePerm, Perm: PermApproverScopeManage, Kind: ScopeDeclServiceTx, Owner: approverWrites},
 		{Method: "GET", Path: "/api/v1/approver-scopes/approver-options", Source: ReqSourcePerm, Perm: PermApproverScopeManage, Kind: ScopeDeclSubjectDirectory, Owner: approverSubjects},
 		{Method: "GET", Path: "/api/v1/approver-scopes/target-options", Source: ReqSourcePerm, Perm: PermApproverScopeManage, Kind: ScopeDeclListProjection, Owner: approverTargets},
-		{Method: "GET", Path: "/api/v1/authorizations", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: authzList},
-		{Method: "POST", Path: "/api/v1/authorizations", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: authzWrites},
-		{Method: "DELETE", Path: "/api/v1/authorizations/:id", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: authzWrites},
-		{Method: "PUT", Path: "/api/v1/authorizations/:id/accounts", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: authzWrites},
-		{Method: "POST", Path: "/api/v1/authorizations/batch", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: authzWrites},
-		{Method: "GET", Path: "/api/v1/authorizations/effective-assets", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: authzView},
-		{Method: "GET", Path: "/api/v1/authorizations/effective-users", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: authzView},
-		{Method: "GET", Path: "/api/v1/authorizations/target-options", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: authzTargets},
-		{Method: "GET", Path: "/api/v1/authorizations/subject-options", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclSubjectDirectory, Owner: authzSubjects},
+		{Method: "GET", Path: "/api/v1/authorizations", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: ruleList},
+		{Method: "POST", Path: "/api/v1/authorizations", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
+		{Method: "DELETE", Path: "/api/v1/authorizations/:id", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
+		{Method: "PUT", Path: "/api/v1/authorizations/:id/accounts", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
+		{Method: "POST", Path: "/api/v1/authorizations/batch", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
+		{Method: "GET", Path: "/api/v1/authorizations/effective-assets", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: ruleView},
+		{Method: "GET", Path: "/api/v1/authorizations/effective-users", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: ruleView},
+		{Method: "GET", Path: "/api/v1/authorizations/target-options", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: ruleTargets},
+		{Method: "GET", Path: "/api/v1/authorizations/subject-options", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclSubjectDirectory, Owner: ruleSubjects},
 		{Method: "GET", Path: "/api/v1/assets", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclListProjection, Owner: assetList},
 		{Method: "GET", Path: "/api/v1/assets/:id", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclRouteGuard, Owner: assetRead},
 		{Method: "GET", Path: "/api/v1/assets/:id/k8s/pods", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclRouteGuard, Owner: assetRead},
@@ -134,7 +134,7 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 		{Method: "GET", Path: "/api/v1/credentials", Source: ReqSourcePerm, Perm: PermCredentialView, Kind: ScopeDeclListProjection, Owner: credList},
 		{Method: "GET", Path: "/api/v1/credentials/:id", Source: ReqSourcePerm, Perm: PermCredentialView, Kind: ScopeDeclServiceRead, Owner: credRead},
 		{Method: "GET", Path: "/api/v1/credentials/:id/rotations/:rid", Source: ReqSourcePerm, Perm: PermCredentialView, Kind: ScopeDeclServiceRead, Owner: credRead},
-		{Method: "POST", Path: "/api/v1/assets", Source: ReqSourceFields, Perm: PermCredentialBind, Field: "credential_id", Kind: ScopeDeclServiceTx, Owner: assetCredentialSource},
+		{Method: "POST", Path: "/api/v1/assets", Source: ReqSourceFields, Perm: PermCredentialBind, Field: "credential_id", Kind: ScopeDeclServiceTx, Owner: assetMountSource},
 		{Method: "POST", Path: "/api/v1/assets/import/preview", Source: ReqSourceFields, Perm: PermCredentialBind, Field: "credential_id", Kind: ScopeDeclServiceRead, Owner: assetImportRows},
 		{Method: "POST", Path: "/api/v1/assets/import", Source: ReqSourceFields, Perm: PermCredentialBind, Field: "credential_id", Kind: ScopeDeclServiceTx, Owner: assetImportRows},
 		{Method: "POST", Path: "/api/v1/assets/import/preview", Source: ReqSourcePerm, Perm: PermAssetCreate, Kind: ScopeDeclServiceRead, Owner: importEntry},

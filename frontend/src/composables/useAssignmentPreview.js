@@ -46,7 +46,7 @@ export function useAssignmentPreview({ debounceMs = 400 } = {}) {
     status.value = 'loading'
     timer = setTimeout(() => {
       timer = null
-      run(body)
+      void run(body)
     }, debounceMs)
   }
 

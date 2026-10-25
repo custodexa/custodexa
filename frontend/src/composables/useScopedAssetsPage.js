@@ -65,7 +65,7 @@ export function useScopedAssetsPage({ t, fetchNodes, total, hasFilters }) {
     purposeLoaded.value = false
     if (!scopedViewer.value) return
     scopedForm.value = { mode: 'create', original: [], outOfScope: 0, actions: null, extra: [] }
-    loadPurpose('asset_create')
+    void loadPurpose('asset_create')
   }
 
   /** 開編輯抽屜：列（或詳情）帶 actions 或頁面是範圍化檢視者時走伺服器遮蔽後的投影。 */
@@ -82,7 +82,7 @@ export function useScopedAssetsPage({ t, fetchNodes, total, hasFilters }) {
       actions: hasActions(row) ? row.actions : null,
       extra: ids.map((id, i) => ({ id, name: paths[i] || String(id) })),
     }
-    loadPurpose('asset_update')
+    void loadPurpose('asset_update')
   }
 
   function endScopedForm() {

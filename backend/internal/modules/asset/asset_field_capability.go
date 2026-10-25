@@ -3,6 +3,7 @@ package asset
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 )
@@ -281,9 +282,12 @@ func createDeclaresSecret(req *CreateAssetRequest) bool {
 func importCredentialIDs(rows []ImportRow) []uint {
 	var ids []uint
 	for _, r := range rows {
-		// 非正值不指向任何憑證，由逐列驗證回報為列錯誤
-		if r.CredentialID != nil && *r.CredentialID > 0 {
-			ids = append(ids, uint(*r.CredentialID))
+		// 非正值與超出識別碼範圍者不指向任何憑證，由逐列驗證回報為列錯誤
+		if r.CredentialID == nil {
+			continue
+		}
+		if id := *r.CredentialID; id > 0 && id <= math.MaxUint32 {
+			ids = append(ids, uint(id))
 		}
 	}
 	return nonZeroIDs(ids...)

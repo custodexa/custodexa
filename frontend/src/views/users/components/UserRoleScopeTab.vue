@@ -49,7 +49,9 @@
           class="role-card"
           :class="{ 'is-openable': isAssignable(name), 'is-active': activeRole === name }"
           :data-test="`manual-role-${name}`"
+          :tabindex="isAssignable(name) ? 0 : undefined"
           @click="openPanel(name)"
+          @keydown.enter.space.self.prevent="openPanel(name)"
         >
           <el-tag
             :type="roleTagType(name)"

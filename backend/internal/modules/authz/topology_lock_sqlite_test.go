@@ -37,13 +37,6 @@ func sqliteTopologyConn(t *testing.T, path string, busyMs int, wal bool) *gorm.D
 	return db
 }
 
-func sqliteTopologyBeginLocked(t *testing.T, db *gorm.DB) *gorm.DB {
-	t.Helper()
-	tx := db.Begin()
-	require.NoError(t, tx.Error)
-	return tx
-}
-
 // runSQLiteTopologyWriteLockCases 拓撲鎖在 SQLite 的實測：glebarez 是測試側唯一能執行的
 // SQLite 驅動（mattn 需要 CGO，兩種映像都沒有編譯器，不跑）。
 func runSQLiteTopologyWriteLockCases(t *testing.T) {
@@ -100,7 +93,9 @@ func runSQLiteTopologyWriteLockCases(t *testing.T) {
 			}
 
 			t.Run("S1_write_lock_held", func(t *testing.T) {
-				tx1 := sqliteTopologyBeginLocked(t, db1)
+				tx1 := db1.Begin()
+				require.NoError(t, tx1.Error)
+				defer tx1.Rollback()                         // 已提交或已回滾時為 no-op
 				require.NoError(t, LockScopeTopologyTx(tx1)) // 交易第一個語句
 				d, err := immediate()
 				require.Error(t, err, "鎖持有期間，另一連線的 BEGIN IMMEDIATE 必須立刻失敗")
@@ -114,7 +109,9 @@ func runSQLiteTopologyWriteLockCases(t *testing.T) {
 			})
 
 			t.Run("S2_first_statement_waits_and_rereads", func(t *testing.T) {
-				tx1 := sqliteTopologyBeginLocked(t, db1)
+				tx1 := db1.Begin()
+				require.NoError(t, tx1.Error)
+				defer tx1.Rollback() // 已提交或已回滾時為 no-op
 				require.NoError(t, LockScopeTopologyTx(tx1))
 				type res struct {
 					v   int
@@ -155,9 +152,13 @@ func runSQLiteTopologyWriteLockCases(t *testing.T) {
 
 			t.Run("S3_read_then_lock", func(t *testing.T) {
 				// 連線 1 持鎖；連線 2 先讀再取鎖
-				tx1 := sqliteTopologyBeginLocked(t, db1)
+				tx1 := db1.Begin()
+				require.NoError(t, tx1.Error)
+				defer tx1.Rollback() // 已提交或已回滾時為 no-op
 				require.NoError(t, LockScopeTopologyTx(tx1))
-				tx2 := sqliteTopologyBeginLocked(t, db2)
+				tx2 := db2.Begin()
+				require.NoError(t, tx2.Error)
+				defer tx2.Rollback() // 已提交或已回滾時為 no-op
 				var v int
 				require.NoError(t, tx2.Raw("SELECT v FROM topo_probe WHERE id = 1").Scan(&v).Error)
 				start := time.Now()
@@ -172,9 +173,13 @@ func runSQLiteTopologyWriteLockCases(t *testing.T) {
 
 				if mode.wal {
 					// 變體：連線 2 先讀，連線 1 其後提交，連線 2 才取鎖
-					tx2 := sqliteTopologyBeginLocked(t, db2)
+					tx2 := db2.Begin()
+					require.NoError(t, tx2.Error)
+					defer tx2.Rollback() // 已提交或已回滾時為 no-op
 					require.NoError(t, tx2.Raw("SELECT v FROM topo_probe WHERE id = 1").Scan(&v).Error)
-					tx1 := sqliteTopologyBeginLocked(t, db1)
+					tx1 := db1.Begin()
+					require.NoError(t, tx1.Error)
+					defer tx1.Rollback() // 已提交或已回滾時為 no-op
 					require.NoError(t, LockScopeTopologyTx(tx1))
 					require.NoError(t, tx1.Exec("UPDATE topo_probe SET v = v + 1 WHERE id = 1").Error)
 					require.NoError(t, tx1.Commit().Error)

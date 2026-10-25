@@ -116,7 +116,7 @@ function reopen() {
   forced.value = true
   focusTick.value += 1
   retention.value = { status: 'idle', items: [], uncovered: [] }
-  if (status.value === 'idle' || status.value === 'error') load({ force: true })
+  if (status.value === 'idle' || status.value === 'error') void load({ force: true })
 }
 
 /** 讀取保留調整告知；沒有安全政策讀取能力時不請求。 */

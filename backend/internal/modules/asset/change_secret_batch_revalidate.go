@@ -84,8 +84,8 @@ func (r *ChangeSecretRunner) revalidateBatch(ctx context.Context, db *gorm.DB, j
 
 // unionCapabilities 保序去重的能力聯集（base 在前）。
 func unionCapabilities(base, extra []string) []string {
-	seen := make(map[string]bool, len(base)+len(extra))
-	out := make([]string, 0, len(base)+len(extra))
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(base))
 	for _, list := range [][]string{base, extra} {
 		for _, c := range list {
 			if !seen[c] {

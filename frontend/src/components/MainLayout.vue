@@ -475,15 +475,15 @@ const currentPageTitle = computed(
 )
 
 // 列表頁的所屬群組前綴（核可稿麵包屑「稽核 / 告警」）；群組本身沒有落點頁，不可點
-const groupLeads = {
-  '/alerts': () => t('menu.group.audit'),
-}
+const groupLeads = new Map([
+  ['/alerts', () => t('menu.group.audit')],
+])
 
 const breadcrumbs = computed(() => {
   const parent = detailPages[route.name]?.parent
   const current = { label: currentPageTitle.value, to: '' }
   if (parent) return [{ label: parent.label(), to: parent.to }, current]
-  const lead = groupLeads[activeMenu.value]
+  const lead = groupLeads.get(activeMenu.value)
   return lead ? [{ label: lead(), to: '' }, current] : [current]
 })
 
