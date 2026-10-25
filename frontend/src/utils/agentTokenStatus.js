@@ -3,12 +3,14 @@
 //
 // 語意固定：琥珀＝現在還有事要處置（熔斷待處置期間的停用鑰匙）；
 // 熔斷解除後，停用是無法復原的終局狀態（只能另發一把），改中性。
-export const AGENT_TOKEN_STATES = ['valid', 'suspended', 'revoked', 'expired']
+export const AGENT_TOKEN_STATES = ['valid', 'suspended', 'revoked', 'expired', 'restore_invalidated']
 
 export function agentTokenState(token, now = Date.now()) {
   if (!token) return 'valid'
   if (token.revoked_at) return 'revoked'
   if (token.suspended_at) return 'suspended'
+  // 還原後舊世代的鑰匙：真實入口已拒絕，資料列的其他欄位仍可能顯示有效，以後端投影為準
+  if (token.restore_invalidated) return 'restore_invalidated'
   return token.expires_at && Date.parse(token.expires_at) <= now ? 'expired' : 'valid'
 }
 

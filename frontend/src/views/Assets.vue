@@ -2,9 +2,18 @@
   <div class="assets">
     <!-- 分角色文案：一般 user 的職能是連線不是管理 -->
     <PageHeader
-      :title="isAdminOrAuditor ? $t('menu.assets') : $t('menu.myAssets')"
-      :description="isAdminOrAuditor ? $t('assets.headerDescAdmin') : $t('assets.headerDescUser')"
+      :title="showsGlobalAssets ? $t('menu.assets') : $t('menu.myAssets')"
+      :description="showsGlobalAssets ? $t('assets.headerDescAdmin') : $t('assets.headerDescUser')"
     >
+      <template
+        v-if="assetScopeLine"
+        #meta
+      >
+        <ManageScopeLine
+          :nodes="assetScopeLine.nodes"
+          :not-assigned="assetScopeLine.notAssigned"
+        />
+      </template>
       <template #actions>
         <el-button @click="fetchAssetList">
           <el-icon><RefreshCw /></el-icon>
@@ -12,14 +21,17 @@
         </el-button>
         <!-- 標籤治理單獨入口：全面改名/合併/刪除 -->
         <el-button
-          v-if="isAdmin"
+          v-if="canUpdateAsset"
+          data-test="tag-manager-entry"
+          :disabled="!isSuperAdmin"
+          :title="isSuperAdmin ? '' : $t('assets.tagManagerSuperAdminOnly')"
           @click="tagManagerVisible = true"
         >
           <el-icon><Tag /></el-icon>
           {{ $t('assets.tagManager') }}
         </el-button>
         <el-button
-          v-if="isAdmin"
+          v-if="canCreateAsset"
           data-test="bulk-entry"
           @click="bulkVisible = true"
         >
@@ -27,7 +39,7 @@
           {{ $t('assets.bulk.entry') }}
         </el-button>
         <el-button
-          v-if="isAdmin"
+          v-if="canCreateAsset"
           type="primary"
           @click="handleCreate"
         >
@@ -44,6 +56,12 @@
       <a :href="`/my-requests`">{{ $t('multiRequest.task') }} #{{ lastCreatedRequest.id }} · {{ $t('multiRequest.count', { n: lastCreatedRequest.items.length }) }}</a>
       <RequestItems :request="lastCreatedRequest" />
     </section>
+
+    <ScopedAssetsNotices
+      v-if="scopedViewer"
+      :scope="managementScope"
+      :total="pagination.total"
+    />
 
     <!-- 搜尋與過濾 -->
     <div class="filter-bar">
@@ -127,8 +145,9 @@
         <!-- 標籤篩選：僅 admin/auditor——
              一般 user 走授權分支不支援 tags 參數（伺服端 400） -->
         <el-form-item
-          v-if="isAdminOrAuditor"
+          v-if="showsGlobalAssets || scopedViewer"
           :label="$t('common.tags')"
+          data-test="tag-filter"
         >
           <el-select
             v-model="filterForm.tags"
@@ -150,7 +169,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="isAdminOrAuditor">
+        <el-form-item v-if="showsGlobalAssets">
           <el-switch
             v-model="filterForm.credential_pending"
             :active-text="$t('assets.filterCredentialPending')"
@@ -186,7 +205,6 @@
     <div class="tree-table-layout">
       <AssetNodeTree
         ref="nodeTreeRef"
-        :is-admin="isAdmin"
         @select="handleNodeSelect"
         @authorize="handleAuthorizeNode"
       />
@@ -208,12 +226,51 @@
             />
           </template>
         </div>
+        <!-- 批次動作：勾選列、搬移／加標籤／刪除對話框與整批拒絕呈現 -->
+        <AssetBatchActions
+          v-if="showsBatchSelection"
+          :selected="selectedRows"
+          :can-edit="canUpdateAsset"
+          :can-delete="canDeleteAsset"
+          :scoped-viewer="scopedViewer"
+          :tag-names="tagNames()"
+          @clear="clearSelection"
+          @refresh="fetchAssetList"
+          @done="onBatchDone"
+        />
         <el-table
           v-loading="loading"
           :data="assetList"
           style="width: 100%"
           stripe
         >
+          <!-- 勾選欄：依權限點出現；列可否勾選只看伺服器旗標（帶 actions 的列），
+               表頭只選目前頁 -->
+          <el-table-column
+            v-if="showsBatchSelection"
+            width="44"
+            class-name="select-col"
+          >
+            <template #header>
+              <el-checkbox
+                :model-value="pageAllSelected"
+                :indeterminate="pageSomeSelected"
+                :disabled="!selectableRows.length"
+                :aria-label="$t('assets.batchOps.selectAllPage')"
+                data-test="select-page"
+                @change="togglePage"
+              />
+            </template>
+            <template #default="{ row }">
+              <el-checkbox
+                :model-value="isSelected(row)"
+                :disabled="!rowSelectable(row)"
+                :aria-label="$t('assets.batchOps.selectRow')"
+                data-test="row-select"
+                @change="(v) => toggleRow(row, v)"
+              />
+            </template>
+          </el-table-column>
           <el-table-column
             :label="$t('common.name')"
             min-width="200"
@@ -285,22 +342,28 @@
             width="120"
           />
           <el-table-column
-            v-if="showCol('nodes')"
+            v-if="showCol('nodes') || scopedViewer"
             :label="$t('assets.nodesColumn')"
             min-width="150"
           >
             <template #default="{ row }">
-              <el-tooltip
-                v-if="(row.node_paths || []).length"
-                :content="row.node_paths.join($t('common.listSeparator'))"
-                placement="top"
-              >
-                <span class="node-paths">{{ row.node_paths.join($t('common.listSeparator')) }}</span>
-              </el-tooltip>
-              <span
-                v-else
-                class="node-paths-empty"
-              >{{ $t('assets.ungrouped') }}</span>
+              <ScopedNodeCell
+                v-if="scopedViewer"
+                :row="row"
+              />
+              <template v-else>
+                <el-tooltip
+                  v-if="(row.node_paths || []).length"
+                  :content="row.node_paths.join($t('common.listSeparator'))"
+                  placement="top"
+                >
+                  <span class="node-paths">{{ row.node_paths.join($t('common.listSeparator')) }}</span>
+                </el-tooltip>
+                <span
+                  v-else
+                  class="node-paths-empty"
+                >{{ $t('assets.ungrouped') }}</span>
+              </template>
             </template>
           </el-table-column>
           <!-- 標籤欄：chips 最多 2＋「+N」收納，
@@ -342,7 +405,7 @@
                連測回饋常駐可見落點（原獨立連測欄 1366 下溢出不可見）；
                僅 admin/auditor（一般 user 停用態在授權狀態 cell） -->
           <el-table-column
-            v-if="isAdminOrAuditor"
+            v-if="showsGlobalAssets"
             :label="$t('common.status')"
             width="150"
           >
@@ -398,7 +461,7 @@
                停用態優先呈現：一般 user 無狀態欄，
                停用資產不得顯示可連假象 -->
           <el-table-column
-            v-if="!isAdminOrAuditor"
+            v-if="!showsGlobalAssets"
             :label="$t('assets.permissionColumn')"
             width="120"
           >
@@ -440,7 +503,7 @@
              不疊壓相鄰欄。 -->
           <el-table-column
             :label="$t('common.actions')"
-            :width="isAdmin ? 180 : 120"
+            :width="canUpdateAsset || canTestAsset || canDeleteAsset || scopedViewer ? 180 : 120"
             fixed="right"
           >
             <template #default="{ row }">
@@ -449,8 +512,13 @@
               <!-- 待配憑證：沒有任何掛載，執行期必被零帳號閘拒絕——
                  對所有角色（含 admin 的角色短路）停用連線與申請入口。
                  成因優先序：停用 > 待配憑證 > 權限 -->
+              <!-- 只經管理可視的列沒有連線欄位，也就沒有連線入口 -->
+              <span
+                v-if="isManagedOnly(row)"
+                data-test="no-connect-entry"
+              />
               <el-tooltip
-                v-if="isCredentialPending(row)"
+                v-else-if="isCredentialPending(row)"
                 :content="credentialPendingTooltip"
                 placement="top"
               >
@@ -512,18 +580,29 @@
                   </el-button>
                 </span>
               </el-tooltip>
-              <el-button
-                v-if="isAdmin"
-                type="primary"
-                size="small"
-                link
-                @click="handleEdit(row)"
+              <!-- 帶 actions 的列只看伺服器旗標（不回退全域能力），並就地說明原因 -->
+              <el-tooltip
+                v-if="canUpdateAsset || hasActions(row)"
+                :content="rowDenial(row, 'edit')"
+                :disabled="!rowDenial(row, 'edit')"
+                placement="top"
               >
-                <el-icon><SquarePen /></el-icon>
-                {{ $t('common.edit') }}
-              </el-button>
+                <span data-test="edit-wrap">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    link
+                    :disabled="!rowCan(row, 'edit', canUpdateAsset)"
+                    data-test="row-edit"
+                    @click="handleEdit(row)"
+                  >
+                    <el-icon><SquarePen /></el-icon>
+                    {{ $t('common.edit') }}
+                  </el-button>
+                </span>
+              </el-tooltip>
               <el-dropdown
-                v-if="isAdmin"
+                v-if="canTestAsset || canDeleteAsset || hasActions(row)"
                 trigger="click"
                 @command="(cmd) => handleRowCommand(cmd, row)"
               >
@@ -539,17 +618,31 @@
                     <!-- 測試中態逐列獨立（4.3）：只禁用該列自己的入口，
                        其他列的測試入口仍可點擊並各自進入測試中態 -->
                     <el-dropdown-item
+                      v-if="canTestAsset || hasActions(row)"
                       command="test"
-                      :disabled="isTesting(row.id)"
+                      data-test="row-test"
+                      :disabled="isTesting(row.id) || !rowCan(row, 'test_connection', canTestAsset)"
                     >
                       {{ $t('assets.testConnection') }}
+                      <span
+                        v-if="rowDenial(row, 'test_connection')"
+                        class="action-reason"
+                      >{{ rowDenial(row, 'test_connection') }}</span>
                     </el-dropdown-item>
                     <el-dropdown-item
+                      v-if="canDeleteAsset || hasActions(row)"
                       command="delete"
-                      divided
+                      data-test="row-delete"
+                      :divided="canTestAsset || hasActions(row)"
                       class="dropdown-danger"
+                      :disabled="!rowCan(row, 'delete', canDeleteAsset)"
                     >
                       {{ $t('common.delete') }}
+                      <span
+                        v-if="rowDenial(row, 'delete')"
+                        class="action-reason"
+                        data-test="delete-reason"
+                      >{{ rowDenial(row, 'delete') }}</span>
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -559,8 +652,15 @@
 
           <template #empty>
             <EmptyState
+              v-if="scopedEmpty"
+              data-test="scoped-empty"
+              :title="$t('assets.scopedEmptyTitle')"
+              :hint="$t('assets.scopedEmptyHint')"
+            />
+            <EmptyState
+              v-else
               :title="$t('assets.emptyTitle')"
-              :hint="isAdmin ? $t('assets.emptyHintAdmin') : $t('assets.emptyHintUser')"
+              :hint="canCreateAsset ? $t('assets.emptyHintAdmin') : $t('assets.emptyHintUser')"
             />
           </template>
         </el-table>
@@ -604,12 +704,15 @@
           :windows-openssh="windowsSshEnabled"
           :asset-name="form.name"
           :private-key-error="privateKeyError"
+          :dedicated-disabled="!canSetCredential"
+          :dedicated-disabled-note="t('assets.editDrawer.addDedicatedNeedsCredentialCreate')"
           @update:model="Object.assign(form, $event)"
         />
         <AssetAdvancedFields
           ref="advancedRef"
           :form="form"
           :node-options="nodeSelectOptions"
+          :scoped="scopedForm"
           :tag-names="visibleFormTags"
           :inherit-policy-label="inheritPolicyLabel"
           @update:form="Object.assign(form, $event)"
@@ -636,7 +739,7 @@
 
     <!-- 批次新增：線上填寫與上傳 CSV 共用一張表，檢查通過才整批匯入 -->
     <AssetBulkDialog
-      v-if="isAdmin"
+      v-if="canCreateAsset"
       v-model="bulkVisible"
       :node-options="nodeSelectOptions"
       :tag-names="tagOptions.map((tag) => tag.name)"
@@ -664,8 +767,11 @@
         :rules="formRules"
         :submitting="submitting"
         :node-options="nodeSelectOptions"
+        :scoped="scopedForm"
         :tag-names="visibleFormTags"
         :inherit-policy-label="inheritPolicyLabel"
+        :security-change-fields="securityChangeList"
+        :can-reset-host-key="isSuperAdmin"
         @update:form="Object.assign(form, $event)"
         @submit="handleSubmit"
         @cancel="drawerVisible = false"
@@ -863,8 +969,12 @@ import AssetCredentialSection from '@/components/asset/AssetCredentialSection.vu
 import AssetAdvancedFields from '@/components/asset/AssetAdvancedFields.vue'
 import AssetEditDrawerContent from '@/components/asset/AssetEditDrawerContent.vue'
 import AssetBulkDialog from '@/components/asset/bulk/AssetBulkDialog.vue'
+import AssetBatchActions from '@/components/asset/AssetBatchActions.vue'
+import { notifyHostKeyMismatchTest } from '@/components/asset/hostKeyTestNotify'
 import { createAccessRequest, breakGlassConnect } from '@/api/accessRequests'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
+import { ACCESS_POLICY_PERM, classifyOverrideChange } from '@/utils/accessPolicyTier'
+import { confirmAccessPolicyDowngrade } from '@/utils/accessPolicyDowngradeConfirm'
 import { riskLabel } from '@/utils/transportDisplay'
 import { getSecurityPolicies } from '@/api/securityPolicies'
 import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
@@ -875,14 +985,21 @@ import {
 } from '@/constants/rotationChannel'
 import { needsAccessRequest, isAccessPending } from '@/utils/asset-access'
 import { confirmDestructive } from '@/utils/confirm'
+import { securityChangeFields, pickSecurityBaseline } from '@/utils/assetSecurityChange'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import { t } from '@/i18n'
 import PageHeader from '@/components/PageHeader.vue'
+import ManageScopeLine from '@/components/ManageScopeLine.vue'
+import { lineFromManagementScope } from '@/composables/useManageScope'
 import RequestItems from '@/components/access-request/RequestItems.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AssetNodeTree from '@/components/AssetNodeTree.vue'
+import ScopedNodeCell from '@/components/asset/ScopedNodeCell.vue'
+import ScopedAssetsNotices from '@/components/asset/ScopedAssetsNotices.vue'
+import { useScopedAssetsPage } from '@/composables/useScopedAssetsPage'
+import { hasActions, isManagedOnly, actionAllowed } from '@/utils/scopedAssets'
 
 
 // 資料狀態
@@ -937,7 +1054,7 @@ const assetTagList = (row) => (row.tags ? row.tags.split(',').filter(Boolean) : 
 // versioned key（同瀏覽器交替登入不互汙）、壞值容錯回預設
 const optionalColumns = ref([])
 const columnPool = computed(() => {
-  if (isAdminOrAuditor.value) {
+  if (showsGlobalAssets.value) {
     return [
       { key: 'username', label: t('common.user') },
       { key: 'nodes', label: t('assets.nodesColumn') },
@@ -945,8 +1062,10 @@ const columnPool = computed(() => {
   }
   return [{ key: 'nodes', label: t('assets.nodesColumn') }]
 })
+// 欄位偏好的儲存鍵沿用既有的 admin／auditor／user 三種字串（升級後仍讀得到原本的選欄），
+// 改由能力類別決定：全域檢視且可編輯資產＝admin、僅全域檢視＝auditor、其餘＝user
 const columnRoleKey = () =>
-  isAdmin.value ? 'admin' : isAdminOrAuditor.value ? 'auditor' : 'user'
+  showsGlobalAssets.value ? (canUpdateAsset.value ? 'admin' : 'auditor') : 'user'
 const columnStorageKey = () => `ot-assets-columns-${columnRoleKey()}-v1`
 
 const showCol = (key) => optionalColumns.value.includes(key)
@@ -993,7 +1112,8 @@ const latencyText = (ms) => {
 }
 
 const loadTagOptions = async () => {
-  if (!isAdminOrAuditor.value) return
+  // 字典由伺服器依主體投影：全域檢視者取全庫，範圍化檢視者只取看得到的資產上的標籤
+  if (!showsGlobalAssets.value && !scopedViewer.value) return
   try {
     const response = await getAssetTags()
     tagOptions.value = response.data || []
@@ -1074,8 +1194,21 @@ const handleAuthorizeNode = (node) => {
   router.push({ path: '/authorizations', query: { node_id: node.id, node_name: node.path || node.name } })
 }
 
-// 使用者角色狀態（isAdminOrAuditor＝isPrivileged 口徑）
-const { isPrivileged: isAdminOrAuditor, isAdmin } = useRoles()
+// 能力來自後端 /auth/me（見 composables/useCapabilities.js），三種語義分開：
+// - showsGlobalAssets＝全域資產檢視的呈現點（ui:assets-global）：標題、欄位、篩選與標籤取用；
+// - 申請呈現＝ui:self-service-actions（見 needsRequest／isPendingRequest）；
+// - 連線豁免＝ui:connect-bypass（保留的超管身分），不由管理能力推得；
+// - 各管理動作依各自的後端能力顯示。
+const showsGlobalAssets = computed(() => can('ui:assets-global'))
+const canCreateAsset = computed(() => can('asset:create'))
+const canUpdateAsset = computed(() => can('asset:update'))
+const canTestAsset = computed(() => can('asset:test'))
+const canDeleteAsset = computed(() => can('asset:delete'))
+// 專用帳號要帶帳號名稱，後端以憑證語義鍵或全域憑證管理任一放行；節點層的收斂由伺服器判定
+const canSetCredential = computed(() => can('credential:create') || can('credential:manage'))
+const bypassesConnectGate = computed(() => can('ui:connect-bypass'))
+// 保留的超管身分（ui:super-admin 呈現點）：標籤治理與主機金鑰重置只給它
+const isSuperAdmin = computed(() => can('ui:super-admin'))
 
 // 新增走對話框、編輯走右側抽屜：編輯要同時處理資產與其帳號，一個對話框裝不下
 const dialogVisible = ref(false)
@@ -1101,7 +1234,7 @@ const form = reactive({
   port: 22,
   // 登入憑證來源二擇一：dedicated＝這台自己一組、shared＝挑一筆共用憑證。
   // 出廠值是 dedicated——全新環境還沒有任何共用憑證可挑
-  credential_mode: 'dedicated',
+  credential_mode: can('credential:create') || can('credential:manage') ? 'dedicated' : 'shared',
   credential_id: null,
   username: '',
   password: '',
@@ -1215,6 +1348,13 @@ const editSubtitle = computed(() =>
 
 // 表單驗證規則（computed：切語言時錯誤訊息隨當下語言）
 const formRules = computed(() => ({
+  node_ids: [
+    {
+      validator: (rule, value, callback) =>
+        nodesMissing(value) ? callback(new Error(t('apiError.RULE_ASSET_NODE_REQUIRED'))) : callback(),
+      trigger: 'change',
+    },
+  ],
   name: [{ required: true, message: t('assets.namePlaceholder'), trigger: 'blur' }],
   protocol: [{ required: true, message: t('assets.protocolPlaceholder'), trigger: 'change' }],
   host: [{ required: true, message: t('assets.ruleHostRequired'), trigger: 'blur' }],
@@ -1300,9 +1440,45 @@ const handleProtocolChange = (protocol) => {
   resetRotationChannel(protocol)
 }
 
+// 批次勾選：只作用於目前頁；可否勾選取自列的 actions 旗標（無旗標＝全域主體，全部可勾）
+const selectedIds = ref([])
+const showsBatchSelection = computed(() => canUpdateAsset.value || canDeleteAsset.value)
+const rowSelectable = (row) =>
+  actionAllowed(row, 'edit', canUpdateAsset.value) ||
+  actionAllowed(row, 'delete', canDeleteAsset.value)
+const selectableRows = computed(() => assetList.value.filter(rowSelectable))
+const selectedRows = computed(() =>
+  assetList.value.filter((r) => selectedIds.value.includes(r.id) && rowSelectable(r))
+)
+const isSelected = (row) => selectedIds.value.includes(row.id)
+const pageAllSelected = computed(
+  () => selectableRows.value.length > 0 && selectedRows.value.length === selectableRows.value.length
+)
+const pageSomeSelected = computed(
+  () => selectedRows.value.length > 0 && !pageAllSelected.value
+)
+const toggleRow = (row, checked) => {
+  const rest = selectedIds.value.filter((id) => id !== row.id)
+  selectedIds.value = checked ? [...rest, row.id] : rest
+}
+const togglePage = (checked) => {
+  selectedIds.value = checked ? selectableRows.value.map((r) => r.id) : []
+}
+const clearSelection = () => {
+  selectedIds.value = []
+}
+// 批次成功：列表、標籤字典與節點樹（搬移、刪除會改計數）都重載
+const onBatchDone = () => {
+  fetchAssetList()
+  loadTagOptions()
+  nodeTreeRef.value?.reloadTree()
+}
+
 // 取得資產列表
 const fetchAssetList = async () => {
   loading.value = true
+  // 換頁、改篩選、重新整理都以新的一頁為準，選取不跨頁保留
+  selectedIds.value = []
   try {
     const params = {
       page: pagination.page,
@@ -1312,11 +1488,11 @@ const fetchAssetList = async () => {
       active: filterForm.active !== '' ? filterForm.active : undefined,
       // 標籤篩選（僅 admin/auditor；一般 user 帶參數伺服端 400）
       tags:
-        isAdminOrAuditor.value && filterForm.tags.length
+        (showsGlobalAssets.value || scopedViewer.value) && filterForm.tags.length
           ? filterForm.tags.join(',')
           : undefined,
       credential_pending:
-        isAdminOrAuditor.value && filterForm.credential_pending ? true : undefined,
+        showsGlobalAssets.value && filterForm.credential_pending ? true : undefined,
     }
 
     // 節點過濾
@@ -1329,6 +1505,7 @@ const fetchAssetList = async () => {
 
     const response = await getAssetList(params)
     assetList.value = response.data
+    applyListResponse(response)
     pagination.total = response.total
   } catch (error) {
     console.error('取得資產列表失敗:', error)
@@ -1395,7 +1572,7 @@ const canConnect = (asset) => {
   // 僅 Admin 保留角色短路（政策豁免帶審計、角色自動 connect 為真語義）；
   // auditor 執行期無角色自動 connect，落列表 permission 欄判定
   //（無顯式 grant 即禁用，不再顯示假入口）
-  if (isAdmin.value) {
+  if (bypassesConnectGate.value) {
     return true
   }
   if (asset.access_state) {
@@ -1409,17 +1586,17 @@ const canConnect = (asset) => {
 // 判準本體住 utils/asset-access.js：工作區側欄消費同一組狀態，
 // 兩處各寫一份遲早會分歧
 const needsRequest = (asset) =>
-  needsAccessRequest(asset, { isPrivileged: isAdminOrAuditor.value })
+  needsAccessRequest(asset, { selfService: can('ui:self-service-actions') })
 
 const isPendingRequest = (asset) =>
-  isAccessPending(asset, { isPrivileged: isAdminOrAuditor.value })
+  isAccessPending(asset, { selfService: can('ui:self-service-actions') })
 
 // 待配憑證（停用優先：停用資產沿停用成因呈現）
 const isCredentialPending = (asset) => asset.active !== false && !!asset.credential_pending
 
-// admin 能自己去「編輯 → 帳號」補；其他角色只能請管理員處理
+// 能設定帳號憑證者（credential:create 或 credential:manage）可自己去「編輯 → 帳號」補；其他人只能請管理員處理
 const credentialPendingTooltip = computed(() =>
-  isAdmin.value ? t('assets.credentialPendingTooltipAdmin') : t('assets.credentialPendingTooltip')
+  canSetCredential.value ? t('assets.credentialPendingTooltipAdmin') : t('assets.credentialPendingTooltip')
 )
 
 // 連線入口提示三態：停用 > 可連 > 無權限。
@@ -1439,7 +1616,7 @@ const resetForm = () => {
   form.protocol = 'ssh'
   form.host = ''
   form.port = 22
-  form.credential_mode = 'dedicated'
+  form.credential_mode = canSetCredential.value ? 'dedicated' : 'shared'
   form.credential_id = null
   form.username = ''
   form.password = ''
@@ -1486,6 +1663,7 @@ const showCredentialPending = () => {
 const handleCreate = () => {
   resetForm()
   isEdit.value = false
+  beginCreate()
   dialogVisible.value = true
 }
 
@@ -1502,7 +1680,7 @@ async function loadGroups() {
   }
 }
 
-const nodeSelectOptions = computed(() => {
+const baseNodeOptions = computed(() => {
   const byId = new Map()
   nodeFlatList.value.forEach((n) => {
     byId.set(n.id, { id: n.id, name: n.path || n.name, parent_id: n.parent_id, children: [] })
@@ -1516,6 +1694,54 @@ const nodeSelectOptions = computed(() => {
     }
   })
   return roots
+})
+
+// 範圍化檢視者：可選候選改取 getAssetGroups({ purpose }) 的 selectable 節點（見 useScopedAssetsPage）
+const {
+  scopedViewer,
+  scopedEmpty,
+  managementScope,
+  applyListResponse,
+  rowCan,
+  rowDenial,
+  scopedForm,
+  scopedNodeOptions,
+  nodesMissing,
+  beginCreate,
+  beginEdit,
+  endScopedForm,
+  submitNodeIds,
+} = useScopedAssetsPage({
+  t,
+  fetchNodes: (params) => getAssetGroups(params),
+  total: () => pagination.total,
+  hasFilters: () =>
+    !!(
+      filterForm.search ||
+      filterForm.protocol ||
+      filterForm.active !== '' ||
+      filterForm.tags.length ||
+      filterForm.credential_pending ||
+      selectedNode.value
+    ),
+})
+const nodeSelectOptions = computed(() => scopedNodeOptions.value ?? baseNodeOptions.value)
+// 頁首範圍行：只讀列表回應的 management_scope
+const assetScopeLine = computed(() => lineFromManagementScope(managementScope.value))
+
+// 範圍化檢視者要等第一份列表回來才知道自己是範圍化的：此時才取（投影後的）標籤字典
+watch(scopedViewer, (on) => {
+  if (on) loadTagOptions()
+})
+
+// 直接開啟或重新整理頁面時，掛載早於能力載入：全域檢視能力到齊後補取字典
+watch(showsGlobalAssets, (on) => {
+  if (on) loadTagOptions()
+})
+
+// 對話框與抽屜都關了就結束範圍化表單狀態，免得批次匯入沿用舊的選項
+watch([dialogVisible, drawerVisible], ([a, b]) => {
+  if (!a && !b) endScopedForm()
 })
 
 // 連線測試（走查補入口：API 既有但前端缺引用）
@@ -1534,8 +1760,18 @@ async function handleTest(row) {
   testingIds.value.add(row.id)
   try {
     const res = await testAssetConnection(row.id)
-    if (res.success) {
+    const hostKeyMismatch = res.warning_code === 'RULE_SSH_HOST_KEY_CHANGED'
+    if (res.success && hostKeyMismatch) {
+      // 連線成功但主機身分與記錄不符：憑證已送到未核對的主機、已留痕告警。
+      // 以不自動消失的通知卡明示；超管可由卡片直接開該資產的主機金鑰區塊
+      notifyHostKeyMismatchTest({ assetId: row.id, latencyMs: res.latency_ms, onGo: openHostKeyEditor })
+    } else if (res.success) {
       ElMessage.success(t('assets.testSuccess', { ms: res.latency_ms }))
+    } else if (hostKeyMismatch) {
+      // 不符放行後才失敗（例如目標拒絕認證）：失敗原因之外仍要保留不符與憑證可能已送出的警示
+      ElMessage.warning(t('assets.testFailedHostKeyMismatch', {
+        reason: resolveApiError({ code: res.code, error: res.message }, undefined, t('assets.unknownReason')),
+      }))
     } else {
       // 收到回應：以該次撥測的失敗機器碼查譯（4.2）。三層降級同 resolveApiError：
       // code 譯文 → 後端 message → 未知原因
@@ -1585,9 +1821,19 @@ function handleRowCommand(command, row) {
   }
 }
 
+// 開啟編輯當下的位址與傳輸欄位快照，供「儲存後會通知安全人員」提示比對
+const securityBaseline = ref(null)
+const securityChangeList = computed(() =>
+  isEdit.value && drawerVisible.value ? securityChangeFields(securityBaseline.value, form) : []
+)
+
+// 開啟編輯當下的覆寫值，供降級確認比對（'' 表示跟隨全域）
+const accessPolicyBaseline = ref('')
+
 const handleEdit = (row) => {
   resetForm()
   isEdit.value = true
+  beginEdit(row)
   form.id = row.id
   form.name = row.name
   form.protocol = row.protocol
@@ -1599,6 +1845,7 @@ const handleEdit = (row) => {
   form.tagList = row.tags ? row.tags.split(',').filter(Boolean) : []
   form.node_ids = [...(row.node_ids || [])]
   form.access_policy = row.access_policy || ''
+  accessPolicyBaseline.value = form.access_policy
   form.active = row.active
   form.db_name = row.db_name || ''
   form.db_tls_mode = row.db_tls_mode || ''
@@ -1632,6 +1879,7 @@ const handleEdit = (row) => {
     form.rotation_ssh_port = row.rotation_ssh_port || ROTATION_SSH_DEFAULT_PORT
   }
   // 注意：不填充密碼和私鑰（安全考量）；帳號與憑證在抽屜的帳號表內處理
+  securityBaseline.value = pickSecurityBaseline(form)
   drawerVisible.value = true
 }
 
@@ -1655,6 +1903,25 @@ const handleSubmit = async () => {
       }
     }
 
+    // 單台連線政策降級：編輯態且持存取政策權限點時，比較開啟當下的覆寫值與現在選的值；
+    // 降級先確認，取消則不送出且顯示值回到原值。前端判斷只是提示，告警以後端為準
+    const mayEditAccessPolicy = can(ACCESS_POLICY_PERM)
+    if (isEdit.value && mayEditAccessPolicy) {
+      const change = classifyOverrideChange(
+        accessPolicyBaseline.value,
+        form.access_policy,
+        globalAccessPolicy.value
+      )
+      if (change.downgrade) {
+        try {
+          await confirmAccessPolicyDowngrade({ assetName: form.name, change })
+        } catch {
+          form.access_policy = accessPolicyBaseline.value
+          return
+        }
+      }
+    }
+
     submitting.value = true
 
     const data = {
@@ -1664,8 +1931,15 @@ const handleSubmit = async () => {
       port: form.port,
       description: form.description,
       tags: form.tagList.join(','),
-      node_ids: form.node_ids,
-      access_policy: form.access_policy,
+    }
+    // 範圍化編輯沒動節點欄時不帶 node_ids（歸屬不變）；動過只送「已選且可選」者
+    const nodePart = submitNodeIds(form.node_ids)
+    if (nodePart.include) data.node_ids = nodePart.value
+    // 無存取政策權限點：連線政策欄唯讀，新增與編輯的本文都不帶此鍵
+    // 編輯態只在值相對開啟當下確實改變時才帶：未動就不送，免得存取政策範圍
+    // 未涵蓋此資產的編輯者因為只改名稱而被伺服端判為不存在
+    if (mayEditAccessPolicy && (!isEdit.value || form.access_policy !== accessPolicyBaseline.value)) {
+      data.access_policy = form.access_policy
     }
 
     // 登入憑證來源二擇一：挑了共用憑證就只送識別，帳號名與秘密都在那一筆憑證上；
@@ -1746,7 +2020,7 @@ const handleSubmit = async () => {
       // 私鑰欄的錯誤改掛在欄位下方，不另出頁頂提示
       await createAsset(data, { skipErrorToast: isPrivateKeyFieldError })
       // 未掛任何節點的資產落在「未分組」，提示去向（走查實證：不提示會以為資產消失）
-      ElMessage.success(form.node_ids.length ? t('assets.created') : t('assets.createdUngrouped'))
+      ElMessage.success(nodePart.include && nodePart.value.length ? t('assets.created') : t('assets.createdUngrouped'))
     }
 
     dialogVisible.value = false
@@ -2025,6 +2299,17 @@ async function openEditFromQuery() {
   const id = Number(route?.query?.edit)
   if (!id) return
   try {
+    await openHostKeyEditor(id)
+  } finally {
+    const query = { ...route.query }
+    delete query.edit
+    router?.replace({ query })
+  }
+}
+
+// 開資產編輯框並捲至主機金鑰區塊：深連結與連線測試通知卡的「前往資產設定」共用
+async function openHostKeyEditor(id) {
+  try {
     const asset = await getAsset(id)
     handleEdit(asset)
     // 抽屜的內容在開啟動畫之後才進 DOM，故多等一拍再捲；
@@ -2034,10 +2319,6 @@ async function openEditFromQuery() {
     document.querySelector('.host-key-item')?.scrollIntoView({ block: 'center' })
   } catch (err) {
     console.error('[Assets] 編輯深連結載入失敗:', err)
-  } finally {
-    const query = { ...route.query }
-    delete query.edit
-    router?.replace({ query })
   }
 }
 
@@ -2084,6 +2365,7 @@ async function findListedRow(detail) {
 </script>
 
 <style scoped>
+.action-reason { display: block; font-size: var(--ot-font-size-xs); color: var(--ot-text-secondary); line-height: 1.4; white-space: normal; max-width: 260px; }
 .created-request { border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); padding: var(--ot-space-md); margin: var(--ot-space-md) 0; }
 .created-request a { color: var(--ot-primary); }
 .assets {

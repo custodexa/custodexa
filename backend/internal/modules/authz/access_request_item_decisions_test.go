@@ -23,7 +23,7 @@ func twoPendingItems(t *testing.T) (*AccessRequestService, *gorm.DB, *model.Acce
 		t.Fatal(err)
 	}
 	names := []string{"app"}
-	req, err := s.Submit(agent, "agent", model.RoleUser, SubmitAccessRequestInput{Items: []ItemInput{{1, &names}, {2, &names}}, Reason: "work", DurationMinutes: 60})
+	req, err := s.Submit(agent, "agent", false, SubmitAccessRequestInput{Items: []ItemInput{{1, &names}, {2, &names}}, Reason: "work", DurationMinutes: 60})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestApproveItemsIndependentQuorum(t *testing.T) {
 }
 func TestApproveItemDownscope(t *testing.T) {
 	s, _, db, _ := setupItemRequestEnv(t)
-	req, err := s.Submit(1, "human", model.RoleUser, SubmitAccessRequestInput{AssetID: 1, Reason: "work", DurationMinutes: 60})
+	req, err := s.Submit(1, "human", false, SubmitAccessRequestInput{AssetID: 1, Reason: "work", DurationMinutes: 60})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +155,11 @@ func TestRejectSingleItem(t *testing.T) {
 }
 func TestItemPolicySnapshot(t *testing.T) {
 	s, _, db, agent := setupItemRequestEnv(t)
-	auto, err := s.Submit(agent, "agent", model.RoleUser, itemInput(3))
+	auto, err := s.Submit(agent, "agent", false, itemInput(3))
 	if err != nil {
 		t.Fatal(err)
 	}
-	manual, err := s.Submit(agent, "agent", model.RoleUser, itemInput(1))
+	manual, err := s.Submit(agent, "agent", false, itemInput(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestRevokeItemOnlyWholeMixedTask(t *testing.T) {
 func TestRequestedAccountsPreservedInSnapshot(t *testing.T) {
 	t.Run("narrowed approval keeps the wide request", func(t *testing.T) {
 		s, _, _, _ := setupItemRequestEnv(t)
-		req, err := s.Submit(1, "human", model.RoleUser, SubmitAccessRequestInput{AssetID: 1, Reason: "work", DurationMinutes: 60})
+		req, err := s.Submit(1, "human", false, SubmitAccessRequestInput{AssetID: 1, Reason: "work", DurationMinutes: 60})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -366,7 +366,7 @@ func TestRequestedAccountsPreservedInSnapshot(t *testing.T) {
 	})
 	t.Run("automatic approval preserves it too", func(t *testing.T) {
 		s, _, _, agent := setupItemRequestEnv(t)
-		auto, err := s.Submit(agent, "agent", model.RoleUser, itemInput(3))
+		auto, err := s.Submit(agent, "agent", false, itemInput(3))
 		if err != nil {
 			t.Fatal(err)
 		}

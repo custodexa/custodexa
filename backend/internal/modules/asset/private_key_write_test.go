@@ -87,7 +87,7 @@ func TestPrivateKeyWriteAssetCreateRejectsUnparsable(t *testing.T) {
 			db := setupAccountDB(t)
 			assets, _ := newAccountServices(t)
 			before := countWriteRows(t, db)
-			_, err := assets.Create(context.Background(), &CreateAssetRequest{
+			_, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 				Name: "pk-top", Protocol: model.ProtocolSSH, Host: "10.31.0.1", Port: 22,
 				Username: "root", PrivateKey: bad, CreatedBy: 1,
 			})
@@ -98,7 +98,7 @@ func TestPrivateKeyWriteAssetCreateRejectsUnparsable(t *testing.T) {
 			db := setupAccountDB(t)
 			assets, _ := newAccountServices(t)
 			before := countWriteRows(t, db)
-			_, err := assets.Create(context.Background(), &CreateAssetRequest{
+			_, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 				Name: "pk-inline", Protocol: model.ProtocolSSH, Host: "10.31.0.2", Port: 22,
 				Credential: &InlineCredential{Username: "root", PrivateKey: bad}, CreatedBy: 1,
 			})
@@ -112,7 +112,7 @@ func TestPrivateKeyWriteAssetUpdate(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 	good, _ := testKeyPair(t, "asset-update")
-	row, err := assets.Create(context.Background(), &CreateAssetRequest{
+	row, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "pk-update", Protocol: model.ProtocolSSH, Host: "10.31.0.3", Port: 22,
 		Username: "root", Password: "old-pw", PrivateKey: good, CreatedBy: 1,
 	})
@@ -121,19 +121,19 @@ func TestPrivateKeyWriteAssetUpdate(t *testing.T) {
 
 	t.Run("RejectsUnparsableKey", func(t *testing.T) {
 		before := countWriteRows(t, db)
-		_, err := assets.Update(adminCtx(), row.ID, &UpdateAssetRequest{PrivateKey: pkStrPtr(encryptedEd25519PEM(t))})
+		_, err := assets.Update(WithSystemCaller(adminCtx()), row.ID, &UpdateAssetRequest{PrivateKey: pkStrPtr(encryptedEd25519PEM(t))})
 		require.ErrorIs(t, err, ErrPrivateKeyInvalid)
 		assert.Equal(t, before, countWriteRows(t, db))
 	})
 
 	stored := seedUnparsablePrivateKey(t, db, assets, effectiveVersionRow(t, db, account.ID).ID)
 	t.Run("PasswordOnlyKeyOmitted", func(t *testing.T) {
-		_, err := assets.Update(adminCtx(), row.ID, &UpdateAssetRequest{Password: pkStrPtr("new-pw-1")})
+		_, err := assets.Update(WithSystemCaller(adminCtx()), row.ID, &UpdateAssetRequest{Password: pkStrPtr("new-pw-1")})
 		require.NoError(t, err, "只改密碼不得重驗庫內既有私鑰")
 		assert.Equal(t, stored, effectiveVersionRow(t, db, account.ID).PrivateKeyEnc, "既有私鑰密文須原樣保留")
 	})
 	t.Run("PasswordOnlyKeyEmpty", func(t *testing.T) {
-		_, err := assets.Update(adminCtx(), row.ID, &UpdateAssetRequest{Password: pkStrPtr("new-pw-2"), PrivateKey: pkStrPtr("")})
+		_, err := assets.Update(WithSystemCaller(adminCtx()), row.ID, &UpdateAssetRequest{Password: pkStrPtr("new-pw-2"), PrivateKey: pkStrPtr("")})
 		require.NoError(t, err, "私鑰空字串＝沿用現行私鑰")
 		assert.Equal(t, stored, effectiveVersionRow(t, db, account.ID).PrivateKeyEnc, "既有私鑰密文須原樣保留")
 	})
@@ -153,7 +153,7 @@ func TestPrivateKeyWriteAccountCreateRejectsUnparsable(t *testing.T) {
 					req = &CreateAssetAccountRequest{Credential: &InlineCredential{Username: "deploy", PrivateKey: bad}}
 				}
 				before := countWriteRows(t, db)
-				_, err := accounts.Create(adminCtx(), row.ID, req)
+				_, err := accounts.Create(WithSystemCaller(adminCtx()), row.ID, req)
 				require.ErrorIs(t, err, ErrPrivateKeyInvalid)
 				assert.Equal(t, before, countWriteRows(t, db), "被拒的請求不得寫入任何資料列")
 			})
@@ -166,7 +166,7 @@ func TestPrivateKeyWriteAccountUpdate(t *testing.T) {
 	assets, accounts := newAccountServices(t)
 	row := newSSHAsset(t, assets, "pk-acct-update", "10.31.1.2")
 	good, _ := testKeyPair(t, "account-update")
-	dto, err := accounts.Create(adminCtx(), row.ID, &CreateAssetAccountRequest{
+	dto, err := accounts.Create(WithSystemCaller(adminCtx()), row.ID, &CreateAssetAccountRequest{
 		Username: "deploy", Password: "old-pw", PrivateKey: good,
 	})
 	require.NoError(t, err)

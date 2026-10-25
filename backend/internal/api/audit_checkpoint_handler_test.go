@@ -70,6 +70,9 @@ func (s *fakeCheckpointSigner) PublicKeyFingerprint(version int) (string, error)
 	return hex.EncodeToString(sum[:8]), nil
 }
 
+// lastCheckpointTestSigner 最近一次 setupCheckpointAPIEnv 建出的簽章器（需要以同一把鑰重簽夾具的測試用）
+var lastCheckpointTestSigner *fakeCheckpointSigner
+
 // setupCheckpointAPIEnv 經完整 RegisterRoutes（真 AuthMiddleware＋真 JWT＋真 sqlite）
 // 的檢查點路由環境，另註冊安全政策路由充當「設定寫入端點」的對照
 func setupCheckpointAPIEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.DB, *audit.CheckpointService) {
@@ -82,8 +85,8 @@ func setupCheckpointAPIEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm
 	}
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.AuditLog{}, &model.AuditCheckpoint{},
-		&model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {
+	if err := migrateWithAuthz(db, &model.AgentToolCall{}, &model.User{}, &model.AuditLog{}, &model.AuditCheckpoint{},
+		&model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.SecurityPolicy{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.IntegrityBaseline{
@@ -102,8 +105,16 @@ func setupCheckpointAPIEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm
 			t.Fatalf("user: %v", err)
 		}
 	}
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）；
+	// multirole 真的同時持有 user 與 auditor 兩筆指派
+	grantLegacyRole(t, db, 1, model.RoleAdmin)
+	grantLegacyRole(t, db, 2, model.RoleUser)
+	grantLegacyRole(t, db, 3, model.RoleAuditor)
+	grantLegacyRole(t, db, 4, model.RoleUser)
+	grantLegacyRole(t, db, 4, model.RoleAuditor)
 
 	signer := newFakeCheckpointSigner(t)
+	lastCheckpointTestSigner = signer
 	seal := audit.NewCheckpointService(db, signer, nil, nil)
 	if err := seal.EnsureGenesis(); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -412,7 +423,10 @@ func TestAuditIntegrityOpenToAuditor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.AuditLog{}, &model.IntegrityBaseline{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.AuditLog{}, &model.IntegrityBaseline{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -425,6 +439,10 @@ func TestAuditIntegrityOpenToAuditor(t *testing.T) {
 			t.Fatalf("user: %v", err)
 		}
 	}
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）
+	grantLegacyRole(t, db, 1, model.RoleAdmin)
+	grantLegacyRole(t, db, 2, model.RoleUser)
+	grantLegacyRole(t, db, 3, model.RoleAuditor)
 	jwtSecret := "integrity-role-secret"
 	r := gin.New()
 	group := r.Group("/api/v1")

@@ -125,7 +125,7 @@ func testAgentOwnerInvalidation(t *testing.T, source string) {
 		if source == "unbind" {
 			err = users.UnbindExternalIdentity(owner.ID, link.ID, IdentityAdminActor{})
 		} else {
-			providers := NewOIDCProviderService(db, nil, nil, nil, "https://app.example.test")
+			providers := newOIDCProviderServiceT(db, nil, nil, nil, "https://app.example.test")
 			providers.SetAgentTokenService(svc)
 			off := false
 			_, err = providers.Update(p.ID, &OIDCProviderRequest{Enabled: &off})

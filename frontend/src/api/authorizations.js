@@ -61,6 +61,7 @@ export function batchCreateAuthorizations(data) {
     url: '/authorizations/batch',
     method: 'post',
     data,
+    skipErrorToast: true,
   })
 }
 
@@ -77,6 +78,20 @@ export function updateAuthorizationAccounts(id, accounts) {
     url: `/authorizations/${id}/accounts`,
     method: 'put',
     data: { accounts },
+    skipErrorToast: true,
+  })
+}
+
+/**
+ * 本人範圍（任何已登入的人類使用者）：本人、本人直接所屬的群組、本人擁有的 agent，
+ * 以及是否適用「不得授權給本人範圍」的限制（超級管理者 applies=false）。
+ * 介面據此預先停用不可選的主體；後端守衛照常判定，讀取失敗時不預先停用。
+ * @returns {Promise} { applies, user_id, user_group_ids, agent_ids }
+ */
+export function getSelfSubjects() {
+  return request({
+    url: '/authorizations/self-subjects',
+    method: 'get',
     skipErrorToast: true,
   })
 }
@@ -106,5 +121,50 @@ export function getEffectiveUsers(assetId) {
     url: '/authorizations/effective-users',
     method: 'get',
     params: { asset_id: assetId },
+  })
+}
+
+/**
+ * 授權畫面的主體選擇器：使用者或使用者群組目錄。
+ * 不依節點範圍過濾；只要求操作者至少有一筆有效的授權規則管理指派。
+ * 載入失敗由呼叫端就地提示，不走全域錯誤提示。
+ * @param {Object} params
+ * @param {'user'|'user_group'} params.kind - 必填
+ * @param {string} [params.search] - 名稱關鍵字
+ * @param {number} [params.page]
+ * @param {number} [params.page_size]
+ * @returns {Promise} { total, page, page_size, kind, data }；
+ *   使用者列 { id, username, display_name, kind, active, roles }，
+ *   群組列 { id, name, description, member_count }
+ */
+export function getAuthorizationSubjectOptions(params) {
+  return request({
+    url: '/authorizations/subject-options',
+    method: 'get',
+    params,
+    skipErrorToast: true,
+  })
+}
+
+/**
+ * 授權畫面的客體選擇器：資產、節點或標籤候選（已依操作者的授權管理範圍投影）。
+ * 節點列的 selectable 為假者只是定位用的祖先，不可授權。
+ * @param {Object} params
+ * @param {'asset'|'node'|'tag'} params.kind - 必填
+ * @param {string} [params.search]
+ * @param {number} [params.node_id] - 該節點與其子孫
+ * @param {string} [params.tags] - 以逗號分隔，AND
+ * @param {number} [params.page]
+ * @param {number} [params.page_size]
+ * @returns {Promise} { total, page, page_size, kind, data }；
+ *   資產列 { id, name, protocol, host, nodes, out_of_scope_node_count? }，
+ *   節點列 { id, name, path, selectable }，標籤列 { name, count }
+ */
+export function getAuthorizationTargetOptions(params) {
+  return request({
+    url: '/authorizations/target-options',
+    method: 'get',
+    params,
+    skipErrorToast: true,
   })
 }

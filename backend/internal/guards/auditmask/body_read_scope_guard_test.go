@@ -23,6 +23,22 @@ var rawRequestBodyReaders = map[string]string{
 	"internal/api/asset_import_handler.go": "POST /assets/import 與 /assets/import/preview：JSON 列須 DisallowUnknownFields" +
 		"（夾帶秘密或帳號名欄即整批拒收，gin binding 表達不了），預檢另收 CSV 原文；" +
 		"課責不靠 request_body 而靠交易內逐台的建立稽核列，加上 handler 補的 import_source／import_count",
+	"internal/api/release_guidance_handler.go": "PUT /auth/me/release-guidance/:version：本文只准 {\"dismissed\": true} 一個鍵，" +
+		"出現其他鍵（含使用者識別、說明版本）即拒收，gin binding 無法表達「多一個鍵就拒絕」；" +
+		"本文不含秘密，課責由同交易的偏好更新審計列（details 記說明版本與狀態）承擔",
+	"internal/api/system_alert_handler.go": "PUT /system-alert-types/:key：請求本文只准 severity 一個鍵，" +
+		"出現其他鍵（含停用、刪除意圖）即以專屬錯誤碼拒收，gin binding 無法表達「多一個鍵就拒絕」；" +
+		"本文只有三值分級、不含秘密，課責由同交易的分級調整審計列（details 記類型鍵與前後分級）承擔",
+	"internal/api/host_identity_confirm.go": "POST 候選重試與成員補跑的選用確認本文：頂層只准 confirm_host_identity 一個鍵，" +
+		"多一個鍵（含 force、自稱的操作者）即以請求格式錯誤拒收，gin binding 表達不了「多一個鍵就拒絕」；" +
+		"本文只有傳輸種類與端點公開的金鑰指紋，不含秘密，" +
+		"課責由承接建立交易內同寫的主機身分確認審計列承擔",
+	"internal/api/asset_handler.go": "PUT /assets/:id 的欄位閘：只讀出本文頂層鍵名決定所需能力，" +
+		"讀完原樣放回，鍵值不解析也不落地；同一 handler 隨後仍以 gin binding 綁定本文，" +
+		"該綁定點照常在 G1／G2 射程內，審計本文的遮罩判定不因此改變",
+	"internal/middleware/scope_gate.go": "登錄閘的目標範圍判定：路由宣告了欄位條件的目標解析時，只讀出本文頂層鍵名" +
+		"決定哪些條件生效（與 PUT /assets/:id 欄位閘同判準），讀完原樣放回，鍵值不解析也不落地；" +
+		"本文隨後仍由 handler 以 gin binding 綁定，該綁定點照常在 G1／G2 射程內，審計本文的遮罩判定不因此改變",
 	"internal/api/key_management_handler.go": "POST /keys/rewrap：KEK 材料不進 gin binding" +
 		"（避免明文停留在結構體），本文全為金鑰材料，遮罩後無可放行內容",
 	"internal/api/seal_handler.go": "POST /seal/unseal：解封材料早於認證系統可用，" +

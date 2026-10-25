@@ -44,7 +44,10 @@ var commandAlertLiteralAllowlist = map[string]string{
 		"writeReportAlerts 只 Find 後寫進 CSV，函式內零 GORM 寫入呼叫——" +
 		"匯出是把既有告警**讀出去**，本來就不該生出告警列。層 2 的無寫入斷言即此宣稱的機器化",
 	"internal/modules/asset/change_secret_runner.go": "改密失敗借道告警**通知**通道：" +
-		"不入庫、不 tee，且 SHALL NOT 併入 AlertSink——併入會產生無對應規則的幽靈告警列",
+		"不入庫、不 tee，且 SHALL NOT 併入 AlertSink——併入會產生無對應規則的幽靈告警列。" +
+		"組裝根注入的改密停止推送（ChangeSecretStopNotifier：計畫承接未完成、輪替授權失效停止、" +
+		"排程暫停）同一條借道、同一理由，構造點收在本檔而不在 cmd/server/stage2.go，" +
+		"組裝根因此不必列入本表",
 	"internal/modules/asset/change_secret_retry_runner.go": "同上：候選憑證逾期放棄重試時的通知。" +
 		"與 change_secret_runner.go 走同一條借道，" +
 		"理由與邊界完全相同——不入庫、不 tee、不併入 AlertSink",
@@ -53,9 +56,10 @@ var commandAlertLiteralAllowlist = map[string]string{
 // commandAlertWriteFile 唯一可以把 command_alerts 列寫進 DB 的檔。
 const commandAlertWriteFile = "internal/modules/audit/alert_sink.go"
 
-// minCommandAlertLiteralSites 現況實測 8 處（alert_sink 1／alert_notifier 1／
-// command_alert_service 2／daily_review_scope 1／audit_export_report 1／
-// change_secret_runner 1／change_secret_retry_runner 1）。
+// minCommandAlertLiteralSites 下限。登記檔現況各有構造點（alert_sink／alert_notifier／
+// command_alert_service／daily_review_scope／audit_export_report／
+// change_secret_runner 3 處：stopJob、alertFailure、ChangeSecretStopNotifier／
+// change_secret_retry_runner）。
 // timeline_service 的兩處已隨位址樞紐消失——`Model(&model.CommandAlert{})` 改為
 // `Table("command_alerts AS sc")` 加 LEFT JOIN sessions 取建線當下的來源位址，
 // 型別標記不再出現，故該檔的豁免已撤（燒盡制：構造點沒了就不留無主的例外）。

@@ -9,12 +9,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // AuthorizationServiceInterface 授權服務接口（用於測試注入）
@@ -39,11 +40,116 @@ type EffectiveAccessResolverInterface interface {
 type AuthorizationHandler struct {
 	authorizationService AuthorizationServiceInterface
 	effectiveResolver    EffectiveAccessResolverInterface
-	// authService 角色現況重判：本群組以 RequireRole("admin")
+	// authService 角色現況重判：本群組原以「僅管理者」角色守衛
 	// 守門，但該中介讀的是 JWT 角色快照——已被降權／停用的前 admin 在 token 效期內
 	// 仍可改任何授權的帳號範圍（把自己加回去）。由 RegisterRoutes 於組裝期注入；
 	// 未注入時帳號範圍端點 fail-close（見 UpdateAccounts）
 	authService *identity.AuthService
+	// selfSubjects 自身範圍唯讀端點的資料來源：與授權規則守衛同一判定函式
+	//（authz.SelfSubjectsOf）。組裝端注入；未注入時端點 fail-close
+	selfSubjects SelfSubjectsReader
+	// scopedWrites 授權規則寫入已由服務層在交易內判定能力與管理範圍（組裝期確認服務已注入判定後開啟）。
+	// 關閉時帳號範圍端點維持「現況角色重判為超級管理者」的舊閘
+	scopedWrites bool
+	// scopedViews 範圍化讀取面；scopedWrites 開啟而此欄為 nil 時，讀取端點 fail-close
+	scopedViews ScopedAuthorizationViews
+	// rowActions 列表的列級旗標來源；nil 時不帶 actions
+	rowActions RuleRowActionsSource
+	// selectors 授權畫面的主體目錄與客體候選來源；nil 時兩個選擇器端點 fail-close
+	selectors AuthorizationSelectorsSource
+}
+
+// EnableScopedWrites 組裝端確認服務已注入範圍判定後呼叫；此後寫入端點的能力與範圍由服務層交易內裁決，
+// 列表與兩個有效權限視角也依檢視者的授權規則管理範圍投影（有效權限解析器實作 ScopedAuthorizationViews 時啟用；
+// 啟用後解析器缺少該實作或未注入判定器，讀取端點 fail-close，不退回全量）。
+//
+// rows 為列表的列級旗標來源，傳 nil 則列表不帶旗標；selectors 為主體目錄與客體候選的來源，
+// 傳 nil 則兩個選擇器端點 fail-close。
+func (h *AuthorizationHandler) EnableScopedWrites(rows RuleRowActionsSource, selectors AuthorizationSelectorsSource) {
+	h.selectors = selectors
+	h.scopedWrites = true
+	h.scopedViews, _ = h.effectiveResolver.(ScopedAuthorizationViews)
+	h.rowActions = rows
+}
+
+// RuleRowActionsSource 授權列表的列級可操作旗標來源（authz.AuthorizationRowActions 實作）；
+// 超級管理者回 nil 對照（不帶旗標）。
+type RuleRowActionsSource interface {
+	For(ctx context.Context, auths []*model.AssetAuthorization, now time.Time) (map[uint]authz.RuleRowActions, error)
+}
+
+// ScopedAuthorizationViews 授權列表與有效權限視角的範圍化讀取（authz.EffectiveAccessResolver 實作）。
+type ScopedAuthorizationViews interface {
+	ListObjectScope(ctx context.Context) (authz.AuthorizationListScope, error)
+	ResolveEffectiveAssetsFor(ctx context.Context, subjectUserID uint, now time.Time) (*authz.EffectiveAssetsResult, error)
+	ResolveEffectiveUsersFor(ctx context.Context, assetID uint, now time.Time) (*authz.EffectiveUsersResult, error)
+}
+
+// respondAuthorizationScopeError 授權規則寫入的能力拒絕、範圍拒絕與批次不可用寫出；回傳 true 表示已寫出。
+// 範圍外與不存在經同一出口、同一回應，不分辨兩者。
+func respondAuthorizationScopeError(c *gin.Context, err error) bool {
+	var denied *authz.ErrScopeDenied
+	if errors.As(err, &denied) {
+		middleware.RespondScopeDenied(c, denied)
+		return true
+	}
+	var capDenied *authz.AuthorizationWriteCapabilityError
+	if errors.As(err, &capDenied) {
+		middleware.WriteCapabilityDenial(c, middleware.AllOfCapabilityDenial(authz.PermAuthorizationManage))
+		return true
+	}
+	var unavailable *authz.AuthorizationBatchUnavailableError
+	if errors.As(err, &unavailable) {
+		middleware.RespondBatchUnavailable(c, unavailable.Count)
+		return true
+	}
+	return false
+}
+
+var errScopedViewsMissing = errors.New("authorization handler: scoped views not wired")
+
+// SelfSubjectsReader 本人範圍讀取（authz.SelfGrantGuard 實作）。
+type SelfSubjectsReader interface {
+	SelfSubjects(tx *gorm.DB, userID uint) (authz.SelfSubjects, error)
+}
+
+// SetSelfSubjectsReader 注入本人範圍讀取面（組裝端呼叫）
+func (h *AuthorizationHandler) SetSelfSubjectsReader(r SelfSubjectsReader) {
+	h.selfSubjects = r
+}
+
+// operatorContext 帶操作者主體的服務層 context：授權規則的本人範圍守衛由它認出操作者
+// 與超管豁免；主體缺席時服務層 fail-close
+func operatorContext(c *gin.Context) context.Context {
+	return authz.ContextWithPrincipal(c.Request.Context(), middleware.PrincipalFrom(c))
+}
+
+// SelfSubjects GET /authorizations/self-subjects：本人範圍（本人、本人直接所屬的群組、
+// 本人擁有的 agent）與「是否適用本人範圍限制」。任何已認證人類主體可讀；只回本人資料。
+// 超管 `applies=false`、清單照列。資料與後端守衛同一函式，介面停用只是體驗。
+func (h *AuthorizationHandler) SelfSubjects(c *gin.Context) {
+	userID, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
+		return
+	}
+	if h.selfSubjects == nil || database.DB == nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalPermissionCheck,
+			errors.New("本人範圍讀取面未注入"))
+		return
+	}
+	subjects, err := h.selfSubjects.SelfSubjects(database.DB, userID)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalPermissionCheck, err)
+		return
+	}
+	p := middleware.PrincipalFrom(c)
+	c.JSON(http.StatusOK, gin.H{
+		"applies":        p == nil || !p.IsSuperAdmin(),
+		"user_id":        subjects.UserID,
+		"user_group_ids": subjects.UserGroupIDs,
+		"agent_ids":      subjects.AgentIDs,
+	})
 }
 
 // NewAuthorizationHandler 創建授權管理 handler
@@ -117,7 +223,7 @@ func (h *AuthorizationHandler) Create(c *gin.Context) {
 		return
 	}
 
-	auth, err := h.authorizationService.Grant(c.Request.Context(), req.toGrantSpec(grantedBy))
+	auth, err := h.authorizationService.Grant(operatorContext(c), req.toGrantSpec(grantedBy))
 	if err != nil {
 		respondGrantError(c, err)
 		return
@@ -130,6 +236,9 @@ func (h *AuthorizationHandler) Create(c *gin.Context) {
 
 // respondGrantError 授權建立錯誤映射：重複 409、引用不存在 404、形狀錯誤 400
 func respondGrantError(c *gin.Context, err error) {
+	if respondAuthorizationScopeError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, authz.ErrAuthorizationExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeAuthorizationExists, nil)
@@ -137,6 +246,9 @@ func respondGrantError(c *gin.Context, err error) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountScopeInvalid, nil)
 	case errors.Is(err, authz.ErrInvalidGrantSubject):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidGrantSubject, nil)
+	case errors.Is(err, authz.ErrSelfSubjectGrant):
+		// 不帶主體名稱、ID 或數量；細節只進審計拒絕原因
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthorizationSelfSubject, nil)
 	default:
 		if entity, ok := grantMissingEntity(err); ok {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeGrantReferenceNotFound, map[string]any{"entity": entity})
@@ -269,12 +381,12 @@ type UpdateAccountsRequest struct {
 // UpdateAccounts PUT /authorizations/:id/accounts：調整既有授權列的帳號範圍。
 // 收緊即時生效——連線兌換點 DB 現查，不受既簽發 token 效期影響
 func (h *AuthorizationHandler) UpdateAccounts(c *gin.Context) {
-	// 角色現況重判：RequireRole("admin") 讀的是 JWT 角色快照，
+	// 角色現況重判：舊角色守衛讀的是 JWT 角色快照，
 	// AuthMiddleware 不查 DB——已降權／停用的前 admin 在 token 效期內仍可改任何
 	// 授權的帳號範圍（例如把自己加回被移除的帳號）。此端點直接改授權事實，
 	// 必須與三個連線強制點同一事實源。未注入 authService 一律拒（fail-close：
 	// 無法驗證現況角色時不得放行改授權）
-	if h.authService == nil {
+	if h.authService == nil && !h.scopedWrites {
 		apierror.RespondInternal(c, http.StatusInternalServerError,
 			apierror.CodeInternalAuthorizationUpdate, errors.New("authService 未注入，無法重判現況角色"))
 		return
@@ -284,12 +396,14 @@ func (h *AuthorizationHandler) UpdateAccounts(c *gin.Context) {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
 		return
 	}
-	// 回應與 RequireRole 中介完全一致（403＋ROLE_REQUIRED{role:admin}）：現況降權者
-	// 與從未有 admin 者收到同一個答案，不新增可據以推斷「你的 token 曾是 admin」的訊號
-	currentRole, roleErr := h.authService.CurrentConnectRole(actorID)
-	if roleErr != nil || currentRole != model.RoleAdmin {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeRoleRequired, map[string]any{"role": model.RoleAdmin})
-		return
+	// 回應為能力拒絕單一形狀：現況降權者、從未是超管者與現查失敗者收到同一個答案，
+	// 不新增可據以推斷「你的 token 曾是超管」的訊號
+	if !h.scopedWrites {
+		current, roleErr := h.authService.CurrentConnectPrincipal(actorID)
+		if roleErr != nil || !current.IsSuperAdmin() {
+			middleware.WriteCapabilityDenial(c, middleware.ReservedCapabilityDenial(authz.ReservedSuperAdmin))
+			return
+		}
 	}
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -302,8 +416,11 @@ func (h *AuthorizationHandler) UpdateAccounts(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
 		return
 	}
-	auth, err := h.authorizationService.UpdateAccountScope(c.Request.Context(), uint(id), req.Accounts)
+	auth, err := h.authorizationService.UpdateAccountScope(operatorContext(c), uint(id), req.Accounts)
 	if err != nil {
+		if respondAuthorizationScopeError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, authz.ErrAccountScopeRequired):
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountScopeRequired, nil)
@@ -313,6 +430,10 @@ func (h *AuthorizationHandler) UpdateAccounts(c *gin.Context) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAuthorizationNotFound, nil)
 		case errors.Is(err, authz.ErrTicketAccountScopeImmutable):
 			apierror.Respond(c, http.StatusConflict, apierror.CodeTicketAccountScopeImmutable, nil)
+		case errors.Is(err, authz.ErrSelfSubjectGrant):
+			apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthorizationSelfSubject, nil)
+		case errors.Is(err, authz.ErrAccountScopeWidenRestricted):
+			apierror.Respond(c, http.StatusForbidden, apierror.CodeAccountScopeWidenRestricted, nil)
 		default:
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationUpdate, err)
 		}
@@ -383,10 +504,13 @@ func (h *AuthorizationHandler) BatchCreate(c *gin.Context) {
 	}
 
 	result, err := h.authorizationService.GrantBatch(
-		c.Request.Context(),
+		operatorContext(c),
 		req.UserIDs, req.UserGroupIDs, req.AssetIDs, req.AssetGroupIDs,
 		model.PermissionType(req.Permission), grantedBy, req.Accounts)
 	if err != nil {
+		if respondAuthorizationScopeError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, authz.ErrAccountScopeInvalid):
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountScopeInvalid, nil)
@@ -394,6 +518,8 @@ func (h *AuthorizationHandler) BatchCreate(c *gin.Context) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBatchEmpty, nil)
 		case errors.Is(err, authz.ErrBatchTooLarge):
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBatchTooLarge, map[string]any{"limit": authz.MaxBatchExpansion})
+		case errors.Is(err, authz.ErrSelfSubjectGrant):
+			apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthorizationSelfSubject, nil)
 		default:
 			if entity, ok := grantMissingEntity(err); ok {
 				apierror.Respond(c, http.StatusNotFound, apierror.CodeBatchReferenceNotFound, map[string]any{"entity": entity})
@@ -423,8 +549,11 @@ func (h *AuthorizationHandler) Delete(c *gin.Context) {
 	assetID := authTargetAssetID(authID)
 
 	// 調用 Service 撤銷授權
-	err = h.authorizationService.RevokePermission(c.Request.Context(), authID)
+	err = h.authorizationService.RevokePermission(operatorContext(c), authID)
 	if err != nil {
+		if respondAuthorizationScopeError(c, err) {
+			return
+		}
 		if errors.Is(err, authz.ErrAuthorizationNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAuthorizationNotFound, nil)
 			return
@@ -524,6 +653,20 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 		}
 	}
 
+	// 範圍化組裝下，客體在檢視者管理範圍內的規則才進入結果；全域檢視者的條件為不限
+	if h.scopedWrites {
+		if h.scopedViews == nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, errScopedViewsMissing)
+			return
+		}
+		scope, err := h.scopedViews.ListObjectScope(operatorContext(c))
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, err)
+			return
+		}
+		filters["object_scope"] = scope
+	}
+
 	auths, total, err := h.authorizationService.ListAuthorizations(filters, page, pageSize)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, err)
@@ -533,8 +676,20 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 	// 格式化返回數據：主體與客體皆可辨識（serializeAuthorizationAt 統一序列化）
 	nodePaths := authNodePaths()
 	result := make([]gin.H, 0, len(auths))
+	var actions map[uint]authz.RuleRowActions
+	if h.rowActions != nil {
+		actions, err = h.rowActions.For(operatorContext(c), auths, now)
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, err)
+			return
+		}
+	}
 	for _, auth := range auths {
-		result = append(result, serializeAuthorizationAt(auth, nodePaths, now))
+		row := serializeAuthorizationAt(auth, nodePaths, now)
+		if a, ok := actions[auth.ID]; ok {
+			row["actions"] = a
+		}
+		result = append(result, row)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -552,7 +707,16 @@ func (h *AuthorizationHandler) EffectiveAssets(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidQueryParam, map[string]any{"field": "user_id"})
 		return
 	}
-	result, err := h.effectiveResolver.ResolveEffectiveAssets(uint(id), time.Now())
+	var result *authz.EffectiveAssetsResult
+	if h.scopedWrites {
+		if h.scopedViews == nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationEffective, errScopedViewsMissing)
+			return
+		}
+		result, err = h.scopedViews.ResolveEffectiveAssetsFor(operatorContext(c), uint(id), time.Now())
+	} else {
+		result, err = h.effectiveResolver.ResolveEffectiveAssets(uint(id), time.Now())
+	}
 	if err != nil {
 		if errors.Is(err, authz.ErrEffectiveSubjectNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotFound, nil)
@@ -571,7 +735,16 @@ func (h *AuthorizationHandler) EffectiveUsers(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidQueryParam, map[string]any{"field": "asset_id"})
 		return
 	}
-	result, err := h.effectiveResolver.ResolveEffectiveUsers(uint(id), time.Now())
+	var result *authz.EffectiveUsersResult
+	if h.scopedWrites {
+		if h.scopedViews == nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationEffective, errScopedViewsMissing)
+			return
+		}
+		result, err = h.scopedViews.ResolveEffectiveUsersFor(operatorContext(c), uint(id), time.Now())
+	} else {
+		result, err = h.effectiveResolver.ResolveEffectiveUsers(uint(id), time.Now())
+	}
 	if err != nil {
 		if errors.Is(err, authz.ErrEffectiveAssetNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
@@ -589,7 +762,7 @@ func (h *AuthorizationHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 	h.authService = authService
 	authorizations := r.Group("/authorizations")
 	authorizations.Use(middleware.AuthMiddleware(authService))
-	authorizations.Use(middleware.RequireRole("admin")) // 僅管理員可操作
+	authorizations.Use(middleware.EnforceRegistry()) // 僅管理員可操作
 	{
 		authorizations.POST("", h.Create)
 		authorizations.POST("/batch", h.BatchCreate)
@@ -599,5 +772,10 @@ func (h *AuthorizationHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 		// 有效權限雙視角：唯讀溯因，admin only 隨群組守門
 		authorizations.GET("/effective-assets", h.EffectiveAssets)
 		authorizations.GET("/effective-users", h.EffectiveUsers)
+		// 本人範圍唯讀：登錄類別 self（任何已認證人類主體；agent 由路由允許清單拒絕）
+		authorizations.GET("/self-subjects", h.SelfSubjects)
+		// 有限選擇器：主體目錄與客體候選，欄位固定、依授權規則管理範圍投影
+		authorizations.GET("/subject-options", h.SubjectOptions)
+		authorizations.GET("/target-options", h.TargetOptions)
 	}
 }

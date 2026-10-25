@@ -5,8 +5,8 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -20,7 +20,7 @@ func setupGatedChannelSvc(t *testing.T) (*NotificationChannelService, *policy.Se
 	if err := db.AutoMigrate(&model.NotificationChannel{}, &model.SecurityPolicy{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	svc := NewNotificationChannelService(db, nil)
+	svc := newChannelSvc(t, db, nil)
 	policies := policy.NewSecurityPolicyService(db)
 	svc.SetTransmissionPolicy(policy.NewTransmissionPolicyService(policies, nil))
 	return svc, policies, db
@@ -58,13 +58,19 @@ func TestNotifyGateWarnRequiresAck(t *testing.T) {
 		t.Fatalf("warn＋確認應成功: %v", err)
 	}
 	var n int64
-	db.Model(&model.AuditLog{}).Where("resource = ?", model.ResourceTransmission).Count(&n)
+	// 確認聲明併入同交易的通道審計列，不再另寫 transmission 旁路列。
+	db.Model(&model.AuditLog{}).Where("resource = ? AND details LIKE ?", model.ResourceNotifyChannel,
+		`%"transport_risk_ack"%`).Count(&n)
 	if n != 1 {
-		t.Errorf("確認聲明審計筆數 = %d, want 1", n)
+		t.Errorf("帶確認聲明的通道審計列筆數 = %d, want 1", n)
+	}
+	db.Model(&model.AuditLog{}).Where("resource = ?", model.ResourceTransmission).Count(&n)
+	if n != 0 {
+		t.Errorf("transmission 旁路審計列筆數 = %d, want 0", n)
 	}
 
 	// https 不受閘
-	if _, err := svc.Create(&NotificationChannelRequest{Name: "safe", URL: "https://hooks.example.com/x"}); err != nil {
+	if _, err := svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "safe", URL: "https://hooks.example.com/x"}); err != nil {
 		t.Errorf("warn 檔存 https 不應受閘: %v", err)
 	}
 }
@@ -92,7 +98,7 @@ func TestNotifyGateUpdateEvaluatesEffectiveURL(t *testing.T) {
 
 	// 收緊為 strict：存量通道不被停用，但再次存檔（未帶 URL＝沿用 http）被拒
 	policies.Update(policy.PolicyTransportNotifyLevel, policy.TransportLevelStrict, "admin")
-	_, err = svc.Update(created.ID, &NotificationChannelRequest{Name: "ops-renamed"})
+	_, err = svc.Update(created.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "ops-renamed"})
 	var gateErr *policy.TransmissionGateError
 	if !errors.As(err, &gateErr) {
 		t.Fatalf("沿用 http 的再存檔應被 strict 拒絕, err = %v", err)
@@ -100,6 +106,7 @@ func TestNotifyGateUpdateEvaluatesEffectiveURL(t *testing.T) {
 
 	// 改成 https 即可存
 	if _, err := svc.Update(created.ID, &NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "ops", URL: "https://hooks.example.com/x",
 	}); err != nil {
 		t.Fatalf("改 https 應通過: %v", err)
@@ -112,7 +119,7 @@ func TestNotifyListMarksDeviation(t *testing.T) {
 	if _, err := svc.Create(httpChannelReq(false)); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Create(&NotificationChannelRequest{Name: "safe", URL: "https://hooks.example.com/x"}); err != nil {
+	if _, err := svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "safe", URL: "https://hooks.example.com/x"}); err != nil {
 		t.Fatalf("Create https: %v", err)
 	}
 

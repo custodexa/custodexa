@@ -1,9 +1,9 @@
 package main
 
 import (
-	"errors"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
@@ -104,8 +104,17 @@ func newSealIntegrationEnvWith(t *testing.T, mutate func(*stage1), opts ...func(
 	if err := db.AutoMigrate(database.SchemaParityModels()...); err != nil {
 		t.Fatalf("建表失敗: %v", err)
 	}
+	// schema_migrations 在產品上由 RunMigrations 的自舉 DDL 建立，不在 parity 模型清單內；
+	// 段 2 的啟動步驟會讀寫其中的執行期標記（缺表時只執行一次的資料步驟會中止段 2）。
+	if err := db.AutoMigrate(&database.SchemaMigration{}); err != nil {
+		t.Fatalf("建 schema_migrations 失敗: %v", err)
+	}
 	if err := database.SeedDatabase(testAdminPassword); err != nil {
 		t.Fatalf("SeedDatabase 失敗: %v", err)
+	}
+	// 產品上 authz_state 初始列由權限模型遷移建立；段 2 的範本種入會推進權限版本，缺列即中止段 2。
+	if err := db.Exec(`INSERT INTO authz_state (id, version) VALUES (1, 0) ON CONFLICT (id) DO NOTHING`).Error; err != nil {
+		t.Fatalf("建 authz_state 初始列失敗: %v", err)
 	}
 
 	cfg := &config.Config{}
@@ -161,10 +170,10 @@ func newSealIntegrationEnvWith(t *testing.T, mutate func(*stage1), opts ...func(
 	// 不存在於 production 的 router。
 	r := newStageOneTestEngine(t, env.s1)
 	registerRoutes(r, sealedStageOneDeps(stageOneRouteConfig{
-		corsMiddleware:    env.s1.corsMiddleware,
+		corsMiddleware: env.s1.corsMiddleware,
 		// 取 s1 上的實例而非另建：production 路徑即以此共用，
 		// 另建一份會讓封印期指標與解封後不是同一組序列
-		metrics:           env.s1.metrics,
+		metrics: env.s1.metrics,
 	}, w.main))
 	env.engine = r
 	env.swap.Set(r)

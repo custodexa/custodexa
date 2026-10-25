@@ -13,8 +13,9 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/keyvault"
-	"github.com/custodexa/backend/internal/notifycat"
 )
 
 // 委託拓撲端點的守衛。
@@ -37,11 +38,18 @@ func topologyTestHandler(t *testing.T, provider string) (*KeyManagementHandler, 
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.KEKTopology{}, &model.DataKey{}, &model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.KEKTopology{}, &model.DataKey{}, &model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(evidenceSinkModels()...); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	h := NewKeyManagementHandler(db, nil, nil, "test-fp", nil)
 	h.SetDeploymentKMSProvider(func() string { return provider })
+	h.SetEvidenceSinks(audit.NewTxSink(), audit.NewSystemAlertSink(nil))
 	sink := &recordingAuditSink{}
 	h.auditTopologyHook = sink.record
 	return h, db, sink
@@ -61,6 +69,11 @@ func doTopology(t *testing.T, h *KeyManagementHandler, method, body string) *htt
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	// 拓撲變更告警拒收零值操作者：測試直接掛路由，以中介層補上已認證的操作者
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", uint(1))
+		c.Set("username", "admin")
+	})
 	r.GET("/api/v1/keys/topology", h.GetKEKTopology)
 	r.PUT("/api/v1/keys/topology", h.UpdateKEKTopology)
 	w := httptest.NewRecorder()
@@ -97,9 +110,9 @@ func TestKEKTopologyHandlerReadsUnsetDeployment(t *testing.T) {
 func TestKEKTopologyHandlerExactKeySet(t *testing.T) {
 	valid := `{"address":"https://vault.example:8200","transit_key_name":"kek","role_id":"r1"}`
 	for name, body := range map[string]string{
-		"少一鍵": `{"address":"https://vault.example:8200","transit_key_name":"kek"}`,
-		"多一鍵": `{"address":"https://vault.example:8200","transit_key_name":"kek","role_id":"r1","region":"ap-northeast-1"}`,
-		"未知鍵": `{"address":"https://vault.example:8200","transit_key_name":"kek","role_id":"r1","note":"x"}`,
+		"少一鍵":  `{"address":"https://vault.example:8200","transit_key_name":"kek"}`,
+		"多一鍵":  `{"address":"https://vault.example:8200","transit_key_name":"kek","role_id":"r1","region":"ap-northeast-1"}`,
+		"未知鍵":  `{"address":"https://vault.example:8200","transit_key_name":"kek","role_id":"r1","note":"x"}`,
 		"他家欄位": `{"region":"ap-northeast-1"}`,
 		"非物件":  `[]`,
 	} {
@@ -305,30 +318,31 @@ func TestKEKTopologyAuditCarriesBeforeAndAfter(t *testing.T) {
 	}
 }
 
-// TestTopologyChangeAlert 拓撲變更的告警事件參數合乎通知契約（任務 5.5）。
+// TestTopologyChangeAlert 拓撲變更建立系統告警（取代舊的非持久通知）。
 //
-// **不驗「送到了」**：通知通道未設定或不可達時只有審計，介面不得宣稱已通知。
-// 這裡驗的是「發出去的那一份長得對」——參數不合契約會降級為 generic 文案，
-// 收到通知的人就看不出保管處設定被改了。
+// **不驗「送到了」**：通知通道未設定或不可達時只有告警列與審計，介面不得宣稱已通知。
+// 這裡驗的是「建立了一筆、參數只有變動欄位類別、不帶位址」，前後值由同交易審計列回查。
 func TestTopologyChangeAlert(t *testing.T) {
-	h, _, _ := topologyTestHandler(t, keyvault.TopologyProviderVault)
-	// 通知器未初始化（單元測試環境）時不得 panic——那條路徑在正式部署上也存在
-	// （通知通道未設定）。
-	h.notifyTopologyChange("admin", keyvault.TopologyProviderVault, "(unset)", "address=https://v.example:8200")
-
-	params := map[string]string{
-		"actor": "admin", "provider": keyvault.TopologyProviderVault,
-		"before": "(unset)", "after": "address=https://v.example:8200 role_id=r1",
+	h, db, _ := topologyTestHandler(t, keyvault.TopologyProviderVault)
+	base := `{"address":"https://vault.example:8200","transit_key_name":"kek","role_id":"r1"}`
+	if w := doTopology(t, h, "PUT", base); w.Code != 200 {
+		t.Fatalf("前置設定失敗: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := notifycat.Validate(notifycat.EventKEKTopologyChanged, params); err != nil {
-		t.Fatalf("告警參數不合通知契約: %v", err)
+	moved := `{"address":"https://vault-2.example:8200","transit_key_name":"kek","role_id":"r1"}`
+	if w := doTopology(t, h, "PUT", moved); w.Code != 200 {
+		t.Fatalf("變更失敗: %d %s", w.Code, w.Body.String())
 	}
-	// 參數只含非秘密：憑證欄不在事件目錄宣告的鍵集內，故即使誤傳也不會出站。
-	clean, _ := notifycat.FilterDeclared(notifycat.EventKEKTopologyChanged, map[string]string{
-		"actor": "admin", "provider": "vault", "before": "x", "after": "y",
-		"vault_secret_id": "must-not-leave-the-process",
-	})
-	if _, leaked := clean["vault_secret_id"]; leaked {
-		t.Fatal("未宣告的秘密鍵隨告警出站")
+	var details []model.SystemAlertDetail
+	if err := db.Where("alert_type = ?", string(port.SystemAlertKeyTopologyChanged)).Order("alert_id").Find(&details).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(details) != 2 {
+		t.Fatalf("兩次變更應各一筆拓撲告警，得 %d", len(details))
+	}
+	if !strings.Contains(details[1].Params, "address") {
+		t.Fatalf("change_kind 應含 address: %s", details[1].Params)
+	}
+	if strings.Contains(details[1].Params, "vault-2.example") || strings.Contains(details[1].Params, "vault.example") {
+		t.Fatalf("告警參數不得帶位址: %s", details[1].Params)
 	}
 }

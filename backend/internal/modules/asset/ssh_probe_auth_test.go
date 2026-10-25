@@ -50,7 +50,7 @@ func (f *sshProbeFixture) sshAsset(t *testing.T, name, host string, port int, pa
 	if unparsable {
 		createKey, _ = testKeyPair(t, "probe-placeholder")
 	}
-	a, err := f.assets.Create(context.Background(), &CreateAssetRequest{
+	a, err := f.assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: port,
 		Username: "root", Password: password, PrivateKey: createKey, CreatedBy: 1,
 	})

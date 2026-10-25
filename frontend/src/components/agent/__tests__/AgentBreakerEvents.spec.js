@@ -2,8 +2,8 @@ import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import AgentBreakerEvents from '../AgentBreakerEvents.vue'
-const api = vi.hoisted(() => ({ events: vi.fn(), asset: vi.fn() }))
-vi.mock('@/api/agents', () => ({ getAgentBreakerEvents: api.events, getAgentTokens: vi.fn() }))
+const api = vi.hoisted(() => ({ events: vi.fn(), asset: vi.fn(), tokens: vi.fn() }))
+vi.mock('@/api/agents', () => ({ getAgentBreakerEvents: api.events, getAgentTokens: api.tokens }))
 vi.mock('@/api/assets', () => ({ getAsset: api.asset }))
 enableAutoUnmount(afterEach)
 const pendingAt = '2026-09-23T01:00:00Z'
@@ -39,5 +39,20 @@ describe('本次待處置事件才使用琥珀', () => {
     const w = await open(); const tags = w.findAll('[data-test="probe-class"]')
     expect(tags.every(tag => tag.classes().includes('ot-tag-neutral'))).toBe(true)
     expect(w.findAllComponents({ name: 'ElTag' }).every(tag => tag.props('type') !== 'warning')).toBe(true)
+  })
+})
+describe('還原後失效的鑰匙', () => {
+  it('狀態文字如實標示，且不計入可用數', async () => {
+    const future = new Date(Date.now() + 86400000).toISOString()
+    api.tokens.mockResolvedValue({ data: [
+      { id: 1, name: 'old', expires_at: future, restore_invalidated: true },
+      { id: 2, name: 'new', expires_at: future },
+    ] })
+    const w = mount(AgentBreakerEvents, { props: { userId: 31, readTokens: true }, global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    const states = w.findAll('[data-test="breaker-token-state"]')
+    expect(states[0].text()).toContain('已因還原失效')
+    expect(states[1].text()).toContain('有效')
+    expect(w.get('[data-test="breaker-usable-stat"]').text()).toContain('1')
   })
 })

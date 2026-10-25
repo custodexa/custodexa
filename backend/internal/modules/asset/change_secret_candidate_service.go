@@ -41,6 +41,10 @@ type ChangeSecretCandidateService struct {
 	bytesCrypto  material.BytesColumnCodec
 	assetService *AssetService
 	auditTx      port.TxSink
+	// confirmedCommitHook 測試掛點：承接路徑的提交交易在消耗承接紀錄之後、提交之前呼叫，回錯誤即回滾整筆
+	confirmedCommitHook func(tx *gorm.DB) error
+	// scope 讀取投影與重試的範圍判定；未注入＝不限範圍（見 change_secret_candidate_view.go）
+	scope ChangeSecretScopePort
 }
 
 // NewChangeSecretCandidateService 建立服務
@@ -73,6 +77,8 @@ type CandidateInput struct {
 	// 0＝呼叫端尚未解析到憑證（既有的計劃與批次路徑）；輪替路徑一律帶上，
 	// 使補跑時「這把秘密是哪一輪、要就位成哪一版」不必回頭猜
 	CredentialID uint
+	// AuthorizationID 產生本候選的工作授權脈絡（0＝無）
+	AuthorizationID uint
 	// CredentialName 憑證名稱快照（同 record 的理由：憑證可能改名或被回收）
 	CredentialName  string
 	TargetVersionID uint
@@ -121,6 +127,16 @@ func (s *ChangeSecretCandidateService) createOwnedInTx(ctx context.Context, tx *
 		PublicKey:         in.PublicKey,
 		PreviousPublicKey: in.PreviousPublicKey,
 		NextAttemptAt:     time.Now().Add(candidateRetryBase),
+		// 新版建立：尚未完成任何金鑰交換，與升級前的 legacy 可區分
+		HostKeyBinding: model.HostKeyBindingPending,
+	}
+	if in.AuthorizationID != 0 {
+		authID := in.AuthorizationID
+		cand.AuthorizationID = &authID
+	}
+	// 目標指紋取建立當下的事實；算不出來就留空（之後的失權有限驗證因無從證實目標而不放行）
+	if fp, err := loadTargetFingerprint(tx, in.AccountID); err == nil {
+		cand.TargetFingerprint = fp
 	}
 	if !password.IsEmpty() {
 		enc, err := material.Use(password, func(raw []byte) (string, error) {
@@ -147,6 +163,18 @@ func (s *ChangeSecretCandidateService) createOwnedInTx(ctx context.Context, tx *
 		return nil, err
 	}
 	return cand, nil
+}
+
+// PinTargetFingerprint 把候選的目標指紋固定為當下的事實（舊候選經具權者明示確認後使用）。
+// 只在指紋仍為空時寫入，不覆蓋建立當下留下的指紋。
+func (s *ChangeSecretCandidateService) PinTargetFingerprint(id, accountID uint) error {
+	fp, err := loadTargetFingerprint(s.db, accountID)
+	if err != nil {
+		return err
+	}
+	return s.db.Model(&model.ChangeSecretCandidate{}).
+		Where("id = ? AND target_fingerprint = ''", id).
+		Update("target_fingerprint", fp).Error
 }
 
 // Secret 解密候選秘密。回傳值 SHALL NOT 進入任何 API 回應、日誌或審計欄位
@@ -231,11 +259,29 @@ func (s *ChangeSecretCandidateService) DueForRetry(limit int) ([]model.ChangeSec
 // **順序是「先提交、後刪列」**：提交後刪列失敗只會讓重試再提交一次同一個值
 // （冪等、無害）；反過來先刪列則在提交失敗時失去唯一副本，帳號永久鎖死。
 func (s *ChangeSecretCandidateService) Promote(ctx context.Context, cand *model.ChangeSecretCandidate) error {
+	return s.promote(ctx, cand, nil)
+}
+
+// PromoteConfirmed 人工承接驗證成功後的提交：主機身分以承接紀錄為預期，
+// 並在同一提交交易內以條件式更新消耗該紀錄（outcome=verified）；受影響列數不為 1 即整筆回滾。
+func (s *ChangeSecretCandidateService) PromoteConfirmed(ctx context.Context, cand *model.ChangeSecretCandidate,
+	confirm *model.CredentialHostIdentityConfirmation) error {
+
+	if confirm == nil {
+		return ErrHostIdentityConfirmInvalid
+	}
+	return s.promote(ctx, cand, confirm)
+}
+
+// promote 提交的共同實作；confirm 非 nil 即承接路徑。
+func (s *ChangeSecretCandidateService) promote(ctx context.Context, cand *model.ChangeSecretCandidate,
+	confirm *model.CredentialHostIdentityConfirmation) error {
+
 	// 候選自帶憑證與目標版本＝那組秘密的落點已經先建好了（整批同一組的具名共用憑證）：
 	// 此時要做的是把掛載改綁過去並設就位版本，而不是在原憑證上再開一版——
 	// 後者會把同一組密文複製到多筆專用憑證，共用關係在憑證庫上就看不見了
 	if cand.CredentialID != 0 && cand.TargetVersionID != 0 {
-		return s.promoteToCredential(ctx, cand)
+		return s.promoteToCredential(ctx, cand, confirm)
 	}
 	secret, err := s.Secret(ctx, cand)
 	if err != nil {
@@ -247,17 +293,74 @@ func (s *ChangeSecretCandidateService) Promote(ctx context.Context, cand *model.
 		if secret.PrivateKey.IsEmpty() {
 			return fmt.Errorf("候選私鑰為空")
 		}
-		err = s.assetService.updateOwnedPrivateKey(cand.AssetID, cand.AccountID, cand.AccountUsername, secret.PrivateKey)
 	default:
 		if secret.Password.IsEmpty() {
 			return fmt.Errorf("候選密碼為空")
 		}
-		err = s.assetService.updateOwnedPassword(cand.AssetID, cand.AccountID, cand.AccountUsername, secret.Password)
+	}
+	// 目的欄位加密在開交易之前做完：加密可能查資料金鑰表、呼叫外部保管處解封，
+	// 不得發生在持有資產列鎖與主機金鑰鎖的交易內（比照拆分路徑）
+	var encrypted string
+	switch cand.SecretType {
+	case model.ChangeSecretTypeSSHKey:
+		encrypted, err = s.assetService.encryptOwnedPrivateKey(secret.PrivateKey)
+	default:
+		encrypted, err = s.assetService.encryptOwnedPassword(secret.Password)
 	}
 	if err != nil {
 		return err
 	}
-	return s.db.Delete(&model.ChangeSecretCandidate{}, cand.ID).Error
+	// 主機身分比對、版本新增、就位、鏡像、審計與刪候選同一交易：比對通過到寫入之間，
+	// 主機身分不可能再被換掉而仍提交
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockAssetForAccountMutation(tx, cand.AssetID); err != nil {
+			return err
+		}
+		if err := assertCandidateHostIdentityConfirmedTx(tx, cand.ID, confirm); err != nil {
+			return err
+		}
+		switch cand.SecretType {
+		case model.ChangeSecretTypeSSHKey:
+			err = s.assetService.updateOwnedPrivateKeyTx(tx, cand.AssetID, cand.AccountID, cand.AccountUsername, encrypted)
+		default:
+			err = s.assetService.updateOwnedPasswordTx(tx, cand.AssetID, cand.AccountID, cand.AccountUsername, encrypted)
+		}
+		if err != nil {
+			return err
+		}
+		if err := deleteCandidateInTx(tx, cand.ID); err != nil {
+			return err
+		}
+		return s.consumeConfirmationInTx(tx, confirm)
+	})
+}
+
+// deleteCandidateInTx 在提交交易內消耗候選列，並以受影響列數確認它仍在：
+// 重讀通過之後、刪除之前若被並行清除，影響 0 列，整筆交易必須回滾（版本、就位、鏡像、審計一併撤銷），
+// 不能在候選已不存在的情況下仍把轉正提交下去。
+func deleteCandidateInTx(tx *gorm.DB, candidateID uint) error {
+	res := tx.Delete(&model.ChangeSecretCandidate{}, candidateID)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrCandidateNotFound
+	}
+	return nil
+}
+
+// assertCandidateHostIdentityTx 提交前在交易內重讀候選列，以它當下的主機身分綁定快照做 (c) 比對。
+// 候選列在綁定之後才有快照，呼叫端手上的物件可能是綁定前建立的複本，故一律以交易內重讀為準；
+// 呼叫端須已取得資產帳號集鎖，且在取任何憑證列之前呼叫。列不存在回 ErrCandidateNotFound。
+func assertCandidateHostIdentityTx(tx *gorm.DB, candidateID uint) error {
+	var row model.ChangeSecretCandidate
+	if err := tx.Where("id = ?", candidateID).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrCandidateNotFound
+		}
+		return fmt.Errorf("%w: %v", ErrHostKeyCheckFailed, err)
+	}
+	return assertHostIdentityUnchangedTx(tx, hostIdentityJobOfCandidate(&row), nil)
 }
 
 // promoteToCredential 把掛載改綁到候選所帶的憑證並設就位版本（同一交易內刪候選）。
@@ -266,11 +369,15 @@ func (s *ChangeSecretCandidateService) Promote(ctx context.Context, cand *model.
 // 會在中間留下一個「指向別筆憑證的版本」的窗口，而取密會照著它去解一組不屬於
 // 這台的秘密。舊憑證若因此成為零掛載的專用憑證，同交易回收。
 func (s *ChangeSecretCandidateService) promoteToCredential(ctx context.Context,
-	cand *model.ChangeSecretCandidate) error {
+	cand *model.ChangeSecretCandidate, confirm *model.CredentialHostIdentityConfirmation) error {
 
 	userID, operator := model.UserFromContext(ctx)
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, cand.AssetID); err != nil {
+			return err
+		}
+		// 主機身分比對在資產列鎖之後、任何憑證列之前
+		if err := assertCandidateHostIdentityConfirmedTx(tx, cand.ID, confirm); err != nil {
 			return err
 		}
 		account, err := resolveAssetAccount(tx, cand.AssetID, cand.AccountID)
@@ -309,7 +416,10 @@ func (s *ChangeSecretCandidateService) promoteToCredential(ctx context.Context,
 		}, userID, operator); err != nil {
 			return err
 		}
-		return tx.Delete(&model.ChangeSecretCandidate{}, cand.ID).Error
+		if err := deleteCandidateInTx(tx, cand.ID); err != nil {
+			return err
+		}
+		return s.consumeConfirmationInTx(tx, confirm)
 	})
 }
 
@@ -379,6 +489,15 @@ func (s *ChangeSecretCandidateService) RecordFailure(cand *model.ChangeSecretCan
 	return abandoned && !cand.Abandoned, nil
 }
 
+// Defer 只把候選的下次嘗試時刻挪到 until：次數、原因碼與逾期放棄一律不動。
+//
+// 給「到期了但這一輪不該由候選排程處理」的候選用——不挪走，它每一輪都會被撈到，
+// 並依到期先後佔掉單輪批次的位置。
+func (s *ChangeSecretCandidateService) Defer(id uint, until time.Time) error {
+	return s.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", id).
+		Update("next_attempt_at", until).Error
+}
+
 // candidateBackoff 指數退避：base × 2^(attempts-1)，上限 candidateRetryMax
 func candidateBackoff(attempts int) time.Duration {
 	if attempts < 1 {
@@ -411,11 +530,29 @@ func truncateCandidateError(msg string) string {
 // 若遠端確實已改密，該帳號只能由管理員以帶外途徑（主機 console）重設憑證救回。
 // 故必須留痕——審計只記欄位名，不記任何秘密材料。
 func (s *ChangeSecretCandidateService) DiscardByAdmin(id uint, userID uint, operator string) error {
-	cand, err := s.Get(id)
-	if err != nil {
-		return err
-	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	_, err := s.discard(id, userID, operator, nil)
+	return err
+}
+
+// discard 刪除候選並留痕（同一交易），回傳被清除候選所屬的資產。guard 非 nil 時是交易的第一個動作
+// （範圍判定：先取拓撲鎖再判定），候選在其後以交易內視圖讀出。
+func (s *ChangeSecretCandidateService) discard(id, userID uint, operator string,
+	guard func(tx *gorm.DB) error) (uint, error) {
+
+	var assetID uint
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if guard != nil {
+			if err := guard(tx); err != nil {
+				return err
+			}
+		}
+		var cand model.ChangeSecretCandidate
+		if err := tx.First(&cand, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrCandidateNotFound
+			}
+			return err
+		}
 		res := tx.Delete(&model.ChangeSecretCandidate{}, id)
 		if res.Error != nil {
 			return res.Error
@@ -423,6 +560,7 @@ func (s *ChangeSecretCandidateService) DiscardByAdmin(id uint, userID uint, oper
 		if res.RowsAffected == 0 {
 			return ErrCandidateNotFound
 		}
+		assetID = cand.AssetID
 		credID, credScope := credentialAuditRef(tx, cand.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
 			AssetID:         cand.AssetID,
@@ -434,6 +572,7 @@ func (s *ChangeSecretCandidateService) DiscardByAdmin(id uint, userID uint, oper
 			CredentialScope: credScope,
 		}, userID, operator)
 	})
+	return assetID, err
 }
 
 func (s *CandidateSecret) Destroy() {

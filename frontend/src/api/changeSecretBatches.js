@@ -19,7 +19,13 @@ export function getChangeSecretBatchTargets(username) {
 
 /** 建立批次（非同步執行，回應為 202 與批次本身） */
 export function createChangeSecretBatch(data) {
-  return request({ url: '/change-secret-batches', method: 'post', data })
+  // 「批次無法操作」由頁面以橫幅呈現，不再另跳全域錯誤提示
+  return request({
+    url: '/change-secret-batches',
+    method: 'post',
+    data,
+    skipErrorToast: (err) => err?.response?.data?.code === 'NOTFOUND_BATCH_ITEMS_UNAVAILABLE',
+  })
 }
 
 /** 最近批次 */

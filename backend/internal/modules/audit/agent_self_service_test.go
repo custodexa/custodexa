@@ -29,7 +29,7 @@ func (s selfServiceSigner) Sign(b []byte) (int, string) {
 }
 func TestSnapshotPrincipalSelfService(t *testing.T) {
 	db := projectionDB(t)
-	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.AuditCheckpoint{}, &model.IntegrityBaseline{}, &model.AgentToolCall{}); err != nil {
+	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.RoleBindingNode{}, &model.AuditCheckpoint{}, &model.IntegrityBaseline{}, &model.AgentToolCall{}); err != nil {
 		t.Fatal(err)
 	}
 	audit.SetUserRolesSource(identity.SnapshotUserRolePairs)

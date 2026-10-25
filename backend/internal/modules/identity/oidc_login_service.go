@@ -18,6 +18,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/pkg/crypto"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
@@ -524,6 +525,9 @@ func (s *OIDCLoginService) recomputeMappedRoles(p *model.OIDCProvider, user *mod
 	if err != nil {
 		return err
 	}
+	if s.auth != nil {
+		obs.RevalidationHours = s.auth.mappingRevalidationBound()
+	}
 	outcome, err := RecomputeMappedRoles(s.db, s.mappingAudit, user, obs)
 	if err != nil {
 		log.Printf("[OIDC] 群組映射重算失敗（fail-close）: userID=%d provider=%d err=%v",
@@ -532,6 +536,10 @@ func (s *OIDCLoginService) recomputeMappedRoles(p *model.OIDCProvider, user *mod
 	}
 	if outcome.EpochBumped && s.auth != nil && s.auth.agentTokens != nil {
 		s.auth.agentTokens.finishSuspendedOwner(user.ID)
+	}
+	if user.Kind == model.KindAgent && len(outcome.Added) > 0 && s.auth != nil {
+		s.auth.grader.afterAgentRoleWrite(s.db, nil, string(model.ResourceUser), user.ID,
+			[]uint{user.ID}, roleIDsByNames(s.db, outcome.Added))
 	}
 	if !outcome.Changed() && !outcome.EpochBumped {
 		return nil
@@ -744,6 +752,9 @@ func (s *OIDCLoginService) provisionFromClaims(p *model.OIDCProvider, claims *Ve
 	}
 
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		if err := tx.Create(user).Error; err != nil {
 			return err
 		}
@@ -759,6 +770,10 @@ func (s *OIDCLoginService) provisionFromClaims(p *model.OIDCProvider, claims *Ve
 		if err := model.AssignUserRole(tx, user.ID, role.ID, model.RoleOriginOIDC); err != nil {
 			return err
 		}
+		// 權限版本：首次登入帶預設角色，與指派同交易
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return err
+		}
 		now := time.Now()
 		identity := model.UserExternalIdentity{
 			UserID: user.ID, ProviderID: p.ID,
@@ -772,6 +787,7 @@ func (s *OIDCLoginService) provisionFromClaims(p *model.OIDCProvider, claims *Ve
 		user.Roles = []model.Role{role}
 		return tx.Create(&identity).Error
 	})
+	authz.NotifyVersionCommittedAfter(s.db, txErr)
 
 	if txErr != nil {
 		// 並發收斂：唯一約束失敗後重查身分鍵，命中即視為另一請求已完成供應

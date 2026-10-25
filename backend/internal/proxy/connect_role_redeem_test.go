@@ -31,9 +31,9 @@ func setupGraphicsRedeemTest(t *testing.T) (*ConnectionHandler, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{}, &model.AccessRequest{},
-		&model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{}, &model.UserRole{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -72,6 +72,7 @@ func setupGraphicsRedeemTest(t *testing.T) (*ConnectionHandler, *gorm.DB) {
 	}
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}

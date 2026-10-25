@@ -89,7 +89,7 @@ func (h *MyConnectionHandler) Terminate(c *gin.Context) {
 // /my/* 與 /sessions/* 位於不同第一層路徑，不與 /sessions/:id 動態段衝突
 func (h *MyConnectionHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	my := r.Group("/my")
-	my.Use(middleware.AuthMiddleware(authService))
+	my.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	my.GET("/connections", h.List)
 	my.POST("/connections/:id/terminate", h.Terminate)
 }

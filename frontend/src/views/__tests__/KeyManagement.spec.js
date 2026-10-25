@@ -2,11 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import KeyManagement from '../KeyManagement.vue'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
 // 每測結束卸載元件。
 enableAutoUnmount(afterEach)
+
+// 金鑰政策鍵設定區需安全政策設定權限；預設以同時持有兩者的主體掛載，無權限的情境另測
+beforeEach(() => setCapabilitiesForTests(['key:manage', 'securitypolicy:manage']))
+afterEach(() => resetCapabilities())
 
 // 金鑰清冊與換鑰精靈前端
 
@@ -179,6 +184,32 @@ const mountPage = async () => {
   await flushPromises()
   return wrapper
 }
+
+describe('金鑰政策鍵設定區的能力閘', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPoliciesMock.mockResolvedValue(policyFixture())
+    getInventoryMock.mockResolvedValue(inventoryFixture({ provider: 'env' }))
+  })
+
+  it('只持金鑰管理權：不讀政策、不呈現設定區，改以一句說明', async () => {
+    setCapabilitiesForTests(['key:manage'])
+    const wrapper = await mountPage()
+    expect(getPoliciesMock).not.toHaveBeenCalled()
+    const note = wrapper.find('[data-test="key-policy-permission-note"]')
+    expect(note.exists()).toBe(true)
+    expect(note.text()).toContain('安全政策的設定權限')
+    expect(wrapper.find('[data-test="section-deviation-key"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="dek-ttl-local-mode-note"]').exists()).toBe(false)
+  })
+
+  it('持安全政策設定權限：讀政策並呈現設定區，不顯示權限說明', async () => {
+    const wrapper = await mountPage()
+    expect(getPoliciesMock).toHaveBeenCalled()
+    expect(wrapper.find('[data-test="key-policy-permission-note"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="section-deviation-key"]').exists()).toBe(true)
+  })
+})
 
 describe('KeyManagement 金鑰清冊', () => {
   beforeEach(() => {

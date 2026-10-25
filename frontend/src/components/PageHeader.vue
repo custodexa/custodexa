@@ -10,6 +10,12 @@
       >
         {{ description }}
       </p>
+      <div
+        v-if="$slots.meta"
+        class="page-meta"
+      >
+        <slot name="meta" />
+      </div>
     </div>
     <div class="page-actions">
       <slot name="actions" />
@@ -51,6 +57,10 @@ defineProps({
   margin: var(--ot-space-xs) 0 0;
   font-size: var(--ot-font-size-sm);
   color: var(--ot-text-secondary);
+}
+
+.page-meta {
+  margin-top: var(--ot-space-xs);
 }
 
 .page-actions {

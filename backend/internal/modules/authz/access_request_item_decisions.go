@@ -176,7 +176,11 @@ func (s *AccessRequestService) approveItemInTx(tx *gorm.DB, req *model.AccessReq
 			return err
 		}
 	}
-	grant := model.AssetAuthorization{UserID: &executor, AssetID: &item.AssetID, Permission: model.PermissionConnect, DateStart: &start, DateExpired: &expiry, GrantedBy: grantedBy, Source: model.AuthorizationSourceTicket, Accounts: scope}
+	restoreGen, err := RestoreGeneration(tx)
+	if err != nil {
+		return err
+	}
+	grant := model.AssetAuthorization{UserID: &executor, AssetID: &item.AssetID, Permission: model.PermissionConnect, DateStart: &start, DateExpired: &expiry, GrantedBy: grantedBy, Source: model.AuthorizationSourceTicket, Accounts: scope, RestoreGeneration: restoreGen}
 	if err := tx.Create(&grant).Error; err != nil {
 		return err
 	}
@@ -225,8 +229,8 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 	if err != nil {
 		return nil, err
 	}
-	if actorID == req.RequesterID || req.ExecutorUserID != nil && actorID == *req.ExecutorUserID {
-		return nil, ErrSelfApproval
+	if err := s.selfDecisionBlocked(s.db, actorID, req); err != nil {
+		return nil, err
 	}
 	now := time.Now()
 	reached := false
@@ -236,10 +240,24 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 		required = 1
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// 先鎖申請人的使用者列、再鎖申請單：agent 會話建立先持使用者層鎖再取任務單，
+		// 核決若反過來先持申請單再等申請人列就會成環。申請人編號建立後不變，可直接作為鎖計畫；
+		// 後續狀態、期限、自核與擁有關係的判定照舊在交易內重做。
+		if err := lockUserRows(tx, []uint{req.RequesterID}); err != nil {
+			return err
+		}
 		if err := s.lockRequest(tx, req, now, true); err != nil {
 			return err
 		}
 		if err := s.humanDecider(tx, actorID); err != nil {
+			return err
+		}
+		// 交易內鎖申請人列後重判自核（擁有者轉移可能已在交易外判定之後提交）
+		if err := s.selfDecisionBlockedLocked(tx, actorID, req); err != nil {
+			return err
+		}
+		dependents, err := dependentDeciders(tx, req)
+		if err != nil {
 			return err
 		}
 		required, err = s.policies.RequestApprovalThresholdInTx(tx)
@@ -308,8 +326,9 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 				}
 				return err
 			}
-			var votes int64
-			if err := tx.Model(&model.AccessRequestApproval{}).Where("request_id=? AND item_id=?", req.ID, item.ID).Count(&votes).Error; err != nil {
+			// 計票只算與申請人獨立的票（現任擁有者在轉移前投下的舊票不計）
+			votes, err := independentVoteCount(tx, req.ID, item.ID, dependents)
+			if err != nil {
 				return err
 			}
 			if votes > maxVotes {
@@ -382,11 +401,15 @@ func (s *AccessRequestService) RejectItem(actorID uint, isAdmin bool, requestID,
 	if err != nil {
 		return nil, err
 	}
-	if actorID == req.RequesterID || req.ExecutorUserID != nil && actorID == *req.ExecutorUserID {
-		return nil, ErrSelfApproval
+	if err := s.selfDecisionBlocked(s.db, actorID, req); err != nil {
+		return nil, err
 	}
 	now := time.Now()
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// 先鎖申請人的使用者列再動申請單，順序理由同核准入口。
+		if err := lockUserRows(tx, []uint{req.RequesterID}); err != nil {
+			return err
+		}
 		// Rejection remains possible after the pending deadline, as in the legacy API.
 		res := tx.Model(req).Where("status=?", model.AccessRequestPending).Update("updated_at", now)
 		if res.Error != nil {
@@ -396,6 +419,9 @@ func (s *AccessRequestService) RejectItem(actorID uint, isAdmin bool, requestID,
 			return ErrAccessRequestConflict
 		}
 		if err := s.humanDecider(tx, actorID); err != nil {
+			return err
+		}
+		if err := s.selfDecisionBlockedLocked(tx, actorID, req); err != nil {
 			return err
 		}
 		items, err := requestItems(tx, req)

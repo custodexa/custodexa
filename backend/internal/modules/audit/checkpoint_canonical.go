@@ -239,7 +239,7 @@ func timePtrToUnixMicro(t *time.Time) *int64 {
 // 取 *model.AuditCheckpoint 而非個別參數：封章與驗證兩側必須吃同一個
 // 建構函式，否則「封章時多帶一欄、驗證時少帶一欄」的漂移不會被任何測試看見
 func CheckpointSignBytes(cp *model.AuditCheckpoint) ([]byte, error) {
-	if cp.AggScheme != model.AggSchemeV3 && (cp.ToolCallIDFrom != nil || cp.ToolCallIDTo != nil || cp.ToolCallRowCount != nil || cp.ToolCallAggHash != nil) {
+	if rank := checkpointSchemeRank(cp.AggScheme); rank > 0 && rank < 3 && (cp.ToolCallIDFrom != nil || cp.ToolCallIDTo != nil || cp.ToolCallRowCount != nil || cp.ToolCallAggHash != nil) {
 		return nil, fmt.Errorf("%w: legacy scheme with v3 tool call fields (version downgrade)", ErrCheckpointPayloadInvalid)
 	}
 	switch cp.AggScheme {
@@ -249,6 +249,8 @@ func CheckpointSignBytes(cp *model.AuditCheckpoint) ([]byte, error) {
 		return checkpointSignBytesV2(cp)
 	case model.AggSchemeV3:
 		return checkpointSignBytesV3(cp)
+	case model.AggSchemeV4:
+		return checkpointSignBytesV4(cp)
 	default:
 		// 未知版本不猜：拿 v1 的形狀去驗一個未知版本的檢查點，
 		// 結果會是「簽章驗不過」而掩蓋掉真正的原因（版本無法辨識）
@@ -305,7 +307,11 @@ func checkpointSignBytesV2(cp *model.AuditCheckpoint) ([]byte, error) {
 }
 
 // CheckpointLinkHash 檢查點的鏈接雜湊（hex）＝下一個檢查點的 prev_checkpoint_hash。
-// 輸入為「被簽章欄位＋signature」——只鏈欄位不鏈簽章，換簽章不會斷鏈
+// 輸入為「被簽章欄位＋signature」，所有版本同一條規則（只鏈欄位不鏈簽章，換簽章不會斷鏈）。
+// 第四版的權限附證已在被簽章欄位之內，鏈接自然涵蓋，不另加任何分支。
+//
+// 鏈接重算只證明「下一點記的是本點當時的樣子」，不證明本點的簽章有效；
+// 起點判定因此必須逐點驗章，不能只看鏈接
 func CheckpointLinkHash(cp *model.AuditCheckpoint) (string, error) {
 	signed, err := CheckpointSignBytes(cp)
 	if err != nil {
@@ -378,8 +384,61 @@ type checkpointTrimPayload struct {
 	TrimmedAtUs         int64  `json:"trimmed_at_us"`
 }
 
-// CheckpointTrimSignBytes 鏈修剪記錄的簽章輸入位元組
+// checkpointTrimPayloadV2 第二版修剪錨：第一版全部欄位（kind 換成獨立域標識）之後追加被剪段的
+// 累計權限事實。perm_history 累計且單調（none < attested < unverified）；unverified_count 只計本次
+// 被剪段中驗不過的點數（供診斷，安全判定只用 perm_history）。
+type checkpointTrimPayloadV2 struct {
+	Kind                string `json:"kind"`
+	FromSeq             uint   `json:"from_seq"`
+	LastTrimmedSeq      uint   `json:"last_trimmed_seq"`
+	TrimmedCount        int64  `json:"trimmed_count"`
+	LastTrimmedLinkHash string `json:"last_trimmed_link_hash"`
+	GenesisIDFrom       uint   `json:"genesis_id_from"`
+	PolicyDays          int    `json:"policy_days"`
+	TrimmedAtUs         int64  `json:"trimmed_at_us"`
+	PermHistory         string `json:"perm_history"`
+	UnverifiedCount     int64  `json:"unverified_count"`
+}
+
+// checkpointTrimKindV2 第二版修剪錨的域標識（與第一版、清除 tombstone、檢查點載荷互不相交）
+const checkpointTrimKindV2 = "checkpoint_trim_v2"
+
+// CheckpointTrimSignBytes 鏈修剪記錄的簽章輸入位元組，依 format 分派：第一版位元組不變；
+// 第二版另帶累計權限事實。未知 format、第二版缺欄或值域外一律 ErrCheckpointPayloadInvalid
+// （不 fallback：改 format 欄＝以另一格式重建＝簽章驗不過）。
 func CheckpointTrimSignBytes(trim *model.AuditCheckpointTrim) ([]byte, error) {
+	switch trim.Format {
+	case model.CheckpointTrimFormatV1:
+		return checkpointTrimSignBytesV1(trim)
+	case model.CheckpointTrimFormatV2:
+		if trim.PermHistory == nil || trimPermHistoryRank(*trim.PermHistory) == 0 {
+			return nil, fmt.Errorf("%w: 修剪錨的累計權限事實不在值域內", ErrCheckpointPayloadInvalid)
+		}
+		if trim.UnverifiedCount == nil || *trim.UnverifiedCount < 0 {
+			return nil, fmt.Errorf("%w: 修剪錨的驗不過點數不在值域內", ErrCheckpointPayloadInvalid)
+		}
+		raw, err := json.Marshal(checkpointTrimPayloadV2{
+			Kind:                checkpointTrimKindV2,
+			FromSeq:             trim.FromSeq,
+			LastTrimmedSeq:      trim.LastTrimmedSeq,
+			TrimmedCount:        trim.TrimmedCount,
+			LastTrimmedLinkHash: trim.LastTrimmedLinkHash,
+			GenesisIDFrom:       trim.GenesisIDFrom,
+			PolicyDays:          trim.PolicyDays,
+			TrimmedAtUs:         trim.TrimmedAt.UnixMicro(),
+			PermHistory:         *trim.PermHistory,
+			UnverifiedCount:     *trim.UnverifiedCount,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("序列化鏈修剪記錄 payload 失敗: %w", err)
+		}
+		return raw, nil
+	default:
+		return nil, fmt.Errorf("%w: 未知的修剪錨格式 %d", ErrCheckpointPayloadInvalid, trim.Format)
+	}
+}
+
+func checkpointTrimSignBytesV1(trim *model.AuditCheckpointTrim) ([]byte, error) {
 	raw, err := json.Marshal(checkpointTrimPayload{
 		Kind:                checkpointTrimKind,
 		FromSeq:             trim.FromSeq,

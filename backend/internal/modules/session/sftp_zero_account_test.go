@@ -25,12 +25,12 @@ func TestSFTPConnectRejectsZeroAccountAsset(t *testing.T) {
 	setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	vnc, err := assets.Create(context.Background(), &asset.CreateAssetRequest{
+	vnc, err := assets.Create(asset.WithSystemCaller(context.Background()), &asset.CreateAssetRequest{
 		Name: "vnc-zero-sftp", Protocol: model.ProtocolVNC, Host: "10.0.1.4", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
 	sftp := NewSFTPService(assets, nil)
-	_, _, err = sftp.connect(vnc.ID, 0)
+	_, _, _, err = sftp.connect(vnc.ID, 0, FileOpContext{UserID: 1, Username: "zero-account"})
 	assert.ErrorIs(t, err, asset.ErrAssetNoUsableAccount)
 }

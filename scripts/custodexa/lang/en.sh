@@ -987,6 +987,18 @@ MSG_pc_lock_other='Single instance the database lock is held by another database
                 session: another backend uses the same database'
 MSG_pc_lock_held='Single instance this backend holds the database lock'
 MSG_pc_lock_unknown='Single instance the backend log does not show the database lock'
+MSG_pc_authz_zero='Permissions     no local super administrator can sign in. The upgrade
+               went on, but backups taken from now on are marked not
+               usable and restore refuses them. This is recorded in
+               the audit log. Give a local account the super
+               administrator role, then take a new backup. If nobody
+               can sign in to do that, it is a database change: record
+               it in your own change management'
+MSG_pc_authz_dangling='Permissions     %s role assignment(s) point at a deleted or missing role.
+               The upgrade went on, but backups taken from now on are
+               marked not usable and restore refuses them. This is
+               recorded in the audit log. Correct the assignments,
+               then take a new backup'
 MSG_pc_entry_bad='Entry           %s does not answer'
 MSG_pc_empty_title='The new version found an empty database. All services were
 stopped right away'
@@ -1596,6 +1608,27 @@ MSG_rs_bad_release='A release manifest hash or version differs from the backup m
 MSG_rs_bad_migrations='The migration hash or count differs from the backup manifest.'
 
 MSG_rs_bad_fingerprint='The master key fingerprint differs from the snapshot.'
+
+MSG_rs_bad_authz='The permission summary in the snapshot is incomplete or malformed.'
+
+MSG_rs_bad_authz_version='The permission summary in the snapshot has a model or snapshot version
+these scripts do not read. Restore it with the release that made it.'
+
+MSG_rs_bad_authz_refs='The snapshot reports permission findings: the data did not pass the
+checks a restore makes (for example, no local super administrator,
+or an assignment that points at something missing). This backup is
+for diagnosis only; it cannot be restored.'
+
+MSG_rs_bad_whole='The backup file is whole (its checksums match), but it cannot be
+restored here:'
+
+MSG_rs_next_authz_version='Copying the file again changes nothing. Use the release that made
+this backup, or another backup.'
+
+MSG_rs_next_authz_refs='Copying the file again changes nothing. Use an earlier backup that
+restore accepts. To get restorable backups again, correct what the
+permission check reports on the running system (for example, give a
+local account the super administrator role), then take a new backup.'
 
 MSG_rs_bad_state='The version in state.json differs from the backup manifest.'
 
@@ -2324,6 +2357,32 @@ MSG_rs_db_check_kek='Check the database: active master key IDs differ
        (imported %s, backup %s)'
 # 0 arguments
 MSG_rs_db_check_read='Check the database: the imported data could not be read'
+# 2 arguments
+MSG_rs_db_check_authz='Check the database: the permissions after the import differ
+       from the backup'\''s (imported %s, backup %s)'
+# 1 arguments
+MSG_rs_db_check_authz_refs='Check the database: permission references do not hold (%s).
+       The permission restore was not committed. Use an earlier backup,
+       or correct the cause on the system this backup came from (for
+       example, a local account that holds the super administrator
+       role) and take a new backup'
+# 0 arguments
+MSG_rs_db_check_authz_conflict='Check the database: another unfinished permission restore is
+       recorded, so this one cannot be carried on or redone'
+# 0 arguments
+MSG_rs_db_check_legacy_secret='Check the database: this backup is for an older version, and the
+       sign-in secret in the settings to restore was not replaced'
+# 0 arguments
+MSG_rs_db_check_legacy_revoke='Check the database: the sign-in sessions, agent tokens and
+       temporary grants of the backup could not all be revoked'
+# 0 arguments
+MSG_rs_legacy_return_ok='Older version: the sign-in secret is replaced and the backup'\''s
+       sessions, agent tokens and temporary grants are revoked; everyone
+       signs in again'
+
+# 0 arguments
+MSG_rs_legacy_secret_failed='This backup is for an older version and needs a new sign-in secret, but
+       none could be made. Nothing was changed.'
 # 1 arguments
 MSG_rs_failure_stopped='The restore stopped at step %s. The services stay stopped; nothing was
 undone automatically.'

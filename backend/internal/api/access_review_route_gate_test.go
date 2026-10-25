@@ -30,9 +30,9 @@ func setupAccessReviewGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *g
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(
+	assert.NoError(t, migrateWithAuthz(db, 
 		&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
-		&model.AssetAuthorization{}, &model.AccessReview{}, &model.AuditLog{}, &model.UserRole{}))
+		&model.AssetAuthorization{}, &model.AccessReview{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 
 	// AuthMiddleware 的憑證世代閘走 database.DB（fail-close：未注入即一律拒）。
 	// 不注入時整組測試會全數 401，且「真 AuthMiddleware」這句宣稱只剩一半為真——
@@ -47,6 +47,10 @@ func setupAccessReviewGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *g
 		u.ID = id
 		assert.NoError(t, db.Create(u).Error)
 	}
+	// 伺服器端解析主體：角色以資料庫為準，不看 token 內的 role claim
+	grantLegacyRole(t, db, 1, model.RoleAdmin)
+	grantLegacyRole(t, db, 2, model.RoleUser)
+	grantLegacyRole(t, db, 3, model.RoleAuditor)
 
 	jwtSecret := "review-gate-secret"
 	authService := identity.NewAuthService(jwtSecret, time.Minute)

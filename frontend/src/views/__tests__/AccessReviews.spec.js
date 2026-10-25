@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import AccessReviews from '../AccessReviews.vue'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -30,6 +32,7 @@ vi.mock('@/api/access-reviews', () => ({
 
 const setUser = (roles) => {
   localStorage.setItem('user', JSON.stringify({ id: 1, username: 'x', roles }))
+  grantFor(roles)
 }
 
 // happy-dom×el-drawer 炸點：抽屜 stub 掉，本檔只驗清單/按鈕/狀態卡
@@ -69,6 +72,7 @@ describe('AccessReviews 存取複審獨立頁（職能自授權頁遷出）', ()
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     getAccessReviewsMock.mockResolvedValue(historyFixture)
   })
 

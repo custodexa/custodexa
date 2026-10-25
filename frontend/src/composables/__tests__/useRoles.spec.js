@@ -1,71 +1,36 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useRoles } from '../useRoles'
+import { useRoles, roleNames, hasRole } from '../useRoles'
 
-describe('useRoles（角色判定唯一入口）', () => {
+// useRoles 只剩角色「資料」與本人 ID：授權判斷已全部改由後端 permissions（useCapabilities.can）決定。
+describe('useRoles（角色資料與本人識別，不含授權旗標）', () => {
   beforeEach(() => localStorage.clear())
 
-  const setUser = (roles, isApprover) => {
-    const user = { username: 't', roles }
-    if (isApprover !== undefined) user.is_approver = isApprover
-    localStorage.setItem('user', JSON.stringify(user))
-  }
-
-  it('admin：isAdmin/isPrivileged 為真', () => {
-    setUser(['admin'])
+  it('讀登入快取的角色清單與本人 ID', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, username: 't', roles: ['user', 'auditor'] }))
     const r = useRoles()
-    expect(r.isAdmin.value).toBe(true)
-    expect(r.isPrivileged.value).toBe(true)
-    expect(r.isApprover.value).toBe(false)
+    expect(r.roles.value).toEqual(['user', 'auditor'])
+    expect(r.currentUserId.value).toBe(7)
   })
 
-  it('多角色 [user,auditor]：口徑取特權（不落自助模式）', () => {
-    setUser(['user', 'auditor'])
+  it('不再暴露任何授權旗標：角色快取不能被當成能力', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'a', roles: ['admin'], is_approver: true }))
     const r = useRoles()
-    expect(r.isPrivileged.value).toBe(true)
-    expect(r.isAuditor.value).toBe(true)
+    for (const key of ['isAdmin', 'isAuditor', 'isApprover', 'isEffectiveApprover', 'isPrivileged']) {
+      expect(r, key).not.toHaveProperty(key)
+    }
   })
 
-  it('user+approver：疊加獨立判定、仍非特權', () => {
-    setUser(['user', 'approver'])
-    const r = useRoles()
-    expect(r.isPrivileged.value).toBe(false)
-    expect(r.isApprover.value).toBe(true)
-  })
-
-  it('admin 不具審核資格：isEffectiveApprover 為假（守衛端不認 admin 兜底）', () => {
-    setUser(['admin'], false)
-    const r = useRoles()
-    expect(r.isAdmin.value).toBe(true)
-    expect(r.isEffectiveApprover.value).toBe(false)
-  })
-
-  it('群組審核方：roles 無 approver 但 is_approver 為真，isEffectiveApprover 為真', () => {
-    setUser(['user'], true)
-    const r = useRoles()
-    expect(r.isApprover.value).toBe(false)
-    expect(r.isEffectiveApprover.value).toBe(true)
-  })
-
-  it('矛盾快取：is_approver 明確為 false 壓過殘留的 approver 角色', () => {
-    // persistEntryFlags 只改 is_approver、不動 roles，撤角色後兩者會並存且矛盾。
-    // 權威值是 is_approver（後端現算），寫成 OR 會讓過期角色復活資格並打出必敗請求。
-    setUser(['user', 'approver'], false)
-    const r = useRoles()
-    expect(r.isApprover.value).toBe(true)
-    expect(r.isEffectiveApprover.value).toBe(false)
-  })
-
-  it('舊版快取無 is_approver 欄：具 approver 角色仍判為有效審核者', () => {
-    setUser(['user', 'approver'])
-    const r = useRoles()
-    expect(r.isEffectiveApprover.value).toBe(true)
-  })
-
-  it('壞值/缺 user：全 false 容錯', () => {
+  it('壞值/缺 user：空角色、無本人 ID', () => {
     localStorage.setItem('user', '{not json')
     const r = useRoles()
     expect(r.roles.value).toEqual([])
-    expect(r.isPrivileged.value).toBe(false)
-    expect(r.isEffectiveApprover.value).toBe(false)
+    expect(r.currentUserId.value).toBeNull()
+  })
+
+  it('roleNames／hasRole 相容物件與字串兩形（他人資料列的角色標籤用）', () => {
+    expect(roleNames([{ name: 'approver' }, 'user', null])).toEqual(['approver', 'user'])
+    expect(hasRole([{ name: 'approver' }], 'approver')).toBe(true)
+    expect(hasRole(['user'], 'approver')).toBe(false)
+    expect(hasRole(undefined, 'approver')).toBe(false)
   })
 })

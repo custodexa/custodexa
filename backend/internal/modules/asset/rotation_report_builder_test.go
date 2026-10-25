@@ -33,7 +33,7 @@ func newReportFixture(t *testing.T) *reportFixture {
 	// 單連線：`:memory:` 每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
-		&model.AssetGroup{}, &model.AssetNode{}, &model.AuditLog{}, &model.ChangeSecretPlan{},
+		&model.AssetGroup{}, &model.AssetNode{}, &model.AuditLog{}, &model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{},
 		&model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{}))
 
 	f := &reportFixture{db: db, plans: NewChangeSecretPlanService(db)}
@@ -169,11 +169,11 @@ func TestRotationReportMultiPlanStrictest(t *testing.T) {
 	a := f.asset(t, "host-a")
 	acc := f.account(t, a.ID, "root")
 
-	_, err := f.plans.Create(&ChangeSecretPlanRequest{
+	_, err := f.plans.Create(adminCtx(), &ChangeSecretPlanRequest{
 		Name: "甲", AssetIDs: []uint{a.ID}, MaxAgeDays: 60, Cron: "0 3 1 * *",
 	})
 	require.NoError(t, err)
-	_, err = f.plans.Create(&ChangeSecretPlanRequest{
+	_, err = f.plans.Create(adminCtx(), &ChangeSecretPlanRequest{
 		Name: "乙", AssetIDs: []uint{a.ID}, MaxAgeDays: 90, Cron: "0 3 * * *",
 	})
 	require.NoError(t, err)
@@ -269,7 +269,7 @@ func TestRotationReportScopePlanIntersection(t *testing.T) {
 	accOps := f.account(t, inPlan.ID, "ops")
 	accElsewhere := f.account(t, outPlan.ID, "root")
 
-	plan, err := f.plans.Create(&ChangeSecretPlanRequest{
+	plan, err := f.plans.Create(adminCtx(), &ChangeSecretPlanRequest{
 		Name: "只改 root", AssetIDs: []uint{inPlan.ID}, Accounts: []string{"root"},
 	})
 	require.NoError(t, err)

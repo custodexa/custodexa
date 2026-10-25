@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -47,7 +48,7 @@ import (
 
 // transferMatrixRole 矩陣的角色維度。
 // role 欄是**寫進 gin context 的 JWT 快照**；實際判定以 DB 現查角色為準
-// （`CurrentConnectRole`），此處兩者刻意一致，以免與角色重判測試混淆語義。
+// （`CurrentConnectPrincipal`），此處兩者刻意一致，以免與角色重判測試混淆語義。
 type transferMatrixRole struct {
 	name           string
 	userID         uint
@@ -169,9 +170,9 @@ func setupTransferMatrixEnv(t *testing.T, globalAllow bool) (*SFTPHandler, *gorm
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1) // :memory: 多連線＝多個獨立空庫，故釘住單連線
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {
+		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}, &model.SecurityPolicy{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -237,6 +238,7 @@ func setupTransferMatrixEnv(t *testing.T, globalAllow bool) (*SFTPHandler, *gorm
 	auditSvc := audit.NewAuditLogService(&config.FeatureFlags{AuditLogEnabled: true})
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
@@ -253,7 +255,7 @@ func callTransferEndpoint(h *SFTPHandler, act transferMatrixAction, userID uint,
 	r := gin.New()
 	r.Handle(act.method, act.route, func(c *gin.Context) {
 		c.Set("userID", userID)
-		c.Set("role", jwtRole)
+		middleware.SetPrincipal(c, legacyPrincipal(jwtRole))
 		act.handle(h, c)
 	})
 	w := httptest.NewRecorder()
@@ -435,7 +437,7 @@ func callTransferCapabilities(h *SFTPHandler, userID uint, jwtRole string) *http
 	r := gin.New()
 	r.GET("/assets/:id/transfer-capabilities", func(c *gin.Context) {
 		c.Set("userID", userID)
-		c.Set("role", jwtRole)
+		middleware.SetPrincipal(c, legacyPrincipal(jwtRole))
 		h.TransferCapabilities(c)
 	})
 	w := httptest.NewRecorder()

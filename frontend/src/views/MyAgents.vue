@@ -228,7 +228,7 @@ async function load() {
 }
 function summarise(list) {
   const now = Date.now()
-  const usable = list.filter(token => !token.revoked_at && !token.suspended_at && Date.parse(token.expires_at) > now)
+  const usable = list.filter(token => !token.revoked_at && !token.suspended_at && !token.restore_invalidated && Date.parse(token.expires_at) > now)
   const next = usable.slice().sort((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at))[0] || null
   return { usable: usable.length, next, suspended: list.filter(token => token.suspended_at && !token.revoked_at).length }
 }

@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "note": "Rows of the append-only audit and alert tables in the fixture template the golden records were captured on, and the rows later fixture seeding adds on top of it. Each addition declares a whole template row (every column except the id, as normalized) and how many identical rows the template holds. Fresh ids are mapped back onto the golden template by taking the listed rows out; any other row count or content fails the comparison.",
+  "golden": {
+    "audit_logs": 122,
+    "command_alerts": 1,
+    "audit_failure_events": 0
+  },
+  "additions": [
+    {
+      "table": "audit_logs",
+      "count": 1,
+      "row": {
+        "action": "update",
+        "asset_id": null,
+        "client_ip": "192.0.2.1",
+        "created_at": "<time>",
+        "deleted_at": null,
+        "details": {"event": "user_group_manual_member_added", "user_group_id": 1, "user_id": 9},
+        "error_msg": "",
+        "idempotency_uuid": null,
+        "integrity_hmac": "<digest>",
+        "key_version": 1,
+        "method": "",
+        "path": "",
+        "request_body": "",
+        "request_id": "",
+        "resource": "user_group",
+        "resource_id": 1,
+        "status": "success",
+        "status_code": 0,
+        "updated_at": "<time>",
+        "user_id": 2,
+        "username": "baseline-s01"
+      },
+      "reason": "Adding a user to a group by hand writes a service-level audit record in the same transaction; the fixture adds one member through the product API."
+    },
+    {
+      "table": "audit_logs",
+      "count": 1,
+      "row": {
+        "action": "create",
+        "asset_id": null,
+        "client_ip": "192.0.2.1",
+        "created_at": "<time>",
+        "deleted_at": null,
+        "details": {"action": "created", "changed_fields": ["created", "name", "scopes", "admission_mode", "enabled", "client_secret"], "correlation_id": "<nonce>", "enabled": true, "event": "oidc_provider_settings_change", "provider_id": 1, "secret_changed": true},
+        "error_msg": "",
+        "idempotency_uuid": null,
+        "integrity_hmac": "<digest>",
+        "key_version": 1,
+        "method": "",
+        "path": "",
+        "request_body": "",
+        "request_id": "",
+        "resource": "auth",
+        "resource_id": 1,
+        "status": "success",
+        "status_code": 0,
+        "updated_at": "<time>",
+        "user_id": 2,
+        "username": "baseline-s01"
+      },
+      "reason": "Creating an OIDC provider writes a service-level audit record in the same transaction; the fixture creates two providers through the product API, and this row is the first one."
+    },
+    {
+      "table": "audit_logs",
+      "count": 1,
+      "row": {
+        "action": "create",
+        "asset_id": null,
+        "client_ip": "192.0.2.1",
+        "created_at": "<time>",
+        "deleted_at": null,
+        "details": {"action": "created", "changed_fields": ["created", "name", "scopes", "admission_mode", "enabled", "client_secret"], "correlation_id": "<nonce>", "enabled": true, "event": "oidc_provider_settings_change", "provider_id": 2, "secret_changed": true},
+        "error_msg": "",
+        "idempotency_uuid": null,
+        "integrity_hmac": "<digest>",
+        "key_version": 1,
+        "method": "",
+        "path": "",
+        "request_body": "",
+        "request_id": "",
+        "resource": "auth",
+        "resource_id": 2,
+        "status": "success",
+        "status_code": 0,
+        "updated_at": "<time>",
+        "user_id": 2,
+        "username": "baseline-s01"
+      },
+      "reason": "Creating an OIDC provider writes a service-level audit record in the same transaction; the fixture creates two providers through the product API, and this row is the second one."
+    },
+    {
+      "table": "audit_logs",
+      "count": 1,
+      "row": {
+        "action": "create",
+        "asset_id": null,
+        "client_ip": "192.0.2.1",
+        "created_at": "<time>",
+        "deleted_at": null,
+        "details": {"change": "created", "changes": [{"field": "name", "new": "baseline-channel-1", "old": ""}, {"field": "type", "new": "webhook", "old": ""}, {"field": "url", "new": "http://127.0.0.1:46109", "old": ""}, {"field": "enabled", "new": "true", "old": ""}, {"field": "language", "new": "en-US", "old": ""}, {"field": "min_severity", "new": "low", "old": ""}], "correlation_id": "<nonce>", "event": "notification_channel_change", "name": "baseline-channel-1", "url_after": "http://127.0.0.1:46109"},
+        "error_msg": "",
+        "idempotency_uuid": null,
+        "integrity_hmac": "<digest>",
+        "key_version": 1,
+        "method": "",
+        "path": "",
+        "request_body": "",
+        "request_id": "",
+        "resource": "notify_channel",
+        "resource_id": 1,
+        "status": "success",
+        "status_code": 0,
+        "updated_at": "<time>",
+        "user_id": 2,
+        "username": "baseline-s01"
+      },
+      "reason": "Creating a notification channel writes one service-level audit record with the field changes; the fixture creates one channel through the product API."
+    },
+    {
+      "table": "command_alerts",
+      "count": 3,
+      "row": {
+        "asset_id": null,
+        "blocked": 0,
+        "command": "",
+        "disposition": "pending",
+        "kind": "system_security",
+        "note": "",
+        "reason_code": "identity_source_changed",
+        "reviewed_at": null,
+        "reviewed_by": null,
+        "rule_id": null,
+        "rule_name": "identity_source_changed",
+        "session_id": null,
+        "severity": "high",
+        "triggered_at": "<time>",
+        "user_id": 2
+      },
+      "reason": "Changes to identity sources raise a system security alert; the fixture creates two OIDC providers and saves the directory settings through the product API."
+    },
+    {
+      "table": "command_alerts",
+      "count": 1,
+      "row": {
+        "asset_id": null,
+        "blocked": 0,
+        "command": "",
+        "disposition": "pending",
+        "kind": "system_security",
+        "note": "",
+        "reason_code": "notification_channel_changed",
+        "reviewed_at": null,
+        "reviewed_by": null,
+        "rule_id": null,
+        "rule_name": "notification_channel_changed",
+        "session_id": null,
+        "severity": "high",
+        "triggered_at": "<time>",
+        "user_id": 2
+      },
+      "reason": "Changes to notification channels raise a system security alert; the fixture creates one channel through the product API."
+    }
+  ],
+  "setup_additions": [
+    {
+      "table": "audit_logs",
+      "match": { "resource": "user_group", "action": "update", "details.event": "user_group_manual_member_added" },
+      "reason": "Flow setups that add a user to a group by hand now also write the service-level member audit record."
+    }
+  ]
+}

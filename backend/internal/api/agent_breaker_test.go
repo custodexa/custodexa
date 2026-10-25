@@ -18,7 +18,7 @@ func TestBreakerRelease(t *testing.T) {
 	for _, who := range []string{"owner", "admin", "other"} {
 		t.Run(who, func(t *testing.T) {
 			db, h, owner, agent := principalAPIEnv(t)
-			db.AutoMigrate(&model.AgentToken{})
+			migrateWithAuthz(db, &model.AgentToken{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{})
 			svc := identity.NewAgentTokenService(db, audit.NewTxSink())
 			h.SetAgentTokenService(svc)
 			token, err := svc.Create(agent.ID, identity.CreateAgentTokenRequest{Name: "seed", ExpiresAt: time.Now().Add(time.Hour)}, gatewayapi.Actor{UserID: owner.ID})
@@ -37,6 +37,7 @@ func TestBreakerRelease(t *testing.T) {
 			}
 			if who == "admin" {
 				role = model.RoleAdmin
+				grantLegacyRole(t, db, uid, model.RoleAdmin)
 			}
 			auth := identity.NewAuthService("breaker-test", time.Hour)
 			auth.SetEpochGateDB(db)
@@ -103,7 +104,7 @@ func TestBreakerRelease(t *testing.T) {
 }
 func TestBreakerPendingToken(t *testing.T) {
 	db, h, owner, agent := principalAPIEnv(t)
-	db.AutoMigrate(&model.AgentToken{})
+	migrateWithAuthz(db, &model.AgentToken{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{})
 	h.SetAgentTokenService(identity.NewAgentTokenService(db, audit.NewTxSink()))
 	db.Model(&model.User{}).Where("id=?", agent.ID).Update("breaker_pending_at", time.Now())
 	auth := identity.NewAuthService("breaker-test", time.Hour)

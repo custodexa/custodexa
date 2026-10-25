@@ -21,7 +21,10 @@ func TestAlertRuleSubjectKind(t *testing.T) {
 	sql, _ := db.DB()
 	sql.SetMaxOpenConns(1)
 	defer sql.Close()
-	if err := db.AutoMigrate(&model.AlertRule{}); err != nil {
+	if err := db.AutoMigrate(&model.AlertRule{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	h := NewAlertRuleHandler(audit.NewAlertRuleService(db))

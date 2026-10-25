@@ -66,8 +66,9 @@ func TestDialErrorCode(t *testing.T) {
 		err  error
 		want apierror.ErrCode
 	}{
-		{name: "host key 變更", err: asset.ErrHostKeyChanged, want: apierror.CodeSSHHostKeyChanged},
-		{name: "包裹後的 host key 變更仍命中", err: fmt.Errorf("wrap: %w", asset.ErrHostKeyChanged), want: apierror.CodeSSHHostKeyChanged},
+		// 不符被拒（不放行路徑）用拒絕碼，不用陳述「已送出憑證」的警示碼
+		{name: "host key 不符被拒", err: asset.ErrHostKeyChanged, want: apierror.CodeSSHHostKeyMismatchRefused},
+		{name: "包裹後的 host key 不符被拒仍命中", err: fmt.Errorf("wrap: %w", asset.ErrHostKeyChanged), want: apierror.CodeSSHHostKeyMismatchRefused},
 		{name: "認證失敗", err: ErrAuthFailed, want: apierror.CodeSSHAuthFailed},
 		{name: "逾時", err: ErrDialTimeout, want: apierror.CodeSSHDialTimeout},
 		{name: "不可達", err: ErrUnreachable, want: apierror.CodeSSHUnreachable},
@@ -88,7 +89,7 @@ func TestWriteDialErrorWS(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/ssh", func(c *gin.Context) {
-		writeDialError(c, apierror.CodeSSHHostKeyChanged, "主機金鑰已變更，連線已拒絕")
+		writeDialError(c, apierror.CodeSSHHostKeyMismatchRefused, "主機身分與記錄不符：這次連線已拒絕")
 	})
 	srv := httptest.NewServer(r)
 	defer srv.Close()
@@ -111,11 +112,11 @@ func TestWriteDialErrorWS(t *testing.T) {
 	if msg.Type != MsgError {
 		t.Errorf("Type = %q, want %q", msg.Type, MsgError)
 	}
-	if msg.Code != "RULE_SSH_HOST_KEY_CHANGED" {
-		t.Errorf("Code = %q, want RULE_SSH_HOST_KEY_CHANGED", msg.Code)
+	if msg.Code != "RULE_SSH_HOST_KEY_MISMATCH_REFUSED" {
+		t.Errorf("Code = %q, want RULE_SSH_HOST_KEY_MISMATCH_REFUSED", msg.Code)
 	}
-	if !strings.Contains(msg.Data, "主機金鑰已變更") {
-		t.Errorf("Data = %q, want 含「主機金鑰已變更」", msg.Data)
+	if !strings.Contains(msg.Data, "這次連線已拒絕") {
+		t.Errorf("Data = %q, want 含「這次連線已拒絕」", msg.Data)
 	}
 
 	// error 訊息後應收到正常關閉
@@ -201,7 +202,10 @@ func dialTerminalWithPrivateKey(t *testing.T, privateKey string) (Message, *atom
 	h, db, _ := setupPolicyGateTest(t)
 	seedGateFixture(t, db)
 	setGroupPolicy(t, db, 1, model.AccessPolicyOpen)
-	if err := db.AutoMigrate(&model.AssetHostKey{}); err != nil {
+	if err := db.AutoMigrate(&model.AssetHostKey{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate host keys: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate host keys: %v", err)
 	}
 	h.HostKeys = asset.NewHostKeyService(db)

@@ -72,6 +72,12 @@ func TestCredentialRotationPromotesPendingWhenAllApplied(t *testing.T) {
 	rot, err := f.rotations.Start(adminCtx(), credID, StartRotationRequest{})
 	require.NoError(t, err)
 	pendingID := *rot.TargetVersionID
+	for _, accountID := range accounts {
+		fresh := f.memberFor(t, rot.ID, accountID)
+		assert.Equal(t, model.HostKeyBindingPending, fresh.HostKeyBinding,
+			"正式成員快照 SHALL 明寫 pending，與升級前的 legacy 可區分")
+		assert.Nil(t, fresh.SecretSentAt, "新成員尚未派送，派送標記 SHALL 為 NULL")
+	}
 	require.NoError(t, f.rotations.Run(adminCtx(), rot.ID))
 
 	for _, accountID := range accounts {

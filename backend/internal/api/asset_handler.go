@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -9,6 +11,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/gatewayapi"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -30,17 +33,21 @@ type AssetServiceInterface interface {
 	GetByID(id uint) (*model.Asset, error)
 	Create(ctx context.Context, req *asset.CreateAssetRequest) (*model.Asset, error)
 	Update(ctx context.Context, id uint, req *asset.UpdateAssetRequest) (*model.Asset, error)
-	Delete(id uint) error
+	Delete(ctx context.Context, id uint) error
 	TestConnection(ctx context.Context, id uint, timeout int) (*asset.ConnectionTestResult, error)
 	ListK8sPods(ctx context.Context, id uint) ([]k8sproxy.PodInfo, error)
 	K8sCopyToPod(ctx context.Context, id uint, pod, container, destPath, localPath string) error
 	K8sCopyFromPod(ctx context.Context, id uint, pod, container, srcPath, localPath string) error
 	AssetIDsForNodeFilter(nodeID *uint, includeSubtree, ungrouped bool) (map[uint]bool, error)
 	ListTags() ([]asset.TagCount, error)
+	ListTagsForAssetIDs(ids []uint) ([]asset.TagCount, error)
 	RenameTag(ctx context.Context, from, to string) (int64, error)
 	DeleteTag(ctx context.Context, name string) (int64, error)
 	PreviewImport(ctx context.Context, batch *asset.ImportBatch) (*asset.ImportPreview, error)
 	ImportAssets(ctx context.Context, batch *asset.ImportBatch, createdBy uint, createdByName string) (*asset.ImportResult, error)
+	BatchMove(ctx context.Context, ids []uint, targetNodeID uint) (asset.BatchResult, error)
+	BatchAddTags(ctx context.Context, ids []uint, tags []string) (asset.BatchResult, error)
+	BatchDelete(ctx context.Context, ids []uint) (asset.BatchResult, error)
 }
 
 // AssetAuthorizationServiceInterface 資產授權服務接口（用於測試注入）
@@ -71,11 +78,53 @@ type AssetHandler struct {
 	auditSink gatewayapi.AsyncSink
 	// dataTransfer 資料傳輸閘（data-transfer-control 4.3）：K8s 檔案進出與 SFTP
 	// 面**同碼同語義**。nil＝不套閘（既有測試路徑，等同五鍵全允許）。
-	//
-	// 註：本端點的授權不對稱（只掛 PermAssetUpdate，不經 connect 授權／段位政策／
-	// 帳號範圍複查，asset_handler.go 路由段）**不在本 change 修復**——本 change
-	// 只補資料傳輸閘讓五鍵不說謊，完整對齊列為 #8 安全 backlog 清算輪的輸入
+	// 次序固定為：資料面裁決 → 傳輸控管 → `kubectl cp` → 審計
 	dataTransfer *policy.DataTransferService
+	// dataPlane K8s 檔案進出的資料面裁決：與連線簽發同一組閘函式（主體可連線與來源
+	// 限定、資產存在與啟用、連線授權、K8s 固定預設帳號與帳號範圍、存取政策、傳輸安全）。
+	// 管理權限點不是放行條件。**未注入即拒絕**（fail-close，不回退為放行）
+	dataPlane DataPlaneAuthorizer
+	// scopeGate 登錄閘的目標範圍判定依賴（建構參數，組裝端傳入）；nil 時宣告了目標的登錄項不放行
+	scopeGate *middleware.ScopeGate
+	// assetScope 資產頁的範圍化投影來源；nil＝不帶範圍化欄位、只見連線可視（不擴大資料）
+	assetScope AssetScopeSource
+}
+
+// DataPlaneAuthorizer 資料面裁決器（由 sshproxy 以簽發側閘序實作，組裝端注入）。
+// 回 nil 代表通過；否則回該閘既有的拒絕結果，handler 原樣寫出、不另加判斷。
+type DataPlaneAuthorizer interface {
+	AuthorizeDataPlane(c *gin.Context, subject gatewayapi.ConnectSubject, assetID uint, action string) *gatewayapi.Denial
+}
+
+// SetDataPlaneAuthorizer 注入資料面裁決器（組裝端呼叫）
+func (h *AssetHandler) SetDataPlaneAuthorizer(a DataPlaneAuthorizer) {
+	h.dataPlane = a
+}
+
+// requireK8sDataPlane K8s 檔案端點的資料面裁決。被拒時已寫入該閘的既有回應，回傳 false。
+// 未通過裁決的請求不建暫存檔、不解封 token、不打叢集；通過後才進資料傳輸控管閘。
+func (h *AssetHandler) requireK8sDataPlane(c *gin.Context, userID, assetID uint, action string) bool {
+	if h.dataPlane == nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalPermissionCheck,
+			errors.New("資料面裁決器未注入，K8s 檔案進出一律拒絕"))
+		return false
+	}
+	authCtx := middleware.GetAuthContext(c)
+	subject := gatewayapi.ConnectSubject{
+		UserID: userID, AuthMethod: authCtx.EffectiveMethod(), ProviderID: authCtx.ProviderID,
+		AuthEpoch: authCtx.AuthEpoch, CredEpoch: authCtx.CredEpoch, ClientIP: sourceip.Of(c),
+	}
+	out := h.dataPlane.AuthorizeDataPlane(c, subject, assetID, action)
+	if out == nil {
+		return true
+	}
+	code := apierror.ErrCode(out.Decision.Code)
+	if out.Internal != nil {
+		apierror.RespondInternal(c, out.Status, code, out.Internal)
+		return false
+	}
+	apierror.Write(c, out.Status, apierror.ErrorResponse{Code: code, Meta: out.Meta})
+	return false
 }
 
 // SetDataTransfer 注入資料傳輸閘（組裝端呼叫）
@@ -124,12 +173,22 @@ func NewAssetHandler(
 	assetService AssetServiceInterface,
 	authorizationService AssetAuthorizationServiceInterface,
 	auditSink gatewayapi.AsyncSink,
+	scopeGate ...*middleware.ScopeGate, // 至多一個：登錄閘的目標範圍判定依賴
 ) *AssetHandler {
 	return &AssetHandler{
 		assetService:         assetService,
 		authorizationService: authorizationService,
 		auditSink:            auditSink,
+		scopeGate:            firstScopeGate(scopeGate),
 	}
+}
+
+// firstScopeGate 建構參數中的登錄閘範圍判定依賴；未傳入回 nil。
+func firstScopeGate(gs []*middleware.ScopeGate) *middleware.ScopeGate {
+	if len(gs) == 0 {
+		return nil
+	}
+	return gs[0]
 }
 
 // tagValidationCode 標籤驗證 sentinel → 機器碼。
@@ -168,17 +227,29 @@ func respondPrivateKeyInvalid(c *gin.Context) {
 // 到機器碼（狀態碼與遷移前逐一相同），未知一律 RespondInternal（成因只落日誌）。
 // internalCode 為該端點的 INTERNAL_ASSET_<VERB> 碼。
 func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error) {
+	if respondTxScopeError(c, err) {
+		return
+	}
+	if respondAssetWriteScopeError(c, err) {
+		return
+	}
 	if code, ok := tagValidationCode(err); ok {
 		apierror.Respond(c, http.StatusBadRequest, code, nil)
 		return
 	}
 	switch {
 	case errors.Is(err, asset.ErrAssetNotFound):
-		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
+		middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)
+	case errors.Is(err, asset.ErrFieldCapabilityDenied),
+		// 表單內嵌密碼／私鑰是 SetSecret 的同義入口：缺 credential:set-secret 與欄位能力不足
+		// 同一出口。資產本身已通過可見性判定，403 不構成憑證存在性探測
+		errors.Is(err, asset.ErrCredentialBindForbidden):
+		// 不帶權限名或角色名；依據只存進請求脈絡
+		respondAssetCapabilityDenial(c, err)
 	case errors.Is(err, asset.ErrAssetNoUsableAccount):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountNoneUsable, nil)
 	case errors.Is(err, asset.ErrAssetAccountNotFound):
-		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetAccountNotFound, nil)
+		middleware.RespondTargetNotFound(c, authz.ScopeTargetAssetAccount, authz.ScopeLayerAccount)
 	case errors.Is(err, asset.ErrAssetAccountUsernameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountUsernameExists, nil)
 	case errors.Is(err, asset.ErrAssetAccountDefaultConflict):
@@ -243,25 +314,28 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 	}
 }
 
-// isPrivilegedRole 判斷請求者是否為 admin/auditor（角色缺失視為非特權，安全預設）
+// isPrivilegedRole 判斷請求者是否具管理視圖資格（內建超管或稽核員身分；
+// 主體缺失視為非特權，安全預設）
 func isPrivilegedRole(c *gin.Context) bool {
-	role, exists := c.Get("role")
-	if !exists {
-		return false
-	}
-	r, ok := role.(string)
-	return ok && (r == model.RoleAdmin || r == model.RoleAuditor)
+	return middleware.PrincipalFrom(c).ViewShortcut()
 }
 
-// isAuditorRole 判斷請求者是否為 auditor：
+// assetListUsesAuthorizedSet 資產列表走授權集合還是全量：非檢視捷徑主體一律走授權集合，
+// 不信任客戶端的 authorized_only；儀表板資產卡以同一函式選分支。
+func assetListUsesAuthorizedSet(p *authz.Principal, authorizedOnlyParam bool) bool {
+	return authorizedOnlyParam || !p.ViewShortcut()
+}
+
+// authorizedAssetsOf 主體在 view 權限下的已授權資產集合（已去重）。
+// 資產列表的授權分支與儀表板資產卡共用，兩邊的總數因此同源。
+func authorizedAssetsOf(ctx context.Context, svc AssetAuthorizationServiceInterface, p *authz.Principal, userID uint) ([]*authz.AuthorizedAssetDTO, error) {
+	return svc.GetAuthorizedAssets(authz.ContextWithPrincipal(ctx, p), userID, model.PermissionView)
+}
+
+// isAuditorRole 判斷請求者的舊主角色是否為 auditor（保留例外：依舊主角色選擇回應形狀，非授權判斷）：
 // 全量分支僅 auditor 需要入口判定欄，admin 回應形狀凍結
 func isAuditorRole(c *gin.Context) bool {
-	role, exists := c.Get("role")
-	if !exists {
-		return false
-	}
-	r, ok := role.(string)
-	return ok && r == model.RoleAuditor
+	return middleware.PrincipalFrom(c).IsAuditor()
 }
 
 // assetWithEntryPermission auditor 全量列表的入口判定包裝：permission 僅供
@@ -307,10 +381,7 @@ func (h *AssetHandler) List(c *gin.Context) {
 
 	// 伺服端強制授權收斂：非 admin/auditor 一律走授權
 	// 資產集合，不信任客戶端 authorized_only 參數；管理角色保留參數自查行為
-	authorizedOnly := c.Query("authorized_only") == "true"
-	if !isPrivilegedRole(c) {
-		authorizedOnly = true
-	}
+	authorizedOnly := assetListUsesAuthorizedSet(middleware.PrincipalFrom(c), c.Query("authorized_only") == "true")
 
 	// 節點過濾參數：node_id 點選節點、include_subtree
 	// 預設含子樹（顯式 false 關）、ungrouped 僅未分組
@@ -328,12 +399,20 @@ func (h *AssetHandler) List(c *gin.Context) {
 	includeSubtree := c.Query("include_subtree") != "false"
 	ungrouped := c.Query("ungrouped") == "true"
 
-	// 標籤篩選參數：僅 admin/auditor 全量分支；
-	// 非特權角色帶參數明確拒 400——不得靜默忽略（同型教訓：
+	// 範圍化檢視者的判定先於篩選參數：標籤與待配憑證篩選都依它開放
+	scopeView, err := h.assetScopeView(c)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, err)
+		return
+	}
+	scopedNonPrivileged := scopeView != nil && !isPrivilegedRole(c)
+
+	// 標籤篩選參數：admin/auditor 全量分支與範圍化檢視者（在其可視集合內、分頁之前）；
+	// 其他主體帶參數明確拒 400——不得靜默忽略（同型教訓：
 	// 參數被忽略＝篩選對一般 user 全面失效）
 	var tagFilters []string
 	if raw := c.Query("tags"); raw != "" {
-		if !isPrivilegedRole(c) {
+		if !isPrivilegedRole(c) && !scopedNonPrivileged {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeTagFilterPrivilegedOnly, nil)
 			return
 		}
@@ -355,11 +434,20 @@ func (h *AssetHandler) List(c *gin.Context) {
 	//（比照標籤篩選：參數被靜默忽略＝篩選對一般 user 失效而無人察覺）
 	credentialPending := false
 	if raw := c.Query("credential_pending"); raw != "" {
-		if !isPrivilegedRole(c) {
+		if !isPrivilegedRole(c) && !scopedNonPrivileged {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 			return
 		}
 		credentialPending = raw == "true"
+	}
+
+	// 範圍化檢視者（非檢視捷徑）：管理可視 ∪ 連線可視，篩選在聯集內、分頁之前
+	if scopedNonPrivileged {
+		h.scopedList(c, scopeView, scopedListQuery{
+			page: page, pageSize: pageSize, nodeID: nodeID, includeSubtree: includeSubtree,
+			ungrouped: ungrouped, credentialPending: credentialPending, tags: tagFilters,
+		})
+		return
 	}
 
 	if authorizedOnly {
@@ -371,17 +459,8 @@ func (h *AssetHandler) List(c *gin.Context) {
 		}
 
 		// 獲取用戶已授權的資產（至少需要 view 權限）
-		// 將 Gin Context 中的角色信息傳遞到 Go context
-		ctx := c.Request.Context()
-		if role, exists := c.Get("role"); exists {
-			ctx = context.WithValue(ctx, "role", role)
-		}
-
-		assets, err := h.authorizationService.GetAuthorizedAssets(
-			ctx,
-			userID,
-			model.PermissionView,
-		)
+		// 將 Gin Context 中的主體傳遞到 Go context
+		assets, err := authorizedAssetsOf(c.Request.Context(), h.authorizationService, middleware.PrincipalFrom(c), userID)
 		if err != nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizedAssetQuery, err)
 			return
@@ -505,11 +584,36 @@ func (h *AssetHandler) List(c *gin.Context) {
 			}
 			rows[i] = assetWithEntryPermission{Asset: a, Permission: perm}
 		}
+		if scopeView != nil {
+			decorated, err := decorateFullRows(rows, func(i int) []uint { return rows[i].NodeIDs }, scopeView)
+			if err != nil {
+				apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, err)
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"data": decorated, "total": result.Total, "page": result.Page, "page_size": result.PageSize,
+				assetFieldManagementScope: managementScopeOf(scopeView),
+			})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"data":      rows,
 			"total":     result.Total,
 			"page":      result.Page,
 			"page_size": result.PageSize,
+		})
+		return
+	}
+
+	if scopeView != nil {
+		decorated, err := decorateFullRows(result.Data, func(i int) []uint { return result.Data[i].NodeIDs }, scopeView)
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"data": decorated, "total": result.Total, "page": result.Page, "page_size": result.PageSize,
+			assetFieldManagementScope: managementScopeOf(scopeView),
 		})
 		return
 	}
@@ -532,11 +636,24 @@ func (h *AssetHandler) Get(c *gin.Context) {
 	assetRow, err := h.assetService.GetByID(uint(id))
 	if err != nil {
 		if errors.Is(err, asset.ErrAssetNotFound) {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
+			middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)
 			return
 		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, err)
 		return
+	}
+
+	// 範圍化檢視者：歸屬依管理可視遮蔽並附旗標；其餘主體回應不變
+	if h.assetScope != nil {
+		row, served, err := h.scopedDetail(c, assetRow, true)
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, err)
+			return
+		}
+		if served {
+			c.JSON(http.StatusOK, row)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, assetRow)
@@ -548,7 +665,7 @@ func (h *AssetHandler) ListTags(c *gin.Context) {
 	// 全表彙整含未授權資產的標籤詞彙，一般 user 拒絕（洩漏面，
 	// 與「404 不洩漏資產存在性」紅線同源）
 	if !isPrivilegedRole(c) {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeTagListPrivilegedOnly, nil)
+		h.scopedListTags(c)
 		return
 	}
 	tags, err := h.assetService.ListTags()
@@ -559,18 +676,41 @@ func (h *AssetHandler) ListTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": tags})
 }
 
-// requireAdminRole 治理端點守衛：僅 admin（auditor 亦拒）
+// requireAdminRole 標籤治理端點守衛：僅內建超管（超管保留能力，不是權限點；auditor 亦拒）。
+//
+// 登錄項為 BaseAuthenticated，故不具資產寫入能力者也會走到這裡。兩種拒絕回應同形（能力拒絕單一形狀），
+// 只在審計依據上區分：缺資產寫入能力者記該權限點，其餘非超管者記超管保留條件。
 func requireAdminRole(c *gin.Context) bool {
-	role, exists := c.Get("role")
-	if !exists {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeTagGovernanceAdminOnly, nil)
+	p := middleware.PrincipalFrom(c)
+	if p.IsSuperAdmin() {
+		return true
+	}
+	if !p.Has(authz.PermAssetUpdate) {
+		middleware.WriteCapabilityDenial(c, middleware.AllOfCapabilityDenial(authz.PermAssetUpdate))
 		return false
 	}
-	if r, ok := role.(string); !ok || r != model.RoleAdmin {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeTagGovernanceAdminOnly, nil)
-		return false
-	}
-	return true
+	middleware.WriteCapabilityDenial(c, middleware.ReservedCapabilityDenial(authz.ReservedSuperAdmin))
+	return false
+}
+
+// withFieldCapability 把「主體是否持有某請求欄位的額外能力」綁進 ctx，
+// 供資產服務在載入目標之後、寫入之前以實際會變更的欄位判定。
+// 判定取自本路由登錄項上宣告的欄位條件，並回報經權限點或經相容並列能力通過；未宣告的欄位一律不通過。
+func withFieldCapability(c *gin.Context, ctx context.Context) context.Context {
+	principal := middleware.PrincipalFrom(c)
+	method, fullPath := c.Request.Method, c.FullPath()
+	ctx = asset.WithFieldCapabilityKey(ctx, func(field string) string {
+		return fieldPermissionKey(method, fullPath, field)
+	})
+	return asset.WithFieldCapability(ctx, func(field string) asset.FieldCapGrant {
+		switch authz.FieldCapabilityGrantOf(method, fullPath, field, principal) {
+		case authz.FieldGrantCompat:
+			return asset.FieldCapViaCompat
+		case authz.FieldGrantPerm:
+			return asset.FieldCapViaPerm
+		}
+		return asset.FieldCapDenied
+	})
 }
 
 // tagGovernanceContext 將操作者身分注入 ctx（審計 hook 取用）
@@ -672,7 +812,8 @@ func (h *AssetHandler) Create(c *gin.Context) {
 	}
 
 	// 創建資產：ctx 帶已驗證的操作者，建立稽核列記到操作者而非 system
-	assetRow, err := h.assetService.Create(operatorRequestContext(c), &req)
+	// ctx 另帶主體：服務在建立交易內重解並判定初始歸屬的範圍
+	assetRow, err := h.assetService.Create(withFieldCapability(c, assetWriteContext(c, operatorRequestContext(c))), &req)
 	if err != nil {
 		respondAssetError(c, apierror.CodeInternalAssetCreate, err)
 		return
@@ -682,11 +823,45 @@ func (h *AssetHandler) Create(c *gin.Context) {
 	// 只有此處知道（auditor-workbench）
 	setAuditAssetIDValue(c, assetRow.ID)
 
-	c.JSON(http.StatusCreated, assetRow)
+	// 範圍化檢視者的回應與詳情同遮蔽
+	h.writeScopedAssetResponse(c, http.StatusCreated, assetRow)
+}
+
+// maxUpdateGateBody 欄位閘讀取本文的上限；超過視為不可解析（需資產編輯能力，後續綁定自會拒絕）
+const maxUpdateGateBody = 32 << 20
+
+// requireUpdateFieldGate PUT /assets/:id 的欄位閘（handler 第一步，先於路徑參數驗證、資產查詢與本文綁定）。
+// 路由登錄為「僅需登入」，能力由本文頂層鍵決定：只含 access_policy 者需存取政策權限點；
+// 含其他鍵、空本文或不可解析者需資產編輯能力；兩個權限點皆無時一律 403，審計依據記資產編輯能力，
+// 與原守衛同序（不存在的資產 ID 也是 403）。回應為能力拒絕單一形狀，不帶缺的權限點。本文讀完後放回，供後續綁定使用。
+func requireUpdateFieldGate(c *gin.Context) bool {
+	var raw []byte
+	if c.Request.Body != nil {
+		raw, _ = io.ReadAll(io.LimitReader(c.Request.Body, maxUpdateGateBody+1))
+		c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+	}
+	var obj map[string]json.RawMessage
+	parsed := len(raw) <= maxUpdateGateBody && json.Unmarshal(raw, &obj) == nil && obj != nil
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	ok, missing := authz.BodyKeyGate(c.Request.Method, c.FullPath(), middleware.PrincipalFrom(c), keys, parsed)
+	if ok {
+		return true
+	}
+	if missing == "" {
+		missing = authz.PermAssetUpdate
+	}
+	middleware.WriteCapabilityDenial(c, middleware.AllOfCapabilityDenial(missing))
+	return false
 }
 
 // Update 更新資產
 func (h *AssetHandler) Update(c *gin.Context) {
+	if !requireUpdateFieldGate(c) {
+		return
+	}
 	// 解析 ID
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -711,14 +886,24 @@ func (h *AssetHandler) Update(c *gin.Context) {
 		ctx = context.WithValue(ctx, "username", username)
 	}
 
+	// 登錄閘判過範圍時，服務在寫入交易內以同一組判定重判（掛載改動後目標可能已不在範圍內）
+	ctx = asset.WithTxScopeRecheck(ctx, middleware.TxScopeRecheck(c))
+	// 帶主體：服務在更新交易內重解並判定編輯、停用與節點合併的範圍
+	ctx = assetWriteContext(c, ctx)
+
 	// 更新資產（傳遞 context 以記錄審計）
-	assetRow, err := h.assetService.Update(ctx, uint(id), &req)
+	assetRow, err := h.assetService.Update(withFieldCapability(c, ctx), uint(id), &req)
 	if err != nil {
 		respondAssetError(c, apierror.CodeInternalAssetUpdate, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, assetRow)
+	// 只含存取政策者：經節點範圍持有該權限點時，回應依該權限點投影（與覆寫清單同形），不依資產檢視範圍
+	if asset.AccessPolicyOnlyUpdate(&req) && h.writeAccessPolicyUpdateResponse(c, assetRow.ID) {
+		return
+	}
+	// 範圍化檢視者的回應與詳情同遮蔽（範圍外歸屬不出）
+	h.writeScopedAssetResponse(c, http.StatusOK, assetRow)
 }
 
 // Delete 刪除資產
@@ -730,13 +915,9 @@ func (h *AssetHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// 刪除資產
-	if err := h.assetService.Delete(uint(id)); err != nil {
-		if errors.Is(err, asset.ErrAssetNotFound) {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
-			return
-		}
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetDelete, err)
+	// 刪除資產：服務在刪除交易內取序列化鎖、重解主體並判定範圍與刪停歸屬規則
+	if err := h.assetService.Delete(assetWriteContext(c, operatorRequestContext(c)), uint(id)); err != nil {
+		respondAssetError(c, apierror.CodeInternalAssetDelete, err)
 		return
 	}
 
@@ -767,10 +948,11 @@ func (h *AssetHandler) TestConnection(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	// 調用 Service 層執行連線測試
-	result, err := h.assetService.TestConnection(c.Request.Context(), uint(id), req.Timeout)
+	// 帶入操作者與來源位址：SSH 撥測的主機金鑰不符審計與告警以測試發起者為連線使用者
+	result, err := h.assetService.TestConnection(asset.ContextWithClientIP(operatorRequestContext(c), sourceip.Of(c)), uint(id), req.Timeout)
 	if err != nil {
 		if errors.Is(err, asset.ErrAssetNotFound) {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
+			middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)
 			return
 		}
 		// err 僅來自憑證讀取（撥接結果在 result 內），屬內部錯誤不外洩
@@ -789,11 +971,14 @@ func (h *AssetHandler) ListK8sPods(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "asset"})
 		return
 	}
-	// 逐資產授權由 RequireAssetVisible 中介層守門
+	// 逐資產授權由 RequireAssetVisible 中介層守門；只經管理可視者另需測試連線能力涵蓋該資產
+	if middleware.AssetVisibleViaManagement(c) && !h.requireManagedTest(c, uint(id)) {
+		return
+	}
 	pods, err := h.assetService.ListK8sPods(c.Request.Context(), uint(id))
 	if err != nil {
 		if errors.Is(err, asset.ErrAssetNotFound) {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
+			middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)
 			return
 		}
 		// 零帳號資產（空 token）於服務層即擋，不以匿名身分打叢集
@@ -885,6 +1070,10 @@ func (h *AssetHandler) UploadK8sFile(c *gin.Context) {
 		return
 	}
 	userID, _ := middleware.GetCurrentUserID(c)
+	// 資料面裁決先於一切：被拒的請求不解析上傳內容、不建暫存檔
+	if !h.requireK8sDataPlane(c, userID, uint(id), policy.TransferActionFileUpload) {
+		return
+	}
 	pod := c.PostForm("pod")
 	container := c.PostForm("container")
 	destDir := c.PostForm("dest_path")
@@ -906,6 +1095,14 @@ func (h *AssetHandler) UploadK8sFile(c *gin.Context) {
 	defer os.Remove(tmpPath)
 	if err := c.SaveUploadedFile(fileHeader, tmpPath); err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUploadFileSave, err)
+		return
+	}
+	// 本文已完整暫存。本文的送達時間由客戶端控制，撤權、停用資產、核准時窗到期都可能落在
+	// 早期裁決與此刻之間；解封憑證與遠端寫入之前以此刻的授權事實再完整裁決一次。
+	// 早期裁決保留：被拒的請求不解析本文、不建暫存檔。
+	//（下載沒有本文，裁決與 `kubectl cp` 之間沒有客戶端可控的窗口，維持單次裁決；
+	// 裁決通過後傳輸進行中的撤銷或到期不中斷傳輸，為本版已知限制。）
+	if !h.requireK8sDataPlane(c, userID, uint(id), policy.TransferActionFileUpload) {
 		return
 	}
 	destPath := path.Join(destDir, path.Base(fileHeader.Filename))
@@ -934,6 +1131,9 @@ func (h *AssetHandler) DownloadK8sFile(c *gin.Context) {
 		return
 	}
 	userID, _ := middleware.GetCurrentUserID(c)
+	if !h.requireK8sDataPlane(c, userID, uint(id), policy.TransferActionFileDownload) {
+		return
+	}
 	pod := c.Query("pod")
 	container := c.Query("container")
 	srcPath := c.Query("path")
@@ -988,24 +1188,29 @@ func (h *AssetHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.
 
 	// 逐資產可視性守門：無條件生效（權限旗標已退場；讀取端點無條件
 	// 守門紅線），故在兩分支皆掛，且置於 RequirePermission 之後
-	visible := middleware.RequireAssetVisible(h.authorizationService)
+	visible := middleware.RequireAssetVisibleOrManaged(h.authorizationService, h.managementVisibility())
 
-	assets.GET("", middleware.RequirePermission(middleware.PermAssetView), h.List)
+	assets.GET("", middleware.EnforceRegistry(h.scopeGate), h.List)
 	// 標籤清單/治理：/tags 與 /:id 共存已實測；
 	// 角色細分（清單 admin/auditor、治理僅 admin）在 handler 內守衛
-	assets.GET("/tags", middleware.RequirePermission(middleware.PermAssetView), h.ListTags)
-	assets.POST("/tags/rename", middleware.RequirePermission(middleware.PermAssetUpdate), h.RenameTag)
-	assets.POST("/tags/delete", middleware.RequirePermission(middleware.PermAssetUpdate), h.DeleteTag)
-	assets.POST("", middleware.RequirePermission(middleware.PermAssetCreate), h.Create)
+	assets.GET("/tags", middleware.EnforceRegistry(h.scopeGate), h.ListTags)
+	assets.POST("/tags/rename", middleware.EnforceRegistry(h.scopeGate), h.RenameTag)
+	assets.POST("/tags/delete", middleware.EnforceRegistry(h.scopeGate), h.DeleteTag)
+	assets.POST("", middleware.EnforceRegistry(h.scopeGate), h.Create)
 	// 批次新增：預檢（唯讀）與整批寫入，權限同單筆建立
-	assets.POST("/import/preview", middleware.RequirePermission(middleware.PermAssetCreate), h.PreviewImport)
-	assets.POST("/import", middleware.RequirePermission(middleware.PermAssetCreate), h.Import)
-	assets.GET("/:id", middleware.RequirePermission(middleware.PermAssetView), visible, h.Get)
-	assets.PUT("/:id", middleware.RequirePermission(middleware.PermAssetUpdate), h.Update)
-	assets.DELETE("/:id", middleware.RequirePermission(middleware.PermAssetDelete), h.Delete)
-	assets.POST("/:id/test-connection", middleware.RequirePermission(middleware.PermAssetTest), h.TestConnection)
-	assets.GET("/:id/k8s/pods", middleware.RequirePermission(middleware.PermAssetView), visible, h.ListK8sPods)
-	// 容器檔案進出＝寫級操作（傳檔進/出生產容器），需寫權限而非僅讀（security review HIGH）
-	assets.POST("/:id/k8s/upload", middleware.RequirePermission(middleware.PermAssetUpdate), h.UploadK8sFile)
-	assets.GET("/:id/k8s/download", middleware.RequirePermission(middleware.PermAssetUpdate), h.DownloadK8sFile)
+	assets.POST("/import/preview", middleware.EnforceRegistry(h.scopeGate), h.PreviewImport)
+	assets.POST("/import", middleware.EnforceRegistry(h.scopeGate), h.Import)
+	// 單台存取政策覆寫清單：依存取政策權限點的範圍投影（靜態段，與 /:id 不衝突）
+	assets.GET("/access-policy-overrides", middleware.EnforceRegistry(h.scopeGate), h.ListAccessPolicyOverrides)
+	assets.GET("/:id", middleware.EnforceRegistry(h.scopeGate), visible, h.Get)
+	assets.PUT("/:id", middleware.EnforceRegistry(h.scopeGate), h.Update)
+	assets.DELETE("/:id", middleware.EnforceRegistry(h.scopeGate), h.Delete)
+	assets.POST("/:id/test-connection", middleware.EnforceRegistry(h.scopeGate), h.TestConnection)
+	assets.GET("/:id/k8s/pods", middleware.EnforceRegistry(h.scopeGate), visible, h.ListK8sPods)
+	// 容器檔案進出是資料面：登錄為已認證（資料面類別），授權在 handler 內經
+	// DataPlaneAuthorizer 走與連線簽發同一組閘序；管理權限點不是放行條件
+	assets.POST("/:id/k8s/upload", middleware.EnforceRegistry(h.scopeGate), h.UploadK8sFile)
+	assets.GET("/:id/k8s/download", middleware.EnforceRegistry(h.scopeGate), h.DownloadK8sFile)
+	// 批次搬移、加標籤、刪除（見 asset_batch_handler.go）
+	h.registerBatchRoutes(assets)
 }

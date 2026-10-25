@@ -69,9 +69,9 @@ func setupRefreshAuditEnv(t *testing.T) *refreshAuditEnv {
 	}
 	// 單連線：:memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
-		&model.UserExternalIdentity{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.UserExternalIdentity{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

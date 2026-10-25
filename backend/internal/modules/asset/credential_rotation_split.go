@@ -78,17 +78,15 @@ func (e *CredentialDetachFailedError) Error() string {
 func (s *CredentialRotationService) StartSplit(ctx context.Context, credentialID uint,
 	req StartRotationRequest) (*model.CredentialRotation, error) {
 
+	if err := s.requireManagement(ctx, nil, CredOpSplit, splitGateWhole().caps,
+		[]uint{credentialID}, nil, nil); err != nil {
+		return nil, err
+	}
 	bindings, err := s.currentBindingsForSplit(credentialID)
 	if err != nil {
 		return nil, err
 	}
-	// 拆分會動到全部掛載的遠端秘密，逐台驗權。
-	// **只在操作者直接發起的入口驗**：批次入口（StartSplitFor）的權限判定屬批次的
-	// 目標選取面，在此重驗會用到與批次不同的身分上下文
-	if err := s.assertBoundAssetsPermission(ctx, s.db, credentialID); err != nil {
-		return nil, err
-	}
-	return s.startSplitRotation(ctx, credentialID, bindings, req.Policy, nil)
+	return s.startSplitRotation(ctx, credentialID, bindings, req.Policy, nil, splitGateWhole(), &req.ImpactConfirmationID, nil)
 }
 
 // StartSplitFor 只對指定的幾個掛載發起拆分（批次以帳號名為軸時，選中的目標可能
@@ -98,25 +96,47 @@ func (s *CredentialRotationService) StartSplit(ctx context.Context, credentialID
 // 收尾規則不變——原憑證剩一個掛載即轉為專用，零掛載且無未決候選即回收。
 func (s *CredentialRotationService) StartSplitFor(ctx context.Context, credentialID uint,
 	accountIDs []uint, req StartRotationRequest) (*model.CredentialRotation, error) {
+	return s.startSplitForBatch(ctx, credentialID, accountIDs, req, nil)
+}
 
+// startSplitForBatch 同 StartSplitFor；bound 非 nil＝由批次發起，起始交易內另對選定資產重驗批次能力，
+// 並把選定資產存成輪替授權脈絡的上界（每次派送前據此重驗，見 revalidateAssetBound）。
+func (s *CredentialRotationService) startSplitForBatch(ctx context.Context, credentialID uint,
+	accountIDs []uint, req StartRotationRequest, bound *splitAssetBound) (*model.CredentialRotation, error) {
+
+	// 由批次發起（bound 非 nil）只以選定資產判定，判定在起始交易內；不先以來源憑證歸屬預檢
+	if bound == nil {
+		if err := s.requireManagement(ctx, nil, CredOpSplit, splitGateWhole().caps,
+			[]uint{credentialID}, nil, accountIDs); err != nil {
+			return nil, err
+		}
+	}
 	all, err := s.currentBindingsForSplit(credentialID)
 	if err != nil {
 		return nil, err
 	}
-	wanted := make(map[uint]bool, len(accountIDs))
-	for _, id := range accountIDs {
-		wanted[id] = true
-	}
-	selected := make([]model.AssetAccount, 0, len(accountIDs))
+	byID := make(map[uint]model.AssetAccount, len(all))
 	for i := range all {
-		if wanted[all[i].ID] {
-			selected = append(selected, all[i])
+		byID[all[i].ID] = all[i]
+	}
+	// 逐 ID 檢查來源：混入不存在或不屬於本憑證的識別，整筆拒絕而不是悄悄略過——
+	// 略過會讓呼叫端以為自己選的每一台都被處理了
+	selected := make([]model.AssetAccount, 0, len(accountIDs))
+	seen := make(map[uint]bool, len(accountIDs))
+	for _, id := range accountIDs {
+		binding, ok := byID[id]
+		if !ok {
+			return nil, ErrCredentialRotationNoBinding
+		}
+		if !seen[id] {
+			seen[id] = true
+			selected = append(selected, binding)
 		}
 	}
 	if len(selected) == 0 {
 		return nil, ErrCredentialRotationNoBinding
 	}
-	return s.startSplitRotation(ctx, credentialID, selected, req.Policy, nil)
+	return s.startSplitRotation(ctx, credentialID, selected, req.Policy, nil, splitGateWhole(), nil, bound)
 }
 
 // currentBindingsForSplit 取拆分的成員母體並檢核憑證範圍。
@@ -138,19 +158,105 @@ func (s *CredentialRotationService) currentBindingsForSplit(credentialID uint) (
 	return bindings, nil
 }
 
+// splitGate 拆分類入口所需的管理能力：整組或指定掛載拆分需來源輪替加脫離，
+// 單台脫離需脫離能力。
+type splitGate struct {
+	op   CredentialOperation
+	caps []string
+}
+
+func splitGateWhole() splitGate {
+	return splitGate{op: CredOpSplit, caps: []string{CredCapRotate, CredCapDetach}}
+}
+
+func splitGateDetach() splitGate {
+	return splitGate{op: CredOpDetach, caps: []string{CredCapDetach}}
+}
+
+// splitManagementRequest 拆分與脫離起始交易的管理授權請求；帳號列的脫離旗標以同一形狀判定。
+// 影響集合取自本次要動的掛載列（單台脫離為該台，拆分為選定成員）；單台脫離的選定掛載須在範圍內，
+// 整組拆分的成員只以憑證歸屬判定。
+func splitManagementRequest(gate splitGate, credentialID uint, bindings []model.AssetAccount) CredentialManagementRequest {
+	assetIDs := make([]uint, 0, len(bindings))
+	accountIDs := make([]uint, 0, len(bindings))
+	for i := range bindings {
+		assetIDs = append(assetIDs, bindings[i].AssetID)
+		accountIDs = append(accountIDs, bindings[i].ID)
+	}
+	req := CredentialManagementRequest{
+		Operation: gate.op, Capabilities: gate.caps, CredentialIDs: []uint{credentialID},
+		MountedAssetIDs: assetIDs, AccountIDs: accountIDs,
+	}
+	if gate.op == CredOpDetach {
+		req.AssetIDs = assetIDs
+	}
+	return req
+}
+
 // startSplitRotation 拆分與脫離共用的共同起始交易。
 //
 // fixedSecret 非 nil＝單台脫離且操作者自訂新秘密；nil＝每台各自隨機。
 func (s *CredentialRotationService) startSplitRotation(ctx context.Context, credentialID uint,
 	bindings []model.AssetAccount, policy PasswordPolicy,
-	fixedSecret *CandidateSecret) (*model.CredentialRotation, error) {
+	fixedSecret *CandidateSecret, gate splitGate, impactID *string, bound *splitAssetBound) (*model.CredentialRotation, error) {
 
 	userID, operator := model.UserFromContext(ctx)
 	var out *model.CredentialRotation
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 第一個動作取拓撲序列化鎖，其後才取來源憑證列鎖（不新增資產列鎖）
+		if err := s.lockTopologyTx(tx); err != nil {
+			return err
+		}
 		cred, err := lockCredentialRow(tx, credentialID)
 		if err != nil {
 			return err
+		}
+		// 能力檢核在起始交易內、列鎖之後：三個入口（整組拆分、指定掛載拆分、單台脫離）
+		// 共用同一道關卡，直接呼叫服務的路徑同樣經過，不再有免驗入口。由批次發起者改在重讀掛載後
+		// 以選定資產判定（拆分只改所選掛載、不改來源憑證的秘密，不要求來源憑證歸屬在範圍內）
+		var decision CredentialManagementDecision
+		if bound == nil {
+			if decision, err = s.mgmt.require(ctx, tx, splitManagementRequest(gate, credentialID, bindings)); err != nil {
+				return err
+			}
+		}
+		// 整組拆分是遠端輪替的一種：範圍外掛載同樣須先確認（impactID 為 nil 的入口不涉範圍外確認）
+		var impact *impactOutcome
+		if impactID != nil {
+			if impact, err = (impactGuard{scope: s.scope}).enforce(ctx, tx, cred.ID,
+				model.CredentialImpactOpRotate, *impactID); err != nil {
+				return err
+			}
+		}
+		// 查驗之後可能有人改綁或卸載：在列鎖之內重讀，選定的每一台都必須仍掛在本憑證
+		// 同一台資產上，否則整筆不建立輪替與候選
+		current, cerr := credentialBindingRows(tx, credentialID)
+		if cerr != nil {
+			return cerr
+		}
+		fresh := make(map[uint]model.AssetAccount, len(current))
+		for i := range current {
+			fresh[current[i].ID] = current[i]
+		}
+		for i := range bindings {
+			now, ok := fresh[bindings[i].ID]
+			if !ok || now.AssetID != bindings[i].AssetID {
+				return ErrCredentialRotationNoBinding
+			}
+			bindings[i] = now
+		}
+		// 由批次發起：選定成員所在的資產以批次能力重驗（同一交易、拓撲鎖之後），範圍外或失權即整筆不建立
+		var boundAssets []uint
+		authCaps := gate.caps
+		if bound != nil {
+			boundAssets = bindingAssetIDs(bindings)
+			authCaps = unionCapabilities(bound.caps, boundedSplitFloor())
+			if decision, err = s.mgmt.require(ctx, tx, CredentialManagementRequest{
+				Operation: CredOpRun, Capabilities: authCaps,
+				AssetIDs: boundAssets, AccountIDs: bindingAccountIDs(bindings),
+			}); err != nil {
+				return &errBatchAuthzStop{reason: revalidationReason(err), cause: err}
+			}
 		}
 		if err := assertNoActiveRotation(cred); err != nil {
 			return err
@@ -172,7 +278,8 @@ func (s *CredentialRotationService) startSplitRotation(ctx context.Context, cred
 			PasswordExcludeAmbiguous: policy.ExcludeAmbiguous,
 			StartedAt:                time.Now(),
 		}
-		if err := createRotationRow(tx, rot); err != nil {
+		// 帶上界者存完整的批次能力集合（含帳號改密），派送前重驗依此聯集拆分模式下限
+		if err := createRotationRow(s.mgmt, tx, rot, decision, authCaps, boundAssets); err != nil {
 			return err
 		}
 		if err := snapshotRotationMembers(tx, rot, bindings, nil); err != nil {
@@ -191,12 +298,40 @@ func (s *CredentialRotationService) startSplitRotation(ctx context.Context, cred
 			return fmt.Errorf("寫入輪替狀態失敗: %w", err)
 		}
 		out = rot
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
+		audit := credentialAudit{
 			CredentialID: cred.ID,
 			Operation:    credentialOpRotate,
 			Scope:        cred.Scope,
 			Fields:       []string{"active_rotation_id"},
-		}, userID, operator)
+			RotationID:   rot.ID,
+			Extra:        impact.auditDetails(),
+		}
+		if gate.op != CredOpDetach {
+			// 隨機拆分沒有人決定的秘密值：維持原服務審計，不產生自訂秘密事件
+			return writeCredentialAudit(s.auditTx, tx, audit, userID, operator)
+		}
+		// 單台脫離：意圖（審計與系統告警）與工作、候選同一交易先提交，之後才可能有遠端 I/O；
+		// 審計或告警落地失敗整筆回滾，沒有工作、沒有候選、沒有遠端副作用
+		corr, cerr := newAssetCorrelationID()
+		if cerr != nil {
+			return cerr
+		}
+		audit.CorrelationID = corr
+		audit.SecretSource = secretSourceRandom
+		if fixedSecret != nil {
+			audit.SecretSource = secretSourceCustom
+		}
+		if err := writeCredentialAudit(s.auditTx, tx, audit, userID, operator); err != nil {
+			return err
+		}
+		var assetID uint
+		if len(bindings) == 1 {
+			assetID = bindings[0].AssetID
+		}
+		return raiseCustomSecretUsed(s.alerts, tx, customSecretEvent{
+			Entry: customSecretEntryFor(gate.op), CredentialID: cred.ID, AssetID: assetID,
+			CorrelationID: corr, UserID: userID, Username: operator,
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -247,7 +382,8 @@ func (s *CredentialRotationService) seedSplitCandidate(ctx context.Context, tx *
 //
 // **掛載識別保持不變**：改綁只換 credential_id，既有記錄與授權範圍因此不斷鏈。
 func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
-	rot *model.CredentialRotation, member *model.CredentialRotationMember, mc *memberContext) error {
+	rot *model.CredentialRotation, member *model.CredentialRotationMember, mc *memberContext,
+	confirm *model.CredentialHostIdentityConfirmation, applied memberTransition) error {
 
 	userID, operator := model.UserFromContext(ctx)
 	passwordEnc, privateKeyEnc, err := s.encryptRotationSecret(ctx, mc)
@@ -257,6 +393,14 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, member.AssetID); err != nil {
+			return err
+		}
+		// 主機身分比對在資產列鎖之後、任何憑證列之前（拆分模式只看派送標記，不看整組候選）
+		fresh, err := loadRotationMember(tx, rot.ID, member.ID)
+		if err != nil {
+			return err
+		}
+		if err := assertMemberHostIdentityTx(tx, fresh, false, confirm); err != nil {
 			return err
 		}
 		source, err := lockCredentialRow(tx, member.CredentialID)
@@ -321,10 +465,14 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		if err := transitionMember(tx, m, model.CredentialMemberApplied, memberTransition{}); err != nil {
+		consumedByTransition := isExpiredMemberState(m.State)
+		if err := transitionMember(tx, m, model.CredentialMemberApplied, applied); err != nil {
 			return err
 		}
 		if err := deleteAccountCandidate(tx, m.AccountID); err != nil {
+			return err
+		}
+		if err := consumeConfirmationHooked(tx, confirm, consumedByTransition, s.confirmedCommitHook); err != nil {
 			return err
 		}
 		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
@@ -334,6 +482,7 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 			Fields:       []string{"credential_id", "effective_version_id"},
 			AssetID:      m.AssetID,
 			AccountID:    m.AccountID,
+			RotationID:   rot.ID,
 		}, userID, operator); err != nil {
 			return err
 		}
@@ -398,11 +547,12 @@ func settleSourceCredential(tx *gorm.DB, cred *model.Credential) error {
 		return nil
 	}
 	if count == 1 && cred.Scope == model.CredentialScopeShared {
+		// 收斂成專用時歸屬同筆改為隨資產（遠端已完成後的本地收斂，不新增授權或序列化點）
+		updates := ownershipColumns(dedicatedOwnership())
+		updates["scope"] = model.CredentialScopeDedicated
+		updates["name"] = nil
 		if err := tx.Model(&model.Credential{}).Where("id = ?", cred.ID).
-			Updates(map[string]any{
-				"scope": model.CredentialScopeDedicated,
-				"name":  nil,
-			}).Error; err != nil {
+			Updates(updates).Error; err != nil {
 			return fmt.Errorf("原憑證轉為專用失敗: %w", err)
 		}
 		cred.Scope = model.CredentialScopeDedicated
@@ -420,6 +570,11 @@ func settleSourceCredential(tx *gorm.DB, cred *model.Credential) error {
 func (s *CredentialRotationService) Detach(ctx context.Context, credentialID, accountID uint,
 	req DetachCredentialRequest) (*model.CredentialRotation, error) {
 
+	// 無權者先被擋下：憑證不是共用、掛載不存在等狀態錯誤不得成為存在性探測器
+	if err := s.requireManagement(ctx, nil, CredOpDetach, splitGateDetach().caps,
+		[]uint{credentialID}, nil, []uint{accountID}); err != nil {
+		return nil, err
+	}
 	cred, err := loadCredential(s.db, credentialID)
 	if err != nil {
 		return nil, err
@@ -431,10 +586,7 @@ func (s *CredentialRotationService) Detach(ctx context.Context, credentialID, ac
 	if err != nil {
 		return nil, err
 	}
-	// 脫離只動這一台的遠端秘密，故只驗這一台
-	if err := s.assertAssetPermission(ctx, binding.AssetID); err != nil {
-		return nil, err
-	}
+	// 脫離只動這一台的遠端秘密；能力檢核在 startSplitRotation 的起始交易內
 	fixed, err := detachFixedSecret(cred, req)
 	if err != nil {
 		return nil, err
@@ -442,9 +594,10 @@ func (s *CredentialRotationService) Detach(ctx context.Context, credentialID, ac
 
 	defer fixed.Destroy()
 	rot, err := s.startSplitRotation(ctx, credentialID,
-		[]model.AssetAccount{*binding}, req.Policy, fixed)
+		[]model.AssetAccount{*binding}, req.Policy, fixed, splitGateDetach(), nil, nil)
 	if err != nil {
-		return nil, err
+		// 範圍外資產上的掛載與不存在的掛載同形
+		return nil, assetScopeDenialAsBindingNotFound(err)
 	}
 	if err := s.Run(ctx, rot.ID); err != nil {
 		return nil, err
@@ -503,4 +656,26 @@ func detachFixedSecret(cred *model.Credential, req DetachCredentialRequest) (*Ca
 	default:
 		return nil, ErrCredentialDetachSourceInvalid
 	}
+}
+
+// bindingAssetIDs 掛載列所在的資產（去重保序）。
+func bindingAssetIDs(bindings []model.AssetAccount) []uint {
+	seen := make(map[uint]bool, len(bindings))
+	out := make([]uint, 0, len(bindings))
+	for i := range bindings {
+		if !seen[bindings[i].AssetID] {
+			seen[bindings[i].AssetID] = true
+			out = append(out, bindings[i].AssetID)
+		}
+	}
+	return out
+}
+
+// bindingAccountIDs 掛載列識別。
+func bindingAccountIDs(bindings []model.AssetAccount) []uint {
+	out := make([]uint, 0, len(bindings))
+	for i := range bindings {
+		out = append(out, bindings[i].ID)
+	}
+	return out
 }

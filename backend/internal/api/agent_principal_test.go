@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
@@ -26,7 +27,11 @@ func principalAPIEnv(t *testing.T) (*gorm.DB, *UserHandler, *model.User, *model.
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { sqlDB.Close() })
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}, &model.AuditLog{}, &model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.ApproverScope{}); err != nil {
+	seedAuthzState(t, db)
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}, &model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.ApproverScope{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	owner := &model.User{Username: "human", Password: "!", Kind: model.KindHuman, Active: true}
@@ -93,7 +98,7 @@ func TestApproverScopeRejectsAgent(t *testing.T) {
 	router.POST("/approver-scopes", func(c *gin.Context) {
 		c.Set("userID", owner.ID)
 		c.Set("username", owner.Username)
-		c.Set("role", model.RoleAdmin)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin))
 		h.CreateScope(c)
 	})
 	before := []model.ApproverScope{}
@@ -134,8 +139,18 @@ func TestPrincipalKindImmutableAPI(t *testing.T) {
 	}
 }
 func TestDeleteOwnerWithAgentsRejectedAPI(t *testing.T) {
-	_, h, owner, agent := principalAPIEnv(t)
+	db, h, owner, agent := principalAPIEnv(t)
+	// 刪除走帶操作者入口（缺操作者即拒），以一般管理帳號為請求者
+	operator := &model.User{Username: "operator", Password: "!", Kind: model.KindHuman, Active: true}
+	if err := db.Create(operator).Error; err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("userID", operator.ID)
+		c.Set("username", operator.Username)
+		c.Next()
+	})
 	router.DELETE("/users/:id", h.Delete)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("DELETE", fmt.Sprintf("/users/%d", owner.ID), nil))

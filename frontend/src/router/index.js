@@ -11,7 +11,8 @@ import {
 } from '../utils/sealPhase'
 import { ensureSession } from '../utils/session'
 import { parseLoginTestSource } from '../composables/useLoginTestSource'
-import { canEnter, entryMeta, entrySubject, hasEntryRule } from './entryRules'
+import { canEnter, entryMeta, hasEntryRule, needsCapabilities } from './entryRules'
+import { loadCapabilities } from '../composables/useCapabilities'
 
 const routes = [
   {
@@ -210,15 +211,42 @@ const routes = [
         meta: { requiresAuth: true, ...entryMeta('/users') },
       },
       {
+        // 使用者詳情：沿用使用者列表的入口規則（見 entryRules 的 /users）
+        path: 'users/:id(\\d+)',
+        name: 'UserDetail',
+        component: () => import('../views/UserDetail.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/users') },
+      },
+      {
         path: 'roles',
         name: 'Roles',
         component: () => import('../views/Roles.vue'),
         meta: { requiresAuth: true, ...entryMeta('/roles') },
       },
       {
+        // 新增角色：靜態段 new 的比對分數高於下方的 :id
+        path: 'roles/new',
+        name: 'RoleNew',
+        component: () => import('../views/RoleEditor.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/roles') },
+      },
+      {
+        path: 'roles/:id(\\d+)',
+        name: 'RoleDetail',
+        component: () => import('../views/RoleEditor.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/roles') },
+      },
+      {
         path: 'user-groups',
         name: 'UserGroups',
         component: () => import('../views/UserGroups.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/user-groups') },
+      },
+      {
+        // 群組詳情：沿用使用者群組列表的入口規則（見 entryRules 的 /user-groups）
+        path: 'user-groups/:id(\\d+)',
+        name: 'UserGroupDetail',
+        component: () => import('../views/UserGroupDetail.vue'),
         meta: { requiresAuth: true, ...entryMeta('/user-groups') },
       },
       {
@@ -305,6 +333,14 @@ const routes = [
         name: 'OffsiteStorage',
         component: () => import('../views/OffsiteStorage.vue'),
         meta: { requiresAuth: true, ...entryMeta('/offsite-storage') },
+      },
+      {
+        // 通知通道：系統設定下的獨立頁，薄頁殼掛通道面板。
+        // 只看 notification_channel:manage，不要求告警檢視能力
+        path: 'notification-channels',
+        name: 'NotificationChannels',
+        component: () => import('../views/NotificationChannels.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/notification-channels') },
       },
       {
         path: 'change-secret-plans',
@@ -434,26 +470,18 @@ export function createAuthGuard() {
     } else if (hasEntryRule(to.meta)) {
       // 入口規則與側欄選單同一個來源（router/entryRules.js 的 canEnter）：
       // 選單看不到的頁面，直接輸入網址也進不去，一律導回 /dashboard。
-      // fail-closed：user 資料缺失視同未登入，不得跳過規則放行——
-      // 原實作在 token 在、user 缺時 fail-open。
-      // `approver` 以後端算出的 is_approver 裁決（不看 roles 快取），
-      // 「我的 agent」以後端算出的 owns_agents／can_self_create_agent 裁決（不看角色），
-      // 兩者都由 MainLayout 掛載時以 /auth/me 回寫快取
-      const user = localStorage.getItem('user')
-      if (!user) {
+      // 能力來自後端 `/auth/me` 的 permissions（見 composables/useCapabilities.js）：
+      // 需要能力的入口先等**同一次**載入完成（與側欄共用在途請求）才裁決，
+      // 不拿登入時快取的角色或舊欄位暫時放行；載入失敗＝沒有能力，受限入口不放行，
+      // 使用者回到儀表板後由版面的重試提示再取一次。
+      // fail-closed：沒有會話一律去登入，不得跳過規則放行
+      if (!authed) {
         next('/login')
         return
       }
-      try {
-        const userData = JSON.parse(user)
-        if (!userData || typeof userData !== 'object') throw new Error('invalid user cache')
-        if (!canEnter(to.meta, entrySubject(userData))) {
-          next('/dashboard')
-          return
-        }
-      } catch (e) {
-        console.error('解析使用者資料失敗:', e)
-        next('/login')
+      if (needsCapabilities(to.meta)) await loadCapabilities()
+      if (!canEnter(to.meta)) {
+        next('/dashboard')
         return
       }
       next()

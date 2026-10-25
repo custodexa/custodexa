@@ -28,8 +28,8 @@ func TestGuacRedeemDisabledAsset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{},
-		&model.AssetNode{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+	if err := migrateWithAuthz(db, &model.User{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{},
+		&model.AssetNode{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -44,6 +44,7 @@ func TestGuacRedeemDisabledAsset(t *testing.T) {
 	}
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}

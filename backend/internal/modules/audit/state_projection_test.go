@@ -176,22 +176,36 @@ func TestApplyAgentTokenEvents(t *testing.T) {
 	}
 }
 
+// projectionFailure 模擬持久通道：同項同識別且未結案時不重開（去重由通道負責，對帳器每次都回報）。
 type projectionFailure struct {
 	events   map[string]int
 	resolved map[string]int
+	open     map[string]string
 }
 
-func (f *projectionFailure) ReportStateMismatch(table string, _ map[string]string) error {
+func (f *projectionFailure) ReportStateMismatch(table string, params map[string]string) error {
+	if f.open == nil {
+		f.open = map[string]string{}
+	}
+	key := params["since_seq"] + ":" + params["actual_hash"]
+	if cur, ok := f.open[table]; ok && cur == key {
+		return nil
+	}
+	f.open[table] = key
 	f.events[table]++
 	return nil
 }
-func (f *projectionFailure) ResolveStateMismatch(table string) error { f.resolved[table]++; return nil }
+func (f *projectionFailure) ResolveStateMismatch(table string) error {
+	delete(f.open, table)
+	f.resolved[table]++
+	return nil
+}
 func TestStateTableReconcileIndependent(t *testing.T) {
 	p, a := principalFixture(), tokenFixture()
 	projectionSources(t, &p, &a)
 	f := setupRoleFixture(t)
 	f.sealWithRoles(t)
-	sink := &projectionFailure{map[string]int{}, map[string]int{}}
+	sink := &projectionFailure{events: map[string]int{}, resolved: map[string]int{}}
 	f.rec.SetStateFailureSink(sink)
 	p[0].OwnerID = &p[0].ID
 	a[0].Revoked = true

@@ -78,3 +78,33 @@ const (
 	// PolicyHistorySourceMigrationUpgrade 升級時偵測的業務時區初值
 	PolicyHistorySourceMigrationUpgrade = "migration_upgrade"
 )
+
+// SecurityPolicyFloorRaise 保留下限的升級抬升紀錄。
+//
+// 啟動時的冪等對帳把存量 1–6 天的資料保留值抬升到下限，必要時讓檢查點保留跟隨；
+// 每改一個鍵記一列，供升級說明卡列出被抬升的項目。審計列受保留政策清除，管理者
+// 可能在升級多日後才首次登入，所以另立一張由 policy 模組維護、不受審計保留清除的表。
+type SecurityPolicyFloorRaise struct {
+	ID        uint   `gorm:"primarykey" json:"id"`
+	PolicyKey string `gorm:"type:varchar(64);not null" json:"policy_key"`
+	OldValue  string `gorm:"type:text;not null" json:"old_value"`
+	NewValue  string `gorm:"type:text;not null" json:"new_value"`
+	// Reason 抬升理由碼（PolicyFloorRaiseReason*）
+	Reason   string    `gorm:"type:varchar(32);not null" json:"reason"`
+	RaisedAt time.Time `gorm:"not null" json:"raised_at"`
+	// ProductVersion 執行抬升的產品版本
+	ProductVersion string `gorm:"type:varchar(64);not null" json:"product_version"`
+}
+
+// TableName 指定表名
+func (SecurityPolicyFloorRaise) TableName() string {
+	return "security_policy_floor_raises"
+}
+
+// 保留下限抬升的理由碼（security_policy_floor_raises.reason）
+const (
+	// PolicyFloorRaiseReasonBelowFloor 資料保留值低於下限而抬升
+	PolicyFloorRaiseReasonBelowFloor = "below_floor"
+	// PolicyFloorRaiseReasonCrossKeyFollow 檢查點保留為保住原本成立的涵蓋關係而跟隨抬升
+	PolicyFloorRaiseReasonCrossKeyFollow = "cross_key_follow"
+)

@@ -138,6 +138,7 @@ function tokenStateText(token) {
   if (state === 'suspended') return t('agentBreaker.tokenStopped', { reason: suspendReason(token), time: formatDateTime(token.suspended_at) })
   if (state === 'revoked') return t('agentBreaker.tokenRevoked', { time: formatDateTime(token.revoked_at) })
   if (state === 'expired') return t('agentBreaker.tokenExpired', { time: formatDateTime(token.expires_at) })
+  if (state === 'restore_invalidated') return t('agentBreaker.tokenRestoreInvalidated')
   return t('agentPrincipals.tokenStatus.valid')
 }
 // 名稱由事件列自帶；這支仍要查一次，因為協議欄只有資產本體有

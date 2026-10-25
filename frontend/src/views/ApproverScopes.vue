@@ -22,6 +22,14 @@
     </PageHeader>
 
     <el-alert
+      v-if="nodeScoped"
+      type="warning"
+      :closable="false"
+      class="semantics-alert scoped-notice"
+      :title="$t('approverScopes.scopedNotice')"
+    />
+
+    <el-alert
       type="info"
       :closable="false"
       class="semantics-alert"
@@ -45,6 +53,12 @@
         :label="$t('approverScopes.tabObjects')"
         name="objects"
       >
+        <p
+          v-if="nodeScoped"
+          class="sub-text pool-note"
+        >
+          {{ $t('approverScopes.poolScopedNote') }}
+        </p>
         <div class="list-panel">
           <el-table
             v-loading="loading"
@@ -58,7 +72,14 @@
               min-width="220"
             >
               <template #default="{ row }">
-                {{ row.name }}
+                <span
+                  v-if="row.locator"
+                  class="locator-ancestor"
+                  :title="$t('nodeTree.locatorAncestor')"
+                >{{ row.name }}</span>
+                <template v-else>
+                  {{ row.name }}
+                </template>
               </template>
             </el-table-column>
             <el-table-column
@@ -88,7 +109,12 @@
               width="140"
             >
               <template #default="{ row }">
+                <span
+                  v-if="row.poolCount === null"
+                  class="cell-empty"
+                >—</span>
                 <el-tooltip
+                  v-else
                   :content="row.poolNames.length ? $t('approverScopes.poolTooltip', { names: row.poolNames.join($t('common.listSeparator')) }) : $t('approverScopes.noPool')"
                   placement="top"
                 >
@@ -108,9 +134,11 @@
             >
               <template #default="{ row }">
                 <el-button
+                  v-if="!row.locator"
                   link
                   type="primary"
                   size="small"
+                  class="node-add"
                   @click="openAdd(null, 'asset_group', row.id)"
                 >
                   {{ $t('approverScopes.addActor') }}
@@ -171,10 +199,22 @@
           </el-table>
         </div>
 
-        <h3 class="section-title">
+        <p
+          v-if="!showApplicant"
+          class="sub-text applicant-note"
+        >
+          {{ $t('approverScopes.applicantManagedGlobally') }}
+        </p>
+        <h3
+          v-if="showApplicant"
+          class="section-title"
+        >
           {{ $t('approverScopes.sectionSubjectRouting') }}
         </h3>
-        <div class="list-panel">
+        <div
+          v-if="showApplicant"
+          class="list-panel subject-routing"
+        >
           <el-table
             v-loading="loading"
             :data="subjectScopeRows"
@@ -266,7 +306,7 @@
               </template>
             </el-table-column>
             <el-table-column
-              v-for="(meta, key) in SCOPE_TYPES"
+              v-for="(meta, key) in visibleScopeTypes"
               :key="key"
               :label="meta.label"
               min-width="170"
@@ -318,6 +358,7 @@
         :preset-type="addPreset.type"
         :preset-target-id="addPreset.targetId"
         :show-help="false"
+        :scoped="formScoped"
         @created="handleCreated"
       />
     </el-dialog>
@@ -325,7 +366,7 @@
 </template>
 
 <script setup>
-// 審核範圍雙視角總覽：admin only 獨立頁。
+// 審核範圍雙視角總覽：持審核範圍管理權限者的獨立頁；列表帶 coverage 時走精簡資料路徑（只用列表與兩個選擇端點）。
 // 預設客體中心（這個節點/資產誰審、可審人數 vs 門檻——涵蓋缺口與卡單風險可視）；
 // 「按審核人員」矩陣（個人與群組皆成列）。一站式新增（個人代配角色/群組零代配）
 import { ref, reactive, computed, onMounted } from 'vue'
@@ -334,7 +375,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ApproverScopeForm from '@/components/ApproverScopeForm.vue'
-import { getApproverScopes, deleteApproverScope } from '@/api/accessRequests'
+import {
+  getApproverScopes,
+  deleteApproverScope,
+  getApproverScopeApproverOptions,
+  getApproverScopeTargetOptions,
+} from '@/api/accessRequests'
 import { getUserList } from '@/api/user'
 import { getUserGroups } from '@/api/userGroups'
 import { getAssetGroups } from '@/api/assets'
@@ -351,6 +397,12 @@ import {
   scopeTargetLabel,
   buildGroupPaths,
 } from '@/utils/approver-scope'
+import {
+  isScopedListResponse,
+  nodePathMap,
+  scopedUsers,
+  scopedNodeRows,
+} from '@/utils/approver-scope-scoped'
 
 const activeView = ref('objects')
 const loading = ref(false)
@@ -360,19 +412,54 @@ const userGroups = ref([])
 const assetGroups = ref([])
 const groupPaths = ref({})
 const quorumThreshold = ref(1)
+// 精簡路徑（列表帶 coverage＝非超級管理者）：{ coverage, applicantManageable, nodeScoped }；null＝現行路徑
+const scopedView = ref(null)
+const nodeOptions = ref([])
+const nodeScoped = computed(() => scopedView.value?.nodeScoped === true)
+// 申請人型管理旗標由伺服器判定；現行路徑恆顯示
+const showApplicant = computed(() => !scopedView.value || scopedView.value.applicantManageable)
+const visibleScopeTypes = computed(() =>
+  showApplicant.value ? SCOPE_TYPES : { asset: SCOPE_TYPES.asset, asset_group: SCOPE_TYPES.asset_group }
+)
+const formScoped = computed(() =>
+  scopedView.value ? { applicantManageable: scopedView.value.applicantManageable } : null
+)
+
+// 精簡路徑：只用列表與兩個選擇端點
+const loadScopedPath = async (scopeRes) => {
+  const [optionRes, nodeRes] = await Promise.all([
+    getApproverScopeApproverOptions(),
+    getApproverScopeTargetOptions({ kind: 'node', page: 1, page_size: 1000 }),
+  ])
+  users.value = scopedUsers(optionRes.users)
+  userGroups.value = optionRes.groups || []
+  nodeOptions.value = nodeRes.data || []
+  groupPaths.value = nodePathMap(nodeOptions.value)
+  quorumThreshold.value = parseInt(scopeRes.min_approvals, 10) || 1
+  scopedView.value = {
+    coverage: scopeRes.coverage,
+    applicantManageable: scopeRes.applicant_manageable === true,
+    nodeScoped: scopeRes.management_scope === 'nodes',
+  }
+}
 
 // —— 資料載入 ——
 const fetchAll = async () => {
   loading.value = true
   try {
-    const [scopeRes, userRes, ugroupRes, agroupRes, policyRes] = await Promise.all([
-      getApproverScopes(),
+    const scopeRes = await getApproverScopes()
+    scopes.value = scopeRes.data || []
+    if (isScopedListResponse(scopeRes)) {
+      await loadScopedPath(scopeRes)
+      return
+    }
+    scopedView.value = null
+    const [userRes, ugroupRes, agroupRes, policyRes] = await Promise.all([
       getUserList({ page: 1, page_size: 1000 }),
       getUserGroups(),
       getAssetGroups(),
       getSecurityPolicies(),
     ])
-    scopes.value = scopeRes.data || []
     users.value = userRes.data || []
     userGroups.value = ugroupRes.data || []
     assetGroups.value = agroupRes.data || []
@@ -401,6 +488,9 @@ const userNameById = (id) => {
 // —— 按資產/節點視角 ——
 // 節點樹列：own scopes＝直配本節點；pool＝本節點＋全部祖先的範圍展開成員去重
 const nodeTreeRows = computed(() => {
+  if (scopedView.value) {
+    return scopedNodeRows(nodeOptions.value, scopes.value, scopedView.value.coverage)
+  }
   const byId = new Map(assetGroups.value.map((g) => [g.id, g]))
   const scopesByNode = new Map()
   scopes.value.forEach((s) => {
@@ -467,7 +557,7 @@ const subjectScopeRows = computed(() =>
 // ＋群組審核方（出現在任一範圍的群組）
 const actorRows = computed(() => {
   const rows = users.value
-    .filter((u) => hasRole(u.roles, 'approver'))
+    .filter((u) => (scopedView.value ? u.is_approver : hasRole(u.roles, 'approver')))
     .map((u) => ({
       type: 'user',
       id: u.id,
@@ -576,6 +666,15 @@ onMounted(fetchAll)
 
 .cell-empty {
   color: var(--ot-text-disabled, #6b7a90);
+}
+
+.locator-ancestor {
+  color: var(--ot-text-disabled, #6b7a90);
+}
+
+.pool-note,
+.applicant-note {
+  margin: 0 0 8px;
 }
 
 .sub-text {

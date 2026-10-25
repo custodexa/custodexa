@@ -68,6 +68,16 @@ type ChangeSecretPlan struct {
 	// TargetCredentialID TargetKind=credential 時的目標憑證；其餘種類為空
 	TargetCredentialID *uint `json:"target_credential_id"`
 
+	// AuthorizationID 目前生效的發起者授權脈絡（credential_job_authorizations）。
+	// 排程以其發起者建立脈絡並在每次執行前以當下能力重驗；空值代表升級前的舊計畫。
+	// 內部引用，不進計畫回應（前端不使用；授權脈絡的細節只留在伺服器端）
+	AuthorizationID *uint `json:"-"`
+	// AuthorizationState 空＝有可指認的發起者；needs_reauthorization＝升級時完全查不到
+	// 可歸屬者而暫停，cron 與 enabled 設定保留，待超管重新授權
+	AuthorizationState string `gorm:"size:24;not null;default:''" json:"authorization_state"`
+	// Revision 授權脈絡的修訂號；每次儲存計畫遞增。內部欄位，不進計畫回應
+	Revision int `gorm:"not null;default:1" json:"-"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -139,6 +149,8 @@ type ChangeSecretRecord struct {
 // 兩欄一律 json:"-"；API 回應走專屬 DTO，任何路徑皆不得回傳候選秘密。
 type ChangeSecretCandidate struct {
 	ID uint `gorm:"primarykey" json:"id"`
+	// AuthorizationID 產生本候選的工作授權脈絡；空值＝升級前的舊候選（保留不動）
+	AuthorizationID *uint `json:"authorization_id,omitempty"`
 	// AccountID 唯一：同一帳號不疊加第二個未知狀態
 	AccountID uint `gorm:"uniqueIndex;not null" json:"account_id"`
 	AssetID   uint `gorm:"index;not null" json:"asset_id"`
@@ -163,6 +175,26 @@ type ChangeSecretCandidate struct {
 	PublicKey string `gorm:"type:text" json:"public_key"`
 	// PreviousPublicKey 本系統先前推送的公鑰行；空值＝先前無系統推送鑰（無舊行可刪）
 	PreviousPublicKey string `gorm:"type:text" json:"previous_public_key"`
+
+	// TargetFingerprint 建立當下的目標指紋（位址、通道、掛載、帳號、憑證引用的雜湊，
+	// 不含任何秘密）。失權後的有限驗證只在指紋仍相符時進行；空值＝無從證實目標。
+	TargetFingerprint string `gorm:"size:64;not null;default:''" json:"-"`
+	// RecoveryAlertedAt 本候選首次進入失權後有限驗證、發出告警的時刻；NULL＝尚未發過。
+	// 讓「進入有限驗證」的告警每個候選只發一次，不隨退避週期重複。
+	RecoveryAlertedAt *time.Time `json:"-"`
+
+	// 主機身分綁定（首次金鑰交換、認證之前寫入；全部不進任何 DTO）。
+	// HostKeyBinding：legacy＝升級前建立、無歷史身分；pending＝新版建立、尚未完成任何金鑰交換；
+	// bound＝已綁定。其餘欄位在 bound 之前為零值。
+	HostKeyBinding     string     `gorm:"size:16;not null;default:'legacy'" json:"-"`
+	HostKeyTransport   string     `gorm:"size:16;not null;default:''" json:"-"`
+	HostKeyRecordID    uint       `gorm:"not null;default:0" json:"-"`
+	HostKeyAlgorithm   string     `gorm:"size:64;not null;default:''" json:"-"`
+	HostKeyFingerprint string     `gorm:"size:128;not null;default:''" json:"-"`
+	HostKeyGeneration  int64      `gorm:"not null;default:0" json:"-"`
+	HostKeyBoundAt     *time.Time `json:"-"`
+	// HostIdentityAlertedKey 已為哪個「身分狀態」寫過停止審計並通知的去重鍵；NULL＝從未寫過
+	HostIdentityAlertedKey *string `gorm:"size:64" json:"-"`
 
 	// Applied 遠端變更指令已回報成功。false ＝ 遠端狀態不可知（下達中被中斷）。
 	// 只影響呈現與告警文案，不影響重試邏輯——兩者都以候選登入重試

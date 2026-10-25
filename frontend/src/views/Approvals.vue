@@ -248,6 +248,16 @@
               />
             </template>
           </el-table>
+          <!-- 全量數取待審計數（與側欄 badge 同源），放表格下方 -->
+          <p
+            class="loaded-of-total"
+            data-test="pending-loaded-of-total"
+          >
+            <el-icon class="loaded-of-total-icon">
+              <Info />
+            </el-icon>
+            <span>{{ $t('dashboard.loadedOfTotal', { loaded: pendingRequests.length, total: totalText(pendingTotal) }) }}</span>
+          </p>
         </div>
       </el-tab-pane>
 
@@ -593,6 +603,16 @@
               <EmptyState :title="emptyTitleFor('approvals.emptyReviews')" />
             </template>
           </el-table>
+          <!-- 全量數取待審計數（與側欄 badge 同源），放表格下方 -->
+          <p
+            class="loaded-of-total"
+            data-test="reviews-loaded-of-total"
+          >
+            <el-icon class="loaded-of-total-icon">
+              <Info />
+            </el-icon>
+            <span>{{ $t('dashboard.loadedOfTotal', { loaded: pendingReviews.length, total: totalText(reviewTotal) }) }}</span>
+          </p>
         </div>
       </el-tab-pane>
 
@@ -845,7 +865,7 @@
 <script setup>
 import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
 import { ref, computed, nextTick, onMounted } from 'vue'
-import { RefreshCw, Lock } from 'lucide-vue-next'
+import { RefreshCw, Lock, Info } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -869,6 +889,7 @@ import {
   revokeAccessRequest,
   reviewBreakGlass,
   getPendingReviews,
+  getPendingAccessRequestCount,
 } from '@/api/accessRequests'
 
 const activeTab = ref('pending')
@@ -894,9 +915,11 @@ const historyTotal = ref(0)
 const tickets = ref([])
 const pendingReviews = ref([])
 
+// 頁籤數字取全量（與「已載入 N 筆，共 M 筆」的 M 同源）；列表被截斷時不得以已載入列數代替。
+// 全量讀不到（null）或為 0 時只顯示頁籤名，不用載入數冒充
 const pendingLabel = computed(() =>
-  pendingRequests.value.length > 0
-    ? t('approvals.pendingTabCount', { n: pendingRequests.value.length })
+  pendingTotal.value > 0
+    ? t('approvals.pendingTabCount', { n: pendingTotal.value })
     : t('approvals.pendingTab')
 )
 
@@ -914,8 +937,8 @@ const voterNames = (row) =>
       .join(t('common.listSeparator')),
   })
 const pendingReviewLabel = computed(() =>
-  pendingReviews.value.length > 0
-    ? t('approvals.reviewTabCount', { n: pendingReviews.value.length })
+  reviewTotal.value > 0
+    ? t('approvals.reviewTabCount', { n: reviewTotal.value })
     : t('approvals.reviewTab')
 )
 
@@ -967,9 +990,30 @@ const afterReviewBatch = () => {
   fetchReviews()
 }
 
+// 全量數：與側欄 badge 讀同一個計數端點（count＝待審、review_count＝待補審）。
+// 讀不到就顯示「未取得」，不用載入數冒充全量
+const pendingTotal = ref(null)
+const reviewTotal = ref(null)
+const totalText = (n) => (n === null ? t('dashboard.valueUnavailable') : n)
+let countSeq = 0
+const fetchTotals = async () => {
+  const seq = ++countSeq
+  try {
+    const res = await getPendingAccessRequestCount({ skipErrorToast: true })
+    if (seq !== countSeq) return
+    pendingTotal.value = typeof res?.count === 'number' ? res.count : null
+    reviewTotal.value = typeof res?.review_count === 'number' ? res.review_count : null
+  } catch {
+    if (seq !== countSeq) return
+    pendingTotal.value = null
+    reviewTotal.value = null
+  }
+}
+
 const fetchPending = async () => {
   loading.value = true
   pendingSelection.clear()
+  fetchTotals()
   try {
     const res = await getPendingAccessRequests()
     pendingRequests.value = res.data || []
@@ -1019,6 +1063,7 @@ const fetchTickets = async () => {
 const fetchReviews = async () => {
   loading.value = true
   reviewSelection.clear()
+  fetchTotals()
   try {
     const res = await getPendingReviews()
     pendingReviews.value = res.data || []
@@ -1230,6 +1275,15 @@ onMounted(async () => {
 
 <style scoped>
 /* 「這張單不在本頁」是要照著做的指示（去翻頁），不是背景說明，留在主文字色 */
+.loaded-of-total {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs, 4px);
+  margin: var(--ot-space-md) 0 0;
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
+}
+
 .history-hint {
   margin: 0 0 var(--ot-space-sm);
   color: var(--ot-text-primary);

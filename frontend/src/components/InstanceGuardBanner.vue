@@ -51,7 +51,7 @@
              管理者的那一份收進「顯示細節」——常駐橫幅的高度是所有人每頁都要付的成本，
              而細節本來就只給管理者。兩邊讀到的事實相同，只是版位不同 -->
         <p
-          v-if="!isAdmin"
+          v-if="!canViewDetails"
           class="banner-summary"
           data-test="banner-summary"
         >
@@ -59,7 +59,7 @@
         </p>
       </div>
       <div
-        v-if="isAdmin"
+        v-if="canViewDetails"
         class="banner-actions"
       >
         <el-button
@@ -86,7 +86,7 @@
 
     <!-- 管理者細節，三欄並排以壓低常駐高度：持鎖者指紋（＋本次啟動的確認碼）／本實例識別／處置與風險 -->
     <div
-      v-if="isAdmin && detailOpen"
+      v-if="canViewDetails && detailOpen"
       class="banner-detail"
     >
       <p
@@ -224,8 +224,8 @@ import { formatDateTime } from '@/utils/format'
 const props = defineProps({
   // seal/status 的 instance_guard 粗狀態：{ state, since, reason, peers }；null＝尚未取得
   status: { type: Object, default: null },
-  // 由 MainLayout 傳入（`isAdmin`）：管理者才取細節端點（每次呼叫留一列審計讀取）
-  isAdmin: { type: Boolean, default: false },
+  // 由 MainLayout 傳入（`canViewDetails`＝instanceguard:view 能力）：具此讀取能力者才取細節端點（每次呼叫留一列審計讀取）
+  canViewDetails: { type: Boolean, default: false },
 })
 
 const { t, te } = useI18n()
@@ -361,7 +361,7 @@ const loadDetail = async () => {
 }
 
 watch(
-  () => visible.value && props.isAdmin,
+  () => visible.value && props.canViewDetails,
   (shouldLoad) => {
     if (shouldLoad) {
       loadDetail()

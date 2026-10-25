@@ -44,6 +44,7 @@ func setupMappingDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
@@ -53,9 +54,9 @@ func setupMappingDB(t *testing.T) *gorm.DB {
 	// 排在它之前的關聯 model 宣告，建出的表少一欄且編譯與 vet 都看不出來
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{},
 		&model.AuditLog{}, &model.LDAPDirectory{}, &model.OIDCProvider{},
-		&model.UserExternalIdentity{}, &model.RefreshToken{}, &model.Session{},
+		&model.RoleBindingNode{}, &model.UserExternalIdentity{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Session{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
-		&model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{},
+		&model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.UserGroup{}, &model.UserGroupMember{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -64,8 +65,20 @@ func setupMappingDB(t *testing.T) *gorm.DB {
 			t.Fatalf("seed role %s: %v", name, err)
 		}
 	}
-	if err := db.Create(&model.User{Username: "admin", Password: "x", Active: true}).Error; err != nil {
+	admin := model.User{Username: "admin", Password: "x", Active: true}
+	if err := db.Create(&admin).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
+	}
+	// 映射規則寫入經共用指派關卡裁決：操作者須持有內建超級管理者身分（關卡解析權限所需的表一併補齊）
+	if err := db.AutoMigrate(&model.RolePermission{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate authz tables: %v", err)
+	}
+	var adminRole model.Role
+	if err := db.Where("name = ?", model.RoleAdmin).First(&adminRole).Error; err != nil {
+		t.Fatalf("find admin role: %v", err)
+	}
+	if err := db.Create(&model.UserRole{UserID: admin.ID, RoleID: adminRole.ID, Source: model.RoleSourceManual, ScopeKind: model.ScopeKindGlobal}).Error; err != nil {
+		t.Fatalf("grant admin: %v", err)
 	}
 	return db
 }
@@ -224,14 +237,14 @@ func TestSourceWithMappingsRefusesDelete(t *testing.T) {
 		t.Fatalf("建立提供者規則: %v", err)
 	}
 
-	dirSvc := identity.NewLDAPDirectoryService(db, nil, audit.NewTxSink())
+	dirSvc := newLDAPDirectoryServiceT(db, nil, audit.NewTxSink())
 	dirSvc.SetTransmissionPolicy(ldapAllowAllGate{})
 	if err := dirSvc.Delete(t.Context(), identity.LDAPDirectoryActor{ID: 1, Name: "admin"}); !errors.Is(err,
 		identity.ErrLDAPDirectoryHasMappings) {
 		t.Fatalf("目錄刪除 err = %v，want ErrLDAPDirectoryHasMappings", err)
 	}
 
-	providerSvc := identity.NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com")
+	providerSvc := newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com")
 	if err := providerSvc.Delete(provider.ID); !errors.Is(err, identity.ErrOIDCProviderHasMappings) {
 		t.Fatalf("提供者刪除 err = %v，want ErrOIDCProviderHasMappings", err)
 	}

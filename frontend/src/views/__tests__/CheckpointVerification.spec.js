@@ -534,7 +534,7 @@ describe('對外文案的可讀性（無內部函式名與狀態機器碼）', (
   })
 })
 
-describe('九態文案與視覺分級', () => {
+describe('十態文案與視覺分級', () => {
   const STATUSES = [
     'passed',
     'purged_legal',
@@ -545,9 +545,10 @@ describe('九態文案與視覺分級', () => {
     'signature_invalid',
     'chain_broken',
     'seq_gap',
+    'attestation_invalid',
   ]
 
-  it('九態在三語皆有狀態名，且彼此不重複（可辨識）', () => {
+  it('十態在三語皆有狀態名，且彼此不重複（可辨識）', () => {
     for (const locale of [zhTW, enUS, jaJP]) {
       const names = STATUSES.map(
         (s) => locale.checkpointVerification.status[s]
@@ -779,6 +780,30 @@ describe('主體與憑證逐項完整性', () => {
     await flushPromises()
     expect(wrapper.find('[data-test="state-principals"] .el-tag').text()).toBe(zhTW.checkpointVerification.roleState.unavailable)
     expect(wrapper.find('[data-test="state-tokens"] .el-tag').text()).toBe(zhTW.checkpointVerification.roleState.notCovered)
+  })
+  it('權限狀態比對無法完成時明列並連到失效事件；其餘狀態不出現這一列', async () => {
+    verifyChainMock.mockResolvedValue(chainFixture({
+      role_state: { covered: true, state: 'match', since_seq: 1 },
+      permission_state: { state: 'unknown', last_event: { id: 77 } },
+    }))
+    const wrapper = mountPage()
+    await flushPromises()
+    const row = wrapper.find('[data-test="state-permission"]')
+    expect(row.exists()).toBe(true)
+    expect(row.find('[data-test="permission-state-status"]').text()).toBe(zhTW.checkpointVerification.permissionState.unknown)
+    expect(row.find('.el-tag').classes()).toContain('el-tag--danger')
+    expect(row.text()).toContain(zhTW.checkpointVerification.permissionState.unknownHint)
+    expect(row.find('[data-test="permission-state-event"]').text()).toContain('77')
+
+    verifyChainMock.mockResolvedValue(chainFixture({ role_state: { covered: true, state: 'match', since_seq: 1 } }))
+    const plain = mountPage()
+    await flushPromises()
+    expect(plain.find('[data-test="state-permission"]').exists()).toBe(false)
+    for (const locale of [zhTW, enUS, jaJP]) {
+      for (const key of ['title', 'unknown', 'unknownHint']) {
+        expect(locale.checkpointVerification.permissionState[key]).toBeTruthy()
+      }
+    }
   })
   it('兩項呈現與新機制成因三語齊備', () => {
     for (const locale of [zhTW, enUS, jaJP]) {

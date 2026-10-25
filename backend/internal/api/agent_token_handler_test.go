@@ -21,7 +21,10 @@ func TestAgentTokenEndpointsAuthz(t *testing.T) {
 	for _, actor := range []string{"owner", "admin", "third party"} {
 		t.Run(actor, func(t *testing.T) {
 			db, h, owner, agent := principalAPIEnv(t)
-			if err := db.AutoMigrate(&model.AgentToken{}); err != nil {
+			if err := db.AutoMigrate(&model.AgentToken{}, &model.Role{}, &model.UserGroup{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 				t.Fatal(err)
 			}
 			service := identity.NewAgentTokenService(db, audit.NewTxSink())
@@ -41,6 +44,7 @@ func TestAgentTokenEndpointsAuthz(t *testing.T) {
 			}
 			if actor == "admin" {
 				role = model.RoleAdmin
+				grantLegacyRole(t, db, uid, model.RoleAdmin)
 			}
 			jwt, err := crypto.NewJWTManager("agent-endpoint-test", time.Hour).GenerateToken(uid, actor, "", role, crypto.AuthContext{})
 			if err != nil {
@@ -83,7 +87,10 @@ func TestAgentTokenEndpointsAuthz(t *testing.T) {
 }
 func TestAgentTokenRejectedOnHumanPaths(t *testing.T) {
 	db, _, owner, agent := principalAPIEnv(t)
-	if err := db.AutoMigrate(&model.AgentToken{}, &model.RefreshToken{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToken{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	service := identity.NewAgentTokenService(db, audit.NewTxSink())

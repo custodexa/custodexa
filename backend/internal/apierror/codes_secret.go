@@ -70,6 +70,12 @@ var (
 
 	CodeInternalHostKeyQuery = register("INTERNAL_HOST_KEY_QUERY", Descriptor{ZhFallback: "查詢 host key失敗"})
 	CodeInternalHostKeyReset = register("INTERNAL_HOST_KEY_RESET", Descriptor{ZhFallback: "重置 host key失敗"})
+	// CodeHostKeyObservationNotFound Adopt 端點：要採用的指紋不在該資產的觀察紀錄中（404，不改任何東西）
+	CodeHostKeyObservationNotFound = register("NOTFOUND_HOST_KEY_OBSERVATION", Descriptor{ZhFallback: "這個指紋不在待確認清單中"})
+	// CodeInternalHostKeyAdopt Adopt 端點：採用交易（記錄、觀察清除、審計、告警）任一步失敗，整筆回滾
+	CodeInternalHostKeyAdopt = register("INTERNAL_HOST_KEY_ADOPT", Descriptor{ZhFallback: "採用主機金鑰指紋失敗"})
+	// CodeConflictHostIdentityMoved 人工確認的主機身分與當下不同，或這項工作目前不能由人工確認承接（409）
+	CodeConflictHostIdentityMoved = register("CONFLICT_HOST_IDENTITY_MOVED", Descriptor{ZhFallback: "這台主機的身分在您確認之後又變動了，或這項工作目前無法由人工確認，請重新整理後再試"})
 )
 
 // --- 輪替證據報告（rotation_report_handler.go）---

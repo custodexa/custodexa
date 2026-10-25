@@ -150,14 +150,14 @@ func TestRotationChannelValidationRejectedAtServiceBoundary(t *testing.T) {
 	setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	_, err := svc.Create(context.Background(), &CreateAssetRequest{
+	_, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mysql-winrm", Protocol: model.ProtocolMySQL, Host: "10.0.0.9", Port: 3306,
 		Username: "app", RotationChannel: model.RotationChannelWindowsWinRM,
 		WinrmScheme: model.WinrmSchemeHTTP,
 	})
 	require.ErrorIs(t, err, ErrInvalidRotationChannel, "mysql 資產不得設定 Windows 改密通道")
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "rdp-a", Protocol: model.ProtocolRDP, Host: "10.0.0.10", Port: 3389,
 		Username: "Administrator",
 	})
@@ -167,7 +167,7 @@ func TestRotationChannelValidationRejectedAtServiceBoundary(t *testing.T) {
 
 	channel := model.RotationChannelWindowsWinRM
 	scheme := model.WinrmSchemeHTTPS
-	_, err = svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{
+	_, err = svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{
 		RotationChannel: &channel, WinrmScheme: &scheme,
 	})
 	require.ErrorIs(t, err, ErrInvalidRotationChannelParams, "https 未指定憑證驗證模式須被拒")
@@ -184,7 +184,7 @@ func TestRotationChannelClearedOnProtocolChange(t *testing.T) {
 	svc := newAllowedDBService(t)
 	ca := testCAPEM(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "win-1", Protocol: model.ProtocolRDP, Host: "10.0.0.11", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
@@ -194,7 +194,7 @@ func TestRotationChannelClearedOnProtocolChange(t *testing.T) {
 
 	// ── 改協定為 vnc：請求**不帶**任何通道欄位，伺服端仍須清空全部六欄 ──
 	vnc := model.ProtocolVNC
-	updated, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{Protocol: &vnc})
+	updated, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{Protocol: &vnc})
 	require.NoError(t, err)
 	require.Empty(t, updated.RotationChannel)
 
@@ -238,7 +238,7 @@ func TestRotationChannelClearedOnProtocolChange(t *testing.T) {
 
 	// ── 改回 rdp：通道仍空，不得靜默恢復一份沒人記得設過的連線設定 ──
 	rdp := model.ProtocolRDP
-	back, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{Protocol: &rdp})
+	back, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{Protocol: &rdp})
 	require.NoError(t, err)
 	require.Empty(t, back.RotationChannel)
 
@@ -254,7 +254,7 @@ func TestRotationChannelExplicitClearIsNotReportedAsServerCleared(t *testing.T) 
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "win-2", Protocol: model.ProtocolRDP, Host: "10.0.0.12", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTP,
@@ -262,7 +262,7 @@ func TestRotationChannelExplicitClearIsNotReportedAsServerCleared(t *testing.T) 
 	require.NoError(t, err)
 
 	empty := ""
-	_, err = svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{RotationChannel: &empty})
+	_, err = svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{RotationChannel: &empty})
 	require.NoError(t, err)
 
 	var logs []model.AuditLog
@@ -288,7 +288,7 @@ func TestAssetListNeverExposesWinrmCA(t *testing.T) {
 	svc := newAllowedDBService(t)
 	ca := testCAPEM(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "win-3", Protocol: model.ProtocolRDP, Host: "10.0.0.13", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
@@ -296,7 +296,7 @@ func TestAssetListNeverExposesWinrmCA(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = svc.Create(context.Background(), &CreateAssetRequest{
+	_, err = svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "ssh-3", Protocol: model.ProtocolSSH, Host: "10.0.0.14", Port: 22,
 		Username: "root",
 	})
@@ -369,7 +369,7 @@ func TestCreateAndUpdateResponsesCarryRotationProjection(t *testing.T) {
 	svc := newAllowedDBService(t)
 	ca := testCAPEM(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "win-proj", Protocol: model.ProtocolRDP, Host: "10.0.0.21", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
@@ -396,7 +396,7 @@ func TestCreateAndUpdateResponsesCarryRotationProjection(t *testing.T) {
 
 	// 只改描述：投影仍以現值計，CA 仍為持有
 	desc := "touched"
-	touched, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{Description: &desc})
+	touched, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{Description: &desc})
 	require.NoError(t, err)
 	require.True(t, touched.HasWinrmCACert)
 	require.Equal(t, model.RotationChannelWindowsWinRM, touched.EffectiveChannel)
@@ -405,7 +405,7 @@ func TestCreateAndUpdateResponsesCarryRotationProjection(t *testing.T) {
 	// 清掉 CA（同次改為 insecure 模式才過驗證）：回應須反映更新後的值，而非更新前的投影
 	insecure := model.WinrmTLSModeInsecure
 	empty := ""
-	cleared, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{
+	cleared, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{
 		WinrmTLSMode: &insecure, WinrmCACert: &empty,
 	})
 	require.NoError(t, err)
@@ -414,7 +414,7 @@ func TestCreateAndUpdateResponsesCarryRotationProjection(t *testing.T) {
 
 	// 改協定為 vnc：通道被伺服端清空，回應的有效通道須為 none
 	vnc := model.ProtocolVNC
-	switched, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{Protocol: &vnc})
+	switched, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{Protocol: &vnc})
 	require.NoError(t, err)
 	require.Equal(t, model.RotationChannelNone, switched.EffectiveChannel, "協定切換後回應的有效通道須反映清空")
 	require.False(t, switched.HasWinrmCACert)

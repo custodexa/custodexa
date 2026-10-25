@@ -10,8 +10,10 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
 )
 
@@ -140,7 +142,14 @@ type OIDCProviderService struct {
 	subscriptions ProviderSubscriptionTerminator
 	// recordingTokens 錄影 token 撤銷（in-memory 且不做世代比對，唯一失效途徑）
 	recordingTokens ProviderRecordingTokenRevoker
+
+	// alerts 系統告警落地面（身分來源設定變更告警）；缺注入時設定變更寫入失敗
+	// （組裝根啟動自檢拒絕啟動）。事件與設定寫入同一交易，寫入失敗整筆回滾
+	alerts port.SystemAlertSink
 }
+
+// SetSystemAlertSink 注入系統告警落地面（組裝時，須晚於落地面建構與自檢）。
+func (s *OIDCProviderService) SetSystemAlertSink(sink port.SystemAlertSink) { s.alerts = sink }
 
 // SetMappingAuditSink binds the transactional audit writer used by source
 // disable revocation. It is configured alongside the login mapping sink.
@@ -185,6 +194,10 @@ type OIDCProviderRequest struct {
 	// 一個合法組態鎖在門外；而多數提供者缺了它就不發群組宣告，
 	// 症狀是全體映射角色被撤且沒有任何訊號，所以也不能靜默放過
 	RiskAcknowledged bool `json:"risk_acknowledged"`
+
+	// Actor 操作者；由 handler 填入，不接受請求端指定。零值（內部與系統呼叫）記為系統操作者，
+	// 設定變更審計與告警照寫；對外入口一律帶操作者
+	Actor GroupRoleMappingActor `json:"-"`
 }
 
 // OIDCProviderDTO provider 對外呈現（**不含 client_secret 的任何形式**）
@@ -479,8 +492,15 @@ func (s *OIDCProviderService) Create(req *OIDCProviderRequest) (*OIDCProviderDTO
 		}
 		p.ClientSecretEnc = enc
 	}
-	if err := s.db.Create(&p).Error; err != nil {
-		return nil, fmt.Errorf("建立 OIDC provider 失敗: %w", err)
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&p).Error; err != nil {
+			return fmt.Errorf("建立 OIDC provider 失敗: %w", err)
+		}
+		fields := append([]string{"created"}, oidcSetFields(&p)...)
+		secret := p.ClientSecretEnc != ""
+		return s.recordSourceChange(tx, req.Actor, p.ID, "created", fields, secret, p.Enabled)
+	}); err != nil {
+		return nil, err
 	}
 	dto := s.toDTO(&p)
 	return &dto, nil
@@ -636,16 +656,30 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 		disabling = req.Enabled != nil && !*req.Enabled && current.Enabled
 		needsInvalidation = disabling || secretRotated
 		reason = invalidationReason(disabling, secretRotated)
+		changed := oidcChangedFields(&current, updates)
 		if len(updates) > 0 {
 			if err := tx.Model(&model.OIDCProvider{}).Where("id = ?", id).
 				Updates(updates).Error; err != nil {
 				return fmt.Errorf("更新 OIDC provider 失敗: %w", err)
 			}
 		}
+		if len(changed) > 0 {
+			enabledAfter := current.Enabled
+			if req.Enabled != nil {
+				enabledAfter = *req.Enabled
+			}
+			if err := s.recordSourceChange(tx, req.Actor, id, "updated", changed, secretRotated, enabledAfter); err != nil {
+				return err
+			}
+		}
 		if !needsInvalidation {
 			return nil
 		}
 		if disabling {
+			// 供應商列不在權限投影內；映射撤銷前隔離既有直寫
+			if err := authz.BeginPermissionChange(tx); err != nil {
+				return err
+			}
 			if err := revokeMappingSupportsLocked(tx, s.mappingAuditTx, model.RoleMappingChannelKindProvider, id, "source", 0); err != nil {
 				return err
 			}
@@ -723,6 +757,11 @@ func (s *OIDCProviderService) rejectSharedWidening(issuer string, forceShared *b
 // 有外部身分關聯者拒絕——身分以 (issuer, client_id, subject) 為鍵，provider 列
 // 只是設定載體，但刪除後管理端將無從按 provider 收線或重新啟用，故要求先解綁
 func (s *OIDCProviderService) Delete(id uint) error {
+	return s.DeleteBy(GroupRoleMappingActor{}, id)
+}
+
+// DeleteBy 帶操作者的刪除：設定變更審計與告警與軟刪同交易。
+func (s *OIDCProviderService) DeleteBy(actor GroupRoleMappingActor, id uint) error {
 	var p model.OIDCProvider
 	if err := s.db.First(&p, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -748,6 +787,9 @@ func (s *OIDCProviderService) Delete(id uint) error {
 	// 而該態下任何殘留的兌換都不再有 provider 列可鎖
 	var plan *providerRevocationPlan
 	err := WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		if err := cleanupMappingHistoryForSourceLocked(tx, s.mappingAuditTx, model.RoleMappingChannelKindProvider, id); err != nil {
 			if errors.Is(err, ErrMappingSourceHasRules) {
 				return ErrOIDCProviderHasMappings
@@ -759,7 +801,10 @@ func (s *OIDCProviderService) Delete(id uint) error {
 		if perr != nil {
 			return perr
 		}
-		return tx.Delete(&model.OIDCProvider{}, id).Error
+		if err := tx.Delete(&model.OIDCProvider{}, id).Error; err != nil {
+			return err
+		}
+		return s.recordSourceChange(tx, actor, id, "deleted", []string{"deleted"}, p.ClientSecretEnc != "", p.Enabled)
 	})
 	if err != nil {
 		return err
@@ -893,4 +938,114 @@ func MarshalAdmissionRules(r AdmissionRules) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// recordSourceChange 身分來源設定變更的同交易審計與告警。
+//
+// 沒有人類操作者（零值）時操作者記為系統，審計與告警照寫，不略過留痕；對外入口的 handler 一律帶操作者。
+// 審計寫入失敗、告警寫入失敗或落地面缺注入都回錯，使整筆設定變更回滾。client secret 只標示已變更，
+// 不帶值也不帶摘要。
+func (s *OIDCProviderService) recordSourceChange(tx *gorm.DB, actor GroupRoleMappingActor, providerID uint,
+	action string, fields []string, secretChanged, enabled bool) error {
+	actor = sourceActorOrSystem(actor)
+	correlationID, err := newSourceCorrelationID()
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"event":          OIDCProviderSettingsAuditEvent,
+		"correlation_id": correlationID,
+		"provider_id":    providerID,
+		"action":         action,
+		"changed_fields": fields,
+		"secret_changed": secretChanged,
+		"enabled":        enabled,
+	})
+	if err != nil {
+		return fmt.Errorf("序列化身分提供者設定稽核內容失敗: %w", err)
+	}
+	id := providerID
+	act := model.ActionUpdate
+	switch action {
+	case "created":
+		act = model.ActionCreate
+	case "deleted":
+		act = model.ActionDelete
+	}
+	if err := port.WriteInTx(s.mappingAuditTx, tx, port.AuditEvent{
+		Action:     string(act),
+		Resource:   string(model.ResourceAuth),
+		ResourceID: &id,
+		Status:     string(model.StatusSuccess),
+		Actor:      gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
+		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
+		Details:    string(payload),
+	}); err != nil {
+		return fmt.Errorf("寫入身分提供者設定稽核失敗: %w", err)
+	}
+	return raiseIdentitySourceChanged(tx, s.alerts, actor,
+		sourceChange{Kind: sourceKindOIDC, SourceID: providerID, Fields: fields, SecretChanged: &secretChanged}, correlationID)
+}
+
+// oidcSetFields 建立時有值的欄位代碼。
+func oidcSetFields(p *model.OIDCProvider) []string {
+	var out []string
+	for _, f := range []fieldPair{
+		{"name", "", p.Name}, {"scopes", "", p.Scopes}, {"groups_claim", "", p.GroupsClaim},
+		{"username_claim", "", p.UsernameClaim}, {"email_claim", "", p.EmailClaim},
+		{"display_name_claim", "", p.DisplayNameClaim}, {"admission_rules", "", p.AdmissionRules},
+	} {
+		if f.After != "" {
+			out = append(out, f.Name)
+		}
+	}
+	out = append(out, "admission_mode")
+	if p.Enabled {
+		out = append(out, "enabled")
+	}
+	if p.ClientSecretEnc != "" {
+		out = append(out, "client_secret")
+	}
+	return out
+}
+
+// oidcChangedFields 更新請求實際改變的欄位代碼（與現值相同的欄位不列）。
+func oidcChangedFields(cur *model.OIDCProvider, updates map[string]any) []string {
+	var out []string
+	str := func(key, name, now string) {
+		if v, ok := updates[key].(string); ok && v != now {
+			out = append(out, name)
+		}
+	}
+	str("name", "name", cur.Name)
+	str("scopes", "scopes", cur.Scopes)
+	str("groups_claim", "groups_claim", cur.GroupsClaim)
+	str("username_claim", "username_claim", cur.UsernameClaim)
+	str("email_claim", "email_claim", cur.EmailClaim)
+	str("display_name_claim", "display_name_claim", cur.DisplayNameClaim)
+	str("admission_mode", "admission_mode", string(cur.AdmissionMode))
+	str("admission_rules", "admission_rules", cur.AdmissionRules)
+	if v, ok := updates["enabled"].(bool); ok && v != cur.Enabled {
+		out = append(out, "enabled")
+	}
+	if v, ok := updates["force_shared"]; ok {
+		var next *bool
+		if b, isPtr := v.(*bool); isPtr {
+			next = b
+		}
+		if !sameBoolPtr(next, cur.ForceShared) {
+			out = append(out, "force_shared")
+		}
+	}
+	if _, ok := updates["client_secret_enc"]; ok {
+		out = append(out, "client_secret")
+	}
+	return out
+}
+
+func sameBoolPtr(a, b *bool) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

@@ -112,6 +112,7 @@ func testDeps(isRelease, auditLogEnabled bool) routeDeps {
 		userGroup:             &api.UserGroupHandler{},
 		user:                  &api.UserHandler{},
 		role:                  &api.RoleHandler{},
+		roleDefinition:        &api.RoleDefinitionHandler{},
 		authorization:         &api.AuthorizationHandler{},
 		recording:             &api.RecordingHandler{},
 		// 指標實例不可為 nil：registerRoutes 以 d.metrics 掛全域 middleware

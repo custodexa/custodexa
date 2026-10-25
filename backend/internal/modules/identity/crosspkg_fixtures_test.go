@@ -107,6 +107,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池若放行第二條連線，
 	// 會讓「寫在 A 連線、讀在 B 連線」偶發查無資料
 	sqlDB, err := db.DB()

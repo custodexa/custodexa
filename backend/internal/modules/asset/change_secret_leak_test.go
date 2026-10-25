@@ -152,7 +152,7 @@ func TestChangeSecretAlertPayloadHasNoRemoteText(t *testing.T) {
 	notifier := audit.NewAlertNotifier(f.db, nil)
 	require.NoError(t, notifier.LoadChannels())
 	notifier.Start()
-	runner := NewChangeSecretRunner(f.db, f.assets, f.candidates, f.hostKeys, notifier)
+	runner := NewChangeSecretRunner(f.db, f.assets, f.candidates, f.hostKeys, notifier).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer())
 
 	f.server.mu.Lock()
 	f.server.chpasswdEchoStdinToStderr = true

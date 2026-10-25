@@ -271,6 +271,16 @@ func (s *AssetService) PreviewImport(ctx context.Context, batch *ImportBatch) (*
 	if err := checkBatchSize(batch); err != nil {
 		return nil, err
 	}
-	preview, _, err := s.validateImportBatch(ctx, batch, 0, "")
+	// 欄位級能力：任一列缺能力即整批拒絕，預檢與寫入套用同一判定
+	if _, err := requireFieldCapabilities(ctx, importRestrictedFields(batch.Rows)); err != nil {
+		return nil, err
+	}
+	// 掛既有憑證的列需掛載能力：與單筆建立同一判定，先於任何憑證載入；
+	// 掛載能力無全系統來源者逐張判定，範圍拒絕交給逐列的「憑證不存在」
+	sc := &importScope{}
+	if err := s.importCredentialScope(ctx, nil, sc, importCredentialIDs(batch.Rows)); err != nil {
+		return nil, err
+	}
+	preview, _, err := s.validateImportBatch(ctx, batch, 0, "", sc)
 	return preview, err
 }

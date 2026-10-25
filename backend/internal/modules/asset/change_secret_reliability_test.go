@@ -50,7 +50,7 @@ func setupChangeSecretFixture(t *testing.T, username, password string) *csFixtur
 	require.NoError(t, db.AutoMigrate(
 		&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetHostKey{},
-		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
+		&model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
 	))
 	oldDB := database.DB
 	database.DB = db
@@ -65,9 +65,10 @@ func setupChangeSecretFixture(t *testing.T, username, password string) *csFixtur
 	key := make([]byte, 32)
 	codec := aesColumnCodec(t, key)
 	assets, err := NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assets.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "target", Protocol: model.ProtocolSSH, Host: host, Port: port,
 		Username: username, Password: password, CreatedBy: 1,
 	})
@@ -81,8 +82,8 @@ func setupChangeSecretFixture(t *testing.T, username, password string) *csFixtur
 	// host key 走既有 TOFU：首次連線自動記錄，其後比對
 	hostKeys := NewHostKeyService(db)
 
-	runner := NewChangeSecretRunner(db, assets, candidates, hostKeys, nil)
-	retry := NewChangeSecretRetryRunner(db, candidates, assets, hostKeys, nil)
+	runner := NewChangeSecretRunner(db, assets, candidates, hostKeys, nil).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer())
+	retry := NewChangeSecretRetryRunner(db, candidates, assets, hostKeys, nil).WithManagementAuthorizer(newAllowAllAuthorizer())
 	return &csFixture{
 		db: db, assets: assets, candidates: candidates, runner: runner, retry: retry,
 		hostKeys: hostKeys, server: srv, assetID: asset.ID, accountID: acct.ID, username: username,
@@ -105,6 +106,14 @@ func (f *csFixture) plan(t *testing.T, mut func(*model.ChangeSecretPlan)) *model
 		mut(p)
 	}
 	require.NoError(t, f.db.Create(p).Error)
+	if p.AuthorizationID == nil && p.AuthorizationState == "" {
+		// 背景執行以持久發起者重驗：測試計畫也帶一列授權脈絡（發起者 1）
+		auth, err := insertJobAuthorization(credentialManagementGate{}, f.db, jobAuthInput{kind: "plan", sourceID: p.ID, revision: 1,
+			actorID: 1, actorName: "tester", via: "direct", authzVersion: 1, capabilities: []string{CredCapRotate}})
+		require.NoError(t, err)
+		require.NoError(t, f.db.Model(p).Update("authorization_id", auth.ID).Error)
+		p.AuthorizationID = &auth.ID
+	}
 	return p
 }
 
@@ -299,8 +308,12 @@ func TestChangeSecretCandidateUniquePerAccount(t *testing.T) {
 		AssetID: f.assetID, AccountID: f.accountID, AccountUsername: "root",
 		SecretType: model.ChangeSecretTypePassword, Password: "a",
 	}
-	_, err := f.candidates.Create(context.Background(), in)
+	created, err := f.candidates.Create(context.Background(), in)
 	require.NoError(t, err)
+	var stored model.ChangeSecretCandidate
+	require.NoError(t, f.db.First(&stored, created.ID).Error)
+	assert.Equal(t, model.HostKeyBindingPending, stored.HostKeyBinding,
+		"正式建立點 SHALL 明寫 pending，與升級前的 legacy 可區分")
 	_, err = f.candidates.Create(context.Background(), in)
 	assert.ErrorIs(t, err, ErrCandidateExists, "DB 唯一索引 SHALL 為最終防線")
 }

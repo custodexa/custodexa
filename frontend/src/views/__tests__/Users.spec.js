@@ -2,12 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Users from '../Users.vue'
+import { isExternalAccount, accountActionStates } from '../users/accountActionStates'
+import { deleteAccount, disableAccountMfa } from '../users/accountActionHandlers'
+import UserAccountForm from '../users/components/UserAccountForm.vue'
+import UserAccountDialogs from '../users/components/UserAccountDialogs.vue'
 import ApproverScopeForm from '../../components/ApproverScopeForm.vue'
 
 // 本檔掛載 19 次且從不卸載，殘留元件在 document 上累積使單測耗時隨測試序上升
 // ——全量並行時末幾格逼近 5s 上限而轉紅（單跑全綠）。與 Assets／AuditLogs／
 // MainLayout 同型根因，治法相同：逐測卸載使成本不隨測試序遞增。
 enableAutoUnmount(afterEach)
+
+const formVm = (w) => w.findComponent(UserAccountForm).vm
+const dlgVm = (w) => w.findComponent(UserAccountDialogs).vm
 
 // happy-dom 的 MutationObserver 與 el-table key-render-helper 不相容（同 MyConnections）
 class MutationObserverStub {
@@ -147,151 +154,6 @@ describe('Users 用戶管理：啟停開關欄位契約', () => {
     // 失敗回滾：切換前為啟用（true）
     expect(row.active).toBe(true)
     expect(row._statusLoading).toBe(false)
-  })
-})
-
-describe('Users 分配角色對話框', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    getUserListMock.mockResolvedValue(sampleUsers)
-    getRoleListMock.mockResolvedValue({
-      data: [
-        { id: 1, name: 'admin' },
-        { id: 2, name: 'user' },
-        { id: 3, name: 'auditor' },
-        { id: 4, name: 'approver' },
-      ],
-    })
-  })
-
-  it('開窗時由 /roles API 拉可指派清單，approver 以中文標籤呈現', async () => {
-    // 預填的事實源是管理者指派集，不是有效角色集
-    getUserDetailMock.mockResolvedValueOnce({
-      data: {}, role_sets: { manual: ['user'], mapped: [] },
-    })
-    const wrapper = mountView()
-    await flushPromises()
-
-    wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'user' }] })
-    await flushPromises()
-
-    expect(getRoleListMock).toHaveBeenCalled()
-    expect(wrapper.vm.assignableRoles.map((r) => r.name)).toEqual([
-      'admin', 'user', 'auditor', 'approver',
-    ])
-    const text = wrapper.text()
-    expect(text).toContain('審核人員')
-    expect(text).toContain('稽核人員')
-    expect(text).toContain('一般使用者')
-    expect(wrapper.vm.selectedRoles).toEqual(['user'])
-  })
-
-  // 以下三條守的是同一個靜默失效：對話框若沿用有效角色集，映射賦予的角色會被
-  // 併進替換主體，後端把它忽略掉而畫面顯示成功——管理者以為釘住了，實際沒有。
-  // 錯了畫面仍然長得正常，只有這裡看得出來
-  it('預填與送出都只用管理者指派集，映射角色不進替換主體', async () => {
-    getUserDetailMock.mockResolvedValueOnce({
-      data: {},
-      role_sets: { manual: ['user'], mapped: ['auditor'] },
-    })
-    const wrapper = mountView()
-    await flushPromises()
-
-    await wrapper.vm.handleAssignRoles({
-      id: 7, username: 'carol', roles: [{ name: 'user' }, { name: 'auditor' }],
-    })
-    await flushPromises()
-
-    // 有效角色集是兩個，管理者指派集只有一個
-    expect(wrapper.vm.selectedRoles).toEqual(['user'])
-    expect(wrapper.vm.mappedRoles).toEqual(['auditor'])
-
-    assignRolesMock.mockResolvedValue({ role_sets: { manual: ['user'], mapped: ['auditor'] } })
-    await wrapper.vm.handleRoleSubmit()
-    await flushPromises()
-
-    expect(assignRolesMock).toHaveBeenCalledWith(7, ['user'])
-  })
-
-  it('勾選映射角色走釘住端點，不併入替換請求', async () => {
-    getUserDetailMock.mockResolvedValueOnce({
-      data: {},
-      role_sets: { manual: [], mapped: ['auditor'] },
-    })
-    pinUserRoleMock.mockResolvedValue({
-      role_sets: { manual: ['auditor'], mapped: ['auditor'] },
-    })
-    const wrapper = mountView()
-    await flushPromises()
-
-    await wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'auditor' }] })
-    await flushPromises()
-
-    await wrapper.vm.handlePinMappedRole('auditor')
-    await flushPromises()
-
-    expect(pinUserRoleMock).toHaveBeenCalledWith(7, 'auditor')
-    expect(assignRolesMock).not.toHaveBeenCalled()
-    // 釘住之後成為並存態，管理者指派集裡也有它了
-    expect(wrapper.vm.selectedRoles).toEqual(['auditor'])
-  })
-
-  it('回應帶 role.mapped_ignored 時提示改用釘住', async () => {
-    getUserDetailMock.mockResolvedValueOnce({
-      data: {}, role_sets: { manual: ['user'], mapped: ['auditor'] },
-    })
-    assignRolesMock.mockResolvedValue({
-      role_sets: { manual: ['user'], mapped: ['auditor'] },
-      disclosures: [{ code: 'role.mapped_ignored', params: { roles: 'auditor' } }],
-    })
-    const { ElMessage } = await import('element-plus')
-    const warningSpy = vi.spyOn(ElMessage, 'warning').mockImplementation(() => {})
-    const wrapper = mountView()
-    await flushPromises()
-
-    await wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'user' }] })
-    await flushPromises()
-    await wrapper.vm.handleRoleSubmit()
-    await flushPromises()
-
-    expect(warningSpy).toHaveBeenCalled()
-    expect(String(warningSpy.mock.calls[0][0])).toContain('釘住')
-    warningSpy.mockRestore()
-  })
-
-  // 群組觀測快照是「我在群組裡卻沒拿到角色」的唯一診斷線索。失敗方向是靜默的：
-  // 值只要沒渲染出來，管理者就只能回頭去查資料庫，而畫面看不出少了東西
-  it('對話框顯示最近一次登入觀測到的群組原始值，無快照時說尚無觀測', async () => {
-    getUserDetailMock.mockResolvedValueOnce({
-      data: {
-        group_snapshot_channel: 'directory:19',
-        group_snapshot_groups: '["cn=inner,ou=groups,dc=example,dc=org","Sales Team"]',
-        group_snapshot_at: '2026-09-09T03:00:00Z',
-      },
-      role_sets: { manual: ['user'], mapped: ['auditor'] },
-    })
-    const wrapper = mountView()
-    await flushPromises()
-
-    await wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'user' }] })
-    await flushPromises()
-
-    const text = wrapper.text()
-    expect(text).toContain('最近一次登入觀測到的群組')
-    expect(text).toContain('cn=inner,ou=groups,dc=example,dc=org')
-    expect(text).toContain('Sales Team')
-    expect(text).toContain('directory:19')
-    expect(wrapper.find('[data-test="group-snapshot-list"]').exists()).toBe(true)
-
-    // 從未經外部來源登入過的帳號：說「尚無觀測」，不留白
-    getUserDetailMock.mockResolvedValueOnce({
-      data: {}, role_sets: { manual: ['user'], mapped: [] },
-    })
-    await wrapper.vm.handleAssignRoles({ id: 8, username: 'dave', roles: [{ name: 'user' }] })
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="group-snapshot-empty"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="group-snapshot-list"]').exists()).toBe(false)
   })
 })
 
@@ -451,13 +313,13 @@ describe('Users 帳號來源與外部憑證鎖定', () => {
   })
 
   it('external_credential 為權威旗標，缺欄時退回 is_ldap', async () => {
-    const wrapper = mountView()
+    mountView()
     await flushPromises()
 
-    expect(wrapper.vm.isExternalAccount({ external_credential: true })).toBe(true)
-    expect(wrapper.vm.isExternalAccount({ external_credential: false, is_ldap: true })).toBe(false)
-    expect(wrapper.vm.isExternalAccount({ is_ldap: true })).toBe(true)
-    expect(wrapper.vm.isExternalAccount({})).toBe(false)
+    expect(isExternalAccount({ external_credential: true })).toBe(true)
+    expect(isExternalAccount({ external_credential: false, is_ldap: true })).toBe(false)
+    expect(isExternalAccount({ is_ldap: true })).toBe(true)
+    expect(isExternalAccount({})).toBe(false)
   })
 })
 
@@ -537,7 +399,7 @@ describe('Users 審核範圍對話框', () => {
     expect(menus.every((m) => m.includes('分配角色') && m.includes('刪除'))).toBe(true)
 
     // 選單命令仍直達原 handler
-    wrapper.vm.handleRowCommand('scopes', { id: 8, username: 'appr' })
+    wrapper.vm.handleManageScopes({ id: 8, username: 'appr' })
     await flushPromises()
     expect(wrapper.vm.scopeDialogVisible).toBe(true)
   })
@@ -648,15 +510,15 @@ describe('Users 外部身分管理入口', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    wrapper.vm.handleManageIdentities({
+    wrapper.vm.openIdentities({
       id: 7,
       username: 'carol',
       external_credential: false,
     })
     await flushPromises()
 
-    expect(wrapper.vm.identityDrawerVisible).toBe(true)
-    expect(wrapper.vm.identityUser).toMatchObject({
+    expect(dlgVm(wrapper).identityDrawerVisible).toBe(true)
+    expect(dlgVm(wrapper).identityUser).toMatchObject({
       id: 7,
       username: 'carol',
       external_credential: false,
@@ -669,31 +531,31 @@ describe('Users 外部身分管理入口', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    wrapper.vm.handleManageIdentities({
+    wrapper.vm.openIdentities({
       id: 7,
       username: 'carol',
       external_credential: false,
     })
     await flushPromises()
-    expect(wrapper.vm.identityRefreshFailed).toBe(false)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(false)
 
     getUserListMock.mockRejectedValueOnce(new Error('network down'))
-    await wrapper.vm.handleIdentitiesChanged()
+    await dlgVm(wrapper).handleIdentitiesChanged()
     await flushPromises()
 
-    expect(wrapper.vm.identityRefreshFailed).toBe(true)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(true)
     // 舊列表的那一列不得被拿去回填（回填即宣稱「這是操作後的現況」）
-    expect(wrapper.vm.identityUser.external_credential).toBe(false)
+    expect(dlgVm(wrapper).identityUser.external_credential).toBe(false)
 
     // 刷新成功後旗標清除並以新資料回填
     getUserListMock.mockResolvedValueOnce({
       data: [{ id: 7, username: 'carol', active: true, external_credential: true }],
       total: 1,
     })
-    await wrapper.vm.handleIdentitiesChanged()
+    await dlgVm(wrapper).handleIdentitiesChanged()
     await flushPromises()
-    expect(wrapper.vm.identityRefreshFailed).toBe(false)
-    expect(wrapper.vm.identityUser.external_credential).toBe(true)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(false)
+    expect(dlgVm(wrapper).identityUser.external_credential).toBe(true)
   })
 
   it('其他使用者（stale 面板）的 changed 事件一律忽略，不刷新目前抽屜', async () => {
@@ -702,22 +564,22 @@ describe('Users 外部身分管理入口', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    wrapper.vm.handleManageIdentities({ id: 7, username: 'carol', external_credential: false })
+    wrapper.vm.openIdentities({ id: 7, username: 'carol', external_credential: false })
     await flushPromises()
     getUserListMock.mockClear()
 
-    await wrapper.vm.handleIdentitiesChanged(999)
+    await dlgVm(wrapper).handleIdentitiesChanged(999)
     await flushPromises()
 
     expect(getUserListMock).not.toHaveBeenCalled()
-    expect(wrapper.vm.identityRefreshFailed).toBe(false)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(false)
   })
 
   it('較舊的刷新結果不得覆蓋較新的（父層序號防護）', async () => {
     const wrapper = mountView()
     await flushPromises()
 
-    wrapper.vm.handleManageIdentities({ id: 7, username: 'carol', external_credential: false })
+    wrapper.vm.openIdentities({ id: 7, username: 'carol', external_credential: false })
     await flushPromises()
 
     // 第一次刷新緩慢且最終失敗；第二次刷新先成功落地
@@ -725,23 +587,23 @@ describe('Users 外部身分管理入口', () => {
     getUserListMock.mockImplementationOnce(
       () => new Promise((_, reject) => { rejectSlow = reject })
     )
-    const stale = wrapper.vm.handleIdentitiesChanged(7)
+    const stale = dlgVm(wrapper).handleIdentitiesChanged(7)
     getUserListMock.mockResolvedValueOnce({
       data: [{ id: 7, username: 'carol', active: true, external_credential: true }],
       total: 1,
     })
-    await wrapper.vm.handleIdentitiesChanged(7)
+    await dlgVm(wrapper).handleIdentitiesChanged(7)
     await flushPromises()
-    expect(wrapper.vm.identityRefreshFailed).toBe(false)
-    expect(wrapper.vm.identityUser.external_credential).toBe(true)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(false)
+    expect(dlgVm(wrapper).identityUser.external_credential).toBe(true)
 
     rejectSlow(new Error('network down'))
     await stale
     await flushPromises()
 
     // 舊刷新的失敗不得把新刷新的成功結論改寫成「狀態過期」
-    expect(wrapper.vm.identityRefreshFailed).toBe(false)
-    expect(wrapper.vm.identityUser.external_credential).toBe(true)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(false)
+    expect(dlgVm(wrapper).identityUser.external_credential).toBe(true)
   })
 
   it('刷新成功但目標使用者不在結果集時維持過期旗標', async () => {
@@ -750,18 +612,18 @@ describe('Users 外部身分管理入口', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    wrapper.vm.handleManageIdentities({ id: 7, username: 'carol', external_credential: false })
+    wrapper.vm.openIdentities({ id: 7, username: 'carol', external_credential: false })
     await flushPromises()
 
     getUserListMock.mockResolvedValueOnce({
       data: [{ id: 99, username: 'dave', active: true, external_credential: false }],
       total: 1,
     })
-    await wrapper.vm.handleIdentitiesChanged(7)
+    await dlgVm(wrapper).handleIdentitiesChanged(7)
     await flushPromises()
 
-    expect(wrapper.vm.identityRefreshFailed).toBe(true)
-    expect(wrapper.vm.identityUser.external_credential).toBe(false)
+    expect(dlgVm(wrapper).identityRefreshFailed).toBe(true)
+    expect(dlgVm(wrapper).identityUser.external_credential).toBe(false)
   })
 })
 
@@ -867,8 +729,8 @@ describe('Users：允許來源網段', () => {
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
     await flushPromises()
-    wrapper.vm.form.email = 'carol2@example.com'
-    await wrapper.vm.handleSubmit()
+    formVm(wrapper).form.email = 'carol2@example.com'
+    await formVm(wrapper).handleSubmit()
     await flushPromises()
 
     expect(updateUserMock).toHaveBeenCalledTimes(1)
@@ -888,8 +750,8 @@ describe('Users：允許來源網段', () => {
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
     await flushPromises()
-    wrapper.vm.removeCidr(0)
-    await wrapper.vm.handleSubmit()
+    formVm(wrapper).removeCidr(0)
+    await formVm(wrapper).handleSubmit()
     await flushPromises()
 
     expect(updateUserMock.mock.calls[0][1].allowed_cidrs).toEqual([])
@@ -901,17 +763,17 @@ describe('Users：允許來源網段', () => {
     wrapper.vm.handleCreate()
     await flushPromises()
 
-    wrapper.vm.cidrDraft = 'gateway.example'
-    wrapper.vm.addCidr()
+    formVm(wrapper).cidrDraft = 'gateway.example'
+    formVm(wrapper).addCidr()
     await flushPromises()
-    expect(wrapper.vm.cidrDraftError).toContain('gateway.example')
-    expect(wrapper.vm.form.allowed_cidrs).toEqual([])
+    expect(formVm(wrapper).cidrDraftError).toContain('gateway.example')
+    expect(formVm(wrapper).form.allowed_cidrs).toEqual([])
 
     // 後端才拒的邊界不預先擋（判定權在後端）
-    wrapper.vm.cidrDraft = '10.0.0.999/24'
-    wrapper.vm.addCidr()
+    formVm(wrapper).cidrDraft = '10.0.0.999/24'
+    formVm(wrapper).addCidr()
     await flushPromises()
-    expect(wrapper.vm.form.allowed_cidrs).toEqual(['10.0.0.999/24'])
+    expect(formVm(wrapper).form.allowed_cidrs).toEqual(['10.0.0.999/24'])
   })
 
   it('逐項錯誤與正規化預覽都來自端點回覆', async () => {
@@ -925,21 +787,21 @@ describe('Users：允許來源網段', () => {
     const wrapper = mountView()
     await flushPromises()
     wrapper.vm.handleCreate()
-    wrapper.vm.form.allowed_cidrs = ['10.0.0.999/24']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.0.0.999/24']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
 
-    expect(wrapper.vm.itemErrors).toHaveLength(1)
-    expect(wrapper.vm.itemErrors[0].text).toContain('10.0.0.999/24')
+    expect(formVm(wrapper).itemErrors).toHaveLength(1)
+    expect(formVm(wrapper).itemErrors[0].text).toContain('10.0.0.999/24')
 
     checkSourcePolicyMock.mockResolvedValue(
       okCheck({ normalized: ['10.0.0.0/8'], items: [{ input: '10.1.2.3/8' }] })
     )
-    wrapper.vm.form.allowed_cidrs = ['10.1.2.3/8']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.1.2.3/8']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.itemErrors).toHaveLength(0)
-    expect(wrapper.vm.normalizedPreview).toBe('10.0.0.0/8')
+    expect(formVm(wrapper).itemErrors).toHaveLength(0)
+    expect(formVm(wrapper).normalizedPreview).toBe('10.0.0.0/8')
   })
 
   it('正規化結果與輸入一致時不顯示預覽（一模一樣時那行是噪音）', async () => {
@@ -947,10 +809,10 @@ describe('Users：允許來源網段', () => {
     const wrapper = mountView()
     await flushPromises()
     wrapper.vm.handleCreate()
-    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.0.0.0/8']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.normalizedPreview).toBe('')
+    expect(formVm(wrapper).normalizedPreview).toBe('')
   })
 
   it('端點回 effectively_unrestricted → 顯示「等同不限」並指出家族', async () => {
@@ -960,11 +822,11 @@ describe('Users：允許來源網段', () => {
     const wrapper = mountView()
     await flushPromises()
     wrapper.vm.handleCreate()
-    wrapper.vm.form.allowed_cidrs = ['0.0.0.0/0']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['0.0.0.0/0']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.effectiveUnrestrictedLine).toContain('等同不限')
-    expect(wrapper.vm.effectiveUnrestrictedLine).toContain('IPv4')
+    expect(formVm(wrapper).effectiveUnrestrictedLine).toContain('等同不限')
+    expect(formVm(wrapper).effectiveUnrestrictedLine).toContain('IPv4')
   })
 
   it('自鎖警告：編輯本人且端點回 allowed=false 才出現，且帶本次來源', async () => {
@@ -975,12 +837,12 @@ describe('Users：允許來源網段', () => {
     await flushPromises()
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
-    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
-    wrapper.vm.cidrTouched = true
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.0.0.0/8']
+    formVm(wrapper).cidrTouched = true
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.selfLockLine).toContain('203.0.113.9')
-    expect(wrapper.vm.selfLockLine).toContain('無法登入')
+    expect(formVm(wrapper).selfLockLine).toContain('203.0.113.9')
+    expect(formVm(wrapper).selfLockLine).toContain('無法登入')
   })
 
   it('編輯他人時不出現自鎖警告（那不是他的來源）', async () => {
@@ -990,10 +852,10 @@ describe('Users：允許來源網段', () => {
     await flushPromises()
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
-    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.0.0.0/8']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.selfLockLine).toBe('')
+    expect(formVm(wrapper).selfLockLine).toBe('')
   })
 
   it('來源取不到時自鎖警告改說「取不到來源」，不假裝有位址', async () => {
@@ -1005,11 +867,11 @@ describe('Users：允許來源網段', () => {
     await flushPromises()
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
-    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.0.0.0/8']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.selfLockLine).toContain('取不到')
-    expect(wrapper.vm.selfLockLine).not.toContain('null')
+    expect(formVm(wrapper).selfLockLine).toContain('取不到')
+    expect(formVm(wrapper).selfLockLine).not.toContain('null')
   })
 
   it('警告不阻擋儲存：自鎖狀態下仍送出，且儲存前再判定一次', async () => {
@@ -1019,12 +881,12 @@ describe('Users：允許來源網段', () => {
     await flushPromises()
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
-    wrapper.vm.cidrDraft = '10.0.0.0/8'
-    wrapper.vm.addCidr()
+    formVm(wrapper).cidrDraft = '10.0.0.0/8'
+    formVm(wrapper).addCidr()
     await flushPromises()
     const before = checkSourcePolicyMock.mock.calls.length
 
-    await wrapper.vm.handleSubmit()
+    await formVm(wrapper).handleSubmit()
     await flushPromises()
     expect(checkSourcePolicyMock.mock.calls.length).toBeGreaterThan(before)
     expect(updateUserMock).toHaveBeenCalledTimes(1)
@@ -1038,14 +900,14 @@ describe('Users：允許來源網段', () => {
     await flushPromises()
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0])
-    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
-    await wrapper.vm.runSourcePolicyCheck()
+    formVm(wrapper).form.allowed_cidrs = ['10.0.0.0/8']
+    await formVm(wrapper).runSourcePolicyCheck()
     await flushPromises()
-    expect(wrapper.vm.cidrCheckFailed).toBe(true)
+    expect(formVm(wrapper).cidrCheckFailed).toBe(true)
     // 三種端點驅動的提示一律不出現——取不到結果不是「沒問題」
-    expect(wrapper.vm.selfLockLine).toBe('')
-    expect(wrapper.vm.effectiveUnrestrictedLine).toBe('')
-    expect(wrapper.vm.normalizedPreview).toBe('')
+    expect(formVm(wrapper).selfLockLine).toBe('')
+    expect(formVm(wrapper).effectiveUnrestrictedLine).toBe('')
+    expect(formVm(wrapper).normalizedPreview).toBe('')
   })
 
   it('「你目前的來源」取自 /auth/me，取不到時整行不出現', async () => {
@@ -1054,8 +916,8 @@ describe('Users：允許來源網段', () => {
     await flushPromises()
     wrapper.vm.handleCreate()
     await flushPromises()
-    expect(wrapper.vm.currentSourceIp).toBe('')
-    expect(wrapper.vm.currentSourceLine).toBe('')
+    expect(formVm(wrapper).currentSourceIp).toBe('')
+    expect(formVm(wrapper).currentSourceLine).toBe('')
   })
 
   // 那個位址是**管理者自己**的。擺在別人的允許清單旁邊，會被讀成
@@ -1067,7 +929,7 @@ describe('Users：允許來源網段', () => {
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0]) // 對象 id 7＝自己
     await flushPromises()
-    expect(wrapper.vm.currentSourceLine).toContain('203.0.113.9')
+    expect(formVm(wrapper).currentSourceLine).toContain('203.0.113.9')
   })
 
   it('編輯他人與新增帳號時都不顯示管理者自己的來源位址', async () => {
@@ -1077,12 +939,12 @@ describe('Users：允許來源網段', () => {
 
     wrapper.vm.handleEdit(wrapper.vm.userList[0]) // 對象 id 7≠自己（id 1）
     await flushPromises()
-    expect(wrapper.vm.currentSourceIp).toBe('203.0.113.9') // 取得到，但不該渲染
-    expect(wrapper.vm.currentSourceLine).toBe('')
+    expect(formVm(wrapper).currentSourceIp).toBe('203.0.113.9') // 取得到，但不該渲染
+    expect(formVm(wrapper).currentSourceLine).toBe('')
 
     wrapper.vm.handleCreate()
     await flushPromises()
-    expect(wrapper.vm.currentSourceLine).toBe('')
+    expect(formVm(wrapper).currentSourceLine).toBe('')
   })
 
   // 打完網段直接點「確定」，第一次點不會送出（實測三次全重現）：
@@ -1104,8 +966,8 @@ describe('Users：允許來源網段', () => {
 
     await wrapper.find('[data-test="cidr-input"]').setValue('10.0.0.0/8')
     await flushPromises()
-    expect(wrapper.vm.cidrDraft).toBe('10.0.0.0/8')
-    expect(wrapper.vm.form.allowed_cidrs).toEqual([]) // 還沒按 Enter，仍停在輸入框裡
+    expect(formVm(wrapper).cidrDraft).toBe('10.0.0.0/8')
+    expect(formVm(wrapper).form.allowed_cidrs).toEqual([]) // 還沒按 Enter，仍停在輸入框裡
 
     const submit = wrapper.find('[data-test="user-dialog-submit"]').element
     const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
@@ -1135,9 +997,9 @@ describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
     const { ElMessageBox } = await import('element-plus')
     // 取消：只驗確認框內容，不走到刪除／停用 API
     const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
-    const wrapper = mountView()
+    mountView()
     await flushPromises()
-    await wrapper.vm[handler](row)
+    await handler(row)
     await flushPromises()
     expect(confirmSpy).toHaveBeenCalledTimes(1)
     const [message] = confirmSpy.mock.calls[0]
@@ -1146,7 +1008,7 @@ describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
   }
 
   it('已綁外部身分的帳號：刪除框講一併解除綁定，並引導改用停用 MFA', async () => {
-    const text = await confirmText('handleDelete', {
+    const text = await confirmText(deleteAccount, {
       id: 9,
       username: 'dave',
       provisioning_origin: 'local',
@@ -1159,7 +1021,7 @@ describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
   })
 
   it('經身分提供者建立的帳號：停用 MFA 框不說「只需密碼」', async () => {
-    const text = await confirmText('handleAdminDisableMFA', {
+    const text = await confirmText(disableAccountMfa, {
       id: 10,
       username: 'erin',
       provisioning_origin: 'oidc',
@@ -1168,5 +1030,83 @@ describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
     })
     expect(text).toContain('經身分提供者登入')
     expect(text).not.toContain('只需密碼')
+  })
+})
+
+// 帳號動作抽成共用元件後的行為基準：每個動作的可見性與停用條件與抽出前相同，
+// 列表頁不帶保護分類，狀態只由列本身決定（不是全部可按）。
+describe('Users 帳號動作：抽出前後可見性與停用條件相同', () => {
+  const rows = [
+    { id: 8, username: 'bot', kind: 'agent', active: true, totp_enabled: false, roles: [] },
+    {
+      id: 9, username: 'ext', kind: 'human', active: true, totp_enabled: true,
+      external_credential: true, provisioning_origin: 'oidc', roles: [{ name: 'user' }],
+    },
+    {
+      id: 10, username: 'loc', kind: 'human', active: false, totp_enabled: false,
+      external_credential: false, provisioning_origin: 'local', roles: [{ name: 'user' }],
+    },
+  ]
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getUserListMock.mockResolvedValue({ data: rows, total: 3 })
+    getRoleListMock.mockResolvedValue({ data: [] })
+  })
+
+  const menuItems = (menu) => Array.from(menu.querySelectorAll('.el-dropdown-menu__item'))
+  const find = (menu, text) => menuItems(menu).find((li) => li.textContent.includes(text))
+
+  it('agent 列不出現外部身分管理與修改密碼；外部人類帳號的修改密碼停用並有說明；未啟用 MFA 不出現停用 MFA', async () => {
+    document.body.innerHTML = ''
+    const wrapper = mountView()
+    await flushPromises()
+
+    const tableRows = wrapper.findAll('.el-table__row')
+    const buttons = tableRows.map((r) => r.findAll('button').map((b) => b.text()))
+    expect(buttons[0]).not.toContain('外部身分')
+    expect(tableRows[0].find('[data-test="open-agent-tokens"]').exists()).toBe(true)
+    expect(buttons[1]).toContain('外部身分')
+    expect(buttons[2]).toContain('外部身分')
+
+    const menus = Array.from(document.querySelectorAll('.el-dropdown__popper'))
+    expect(menus).toHaveLength(3)
+    expect(find(menus[0], '修改密碼')).toBeUndefined()
+    expect(find(menus[1], '修改密碼').classList.contains('is-disabled')).toBe(true)
+    expect(find(menus[1], '修改密碼').textContent).toContain('由外部身分提供者管理')
+    expect(find(menus[2], '修改密碼').classList.contains('is-disabled')).toBe(false)
+    expect(find(menus[0], '停用 MFA')).toBeUndefined()
+    expect(find(menus[1], '停用 MFA')).toBeDefined()
+    expect(find(menus[2], '停用 MFA')).toBeUndefined()
+  })
+
+  it('已停用帳號出現啟用（開關為關），未帶保護分類時各動作狀態等於既有條件', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const switches = wrapper.findAll('.el-table__row .el-switch')
+    expect(switches.map((sw) => sw.classes('is-checked'))).toEqual([true, true, false])
+
+    const agent = accountActionStates(rows[0])
+    const ext = accountActionStates(rows[1])
+    const loc = accountActionStates(rows[2])
+    expect(agent.set_password.visible).toBe(false)
+    expect(agent.bind_identity.visible).toBe(false)
+    expect(ext.set_password).toMatchObject({ visible: true, disabled: true })
+    expect(ext.disable_mfa).toMatchObject({ visible: true, disabled: false })
+    expect(loc.disable_mfa.visible).toBe(false)
+    expect(loc.enable).toMatchObject({ visible: true, disabled: false })
+    expect(loc.disable.visible).toBe(false)
+    // 沒有保護分類時沒有任何動作帶通知或被保護停用
+    for (const states of [agent, ext, loc]) {
+      for (const [key, s] of Object.entries(states)) {
+        expect(s.notify, key).toBe(false)
+        if (key !== 'set_password') expect(s.disabled, key).toBe(false)
+      }
+    }
+  })
+
+  it('編輯對話框已抽出：Users.vue 只剩審核範圍一個對話框模板', async () => {
+    const src = await import('../Users.vue?raw')
+    expect((src.default.match(/<el-dialog/g) || []).length).toBe(1)
+    expect(src.default).not.toContain('roleDialogVisible')
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Users from '../Users.vue'
+import UserAccountForm from '../users/components/UserAccountForm.vue'
 import PrincipalBadge from '../../components/agent/PrincipalBadge.vue'
 import AgentPrincipalForm from '../../components/agent/AgentPrincipalForm.vue'
 import i18n, { t } from '@/i18n'
@@ -12,6 +13,8 @@ vi.mock('@/api/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ data:
 class Observer { observe() {} disconnect() {} takeRecords() { return [] } }
 vi.stubGlobal('MutationObserver', Observer)
 enableAutoUnmount(afterEach)
+
+const formVm = (w) => w.findComponent(UserAccountForm).vm
 const global = { plugins: [ElementPlus], stubs: {
   'el-drawer': { name: 'ElDrawer', props: ['modelValue', 'title'], template: '<section v-if="modelValue"><h2>{{ title }}</h2><slot /><slot name="footer" /></section>' },
   'el-dialog': { name: 'ElDialog', props: ['modelValue', 'title'], template: '<section v-if="modelValue"><h2>{{ title }}</h2><slot /><slot name="footer" /></section>' },
@@ -31,7 +34,7 @@ describe('Users agent principal', () => {
   it('agent 建立表單無登入與高權角色欄位', async () => {
     const w = mount(Users, { global }); await flushPromises()
     w.vm.handleCreate(); await flushPromises()
-    w.vm.createKind = 'agent'; await flushPromises()
+    formVm(w).createKind = 'agent'; await flushPromises()
     await vi.waitFor(() => expect(w.findComponent(AgentPrincipalForm).exists()).toBe(true))
     const form = w.getComponent(AgentPrincipalForm)
     expect(form.find('input[type="password"]').exists()).toBe(false)
@@ -65,7 +68,7 @@ it('類型篩選只回該類主體', async () => {
   w.vm.handleResetFilter(); await flushPromises(); expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }))
 })
 
-it.each(['zh-TW', 'en-US', 'ja-JP'])('畫面 1 三語 DOM：主副行與同層表單 %s', async locale => { i18n.global.locale.value = locale; const w = mount(Users, { global }); await flushPromises(); expect(w.findAllComponents(PrincipalBadge)).toHaveLength(2); expect(w.find('[data-test="principal-kind-filter"]').exists()).toBe(true); expect(w.text()).not.toMatch(/agentPrincipals\.|users\.|common\./); w.vm.handleCreate(); w.vm.createKind = 'agent'; await flushPromises(); expect(w.findComponent(AgentPrincipalForm).exists()).toBe(true); expect(w.findAll('input[type="password"]')).toHaveLength(0) })
+it.each(['zh-TW', 'en-US', 'ja-JP'])('畫面 1 三語 DOM：主副行與同層表單 %s', async locale => { i18n.global.locale.value = locale; const w = mount(Users, { global }); await flushPromises(); expect(w.findAllComponents(PrincipalBadge)).toHaveLength(2); expect(w.find('[data-test="principal-kind-filter"]').exists()).toBe(true); expect(w.text()).not.toMatch(/agentPrincipals\.|users\.|common\./); w.vm.handleCreate(); formVm(w).createKind = 'agent'; await flushPromises(); expect(w.findComponent(AgentPrincipalForm).exists()).toBe(true); expect(w.findAll('input[type="password"]')).toHaveLength(0) })
 
 it('polish 1–3：副標、姓名投影與篩選回顯', async () => {
   api.list.mockResolvedValue({ data: [{ id: 5, username: 'worker', kind: 'agent', owner_user_id: 1, owner_username: 'responsible', roles: [] }], total: 1 })
@@ -91,8 +94,8 @@ it.each([
   api.update.mockResolvedValue({ data: {} })
   const w = mount(Users, { global }); await flushPromises()
   w.vm.handleEdit({ id: 5, username: 'worker', kind, email: null, full_name: '', roles: [] }); await flushPromises()
-  w.vm.form.full_name = 'Nightly Worker'
-  await w.vm.handleSubmit().catch(() => {}); await flushPromises()
+  formVm(w).form.full_name = 'Nightly Worker'
+  await formVm(w).handleSubmit().catch(() => {}); await flushPromises()
   if (saved) {
     expect(api.update).toHaveBeenCalledWith(5, { email: '', full_name: 'Nightly Worker' })
   } else {

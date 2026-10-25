@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"net/http"
@@ -24,8 +25,8 @@ func TestSFTPUnauthorizedReturns404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+	if err := migrateWithAuthz(db, &model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db.Create(&model.User{Username: "u1", Email: emailPtr("u@x"), Active: true})
@@ -37,7 +38,7 @@ func TestSFTPUnauthorizedReturns404(t *testing.T) {
 	r := gin.New()
 	r.GET("/assets/:id/files", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleUser)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleUser))
 		handler.List(c)
 	})
 
@@ -60,9 +61,9 @@ func TestSFTPPolicyGateBlocksStandingConnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AccessRequest{},
-		&model.SecurityPolicy{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db.Create(&model.User{Username: "u1", Email: emailPtr("u@x"), Active: true})
@@ -82,7 +83,7 @@ func TestSFTPPolicyGateBlocksStandingConnect(t *testing.T) {
 	r := gin.New()
 	r.GET("/assets/:id/files", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleUser)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleUser))
 		handler.List(c)
 	})
 
@@ -102,9 +103,9 @@ func TestSFTPPolicyGateAllowsTicket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AccessRequest{},
-		&model.SecurityPolicy{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db.Create(&model.User{Username: "u1", Email: emailPtr("u@x"), Active: true})
@@ -133,7 +134,7 @@ func TestSFTPPolicyGateAllowsTicket(t *testing.T) {
 			}
 		}()
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleUser)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleUser))
 		handler.List(c)
 	})
 	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/assets/1/files?path=/tmp", nil))

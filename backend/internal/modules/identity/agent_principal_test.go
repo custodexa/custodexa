@@ -15,7 +15,7 @@ import (
 func principalEnv(t *testing.T) (*UserService, *AuthService, *gorm.DB, *model.User, *model.User) {
 	t.Helper()
 	auth, _, db := setupRoleMappingEnv(t)
-	if err := db.AutoMigrate(&model.OIDCProvider{}, &model.UserExternalIdentity{}); err != nil {
+	if err := db.AutoMigrate(&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}); err != nil {
 		t.Fatal(err)
 	}
 	seedMappingRole(t, db, model.RoleApprover)
@@ -27,7 +27,14 @@ func principalEnv(t *testing.T) (*UserService, *AuthService, *gorm.DB, *model.Us
 	if err := db.Create(agent).Error; err != nil {
 		t.Fatal(err)
 	}
+	// 擁有者轉移的防自我授權 port 與生產組裝同形（未注入即 fail-close）；判定會讀
+	// 授權規則與審核範圍兩表
+	if err := db.AutoMigrate(&model.Asset{}, &model.AssetGroup{}, &model.AssetAuthorization{}, &model.ApproverScope{},
+		&model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}); err != nil {
+		t.Fatal(err)
+	}
 	users := NewUserService(db, authz.NewAssetAuthorizationService(db))
+	users.SetOwnerTransferGuard(authz.SelfGrantGuard{})
 	return users, auth, db, owner, agent
 }
 func principalCount(t *testing.T, db *gorm.DB, value any) int64 {
@@ -259,7 +266,78 @@ func TestAgentRoleGuard(t *testing.T) {
 			})
 		}
 	}
+	t.Run("能力類別", agentRoleGuardCapabilitySubtests)
 }
+
+// agentRoleGuardCapabilitySubtests 依能力類別判定的子測試（能力類別），由 TestAgentRoleGuard 呼叫：
+// 角色的內建識別與權限點類別決定能否指派給 agent，角色名稱不是依據。
+func agentRoleGuardCapabilitySubtests(t *testing.T) {
+	// 環境已有四個內建角色列；rename 非空時先把該內建範本的列改名（識別不變，名稱不再是內建名）
+	assign := func(t *testing.T, builtinKey, rename string) error {
+		users, _, db, _, agent := principalEnv(t)
+		var role model.Role
+		if err := db.Where("builtin_key = ?", builtinKey).First(&role).Error; err != nil {
+			t.Fatal(err)
+		}
+		if rename != "" {
+			if err := db.Model(&role).Update("name", rename).Error; err != nil {
+				t.Fatal(err)
+			}
+			role.Name = rename
+		}
+		return users.AddRole(agent.ID, role.Name)
+	}
+
+	t.Run("持管理類權限點的角色（內建超管範本，名稱非內建名）被拒", func(t *testing.T) {
+		if err := assign(t, model.BuiltinSuperAdmin, "ops-root"); !errors.Is(err, ErrAgentRoleForbidden) {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("持稽核類權限點的角色（內建稽核員範本，名稱非內建名）被拒", func(t *testing.T) {
+		if err := assign(t, model.BuiltinAuditor, "night-watch"); !errors.Is(err, ErrAgentRoleForbidden) {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("追加審核者被拒", func(t *testing.T) {
+		if err := assign(t, model.BuiltinApprover, ""); !errors.Is(err, ErrAgentRoleForbidden) {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("一般使用者可指派", func(t *testing.T) {
+		if err := assign(t, model.BuiltinUser, ""); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("名稱叫 admin 但不是內建範本的角色不因名稱被拒（判定依能力類別）", func(t *testing.T) {
+		users, _, db, _, agent := principalEnv(t)
+		// 把內建超管範本改名讓出名稱，再以原始 SQL 寫入同名的非內建角色（繞過保留名稱的寫入規則）；
+		// 目前非內建角色沒有權限點存放處，能力集合為空
+		if err := db.Model(&model.Role{}).Where("builtin_key = ?", model.BuiltinSuperAdmin).Update("name", "ops-root").Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec("INSERT INTO roles (name, description, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", model.RoleAdmin, "name only").Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := users.AddRole(agent.ID, model.RoleAdmin); err != nil {
+			t.Fatalf("非內建角色（能力集合為空）應可指派: %v", err)
+		}
+	})
+	t.Run("權限點類別判定：含管理、稽核、審核類即受限，基本類不受限", func(t *testing.T) {
+		if !authz.CapabilityRestrictedForAgent([]authz.Permission{authz.PermAssetView, authz.PermAlertRuleManage}) {
+			t.Fatal("含管理類權限點的集合應受限")
+		}
+		if !authz.CapabilityRestrictedForAgent([]authz.Permission{authz.PermAuditView}) {
+			t.Fatal("含稽核類權限點的集合應受限")
+		}
+		if authz.CapabilityRestrictedForAgent([]authz.Permission{authz.PermAssetView}) {
+			t.Fatal("僅基本類權限點的集合不應受限")
+		}
+		if !authz.CapabilityRestrictedForAgent([]authz.Permission{"unknown:perm"}) {
+			t.Fatal("目錄外的權限點應 fail-closed 視為受限")
+		}
+	})
+}
+
 func TestMappedRoleRecomputeGuardsAgent(t *testing.T) {
 	for _, role := range []string{model.RoleAdmin, model.RoleAuditor, model.RoleApprover, model.RoleUser} {
 		t.Run(role, func(t *testing.T) {

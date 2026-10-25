@@ -95,13 +95,14 @@ func openOrphanDB(t *testing.T, kind string) *gorm.DB {
 // 嚴：重建帳號沿用原帳號名時必然撞索引，測到的會是夾具而不是產品行為
 func orphanMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{},
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
 		&model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
-		&model.UserGroupMappingRuleSupport{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserGroup{}, &model.UserGroupMember{},
 		&model.ApproverScope{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -150,7 +151,7 @@ func newOrphanEnv(t *testing.T, kind string, mode model.AdmissionMode) *orphanEn
 	idp := newFakeIdP(t)
 	auth := NewAuthService("test-secret", 15*time.Minute)
 	auth.SetSecurityPolicies(policy.NewSecurityPolicyService(db))
-	providers := NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com")
 	login := NewOIDCLoginService(db, providers, NewOIDCDiscoveryService(testEgress()), auth, nil)
 	login.audit = newRecordingAudit()
 	login.SetRoleMappingAuditSink(audit.NewTxSink())

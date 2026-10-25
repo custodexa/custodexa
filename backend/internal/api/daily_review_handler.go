@@ -198,11 +198,11 @@ func (h *DailyReviewHandler) RegisterRoutes(r *gin.RouterGroup, authService *ide
 
 // registerOn 在已掛認證的群組上註冊路由與權限（測試以替身認證共用同一張路由表）
 func (h *DailyReviewHandler) registerOn(reviews *gin.RouterGroup) {
-	reviews.GET("/status", middleware.RequirePermission(middleware.PermAuditView), h.Status)
-	reviews.GET("/pending", middleware.RequirePermission(middleware.PermAuditView), h.Pending)
-	reviews.GET("/pending/count", middleware.RequirePermission(middleware.PermAuditView), h.PendingCount)
-	reviews.GET("/days/:date", middleware.RequirePermission(middleware.PermAuditView), h.Day)
-	reviews.GET("/stats", middleware.RequirePermission(middleware.PermAuditView), h.Stats)
-	reviews.GET("", middleware.RequirePermission(middleware.PermAuditView), h.List)
-	reviews.POST("", middleware.RequirePermission(middleware.PermAlertManage), h.Sign)
+	reviews.GET("/status", middleware.EnforceRegistry(), h.Status)
+	reviews.GET("/pending", middleware.EnforceRegistry(), h.Pending)
+	reviews.GET("/pending/count", middleware.EnforceRegistry(), h.PendingCount)
+	reviews.GET("/days/:date", middleware.EnforceRegistry(), h.Day)
+	reviews.GET("/stats", middleware.EnforceRegistry(), h.Stats)
+	reviews.GET("", middleware.EnforceRegistry(), h.List)
+	reviews.POST("", middleware.EnforceRegistry(), h.Sign)
 }

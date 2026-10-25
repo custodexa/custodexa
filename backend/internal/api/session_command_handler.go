@@ -165,7 +165,7 @@ func (h *SessionCommandHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 
 	// per-session 指令含終端輸入原文（可能有密碼），無條件要求 session:view，
 	// 無條件強制（權限旗標已退場）
-	sessions.GET("/:id/commands", middleware.RequirePermission(middleware.PermSessionView), h.ListBySession)
+	sessions.GET("/:id/commands", middleware.EnforceRegistry(), h.ListBySession)
 
-	commands.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Search)
+	commands.GET("", middleware.EnforceRegistry(), h.Search)
 }

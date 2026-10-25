@@ -91,8 +91,8 @@ func executorIDValue(executor *uint, requester uint) uint {
 	return requester
 }
 
-func (s *AccessRequestService) submitItems(requesterID uint, username, role string, input SubmitAccessRequestInput) (*model.AccessRequest, error) {
-	if role == model.RoleAdmin || role == model.RoleAuditor {
+func (s *AccessRequestService) submitItems(requesterID uint, username string, requesterExempt bool, input SubmitAccessRequestInput) (*model.AccessRequest, error) {
+	if requesterExempt {
 		return nil, ErrRequesterExempt
 	}
 	items := input.Items
@@ -215,10 +215,17 @@ func (s *AccessRequestService) submitItems(requesterID uint, username, role stri
 		return s.db.Transaction(func(tx *gorm.DB) error {
 			if requesterKind == model.KindAgent {
 				// Row lock serializes counting and inserting across processes.
+				// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
+				if probe := LockOrderProbeHook(); probe != nil {
+					probe(tx, LockLayerUserRow, requesterID)
+				}
 				if tx.Dialector.Name() == "postgres" {
 					var locked model.User
-					if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&locked, requesterID).Error; err != nil {
+					if err := tx.Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).Select("id").First(&locked, requesterID).Error; err != nil {
 						return err
+					}
+					if h := loadLockOrderHook(); h != nil {
+						h("request_submit_after_requester_lock", tx, requesterID)
 					}
 				}
 				if err := s.checkAgentRequestRate(tx, requesterID, now); err != nil {

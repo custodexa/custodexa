@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"strings"
 	"sync"
 
@@ -75,7 +76,7 @@ var ErrLDAPDirectoryConflict = errors.New("LDAP 目錄設定併發衝突，請�
 func WithLDAPDirectoryLock(db *gorm.DB, fn func(tx *gorm.DB) error) error {
 	switch db.Dialector.Name() {
 	case "postgres":
-		return db.Transaction(func(tx *gorm.DB) error {
+		err := db.Transaction(func(tx *gorm.DB) error {
 			var got bool
 			if err := tx.Raw("SELECT pg_try_advisory_xact_lock(?)", LDAPDirectoryLockKey).
 				Scan(&got).Error; err != nil {
@@ -86,12 +87,16 @@ func WithLDAPDirectoryLock(db *gorm.DB, fn func(tx *gorm.DB) error) error {
 			}
 			return fn(tx)
 		})
+		authz.NotifyVersionCommittedAfter(db, err)
+		return err
 	case "sqlite":
 		if !ldapDirectoryProcessMu.TryLock() {
 			return ErrLDAPDirectoryBusy
 		}
 		defer ldapDirectoryProcessMu.Unlock()
-		return db.Transaction(fn)
+		err := db.Transaction(fn)
+		authz.NotifyVersionCommittedAfter(db, err)
+		return err
 	default:
 		return fmt.Errorf("不支援的資料庫 dialect %q：無跨實例 LDAP 目錄設定互斥實作",
 			db.Dialector.Name())

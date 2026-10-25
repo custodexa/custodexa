@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "additions": [
+    {
+      "migration": "20261016_authz_permission_model",
+      "tables": [
+        "authz_state",
+        "role_binding_nodes",
+        "user_group_roles"
+      ],
+      "columns": {
+        "roles": [
+          "builtin_key"
+        ],
+        "user_roles": [
+          "scope_kind"
+        ]
+      }
+    },
+    {
+      "migration": "20261017_role_definitions",
+      "tables": [
+        "role_permissions"
+      ],
+      "columns": {
+        "roles": [
+          "definition_version",
+          "template_role_id"
+        ]
+      }
+    },
+    {
+      "migration": "20261017_permission_state_attestation",
+      "tables": ["permission_state_events"],
+      "columns": {
+        "agent_tokens": ["restore_generation"],
+        "asset_authorizations": ["restore_generation"],
+        "audit_checkpoints": ["perm_event_head", "perm_event_seq", "perm_format", "perm_reconciled", "perm_state_snapshot"],
+        "refresh_tokens": ["restore_generation"]
+      }
+    },
+    {
+      "migration": "20261018_system_security_alerts",
+      "tables": ["system_alert_details", "system_alert_outbox", "system_alert_severity_overrides"],
+      "columns": {}
+    },
+    {
+      "migration": "20261019_asset_host_key_address",
+      "tables": [],
+      "columns": {
+        "asset_host_keys": ["host", "port", "reset_pending"]
+      }
+    },
+    {
+      "migration": "20261020_mapping_observation_times",
+      "tables": ["user_channel_observations"],
+      "columns": {}
+    },
+    {
+      "migration": "20261018_checkpoint_v4_attestation",
+      "tables": [],
+      "columns": {
+        "audit_checkpoint_trims": ["format", "perm_history", "unverified_count"],
+        "audit_checkpoints": ["perm_origin"]
+      }
+    },
+    {
+      "migration": "20261022_credential_job_authorization",
+      "tables": ["credential_job_authorizations"],
+      "columns": {
+        "change_secret_batches": ["authorization_id"],
+        "change_secret_candidates": ["authorization_id", "target_fingerprint"],
+        "change_secret_plans": ["authorization_id", "authorization_state", "revision"],
+        "credential_rotation_members": ["dispatch_authz_version", "dispatch_claimed_at", "requeued_at", "requeued_authz_version", "requeued_by", "requeued_by_name", "target_fingerprint"],
+        "credential_rotations": ["authorization_id"]
+      }
+    },
+    {
+      "migration": "20261023_credential_recovery_alert",
+      "tables": [],
+      "columns": {
+        "change_secret_candidates": ["recovery_alerted_at"],
+        "credential_rotation_members": ["recovery_alerted_at"]
+      }
+    },
+    {
+      "migration": "20261025_host_key_mismatch",
+      "tables": ["asset_host_key_mismatches"],
+      "columns": {}
+    },
+    {
+      "migration": "20261026_security_policy_floor_raises",
+      "tables": ["security_policy_floor_raises"],
+      "columns": {}
+    },
+    {
+      "migration": "20261027_credential_host_identity",
+      "tables": ["credential_host_identity_confirmations"],
+      "columns": {
+        "asset_host_keys": ["trust_generation"],
+        "change_secret_candidates": ["host_identity_alerted_key", "host_key_algorithm", "host_key_binding", "host_key_bound_at", "host_key_fingerprint", "host_key_generation", "host_key_record_id", "host_key_transport"],
+        "credential_rotation_members": ["host_identity_alerted_key", "host_key_algorithm", "host_key_binding", "host_key_bound_at", "host_key_fingerprint", "host_key_generation", "host_key_record_id", "host_key_transport", "secret_sent_at"]
+      }
+    },
+    {
+      "migration": "20261028_user_release_guidance",
+      "tables": ["user_release_guidance"],
+      "columns": {}
+    },
+    {
+      "migration": "20261029_credential_ownership",
+      "tables": ["credential_impact_confirmations"],
+      "columns": {
+        "credentials": ["owner_kind", "owner_node_id"]
+      }
+    },
+    {
+      "migration": "20261031_change_secret_scope_columns",
+      "tables": [],
+      "columns": {
+        "change_secret_batches": ["shared_credential_owner_kind", "shared_credential_owner_node_id"]
+      }
+    }
+  ]
+}

@@ -32,6 +32,7 @@ func manualEndpointDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("db handle: %v", err)
@@ -39,7 +40,7 @@ func manualEndpointDB(t *testing.T) *gorm.DB {
 	// **單連線**：`:memory:` 配連線池時每條連線是各自獨立的空 DB
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{},
-		&model.RefreshToken{}, &model.PasswordHistory{},
+		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.PasswordHistory{},
 		&model.UserRole{}, &model.UserRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

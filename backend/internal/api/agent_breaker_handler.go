@@ -19,7 +19,7 @@ func (h *UserHandler) ReleaseAgentBreaker(c *gin.Context) {
 		apierror.Respond(c, 400, apierror.CodeBadParams, nil)
 		return
 	}
-	if err := h.agentTokens.ReleaseProbeBreaker(c.GetUint("agent_token_user_id"), req.Reason, c.GetString("role"), agentTokenActor(c)); err != nil {
+	if err := h.agentTokens.ReleaseProbeBreaker(c.GetUint("agent_token_user_id"), req.Reason, middleware.PrincipalFrom(c).IsSuperAdmin(), agentTokenActor(c)); err != nil {
 		respondAgentTokenError(c, err)
 		return
 	}
@@ -41,8 +41,7 @@ func (h *UserHandler) AgentBreakerEvents(c *gin.Context) {
 		return
 	}
 	user, err := h.userService.GetByID(uint(id))
-	role := c.GetString("role")
-	if err != nil || user.Kind != model.KindAgent || (role != model.RoleAdmin && role != model.RoleAuditor && (user.OwnerUserID == nil || *user.OwnerUserID != actor)) {
+	if err != nil || user.Kind != model.KindAgent || (!middleware.PrincipalFrom(c).ViewShortcut() && (user.OwnerUserID == nil || *user.OwnerUserID != actor)) {
 		apierror.Respond(c, 403, apierror.CodePermissionDenied, nil)
 		return
 	}

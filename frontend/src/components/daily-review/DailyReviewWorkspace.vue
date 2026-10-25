@@ -24,7 +24,7 @@
       </div>
       <p>{{ $t('dailyReview.workspace.disabledBody') }}</p>
       <el-button
-        v-if="isAdmin"
+        v-if="canOpenPolicies"
         data-test="dr-disabled-link"
         @click="router?.push('/security-policies')"
       >
@@ -219,7 +219,7 @@ const PENDING_PAGE_SIZE = 31
 const props = defineProps({
   // 有簽核權限（alert:manage）；沒有時版面唯讀、動作為「查看」
   canSign: { type: Boolean, default: false },
-  isAdmin: { type: Boolean, default: false },
+  canOpenPolicies: { type: Boolean, default: false },
   // 網址帶入的所屬日：直接開該日抽屜
   openDate: { type: String, default: '' },
 })

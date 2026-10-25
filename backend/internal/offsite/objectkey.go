@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// object key 組法。key 一律由系統組出，不接受使用者輸入
-// （design §5 輸入驗證）；prefix 為部署設定的 key 前綴，空＝無前綴。
+// object key 組法。key 一律由系統組出，不接受使用者輸入；
+// prefix 為部署設定的 key 前綴，空＝無前綴。
 
 // RecordingObjectKey 錄影物件的 key：
 // {prefix}/recordings/{YYYY}/{MM}/session-{id}.{ext}

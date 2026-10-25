@@ -23,8 +23,10 @@ vi.stubGlobal('MutationObserver', ObserverStub)
 vi.stubGlobal('ResizeObserver', ObserverStub)
 
 const startMock = vi.fn()
+const impactMock = vi.fn()
 vi.mock('@/api/credentials', () => ({
   startCredentialRotation: (...a) => startMock(...a),
+  confirmCredentialImpact: (...a) => impactMock(...a),
 }))
 
 // 對話框預設 teleport 到 body，掛載樹上找不到；以就地渲染的替身取代
@@ -52,6 +54,7 @@ async function mountDialog(props = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   startMock.mockResolvedValue({ data: { id: 7, status: 'running', members: [] } })
+  impactMock.mockResolvedValue({ required: false, in_scope_count: 3 })
 })
 
 describe('改密對話框', () => {

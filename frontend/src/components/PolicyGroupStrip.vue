@@ -81,7 +81,7 @@
       </el-button>
       <el-button
         type="primary"
-        :disabled="!isDirty"
+        :disabled="!isDirty || saveBlocked"
         :loading="saving"
         @click="$emit('save')"
       >
@@ -98,6 +98,8 @@ defineProps({
   isDirty: { type: Boolean, default: false },
   // 生效政策組（政策列表 API 的頂層 groups）
   groups: { type: Array, default: () => [] },
+  // 有欄位處於錯誤狀態（例如資料保留天數低於下限）：儲存鈕停用
+  saveBlocked: { type: Boolean, default: false },
 })
 
 defineEmits(['apply', 'reset', 'save'])

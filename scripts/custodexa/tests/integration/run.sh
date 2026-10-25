@@ -13,6 +13,8 @@
 #   CX_IT_FROM2_VERSION=1.15.0 the release before it, for a scenario that upgrades twice
 #   CX_IT_PUBLISHED_VERSION=1.15.2  the release whose own published package and offline bundle a
 #                             scenario with "needs: published" installs (not built from here)
+#   CX_IT_LOCAL_VERSIONS="1.18.90"  the versions "needs: package local-versions" builds from the
+#                             working tree, instead of 1.16.90 1.16.91 1.16.92 (lib/localver.sh)
 #   CX_IT_CACHE=<dir>         downloads, image tars, offline bundles, run logs
 #                             (default ${XDG_CACHE_HOME:-~/.cache}/custodexa-it)
 #   CX_IT_STORE=classic|containerd   image store of the scenario hosts (default: the engine's)
@@ -215,6 +217,7 @@ build_phase() { # <needs package: 0|1> <needs the older package: 0|1> <and the o
   set +e
   docker exec -e IT_VERSION="$version" -e IT_FROM_VERSION="$from" -e IT_FROM2_VERSION="$from2" -e IT_PACKAGE="$1" \
     -e IT_REBUILD_BUNDLE="${CX_IT_REBUILD_BUNDLE:-0}" -e IT_LOCAL_VERSIONS="${4:-0}" -e IT_PUBLISHED_VERSION="$published" \
+    -e IT_LV_VERSIONS_SET="${CX_IT_LOCAL_VERSIONS:-}" \
     "$name" bash /src/scripts/custodexa/tests/integration/inside.sh build 2>&1 | tee "$run/build.log"
   rc=${PIPESTATUS[0]}
   set -e
@@ -318,7 +321,7 @@ main() {
   local s k t0 rc=0 package=0 upgrade=0 twice=0 lv=0 published=0 failed=""
   local -a scenarios=() keys=()
   case ${1:-} in
-    "" | -h | --help) sed -n '2,23p' "$0"; exit 0 ;;
+    "" | -h | --help) sed -n '2,25p' "$0"; exit 0 ;;
     list) list; exit 0 ;;
     clean) shift; clean "$@"; exit 0 ;;
   esac

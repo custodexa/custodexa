@@ -25,6 +25,19 @@ const FIELD_LABEL_KEYS = {
   db_tls_mode: 'assets.tlsMode',
 }
 
+// 兩個匯入專屬碼：節點與共用憑證「不存在」和「你無法使用」對使用者是同一句話，
+// 不分辨哪一種；其他碼照通用錯誤譯文
+const IMPORT_PROBLEM_KEYS = {
+  NOTFOUND_ASSET_IMPORT_NODE_PATH: 'assets.bulk.problemNodeUnavailable',
+  NOTFOUND_CREDENTIAL: 'assets.bulk.problemCredentialUnavailable',
+}
+
+/** 錯誤清單、儲存格提示與下載 CSV 共用的「問題」文字 */
+export function bulkProblemText(e) {
+  const key = IMPORT_PROBLEM_KEYS[e?.code]
+  return key ? t(key) : resolveApiError({ code: e?.code, params: e?.params })
+}
+
 export const bulkFieldLabel = (field) =>
   field === 'k8s_namespace' ? 'Namespace' : FIELD_LABEL_KEYS[field] ? t(FIELD_LABEL_KEYS[field]) : field
 
@@ -57,7 +70,7 @@ export function useBulkErrorReport({ rows, check, lines }) {
           field: e.field,
           fieldLabel: bulkFieldLabel(e.field),
           value: displayValue(row, e.field, reports[index]?.resolved?.node_paths),
-          problem: resolveApiError({ code: e.code, params: e.params }),
+          problem: bulkProblemText(e),
         })
       }
     })

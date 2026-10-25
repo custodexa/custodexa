@@ -1,6 +1,7 @@
 package sshproxy
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -22,7 +23,7 @@ func issueTokenForAccount(h *Handler, userID uint, role string, assetID, account
 	r := gin.New()
 	r.POST("/connect-tokens", func(c *gin.Context) {
 		c.Set("userID", userID)
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		h.HandleCreateConnectToken(c)
 	})
 	body, _ := json.Marshal(map[string]interface{}{"asset_id": assetID, "account_id": accountID})

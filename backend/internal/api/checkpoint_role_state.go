@@ -72,6 +72,9 @@ type checkpointVerifyResponse struct {
 	RoleState       *roleStateView      `json:"role_state,omitempty"`
 	PrincipalState  *principalStateView `json:"principal_state,omitempty"`
 	AgentTokenState *principalStateView `json:"agent_token_state,omitempty"`
+	// PermissionState 權限狀態比對**無法完成**時才附帶（正常回應的欄位不變）：
+	// 比對停擺時之後的直接修改都無從判定，驗證頁必須看得到，不能讓三列相符掩蓋它
+	PermissionState *permissionStateView `json:"permission_state,omitempty"`
 }
 
 // roleStateNameSource 帳號名與角色名的來源（實作＝`identity.UserService`）。

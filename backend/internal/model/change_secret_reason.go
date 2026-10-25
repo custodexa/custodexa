@@ -56,6 +56,13 @@ const (
 
 	// --- 遠端互動 ---
 	ChangeSecretReasonOldCredentialLoginFailed = "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED"
+	// ChangeSecretReasonHostKeyMismatch 撥號目標出示的主機金鑰與記錄不符（host-key-verification）：
+	// 背景作業無人在場，撥號在送出任何憑證或新秘密之前被拒絕；不符本身已另留審計與系統告警。
+	// 處理途徑是確認主機後在資產設定採用新指紋或重置主機金鑰，不是去查憑證
+	ChangeSecretReasonHostKeyMismatch = "CHANGE_SECRET_HOST_KEY_MISMATCH"
+	// ChangeSecretReasonHostKeyCheckFailed 首次派送前綁定目標主機身分失敗（查核或寫入失敗）：
+	// 在送出任何憑證或新秘密之前中止，目標未被觸碰；與主機金鑰不符分開，處理途徑是稍後重試或查服務狀態
+	ChangeSecretReasonHostKeyCheckFailed = "CHANGE_SECRET_HOST_KEY_CHECK_FAILED"
 	// ChangeSecretReasonRemoteRejected 指令跑完但非零退出＝遠端確定未變更
 	ChangeSecretReasonRemoteRejected = "CHANGE_SECRET_REMOTE_REJECTED"
 	// ChangeSecretReasonRemoteStateUnknown 指令送出後連線中斷／逾時＝遠端狀態不可知
@@ -89,6 +96,36 @@ const (
 	ChangeSecretReasonRetryPromoted          = "CHANGE_SECRET_RETRY_PROMOTED"
 	ChangeSecretReasonRetrySecretUnavailable = "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE"
 	ChangeSecretReasonRetryLoginFailed       = "CHANGE_SECRET_RETRY_LOGIN_FAILED"
+
+	// --- 背景工作授權重驗 ---
+	// ChangeSecretReasonAuthzRevoked 發起者當下的權限已不足，工作停止（遠端未被觸碰）
+	ChangeSecretReasonAuthzRevoked = "CHANGE_SECRET_AUTHZ_REVOKED"
+	// ChangeSecretReasonAuthzContextMissing 工作沒有可指認的發起者（升級前的舊工作或授權脈絡缺失／損毀）
+	ChangeSecretReasonAuthzContextMissing = "CHANGE_SECRET_AUTHZ_CONTEXT_MISSING"
+	// ChangeSecretReasonAuthzUnavailable 無法判定權限（判定器缺席或讀取失敗），依 fail closed 停止
+	ChangeSecretReasonAuthzUnavailable = "CHANGE_SECRET_AUTHZ_UNAVAILABLE"
+	// ChangeSecretReasonAuthzTargetChanged 收斂驗證的目標（位址、通道、帳號、掛載或版本）已漂移
+	ChangeSecretReasonAuthzTargetChanged = "CHANGE_SECRET_AUTHZ_TARGET_CHANGED"
+	// ChangeSecretReasonAuthzConvergenceExpired 失權後的有限收斂驗證已逾期，保留候選待帶外處置
+	ChangeSecretReasonAuthzConvergenceExpired = "CHANGE_SECRET_AUTHZ_CONVERGENCE_EXPIRED"
+	// ChangeSecretReasonRecoveredCleanupPending 失權後的有限驗證成功並已提交，但 SSH 舊公鑰
+	// 尚未清除（失權後不再替原發起者刪舊鑰），需具權者手動清理
+	ChangeSecretReasonRecoveredCleanupPending = "CHANGE_SECRET_RECOVERED_CLEANUP_PENDING"
+	// ChangeSecretReasonAuthzRestored 工作的授權脈絡建立於還原之前（還原世代不符），背景派送停止：
+	// 還原前留下的意圖不得在還原後以過時狀態改動遠端；需具權者重新確認（手動重試或重新授權）
+	ChangeSecretReasonAuthzRestored = "CHANGE_SECRET_AUTHZ_RESTORED"
+	// ChangeSecretReasonHostIdentityChanged 目標主機的身分與秘密送出當時綁定的不同（或無從核對），
+	// 背景作業在撥號前、握手或提交前停止：候選保留，本地不提交，待具權者確認後處置
+	// （是否已用新憑證登入過依停止審計的 verification_sent 判斷，不由本原因碼保證）
+	ChangeSecretReasonHostIdentityChanged = "CHANGE_SECRET_HOST_IDENTITY_CHANGED"
+	// ChangeSecretReasonScopeBoundExceeded 憑證目標計畫的當下掛載有範圍外部分不在該版掛載上界內：
+	// 整次停止、遠端零操作，計畫轉待重新確認
+	ChangeSecretReasonScopeBoundExceeded = "CHANGE_SECRET_SCOPE_BOUND_EXCEEDED"
+
+	// --- 服務重啟 ---
+	// ChangeSecretReasonInterrupted 服務重啟時本台正在改密（成員停在改密中），遠端是否已收下新秘密未知：
+	// 啟動時轉為已送出未驗證並保留候選，由逐台補跑以新秘密驗證確認
+	ChangeSecretReasonInterrupted = "CHANGE_SECRET_INTERRUPTED"
 )
 
 // ChangeSecretReasons 全部合法原因碼；守衛測試以此為封閉集合比對，
@@ -119,6 +156,8 @@ func ChangeSecretReasons() []string {
 		ChangeSecretReasonAccountNameInvalid,
 		ChangeSecretReasonInvalidOldSecret,
 		ChangeSecretReasonOldCredentialLoginFailed,
+		ChangeSecretReasonHostKeyMismatch,
+		ChangeSecretReasonHostKeyCheckFailed,
 		ChangeSecretReasonRemoteRejected,
 		ChangeSecretReasonRemoteStateUnknown,
 		ChangeSecretReasonRemoteUnreachable,
@@ -136,6 +175,16 @@ func ChangeSecretReasons() []string {
 		ChangeSecretReasonRetryPromoted,
 		ChangeSecretReasonRetrySecretUnavailable,
 		ChangeSecretReasonRetryLoginFailed,
+		ChangeSecretReasonAuthzRevoked,
+		ChangeSecretReasonAuthzContextMissing,
+		ChangeSecretReasonAuthzUnavailable,
+		ChangeSecretReasonAuthzTargetChanged,
+		ChangeSecretReasonAuthzConvergenceExpired,
+		ChangeSecretReasonRecoveredCleanupPending,
+		ChangeSecretReasonAuthzRestored,
+		ChangeSecretReasonHostIdentityChanged,
+		ChangeSecretReasonScopeBoundExceeded,
+		ChangeSecretReasonInterrupted,
 	}
 }
 

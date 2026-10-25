@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -22,7 +22,7 @@ func setupEnvelopeChannelSvc(t *testing.T) (*NotificationChannelService, *keyvau
 		t.Fatalf("migrate: %v", err)
 	}
 	km := newTestKeyManager(t, db, 1)
-	svc := NewNotificationChannelService(db, km)
+	svc := newChannelSvc(t, db, km)
 	return svc, km, db
 }
 
@@ -33,6 +33,7 @@ func TestChannelEncryptedAtRest(t *testing.T) {
 	svc, _, db := setupEnvelopeChannelSvc(t)
 
 	created, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "wh", URL: "https://example.com/hook/abcd", Secret: "hmac-secret",
 	})
 	if err != nil {
@@ -57,6 +58,7 @@ func TestChannelURLMaskedInResponses(t *testing.T) {
 	svc, _, _ := setupEnvelopeChannelSvc(t)
 
 	created, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "slack", Type: model.NotificationChannelTypeSlack, URL: testSlackURL,
 	})
 	if err != nil {
@@ -82,13 +84,14 @@ func TestChannelEmptyURLPreserves(t *testing.T) {
 	svc, km, db := setupEnvelopeChannelSvc(t)
 
 	created, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "wh", URL: "https://example.com/hook/abcd", Secret: "sk",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
-	if _, err := svc.Update(created.ID, &NotificationChannelRequest{Name: "renamed"}); err != nil {
+	if _, err := svc.Update(created.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "renamed"}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
@@ -100,7 +103,7 @@ func TestChannelEmptyURLPreserves(t *testing.T) {
 	}
 
 	// 帶值更新則生效
-	if _, err := svc.Update(created.ID, &NotificationChannelRequest{Name: "renamed", URL: "https://example.com/new"}); err != nil {
+	if _, err := svc.Update(created.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "renamed", URL: "https://example.com/new"}); err != nil {
 		t.Fatalf("update url: %v", err)
 	}
 	db.Raw("SELECT url FROM notification_channels WHERE id = ?", created.ID).Scan(&storedURL)
@@ -115,6 +118,7 @@ func TestChannelGetForDelivery(t *testing.T) {
 	svc, _, db := setupEnvelopeChannelSvc(t)
 
 	created, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "wh", URL: "https://example.com/hook", Secret: "sk",
 	})
 	if err != nil {
@@ -143,6 +147,7 @@ func TestNotifierCacheDecryptsChannels(t *testing.T) {
 	svc, km, db := setupEnvelopeChannelSvc(t)
 
 	if _, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "wh", URL: "https://example.com/hook", Secret: "sk",
 	}); err != nil {
 		t.Fatalf("create: %v", err)

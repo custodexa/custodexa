@@ -62,9 +62,9 @@ func newExportJobTestEnv(t *testing.T) *exportJobTestEnv {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditExportJob{}, &model.AuditLog{},
+	if err := migrateWithAuthz(db, &model.AuditExportJob{}, &model.AuditLog{},
 		&model.User{}, &model.Asset{}, &model.Session{}, &model.ClipboardEvent{},
-		&model.AuditRetentionWatermark{}, &model.AuditCheckpoint{}, &model.UserRole{}); err != nil {
+		&model.AuditRetentionWatermark{}, &model.AuditCheckpoint{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 報告模式的兩張 timestamptz 表（沿 audit 模組 fixture 的原生 DDL 作法）
@@ -103,15 +103,15 @@ func newExportJobTestEnv(t *testing.T) *exportJobTestEnv {
 			c.Set("username", "user-"+uid)
 		}
 		if role := c.GetHeader("X-Test-Role"); role != "" {
-			c.Set("role", role)
+			middleware.SetPrincipal(c, legacyPrincipal(role))
 		}
 		c.Next()
 	})
 	grp := r.Group("/api/v1/audit-export")
-	grp.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Export)
-	grp.POST("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.CreateJob)
-	grp.GET("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.ListJobs)
-	grp.GET("/jobs/:id/download", middleware.RequirePermission(middleware.PermAuditView), h.DownloadJob)
+	grp.GET("", middleware.EnforceRegistry(), h.Export)
+	grp.POST("/jobs", middleware.EnforceRegistry(), h.CreateJob)
+	grp.GET("/jobs", middleware.EnforceRegistry(), h.ListJobs)
+	grp.GET("/jobs/:id/download", middleware.EnforceRegistry(), h.DownloadJob)
 
 	return &exportJobTestEnv{router: r, db: db, jobs: jobs, handler: h, dir: t.TempDir()}
 }

@@ -32,7 +32,8 @@ func mcpEndpointFixture(t *testing.T) (*gin.Engine, string, string, *gorm.DB) {
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old; sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}, &model.AgentToken{}, &model.AuditLog{}, &model.Session{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Role{}, &model.AgentToken{}, &model.AuditLog{}, &model.Session{}, &model.UserGroup{}))
+	require.NoError(t, db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	owner := model.User{Username: "mcp-owner", Password: "!", Kind: model.KindHuman, Active: true}
 	require.NoError(t, db.Create(&owner).Error)
 	agent := model.User{Username: "mcp-agent", Password: "!", Kind: model.KindAgent, OwnerUserID: &owner.ID, Active: true}

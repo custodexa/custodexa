@@ -35,6 +35,7 @@ func newTagsService(t *testing.T) *AssetService {
 	t.Helper()
 	key := make([]byte, 32)
 	svc, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	svc.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 	return svc
 }

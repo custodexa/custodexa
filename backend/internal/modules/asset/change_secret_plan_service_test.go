@@ -15,7 +15,7 @@ func setupPlanDB(t *testing.T) *ChangeSecretPlanService {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}); err != nil {
+	if err := db.AutoMigrate(&model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{}, &model.ChangeSecretRecord{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewChangeSecretPlanService(db)
@@ -26,7 +26,7 @@ func boolPtr(b bool) *bool { return &b }
 func TestPlanCRUD(t *testing.T) {
 	svc := setupPlanDB(t)
 
-	plan, err := svc.Create(&ChangeSecretPlanRequest{
+	plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{
 		Name: "weekly", AssetIDs: []uint{1, 3}, Cron: "0 3 * * 0",
 	})
 	if err != nil {
@@ -44,7 +44,7 @@ func TestPlanCRUD(t *testing.T) {
 		t.Fatalf("List = %d", len(plans))
 	}
 
-	updated, err := svc.Update(plan.ID, &ChangeSecretPlanRequest{
+	updated, err := svc.Update(adminCtx(), plan.ID, &ChangeSecretPlanRequest{
 		Name: "weekly", AssetIDs: []uint{1}, Enabled: boolPtr(false),
 	})
 	if err != nil {
@@ -65,24 +65,24 @@ func TestPlanCRUD(t *testing.T) {
 func TestPlanValidation(t *testing.T) {
 	svc := setupPlanDB(t)
 
-	if _, err := svc.Create(&ChangeSecretPlanRequest{Name: "x", AssetIDs: nil}); !errors.Is(err, ErrPlanNoAssets) {
+	if _, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "x", AssetIDs: nil}); !errors.Is(err, ErrPlanNoAssets) {
 		t.Errorf("empty assets = %v", err)
 	}
-	if _, err := svc.Create(&ChangeSecretPlanRequest{Name: "x", AssetIDs: []uint{1}, Cron: "not-cron"}); !errors.Is(err, ErrPlanBadCron) {
+	if _, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "x", AssetIDs: []uint{1}, Cron: "not-cron"}); !errors.Is(err, ErrPlanBadCron) {
 		t.Errorf("bad cron = %v", err)
 	}
 
-	if _, err := svc.Create(&ChangeSecretPlanRequest{Name: "dup", AssetIDs: []uint{1}}); err != nil {
+	if _, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "dup", AssetIDs: []uint{1}}); err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	if _, err := svc.Create(&ChangeSecretPlanRequest{Name: "dup", AssetIDs: []uint{2}}); !errors.Is(err, ErrPlanNameExists) {
+	if _, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "dup", AssetIDs: []uint{2}}); !errors.Is(err, ErrPlanNameExists) {
 		t.Errorf("dup name = %v", err)
 	}
 }
 
 func TestPlanRecords(t *testing.T) {
 	svc := setupPlanDB(t)
-	plan, _ := svc.Create(&ChangeSecretPlanRequest{Name: "r", AssetIDs: []uint{1}})
+	plan, _ := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "r", AssetIDs: []uint{1}})
 
 	svc.db.Create(&model.ChangeSecretRecord{PlanID: plan.ID, AssetID: 1, Status: model.ChangeSecretSuccess})
 	svc.db.Create(&model.ChangeSecretRecord{PlanID: plan.ID, AssetID: 3, Status: model.ChangeSecretFailed, Error: "unreachable"})
@@ -101,7 +101,7 @@ func TestPlanRecords(t *testing.T) {
 // model 的 default:true 會讓 gorm 把零值欄位排除在 INSERT 外，交給 DB 預設值。
 func TestPlanCreateDisabledPersists(t *testing.T) {
 	svc := setupPlanDB(t)
-	plan, err := svc.Create(&ChangeSecretPlanRequest{
+	plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{
 		Name: "paused", AssetIDs: []uint{1}, Enabled: boolPtr(false),
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func TestPlanCreateDisabledPersists(t *testing.T) {
 	} {
 		t.Run("密碼策略旗標/"+tc.name, func(t *testing.T) {
 			svc := setupPlanDB(t)
-			plan, err := svc.Create(&ChangeSecretPlanRequest{
+			plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{
 				Name: "policy", AssetIDs: []uint{1},
 				PasswordIncludeSymbol: tc.val, PasswordExcludeAmbiguous: tc.val,
 			})

@@ -19,7 +19,10 @@ import (
 
 func TestMyAgents(t *testing.T) {
 	db, h, owner, _ := principalAPIEnv(t)
-	if err := db.AutoMigrate(&model.SecurityPolicy{}); err != nil {
+	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	policies := policy.NewSecurityPolicyService(db)
@@ -128,7 +131,10 @@ func TestMyAgents(t *testing.T) {
 }
 func TestAgentForbiddenMyAgents(t *testing.T) {
 	db, h, owner, agent := principalAPIEnv(t)
-	if err := db.AutoMigrate(&model.AgentToken{}, &model.SecurityPolicy{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToken{}, &model.SecurityPolicy{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := policy.NewSecurityPolicyService(db).Update(policy.PolicyAgentSelfCreateEnabled, "true", "test"); err != nil {
@@ -169,7 +175,7 @@ func TestAgentSelfServicePolicyChangeAudit(t *testing.T) {
 	// update handler here without changing any existing fixture or assertion.
 	auditSvc := audit.NewAuditLogService(&config.FeatureFlags{AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false})
 	handler := NewSecurityPolicyHandler(env.service, auditSvc, policy.NewComplianceService(env.service, env.repo), env.repo)
-	env.router.PUT("/api/v1/security-policies", middleware.RequireRole(model.RoleAdmin), handler.Update)
+	env.router.PUT("/api/v1/security-policies", middleware.EnforceRegistry(), handler.Update)
 
 	if env.service.GetBool(policy.PolicyAgentSelfCreateEnabled) || env.service.GetInt(policy.PolicyAgentSelfCreateMaxPerOwner) != 3 {
 		t.Fatal("unexpected self-service factory defaults")

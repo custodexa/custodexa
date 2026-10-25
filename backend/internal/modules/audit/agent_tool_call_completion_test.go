@@ -96,7 +96,7 @@ func TestCheckpointSealToolCallsPendingCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cp.AggScheme != model.AggSchemeV3 || *cp.ToolCallIDFrom != 1 || *cp.ToolCallIDTo != row.ID || *cp.ToolCallRowCount != 1 {
+	if cp.AggScheme != model.LatestCheckpointScheme || *cp.ToolCallIDFrom != 1 || *cp.ToolCallIDTo != row.ID || *cp.ToolCallRowCount != 1 {
 		t.Fatal(cp)
 	}
 	payload, err := CheckpointSignBytes(cp)

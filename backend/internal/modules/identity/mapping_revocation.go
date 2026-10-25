@@ -1,11 +1,13 @@
 package identity
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"gorm.io/gorm"
 )
 
@@ -51,9 +53,27 @@ func revokeMappingSupportsLocked(tx *gorm.DB, auditSink port.TxSink, kind string
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	// 先取齊全部使用者鎖再進迴圈：迴圈內的權限版本推進不得早於最後一把使用者鎖（鎖序同單一使用者路徑）
+	// 鎖序守衛的已知例外標記（測試期；生產恆為 nil）：映射撤銷在權限版本推進之後才取使用者鎖
+	if exempt := authz.LockOrderExemptMappingRevocationHook(); exempt != nil {
+		exempt(tx)
+	}
+	if err := lockUsersCredentialUpfrontTx(tx, ids); err != nil {
+		return err
+	}
 	ruleValues := make(map[string]string)
 	for _, userID := range ids {
 		if err := withUserCredentialLockTx(tx, userID, func(locked *gorm.DB) error {
+			// 支持者集合在取使用者鎖之前讀出，取到鎖時該帳號可能已由另一筆交易刪除並提交。
+			// 鎖內重讀：帳號已不存在時不撤角色、不調群組成員、不推進世代，也不寫以該帳號為主體的稽核，
+			// 與「先刪帳號、後刪規則」的依序結果相同（那時支持者集合根本不含此帳號）。
+			var user model.User
+			if err := locked.First(&user, userID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return deleteRuleSupportsForUserTx(locked, userID, channel, ruleType, ruleID)
+				}
+				return err
+			}
 			var supportChanges []mappingSupportChange
 			if ruleType == "role" || ruleType == "source" {
 				q := locked.Where("user_id=? AND channel=?", userID, channel)
@@ -100,23 +120,8 @@ func revokeMappingSupportsLocked(tx *gorm.DB, auditSink port.TxSink, kind string
 					return err
 				}
 			}
-			if ruleType == "role" {
-				if err := locked.Exec("DELETE FROM user_role_mapping_rule_supports WHERE user_id=? AND channel=? AND rule_id=?", userID, channel, ruleID).Error; err != nil {
-					return err
-				}
-			}
-			if ruleType == "group" {
-				if err := locked.Exec("DELETE FROM user_group_mapping_rule_supports WHERE user_id=? AND channel=? AND rule_id=?", userID, channel, ruleID).Error; err != nil {
-					return err
-				}
-			}
-			if ruleType == "source" {
-				if err := locked.Exec("DELETE FROM user_role_mapping_rule_supports WHERE user_id=? AND channel=?", userID, channel).Error; err != nil {
-					return err
-				}
-				if err := locked.Exec("DELETE FROM user_group_mapping_rule_supports WHERE user_id=? AND channel=?", userID, channel).Error; err != nil {
-					return err
-				}
+			if err := deleteRuleSupportsForUserTx(locked, userID, channel, ruleType, ruleID); err != nil {
+				return err
 			}
 			var keepRoles []uint
 			if err := locked.Table("user_role_mapping_rule_supports").Where("user_id=? AND channel=?", userID, channel).Distinct().Pluck("role_id", &keepRoles).Error; err != nil {
@@ -139,10 +144,6 @@ func revokeMappingSupportsLocked(tx *gorm.DB, auditSink port.TxSink, kind string
 					return err
 				}
 			}
-			var user model.User
-			if err := locked.First(&user, userID).Error; err != nil {
-				return err
-			}
 			code := MappingRuleRevokedEvent
 			if ruleType == "source" {
 				code = MappingSourceRevokedEvent
@@ -157,6 +158,29 @@ func revokeMappingSupportsLocked(tx *gorm.DB, auditSink port.TxSink, kind string
 		}); err != nil {
 			return err
 		}
+		if h := loadLockOrderHook(); h != nil {
+			h("mapping_revoke_after_user", tx, userID)
+		}
+	}
+	// 依據列刪除可能只改變成員來源（both→manual）而不推進版本；補記進權限狀態事件鏈
+	return authz.SettlePermissionChange(tx)
+}
+
+// deleteRuleSupportsForUserTx 清除單一帳號在本次撤銷範圍內的支持列（rule 型別只清該規則，
+// source 型別清整個通道）。帳號已刪除時也照常執行：帳號刪除流程在同一把使用者鎖內
+// 已清掉該帳號的全部支持列，此時通常刪到 0 列；仍保留這一步，讓規則刪除自己保證
+// 不留下指向已刪規則的支持列，不必依賴其他流程的清理。
+func deleteRuleSupportsForUserTx(tx *gorm.DB, userID uint, channel, ruleType string, ruleID uint) error {
+	switch ruleType {
+	case "role":
+		return tx.Exec("DELETE FROM user_role_mapping_rule_supports WHERE user_id=? AND channel=? AND rule_id=?", userID, channel, ruleID).Error
+	case "group":
+		return tx.Exec("DELETE FROM user_group_mapping_rule_supports WHERE user_id=? AND channel=? AND rule_id=?", userID, channel, ruleID).Error
+	case "source":
+		if err := tx.Exec("DELETE FROM user_role_mapping_rule_supports WHERE user_id=? AND channel=?", userID, channel).Error; err != nil {
+			return err
+		}
+		return tx.Exec("DELETE FROM user_group_mapping_rule_supports WHERE user_id=? AND channel=?", userID, channel).Error
 	}
 	return nil
 }
@@ -194,11 +218,19 @@ func cleanupMappingHistoryForSourceLocked(tx *gorm.DB, sink port.TxSink, kind st
 	if err != nil {
 		return err
 	}
-	if err := tx.Unscoped().Where(column+"=?", sourceID).Delete(&model.GroupRoleMapping{}).Error; err != nil {
-		return err
+	delRoles := tx.Unscoped().Where(column+"=?", sourceID).Delete(&model.GroupRoleMapping{})
+	if delRoles.Error != nil {
+		return delRoles.Error
 	}
-	if err := tx.Unscoped().Where(column+"=?", sourceID).Delete(&model.GroupUserGroupMapping{}).Error; err != nil {
-		return err
+	delGroups := tx.Unscoped().Where(column+"=?", sourceID).Delete(&model.GroupUserGroupMapping{})
+	if delGroups.Error != nil {
+		return delGroups.Error
+	}
+	// 權限版本：身分來源刪除連同其映射規則列一併清除，有列被刪才推進（與刪除同交易）
+	if delRoles.RowsAffected+delGroups.RowsAffected > 0 {
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return err
+		}
 	}
 	if err := tx.Where(column+"=?", sourceID).Delete(&model.ExternalGroup{}).Error; err != nil {
 		return err

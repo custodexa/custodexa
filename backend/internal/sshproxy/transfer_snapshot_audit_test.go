@@ -32,7 +32,7 @@ func TestTextSessionTransferSnapshot(t *testing.T) {
 				}
 			}
 			create := func() *model.Session {
-				return e.h.createSession(1, 1, tc.protocol, "192.0.2.17", nil, accountSnapshot{}, authProvenance{}, tc.console)
+				return e.h.createSession(1, 1, tc.protocol, "192.0.2.17", nil, accountSnapshot{}, authProvenance{}, tc.console, "")
 			}
 			rows := func() []model.AuditLog {
 				var result []model.AuditLog
@@ -69,7 +69,7 @@ func TestTextSessionTransferSnapshot(t *testing.T) {
 			e.h.DataTransfer = nil
 			verify(create(), map[string]any{"clipboard_send": false, "clipboard_recv": false, "file_upload": false, "file_download": false, "file_delete": false}, false)
 			before := len(rows())
-			require.NotNil(t, e.h.createSession(1, 1, model.ProtocolK8s, "192.0.2.17", nil, accountSnapshot{}, authProvenance{}, false))
+			require.NotNil(t, e.h.createSession(1, 1, model.ProtocolK8s, "192.0.2.17", nil, accountSnapshot{}, authProvenance{}, false, ""))
 			require.Len(t, rows(), before, "K8s is outside this snapshot scope")
 			require.NoError(t, e.db.Callback().Create().Before("gorm:create").Register("reject_snapshot_session", func(tx *gorm.DB) {
 				if tx.Statement.Table == "sessions" {

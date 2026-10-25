@@ -12,6 +12,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { OFFSITE_STATUS_VALUES } from '@/constants/offsite'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 enableAutoUnmount(afterEach)
 
@@ -42,6 +44,19 @@ vi.mock('@/api/clipboardEvents', () => ({
   getSessionClipboardEvents: vi.fn().mockResolvedValue({ data: [] }),
   getClipboardEventContent: vi.fn(),
 }))
+
+// 未在此檔驗證的取數：一律以拒絕取代真實請求（行為同既有「取不到」），避免有服務時
+// 收到 401 觸發續期失敗、清掉會話與能力快照，讓結果隨執行環境改變
+const { rejectAll } = vi.hoisted(() => ({
+  rejectAll: async (importOriginal) => {
+    const actual = await importOriginal()
+    return Object.fromEntries(
+      Object.entries(actual).map(([k, v]) => [k, typeof v === 'function' ? vi.fn(() => Promise.reject(new Error('not mocked'))) : v]),
+    )
+  },
+}))
+vi.mock('@/api/alerts', rejectAll)
+vi.mock('@/api/agentTasks', rejectAll)
 
 const settingsMock = vi.fn()
 const retryObjectMock = vi.fn()
@@ -82,10 +97,14 @@ const baseSession = (over) => ({
   ...over,
 })
 
-const asAdmin = () =>
-  localStorage.setItem('user', JSON.stringify({ id: 1, roles: ['admin'] }))
-const asAuditor = () =>
-  localStorage.setItem('user', JSON.stringify({ id: 2, roles: ['auditor'] }))
+const asAdmin = () => {
+  localStorage.setItem('user', JSON.stringify({ id: 1 }))
+  grantFor(['admin'])
+}
+const asAuditor = () => {
+  localStorage.setItem('user', JSON.stringify({ id: 2 }))
+  grantFor(['auditor'])
+}
 
 const mountPage = async () => {
   const wrapper = mount(SessionDetail, { global: { plugins: [ElementPlus] } })
@@ -106,6 +125,7 @@ const offsiteTag = (wrapper) => {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  resetCapabilities()
   getSessionMock.mockResolvedValue(baseSession())
   settingsMock.mockResolvedValue({ configured: true, disabled: false })
 })

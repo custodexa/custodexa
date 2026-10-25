@@ -99,7 +99,10 @@ func newOIDCAbuseTestEnv(t *testing.T, trustProxy bool, params sourceGuardParams
 	}
 	// 純 Go driver 的每條連線是各自獨立的空 DB，故釘住單連線
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.OIDCFlowState{}, &model.OIDCLoginTicket{}); err != nil {
+	if err := db.AutoMigrate(&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

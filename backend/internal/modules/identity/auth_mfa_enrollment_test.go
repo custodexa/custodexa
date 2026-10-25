@@ -26,7 +26,8 @@ func setupMFAEnv(t *testing.T) (*AuthService, *policy.SecurityPolicyService, *go
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.RefreshToken{},
+	seedAuthzState(t, db)
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)

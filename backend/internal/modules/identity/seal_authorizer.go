@@ -35,7 +35,7 @@ func (a *SealAuthorizer) Authorize(ctx context.Context, token string) (uint, err
 		return 0, ErrEpochGateUnavailable
 	}
 	var user model.User
-	if err = a.db.WithContext(ctx).Preload("Roles").First(&user, claims.UserID).Error; err != nil {
+	if err = a.db.WithContext(ctx).First(&user, claims.UserID).Error; err != nil {
 		return 0, err
 	}
 	if err = checkConnectableUser(&user); err != nil {
@@ -44,7 +44,11 @@ func (a *SealAuthorizer) Authorize(ctx context.Context, token string) (uint, err
 	if err = VerifyCredentialGenerationTx(a.db.WithContext(ctx), claims.AuthContext, &user); err != nil {
 		return 0, err
 	}
-	if primaryRoleOf(&user) != "admin" {
+	isAdmin, err := hasEffectiveGlobalSuperAdmin(a.db.WithContext(ctx), &user)
+	if err != nil {
+		return 0, err
+	}
+	if !isAdmin {
 		return 0, errors.New("identity: administrator required")
 	}
 	return user.ID, nil

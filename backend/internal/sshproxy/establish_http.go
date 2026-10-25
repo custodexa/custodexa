@@ -40,7 +40,7 @@ func (h *Handler) writeEstablishFailure(c *gin.Context, f *EstablishFailure) {
 		return
 	}
 	if f.Dial {
-		writeDialError(c, apierror.ErrCode(f.Outcome.Decision.Code), f.Message)
+		writeDialErrorParams(c, apierror.ErrCode(f.Outcome.Decision.Code), f.Message, f.Params)
 		return
 	}
 	h.writeOutcome(c, f.Outcome)

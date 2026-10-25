@@ -42,7 +42,7 @@ type revealTestEnv struct {
 func newSensitiveRevealEnv(t *testing.T, enabled bool) *revealTestEnv {
 	t.Helper()
 	env := newPolicyTestEnv(t)
-	if err := env.db.AutoMigrate(&model.Session{}, &model.ClipboardEvent{}, &model.CommandAlert{}); err != nil {
+	if err := migrateWithAuthz(env.db, &model.Session{}, &model.ClipboardEvent{}, &model.CommandAlert{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	asset, task := uint(42), uint(91)

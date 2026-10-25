@@ -238,12 +238,11 @@ import { resolveApiError } from '@/api/error'
 import { approveAccessRequest, rejectAccessRequestItem } from '@/api/accessRequests'
 import { listAssetAccounts } from '@/api/assetAccounts'
 import { useAssetLabels } from '@/composables/useAssetLabels'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 const props = defineProps({ request: { type: Object, required: true }, actorId: { type: Number, default: null } })
 const emit = defineEmits(['decided'])
 // audit:view 才進得了任務視角；其餘審核者導回審核中心歷史頁的這張單
-const { isPrivileged } = useRoles()
-const openRequestHref = computed(() => isPrivileged.value
+const openRequestHref = computed(() => can('audit:view')
   ? `/audit/agent-tasks/${props.request.id}`
   : `/approvals?request=${props.request.id}`)
 const requesterName = computed(() => props.request.requester?.username || t('itemReview.unknownPerson'))

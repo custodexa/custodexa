@@ -2,6 +2,7 @@ package sshproxy
 
 import (
 	"github.com/custodexa/backend/internal/modules/identity"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -69,8 +70,8 @@ func setupShareParity(t *testing.T) *shareParityEnv {
 	}
 	// 單連線：:memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.Asset{},
-		&model.Session{}, &model.OIDCProvider{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.Asset{},
+		&model.Session{}, &model.OIDCProvider{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -233,6 +234,22 @@ func newParityShareCode(t *testing.T, e *shareParityEnv) string {
 	return code
 }
 
+// dialStatus 嘗試 WS 握手並回傳 HTTP 狀態碼（握手成功為 101；被拒為 handler 的回應碼）
+func (a joinAttempt) dialStatus(t *testing.T) int {
+	t.Helper()
+	srv := httptest.NewServer(a.r)
+	defer srv.Close()
+	ws, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+a.wsURL, nil)
+	if err == nil {
+		ws.Close()
+		return http.StatusSwitchingProtocols
+	}
+	if resp == nil {
+		t.Fatalf("dial %s: %v（無 HTTP 回應）", a.wsURL, err)
+	}
+	return resp.StatusCode
+}
+
 func dialWS(t *testing.T, r *gin.Engine, path string) *websocket.Conn {
 	t.Helper()
 	srv := httptest.NewServer(r)
@@ -363,12 +380,33 @@ func TestSubscriptionJoinGuardParity(t *testing.T) {
 
 			attempt := p.prepare(t, e, 1, authCtx)
 			e.disableProvider(t, e.pid)
-			ws := attempt.dial(t)
-			expectClosed(t, ws, p.name+"：provider 已停用後的訂閱建立")
+			// 升級前預檢（PrecheckObserverBeforeUpgrade）先於鎖內閘擋下：非 101 的拒絕
+			if code := attempt.dialStatus(t); code == http.StatusSwitchingProtocols {
+				t.Fatalf("%s：provider 已停用後的訂閱建立不得升級（得 101）", p.name)
+			}
 
 			// 且不得留下任何存活的訂閱（掃描已跑完，留下即是永久旁路）
 			if n := e.h.Monitor.DisconnectByUser(1); n != 0 {
 				t.Fatalf("%s：世代閘拒絕後仍留下 %d 個訂閱", p.name, n)
+			}
+		})
+		t.Run(p.name+"/使用者停用後以有效票連線於升級前被拒", func(t *testing.T) {
+			e := setupShareParity(t)
+			authCtx := crypto.AuthContext{}
+			// 啟用中：照常 101 並生效
+			okWS := p.dial(t, e, 1, authCtx)
+			waitRegistered(t, e.tap, okWS, p.name+" 啟用中訂閱")
+
+			attempt := p.prepare(t, e, 2, authCtx)
+			if err := e.db.Model(&model.User{}).Where("id = ?", 2).
+				Updates(map[string]any{"active": false, "credential_epoch": gorm.Expr("credential_epoch + 1")}).Error; err != nil {
+				t.Fatalf("停用使用者: %v", err)
+			}
+			if code := attempt.dialStatus(t); code == http.StatusSwitchingProtocols {
+				t.Fatalf("%s：停用使用者持有效票連線不得升級（得 101）", p.name)
+			}
+			if n := e.h.Monitor.DisconnectByUser(2); n != 0 {
+				t.Fatalf("%s：被拒後仍留下 %d 個訂閱", p.name, n)
 			}
 		})
 	}

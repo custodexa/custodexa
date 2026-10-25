@@ -20,7 +20,10 @@ import (
 
 func TestAgentForbiddenSurfaces(t *testing.T) {
 	db, _, owner, agent := principalAPIEnv(t)
-	if err := db.AutoMigrate(&model.AgentToken{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToken{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := identity.NewAgentTokenService(db, audit.NewTxSink())
@@ -56,7 +59,10 @@ func TestAgentPrincipalEndToEnd(t *testing.T) {
 	for _, event := range []string{"revoke", "owner inactive", "owner epoch"} {
 		t.Run(event, func(t *testing.T) {
 			db, h, owner, agent := principalAPIEnv(t)
-			if err := db.AutoMigrate(&model.AgentToken{}, &model.Session{}, &model.RefreshToken{}, &model.AccessRequest{}, &model.AccessRequestItem{}); err != nil {
+			if err := db.AutoMigrate(&model.AgentToken{}, &model.Session{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.Role{}, &model.UserGroup{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 				t.Fatal(err)
 			}
 			old := database.DB

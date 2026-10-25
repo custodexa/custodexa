@@ -25,10 +25,11 @@ type NotificationChannelServiceInterface interface {
 	GetForDelivery(id uint) (*model.NotificationChannel, error)
 	Create(req *audit.NotificationChannelRequest) (*model.NotificationChannel, error)
 	Update(id uint, req *audit.NotificationChannelRequest) (*model.NotificationChannel, error)
-	Delete(id uint) error
+	Delete(id uint, actor audit.ChannelActor) error
 }
 
-// NotificationChannelHandler 通知通道 API handler（alert-notifications，admin only）
+// NotificationChannelHandler 通知通道 API handler（alert-notifications）。
+// 權限依通知通道管理權限點（notification_channel:manage），由路由登錄表裁決。
 type NotificationChannelHandler struct {
 	channelService NotificationChannelServiceInterface
 	// testSender 可注入：handler 測試不該真的發 HTTP，預設為 service.SendTestNotification
@@ -135,7 +136,10 @@ func (h *NotificationChannelHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.channelService.Delete(uint(id)); err != nil {
+	actorID, _ := middleware.GetCurrentUserID(c)
+	actorName, _ := middleware.GetCurrentUsername(c)
+	actor := audit.ChannelActor{ID: actorID, Name: actorName, IP: sourceip.Of(c)}
+	if err := h.channelService.Delete(uint(id), actor); err != nil {
 		respondChannelError(c, err)
 		return
 	}
@@ -183,11 +187,12 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 }
 
 // RegisterRoutes 註冊通知通道路由：
-// 通道含 secret 且控制告警外發目的地，整組 admin only（與 alert-rules 同模式）
+// 通道含 secret 且控制告警外發目的地，整組端點都要求通知通道管理權限點
+// （notification_channel:manage），由路由登錄表裁決，不寫死角色名稱
 func (h *NotificationChannelHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	channels := r.Group("/notification-channels")
 	channels.Use(middleware.AuthMiddleware(authService))
-	channels.Use(middleware.RequireRole("admin"))
+	channels.Use(middleware.EnforceRegistry())
 	{
 		channels.GET("", h.List)
 		channels.POST("", h.Create)

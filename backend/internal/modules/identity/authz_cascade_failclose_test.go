@@ -35,9 +35,10 @@ func setupCascadeFailCloseDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
+	seedAuthzState(t, db)
+	if err := db.AutoMigrate(&model.User{}, &model.UserGroupRole{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
-		&model.RefreshToken{}, &model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{}); err != nil {
+		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

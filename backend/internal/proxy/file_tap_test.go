@@ -26,7 +26,10 @@ func setupFileTapDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

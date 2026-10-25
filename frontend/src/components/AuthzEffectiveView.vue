@@ -14,7 +14,7 @@
           <el-option
             v-for="u in userList"
             :key="u.id"
-            :label="u.username"
+            :label="userOptionLabel(u)"
             :value="u.id"
           />
         </el-select>
@@ -60,6 +60,14 @@
       :title="result.role_override_note"
     />
 
+    <el-alert
+      v-if="selectorFailed"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="override-banner"
+      :title="$t('authorizations.selectorLoadFailed')"
+    />
     <el-alert
       v-if="errorMsg"
       type="error"
@@ -126,10 +134,22 @@
           width="90"
         />
         <el-table-column
-          prop="asset_name"
           :label="$t('common.assetName')"
           min-width="180"
-        />
+        >
+          <template #default="{ row }">
+            <span>{{ row.asset_name }}</span>
+            <!-- 範圍外歸屬只給計數，不顯示節點名稱 -->
+            <el-text
+              v-if="outOfScopeCount(row)"
+              size="small"
+              type="info"
+              class="out-of-scope-hint"
+            >
+              {{ $t('assets.scopedOutOfScopeNodes', { n: outOfScopeCount(row) }) }}
+            </el-text>
+          </template>
+        </el-table-column>
         <el-table-column
           :label="$t('common.protocol')"
           width="110"
@@ -146,10 +166,22 @@
           width="100"
         />
         <el-table-column
-          prop="username"
           :label="$t('common.user')"
           min-width="180"
-        />
+        >
+          <template #default="{ row }">
+            <span>{{ row.username }}</span>
+            <!-- 範圍外歸屬只給計數，不顯示節點名稱 -->
+            <el-text
+              v-if="outOfScopeCount(row)"
+              size="small"
+              type="info"
+              class="out-of-scope-hint"
+            >
+              {{ $t('assets.scopedOutOfScopeNodes', { n: outOfScopeCount(row) }) }}
+            </el-text>
+          </template>
+        </el-table-column>
       </template>
       <el-table-column
         :label="$t('authzEffective.colEffectivePermission')"
@@ -187,9 +219,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getEffectiveAssets, getEffectiveUsers } from '@/api/authorizations'
-import { getUsers } from '@/api/auth'
-import { getAssetList } from '@/api/assets'
+import {
+  getEffectiveAssets,
+  getEffectiveUsers,
+  getAuthorizationSubjectOptions,
+  getAuthorizationTargetOptions,
+} from '@/api/authorizations'
+import { loadSelector, userOptionLabel } from '@/utils/authzSelectors'
+import { outOfScopeCount } from '@/utils/scopedAssets'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { t } from '@/i18n'
@@ -210,6 +247,7 @@ const loading = ref(false)
 const errorMsg = ref('')
 const userList = ref([])
 const assetList = ref([])
+const selectorFailed = ref(false)
 
 const rows = computed(() => {
   if (!result.value) return []
@@ -257,16 +295,15 @@ const pathKindTagType = (kind) => {
 }
 
 onMounted(async () => {
-  try {
-    if (props.mode === 'subject') {
-      const res = await getUsers()
-      userList.value = res.data || []
-    } else {
-      const res = await getAssetList({ page_size: 1000 })
-      assetList.value = res.data || []
-    }
-  } catch (error) {
-    console.error('載入選項失敗:', error)
+  // 選項來自授權管理選擇器（已依伺服器端範圍投影）；失敗就地提示
+  if (props.mode === 'subject') {
+    const res = await loadSelector(getAuthorizationSubjectOptions, { kind: 'user' })
+    userList.value = res.rows
+    selectorFailed.value = res.failed
+  } else {
+    const res = await loadSelector(getAuthorizationTargetOptions, { kind: 'asset' })
+    assetList.value = res.rows
+    selectorFailed.value = res.failed
   }
 })
 

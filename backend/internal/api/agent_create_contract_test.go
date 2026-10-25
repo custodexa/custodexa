@@ -70,13 +70,17 @@ func agentContractEnv(t *testing.T) (*gorm.DB, *gin.Engine, *model.User) {
 	t.Helper()
 	db, h, owner, _ := principalAPIEnv(t)
 	// Human creation writes the initial password into history (positive control).
-	if err := db.AutoMigrate(&model.PasswordHistory{}); err != nil {
+	if err := db.AutoMigrate(&model.PasswordHistory{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.Role{Name: model.RoleUser}).Error; err != nil {
 		t.Fatal(err)
 	}
 	router := gin.New()
+	router.Use(asSuperAdmin(t, db))
 	router.POST("/users", h.Create)
 	return db, router, owner
 }

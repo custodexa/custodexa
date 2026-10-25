@@ -98,16 +98,24 @@ func setupRefreshCookieEnv(t *testing.T) *refreshCookieEnv {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1) // :memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
 		&model.UserExternalIdentity{}, &model.OIDCFlowState{}, &model.OIDCLoginTicket{},
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
 	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
-	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.Role{}, &model.UserGroup{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("user_roles: %v", err)
+	}
+	// GET／PATCH /auth/me 的能力投影逐請求解析主體，需要權限模型的表
+	if err := db.AutoMigrate(&model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{},
+		&model.RoleBindingNode{}, &model.AuthzState{}, &model.AssetGroup{}); err != nil {
+		t.Fatalf("authz tables: %v", err)
 	}
 	oldDB := database.DB
 	database.DB = db
@@ -129,7 +137,7 @@ func setupRefreshCookieEnv(t *testing.T) *refreshCookieEnv {
 	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 	h.SetUserService(users)
 
-	providers := identity.NewOIDCProviderService(db, nil, nil, nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, nil, nil, "https://bastion.example.com")
 	login := identity.NewOIDCLoginService(db, providers, nil, auth, nil)
 	oidcHandler := NewOIDCHandler(providers, login, "https://bastion.example.com", nil)
 	oidcHandler.SetSourcePolicyReader(unrestrictedSourcePolicy())

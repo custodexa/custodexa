@@ -34,6 +34,7 @@ var auditReasonMachineCodes = []auditReasonMachineCode{
 	{Code: "user_group_mapping_applied"},
 	{Code: "role_mapping_source_attr_unset"},
 	{Code: "role_mapping_groups_unknown"},
+	{Code: "membership_revalidation_expired"},
 	{Code: "group_mapping_rule_revoked"},
 	{Code: "group_mapping_source_revoked"},
 }
@@ -116,7 +117,16 @@ var auditReasonEvents = []auditReasonEvent{
 	{Event: "group_user_group_mapping_create"},
 	{Event: "group_user_group_mapping_update"},
 	{Event: "group_user_group_mapping_delete"},
+	{Event: "role_binding_range_changed"},
+	{Event: "role_mapping_pin"},
+	{Event: "oidc_provider_settings_change"},
+	{Event: "user_group_manual_member_added"},
 	{Event: "user_group_manual_member_removed"},
+	// 授權變更分級與系統安全管理員帳號身分操作（服務審計 details 事件）
+	{Event: "grant_change_graded"},
+	{Event: "security_admin_account_operated"},
+	// 角色修改或 agent 角色寫入提交後，重查發現 agent 持有含受限權限點的角色
+	{Event: "role_update_agent_restricted_detected"},
 	// 帳號刪除與懸空的外部身分綁定（綁定指向已刪除的帳號）
 	{Event: "user_deleted", Params: func(d reasonDetails) reasonParams {
 		return reasonParams{"username": opaque(d.str("target_username")),
@@ -138,7 +148,9 @@ var (
 	reasonAccountOps = []string{model.AccountOpCreate, model.AccountOpUpdate, model.AccountOpDelete,
 		model.AccountOpSetDefault, model.AccountOpDiscardCandidate}
 	reasonCredentialOps = []string{model.AccountOpCreate, model.AccountOpUpdate, model.AccountOpDelete,
-		"bind", "unbind", "scope", "rebind", "rotate", "abandon", "detach"}
+		"bind", "unbind", "scope", "rebind", "rotate", "abandon", "detach", model.AccountOpSetSecret,
+		"authorization_stop", "recovery_verify", "rotation_reauthorized", "rotation_interrupted",
+		model.AuditOpHostIdentityStop}
 )
 
 func reasonPrefixed(prefix string, values []string) []string {
@@ -179,6 +191,33 @@ var auditReasonShapes = []auditReasonShape{
 				reasonContains(reasonCredentialOps, op)
 			return "credential_" + op, nil, ok
 		}},
+	// 改密計畫、批次因發起者當下權限不足而停止（遠端未被觸碰）
+	{Codes: []string{"change_secret_authorization_stop"},
+		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			ok := in.Resource == string(model.ResourceChangeSecretPlan) &&
+				d.str("resource") == string(model.ResourceChangeSecretPlan) && d.str("operation") == "authorization_stop"
+			return "change_secret_authorization_stop", nil, ok
+		}},
+	// 失權後的有限驗證（候選）與一鍵重新授權承接：同屬改密計畫資源，以 operation 區分
+	{Codes: []string{"change_secret_recovery_verify"},
+		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			ok := in.Resource == string(model.ResourceChangeSecretPlan) &&
+				d.str("resource") == string(model.ResourceChangeSecretPlan) && d.str("operation") == "recovery_verify"
+			return "change_secret_recovery_verify", nil, ok
+		}},
+	// 改密候選因目標主機身分異動而停止（輪替成員的同因停止走 credential_ 前綴）
+	{Codes: []string{"change_secret_host_identity_stop"},
+		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			ok := in.Resource == string(model.ResourceChangeSecretPlan) &&
+				d.str("resource") == string(model.ResourceChangeSecretPlan) && d.str("operation") == model.AuditOpHostIdentityStop
+			return "change_secret_host_identity_stop", nil, ok
+		}},
+	{Codes: []string{"change_secret_reauthorize"},
+		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			ok := in.Resource == string(model.ResourceChangeSecretPlan) &&
+				d.str("resource") == string(model.ResourceChangeSecretPlan) && d.str("operation") == "reauthorize"
+			return "change_secret_reauthorize", nil, ok
+		}},
 	{Codes: []string{"asset_group_deleted"},
 		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
 			ok := in.Action == string(model.ActionDelete) && in.Resource == string(model.ResourceAsset) && d["asset_node_name"] != nil
@@ -200,6 +239,16 @@ var auditReasonShapes = []auditReasonShape{
 		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
 			ok := in.Resource == string(model.ResourceAuditExport) && d.str("reason") == model.ExportJobErrRequesterRevoked
 			return "audit_export_requester_revoked", reasonParams{"job_id": opaque(d.str("job_id"))}, ok
+		}},
+	// 授權拒絕（能力不足、目標不在可管理範圍）：只看 denial 值，不看其餘鍵。
+	// kind_unmapped 的回應雖為 403，denial 仍是 scope。
+	{Codes: []string{"authz_capability_denied"},
+		Match: func(_ AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			return "authz_capability_denied", nil, d.str("denial") == "capability"
+		}},
+	{Codes: []string{"authz_scope_denied"},
+		Match: func(_ AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			return "authz_scope_denied", nil, d.str("denial") == "scope"
 		}},
 	// 資產刪除時資料層留下的列：沒有 details、沒有路徑
 	{Codes: []string{"asset_deleted"},

@@ -79,7 +79,17 @@ func (b *RotationReportBuilder) Build(scope ReportScope, periodStart, periodEnd,
 // 批次改密的目標清單走這裡：目標的狀態桶、剩餘天數與共用標記必須與輪替證據頁
 // 逐字相同，而「逐字相同」只有一種做法——同一段推導。
 func (b *RotationReportBuilder) AccountRows(names model.AccountScope, asOf time.Time) ([]AccountRow, error) {
-	rows, err := b.accountRows(nil, names, asOf)
+	return b.AccountRowsIn(names, nil, nil, asOf)
+}
+
+// PlanFilter 彙總涵蓋計畫之前套用的計畫可見性投影（nil＝全部計畫）。
+type PlanFilter func([]model.ChangeSecretPlan) ([]model.ChangeSecretPlan, error)
+
+// AccountRowsIn 同 AccountRows，另限資產集合（nil＝不限，空切片＝沒有任何資產；篩選在帳號查詢內），
+// 並可在彙總涵蓋計畫、適用天數與排程之前只留可見計畫。
+func (b *RotationReportBuilder) AccountRowsIn(names model.AccountScope, assetFilter []uint,
+	plans PlanFilter, asOf time.Time) ([]AccountRow, error) {
+	rows, err := b.accountRowsFiltered(assetFilter, names, nil, plans, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -97,12 +107,12 @@ type accountRowsResult struct {
 // accountRows 母體 → 資產 → 計劃涵蓋 → 最後成功 → 最近記錄 → 候選 → 逐列推導。
 func (b *RotationReportBuilder) accountRows(assetFilter []uint, planFilter model.AccountScope,
 	asOf time.Time) (accountRowsResult, error) {
-	return b.accountRowsFiltered(assetFilter, planFilter, nil, asOf)
+	return b.accountRowsFiltered(assetFilter, planFilter, nil, nil, asOf)
 }
 
 // accountRowsFiltered 同上，另可只取指定的幾個掛載（憑證庫左表的逐憑證投影用）。
 func (b *RotationReportBuilder) accountRowsFiltered(assetFilter []uint, planFilter model.AccountScope,
-	accountFilter []uint, asOf time.Time) (accountRowsResult, error) {
+	accountFilter []uint, visiblePlans PlanFilter, asOf time.Time) (accountRowsResult, error) {
 
 	out := accountRowsResult{}
 	if b.maxAge != nil {
@@ -122,6 +132,11 @@ func (b *RotationReportBuilder) accountRowsFiltered(assetFilter []uint, planFilt
 	out.plans, err = b.plans.List()
 	if err != nil {
 		return out, err
+	}
+	if visiblePlans != nil {
+		if out.plans, err = visiblePlans(out.plans); err != nil {
+			return out, err
+		}
 	}
 
 	accountIDs := make([]uint, 0, len(accounts))
@@ -470,7 +485,7 @@ func (b *RotationReportBuilder) CredentialRotationStatus(credentialID uint, asOf
 	for i := range bindings {
 		ids = append(ids, bindings[i].ID)
 	}
-	rows, err := b.accountRowsFiltered(nil, nil, ids, asOf)
+	rows, err := b.accountRowsFiltered(nil, nil, ids, nil, asOf)
 	if err != nil {
 		return "", err
 	}

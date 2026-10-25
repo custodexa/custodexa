@@ -19,6 +19,22 @@
     </el-steps>
 
     <div class="step-content">
+      <el-alert
+        v-if="selectorFailed"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="selector-failed-notice"
+        :title="$t('authorizations.selectorLoadFailed')"
+      />
+      <el-alert
+        v-if="batchError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="batch-error-notice"
+        :title="batchError"
+      />
       <!-- Step 1: 選擇主體（使用者或使用者群組） -->
       <div v-show="currentStep === 0">
         <el-radio-group
@@ -42,6 +58,7 @@
           <el-table-column
             type="selection"
             width="55"
+            :selectable="groupSelectable"
           />
           <el-table-column
             prop="name"
@@ -53,7 +70,7 @@
             width="100"
           >
             <template #default="{ row }">
-              {{ (row.users || []).length }}
+              {{ row.member_count ?? 0 }}
             </template>
           </el-table-column>
           <el-table-column
@@ -62,6 +79,15 @@
             min-width="180"
           />
         </el-table>
+        <!-- 本人所屬群組不可勾選（S9-b）：原因在分頁底部一次說明 -->
+        <el-alert
+          v-if="subjectMode === 'userGroups' && selfLimitApplies"
+          type="info"
+          :closable="false"
+          show-icon
+          class="self-group-notice"
+          :title="$t('authzWizard.selfGroupNotice')"
+        />
 
         <el-input
           v-if="subjectMode === 'users'"
@@ -84,6 +110,7 @@
           <el-table-column
             type="selection"
             width="55"
+            :selectable="userSelectable"
           />
           <el-table-column
             prop="id"
@@ -91,28 +118,40 @@
             width="80"
           />
           <el-table-column
-            prop="username"
             :label="$t('common.username')"
             min-width="150"
-          />
+          >
+            <template #default="{ row }">
+              <!-- 本人與本人擁有的 agent 不可勾選（S9-b）：原因就地說明 -->
+              <span>{{ row.username }}</span>
+              <el-text
+                v-if="selfSubjectReason(row)"
+                size="small"
+                type="info"
+                class="self-subject-reason"
+              >
+                {{ selfSubjectReason(row) }}
+              </el-text>
+            </template>
+          </el-table-column>
           <el-table-column
-            prop="email"
-            label="Email"
-            min-width="200"
+            prop="display_name"
+            :label="$t('authzWizard.colDisplayName')"
+            min-width="160"
           />
           <el-table-column
             :label="$t('common.role')"
-            width="150"
+            min-width="150"
           >
             <template #default="{ row }">
-              <!-- 角色取 role.name（原噴整包 role 物件 JSON） -->
+              <!-- 選擇器的角色是名稱清單 -->
               <el-tag
                 v-for="role in row.roles || []"
-                :key="role.id"
+                :key="role"
                 size="small"
                 style="margin-right: 5px"
               >
-                {{ role.name }}
+                {{ role }}
               </el-tag>
             </template>
           </el-table-column>
@@ -155,10 +194,18 @@
             style="margin-bottom: 10px"
             :title="$t('authzWizard.nodeScopeAlert')"
           />
+          <el-alert
+            v-if="prefillUnavailable"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 10px"
+            :title="$t('nodeTree.authorizeNodeUnavailable')"
+          />
           <el-tree
             ref="nodeCheckTreeRef"
             :data="nodeTreeOptions"
-            :props="{ label: 'label', children: 'children' }"
+            :props="{ label: 'label', children: 'children', disabled: 'disabled' }"
             node-key="id"
             show-checkbox
             check-strictly
@@ -189,7 +236,7 @@
           <el-tree-select
             v-model="assetNodeFilter"
             :data="nodeTreeOptions"
-            :props="{ label: 'label', children: 'children' }"
+            :props="{ label: 'label', children: 'children', disabled: 'disabled' }"
             node-key="id"
             check-strictly
             clearable
@@ -250,10 +297,21 @@
             width="80"
           />
           <el-table-column
-            prop="name"
             :label="$t('common.assetName')"
             min-width="150"
-          />
+          >
+            <template #default="{ row }">
+              <span>{{ row.name }}</span>
+              <el-text
+                v-if="outOfScopeCount(row)"
+                size="small"
+                type="info"
+                class="out-of-scope-hint"
+              >
+                {{ $t('assets.scopedOutOfScopeNodes', { n: outOfScopeCount(row) }) }}
+              </el-text>
+            </template>
+          </el-table-column>
           <el-table-column
             :label="$t('common.protocol')"
             width="110"
@@ -263,7 +321,7 @@
                 class="ot-tag-neutral"
                 size="small"
               >
-                {{ row.protocol.toUpperCase() }}
+                {{ String(row.protocol || '').toUpperCase() }}
               </el-tag>
             </template>
           </el-table-column>
@@ -272,7 +330,7 @@
             min-width="180"
           >
             <template #default="{ row }">
-              {{ row.host }}:{{ row.port }}
+              {{ row.host }}
             </template>
           </el-table-column>
         </el-table>
@@ -411,10 +469,15 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Eye, Cable } from 'lucide-vue-next'
-import { batchCreateAuthorizations } from '@/api/authorizations'
-import { getAssetGroups, getAssetList, getAssetTags } from '@/api/assets'
-import { getUserGroups } from '@/api/userGroups'
-import { getUsers } from '@/api/auth'
+import {
+  batchCreateAuthorizations,
+  getSelfSubjects,
+  getAuthorizationSubjectOptions,
+  getAuthorizationTargetOptions,
+} from '@/api/authorizations'
+import { resolveApiError } from '@/api/error'
+import { isSelectableNode, loadSelector } from '@/utils/authzSelectors'
+import { outOfScopeCount } from '@/utils/scopedAssets'
 import { t } from '@/i18n'
 
 // 批次授權精靈（自 Authorizations.vue 拆出，
@@ -444,8 +507,25 @@ const batchTotalCount = ref(0)
 
 const userList = ref([])
 const userGroupList = ref([])
+// 本人範圍（本人、本人所屬群組、本人擁有的 agent）：與後端守衛同一判定。
+// null＝未取得（端點失敗或超管 applies=false 時不預先停用，後端仍會拒絕）
+const selfSubjects = ref(null)
+const selfLimitApplies = computed(() => Boolean(selfSubjects.value?.applies))
+const selfSubjectReason = (row) => {
+  if (!selfLimitApplies.value || !row) return ''
+  if (row.id === selfSubjects.value.user_id) return t('authzWizard.selfSubjectUser')
+  if ((selfSubjects.value.agent_ids || []).includes(row.id)) return t('authzWizard.selfSubjectAgent')
+  return ''
+}
+const userSelectable = (row) => !selfSubjectReason(row)
+const groupSelectable = (row) =>
+  !(selfLimitApplies.value && (selfSubjects.value.user_group_ids || []).includes(row?.id))
 const assetList = ref([])
 const groupList = ref([])
+// 各選項來源分開載入：任一來源失敗，其餘清單仍有值
+const selectorFailed = ref(false)
+const batchError = ref('')
+const prefillUnavailable = ref(false)
 
 // 挑選輔助：伺服端過濾狀態
 const assetNodeFilter = ref(null)
@@ -474,12 +554,15 @@ async function reloadAssetList() {
   const seq = ++assetRequestSeq
   assetListLoading.value = true
   try {
-    const res = await getAssetList(assetListParams())
+    const res = await getAuthorizationTargetOptions({ kind: 'asset', ...assetListParams() })
     if (seq !== assetRequestSeq) return
     assetList.value = res.data || []
     assetListTotal.value = res.total ?? (res.data || []).length
   } catch (err) {
-    if (seq === assetRequestSeq) console.error('載入資產清單失敗:', err)
+    if (seq === assetRequestSeq) {
+      selectorFailed.value = true
+      console.error('載入資產清單失敗:', err)
+    }
   } finally {
     if (seq === assetRequestSeq) assetListLoading.value = false
   }
@@ -498,7 +581,7 @@ const filteredUserList = computed(() => {
   if (!userSearchText.value) return userList.value
   const q = userSearchText.value.toLowerCase()
   return userList.value.filter(
-    u => u.username.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q))
+    u => u.username.toLowerCase().includes(q) || (u.display_name && u.display_name.toLowerCase().includes(q))
   )
 })
 
@@ -513,16 +596,22 @@ const canProceedToNextStep = computed(() => {
   return true
 })
 
-// 平面節點列表組樹（label 帶全路徑，供 checkbox 樹與確認步驟）
+// 節點候選組樹：候選列帶完整路徑（以 " / " 串接），父節點取路徑去掉最後一段者；
+// 可不可授權只認伺服器的 selectable，祖先定位節點停用
 const nodeTreeOptions = computed(() => {
-  const byId = new Map()
+  const byPath = new Map()
   groupList.value.forEach((n) => {
-    byId.set(n.id, { id: n.id, name: n.name, path: n.path, label: n.name, parent_id: n.parent_id, children: [] })
+    byPath.set(n.path, {
+      id: n.id, name: n.name, path: n.path, label: n.name,
+      disabled: !isSelectableNode(n), children: [],
+    })
   })
   const roots = []
-  byId.forEach((n) => {
-    if (n.parent_id && byId.has(n.parent_id)) {
-      byId.get(n.parent_id).children.push(n)
+  byPath.forEach((n, path) => {
+    const cut = path.lastIndexOf(' / ')
+    const parent = cut > 0 ? byPath.get(path.slice(0, cut)) : null
+    if (parent) {
+      parent.children.push(n)
     } else {
       roots.push(n)
     }
@@ -566,21 +655,29 @@ const handleAssetSelectionChange = (selection) => {
   selectedAssets.value = selection
 }
 
-async function loadLists() {
+async function loadSelfSubjects() {
   try {
-    const [users, userGroups, groups, tags] = await Promise.all([
-      getUsers(),
-      getUserGroups(),
-      getAssetGroups(),
-      getAssetTags(),
-    ])
-    userList.value = users.data || []
-    userGroupList.value = userGroups.data || []
-    groupList.value = groups.data || []
-    tagOptions.value = tags.data || []
+    selfSubjects.value = await getSelfSubjects()
   } catch (err) {
-    console.error('載入精靈選項失敗:', err)
+    // 讀取失敗不預先停用，也不阻擋其他操作（後端守衛照常拒絕）
+    selfSubjects.value = null
   }
+}
+
+async function loadLists() {
+  await loadSelfSubjects()
+  selectorFailed.value = false
+  const [users, userGroups, nodes, tags] = await Promise.all([
+    loadSelector(getAuthorizationSubjectOptions, { kind: 'user' }),
+    loadSelector(getAuthorizationSubjectOptions, { kind: 'user_group' }),
+    loadSelector(getAuthorizationTargetOptions, { kind: 'node' }),
+    loadSelector(getAuthorizationTargetOptions, { kind: 'tag' }),
+  ])
+  userList.value = users.rows
+  userGroupList.value = userGroups.rows
+  groupList.value = nodes.rows
+  tagOptions.value = tags.rows
+  if ([users, userGroups, nodes, tags].some((r) => r.failed)) selectorFailed.value = true
   // 資產清單走伺服端過濾，與上列選項獨立載入
   await reloadAssetList()
 }
@@ -596,7 +693,9 @@ watch(
     if (props.prefillNodeId) {
       targetMode.value = 'groups'
       await nextTick()
-      const node = groupList.value.find((n) => n.id === props.prefillNodeId)
+      // 預填以節點候選為準：不在候選內或不可授權的節點不預勾，並就地說明
+      const node = groupList.value.find((n) => n.id === props.prefillNodeId && isSelectableNode(n))
+      prefillUnavailable.value = !node
       selectedGroups.value = node ? [node] : []
       if (node && nodeCheckTreeRef.value) {
         nodeCheckTreeRef.value.setCheckedKeys([props.prefillNodeId])
@@ -623,6 +722,7 @@ const handleBatchSubmit = async () => {
   batchProcessing.value = true
   batchProgress.value = 0
   batchProgressStatus.value = ''
+  batchError.value = ''
 
   const payload = {
     user_ids: selectedUsers.value.map(u => u.id),
@@ -654,6 +754,8 @@ const handleBatchSubmit = async () => {
     }, 1200)
   } catch (error) {
     batchProgressStatus.value = 'exception'
+    // 通用譯文（NOTFOUND_BATCH_ITEMS_UNAVAILABLE 含筆數）直接顯示在精靈內
+    batchError.value = resolveApiError(error?.response?.data, error?.response?.status, t('common.serverError'))
     console.error('批次授權失敗:', error)
   } finally {
     batchProcessing.value = false
@@ -661,6 +763,8 @@ const handleBatchSubmit = async () => {
 }
 
 function resetState() {
+  batchError.value = ''
+  prefillUnavailable.value = false
   currentStep.value = 0
   selectedUsers.value = []
   selectedUserGroups.value = []
@@ -727,6 +831,13 @@ defineExpose({
 </script>
 
 <style scoped>
+.self-subject-reason {
+  margin-left: 8px;
+}
+.self-group-notice {
+  margin-top: 12px;
+}
+
 .step-content {
   margin-top: 30px;
   min-height: 400px;

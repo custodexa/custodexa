@@ -11,6 +11,7 @@
     "recording_metadata_update_failed": "錄影 metadata 更新失敗",
     "recording_file_missing": "錄影檔缺失（寫入失敗或錄製未啟動）",
     "session_record_create_failed": "會話記錄建立失敗，連線已拒",
+    "host_key_mismatch_record_failed": "主機金鑰不符的留痕寫入失敗，連線已在送出憑證前中止",
     "audit_write_fallback_file": "稽核批次寫入失敗，已降級至檔案",
     "audit_write_batch_dropped": "稽核批次寫入失敗，檔案降級已關閉、批次丟棄",
     "audit_write_sync_refused": "同步稽核寫入失敗，該次操作已拒絕",
@@ -32,13 +33,27 @@
     "offsite_upload_stalled": "離機儲存上傳反覆中斷（同一物件的傳輸租約已多次逾期）",
     "offsite_integrity_mismatch": "離機副本取回時內容與上傳當下不符（已拒絕交付）",
     "role_state_mismatch": "角色指派與檢查點鏈不符（有變更未經應用程式留痕）",
-    "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經应用程式留痕）",
-    "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）"
+    "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經應用程式留痕）",
+    "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）",
+    "restore_seal_deferred": "還原後封章失敗，服務已照常開放並待補封（涵蓋還原後權限狀態的檢查點尚未進鏈）",
+    "restore_seal_state_unreadable": "啟動時讀不到還原後的待封狀態，服務照常開放並已嘗試補封（補封成功即結案）"
   },
   "severity": {
     "high": "高風險",
     "medium": "中風險",
     "low": "低風險"
+  },
+  "host_key_outcome": {
+    "allowed": "已允許繼續認證，平台將代為送出登入憑證到這台主機（密碼認證時對方可取得密碼）",
+    "refused": "已拒絕，未送出任何憑證"
+  },
+  "host_key_path": {
+    "terminal": "終端",
+    "agent_terminal": "代理終端（自動化）",
+    "file_transfer": "檔案傳輸",
+    "connection_test": "連線測試",
+    "credential_change": "改密",
+    "credential_rotation": "憑證輪替"
   },
   "alert_state": {
     "blocked": "已阻斷",
@@ -158,13 +173,15 @@
     "audit_degraded": "無法還原指令內容",
     "new_source_ip": "帳號自新的來源位址連線",
     "sensitive_reveal": "有人調閱了敏感原文",
-    "agent_breaker_tripped": "自動化權杖因反覆探測已停用"
+    "agent_breaker_tripped": "自動化權杖因反覆探測已停用",
+    "system_security": "系統安全設定或權限發生需要留意的變更"
   },
   "alert_kind_text": {
     "audit_degraded": "這段輸入無法可靠還原成指令文字。實際內容請查看該會話的錄影。",
     "new_source_ip": "這個帳號首次自這個位址建立連線。如需確認，請以這個位址查看當日的紀錄。",
     "sensitive_reveal": "詳情請查看該筆調閱的稽核紀錄。",
-    "agent_breaker_tripped": "這個權杖反覆引用它看不到的資產，已被停用，請負責人或管理員處置。"
+    "agent_breaker_tripped": "這個權杖反覆引用它看不到的資產，已被停用，請負責人或管理員處置。",
+    "system_security": "詳情請至告警記錄的系統告警明細與操作日誌查看。"
   },
   "degrade_reason": {
     "altscreen_round": "當時畫面在全螢幕程式中（例如編輯器、分頁器）。",

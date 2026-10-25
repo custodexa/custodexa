@@ -30,6 +30,8 @@ const refreshTokenBytes = 32
 const (
 	defaultWebIdleMinutes     = 60
 	defaultWebMaxSessionHours = 12
+	// defaultMappingRevalidationHours 同上，與政策常數表出廠預設一致
+	defaultMappingRevalidationHours = 12
 )
 
 // unlimitedSessionLifetime web_max_session_hours=0（不限）時的遠期哨兵；
@@ -174,6 +176,68 @@ func (s *AuthService) webMaxSessionDuration() time.Duration {
 	return time.Duration(hours) * time.Hour
 }
 
+// mappingRevalidationHours 讀映射重新驗證時限（小時；0=不設限）。
+func (s *AuthService) mappingRevalidationHours() int {
+	if s.policies == nil {
+		return defaultMappingRevalidationHours
+	}
+	return s.policies.GetInt(policy.PolicyMappingRevalidationHours)
+}
+
+// mappingRevalidationBound 映射重新驗證時限，供群組觀測帶入重算。
+// 政策服務未注入（僅單元建構路徑）時回 nil＝不套用時限；生產組裝一定注入政策服務。
+func (s *AuthService) mappingRevalidationBound() *int {
+	if s.policies == nil {
+		return nil
+	}
+	hours := s.policies.GetInt(policy.PolicyMappingRevalidationHours)
+	return &hours
+}
+
+// hasMappingSupport 帳號此刻是否持有任何映射支持（角色或使用者群組，任一通道）。
+// 讀不到即回錯：不得把「讀不到」當成「沒有支持」而給出長壽命。
+func hasMappingSupport(db *gorm.DB, userID uint) (bool, error) {
+	var roles, groups int64
+	if err := db.Table("user_role_mapping_rule_supports").Where("user_id = ?", userID).Count(&roles).Error; err != nil {
+		return false, fmt.Errorf("讀取映射支持失敗: %w", err)
+	}
+	if roles > 0 {
+		return true, nil
+	}
+	if err := db.Table("user_group_mapping_rule_supports").Where("user_id = ?", userID).Count(&groups).Error; err != nil {
+		return false, fmt.Errorf("讀取映射支持失敗: %w", err)
+	}
+	return groups > 0, nil
+}
+
+// sessionLifetimeFor 此帳號此刻適用的會話絕對壽命。
+//
+// 時限 T 非 0 且帳號持有任何映射支持時取 min(web_max_session_hours, T)（前者 0 視為不限）；
+// T 為 0 或沒有支持時只依 web_max_session_hours。支持讀不到回錯，由呼叫端拒絕發放或輪替。
+func (s *AuthService) sessionLifetimeFor(db *gorm.DB, userID uint) (time.Duration, error) {
+	return lifetimeGiven(db, userID, s.webMaxSessionDuration(), s.mappingRevalidationHours())
+}
+
+// lifetimeGiven 以已讀好的政策值（絕對壽命、映射時限）判定壽命。
+// 交易內只讀支持：政策讀取走另一條連線，單連線資料庫在交易內讀政策會互相等待，
+// 所以政策值一律在開交易前讀好傳入。
+func lifetimeGiven(db *gorm.DB, userID uint, base time.Duration, t int) (time.Duration, error) {
+	if t <= 0 {
+		return base, nil
+	}
+	mapped, err := hasMappingSupport(db, userID)
+	if err != nil {
+		return 0, err
+	}
+	if !mapped {
+		return base, nil
+	}
+	if bound := time.Duration(t) * time.Hour; bound < base {
+		return bound, nil
+	}
+	return base, nil
+}
+
 // issueRefreshToken 發放 refresh 憑證（登入/換發正式會話時）。
 // sessionStart 為絕對壽命錨點；rotation 路徑沿用原錨點與原 expires_at，不經此函式。
 //
@@ -185,16 +249,25 @@ func (s *AuthService) issueRefreshToken(userID uint, sessionStart time.Time, aut
 	if err != nil {
 		return "", time.Time{}, err
 	}
+	gen, err := currentRestoreGeneration(s.restoreGen, database.DB)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("讀取還原世代失敗: %w", err)
+	}
+	lifetime, err := s.sessionLifetimeFor(database.DB, userID)
+	if err != nil {
+		return "", time.Time{}, err
+	}
 	row := model.RefreshToken{
-		UserID:           userID,
-		TokenHash:        hashRefreshToken(plain),
-		SessionStartedAt: sessionStart,
-		ExpiresAt:        sessionStart.Add(s.webMaxSessionDuration()),
-		LastUsedAt:       sessionStart,
-		AuthMethod:       authCtx.AuthMethod,
-		ProviderID:       authCtx.ProviderID,
-		AuthEpoch:        authCtx.AuthEpoch,
-		CredEpoch:        authCtx.CredEpoch,
+		RestoreGeneration: gen,
+		UserID:            userID,
+		TokenHash:         hashRefreshToken(plain),
+		SessionStartedAt:  sessionStart,
+		ExpiresAt:         sessionStart.Add(lifetime),
+		LastUsedAt:        sessionStart,
+		AuthMethod:        authCtx.AuthMethod,
+		ProviderID:        authCtx.ProviderID,
+		AuthEpoch:         authCtx.AuthEpoch,
+		CredEpoch:         authCtx.CredEpoch,
 	}
 	if err := database.DB.Create(&row).Error; err != nil {
 		return "", time.Time{}, fmt.Errorf("寫入 refresh 憑證失敗: %w", err)
@@ -240,6 +313,11 @@ func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, 
 		return nil, ErrRefreshInvalid
 	}
 
+	// 還原世代閘：備份帶回的舊世代 refresh 一律拒絕（不撤銷、不改列，保留歷史）
+	if !restoreGenerationAccepts(s.restoreGen, database.DB, row.RestoreGeneration) {
+		return nil, ErrRefreshInvalid
+	}
+
 	now := time.Now()
 	if now.After(row.ExpiresAt) {
 		s.markRevoked(&row, model.RefreshRevokeExpired)
@@ -276,6 +354,10 @@ func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, 
 	// 自身攜帶的世代對 DB 現值比對後才輪替。
 	casRotated := false
 	stale := false
+	boundExpired := false
+	baseLifetime, revalHours := s.webMaxSessionDuration(), s.mappingRevalidationHours() // 交易外讀政策
+	// 輪替沿用原到期時間並重新套用映射時限：只會縮短，不會延長
+	newExpiresAt := row.ExpiresAt
 	// sourceVerdict 零值＝未判定；非零且不放行時走「零寫入」早退
 	var sourceVerdict sourceip.Verdict
 	sourceJudged := false
@@ -310,6 +392,18 @@ func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, 
 		if !sourceVerdict.Allowed {
 			return nil
 		}
+		// 映射重新驗證時限：現讀；支持讀不到即交易回錯（輪替被拒、不寫任何列）
+		lifetime, lerr := lifetimeGiven(tx, row.UserID, baseLifetime, revalHours)
+		if lerr != nil {
+			return lerr
+		}
+		if capAt := row.SessionStartedAt.Add(lifetime); capAt.Before(newExpiresAt) {
+			newExpiresAt = capAt
+		}
+		if !now.Before(newExpiresAt) {
+			boundExpired = true
+			return nil
+		}
 		res := tx.Model(&model.RefreshToken{}).
 			Where("id = ? AND revoked_at IS NULL", row.ID).
 			Updates(map[string]interface{}{
@@ -327,15 +421,16 @@ func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, 
 		// 漏帶則 access token 到期輪替一次（分鐘級）後，provider 停用的撤銷查詢
 		// 即命中 0 列——正在使用中的會話一個都撤不到，可續命至絕對壽命
 		return tx.Create(&model.RefreshToken{
-			UserID:           row.UserID,
-			TokenHash:        hashRefreshToken(newPlain),
-			SessionStartedAt: row.SessionStartedAt,
-			ExpiresAt:        row.ExpiresAt,
-			LastUsedAt:       now,
-			AuthMethod:       row.AuthMethod,
-			ProviderID:       row.ProviderID,
-			AuthEpoch:        row.AuthEpoch,
-			CredEpoch:        row.CredEpoch,
+			RestoreGeneration: row.RestoreGeneration,
+			UserID:            row.UserID,
+			TokenHash:         hashRefreshToken(newPlain),
+			SessionStartedAt:  row.SessionStartedAt,
+			ExpiresAt:         newExpiresAt,
+			LastUsedAt:        now,
+			AuthMethod:        row.AuthMethod,
+			ProviderID:        row.ProviderID,
+			AuthEpoch:         row.AuthEpoch,
+			CredEpoch:         row.CredEpoch,
 		}).Error
 	})
 	if txErr != nil {
@@ -356,6 +451,11 @@ func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, 
 		return nil, &RefreshSourceDeniedError{
 			UserID: row.UserID, Username: sourceUsername,
 			Verdict: sourceVerdict, SourceIP: sourceIP}
+	}
+	if boundExpired {
+		// 映射時限已到：與絕對壽命到期同處置，只能重新經外部來源登入
+		s.markRevoked(&row, model.RefreshRevokeExpired)
+		return nil, ErrRefreshInvalid
 	}
 	if stale {
 		// 世代已失效（provider 停用／刪除／密鑰輪替，或使用者憑證世代推進）：
@@ -391,13 +491,13 @@ func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, 
 		crypto.AuthContext{
 			AuthMethod: row.AuthMethod, ProviderID: row.ProviderID,
 			AuthEpoch: row.AuthEpoch, CredEpoch: row.CredEpoch,
-		}, row.ExpiresAt)
+		}, newExpiresAt)
 	if err != nil {
 		return nil, err
 	}
 	return &RefreshResponse{
 		Token: accessToken, RefreshToken: newPlain,
-		RefreshExpiresAt: row.ExpiresAt,
+		RefreshExpiresAt: newExpiresAt,
 		UserID:           user.ID, Username: user.Username,
 	}, nil
 }

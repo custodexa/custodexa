@@ -96,5 +96,123 @@
       "title": "Agent probe breaker",
       "text": "Agent {user_id} token {token_id} suspended by probe breaker. Owner: {owner_id}."
     }
+  },
+  "asset_address_changed": {
+    "default": {
+      "title": "Asset connection address changed",
+      "text": "{actor} changed the connection address settings[ of asset {asset_name}]: {changed_fields} (severity: {severity})."
+    }
+  },
+  "transport_verification_relaxed": {
+    "default": {
+      "title": "Transport verification relaxed",
+      "text": "{actor} relaxed the transport verification settings[ of asset {asset_name}]: {relaxed_settings} (severity: {severity})."
+    }
+  },
+  "access_policy_relaxed": {
+    "default": {
+      "title": "Access policy lowered",
+      "text": "{actor} lowered the access policy[ of asset {asset_name}] ({relax_type}): {before_level} -> {after_level}[, affecting {affected_assets} assets without an override] (severity: {severity})."
+    }
+  },
+  "custom_secret_used": {
+    "default": {
+      "title": "Custom secret used",
+      "text": "{actor} handled a password[ of asset {asset_name}] with a custom secret ({entry}) (severity: {severity})."
+    }
+  },
+  "identity_source_changed": {
+    "default": {
+      "title": "Identity source changed",
+      "text": "{actor} changed the {source_kind} identity source: {changed_fields}[; bind password changed: {bind_password_changed}][; super administrators from this source: {super_admin_count}] (severity: {severity})."
+    }
+  },
+  "security_admin_account_operated": {
+    "default": {
+      "title": "Security administrator account operated",
+      "text": "{actor} performed \"{action}\" on a security administrator account (severity: {severity})."
+    }
+  },
+  "self_privilege_increased": {
+    "default": {
+      "title": "Own privileges increased",
+      "text": "{actor} increased their own privileges ({path}): roles {roles_before} -> {roles_after}[; manageable {manageable_before} -> {manageable_after}][; connectable {connectable_before} -> {connectable_after}] (severity: {severity})."
+    }
+  },
+  "self_privilege_decreased": {
+    "default": {
+      "title": "Own privileges decreased",
+      "text": "{actor} decreased their own privileges ({path}): roles {roles_before} -> {roles_after}[; manageable {manageable_before} -> {manageable_after}][; connectable {connectable_before} -> {connectable_after}] (severity: {severity})."
+    }
+  },
+  "management_role_granted": {
+    "default": {
+      "title": "Management role granted",
+      "text": "{actor} granted the management role {role_name} to {recipient} ({path})[; scope: {scope_summary}] (severity: {severity})."
+    }
+  },
+  "retention_shortened": {
+    "default": {
+      "title": "Retention shortened",
+      "text": "{actor} shortened the retention of {data_class}: {days_before} -> {days_after} days (0 means keep forever) (severity: {severity})."
+    }
+  },
+  "offsite_or_syslog_changed": {
+    "default": {
+      "title": "Off-site copy or syslog changed",
+      "text": "{actor} changed the {subject} setting: {change} (severity: {severity})."
+    }
+  },
+  "key_topology_changed": {
+    "default": {
+      "title": "Key custody topology changed",
+      "text": "{actor} changed the key custody topology: {change_kind} (severity: {severity})."
+    }
+  },
+  "recording_failclose_disabled": {
+    "default": {
+      "title": "Recording fail-close disabled",
+      "text": "{actor} disabled the fail-close protection for recording (severity: {severity})."
+    }
+  },
+  "recording_deleted": {
+    "default": {
+      "title": "Recording deleted",
+      "text": "{actor} deleted the recording of session {session_id} (severity: {severity})."
+    }
+  },
+  "mapping_revalidation_relaxed": {
+    "default": {
+      "title": "External membership revalidation relaxed",
+      "text": "{actor} relaxed the external membership revalidation window: {hours_before} -> {hours_after} hours (0 means no limit) (severity: {severity})."
+    }
+  },
+  "host_key_mismatch": {
+    "default": {
+      "title": "Host key does not match the record",
+      "text": "The host key did not match the record on a {path} connection by {actor} (outcome: {outcome}; record source: {record_source}): recorded {recorded_fingerprint}, observed {observed_fingerprint} ({observed_algorithm})[; connection {connection_ref}] (severity: {severity})."
+    }
+  },
+  "host_key_record_changed": {
+    "default": {
+      "title": "Host key record changed",
+      "text": "{actor} performed \"{change}\" on the host key record: previous {previous_fingerprint}, adopted {adopted_fingerprint} (severity: {severity})."
+    }
+  },
+  "notification_channel_changed": {
+    "default": {
+      "title": "Notification channel changed",
+      "text": "{actor} performed \"{change}\" on a notification channel[; changed fields: {changed_fields}][; URL {url_before} -> {url_after}] (severity: {severity})."
+    }
+  },
+  "concurrent_instance_detected": {
+    "overridden": {
+      "title": "Possible concurrent instance detected (started with confirmed override)",
+      "text": "Startup check ({actor}): this instance started with a confirmed override, and another instance held the single-instance lock when this one tried to take it[; confirmation source: {confirm_source}][; confirmed by: {confirmed_by}][; guard-enabled connections found at startup: {peers}] (peer query: {peers_query}) (severity: {severity})."
+    },
+    "peers": {
+      "title": "Possible concurrent instance detected (other connections)",
+      "text": "Startup check ({actor}): at startup, other guard-enabled instance connections were found on the same database[ ({peers} connections)] (peer query: {peers_query}) (severity: {severity})."
+    }
   }
 }

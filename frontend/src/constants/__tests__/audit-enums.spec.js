@@ -19,16 +19,21 @@ import {
 // AuditAction: backend/internal/model/audit_log.go:13-42
 const BACKEND_ACTIONS = [
   'suspend', 'agent_token_revoked', 'agent_token_suspended',
-  'agent_sessions_terminated', 'agent_sessions_terminate_late',
+  'agent_sessions_terminated', 'agent_sessions_terminate_late', 'permission_state_accepted',
   'create', 'read', 'update', 'delete', 'execute', 'login', 'logout',
   'unlock', 'pw_noncompliant', 'recording_failed',
   // 來源限定功能：新來源位址的登入標記（只留審計、不告警）
   'new_source_ip',
+  // host-key-verification：主機金鑰不符（互動放行、背景拒絕皆留痕）與採用觀察到的指紋
+  'host_key_mismatch', 'host_key_cred_sent', 'host_key_adopt',
+  // 保留下限：升級對帳的抬升紀錄
+  'retention_floor_raised',
   'file_list', 'file_upload', 'file_download', 'file_mkdir', 'file_delete',
   'approve', 'reject', 'cancel', 'expire', 'revoke', 'review',
   // evidence-offsite-storage：離機保管鏈的五個事件（主體恆為系統）
   'offsite_upload', 'offsite_retention', 'offsite_integrity',
   'offsite_profile', 'offsite_cred_revoke',
+  'role_definition_create', 'role_definition_copy', 'role_definition_update', 'role_definition_delete',
   // 升級時一次性轉換留下的標記列
   'migration',
   // 角色指派授予（撤銷沿用 revoke）
@@ -41,6 +46,7 @@ const BACKEND_RESOURCES = [
   'asset', 'session', 'recording', 'user', 'auth', 'file',
   'security_policy', 'command_alert', 'audit_export', 'access_review',
   'retention', 'daily_review', 'syslog_setting', 'audit_log', 'user_group',
+  'user_group_role',
   'command', 'key_management', 'transmission', 'access_request', 'approver_scope',
   // auditor-workbench 訂正的三個獨立分類（原落 default asset 分支）
   'change_secret_plan', 'rotation_report', 'authorization', 'audit_timeline',
@@ -48,7 +54,7 @@ const BACKEND_RESOURCES = [
   'clipboard_event',
   // A 類新分類十族＋兜底哨兵
   'audit_checkpoint', 'audit_failure', 'audit_integrity', 'alert_rule',
-  'notify_channel', 'oidc_provider', 'ldap_directory', 'asset_group',
+  'notify_channel', 'system_alert_type', 'oidc_provider', 'ldap_directory', 'asset_group',
   'snippet', 'role',
   // 角色指派關聯（role-assignment-integrity；與 user、role 皆分開）
   'user_role',
@@ -86,6 +92,7 @@ const BACKEND_MECHANISMS = [
   'role_state_integrity',
   'principal_state_integrity',
   'dek_unwrap',
+  'restore_seal',
 ]
 
 // 後端↔前端雙向完備性守衛：直讀後端原始碼取
@@ -153,6 +160,7 @@ const BACKEND_CAUSES = [
   'recording_metadata_update_failed',
   'recording_file_missing',
   'session_record_create_failed',
+  'host_key_mismatch_record_failed',
   'command_audit_write_refused',
   'command_blocker_unavailable',
   'audit_write_fallback_file',
@@ -176,10 +184,12 @@ const BACKEND_CAUSES = [
   'role_state_mismatch',
   'principal_state_mismatch',
   'dek_unwrap_failed',
+  'restore_seal_deferred',
+  'restore_seal_state_unreadable',
 ]
 
 describe('audit-enums 完備性（前後端值域一致）', () => {
-  it('AUDIT_ACTIONS 與後端 28 動作互為全集', () => {
+  it('AUDIT_ACTIONS 與後端 29 動作互為全集', () => {
     expect(Object.keys(AUDIT_ACTIONS).sort()).toEqual([...BACKEND_ACTIONS].sort())
     for (const a of BACKEND_ACTIONS) {
       expect(AUDIT_ACTIONS[a]?.label, `${a} 缺 label`).toBeTruthy()
@@ -187,7 +197,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   })
 
-  it('AUDIT_RESOURCES 與後端 39 資源互為全集（無殭屍 alert 條目）', () => {
+  it('AUDIT_RESOURCES 與後端 40 資源互為全集（無殭屍 alert 條目）', () => {
     expect(Object.keys(AUDIT_RESOURCES).sort()).toEqual([...BACKEND_RESOURCES].sort())
     expect(AUDIT_RESOURCES.alert).toBeUndefined()
   })
@@ -227,7 +237,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(34)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(37)
   })
 
   it.skipIf(!backendSourcePath)(

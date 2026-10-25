@@ -51,6 +51,13 @@ type CredentialDTO struct {
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+
+	// Ownership 管理歸屬（全體主體皆有）
+	Ownership *CredentialOwnershipDTO `json:"ownership"`
+	// Actions 列級可操作旗標；只對範圍化檢視者出現
+	Actions map[string]CredentialAction `json:"actions,omitempty"`
+	// OutOfScopeAssets 範圍外掛載台數（純整數；非 nil 才是範圍化檢視者）。對外欄位由接入層以揭露登錄轉出
+	OutOfScopeAssets *int `json:"-"`
 }
 
 // CredentialBindingDTO 掛載列的對外表示（憑證詳情的右側清單）。
@@ -67,12 +74,23 @@ type CredentialBindingDTO struct {
 	EffectiveVersionNo int `json:"effective_version_no"`
 	// UpToDate 就位版本即憑證的現行版本
 	UpToDate bool `json:"up_to_date"`
+	// Actions 掛載列旗標（unbind、detach）；只對範圍化檢視者出現
+	Actions map[string]CredentialAction `json:"actions,omitempty"`
+	// NodePaths 該台的所屬節點路徑；範圍化檢視者只含其檢視範圍內的歸屬
+	NodePaths []string `json:"node_paths"`
+	// OutOfScopeNodes 該台範圍外歸屬節點數（純整數；非 nil 才是範圍化檢視者）。對外欄位由接入層以揭露登錄轉出
+	OutOfScopeNodes *int `json:"-"`
 }
 
 // CredentialDetailDTO 憑證詳情：基本資料＋掛載清單。
 type CredentialDetailDTO struct {
 	CredentialDTO
 	Bindings []*CredentialBindingDTO `json:"bindings"`
+	// UnsettledRotationID 已放棄、但仍有掛載未收束（可逐台補跑）的那一輪；沒有就不出現。
+	//
+	// 放棄後進行中識別即清空，少了這一欄，詳情上就再也找不到那一輪的逐台進度與補跑入口。
+	// 有進行中的輪替時不出現（以 active_rotation_id 為準）
+	UnsettledRotationID uint `json:"unsettled_rotation_id,omitempty"`
 }
 
 // --- 投影面 ---
@@ -98,6 +116,7 @@ func credentialDTOFrom(db *gorm.DB, cred *model.Credential) (*CredentialDTO, err
 		Note:           cred.Note,
 		BindingCount:   int(count),
 		RotationActive: cred.ActiveRotationID != nil,
+		Ownership:      ownershipDTOOf(cred),
 		CreatedAt:      cred.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:      cred.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}

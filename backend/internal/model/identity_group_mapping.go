@@ -55,6 +55,19 @@ type UserGroupMappingRuleSupport struct {
 
 func (UserGroupMappingRuleSupport) TableName() string { return "user_group_mapping_rule_supports" }
 
+// UserChannelObservation 逐（帳號，通道）最近一次「已知」群組觀測的時間。
+//
+// 只供有界重新驗證判定「這個通道上次確實讀到群組是多久以前」：未知或有規則未設定的登入，
+// 超過時限即收回該通道的映射支持。未知觀測不更新本列；本表不參與任何授權判定，
+// 授權一律走映射事實與支持表。
+type UserChannelObservation struct {
+	UserID      uint      `gorm:"primaryKey;autoIncrement:false"`
+	Channel     string    `gorm:"primaryKey;size:64"`
+	LastKnownAt time.Time `gorm:"not null"`
+}
+
+func (UserChannelObservation) TableName() string { return "user_channel_observations" }
+
 // UserGroupMember is the effective authorization projection. Manual membership
 // remains even if every mapped support disappears.
 type UserGroupMember struct {

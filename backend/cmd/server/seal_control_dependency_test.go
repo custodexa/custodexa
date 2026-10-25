@@ -53,7 +53,7 @@ func TestSealControlDependencyGuard(t *testing.T) {
 	if fields != 2 {
 		t.Fatalf("authorizer fields=%d", fields)
 	}
-	for _, required := range []string{"validateIdentityToken(manager, token)", "VerifyCredentialGenerationTx(", "checkConnectableUser(&user)", "primaryRoleOf(&user)"} {
+	for _, required := range []string{"validateIdentityToken(manager, token)", "VerifyCredentialGenerationTx(", "checkConnectableUser(&user)", "hasEffectiveGlobalSuperAdmin(a.db.WithContext(ctx), &user)"} {
 		if !strings.Contains(string(source), required) {
 			t.Fatalf("missing shared identity check %s", required)
 		}

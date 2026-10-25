@@ -128,7 +128,7 @@ const nodeCoverageCondition = "(asset_group_id IN " + nodeStructuralNodesSubquer
 
 // List 查詢授權列表（支援過濾和分頁）
 // filters 支援的鍵: "user_id", "user_group_id", "asset_id", "node_id"（涵蓋盤點）,
-// "permission", "source", "validity"（ValidityFilter）；
+// "permission", "source", "validity"（ValidityFilter）, "object_scope"（AuthorizationListScope）；
 // 空 map＝全量
 func (r *assetAuthorizationRepository) List(
 	filters map[string]interface{},
@@ -163,6 +163,29 @@ func (r *assetAuthorizationRepository) List(
 				query = query.Where("date_start IS NOT NULL AND date_start > ?", vf.Now)
 			case model.ValidityExpired:
 				query = query.Where("date_expired IS NOT NULL AND date_expired <= ?", vf.Now)
+			}
+		}
+	}
+
+	// 範圍化檢視者：客體在範圍內的規則才進入結果，於 COUNT 與分頁之前生效。
+	// 範圍外的節點篩選與不存在的節點同形（空結果），不依賴涵蓋盤點自然落空
+	if value, ok := filters["object_scope"]; ok {
+		scope, isScope := value.(AuthorizationListScope)
+		if !isScope {
+			return nil, 0, errAuthorizationViewUnwired
+		}
+		var err error
+		if query, err = scope.apply(r.db, query); err != nil {
+			return nil, 0, fmt.Errorf("套用授權範圍失敗: %w", err)
+		}
+		if nodeID, hasNode := filters["node_id"]; hasNode {
+			id, _ := nodeID.(uint)
+			allowed, err := scope.nodeAllowed(r.db, id)
+			if err != nil {
+				return nil, 0, fmt.Errorf("判定節點篩選範圍失敗: %w", err)
+			}
+			if !allowed {
+				query = query.Where("1 = 0")
 			}
 		}
 	}
@@ -483,8 +506,8 @@ func evaluateEffectiveApprover(db *gorm.DB, userID uint) (allowed bool, roleQuer
 	var count int64
 	if qErr := db.Table("user_roles").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = ? AND roles.name = ? AND roles.deleted_at IS NULL",
-			userID, model.RoleApprover).
+		Where("user_roles.user_id = ? AND roles.builtin_key = ? AND user_roles.scope_kind = ? AND roles.deleted_at IS NULL",
+			userID, model.BuiltinApprover, model.ScopeKindGlobal).
 		Count(&count).Error; qErr != nil {
 		return false, true, fmt.Errorf("查詢審核角色失敗: %w", qErr)
 	}

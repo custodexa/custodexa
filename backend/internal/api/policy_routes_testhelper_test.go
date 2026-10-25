@@ -2,7 +2,6 @@ package api
 
 import (
 	"github.com/custodexa/backend/internal/middleware"
-	"github.com/custodexa/backend/internal/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,12 +15,12 @@ import (
 func registerPolicyGroupTestRoutes(v1 *gin.RouterGroup, h *PolicyGroupHandler) {
 	g := v1.Group("/policy-groups")
 	read := g.Group("")
-	read.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	read.Use(middleware.EnforceRegistry())
 	read.GET("", h.List)
 	read.GET("/:code", h.Get)
 
 	write := g.Group("")
-	write.Use(middleware.RequireRole(model.RoleAdmin))
+	write.Use(middleware.EnforceRegistry())
 	write.POST("", h.Create)
 	write.PUT("/:code", h.Rename)
 	write.PUT("/:code/enabled", h.SetEnabled)
@@ -34,14 +33,14 @@ func registerPolicyGroupTestRoutes(v1 *gin.RouterGroup, h *PolicyGroupHandler) {
 
 func registerComplianceTestRoutes(v1 *gin.RouterGroup, h *ComplianceHandler) {
 	g := v1.Group("/compliance")
-	g.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	g.Use(middleware.EnforceRegistry())
 	g.GET("/snapshot", h.Snapshot)
 	g.POST("/report-jobs", h.CreateReportJob)
 }
 
 func registerSecurityPolicyTestRoutes(v1 *gin.RouterGroup, h *SecurityPolicyHandler) {
 	g := v1.Group("/security-policies")
-	g.Use(middleware.RequireRole(model.RoleAdmin))
+	g.Use(middleware.EnforceRegistry())
 	g.GET("", h.List)
 	g.GET("/defs/:key", h.Def)
 	g.POST("/compliance/preview", h.CompliancePreview)
@@ -50,6 +49,6 @@ func registerSecurityPolicyTestRoutes(v1 *gin.RouterGroup, h *SecurityPolicyHand
 
 func registerScheduleTestRoutes(v1 *gin.RouterGroup, h *ScheduleHandler) {
 	g := v1.Group("/schedules")
-	g.Use(middleware.RequireRole(model.RoleAdmin))
+	g.Use(middleware.EnforceRegistry())
 	g.POST("/next-runs", h.NextRuns)
 }

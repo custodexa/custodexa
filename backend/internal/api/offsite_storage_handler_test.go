@@ -120,7 +120,14 @@ func offsiteRoutes() []struct {
 // ——而這批端點的 PUT／POST 正是憑證寫入與世代切換的入口。
 func TestOffsiteStorageRoutesRequireAdmin(t *testing.T) {
 	env := newOffsiteAPIEnv(t)
-	env.seedUser(t, 300, "someone")
+	// 角色以資料庫為準：每個角色各用一個帳號並寫入指派（user 不寫，視同一般使用者）
+	roleUsers := map[string]uint{"user": 300, "auditor": 306, "approver": 307}
+	for role, id := range roleUsers {
+		env.seedUser(t, id, "someone-"+role)
+		if role != "user" {
+			grantLegacyRole(t, env.db, id, role)
+		}
+	}
 
 	routes := offsiteRoutes()
 	if len(routes) != 11 {
@@ -128,7 +135,7 @@ func TestOffsiteStorageRoutesRequireAdmin(t *testing.T) {
 	}
 
 	for _, role := range []string{"user", "auditor", "approver"} {
-		token, err := env.mgr.GenerateToken(300, "someone", "u@example.com", role, crypto.AuthContext{})
+		token, err := env.mgr.GenerateToken(roleUsers[role], "someone-"+role, "u@example.com", role, crypto.AuthContext{})
 		if err != nil {
 			t.Fatalf("簽發 token: %v", err)
 		}

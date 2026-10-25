@@ -48,6 +48,7 @@ count.sessions=42
 count.audit_logs=1234
 migration=20260816_schema_baseline
 migration=20260901_add_x
+authz.model=legacy
 fp.jwt=ba7816bf8f01cfea
 fp.kek=5a5a5a5a5a5a5a5a
 fp.export_signing=$exp_export
@@ -179,4 +180,39 @@ stopped_all_after_up() { grep -A99 -x up "$DB/events" | grep -qx stop-all; }
   [[ $output == *"[WARN] Single instance the backend log does not show the database lock"* ]] || { echo "$output"; return 1; }
   [[ $output == *"[WARN] Entry           https://127.0.0.1:443/ does not answer"* ]] || { echo "$output"; return 1; }
   [ "$(jq -r '."last_upgrade.result"' "$ROOT/state.json")" = succeeded ]
+}
+
+# The permission-model migration warns in the backend log when the data cannot be restored from now
+# on (no local super administrator, or assignments that point at nothing). The upgrade must go on
+# (threat: a new block on users), the screen must say what it means and what to do, and quiet data
+# must show no such row.
+@test "permissions: the migration's warning shows as a WARN row, the upgrade completes; no warning, no row" {
+  fresh ui
+  printf '%s\n' '2026/09/30 02:20:05 [AuthzModelMigration] WARN local_super_admins=0 dangling_assignments=0 backups_restorable=false' >>"$UP/logs"
+  up_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Permissions     no local super administrator can sign in. The upgrade"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"backups taken from now on are marked not"* && $output == *"recorded in"* && $output == *"backup"* ]] || { echo "$output"; return 1; }
+  [ "$(jq -r '."last_upgrade.result"' "$ROOT/state.json")" = succeeded ]
+
+  fresh ui
+  printf '%s\n' '2026/09/30 02:20:05 [AuthzModelMigration] WARN local_super_admins=2 dangling_assignments=3 backups_restorable=false' >>"$UP/logs"
+  up_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Permissions     3 role assignment(s) point at a deleted or missing role."* ]] || { echo "$output"; return 1; }
+  [[ $output != *"no local super administrator can sign in"* ]] || { echo "$output"; return 1; }
+
+  fresh ui
+  printf '%s\n' '2026/09/30 02:20:05 [AuthzModelMigration] report={"local_super_admins":0}' >>"$UP/logs"
+  up_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output != *"Permissions     "* ]] || { echo "$output"; return 1; }
+
+  for l in zh-TW ja; do
+    fresh ui
+    printf '%s\n' '2026/09/30 02:20:05 [AuthzModelMigration] WARN local_super_admins=0 dangling_assignments=0 backups_restorable=false' >>"$UP/logs"
+    up_run "$l"
+    [ "$status" -eq 0 ] || { echo "$l"; echo "$output"; return 1; }
+  done
+  [[ $output == *"権限           サインインできるローカルのスーパー管理者がいません"* ]] || { echo "$output"; return 1; }
 }

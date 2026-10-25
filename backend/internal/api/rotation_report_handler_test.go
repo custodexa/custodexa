@@ -50,11 +50,11 @@ func newRotationTestEnv(t *testing.T) *rotationTestEnv {
 	}
 	// `:memory:` 每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.AssetGroup{},
+	if err := migrateWithAuthz(db, &model.Asset{}, &model.AssetAccount{}, &model.AssetGroup{},
 		&model.Credential{}, &model.CredentialSecretVersion{},
-		&model.AssetNode{}, &model.AuditLog{}, &model.ChangeSecretPlan{},
+		&model.AssetNode{}, &model.AuditLog{}, &model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{},
 		&model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
-		&model.RotationReportSchedule{}, &model.AuditExportJob{}); err != nil {
+		&model.RotationReportSchedule{}, &model.AuditExportJob{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -76,16 +76,16 @@ func newRotationTestEnv(t *testing.T) *rotationTestEnv {
 			c.Set("username", "user-"+uid)
 		}
 		if role := c.GetHeader("X-Test-Role"); role != "" {
-			c.Set("role", role)
+			middleware.SetPrincipal(c, legacyPrincipal(role))
 		}
 		c.Next()
 	})
 	grp := r.Group("/api/v1/rotation-report")
-	grp.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Dataset)
-	grp.GET("/records", middleware.RequirePermission(middleware.PermAuditView), h.Records)
-	grp.POST("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.CreateJob)
+	grp.GET("", middleware.EnforceRegistry(), h.Dataset)
+	grp.GET("/records", middleware.EnforceRegistry(), h.Records)
+	grp.POST("/jobs", middleware.EnforceRegistry(), h.CreateJob)
 	sch := grp.Group("/schedules")
-	sch.Use(middleware.RequireRole("admin"))
+	sch.Use(middleware.EnforceRegistry())
 	sch.GET("", h.ListSchedules)
 	sch.POST("", h.CreateSchedule)
 	sch.PUT("/:id", h.UpdateSchedule)

@@ -96,5 +96,123 @@
       "title": "自動化主體探測熔斷",
       "text": "主體 {user_id} 的 token {token_id} 因探測熔斷而停用。負責人：{owner_id}。"
     }
+  },
+  "asset_address_changed": {
+    "default": {
+      "title": "資產連線位址已變更",
+      "text": "{actor} 變更了[資產 {asset_name} 的]連線位址設定：{changed_fields}（分級：{severity}）。"
+    }
+  },
+  "transport_verification_relaxed": {
+    "default": {
+      "title": "傳輸安全驗證已放寬",
+      "text": "{actor} 放寬了[資產 {asset_name} 的]傳輸安全驗證設定：{relaxed_settings}（分級：{severity}）。"
+    }
+  },
+  "access_policy_relaxed": {
+    "default": {
+      "title": "存取政策已降級",
+      "text": "{actor} 降低了[資產 {asset_name} 的]存取政策（{relax_type}）：{before_level} → {after_level}[，影響未覆寫資產 {affected_assets} 台]（分級：{severity}）。"
+    }
+  },
+  "custom_secret_used": {
+    "default": {
+      "title": "使用了自訂秘密",
+      "text": "{actor} 以自訂方式處理[資產 {asset_name} 的]密碼（{entry}）（分級：{severity}）。"
+    }
+  },
+  "identity_source_changed": {
+    "default": {
+      "title": "身分來源設定已變更",
+      "text": "{actor} 變更了 {source_kind} 身分來源：{changed_fields}[；服務帳號密碼已變更：{bind_password_changed}][；此來源的超級管理者數：{super_admin_count}]（分級：{severity}）。"
+    }
+  },
+  "security_admin_account_operated": {
+    "default": {
+      "title": "系統安全管理員帳號被操作",
+      "text": "{actor} 對系統安全管理員帳號執行了「{action}」（分級：{severity}）。"
+    }
+  },
+  "self_privilege_increased": {
+    "default": {
+      "title": "自己的授權增加",
+      "text": "{actor} 增加了自己的授權（{path}）：角色 {roles_before} → {roles_after}[；可管理 {manageable_before} → {manageable_after}][；可連線 {connectable_before} → {connectable_after}]（分級：{severity}）。"
+    }
+  },
+  "self_privilege_decreased": {
+    "default": {
+      "title": "自己的授權減少",
+      "text": "{actor} 減少了自己的授權（{path}）：角色 {roles_before} → {roles_after}[；可管理 {manageable_before} → {manageable_after}][；可連線 {connectable_before} → {connectable_after}]（分級：{severity}）。"
+    }
+  },
+  "management_role_granted": {
+    "default": {
+      "title": "管理類角色已發放",
+      "text": "{actor} 將管理類角色 {role_name} 發放給 {recipient}（{path}）[；範圍：{scope_summary}]（分級：{severity}）。"
+    }
+  },
+  "retention_shortened": {
+    "default": {
+      "title": "保留期限已縮短",
+      "text": "{actor} 縮短了 {data_class} 的保留天數：{days_before} → {days_after}（0 表示永久）（分級：{severity}）。"
+    }
+  },
+  "offsite_or_syslog_changed": {
+    "default": {
+      "title": "離機副本或 syslog 設定已變更",
+      "text": "{actor} 變更了 {subject} 設定：{change}（分級：{severity}）。"
+    }
+  },
+  "key_topology_changed": {
+    "default": {
+      "title": "金鑰託管設定已變更",
+      "text": "{actor} 變更了金鑰託管設定：{change_kind}（分級：{severity}）。"
+    }
+  },
+  "recording_failclose_disabled": {
+    "default": {
+      "title": "錄影失敗即中止已停用",
+      "text": "{actor} 停用了錄影失敗即中止的保護（分級：{severity}）。"
+    }
+  },
+  "recording_deleted": {
+    "default": {
+      "title": "錄影已被刪除",
+      "text": "{actor} 刪除了會話 {session_id} 的錄影（分級：{severity}）。"
+    }
+  },
+  "mapping_revalidation_relaxed": {
+    "default": {
+      "title": "外部成員重新驗證時限已放寬",
+      "text": "{actor} 放寬了外部成員重新驗證時限：{hours_before} → {hours_after} 小時（0 表示不設限）（分級：{severity}）。"
+    }
+  },
+  "host_key_mismatch": {
+    "default": {
+      "title": "主機金鑰與記錄不符",
+      "text": "{actor} 經由 {path} 連線時，主機金鑰與記錄不符（處置：{outcome}；記錄來源：{record_source}）：記錄 {recorded_fingerprint}，實際 {observed_fingerprint}（{observed_algorithm}）[；連線識別 {connection_ref}]（分級：{severity}）。"
+    }
+  },
+  "host_key_record_changed": {
+    "default": {
+      "title": "主機金鑰記錄已變更",
+      "text": "{actor} 對主機金鑰記錄執行了「{change}」：原記錄 {previous_fingerprint}，採用 {adopted_fingerprint}（分級：{severity}）。"
+    }
+  },
+  "notification_channel_changed": {
+    "default": {
+      "title": "通知通道已變更",
+      "text": "{actor} 對通知通道執行了「{change}」[；變更欄位：{changed_fields}][；網址 {url_before} → {url_after}]（分級：{severity}）。"
+    }
+  },
+  "concurrent_instance_detected": {
+    "overridden": {
+      "title": "偵測到可能的並行實例（確認覆寫啟動）",
+      "text": "啟動檢查（{actor}）：本次以確認覆寫啟動，啟動取鎖時有其他實例持有單實例鎖[；確認來源 {confirm_source}][；確認者 {confirmed_by}][；啟動時查得的守衛版連線數：{peers}]（對等數查詢：{peers_query}）（分級：{severity}）。"
+    },
+    "peers": {
+      "title": "偵測到可能的並行實例（其他連線）",
+      "text": "啟動檢查（{actor}）：啟動時查得同一資料庫上另有守衛版實例的連線[（共 {peers} 條）]（對等數查詢：{peers_query}）（分級：{severity}）。"
+    }
   }
 }

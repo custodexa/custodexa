@@ -2,6 +2,7 @@ package identity
 
 import (
 	"fmt"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"sync"
 
 	"gorm.io/gorm"
@@ -118,9 +119,12 @@ func WithOIDCProviderLock(db *gorm.DB, providerID uint, fn func(tx *gorm.DB) err
 func WithCapabilityLocks(db *gorm.DB, providerID, userID uint, fn func(tx *gorm.DB) error) error {
 	switch db.Dialector.Name() {
 	case "postgres", "sqlite":
-		return db.Transaction(func(tx *gorm.DB) error {
+		err := db.Transaction(func(tx *gorm.DB) error {
 			return withCapabilityLocksTx(tx, providerID, userID, fn)
 		})
+		// 本鎖交易內的權限寫入（推進權限版本）於提交後通知行程內持有者重新驗證
+		authz.NotifyVersionCommittedAfter(db, err)
+		return err
 	default:
 		return fmt.Errorf("不支援的資料庫 dialect %q：無跨實例認證世代互斥實作",
 			db.Dialector.Name())

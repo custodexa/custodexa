@@ -31,5 +31,5 @@ func (h *ExportSigningHandler) PublicKey(c *gin.Context) {
 func (h *ExportSigningHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/audit-export")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.GET("/public-key", middleware.RequirePermission(middleware.PermAuditView), h.PublicKey)
+	g.GET("/public-key", middleware.EnforceRegistry(), h.PublicKey)
 }

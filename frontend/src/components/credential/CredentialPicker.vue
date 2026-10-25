@@ -51,6 +51,15 @@
       </template>
     </el-select>
 
+    <!-- 伺服器對範圍化檢視者的列附了 actions：清單只含歸屬在其可管理節點的共用憑證 -->
+    <p
+      v-if="scopedList"
+      class="scoped-note"
+      data-test="credential-picker-scoped-note"
+    >
+      {{ t('credentials.pickerScopedNote') }}
+    </p>
+
     <CredentialFormDialog
       v-model="createVisible"
       @saved="onCreated"
@@ -59,12 +68,13 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { listCredentials } from '@/api/credentials'
 import { credentialDisplayName } from '@/constants/credentials'
+import { hasActionFlags } from '@/utils/credentialActions'
 import CredentialFormDialog from '@/components/credential/CredentialFormDialog.vue'
 
 const props = defineProps({
@@ -82,6 +92,7 @@ const emit = defineEmits(['update:modelValue', 'loaded'])
 const { t } = useI18n()
 
 const options = ref([])
+const scopedList = computed(() => options.value.some(hasActionFlags))
 const loading = ref(false)
 const createVisible = ref(false)
 
@@ -163,6 +174,12 @@ defineExpose({ options, load, openCreate, onCreated, createVisible })
 
 .picker-select {
   width: 100%;
+}
+
+.scoped-note {
+  margin: var(--ot-space-xs) 0 0;
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
 }
 
 .opt-name {

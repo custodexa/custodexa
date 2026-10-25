@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"encoding/json"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -25,7 +26,7 @@ import (
 // 角色快照即時重判。
 //
 // 缺陷形狀：AuthMiddleware 不查 DB，`c.Get("role")` 拿到的是**簽發 JWT 當下**的
-// 角色。三個連線強制點早已以 CurrentConnectRole 覆蓋，但檔案面（SFTP）與
+// 角色。三個連線強制點早已以 CurrentConnectPrincipal 覆蓋，但檔案面（SFTP）與
 // `PUT /authorizations/:id/accounts` 沒有——於是被降權／停用的前 admin 在 token
 // 效期內仍能以 admin 短路存取任意帳號的檔案面，並把自己加回被移除的帳號範圍。
 //
@@ -43,9 +44,9 @@ func setupRoleRecheckDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -64,6 +65,7 @@ func TestSFTPDemotedAdminJWTRejected(t *testing.T) {
 	db.Create(&model.AssetAccount{AssetID: 1, Username: "root", IsDefault: true})
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
@@ -75,7 +77,7 @@ func TestSFTPDemotedAdminJWTRejected(t *testing.T) {
 	r := gin.New()
 	r.GET("/assets/:id/files", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleAdmin) // 舊 JWT 快照仍宣稱 admin
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin)) // 舊 JWT 快照仍宣稱 admin
 		handler.List(c)
 	})
 	w := httptest.NewRecorder()
@@ -86,7 +88,7 @@ func TestSFTPDemotedAdminJWTRejected(t *testing.T) {
 	}
 }
 
-// TestSFTPInactiveUserRejected 停用使用者持有效 JWT：CurrentConnectRole 一併完成
+// TestSFTPInactiveUserRejected 停用使用者持有效 JWT：CurrentConnectPrincipal 一併完成
 // AUTH-1 可連線複查，於檔案面即時擋下（與連線面同一事實源）
 func TestSFTPInactiveUserRejected(t *testing.T) {
 	db := setupRoleRecheckDB(t)
@@ -109,7 +111,7 @@ func TestSFTPInactiveUserRejected(t *testing.T) {
 	r := gin.New()
 	r.GET("/assets/:id/files", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleAdmin)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin))
 		handler.List(c)
 	})
 	w := httptest.NewRecorder()
@@ -142,7 +144,7 @@ func TestUpdateAccountsDemotedAdminRejected(t *testing.T) {
 	handler.authService = identity.NewAuthService("test-secret", time.Hour)
 	r.PUT("/authorizations/:id/accounts", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleAdmin) // 舊 JWT 快照
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin)) // 舊 JWT 快照
 		handler.UpdateAccounts(c)
 	})
 
@@ -187,7 +189,7 @@ func TestUpdateAccountsRejectsEmptyAndMissing(t *testing.T) {
 	r := gin.New()
 	r.PUT("/authorizations/:id/accounts", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleAdmin)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin))
 		handler.UpdateAccounts(c)
 	})
 
@@ -248,7 +250,7 @@ func TestUpdateAccountsHappyPath(t *testing.T) {
 	r := gin.New()
 	r.PUT("/authorizations/:id/accounts", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleAdmin)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin))
 		handler.UpdateAccounts(c)
 	})
 

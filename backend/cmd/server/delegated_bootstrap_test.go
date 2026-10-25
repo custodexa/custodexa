@@ -54,6 +54,9 @@ func bootstrapTestDB(t *testing.T) *gorm.DB {
 		&model.Role{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	if err := db.AutoMigrate(&model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate authz tables: %v", err)
+	}
 	// 初始管理員：段 1 的種子在解封之前就建好了，故全新安裝時它必然存在。
 	admin := model.User{Username: bootstrapAdminUser,
 		Password: crypto.MustHashForTest(bootstrapAdminPassword), Active: true}

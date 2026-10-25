@@ -65,6 +65,15 @@ type testSSHServer struct {
 	// 停住期間若客戶端先關閉連線即放棄回應（windowsStallReleasedByPeer 計數）
 	windowsExecStall time.Duration
 
+	// --- 切鑰與時點掛鉤（主機身分守衛用）---
+	// onExec 於每個 exec 會話收到指令後、回應之前呼叫，參數為本次是第幾個 exec（從 1 起算）；
+	// onSFTP 於每個 SFTP 子系統請求被接受前呼叫；execExitByCall 指定第 n 個 exec 的退出碼（含 Windows 結果標記）
+	onExec         func(n int32)
+	onSFTP         func()
+	execExitByCall map[int32]int
+	// authPasswords 收到過的密碼認證嘗試所帶的密碼（測試用靶機，可明文記錄）
+	authPasswords []string
+
 	// --- 注入器自證計數（故障注入必須證明真的觸發過）---
 	chpasswdCalls     atomic.Int32
 	chpasswdExitFired atomic.Int32
@@ -76,7 +85,11 @@ type testSSHServer struct {
 	windowsStallFired          atomic.Int32
 	windowsStallReleasedByPeer atomic.Int32
 	passwordAuthCalls          atomic.Int32
-	publicKeyAuthOK            atomic.Int32
+	// authAttempts 收到的認證嘗試總數（密碼與公鑰）；onAuthAttempt 於每次嘗試的回呼開頭呼叫（可為 nil），
+	// 供測試在「伺服器收到認證」的那一刻讀庫斷言
+	authAttempts    atomic.Int32
+	onAuthAttempt   func()
+	publicKeyAuthOK atomic.Int32
 	// lastChpasswdStdin 最近一次 chpasswd 收到的 stdin（斷言憑證確實走 stdin）
 	lastChpasswdStdin atomic.Value
 	// lastExecCommand 最近一次 exec 的命令列（斷言憑證不進 argv）
@@ -115,7 +128,36 @@ func newTestSSHServer(t *testing.T, username, password string) *testSSHServer {
 func (s *testSSHServer) addr() string { return s.listener.Addr().String() }
 
 func (s *testSSHServer) hostKeyCallback() ssh.HostKeyCallback {
-	return ssh.FixedHostKey(s.hostKey.PublicKey())
+	return ssh.FixedHostKey(s.currentHostKey().PublicKey())
+}
+
+func (s *testSSHServer) currentHostKey() ssh.Signer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hostKey
+}
+
+// swapHostKey 之後的新連線改出示另一把主機金鑰（切鑰）；回傳新金鑰的公鑰。
+func (s *testSSHServer) swapHostKey(t *testing.T) ssh.PublicKey {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("host key: %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatalf("signer: %v", err)
+	}
+	s.mu.Lock()
+	s.hostKey = signer
+	s.mu.Unlock()
+	return signer.PublicKey()
+}
+
+func (s *testSSHServer) setHostKey(signer ssh.Signer) {
+	s.mu.Lock()
+	s.hostKey = signer
+	s.mu.Unlock()
 }
 
 func (s *testSSHServer) currentPassword() string {
@@ -142,10 +184,24 @@ func (s *testSSHServer) serve(username string) {
 	}
 }
 
+func (s *testSSHServer) noteAuthAttempt() {
+	s.authAttempts.Add(1)
+	s.mu.Lock()
+	hook := s.onAuthAttempt
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+}
+
 func (s *testSSHServer) handleConn(nConn net.Conn, username string) {
 	cfg := &ssh.ServerConfig{
 		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			s.noteAuthAttempt()
 			s.passwordAuthCalls.Add(1)
+			s.mu.Lock()
+			s.authPasswords = append(s.authPasswords, string(pass))
+			s.mu.Unlock()
 			if c.User() != username {
 				return nil, fmt.Errorf("unknown user")
 			}
@@ -165,6 +221,7 @@ func (s *testSSHServer) handleConn(nConn net.Conn, username string) {
 			return &ssh.Permissions{}, nil
 		},
 		PublicKeyCallback: func(c ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			s.noteAuthAttempt()
 			want := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 			for _, line := range strings.Split(s.readAuthorizedKeys(), "\n") {
 				if keyMaterial(line) != "" && keyMaterial(line) == keyMaterial(want) {
@@ -175,7 +232,7 @@ func (s *testSSHServer) handleConn(nConn net.Conn, username string) {
 			return nil, fmt.Errorf("key rejected")
 		},
 	}
-	cfg.AddHostKey(s.hostKey)
+	cfg.AddHostKey(s.currentHostKey())
 
 	sconn, chans, reqs, err := ssh.NewServerConn(nConn, cfg)
 	if err != nil {
@@ -214,7 +271,11 @@ func (s *testSSHServer) handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, 
 			name := parsePayloadString(req.Payload)
 			s.mu.Lock()
 			disabled := s.sftpDisabled
+			onSFTP := s.onSFTP
 			s.mu.Unlock()
+			if onSFTP != nil && !disabled {
+				onSFTP()
+			}
 			if name != "sftp" || disabled {
 				if disabled {
 					s.sftpRejectFired.Add(1)
@@ -254,7 +315,15 @@ func (s *testSSHServer) runExec(ch ssh.Channel, cmd string, raw net.Conn, connCl
 	if s.windowsExitCodeFirstExecOnly && s.chpasswdCalls.Load() > 1 {
 		exitCode, markerCode = 0, 0
 	}
+	callNo := s.chpasswdCalls.Load()
+	if code, ok := s.execExitByCall[callNo]; ok {
+		exitCode, markerCode = code, code
+	}
+	onExec := s.onExec
 	s.mu.Unlock()
+	if onExec != nil {
+		onExec(callNo)
+	}
 
 	// 目標端腳本掛住：停住期間客戶端若關線即放棄，不再印任何東西
 	if stall > 0 {

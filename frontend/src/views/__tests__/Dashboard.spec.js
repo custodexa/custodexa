@@ -1,3 +1,5 @@
+import { setCapabilitiesForTests, resetCapabilities } from '@/composables/useCapabilities'
+import { permissionsFor } from '@/composables/__tests__/capabilityFixtures'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
@@ -8,28 +10,22 @@ import Dashboard from '../Dashboard.vue'
 // 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
-const getAssetListMock = vi.fn()
-const getSessionStatisticsMock = vi.fn()
+const getDashboardCardMock = vi.fn()
 const getActiveSessionsMock = vi.fn()
 const getMyConnectionsMock = vi.fn()
 const searchAlertsMock = vi.fn()
 const getDailyReviewStatusMock = vi.fn()
 const getDailyReviewPendingMock = vi.fn()
 const signDailyReviewMock = vi.fn()
-const getMyAccessRequestsMock = vi.fn()
-const getPendingAccessRequestCountMock = vi.fn()
-const getAccessReviewsMock = vi.fn()
-const getRecordingStatsMock = vi.fn()
 const routerPushMock = vi.fn()
 
-vi.mock('@/api/assets', () => ({
-  getAssetList: (...args) => getAssetListMock(...args),
+// 十二張卡改由逐卡 API 供值；每個案例用 setCards 覆寫需要的卡，其餘預設 0
+vi.mock('@/api/dashboard', () => ({
+  getDashboardCard: (...args) => getDashboardCardMock(...args),
 }))
 
 vi.mock('@/api/sessions', () => ({
-  getSessionStatistics: (...args) => getSessionStatisticsMock(...args),
   getActiveSessions: (...args) => getActiveSessionsMock(...args),
-  getRecordingStats: (...args) => getRecordingStatsMock(...args),
 }))
 
 vi.mock('@/api/myConnections', () => ({
@@ -46,21 +42,24 @@ vi.mock('@/api/dailyReviews', () => ({
   signDailyReview: (...args) => signDailyReviewMock(...args),
 }))
 
-vi.mock('@/api/accessRequests', () => ({
-  getMyAccessRequests: (...args) => getMyAccessRequestsMock(...args),
-  getPendingAccessRequestCount: (...args) => getPendingAccessRequestCountMock(...args),
-}))
-
-vi.mock('@/api/access-reviews', () => ({
-  getAccessReviews: (...args) => getAccessReviewsMock(...args),
-}))
+// 逐卡回應：overrides 以 key 對應 { value, filters, ... } 或 Error（拒絕）
+let cardOverrides = {}
+const setCards = (overrides) => {
+  cardOverrides = overrides
+}
+const cardCalls = () => getDashboardCardMock.mock.calls.map((c) => c[0])
+const DAY_START = '2026-10-19T00:00:00.000000+08:00'
+const DAY_END = '2026-10-19T23:59:59.999999+08:00'
 
 // 第二參數＝登入回應的 is_approver（後端有效審核資格：approver 角色 OR 審核方群組）。
 // 群組審核方的 roles 不含 approver，只能靠這個欄位認出來，故測試必須能單獨設定它。
+// 能力來自後端 /auth/me 的 permissions（共用能力狀態），不是登入快取裡的角色：
+// 這裡把該身分的能力寫入共用狀態；localStorage 的 user 只留顯示用的欄位
 const setUserRoles = (roles, isApprover) => {
   const user = { username: 'tester', roles }
   if (isApprover !== undefined) user.is_approver = isApprover
   localStorage.setItem('user', JSON.stringify(user))
+  setCapabilitiesForTests(permissionsFor(roles, { approver: isApprover }))
 }
 
 // /daily-reviews/status 的回應形狀（昨日待簽、期限內、告警 1 筆未處置）
@@ -104,11 +103,16 @@ const enabledStatus = {
   stats_30d: { sign_rate_percent: 100 },
 }
 
+// 能力以明細組出（聯集案例用），不經角色折疊
+const grant = (perms) => setCapabilitiesForTests(perms)
+
 const mountDashboard = () =>
   mount(Dashboard, {
     global: {
       plugins: [ElementPlus],
       mocks: { $router: { push: routerPushMock } },
+      // 說明卡需要真實路由，其行為由 UpgradeGuidance.spec.js 與 DashboardCapabilities.spec.js 驗證
+      stubs: { UpgradeGuidanceCard: true },
     },
   })
 
@@ -116,64 +120,68 @@ describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     searchAlertsMock.mockResolvedValue({ data: [], total: 0 })
-    getAssetListMock.mockResolvedValue({ total: 0, data: [] })
-    getSessionStatisticsMock.mockResolvedValue({})
+    cardOverrides = {}
+    getDashboardCardMock.mockImplementation((key) => {
+      const o = cardOverrides[key]
+      if (o instanceof Error) return Promise.reject(o)
+      return Promise.resolve({ key, value: 0, unit: 'count', filters: {}, ...(o || {}) })
+    })
     getActiveSessionsMock.mockResolvedValue([])
     getMyConnectionsMock.mockResolvedValue({ data: [], total: 0 })
     getDailyReviewStatusMock.mockResolvedValue({ data: { enabled: false } })
     getDailyReviewPendingMock.mockResolvedValue({ data: { items: [], total: 0 } })
-    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
-    getPendingAccessRequestCountMock.mockResolvedValue({ count: 0, review_count: 0 })
-    getAccessReviewsMock.mockResolvedValue({
-      data: [],
-      last_review_days_ago: 10,
-      review_period_days: 180,
-      overdue: false,
-    })
-    getRecordingStatsMock.mockResolvedValue({
-      total_size: 0,
-      count: 0,
-      oldest_date: '',
-      newest_date: '',
-    })
   })
 
   it('renders statistics from APIs', async () => {
     setUserRoles(['admin'])
-    getAssetListMock.mockResolvedValue({ total: 12, data: [] })
-    getSessionStatisticsMock.mockResolvedValue({
-      active_sessions: 3,
-      today_sessions: 7,
-      total_sessions: 99,
+    setCards({
+      assets: { value: 12 },
+      'active-sessions': { value: 3 },
+      'today-sessions': { value: 7 },
+      'total-sessions': { value: 99 },
     })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    const text = wrapper.text()
-    expect(text).toContain('12')
-    expect(text).toContain('3')
-    expect(text).toContain('7')
-    expect(text).toContain('99')
+    const valueOf = (k) => wrapper.find(`[data-card="${k}"] .stat-value`).text()
+    expect(valueOf('assets')).toBe('12')
+    expect(valueOf('active-sessions')).toBe('3')
+    expect(valueOf('today-sessions')).toBe('7')
+    expect(valueOf('total-sessions')).toBe('99')
   })
 
-  it('renders today alerts count from alerts API with start_time of today', async () => {
+  it('今日告警與今日連線走逐卡 API，導覽沿用卡片回應的共用日界線', async () => {
     setUserRoles(['admin'])
-    getAssetListMock.mockResolvedValue({ total: 0, data: [] })
-    getSessionStatisticsMock.mockResolvedValue({})
-    searchAlertsMock.mockResolvedValue({ data: [], total: 5 })
+    setCards({
+      'today-alerts': { value: 5, filters: { start_time: DAY_START, end_time: DAY_END } },
+      'today-sessions': { value: 2, filters: { start_time: DAY_START, end_time: DAY_END } },
+    })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(searchAlertsMock).toHaveBeenCalledWith({
-      start_time: expect.any(String),
-      page: 1,
-      page_size: 1,
+    expect(cardCalls()).toContain('today-alerts')
+    // 不再各自用本地時間組參數查列表
+    expect(searchAlertsMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ start_time: expect.any(String) })
+    )
+    const card = wrapper.find('[data-card="today-alerts"]')
+    expect(card.text()).toContain('今日告警')
+    expect(card.find('.stat-value').text()).toBe('5')
+    await card.trigger('click')
+    expect(routerPushMock).toHaveBeenCalledWith({
+      path: '/alerts',
+      query: { start_time: DAY_START, end_time: DAY_END },
     })
-    expect(wrapper.text()).toContain('今日告警')
-    expect(wrapper.text()).toContain('5')
+    routerPushMock.mockClear()
+    await wrapper.find('[data-card="today-sessions"]').trigger('click')
+    expect(routerPushMock).toHaveBeenCalledWith({
+      path: '/sessions',
+      query: { start_time: DAY_START, end_time: DAY_END, tab: 'history' },
+    })
   })
 
   // 擋：非規則類告警在首頁印出 rule_name 機器碼；指令為空時留下尾端冒號
@@ -203,37 +211,44 @@ describe('Dashboard', () => {
     for (const line of lines) expect(line.endsWith('：')).toBe(false)
   })
 
-  it('falls back to 0 today alerts when alerts API fails', async () => {
+  it('今日告警取不到時顯示「未取得」，不冒充 0', async () => {
     setUserRoles(['admin'])
-    getAssetListMock.mockResolvedValue({ total: 0, data: [] })
-    getSessionStatisticsMock.mockResolvedValue({})
-    searchAlertsMock.mockRejectedValue(new Error('network down'))
+    setCards({ 'today-alerts': new Error('network down') })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('今日告警')
-    expect(wrapper.vm.todayAlerts).toBe(0)
+    const card = wrapper.find('[data-card="today-alerts"]')
+    expect(card.text()).toContain('今日告警')
+    expect(card.find('.stat-value').text()).toBe('未取得')
+    expect(card.find('.stat-value').text()).not.toBe('0')
   })
 
   it('survives API failure without crashing and stops loading', async () => {
     setUserRoles(['admin'])
-    getAssetListMock.mockRejectedValue(new Error('network down'))
-    getSessionStatisticsMock.mockRejectedValue(new Error('network down'))
-    searchAlertsMock.mockRejectedValue(new Error('network down'))
+    const down = new Error('network down')
+    setCards({
+      assets: down,
+      'active-sessions': down,
+      'today-sessions': down,
+      'total-sessions': down,
+      'today-alerts': down,
+      'recording-storage': down,
+    })
+    searchAlertsMock.mockRejectedValue(down)
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    // 頁面仍渲染統計卡（零值），不拋例外
+    // 頁面仍渲染統計卡（未取得），不拋例外，沒有卡片停在載入中
     expect(wrapper.text()).toContain('資產總數')
-    expect(wrapper.vm.loading).toBe(false)
+    expect(wrapper.find('[data-card="assets"] .stat-value').text()).toBe('未取得')
+    expect(wrapper.findAll('.stat-card').every((c) => c.find('.stat-value').exists())).toBe(true)
+    expect(wrapper.findAll('.el-loading-mask').filter((m) => m.element.style.display !== 'none')).toHaveLength(0)
   })
 
   it('renders quick action cards', async () => {
     setUserRoles(['admin'])
-    getAssetListMock.mockResolvedValue({ total: 0, data: [] })
-    getSessionStatisticsMock.mockResolvedValue({})
 
     const wrapper = mountDashboard()
     await flushPromises()
@@ -249,7 +264,7 @@ describe('Dashboard', () => {
 
   it('user role never calls privileged endpoints and shows my-connections summary', async () => {
     setUserRoles(['user'])
-    getAssetListMock.mockResolvedValue({ total: 4, data: [] })
+    setCards({ assets: { value: 4 }, 'my-connections': { value: 2 } })
     getMyConnectionsMock.mockResolvedValue({
       data: [
         { asset_name: 'web-server', protocol: 'ssh', status: 'active', duration_seconds: 60 },
@@ -262,7 +277,7 @@ describe('Dashboard', () => {
     await flushPromises()
 
     // 不呼叫需 session:view / alert:view 的端點（避免 403）
-    expect(getSessionStatisticsMock).not.toHaveBeenCalled()
+    expect(cardCalls().sort()).toEqual(['assets', 'my-connections', 'my-pending-requests'])
     expect(getActiveSessionsMock).not.toHaveBeenCalled()
     expect(searchAlertsMock).not.toHaveBeenCalled()
 
@@ -292,68 +307,61 @@ describe('Dashboard', () => {
     expect(routerPushMock).toHaveBeenCalledWith('/my-connections')
   })
 
-  it('multi-role [user,auditor] account keeps the privileged dashboard', async () => {
-    setUserRoles(['user', 'auditor'])
+  it('混合 user＋auditor 能力取聯集：自助與稽核的卡、面板都出現', async () => {
+    // 以能力明細表達（不經角色折疊）：稽核能力加上自助能力
+    grant([...permissionsFor(['auditor']), 'ui:self-service-actions'])
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    // 有效角色為 auditor（admin > auditor > user），不落入自助模式
-    expect(getSessionStatisticsMock).toHaveBeenCalled()
     expect(getActiveSessionsMock).toHaveBeenCalled()
-    expect(getMyConnectionsMock).not.toHaveBeenCalled()
+    expect(getMyConnectionsMock).toHaveBeenCalled()
+    expect(cardCalls()).toEqual(
+      expect.arrayContaining(['my-connections', 'my-pending-requests', 'active-sessions', 'today-alerts'])
+    )
+    // 每張卡只出現一次
+    const keys = wrapper.findAll('[data-card]').map((n) => n.attributes('data-card'))
+    expect(new Set(keys).size).toBe(keys.length)
     expect(wrapper.text()).toContain('進行中連線')
+    expect(wrapper.find('[data-panel="my-connections"]').exists()).toBe(true)
   })
 
   // —— 人設待辦卡——
 
   it('auditor sees audit-backlog cards with counts from existing endpoints', async () => {
     setUserRoles(['auditor'])
-    searchAlertsMock.mockImplementation((params) =>
-      Promise.resolve(
-        params?.unreviewed === 'true' ? { data: [], total: 7 } : { data: [], total: 0 }
-      )
-    )
+    setCards({
+      'unreviewed-alerts': { value: 7, filters: { unreviewed: 'true' } },
+      // 錄影失敗件數是完整授權集合的全量，不由近期五列推算
+      'recording-failures': { value: 2, filters: { status: 'active', recording_error: 'true' } },
+      'last-access-review': { value: 200, unit: 'days', overdue: true, review_period_days: 180 },
+    })
     getActiveSessionsMock.mockResolvedValue([
       { id: 1, protocol: 'ssh', recording_error: '磁碟滿' },
       { id: 2, protocol: 'rdp' },
-      { id: 3, protocol: 'ssh', recording_error: '目錄不可寫' },
+      { id: 3, protocol: 'ssh' },
     ])
-    getAccessReviewsMock.mockResolvedValue({
-      data: [],
-      last_review_days_ago: 200,
-      review_period_days: 180,
-      overdue: true,
-    })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(searchAlertsMock).toHaveBeenCalledWith({
-      unreviewed: 'true',
-      page: 1,
-      page_size: 1,
-    })
-    const text = wrapper.text()
-    expect(text).toContain('未審閱告警')
-    expect(text).toContain('7')
-    expect(text).toContain('錄影失敗連線')
-    expect(text).toContain('2') // 三筆活動連線中兩筆帶 recording_error
-    expect(text).toContain('上次存取複審（天，已逾期）')
-    expect(text).toContain('200')
-    // auditor 非 approver/admin：不打審核端點、不見待審卡
-    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
-    expect(text).not.toContain('待審申請')
+    const valueOf = (k) => wrapper.find(`[data-card="${k}"] .stat-value`).text()
+    expect(valueOf('unreviewed-alerts')).toBe('7')
+    expect(wrapper.find('[data-card="unreviewed-alerts"]').text()).toContain('未審閱告警')
+    expect(valueOf('recording-failures')).toBe('2')
+    expect(wrapper.find('[data-card="recording-failures"]').text()).toContain('錄影失敗連線')
+    expect(valueOf('last-access-review')).toBe('200')
+    expect(wrapper.find('[data-card="last-access-review"]').text()).toContain('上次存取複審（天，已逾期）')
+    // auditor 非 approver/admin：不取待審卡、不見待審卡
+    expect(cardCalls()).not.toContain('pending-approvals')
+    expect(wrapper.text()).not.toContain('待審申請')
   })
 
   it('user+approver overlay adds pending-approvals card alongside self-service cards', async () => {
     setUserRoles(['user', 'approver'])
-    getPendingAccessRequestCountMock.mockResolvedValue({ count: 3, review_count: 1 })
-    getMyAccessRequestsMock.mockResolvedValue({
-      data: [
-        { id: 1, status: 'pending' },
-        { id: 2, status: 'approved' },
-      ],
+    setCards({
+      'pending-approvals': { value: 4, count: 3, review_count: 1 },
+      'my-pending-requests': { value: 1, filters: { status: 'pending' } },
     })
 
     const wrapper = mountDashboard()
@@ -363,9 +371,10 @@ describe('Dashboard', () => {
     // 疊加聯集：自助卡與待審卡並存
     expect(text).toContain('我的申請待審')
     expect(text).toContain('待審申請')
-    expect(text).toContain('4') // count 3 + review_count 1
-    // 仍不呼叫稽核端點
-    expect(getSessionStatisticsMock).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-card="pending-approvals"] .stat-value').text()).toBe('4') // 同源 count + review_count
+    // 仍不取稽核與 session 的卡、不呼叫稽核端點
+    expect(cardCalls()).not.toContain('active-sessions')
+    expect(cardCalls()).not.toContain('today-alerts')
     expect(searchAlertsMock).not.toHaveBeenCalled()
   })
 
@@ -378,88 +387,80 @@ describe('Dashboard', () => {
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(cardCalls()).not.toContain('pending-approvals')
     expect(wrapper.text()).not.toContain('待審申請')
   })
 
   it('群組審核方（roles 不含 approver、is_approver 為真）：打端點且渲染待審卡', async () => {
     setUserRoles(['user'], true)
-    getPendingAccessRequestCountMock.mockResolvedValue({ count: 2, review_count: 3 })
-    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
+    setCards({ 'pending-approvals': { value: 5, count: 2, review_count: 3 } })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(getPendingAccessRequestCountMock).toHaveBeenCalled()
+    expect(cardCalls()).toContain('pending-approvals')
     const text = wrapper.text()
     expect(text).toContain('待審申請')
-    expect(text).toContain('5') // count 2 + review_count 3
+    expect(wrapper.find('[data-card="pending-approvals"] .stat-value').text()).toBe('5') // count 2 + review_count 3
   })
 
-  it('掛載後資格由假轉真（/auth/me 回寫快取並發事件）：補打端點並補上卡片', async () => {
+  it('掛載後資格由假轉真（能力更新）：補打端點並補上卡片', async () => {
     setUserRoles(['user'], false)
-    getPendingAccessRequestCountMock.mockResolvedValue({ count: 1, review_count: 0 })
-    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
+    setCards({ 'pending-approvals': { value: 1, count: 1, review_count: 0 } })
 
     const wrapper = mountDashboard()
     await flushPromises()
-    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(cardCalls()).not.toContain('pending-approvals')
     expect(wrapper.text()).not.toContain('待審申請')
 
-    setUserRoles(['user'], true)
-    window.dispatchEvent(new Event('ot-user-updated'))
+    setUserRoles(['user'], true) // 能力更新（例如重新取得 /auth/me）
     await flushPromises()
 
-    expect(getPendingAccessRequestCountMock).toHaveBeenCalled()
+    expect(cardCalls()).toContain('pending-approvals')
     expect(wrapper.text()).toContain('待審申請')
   })
 
   it('掛載後資格由真轉假：卡片消失且不再取數', async () => {
     setUserRoles(['user'], true)
-    getPendingAccessRequestCountMock.mockResolvedValue({ count: 6, review_count: 0 })
-    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
+    setCards({ 'pending-approvals': { value: 6, count: 6, review_count: 0 } })
 
     const wrapper = mountDashboard()
     await flushPromises()
     expect(wrapper.text()).toContain('待審申請')
-    const callsBefore = getPendingAccessRequestCountMock.mock.calls.length
+    const callsBefore = cardCalls().filter((k) => k === 'pending-approvals').length
 
     setUserRoles(['user'], false)
-    window.dispatchEvent(new Event('ot-user-updated'))
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('待審申請')
-    expect(getPendingAccessRequestCountMock.mock.calls.length).toBe(callsBefore)
+    expect(cardCalls().filter((k) => k === 'pending-approvals').length).toBe(callsBefore)
   })
 
-  it('矛盾快取（is_approver false ＋ 殘留 approver 角色）：不打端點、不出現卡片', async () => {
+  it('快取殘留 approver 角色但能力不含審核點：不打端點、不出現卡片', async () => {
     setUserRoles(['user', 'approver'], false)
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(cardCalls()).not.toContain('pending-approvals')
     expect(wrapper.text()).not.toContain('待審申請')
   })
 
   it('plain user sees my pending requests count card', async () => {
     setUserRoles(['user'])
-    getMyAccessRequestsMock.mockResolvedValue({
-      data: [
-        { id: 1, status: 'pending' },
-        { id: 2, status: 'pending' },
-        { id: 3, status: 'rejected' },
-      ],
-    })
+    // 件數是 pending 全量，不再由前 200 筆的陣列長度推算
+    setCards({ 'my-pending-requests': { value: 2, filters: { status: 'pending' } } })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
     const text = wrapper.text()
     expect(text).toContain('我的申請待審')
-    expect(text).toContain('2')
+    expect(wrapper.find('[data-card="my-pending-requests"] .stat-value').text()).toBe('2')
     expect(text).toContain('可連資產')
-    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(cardCalls()).not.toContain('pending-approvals')
+    await wrapper.find('[data-card="my-pending-requests"]').trigger('click')
+    expect(routerPushMock).toHaveBeenCalledWith({ path: '/my-requests', query: { status: 'pending' } })
   })
 
   // —— 每日安全審閱卡（只提醒與提供入口，簽核在操作日誌頁的抽屜）——
@@ -771,12 +772,12 @@ describe('Dashboard', () => {
   it('auditor sees the recording-storage card with a formatted disk size', async () => {
     setUserRoles(['auditor'])
     // 931,724 B ＝ QUICKSTART 6.6 的對帳實測值（.cast 743,174 ＋ .guac 188,550）
-    getRecordingStatsMock.mockResolvedValue({ total_size: 931724, count: 12 })
+    setCards({ 'recording-storage': { value: 931724, unit: 'bytes' } })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(getRecordingStatsMock).toHaveBeenCalled()
+    expect(cardCalls()).toContain('recording-storage')
     const text = wrapper.text()
     expect(text).toContain('錄影佔用')
     expect(text).toContain('909.9 KB')
@@ -792,18 +793,18 @@ describe('Dashboard', () => {
     // 端點掛 audit:view：一般 user 呼叫必 403。**斷言請求未發生**而非只斷言
     // 卡片不顯示——「卡片不顯示但請求照發」是同型缺陷的常見形態
     setUserRoles(['user'])
-    getRecordingStatsMock.mockResolvedValue({ total_size: 931724, count: 12 })
+    setCards({ 'recording-storage': { value: 931724, unit: 'bytes' } })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(getRecordingStatsMock).not.toHaveBeenCalled()
+    expect(cardCalls()).not.toContain('recording-storage')
     expect(wrapper.text()).not.toContain('錄影佔用')
   })
 
   it('storage card is not clickable while the other first-row cards still navigate', async () => {
     setUserRoles(['admin'])
-    getRecordingStatsMock.mockResolvedValue({ total_size: 1024, count: 1 })
+    setCards({ 'recording-storage': { value: 1024, unit: 'bytes' } })
 
     const wrapper = mountDashboard()
     await flushPromises()
@@ -819,17 +820,18 @@ describe('Dashboard', () => {
     const assetCard = firstRowCards.find((card) => card.text().includes('資產總數'))
     expect(assetCard.classes()).toContain('stat-card-clickable')
     await assetCard.trigger('click')
-    expect(routerPushMock).toHaveBeenCalledWith('/assets')
+    expect(routerPushMock).toHaveBeenCalledWith({ path: '/assets', query: {} })
   })
 
-  it('renders a dash rather than 0 when the stats query fails', async () => {
+  it('renders 未取得 rather than 0 when the stats query fails', async () => {
     setUserRoles(['admin'])
-    getRecordingStatsMock.mockRejectedValue(new Error('network down'))
+    setCards({ 'recording-storage': new Error('network down') })
 
     const wrapper = mountDashboard()
     await flushPromises()
 
-    expect(wrapper.vm.recordingStorageBytes).toBe(null)
-    expect(wrapper.text()).toContain('錄影佔用')
+    const card = wrapper.find('[data-card="recording-storage"]')
+    expect(card.find('.stat-value').text()).toBe('未取得')
+    expect(card.text()).toContain('錄影佔用')
   })
 })

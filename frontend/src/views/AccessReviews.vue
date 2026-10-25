@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button
-          v-if="isAdmin"
+          v-if="canInitReview"
           type="primary"
           @click="openReviewDialog"
         >
@@ -111,7 +111,7 @@
           <EmptyState
             v-if="!loadError"
             :title="$t('accessReviews.emptyTitle')"
-            :hint="isAdmin ? $t('accessReviews.emptyHintAdmin') : $t('accessReviews.emptyHintUser')"
+            :hint="canInitReview ? $t('accessReviews.emptyHintAdmin') : $t('accessReviews.emptyHintUser')"
           />
           <span v-else />
         </template>
@@ -285,7 +285,7 @@ import {
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 
@@ -298,7 +298,8 @@ const reviewList = ref([])
 const lastReviewDaysAgo = ref(-1)
 const periodDays = ref(180)
 const overdue = ref(false)
-const { isAdmin } = useRoles()
+// 發起複審是 accessreview:manage 的操作（檢視只要 audit:view）
+const canInitReview = computed(() => can('accessreview:manage'))
 
 const fetchReviews = async () => {
   loading.value = true

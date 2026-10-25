@@ -119,6 +119,9 @@ func aadFixture(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (asse
 		`CREATE TABLE notification_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, secret TEXT NOT NULL DEFAULT '',
 			url TEXT NOT NULL DEFAULT '')`,
 		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
+		`CREATE TABLE system_alert_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, url_enc TEXT NOT NULL DEFAULT '',
+			secret_enc TEXT NOT NULL DEFAULT '')`,
+		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE change_secret_candidates (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
 		// 憑證密文版本：登入秘密的現行落點，同樣登記於 envelopeMigrationTargets
@@ -168,7 +171,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	// 由 versioned migration 建表（CHECK 約束需求），此處僅需一張形狀等價的空表
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
-		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
+		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.SystemAlertOutbox{}, &model.AuditLog{}, &model.DataKey{},
 		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{},
 		// 憑證密文版本亦為信封目標表（登入秘密的現行落點），空表即 pending 0；
 		// 缺表會讓逐表掃描整個 error 而擋住 KEK 輪替

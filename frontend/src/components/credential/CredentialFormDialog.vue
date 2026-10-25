@@ -109,6 +109,22 @@
         </p>
       </template>
 
+      <!-- 管理歸屬：共用憑證才有（專用憑證恆隨資產）。節點候選與全域選項由伺服器標示 -->
+      <el-form-item
+        v-if="isShared"
+        :label="t('credentials.ownership.label')"
+        data-test="form-ownership"
+      >
+        <CredentialOwnershipSelect
+          v-model="ownership"
+          :purpose="isEdit ? 'credential_update' : 'credential_create'"
+          :active="modelValue"
+          :disabled="!!ownershipDenied"
+          :hint="ownershipDenied ? t(`credentials.actionReason.${ownershipDenied}`) : ''"
+          :explain="isEdit"
+          @state="ownershipState = $event"
+        />
+      </el-form-item>
       <el-form-item :label="t('credentials.form.note')">
         <el-input
           v-model="form.note"
@@ -138,6 +154,7 @@
       <el-button
         type="primary"
         :loading="submitting"
+        :disabled="submitBlocked"
         data-test="form-submit"
         @click="submit"
       >
@@ -161,6 +178,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { createCredential, updateCredential } from '@/api/credentials'
+import CredentialOwnershipSelect from './CredentialOwnershipSelect.vue'
+import { deniedReason } from '@/utils/credentialActions'
 import {
   CREDENTIAL_PROTOCOL_FAMILY_VALUES,
   CREDENTIAL_SECRET_TYPE_VALUES,
@@ -189,11 +208,38 @@ const form = reactive({
   note: '',
 })
 
+// 歸屬：{ kind: 'global'|'node', node_id }；選擇器回報 state（可否送出、是否範圍化）
+const ownership = ref({ kind: 'global', node_id: null })
+const ownershipState = ref({ loading: false, ready: true, scoped: false, allowGlobal: true })
+
 const isEdit = computed(() => !!props.credential)
 const isShared = computed(() => (isEdit.value ? props.credential.scope === 'shared' : true))
 const secretNoun = computed(() =>
   t(`credentials.secretFix.noun.${credentialSecretKind(props.credential)}`))
 const secretFixEntry = computed(() => t('credentials.secretFix.entry', { noun: secretNoun.value }))
+
+// 編輯時歸屬是否有改：沒改就不送、也不因候選節點載入失敗擋住改名與備註
+const originalOwnership = computed(() => {
+  const o = props.credential?.ownership
+  return o?.kind === 'node'
+    ? { kind: 'node', node_id: o.node_id ?? null }
+    : { kind: 'global', node_id: null }
+})
+const ownershipChanged = computed(() => ownership.value.kind !== originalOwnership.value.kind
+  || (ownership.value.kind === 'node' && ownership.value.node_id !== originalOwnership.value.node_id))
+// 伺服器標示本主體不能改這筆的歸屬（reassign 旗標）：欄位唯讀並說明原因
+const ownershipDenied = computed(() => (isEdit.value ? deniedReason(props.credential, 'reassign') : ''))
+// 要送出歸屬時（新增，或編輯且有改）必須選到可選節點
+const ownershipNeeded = computed(() => isShared.value && (!isEdit.value || ownershipChanged.value))
+const submitBlocked = computed(() => ownershipNeeded.value && !ownershipState.value.ready)
+
+// 範圍化主體一律明送歸屬；全域主體不選節點時維持現行「不帶歸屬」
+function ownershipBody() {
+  if (!isShared.value) return null
+  const { kind, node_id: nodeId } = ownership.value
+  if (kind === 'node') return { kind: 'node', node_id: nodeId }
+  return ownershipState.value.scoped ? { kind: 'global' } : null
+}
 
 const rules = computed(() => ({
   name: [
@@ -241,6 +287,7 @@ watch(() => props.modelValue, (open) => {
   form.password = ''
   form.private_key = ''
   form.note = cred?.note || ''
+  ownership.value = cred ? { ...originalOwnership.value } : { kind: 'global', node_id: null }
   formRef.value?.clearValidate?.()
 })
 
@@ -249,7 +296,7 @@ function close(visible = false) {
 }
 
 function createPayload() {
-  return {
+  const body = {
     name: form.name.trim(),
     username: form.username.trim(),
     secret_type: form.secret_type,
@@ -258,6 +305,9 @@ function createPayload() {
     password: form.secret_type === 'password' ? form.password : '',
     private_key: form.secret_type === 'ssh_key' ? form.private_key : '',
   }
+  const own = ownershipBody()
+  if (own) body.ownership = own
+  return body
 }
 
 // 更新只送真的改過的欄位：三欄都是「省略＝不動」語義，把沒動過的原值一併送出
@@ -266,6 +316,11 @@ function updatePayload() {
   const body = { note: form.note }
   if (isShared.value) body.name = form.name.trim()
   else body.username = form.username.trim()
+  if (ownershipChanged.value && !ownershipDenied.value) {
+    const own = ownershipBody()
+    if (own) body.ownership = own
+    else if (ownership.value.kind === 'global') body.ownership = { kind: 'global' }
+  }
   return body
 }
 

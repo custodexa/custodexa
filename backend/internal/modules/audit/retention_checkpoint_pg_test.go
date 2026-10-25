@@ -92,7 +92,7 @@ func pgFixture(t *testing.T, db *gorm.DB) *purgeFixture {
 	}
 	purger := NewCheckpointPurger(db, signer)
 	auditLog := &fakeAuditLogger{}
-	svc := NewRetentionService(db, policy.NewSecurityPolicyService(db), nil, auditLog)
+	svc := NewRetentionService(db, newTestPolicyService(db), nil, auditLog)
 	svc.UseCheckpointIntervals(purger)
 	return &purgeFixture{db: db, seal: seal, purger: purger, svc: svc, audit: auditLog, signer: signer}
 }

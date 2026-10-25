@@ -27,11 +27,11 @@ func localAdminMigrate(t *testing.T, db *gorm.DB) {
 	// model.UserRole：計數的來源條件讀 user_roles.source，而 many2many 標籤
 	// 自動建出的關聯表只有兩欄——缺這一個 model，計數會敗在「no such column」
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.ApproverScope{}, &model.RefreshToken{}, &model.AuditLog{},
+		&model.ApproverScope{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{},
 		&model.UserRole{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{},
-		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{},
+		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		// 刪除帳號同交易作廢外部身分綁定，缺表即整筆回滾
-		&model.UserExternalIdentity{}); err != nil {
+		&model.RoleBindingNode{}, &model.UserExternalIdentity{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{model.RoleAdmin, "user"} {
@@ -50,6 +50,7 @@ func localAdminDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)
@@ -283,6 +284,7 @@ func localAdminConcurrentDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)

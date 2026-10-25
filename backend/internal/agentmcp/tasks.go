@@ -133,7 +133,7 @@ func (h *Handler) requestAccess(ctx context.Context, o sessionOwner, raw json.Ra
 	if h.ssh.DB.First(&user, o.User).Error != nil {
 		return codeResult("AUTH_AGENT_TOKEN_INVALID")
 	}
-	task, err := h.requests.Submit(o.User, user.Username, model.RoleUser, authz.SubmitAccessRequestInput{Items: items, Reason: in.Reason, DurationMinutes: in.Duration})
+	task, err := h.requests.Submit(o.User, user.Username, false, authz.SubmitAccessRequestInput{Items: items, Reason: in.Reason, DurationMinutes: in.Duration})
 	if err != nil {
 		return requestError(err)
 	}
@@ -180,7 +180,7 @@ func (h *Handler) checkRequest(ctx context.Context, o sessionOwner, raw json.Raw
 	if err != nil {
 		return codeResult("NOTFOUND_ACCESS_REQUEST")
 	}
-	versions, err := h.reports.Versions(ctx, r.ID, o.User, model.RoleUser)
+	versions, err := h.reports.Versions(ctx, r.ID, o.User, false)
 	if err != nil {
 		return codeResult("INTERNAL_ACCESS_REQUEST_MINE_QUERY")
 	}

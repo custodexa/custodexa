@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"log"
 	"strings"
 	"time"
@@ -164,6 +165,17 @@ func (s *UserService) ListExternalIdentities(userID uint) ([]ExternalIdentityDTO
 // 綁定**不推進** credential_epoch：新增登入途徑不使既有憑證失效
 func (s *UserService) BindExternalIdentity(userID, providerID uint, subject string,
 	actor IdentityAdminActor) (*ExternalIdentityDTO, error) {
+	return s.bindExternalIdentity(userID, providerID, subject, actor, nil)
+}
+
+// BindExternalIdentityBy 帶操作者的綁定：經帳號身分操作關卡，建立與留痕同交易。
+func (s *UserService) BindExternalIdentityBy(op Operator, userID, providerID uint, subject string) (*ExternalIdentityDTO, error) {
+	return s.bindExternalIdentity(userID, providerID, subject,
+		IdentityAdminActor{UserID: op.UserID, Username: op.Username, ClientIP: op.ClientIP}, &op)
+}
+
+func (s *UserService) bindExternalIdentity(userID, providerID uint, subject string,
+	actor IdentityAdminActor, op *Operator) (*ExternalIdentityDTO, error) {
 
 	subject = strings.TrimSpace(subject)
 	// 大小寫敏感、不做任何正規化：subject 的比對語義由 IdP 定義，
@@ -199,9 +211,27 @@ func (s *UserService) BindExternalIdentity(userID, providerID uint, subject stri
 	// 唯一性由 partial unique index 把關（migrations.go idx_user_external_identities_domain）。
 	// 先查後寫有 TOCTOU 窗，故**以約束失敗為準**：預查僅為了回可讀錯誤，
 	// 真正的裁決在 DB。約束失敗後重查以區分「撞既有身分」與其他寫入錯誤
-	createErr := s.db.Create(&identity).Error
+	create := func() error { return s.db.Create(&identity).Error }
+	if op != nil {
+		create = func() error {
+			return s.db.Transaction(func(tx *gorm.DB) error {
+				record, err := accountOpsOrDefault(s.acctOps).gateAndRecord(tx, *op, userID, AccountOpExternalBound)
+				if err != nil {
+					return err
+				}
+				if err := tx.Create(&identity).Error; err != nil {
+					return err
+				}
+				return record()
+			})
+		}
+	}
+	createErr := create()
+	if createErr != nil && op != nil && isAccountOpRefusal(createErr) {
+		return nil, createErr
+	}
 	if createErr != nil {
-		createErr = s.retryBindOverOrphan(&identity, actor, createErr)
+		createErr = s.retryBindOverOrphan(&identity, actor, createErr, create)
 	}
 	if createErr != nil {
 		var existing model.UserExternalIdentity
@@ -238,7 +268,7 @@ func (s *UserService) BindExternalIdentity(userID, providerID uint, subject stri
 // 這類綁定是帳號刪除未一併作廢綁定時留下的，指向的帳號已不存在，以衝突拒絕會讓
 // 管理者無從為此人重新綁定。重試仍失敗（例如並發的另一個綁定搶先）照舊回衝突
 func (s *UserService) retryBindOverOrphan(identity *model.UserExternalIdentity,
-	actor IdentityAdminActor, createErr error) error {
+	actor IdentityAdminActor, createErr error, create func() error) error {
 	var existing model.UserExternalIdentity
 	if err := s.db.Where("issuer = ? AND client_id = ? AND subject = ?",
 		identity.Issuer, identity.ClientID, identity.Subject).First(&existing).Error; err != nil {
@@ -260,7 +290,7 @@ func (s *UserService) retryBindOverOrphan(identity *model.UserExternalIdentity,
 		})
 	}
 	identity.ID = 0
-	return s.db.Create(identity).Error
+	return create()
 }
 
 // revokeOrphanBinding 於原帳號的使用者鎖內（與刪除帳號同一把）重讀帳號狀態，
@@ -294,8 +324,28 @@ func (s *UserService) revokeOrphanBinding(existing *model.UserExternalIdentity) 
 //
 // 成功時同交易推進 credential_epoch 並撤銷 refresh；鎖外執行三管道收線。
 func (s *UserService) UnbindExternalIdentity(userID, identityID uint, actor IdentityAdminActor) error {
+	return s.unbindExternalIdentity(userID, identityID, actor, nil)
+}
+
+// UnbindExternalIdentityBy 帶操作者的解綁：經帳號身分操作關卡，留痕同交易。
+func (s *UserService) UnbindExternalIdentityBy(op Operator, userID, identityID uint) error {
+	return s.unbindExternalIdentity(userID, identityID,
+		IdentityAdminActor{UserID: op.UserID, Username: op.Username, ClientIP: op.ClientIP}, &op)
+}
+
+func (s *UserService) unbindExternalIdentity(userID, identityID uint, actor IdentityAdminActor, op *Operator) error {
 	err := WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
-		return s.unbindLocked(tx, userID, identityID)
+		record := func() error { return nil }
+		if op != nil {
+			var gerr error
+			if record, gerr = accountOpsOrDefault(s.acctOps).gateAndRecord(tx, *op, userID, AccountOpExternalUnbound); gerr != nil {
+				return gerr
+			}
+		}
+		if err := s.unbindLocked(tx, userID, identityID); err != nil {
+			return err
+		}
+		return record()
 	})
 	if err != nil {
 		s.auditIdentityFailure(actor, userID, "external_identity_unbind_rejected", identityID, err)
@@ -320,8 +370,32 @@ func (s *UserService) UnbindExternalIdentity(userID, identityID uint, actor Iden
 // 停用會移除該帳號的本地 admin 資格，故外層經系統級的本地 admin 不變式鎖；
 // 取鎖順序 system → user。
 func (s *UserService) UnbindExternalIdentityAndDisable(userID, identityID uint, actor IdentityAdminActor) error {
+	return s.unbindExternalIdentityAndDisable(userID, identityID, actor, nil)
+}
+
+// UnbindExternalIdentityAndDisableBy 帶操作者的解綁並停用：經帳號身分操作關卡，留痕同交易。
+func (s *UserService) UnbindExternalIdentityAndDisableBy(op Operator, userID, identityID uint) error {
+	return s.unbindExternalIdentityAndDisable(userID, identityID,
+		IdentityAdminActor{UserID: op.UserID, Username: op.Username, ClientIP: op.ClientIP}, &op)
+}
+
+func (s *UserService) unbindExternalIdentityAndDisable(userID, identityID uint, actor IdentityAdminActor, op *Operator) error {
 	err := WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
+			record := func() error { return nil }
+			if op != nil {
+				// 停用部分先判：持保護角色的帳號只有超管能停用（解綁本身不在受控清單）
+				if err := s.gateLifecycle(tx, op, userID, AccountOpDisable); err != nil {
+					return err
+				}
+				var gerr error
+				if record, gerr = accountOpsOrDefault(s.acctOps).gateAndRecord(tx, *op, userID, AccountOpExternalUnbound); gerr != nil {
+					return gerr
+				}
+			}
+			if err := authz.BeginPermissionChange(tx); err != nil {
+				return err
+			}
 			// 解綁本身在此**不套用登入途徑判準**：帳號同一交易內即被停用，
 			// 「保留可用登入途徑」的目的（不製造無法登入的活躍帳號）已由停用滿足
 			if _, err := s.deleteIdentity(tx, userID, identityID); err != nil {
@@ -331,7 +405,14 @@ func (s *UserService) UnbindExternalIdentityAndDisable(userID, identityID uint, 
 				Update("active", false).Error; err != nil {
 				return fmt.Errorf("停用帳號失敗: %w", err)
 			}
-			return s.invalidateCredentialsLocked(tx, userID, "external_identity_unbound_and_disabled")
+			// 權限版本：停用與解綁同交易
+			if err := authz.AdvanceVersion(tx); err != nil {
+				return err
+			}
+			if err := s.invalidateCredentialsLocked(tx, userID, "external_identity_unbound_and_disabled"); err != nil {
+				return err
+			}
+			return record()
 		})
 	})
 	if err != nil {
@@ -378,6 +459,11 @@ func (s *UserService) ConvertToExternalOnly(userID uint, actor IdentityAdminActo
 			if userCredentialPreWriteHook != nil {
 				userCredentialPreWriteHook()
 			}
+			// 轉為僅外部登入改變「可本地登入」投影但不推進權限版本（本操作移除本地登入資格）；
+			// Begin／Settle 讓事件鏈涵蓋這筆合法寫入
+			if err := authz.BeginPermissionChange(tx); err != nil {
+				return err
+			}
 			// must_change_password 一併清除：外部化帳號永遠走不到改密流程，
 			// 殘留旗標會讓登入後卡在無法完成的強制改密 gate
 			if err := tx.Model(&model.User{}).Where("id = ?", userID).
@@ -387,6 +473,9 @@ func (s *UserService) ConvertToExternalOnly(userID uint, actor IdentityAdminActo
 					"must_change_password": false,
 				}).Error; err != nil {
 				return fmt.Errorf("轉換為僅外部登入失敗: %w", err)
+			}
+			if err := authz.SettlePermissionChange(tx); err != nil {
+				return err
 			}
 			return s.invalidateCredentialsLocked(tx, userID, "converted_to_external_only")
 		})
@@ -616,9 +705,14 @@ func identityFailureReason(err error) string {
 		return "no_external_identity"
 	case errors.Is(err, ErrUserAlreadyExternal):
 		return "already_external"
+	case isAccountOpRefusal(err):
+		return "protected_account_operation"
 	case errors.Is(err, ErrUserNotFound):
 		return "user_not_found"
 	default:
 		return "internal_error"
 	}
 }
+
+// isAccountOpRefusal 帳號身分操作關卡的拒絕。
+func isAccountOpRefusal(err error) bool { return errors.Is(err, ErrProtectedAccountOperation) }

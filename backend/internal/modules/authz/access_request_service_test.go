@@ -127,7 +127,7 @@ func seedRequestFixture(t *testing.T, db *gorm.DB) {
 
 func submitBasic(t *testing.T, svc *AccessRequestService, requesterID, assetID uint) *model.AccessRequest {
 	t.Helper()
-	req, err := svc.Submit(requesterID, "requester", model.RoleUser, SubmitAccessRequestInput{
+	req, err := svc.Submit(requesterID, "requester", false, SubmitAccessRequestInput{
 		AssetID: assetID, Reason: "維護作業", DurationMinutes: 60,
 	})
 	if err != nil {
@@ -153,7 +153,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 		if _, err := policies.Update(policy.PolicyAccessRequestMaxDurationMinutes, "240", "admin"); err != nil {
 			t.Fatalf("update policy: %v", err)
 		}
-		_, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		_, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "r", DurationMinutes: 480,
 		})
 		if !errors.Is(err, ErrDurationExceedsPolicy) {
@@ -164,7 +164,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 	t.Run("open 段位拒建單", func(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
-		_, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		_, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 3, Reason: "r", DurationMinutes: 60,
 		})
 		if !errors.Is(err, ErrPolicyOpenNoRequest) {
@@ -176,7 +176,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		for _, role := range []string{model.RoleAdmin, model.RoleAuditor} {
-			_, err := svc.Submit(3, "boss", role, SubmitAccessRequestInput{
+			_, err := svc.Submit(3, "boss", true, SubmitAccessRequestInput{
 				AssetID: 1, Reason: "r", DurationMinutes: 60,
 			})
 			if !errors.Is(err, ErrRequesterExempt) {
@@ -189,7 +189,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		// user 2（approver）對 asset 2 無授權亦無範圍
-		_, err := svc.Submit(2, "approver", model.RoleUser, SubmitAccessRequestInput{
+		_, err := svc.Submit(2, "approver", false, SubmitAccessRequestInput{
 			AssetID: 2, Reason: "r", DurationMinutes: 60,
 		})
 		if !errors.Is(err, ErrAccessRequestNotFound) {
@@ -201,7 +201,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		past := time.Now().Add(-time.Hour)
-		_, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		_, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "r", DurationMinutes: 60, DateStart: &past,
 		})
 		if !errors.Is(err, ErrStartInPast) {
@@ -213,7 +213,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		first := submitBasic(t, svc, 1, 1)
-		_, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		_, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "again", DurationMinutes: 30,
 		})
 		if !errors.Is(err, ErrDuplicatePendingRequest) {
@@ -223,7 +223,7 @@ func TestAccessRequest_Submit(t *testing.T) {
 		if _, err := svc.Cancel(1, first.ID); err != nil {
 			t.Fatalf("cancel: %v", err)
 		}
-		if _, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		if _, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "retry", DurationMinutes: 30,
 		}); err != nil {
 			t.Fatalf("撤回後應可重新申請: %v", err)
@@ -250,40 +250,40 @@ func TestApproverScopeService_CRUD(t *testing.T) {
 	a2 := uint(2)
 
 	t.Run("客體 XOR 驗證", func(t *testing.T) {
-		if _, err := svc.Create(ApproverScopeSpec{ApproverID: uptrScope(2), GrantedBy: 3}); !errors.Is(err, ErrScopeTargetInvalid) {
+		if _, err := svc.Create(operatorCtx(3), ApproverScopeSpec{ApproverID: uptrScope(2), GrantedBy: 3}); !errors.Is(err, ErrScopeTargetInvalid) {
 			t.Fatalf("雙空應拒: %v", err)
 		}
 		g1 := uint(1)
-		if _, err := svc.Create(ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, AssetGroupID: &g1, GrantedBy: 3}); !errors.Is(err, ErrScopeTargetInvalid) {
+		if _, err := svc.Create(operatorCtx(3), ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, AssetGroupID: &g1, GrantedBy: 3}); !errors.Is(err, ErrScopeTargetInvalid) {
 			t.Fatalf("雙填應拒: %v", err)
 		}
 	})
 
 	t.Run("非 approver 角色拒分配", func(t *testing.T) {
-		if _, err := svc.Create(ApproverScopeSpec{ApproverID: uptrScope(1), AssetID: &a2, GrantedBy: 3}); !errors.Is(err, ErrNotApproverRole) {
+		if _, err := svc.Create(operatorCtx(3), ApproverScopeSpec{ApproverID: uptrScope(1), AssetID: &a2, GrantedBy: 3}); !errors.Is(err, ErrNotApproverRole) {
 			t.Fatalf("非 approver 應拒: %v", err)
 		}
 	})
 
 	t.Run("建立與去重", func(t *testing.T) {
-		scope, err := svc.Create(ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, GrantedBy: 3})
+		scope, err := svc.Create(operatorCtx(3), ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, GrantedBy: 3})
 		if err != nil {
 			t.Fatalf("create: %v", err)
 		}
-		if _, err := svc.Create(ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, GrantedBy: 3}); !errors.Is(err, ErrScopeExists) {
+		if _, err := svc.Create(operatorCtx(3), ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, GrantedBy: 3}); !errors.Is(err, ErrScopeExists) {
 			t.Fatalf("活躍重複應拒: %v", err)
 		}
-		if err := svc.Delete(scope.ID); err != nil {
+		if err := svc.Delete(context.Background(), scope.ID); err != nil {
 			t.Fatalf("delete: %v", err)
 		}
 		// 軟刪後可重新分配（partial 唯一索引語義）
-		if _, err := svc.Create(ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, GrantedBy: 3}); err != nil {
+		if _, err := svc.Create(operatorCtx(3), ApproverScopeSpec{ApproverID: uptrScope(2), AssetID: &a2, GrantedBy: 3}); err != nil {
 			t.Fatalf("軟刪後重新分配應成功: %v", err)
 		}
 	})
 
 	t.Run("刪除不存在 404", func(t *testing.T) {
-		if err := svc.Delete(9999); !errors.Is(err, ErrScopeNotFound) {
+		if err := svc.Delete(context.Background(), 9999); !errors.Is(err, ErrScopeNotFound) {
 			t.Fatalf("不存在應回 NotFound: %v", err)
 		}
 	})
@@ -332,9 +332,9 @@ func TestCheckPermission_ScopeThirdSource(t *testing.T) {
 	}
 }
 
-// contextWithRole 帶角色的 context（沿 CheckPermission string key 慣例）
+// contextWithRole 帶主體的 context（舊角色字串對應的內建範本）
 func contextWithRole(role string) context.Context {
-	return context.WithValue(context.Background(), "role", role) //nolint:staticcheck
+	return legacyRoleContext(role)
 }
 
 // TestAccessRequest_AutoApprove reason 段即時自動核准（決議 B）：
@@ -343,7 +343,7 @@ func TestAccessRequest_AutoApprove(t *testing.T) {
 	svc, _, db := setupAccessRequestEnv(t)
 	seedRequestFixture(t, db)
 
-	req, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+	req, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 		AssetID: 2, Reason: "臨時查修", DurationMinutes: 120,
 	})
 	if err != nil {
@@ -419,7 +419,7 @@ func TestAccessRequest_ApproveFlow(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		start := time.Now().Add(2 * time.Hour).Truncate(time.Second)
-		req, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		req, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "維護窗", DurationMinutes: 60, DateStart: &start,
 		})
 		if err != nil {
@@ -462,7 +462,7 @@ func TestAccessRequest_ApproveFlow(t *testing.T) {
 		// user 2（approver、範圍含 asset 1）自己提申請
 		u2, a1 := uint(2), uint(1)
 		db.Create(&model.AssetAuthorization{UserID: &u2, AssetID: &a1, Permission: model.PermissionView, GrantedBy: 3})
-		req, err := svc.Submit(2, "approver", model.RoleUser, SubmitAccessRequestInput{
+		req, err := svc.Submit(2, "approver", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "自己的單", DurationMinutes: 60,
 		})
 		if err != nil {
@@ -622,7 +622,7 @@ func TestAccessRequest_ExpireAndLazyFilter(t *testing.T) {
 	}
 
 	// 過期後可重新申請
-	if _, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+	if _, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: "重新申請", DurationMinutes: 60,
 	}); err != nil {
 		t.Fatalf("過期後應可重新申請: %v", err)
@@ -645,7 +645,7 @@ func TestAccessRequest_ResubmitExpiresOverduePending(t *testing.T) {
 	db.Model(&model.AccessRequest{}).Where("id = ?", old.ID).
 		Update("pending_expires_at", time.Now().Add(-time.Hour))
 
-	fresh, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+	fresh, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: "逾期後重申請", DurationMinutes: 30,
 	})
 	if err != nil {
@@ -688,7 +688,7 @@ func TestAccessRequest_NotifyPayloadMinimized(t *testing.T) {
 	svc.notifier = notifier
 
 	const secretReason = "極機密事由不得出站"
-	req, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+	req, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: secretReason, DurationMinutes: 60,
 	})
 	if err != nil {
@@ -810,7 +810,7 @@ func TestAccessRequest_Views(t *testing.T) {
 
 	// user 1 對 asset 1 pending；user 4 對 asset 1 pending 後被核准
 	req1 := submitBasic(t, svc, 1, 1)
-	req4, err := svc.Submit(4, "requester2", model.RoleUser, SubmitAccessRequestInput{
+	req4, err := svc.Submit(4, "requester2", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: "另一人", DurationMinutes: 60,
 	})
 	if err != nil {
@@ -857,7 +857,7 @@ func TestAccessRequest_PendingExcludesOwn(t *testing.T) {
 	// user 2（approver、範圍含 asset1）自己申請 asset1（先補可視）
 	u2, a1 := uint(2), uint(1)
 	db.Create(&model.AssetAuthorization{UserID: &u2, AssetID: &a1, Permission: model.PermissionView, GrantedBy: 3})
-	own, err := svc.Submit(2, "approver", model.RoleUser, SubmitAccessRequestInput{
+	own, err := svc.Submit(2, "approver", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: "自己的單", DurationMinutes: 60,
 	})
 	if err != nil {
@@ -897,7 +897,7 @@ func TestAccessRequest_HistoryScopeFiltered(t *testing.T) {
 	seedRequestFixture(t, db)
 
 	// asset2（reason 段，不在 user2 範圍——範圍僅 asset1）：user1 申請即自動核准（終態）
-	inScope, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+	inScope, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: "範圍內", DurationMinutes: 30,
 	})
 	if err != nil {
@@ -906,7 +906,7 @@ func TestAccessRequest_HistoryScopeFiltered(t *testing.T) {
 	if _, err := svc.Approve(2, false, inScope.ID, DecideInput{}); err != nil {
 		t.Fatalf("approve in-scope: %v", err)
 	}
-	outScope, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+	outScope, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 		AssetID: 2, Reason: "範圍外（reason 自動核准）", DurationMinutes: 30,
 	})
 	if err != nil {
@@ -966,7 +966,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		grantConnect(t, db, 1, 1)
-		if _, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "緊急"); !errors.Is(err, ErrBreakGlassDisabled) {
+		if _, err := svc.BreakGlass(1, "requester", false, 1, "緊急"); !errors.Is(err, ErrBreakGlassDisabled) {
 			t.Fatalf("want ErrBreakGlassDisabled, got %v", err)
 		}
 	})
@@ -980,7 +980,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 			t.Fatalf("set duration: %v", err)
 		}
 
-		req, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "半夜事故")
+		req, err := svc.BreakGlass(1, "requester", false, 1, "半夜事故")
 		if err != nil {
 			t.Fatalf("break glass: %v", err)
 		}
@@ -1010,7 +1010,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		svc, policies, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		enableBreakGlass(t, policies)
-		if _, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "緊急"); !errors.Is(err, ErrBreakGlassNotEligible) {
+		if _, err := svc.BreakGlass(1, "requester", false, 1, "緊急"); !errors.Is(err, ErrBreakGlassNotEligible) {
 			t.Fatalf("want ErrBreakGlassNotEligible, got %v", err)
 		}
 	})
@@ -1026,7 +1026,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 			UserID: &u, AssetID: &a, Permission: model.PermissionConnect,
 			GrantedBy: 3, Source: model.AuthorizationSourceTicket, DateStart: &start, DateExpired: &exp,
 		})
-		if _, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "緊急"); !errors.Is(err, ErrBreakGlassNotEligible) {
+		if _, err := svc.BreakGlass(1, "requester", false, 1, "緊急"); !errors.Is(err, ErrBreakGlassNotEligible) {
 			t.Fatalf("want ErrBreakGlassNotEligible（ticket 不算常設）, got %v", err)
 		}
 	})
@@ -1036,7 +1036,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		seedRequestFixture(t, db)
 		grantConnect(t, db, 1, 3)
 		enableBreakGlass(t, policies)
-		if _, err := svc.BreakGlass(1, "requester", model.RoleUser, 3, "緊急"); !errors.Is(err, ErrPolicyOpenNoRequest) {
+		if _, err := svc.BreakGlass(1, "requester", false, 3, "緊急"); !errors.Is(err, ErrPolicyOpenNoRequest) {
 			t.Fatalf("want ErrPolicyOpenNoRequest, got %v", err)
 		}
 	})
@@ -1045,10 +1045,10 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		svc, policies, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		enableBreakGlass(t, policies)
-		if _, err := svc.BreakGlass(3, "boss", model.RoleAdmin, 1, "緊急"); !errors.Is(err, ErrRequesterExempt) {
+		if _, err := svc.BreakGlass(3, "boss", true, 1, "緊急"); !errors.Is(err, ErrRequesterExempt) {
 			t.Fatalf("admin want ErrRequesterExempt, got %v", err)
 		}
-		if _, err := svc.BreakGlass(3, "aud", model.RoleAuditor, 1, "緊急"); !errors.Is(err, ErrRequesterExempt) {
+		if _, err := svc.BreakGlass(3, "aud", true, 1, "緊急"); !errors.Is(err, ErrRequesterExempt) {
 			t.Fatalf("auditor want ErrRequesterExempt, got %v", err)
 		}
 	})
@@ -1058,11 +1058,11 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		seedRequestFixture(t, db)
 		grantConnect(t, db, 1, 1)
 		enableBreakGlass(t, policies)
-		first, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "第一次")
+		first, err := svc.BreakGlass(1, "requester", false, 1, "第一次")
 		if err != nil {
 			t.Fatalf("first: %v", err)
 		}
-		_, err = svc.BreakGlass(1, "requester", model.RoleUser, 1, "第二次")
+		_, err = svc.BreakGlass(1, "requester", false, 1, "第二次")
 		if !errors.Is(err, ErrDuplicateBreakGlass) {
 			t.Fatalf("want ErrDuplicateBreakGlass, got %v", err)
 		}
@@ -1079,7 +1079,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		enableBreakGlass(t, policies)
 
 		pending := submitBasic(t, svc, 1, 1) // 一般在途單
-		bg, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "緊急優先")
+		bg, err := svc.BreakGlass(1, "requester", false, 1, "緊急優先")
 		if err != nil {
 			t.Fatalf("在途單不得阻擋破窗: %v", err)
 		}
@@ -1131,7 +1131,7 @@ func TestAccessRequest_Revoke(t *testing.T) {
 		// 政策閘擋新連線（approval 段、無票證）
 		var asset model.Asset
 		db.First(&asset, 1)
-		decision, derr := svc.accessPolicy.CheckConnect(1, model.RoleUser, &asset)
+		decision, derr := svc.accessPolicy.CheckConnect(1, false, &asset)
 		if derr != nil || decision.Allowed {
 			t.Fatalf("撤銷後政策閘應攔截: %+v err=%v", decision, derr)
 		}
@@ -1171,7 +1171,7 @@ func TestAccessRequest_Revoke(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		// reason 段自動核准單（asset 2）
-		req, err := svc.Submit(1, "requester", model.RoleUser, SubmitAccessRequestInput{
+		req, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
 			AssetID: 2, Reason: "填理由即連", DurationMinutes: 30,
 		})
 		if err != nil {
@@ -1331,7 +1331,7 @@ func TestAccessRequest_BreakGlassReview(t *testing.T) {
 		seedRequestFixture(t, db)
 		grantConnect(t, db, 1, 1)
 		enableBreakGlass(t, policies)
-		bg, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "半夜事故")
+		bg, err := svc.BreakGlass(1, "requester", false, 1, "半夜事故")
 		if err != nil {
 			t.Fatalf("break glass: %v", err)
 		}
@@ -1502,7 +1502,7 @@ func TestBreakGlass_EligibilityRecheckedInTx(t *testing.T) {
 	db.Where("user_id = ? AND asset_id = ? AND permission = ? AND source = ?",
 		1, 1, model.PermissionConnect, model.AuthorizationSourceManual).
 		Delete(&model.AssetAuthorization{})
-	if _, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "資格已撤"); !errors.Is(err, ErrBreakGlassNotEligible) {
+	if _, err := svc.BreakGlass(1, "requester", false, 1, "資格已撤"); !errors.Is(err, ErrBreakGlassNotEligible) {
 		t.Fatalf("撤常設後破窗應 ErrBreakGlassNotEligible, got %v", err)
 	}
 }

@@ -75,6 +75,10 @@ const (
 	// LexiconDateList 日期清單參數的附註（清單只帶最早的若干個時，「另有 N 天」）。
 	// 短語內的 {n} 由渲染端代入，不經事件模板的插值
 	LexiconDateList Lexicon = "date_list"
+	// LexiconHostKeyOutcome 主機金鑰不符的處置（allowed＝已放行且平台已代為送出登入憑證；refused＝已拒絕未送出）
+	LexiconHostKeyOutcome Lexicon = "host_key_outcome"
+	// LexiconHostKeyPath 主機金鑰不符發生的撥號路徑
+	LexiconHostKeyPath Lexicon = "host_key_path"
 )
 
 // DateListKeyMore 「另有 N 天」的詞庫鍵
@@ -116,6 +120,7 @@ var causeEnum = []string{
 	model.CauseRecordingMetadataUpdateFailed,
 	model.CauseRecordingFileMissing,
 	model.CauseSessionRecordCreateFailed,
+	model.CauseHostKeyMismatchRecordFailed,
 	model.CauseAuditWriteFallbackFile,
 	model.CauseAuditWriteBatchDropped,
 	model.CauseAuditWriteSyncRefused,
@@ -139,6 +144,8 @@ var causeEnum = []string{
 	model.CauseRoleStateMismatch,
 	model.CausePrincipalStateMismatch,
 	model.CauseDEKUnwrapFailed,
+	model.CauseRestoreSealDeferred,
+	model.CauseRestoreSealStateUnreadable,
 }
 
 //go:embed lexicons/*.json
@@ -192,7 +199,7 @@ func LexiconEntries(lang string, lex Lexicon) map[string]string {
 func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
 		LexiconEntity, LexiconRotationReport, LexiconComplianceReport, LexiconAlertKind,
-		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList}
+		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList, LexiconHostKeyOutcome, LexiconHostKeyPath}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

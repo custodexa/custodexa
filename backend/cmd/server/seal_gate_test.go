@@ -178,6 +178,8 @@ var stage2ServiceProbe = map[string]string{
 	// auditTxSink：純內部設施，無專屬端點——它是交易內審計的落地面，
 	// 由 requireAuditTxSink 於段 2 建構期自檢，涵蓋見 seal_integration_test 的清單比對
 	"auditTxSink":           "",
+	// 保留下限對帳是啟動步驟、無對外端點
+	"retentionFloorReconcile": "",
 	"transmissionPolicy":    "",
 	"auditFailureService":   "/api/v1/audit-failures",
 	"syslogForwarder":       "/api/v1/syslog-settings",
@@ -196,6 +198,10 @@ var stage2ServiceProbe = map[string]string{
 	// alertSink：純內部設施，無專屬端點——指令告警的落地面，
 	// 由 requireAlertSink 於段 2 建構期自檢；其資料面的讀取端點即下方 alertMatcher 那條
 	"alertSink":                  "",
+	// systemAlertSink：純內部設施，無專屬端點；由 requireSystemAlertSink 於段 2 建構期自檢
+	"systemAlertSink":            "",
+	// instanceGuardStartupCheck：啟動時偵測其他實例的一次性檢查，純內部步驟，無專屬端點
+	"instanceGuardStartupCheck":  "",
 	"alertMatcher":               "/api/v1/command-alerts",
 	"alertNotifier":              "",
 	"kekRetirementMonitor":       "",
@@ -210,6 +216,11 @@ var stage2ServiceProbe = map[string]string{
 	"checkpointSigning":     "/api/v1/audit-checkpoints/public-key",
 	"sshHandler":            "/api/v1/ssh",
 	"hostKeyService":        "/api/v1/assets/:id/host-key",
+	// credentialRotationInterruptedRecovery：段 2 啟動時一次性的收束步驟（停在「改密中」的
+	// 輪替成員轉為已送出未驗證），不註冊路由、不留 goroutine，純內部設施。
+	// 唯一呼叫點在 runStage2 內、改密排程啟動前；輪替的對外面由 apiHandlers 涵蓋，
+	// 與本步驟存不存在無關
+	"credentialRotationInterruptedRecovery": "",
 	"changeSecretScheduler": "/api/v1/change-secret-plans",
 	// 候選憑證重試排程，其對外面即候選清單端點
 	"changeSecretRetryScheduler": "/api/v1/change-secret-candidates",
@@ -239,6 +250,10 @@ var stage2ServiceProbe = map[string]string{
 	// 報告與排程的對外面（/api/v1/rotation-report/...）由 apiHandlers 那條涵蓋，
 	// 與本排程器存不存在無關，拿它當 probe 會讓斷言與被測對象脫鉤
 	"rotationReportScheduler": "",
+	// systemAlertOutboxWorker：系統告警的持久投遞迴圈，純內部設施，
+	// 不註冊任何路由；告警的對外面（列表與明細）由 apiHandlers 涵蓋，
+	// 與本 worker 存不存在無關
+	"systemAlertOutboxWorker": "",
 	// metricsRefresher（接替 perfMonitor）：純背景刷新任務。
 	// **對外面填空字串是刻意的**——`/metrics` 端點本身於段 1 即存在且刻意可達
 	// （封印期須能區分「封印中」與「當機」），它不隨本服務出現或消失；

@@ -20,8 +20,13 @@
 # (the bundle's folder in the cache), /it-run/local-versions (the versions, one line). The images
 # are kept in /cache/local-versions/ under a hash of what goes into them, so a later run with the
 # same backend, frontend and Dockerfiles loads them instead of building again.
+#
+# IT_LV_VERSIONS_SET (run.sh passes CX_IT_LOCAL_VERSIONS) replaces the three versions above with
+# its own list, e.g. "1.18.90" for a drill that upgrades a published release to the working tree.
+# Each is built from the working tree as it is; the probe patch applies only to 1.16.92, so a list
+# without it builds no probe. Empty: the three versions above, as before.
 
-readonly IT_LV_VERSIONS="1.16.90 1.16.91 1.16.92"
+readonly IT_LV_VERSIONS="${IT_LV_VERSIONS_SET:-1.16.90 1.16.91 1.16.92}"
 readonly IT_LV_PROBE=1.16.92
 readonly IT_LV_REPO=ghcr.io/custodexa-it
 readonly IT_LV_PATCH=/src/scripts/custodexa/tests/integration/fixtures/rollback-probe-migration.patch
@@ -33,6 +38,7 @@ it_local_versions() {
   local arch=$1 v src
   it_lv_shim
   for v in $IT_LV_VERSIONS; do
+    [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || it_die "local version $v is not a version (CX_IT_LOCAL_VERSIONS)"
     src=$IT_WORK/source
     if [ "$v" = "$IT_LV_PROBE" ]; then
       src=$IT_WORK/source-probe

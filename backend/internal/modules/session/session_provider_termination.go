@@ -176,33 +176,66 @@ func (s *SessionService) CreateWithGenerationGuard(authCtx crypto.AuthContext,
 // join 於鎖內執行且**必須是非阻塞的集合操作**（MonitorHub.Join 僅寫回放緩衝）；
 // 收線／關閉連線一律於鎖外，由 DisconnectByProvider／DisconnectByUser 負責。
 func JoinWithGenerationGuard(authCtx crypto.AuthContext, userID uint, join func() bool) (bool, error) {
+	return JoinWithGenerationGuardTx(authCtx, userID, func(*gorm.DB) (bool, error) { return join(), nil })
+}
+
+// JoinWithGenerationGuardTx 同 JoinWithGenerationGuard，但把鎖交易交給 join，且 join 可回錯。
+//
+// 鎖內依序：checkObserverState → pre-write hook → join(tx)；join 回錯即整筆回錯。
+// 錄影票簽發用它在同一鎖交易內先讀權限版本、再重新解析主體並判定（讀取是交易內查詢，
+// 寫入仍是非阻塞的集合操作），鎖序與監看訂閱相同。
+func JoinWithGenerationGuardTx(authCtx crypto.AuthContext, userID uint, join func(tx *gorm.DB) (bool, error)) (bool, error) {
 	joined := false
 	err := identity.WithCapabilityLocks(database.DB, authCtx.ProviderID, userID, func(tx *gorm.DB) error {
-		var user model.User
-		if err := tx.Select("id", "credential_epoch", "active").First(&user, userID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return identity.ErrUserNotFound
-			}
-			return fmt.Errorf("重讀觀察者狀態失敗: %w", err)
-		}
-		if !user.Active {
-			return identity.ErrCredentialGenerationStale
-		}
-		// 世代於鎖內現查（不得沿用 JWT claims 通過中介層時的那次讀取）
-		if err := identity.VerifyCredentialGenerationTx(tx, authCtx, &user); err != nil {
+		if err := checkObserverState(tx, authCtx, userID); err != nil {
 			return err
 		}
 		identity.FirePreWriteHook(identity.OIDCSiteMonitorJoin)
-		joined = join()
+		ok, err := join(tx)
+		if err != nil {
+			return err
+		}
+		joined = ok
 		return nil
 	})
 	return joined, err
 }
 
+// NewSessionPublicID 產生會話公開識別。終端在撥號前配發（主機金鑰不符審計的連線識別要與
+// 其後建立的會話記錄相同），建立時 SessionID 已有值者沿用、為空者在此補產生。
+func NewSessionPublicID(userID uint) string {
+	return fmt.Sprintf("sess_%d_%d", time.Now().UnixNano(), userID)
+}
+
+// PrecheckObserverBeforeUpgrade 在 WebSocket 升級**之前**預檢觀察者的主體狀態與憑證世代
+// （與 JoinWithGenerationGuard 鎖內重驗同一查詢，見 checkObserverState）。
+//
+// 預檢不持鎖，只讓已失效的主體在升級前就得到非 101 的拒絕；它**不取代**鎖內重驗——
+// 預檢後才撤權的競態仍由 JoinWithGenerationGuard 負責。
+func PrecheckObserverBeforeUpgrade(authCtx crypto.AuthContext, userID uint) error {
+	return checkObserverState(database.DB, authCtx, userID)
+}
+
+// checkObserverState 重讀觀察者列並驗證啟用狀態與憑證世代（預檢與鎖內重驗共用）。
+func checkObserverState(tx *gorm.DB, authCtx crypto.AuthContext, userID uint) error {
+	var user model.User
+	if err := tx.Select("id", "credential_epoch", "active").First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return identity.ErrUserNotFound
+		}
+		return fmt.Errorf("重讀觀察者狀態失敗: %w", err)
+	}
+	if !user.Active {
+		return identity.ErrCredentialGenerationStale
+	}
+	// 世代現查（不得沿用 JWT claims 通過中介層時的那次讀取）
+	return identity.VerifyCredentialGenerationTx(tx, authCtx, &user)
+}
+
 // createInTx Create 的交易版（欄位預設與 Create 同源）
 func (s *SessionService) createInTx(tx *gorm.DB, session *model.Session) error {
 	if session.SessionID == "" {
-		session.SessionID = fmt.Sprintf("sess_%d_%d", time.Now().UnixNano(), session.UserID)
+		session.SessionID = NewSessionPublicID(session.UserID)
 	}
 	if session.Status == "" {
 		session.Status = model.SessionStatusActive

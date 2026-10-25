@@ -71,9 +71,9 @@ func setupConnectDenyEnv(t *testing.T, protocol string) *connectDenyEnv {
 	}
 	// 單連線：:memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
-		&model.AccessRequest{}, &model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{}, &model.UserRole{}); err != nil {
+		&model.AccessRequest{}, &model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -117,6 +117,7 @@ func setupConnectDenyEnv(t *testing.T, protocol string) *connectDenyEnv {
 	}
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}

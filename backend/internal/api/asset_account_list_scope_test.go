@@ -3,16 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -36,9 +37,9 @@ func setupAccountListEnv(t *testing.T) (*AssetAccountHandler, *gorm.DB) {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
 		&model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -60,11 +61,12 @@ func setupAccountListEnv(t *testing.T) (*AssetAccountHandler, *gorm.DB) {
 
 	codec := aesColumnCodec(t, make([]byte, 32))
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
 	authz := authz.NewAssetAuthorizationService(db)
-	return NewAssetAccountHandler(asset.NewAssetAccountService(assetSvc, codec, audit.NewTxSink()), authz), db
+	return NewAssetAccountHandler(asset.NewAssetAccountService(assetSvc, codec, audit.NewTxSink()).WithAccountWriteScope(allowAllAccountWriteScope{}), authz), db
 }
 
 func listAccounts(handler *AssetAccountHandler, role string) (int, []string) {
@@ -72,7 +74,7 @@ func listAccounts(handler *AssetAccountHandler, role string) (int, []string) {
 	r := gin.New()
 	r.GET("/assets/:id/accounts", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		handler.List(c)
 	})
 	w := httptest.NewRecorder()
@@ -184,11 +186,12 @@ func TestAccountCopyCrossAssetVisibilityGuard(t *testing.T) {
 
 	codec := aesColumnCodec(t, make([]byte, 32))
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
-	credSvc := asset.NewCredentialService(assetSvc, codec, audit.NewTxSink()).
-		WithAuthorization(authz.NewAssetAuthorizationService(db))
+	credSvc := asset.NewCredentialService(assetSvc, codec, audit.NewTxSink()).WithOwnershipScope(globalOwnershipScopeForTest{}).
+		WithManagementAuthorizer(principalCredentialAuthorizer{})
 
 	// user 1 對資產 1 無 connect 授權：掛載被拒
 	ctx := context.WithValue(context.Background(), "userID", uint(1)) //nolint:staticcheck
@@ -206,6 +209,8 @@ func TestAccountCopyCrossAssetVisibilityGuard(t *testing.T) {
 	// admin 短路：管理員可掛載（既有能力不被收窄）
 	adminCtx := context.WithValue(context.Background(), "userID", uint(2)) //nolint:staticcheck
 	adminCtx = context.WithValue(adminCtx, "role", model.RoleAdmin)        //nolint:staticcheck
+	// 短路判定改讀 context 內的主體（不再比對 role 字串）
+	adminCtx = authz.ContextWithPrincipal(adminCtx, legacyPrincipal(model.RoleAdmin))
 	if _, err := credSvc.Bind(adminCtx, shared.ID, &asset.BindCredentialRequest{AssetID: 1}); err != nil {
 		t.Fatalf("admin 應可掛載: %v", err)
 	}

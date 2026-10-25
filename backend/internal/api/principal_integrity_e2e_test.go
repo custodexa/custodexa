@@ -57,9 +57,13 @@ func runPrincipalIntegrityHTTP(t *testing.T) {
 		sqlDB.SetMaxOpenConns(1)
 		t.Cleanup(func() { sqlDB.Close() })
 	}
-	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.UserRole{}, &model.AgentToken{}, &model.AuditLog{}, &model.AuditCheckpoint{}, &model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.SecurityPolicy{}, &model.NotificationChannel{}, &model.UserGroup{}, &model.ApproverScope{}, &model.Asset{}, &model.AssetAuthorization{}, &model.RefreshToken{}, &model.PasswordHistory{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserExternalIdentity{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.AgentToken{}, &model.AuditLog{}, &model.AuditCheckpoint{}, &model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.SecurityPolicy{}, &model.NotificationChannel{}, &model.UserGroup{}, &model.ApproverScope{}, &model.Asset{}, &model.AssetAuthorization{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.PasswordHistory{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserExternalIdentity{}, &model.Role{}, &model.UserGroup{}); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatal(err)
+	}
+	seedAuthzState(t, db)
 	if dsn != "" {
 		if err := db.Exec(`CREATE UNIQUE INDEX principal_open_test ON audit_failure_events ((cause_params::jsonb->>'table')) WHERE ended_at IS NULL AND mechanism='principal_state_integrity'`).Error; err != nil {
 			t.Fatal(err)
@@ -82,6 +86,9 @@ func runPrincipalIntegrityHTTP(t *testing.T) {
 	if err := db.Create(&agent).Error; err != nil {
 		t.Fatal(err)
 	}
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）：
+	// 在建立起點（genesis）之前寫入，屬於基準狀態而非事後的 SQL 直改
+	grantLegacyRole(t, db, owner.ID, model.RoleAdmin)
 	if err := db.Create(&model.IntegrityBaseline{ID: 1, BaselineAt: time.Now().Add(-time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}

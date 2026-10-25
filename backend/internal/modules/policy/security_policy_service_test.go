@@ -19,7 +19,11 @@ func setupPolicyDB(t *testing.T) (*SecurityPolicyService, *gorm.DB) {
 	if err := db.AutoMigrate(&model.SecurityPolicy{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return NewSecurityPolicyService(db), db
+	svc := NewSecurityPolicyService(db)
+	// 高危鍵的變更需要告警落地面；本 helper 的使用者測的是值域與讀寫語義，接一個只記錄的替身。
+	// 要驗「缺注入即失敗」的測試自行以 NewSecurityPolicyService 建不帶落地面的服務
+	svc.SetHighRiskAlertRaiser(&relaxAlertRecorder{})
+	return svc, db
 }
 
 func TestPolicyDefaultsWhenNoRows(t *testing.T) {
@@ -284,6 +288,7 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		PolicySessionMaxMinutes:         true,
 		PolicyTransportConsentTTLDays:   true,
 		PolicyWebMaxSessionHours:        true,
+		PolicyMappingRevalidationHours:  true,
 	}
 	snap, err := cs.Snapshot("", nil)
 	if err != nil {

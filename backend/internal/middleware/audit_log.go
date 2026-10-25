@@ -157,7 +157,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		}
 
 		// 確定狀態
-		status := determineStatus(c.Writer.Status())
+		status := determineStatus(c, c.Writer.Status()) // 拒絕分類標記優先，見 denial_audit.go
 
 		// 脫敏敏感欄位
 		maskedBody := bodyMarker
@@ -252,6 +252,9 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			}
 		}
 
+		// 能力或範圍拒絕的依據：只新增鍵、同名鍵保留既有值（見 denial_audit.go）
+		details = mergeDenialDetails(details, denialAuditDetails(c))
+
 		// 創建審計日誌條目
 		entry := &audit.AuditLogEntry{
 			UserID:     userID.(uint),
@@ -341,6 +344,10 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 		// 輸入去算」兩種語義，只有路徑分得出來，故在此顯式訂正為讀取。
 		// 「查了什麼」由 handler 經 audit_details 補上（形狀而非明文，見該處註解）。
 		action = model.ActionRead
+	} else if path == "/api/v1/role-definitions/summary" {
+		// 角色草稿摘要只用一份尚未儲存的權限集合算摘要與缺少的依賴，不寫任何狀態；
+		// 依動詞推導會被記成建立角色，與真正的新增角色同形，故明列為讀取（仍保留請求留痕）
+		action = model.ActionRead
 	} else if path == "/api/v1/security-policies/apply-preview" || path == "/api/v1/security-policies/compliance/preview" {
 		// 安全政策的套用預覽與草稿回饋同屬唯讀試算（寫入走 PUT 批次更新），
 		// 記成 create 會讓例行的表單試算與真正的政策變更同形，並灌大每日簽核的高危操作數
@@ -429,6 +436,13 @@ func extractResource(path string) model.AuditResource {
 		case "command-alerts":
 			return model.ResourceCommandAlert
 		case "security-policies":
+			return model.ResourceSecurityPolicy
+		// 升級時保留調整的告知端點：資料來自安全政策的抬升紀錄，歸政策類
+		// 儀表板逐卡取值：路由層預設歸請求者本人；各卡實際的資料類別與本人卡的 resource_id
+		// 由 handler 以 audit_resource／audit_resource_id 逐卡覆寫
+		case "cards":
+			return model.ResourceUser
+		case "retention-adjustments":
 			return model.ResourceSecurityPolicy
 		case "audit-export":
 			return model.ResourceAuditExport
@@ -523,6 +537,9 @@ func extractResource(path string) model.AuditResource {
 		// 告警通知通道：`:id` 指向通道列。常數刻意縮寫，見 model 常數註解
 		case "notification-channels":
 			return model.ResourceNotifyChannel
+		// 系統告警類型目錄與分級調整：`:key` 是類型鍵非自增 id，resource_id 恆 nil
+		case "system-alert-types":
+			return model.ResourceSystemAlertType
 		// OIDC 身分提供者設定：`:id` 指向提供者列。段名是 `oidc-providers`，
 		// 與登入流程的 `/auth/oidc/*`（段名 `oidc`、鏈中無認證中介層）不同段
 		case "oidc-providers":
@@ -552,6 +569,12 @@ func extractResource(path string) model.AuditResource {
 		// 角色定義讀取：無 `:id`。`/users/:id/roles` 的首個可辨識段是 `users`，
 		// 依路徑序仍歸 user，不受本條影響
 		case "roles":
+			return model.ResourceRole
+		// 角色指派影響預覽：唯讀試算、無 `:id`，歸角色類
+		case "role-assignment-options", "role-assignment-previews":
+			return model.ResourceRole
+		// 角色定義：`:id` 指向角色列，歸角色類；讀取與草稿摘要為 read，新增與複製為 create，修改為 update，刪除為 delete
+		case "role-definitions":
 			return model.ResourceRole
 		// 單實例守衛快照：管理者限定、唯讀、無 `:id`。
 		// 每次呼叫一列讀取留痕是刻意的——它只在橫幅出現時由管理者取一次，不輪詢
@@ -641,15 +664,4 @@ var auditSensitiveResources = map[model.AuditResource]bool{
 	// 與同批新增的設定面分類（alert_rule／oidc_provider 等）不同的正是這一點：
 	// 那些的稽核價值在「改了什麼」，本族的稽核價值在「誰看過這張圖」
 	model.ResourceCredential: true,
-}
-
-// determineStatus 根據 HTTP 狀態碼確定審計狀態
-func determineStatus(statusCode int) model.AuditStatus {
-	if statusCode >= 200 && statusCode < 300 {
-		return model.StatusSuccess
-	} else if statusCode == 403 {
-		return model.StatusDenied
-	} else {
-		return model.StatusFailure
-	}
 }

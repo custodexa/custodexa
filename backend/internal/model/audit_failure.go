@@ -111,6 +111,10 @@ const (
 	// **解除判準＝下一次解封成功**：單次抖動不開列（見上報點的連續失敗門檻），
 	// 一次成功即代表保管處已恢復
 	MechanismDEKUnwrap = "dek_unwrap"
+	// MechanismRestoreSeal 還原後涵蓋新世代的檢查點未能封出：服務照常開放（不阻擋使用者），
+	// 但在補封成功前，還原當下的權限狀態附證尚未進鏈。待封狀態持久化於資料庫，
+	// 重啟會再嘗試補封。**解除判準＝下一次封章成功**（啟動補封或例行封章皆算）
+	MechanismRestoreSeal = "restore_seal"
 )
 
 // 失效原因機器碼。
@@ -145,6 +149,9 @@ const (
 	CauseRecordingFileMissing = "recording_file_missing"
 	// CauseSessionRecordCreateFailed session 記錄建列失敗致連線被拒
 	CauseSessionRecordCreateFailed = "session_record_create_failed"
+	// CauseHostKeyMismatchRecordFailed 主機金鑰不符的留痕（審計、觀察紀錄、告警）寫入失敗，
+	// 連線在送出憑證之前中止（host-key-verification；mechanism audit_write）
+	CauseHostKeyMismatchRecordFailed = "host_key_mismatch_record_failed"
 	// CauseAuditWriteFallbackFile 審計批次寫庫失敗、已降級至檔案
 	CauseAuditWriteFallbackFile = "audit_write_fallback_file"
 	// CauseAuditWriteBatchDropped 審計批次寫庫失敗且檔案降級關閉，批次丟棄
@@ -218,6 +225,11 @@ const (
 	// CauseDEKUnwrapFailed 資料金鑰重新解封連續失敗：KEK 保管處不可達、逾時
 	// 或拒絕。**不回退到任何舊材料**——需要金鑰的操作明確失敗
 	CauseDEKUnwrapFailed = "dek_unwrap_failed"
+	// CauseRestoreSealDeferred 還原後封章失敗，服務已開放、補封留待下次封章或重啟
+	CauseRestoreSealDeferred = "restore_seal_deferred"
+	// CauseRestoreSealStateUnreadable 啟動時讀不到還原後的待封狀態：不擋啟動，照「可能待封」處理
+	// 並立即嘗試封章；封章成功即結案
+	CauseRestoreSealStateUnreadable = "restore_seal_state_unreadable"
 )
 
 // CauseParamDetail forensic 明細參數鍵：承載底層 err 原文。

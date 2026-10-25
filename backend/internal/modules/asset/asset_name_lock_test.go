@@ -25,12 +25,12 @@ func TestAssetNameUniqueUnderConcurrentCreateAndImport(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			_, createErr = assets.Create(adminCtx(), &CreateAssetRequest{
+			_, createErr = assets.Create(WithSystemCaller(adminCtx()), &CreateAssetRequest{
 				Name: name, Protocol: model.ProtocolVNC, Host: "10.3.0.1", Port: 5900, CreatedBy: 1})
 		}()
 		go func() {
 			defer wg.Done()
-			_, importErr = assets.ImportAssets(adminCtx(), &ImportBatch{Source: ImportSourceForm, Rows: []ImportRow{
+			_, importErr = assets.ImportAssets(WithSystemCaller(adminCtx()), &ImportBatch{Source: ImportSourceForm, Rows: []ImportRow{
 				{Name: fmt.Sprintf("race-other-%02d", i), Protocol: "ssh", Host: "10.3.0.2"},
 				{Name: name, Protocol: "rdp", Host: "10.3.0.3"},
 			}}, 1, "admin")

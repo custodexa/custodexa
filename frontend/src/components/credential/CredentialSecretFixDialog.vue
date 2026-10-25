@@ -45,6 +45,14 @@
         </div>
       </div>
 
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="t('credentials.security.setSecretWarning')"
+        data-test="secret-fix-warning"
+      />
+
       <p
         v-if="loadError"
         class="load-error"
@@ -151,6 +159,21 @@
       </el-form>
     </div>
 
+    <CredentialImpactDialog
+      :model-value="impactVisible"
+      operation="set_secret"
+      :credential-name="displayName"
+      :username="detail?.username || ''"
+      :assets="bindings"
+      :in-scope-count="impact?.inScopeCount || 0"
+      :out-of-scope-count="impact?.outOfScopeCount || 0"
+      :epoch="impactEpoch"
+      :loading="impactWorking"
+      :noun="noun"
+      @confirm="confirmImpact"
+      @cancel="flow.cancel()"
+    />
+
     <template #footer>
       <div class="footer">
         <span
@@ -213,6 +236,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Info } from 'lucide-vue-next'
 import { getCredential, setCredentialSecret } from '@/api/credentials'
+import CredentialImpactDialog from './CredentialImpactDialog.vue'
+import { skipImpactConflictToast, useCredentialImpactFlow } from '@/composables/useCredentialImpactFlow'
 import { resolveApiError } from '@/api/error'
 import { credentialDisplayName, credentialSecretKind } from '@/constants/credentials'
 
@@ -239,6 +264,10 @@ const form = reactive({ secret: '', confirm: '' })
 const errors = reactive({ secret: '', confirm: '' })
 
 const detail = computed(() => props.credential || fetched.value)
+
+// 範圍外影響確認：台數與清單取自伺服器，勾選知情後才以確認識別送出
+const flow = useCredentialImpactFlow(() => detail.value?.id, 'set_secret')
+const { visible: impactVisible, impact, working: impactWorking, epoch: impactEpoch } = flow
 const bindings = computed(() => detail.value?.bindings || [])
 const kind = computed(() => credentialSecretKind(detail.value))
 const noun = computed(() => t(`credentials.secretFix.noun.${kind.value}`))
@@ -279,7 +308,10 @@ watch(() => props.modelValue, (open) => {
 
 // 關閉即清掉明文：只隱藏對話框會讓輸入值續留在元件狀態內
 function close(visible = false) {
-  if (visible !== true) clearInput()
+  if (visible !== true) {
+    clearInput()
+    flow.cancel()
+  }
   emit('update:modelValue', visible === true)
 }
 
@@ -314,28 +346,48 @@ function isPrivateKeyFieldError(error) {
     && (data?.params?.field ?? data?.field) === 'private_key'
 }
 
+function skipSubmitToast(error) {
+  return isPrivateKeyFieldError(error) || skipImpactConflictToast(error)
+}
+
+async function sendSecret(extra) {
+  await setCredentialSecret(detail.value.id, { ...payload(), ...extra }, {
+    skipErrorToast: skipSubmitToast,
+  })
+  const count = bindings.value.length
+  close(false)
+  emit('saved', { count, noun: noun.value })
+}
+
+function onSubmitError(err) {
+  // 私鑰無法解析：錯誤掛在私鑰欄下方；其餘錯誤由全域提示顯示，對話框與輸入保留
+  if (isPrivateKeyFieldError(err)) {
+    errors.secret = resolveApiError(err.response.data, err.response.status)
+  }
+  console.error('[CredentialSecretFix] 更正失敗:', err?.response?.status, err?.response?.data?.code)
+}
+
 async function submit() {
   if (!detail.value || !validate()) return
   submitting.value = true
   try {
-    await setCredentialSecret(detail.value.id, payload(), {
-      skipErrorToast: isPrivateKeyFieldError,
-    })
-    const count = bindings.value.length
-    close(false)
-    emit('saved', { count, noun: noun.value })
+    await flow.start(sendSecret)
   } catch (err) {
-    // 私鑰無法解析：錯誤掛在私鑰欄下方；其餘錯誤由全域提示顯示，對話框與輸入保留
-    if (isPrivateKeyFieldError(err)) {
-      errors.secret = resolveApiError(err.response.data, err.response.status)
-    }
-    console.error('[CredentialSecretFix] 更正失敗:', err?.response?.status, err?.response?.data?.code)
+    onSubmitError(err)
   } finally {
     submitting.value = false
   }
 }
 
-defineExpose({ form, errors, kind, bindings, submit, payload })
+async function confirmImpact() {
+  try {
+    await flow.confirm()
+  } catch (err) {
+    onSubmitError(err)
+  }
+}
+
+defineExpose({ form, errors, kind, bindings, submit, payload, confirmImpact, flow })
 </script>
 
 <style scoped>

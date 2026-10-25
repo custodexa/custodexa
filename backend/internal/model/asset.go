@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -241,13 +242,19 @@ func (AssetNode) TableName() string {
 // AssetChange 資產變更記錄
 type AssetChange struct {
 	Field string      `json:"field"`
-	Old   interface{} `json:"old"`
-	New   interface{} `json:"new"`
+	Old   interface{} `json:"old,omitempty"`
+	New   interface{} `json:"new,omitempty"`
+	// Changed 機密欄位的「已變更」旗標：此時 Old／New 不出現，審計明細不含任何值或長度
+	Changed bool `json:"changed,omitempty"`
 }
 
 // AssetChangeDetails 資產變更詳情
 type AssetChangeDetails struct {
 	Changes []AssetChange `json:"changes"`
+
+	// CorrelationID 本次更新同時產生系統告警時的關聯識別（與告警明細同值）；
+	// 沒有告警時不出現。
+	CorrelationID string `json:"correlation_id,omitempty"`
 
 	// AllowedDatabasesCleared 本次更新因協議改離查詢主控台支援的協議，
 	// 由伺服端自動清空允許資料庫清單。
@@ -266,4 +273,14 @@ type AssetChangeDetails struct {
 	RotationChannelCleared bool `json:"rotation_channel_cleared,omitempty"`
 	// PreviousRotationChannel 清空前的通道值（僅 RotationChannelCleared 為真時出現）
 	PreviousRotationChannel string `json:"previous_rotation_channel,omitempty"`
+
+	// TopologyCoverage 節點掛載變更（初始掛載與更新）時，同交易取的變更前後拓撲涵蓋差集；
+	// 只出現在掛載變更審計列，格式與節點搬移的同名鍵相同
+	TopologyCoverage json.RawMessage `json:"topology_coverage,omitempty"`
+
+	// BatchID 批次操作（搬移、加標籤、刪除）每次請求一個的隨機識別，同一批的逐列審計同值；
+	// 單筆操作不出現
+	BatchID string `json:"batch_id,omitempty"`
+	// BatchSize 該批去重後的資產筆數（僅 BatchID 非空時出現）
+	BatchSize int `json:"batch_size,omitempty"`
 }

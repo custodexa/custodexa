@@ -20,7 +20,7 @@ func TestBreakGlassReviewStaysPendingWithNoApprover(t *testing.T) {
 	grantConnect(t, db, 1, 1)
 	enableBreakGlass(t, policies)
 
-	req, err := svc.BreakGlass(1, "requester", model.RoleUser, 1, "半夜事故")
+	req, err := svc.BreakGlass(1, "requester", false, 1, "半夜事故")
 	if err != nil {
 		t.Fatalf("break glass: %v", err)
 	}

@@ -33,6 +33,7 @@
       :loading="loading"
       :saving="saving"
       :is-dirty="isDirty"
+      :save-blocked="hasInvalid"
       :groups="groups"
       @apply="(command) => previewApply(command.mode, command.groupCode)"
       @reset="resetForm"
@@ -140,6 +141,7 @@ const {
   draftStatus,
   visibleSections,
   isDirty,
+  hasInvalid,
   previewVisible,
   previewData,
   loadPolicies,

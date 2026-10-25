@@ -1,10 +1,10 @@
 package txtaking
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -54,6 +54,38 @@ type txTakingEntry struct {
 // 離機排隊點兩處（session.UpdateRecording、audit.completeJob）。
 var txTakingWhitelist = []txTakingEntry{
 	{
+		CallerFile: "internal/api/authorization_handler.go",
+		Callee:     "SelfSubjects",
+		OriginalSites: []string{
+			"（新增）本人範圍查詢端點讀取操作者自己、所屬群組與擁有的 agent",
+		},
+		Reason: "本人範圍與建立授權規則時的防自我授權判定共用同一個查詢函式，" +
+			"畫面停用的對象與服務端拒絕的對象才不會分歧；函式簽名因此收交易句柄。" +
+			"本呼叫點傳入的是一般連線、不在任何交易內，方法只讀使用者、群組成員與 agent 擁有者，" +
+			"不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_service.go",
+		Callee:     "CheckOwnerTransfer",
+		OriginalSites: []string{
+			"（新增）agent 擁有者轉移在變更擁有者的交易內檢查新擁有者的既有授權足跡",
+		},
+		Reason: "擁有者轉移必須與「新擁有者建立以該 agent 為主體的規則、對該 agent 的申請投票」" +
+			"以同一把鎖序列化：呼叫端先鎖 agent 的使用者列，再在同一交易內查新擁有者建立的有效規則、" +
+			"申請人型審核範圍與有效核准票，命中即整筆回滾。交易外判定會留下「判定通過後、" +
+			"轉移寫入前」新建規則的窗口。方法只讀（含列鎖），不寫任何 authz 表。",
+	},
+	{
+		CallerFile: "cmd/server/credential_management_adapter.go",
+		Callee:     "HasAllCapabilities",
+		OriginalSites: []string{
+			"（新增）憑證管理授權 adapter 在呼叫端交易內重驗能力",
+		},
+		Reason: "憑證管理的授權判定必須在呼叫端的交易內進行：與影響集合、鎖序在同一個一致讀取點，" +
+			"避免「判定通過後、寫入前」權限被撤銷的窗口。該方法只讀（使用者、角色、權限世代），" +
+			"不寫任何 authz 表；交易句柄只用來讓讀取落在同一個交易快照。",
+	},
+	{
 		CallerFile: "internal/modules/asset/asset_group_service.go",
 		Callee:     "RevokeByAssetGroup",
 		OriginalSites: []string{
@@ -66,7 +98,9 @@ var txTakingWhitelist = []txTakingEntry{
 			"authz 也不能反過來驅動 asset 的刪除交易，故只能由 asset 交出交易句柄。",
 	},
 	{
-		CallerFile: "internal/modules/asset/asset_service.go",
+		// 呼叫點隨資產刪除的交易內層（DeleteTx，可接收外部交易）移到 asset_write_scope_tx.go；
+		// 撤銷語意與同交易原子性不變
+		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
 		Callee:     "RevokeByAsset",
 		OriginalSites: []string{
 			"internal/modules/asset/asset_service.go:1092（Delete AssetAuthorization，" +
@@ -80,6 +114,390 @@ var txTakingWhitelist = []txTakingEntry{
 			"asset 不得 import authz（禁止邊），authz 也不能反過來驅動 asset 的" +
 			"刪除交易，故只能由 asset 交出交易句柄。與 RevokeByAssetGroup 是同一類" +
 			"問題的兩個粒度（節點／單一資產）。",
+	},
+	{
+		CallerFile: "internal/modules/asset/topology_permission.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增）拓撲寫入交易（單筆建立、批次匯入、掛載集合改變的更新）經 asset 端窄介面呼叫 authz 的拓撲鎖與權限版本動作",
+		},
+		Reason: "拓撲（資產掛載集合）改變必須與權限版本推進原子成立，否則舊快取在拓撲改變後繼續放行；asset 不得 import authz（禁止邊）。",
+	},
+	{
+		CallerFile: "internal/modules/asset/topology_permission.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增）拓撲寫入交易（單筆建立、批次匯入、掛載集合改變的更新）經 asset 端窄介面呼叫 authz 的拓撲鎖與權限版本動作",
+		},
+		Reason: "權限事件鏈的寫入前校準，須與拓撲寫入同一交易；不取鎖。",
+	},
+	{
+		CallerFile: "internal/modules/asset/topology_permission.go",
+		Callee:     "LockTopology",
+		OriginalSites: []string{
+			"（新增）拓撲寫入交易（單筆建立、批次匯入、掛載集合改變的更新）經 asset 端窄介面呼叫 authz 的拓撲鎖與權限版本動作",
+		},
+		Reason: "拓撲序列化鎖必須在拓撲寫入交易內取得並持有到交易結束，且是交易第一個動作，所以只能由 asset 交出交易句柄；鎖本身不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_group_scope_port.go",
+		Callee:     "AuthorizeNodeCreate",
+		OriginalSites: []string{
+			"（新增）節點寫入交易（建立、改名、改描述、搬移、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "建立節點的範圍判定必須在取得拓撲序列化鎖之後、於同一交易重讀主體與拓撲，判定與寫入之間不得有指派或拓撲變動；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_group_scope_port.go",
+		Callee:     "AuthorizeNodeEdit",
+		OriginalSites: []string{
+			"（新增）節點寫入交易（建立、改名、改描述、搬移、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "改名、改描述與刪除節點的範圍判定（嚴格子孫規則）必須在取鎖後同交易重讀主體與拓撲；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_group_scope_port.go",
+		Callee:     "AuthorizeNodeMove",
+		OriginalSites: []string{
+			"（新增）節點寫入交易（建立、改名、改描述、搬移、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "搬移節點的來源、目的與「子樹含範圍節點」判定必須在取鎖後同交易讀取；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_group_scope_port.go",
+		Callee:     "NodeScopeReferences",
+		OriginalSites: []string{
+			"（新增）節點寫入交易（建立、改名、改描述、搬移、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "節點刪除前的範圍引用查詢必須與刪除同交易：查詢後、刪除前若有新指派引用該節點，刪除不得完成；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
+		Callee:     "AuthorizeAssetCreate",
+		OriginalSites: []string{
+			"（新增）資產寫入交易（建立、更新、停用、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "建立資產的初始歸屬判定必須在取得拓撲序列化鎖之後、於同一交易重讀主體與拓撲，判定與寫入之間不得有指派或拓撲變動；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
+		Callee:     "AuthorizeAssetWrite",
+		OriginalSites: []string{
+			"（新增）資產寫入交易（建立、更新、停用、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "更新、停用與刪除的範圍與刪停歸屬判定必須在取鎖後同交易重讀主體與資產歸屬，每筆依自己裁決當下的歸屬判定；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
+		Callee:     "MergeAssetNodes",
+		OriginalSites: []string{
+			"（新增）資產寫入交易（建立、更新、停用、刪除）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "節點合併要以同交易內的現行歸屬與重讀的主體計算可替換部分，與掛載寫入之間不得有歸屬變動；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_account_write_scope.go",
+		Callee:     "AuthorizeAccountWrite",
+		OriginalSites: []string{
+			"（新增）資產帳號寫入交易（建立、更新、刪除、設預設）在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "帳號寫入隨所屬資產判定，須在取鎖後同交易重讀主體與資產歸屬，早於資產列鎖與憑證列鎖；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
+		Callee:     "CoverageSnapshot",
+		OriginalSites: []string{
+			"（新增）資產初始掛載與掛載變更在寫入前後各取一次涵蓋快照，經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "涵蓋差異要附在同一交易的掛載審計列，前後兩次快照須讀同一交易內的狀態；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_batch_move_tags.go",
+		Callee:     "CoverageSnapshot",
+		OriginalSites: []string{
+			"（新增）資產批次搬移交易在寫入掛載前後對整批各取一次涵蓋快照，經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "整批一次前後快照要拆到同一交易的各資產掛載審計列，前後兩次須讀同一交易內的狀態（寫入後的快照要看得到本交易的寫入）；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/topology_coverage.go",
+		Callee:     "CoverageSnapshot",
+		OriginalSites: []string{
+			"（新增）節點搬移交易在寫入前後各取一次涵蓋快照，經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "涵蓋差異要附在同一交易的搬移審計列，前後兩次快照須讀同一交易內的狀態（寫入後的快照要看得到本交易的寫入）；只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/identity/auth_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/auth_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/external_identity_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/external_identity_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/external_identity_service.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/group_role_mapping_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/group_role_mapping_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/ldap_directory_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/mapping_revocation.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/mapping_revocation.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/mapping_supports.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/oidc_login_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/oidc_login_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/oidc_provider_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_definition_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_definition_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_definition_service.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_mapping_recompute.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_mapping_recompute.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_binding_scope.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_source_transitions.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/role_source_transitions.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_mapping_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_mapping_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_role_bindings.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_role_bindings.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_role_bindings.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_group_service.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_role_pin.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_service.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_service.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
+	},
+	{
+		CallerFile: "internal/modules/identity/user_service.go",
+		Callee:     "SettlePermissionChange",
+		OriginalSites: []string{
+			"（新增登記）權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "權限相關寫入與版本推進（或事件鏈校準、補記）必須在同一個交易內原子成立；identity 在自己的權限寫入交易內呼叫 authz 的包級函式，呼叫形態與既有行為不變。",
 	},
 	{
 		CallerFile: "internal/modules/identity/user_group_service.go",
@@ -132,6 +550,255 @@ var txTakingWhitelist = []txTakingEntry{
 			"且下載窗口只有 24 小時、過後本機檔被清掃刪除——回填掃描補得回帳冊列，" +
 			"補不回已經不存在的檔案。audit 不得擁有 offsite_objects，故只能交出交易句柄。",
 	},
+	{
+		CallerFile: "internal/middleware/scope_gate.go",
+		Callee:     "DecideWithDenial",
+		OriginalSites: []string{
+			"（新增）登錄閘對宣告了目標解析的登錄項做範圍判定，範圍拒絕時取種類與層次交共用出口",
+		},
+		Reason: "判定器在給定的資料庫句柄上重解主體、讀目標與拓撲，簽名因此收交易句柄。" +
+			"登錄閘在 handler 之前判定，傳入的是一般連線（帶請求脈絡）、不在任何交易內；" +
+			"判定只讀、不取鎖、不寫任何表。範圍拒絕的層次（資產層或帳號層）只能經本方法取得，" +
+			"依種類推定會把「資產在範圍內、帳號不屬於它」錯標為資產層。",
+	},
+	{
+		CallerFile: "internal/middleware/scope_tx_recheck.go",
+		Callee:     "DecideWithDenial",
+		OriginalSites: []string{
+			"（新增）服務在寫入交易內重判登錄閘通過的範圍判定（資產更新改掛載後），範圍拒絕時取種類與層次交回 handler",
+		},
+		Reason: "重判必須讀到本交易已寫入、尚未提交的掛載，才能判出「改動後目標已在範圍外」，所以收呼叫方的交易句柄。" +
+			"判定只讀、不取鎖、不寫任何表；拒絕時呼叫方整筆回滾。拒絕值（含帳號目標的層次）只經本方法取得，" +
+			"本檔與 handler 都不建構或改寫拒絕值。",
+	},
+	{
+		CallerFile: "internal/modules/identity/approver_scope_management_key.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）啟動期補鍵資料步驟在每個角色的權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "補鍵沿角色定義寫入鏈的次序：權限寫入、定義版本、權限版本、系統身分審計與狀態事件必須在同一個交易內原子成立，任一步失敗整筆回滾；呼叫形態與角色定義服務相同。",
+	},
+	{
+		CallerFile: "internal/modules/identity/approver_scope_management_key.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）啟動期補鍵資料步驟在每個角色的權限寫入交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "補鍵沿角色定義寫入鏈的次序：權限寫入、定義版本、權限版本、系統身分審計與狀態事件必須在同一個交易內原子成立，任一步失敗整筆回滾；呼叫形態與角色定義服務相同。",
+	},
+	{
+		CallerFile: "internal/modules/identity/scoped_template_seed.go",
+		Callee:     "AdvanceVersion",
+		OriginalSites: []string{
+			"（新增登記）啟動期範本種入資料步驟在單一交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "種入沿角色定義寫入鏈的次序：權限狀態比對、寫入兩列範本、權限版本與狀態事件必須在同一個交易內原子成立，任一步失敗整筆回滾；呼叫形態與審核範圍管理鍵補鍵相同。",
+	},
+	{
+		CallerFile: "internal/modules/identity/scoped_template_seed.go",
+		Callee:     "BeginPermissionChange",
+		OriginalSites: []string{
+			"（新增登記）啟動期範本種入資料步驟在單一交易內呼叫 authz 的包級函式；與拓撲介面的同名方法同名，掃描器以名稱比對而列入",
+		},
+		Reason: "種入沿角色定義寫入鏈的次序：權限狀態比對、寫入兩列範本、權限版本與狀態事件必須在同一個交易內原子成立，任一步失敗整筆回滾；呼叫形態與審核範圍管理鍵補鍵相同。",
+	},
+	{
+		CallerFile: "internal/modules/asset/credential_impact.go",
+		Callee:     "CredentialImpactScopeIn",
+		OriginalSites: []string{
+			"（新增）共用憑證修改的範圍外影響集合在持有憑證列鎖的交易內計算",
+		},
+		Reason: "影響集合（範圍內清單、範圍外集合）必須與掛載集合在同一個交易讀取點計算，" +
+			"另開連線會讀不到本交易的狀態，單連線環境下還會與持鎖交易互等。" +
+			"方法只重解主體並讀節點與資產範圍，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "cmd/server/credential_management_adapter.go",
+		Callee:     "CredentialCapabilityMissing",
+		OriginalSites: []string{
+			"（新增）不帶目標的憑證管理檢核在呼叫端交易內改認任一有效來源（含節點範圍來源）",
+		},
+		Reason: "與同檔 HasAllCapabilities 同一個讀取點：能力重驗在呼叫端交易內進行，" +
+			"另開連線會與持有憑證列鎖的交易讀到不同的指派狀態，單連線環境下還會互等。" +
+			"方法只重解主體並讀指派與角色，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "cmd/server/credential_management_adapter.go",
+		Callee:     "DecideCredentialManagement",
+		OriginalSites: []string{
+			"（新增）帶目標的憑證管理檢核在呼叫端交易內以憑證歸屬與明確目標資產判定能力與範圍",
+		},
+		Reason: "歸屬與掛載目標須在持有憑證列鎖的同一交易讀取點判定，判定與寫入之間才不會出現" +
+			"歸屬被改、資產被搬的窗口。方法只重解主體並讀憑證歸屬、節點與資產範圍，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "cmd/server/credential_management_adapter.go",
+		Callee:     "DecideCredentialOnNodes",
+		OriginalSites: []string{
+			"（新增）新增資產建立專用憑證時，在已取拓撲序列化鎖的建立交易內以送出的節點判定建立憑證能力",
+		},
+		Reason: "送出節點的範圍判定須與節點刪除、搬移落在同一個拓撲序列化點：交易外判定會留下" +
+			"「判定通過後、寫入前節點被刪或搬出範圍」的窗口。方法只重解主體並讀節點範圍，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/credential_ownership.go",
+		Callee:     "AuthorizeSharedOwnership",
+		OriginalSites: []string{
+			"（新增）建立共用憑證與轉共用時，在已取拓撲序列化鎖的交易內判定新歸屬",
+		},
+		Reason: "歸屬節點的範圍判定必須與節點刪除、搬移落在同一個拓撲序列化點：交易外判定會留下" +
+			"「判定通過後、寫入前節點被刪或搬出範圍」的窗口。方法只重解主體並讀節點範圍，" +
+			"不取鎖、不寫任何表、不推進權限版本；節點存在性由呼叫端在同一交易內驗。",
+	},
+	{
+		CallerFile: "internal/modules/asset/credential_ownership_reassign.go",
+		Callee:     "AuthorizeOwnershipChange",
+		OriginalSites: []string{
+			"（新增）共用憑證改歸（單筆與批次）在已取拓撲序列化鎖與憑證列鎖的交易內判定新舊歸屬",
+		},
+		Reason: "與建立時的歸屬判定同理：目的節點與各筆現行歸屬的範圍判定須與拓撲鎖、憑證列鎖同一讀取點，" +
+			"否則判定結果可能在寫入前失效。方法只重解主體並讀節點範圍，不取鎖、不寫任何表、不推進權限版本。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_import_scope.go",
+		Callee:     "AuthorizeAssetCreate",
+		OriginalSites: []string{
+			"（新增）批次新增資產的逐列節點範圍判定，預檢與提交共用（asset_import_scope.go:91、:100）",
+		},
+		Reason: "提交時在拓撲序列化鎖之後、於同一交易以交易內視圖重算逐列範圍（asset_import_scope.go:162），判定與寫入之間不得有指派或拓撲變動；預檢（asset_import_validate.go:137）傳入的是一般連線、不在任何交易內。與單筆建立同一個判定方法，只讀、不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
+		Callee:     "AccessPolicyCoversNodes",
+		OriginalSites: []string{
+			"（新增）資產建立交易與批次新增（預檢與提交交易內重算）判定帶非空存取政策覆寫的目的節點是否在存取政策範圍內（asset_write_scope_tx.go:168 accessPolicyCoversTx；呼叫方 asset_write_scope_tx.go:184、asset_import_scope.go:136）",
+		},
+		Reason: "建立與提交時須在拓撲序列化鎖之後、於同一交易重讀主體與節點範圍，判定與寫入之間不得有指派或拓撲變動；" +
+			"預檢傳入的是一般連線、不在任何交易內。方法只重解主體並物化存取政策權限點的範圍，不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_access_policy_overrides.go",
+		Callee:     "AccessPolicyProjection",
+		OriginalSites: []string{
+			"（新增）單台覆寫清單以請求連線取存取政策權限點的範圍投影（asset_access_policy_overrides.go:106 ListAccessPolicyOverrides）",
+		},
+		Reason: "投影要在與清單查詢同一個連線上重解主體並物化範圍，列表、計數與節點遮蔽才出自同一份集合；" +
+			"唯讀端點，傳入的是一般連線、不在任何交易內。方法只讀指派與節點樹，不取鎖、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/asset_access_policy_overrides.go",
+		Callee:     "ApplyAssets",
+		OriginalSites: []string{
+			"（新增）單台覆寫清單把存取政策權限點的集合套到以 assets 為主表的查詢（asset_access_policy_overrides.go:115 ListAccessPolicyOverrides）",
+		},
+		Reason: "集合述詞以子查詢加在呼叫方的查詢上，必須在覆寫條件、搜尋、計數與分頁之前套用，所以收查詢句柄；" +
+			"回傳的是加了條件的同一查詢，不執行任何語句、不寫表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_batch_service.go",
+		Callee:     "LockTopology",
+		OriginalSites: []string{
+			"（新增）批次改密建立交易的第一個動作取拓撲序列化鎖（change_secret_batch_service.go:293）",
+		},
+		Reason: "鎖必須在建立交易內取得並持有到交易結束，之後的能力重判與範圍交集才看到同一份節點樹，所以只能由 asset 交出交易句柄；鎖本身不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_batch_service.go",
+		Callee:     "CapabilityMissing",
+		OriginalSites: []string{
+			"（新增）批次改密不帶目標的關卡被拒後，以任一有效來源（含節點範圍）再檢核模式所需能力（change_secret_batch_service.go:378）",
+		},
+		Reason: "建立交易內的重判（change_secret_batch_service.go:296）必須與拓撲鎖、範圍交集同一讀取點，交易外判定會留下「判定通過後、寫入前」撤權的窗口；交易外的預判（:269）傳入一般連線。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_batch_service.go",
+		Callee:     "AssetScope",
+		OriginalSites: []string{
+			"（新增）批次改密建立交易內解析目標時取發起者帳號改密的資產範圍（change_secret_batch_service.go:397）",
+		},
+		Reason: "回傳的資產範圍是以傳入句柄建立的子查詢，由呼叫端嵌進自己的查詢執行，必須與呼叫端查詢同一句柄、同一讀取點。目標解析與寫入同一交易、在拓撲序列化鎖之後，範圍與目標之間不得有指派或拓撲變動。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_batch_view.go",
+		Callee:     "ViewScope",
+		OriginalSites: []string{
+			"（新增）批次改密讀取投影取檢視者的資產範圍（change_secret_batch_view.go:29）",
+		},
+		Reason: "回傳的資產範圍是以傳入句柄建立的子查詢，由呼叫端嵌進自己的查詢執行，必須與呼叫端查詢同一句柄、同一讀取點。本呼叫點傳入的是一般連線、不在任何交易內。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_candidate_view.go",
+		Callee:     "ViewScope",
+		OriginalSites: []string{
+			"（新增）改密候選列表取檢視者的資產範圍（change_secret_candidate_view.go:27）",
+		},
+		Reason: "回傳的資產範圍是以傳入句柄建立的子查詢，由呼叫端嵌進自己的查詢執行，必須與呼叫端查詢同一句柄、同一讀取點。本呼叫點傳入的是一般連線、不在任何交易內。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_candidate_view.go",
+		Callee:     "CandidateDenial",
+		OriginalSites: []string{
+			"（新增）改密候選單筆讀取與顯式清除的範圍判定（change_secret_candidate_view.go:46、:64）",
+		},
+		Reason: "清除時在取拓撲序列化鎖之後於同一交易判定候選所屬資產在範圍內，判定與刪除之間不得有指派或拓撲變動；單筆讀取傳入一般連線。範圍拒絕值只經本方法取得，不在 asset 端建構。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_candidate_view.go",
+		Callee:     "LockTopology",
+		OriginalSites: []string{
+			"（新增）改密候選顯式清除交易的第一個動作取拓撲序列化鎖（change_secret_candidate_view.go:61）",
+		},
+		Reason: "鎖必須在清除交易內取得並持有到交易結束，範圍判定與刪除才落在同一個拓撲序列化點，所以只能由 asset 交出交易句柄；鎖本身不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_plan_scope.go",
+		Callee:     "LockTopology",
+		OriginalSites: []string{
+			"（新增）改密計畫儲存、刪除與執行交易的第一個動作取拓撲序列化鎖（change_secret_plan_scope.go:36、:177）",
+		},
+		Reason: "鎖必須在計畫寫入交易內取得並持有到交易結束，目標範圍判定與掛載上界寫入才看到同一份節點樹，所以只能由 asset 交出交易句柄；鎖本身不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_plan_scope.go",
+		Callee:     "ViewScope",
+		OriginalSites: []string{
+			"（新增）改密計畫的記錄讀取與儲存交易內的目標判定取檢視者範圍（change_secret_plan_scope.go:151、:194、:217）",
+		},
+		Reason: "回傳的資產範圍是以傳入句柄建立的子查詢，由呼叫端嵌進自己的查詢執行，必須與呼叫端查詢同一句柄、同一讀取點。儲存時在拓撲序列化鎖之後於同一交易判定明列目標，判定與寫入之間不得有指派或拓撲變動；記錄讀取傳入一般連線。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_plan_scope.go",
+		Callee:     "CredentialsVisible",
+		OriginalSites: []string{
+			"（新增）以憑證為目標的計畫儲存時，在持有憑證列鎖的交易內判定目標憑證歸屬在範圍內（change_secret_plan_scope.go:231）",
+		},
+		Reason: "歸屬判定須與憑證列鎖、影響確認與掛載上界寫入同一交易讀取點，否則判定後、寫入前歸屬可能被改。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_plan_visibility.go",
+		Callee:     "ViewScope",
+		OriginalSites: []string{
+			"（新增）改密計畫可見性投影取檢視者帳號改密的資產範圍（change_secret_plan_visibility.go:26）",
+		},
+		Reason: "回傳的資產範圍是以傳入句柄建立的子查詢，由呼叫端嵌進自己的查詢執行，必須與呼叫端查詢同一句柄、同一讀取點。讀取面與在交易內重判可見性的呼叫端共用本函式，句柄由呼叫端決定。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/asset/change_secret_plan_visibility.go",
+		Callee:     "CredentialsVisible",
+		OriginalSites: []string{
+			"（新增）改密計畫可見性投影判定憑證目標的歸屬在檢視者範圍內（change_secret_plan_visibility.go:36）",
+		},
+		Reason: "與同檔 ViewScope 同一個句柄、同一讀取點，帳號目標與憑證目標的可見性才不會分歧。方法只重解主體並讀指派、角色與拓撲，不取鎖、不寫任何表。",
+	},
+	{
+		CallerFile: "internal/modules/identity/assignment_guard.go",
+		Callee:     "LiveNodesTx",
+		OriginalSites: []string{
+			"（新增）節點範圍指派寫入在取得拓撲序列化鎖之後，於同一交易檢查範圍內的節點都存在且未刪除（assignment_guard.go:205）",
+		},
+		Reason: "節點是否存在必須與指派寫入同一個讀取點：檢查與寫入之間節點不得被刪除，所以只能用呼叫端的交易讀 asset 擁有的節點表；identity 不得直接碰該表，經窄介面由 asset 實作。方法只讀、不取鎖、不寫任何表；未注入讀取時帶節點範圍的寫入一律拒絕。",
+	},
 }
 
 // txTakingReasonViolations 比對純函式（抽出來才能對「無理由登記」做突變自檢）：
@@ -174,6 +841,23 @@ const (
 var txTakingCalleePkgs = map[string]string{
 	authzPkgPath:   "authz",
 	offsitePkgPath: "offsite",
+	assetPkgPath:   "asset",
+}
+
+// assetPkgPath asset 套件。只有 txTakingCalleeTypes 列出的型別進入被呼叫方集合：
+// identity 在取得拓撲序列化鎖之後，經窄介面用自己的交易檢查節點是否存在，該讀取由 asset 擁有；
+// asset 其餘的 tx-taking 匯出方法與既有呼叫點不屬這條通道，整包納入會連帶要求無關的登記。
+const assetPkgPath = "github.com/custodexa/backend/internal/modules/asset"
+
+// txTakingCalleeTypes 套件內只納入的型別（套件不在此表＝納入全部匯出型別）。
+var txTakingCalleeTypes = map[string]map[string]bool{
+	assetPkgPath: {"NodeExistenceReader": true},
+}
+
+// txTakingTypeAllowed 判被呼叫方套件內的型別是否在納入範圍。
+func txTakingTypeAllowed(pkgPath, typeName string) bool {
+	only, filtered := txTakingCalleeTypes[pkgPath]
+	return !filtered || only[typeName]
 }
 
 // txTakingCalleeDirs 被呼叫方自己的目錄（自己寫自己的表不算跨界）。
@@ -189,6 +873,54 @@ var txTakingCalleeDirs = []string{authzModuleDir, offsiteModuleDir}
 // **本表不是豁免**：登記在此的方法一旦真的被呼叫，A 軸仍要求該呼叫點進
 // txTakingWhitelist。本表只回答「這個方法為什麼可以把交易收進來」。
 var txTakingMethodsWithoutCallers = map[string]string{
+	"Decide": "節點範圍授權判定，須在呼叫方的寫入交易內現查指派與目標，與寫入同一交易，" +
+		"判定與寫入之間不得有指派或拓撲變動。判定本身不取鎖、不寫表（只讀）；現況為契約骨架，無外部呼叫點。",
+	"ScopeSetFor": "範圍集合述詞（不限／空／條件），須與 Decide 在同一交易內重解主體，" +
+		"列表在分頁與計數前以它過濾，集合與單筆判定才同源。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"NodeScopeOnlySetFor": "「只取節點範圍指派」變體，與 ScopeSetFor 同一交易、同一來源過濾重解主體（管理可視）。" +
+		"只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"NodeScopeProjection": "主體對某權限點的節點投影（可選節點與定位祖先），在呼叫方交易內重解主體與讀拓撲，" +
+		"供後段在寫入交易內取得與判定同源的節點集合。只讀、不取鎖、不寫表；現況無外部呼叫點（authz 包內的節點樹範圍化讀取直接用同一投影的內部函式）。",
+	"ApplyScopeSet": "把範圍集合以子樹子查詢加到呼叫方查詢上，子查詢須以同一交易句柄建立，" +
+		"與集合判定讀同一份拓撲。只組查詢、不執行寫入、不取鎖；現況無外部呼叫點。",
+	"ManagementScopeNodeCountsFor": "管理範圍節點計數投影（仍存在／已刪除），在呼叫方交易內重解主體並讀指派綁定節點，" +
+		"與同一請求的集合判定一致。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"ManagementVisibleScopeFor": "資產管理可視（檢視捷徑主體為全部、其餘為資產檢視的只取節點範圍變體），在呼叫方交易內重解主體，" +
+		"與同一請求的列表過濾與計數同源。只讀、不取鎖、不寫表；現況無外部呼叫點（資產頁讀取器在 authz 包內用同一內部函式）。",
+	"ManagementVisibleScopeForAssignments": "以指派集合為輸入的資產管理可視（預覽台數），檢視捷徑判定與正式判定同一實作，" +
+		"角色定義與節點存活在呼叫方交易內讀。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"ApplyManagementVisible": "把資產管理可視加到呼叫方的資產查詢上，子查詢須以同一交易句柄建立。" +
+		"只組查詢、不執行寫入、不取鎖；現況無外部呼叫點。",
+	"CountManagementVisible": "資產管理可視的去重台數，與列表同一集合述詞、同一交易。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"DecideForAssignments": "以指派集合為輸入的單筆判定（模擬指派預覽），角色定義、節點存活與目標拓撲須在呼叫方交易內讀，" +
+		"與同一請求的其他判定讀同一份狀態。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"ScopeSetForAssignments": "以指派集合為輸入的一般三態集合，與 DecideForAssignments 同一交易、同一套規則。" +
+		"只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"NodeScopeOnlySetForAssignments": "以指派集合為輸入的「只取節點範圍指派」變體，與 DecideForAssignments 同一交易。" +
+		"只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"ViewShortcutForAssignments": "以指派集合為輸入的檢視類全量視圖資格，角色定義在呼叫方交易內讀，" +
+		"與同一請求的集合判定一致。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"CheckRuleSubjects": "建立與調整授權規則時的防自我授權判定，須與規則寫入同一交易：" +
+		"agent 主體以帳號列鎖讀取擁有者，與擁有者轉移同鎖序，否則並發的轉移可讓判定失效。" +
+		"現況呼叫者都在 authz 包內（授權規則服務），故無外部呼叫點。只讀（含列鎖）。",
+	"CheckApproverScope": "建立申請人型審核範圍時檢查審核方與申請人不相交，與範圍寫入同一交易，" +
+		"避免判定後、寫入前成員變動。現況呼叫者在 authz 包內。只讀。",
+	"IsOwnAgentRequest": "申請決定時現查申請人是否為操作者擁有的 agent，須與計票、狀態寫入同一交易，" +
+		"才與擁有者轉移以同一把鎖序列化。現況呼叫者在 authz 包內。只讀。",
+	"DecideObject": "建立授權規則時判定客體（資產或節點其一）是否在操作者的授權規則管理範圍內，" +
+		"須與規則寫入同一交易、在拓撲序列化鎖之後，判定與寫入之間不得有指派或拓撲變動。" +
+		"只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（授權規則服務），故無外部呼叫點。",
+	"DecideRule": "調整帳號範圍與刪除既有授權規則時以規則的客體為目標判定，與 DecideObject 同一交易、同一套規則。" +
+		"只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（授權規則服務），故無外部呼叫點。",
+	"CountUnavailableObjects": "批次建立授權規則時逐一判定客體、回無法操作（範圍外或不存在）的件數，" +
+		"與批次寫入同一交易，整批的判定才與寫入讀同一份指派與拓撲。" +
+		"只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（授權規則服務），故無外部呼叫點。",
+	"AllAssetsInScope": "臨時授權撤銷資格的範圍判定：撤銷交易在拓撲序列化鎖之後於同一交易內重解主體，" +
+		"逐項判定所涉資產皆在授權規則管理範圍內，判定與撤銷寫入之間不得有指派或拓撲變動。" +
+		"只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（申請單服務），故無外部呼叫點。",
+	"ApplyAuthorizationRuleScope": "把授權規則列表的範圍集合以子樹子查詢加到呼叫方的授權規則查詢上（篩選、計數與分頁之前），" +
+		"子查詢須以同一連線句柄建立，與集合判定讀同一份拓撲。" +
+		"只組查詢、不執行寫入、不取鎖；現況呼叫者在 authz 包內（授權列表與有效權限檢視），故無外部呼叫點。",
 	"MarkForeign": "世代切換／停止離機時把舊世代的存量物件整批轉為 foreign。" +
 		"必須與「退役舊世代列、建立新世代列、寫審計」同一交易——" +
 		"否則會留下「世代已切換而舊物件仍宣稱屬現行世代」的中間態。" +
@@ -199,6 +931,12 @@ var txTakingMethodsWithoutCallers = map[string]string{
 		"帶 tx 是必要的：EnqueueTx 在呼叫方的交易內執行，世代若以交易外的預讀取得，" +
 		"兩者之間的世代切換會讓帳冊記到一個已退役的世代 id。**唯讀**——" +
 		"本方法不寫任何表，交易句柄只用於讀一致性。",
+	"DecideCreate": "建立審核範圍前判定客體（資產或節點）或申請人型的管理資格，須與範圍寫入同一交易、在拓撲序列化鎖之後，" +
+		"判定與寫入之間不得有指派或拓撲變動。只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（審核範圍服務），故無外部呼叫點。",
+	"DecideRow": "移除既有審核範圍前以該列為目標判定審核範圍管理資格，與 DecideCreate 同一交易、同一套規則。" +
+		"只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（審核範圍服務），故無外部呼叫點。",
+	"DecideApplicantRow": "移除申請人型審核範圍時的第二步判定（申請人型管理資格），與 DecideRow 同一交易。" +
+		"只讀、不取鎖、不寫表；現況呼叫者在 authz 包內（審核範圍服務），故無外部呼叫點。",
 }
 
 // minTxTakingScanPackages `packages.Load("./...")` 的載入下限（現況 32，取 24 為保守下界）。
@@ -305,7 +1043,7 @@ func runTxTakingScan(root string) txTakingScan {
 				continue
 			}
 			named, ok := obj.Type().(*types.Named)
-			if !ok {
+			if !ok || !txTakingTypeAllowed(p.PkgPath, obj.Name()) {
 				continue
 			}
 			for i := 0; i < named.NumMethods(); i++ {
@@ -395,7 +1133,8 @@ func isTxTakingCalleeMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
 		return false
 	}
 	if fn.Pkg() != nil {
-		if _, ok := txTakingCalleePkgs[fn.Pkg().Path()]; ok {
+		if _, ok := txTakingCalleePkgs[fn.Pkg().Path()]; ok &&
+			txTakingTypeAllowed(fn.Pkg().Path(), recvTypeName(sig)) {
 			return true
 		}
 	}
@@ -403,6 +1142,22 @@ func isTxTakingCalleeMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
 	// 被呼叫方的 tx-taking 集合內——那正是窄 port 的形狀
 	recv := sig.Recv()
 	return recv != nil && recv.Type() != nil && types.IsInterface(recv.Type())
+}
+
+// recvTypeName 方法接收者的具名型別名（包級函式或匿名接收者回空字串）。
+func recvTypeName(sig *types.Signature) string {
+	recv := sig.Recv()
+	if recv == nil {
+		return ""
+	}
+	t := recv.Type()
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	if named, ok := t.(*types.Named); ok && named.Obj() != nil {
+		return named.Obj().Name()
+	}
+	return ""
 }
 
 // signatureTakesGormDB 判簽名是否在「任一參數位置」收 *gorm.DB。
@@ -486,10 +1241,25 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	// 具名白名單的每一處都必須有歸屬。
 	//
 	// **數量是契約**：原定五處（收口的既有寫入點）；
-	// 資產刪除新增一處＝六處；離機排隊點兩處（session／audit）＝八處。調整此數字必須連同
+	// 資產刪除新增一處＝六處；離機排隊點兩處（session／audit）＝八處；
+	// 憑證管理授權 adapter 的交易內能力重驗（只讀）＝九處；本人範圍查詢與
+	// agent 擁有者轉移的防自我授權判定（皆只讀）＝十一處；拓撲鎖與權限版本介面進入
+	// 掃描集合後，asset 三處（LockTopology、BeginPermissionChange、AdvanceVersion）與
+	// identity 既有的權限版本呼叫三十三處（包級函式與介面方法同名）＝四十七處；登錄閘的範圍判定
+	// （DecideWithDenial，只讀）＝四十八處；服務寫入交易內的範圍重判（同一方法，只讀）＝四十九處；節點寫入交易在取拓撲鎖後經 asset 端窄介面
+	// 呼叫的建立、編輯、搬移範圍判定與刪除前範圍引用查詢四處、搬移交易的涵蓋快照一處（皆只讀）＝五十四處；資產寫入交易在取拓撲鎖後經 asset 端窄介面
+	// 呼叫的建立、更新／停用／刪除、節點合併範圍判定三處、帳號寫入隨所屬資產的範圍判定一處、
+	// 資產掛載變更的涵蓋快照一處（皆只讀）＝五十九處；憑證管理檢核在呼叫端交易內的範圍影響集合、
+	// 不帶目標與帶目標的範圍化能力判定、共用憑證建立與改歸的歸屬判定五處（皆只讀）＝六十四處；
+	// 資產批次搬移交易的整批涵蓋快照一處（只讀）＝六十五處；啟動期補鍵資料步驟在每個角色的權限寫入交易內
+	// 呼叫的權限版本推進與事件鏈校準兩處＝六十七處；批次新增資產的逐列節點範圍判定一處（只讀）、
+	// 批次改密建立交易的拓撲鎖與兩道範圍化判定三處、改密讀取投影（批次、候選、計畫記錄與可見性）
+	// 的資產範圍與憑證歸屬判定、候選清除與計畫寫入的拓撲鎖與範圍判定共九處（鎖不寫表、判定皆只讀）
+	// ＝八十處；新增資產在建立交易內以送出節點判定建立憑證能力一處（只讀）、存取政策覆寫的建立與批次新增
+	// 範圍判定一處、單台覆寫清單的範圍投影與集合套用兩處（皆只讀）＝八十四處；角色指派的節點範圍寫入在同交易內推進權限版本一處＝八十五處；節點範圍指派寫入在同交易內檢查節點存在（asset 的節點存在讀取，只讀）一處＝八十六處；範圍化管理範本種入資料步驟在單一交易內的權限狀態比對與權限版本推進兩處＝八十八處。調整此數字必須連同
 	// 上方 txTakingWhitelist 的登記與其理由一起改——這正是「新增 tx-taking 呼叫點
 	// 要被看見」的機制，不是可以隨手放寬的門檻。
-	const expectedTxTakingSites = 8
+	const expectedTxTakingSites = 88
 	total := 0
 	for _, e := range txTakingWhitelist {
 		total += len(e.OriginalSites)

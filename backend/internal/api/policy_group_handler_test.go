@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/custodexa/backend/internal/middleware"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,9 +52,9 @@ func newPolicyTestEnv(t *testing.T) *policyTestEnv {
 	// `:memory:` 每條連線是各自獨立的空庫：連線池放大會讓後續查詢隨機打到
 	// 沒有這些表的連線上
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.PolicyGroup{}, &model.PolicyClause{},
+	if err := migrateWithAuthz(db, &model.PolicyGroup{}, &model.PolicyClause{},
 		&model.PolicyClauseControl{}, &model.PolicyClauseAnnotation{},
-		&model.SecurityPolicy{}, &model.AuditLog{}, &model.AuditExportJob{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.AuditExportJob{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -77,7 +78,7 @@ func newPolicyTestEnv(t *testing.T) *policyTestEnv {
 	r := gin.New()
 	r.Use(func(c *gin.Context) { // 身分注入（AuthMiddleware 的等價出口）
 		if role := c.GetHeader("X-Test-Role"); role != "" {
-			c.Set("role", role)
+			middleware.SetPrincipal(c, legacyPrincipal(role))
 			c.Set("userID", uint(1))
 			c.Set("username", "tester-"+role)
 		}

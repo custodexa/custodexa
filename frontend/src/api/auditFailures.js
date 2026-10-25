@@ -13,3 +13,16 @@ export function getAuditFailures(params) {
     params,
   })
 }
+
+/**
+ * 超管確認權限狀態「無來源變動」並接受風險：以目前狀態為新基準，審計留痕。
+ * @param {Object} data - { reason }（1 至 500 字）
+ * @returns {Promise} { data: { op_id, event_seq, missing_count, extra_count } }
+ */
+export function acceptPermissionState(data) {
+  return request({
+    url: '/audit-failures/permission-state/accept',
+    method: 'post',
+    data,
+  })
+}

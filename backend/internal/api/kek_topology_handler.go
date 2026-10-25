@@ -15,7 +15,6 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/keyvault"
-	"github.com/custodexa/backend/internal/notifycat"
 	"github.com/custodexa/backend/internal/sourceip"
 )
 
@@ -117,22 +116,26 @@ func (h *KeyManagementHandler) UpdateKEKTopology(c *gin.Context) {
 		return
 	}
 
-	before, _ := keyvault.LoadKEKTopology(h.db)
 	in := keyvault.KEKTopologyInput{
 		Provider: provider, Address: req.Address, TransitKeyName: req.TransitKeyName,
 		RoleID: req.RoleID, Region: req.Region, UpdatedBy: currentActorName(c),
 	}
-	beforeSummary := topologySummary(before)
-	afterSummary := topologySummary(&model.KEKTopology{Provider: provider, Address: req.Address,
-		TransitKeyName: req.TransitKeyName, RoleID: req.RoleID, Region: req.Region})
-
-	savedBefore, after, err := keyvault.SaveKEKTopology(h.db, in)
+	// 交易內寫入：取鎖後讀 before、寫拓撲、成功審計、有變更時系統告警，任一失敗整筆回滾
+	after, _, _, err := h.saveTopologyInTx(c, in, topologySourceEndpoint)
 	if err != nil {
+		// 失敗留痕的前值取目前已提交的拓撲（交易已回滾，拓撲維持原值）
+		before, _ := keyvault.LoadKEKTopology(h.db)
+		beforeSummary := topologySummary(before)
+		afterSummary := topologySummary(&model.KEKTopology{Provider: provider, Address: req.Address,
+			TransitKeyName: req.TransitKeyName, RoleID: req.RoleID, Region: req.Region})
 		var verr *keyvault.KEKTopologyValidationError
 		code := apierror.CodeKeyTopologyInvalid
 		status := http.StatusBadRequest
 		if errors.Is(err, keyvault.ErrKEKTopologyNotEditable) {
 			code = apierror.CodeKeyTopologyNotEditable
+		} else if errors.Is(err, errTopologyAlertRaise) {
+			code = apierror.CodeInternalSystemAlertRaise
+			status = http.StatusInternalServerError
 		} else if !errors.As(err, &verr) {
 			code = apierror.CodeInternalKeyInventoryQuery
 			status = http.StatusInternalServerError
@@ -156,11 +159,6 @@ func (h *KeyManagementHandler) UpdateKEKTopology(c *gin.Context) {
 		apierror.Respond(c, status, code, payload)
 		return
 	}
-	_ = savedBefore
-
-	h.auditTopologyChange(c, provider, beforeSummary, afterSummary, true, "")
-	h.notifyTopologyChange(currentActorName(c), provider, beforeSummary, afterSummary)
-
 	keyRef, _ := keyvault.CurrentKEKID(h.db)
 	c.JSON(http.StatusOK, topologyResponse(provider, after, keyRef))
 }
@@ -278,6 +276,12 @@ type topologyAuditRecord struct {
 // **前後值進本文**：只記「拓撲已變更」不成立——稽核要回答的是「送去哪裡解」變成
 // 了什麼。四個欄位皆為非秘密，另於審計遮罩的拓撲端點專屬集登記為可追蹤。
 func (h *KeyManagementHandler) auditTopologyChange(c *gin.Context, provider, before, after string, ok bool, code apierror.ErrCode) {
+	h.auditTopologyChangeWith(c, provider, before, after, ok, code, "")
+}
+
+// auditTopologyChangeWith 同 auditTopologyChange；note 非空時記入 details（例如重包成功而
+// 拓撲未同步）。只用於失敗留痕：成功的變更改由交易內寫入（saveTopologyInTx）留痕。
+func (h *KeyManagementHandler) auditTopologyChangeWith(c *gin.Context, provider, before, after string, ok bool, code apierror.ErrCode, note string) {
 	if h.auditTopologyHook != nil {
 		h.auditTopologyHook(topologyAuditRecord{provider: provider, before: before, after: after, ok: ok, code: string(code)})
 	}
@@ -292,6 +296,9 @@ func (h *KeyManagementHandler) auditTopologyChange(c *gin.Context, provider, bef
 	}
 	if !ok {
 		details["rejected_code"] = string(code)
+	}
+	if note != "" {
+		details["note"] = note
 	}
 	body, err := json.Marshal(details)
 	if err != nil {
@@ -308,23 +315,6 @@ func (h *KeyManagementHandler) auditTopologyChange(c *gin.Context, provider, bef
 		Action: model.ActionUpdate, Resource: model.ResourceKeyManagement,
 		Status: status, Method: c.Request.Method, Path: c.Request.URL.Path,
 		ClientIP: sourceip.Of(c), StatusCode: statusCode, RequestBody: string(body),
-	})
-}
-
-// notifyTopologyChange 發出安全類告警。
-//
-// **不走 alert_rules**：該表是危險指令的正則規則，拓撲變更不是指令事件。
-// 通知通道未設定或不可達時只有審計——介面 SHALL NOT 宣稱已通知。
-func (h *KeyManagementHandler) notifyTopologyChange(actor, provider, before, after string) {
-	notifier := audit.GetAlertNotifier()
-	if notifier == nil {
-		return
-	}
-	if actor == "" {
-		actor = "unknown"
-	}
-	notifier.NotifyEvent(notifycat.EventKEKTopologyChanged, map[string]string{
-		"actor": actor, "provider": provider, "before": before, "after": after,
 	})
 }
 

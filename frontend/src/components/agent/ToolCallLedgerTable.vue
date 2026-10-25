@@ -215,7 +215,7 @@ import { ref, computed, watch } from 'vue'
 import i18n, { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 import { getAgentToolCallArguments } from '@/api/agentTasks'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import HelpTip from '@/components/HelpTip.vue'
 import { formatDateTime } from '@/utils/format'
 // targets maps session id to the asset and account that session reached; the ledger
@@ -226,7 +226,8 @@ const props = defineProps({
   linkMode: { type: String, default: 'session' },
 })
 const placeholder = '—'
-const { isPrivileged: canReveal } = useRoles()
+// 還原被遮罩的參數走 GET /agent-tool-calls/:id/arguments，後端掛 audit:view 並要求理由
+const canReveal = computed(() => can('audit:view'))
 const revealed = ref({})
 const revealDialogVisible = ref(false)
 const revealReason = ref('')

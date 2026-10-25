@@ -54,7 +54,10 @@ func newDegradeAlertStore(t *testing.T) (*CommandStore, *degradeAlertSink) {
 	if err != nil {
 		t.Fatalf("開啟 sqlite 失敗: %v", err)
 	}
-	if err := db.AutoMigrate(&model.SessionCommand{}); err != nil {
+	if err := db.AutoMigrate(&model.SessionCommand{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("建表失敗: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("建表失敗: %v", err)
 	}
 	aid := uint(3)

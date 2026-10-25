@@ -126,7 +126,7 @@ func TestLockBusyReturns409Sentinel(t *testing.T) {
 		t.Fatalf("sqlite shared: %v", err)
 	}
 	if err := shared.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
-		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
+		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.SystemAlertOutbox{}, &model.AuditLog{}, &model.DataKey{},
 		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

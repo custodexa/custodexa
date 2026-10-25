@@ -82,7 +82,7 @@ func setupPGLockSchema(t *testing.T, baseDSN string) string {
 	// 遷移守衛 EnvelopePendingCount 會掃 envelopeMigrationTargets 的各表，
 	// 故一併建表（空表 → pending 0）
 	if err := mig.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
-		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
+		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.SystemAlertOutbox{}, &model.AuditLog{}, &model.DataKey{},
 		&model.OffsiteProfile{}, &model.AgentToolCall{}, &model.UserRole{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}

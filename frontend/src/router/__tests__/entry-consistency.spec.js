@@ -5,6 +5,8 @@ import { Bot } from 'lucide-vue-next'
 import MainLayout from '@/components/MainLayout.vue'
 import router, { createAuthGuard } from '../index'
 import { resetSessionForTests, setAccessToken } from '@/utils/session'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { meBody } from '@/composables/__tests__/capabilityFixtures'
 
 // 入口一致性：**選單看得到 ⇔ 直接輸入網址進得去**。
 //
@@ -36,17 +38,17 @@ vi.mock('@/api/seal', () => ({
   getSealStatus: vi.fn(() => Promise.resolve({ state: 'unsealed' })),
   unseal: vi.fn(),
 }))
+// 側欄的每日簽核徽章在具簽核能力時會輪詢；不攔下就會打到真的 /api（有服務時回 401
+// 觸發續期失敗而清掉會話，守衛結果隨執行環境改變）
+vi.mock('@/api/dailyReviews', () => ({
+  getDailyReviewPendingCount: vi.fn(() => Promise.resolve({ data: { count: 0, overdue_count: 0 } })),
+}))
 
 // 身分：快取（登入回應）與 /auth/me 回同一份，模擬已登入且資料一致的穩態
 const persona = (name, roles, { approver = roles.includes('approver'), owns = false, create = false } = {}) => ({
   name,
-  user: {
-    username: 'tester',
-    roles,
-    is_approver: approver,
-    owns_agents: owns,
-    can_self_create_agent: create,
-  },
+  // /auth/me 的回應（含伺服器產生的 permissions）；能力集合由夾具依身分組出
+  user: meBody(roles, { approver, owns, create }),
 })
 
 // 對照表「誰會看到我的 agent」七列（第六、七列各含管理者與稽核人員兩種身分）
@@ -74,6 +76,7 @@ const EXTRA_PERSONAS = [
 const ALL_PERSONAS = [...AGENT_TABLE, ...EXTRA_PERSONAS]
 
 const useUser = (user) => {
+  resetCapabilities() // 每次換身分都當成新會話：舊身分的能力不得殘留
   localStorage.setItem('user', JSON.stringify(user))
   getCurrentUserMock.mockResolvedValue({ ...user })
 }
@@ -150,10 +153,9 @@ describe('入口一致性：選單可見 ⇔ 路由放行', () => {
   it('直接輸入網址被擋時導回 /dashboard（比照既有守衛行為）', async () => {
     const cases = [
       [persona('一般使用者無 agent', ['user']).user, '/my-agents'],
-      [persona('系統管理者', ['admin']).user, '/my-requests'],
-      [persona('系統管理者', ['admin']).user, '/my-connections'],
-      [persona('稽核人員', ['auditor']).user, '/my-requests'],
-      [persona('稽核人員', ['auditor']).user, '/my-connections'],
+      [persona('系統管理者無審核資格', ['admin']).user, '/approvals'],
+      [persona('稽核人員', ['auditor']).user, '/users'],
+      [persona('一般使用者', ['user']).user, '/audit-logs'],
     ]
     for (const [user, path] of cases) {
       useUser(user)
@@ -161,6 +163,18 @@ describe('入口一致性：選單可見 ⇔ 路由放行', () => {
       const next = vi.fn()
       await guard({ path: resolved.path, meta: resolved.meta }, { path: '/', meta: {} }, next)
       expect(next, `${user.roles.join('+')} ${path}`).toHaveBeenCalledWith('/dashboard')
+    }
+  })
+
+  // 已核准的行為差異：我的連線、我的申請對所有已登入者可達；不新增申請資格或連線權
+  it('管理者與稽核人員也看得到並進得了我的連線、我的申請', async () => {
+    for (const roles of [['admin'], ['auditor'], ['user'], ['approver']]) {
+      const p = persona(roles.join('+'), roles)
+      const menu = await menuFor(p.user)
+      for (const path of ['/my-connections', '/my-requests']) {
+        expect(menu, `${p.name} 選單 ${path}`).toContain(path)
+        expect(await guardAllows(p.user, path), `${p.name} 守衛 ${path}`).toBe(true)
+      }
     }
   })
 })

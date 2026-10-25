@@ -79,7 +79,7 @@ var roleWriteSites = []roleWriteSite{
 		Origins: []string{"RoleOriginMapping"}, Note: "重算不再命中：刪除僅由映射賦予的角色列"},
 	{File: "internal/modules/identity/role_source_transitions.go", Func: "RemoveManualRole",
 		Origins: []string{"RoleOriginAPI"}, Note: "管理者把角色移出手動集"},
-	{File: "internal/modules/identity/role_source_transitions.go", Func: "AddManualRole",
+	{File: "internal/modules/identity/role_source_transitions.go", Func: "AddManualRoleInRange",
 		Origins: []string{"RoleOriginAPI"}, Note: "管理者把角色加入手動集"},
 }
 
@@ -247,16 +247,19 @@ func collectRoleWriteCall(call *ast.CallExpr, rel string, funcStack []string,
 	}
 	// AssignUserRoleWithSource 是同一個寫入面的第三個出口（映射路徑以指定來源
 	// 建列），漏掉它等於讓映射造成的角色授予整條脫離登記表
-	originArg := 3
+	originArg, argc := 3, 4
 	switch sel.Sel.Name {
 	case "AssignUserRole", "RevokeUserRole":
-		originArg = 3
+		originArg, argc = 3, 4
 	case "AssignUserRoleWithSource":
-		originArg = 4
+		originArg, argc = 4, 5
+	case "AssignUserRoleInRange":
+		// 帶起始節點範圍的授予（assign 列記下範圍），與 AssignUserRole 同一個寫入面
+		originArg, argc = 3, 5
 	default:
 		return
 	}
-	if len(funcStack) == 0 || len(call.Args) != originArg+1 {
+	if len(funcStack) == 0 || len(call.Args) != argc {
 		return
 	}
 	// **來源必須是具名常數**：寫成變數（例如由參數傳入）時本守衛看不見它，

@@ -29,6 +29,7 @@ type agentReadEnv struct {
 	router              *gin.Engine
 	owner, agent, other *model.User
 	jwt                 map[string]string
+	uid                 map[string]uint // 各角色 token 所屬帳號，審計與告警的 actor 以此比對
 	token               string
 	policies            *policy.SecurityPolicyService
 }
@@ -36,20 +37,28 @@ type agentReadEnv struct {
 func newAgentReadEnv(t *testing.T) *agentReadEnv {
 	t.Helper()
 	db, users, owner, agent := principalAPIEnv(t)
-	require.NoError(t, db.AutoMigrate(&model.SecurityPolicy{}, &model.AgentToken{}, &model.AgentProbeEvent{}, &model.AgentToolCall{}, &model.AgentTaskReport{}, &model.Session{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.Asset{}, &model.AssetAuthorization{}, &model.UserGroup{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.AgentVisibilityExposure{}))
+	require.NoError(t, migrateWithAuthz(db, &model.SecurityPolicy{}, &model.AgentToken{}, &model.AgentProbeEvent{}, &model.AgentToolCall{}, &model.AgentTaskReport{}, &model.Session{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.Asset{}, &model.AssetAuthorization{}, &model.UserGroup{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.AgentVisibilityExposure{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old })
 	other := &model.User{Username: "other", Password: "!", Kind: model.KindHuman, Active: true}
 	require.NoError(t, db.Create(other).Error)
-	e := &agentReadEnv{db: db, owner: owner, agent: agent, other: other, jwt: map[string]string{}}
+	e := &agentReadEnv{db: db, owner: owner, agent: agent, other: other, jwt: map[string]string{}, uid: map[string]uint{}}
 	e.policies = policy.NewSecurityPolicyService(db)
 	auth := identity.NewAuthService("agent-read-test-key", time.Hour)
 	auth.SetEpochGateDB(db)
+	// 角色以資料庫為準：管理者與稽核員各用獨立帳號並寫入指派；負責人沒有任何指派（視同一般使用者）
 	for _, role := range []string{model.RoleAdmin, model.RoleAuditor, model.RoleUser} {
-		token, err := crypto.NewJWTManager("agent-read-test-key", time.Hour).GenerateToken(owner.ID, owner.Username, "", role, crypto.AuthContext{})
+		holder := owner
+		if role != model.RoleUser {
+			holder = &model.User{Username: "holder-" + role, Password: "!", Kind: model.KindHuman, Active: true}
+			require.NoError(t, db.Create(holder).Error)
+			grantLegacyRole(t, db, holder.ID, role)
+		}
+		token, err := crypto.NewJWTManager("agent-read-test-key", time.Hour).GenerateToken(holder.ID, holder.Username, "", role, crypto.AuthContext{})
 		require.NoError(t, err)
 		e.jwt[role] = token
+		e.uid[role] = holder.ID
 	}
 	e.jwt["other"], _ = crypto.NewJWTManager("agent-read-test-key", time.Hour).GenerateToken(other.ID, other.Username, "", model.RoleUser, crypto.AuthContext{})
 	tok, err := identity.NewAgentTokenService(db, audit.NewTxSink()).Create(agent.ID, identity.CreateAgentTokenRequest{Name: "initial-name", ExpiresAt: time.Now().Add(time.Hour)}, gatewayapi.Actor{UserID: owner.ID})

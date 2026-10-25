@@ -26,7 +26,7 @@ import (
 // 「宣告移除後行為如何改變」只能以重建服務模擬——這正是 spec 要求「不持久化
 // issuer kind、每次現算」的觀測點
 func newProviderSvcFor(db *gorm.DB, egress *OIDCEgressPolicy, dedicated []string, baseURL string) *OIDCProviderService {
-	return NewOIDCProviderService(db, nil, egress, dedicated, baseURL)
+	return newOIDCProviderServiceT(db, nil, egress, dedicated, baseURL)
 }
 
 // releaseEgress release 模式的出站政策：無任何 http 例外主機

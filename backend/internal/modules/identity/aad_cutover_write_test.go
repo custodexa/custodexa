@@ -137,6 +137,7 @@ func TestNotificationChannelWrittenWithAAD(t *testing.T) {
 
 	created, err := svc.Create(&audit.NotificationChannelRequest{
 		Name: "wh", URL: "https://example.com/hook/abcd", Secret: "hmac-secret",
+		ActorID: 1, ActorName: "tester",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -170,6 +171,7 @@ func TestNotificationChannelWrittenWithAAD(t *testing.T) {
 	// Update 帶值路徑同樣走 EncryptFor
 	if _, err := svc.Update(created.ID, &audit.NotificationChannelRequest{
 		Name: "wh", URL: "https://example.com/new", Secret: "new-secret",
+		ActorID: 1, ActorName: "tester",
 	}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -219,11 +221,18 @@ func setupEnvelopeChannelSvcForAAD(t *testing.T) (*audit.NotificationChannelServ
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.NotificationChannel{}, &model.DataKey{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{},
+		// 通道變更同交易寫服務層審計與系統告警（告警列、明細、投遞佇列）
+		&model.CommandAlert{}, &model.SystemAlertDetail{}, &model.SystemAlertOutbox{},
+		&model.SystemAlertSeverityOverride{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	km := newTestKeyManager(t, db, 1)
-	return audit.NewNotificationChannelService(db, km), km, db
+	svc := audit.NewNotificationChannelService(db, km)
+	svc.SetAuditTxSink(audit.NewTxSink())
+	svc.SetSystemAlertSink(audit.NewSystemAlertSink(km))
+	return svc, km, db
 }

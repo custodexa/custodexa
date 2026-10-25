@@ -19,8 +19,14 @@
 declare -F cx_db >/dev/null || . "${BASH_SOURCE[0]%/*}/dbclient.sh"
 # shellcheck source=lib/version_rules.sh
 declare -F cx_vr_cmp >/dev/null || . "${BASH_SOURCE[0]%/*}/version_rules.sh"
+# shellcheck source=lib/dbext.sh
+declare -F cx_dbx_use >/dev/null || . "${BASH_SOURCE[0]%/*}/dbext.sh"
 
 readonly CX_RB_MIN=1.16.0
+# The migration that gives the data the permission model. A version without it cannot read that data
+# (it may ignore the node scope of a binding and read it as global), so no rehearsal record and no
+# list in a release makes going straight back across it safe.
+readonly CX_RB_MODEL_MIGRATION=20261016_authz_permission_model
 CX_RB_WHY=""       # a premise that does not hold: none, changed, link, before_switch, already, too_old
 CX_RB_TARGET=""    # the version to go back to (the version the last upgrade started from)
 CX_RB_PRESWITCH=0  # 1: the upgrade recorded step 9 but never saved the switch; nothing to swap
@@ -96,10 +102,30 @@ cx_rb_premise() {
 # cx_rb_hint_ok: the upgrade screens offer `rollback` (it still decides for itself).
 cx_rb_hint_ok() { cx_rb_premise; }
 
+# cx_rb_ext_client: choose the client for an external database from the tool images the deployment
+# recorded (the choice every command that talks to that database makes first). Reading the
+# migrations needs one client that is on this host and settings it can use; it does not need the
+# backup checks of the upgrade. Any failure leaves no client chosen, so the judgment reads the
+# database as unreadable (refuses).
+cx_rb_ext_client() {
+  local top
+  CX_DB_EXT_ID="" CX_DB_EXT_MAJOR=""
+  cx_db_tls_read
+  [ "${#CX_DB_TLS_ITEMS[@]}" -eq 0 ] || return 1
+  cx_dbx_ids
+  top=$(cx_dbx_majors | tail -n 1)
+  [ -n "$top" ] && cx_dbx_present "$top" || return 1
+  cx_dbx_use "$top"
+  CX_DBX_ITEMS=()
+  cx_dbx_system_ca && return 0
+  CX_DB_EXT_ID="" CX_DB_EXT_MAJOR=""
+  return 1
+}
+
 # cx_rb_db_running: the bundled database container runs, or the external database has its client.
 cx_rb_db_running() {
   if cx_db_external; then
-    cx_db_ready
+    cx_db_ready || cx_rb_ext_client
     return
   fi
   cx_compose ps --status running --services 2>/dev/null | grep -qx postgres
@@ -112,6 +138,19 @@ cx_rb_migrations_now() {
   out=$(cx_db sql "SELECT version FROM schema_migrations ORDER BY version") || return 1
   [ -n "$out" ] || return 1
   printf '%s\n' "$out" | LC_ALL=C sort -u
+}
+
+# cx_rb_crosses_model <to>: going back from release <to> to CX_RB_TARGET crosses the permission model:
+# <to> lists the model migration and the target does not. A MANIFEST that cannot be read for the
+# target counts as crossing (not enough metadata to say it does not); one that cannot be read for
+# <to> is no boundary here, since a release that cannot be read lists nothing as compatible either.
+cx_rb_crosses_model() {
+  local to=$1
+  jq -e --arg m "$CX_RB_MODEL_MIGRATION" '(.migrations // []) | index($m) != null' \
+    "$CX_ROOT/releases/$to/MANIFEST.json" >/dev/null 2>&1 || return 1
+  jq -e --arg m "$CX_RB_MODEL_MIGRATION" '(.migrations // []) | index($m) != null' \
+    "$CX_ROOT/releases/$CX_RB_TARGET/MANIFEST.json" >/dev/null 2>&1 && return 1
+  return 0
 }
 
 # cx_rb_judge: whether the new version has not changed the database (state.json loaded again by the
@@ -145,6 +184,17 @@ cx_rb_judge() {
   to=$(cx_state_get last_upgrade.to)
   compat=$(jq -r --arg v "$CX_RB_TARGET" '(.rollback_compatible // []) | index($v) // empty' \
     "$CX_ROOT/releases/$to/MANIFEST.json" 2>/dev/null) || compat=""
+  # A release never gets a way back across the permission model by listing the version before:
+  # either the manifests say the model lies between the two, or the database now holds the model
+  # migration the snapshot did not. The refusal then stands on the reason found above.
+  if [ -n "$compat" ]; then
+    local added
+    for added in "${CX_RB_ADDED[@]+"${CX_RB_ADDED[@]}"}"; do
+      [ "$added" != "$CX_RB_MODEL_MIGRATION" ] || compat=""
+    done
+    if [ -n "$compat" ] && cx_rb_crosses_model "$to"; then compat=""; fi
+    [ -n "$compat" ] || cx_log CHECK "rollback compatible not honoured: the permission model lies between the two versions"
+  fi
   if [ -n "$compat" ]; then
     CX_RB_BASIS=compatible CX_RB_REASON=""
     cx_log CHECK "rollback basis=compatible"

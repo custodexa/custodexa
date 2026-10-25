@@ -76,7 +76,7 @@ func StateTableRegistry() []StateTable {
 			Name:          StateTableUserRoles,
 			EventResource: "user_role",
 			Snapshot:      SnapshotUserRoles,
-			Decode:        decodeRoleSet, Apply: applyRoleSet, Diff: diffState,
+			Decode:        decodeRoleSet, Apply: applyRoleSet, Diff: diffRoleSet,
 		},
 		projectionTable(StateTablePrincipals, "user", SnapshotPrincipals),
 		projectionTable(StateTableAgentTokens, "agent_token", SnapshotAgentTokens),
@@ -98,9 +98,52 @@ func stateHash(body []byte) string {
 }
 
 // RolePair 一筆角色指派（快照的元素）
+//
+// Range 是範圍的 canonical 表示，**空字串＝全域**：快照元素寫成 `[user_id,role_id]`，
+// 與加入範圍欄位之前的格式逐位元組相同，所以舊檢查點的快照不需轉換、讀回來就是全域
+// （節點範圍指派在此之前不存在）。節點範圍寫成升冪去重的節點陣列 `[1,2]`（空陣列＝
+// 節點範圍而無任何節點，是異常資料，刻意與全域區分）；`"*"` 只出現在重放結果，
+// 表示稽核列因節點過多被截斷、集合內容無從重建，比對時只比範圍種類（見 diffRoleSet）。
+// 以字串存放使 RolePair 維持可比較，可直接當 map 鍵
 type RolePair struct {
 	UserID uint64
 	RoleID uint64
+	Range  string
+}
+
+// RoleRangeWildcard 重放時節點集合無從重建的標記（只比範圍種類）
+const RoleRangeWildcard = `"*"`
+
+// NodeRange 把節點編號集合換成 Range 的 canonical 表示（升冪、去重）。
+// nil 與空切片皆表示**全域**（回空字串）；要表示「節點範圍而無節點」用 NodeRangeEmpty
+func NodeRange(nodes []uint64) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	return nodeRangeJSON(nodes)
+}
+
+// NodeRangeEmpty 節點範圍而無任何節點（異常資料的表示）
+const NodeRangeEmpty = "[]"
+
+func nodeRangeJSON(nodes []uint64) string {
+	sorted := append([]uint64(nil), nodes...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	out := []byte{'['}
+	first := true
+	var prev uint64
+	for i, n := range sorted {
+		if i > 0 && n == prev {
+			continue
+		}
+		prev = n
+		if !first {
+			out = append(out, ',')
+		}
+		first = false
+		out = appendUint(out, n)
+	}
+	return string(append(out, ']'))
 }
 
 // RolePairSource 讀出 `user_roles` 全表的來源（消費者側窄介面）。
@@ -163,7 +206,10 @@ func EncodeRolePairs(pairs []RolePair) ([]byte, int64) {
 		if sorted[i].UserID != sorted[j].UserID {
 			return sorted[i].UserID < sorted[j].UserID
 		}
-		return sorted[i].RoleID < sorted[j].RoleID
+		if sorted[i].RoleID != sorted[j].RoleID {
+			return sorted[i].RoleID < sorted[j].RoleID
+		}
+		return sorted[i].Range < sorted[j].Range
 	})
 	out := make([]byte, 0, 4+len(sorted)*16)
 	out = append(out, '[')
@@ -181,6 +227,10 @@ func EncodeRolePairs(pairs []RolePair) ([]byte, int64) {
 		out = appendUint(out, p.UserID)
 		out = append(out, ',')
 		out = appendUint(out, p.RoleID)
+		if p.Range != "" {
+			out = append(out, ',')
+			out = append(out, p.Range...)
+		}
 		out = append(out, ']')
 		n++
 	}
@@ -204,15 +254,42 @@ func appendUint(dst []byte, v uint64) []byte {
 
 // DecodeRolePairs 由 canonical 快照本體還原角色指派對（對帳重放上一狀態用）
 func DecodeRolePairs(body []byte) ([]RolePair, error) {
-	var raw [][2]uint64
+	var raw [][]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("解析角色指派快照失敗: %w", err)
 	}
 	pairs := make([]RolePair, 0, len(raw))
 	for _, r := range raw {
-		pairs = append(pairs, RolePair{UserID: r[0], RoleID: r[1]})
+		// 兩欄＝舊格式（全域）；三欄＝帶範圍
+		if len(r) != 2 && len(r) != 3 {
+			return nil, fmt.Errorf("解析角色指派快照失敗: 元素欄位數 %d", len(r))
+		}
+		var p RolePair
+		if json.Unmarshal(r[0], &p.UserID) != nil || json.Unmarshal(r[1], &p.RoleID) != nil {
+			return nil, fmt.Errorf("解析角色指派快照失敗: 識別欄位不是無號整數")
+		}
+		if len(r) == 3 {
+			rg, err := canonicalRange(r[2])
+			if err != nil {
+				return nil, err
+			}
+			p.Range = rg
+		}
+		pairs = append(pairs, p)
 	}
 	return pairs, nil
+}
+
+// canonicalRange 驗證並正規化快照元素的第三欄（節點陣列或萬用標記）
+func canonicalRange(raw json.RawMessage) (string, error) {
+	if string(raw) == RoleRangeWildcard {
+		return RoleRangeWildcard, nil
+	}
+	var nodes []uint64
+	if err := json.Unmarshal(raw, &nodes); err != nil {
+		return "", fmt.Errorf("解析角色指派快照失敗: 範圍欄位不合法: %w", err)
+	}
+	return nodeRangeJSON(nodes), nil
 }
 
 // DiffRolePairs 兩組角色指派的差集：missing＝expected 有而 actual 無、
@@ -237,9 +314,66 @@ func DiffRolePairs(expected, actual []RolePair) (missing, extra []RolePair) {
 			extra = append(extra, p)
 		}
 	}
+	missing, extra = resolveRangeWildcard(missing, extra)
 	sortRolePairs(missing)
 	sortRolePairs(extra)
 	return missing, extra
+}
+
+// resolveRangeWildcard 預期側的萬用範圍（重放時節點集合無從重建）只要求現況同一筆
+// 指派仍是節點範圍：兩側各抵銷一項。現況若是全域則不抵銷，照常報為差集
+func resolveRangeWildcard(missing, extra []RolePair) ([]RolePair, []RolePair) {
+	var outMissing []RolePair
+	used := map[int]bool{}
+	for _, m := range missing {
+		matched := false
+		if m.Range == RoleRangeWildcard {
+			for i, e := range extra {
+				if !used[i] && e.UserID == m.UserID && e.RoleID == m.RoleID &&
+					e.Range != "" && e.Range != RoleRangeWildcard {
+					used[i], matched = true, true
+					break
+				}
+			}
+		}
+		if !matched {
+			outMissing = append(outMissing, m)
+		}
+	}
+	var outExtra []RolePair
+	for i, e := range extra {
+		if !used[i] {
+			outExtra = append(outExtra, e)
+		}
+	}
+	return outMissing, outExtra
+}
+
+// diffRoleSet 角色指派表的差集：元素差集之後，套用萬用範圍的抵銷規則
+func diffRoleSet(expected, actual StateSet) (missing, extra []string) {
+	missing, extra = diffState(expected, actual)
+	mp, me := roleSetPairsOf(missing), roleSetPairsOf(extra)
+	mp, me = resolveRangeWildcard(mp, me)
+	return rolePairsToElements(mp), rolePairsToElements(me)
+}
+
+func roleSetPairsOf(elements []string) []RolePair {
+	var out []RolePair
+	for _, k := range elements {
+		p, _ := DecodeRolePairs([]byte("[" + k + "]"))
+		out = append(out, p...)
+	}
+	return out
+}
+
+func rolePairsToElements(pairs []RolePair) []string {
+	out := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		b, _ := EncodeRolePairs([]RolePair{p})
+		out = append(out, string(b[1:len(b)-1]))
+	}
+	sort.Strings(out)
+	return out
 }
 
 func sortRolePairs(ps []RolePair) {
@@ -247,7 +381,10 @@ func sortRolePairs(ps []RolePair) {
 		if ps[i].UserID != ps[j].UserID {
 			return ps[i].UserID < ps[j].UserID
 		}
-		return ps[i].RoleID < ps[j].RoleID
+		if ps[i].RoleID != ps[j].RoleID {
+			return ps[i].RoleID < ps[j].RoleID
+		}
+		return ps[i].Range < ps[j].Range
 	})
 }
 

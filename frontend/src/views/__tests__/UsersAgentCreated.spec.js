@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Users from '../Users.vue'
+import UserAccountForm from '../users/components/UserAccountForm.vue'
 import AgentPrincipalForm from '../../components/agent/AgentPrincipalForm.vue'
 import i18n from '@/i18n'
 
@@ -22,6 +23,8 @@ vi.mock('@/api/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ data:
 class Observer { observe() {} disconnect() {} takeRecords() { return [] } }
 vi.stubGlobal('MutationObserver', Observer)
 enableAutoUnmount(afterEach)
+
+const formVm = (w) => w.findComponent(UserAccountForm).vm
 
 const global = {
   plugins: [ElementPlus],
@@ -45,7 +48,7 @@ const createAgent = async () => {
   const w = mount(Users, { global })
   await flushPromises()
   w.vm.handleCreate()
-  w.vm.createKind = 'agent'
+  formVm(w).createKind = 'agent'
   await flushPromises()
   const form = w.getComponent(AgentPrincipalForm)
   form.vm.username = 'aibot1token'
@@ -58,7 +61,7 @@ const createAgent = async () => {
 describe('建立 agent 後的下一步', () => {
   it('建立成功後對話框留著，顯示名稱、負責人與下一步說明', async () => {
     const w = await createAgent()
-    expect(w.vm.dialogVisible).toBe(true)
+    expect(formVm(w).dialogVisible).toBe(true)
     const panel = w.get('[data-test="agent-created"]')
     expect(panel.text()).toContain('已建立 agent「aibot1token」')
     expect(panel.text()).toContain('負責人：ops.owner')
@@ -75,7 +78,7 @@ describe('建立 agent 後的下一步', () => {
     const w = await createAgent()
     await w.get('[data-test="agent-created-later"]').trigger('click')
     await flushPromises()
-    expect(w.vm.dialogVisible).toBe(false)
+    expect(formVm(w).dialogVisible).toBe(false)
     expect(w.vm.tokenDrawerVisible).toBe(false)
   })
 
@@ -83,7 +86,7 @@ describe('建立 agent 後的下一步', () => {
     const w = await createAgent()
     await w.get('[data-test="agent-created-issue"]').trigger('click')
     await flushPromises()
-    expect(w.vm.dialogVisible).toBe(false)
+    expect(formVm(w).dialogVisible).toBe(false)
     expect(w.vm.tokenDrawerVisible).toBe(true)
     expect(w.vm.tokenPrincipal.id).toBe(7)
     expect(api.tokens).toHaveBeenCalledWith(7)
@@ -95,7 +98,7 @@ describe('建立 agent 後的下一步', () => {
     await w.get('[data-test="agent-created-later"]').trigger('click')
     await flushPromises()
     w.vm.handleCreate()
-    w.vm.createKind = 'agent'
+    formVm(w).createKind = 'agent'
     await flushPromises()
     expect(w.find('[data-test="agent-created"]').exists()).toBe(false)
     expect(w.findComponent(AgentPrincipalForm).exists()).toBe(true)

@@ -310,6 +310,9 @@ func aadFixture(t *testing.T, db *gorm.DB, km *KeyManagerService) (assetID, acco
 		`CREATE TABLE notification_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, secret TEXT NOT NULL DEFAULT '',
 			url TEXT NOT NULL DEFAULT '')`,
 		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
+		`CREATE TABLE system_alert_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, url_enc TEXT NOT NULL DEFAULT '',
+			secret_enc TEXT NOT NULL DEFAULT '')`,
+		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE change_secret_candidates (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
 		// 憑證密文版本：登入秘密的現行落點，同樣登記於 envelopeMigrationTargets

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"net/http"
 	"net/http/httptest"
@@ -25,8 +26,8 @@ func setupSFTPMissingAssetEnv(t *testing.T) (*gin.Engine, *gorm.DB) {
 	// Role 必備：角色現況重判改以 DB 現查折疊角色，
 	// query 帶入的 role 只決定「呼叫端自稱什麼」，實際判定看使用者的角色關聯——
 	// 這正是「降權的前 admin 不得憑 JWT 快照放行」的機制本體
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{model.RoleUser, model.RoleAdmin, model.RoleAuditor} {
@@ -46,7 +47,7 @@ func setupSFTPMissingAssetEnv(t *testing.T) (*gin.Engine, *gorm.DB) {
 		if role == "" {
 			role = model.RoleUser
 		}
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		handler.List(c)
 	})
 	return r, db

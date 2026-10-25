@@ -143,6 +143,16 @@ describe('三語 locale 檔 key 集合完全一致（結構鐵則）', () => {
   })
 })
 
+describe('系統告警類型 concurrent_instance_detected 的三語名稱與說明', () => {
+  it('三語都有非空的 name 與 description', () => {
+    for (const messages of [zhTW, enUS, jaJP]) {
+      const entry = messages.systemAlerts.types.concurrent_instance_detected
+      expect(entry.name).toBeTruthy()
+      expect(entry.description).toBeTruthy()
+    }
+  })
+})
+
 describe('document metadata 隨語言', () => {
   it('title 與 <html lang> 隨切換即時更新', async () => {
     setupDocumentMetadata()

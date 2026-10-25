@@ -3,12 +3,15 @@ package authz
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/internal/notifycat"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
 )
 
@@ -94,12 +97,28 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 	closed := false
 	var revoked []model.AccessRequestItem
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// 範圍化資格（授權規則管理能力）依拓撲判定：鎖序為「拓撲序列化鎖 → 申請單與票證列 → 權限版本」，
+		// 取鎖後才讀範圍，資格判定因此與撤銷寫入、並發的拓撲或節點範圍指派變更一起序列化。
+		// 超級管理者的範圍恆成立，不取此鎖
+		scoped := !isAdmin && s.revokeScope != nil
+		if scoped {
+			if err := LockScopeTopologyTx(tx); err != nil {
+				return err
+			}
+		}
 		if err := s.lockRequest(tx, req, now, false); err != nil {
 			return err
 		}
 		items, err := requestItems(tx, req)
 		if err != nil {
 			return err
+		}
+		// 完整資格在此交易內判定：授權規則管理範圍涵蓋整個判定集合者具撤銷資格，否則逐項走既有資格
+		qualified := false
+		if scoped {
+			if qualified, err = s.revokeQualifiedByScope(tx, actorID, items, itemID, now); err != nil {
+				return err
+			}
 		}
 		for i := range items {
 			item := &items[i]
@@ -109,19 +128,13 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 			if item.Status != model.AccessRequestApproved || item.AuthorizationID == nil {
 				continue
 			}
-			if !isAdmin {
-				if item.DecidedBy != nil {
-					if *item.DecidedBy != actorID {
-						return ErrNotRevokeEligible
-					}
-				} else {
-					covered, e := s.authzRepo.ApproverScopeCoversRequestTx(tx, actorID, item.AssetID, req.RequesterID)
-					if e != nil {
-						return e
-					}
-					if !covered {
-						return ErrNotRevokeEligible
-					}
+			if !isAdmin && !qualified {
+				ok, e := s.itemRevokeEligible(tx, actorID, req, item)
+				if e != nil {
+					return e
+				}
+				if !ok {
+					return ErrNotRevokeEligible
 				}
 			}
 			var ticket model.AssetAuthorization
@@ -166,7 +179,11 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 			return err
 		}
 		closed, err = s.closeRequestInTx(tx, req, now)
-		return err
+		if err != nil {
+			return err
+		}
+		// 撤銷審計與撤銷同交易：寫入失敗自閉包逸出，整筆回滾
+		return s.writeRevokeAuditInTx(tx, actorID, username, req.ID, itemID, revoked)
 	})
 	if err != nil {
 		return nil, err
@@ -186,12 +203,7 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 			seen[id] = true
 		}
 	}
-	details := map[string]any{"item_id": itemID, "terminated_session_ids": unique}
-	if len(revoked) == 1 {
-		details["authorization_id"] = revoked[0].AuthorizationID
-	}
-	data, _ := json.Marshal(details)
-	s.logAudit(actorID, username, model.ActionRevoke, req.ID, string(data))
+	s.logRevokeSessionResult(actorID, username, req.ID, itemID, revoked, unique)
 	s.notify(notifycat.EventTicketRevoked, req.ID, s.assetName(req.AssetID), nil)
 	return s.reload(req.ID)
 }
@@ -262,4 +274,59 @@ func (s *AccessRequestService) ExpireApprovedItems(now time.Time) (int, error) {
 		}
 	}
 	return closedCount, nil
+}
+
+// revokeAuditDetails 撤銷審計的 details：任務項與授權識別碼。
+func revokeAuditDetails(itemID uint, revoked []model.AccessRequestItem) map[string]any {
+	itemIDs := make([]uint, 0, len(revoked))
+	authIDs := make([]uint, 0, len(revoked))
+	for _, it := range revoked {
+		itemIDs = append(itemIDs, it.ID)
+		if it.AuthorizationID != nil {
+			authIDs = append(authIDs, *it.AuthorizationID)
+		}
+	}
+	details := map[string]any{"item_id": itemID, "revoked_item_ids": itemIDs, "authorization_ids": authIDs}
+	if len(revoked) == 1 {
+		details["authorization_id"] = revoked[0].AuthorizationID
+	}
+	return details
+}
+
+// writeRevokeAuditInTx 在撤銷交易內寫撤銷審計（同 action、資源）；回非 nil 時呼叫方須讓它逸出交易閉包。
+// 落地面未注入只出現在程式內部建構（組裝期以 RequireRevokeWiring 擋下），此時改由提交後的單列審計承擔。
+func (s *AccessRequestService) writeRevokeAuditInTx(tx *gorm.DB, actorID uint, username string, requestID, itemID uint, revoked []model.AccessRequestItem) error {
+	if s.txSink == nil {
+		return nil
+	}
+	data, err := json.Marshal(revokeAuditDetails(itemID, revoked))
+	if err != nil {
+		return err
+	}
+	rid := requestID
+	if err := port.WriteInTx(s.txSink, tx, port.AuditEvent{
+		Actor:  gatewayapi.Actor{UserID: actorID, Username: username},
+		Action: string(model.ActionRevoke), Resource: string(model.ResourceAccessRequest),
+		ResourceID: &rid, Status: string(model.StatusSuccess), Details: string(data),
+	}); err != nil {
+		return fmt.Errorf("撤銷審計留痕失敗: %w", err)
+	}
+	return nil
+}
+
+// logRevokeSessionResult 提交後的審計：落地面已注入時是同 action 的會話結果補記（失敗只記 log，
+// 不假裝回滾）；未注入時沿用單列審計。
+func (s *AccessRequestService) logRevokeSessionResult(actorID uint, username string, requestID, itemID uint, revoked []model.AccessRequestItem, terminated []uint) {
+	details := map[string]any{"item_id": itemID, "terminated_session_ids": terminated}
+	if s.txSink != nil {
+		details["event"] = "sessions_terminated"
+	} else {
+		for k, v := range revokeAuditDetails(itemID, revoked) {
+			if k == "authorization_id" {
+				details[k] = v
+			}
+		}
+	}
+	data, _ := json.Marshal(details)
+	s.logAudit(actorID, username, model.ActionRevoke, requestID, string(data))
 }

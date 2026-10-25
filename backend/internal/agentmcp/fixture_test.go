@@ -46,7 +46,8 @@ func newFixture(t *testing.T) *fixture {
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old; sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.AgentToken{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.AssetHostKey{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.SecurityPolicy{}, &model.TransmissionConsent{}, &model.AuditLog{}, &model.AuditFailureEvent{}, &model.Session{}, &model.SessionCommand{}, &model.AlertRule{}, &model.CommandAlert{}, &model.OIDCProvider{}, &model.AgentToolCall{}, &model.AgentTaskReport{}, &model.AgentVisibilityExposure{}, &model.AgentProbeEvent{}, &model.ApproverScope{}, &model.DataKey{}, &model.IntegrityBaseline{}, &model.RefreshToken{}))
+	seedAuthzState(t, db)
+	require.NoError(t, migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.AgentToken{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.AssetHostKey{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.SecurityPolicy{}, &model.TransmissionConsent{}, &model.AuditLog{}, &model.AuditFailureEvent{}, &model.Session{}, &model.SessionCommand{}, &model.AlertRule{}, &model.CommandAlert{}, &model.OIDCProvider{}, &model.AgentToolCall{}, &model.AgentTaskReport{}, &model.AgentVisibilityExposure{}, &model.AgentProbeEvent{}, &model.ApproverScope{}, &model.DataKey{}, &model.IntegrityBaseline{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	kek, err := crypto.NewEnvKEKProvider(make([]byte, 32))
 	require.NoError(t, err)
 	km, err := keyvault.InitKeyManager(db, kek)
@@ -85,6 +86,7 @@ func newFixture(t *testing.T) *fixture {
 	require.NoError(t, db.Model(&item).Updates(map[string]any{"status": model.AccessRequestApproved, "approved_duration_minutes": 60, "approved_date_start": now, "decided_at": now, "authorization_id": ticket.ID}).Error)
 	require.NoError(t, db.Model(&task).Update("status", model.AccessRequestApproved).Error)
 	assets, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assets.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 	auth := identity.NewAuthService("mcp-test-secret", time.Hour)
 	auth.SetEpochGateDB(db)

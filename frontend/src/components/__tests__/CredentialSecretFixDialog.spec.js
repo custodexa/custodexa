@@ -28,9 +28,11 @@ vi.stubGlobal('ResizeObserver', ObserverStub)
 
 const getMock = vi.fn()
 const setSecretMock = vi.fn()
+const impactMock = vi.fn()
 vi.mock('@/api/credentials', () => ({
   getCredential: (...a) => getMock(...a),
   setCredentialSecret: (...a) => setSecretMock(...a),
+  confirmCredentialImpact: (...a) => impactMock(...a),
 }))
 
 const dialogStub = {
@@ -74,6 +76,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   getMock.mockResolvedValue({ data: credentialFixture() })
   setSecretMock.mockResolvedValue({ id: 12 })
+  impactMock.mockResolvedValue({ required: false, in_scope_count: 3 })
 })
 
 describe('依秘密型別只顯示一種欄位', () => {

@@ -25,7 +25,7 @@ func (h *UserHandler) RequireAgentTokenManager(c *gin.Context) {
 		return
 	}
 	target, err := h.userService.GetByID(uint(id))
-	if err != nil || (c.GetString("role") != model.RoleAdmin && (target.OwnerUserID == nil || *target.OwnerUserID != actorID)) {
+	if err != nil || (!middleware.PrincipalFrom(c).IsSuperAdmin() && (target.OwnerUserID == nil || *target.OwnerUserID != actorID)) {
 		apierror.Respond(c, http.StatusForbidden, apierror.CodePermissionDenied, nil)
 		c.Abort()
 		return

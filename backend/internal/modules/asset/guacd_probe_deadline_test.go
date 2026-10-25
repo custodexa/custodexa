@@ -39,6 +39,7 @@ func TestGuacdProbeDeadline(t *testing.T) {
 					if !rawHelper {
 						_, mock, _ = setupAssetMockDB(t)
 						service, err = NewAssetService(aesColumnCodec(t, make([]byte, 32)), host, port, audit.NewTxSink())
+						service.SetTopologyPermissionPort(noopTopologyPort{})
 						require.NoError(t, err)
 						expectAssetWithDefaultAccount(t, mock, service, protocol, "127.0.0.1", 5900)
 						status := "unreachable"

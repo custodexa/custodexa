@@ -24,6 +24,7 @@ const updateUserGroupMock = vi.fn()
 const deleteUserGroupMock = vi.fn()
 const replaceUserGroupMembersMock = vi.fn()
 const getUserGroupAuthorizationCountMock = vi.fn()
+const getUserGroupRoleBindingsMock = vi.fn()
 
 vi.mock('@/api/userGroups', () => ({
   getUserGroups: (...a) => getUserGroupsMock(...a),
@@ -32,6 +33,15 @@ vi.mock('@/api/userGroups', () => ({
   deleteUserGroup: (...a) => deleteUserGroupMock(...a),
   replaceUserGroupMembers: (...a) => replaceUserGroupMembersMock(...a),
   getUserGroupAuthorizationCount: (...a) => getUserGroupAuthorizationCountMock(...a),
+  getUserGroupRoleBindings: (...a) => getUserGroupRoleBindingsMock(...a),
+}))
+
+vi.mock('@/api/roleDefinitions', () => ({
+  listRoleDefinitions: vi.fn().mockResolvedValue({ data: [] }),
+}))
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -65,6 +75,7 @@ describe('UserGroups 使用者群組管理', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getUserGroupsMock.mockResolvedValue(sampleGroups)
+    getUserGroupRoleBindingsMock.mockResolvedValue({ data: [] })
   })
 
   it('列表渲染群組與成員 tag', async () => {

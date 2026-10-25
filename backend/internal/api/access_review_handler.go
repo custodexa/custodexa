@@ -128,9 +128,9 @@ func (h *AccessReviewHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 	grp := r.Group("/access-reviews")
 	grp.Use(middleware.AuthMiddleware(authService))
 
-	grp.GET("/matrix", middleware.RequirePermission(middleware.PermAuditView), h.GetMatrix)
-	grp.GET("", middleware.RequirePermission(middleware.PermAuditView), h.List)
-	grp.GET("/:id", middleware.RequirePermission(middleware.PermAuditView), h.Detail)
+	grp.GET("/matrix", middleware.EnforceRegistry(), h.GetMatrix)
+	grp.GET("", middleware.EnforceRegistry(), h.List)
+	grp.GET("/:id", middleware.EnforceRegistry(), h.Detail)
 	// 簽核＝管理層確認（7.2.4），限 admin
-	grp.POST("", middleware.RequireRole("admin"), h.Create)
+	grp.POST("", middleware.EnforceRegistry(), h.Create)
 }

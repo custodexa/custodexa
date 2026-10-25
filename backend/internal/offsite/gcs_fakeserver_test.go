@@ -14,7 +14,7 @@ import (
 
 // gcs driver 的 fake-gcs-server 實測。
 //
-// 誠實邊界（design §6 第 16 條）：模擬器只驗欄位與 generation 行為；
+// 誠實邊界：模擬器只驗欄位與 generation 行為；
 // bucket 保留設定（retentionPolicy 欄）模擬器不支援——其 Attrs 回應**缺該欄**，
 // 與「真的沒設保留」在 JSON 產物上不可分辨，故揭露讀為 none 而非 unknown；
 // 「讀不到→warn 無法確認」的降級路徑由 FakeClient 注入格覆蓋

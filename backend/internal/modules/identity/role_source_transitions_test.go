@@ -26,6 +26,7 @@ func roleSourceDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("db handle: %v", err)

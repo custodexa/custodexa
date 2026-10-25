@@ -34,8 +34,9 @@ setup() {
     'const LdapSeedMarkerVersion = "20260804_ldap_env_seeded"' \
     'const OffsiteSeedMarkerVersion = "20260825_offsite_env_seeded"' \
     'const CredentialSecretsMarkerVersion = "20260906_credential_secrets_converted"' \
+    'const ApproverScopeKeyMarkerVersion = "20261030_approver_scope_management_key"' \
     'var runtimeMarkerVersions = []string{' '	LdapSeedMarkerVersion,' '	OffsiteSeedMarkerVersion,' \
-    '	CredentialSecretsMarkerVersion,' '}' \
+    '	CredentialSecretsMarkerVersion,' '	ApproverScopeKeyMarkerVersion,' '}' \
     >"$S/backend/internal/database/migrations.go"
   jq -n --arg v "$V" --arg b "$BACKEND" --arg f "$FRONTEND" '{version: $v, images: {
       backend: {digest: $b, ghcr: ("ghcr.io/custodexa/backend@" + $b)},

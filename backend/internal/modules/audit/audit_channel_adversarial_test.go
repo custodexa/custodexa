@@ -94,7 +94,7 @@ func TestAuditToDisplayMasksUndecryptable(t *testing.T) {
 // （不以密文當 URL 投遞）
 func TestAuditUndecryptableChannelSkipped(t *testing.T) {
 	svc, km, db := setupEnvelopeChannelSvc(t)
-	svc.Create(&NotificationChannelRequest{Name: "ok", URL: "https://example.com/hook", Secret: "sk"})
+	svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "ok", URL: "https://example.com/hook", Secret: "sk"})
 	// 密文引用不存在版本
 	db.Create(&model.NotificationChannel{Name: "bad", Type: "webhook", URL: "enc:v42:aGVsbG8=", Enabled: true})
 	n := NewAlertNotifier(db, km)

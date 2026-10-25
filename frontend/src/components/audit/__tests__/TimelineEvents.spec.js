@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mount, enableAutoUnmount, flushPromises } from '@vue/test-utils'
+import { mount, enableAutoUnmount, flushPromises, RouterLinkStub } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createRouter, createWebHistory } from 'vue-router'
 import TimelineEvents from '../TimelineEvents.vue'
@@ -28,7 +28,10 @@ const makeEvents = (n, offset = 0) =>
 const mountEvents = (events, extraProps = {}) =>
   mount(TimelineEvents, {
     props: { events, from: FROM, to: TO, ...extraProps },
-    global: { plugins: [ElementPlus] },
+    // 無 router 的掛載：以 stub 接住 router-link。未解析的元件會讓 Vue 把整份
+    // props（數百筆事件）印進每則 warn，全量跑時單檔輸出數十 MB，
+    // 拖慢 worker 通訊並在 teardown 時留下未送完的 console 訊息
+    global: { plugins: [ElementPlus], stubs: { RouterLink: RouterLinkStub } },
   })
 
 const rowCount = (w) => w.findAll('[data-test="event-row"]').length

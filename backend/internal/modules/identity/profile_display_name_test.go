@@ -20,6 +20,7 @@ func setupProfileEnv(t *testing.T) (*AuthService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.Asset{}, &model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)

@@ -22,9 +22,11 @@ const (
 
 // 連線錯誤分類：前端據此呈現可讀訊息，不洩漏內部細節
 var (
-	ErrAuthFailed  = errors.New("SSH 認證失敗，請確認資產憑證")
-	ErrUnreachable = errors.New("無法連線到目標主機")
-	ErrDialTimeout = errors.New("連線目標主機逾時")
+	ErrAuthFailed = errors.New("SSH 認證失敗，請確認資產憑證")
+	// ErrSessionOpenFailed 交握與認證之後開啟 session／PTY／shell 失敗：遠端送來的拒絕訊息一律不進錯誤字串
+	ErrSessionOpenFailed = errors.New("目標拒絕開啟 SSH session")
+	ErrUnreachable       = errors.New("無法連線到目標主機")
+	ErrDialTimeout       = errors.New("連線目標主機逾時")
 )
 
 // ConnConfig SSH 連線參數（憑證由後端注入）
@@ -90,6 +92,10 @@ func classifyDialError(err error) error {
 	if errors.Is(err, asset.ErrHostKeyChanged) {
 		return asset.ErrHostKeyChanged
 	}
+	// 主機金鑰查核失敗同樣原樣透傳：在送出憑證前中止，不得泛化為不可達
+	if errors.Is(err, asset.ErrHostKeyCheckFailed) {
+		return asset.ErrHostKeyCheckFailed
+	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return ErrDialTimeout
@@ -139,7 +145,8 @@ func Dial(cfg ConnConfig) (*SSHConn, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		client.Close()
-		return nil, fmt.Errorf("建立 SSH session 失敗: %w", err)
+		// 遠端可控的拒絕訊息（可能含剛送出的密碼）不得進任何日誌或回應：只留穩定原因碼
+		return nil, fmt.Errorf("%w (%s)", ErrSessionOpenFailed, sshmaterial.RemoteErrorClass(err))
 	}
 
 	modes := ssh.TerminalModes{
@@ -150,7 +157,7 @@ func Dial(cfg ConnConfig) (*SSHConn, error) {
 	if err := session.RequestPty(defaultTerm, cfg.Rows, cfg.Cols, modes); err != nil {
 		session.Close()
 		client.Close()
-		return nil, fmt.Errorf("請求 PTY 失敗: %w", err)
+		return nil, fmt.Errorf("%w (pty %s)", ErrSessionOpenFailed, sshmaterial.RemoteErrorClass(err))
 	}
 
 	stdin, err := session.StdinPipe()
@@ -171,7 +178,7 @@ func Dial(cfg ConnConfig) (*SSHConn, error) {
 	if err := session.Shell(); err != nil {
 		session.Close()
 		client.Close()
-		return nil, fmt.Errorf("啟動 shell 失敗: %w", err)
+		return nil, fmt.Errorf("%w (shell %s)", ErrSessionOpenFailed, sshmaterial.RemoteErrorClass(err))
 	}
 
 	return &SSHConn{client: client, session: session, stdin: stdin, stdout: stdout}, nil

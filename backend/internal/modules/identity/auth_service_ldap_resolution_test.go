@@ -54,17 +54,18 @@ func setupLDAPResolutionEnv(t *testing.T) (*AuthService, *policy.SecurityPolicyS
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.UserRole{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.Role{Name: model.RoleUser}).Error; err != nil {

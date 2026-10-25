@@ -4,6 +4,7 @@
 // `rule_name` 存的是機器碼）。若照一般列渲染，稽核員會看到一列「規則
 // audit_degraded_span 命中了一個空指令」——兩個欄位同時說謊。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Alerts from '../Alerts.vue'
@@ -75,6 +76,7 @@ describe('Alerts 降級告警呈現', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['auditor'] }))
+    grantFor(['auditor'])
   })
 
   it('降級告警渲染成狀態列＋原因，不留看起來像空指令的格子', async () => {

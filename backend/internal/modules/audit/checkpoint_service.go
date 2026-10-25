@@ -67,6 +67,8 @@ type CheckpointService struct {
 	db     *gorm.DB
 	signer checkpointSigner
 	anchor checkpointAnchorSink
+	// onSealed 任一次封章成功後的回呼（nil 安全；SetAfterSealHook 注入）
+	onSealed func()
 	// onFailure 失效上報（nil 安全）；mechanism 走 MechanismCheckpointAnchor
 	onFailure failureReporter
 
@@ -95,6 +97,19 @@ type CheckpointService struct {
 	// roleState 封章前的角色指派對帳器（nil＝未接，`role_state_reconciled` 留 nil）。
 	// 三個比對時機共用同一個實例，事件冪等鍵因此跨時機生效
 	roleState *RoleStateReconciler
+
+	// faults 封章交易內的同步點（測試專用，生產路徑恆為零值；見 checkpoint_seal_tx.go）
+	faults sealFaults
+	// scheme 封章載荷版本的覆寫（測試專用，模擬升級前的封章器；空＝LatestCheckpointScheme）
+	scheme string
+}
+
+// sealScheme 本次封章的載荷版本
+func (s *CheckpointService) sealScheme() string {
+	if s.scheme != "" {
+		return s.scheme
+	}
+	return model.LatestCheckpointScheme
 }
 
 // SetRoleStateReconciler 接上封章前的對帳（role-assignment-integrity）。
@@ -275,7 +290,7 @@ func (s *CheckpointService) EnsureGenesis() error {
 	if err := s.applyStateSnapshot(&cp); err != nil {
 		return err
 	}
-	if err := s.sealToolCallInterval(nil, &cp); err != nil {
+	if err := s.sealInTx(nil, &cp); err != nil {
 		return err
 	}
 	log.Printf("[Checkpoint] genesis 已建立（seq=1、id_from=%d、錨定 baseline max_log_id=%d）",
@@ -385,11 +400,22 @@ func (s *CheckpointService) SealUpTo(idHi uint) (*model.AuditCheckpoint, error) 
 	if err := s.applyStateSnapshot(&cp); err != nil {
 		return nil, err
 	}
-	if err := s.sealToolCallInterval(last, &cp); err != nil {
+	if err := s.sealInTx(last, &cp); err != nil {
 		return nil, err
 	}
 	s.anchorCheckpoint(&cp)
+	if s.onSealed != nil {
+		s.onSealed()
+	}
 	return &cp, nil
+}
+
+// SetAfterSealHook 註冊「任一次封章成功後」的回呼（nil 清除）。回呼在封章鎖內同步執行，
+// 不得回頭呼叫本服務。還原後的待封狀態靠它在例行封章成功時清除。
+func (s *CheckpointService) SetAfterSealHook(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onSealed = fn
 }
 
 // applyStateSnapshot 取狀態表登記清單的快照，填入檢查點的四個狀態欄並把
@@ -409,7 +435,7 @@ func (s *CheckpointService) applyStateSnapshot(cp *model.AuditCheckpoint) error 
 	if err != nil {
 		return fmt.Errorf("封章前取狀態表快照失敗（本輪不封章）: %w", err)
 	}
-	cp.AggScheme = model.LatestCheckpointScheme
+	cp.AggScheme = s.sealScheme()
 	cp.RoleStateSnapshot = &body
 	cp.RoleStateReconciled = s.reconcileForSeal()
 	for i := range snaps {
@@ -606,35 +632,4 @@ func (s *CheckpointService) reportAnchorRecovered() {
 	if s.anchorFailing.CompareAndSwap(true, false) && s.onFailure != nil {
 		s.onFailure(model.MechanismCheckpointAnchor, "", nil, true)
 	}
-}
-
-// SHARE waits for in-flight ledger INSERT transactions before capturing the upper
-// bound and prevents late commits below that bound. Results may change after sealing.
-func (s *CheckpointService) sealToolCallInterval(last *model.AuditCheckpoint, cp *model.AuditCheckpoint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if tx.Dialector.Name() == "postgres" {
-			if err := tx.Exec("LOCK TABLE agent_tool_calls IN SHARE MODE").Error; err != nil {
-				return err
-			}
-		}
-		var to uint
-		if err := tx.Model(&model.AgentToolCall{}).Select("COALESCE(MAX(id),0)").Scan(&to).Error; err != nil {
-			return fmt.Errorf("ledger upper bound: %w", err)
-		}
-		from := uint(1)
-		if last == nil {
-			to = 0 // Genesis starts ledger coverage at the first row, without claiming pre-existing rows yet.
-		} else if last.ToolCallIDTo != nil {
-			from = *last.ToolCallIDTo + 1
-			if to < *last.ToolCallIDTo {
-				to = *last.ToolCallIDTo
-			}
-		}
-		hash, count, err := aggregateToolCalls(tx, from, to)
-		if err != nil {
-			return err
-		}
-		cp.ToolCallIDFrom, cp.ToolCallIDTo, cp.ToolCallRowCount, cp.ToolCallAggHash = &from, &to, &count, &hash
-		return s.signAndPersistDB(tx, cp)
-	})
 }

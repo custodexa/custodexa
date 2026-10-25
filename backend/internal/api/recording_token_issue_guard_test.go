@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestRecordingTokenIssueRejectsStaleCredEpoch(t *testing.T) {
 
 	bumpCredEpoch(t, env.db, uid)
 
-	tok, err := env.mgr.Issue(uid, 100, "stale-cred", stale)
+	tok, err := env.mgr.Issue(uid, 100, "stale-cred", stale, authz.TokenFacts{})
 
 	if err == nil {
 		t.Errorf("世代已推進仍簽出 token %q——撤銷後 120 秒的錄影讀取窗口未關閉", tok)
@@ -82,7 +83,7 @@ func TestRecordingTokenIssueRejectsDisabledProvider(t *testing.T) {
 		t.Fatalf("停用 provider: %v", err)
 	}
 
-	tok, err := env.mgr.Issue(uid, 100, "victim-provider", issued)
+	tok, err := env.mgr.Issue(uid, 100, "victim-provider", issued, authz.TokenFacts{})
 
 	if err == nil {
 		t.Errorf("provider 已停用仍簽出 token %q", tok)
@@ -100,7 +101,7 @@ func TestRecordingTokenIssueAcceptsCurrentGeneration(t *testing.T) {
 	uid := env.seedPlainUser(t, "healthy")
 
 	tok, err := env.mgr.Issue(uid, 100, "healthy", crypto.AuthContext{
-		AuthMethod: crypto.AuthMethodOIDC, ProviderID: pid})
+		AuthMethod: crypto.AuthMethodOIDC, ProviderID: pid}, authz.TokenFacts{})
 	if err != nil {
 		t.Fatalf("世代相符卻拒發: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestRecordingTokenIssueRunsInsideCapabilityLock(t *testing.T) {
 
 	issueDone := make(chan error, 1)
 	go func() {
-		_, err := env.mgr.Issue(uid, 100, "lock-probe", crypto.AuthContext{})
+		_, err := env.mgr.Issue(uid, 100, "lock-probe", crypto.AuthContext{}, authz.TokenFacts{})
 		issueDone <- err
 	}()
 
@@ -167,7 +168,7 @@ func TestRecordingTokenIssueSurfacesStaleAsTypedError(t *testing.T) {
 	uid := env.seedPlainUser(t, "typed-error")
 	bumpCredEpoch(t, env.db, uid)
 
-	_, err := env.mgr.Issue(uid, 100, "typed-error", crypto.AuthContext{})
+	_, err := env.mgr.Issue(uid, 100, "typed-error", crypto.AuthContext{}, authz.TokenFacts{})
 
 	if !errors.Is(err, identity.ErrCredentialGenerationStale) {
 		t.Errorf("拒發應回 ErrCredentialGenerationStale（供 handler 映射 401），實得 %v", err)

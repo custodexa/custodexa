@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Alerts from '../Alerts.vue'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 告警「批次審閱」：勾選 → 共用理由 → 前端逐筆呼叫既有單筆端點（非原子）
 enableAutoUnmount(afterEach)
@@ -100,7 +102,9 @@ describe('Alerts 批次審閱', () => {
     reviewAlertMock.mockReset()
     localStorage.clear()
     sessionStorage.clear()
-    localStorage.setItem('user', JSON.stringify({ id: ME, username: 'auditor1', roles: ['auditor'] }))
+    resetCapabilities()
+    localStorage.setItem('user', JSON.stringify({ id: ME, username: 'auditor1' }))
+    grantFor(['auditor'])
     searchAlertsMock.mockResolvedValue(listResponse(sampleAlerts))
     reviewAlertMock.mockResolvedValue({})
   })
@@ -125,7 +129,8 @@ describe('Alerts 批次審閱', () => {
   })
 
   it('不具審閱權限時不顯示勾選欄', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: ME, username: 'u', roles: ['user'] }))
+    localStorage.setItem('user', JSON.stringify({ id: ME, username: 'u' }))
+    grantFor(['user'])
     const wrapper = mountAlerts()
     await flushPromises()
     expect(wrapper.find('[data-test="batch-select-cell"]').exists()).toBe(false)

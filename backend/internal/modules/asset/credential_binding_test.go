@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"gorm.io/gorm"
 	"strings"
 	"sync"
 	"testing"
@@ -18,32 +19,140 @@ import (
 // 掛載與卸載的行為鎖定：唯一性、協定族相容、遠端零寫入、專用憑證的生滅、
 // 特權標記逐台獨立、就位版本的歸屬，以及對受影響資產的權限。
 
-// fakePermissionChecker 逐資產放行的權限判定樁。
+// fakeCredentialAuthorizer 憑證管理授權判定樁（語義能力版）。
 //
-// allow 明列的判定優先；未列者取 defaultAllow。**兩種模式都需要**：驗權本身的
-// 測試要逐台明列（漏列一台就該被當成無權），而其餘測試只是為了讓建構期必填的
-// 判定器有值，不該為每一台新資產補一行。
-type fakePermissionChecker struct {
-	allow        map[uint]bool
-	defaultAllow bool
-	asked        []uint
+// 預設全放行；驗拒絕面的測試以 deny 明列被拒的能力。asked 記錄每次判定的請求，
+// 供「影響集合有被問到」的斷言使用。
+type fakeCredentialAuthorizer struct {
+	mu      sync.Mutex
+	denied  map[string]bool
+	err     error
+	version int64
+	sources []string
+	asked   []CredentialManagementRequest
+	// askedActors 與 asked 逐筆對應的請求主體
+	askedActors []uint
+	// actorDenied／actorErr 只對特定主體生效（模擬發起者與點擊者權限不同）
+	actorDenied map[uint]map[string]bool
+	actorErr    map[uint]error
+	// restoreGen／restoreErr 模擬持久還原世代；預設空世代，與升級前的授權脈絡一致
+	restoreGen string
+	restoreErr error
 }
 
-func (f *fakePermissionChecker) CheckPermission(_ context.Context, _ uint, assetID uint,
-	_ model.PermissionType) (bool, error) {
-	f.asked = append(f.asked, assetID)
-	if v, ok := f.allow[assetID]; ok {
-		return v, nil
-	}
-	return f.defaultAllow, nil
+// RestoreGeneration 實作還原世代讀取（讓夾具的判定器通過啟動自檢）。
+func (f *fakeCredentialAuthorizer) RestoreGeneration(*gorm.DB) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.restoreGen, f.restoreErr
 }
 
-// denyAsset 明列拒絕一台（allow 為 nil 時就地建表）。
-func (f *fakePermissionChecker) denyAsset(assetID uint) {
-	if f.allow == nil {
-		f.allow = map[uint]bool{}
+// setRestoreGeneration 模擬一次還原：之後建立的授權脈絡記新世代，之前的與之不符。
+func (f *fakeCredentialAuthorizer) setRestoreGeneration(gen string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.restoreGen = gen
+}
+
+func newAllowAllAuthorizer() *fakeCredentialAuthorizer {
+	return &fakeCredentialAuthorizer{denied: map[string]bool{}, version: 1}
+}
+
+func (f *fakeCredentialAuthorizer) AuthorizeCredentialManagement(_ context.Context, _ *gorm.DB,
+	actor CredentialManagementActor, req CredentialManagementRequest) (CredentialManagementDecision, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.asked = append(f.asked, req)
+	f.askedActors = append(f.askedActors, actor.UserID)
+	if err := f.actorErr[actor.UserID]; err != nil {
+		return CredentialManagementDecision{}, err
 	}
-	f.allow[assetID] = false
+	for _, c := range req.Capabilities {
+		if f.actorDenied[actor.UserID][c] {
+			return CredentialManagementDecision{Missing: c, AuthzVersion: f.version, Sources: f.sources}, nil
+		}
+	}
+	if f.err != nil {
+		return CredentialManagementDecision{}, f.err
+	}
+	for _, c := range req.Capabilities {
+		if f.denied[c] {
+			return CredentialManagementDecision{Missing: c, AuthzVersion: f.version, Sources: f.sources}, nil
+		}
+	}
+	return CredentialManagementDecision{Allowed: true, AuthzVersion: f.version, Sources: f.sources}, nil
+}
+
+// denyFor 只對指定主體拒絕能力。
+func (f *fakeCredentialAuthorizer) denyFor(user uint, caps ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.actorDenied == nil {
+		f.actorDenied = map[uint]map[string]bool{}
+	}
+	if f.actorDenied[user] == nil {
+		f.actorDenied[user] = map[string]bool{}
+	}
+	for _, c := range caps {
+		f.actorDenied[user][c] = true
+	}
+}
+
+// failFor 指定主體的判定回錯誤（模擬無法判定）。
+func (f *fakeCredentialAuthorizer) failFor(user uint, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.actorErr == nil {
+		f.actorErr = map[uint]error{}
+	}
+	f.actorErr[user] = err
+}
+
+// deny 明列拒絕的能力；allow 解除。
+func (f *fakeCredentialAuthorizer) deny(caps ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range caps {
+		f.denied[c] = true
+	}
+}
+
+func (f *fakeCredentialAuthorizer) allow(caps ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range caps {
+		delete(f.denied, c)
+	}
+}
+
+func (f *fakeCredentialAuthorizer) reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.asked = nil
+	f.askedActors = nil
+}
+
+// askedAssetIDs 所有判定請求涵蓋的資產識別。
+func (f *fakeCredentialAuthorizer) askedAssetIDs() []uint {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []uint
+	for _, r := range f.asked {
+		out = append(out, r.AssetIDs...)
+	}
+	return out
+}
+
+// askedImpactAssetIDs 關卡被問過的影響集合：明確目標資產與憑證當下的全部掛載。
+func (f *fakeCredentialAuthorizer) askedImpactAssetIDs() []uint {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []uint
+	for _, r := range f.asked {
+		out = append(out, r.AssetIDs...)
+		out = append(out, r.MountedAssetIDs...)
+	}
+	return out
 }
 
 // 掛載的兩條唯一性：同一憑證不重複掛同一資產、同一資產上同一帳號名只掛一次。
@@ -95,7 +204,7 @@ func TestCredentialBindRequiresProtocolFamilyMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	// windows 族涵蓋 RDP 資產：族別由資產協定與改密通道推導，不是逐協定一族
-	rdpAsset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	rdpAsset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "rdp-target", Protocol: model.ProtocolRDP, Host: "10.3.1.2", Port: 3389,
 		Username: "seed", Password: "pw", CreatedBy: 1,
 	})
@@ -223,7 +332,7 @@ func TestCredentialDedicatedLifecycleWithBinding(t *testing.T) {
 	require.NoError(t, db.Model(&model.Credential{}).Count(&zero).Error)
 	assert.EqualValues(t, 0, zero, "零掛載資產不得留下任何憑證")
 
-	created, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	created, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Credential: &InlineCredential{Username: "ops", Password: "pw"},
 	})
 	require.NoError(t, err)
@@ -311,7 +420,7 @@ func TestAssetDeleteReclaimsDedicatedCredentials(t *testing.T) {
 	require.NoError(t, err)
 	survivorCredID := credentialIDOf(t, db, survivorList[0].ID)
 
-	require.NoError(t, assets.Delete(asset.ID))
+	require.NoError(t, assets.Delete(WithSystemCaller(context.Background()), asset.ID))
 
 	remaining, err := credentialBindingCount(db, dedicatedID)
 	require.NoError(t, err)
@@ -464,41 +573,6 @@ func TestCredentialEffectiveVersionMustBelongToCredential(t *testing.T) {
 	assert.EqualValues(t, 0, orphan)
 }
 
-// 掛載與卸載須驗操作者對受影響資產有權限。
-func TestCredentialBindRequiresPermissionOnAffectedAssets(t *testing.T) {
-	db := setupCredentialDB(t)
-	assets, accounts, creds := newCredentialServices(t)
-
-	allowed := newSSHAsset(t, assets, "perm-allowed", "10.3.9.1")
-	denied := newSSHAsset(t, assets, "perm-denied", "10.3.9.2")
-	for _, a := range []*model.Asset{allowed, denied} {
-		list, lerr := accounts.List(a.ID)
-		require.NoError(t, lerr)
-		require.NoError(t, accounts.Delete(adminCtx(), a.ID, list[0].ID))
-	}
-	shared := newSharedCredential(t, creds, "perm-shared", "ops", "pw")
-
-	checker := &fakePermissionChecker{allow: map[uint]bool{allowed.ID: true, denied.ID: false}}
-	creds = creds.WithAuthorization(checker)
-
-	_, err := creds.Bind(adminCtx(), shared.ID, &BindCredentialRequest{AssetID: denied.ID})
-	assert.ErrorIs(t, err, ErrCredentialBindForbidden)
-	count, err := credentialBindingCount(db, shared.ID)
-	require.NoError(t, err)
-	assert.EqualValues(t, 0, count, "被拒的掛載不得留下掛載列")
-
-	binding, err := creds.Bind(adminCtx(), shared.ID, &BindCredentialRequest{AssetID: allowed.ID})
-	require.NoError(t, err)
-	assert.Contains(t, checker.asked, allowed.ID, "掛載必須實際問過受影響資產的權限")
-
-	// 卸載同樣要驗：把別人的掛載拿掉一樣是改變那台機器的登入身分
-	checker.allow[allowed.ID] = false
-	assert.ErrorIs(t, creds.Unbind(adminCtx(), shared.ID, binding.ID), ErrCredentialBindForbidden)
-	count, err = credentialBindingCount(db, shared.ID)
-	require.NoError(t, err)
-	assert.EqualValues(t, 1, count, "被拒的卸載不得移除掛載列")
-}
-
 // 建資產時選共用憑證：同交易產生預設掛載，就位版本為該憑證的現行版本，密文不重複落庫。
 func TestAssetCreateWithSharedCredentialBinds(t *testing.T) {
 	db := setupCredentialDB(t)
@@ -508,7 +582,7 @@ func TestAssetCreateWithSharedCredentialBinds(t *testing.T) {
 	versionsBefore := credentialVersionIDs(t, db, shared.ID)
 	require.Len(t, versionsBefore, 1)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "created-with-shared", Protocol: model.ProtocolSSH, Host: "10.3.10.1", Port: 22,
 		CredentialID: shared.ID, CreatedBy: 1,
 	})
@@ -535,7 +609,7 @@ func TestAssetCreateWithSharedCredentialBinds(t *testing.T) {
 	assert.True(t, secretMatches(t, got.Password, "shared-pw"), "resolved secret mismatch")
 
 	// 二擇一：同時給共用憑證與直填欄位一律拒絕
-	_, err = assets.Create(context.Background(), &CreateAssetRequest{
+	_, err = assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "ambiguous", Protocol: model.ProtocolSSH, Host: "10.3.10.2", Port: 22,
 		CredentialID: shared.ID, Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -547,7 +621,7 @@ func TestAssetCreateWithInlineCredentialCreatesDedicated(t *testing.T) {
 	db := setupCredentialDB(t)
 	assets, _, creds := newCredentialServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "inline-host", Protocol: model.ProtocolSSH, Host: "10.3.11.1", Port: 22,
 		Credential: &InlineCredential{Username: "root", Password: "inline-pw"},
 		CreatedBy:  1,
@@ -571,7 +645,7 @@ func TestAssetCreateWithInlineCredentialCreatesDedicated(t *testing.T) {
 	assert.True(t, secretMatches(t, got.Password, "inline-pw"), "resolved secret mismatch")
 
 	// 內嵌物件與頂層簡寫二擇一
-	_, err = assets.Create(context.Background(), &CreateAssetRequest{
+	_, err = assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "inline-ambiguous", Protocol: model.ProtocolSSH, Host: "10.3.11.2", Port: 22,
 		Username:   "root",
 		Credential: &InlineCredential{Username: "root", Password: "x"},
@@ -625,11 +699,11 @@ func TestSyncDefaultAccountFromAssetRequiresBindingCredential(t *testing.T) {
 	// 帶秘密的請求另有下游判定會擋，拿它當唯一證據等於讓入口的那道判定可以被
 	// 拿掉而測試照樣綠
 	newName := "renamed"
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Username: &newName})
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Username: &newName})
 	assert.ErrorIs(t, err, ErrBindingWithoutCredential, "入口的硬前提判定")
 
 	pw := "any"
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Password: &pw})
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Password: &pw})
 	assert.ErrorIs(t, err, ErrBindingWithoutCredential, "帶秘密的請求同樣大聲失敗")
 
 	var orphanVersions int64
@@ -661,7 +735,7 @@ func TestAccountUpdateDeclaredSecretRejectedDuringRotation(t *testing.T) {
 		Update("active_rotation_id", 88).Error)
 
 	pw := "declared-during-rotation"
-	_, err = accounts.Update(adminCtx(), asset.ID, list[0].ID,
+	_, err = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, list[0].ID,
 		&UpdateAssetAccountRequest{Password: &pw})
 	assert.ErrorIs(t, err, ErrCredentialRotationActive)
 	assert.Equal(t, versionsBefore, credentialVersionIDs(t, db, credID),
@@ -677,7 +751,7 @@ func TestAccountUpdateDeclaredSecretRejectedDuringRotation(t *testing.T) {
 	// 邊界另一側：改密結束後同一個請求即成立（證明擋下它的就是這道判定）
 	require.NoError(t, db.Model(&model.Credential{}).Where("id = ?", credID).
 		Update("active_rotation_id", nil).Error)
-	_, err = accounts.Update(adminCtx(), asset.ID, list[0].ID,
+	_, err = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, list[0].ID,
 		&UpdateAssetAccountRequest{Password: &pw})
 	require.NoError(t, err)
 	assert.Len(t, credentialVersionIDs(t, db, credID), len(versionsBefore)+1)
@@ -700,7 +774,7 @@ func TestAssetUpdateDeclaredSecretRejectedDuringRotation(t *testing.T) {
 		Update("active_rotation_id", 89).Error)
 
 	pw := "declared-during-rotation"
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Password: &pw})
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Password: &pw})
 	assert.ErrorIs(t, err, ErrCredentialRotationActive)
 	assert.Equal(t, versionsBefore, credentialVersionIDs(t, db, credID),
 		"被拒的宣告不得留下新密文版本")
@@ -709,7 +783,7 @@ func TestAssetUpdateDeclaredSecretRejectedDuringRotation(t *testing.T) {
 
 	require.NoError(t, db.Model(&model.Credential{}).Where("id = ?", credID).
 		Update("active_rotation_id", nil).Error)
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Password: &pw})
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Password: &pw})
 	require.NoError(t, err)
 	assert.Len(t, credentialVersionIDs(t, db, credID), len(versionsBefore)+1)
 }
@@ -771,4 +845,16 @@ func assertNoRemoteWriteInFunc(t *testing.T, method string) {
 			"掛載與卸載只改掛載列，遠端主機上的密碼不因此改變——"+
 			"這條界線一旦鬆動，管理者會把卸載當成把密碼收回來", method, strings.Join(found, "、"))
 	}
+}
+
+// seedAuthorizationRow 測試夾具：直接新增一列授權脈絡（原發起者 actor、能力 caps），不掛到任何工作。
+func seedAuthorizationRow(t *testing.T, db *gorm.DB, sourceID, actor uint, caps []string) *model.CredentialJobAuthorization {
+	t.Helper()
+	auth, err := insertJobAuthorization(credentialManagementGate{}, db, jobAuthInput{
+		kind: "plan", sourceID: sourceID, revision: 1, actorID: actor, actorName: "initiator",
+		via: "direct", authzVersion: 1, capabilities: caps})
+	if err != nil {
+		t.Fatalf("新增授權脈絡夾具失敗: %v", err)
+	}
+	return auth
 }

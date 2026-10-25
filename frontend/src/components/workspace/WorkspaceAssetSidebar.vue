@@ -137,7 +137,7 @@ import { t } from '@/i18n'
 import { getAssetList } from '@/api/assets'
 import { assetEntryState, BLOCKED_ENTRY_STATES } from '@/utils/asset-access'
 import { buildAssetTree, flattenTree, flatRows, rootKeys } from '@/utils/asset-tree'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import WorkspaceAssetRow from './WorkspaceAssetRow.vue'
 import WorkspaceAccessExplain from './WorkspaceAccessExplain.vue'
 import { readStorage, writeStorage } from './storage'
@@ -190,8 +190,8 @@ const assetFilter = ref('')
 const sidebarWidth = ref(loadSidebarWidth())
 
 // 存取狀態分化：命令列與主控台兩個入口共用同一判準，不單做一邊
-const { isPrivileged } = useRoles()
-const entryState = (asset) => assetEntryState(asset, { isPrivileged: isPrivileged.value })
+const entryState = (asset) =>
+  assetEntryState(asset, { selfService: can('ui:self-service-actions') })
 const isBlocked = (asset) => BLOCKED_ENTRY_STATES.includes(entryState(asset))
 
 // ---- 分組樹與搜尋 ----

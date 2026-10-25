@@ -22,6 +22,27 @@
       </template>
     </PageHeader>
 
+    <!-- 整批沒有執行：伺服器對範圍外與已刪除的帳號回同一種錯誤，只帶筆數；
+         畫面只講已選數與無法操作數，不點名任何資產 -->
+    <el-alert
+      v-if="unavailable"
+      type="error"
+      :closable="false"
+      show-icon
+      class="unavailable-banner"
+      data-test="unavailable-banner"
+      :title="$t('changeSecretBatches.unavailableBanner', { selected: unavailable.selected, count: unavailable.count })"
+    >
+      <el-button
+        size="small"
+        :loading="targetsLoading"
+        data-test="unavailable-refresh"
+        @click="refreshAfterUnavailable"
+      >
+        {{ $t('common.refresh') }}
+      </el-button>
+    </el-alert>
+
     <div class="toolbar">
       <el-select
         v-model="username"
@@ -422,6 +443,22 @@
         {{ $t('changeSecretBatches.credentialNameRequired') }}
       </div>
 
+      <!-- 新建的共用憑證歸屬：選項由伺服器依用途標出可選節點，範圍化管理者只會看到自己範圍內的節點 -->
+      <div
+        v-if="form.password_mode === 'shared'"
+        class="policy-row ownership-row"
+        data-test="ownership-row"
+      >
+        <span class="policy-label">{{ $t('credentials.ownership.label') }}</span>
+        <CredentialOwnershipSelect
+          v-model="form.shared_credential_ownership"
+          purpose="credential_create"
+          :active="dialogVisible"
+          :hint="form.shared_credential_ownership?.kind === 'node' ? $t('changeSecretBatches.ownershipHint') : $t('credentials.ownership.globalExplain')"
+          @state="ownershipState = $event"
+        />
+      </div>
+
       <div class="policy-row">
         <span class="policy-label">{{ $t('changeSecretPlans.passwordLength') }}</span>
         <el-input-number
@@ -449,7 +486,7 @@
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="!selectedCount || missingCredentialName"
+          :disabled="!selectedCount || missingCredentialName || missingOwnership"
           data-test="submit-batch"
           @click="submit"
         >
@@ -465,6 +502,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import CredentialOwnershipSelect from '@/components/credential/CredentialOwnershipSelect.vue'
 import { formatDateTime } from '@/utils/format'
 import { t, te } from '@/i18n'
 import { ROTATION_BUCKETS, BUCKET_TAG_TYPE } from '@/constants/rotationEvidence'
@@ -520,6 +558,11 @@ let pollTimer = null
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const form = ref(emptyForm())
+// 歸屬選擇器回報的狀態：節點模式下沒選到可選節點時不能送出
+const ownershipState = ref({ loading: false, ready: true, scoped: false })
+// 送出被判為「批次無法操作」後的橫幅內容；只有已選數與筆數，不含任何資產名
+const unavailable = ref(null)
+const UNAVAILABLE_CODE = 'NOTFOUND_BATCH_ITEMS_UNAVAILABLE'
 
 // 密碼策略的出廠預設與計劃相同（16、含符號、排除易混淆）；
 // 密碼模式每次開對話框都回到「每台各自隨機」——整批同一組是要人明確選的那一個
@@ -527,6 +570,7 @@ function emptyForm() {
   return {
     password_mode: 'per_target',
     credential_name: '',
+    shared_credential_ownership: { kind: 'global', node_id: null },
     password_length: 16,
     password_include_symbol: true,
     password_exclude_ambiguous: true,
@@ -561,6 +605,10 @@ watch(
 const eligible = (row) => !row.ineligible_reason
 const eligibleTargets = computed(() => targets.value.filter(eligible))
 const selectedCount = computed(() => selected.value.length)
+// 只有伺服器標示為範圍化的主體才需要先選到可選節點；全域主體預設歸屬全域即可送出
+const missingOwnership = computed(
+  () => form.value.password_mode === 'shared' && ownershipState.value.scoped === true && !ownershipState.value.ready
+)
 
 const columns = computed(() => {
   const groups = new Map(boardBuckets.map((bucket) => [bucket, []]))
@@ -695,7 +743,15 @@ async function loadBatches() {
 async function selectUsername(name) {
   username.value = name || ''
   selected.value = []
+  unavailable.value = null
   await loadTargets()
+}
+
+// 橫幅上的「重新整理」：重新載入目標並清除選取，下一次送出以伺服器當下回的清單為準
+async function refreshAfterUnavailable() {
+  selected.value = []
+  unavailable.value = null
+  await Promise.all([loadUsernames(), loadTargets()])
 }
 
 async function reload() {
@@ -763,7 +819,7 @@ async function openHistory(row) {
 // 一律明列已勾選的帳號識別，不用「全部符合者」：
 // 管理員看到的清單與送出的集合必須是同一份，清單載入之後才出現的帳號不該被默默納入
 async function submit() {
-  if (!selectedCount.value || missingCredentialName.value) return
+  if (!selectedCount.value || missingCredentialName.value || missingOwnership.value) return
   submitting.value = true
   try {
     const payload = {
@@ -777,6 +833,9 @@ async function submit() {
     }
     if (form.value.password_mode === 'shared') {
       payload.credential_name = form.value.credential_name.trim()
+      const own = form.value.shared_credential_ownership
+      payload.shared_credential_ownership =
+        own.kind === 'node' ? { kind: 'node', node_id: own.node_id } : { kind: 'global' }
     }
     const res = await createChangeSecretBatch(payload)
     dialogVisible.value = false
@@ -791,7 +850,15 @@ async function submit() {
       await pollBatch(activeBatch.value.id, 0)
     }
   } catch (err) {
-    console.error('[BatchRotation] 建立批次失敗:', err)
+    if (err?.response?.data?.code === UNAVAILABLE_CODE) {
+      unavailable.value = {
+        selected: selectedCount.value,
+        count: err.response.data.params?.count ?? 0,
+      }
+      dialogVisible.value = false
+    } else {
+      console.error('[BatchRotation] 建立批次失敗:', err)
+    }
   } finally {
     submitting.value = false
   }
@@ -807,6 +874,14 @@ onUnmounted(stopPolling)
 </script>
 
 <style scoped>
+.unavailable-banner {
+  margin-bottom: var(--ot-space-md);
+}
+
+.ownership-row {
+  align-items: flex-start;
+}
+
 .credential-name-input {
   width: 320px;
 }

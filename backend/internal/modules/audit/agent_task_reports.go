@@ -130,7 +130,7 @@ type AgentTaskReportVersions struct {
 	Versions        []model.AgentTaskReport `json:"versions"`
 }
 
-func (s *AgentTaskReports) Versions(ctx context.Context, requestID, userID uint, role string) (*AgentTaskReportVersions, error) {
+func (s *AgentTaskReports) Versions(ctx context.Context, requestID, userID uint, viewAll bool) (*AgentTaskReportVersions, error) {
 	var result AgentTaskReportVersions
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		task, err := s.task(tx, requestID)
@@ -141,7 +141,7 @@ func (s *AgentTaskReports) Versions(ctx context.Context, requestID, userID uint,
 		if err != nil {
 			return err
 		}
-		if role != model.RoleAdmin && role != model.RoleAuditor && userID != task.ExecutorID && userID != task.RequesterID && userID != principal.OwnerID {
+		if !viewAll && userID != task.ExecutorID && userID != task.RequesterID && userID != principal.OwnerID {
 			return ErrAgentReportForbidden
 		}
 		result = AgentTaskReportVersions{AccessRequestID: requestID, ClosedAt: task.ClosedAt, Versions: []model.AgentTaskReport{}}

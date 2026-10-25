@@ -31,9 +31,7 @@
       :closable="false"
       :title="$t('identityGroupMappings.sourceAttrMissingHint')"
     />
-    <p class="observation-rule">
-      {{ $t('identityGroupMappings.unknownObservationRule') }}
-    </p>
+    <MappingTimingNotice />
 
     <el-tabs
       v-model="tab"
@@ -49,6 +47,44 @@
         name="userGroups"
       />
     </el-tabs>
+
+    <p
+      v-if="tab === 'roles'"
+      class="field-hint"
+      data-test="mapping-roles-tab-hint"
+    >
+      {{ $t('identityGroupMappings.rolesTabHint') }}
+    </p>
+    <el-alert
+      v-if="tab === 'userGroups' && groupListFailed"
+      type="warning"
+      :closable="false"
+      data-test="mapping-group-list-failed"
+      :title="$t('identityGroupMappings.groupListFailed')"
+    >
+      <el-button
+        size="small"
+        link
+        @click="loadGroupData"
+      >
+        {{ $t('common.retry') }}
+      </el-button>
+    </el-alert>
+    <el-alert
+      v-if="tab === 'userGroups' && groupRolesFailed"
+      type="warning"
+      :closable="false"
+      data-test="mapping-group-roles-unavailable"
+      :title="$t('identityGroupMappings.groupRolesUnavailable')"
+    >
+      <el-button
+        size="small"
+        link
+        @click="loadGroupData"
+      >
+        {{ $t('common.retry') }}
+      </el-button>
+    </el-alert>
 
     <div class="table-toolbar">
       <el-select
@@ -128,7 +164,21 @@
         min-width="180"
       >
         <template #default="{ row }">
-          {{ tab === 'roles' ? row.role : row.user_group_name }}
+          {{ tab === 'roles' ? roleLabel(row.role) : row.user_group_name }}
+          <div
+            v-if="tab === 'userGroups' && rolesLineOf(row)"
+            class="group-value"
+            data-test="mapping-target-roles"
+          >
+            {{ rolesLineOf(row) }}
+          </div>
+          <div
+            v-if="isLocked(row)"
+            class="group-value"
+            data-test="mapping-protected-row"
+          >
+            {{ $t('identityGroupMappings.protectedRow') }}
+          </div>
         </template>
       </el-table-column>
       <el-table-column
@@ -169,6 +219,8 @@
           <el-button
             size="small"
             link
+            :disabled="isLocked(row)"
+            data-test="mapping-edit"
             @click="openEdit(row)"
           >
             {{ $t('common.edit') }}
@@ -176,6 +228,8 @@
           <el-button
             size="small"
             link
+            :disabled="isLocked(row)"
+            data-test="mapping-toggle"
             @click="toggle(row)"
           >
             {{ row.enabled ? $t('identityGroupMappings.disable') : $t('identityGroupMappings.enable') }}
@@ -184,6 +238,8 @@
             size="small"
             type="danger"
             link
+            :disabled="isLocked(row)"
+            data-test="mapping-remove"
             @click="remove(row)"
           >
             {{ $t('common.delete') }}
@@ -194,6 +250,13 @@
         {{ tab === 'roles' ? $t('identityGroupMappings.empty.roles') : $t('identityGroupMappings.empty.userGroups') }}
       </template>
     </el-table>
+
+    <p
+      class="field-hint"
+      data-test="mapping-footer-rule"
+    >
+      {{ $t('identityGroupMappings.footerRule') }}
+    </p>
 
     <el-dialog
       v-model="dialogOpen"
@@ -253,11 +316,22 @@
             style="width: 100%"
           >
             <el-option
-              v-for="role in roles"
+              v-for="role in directRoles"
               :key="role.name"
-              :label="role.name"
+              :label="roleLabel(role.name)"
               :value="role.name"
-            />
+              :disabled="role.assignment_state === 'protected' || role.assignment_state === 'not_open'"
+            >
+              <span>{{ roleLabel(role.name) }}</span>
+              <span
+                v-if="role.assignment_state === 'protected'"
+                class="option-reason"
+              >{{ $t('identityGroupMappings.protectedOption') }}</span>
+              <span
+                v-else-if="role.assignment_state === 'not_open'"
+                class="option-reason"
+              >{{ $t('roles.assignState.notOpen') }}</span>
+            </el-option>
           </el-select>
           <el-select
             v-else
@@ -271,7 +345,14 @@
               :key="group.id"
               :label="group.name"
               :value="group.id"
-            />
+              :disabled="Boolean(protectedRoleOfGroup(group.id))"
+            >
+              <span>{{ group.name }}</span>
+              <span
+                v-if="protectedRoleOfGroup(group.id)"
+                class="option-reason"
+              >{{ $t('identityGroupMappings.protectedOption') }}</span>
+            </el-option>
           </el-select>
           <div
             v-if="tab === 'roles'"
@@ -279,6 +360,27 @@
             data-test="mapping-admin-note"
           >
             {{ $t('identitySources.mapping.adminNote') }}
+          </div>
+          <div
+            v-if="tab === 'roles'"
+            class="field-hint"
+            data-test="mapping-direct-hint"
+          >
+            {{ $t('identityGroupMappings.directMapHint') }}
+          </div>
+          <div
+            v-if="managementHint"
+            class="field-hint"
+            data-test="mapping-management-hint"
+          >
+            {{ managementHint }}
+          </div>
+          <div
+            v-if="directoryHint"
+            class="field-hint"
+            data-test="mapping-directory-hint"
+          >
+            {{ directoryHint }}
           </div>
         </el-form-item>
         <div
@@ -318,6 +420,16 @@
       </template>
     </el-dialog>
 
+    <DangerComboConfirm
+      v-model="confirmOpen"
+      :preview="confirmPreview"
+      :unavailable="confirmUnavailable"
+      :notify-message="confirmNotify"
+      :footnote="confirmFootnote"
+      @back="cancelConfirm"
+      @confirm="proceedConfirm"
+    />
+
     <el-dialog
       v-model="noteOpen"
       :title="$t('identityGroupMappings.editNote')"
@@ -352,9 +464,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import MappingTimingNotice from '@/components/MappingTimingNotice.vue'
 import { t } from '@/i18n'
-import { getRoleList } from '@/api/user'
-import { getUserGroups } from '@/api/userGroups'
+import { listRoleDefinitions } from '@/api/roleDefinitions'
+import { getUserGroups, getUserGroupRoleBindings } from '@/api/userGroups'
+import { useRuleChangeGate } from './useRuleChangeGate'
+import { roleLabel } from '@/constants/roles'
+import DangerComboConfirm from '@/components/DangerComboConfirm.vue'
+import { protectedRoleOf, managementRoleNames } from '@/views/usergroups/groupProtection'
 import { errorCode, getIdentitySources, getRoleMappings, createRoleMapping, updateRoleMapping, deleteRoleMapping, getUserGroupMappings, getUserGroupMappingUsage, createUserGroupMapping, updateUserGroupMapping, deleteUserGroupMapping, getExternalGroups, updateExternalGroupNote } from '@/api/identitySources'
 import { confirmWarnings } from '@/utils/mappingRiskGate'
 import { isEntraIssuer } from '@/utils/entraIssuer'
@@ -369,8 +486,11 @@ const isEntraSource = computed(() => sourceType.value === 'oidc' && isEntraIssue
 const matchPlaceholder = computed(() => isDirectorySource.value ? t('identitySources.mapping.matchDnPlaceholder') : t('identitySources.mapping.matchClaimValuePlaceholder'))
 const matchHint = computed(() => isDirectorySource.value ? t('identitySources.mapping.matchDnHint') : t('identitySources.mapping.matchClaimValueHint'))
 const source = ref(null)
-const roles = ref([])
+const definitions = ref([])
 const userGroups = ref([])
+const groupBindings = ref(new Map())
+const groupListFailed = ref(false)
+const groupRolesFailed = ref(false)
 const roleRows = ref([])
 const groupRows = ref([])
 const externalGroups = ref([])
@@ -390,10 +510,48 @@ const usageConfirmed = ref(false)
 
 const rows = computed(() => tab.value === 'roles' ? roleRows.value : groupRows.value)
 const targetOptions = computed(() => {
-  const options = rows.value.map(row => tab.value === 'roles' ? { value: row.role, label: row.role } : { value: row.user_group_id, label: row.user_group_name })
+  const options = rows.value.map(row => tab.value === 'roles' ? { value: row.role, label: roleLabel(row.role) } : { value: row.user_group_id, label: row.user_group_name })
   return [...new Map(options.map(item => [item.value, item])).values()]
 })
 const visibleRows = computed(() => targetFilter.value ? rows.value.filter(row => (tab.value === 'roles' ? row.role : row.user_group_id) === targetFilter.value) : rows.value)
+// 角色規則只列可直接映射者；其餘（自訂、需要範圍的角色）要經使用者群組
+const directRoles = computed(() => definitions.value.filter(d => d.direct_mappable === true))
+const defByName = (name) => definitions.value.find(d => d.name === name)
+const protectedRoleOfGroup = (id) => protectedRoleOf(groupBindings.value.get(id), definitions.value)
+const managementRolesOfGroup = (id) => managementRoleNames((groupBindings.value.get(id) || []).map(b => b.role_id), definitions.value).map(roleLabel)
+const rolesLineOf = (row) => {
+  const list = groupBindings.value.get(row.user_group_id)
+  if (!list) return ''
+  if (!list.length) return t('identityGroupMappings.targetNoRoles')
+  return t('identityGroupMappings.targetRoles', { roles: list.map(b => roleLabel(b.role_name)).join('、') })
+}
+// 依舊目標鎖定：目標帶「只有超級管理者能增減」的角色（伺服器依操作者算出的分類），列的編輯、啟用／停用、刪除停用
+const isLocked = (row) => tab.value === 'roles'
+  ? defByName(row.role)?.assignment_state === 'protected'
+  : Boolean(protectedRoleOfGroup(row.user_group_id))
+const targetProtectedRole = (type, role, groupId) => type === 'roles'
+  ? (defByName(role)?.assignment_state === 'protected' ? role : '')
+  : protectedRoleOfGroup(groupId)
+const targetManagementRoles = (type, role, groupId) => {
+  if (type === 'roles') {
+    const def = defByName(role)
+    return def?.management_class ? [roleLabel(def.name)] : []
+  }
+  return managementRolesOfGroup(groupId)
+}
+const managementHint = computed(() => {
+  const names = targetManagementRoles(tab.value, draft.value.role, draft.value.user_group_id)
+  if (!names.length) return ''
+  return t(tab.value === 'roles' ? 'identityGroupMappings.managementRoleTarget' : 'identityGroupMappings.managementTarget', { role: names.join('、') })
+})
+const directoryHint = computed(() => {
+  const protectedRole = targetProtectedRole(tab.value, draft.value.role, draft.value.user_group_id)
+  if (protectedRole) {
+    return `${t('identityGroupMappings.protectedTarget', { role: roleLabel(protectedRole) })} ${t('identityGroupMappings.externalDirectoryDecides', { role: roleLabel(protectedRole) })}`
+  }
+  const names = targetManagementRoles(tab.value, draft.value.role, draft.value.user_group_id)
+  return names.length ? t('identityGroupMappings.externalDirectoryDecides', { role: names.join('、') }) : ''
+})
 const hasUsage = computed(() => Object.values(usage.value).some(n => Number(n) > 0))
 const targetChanged = computed(() => Boolean(editing.value && (tab.value === 'roles' ? draft.value.role !== editing.value.role : draft.value.user_group_id !== editing.value.user_group_id)))
 const requiresUsageAck = computed(() => tab.value === 'userGroups' && hasUsage.value && (!editing.value || targetChanged.value))
@@ -418,19 +576,42 @@ const usageText = (value = {}) => t('identityGroupMappings.currentUsage', { asse
 const loadAll = async () => {
   loading.value = true
   try {
-    const [sources, roleResult, groupResult, roleList, groupList, dictionary] = await Promise.all([
-      getIdentitySources(), getRoleMappings(sourceType.value, sourceId.value), getUserGroupMappings(sourceType.value, sourceId.value), getRoleList(), getUserGroups(), getExternalGroups(sourceType.value, sourceId.value),
+    const [sources, roleResult, groupResult, roleDefs, dictionary] = await Promise.all([
+      getIdentitySources(), getRoleMappings(sourceType.value, sourceId.value), getUserGroupMappings(sourceType.value, sourceId.value), listRoleDefinitions(), getExternalGroups(sourceType.value, sourceId.value),
     ])
     source.value = (sources.data || []).find(item => item.type === sourceType.value && String(item.id) === sourceId.value) || null
     roleRows.value = roleResult.data || []
     groupRows.value = groupResult.data || []
     externalGroups.value = dictionary.data || []
-    roles.value = roleList.data || []
-    userGroups.value = groupList.data || []
+    definitions.value = roleDefs.data || []
   } catch (error) {
     ElMessage.error(t('identityGroupMappings.loadFailed'))
     console.error('identity_group_mappings_load_failed', error)
   } finally { loading.value = false }
+  await loadGroupData()
+}
+
+// 使用者群組清單與各群組帶有的角色：讀不到時就地說明，不擋頁面；讀不到角色時選項不預先停用，由伺服器寫入時裁決
+const loadGroupData = async () => {
+  groupListFailed.value = false
+  groupRolesFailed.value = false
+  try {
+    const result = await getUserGroups()
+    userGroups.value = result.data || []
+  } catch (error) {
+    userGroups.value = []
+    groupBindings.value = new Map()
+    groupListFailed.value = true
+    console.error('identity_group_mappings_group_list_failed', error)
+    return
+  }
+  const settled = await Promise.allSettled(userGroups.value.map(group => getUserGroupRoleBindings(group.id, { quiet: true })))
+  const next = new Map()
+  settled.forEach((outcome, index) => {
+    if (outcome.status === 'fulfilled') next.set(userGroups.value[index].id, outcome.value?.data || [])
+    else groupRolesFailed.value = true
+  })
+  groupBindings.value = next
 }
 
 const loadUsage = async () => {
@@ -446,7 +627,13 @@ const loadUsage = async () => {
   }
 }
 const openCreate = () => { editing.value = null; draft.value = { match_value: '', note: '', role: '', user_group_id: null, enabled: true }; usageConfirmed.value = false; usage.value = { asset_authorizations: 0, approver_scopes: 0, requester_scopes: 0 }; dialogOpen.value = true }
-const openEdit = async (row) => { editing.value = row; draft.value = { match_value: row.match_value, note: row.note || '', role: row.role || '', user_group_id: row.user_group_id || null, enabled: row.enabled }; dialogOpen.value = true; if (tab.value === 'userGroups') await loadUsage() }
+const openEdit = async (row) => {
+  if (isLocked(row)) return
+  editing.value = row
+  draft.value = { match_value: row.match_value, note: row.note || '', role: row.role || '', user_group_id: row.user_group_id || null, enabled: row.enabled }
+  dialogOpen.value = true
+  if (tab.value === 'userGroups') await loadUsage()
+}
 const openNote = (row) => { noteRow.value = row; noteDraft.value = row.note || ''; noteOpen.value = true }
 
 const persist = async (payload) => {
@@ -454,8 +641,33 @@ const persist = async (payload) => {
   if (tab.value === 'roles') return editing.value ? updateRoleMapping(type, id, editing.value.id, payload) : createRoleMapping(type, id, payload)
   return editing.value ? updateUserGroupMapping(type, id, editing.value.id, payload) : createUserGroupMapping(type, id, payload)
 }
+// —— 儲存前預覽（建議性）：命中時經確認框；預覽失敗或無權一律標示暫時無法取得，不擋儲存 ——
+const { confirmOpen, confirmPreview, confirmUnavailable, confirmNotify, confirmFootnote, gate, proceedConfirm, cancelConfirm } = useRuleChangeGate(busy)
+const previewBase = () => ({
+  kind: 'mapping_rule_change',
+  rule_type: tab.value === 'roles' ? 'role' : 'user_group',
+  source_type: sourceType.value,
+  source_id: Number(sourceId.value),
+})
+const targetRef = (role, groupId) => tab.value === 'roles' ? { role_id: defByName(role)?.id } : { group_id: groupId }
+const rowTargetName = (row) => tab.value === 'roles' ? row.role : row.user_group_name
+
 const save = async () => {
   if (!canSave.value) return
+  const body = {
+    ...previewBase(),
+    ...(editing.value ? { rule_id: editing.value.id } : {}),
+    match_value: draft.value.match_value.trim(),
+    ...targetRef(draft.value.role, draft.value.user_group_id),
+    enabled: draft.value.enabled,
+  }
+  const newTarget = tab.value === 'roles' ? draft.value.role : (userGroups.value.find(group => group.id === draft.value.user_group_id)?.name || '')
+  const ctx = {
+    newTarget,
+    managementRoles: targetManagementRoles(tab.value, draft.value.role, draft.value.user_group_id),
+    oldTarget: editing.value && targetChanged.value ? rowTargetName(editing.value) : '',
+  }
+  if (!(await gate(body, ctx))) return
   busy.value = true
   let acknowledged = usageConfirmed.value
   let sourceConfigAcknowledged = false
@@ -511,7 +723,15 @@ const confirmRevocation = async (row, action) => {
   catch { return false }
 }
 const toggle = async (row) => {
+  if (isLocked(row)) return
   if (row.enabled && !(await confirmRevocation(row, t('identityGroupMappings.disable')))) return
+  const gateBody = { ...previewBase(), rule_id: row.id, enabled: !row.enabled }
+  const gateCtx = {
+    newTarget: rowTargetName(row),
+    managementRoles: targetManagementRoles(tab.value, row.role, row.user_group_id),
+    oldTarget: row.enabled ? rowTargetName(row) : '',
+  }
+  if (!(await gate(gateBody, gateCtx))) return
   const payload = { match_value: row.match_value, enabled: !row.enabled, risk_acknowledged: false, source_config_acknowledged: false }
   if (tab.value === 'roles') payload.role = row.role
   else payload.user_group_id = row.user_group_id
@@ -546,7 +766,11 @@ const toggle = async (row) => {
   catch (error) { ElMessage.error(t('identityGroupMappings.saveFailed')); console.error('identity_group_mapping_toggle_failed', error) }
 }
 const remove = async (row) => {
+  if (isLocked(row)) return
   if (!(await confirmRevocation(row, t('common.delete')))) return
+  const gateBody = { ...previewBase(), rule_id: row.id, delete: true }
+  const gateCtx = { newTarget: rowTargetName(row), managementRoles: [], oldTarget: rowTargetName(row) }
+  if (!(await gate(gateBody, gateCtx))) return
   try { await (tab.value === 'roles' ? deleteRoleMapping(sourceType.value, sourceId.value, row.id) : deleteUserGroupMapping(sourceType.value, sourceId.value, row.id)); await loadAll() }
   catch (error) { ElMessage.error(t('identityGroupMappings.saveFailed')); console.error('identity_group_mapping_delete_failed', error) }
 }
@@ -562,18 +786,18 @@ watch(tab, () => { targetFilter.value = '' })
 watch(() => draft.value.match_value, () => {
   if (matchingExternalGroup.value) draft.value.note = matchingExternalGroup.value.note || ''
 })
-onMounted(loadAll)
+onMounted(() => { loadAll() })
 </script>
 
 <style scoped>
 .external-mappings { display: grid; gap: var(--ot-space-md); }
 .source-summary { display: flex; align-items: center; gap: var(--ot-space-sm); color: var(--ot-text-secondary); }
-.observation-rule { margin: 0; color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
 .table-toolbar { display: flex; justify-content: flex-end; gap: var(--ot-space-sm); }
 .group-primary { font-weight: 600; overflow-wrap: anywhere; }
 .group-value { color: var(--ot-text-secondary); font-family: var(--ot-font-mono, monospace); font-size: var(--ot-font-size-xs); overflow-wrap: anywhere; }
 .group-value-collapsed { max-height: 3em; overflow: hidden; overflow-wrap: anywhere; }
 .mapping-tabs :deep(.el-tabs__active-bar) { transition: none; }
 .usage-box { margin: var(--ot-space-sm) 0; color: var(--ot-text-secondary); }
+.option-reason { margin-left: var(--ot-space-sm); color: var(--ot-text-secondary); font-size: var(--ot-font-size-xs); }
 .field-hint { color: var(--ot-text-secondary); font-size: var(--ot-font-size-xs); line-height: 1.6; margin-top: var(--ot-space-xs); }
 </style>

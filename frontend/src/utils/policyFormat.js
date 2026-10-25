@@ -191,3 +191,28 @@ export const policyMin = (policy) => {
   if (policy.zero_disables) return 0
   return policy.min || 1
 }
+
+// 四個資料保留鍵（不含檢查點保留）：合法值域是 {0} ∪ [min, max]。
+// 判定只認這四個鍵——檢查點保留天數同為 retention_ 前綴，但它受另一條跨鍵約束
+export const RETENTION_DATA_KEYS = [
+  'retention_audit_log_days',
+  'retention_session_command_days',
+  'retention_alert_days',
+  'retention_recording_days',
+]
+
+export const isRetentionDataKey = (key) => RETENTION_DATA_KEYS.includes(key)
+
+// 資料保留鍵有下限：政策定義帶 min、且 0 明著代表永久保留。
+// 後端未提供 min 的舊版本回 false，畫面退回原本的行為
+export const hasRetentionFloor = (policy) =>
+  !!policy && isRetentionDataKey(policy.key) && !!policy.zero_disables && policy.min > 0
+
+// 下限違規：值落在 1..min-1。不夾值——使用者輸入什麼就顯示什麼，
+// 由欄位當下的錯誤字樣與停用的儲存鈕表達；空值（未設定）與 0 都不算違規
+export const retentionFloorViolated = (policy, value) => {
+  if (!hasRetentionFloor(policy)) return false
+  const n = Number(value)
+  if (value === null || value === undefined || value === '' || !Number.isFinite(n)) return false
+  return n > 0 && n < policy.min
+}

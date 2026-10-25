@@ -174,7 +174,7 @@ func (h *ClipboardEventHandler) GetContent(c *gin.Context) {
 func (h *ClipboardEventHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/sessions/:id/clipboard-events")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequirePermission(middleware.PermAuditView))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("", h.List)
 		g.GET("/:eventID/content", h.GetContent)

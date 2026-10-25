@@ -32,7 +32,7 @@ func setupRewrapAuditRouter(t *testing.T) (*gin.Engine, *KeyManagementHandler) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	h := newKeyMgmtTestHandler(t)
-	if err := h.db.AutoMigrate(&model.AuditLog{}); err != nil {
+	if err := migrateWithAuthz(h.db, &model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate audit_logs: %v", err)
 	}
 	prev := database.DB

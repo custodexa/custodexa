@@ -19,15 +19,16 @@ func TestUserServiceDeleteCascade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// RefreshToken 為必要：Delete 於同交易內推進 credential_epoch 並撤銷 refresh
 	//（2.8 起），缺表會讓刪除以「撤銷刷新憑證失敗」整筆回滾
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{},
-		&model.RefreshToken{}, &model.UserRole{}, &model.UserRoleMapping{},
+		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserRole{}, &model.UserRoleMapping{},
 		&model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{},
-		&model.UserGroupMappingRuleSupport{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		// 刪除帳號同交易作廢外部身分綁定，缺表即整筆回滾
-		&model.UserExternalIdentity{}); err != nil {
+		&model.RoleBindingNode{}, &model.UserExternalIdentity{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	svc := NewUserService(db, authz.NewAssetAuthorizationService(db))
@@ -88,6 +89,7 @@ func TestUserServiceAddRole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}, &model.UserRole{}); err != nil {

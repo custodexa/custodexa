@@ -207,7 +207,7 @@ func newWiredSealHandler(s1 *stage1, machine *seal.Machine, allowed []*net.IPNet
 	sealCfg config.SealConfig, swap *swappableHandler, pending *bootstrapPendingState,
 	grants *api.SealGrantStore, authLimiter *seal.Limiter) *api.SealHandler {
 	h := api.NewSealHandler(machine, s1.journal)
-	authorizer := identity.NewSealAuthorizer(s1.cfg.Security.JWTSecret, database.DB)
+	authorizer := identity.NewSealAuthorizer(restoreAwareJWTSecret(database.DB, s1.cfg.Security.JWTSecret), database.DB)
 	h.SetAuthorizer(string(s1.kekDecision.Mode), authorizer.Authorize)
 	// 解封流程的第一段：封存期可用的帳密驗證（不驗動態驗證碼，見
 	// identity.VerifySealAdminCredential 的邊界說明）。
@@ -248,6 +248,11 @@ func runStage2Graph(ctx context.Context, s1 *stage1, vm seal.VerifiedMaterial,
 	v, ok := vm.Payload.(*verifiedUnseal)
 	if !ok || v == nil {
 		return nil, fmt.Errorf("段 2 收到非預期的驗證載荷型別 %T", vm.Payload)
+	}
+	// 待完成的恢復先於段 2 的任何服務（見 completeRestoreBeforeStage2）。
+	if err := completeRestoreBeforeStage2(ctx, s1); err != nil {
+		log.Printf("[Seal] %v（行程續存，狀態轉 sealed-faulted，恢復維持 pending，可重試解封）", err)
+		return nil, err
 	}
 	g, err := runStage2(ctx, s1, v.kek, v.credentials, v.topology, v.owner)
 	// 解封路徑的中繼資料掛在**本次**的服務圖上，不放共享變數：

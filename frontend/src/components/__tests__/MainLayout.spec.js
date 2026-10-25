@@ -4,7 +4,10 @@ import { join } from 'node:path'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import MainLayout from '../MainLayout.vue'
+import { setDetailSubject, clearDetailSubject } from '@/utils/detailTitle'
 import { getAccessToken, resetSessionForTests, setAccessToken } from '@/utils/session'
+import { setCapabilitiesForTests, useCapabilities } from '@/composables/useCapabilities'
+import { meBody, permissionsFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 本檔掛載 21 次、原僅 2 處顯式卸載，殘留元件在 document 上累積使單測耗時
 // 隨測試序上升——全量並行時「側欄摺疊」兩格逼近 5s 上限而轉紅（單跑 1.7s／2.7s）。
@@ -15,13 +18,15 @@ enableAutoUnmount(afterEach)
 const pushMock = vi.fn()
 const logoutMock = vi.fn()
 
+const routeState = vi.hoisted(() => ({ path: '/dashboard' }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: pushMock }),
-  useRoute: () => ({ path: '/dashboard' }),
+  useRoute: () => routeState,
 }))
 
+const getCurrentUserMock = vi.fn()
 vi.mock('@/api/auth', () => ({
-  getCurrentUser: vi.fn(),
+  getCurrentUser: (...args) => getCurrentUserMock(...args),
   getMFASetup: vi.fn(),
   enableMFA: vi.fn(),
   disableMFA: vi.fn(),
@@ -71,15 +76,13 @@ const mountLayout = () =>
     },
   })
 
-// is_approver 隨登入回應寫入快取，後端算法＝具 approver 角色 OR 屬審核方群組
-//（auth_service.go 的 UserInfo.IsApprover）。fixture 依此推導，別讓測試造出一種
-// 真實登入回應不可能出現的組合（roles 含 approver 卻 is_approver 缺席）。
-// 群組審核方以 setUser(['user'], true) 明示
+// 能力來自後端 /auth/me 的 permissions（伺服器逐請求解析），不是登入快取裡的角色。
+// 本夾具把某種身分的能力預先寫入共用能力狀態（首屏即可渲染），並讓 /auth/me 回同一份回應；
+// roles 只是敘述「這是誰」，元件不讀它。群組審核方以 setUser(['user'], true) 明示
 const setUser = (roles, isApprover = roles.includes('approver')) => {
-  localStorage.setItem(
-    'user',
-    JSON.stringify({ username: 'tester', roles, is_approver: isApprover })
-  )
+  localStorage.setItem('user', JSON.stringify({ username: 'tester' }))
+  setCapabilitiesForTests(permissionsFor(roles, { approver: isApprover }))
+  getCurrentUserMock.mockResolvedValue(meBody(roles, { approver: isApprover }))
 }
 
 // header 現有兩個 dropdown（語言切換＋使用者選單）：
@@ -156,7 +159,8 @@ describe('MainLayout sidebar', () => {
     expect(text).toContain('我的連線')
   })
 
-  it('admin and auditor keep full session management without self-service entry', async () => {
+  // 自助入口對所有已登入者可見（已核准的行為差異）：我的連線、我的申請對所有已登入者可見；連線管理仍只給具 session:view 者
+  it('admin and auditor keep full session management and now also see the self-service entries', async () => {
     for (const roles of [['admin'], ['auditor']]) {
       localStorage.clear()
       resetSessionForTests()
@@ -165,19 +169,20 @@ describe('MainLayout sidebar', () => {
       await wrapper.vm.$nextTick()
       const text = wrapper.text()
       expect(text).toContain('連線管理')
-      expect(text).not.toContain('我的連線')
+      expect(text).toContain('我的連線')
+      expect(text).toContain('我的申請')
       wrapper.unmount()
     }
   })
 
   it('multi-role [user,auditor] account keeps full session management', async () => {
-    // 自助入口以「不具 admin/auditor」判定，非 roles 含 user——多角色帳號不得誤入自助模式
+    // 連線管理看 session:view（折疊後仍是稽核員能力），不因同時掛 user 角色而降級
     setUser(['user', 'auditor'])
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
     const text = wrapper.text()
     expect(text).toContain('連線管理')
-    expect(text).not.toContain('我的連線')
+    expect(text).toContain('我的連線')
   })
 
   it('hides the entire audit group for plain user (least privilege)', async () => {
@@ -279,6 +284,14 @@ describe('MainLayout sidebar', () => {
     expect(pushMock).toHaveBeenCalledWith('/profile')
   })
 
+  it('guidance command goes to the dashboard with the guidance query, for any signed-in user', async () => {
+    setUser(['user'])
+    const wrapper = mountLayout()
+    userDropdown(wrapper).vm.$emit('command', 'guidance')
+    await flushPromises()
+    expect(pushMock).toHaveBeenCalledWith({ path: '/dashboard', query: { guidance: '1.18.0' } })
+  })
+
   it('approver overlay shows 審核中心 for a non-privileged account', async () => {
     setUser(['user', 'approver'])
     const wrapper = mountLayout()
@@ -307,90 +320,88 @@ describe('MainLayout sidebar', () => {
     expect(wrapper.text()).toContain('審核中心')
   })
 
-  // 快取回寫後必須廣播：同分頁的其他元件（儀表板待審卡）沒有別的管道知道資格變了，
-  // storage 事件不在同分頁觸發。少了這一則，回寫看似正確而下游永遠收不到。
-  it('/auth/me 改變審核資格時回寫快取並廣播 ot-user-updated', async () => {
-    const { getCurrentUser } = await import('@/api/auth')
-    setUser(['user'], false)
-    getCurrentUser.mockResolvedValue({ is_approver: true })
-    const heard = vi.fn()
-    window.addEventListener('ot-user-updated', heard)
+  // 能力在掛載時由共用能力狀態向 /auth/me 取得（守衛已載入則共用同一份）
+  it('掛載時載入能力：/auth/me 帶審核呈現點就顯示審核中心並開始待審輪詢', async () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['user'] }))
+    getCurrentUserMock.mockResolvedValue(meBody(['user'], { approver: true }))
+    getPendingAccessRequestCountMock.mockClear()
 
     const wrapper = mountLayout()
     await flushPromises()
 
-    expect(JSON.parse(localStorage.getItem('user')).is_approver).toBe(true)
-    expect(heard).toHaveBeenCalled()
-    window.removeEventListener('ot-user-updated', heard)
+    const paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
+    expect(paths).toContain('/approvals')
+    expect(getPendingAccessRequestCountMock).toHaveBeenCalled()
+    expect(getCurrentUserMock).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
-  it('/auth/me 未改變審核資格時不廣播（避免無謂喚醒下游）', async () => {
-    const { getCurrentUser } = await import('@/api/auth')
-    setUser(['user'], false)
-    getCurrentUser.mockResolvedValue({ is_approver: false })
-    const heard = vi.fn()
-    window.addEventListener('ot-user-updated', heard)
+  it('能力載入前受限入口不顯示、也不拿快取的角色頂替', async () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['admin'], is_approver: true }))
+    let resolveMe
+    getCurrentUserMock.mockReturnValue(new Promise((resolve) => { resolveMe = resolve }))
 
     const wrapper = mountLayout()
     await flushPromises()
+    let paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
+    expect(paths).not.toContain('/users')
+    expect(paths).not.toContain('/approvals')
+    expect(paths).toContain('/dashboard') // 登入即可的入口不等能力
 
-    expect(heard).not.toHaveBeenCalled()
-    window.removeEventListener('ot-user-updated', heard)
+    resolveMe(meBody(['admin']))
+    await flushPromises()
+    paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
+    expect(paths).toContain('/users')
+    expect(paths).not.toContain('/approvals') // admin 不因管理者身分取得審核入口
     wrapper.unmount()
   })
 
-  // 「我的 agent」入口資格走同一條路：登入後才成為負責人（管理者剛替他建了 agent），
-  // 重新整理時 /auth/me 回 owns_agents=true，選單要出現、快取要回寫讓守衛放行
-  it('/auth/me 回報成為 agent 負責人時顯示我的 agent 並回寫快取', async () => {
-    const { getCurrentUser } = await import('@/api/auth')
+  it('/auth/me 回報成為 agent 負責人時顯示我的 agent', async () => {
     setUser(['admin'])
-    getCurrentUser.mockResolvedValue({ is_approver: false, owns_agents: true, can_self_create_agent: false })
-    const heard = vi.fn()
-    window.addEventListener('ot-user-updated', heard)
-
     const wrapper = mountLayout()
     await flushPromises()
+    expect(wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))).not.toContain('/my-agents')
 
-    const cached = JSON.parse(localStorage.getItem('user'))
-    expect(cached.owns_agents).toBe(true)
-    expect(cached.can_self_create_agent).toBe(false)
-    expect(heard).toHaveBeenCalled()
-    const paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
-    expect(paths).toContain('/my-agents')
-    window.removeEventListener('ot-user-updated', heard)
+    getCurrentUserMock.mockResolvedValue(meBody(['admin'], { owns: true }))
+    await useCapabilities().reload()
+    await flushPromises()
+    expect(wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))).toContain('/my-agents')
     wrapper.unmount()
   })
 
-  it('/auth/me 沒帶 agent 兩欄時沿用快取，不改寫成 false', async () => {
-    const { getCurrentUser } = await import('@/api/auth')
-    localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['user'], is_approver: false, owns_agents: true }))
-    getCurrentUser.mockResolvedValue({ is_approver: false })
-
+  it('能力載入失敗時顯示重試提示，重試成功後入口出現', async () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'tester' }))
+    getCurrentUserMock.mockRejectedValue(new Error('network'))
     const wrapper = mountLayout()
     await flushPromises()
+    expect(wrapper.find('[data-test="capability-load-failed"]').exists()).toBe(true)
+    expect(wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))).not.toContain('/users')
 
-    expect(JSON.parse(localStorage.getItem('user')).owns_agents).toBe(true)
-    const paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
-    expect(paths).toContain('/my-agents')
+    getCurrentUserMock.mockResolvedValue(meBody(['admin']))
+    await wrapper.find('[data-test="capability-retry"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="capability-load-failed"]').exists()).toBe(false)
+    expect(wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))).toContain('/users')
     wrapper.unmount()
   })
 
-  // 快取說有資格、/auth/me 說沒有（撤角色或移出審核方群組後的第一次載入）：
-  // 掛載時已起的輪詢必須停掉，否則它每 30 秒對必敗端點打一次直到整個 layout 卸載。
-  it('/auth/me 判定失去審核資格時停止待審輪詢', async () => {
+  // 快取說有資格、/auth/me 說沒有（撤角色或移出審核方群組後的下一次取得）：
+  // 已起的輪詢必須停掉，否則它每 30 秒對必敗端點打一次直到整個 layout 卸載。
+  it('能力更新判定失去審核資格時停止待審輪詢', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     try {
-      const { getCurrentUser } = await import('@/api/auth')
       setUser(['user'], true)
-      getCurrentUser.mockResolvedValue({ is_approver: false })
-
       const wrapper = mountLayout()
       await flushPromises()
-      const callsAfterMount = getPendingAccessRequestCountMock.mock.calls.length
+      expect(getPendingAccessRequestCountMock).toHaveBeenCalled()
+
+      getCurrentUserMock.mockResolvedValue(meBody(['user'], { approver: false }))
+      await useCapabilities().reload()
+      await flushPromises()
+      const callsAfterReload = getPendingAccessRequestCountMock.mock.calls.length
 
       await vi.advanceTimersByTimeAsync(90000)
-      expect(getPendingAccessRequestCountMock.mock.calls.length).toBe(callsAfterMount)
+      expect(getPendingAccessRequestCountMock.mock.calls.length).toBe(callsAfterReload)
       wrapper.unmount()
     } finally {
       vi.useRealTimers()
@@ -676,7 +687,9 @@ it('我的 agent 導覽位於一般使用者我的申請同層', async () => {
   getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
   // 我的 agent 只對「負責至少一個 agent 或允許自建」的人出現；
   // 本案例驗的是位置，故以負責人身分掛載。可見性的完整矩陣在 router/__tests__/entry-consistency.spec.js
-  localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['user'], is_approver: false, owns_agents: true }))
+  localStorage.setItem('user', JSON.stringify({ username: 'tester' }))
+  setCapabilitiesForTests(permissionsFor(['user'], { owns: true }))
+  getCurrentUserMock.mockResolvedValue(meBody(['user'], { owns: true }))
   const w = mountLayout(); await flushPromises()
   const menus = w.findAllComponents({ name: 'ElMenuItem' })
   const paths = menus.map(m => m.props('index'))
@@ -802,5 +815,54 @@ describe('MainLayout 每日簽核徽章', () => {
       .findAllComponents({ name: 'ElMenuItem' })
       .find((c) => c.props('index') === '/audit-logs')
     expect(plainItem.props('route')).toBeUndefined()
+  })
+})
+
+describe('MainLayout 角色頁頂列', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    vi.clearAllMocks()
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
+  })
+  afterEach(() => {
+    delete routeState.name
+    routeState.path = '/dashboard'
+  })
+
+  it('新增角色頁頂列是「角色管理 › 新增角色」，不是首頁', async () => {
+    setUser(['admin'])
+    routeState.name = 'RoleNew'
+    routeState.path = '/roles/new'
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+    const crumbs = wrapper.find('.current-path').text()
+    expect(crumbs).toContain('角色管理')
+    expect(crumbs).toContain('新增角色')
+    expect(crumbs).not.toContain('首頁')
+  }, 30000)
+
+  it('編輯角色頁頂列帶出角色名並可回到列表', async () => {
+    setUser(['admin'])
+    setDetailSubject('稽核員')
+    routeState.name = 'RoleDetail'
+    routeState.path = '/roles/7'
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+    const crumbs = wrapper.find('.current-path').text()
+    expect(crumbs).toContain('角色管理')
+    expect(crumbs).toContain('稽核員')
+    expect(crumbs).not.toContain('首頁')
+    clearDetailSubject()
+  })
+
+  it('告警頁頂列是「稽核 › 告警」，群組名不可點', async () => {
+    setUser(['admin'])
+    routeState.path = '/alerts'
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+    const nav = wrapper.find('.current-path')
+    expect(nav.text().replace(/\s+/g, '')).toBe('稽核›告警')
+    expect(nav.findAll('a.crumb-link')).toHaveLength(0)
   })
 })

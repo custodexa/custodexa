@@ -362,7 +362,7 @@
              ——排程是這份報告的產出設定，離開這一頁看它就沒有上下文；
              預設收起則是因為到場的稽核要看的是帳號列，不是產出設定 -->
         <el-card
-          v-if="isAdmin && schedulesExpanded"
+          v-if="canManageSchedules && schedulesExpanded"
           data-test="rotation-schedules"
         >
           <template #header>
@@ -569,7 +569,7 @@
             <div class="side-title-row">
               <span class="side-title">{{ $t('rotationEvidence.aside.scheduleTitle') }}</span>
               <el-button
-                v-if="isAdmin"
+                v-if="canManageSchedules"
                 link
                 type="primary"
                 data-test="rotation-schedule-manage"
@@ -581,7 +581,7 @@
             <!-- auditor 沒有排程端點的讀取權：與其演一個看不到內容的區塊，
                  不如說清楚這件事由誰設定 -->
             <div
-              v-if="!isAdmin"
+              v-if="!canManageSchedules"
               class="side-note"
               data-test="rotation-schedule-admin-only"
             >
@@ -925,7 +925,7 @@ import {
   ROTATION_SCOPE_KINDS,
 } from '@/constants/rotationEvidence'
 import { LOCALE_LABELS } from '@/i18n'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import { confirmDestructive } from '@/utils/confirm'
 import { downloadBlob } from '@/utils/download'
 import { formatDateTime } from '@/utils/format'
@@ -940,7 +940,9 @@ import { formatDateTime } from '@/utils/format'
 
 const { t, te } = useI18n()
 const router = useRouter()
-const { isAdmin } = useRoles()
+// 排程管理（rotation_schedule:manage）與計劃清單（changesecret:manage）各依自己的後端能力
+const canManageSchedules = computed(() => can('rotation_schedule:manage'))
+const canListPlans = computed(() => can('changesecret:manage'))
 
 const RATE_FIELDS = ['rate_excluding_no_record', 'rate_counting_no_record']
 
@@ -1252,7 +1254,7 @@ const loadScopeOptions = async () => {
   } catch (_e) {
     nodes.value = []
   }
-  if (!isAdmin.value) return
+  if (!canListPlans.value) return
   try {
     const res = await getChangeSecretPlans()
     plans.value = res?.data || []
@@ -1430,7 +1432,7 @@ onMounted(async () => {
   await loadReport()
   await loadRecentReports()
   await loadScopeOptions()
-  if (isAdmin.value) await loadSchedules()
+  if (canManageSchedules.value) await loadSchedules()
 })
 </script>
 

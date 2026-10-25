@@ -142,5 +142,20 @@ cx_rs_env_merge() {
       [ "${CX_RS_HOST_VALUES[TLS_IP_SAN]}" != "${CX_RS_HOST_SOURCE[TLS_IP_SAN]}" ]; }; then
     CX_RS_REISSUE=1
   fi
+  cx_rs_legacy_rotate || return 1
   cx_rs_template
+}
+# A backup of a version without the permission model gets a new sign-in secret (the revoking half is
+# cx_rs_legacy_return). Done once, here, in the settings to restore:
+# this file is durable and its digest is checked on resume, so a resumed run never replaces it
+# again. A value that already differs from the backup's is left alone.
+cx_rs_legacy_rotate() {
+  local old new
+  cx_rs_legacy || return 0
+  old=$(cx_env_get "$CX_RS_DIR/pass2/env.bak" JWT_SECRET)
+  [ "$(cx_env_get "$CX_RS_ENV" JWT_SECRET)" = "$old" ] || return 0
+  new=$(openssl rand -base64 32) || new=""
+  if [ -z "$new" ] || [ "$new" = "$old" ] || ! cx_env_set "$CX_RS_ENV" JWT_SECRET "$new"; then
+    cx_rs_refuse rs_legacy_secret_failed; return 1
+  fi
 }

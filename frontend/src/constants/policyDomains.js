@@ -42,6 +42,7 @@ export const SECURITY_SECTIONS = [
   section('session_account', [
     'web_idle_minutes',
     'web_max_session_hours',
+    'mapping_revalidation_hours',
     // 登入狀態僅在 https 連線保存：緊接 Web 會話
     // 兩鍵之後——它決定的正是這段會話能不能續期。走明文的部署關掉它，
     // 否則使用者每 15 分鐘重新登入

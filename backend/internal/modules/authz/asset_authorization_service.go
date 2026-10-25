@@ -32,6 +32,20 @@ type AssetAuthorizationService struct {
 	agentProbeRecorder func(context.Context, uint, uint, uint, string) error
 	repo               *assetAuthorizationRepository
 	db                 *gorm.DB
+	// writeScope 授權規則寫入的交易內範圍判定。組裝期必注入（RequireWriteScope 檢查）；
+	// nil 只出現在不經 HTTP 入口的程式內部建構（測試與系統呼叫），此時不做範圍判定
+	writeScope *AuthorizationWriteScope
+}
+
+// SetWriteScope 注入授權規則寫入的範圍判定（組裝時）。
+func (s *AssetAuthorizationService) SetWriteScope(w *AuthorizationWriteScope) { s.writeScope = w }
+
+// RequireWriteScope 組裝檢查：未注入範圍判定即回錯誤，組裝端據此拒絕啟動。
+func (s *AssetAuthorizationService) RequireWriteScope() error {
+	if s == nil || s.writeScope == nil {
+		return ErrAuthorizationScopeMissing
+	}
+	return nil
 }
 
 // NewAssetAuthorizationService 創建資產授權服務
@@ -97,22 +111,37 @@ func (s *AssetAuthorizationService) CheckPermission(
 	assetID uint,
 	requiredPerm model.PermissionType,
 ) (bool, error) {
-	// 1. 從 context 獲取用戶角色（如果有）
-	role, ok := ctx.Value("role").(string)
-	if ok {
-		// 2. Admin 自動擁有所有權限
-		if role == model.RoleAdmin {
-			log.Printf("[CheckPermission] 使用者 %d 擁有 admin 角色，自動授予權限", userID)
-			return true, nil
-		}
-		// Auditor 稽核唯讀：僅非連線權限（view）自動放行；connect 不短路，
-		// 落正常授權查詢——顯式授予某資產 connect 者仍可連
-		if role == model.RoleAuditor && requiredPerm != model.PermissionConnect {
-			log.Printf("[CheckPermission] 使用者 %d 擁有 auditor 角色，自動授予 %s（非連線）權限", userID, requiredPerm)
-			return true, nil
-		}
+	// 1. 從 context 取主體（如果有）：內建超管全權放行；稽核員僅非連線（view）權限放行，
+	// connect 不短路，落正常授權查詢——顯式授予某資產 connect 者仍可連
+	if pr := PrincipalFromContext(ctx); pr.ConnectionShortcut(requiredPerm) {
+		log.Printf("[CheckPermission] 使用者 %d 具保留身分，自動授予 %s 權限", userID, requiredPerm)
+		return true, nil
 	}
 
+	return s.checkPermissionByACL(userID, assetID, requiredPerm)
+}
+
+// CheckPermissionForPrincipal 與 CheckPermission 同語義，但短路改由主體的保留身分判定：
+// 內建超管全權放行、舊主角色為 auditor 者僅放行
+// 非連線權限；其餘（含持有全部權限點的非內建角色）落正常授權查詢。兩者的差別只在短路的判定來源。
+func (s *AssetAuthorizationService) CheckPermissionForPrincipal(
+	p *Principal,
+	userID uint,
+	assetID uint,
+	requiredPerm model.PermissionType,
+) (bool, error) {
+	if p.ConnectionShortcut(requiredPerm) {
+		return true, nil
+	}
+	return s.checkPermissionByACL(userID, assetID, requiredPerm)
+}
+
+// checkPermissionByACL 角色短路之後的授權查詢（CheckPermission 與 CheckPermissionForPrincipal 共用）。
+func (s *AssetAuthorizationService) checkPermissionByACL(
+	userID uint,
+	assetID uint,
+	requiredPerm model.PermissionType,
+) (bool, error) {
 	// 3. 獲取權限層級列表（包含隱含的上級權限）
 	permissions := GetPermissionHierarchy(requiredPerm)
 
@@ -235,13 +264,13 @@ func NormalizeGrantAccounts(in *[]string) (model.AccountScope, error) {
 	return scope, nil
 }
 
-// validateGrantRefs 驗證 spec 形狀與被引用實體存在；引用缺失回上列哨兵的包裹
-func (s *AssetAuthorizationService) validateGrantRefs(spec GrantSpec) error {
+// validateGrantRefsOn 驗證 spec 形狀與被引用實體存在（讀取走呼叫端交易）；引用缺失回上列哨兵的包裹
+func (s *AssetAuthorizationService) validateGrantRefsOn(db *gorm.DB, spec GrantSpec) error {
 	if (spec.UserID == nil) == (spec.UserGroupID == nil) || (spec.AssetID == nil) == (spec.AssetGroupID == nil) {
 		return ErrInvalidGrantSubject
 	}
 	if spec.UserID != nil {
-		if err := s.db.First(&model.User{}, *spec.UserID).Error; err != nil {
+		if err := db.First(&model.User{}, *spec.UserID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("%w: ID=%d", ErrGrantUserNotFound, *spec.UserID)
 			}
@@ -249,7 +278,7 @@ func (s *AssetAuthorizationService) validateGrantRefs(spec GrantSpec) error {
 		}
 	}
 	if spec.UserGroupID != nil {
-		if err := s.db.First(&model.UserGroup{}, *spec.UserGroupID).Error; err != nil {
+		if err := db.First(&model.UserGroup{}, *spec.UserGroupID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("%w: ID=%d", ErrGrantUserGroupNotFound, *spec.UserGroupID)
 			}
@@ -257,7 +286,7 @@ func (s *AssetAuthorizationService) validateGrantRefs(spec GrantSpec) error {
 		}
 	}
 	if spec.AssetID != nil {
-		if err := s.db.First(&model.Asset{}, *spec.AssetID).Error; err != nil {
+		if err := db.First(&model.Asset{}, *spec.AssetID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("%w: ID=%d", ErrGrantAssetNotFound, *spec.AssetID)
 			}
@@ -265,7 +294,7 @@ func (s *AssetAuthorizationService) validateGrantRefs(spec GrantSpec) error {
 		}
 	}
 	if spec.AssetGroupID != nil {
-		if err := s.db.First(&model.AssetGroup{}, *spec.AssetGroupID).Error; err != nil {
+		if err := db.First(&model.AssetGroup{}, *spec.AssetGroupID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("%w: ID=%d", ErrGrantAssetGroupNotFound, *spec.AssetGroupID)
 			}
@@ -299,19 +328,16 @@ func (s *AssetAuthorizationService) grantExists(db *gorm.DB, spec GrantSpec) (bo
 	return count > 0, nil
 }
 
-// Grant 統一授權建立入口：四種主體×客體組合共用驗證/去重/建立
+// Grant 統一授權建立入口：四種主體×客體組合共用驗證/去重/建立。
+//
+// 守衛與寫入在單一交易內：操作者只取自請求脈絡的主體（缺主體即拒；spec.GrantedBy 須與
+// 主體相同，否則拒收），非超管操作者的主體落在本人範圍（本人、本人直接所屬的群組、
+// 本人擁有的 agent）即整筆拒絕，零寫入。
+// agent 主體以帳號列鎖讀取擁有者，與擁有者轉移同鎖序（self_grant_guard.go）
 func (s *AssetAuthorizationService) Grant(ctx context.Context, spec GrantSpec) (*model.AssetAuthorization, error) {
-	if err := s.validateGrantRefs(spec); err != nil {
-		return nil, err
+	if (spec.UserID == nil) == (spec.UserGroupID == nil) || (spec.AssetID == nil) == (spec.AssetGroupID == nil) {
+		return nil, ErrInvalidGrantSubject
 	}
-	exists, err := s.grantExists(s.db, spec)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		return nil, ErrAuthorizationExists
-	}
-
 	accounts, err := NormalizeGrantAccounts(spec.Accounts)
 	if err != nil {
 		return nil, err
@@ -326,8 +352,50 @@ func (s *AssetAuthorizationService) Grant(ctx context.Context, spec GrantSpec) (
 		GrantedBy:    spec.GrantedBy,
 		Accounts:     accounts,
 	}
-	if err := s.db.Create(auth).Error; err != nil {
-		return nil, fmt.Errorf("建立授權失敗: %w", err)
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 鎖序：主體 users 列鎖（升冪）→ 拓撲序列化鎖 → 同交易重讀並判定客體範圍 → 引用驗證
+		// → 防自我授權 → 寫入。拓撲鎖之後不再取新的使用者或群組鎖
+		if s.writeScope != nil {
+			if _, err := trustedOperator(ctx, spec.GrantedBy); err != nil {
+				return err
+			}
+			var subjects []uint
+			if spec.UserID != nil {
+				subjects = []uint{*spec.UserID}
+			}
+			if err := lockForAuthorizationWrite(tx, subjects); err != nil {
+				return err
+			}
+			var assetID, nodeID uint
+			if spec.AssetID != nil {
+				assetID = *spec.AssetID
+			}
+			if spec.AssetGroupID != nil {
+				nodeID = *spec.AssetGroupID
+			}
+			if err := s.writeScope.DecideObject(ctx, tx, assetID, nodeID); err != nil {
+				return err
+			}
+		}
+		if err := s.validateGrantRefsOn(tx, spec); err != nil {
+			return err
+		}
+		if err := s.guardRuleSubjects(ctx, tx, spec.GrantedBy, spec.UserID, spec.UserGroupID); err != nil {
+			return err
+		}
+		exists, err := s.grantExists(tx, spec)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrAuthorizationExists
+		}
+		if err := tx.Create(auth).Error; err != nil {
+			return fmt.Errorf("建立授權失敗: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	var result model.AssetAuthorization
@@ -382,11 +450,6 @@ func (s *AssetAuthorizationService) GrantBatch(
 		return nil, ErrBatchTooLarge
 	}
 
-	// 引用完整性：任一 id 不存在即整批拒絕（不部分寫入）
-	if err := s.validateBatchRefs(userIDs, userGroupIDs, assetIDs, assetGroupIDs); err != nil {
-		return nil, err
-	}
-
 	// 展開全部組合為單主體單客體記錄
 	var toCreate []model.AssetAuthorization
 	appendCombo := func(userID, userGroupID, assetID, assetGroupID *uint) {
@@ -416,15 +479,44 @@ func (s *AssetAuthorizationService) GrantBatch(
 
 	result := &BatchGrantResult{}
 	if len(toCreate) > 0 {
+		// 守衛 → 寫入在同一交易：主體集含本人範圍任一者即整批拒絕、零寫入（批次不部分成功）。
 		// ON CONFLICT DO NOTHING：既有組合（partial 唯一索引命中）原子跳過。
 		// 先查後寫在並發下無法序列化（兩交易先讀不存在、之一撞索引整批回滾回 500），
 		// 交由 DB 唯一索引兜底才是並發安全的去重。created=實插筆數、skipped=展開數−created
-		res := s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(toCreate, 200)
-		if res.Error != nil {
-			return nil, fmt.Errorf("批次建立授權失敗: %w", res.Error)
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			// 鎖序同 Grant：主體 users 列鎖（升冪，一次取齊）→ 拓撲序列化鎖 → 判定客體 → 引用驗證 → 守衛 → 寫入
+			if s.writeScope != nil {
+				if _, err := trustedOperator(ctx, grantedBy); err != nil {
+					return err
+				}
+				if err := lockForAuthorizationWrite(tx, userIDs); err != nil {
+					return err
+				}
+				n, err := s.writeScope.CountUnavailableObjects(ctx, tx, assetIDs, assetGroupIDs)
+				if err != nil {
+					return err
+				}
+				if n > 0 {
+					return &AuthorizationBatchUnavailableError{Count: n}
+				}
+			}
+			// 引用完整性：任一 id 不存在即整批拒絕（不部分寫入）
+			if err := s.validateBatchRefsOn(tx, userIDs, userGroupIDs, assetIDs, assetGroupIDs); err != nil {
+				return err
+			}
+			if err := s.guardBatchSubjects(ctx, tx, grantedBy, userIDs, userGroupIDs); err != nil {
+				return err
+			}
+			res := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(toCreate, 200)
+			if res.Error != nil {
+				return fmt.Errorf("批次建立授權失敗: %w", res.Error)
+			}
+			result.Created = int(res.RowsAffected)
+			result.Skipped = len(toCreate) - result.Created
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		result.Created = int(res.RowsAffected)
-		result.Skipped = len(toCreate) - result.Created
 	}
 	log.Printf("[GrantBatch] 批次授權完成: created=%d, skipped=%d, permission=%s, grantedBy=%d",
 		result.Created, result.Skipped, permission, grantedBy)
@@ -432,7 +524,7 @@ func (s *AssetAuthorizationService) GrantBatch(
 }
 
 // validateBatchRefs 批次驗證引用實體存在（各一次 IN 查詢）
-func (s *AssetAuthorizationService) validateBatchRefs(userIDs, userGroupIDs, assetIDs, assetGroupIDs []uint) error {
+func (s *AssetAuthorizationService) validateBatchRefsOn(db *gorm.DB, userIDs, userGroupIDs, assetIDs, assetGroupIDs []uint) error {
 	// notFound 為該實體種類的哨兵：handler 以 errors.Is 判種類，
 	// label 只服務伺服端 log 的可讀性
 	checkAll := func(modelPtr interface{}, ids []uint, label string, notFound error) error {
@@ -440,7 +532,7 @@ func (s *AssetAuthorizationService) validateBatchRefs(userIDs, userGroupIDs, ass
 			return nil
 		}
 		var count int64
-		if err := s.db.Model(modelPtr).Where("id IN ?", ids).Count(&count).Error; err != nil {
+		if err := db.Model(modelPtr).Where("id IN ?", ids).Count(&count).Error; err != nil {
 			return fmt.Errorf("查詢%s失敗: %w", label, err)
 		}
 		if count != int64(len(ids)) {
@@ -511,17 +603,55 @@ func (s *AssetAuthorizationService) UpdateAccountScope(
 	if err != nil {
 		return nil, err
 	}
-	auth, err := s.repo.FindByID(authorizationID)
-	if err != nil {
-		return nil, ErrAuthorizationNotFound
-	}
-	if auth.Source == model.AuthorizationSourceTicket {
-		return nil, ErrTicketAccountScopeImmutable
-	}
-	if err := s.db.Model(&model.AssetAuthorization{}).
-		Where("id = ?", authorizationID).
-		Update("accounts", scope).Error; err != nil {
-		return nil, fmt.Errorf("更新授權帳號範圍失敗: %w", err)
+	var auth *model.AssetAuthorization
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 鎖序：（不加鎖讀規則取得主體）→ 主體 users 列鎖 → 拓撲序列化鎖 → 重讀規則並判定範圍
+		// → 臨時授權帳號範圍不可調整 → 防自我授權 → 窄化 → 寫入
+		scoped := s.writeScope != nil
+		if scoped {
+			if _, err := trustedOperator(ctx, operatorIDOf(ctx)); err != nil {
+				return err
+			}
+			var pre model.AssetAuthorization
+			var subjects []uint
+			if err := tx.Select("id", "user_id").First(&pre, authorizationID).Error; err == nil && pre.UserID != nil {
+				subjects = []uint{*pre.UserID}
+			}
+			if err := lockForAuthorizationWrite(tx, subjects); err != nil {
+				return err
+			}
+			if err := s.writeScope.DecideRule(ctx, tx, authorizationID); err != nil {
+				return err
+			}
+		}
+		var cur model.AssetAuthorization
+		if err := tx.First(&cur, authorizationID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAuthorizationNotFound
+			}
+			return fmt.Errorf("查詢授權失敗: %w", err)
+		}
+		auth = &cur
+		if ticketRuleAccountScopeLocked(cur.Source) {
+			return ErrTicketAccountScopeImmutable
+		}
+		// 規則主體屬操作者本人範圍時，非超管不得調整帳號範圍（刪除不受此限）。
+		// 操作者只能來自請求脈絡的主體；脈絡無主體即拒（fail-close，不猜操作者）
+		if err := s.guardAccountScopeOperator(ctx, tx, &cur); err != nil {
+			return err
+		}
+		// 非建立者只能縮小（不變式：有效規則的範圍 ⊆ granted_by 主張的範圍，見 guardAccountScopeWiden）
+		if err := s.guardAccountScopeWiden(ctx, tx, authorizationID, scope); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.AssetAuthorization{}).
+			Where("id = ?", authorizationID).
+			Update("accounts", scope).Error; err != nil {
+			return fmt.Errorf("更新授權帳號範圍失敗: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	log.Printf("[UpdateAccountScope] 授權帳號範圍已更新: authID=%d subject=%s scope=%v",
 		authorizationID, describeAuthSubject(auth), scope)
@@ -534,6 +664,18 @@ func (s *AssetAuthorizationService) UpdateAccountScope(
 	return &result, nil
 }
 
+// ticketRuleAccountScopeLocked 臨時授權的帳號範圍由申請單決定，授權管理入口不可調整。
+// 帳號範圍調整與授權列表的列級旗標共用。
+func ticketRuleAccountScopeLocked(source string) bool {
+	return source == model.AuthorizationSourceTicket
+}
+
+// ticketRuleDeleteLocked 有關聯申請單的臨時授權不可裸刪（走申請單撤銷）；反查無單的孤兒放行。
+// 裸刪與授權列表的列級旗標共用。
+func ticketRuleDeleteLocked(source string, linkedToRequest bool) bool {
+	return source == model.AuthorizationSourceTicket && linkedToRequest
+}
+
 // ErrTicketAccountScopeImmutable 臨時授權的帳號範圍不可由授權管理入口調整
 var ErrTicketAccountScopeImmutable = errors.New("臨時授權的帳號範圍由申請單決定，不可直接調整")
 
@@ -542,37 +684,53 @@ func (s *AssetAuthorizationService) RevokePermission(
 	ctx context.Context,
 	authorizationID uint,
 ) error {
-	// 1. 檢查授權是否存在
-	auth, err := s.repo.FindByID(authorizationID)
-	if err != nil {
-		return ErrAuthorizationNotFound
-	}
-
-	// 2. ticket 裸刪守門：有關聯申請單者必須
-	// 走申請單撤銷流；反查無單的孤兒放行（操作審計由 audit middleware 記錄，
-	// 此處補 log 標示孤兒清理）
-	if auth.Source == model.AuthorizationSourceTicket {
-		var linked int64
-		if err := s.db.Model(&model.AccessRequest{}).
-			Where("authorization_id = ?", authorizationID).
-			Count(&linked).Error; err != nil {
-			return fmt.Errorf("查詢票證所屬申請單失敗: %w", err)
+	var auth model.AssetAuthorization
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 鎖序：拓撲序列化鎖 → 讀規則並判定範圍 → 臨時授權裸刪守門 → 軟刪（不鎖主體列）
+		if s.writeScope != nil {
+			if _, err := trustedOperator(ctx, operatorIDOf(ctx)); err != nil {
+				return err
+			}
+			if err := lockForAuthorizationWrite(tx, nil); err != nil {
+				return err
+			}
+			if err := s.writeScope.DecideRule(ctx, tx, authorizationID); err != nil {
+				return err
+			}
 		}
-		if linked > 0 {
-			return ErrTicketRevocationRequired
+		if err := tx.First(&auth, authorizationID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAuthorizationNotFound
+			}
+			return fmt.Errorf("查詢授權失敗: %w", err)
 		}
-		log.Printf("[RevokePermission] 孤兒 ticket 授權放行刪除: authID=%d（反查無申請單）", authorizationID)
-	}
-
-	// 3. 軟刪除授權記錄
-	if err := s.repo.Delete(authorizationID); err != nil {
+		// ticket 裸刪守門：有關聯申請單者必須
+		// 走申請單撤銷流；反查無單的孤兒放行（操作審計由 audit middleware 記錄，
+		// 此處補 log 標示孤兒清理）
+		if auth.Source == model.AuthorizationSourceTicket {
+			var linked int64
+			if err := tx.Model(&model.AccessRequest{}).
+				Where("authorization_id = ?", authorizationID).
+				Count(&linked).Error; err != nil {
+				return fmt.Errorf("查詢票證所屬申請單失敗: %w", err)
+			}
+			if ticketRuleDeleteLocked(auth.Source, linked > 0) {
+				return ErrTicketRevocationRequired
+			}
+			log.Printf("[RevokePermission] 孤兒 ticket 授權放行刪除: authID=%d（反查無申請單）", authorizationID)
+		}
+		if err := tx.Delete(&model.AssetAuthorization{}, authorizationID).Error; err != nil {
+			return fmt.Errorf("刪除授權失敗: %w", err)
+		}
+		return nil
+	}); err != nil {
 		log.Printf("[RevokePermission] 撤銷授權失敗: authID=%d, error=%v", authorizationID, err)
 		return err
 	}
 
 	// 主體可能是群組（UserID 為 nil），日誌以可讀形式描述主體
 	log.Printf("[RevokePermission] 授權撤銷成功: authID=%d, subject=%s, assetID=%v",
-		authorizationID, describeAuthSubject(auth), auth.AssetID)
+		authorizationID, describeAuthSubject(&auth), auth.AssetID)
 
 	return nil
 }
@@ -730,9 +888,8 @@ func (s *AssetAuthorizationService) GetAuthorizedAssets(
 	permission model.PermissionType,
 ) ([]*AuthorizedAssetDTO, error) {
 	// 1. 檢查是否為 admin/auditor 角色
-	role, ok := ctx.Value("role").(string)
-	if ok && (role == model.RoleAdmin || role == model.RoleAuditor) {
-		// Admin/Auditor 返回所有資產
+	if PrincipalFromContext(ctx).ViewShortcut() {
+		// 超管／稽核員 返回所有資產
 		var assets []*model.Asset
 		if err := s.db.Find(&assets).Error; err != nil {
 			log.Printf("[GetAuthorizedAssets] 查詢所有資產失敗: error=%v", err)
@@ -829,4 +986,12 @@ func (s *AssetAuthorizationService) VisibleTreeScope(ctx context.Context, userID
 		}
 	}
 	return &asset.TreeVisibility{NodeIDs: nodeSet, AssetIDs: assetSet}, nil
+}
+
+// operatorIDOf 請求脈絡主體的使用者編號（無主體為 0，交由 trustedOperator 拒絕）。
+func operatorIDOf(ctx context.Context) uint {
+	if p := PrincipalFromContext(ctx); p != nil {
+		return p.UserID
+	}
+	return 0
 }

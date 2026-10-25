@@ -260,6 +260,7 @@ func gateCountingFixture(t *testing.T) (*Handler, *gorm.DB, *gateCountingCodec) 
 
 	codec := &gateCountingCodec{inner: aesColumnCodec(t, make([]byte, 32))}
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}

@@ -4,6 +4,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessageBox } from 'element-plus'
 import Assets from '../Assets.vue'
 import { createAsset, updateAsset } from '@/api/assets'
+import { setCapabilitiesForTests, resetCapabilities } from '@/composables/useCapabilities'
 
 // 自 Assets.spec.js 拆出（同 AssetsConnectEntry.spec.js 的理由）：該檔掛載成本高，
 // 再疊一組表單案例會讓整檔逼近逾時臨界。本檔獨立承載
@@ -69,6 +70,7 @@ vi.mock('@/api/assets', () => ({
   deleteAsset: vi.fn(),
   getAssetHostKey: vi.fn(),
   resetAssetHostKey: vi.fn(),
+  adoptAssetHostKey: vi.fn(),
   testAssetConnection: vi.fn(),
   getAssetGroups: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   createAssetGroup: vi.fn(),
@@ -190,6 +192,8 @@ describe('Assets 允許的資料庫欄位', () => {
     expect(payload.allowed_databases).toEqual(['app', 'report', 'staging'])
 
     createAsset.mockResolvedValue({ id: 40 })
+    // 以帳號名稱建立專用帳號需要建立憑證能力；缺它時新增對話框預設改挑共用憑證
+    setCapabilitiesForTests(['credential:create'])
     wrapper.vm.handleCreate()
     await flushPromises()
     Object.assign(wrapper.vm.form, {
@@ -202,6 +206,7 @@ describe('Assets 允許的資料庫欄位', () => {
     await wrapper.vm.handleSubmit()
     await flushPromises()
     expect(createAsset.mock.calls.at(-1)[0].allowed_databases).toBeUndefined()
+    resetCapabilities()
   })
 
   it('清單非空時改協議：儲存前先揭露清空，取消則不送出', async () => {

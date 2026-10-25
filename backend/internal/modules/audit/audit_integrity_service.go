@@ -96,6 +96,8 @@ func InitAuditIntegrityVersioned(db *gorm.DB, km *keyvault.KeyManagerService) (*
 	}
 	registerAuditIntegrity(svc)
 	model.SetAgentToolCallStampHook(svc.StampToolCall)
+	// 段 2 之前（還原完成時）寫下、當時取不到密鑰的權限狀態事件，由本行程補章
+	StampPendingPermissionEvents(db)
 	return svc, nil
 }
 

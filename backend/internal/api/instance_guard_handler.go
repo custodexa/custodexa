@@ -91,7 +91,7 @@ func NewInstanceGuardHandler(probe InstanceGuardProbe) *InstanceGuardHandler {
 func (h *InstanceGuardHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	grp := r.Group("/instance-guard")
 	grp.Use(middleware.AuthMiddleware(authService))
-	grp.Use(middleware.RequireRole("admin"))
+	grp.Use(middleware.EnforceRegistry())
 	{
 		grp.GET("", h.Get)
 	}

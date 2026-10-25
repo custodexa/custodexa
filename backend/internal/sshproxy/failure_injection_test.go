@@ -271,7 +271,7 @@ func TestIssuePostResolveFailureInjection(t *testing.T) {
 				t.Fatalf("fixture 帳號解析失敗: %v", err)
 			}
 			st := &issueState{
-				role:     model.RoleUser,
+				principal: legacyPrincipal(model.RoleUser),
 				req:      connectTokenRequest{AssetID: 1},
 				assetRow: assetRow,
 				identity: identity,
@@ -366,7 +366,7 @@ func TestRedeemFailureInjectionPerGate(t *testing.T) {
 			}
 			st := &redeemState{
 				grant:       proxy.ConnectGrant{UserID: 1, AssetID: 1, AccountID: cell.accountID},
-				currentRole: model.RoleUser,
+				principal:   legacyPrincipal(model.RoleUser),
 				creds:       creds,
 			}
 			sub, obj := st.contractSubject(""), st.contractObject()
@@ -390,7 +390,7 @@ func TestRedeemNoFaultControl(t *testing.T) {
 	}
 	st := &redeemState{
 		grant:       proxy.ConnectGrant{UserID: 1, AssetID: 1},
-		currentRole: model.RoleUser,
+		principal:   legacyPrincipal(model.RoleUser),
 		creds:       creds,
 	}
 	sub, obj := st.contractSubject(""), st.contractObject()

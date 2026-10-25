@@ -42,6 +42,12 @@ func (s *AssetService) SetImportPreTxHookForTest(fn func()) {
 	s.importPreTxHook = fn
 }
 
+// SetImportTxStartHookForTest 測試用：提交交易開始時（任何鎖之前）以該交易呼叫 fn，
+// 用以取得提交交易的連線識別。正式組裝不呼叫
+func (s *AssetService) SetImportTxStartHookForTest(fn func(tx *gorm.DB)) {
+	s.importTxStartHook = fn
+}
+
 // ImportAssets 整批寫入。ctx 須帶已驗證的操作者；createdBy／createdByName 為同一操作者，
 // 寫入每台資產的建立者與帳號、節點稽核列
 func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
@@ -51,7 +57,16 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 		return nil, err
 	}
 	ctx = operatorContext(ctx, createdBy, createdByName)
-	preview, prepared, err := s.validateImportBatch(ctx, batch, createdBy, createdByName)
+	// 欄位級能力：提交時重判，不以預檢結果為授權票；任一列缺能力即整批拒絕
+	if _, err := requireFieldCapabilities(ctx, importRestrictedFields(batch.Rows)); err != nil {
+		return nil, err
+	}
+	// 掛既有憑證的列需掛載能力（與單筆建立同一判定）；任一列缺能力即整批拒絕，範圍拒絕逐列回報
+	sc := &importScope{}
+	if err := s.importCredentialScope(ctx, nil, sc, importCredentialIDs(batch.Rows)); err != nil {
+		return nil, err
+	}
+	preview, prepared, err := s.validateImportBatch(ctx, batch, createdBy, createdByName, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -70,9 +85,37 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 
 	result := &ImportResult{AssetIDs: make([]uint, 0, len(prepared))}
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if s.importTxStartHook != nil {
+			s.importTxStartHook(tx)
+		}
+		// 拓撲序列化鎖：交易第一個動作，早於能力判定的讀取與憑證列鎖
+		if err := s.lockTopologyTx(tx); err != nil {
+			return err
+		}
+		// 交易內再判一次（寫入之前）
+		if _, err := requireFieldCapabilities(ctx, importRestrictedFields(batch.Rows)); err != nil {
+			return err
+		}
+		// 鎖後以交易內視圖重算逐列範圍（節點、憑證掛載），早於憑證列鎖；不採信預檢結果
+		if err := s.recheckImportScopeTx(ctx, tx, prepared, preview.Rows); err != nil {
+			return err
+		}
 		creds, lerr := lockImportCredentials(tx, prepared)
 		if lerr != nil {
 			return lerr
+		}
+		// 整批只推進一次，且只在有任何一台掛到節點時才需要
+		anyMounted := false
+		for _, p := range prepared {
+			if len(p.nodeIDs) > 0 {
+				anyMounted = true
+				break
+			}
+		}
+		if anyMounted {
+			if err := s.beginTopologyChangeTx(tx); err != nil {
+				return err
+			}
 		}
 		var currentPaths map[uint]string
 		for i, p := range prepared {
@@ -95,6 +138,9 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 				result.CredentialPending++
 			}
 		}
+		if anyMounted {
+			return s.advanceTopologyVersionTx(tx)
+		}
 		return nil
 	})
 	if err != nil {
@@ -103,6 +149,13 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 			if fe, ok := importTxFieldError(rowErr); ok {
 				rep := preview.Rows[rowErr.index]
 				rep.Errors = []ImportFieldError{fe}
+				if isImportScopeRowError(rowErr.err) {
+					// 已不在範圍內：不回預檢時解析出的憑證名稱與節點路徑；回顯值自使用者原始輸入重建，
+					// 不帶由路徑解析出的節點識別
+					rep.Resolved.Credential = nil
+					rep.Resolved.NodePaths = []string{}
+					rep.Values = normalizeImportRow(batch.Rows[rowErr.index])
+				}
 				return nil, &ImportStateChangedError{Rows: []ImportRowReport{rep}}
 			}
 			return nil, rowErr.err
@@ -111,6 +164,15 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 	}
 	result.Created = len(result.AssetIDs)
 	return result, nil
+}
+
+// preparedCredentialIDs 整批實際組裝出的共用憑證（交易內重判掛載能力的影響集合）
+func preparedCredentialIDs(prepared []*preparedAsset) []uint {
+	ids := make([]uint, 0, len(prepared))
+	for _, p := range prepared {
+		ids = append(ids, p.sharedCredentialID)
+	}
+	return nonZeroIDs(ids...)
 }
 
 // lockImportCredentials 依憑證 id 遞增取全部所指憑證的列鎖。已不存在的憑證不在
@@ -172,6 +234,19 @@ func nodePathsStillMatch(paths []string, nodeIDs []uint, current map[uint]string
 func importTxFieldError(e *importTxRowError) (ImportFieldError, bool) {
 	if errors.Is(e.err, errImportNodePathChanged) {
 		return fieldErrP(importFieldNodes, apierror.CodeAssetImportNodePath, map[string]any{"path": e.path}), true
+	}
+	// 交易內範圍重算：範圍外與不存在同形（路徑指定回使用者填的路徑，id 指定回節點不存在）
+	if errors.Is(e.err, errImportNodeUnavailable) {
+		if e.path != "" {
+			return fieldErrP(importFieldNodes, apierror.CodeAssetImportNodePath, map[string]any{"path": e.path}), true
+		}
+		return fieldErr(importFieldNodes, apierror.CodeAssetNodeNotFound), true
+	}
+	if errors.Is(e.err, errImportNodeRequired) {
+		return fieldErr(importFieldNodes, apierror.CodeAssetNodeRequired), true
+	}
+	if errors.Is(e.err, errImportCredentialUnavailable) {
+		return fieldErr(importFieldCredentialID, apierror.CodeCredentialNotFound), true
 	}
 	if _, isTag := tagValidationCodeOf(e.err); isTag {
 		return ImportFieldError{}, false

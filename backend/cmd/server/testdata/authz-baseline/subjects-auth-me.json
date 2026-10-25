@@ -1,0 +1,312 @@
+{
+ "S00": {
+  "body": {
+   "code": "AUTH_TOKEN_MISSING",
+   "error": "未提供認證 token"
+  },
+  "status": 401
+ },
+ "S01": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s01",
+   "email": "baseline-s01@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s01",
+   "id": 2,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "admin"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s01"
+  },
+  "status": 200
+ },
+ "S02": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s02",
+   "email": "baseline-s02@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s02",
+   "id": 3,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": true,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "user"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s02"
+  },
+  "status": 200
+ },
+ "S03": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s03",
+   "email": "baseline-s03@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s03",
+   "id": 4,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "auditor"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s03"
+  },
+  "status": 200
+ },
+ "S04": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s04",
+   "email": "baseline-s04@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s04",
+   "id": 5,
+   "is_approver": true,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "approver"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s04"
+  },
+  "status": 200
+ },
+ "S05": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s05",
+   "email": "baseline-s05@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s05",
+   "id": 6,
+   "is_approver": true,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "user",
+    "approver"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s05"
+  },
+  "status": 200
+ },
+ "S06": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s06",
+   "email": "baseline-s06@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s06",
+   "id": 7,
+   "is_approver": true,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "admin",
+    "approver"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s06"
+  },
+  "status": 200
+ },
+ "S07": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s07",
+   "email": "baseline-s07@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s07",
+   "id": 8,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "user",
+    "auditor"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s07"
+  },
+  "status": 200
+ },
+ "S08": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s08",
+   "email": "baseline-s08@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s08",
+   "id": 9,
+   "is_approver": true,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "user"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s08"
+  },
+  "status": 200
+ },
+ "S09": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s09",
+   "email": "baseline-s09@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s09",
+   "id": 10,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s09"
+  },
+  "status": 200
+ },
+ "S10": {
+  "body": {
+   "active": false,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s10",
+   "email": "baseline-s10@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s10",
+   "id": 11,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "user"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s10"
+  },
+  "status": 200
+ },
+ "S11": {
+  "body": {
+   "code": "AUTH_TOKEN_INVALID",
+   "error": "無效或過期的 token"
+  },
+  "status": 401
+ },
+ "S12": {
+  "body": {
+   "code": "AUTH_AGENT_FORBIDDEN_ROUTE",
+   "error": "自動化主體不可使用此端點"
+  },
+  "status": 403
+ },
+ "S13": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s13",
+   "email": "baseline-s13@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s13",
+   "id": 13,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "admin"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s13"
+  },
+  "status": 200
+ },
+ "S14": {
+  "body": {
+   "active": true,
+   "can_self_create_agent": false,
+   "display_name": "baseline-s14",
+   "email": "baseline-s14@baseline.test",
+   "external_credential": false,
+   "full_name": "baseline-s14",
+   "id": 14,
+   "is_approver": false,
+   "is_ldap": false,
+   "local_display_name": null,
+   "owns_agents": false,
+   "product_version": "dev",
+   "provisioning_origin": "local",
+   "roles": [
+    "user"
+   ],
+   "source_ip": "192.0.2.1",
+   "totp_enabled": false,
+   "username": "baseline-s14"
+  },
+  "status": 200
+ }
+}

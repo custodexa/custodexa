@@ -95,6 +95,9 @@ func TestLoginLDAP_FirstLoginProvisionsShadowUser(t *testing.T) {
 	// 與其審計列同生共死，故本交易多一筆 audit_logs 寫入
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	// 權限版本推進：與角色指派同交易，置於提交之前
+	mock.ExpectExec(`UPDATE authz_state SET version = version \+ 1`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	expectFinishLoginUpdate(mock)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"io"
 	"log"
 	"os"
@@ -130,6 +131,9 @@ type RecordingService struct {
 	offsite OffsiteRetriever
 	// ledger 保留清理用的帳冊面；nil＝未組裝
 	ledger OffsiteRetentionLedger
+	// txSink／alerts 刪錄影的交易內審計與系統告警落地面（組裝根以 setter 注入；未注入時刪除回錯）
+	txSink port.TxSink
+	alerts port.SystemAlertSink
 }
 
 // SetOffsiteRetriever 接上離機取回面（組裝根）。
@@ -411,47 +415,6 @@ func (s *RecordingService) GetRecordingStats() (*RecordingStats, error) {
 	}
 
 	return stats, nil
-}
-
-// DeleteRecording 刪除錄製檔案
-func (s *RecordingService) DeleteRecording(sessionID uint) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// 查詢 Session
-	var session model.Session
-	result := database.DB.First(&session, sessionID)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return ErrSessionNotFound
-		}
-		return fmt.Errorf("查詢 Session 失敗: %w", result.Error)
-	}
-
-	// 檢查是否有錄製檔案
-	if session.RecordingPath == "" {
-		return ErrSessionHasNoRecording
-	}
-
-	filePath := session.RecordingPath
-
-	// 刪除檔案
-	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("刪除錄製檔案失敗: %w", err)
-	}
-
-	// 更新資料庫（清空錄製資訊）
-	updates := map[string]interface{}{
-		"recording_path": "",
-		"recording_size": 0,
-		"has_recording":  false,
-	}
-
-	if err := database.DB.Model(&model.Session{}).Where("id = ?", sessionID).Updates(updates).Error; err != nil {
-		return fmt.Errorf("更新 Session 失敗: %w", err)
-	}
-
-	return nil
 }
 
 // CleanupOldRecordings 依保留期清理錄影目錄（涵蓋文字 .cast、圖形 .guac 與

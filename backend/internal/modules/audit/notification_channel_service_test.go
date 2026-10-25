@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -18,7 +18,7 @@ func setupChannelDB(t *testing.T) *NotificationChannelService {
 	if err := db.AutoMigrate(&model.NotificationChannel{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return NewNotificationChannelService(db, nil)
+	return newChannelSvc(t, db, nil)
 }
 
 func mustSecret(t *testing.T, svc *NotificationChannelService, id uint) string {
@@ -45,6 +45,7 @@ func TestChannelUpdateSecretSemantics(t *testing.T) {
 	svc := setupChannelDB(t)
 
 	created, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "ops", URL: "https://hooks.example.com/x", Secret: "topsecret",
 	})
 	if err != nil {
@@ -54,6 +55,7 @@ func TestChannelUpdateSecretSemantics(t *testing.T) {
 	t.Run("空 secret 沿用既有值（改名不清金鑰）", func(t *testing.T) {
 		// Arrange & Act：只改名，secret 留空（等同編輯表單未重填/啟用開關 payload）
 		if _, err := svc.Update(created.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops-renamed", URL: "https://hooks.example.com/x",
 		}); err != nil {
 			t.Fatalf("Update: %v", err)
@@ -66,6 +68,7 @@ func TestChannelUpdateSecretSemantics(t *testing.T) {
 
 	t.Run("非空 secret 覆寫", func(t *testing.T) {
 		if _, err := svc.Update(created.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops-renamed", URL: "https://hooks.example.com/x", Secret: "rotated",
 		}); err != nil {
 			t.Fatalf("Update: %v", err)
@@ -77,6 +80,7 @@ func TestChannelUpdateSecretSemantics(t *testing.T) {
 
 	t.Run("clear_secret 顯式清除", func(t *testing.T) {
 		if _, err := svc.Update(created.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops-renamed", URL: "https://hooks.example.com/x", ClearSecret: true,
 		}); err != nil {
 			t.Fatalf("Update: %v", err)
@@ -88,6 +92,7 @@ func TestChannelUpdateSecretSemantics(t *testing.T) {
 
 	t.Run("Create 空 secret 即不簽名（語義不變）", func(t *testing.T) {
 		plain, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "plain", URL: "https://hooks.example.com/y",
 		})
 		if err != nil {
@@ -103,6 +108,7 @@ func TestChannelHasSecretFlag(t *testing.T) {
 	svc := setupChannelDB(t)
 
 	withSecret, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "signed", URL: "https://hooks.example.com/a", Secret: "sk",
 	})
 	if err != nil {
@@ -113,6 +119,7 @@ func TestChannelHasSecretFlag(t *testing.T) {
 	}
 
 	plain, err := svc.Create(&NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "plain", URL: "https://hooks.example.com/b",
 	})
 	if err != nil {
@@ -136,6 +143,7 @@ func TestChannelHasSecretFlag(t *testing.T) {
 
 	// clear_secret 後 HasSecret 應轉 false
 	cleared, err := svc.Update(withSecret.ID, &NotificationChannelRequest{
+		ActorID: 1, ActorName: "tester",
 		Name: "signed", URL: "https://hooks.example.com/a", ClearSecret: true,
 	})
 	if err != nil {
@@ -154,6 +162,7 @@ func TestChannelLanguageSemantics(t *testing.T) {
 	t.Run("Create 未給 language 預設 zh-TW", func(t *testing.T) {
 		svc := setupChannelDB(t)
 		created, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x",
 		})
 		if err != nil {
@@ -167,6 +176,7 @@ func TestChannelLanguageSemantics(t *testing.T) {
 	t.Run("Create 顯式提供合法值採用", func(t *testing.T) {
 		svc := setupChannelDB(t)
 		created, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops-en", URL: "https://hooks.example.com/x",
 			Language: strPtr(model.NotificationChannelLanguageEnUS),
 		})
@@ -181,6 +191,7 @@ func TestChannelLanguageSemantics(t *testing.T) {
 	t.Run("Update 省略 language 保留舊值", func(t *testing.T) {
 		svc := setupChannelDB(t)
 		created, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x",
 			Language: strPtr(model.NotificationChannelLanguageJaJP),
 		})
@@ -189,6 +200,7 @@ func TestChannelLanguageSemantics(t *testing.T) {
 		}
 		// 只改名，不帶 Language（nil）——比照 secret/url 的「未傳」語義
 		updated, err := svc.Update(created.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops-renamed", URL: "https://hooks.example.com/x",
 		})
 		if err != nil {
@@ -202,12 +214,14 @@ func TestChannelLanguageSemantics(t *testing.T) {
 	t.Run("Update 顯式空字串拒絕", func(t *testing.T) {
 		svc := setupChannelDB(t)
 		created, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x",
 		})
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
 		_, err = svc.Update(created.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x",
 			Language: strPtr(""),
 		})
@@ -223,12 +237,14 @@ func TestChannelLanguageSemantics(t *testing.T) {
 	t.Run("Update 白名單外值拒絕", func(t *testing.T) {
 		svc := setupChannelDB(t)
 		created, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x",
 		})
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
 		_, err = svc.Update(created.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x",
 			Language: strPtr("fr-FR"),
 		})
@@ -240,11 +256,13 @@ func TestChannelLanguageSemantics(t *testing.T) {
 	t.Run("Create 顯式空字串或白名單外值同拒", func(t *testing.T) {
 		svc := setupChannelDB(t)
 		if _, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x", Language: strPtr(""),
 		}); !errors.Is(err, ErrInvalidChannelLanguage) {
 			t.Fatalf("Create 顯式空字串應回 ErrInvalidChannelLanguage，得到 %v", err)
 		}
 		if _, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "ops", URL: "https://hooks.example.com/x", Language: strPtr("fr-FR"),
 		}); !errors.Is(err, ErrInvalidChannelLanguage) {
 			t.Fatalf("Create 白名單外值應回 ErrInvalidChannelLanguage，得到 %v", err)
@@ -257,6 +275,7 @@ func TestChannelSlackForcesEmptySecret(t *testing.T) {
 
 	t.Run("Create slack 帶 secret 也強制清空", func(t *testing.T) {
 		ch, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "slack", Type: model.NotificationChannelTypeSlack,
 			URL: "https://hooks.slack.com/services/x", Secret: "ignored",
 		})
@@ -270,6 +289,7 @@ func TestChannelSlackForcesEmptySecret(t *testing.T) {
 
 	t.Run("webhook→slack 轉換清掉殘留 secret", func(t *testing.T) {
 		wh, err := svc.Create(&NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "wh", URL: "https://hooks.example.com/y", Secret: "sk",
 		})
 		if err != nil {
@@ -277,6 +297,7 @@ func TestChannelSlackForcesEmptySecret(t *testing.T) {
 		}
 		// 轉為 slack（不帶 secret、不帶 clear_secret）——原殘留 secret 應被清掉
 		converted, err := svc.Update(wh.ID, &NotificationChannelRequest{
+			ActorID: 1, ActorName: "tester",
 			Name: "wh", Type: model.NotificationChannelTypeSlack, URL: "https://hooks.slack.com/services/z",
 		})
 		if err != nil {
@@ -307,6 +328,7 @@ func TestChannelCreateHonorsEnabledFlag(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := setupChannelDB(t)
 			created, err := svc.Create(&NotificationChannelRequest{
+				ActorID: 1, ActorName: "tester",
 				Name: "ops", URL: "https://hooks.example.com/x", Enabled: tc.enabled,
 			})
 			if err != nil {

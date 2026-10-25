@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 
 	"github.com/custodexa/backend/internal/apierror"
@@ -127,11 +128,25 @@ func AuthMiddleware(authService *identity.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		// 伺服器端解析主體：每個請求自資料庫現查有效指派與能力，不快取；
+		// 授權判斷不讀 JWT 內的 role claim，也不再把它放進脈絡。解析失敗一律拒絕，
+		// 不以 token 內的角色兜底。
+		principal, err := authService.ResolvePrincipal(claims.UserID, authz.TokenFacts{
+			SubjectKind: model.KindHuman,
+			AuthMethod:  claims.AuthContext.EffectiveMethod(),
+			CredEpoch:   claims.AuthContext.CredEpoch,
+		})
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleQuery, err)
+			c.Abort()
+			return
+		}
+
 		// 將使用者資訊存入 context
 		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
+		SetPrincipal(c, principal)
 		// 認證脈絡：connect token 簽發點須據此填入 grant，
 		// 使協議連線可回溯其 provider。**不得以「查外部身分表反推」代替**——
 		// 混合帳號（同時有本地密碼與外部身分）會被誤標，導致 provider 停用時
@@ -140,62 +155,6 @@ func AuthMiddleware(authService *identity.AuthService) gin.HandlerFunc {
 		c.Set("principal_kind", model.KindHuman)
 
 		c.Next()
-	}
-}
-
-// RequireRole 要求特定角色的中間件（簡化版本，直接使用 context 中的角色）
-func RequireRole(requiredRole string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// 獲取用戶角色（由 AuthMiddleware 設定）
-		role, exists := c.Get("role")
-		if !exists {
-			abortUnauthenticated(c, apierror.CodeUnauthenticated)
-			return
-		}
-
-		roleStr, ok := role.(string)
-		if !ok || roleStr != requiredRole {
-			apierror.Respond(c, http.StatusForbidden, apierror.CodeRoleRequired, map[string]any{"role": requiredRole})
-			c.Abort()
-			return
-		}
-
-		c.Next()
-	}
-}
-
-// RequireAnyRole 要求「屬於清單中任一角色」的中間件（audit-checkpoint-chain O3）。
-//
-// **為何是中間件而非 handler 內檢查**：本專案的路由 golden 逐格記錄每條路由的
-// 中間件鏈，授權寫在鏈上時「這條路由由誰守」是 golden 可觀察的事實；搬進
-// handler 函式體後，golden 只會看到鏈短了一格，日後有人不慎移除檢查也不會有
-// 任何守衛轉紅。既有 admin-or-auditor 的 handler 內檢查（asset_handler.go）
-// 是既存形態，本函式不回頭改寫它們，但新面一律走這裡。
-//
-// 錯誤碼沿用 CodeRoleRequired，param 取清單首項（語義＝「至少需要這個層級」），
-// 避免為多角色另立一碼而使前端需要處理兩種形狀
-func RequireAnyRole(roles ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		role, exists := c.Get("role")
-		if !exists {
-			abortUnauthenticated(c, apierror.CodeUnauthenticated)
-			return
-		}
-		roleStr, ok := role.(string)
-		if ok {
-			for _, allowed := range roles {
-				if roleStr == allowed {
-					c.Next()
-					return
-				}
-			}
-		}
-		want := ""
-		if len(roles) > 0 {
-			want = roles[0]
-		}
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeRoleRequired, map[string]any{"role": want})
-		c.Abort()
 	}
 }
 
@@ -278,7 +237,11 @@ func authenticateAgent(c *gin.Context, auth *identity.AuthService, token string)
 	c.Set("userID", principal.UserID)
 	c.Set("username", principal.Username)
 	c.Set("email", principal.Email)
-	c.Set("role", model.RoleUser)
+	// agent 主體：能力固定為一般使用者範本（method＋path allowlist 由既有中介層處理）
+	SetPrincipal(c, authz.NewPrincipal(principal.UserID, authz.TokenFacts{
+		SubjectKind: model.KindAgent,
+		CredEpoch:   principal.CredentialEpoch,
+	}, nil))
 	// Agent tokens carry no claims, so the auth context is built from the live row:
 	// local method (no provider dimension) and the principal's current credential
 	// epoch. Without this, connect grants were issued with CredEpoch 0 and the

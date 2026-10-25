@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/custodexa/backend/internal/material"
 	"log"
+	"net"
 	"time"
 
+	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
 	"github.com/custodexa/backend/internal/model"
@@ -44,6 +46,8 @@ type memberRun struct {
 	origin         RotationRecordOrigin
 	credentialName string
 	secretType     string
+	// recovery 發起者失權後的有限驗證（只 Verify 與本地提交）
+	recovery bool
 }
 
 // Run 推進本輪：把排隊中與已到期的成員各推一步。
@@ -138,6 +142,9 @@ func recordsAfter(db *gorm.DB, watermark uint, accountIDs []uint) []model.Change
 //
 // 終局失敗與已收束的成員先被重新排入本輪（**重用同一個待生效版本**，不產生第二個
 // 秘密——每次補跑換一組新密碼會讓「遠端到底是哪一版」永遠答不出來）。
+//
+// **只給有人在場的補跑用**：重新排入會再對遠端下達一次改密。背景排程走
+// AdvanceMemberInBackground，不重新排入。
 func (s *CredentialRotationService) RunMember(ctx context.Context, rotationID, memberID uint) error {
 	return s.RunMemberFor(ctx, rotationID, memberID, RotationRecordOrigin{})
 }
@@ -166,16 +173,7 @@ func (s *CredentialRotationService) RunMemberFor(ctx context.Context, rotationID
 	}
 	switch member.State {
 	case model.CredentialMemberTerminalFailed, model.CredentialMemberAbandoned:
-		unlock := lockRotationAccount(member.AccountID)
-		err := s.db.Transaction(func(tx *gorm.DB) error {
-			m, lerr := loadRotationMember(tx, rot.ID, memberID)
-			if lerr != nil {
-				return lerr
-			}
-			return transitionMember(tx, m, model.CredentialMemberQueued, memberTransition{})
-		})
-		unlock()
-		if err != nil {
+		if err := s.requeueMember(ctx, rot, memberID); err != nil {
 			return err
 		}
 	case model.CredentialMemberApplied:
@@ -184,6 +182,131 @@ func (s *CredentialRotationService) RunMemberFor(ctx context.Context, rotationID
 	}
 	s.runMember(ctx, rot, memberID, origin)
 	return nil
+}
+
+// requeueMember 把最終失敗或已收束的成員重新排入本輪：取得帳號鎖、於寫入交易內重讀成員後
+// 才判定能力，通過即在同一筆更新內把狀態改為 queued 並記下重排者、當時通過的權限世代與時刻。
+//
+// 判定不在等鎖之前做：等鎖期間可能很長，等到鎖時點擊者可能已失權，寫入前的判定必須是
+// 取得鎖之後的那一次。重排紀錄與狀態同交易落列，之後每次派送（手動或背景接手）都以本輪
+// 發起者與重排者雙方當下的能力重驗（見 revalidateMember），使重排與派送之間的解鎖窗口
+// 不會讓已失權的重排者經由背景排程把工作重新打開。等鎖期間成員已被別條路徑推離可重排
+// 狀態時為無操作（由之後的 runMember 依當下狀態處理）。
+func (s *CredentialRotationService) requeueMember(ctx context.Context, rot *model.CredentialRotation, memberID uint) error {
+	member, err := loadRotationMember(s.db, rot.ID, memberID)
+	if err != nil {
+		return err
+	}
+	unlock := lockRotationAccount(member.AccountID)
+	defer unlock()
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		m, err := loadRotationMember(tx, rot.ID, memberID)
+		if err != nil {
+			return err
+		}
+		switch m.State {
+		case model.CredentialMemberTerminalFailed, model.CredentialMemberAbandoned:
+		default:
+			return nil
+		}
+		// 重新排入是一次寫入，之後還會再對遠端下達：寫入前（持鎖、同交易）判定能力，缺能力即拒（fail closed）
+		actorID, actorName, version, err := s.requireRequeue(ctx, tx, rot)
+		if err != nil {
+			return err
+		}
+		if err := transitionMember(tx, m, model.CredentialMemberQueued, memberTransition{}); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.CredentialRotationMember{}).Where("id = ?", m.ID).Updates(map[string]any{
+			"requeued_by": actorID, "requeued_by_name": actorName,
+			"requeued_authz_version": version, "requeued_at": time.Now(),
+		}).Error; err != nil {
+			return fmt.Errorf("寫入重排紀錄失敗: %w", err)
+		}
+		return nil
+	})
+}
+
+// requireRequeue 重新排入最終失敗或已收束成員前的能力判定（遠端輪替能力，影響集合為憑證全部掛載），
+// 於呼叫端持鎖的寫入交易內執行；通過回重排者（識別與名稱）與當下通過的權限世代版本。
+// 有點擊者：判點擊者當下的能力。沒有點擊者（重啟後的補跑）：以本輪持久授權脈絡的發起者當下能力
+// 重驗；脈絡缺失、讀不到或發起者已失權一律拒絕，不沿用失權者的脈絡、也不以「無從判定」放行。
+func (s *CredentialRotationService) requireRequeue(ctx context.Context, tx *gorm.DB,
+	rot *model.CredentialRotation) (actorID uint, actorName string, version int64, err error) {
+
+	if uid, uname := model.UserFromContext(ctx); uid != 0 {
+		decision, err := s.requireBoundManagementDecision(ctx, tx, CredOpRotate, rot.CredentialID, CredCapRotate)
+		if err != nil {
+			return 0, "", 0, err
+		}
+		return uid, uname, decision.AuthzVersion, nil
+	}
+	auth, err := loadJobAuthorization(tx, rot.AuthorizationID)
+	if err != nil {
+		return 0, "", 0, fmt.Errorf("%w: 補跑缺可用的授權脈絡: %v", ErrCredentialAuthzUnavailable, err)
+	}
+	assetIDs, err := credentialBoundAssetIDs(tx, rot.CredentialID)
+	if err != nil {
+		return 0, "", 0, err
+	}
+	reason, version := revalidateAuthorizationVersion(s.mgmt, tx, ctx, auth, CredentialManagementRequest{
+		CredentialIDs: []uint{rot.CredentialID}, MountedAssetIDs: assetIDs,
+	}, []string{CredCapRotate})
+	switch reason {
+	case "":
+		return auth.ActorID, auth.ActorName, version, nil
+	case model.ChangeSecretReasonAuthzRevoked:
+		return 0, "", 0, ErrCredentialBindForbidden
+	default:
+		return 0, "", 0, fmt.Errorf("%w: 補跑重驗未通過: %s", ErrCredentialAuthzUnavailable, reason)
+	}
+}
+
+// AdvanceMemberInBackground 背景排程推進單一成員（到期成員掃描與候選重試排程共用）。
+//
+// 與 RunMember 的差別在於**不重新排入**：背景只推進本輪仍待處理的成員——排隊中、等待
+// 重試（到期才推）、已送出未驗證（到期才推，且只以新秘密登入驗證、不下達）。最終失敗、
+// 已收束、已就位的成員一律不碰：把它們重新排入就會再對遠端下達一次改密，而無人在場時
+// 沒有人確認過那台主機此刻的實際狀態，重下一次可能蓋掉別條路徑剛改好的秘密。那要有人
+// 按下逐台補跑才做。也只推進進行中的那一輪（放棄後停止自動化，見 DueMembers）。
+//
+// 回傳 true＝本次確實推進了一步；false＝依上述規則不推進（不是錯誤）。
+func (s *CredentialRotationService) AdvanceMemberInBackground(ctx context.Context, rotationID, memberID uint) (bool, error) {
+	rot, err := loadRotation(s.db, rotationID)
+	if err != nil {
+		return false, err
+	}
+	if rot.Status != model.CredentialRotationRunning {
+		return false, nil
+	}
+	if err := assertRotationTargetStillPending(s.db, rot); err != nil {
+		return false, err
+	}
+	member, err := loadRotationMember(s.db, rot.ID, memberID)
+	if err != nil {
+		return false, err
+	}
+	if !memberDueInBackground(member, time.Now()) {
+		return false, nil
+	}
+	// runMember 取鎖後重讀，只處理排隊、等待重試與已送出未驗證三格：等鎖期間轉成
+	// 最終失敗或已收束的成員，在那裡同樣是無操作
+	s.runMember(ctx, rot, memberID, RotationRecordOrigin{})
+	return true, nil
+}
+
+// memberDueInBackground 背景是否推進這個成員（見 AdvanceMemberInBackground）。
+//
+// 下次嘗試時刻為空＝成員沒有自己的退避（遠端結果未知而轉入已送出未驗證時即如此），
+// 節奏由該掛載的候選列承擔；有值則以它為準——兩套排程各推各的，就是兩套鎖帳風險。
+func memberDueInBackground(member *model.CredentialRotationMember, now time.Time) bool {
+	switch member.State {
+	case model.CredentialMemberQueued:
+		return true
+	case model.CredentialMemberRetryWait, model.CredentialMemberChangedUnverified:
+		return member.NextAttemptAt == nil || !member.NextAttemptAt.After(now)
+	}
+	return false
 }
 
 // runMember 單一成員推進一步；任何錯誤只落成員狀態與原因碼，不上拋。
@@ -212,9 +335,70 @@ func (s *CredentialRotationService) runMember(ctx context.Context, rot *model.Cr
 	}
 	switch member.State {
 	case model.CredentialMemberQueued, model.CredentialMemberRetryWait:
+		// 每次遠端下達之前以發起者當下的能力重驗（背景補跑、重試、手動補跑同一道關卡）
+		if reason := s.revalidateMember(ctx, rot, member); reason != "" {
+			s.stopMember(rot, member, reason, run)
+			return
+		}
 		s.deliverMember(ctx, rot, member, run)
 	case model.CredentialMemberChangedUnverified:
-		s.verifyMember(ctx, rot, member, run)
+		reason := s.revalidateMember(ctx, rot, member)
+		if reason == "" {
+			s.verifyMember(ctx, rot, member, run)
+			return
+		}
+		// 失權：已確認下達且目標未被改動時，只開放「只驗證、只提交本地」的有限收斂；
+		// 其餘情形停止（成員與候選保留），不發任何新的遠端變更
+		if reason == model.ChangeSecretReasonAuthzRevoked {
+			applied := false
+			groupCandidate := false
+			if cand, cerr := s.candidates.FindByAccount(member.AccountID); cerr == nil && cand != nil {
+				applied = cand.Applied
+				groupCandidate = rot.Mode == model.CredentialRotationModeGroup
+			}
+			reason = recoveryVerdict(s.db, s.hostKeys, applied, rot.StartedAt, member.TargetFingerprint,
+				member.AccountID, hostIdentityJobOfMember(member, groupCandidate))
+			if reason == model.ChangeSecretReasonHostIdentityChanged {
+				// 失權後的有限驗證在判定階段被身分擋下：沒有撥號，補寫停止審計
+				s.recordMemberRecoveryStop(rot, member)
+			}
+			if reason == "" {
+				run.recovery = true
+				if s.stopNotify != nil && claimRecoveryAlert(s.db, &model.CredentialRotationMember{}, member.ID) {
+					s.stopNotify("改密工作於授權失效後進入有限驗證",
+						fmt.Sprintf("rotation=%d asset_id=%d account=%s 發起者已失權，因遠端變更已送出，僅做驗證與本地提交（不再下達新變更），請具權者知悉",
+							rot.ID, member.AssetID, member.Username))
+				}
+				s.verifyMember(ctx, rot, member, run)
+				return
+			}
+		}
+		s.stopUnverifiedMember(rot, member, reason, run)
+	}
+}
+
+// stopUnverifiedMember 已下達未驗證的成員因授權停止：成員與候選保留，退避到期後再看，
+// 逾期則終局並沿原放棄告警。同一原因的告警每個成員只發一次，不隨退避週期重複。
+func (s *CredentialRotationService) stopUnverifiedMember(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember, reason string, run memberRun) {
+
+	logJobStop(fmt.Sprintf("rotation=%d member=%d", rot.ID, member.ID), reason, rot.RequestedBy)
+	first := member.LastError != reason
+	s.stayUnverified(rot, member, reason, run)
+	if s.stopNotify == nil {
+		return
+	}
+	if member.State == model.CredentialMemberTerminalFailed || time.Since(rot.StartedAt) >= recoveryWindow {
+		s.stopNotify("改密候選憑證已放棄重試",
+			fmt.Sprintf("rotation=%d asset_id=%d account=%s 已逾期限仍無法驗證，需管理員以帶外途徑處置",
+				rot.ID, member.AssetID, member.Username))
+		return
+	}
+	// 主機身分停止有自己的停止審計與通知（每個身分狀態一次），不套授權失效的告警
+	if first && reason != model.ChangeSecretReasonHostIdentityChanged {
+		s.stopNotify("改密工作因授權失效停止",
+			fmt.Sprintf("rotation=%d asset_id=%d account=%s reason=%s（遠端未被新增變更，候選保留，需具權者處置）",
+				rot.ID, member.AssetID, member.Username, reason))
 	}
 }
 
@@ -269,6 +453,8 @@ type memberContext struct {
 	newPassword   *material.Secret
 	newPrivateKey *material.Secret
 	secretType    string
+	// deliveryGuard 下達握手的放行計數與停止審計用（只在下達路徑建立）
+	deliveryGuard *immediateVerifyGuard
 }
 
 // prepareMember 組出目標描述並取回新舊兩組秘密。
@@ -326,6 +512,10 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 		return nil, model.ChangeSecretReasonCredentialLoadFailed
 	}
 	transferred = true
+	// 主機金鑰回呼帶撥號脈絡：輪替屬背景路徑，不符時留痕後拒絕；連線使用者為輪替發起者
+	// 基底回呼 fail-closed：正式撥號點都會依路線覆寫成綁定或預期身分回呼，
+	// 漏覆寫的新呼叫點在握手就被拒絕，不會落到一般的首次信任判定
+	hostKeyCB := ssh.HostKeyCallback(func(string, net.Addr, ssh.PublicKey) error { return ErrHostKeyCheckFailed })
 	return &memberContext{
 		target: rotationTarget{
 			asset:      asset,
@@ -333,7 +523,7 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 			username:   member.Username,
 			secretType: secretType,
 			addr:       rotationAddr(asset, channel),
-			hostKeyCB:  s.hostKeys.Callback(member.AssetID),
+			hostKeyCB:  hostKeyCB,
 		},
 		logTarget: changeSecretTarget{
 			assetID: member.AssetID, accountID: member.AccountID,
@@ -392,11 +582,150 @@ func (s *CredentialRotationService) targetSecret(ctx context.Context,
 	return resolved, ""
 }
 
+// memberHostKeyDialContext 輪替成員撥號的主機金鑰脈絡：輪替屬背景路徑，不符時留痕後拒絕；
+// 連線使用者為輪替發起者。
+func memberHostKeyDialContext(rot *model.CredentialRotation, member *model.CredentialRotationMember) HostKeyDialContext {
+	return HostKeyDialContext{
+		AssetID: member.AssetID, Path: HostKeyPathCredentialRotation,
+		UserID: rot.RequestedBy, Username: rot.RequestedByName, AccountID: member.AccountID,
+		ConnectionRef: fmt.Sprintf("credential_rotation_member:%d", member.ID),
+	}
+}
+
+// deliveryDecision 下達前的分流結果：路線，以及整組模式下分流當下該帳號的候選列是否存在。
+type deliveryDecision struct {
+	route                deliveryRoute
+	groupCandidateExists bool
+}
+
+// decideDelivery 依成員的派送證據分流。必須在 ensureCandidate 之前呼叫：整組模式的候選列
+// 只在重建之前的狀態才是「是否曾下達」的證據；拆分模式的候選在起始交易就備妥，不看候選列。
+func (s *CredentialRotationService) decideDelivery(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember) (deliveryDecision, string) {
+
+	exists := false
+	if rot.Mode != model.CredentialRotationModeSplit {
+		cand, err := s.candidates.FindByAccount(member.AccountID)
+		if err != nil {
+			return deliveryDecision{}, model.ChangeSecretReasonCandidateQueryFailed
+		}
+		exists = cand != nil
+	}
+	return deliveryDecision{route: classifyMemberDelivery(member, rot.Mode, exists), groupCandidateExists: exists}, ""
+}
+
+// guardDeliveryIdentity 已有送出證據（沿原快照）或不可比對（停止）的路線，在撥號前以查庫判定放行與否。
+// 回傳非空＝停止細節；Bind 路線不經此判定。
+func guardDeliveryIdentity(db *gorm.DB, member *model.CredentialRotationMember,
+	asset *model.Asset, dec deliveryDecision) string {
+
+	if dec.route == deliveryRouteBind {
+		return ""
+	}
+	detail := hostIdentityVerdict(db, hostIdentityJobOfMember(member, dec.groupCandidateExists), asset)
+	if detail == "" && dec.route == deliveryRouteBlocked {
+		return hostIdentityUnboundLegacy // 判定與分流不一致時以較嚴者為準
+	}
+	return detail
+}
+
+// attachDeliveryIdentity 依路線把主機身分綁定接到本次下達：
+//   - Bind：SSH 家族用綁定回呼（第一次握手在認證前綁定）；WinRM 在 Rotate 之前條件式寫入綁定。
+//   - Pinned：以成員自己的快照為預期身分，不重綁（WinRM 沒有金鑰可比）。
+//
+// 回傳非空原因碼＝尚未動遠端的乾淨失敗。
+func (s *CredentialRotationService) attachDeliveryIdentity(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember, mc *memberContext, dec deliveryDecision) string {
+
+	winrm := rotationTransportOf(mc.target.asset) == model.HostKeyTransportWinRM
+	mc.deliveryGuard = s.memberVerifyGuard(rot, member)
+	if winrm {
+		// WinRM 沒有 SSH 握手，也就沒有主機金鑰回呼可言：不留 fail-closed 的基底回呼，與補跑驗證路徑一致
+		mc.target.hostKeyCB = nil
+	}
+	switch dec.route {
+	case deliveryRouteBind:
+		if winrm {
+			if err := s.hostKeys.BindWinRM(HostKeyBindTarget{MemberID: member.ID}); err != nil {
+				return model.ChangeSecretReasonHostKeyCheckFailed
+			}
+			return ""
+		}
+		cb, _ := s.hostKeys.CallbackForBinding(memberHostKeyDialContext(rot, member),
+			HostKeyBindTarget{MemberID: member.ID})
+		mc.target.hostKeyCB = mc.deliveryGuard.countPasses(cb)
+	case deliveryRoutePinned:
+		if !winrm {
+			mc.target.hostKeyCB = mc.deliveryGuard.countPasses(s.hostKeys.CallbackForPinned(
+				memberHostKeyDialContext(rot, member),
+				HostKeyPin{Algorithm: member.HostKeyAlgorithm, Fingerprint: member.HostKeyFingerprint}))
+		}
+	}
+	return ""
+}
+
+// stopDelivery 撥號前的主機身分守衛不放行：沒有送出任何新秘密，成員轉已下達未驗證（結果未知的既有處置），
+// 原因碼為主機身分變更，之後由人工承接。
+func (s *CredentialRotationService) stopDelivery(rot *model.CredentialRotation, member *model.CredentialRotationMember,
+	detail string, run memberRun) {
+
+	reason := hostIdentityRecoveryReason(detail)
+	log.Printf("[CredentialRotation] 撥號前主機身分守衛停止: member=%d asset=%d detail=%s", member.ID, member.AssetID, detail)
+	if err := s.markUnverified(member, reason); err == nil {
+		s.recordMember(member, model.ChangeSecretUnverified, reason, run)
+	}
+	if reason == model.ChangeSecretReasonHostIdentityChanged {
+		s.recordMemberPrecheckStop(rot, member, detail)
+	}
+}
+
+// deliveryIdentityStopped 下達握手被主機身分回呼拒絕（含被包裝的錯誤）。
+//   - 已送出（Pinned 路線沿舊憑證快照撥號，或首次派送的綁定回呼已放行過至少一次，其後即送出認證）：
+//     不是「遠端確定沒改成」，不可清候選副本也不可走乾淨失敗。保留工作證據、成員轉已下達未驗證
+//     （原因碼為主機身分變更），並寫 phase=handshake 的停止審計。
+//   - 首次派送（Bind 路線）且回呼從未放行：認證之前就被拒絕，秘密並未送出，維持乾淨失敗
+//     （不標記已送出、候選副本依首次派送規則清除、可重試），仍補寫 verification_sent=false 的停止審計。
+//
+// 放行計數不可得（回呼沒有經過計數）時視為已送出，取較嚴的處置。回傳是否已處理。
+func (s *CredentialRotationService) deliveryIdentityStopped(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember, mc *memberContext, cand *model.ChangeSecretCandidate,
+	dec deliveryDecision, err error, run memberRun) bool {
+
+	if !errors.Is(err, ErrHostIdentityChanged) {
+		return false
+	}
+	guard := mc.deliveryGuard
+	if guard == nil {
+		guard = s.memberVerifyGuard(rot, member)
+	}
+	passes, counted := guard.passCount()
+	if dec.route == deliveryRouteBind && counted && passes == 0 {
+		log.Printf("[CredentialRotation] 首次派送綁定握手主機身分不符（尚未送出秘密）: member=%d asset=%d", member.ID, member.AssetID)
+		s.memberIdentityStopped(guard, member, err)
+		s.discardUndeliveredCandidate(rot, cand)
+		s.failClean(rot, member, model.ChangeSecretReasonHostKeyCheckFailed, run)
+		return true
+	}
+	reason := model.ChangeSecretReasonHostIdentityChanged
+	log.Printf("[CredentialRotation] 下達握手主機身分不符: member=%d asset=%d", member.ID, member.AssetID)
+	if merr := s.markUnverified(member, reason); merr == nil {
+		s.recordMember(member, model.ChangeSecretUnverified, reason, run)
+	}
+	s.memberIdentityStopped(guard, member, err)
+	return true
+}
+
 // deliverMember 對遠端下達新秘密並驗證。
 func (s *CredentialRotationService) deliverMember(ctx context.Context,
 	rot *model.CredentialRotation, member *model.CredentialRotationMember, run memberRun) {
 
 	if err := s.transition(member, model.CredentialMemberChanging, memberTransition{}); err != nil {
+		return
+	}
+	// 分流早於建回呼與重建候選副本
+	dec, reason := s.decideDelivery(rot, member)
+	if reason != "" {
+		s.failClean(rot, member, reason, run)
 		return
 	}
 	mc, reason := s.prepareMember(ctx, rot, member)
@@ -406,27 +735,39 @@ func (s *CredentialRotationService) deliverMember(ctx context.Context,
 	}
 
 	defer mc.Destroy()
+	if detail := guardDeliveryIdentity(s.db, member, mc.target.asset, dec); detail != "" {
+		s.stopDelivery(rot, member, detail, run)
+		return
+	}
 	cand, reason := s.ensureCandidate(ctx, rot, member, mc)
 	if reason != "" {
 		s.failClean(rot, member, reason, run)
 		return
 	}
-
-	if mc.secretType == model.ChangeSecretTypeSSHKey {
-		s.deliverKey(ctx, rot, member, mc, cand, run)
+	if reason := s.attachDeliveryIdentity(rot, member, mc, dec); reason != "" {
+		s.discardUndeliveredCandidate(rot, cand)
+		s.failClean(rot, member, reason, run)
 		return
 	}
-	s.deliverPassword(ctx, rot, member, mc, cand, run)
+
+	if mc.secretType == model.ChangeSecretTypeSSHKey {
+		s.deliverKey(ctx, rot, member, mc, cand, dec, run)
+		return
+	}
+	s.deliverPassword(ctx, rot, member, mc, cand, dec, run)
 }
 
 // deliverPassword 密碼型別：下達 → 標記已下達 → 以新密驗證。
 func (s *CredentialRotationService) deliverPassword(ctx context.Context,
 	rot *model.CredentialRotation, member *model.CredentialRotationMember,
-	mc *memberContext, cand *model.ChangeSecretCandidate, run memberRun) {
+	mc *memberContext, cand *model.ChangeSecretCandidate, dec deliveryDecision, run memberRun) {
 
 	oldSecret := mc.old.Password
 	if err := withProtocolPair(oldSecret, mc.newPassword, func(old, next []byte) error { return mc.exec.Rotate(ctx, mc.target, old, next) }); err != nil {
 		logRemoteCause(mc.logTarget, "改密失敗", err)
+		if s.deliveryIdentityStopped(rot, member, mc, cand, dec, err, run) {
+			return
+		}
 		reason, clean := classifyRotationError(err)
 		if clean {
 			s.discardUndeliveredCandidate(rot, cand)
@@ -438,14 +779,26 @@ func (s *CredentialRotationService) deliverPassword(ctx context.Context,
 		}
 		return
 	}
-	_ = s.candidates.MarkApplied(cand.ID)
+	if merr := s.candidates.MarkApplied(cand.ID); merr != nil {
+		log.Printf("[CredentialRotation] 標記候選已下達失敗 member=%d err=%v", member.ID, merr)
+	}
 	if err := s.markUnverified(member, ""); err != nil {
 		return
 	}
-	if err := withProtocolSecret(mc.newPassword, func(next []byte) error { return mc.exec.Verify(ctx, mc.target, next) }); err != nil {
+	// 立即 Verify 會再送一次新秘密：先重讀成員列做撥號前查庫，撥號只認綁定的金鑰
+	guard := s.memberVerifyGuard(rot, member)
+	verifyTarget := mc.target
+	cb, err := guard.prepare(mc.target.asset)
+	if err == nil {
+		verifyTarget.hostKeyCB = cb
+		err = withProtocolSecret(mc.newPassword, func(next []byte) error { return mc.exec.Verify(ctx, verifyTarget, next) })
+	}
+	if err != nil {
 		logRemoteCause(mc.logTarget, "新密驗證失敗", err)
-		_, _ = s.candidates.RecordFailure(cand, model.ChangeSecretReasonVerifyFailed)
-		s.stayUnverified(rot, member, model.ChangeSecretReasonVerifyFailed, run)
+		s.memberIdentityStopped(guard, member, err)
+		reason := verifyFailureReason(err, model.ChangeSecretReasonVerifyFailed)
+		_, _ = s.candidates.RecordFailure(cand, reason)
+		s.stayUnverified(rot, member, reason, run)
 		return
 	}
 	s.commitApplied(ctx, rot, member, mc, run)
@@ -458,7 +811,7 @@ func (s *CredentialRotationService) deliverPassword(ctx context.Context,
 // 「動遠端」與「驗證」兩步，無法以兩次獨立呼叫表達。
 func (s *CredentialRotationService) deliverKey(ctx context.Context,
 	rot *model.CredentialRotation, member *model.CredentialRotationMember,
-	mc *memberContext, cand *model.ChangeSecretCandidate, run memberRun) {
+	mc *memberContext, cand *model.ChangeSecretCandidate, dec deliveryDecision, run memberRun) {
 
 	newLine, err := publicLineFromOwnedKey(mc.newPrivateKey)
 	if err != nil {
@@ -473,15 +826,30 @@ func (s *CredentialRotationService) deliverKey(ctx context.Context,
 	}
 	// 既有金鑰（含使用者自放的）一律保留：整組輪替換的是本系統推送的那一把，
 	// 順手清掉別人放的鑰會讓管理者失去自己的入口，而他的操作裡沒有一步表達過這個意思
+	guard := s.memberVerifyGuard(rot, member)
+	mc.target.verifyHostKeyCB = func() (ssh.HostKeyCallback, error) { return guard.prepare(mc.target.asset) }
+	// 首次寫入與刪舊鑰各是一次遠端寫入：寫入之前以同一道成員判定短交易重驗（與下達入口同一關卡，
+	// 通過即更新 dispatch claim），登入、讀檔與驗新期間的撤權或移出範圍在下一次寫入之前生效
+	recheck := func(string) string { return s.revalidateMember(ctx, rot, member) }
 	err = withProtocolPair(mc.old.Password, mc.old.PrivateKey, func(password, key []byte) error {
 		return withProtocolSecret(mc.newPrivateKey, func(next []byte) error {
 			return s.keyApplier(ctx, mc.exec, mc.target, mc.logTarget,
 				password, key, next, newLine, previousLine,
 				model.KeyStrategyAppendReplace,
-				func() { _ = s.candidates.MarkApplied(cand.ID) })
+				func() error { return s.candidates.MarkApplied(cand.ID) }, recheck)
 		})
 	})
+	var stopped *dispatchStoppedError
+	if errors.As(err, &stopped) {
+		s.stopKeyDelivery(rot, member, cand, stopped, run)
+		return
+	}
 	if err != nil {
+		// 身分拒絕若來自驗證階段的回呼（verify 守衛已走到），沿用下面的未知分流與驗證守衛留痕；
+		// 否則是下達的舊憑證握手被拒
+		if !guard.reached() && s.deliveryIdentityStopped(rot, member, mc, cand, dec, err, run) {
+			return
+		}
 		reason, clean := classifyRotationError(err)
 		if clean {
 			s.discardUndeliveredCandidate(rot, cand)
@@ -492,12 +860,39 @@ func (s *CredentialRotationService) deliverKey(ctx context.Context,
 		if merr := s.markUnverified(member, reason); merr == nil {
 			s.recordMember(member, model.ChangeSecretUnverified, reason, run)
 		}
+		s.memberIdentityStopped(guard, member, err)
 		return
 	}
 	if err := s.markUnverified(member, ""); err != nil {
 		return
 	}
 	s.commitApplied(ctx, rot, member, mc, run)
+}
+
+// stopKeyDelivery 金鑰下達途中重驗未通過（處置同單帳號路徑 rotateKey）：
+// 首次寫入之前停下＝遠端未改動，候選依模式處置、成員停止；刪舊鑰之前停下＝新鑰已寫入、舊鑰未刪，
+// 候選保留、成員停在已下達未驗證，之後只走有限驗證，不再發新的遠端變更。
+func (s *CredentialRotationService) stopKeyDelivery(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember, cand *model.ChangeSecretCandidate,
+	stopped *dispatchStoppedError, run memberRun) {
+
+	if !stopped.delivered {
+		s.discardUndeliveredCandidate(rot, cand)
+		s.stopMember(rot, member, stopped.reason, run)
+		return
+	}
+	_, _ = s.candidates.RecordFailure(cand, stopped.reason)
+	if err := s.markUnverified(member, stopped.reason); err != nil {
+		return
+	}
+	s.recordMember(member, model.ChangeSecretUnverified, stopped.reason, run)
+	logJobStop(fmt.Sprintf("rotation=%d member=%d", rot.ID, member.ID), stopped.reason, rot.RequestedBy)
+	s.auditMemberStop(rot, member, stopped.reason)
+	if s.stopNotify != nil {
+		s.stopNotify("改密工作因授權失效停止",
+			fmt.Sprintf("rotation=%d asset_id=%d account=%s reason=%s（遠端未被新增變更，候選保留，需具權者處置）",
+				rot.ID, member.AssetID, member.Username, stopped.reason))
+	}
 }
 
 // verifyMember 對停在「已下達、未驗證」的成員再驗一次。
@@ -507,25 +902,90 @@ func (s *CredentialRotationService) deliverKey(ctx context.Context,
 func (s *CredentialRotationService) verifyMember(ctx context.Context,
 	rot *model.CredentialRotation, member *model.CredentialRotationMember, run memberRun) {
 
+	// 撥號前先查庫（早於取回秘密）：新秘密已送出，驗證會再送一次認證，只對綁定的主機送
+	asset, aerr := s.assets.GetByID(member.AssetID)
+	if aerr != nil {
+		s.stayUnverified(rot, member, model.ChangeSecretReasonAssetLookupFailed, run)
+		return
+	}
+	guard := s.memberVerifyGuard(rot, member)
+	// refuse 預檢不放行：沒有撥號，補寫停止審計後維持未驗證
+	refuse := func(gerr error) {
+		log.Printf("[CredentialRotation] 補跑驗證前主機身分不放行 member=%d asset=%d: %v", member.ID, member.AssetID, gerr)
+		s.memberIdentityStopped(guard, member, gerr)
+		if run.recovery {
+			_ = s.recoveryAudit(rot, member, "verify_failed")
+		}
+		s.stayUnverified(rot, member, verifyFailureReason(gerr, model.ChangeSecretReasonRetryLoginFailed), run)
+	}
+	if _, gerr := guard.prepare(asset); gerr != nil {
+		refuse(gerr)
+		return
+	}
+	if s.verifyPrecheckHook != nil {
+		s.verifyPrecheckHook()
+	}
 	mc, reason := s.prepareMember(ctx, rot, member)
 	if reason != "" {
 		s.stayUnverified(rot, member, reason, run)
 		return
 	}
 	defer mc.Destroy()
+	// 上面的預檢與 prepareMember 各讀一次資產，兩次之間資產可能被改了通道或端點：
+	// 實際撥號的目標與執行器以 prepareMember 的資產為準，因此對它再判一次並重產回呼
+	guardedCB, gerr := guard.prepare(mc.target.asset)
+	if gerr != nil {
+		refuse(gerr)
+		return
+	}
+	mc.target.hostKeyCB = guardedCB
 	newSecret := mc.newPassword
 	if mc.secretType == model.ChangeSecretTypeSSHKey {
 		newSecret = mc.newPrivateKey
 	}
 	if err := withProtocolSecret(newSecret, func(next []byte) error { return mc.exec.Verify(ctx, mc.target, next) }); err != nil {
 		logRemoteCause(mc.logTarget, "補跑驗證失敗", err)
-		if cand, cerr := s.candidates.FindByAccount(member.AccountID); cerr == nil && cand != nil {
-			_, _ = s.candidates.RecordFailure(cand, model.ChangeSecretReasonRetryLoginFailed)
+		s.memberIdentityStopped(guard, member, err)
+		if run.recovery {
+			_ = s.recoveryAudit(rot, member, "verify_failed")
 		}
-		s.stayUnverified(rot, member, model.ChangeSecretReasonRetryLoginFailed, run)
+		reason := verifyFailureReason(err, model.ChangeSecretReasonRetryLoginFailed)
+		if cand, cerr := s.candidates.FindByAccount(member.AccountID); cerr == nil && cand != nil {
+			_, _ = s.candidates.RecordFailure(cand, reason)
+		}
+		s.stayUnverified(rot, member, reason, run)
 		return
 	}
+	if run.recovery {
+		// 在發起者已失權的狀態下代為完成本地提交：留痕寫不進去就不提交，成員與候選保留
+		if err := s.recoveryAudit(rot, member, "verified"); err != nil {
+			s.stayUnverified(rot, member, model.ChangeSecretReasonAuthzUnavailable, run)
+			return
+		}
+	}
 	s.commitApplied(ctx, rot, member, mc, run)
+}
+
+// recoveryCleanupPending SSH 型別且新版本帶舊公鑰＝失權後不替發起者刪舊鑰，舊鑰待人清理。
+func (s *CredentialRotationService) recoveryCleanupPending(member *model.CredentialRotationMember) bool {
+	if credentialSecretType(s.db, member.CredentialID) != model.ChangeSecretTypeSSHKey || member.TargetVersionID == nil {
+		return false
+	}
+	var ver model.CredentialSecretVersion
+	return s.db.Where("id = ?", *member.TargetVersionID).First(&ver).Error == nil && ver.PreviousPublicKey != ""
+}
+
+// recoveryAudit 有限驗證的結果留痕。
+func (s *CredentialRotationService) recoveryAudit(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember, result string) error {
+
+	return writeRecoveryVerifyAudit(s.auditTx, s.db, recoveryAuditInput{
+		resource: model.ResourceCredential, resourceID: member.CredentialID, assetID: member.AssetID,
+		accountID: member.AccountID, authorizationID: rot.AuthorizationID,
+		initiatorID: rot.RequestedBy, initiatorName: rot.RequestedByName,
+		cleanupPending: s.recoveryCleanupPending(member), source: "rotation_member",
+		result: result, fingerprint: member.TargetFingerprint,
+	})
 }
 
 // ensureCandidate 取（或建立）本成員的候選秘密。
@@ -674,30 +1134,63 @@ func (s *CredentialRotationService) commitApplied(ctx context.Context,
 
 	var err error
 	if rot.Mode == model.CredentialRotationModeSplit {
-		err = s.commitSplitApplied(ctx, rot, member, mc)
+		err = s.commitSplitApplied(ctx, rot, member, mc, nil, memberTransition{})
 	} else {
-		err = s.commitGroupApplied(ctx, rot, member)
+		err = s.commitGroupApplied(ctx, rot, member, nil, memberTransition{})
 	}
 	if err != nil {
 		logMemberTransitionFailure(member, model.CredentialMemberApplied, err)
+		if errors.Is(err, ErrHostIdentityChanged) {
+			s.recordMemberCommitStop(rot, member)
+		}
 		// 提交失敗＝遠端已是新秘密而庫內沒有記錄它就位；候選必須留著，
 		// 否則那把秘密的唯一副本就沒了
 		if cand, cerr := s.candidates.FindByAccount(member.AccountID); cerr == nil && cand != nil {
-			_, _ = s.candidates.RecordFailure(cand, model.ChangeSecretReasonPromoteFailed)
+			_, _ = s.candidates.RecordFailure(cand, promoteFailureReason(err))
 		}
-		s.stayUnverified(rot, member, model.ChangeSecretReasonPromoteFailed, run)
+		s.stayUnverified(rot, member, promoteFailureReason(err), run)
 		return
 	}
-	s.recordMember(member, model.ChangeSecretSuccess, "", run)
+	successReason := ""
+	if run.recovery {
+		successReason = s.finishRecovery(rot, member)
+	}
+	s.recordMember(member, model.ChangeSecretSuccess, successReason, run)
 }
 
-// commitGroupApplied 整組模式的就位交易。
+// finishRecovery 有限驗證成功並提交後：回成功記錄要帶的原因碼（SSH 舊鑰未清則標未完成並告警）。
+func (s *CredentialRotationService) finishRecovery(rot *model.CredentialRotation,
+	member *model.CredentialRotationMember) string {
+
+	if !s.recoveryCleanupPending(member) {
+		return ""
+	}
+	if s.stopNotify != nil {
+		s.stopNotify("改密候選已驗證但舊公鑰待清理",
+			fmt.Sprintf("rotation=%d asset_id=%d account=%s 已於失權後完成有限驗證，目標機上的舊公鑰尚未清除，請具權者手動處置",
+				rot.ID, member.AssetID, member.Username))
+	}
+	return model.ChangeSecretReasonRecoveredCleanupPending
+}
+
+// commitGroupApplied 整組模式的就位交易。confirm 非 nil（人工承接）時，主機身分以承接紀錄為預期，
+// 並在同一交易內條件式消耗該紀錄：受影響列數不為 1 即整筆回滾。
 func (s *CredentialRotationService) commitGroupApplied(ctx context.Context,
-	rot *model.CredentialRotation, member *model.CredentialRotationMember) error {
+	rot *model.CredentialRotation, member *model.CredentialRotationMember,
+	confirm *model.CredentialHostIdentityConfirmation, applied memberTransition) error {
 
 	userID, operator := model.UserFromContext(ctx)
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, member.AssetID); err != nil {
+			return err
+		}
+		// 主機身分比對在資產列鎖之後、任何憑證列之前，以交易內重讀的成員列綁定快照為準
+		// （呼叫端手上的成員物件可能是綁定前的複本）
+		m, err := loadRotationMember(tx, rot.ID, member.ID)
+		if err != nil {
+			return err
+		}
+		if err := assertMemberHostIdentityTx(tx, m, true, confirm); err != nil {
 			return err
 		}
 		cred, err := lockCredentialRow(tx, member.CredentialID)
@@ -710,14 +1203,14 @@ func (s *CredentialRotationService) commitGroupApplied(ctx context.Context,
 		if err := assertRotationTargetStillPending(tx, rot); err != nil {
 			return err
 		}
-		m, err := loadRotationMember(tx, rot.ID, member.ID)
-		if err != nil {
-			return err
-		}
-		if err := transitionMember(tx, m, model.CredentialMemberApplied, memberTransition{}); err != nil {
+		consumedByTransition := isExpiredMemberState(m.State)
+		if err := transitionMember(tx, m, model.CredentialMemberApplied, applied); err != nil {
 			return err
 		}
 		if err := deleteAccountCandidate(tx, m.AccountID); err != nil {
+			return err
+		}
+		if err := consumeConfirmationHooked(tx, confirm, consumedByTransition, s.confirmedCommitHook); err != nil {
 			return err
 		}
 		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{

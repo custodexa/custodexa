@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
@@ -40,9 +41,9 @@ func setupSFTPScopeEnv(t *testing.T) (*SFTPHandler, *gorm.DB) {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1) // :memory: 多連線＝多個獨立空庫，故釘住單連線
-	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
 		&model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{}, &model.ApproverScope{},
-		&model.Session{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.Session{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -66,6 +67,7 @@ func setupSFTPScopeEnv(t *testing.T) (*SFTPHandler, *gorm.DB) {
 	}
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
@@ -77,7 +79,7 @@ func setupSFTPScopeEnv(t *testing.T) (*SFTPHandler, *gorm.DB) {
 
 // newSFTPTestAuthService 角色現況重判所需的 AuthService。
 //
-// CurrentConnectRole 走 database.DB 全域，故呼叫端必須先把它指向測試庫；
+// CurrentConnectPrincipal 走 database.DB 全域，故呼叫端必須先把它指向測試庫；
 // 未指向即 nil 解參考——這正是「檔案面確實在查 DB 而非信任 JWT 快照」的證明
 func newSFTPTestAuthService(t *testing.T, db *gorm.DB) *identity.AuthService {
 	t.Helper()
@@ -95,7 +97,7 @@ func callList(handler *SFTPHandler, query string) *httptest.ResponseRecorder {
 	r := gin.New()
 	r.GET("/assets/:id/files", func(c *gin.Context) {
 		c.Set("userID", uint(1))
-		c.Set("role", model.RoleUser)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleUser))
 		handler.List(c)
 	})
 	w := httptest.NewRecorder()

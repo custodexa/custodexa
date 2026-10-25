@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
+import i18n from '@/i18n'
+import HostIdentityConfirmDialog from '@/components/HostIdentityConfirmDialog.vue'
 import ChangeSecretPlans from '../ChangeSecretPlans.vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -467,5 +469,192 @@ describe('改密通道：資產下拉、記錄通道欄、機器碼文案', () =
       expect(value, locale).toMatch(pattern)
       expect(value, locale).not.toMatch(/本計劃|the plan was skipped|計画をスキップ/)
     }
+  })
+})
+
+// 主機身分停止的候選：重試入口 → 確認對話框 → 帶確認 body 重送。
+//
+// 這是使用者唯一的確認入口：接錯會讓人以為已排入重試、實際卻停著。
+describe('候選清單的主機身分確認', () => {
+  const STOP = 'CHANGE_SECRET_HOST_IDENTITY_CHANGED'
+  const FP = 'SHA256:q3Vt9xLk2mP8rT0aZ4bN7cY1eW6sH5jD'
+  const msg = (key, params) => i18n.global.t(key, params)
+  const dialogStub = {
+    props: ['modelValue', 'title'],
+    template:
+      '<div v-if="modelValue" class="dialog-stub"><h3>{{ title }}</h3><slot /><slot name="footer" /></div>',
+  }
+
+  const hostIdentity = (over = {}) => ({
+    status: 'changed',
+    detail: 'generation_changed',
+    phase: 'precheck',
+    verification_sent: false,
+    original: {
+      transport: 'ssh', record_id: 41, algorithm: 'ssh-ed25519', fingerprint: FP,
+      generation: 2, binding: 'bound', bound_at: '2026-10-17T02:00:00Z',
+    },
+    current: {
+      transport: 'ssh', record_id: 41, algorithm: 'ssh-ed25519', fingerprint: FP,
+      generation: 3, reset_pending: false, recorded_at: '2026-10-17T10:05:00Z',
+    },
+    candidate_applied: false,
+    deadline: '2026-10-18T02:00:00Z',
+    expired: false,
+    confirmable: true,
+    ...over,
+  })
+
+  async function mountStopped(rowOver = {}) {
+    listCandidatesMock.mockResolvedValue({
+      data: [candidateFixture({ last_error: STOP, ...rowOver })],
+    })
+    const wrapper = mount(ChangeSecretPlans, {
+      global: { plugins: [ElementPlus], stubs: { 'el-dialog': dialogStub } },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  const dialogOf = (w) => w.findComponent(HostIdentityConfirmDialog)
+
+  async function openAndConfirm(w) {
+    retryCandidateMock.mockResolvedValueOnce({ promoted: false, host_identity: hostIdentity() })
+    await w.vm.retryCandidate(candidateFixture({ last_error: STOP }))
+    await flushPromises()
+    await w.find('[data-test="hic-check-identity"] input').setValue(true)
+    await w.find('[data-test="hic-submit"]').trigger('click')
+    await flushPromises()
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('未停止的候選重試：不帶 body，請求只有 id', async () => {
+    const w = await mountStopped({ last_error: 'CHANGE_SECRET_VERIFY_FAILED' })
+    retryCandidateMock.mockResolvedValue({ promoted: false })
+    await w.vm.retryCandidate(candidateFixture())
+    await flushPromises()
+    expect(retryCandidateMock).toHaveBeenCalledTimes(1)
+    expect(retryCandidateMock.mock.calls[0]).toEqual([9])
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it('回應帶 host_identity：開確認對話框（候選種類），不顯示「已排入下次重試」', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const w = await mountStopped()
+    retryCandidateMock.mockResolvedValue({ promoted: false, host_identity: hostIdentity() })
+    await w.vm.retryCandidate(candidateFixture({ last_error: STOP }))
+    await flushPromises()
+    const dlg = dialogOf(w)
+    expect(dlg.props('modelValue')).toBe(true)
+    expect(dlg.props('kind')).toBe('candidate')
+    expect(dlg.props('account')).toBe('root')
+    expect(dlg.props('asset')).toBe('srv-1')
+    expect(dlg.props('identity').detail).toBe('generation_changed')
+    expect(success).not.toHaveBeenCalled()
+    expect(w.find('[data-test="hic-submit"]').exists()).toBe(true)
+  })
+
+  it('確認後帶 body 重送：body 等於對話框 emit 的 payload，鍵集合只含身分欄位', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const w = await mountStopped()
+    retryCandidateMock.mockResolvedValueOnce({ promoted: true })
+    retryCandidateMock.mockClear()
+    // openAndConfirm 的第一次回應是 host_identity，第二次才是確認結果
+    retryCandidateMock.mockReset()
+    retryCandidateMock
+      .mockResolvedValueOnce({ promoted: false, host_identity: hostIdentity() })
+      .mockResolvedValueOnce({ promoted: true })
+    await openAndConfirm(w)
+    expect(retryCandidateMock).toHaveBeenCalledTimes(2)
+    const emitted = dialogOf(w).emitted('confirm')[0][0]
+    const [id, body] = retryCandidateMock.mock.calls[1]
+    expect(id).toBe(9)
+    expect(Object.keys(body)).toEqual(['confirm_host_identity'])
+    expect(body.confirm_host_identity).toEqual(emitted)
+    expect(Object.keys(body.confirm_host_identity).sort()).toEqual(
+      ['accept_different_key', 'algorithm', 'fingerprint', 'generation', 'record_id', 'transport']
+    )
+    expect(body.confirm_host_identity.accept_different_key).toBe(false)
+    expect(JSON.stringify(body)).not.toMatch(/password|private_key|secret/i)
+    expect(success).toHaveBeenCalledWith(msg('hostIdentityConfirm.result.verified'))
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it('確認後驗證失敗：不沿用「已排入下次重試」，說新憑證仍保留、可再確認', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const w = await mountStopped()
+    retryCandidateMock.mockReset()
+    retryCandidateMock
+      .mockResolvedValueOnce({ promoted: false, host_identity: hostIdentity() })
+      .mockResolvedValueOnce({ promoted: false })
+    await openAndConfirm(w)
+    expect(success).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledWith(msg('hostIdentityConfirm.result.notVerified'))
+    const all = JSON.stringify(warning.mock.calls)
+    expect(all).not.toContain(msg('changeSecretPlans.retryStillFailing'))
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it('確認時目標已改變（200＋reason）：顯示該原因碼文案，不算成功、不是身分移動', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const w = await mountStopped()
+    retryCandidateMock.mockReset()
+    retryCandidateMock
+      .mockResolvedValueOnce({ promoted: false, host_identity: hostIdentity() })
+      .mockResolvedValueOnce({ promoted: false, reason: 'CHANGE_SECRET_AUTHZ_TARGET_CHANGED' })
+    await openAndConfirm(w)
+    expect(warning).toHaveBeenCalledWith(msg('changeSecretPlans.reason.CHANGE_SECRET_AUTHZ_TARGET_CHANGED'))
+    expect(success).not.toHaveBeenCalled()
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it.each([
+    ['different_key_not_accepted', 'hostIdentityConfirm.differentKey.title'],
+    ['not_confirmable', 'hostIdentityConfirm.blocked.contactAdmin'],
+    ['confirmation_pending', 'hostIdentityConfirm.result.moved'],
+  ])('確認遇 409 CONFLICT_HOST_IDENTITY_MOVED（detail=%s）：顯示對應說明、不算成功、對話框關閉並重新載入', async (detail, key) => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const error = vi.spyOn(ElMessage, 'error')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const w = await mountStopped()
+    retryCandidateMock.mockReset()
+    retryCandidateMock
+      .mockResolvedValueOnce({ promoted: false, host_identity: hostIdentity() })
+      .mockRejectedValueOnce({
+        response: { status: 409, data: { code: 'CONFLICT_HOST_IDENTITY_MOVED', detail } },
+      })
+    listCandidatesMock.mockClear()
+    await openAndConfirm(w)
+    // 只有一則、error 等級（全域 toast 由 API 層選項關閉，見 api 測試）
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledWith(msg(key))
+    expect(warning).not.toHaveBeenCalled()
+    expect(success).not.toHaveBeenCalled()
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+    expect(listCandidatesMock).toHaveBeenCalled()
+    // 全域攔截器負責顯示 apiError 文案：該鍵必須有譯文
+    expect(i18n.global.te('apiError.CONFLICT_HOST_IDENTITY_MOVED')).toBe(true)
+  })
+
+  it('「下次重試」欄：身分停止的列顯示待確認主機身分，其他列照排程時間', async () => {
+    listCandidatesMock.mockResolvedValue({
+      data: [
+        candidateFixture({ id: 9, last_error: STOP }),
+        candidateFixture({ id: 10, last_error: 'CHANGE_SECRET_VERIFY_FAILED' }),
+      ],
+    })
+    const w = mount(ChangeSecretPlans, {
+      global: { plugins: [ElementPlus], stubs: { 'el-dialog': dialogStub } },
+    })
+    await flushPromises()
+    const pending = w.findAll('[data-test="candidate-host-identity-pending"]')
+    expect(pending).toHaveLength(1)
+    expect(pending[0].text()).toBe(msg('changeSecretPlans.hostIdentityPending'))
+    expect(w.vm.isHostIdentityStopped(candidateFixture({ last_error: 'CHANGE_SECRET_VERIFY_FAILED' }))).toBe(false)
   })
 })

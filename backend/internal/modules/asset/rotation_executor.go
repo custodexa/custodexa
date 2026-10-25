@@ -50,6 +50,9 @@ type rotationTarget struct {
 	addr string
 	// hostKeyCB SSH 家族通道的 host key 驗證回呼（TOFU）
 	hostKeyCB ssh.HostKeyCallback
+	// verifyHostKeyCB 非 nil 時，派送後的立即 Verify 撥號前呼叫它取得只認綁定金鑰的回呼（不還原、不 TOFU）；
+	// 回錯誤＝撥號前查庫不放行，不得撥號。nil 時沿用 hostKeyCB。
+	verifyHostKeyCB func() (ssh.HostKeyCallback, error)
 }
 
 // remoteRejectedError 遠端確定未變更。
@@ -143,8 +146,9 @@ type posixSSHExecutor struct{}
 func (posixSSHExecutor) Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret []byte) error {
 	client, err := dialSSHPassword(ctx, t.addr, t.username, sshmaterial.CopyPassword(oldSecret), t.hostKeyCB)
 	if err != nil {
+		// 主機金鑰不符由回呼在送出憑證前拒絕：原因碼記主機金鑰不符，其餘為舊憑證登入失敗
 		return &remoteRejectedError{
-			reason: model.ChangeSecretReasonOldCredentialLoginFailed,
+			reason: oldCredentialLoginReason(err),
 			cause:  err,
 		}
 	}

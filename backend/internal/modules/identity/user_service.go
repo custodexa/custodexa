@@ -12,8 +12,11 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/kernel/dberr"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/go-playground/validator/v10"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // emailValidator 沿用 gin binding 所用的 go-playground validator 的 `email` 語義：
@@ -86,6 +89,16 @@ type authorizationCascadeRevoker interface {
 	RevokeByUser(tx *gorm.DB, userID uint) error
 }
 
+// OwnerTransferGuard agent 擁有者轉移前的防自我授權判定（identity 定義、authz 實作的窄 port）：
+// 新擁有者曾替該 agent 建立仍有效的授權規則或申請人型審核範圍即回錯。
+// 呼叫發生在更新交易內、agent 使用者列已鎖之後。
+type OwnerTransferGuard interface {
+	CheckOwnerTransfer(tx *gorm.DB, agentID, newOwnerID uint) error
+}
+
+// ErrOwnerTransferGuardMissing 擁有者轉移守衛未注入：fail-close，不回退為放行
+var ErrOwnerTransferGuardMissing = errors.New("擁有者轉移守衛未注入，無法判定")
+
 // SessionTerminator 停用帳號時強制終斷該使用者全部進行中協議會話（
 // 沿用 admin_terminate 語義）。介面而非直接依賴 SessionService，避免 service 相互耦合
 type SessionTerminator interface {
@@ -110,6 +123,88 @@ type UserService struct {
 	audit oidcAuditSink
 	// authzRevoker 刪除使用者時的 authz 級聯撤銷（tx-taking 窄 port）
 	authzRevoker authorizationCascadeRevoker
+	// guard 共用指派關卡；nil 時用相容目錄的預設關卡。組裝根注入與其他入口共用的同一個
+	guard *AssignmentGuard
+	// pinAudit 釘住的交易內審計落地面；nil 時 PinMappedRoleBy fail-close（不以空替身代寫）
+	pinAudit port.TxSink
+	// ownerTransferGuard agent 擁有者轉移的防自我授權 port；nil 時轉移 fail-close
+	ownerTransferGuard OwnerTransferGuard
+	// grader 授權變更的分級與留痕；nil 時不分級（僅測試與內部入口，生產組裝自檢拒絕 nil）
+	grader *GrantGrader
+	// acctOps 帳號身分操作關卡（設定密碼、綁定、解綁）；nil 時只有控制權、沒有留痕落地面
+	acctOps *ProtectedAccountOps
+}
+
+// SetGrantGrader 注入授權變更的分級與留痕。
+func (s *UserService) SetGrantGrader(g *GrantGrader) { s.grader = g }
+
+// SetAssignmentGuard 注入共用指派關卡（與群組服務、日後的映射與釘住路徑共用同一個）。
+func (s *UserService) SetAssignmentGuard(g *AssignmentGuard) { s.guard = g }
+
+// SetPinAuditSink 注入釘住的交易內審計落地面。
+func (s *UserService) SetPinAuditSink(sink port.TxSink) { s.pinAudit = sink }
+
+func (s *UserService) assignmentGuard() *AssignmentGuard {
+	if s.guard == nil {
+		return NewAssignmentGuard(nil)
+	}
+	return s.guard
+}
+
+// DirectAssignOptions 直接指派請求的附帶事實，由 handler 依請求原文判定後帶入。
+type DirectAssignOptions struct {
+	// ScopeRequested 請求帶了任何範圍或節點欄位。節點範圍指派開放前整筆拒絕，不得改存為全域。
+	ScopeRequested bool
+	// RoleNodes 整組替換入口的 role_nodes（角色名 → 範圍值）。鍵不存在即保留現有範圍；
+	// 只有 AssignRolesBy 讀它，其他入口帶任何範圍欄位仍以 ScopeRequested 整筆拒絕。
+	RoleNodes map[string]RoleNodesValue
+}
+
+// RoleNodesValue role_nodes 的一個值：Global 為 JSON null（改為或維持全域），
+// 否則 NodeIDs 為節點集合（空集合由關卡以空範圍碼拒絕）。
+type RoleNodesValue struct {
+	Global  bool
+	NodeIDs []uint
+}
+
+func mergeDirectAssignOptions(opts []DirectAssignOptions) DirectAssignOptions {
+	var out DirectAssignOptions
+	for _, o := range opts {
+		out.ScopeRequested = out.ScopeRequested || o.ScopeRequested
+		if len(o.RoleNodes) > 0 {
+			out.RoleNodes = o.RoleNodes
+		}
+	}
+	return out
+}
+
+// CreateBy 帶操作者的建帳號：經共用指派關卡裁決指派的角色。
+func (s *UserService) CreateBy(op Operator, req *CreateUserRequest, opts ...DirectAssignOptions) (*model.User, error) {
+	cp := *req
+	cp.operator = &op
+	cp.scopeRequested = mergeDirectAssignOptions(opts).ScopeRequested
+	return s.Create(&cp)
+}
+
+// AddRoleBy 帶操作者的追加：經共用指派關卡裁決。
+func (s *UserService) AddRoleBy(op Operator, userID uint, roleName string, opts ...DirectAssignOptions) error {
+	return s.addRole(&op, userID, roleName, mergeDirectAssignOptions(opts).ScopeRequested)
+}
+
+// AssignRolesBy 帶操作者的替換：經共用指派關卡裁決。
+func (s *UserService) AssignRolesBy(op Operator, userID uint, roleNames []string, opts ...DirectAssignOptions) (*RoleAssignResult, error) {
+	return s.assignRoles(&op, userID, roleNames, mergeDirectAssignOptions(opts))
+}
+
+// manualRoleIDs 目前管理者指派集（來源 manual 或 both）的角色編號。
+func manualRoleIDs(tx *gorm.DB, userID uint) ([]uint, error) {
+	var ids []uint
+	if err := tx.Table("user_roles").
+		Where("user_id = ? AND source IN ?", userID, []string{model.RoleSourceManual, model.RoleSourceBoth}).
+		Order("role_id").Pluck("role_id", &ids).Error; err != nil {
+		return nil, fmt.Errorf("讀取現行角色失敗: %w", err)
+	}
+	return ids, nil
 }
 
 // NewUserService 創建使用者服務。
@@ -119,6 +214,11 @@ func NewUserService(db *gorm.DB, authzRevoker authorizationCascadeRevoker) *User
 		db:           db,
 		authzRevoker: authzRevoker,
 	}
+}
+
+// SetOwnerTransferGuard 注入 agent 擁有者轉移的防自我授權 port（組裝端呼叫）。
+func (s *UserService) SetOwnerTransferGuard(g OwnerTransferGuard) {
+	s.ownerTransferGuard = g
 }
 
 // SetSecurityPolicies 注入安全政策服務。
@@ -157,6 +257,8 @@ type UserListResponse struct {
 // CreateUserRequest 創建使用者請求
 type CreateUserRequest struct {
 	selfCreation     *agentSelfCreation // Internal-only context; never populated from JSON.
+	operator         *Operator          // 帶操作者的建帳號入口（CreateBy）填入；不由 JSON 填入。
+	scopeRequested   bool               // 請求帶了範圍或節點欄位（CreateBy 填入）；不由 JSON 填入。
 	passwordProvided bool               // JSON presence: even an empty password field is forbidden for agents.
 	Kind             string             `json:"kind"`
 	OwnerUserID      *uint              `json:"owner_user_id"`
@@ -207,7 +309,7 @@ func (s *UserService) CountLocalAdmins() (int64, error) {
 // 角色主檔屬 identity 域，故落在 `UserService`。
 func (s *UserService) ListRoles() ([]model.Role, int64, error) {
 	var roles []model.Role
-	result := s.db.Find(&roles)
+	result := s.db.Where(legacyRoleCatalogCond).Find(&roles)
 	if result.Error != nil {
 		return nil, 0, result.Error
 	}
@@ -351,6 +453,10 @@ func (s *UserService) fillAuthProviderNames(users []model.User) {
 
 // Create 創建使用者
 func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
+	// 帶角色時由關卡在交易內拒絕；沒帶角色也不能把範圍欄位當沒看到
+	if req.scopeRequested && len(req.Roles) == 0 {
+		return nil, ErrRoleBindingScopeUnsupported
+	}
 	self := req.selfCreation
 	kind := req.Kind
 	if kind == "" {
@@ -374,7 +480,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 			return nil, ErrAgentPassword
 		}
 	}
-	if err := GuardAgentRoles(&model.User{Kind: kind}, req.Roles); err != nil {
+	if err := GuardAgentRoles(s.db, &model.User{Kind: kind}, req.Roles); err != nil {
 		return nil, err
 	}
 	// 檢查使用者名稱是否已存在
@@ -442,12 +548,18 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	if tx.Error != nil {
 		return nil, fmt.Errorf("開始交易失敗: %w", tx.Error)
 	}
+	var tracker *grantTracker
 
 	if self != nil {
 		if err := self.check(tx); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
+	}
+	// 權限狀態事件：任何寫入之前先把既有直寫隔離成無來源變動事件
+	if err := authz.BeginPermissionChange(tx); err != nil {
+		tx.Rollback()
+		return nil, err
 	}
 
 	// 創建使用者記錄
@@ -469,7 +581,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	// 如果指定了角色，分配角色
 	if len(req.Roles) > 0 {
 		var roles []model.Role
-		result := tx.Where("name IN ?", req.Roles).Find(&roles)
+		result := s.assignmentGuard().catalog.Scope(tx.Where("name IN ?", req.Roles)).Find(&roles)
 		if result.Error != nil {
 			tx.Rollback()
 			log.Printf("[UserService] Create: Query roles error: %v", result.Error)
@@ -480,6 +592,22 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		if len(roles) != len(req.Roles) {
 			tx.Rollback()
 			return nil, ErrRoleNotFound
+		}
+		if req.operator != nil {
+			var gerr error
+			if tracker, gerr = s.grader.begin(tx, *req.operator, PathCreate, 0, 0); gerr != nil {
+				tx.Rollback()
+				return nil, gerr
+			}
+			ids := make([]uint, 0, len(roles))
+			for _, r := range roles {
+				ids = append(ids, r.ID)
+			}
+			if err := s.assignmentGuard().Check(tx, *req.operator, AssignmentChange{
+				Path: PathCreate, TargetKind: kind, NewRoleIDs: ids, ScopeRequested: req.scopeRequested}); err != nil {
+				tx.Rollback()
+				return nil, err
+			}
 		}
 
 		// 分配角色。走 model 的唯一寫入面（role-assignment-integrity）：
@@ -492,13 +620,30 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 				return nil, fmt.Errorf("分配角色失敗: %w", err)
 			}
 		}
+		// 權限版本：帶角色建帳號改變授權集合，與指派同交易
+		if err := authz.AdvanceVersion(tx); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
 
 	if err := recordPrincipalState(tx, user, model.ActionCreate); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
+	// 不帶角色的建帳號（含 agent）改變主體集合卻不推進權限版本；帶角色者推進後無新寫入，
+	// 此處無差異即不寫。結尾補記使事件鏈涵蓋合法寫入。
+	if err := authz.SettlePermissionChange(tx); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
 
+	if tracker != nil {
+		if err := tracker.finishDirect(tx, user.ID); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+	}
 	if self != nil {
 		if err := self.audit(tx, user); err != nil {
 			tx.Rollback()
@@ -510,6 +655,10 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	if err := tx.Commit().Error; err != nil {
 		log.Printf("[UserService] Create: Commit error: %v", err)
 		return nil, fmt.Errorf("提交交易失敗: %w", err)
+	}
+	if kind == model.KindAgent {
+		s.grader.afterAgentRoleWrite(s.db, req.operator, string(model.ResourceUser), user.ID,
+			[]uint{user.ID}, roleIDsByNames(s.db, req.Roles))
 	}
 
 	// 預加載角色後返回
@@ -615,10 +764,27 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 	// 執行更新
 	if len(updates) > 0 {
 		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			if newOwner, changed := updates["owner_user_id"]; changed {
+				// 先鎖 agent 列再判定（與以 agent 為主體建規則同鎖序），判定在任何
+				// 寫入之前：被拒時權限版本與主體狀態事件都不推進
+				if err := s.guardOwnerTransfer(tx, user.ID, newOwner.(uint)); err != nil {
+					return err
+				}
+				if h := loadLockOrderHook(); h != nil {
+					h("owner_transfer_after_guard", tx, user.ID)
+				}
+				if err := authz.BeginPermissionChange(tx); err != nil {
+					return err
+				}
+			}
 			if err := tx.Model(&user).Updates(updates).Error; err != nil {
 				return err
 			}
 			if _, changed := updates["owner_user_id"]; changed {
+				// 權限版本：agent 擁有者變更，僅 updates 含 owner_user_id 時推進
+				if err := authz.AdvanceVersion(tx); err != nil {
+					return err
+				}
 				return recordPrincipalState(tx, &user, model.ActionUpdate)
 			}
 			return nil
@@ -631,6 +797,8 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 			log.Printf("[UserService] Update: Update user error: %v", err)
 			return nil, nil, fmt.Errorf("更新使用者失敗: %w", err)
 		}
+		// 擁有者變更推進了權限版本：提交後通知行程內持有者重新驗證
+		authz.NotifyVersionCommittedAfter(s.db, nil)
 	}
 
 	// 預加載角色後返回
@@ -659,8 +827,18 @@ func (s *UserService) Delete(id uint) error {
 	return err
 }
 
-// DeleteWithSummary 刪除使用者（軟刪除），回傳被刪帳號名與作廢的外部身分綁定數
+// DeleteWithSummary 刪除使用者（軟刪除），回傳被刪帳號名與作廢的外部身分綁定數。
+// 不經帳號身分操作關卡，只供無操作者的系統路徑；管理端入口一律走 DeleteWithSummaryBy
 func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
+	return s.deleteWithSummary(nil, id)
+}
+
+// DeleteWithSummaryBy 帶操作者的刪除：經帳號身分操作關卡（持保護角色的帳號只有超管能刪）
+func (s *UserService) DeleteWithSummaryBy(op Operator, id uint) (DeletedUserSummary, error) {
+	return s.deleteWithSummary(&op, id)
+}
+
+func (s *UserService) deleteWithSummary(op *Operator, id uint) (DeletedUserSummary, error) {
 	var summary DeletedUserSummary
 	// 檢查使用者是否存在
 	var user model.User
@@ -671,18 +849,17 @@ func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
 		log.Printf("[UserService] Delete: Query user error: %v", err)
 		return summary, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
+	// 保護角色持有者先於其他前置檢查拒絕（不讓非超管從「最後一位超管」等錯誤探知目標身分）；
+	// 交易內再判一次，以鎖內重讀的現值為準
+	if err := s.gateLifecycle(s.db, op, id, AccountOpDelete); err != nil {
+		return summary, err
+	}
 
 	if err := rejectOwnedAgents(s.db, id); err != nil {
 		return summary, err
 	}
 	// 檢查是否為管理員
-	isAdmin := false
-	for _, role := range user.Roles {
-		if role.Name == model.RoleAdmin {
-			isAdmin = true
-			break
-		}
-	}
+	isAdmin := hasSuperAdminRole(user.Roles)
 
 	// 如果是管理員，檢查是否為最後一個
 	if isAdmin {
@@ -690,7 +867,7 @@ func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
 		err := s.db.Model(&model.User{}).
 			Joins("JOIN user_roles ON user_roles.user_id = users.id").
 			Joins("JOIN roles ON roles.id = user_roles.role_id").
-			Where("roles.name = ? AND users.deleted_at IS NULL AND users.id != ?", model.RoleAdmin, id).
+			Where("roles.builtin_key = ? AND users.deleted_at IS NULL AND users.id != ?", model.BuiltinSuperAdmin, id).
 			Count(&adminCount).Error
 
 		if err != nil {
@@ -717,6 +894,15 @@ func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
 	// TTL 的 access token。取鎖順序 system → user
 	if err := WithLocalAdminInvariant(s.db, id, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, id, func(tx *gorm.DB) error {
+			if err := s.gateLifecycle(tx, op, id, AccountOpDelete); err != nil {
+				return err
+			}
+			if userCredentialPreWriteHook != nil {
+				userCredentialPreWriteHook()
+			}
+			if err := authz.BeginPermissionChange(tx); err != nil {
+				return err
+			}
 			if err := rejectOwnedAgents(tx, id); err != nil {
 				return err
 			}
@@ -731,6 +917,12 @@ func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
 				return fmt.Errorf("authz 級聯撤銷面未注入：刪帳號不得在不撤銷審核範圍的情況下完成")
 			}
 			if err := s.authzRevoker.RevokeByUser(tx, id); err != nil {
+				return err
+			}
+			// 節點範圍列只是指向節點的引用，隨主體一併清除；不取拓撲序列化鎖——這裡只移除引用，
+			// 並發的節點刪除若在本交易提交前讀到引用，就回「被引用」、可重試（方向保守），
+			// 提交後讀不到引用則照常刪除，兩種先後都不會留下指向已刪節點的列
+			if err := authz.ClearBindingNodes(tx, model.BindingSubjectUser, id); err != nil {
 				return err
 			}
 			if err := tx.Exec("DELETE FROM user_role_mapping_rule_supports WHERE user_id=?", id).Error; err != nil {
@@ -756,6 +948,10 @@ func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
 			if err := tx.Delete(&user).Error; err != nil {
 				return fmt.Errorf("刪除使用者失敗: %w", err)
 			}
+			// 權限版本：主體刪除連同其成員、映射事實的清除，與刪除同交易
+			if err := authz.AdvanceVersion(tx); err != nil {
+				return err
+			}
 			return recordPrincipalState(tx, &user, model.ActionDelete)
 		})
 	}); err != nil {
@@ -777,6 +973,10 @@ func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
 // （併發 admin 剛授予的 admin/auditor 被靜默覆蓋）。
 // 已具該角色時為 no-op（先查後寫，跨 PG/SQLite 可攜的冪等）
 func (s *UserService) AddRole(userID uint, roleName string) error {
+	return s.addRole(nil, userID, roleName, false)
+}
+
+func (s *UserService) addRole(op *Operator, userID uint, roleName string, scopeRequested bool) error {
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -784,12 +984,12 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 		}
 		return fmt.Errorf("查詢使用者失敗: %w", err)
 	}
-	if err := GuardAgentRoles(&user, []string{roleName}); err != nil {
+	if err := GuardAgentRoles(s.db, &user, []string{roleName}); err != nil {
 		return err
 	}
 
 	var role model.Role
-	if err := s.db.Where("name = ?", roleName).First(&role).Error; err != nil {
+	if err := s.assignmentGuard().catalog.Scope(s.db.Where("name = ?", roleName)).First(&role).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrRoleNotFound
 		}
@@ -802,15 +1002,45 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 	// **交易**：指派與其審計列必須同生共死，審計寫不進去就不許掛上角色。
 	// 已存在時寫入面回 no-op、不留痕，冪等語義不變。
 	//
+	// **使用者鎖**：關卡在對象鎖之內以交易內重讀的現值判定（與替換路徑同一把鎖），
+	// 否則併發的另一個寫入可在判定之後改變對象身分，本次仍以舊判定寫入。
+	//
 	// **對既有的映射列升為並存態**：這是把外部群組賦予的角色固定下來的原語
 	// （固定之後不再隨群組異動消失）。副作用要寫進文件——一站式代配審核範圍時
 	// 若順帶追加角色，會把該映射列釘成管理者指派。純追加不縮減有效集，
 	// 故本端點一如既往不推進憑證世代。
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		_, err := AddManualRole(tx, userID, role.ID)
-		return err
+	if err := WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
+		var tr *grantTracker
+		if op != nil {
+			old, err := manualRoleIDs(tx, userID)
+			if err != nil {
+				return err
+			}
+			if err := s.assignmentGuard().Check(tx, *op, AssignmentChange{
+				Path: PathAdd, TargetUserID: userID, OldRoleIDs: old, NewRoleIDs: unionIDs(old, []uint{role.ID}),
+				ScopeRequested: scopeRequested}); err != nil {
+				return err
+			}
+			if tr, err = s.grader.begin(tx, *op, PathAdd, userID, 0); err != nil {
+				return err
+			}
+		}
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
+		if _, err := AddManualRole(tx, userID, role.ID); err != nil {
+			return err
+		}
+		return tr.finishDirect(tx, userID)
 	}); err != nil {
+		var pe *PrincipalError
+		if errors.As(err, &pe) || errors.Is(err, ErrUserNotFound) || errors.Is(err, ErrRoleNotFound) {
+			return err
+		}
 		return fmt.Errorf("追加角色失敗: %w", err)
+	}
+	if user.Kind == model.KindAgent {
+		s.grader.afterAgentRoleWrite(s.db, op, string(model.ResourceUser), userID, []uint{userID}, []uint{role.ID})
 	}
 	return nil
 }
@@ -897,6 +1127,9 @@ const DisclosureRoleMappedIgnored = "role.mapped_ignored"
 type RoleAssignResult struct {
 	Sets        RoleSets               `json:"role_sets"`
 	Disclosures []RoleAssignDisclosure `json:"disclosures,omitempty"`
+	// NodeRangeNoEffect 寫入後該對象以節點範圍持有、而範圍不會產生能力的全部角色（含本次沒動的）。
+	// 清單為空時不出現在回應。
+	NodeRangeNoEffect []NodeRangeNoEffect `json:"-"`
 }
 
 // roleSetsOf 讀一個帳號的兩份角色集合（依角色名排序，供回應與比對穩定）。
@@ -976,6 +1209,10 @@ func (s *UserService) RoleSetsOf(userID uint) (*RoleSets, error) {
 // 冪等追加端點本就不推進，兩條路徑於此不再不對稱——同一件事在兩條路徑上得到
 // 相反的結果，會讓「我的會話為什麼斷了」無法回答。
 func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignResult, error) {
+	return s.assignRoles(nil, userID, roleNames, DirectAssignOptions{})
+}
+
+func (s *UserService) assignRoles(op *Operator, userID uint, roleNames []string, opts DirectAssignOptions) (*RoleAssignResult, error) {
 	// 檢查使用者是否存在
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
@@ -986,14 +1223,14 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		return nil, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
-	if err := GuardAgentRoles(&user, roleNames); err != nil {
+	if err := GuardAgentRoles(s.db, &user, roleNames); err != nil {
 		return nil, err
 	}
 
 	// 查詢角色
 	var roles []model.Role
 	if len(roleNames) > 0 {
-		result := s.db.Where("name IN ?", roleNames).Find(&roles)
+		result := s.assignmentGuard().catalog.Scope(s.db.Where("name IN ?", roleNames)).Find(&roles)
 		if result.Error != nil {
 			log.Printf("[UserService] AssignRoles: Query roles error: %v", result.Error)
 			return nil, fmt.Errorf("查詢角色失敗: %w", result.Error)
@@ -1005,18 +1242,26 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		}
 	}
 
+	// role_nodes 的鍵必須是本次管理者指派集內的角色，否則整筆拒絕、零變更
+	for k := range opts.RoleNodes {
+		listed := false
+		for _, n := range roleNames {
+			if n == k {
+				listed = true
+				break
+			}
+		}
+		if !listed {
+			return nil, errRoleNodesKeyNotListed()
+		}
+	}
+
 	// 替換管理者指派集。
 	// 新角色集不含 admin ＝ 本操作會移除該帳號的 admin 資格，須受「本地 admin 不變式」
 	// 約束（2.7）：判定於系統級鎖內重讀且與 Replace 同交易。保留 admin 的角色重設
 	// 不減少本地 admin 數，不取系統級鎖（避免無謂爭用）——但**兩條分支都要取使用者級
 	// 憑證鎖**，因為兩者都可能變動角色集而須推進世代（C-1：只覆蓋其一等於留一半漏洞）
-	keepsAdmin := false
-	for _, r := range roleNames {
-		if r == model.RoleAdmin {
-			keepsAdmin = true
-			break
-		}
-	}
+	keepsAdmin := hasSuperAdminRole(roles)
 	// applyRoles 鎖內三步：重讀現行角色 → 比對 → 替換＋（有變動時）失效既有憑證。
 	//
 	// 角色變更 SHALL 推進 credential_epoch：管理面的權限判定讀的是 JWT 內的
@@ -1038,23 +1283,74 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 	// 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下
 	var epochBumped bool
 	var result RoleAssignResult
-	applyRoles := func(tx *gorm.DB) error {
+	var tr *grantTracker
+	applyRolesInner := func(tx *gorm.DB) error {
 		result = RoleAssignResult{}
 		// 主體內目前僅由映射賦予的角色一律忽略：不建管理者指派、不報錯，
-		// 改以揭露欄告知。判定要在鎖內重讀——鎖外預讀會讓一次併發的登入重算
-		// 把角色的來源改掉，而本次仍以舊來源決定忽略與否
+		// 改以揭露欄告知；對它帶的 role_nodes 同樣忽略。判定要在鎖內重讀——
+		// 鎖外預讀會讓一次併發的登入重算把角色的來源改掉，而本次仍以舊來源決定忽略與否
 		mappedOnly, err := mappedOnlyRoleIDs(tx, userID)
 		if err != nil {
 			return err
 		}
 		manualTarget := make([]model.Role, 0, len(roles))
 		var ignored []string
+		newScopes := map[uint][]uint{}
 		for _, r := range roles {
 			if _, only := mappedOnly[r.ID]; only {
 				ignored = append(ignored, r.Name)
 				continue
 			}
 			manualTarget = append(manualTarget, r)
+			if v, has := opts.RoleNodes[r.Name]; has && !v.Global {
+				newScopes[r.ID] = append(make([]uint, 0, len(v.NodeIDs)), v.NodeIDs...)
+			}
+		}
+		// 拓撲序列化鎖：對象鎖之後、BeginPermissionChange 與任何指派寫入之前。
+		// 本次寫入帶節點範圍，或對象現有任何指派為節點範圍（本次可能改寫、清除或降級重設，
+		// 包含 RemoveManualRole 的並存降為僅映射）時才取；純全域的對象不取。
+		// 是否節點範圍只看 user_roles 的範圍種類：該欄只在對象的使用者鎖內被改寫，
+		// 取鎖前的讀取不會被並發寫入改變
+		var nodeScopedRows int64
+		if err := tx.Table("user_roles").Where("user_id = ? AND scope_kind = ?", userID, model.ScopeKindNodes).
+			Count(&nodeScopedRows).Error; err != nil {
+			return fmt.Errorf("讀取角色指派範圍失敗: %w", err)
+		}
+		if nodeScopedRows > 0 || len(newScopes) > 0 {
+			if err := authz.LockScopeTopologyTx(tx); err != nil {
+				return err
+			}
+		}
+		// 節點範圍列在取鎖之後才讀，後續差異、縮小判定與審計都以取鎖後的現值為準
+		beforeNodes := map[uint][]uint{}
+		if nodeScopedRows > 0 || len(newScopes) > 0 {
+			if beforeNodes, err = authz.SubjectBindingNodes(tx, model.BindingSubjectUser, userID); err != nil {
+				return err
+			}
+		}
+		if op != nil {
+			old, err := manualRoleIDs(tx, userID)
+			if err != nil {
+				return err
+			}
+			next := make([]uint, 0, len(roles))
+			for _, r := range roles {
+				next = append(next, r.ID)
+			}
+			if err := s.assignmentGuard().Check(tx, *op, AssignmentChange{
+				Path: PathReplace, TargetUserID: userID, OldRoleIDs: old, NewRoleIDs: next,
+				ScopeRequested: opts.ScopeRequested, NodeScopes: newScopes}); err != nil {
+				return err
+			}
+			if err := s.assignmentGuard().CheckNodesLive(tx, newScopes); err != nil {
+				return err
+			}
+			if tr, err = s.grader.begin(tx, *op, PathReplace, userID, 0); err != nil {
+				return err
+			}
+		}
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
 		}
 
 		added, removed, err := roleSetDelta(tx, userID, manualTarget)
@@ -1075,10 +1371,21 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 			}
 		}
 		for _, roleID := range added {
-			if _, err := AddManualRole(tx, userID, roleID); err != nil {
+			if _, err := AddManualRoleInRange(tx, userID, roleID, newScopes[roleID]); err != nil {
 				return err
 			}
 		}
+
+		narrowed, err := s.applyUserRoleScopes(tx, userID, manualTarget, added, beforeNodes, opts.RoleNodes)
+		if err != nil {
+			return err
+		}
+		effectiveShrunk = effectiveShrunk || narrowed
+		noEffect, err := userNodeRangeNoEffect(tx, userID)
+		if err != nil {
+			return err
+		}
+		result.NodeRangeNoEffect = noEffect
 
 		sets, err := roleSetsOf(tx, userID)
 		if err != nil {
@@ -1107,6 +1414,12 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		}
 		return nil
 	}
+	applyRoles := func(tx *gorm.DB) error {
+		if err := applyRolesInner(tx); err != nil {
+			return err
+		}
+		return tr.finishDirect(tx, userID)
+	}
 	var assignErr error
 	if keepsAdmin {
 		assignErr = WithUserCredentialLock(s.db, userID, applyRoles)
@@ -1117,7 +1430,9 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		})
 	}
 	if assignErr != nil {
-		if errors.Is(assignErr, ErrLastAdmin) {
+		var pe *PrincipalError
+		if errors.Is(assignErr, ErrLastAdmin) || errors.As(assignErr, &pe) ||
+			errors.Is(assignErr, ErrUserNotFound) || errors.Is(assignErr, ErrRoleNotFound) {
 			return nil, assignErr
 		}
 		log.Printf("[UserService] AssignRoles: Replace roles error: %v", assignErr)
@@ -1127,12 +1442,25 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 	if epochBumped && s.agentTokens != nil {
 		s.agentTokens.finishSuspendedOwner(userID)
 	}
+	if user.Kind == model.KindAgent {
+		s.grader.afterAgentRoleWrite(s.db, op, string(model.ResourceUser), userID, []uint{userID}, roleIDsByNames(s.db, roleNames))
+	}
 	log.Printf("[UserService] AssignRoles: Roles assigned successfully, UserID: %d, Roles: %v", userID, roleNames)
 	return &result, nil
 }
 
-// UpdateStatus 更新使用者狀態（啟用/禁用）
+// UpdateStatus 更新使用者狀態（啟用/禁用）。
+// 不經帳號身分操作關卡，只供無操作者的系統路徑（閒置自動停用）；管理端入口一律走 UpdateStatusBy
 func (s *UserService) UpdateStatus(userID uint, active bool) error {
+	return s.updateStatus(nil, userID, active)
+}
+
+// UpdateStatusBy 帶操作者的啟用與停用：兩者都經帳號身分操作關卡（持保護角色的帳號只有超管能停用或啟用）
+func (s *UserService) UpdateStatusBy(op Operator, userID uint, active bool) error {
+	return s.updateStatus(&op, userID, active)
+}
+
+func (s *UserService) updateStatus(op *Operator, userID uint, active bool) error {
 	// 檢查使用者是否存在
 	var user model.User
 	if err := s.db.Preload("Roles").First(&user, userID).Error; err != nil {
@@ -1143,23 +1471,25 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 		return fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
+	// 停用與啟用持保護角色的帳號限超管：先於最後一位超管的檢查（同刪除），交易內再判一次。
+	// 啟用讓該帳號重新取得全部角色，與停用同一界線
+	lifecycleOp := AccountOpDisable
+	if active {
+		lifecycleOp = AccountOpEnable
+	}
+	if err := s.gateLifecycle(s.db, op, userID, lifecycleOp); err != nil {
+		return err
+	}
+
 	// 如果要禁用管理員，檢查是否為最後一個
 	if !active {
-		isAdmin := false
-		for _, role := range user.Roles {
-			if role.Name == model.RoleAdmin {
-				isAdmin = true
-				break
-			}
-		}
-
-		if isAdmin {
+		if hasSuperAdminRole(user.Roles) {
 			var activeAdminCount int64
 			err := s.db.Model(&model.User{}).
 				Joins("JOIN user_roles ON user_roles.user_id = users.id").
 				Joins("JOIN roles ON roles.id = user_roles.role_id").
-				Where("roles.name = ? AND users.active = ? AND users.deleted_at IS NULL AND users.id != ?",
-					model.RoleAdmin, true, userID).
+				Where("roles.builtin_key = ? AND users.active = ? AND users.deleted_at IS NULL AND users.id != ?",
+					model.BuiltinSuperAdmin, true, userID).
 				Count(&activeAdminCount).Error
 
 			if err != nil {
@@ -1176,13 +1506,42 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 	// 更新狀態。停用時經「本地 admin 不變式」的系統級鎖：判定於鎖內重讀且與寫入同交易
 	//（2.7）——上方 isAdmin 的既有檢查在鎖外、且只問「還有沒有 active admin」，
 	// 對「最後一個本地 admin，但另有外部身分 admin」與並發停用兩種情形皆無感。
-	// 啟用（active=true）不減少本地 admin，也不使任何憑證失效，無需取鎖
+	// 啟用（active=true）不減少本地 admin，也不使任何憑證失效，不經系統級鎖；
+	// 只取使用者憑證鎖，讓關卡於鎖內重讀現值並與寫入同交易
+	//
+	// 關卡與寫入共用的是目標的使用者憑證鎖：凡改變該使用者有效角色集的寫入（直接指派、群組
+	// 角色替換、群組成員異動、刪群組、映射重算）都持同一把鎖，故關卡在取得鎖之後重讀到的角色
+	// 就是寫入時的角色，不存在「判定時不持保護角色、寫入時已持有」的窗。取鎖順序 system →
+	// user → authz_state（版本推進在最後）
+	//
+	// 權限版本：啟用與停用都改變主體能否出示有效授權，寫入與推進同交易、推進置於寫入之後。
+	// 冪等重送（狀態未翻轉）也推進——過度推進只多一次重新解析，漏推進才是撤權不生效
 	writeStatus := func(tx *gorm.DB) error {
-		return tx.Model(&model.User{}).Where("id = ?", userID).Update("active", active).Error
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.User{}).Where("id = ?", userID).Update("active", active).Error; err != nil {
+			return err
+		}
+		if h := loadLockOrderHook(); h != nil {
+			h("user_status_before_advance", tx, userID)
+		}
+		return authz.AdvanceVersion(tx)
 	}
 	var statusErr error
 	if active {
-		statusErr = writeStatus(s.db)
+		statusErr = s.db.Transaction(func(tx *gorm.DB) error {
+			return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
+				if err := s.gateLifecycle(tx, op, userID, AccountOpEnable); err != nil {
+					return err
+				}
+				if userCredentialPreWriteHook != nil {
+					userCredentialPreWriteHook()
+				}
+				return writeStatus(tx)
+			})
+		})
+		authz.NotifyVersionCommittedAfter(s.db, statusErr)
 	} else {
 		// 停用同時推進 credential_epoch（spec「帳號停用」情境）：**access token
 		// 是 stateless 的**，只撤 refresh 對它毫無作用，攻擊者手上的 access 與尚未兌換的
@@ -1191,6 +1550,12 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 		// 不得停在「已停用但憑證仍有效」的中間態。取鎖順序 system → user
 		statusErr = WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 			return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
+				if err := s.gateLifecycle(tx, op, userID, AccountOpDisable); err != nil {
+					return err
+				}
+				if userCredentialPreWriteHook != nil {
+					userCredentialPreWriteHook()
+				}
 				if err := writeStatus(tx); err != nil {
 					return err
 				}
@@ -1206,7 +1571,7 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 		})
 	}
 	if statusErr != nil {
-		if errors.Is(statusErr, ErrLastAdmin) {
+		if errors.Is(statusErr, ErrLastAdmin) || errors.Is(statusErr, ErrProtectedAccountOperation) {
 			return statusErr
 		}
 		log.Printf("[UserService] UpdateStatus: Update status error: %v", statusErr)
@@ -1246,8 +1611,11 @@ func (s *UserService) SetInactivityExempt(userID uint, exempt bool) error {
 // ChangePassword 管理員重設他人密碼。
 // 依政策 force_change_on_reset 設 must_change_password（PCI 8.3.5：重設後首次使用須改密）
 func (s *UserService) ChangePassword(userID uint, newPassword string) error {
-	forceChange := s.policies != nil && s.policies.GetBool(policy.PolicyForceChangeOnReset)
-	return s.setPassword(userID, newPassword, forceChange)
+	return s.setPassword(userID, newPassword, s.forceChangeOnReset())
+}
+
+func (s *UserService) forceChangeOnReset() bool {
+	return s.policies != nil && s.policies.GetBool(policy.PolicyForceChangeOnReset)
 }
 
 // SelfChangePassword 自助改密（/auth/change-password）：
@@ -1275,6 +1643,12 @@ func (s *UserService) SelfChangePassword(userID uint, oldPassword, newPassword s
 
 // setPassword 密碼設定共用路徑：政策驗證 → 更新密碼與強制改密旗標 → 寫入歷史（同事務）
 func (s *UserService) setPassword(userID uint, newPassword string, mustChange bool) error {
+	return s.setPasswordOp(userID, newPassword, mustChange, nil)
+}
+
+// setPasswordOp 同 setPassword；op 非 nil 時（管理端經帳號身分操作關卡）在寫入交易內裁決，
+// 目標為系統安全管理員時同交易寫服務審計與系統告警事件。
+func (s *UserService) setPasswordOp(userID uint, newPassword string, mustChange bool, op *Operator) error {
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1323,6 +1697,19 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 	// 改密者本人不會被自己的推進鎖在門外：換發路徑以**現查**世代簽新會話
 	now := time.Now()
 	err = WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
+		record := func() error { return nil }
+		if op != nil {
+			var gerr error
+			record, gerr = accountOpsOrDefault(s.acctOps).gateAndRecord(tx, *op, userID, AccountOpPasswordChange)
+			if gerr != nil {
+				return gerr
+			}
+		}
+		// 密碼由空變非空會改變「可本地登入」投影（本地帳號密碼空白的漂移列），
+		// 此路徑不推進權限版本；Begin／Settle 讓事件鏈涵蓋
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		if err := tx.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
 			"password":             string(hashedPassword),
 			"password_changed_at":  now,
@@ -1333,7 +1720,13 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 		if err := s.recordPasswordHistory(tx, userID, string(hashedPassword)); err != nil {
 			return err
 		}
-		return BumpCredentialEpoch(tx, userID, "password_changed")
+		if err := authz.SettlePermissionChange(tx); err != nil {
+			return err
+		}
+		if err := BumpCredentialEpoch(tx, userID, "password_changed"); err != nil {
+			return err
+		}
+		return record()
 	})
 	if err != nil {
 		log.Printf("[UserService] setPassword: Transaction error: %v", err)
@@ -1378,4 +1771,25 @@ func (s *UserService) Unlock(userID uint) error {
 
 	log.Printf("[UserService] Unlock: Account unlocked, UserID: %d", userID)
 	return nil
+}
+
+// guardOwnerTransfer 擁有者轉移的防自我授權：鎖 agent 使用者列後交 port 判定。
+// port 未注入即拒（fail-close）。
+func (s *UserService) guardOwnerTransfer(tx *gorm.DB, agentID, newOwnerID uint) error {
+	if s.ownerTransferGuard == nil {
+		return ErrOwnerTransferGuardMissing
+	}
+	// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
+	if probe := authz.LockOrderProbeHook(); probe != nil {
+		probe(tx, authz.LockLayerUserRow, agentID)
+	}
+	q := tx.Model(&model.User{})
+	if tx.Dialector.Name() == "postgres" {
+		q = q.Clauses(clause.Locking{Strength: "NO KEY UPDATE"})
+	}
+	var lockedID uint
+	if err := q.Where("id = ?", agentID).Limit(1).Pluck("id", &lockedID).Error; err != nil {
+		return fmt.Errorf("鎖定 agent 帳號失敗: %w", err)
+	}
+	return s.ownerTransferGuard.CheckOwnerTransfer(tx, agentID, newOwnerID)
 }

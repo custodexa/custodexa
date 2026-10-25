@@ -374,7 +374,17 @@ type paramError struct{ msg string }
 
 func (e *paramError) Error() string { return e.msg }
 
+// disclosedCount 揭露登錄產出的計數值（以方法集合辨認，本套件不匯入產出它的模組）。
+// ok 為假表示未經登錄以合法參數建構，視為非數值：整組 params 不送出，文案不會插入空白計數。
+type disclosedCount interface {
+	DisclosedCount() (n int, ok bool)
+}
+
 func isNumber(v any) bool {
+	if d, ok := v.(disclosedCount); ok {
+		_, valid := d.DisclosedCount()
+		return valid
+	}
 	switch v.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return true

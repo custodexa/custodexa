@@ -35,6 +35,9 @@ type UserRole struct {
 	// 本地管理員計數與列表查詢不必每次去 join 映射事實表。
 	// 兩者不一致時以事實源為準。
 	Source string `gorm:"size:16;not null;default:manual" json:"source"`
+
+	// ScopeKind 指派範圍種類（global／nodes）；權限模型引入的欄位，不出現在 JSON。
+	ScopeKind string `gorm:"size:8;not null;default:global" json:"-"`
 }
 
 // TableName 指定表名

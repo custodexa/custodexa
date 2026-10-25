@@ -21,7 +21,6 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
-	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/pkg/crypto"
 )
@@ -51,13 +50,13 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 	require.NoError(t, err)
 	// sqlite `:memory:` 配連線池時每條連線是各自獨立的空 DB
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Asset{}, &model.AssetAccount{},
+	require.NoError(t, migrateWithAuthz(db, &model.User{}, &model.Asset{}, &model.AssetAccount{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetHostKey{},
 		&model.Credential{}, &model.CredentialSecretVersion{},
 		&model.CredentialRotation{}, &model.CredentialRotationMember{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
-		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{},
-		&model.ChangeSecretCandidate{}, &model.ChangeSecretBatch{}, &model.UserRole{}))
+		&model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{}, &model.ChangeSecretRecord{},
+		&model.ChangeSecretCandidate{}, &model.ChangeSecretBatch{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old })
@@ -65,17 +64,18 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 	codec := aesColumnCodec(t, make([]byte, 32))
 	sink := audit.NewTxSink()
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, sink)
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
-	authorization := authz.NewAssetAuthorizationService(db)
-	creds := asset.NewCredentialService(assetSvc, codec, sink).WithAuthorization(authorization)
+	creds := asset.NewCredentialService(assetSvc, codec, sink).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(principalCredentialAuthorizer{}).WithSystemAlertSink(recordingSystemAlerts{})
 	candidates, err := asset.NewChangeSecretCandidateService(db, codec, assetSvc, sink)
 	require.NoError(t, err)
 	hostKeys := asset.NewHostKeyService(db)
 	planSvc := asset.NewChangeSecretPlanService(db)
-	runner := asset.NewChangeSecretRunner(db, assetSvc, candidates, hostKeys, nil)
-	retry := asset.NewChangeSecretRetryRunner(db, candidates, assetSvc, hostKeys, nil)
+	runner := asset.NewChangeSecretRunner(db, assetSvc, candidates, hostKeys, nil).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(allowAllCredentialManagement{})
+	retry := asset.NewChangeSecretRetryRunner(db, candidates, assetSvc, hostKeys, nil).WithManagementAuthorizer(allowAllCredentialManagement{})
 	reports := asset.NewRotationReportBuilder(db, planSvc, func() int { return 0 })
-	batches := asset.NewChangeSecretBatchService(db, reports)
+	batches := asset.NewChangeSecretBatchService(db, reports).WithManagementAuthorizer(allowAllCredentialManagement{}).
+		WithOwnershipScope(globalOwnershipScopeForTest{})
 
 	f := &planErrorFixture{
 		db:             db,
@@ -91,7 +91,7 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 		{"shared-host", "10.8.0.1", &f.sharedAssetID},
 		{"plain-host", "10.8.0.2", &f.plainAssetID},
 	} {
-		a, cerr := assetSvc.Create(context.Background(), &asset.CreateAssetRequest{
+		a, cerr := assetSvc.Create(asset.WithSystemCaller(context.Background()), &asset.CreateAssetRequest{
 			Name: spec.name, Protocol: model.ProtocolSSH, Host: spec.host, Port: 22,
 			Username: "ops", Password: "dedicated-pw", CreatedBy: 1,
 		})
@@ -118,6 +118,8 @@ func planErrorRouter(t *testing.T, f *planErrorFixture) (*gin.Engine, string) {
 	// 世代閘現查 users：token 宣稱的 ID 不存在時整條鏈在認證即被擋下，
 	// 本檔的狀態碼斷言會落在 401 上假綠
 	seedCredentialGateUsers(t, f.db, 1)
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）
+	ensureCredentialGateRole(t, f.db, 1, model.RoleAdmin)
 
 	authService := identity.NewAuthService("change-secret-error-map-secret", time.Minute)
 	r := gin.New()
@@ -184,8 +186,8 @@ func TestPlanTargetErrorsMapToContract(t *testing.T) {
 			wantCode: "NOTFOUND_CREDENTIAL",
 		},
 		{
-			name: "以帳號為目標卻命中共用憑證的成員",
-			body: fmt.Sprintf(`{"name":"p4","asset_ids":[%d]}`, f.sharedAssetID),
+			name:     "以帳號為目標卻命中共用憑證的成員",
+			body:     fmt.Sprintf(`{"name":"p4","asset_ids":[%d]}`, f.sharedAssetID),
 			wantHTTP: http.StatusBadRequest,
 			wantCode: "VALIDATION_PLAN_SHARED_CREDENTIAL_TARGET",
 		},

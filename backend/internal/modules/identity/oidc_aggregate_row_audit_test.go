@@ -45,6 +45,7 @@ func newAggregateRowAuditDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)

@@ -26,6 +26,7 @@ package moduleboundary
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -150,6 +151,101 @@ var forbiddenModuleEdges = map[string]map[string]bool{
 // 模組歸屬自此只有一條判準＝`internal/modules/<name>/` 路徑前綴（見 moduleOfFile），
 // 而「扁平包不得復活」由 TestModuleGraphHasNoForbiddenEdges 的目錄存在性斷言承接。
 
+// leafModulePackages 位於模組目錄下、但被參照時不算進該模組的葉套件（相對 module 根的目錄）。
+//
+// 放行理由：葉套件只承載常數、型別與純函式，**只 import 標準庫**，引用它不會帶入
+// 所屬模組的任何依賴，也就不可能讓已拆掉的環回潮。目前唯一一列是回應揭露登錄：
+// 範圍外資訊可出現在哪些欄名由它集中宣告，回應與審計兩端都須引用同一組常數，
+// 而這兩端分屬不同模組。
+//
+// 放行只在「只 import 標準庫」成立時才安全，故 TestLeafModulePackagesImportOnlyStdlib
+// 逐檔核對這個前提；葉套件一旦 import 專案或第三方套件即紅，放行隨之失效。
+var leafModulePackages = []string{
+	"internal/modules/authz/disclosure",
+}
+
+// isLeafModulePackageFile 檔案（相對 module 根）是否直接位於某個葉套件目錄內（不含子目錄）。
+func isLeafModulePackageFile(rel string) bool {
+	dir := filepath.ToSlash(filepath.Dir(rel))
+	for _, p := range leafModulePackages {
+		if dir == p {
+			return true
+		}
+	}
+	return false
+}
+
+// nonStdlibImports 自 import 路徑挑出非標準庫者：第一段含「.」（網域）或屬本 module 的路徑。
+func nonStdlibImports(paths []string, modulePath string) []string {
+	var out []string
+	for _, p := range paths {
+		first := p
+		if i := strings.Index(p, "/"); i >= 0 {
+			first = p[:i]
+		}
+		if strings.Contains(first, ".") || p == modulePath || strings.HasPrefix(p, modulePath+"/") {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// TestLeafModulePackagesImportOnlyStdlib 葉套件放行的前提：其非測試檔只 import 標準庫。
+func TestLeafModulePackagesImportOnlyStdlib(t *testing.T) {
+	root := lifecycleModuleRoot(t)
+	modulePath := goModulePath(t, root)
+	for _, pkg := range leafModulePackages {
+		matches, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(pkg), "*.go"))
+		if err != nil {
+			t.Fatalf("列出 %s 失敗: %v", pkg, err)
+		}
+		files := 0
+		for _, f := range matches {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			files++
+			af, err := parser.ParseFile(token.NewFileSet(), f, nil, parser.ImportsOnly)
+			if err != nil {
+				t.Fatalf("解析 %s 失敗（不得以解析失敗當成零 import）: %v", f, err)
+			}
+			var paths []string
+			for _, im := range af.Imports {
+				paths = append(paths, strings.Trim(im.Path.Value, "\""))
+			}
+			if bad := nonStdlibImports(paths, modulePath); len(bad) > 0 {
+				t.Errorf("葉套件 %s 的 %s import 了非標準庫套件 %v：放行前提已不成立，"+
+					"須移除該 import，或把此套件自 leafModulePackages 撤下並讓引用方改走所屬模組的對外介面",
+					pkg, filepath.Base(f), bad)
+			}
+		}
+		if files == 0 {
+			t.Errorf("葉套件 %s 沒有任何非測試檔：登記列已過時或掃描根失真，須顯式刪除該列", pkg)
+		}
+	}
+	// 判定函式的突變自檢：專案與第三方路徑必須挑得出，標準庫不得誤判
+	got := nonStdlibImports([]string{"errors", "net/http", modulePath + "/internal/model", "gorm.io/gorm", modulePath}, modulePath)
+	if len(got) != 3 {
+		t.Fatalf("判定函式應挑出 3 個非標準庫路徑，實得 %v", got)
+	}
+}
+
+// goModulePath 讀 go.mod 的 module 宣告。
+func goModulePath(t *testing.T, root string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatalf("讀 go.mod 失敗: %v", err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[0] == "module" {
+			return f[1]
+		}
+	}
+	t.Fatal("go.mod 沒有 module 宣告")
+	return ""
+}
+
 // moduleEdge 一筆跨模組參照（比對純函式的輸入單位）
 type moduleEdge struct {
 	From   string // 參照方模組
@@ -244,12 +340,17 @@ func scanModuleEdges(t *testing.T, root string) moduleGraphScan {
 
 	scan := moduleGraphScan{SeenFiles: map[string]bool{}}
 	scan.Packages = len(pkgs)
-	// 先建「宣告位置 → 模組」的解析器：跨模組判定要看被參照符號的**宣告檔**
+	// 先建「宣告位置 → 模組」的解析器：跨模組判定要看被參照符號的**宣告檔**。
+	// 葉套件（leafModulePackages）宣告的符號不算任何模組的參照目標，見該表註解。
 	declModule := func(pos token.Pos) string {
 		if !pos.IsValid() {
 			return ""
 		}
-		return moduleOfFile(rel(fset.Position(pos).Filename))
+		r := rel(fset.Position(pos).Filename)
+		if isLeafModulePackageFile(r) {
+			return ""
+		}
+		return moduleOfFile(r)
 	}
 
 	for _, p := range pkgs {

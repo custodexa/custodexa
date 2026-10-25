@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
+import i18n from '@/i18n'
+import HostIdentityConfirmDialog from '@/components/HostIdentityConfirmDialog.vue'
 import CredentialRotationProgress from '@/components/credential/CredentialRotationProgress.vue'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 整組改密的進行中面板。
 //
@@ -85,9 +88,15 @@ const bindings = () => [
   { account_id: 4, asset_id: 14, effective_version_no: 3, up_to_date: false },
 ]
 
+const dialogStub = {
+  props: ['modelValue', 'title'],
+  template:
+    '<div v-if="modelValue" class="dialog-stub"><h3>{{ title }}</h3><slot /><slot name="footer" /></div>',
+}
+
 async function mountProgress(props = {}) {
   const wrapper = mount(CredentialRotationProgress, {
-    global: { plugins: [ElementPlus] },
+    global: { plugins: [ElementPlus], stubs: { 'el-dialog': dialogStub } },
     props: {
       credentialId: 110,
       rotationId: 7,
@@ -102,6 +111,7 @@ async function mountProgress(props = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  setCapabilitiesForTests(['credential:view', 'credential:rotate'])
   visibility = 'visible'
   getMock.mockResolvedValue({ data: rotationFixture() })
   retryMock.mockResolvedValue({ data: rotationFixture() })
@@ -110,6 +120,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  resetCapabilities()
 })
 
 describe('進行中的逐台狀態', () => {
@@ -200,6 +211,23 @@ describe('輪詢', () => {
 })
 
 describe('補跑與放棄', () => {
+  it('無輪替能力者只看進度：補跑、逐台補跑與放棄皆不呈現', async () => {
+    setCapabilitiesForTests(['credential:view', 'credential:bind'])
+    const wrapper = await mountProgress()
+    expect(wrapper.find('[data-test="rotation-stat-applied"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="retry-failed"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="abandon-rotation"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="abandon-hint"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="member-retry-34"]').exists()).toBe(false)
+  })
+
+  it('持輪替能力者看得到補跑與放棄', async () => {
+    const wrapper = await mountProgress()
+    expect(wrapper.find('[data-test="retry-failed"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="abandon-rotation"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="member-retry-34"]').exists()).toBe(true)
+  })
+
   it('失敗與已改未驗證的成員可補跑，逐台送出', async () => {
     const wrapper = await mountProgress()
 
@@ -212,6 +240,135 @@ describe('補跑與放棄', () => {
     await wrapper.find('[data-test="member-retry-34"]').trigger('click')
     await flushPromises()
     expect(retryMock).toHaveBeenCalledWith(110, 7, 34)
+  })
+
+  it('執行中的輪替：收束的成員可補跑並計入整批，排隊的成員只給逐台推進', async () => {
+    getMock.mockResolvedValue({
+      data: rotationFixture({
+        members: [
+          memberFixture({ id: 31, account_id: 1, asset_name: 'web-01', state: 'applied' }),
+          memberFixture({
+            id: 51, account_id: 2, asset_name: 'web-02',
+            state: 'abandoned', last_error: 'CHANGE_SECRET_AUTHZ_REVOKED',
+          }),
+          memberFixture({ id: 52, account_id: 3, asset_name: 'app-01', state: 'queued' }),
+        ],
+      }),
+    })
+    const wrapper = await mountProgress()
+
+    expect(wrapper.find('[data-test="member-retry-51"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="member-retry-52"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="member-retry-31"]').exists()).toBe(false)
+    // 整批只算收束的那一台：排隊中的成員在正常推進時本來就存在
+    expect(wrapper.find('[data-test="retry-failed"]').text()).toContain('1')
+
+    await wrapper.find('[data-test="member-retry-52"]').trigger('click')
+    await flushPromises()
+    expect(retryMock).toHaveBeenCalledWith(110, 7, 52)
+  })
+
+  it('輪替已結束：收束與排隊的成員不給補跑', async () => {
+    getMock.mockResolvedValue({
+      data: rotationFixture({
+        status: 'abandoned',
+        members: [
+          memberFixture({ id: 51, account_id: 2, asset_name: 'web-02', state: 'abandoned' }),
+          memberFixture({ id: 52, account_id: 3, asset_name: 'app-01', state: 'queued' }),
+        ],
+      }),
+    })
+    const wrapper = await mountProgress()
+
+    expect(wrapper.find('[data-test="member-retry-51"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="member-retry-52"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="retry-failed"]').exists()).toBe(false)
+  })
+
+  it('已放棄但未收斂的整組輪替：尚未就位且掛載仍在的成員都可補跑並計入整批', async () => {
+    getMock.mockResolvedValue({
+      data: rotationFixture({
+        status: 'abandoned',
+        unsettled: true,
+        aggregate_state: 'out_of_sync',
+        members: [
+          memberFixture({ id: 31, account_id: 1, asset_name: 'web-01', state: 'applied' }),
+          memberFixture({ id: 51, account_id: 2, asset_name: 'web-02', state: 'abandoned' }),
+          memberFixture({ id: 52, account_id: 3, asset_name: 'app-01', state: 'queued' }),
+          memberFixture({
+            id: 53, account_id: 4, asset_name: 'batch-01',
+            state: 'changed_unverified', last_error: 'CHANGE_SECRET_INTERRUPTED',
+          }),
+          // 掛載已卸下的那一台不再由這組秘密登入，不給補跑
+          memberFixture({ id: 54, account_id: 99, asset_name: 'gone-01', state: 'retry_wait' }),
+        ],
+      }),
+    })
+    const wrapper = await mountProgress()
+
+    expect(wrapper.vm.isUnsettled).toBe(true)
+    expect(wrapper.find('[data-test="unsettled-hint"]').text()).toContain('逐台補跑')
+    expect(wrapper.find('[data-test="abandon-rotation"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="member-retry-31"]').exists()).toBe(false)
+    for (const id of [51, 52, 53]) {
+      expect(wrapper.find(`[data-test="member-retry-${id}"]`).exists(), String(id)).toBe(true)
+    }
+    expect(wrapper.find('[data-test="member-retry-54"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="retry-failed"]').text()).toContain('3')
+    // 服務重啟中斷的那一台說明原因，不只顯示機器碼
+    expect(wrapper.find('[data-test="member-reason-53"]').text()).toContain('服務重啟')
+
+    await wrapper.find('[data-test="member-retry-51"]').trigger('click')
+    await flushPromises()
+    expect(retryMock).toHaveBeenCalledWith(110, 7, 51)
+  })
+
+  it('已放棄但未收斂的拆分輪替：放棄時未動過的成員沒有可推的秘密，不給補跑；候選仍在的已收束成員照給', async () => {
+    getMock.mockResolvedValue({
+      data: rotationFixture({
+        status: 'abandoned',
+        mode: 'split',
+        unsettled: true,
+        members: [
+          memberFixture({ id: 51, account_id: 2, asset_name: 'web-02', state: 'abandoned' }),
+          memberFixture({ id: 52, account_id: 3, asset_name: 'app-01', state: 'changed_unverified' }),
+          // 動過遠端後才被停成收束（例如失權期間有人按了補跑），候選仍在
+          memberFixture({
+            id: 53, account_id: 4, asset_name: 'batch-01', state: 'abandoned',
+            last_error: 'CHANGE_SECRET_AUTHZ_REVOKED', candidate_kept: true,
+          }),
+        ],
+      }),
+    })
+    const wrapper = await mountProgress()
+
+    expect(wrapper.find('[data-test="member-retry-51"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="member-retry-52"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="member-retry-53"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="retry-failed"]').text()).toContain('2')
+  })
+
+  it('打開時已放棄的一輪不通知外層重新載入；補跑後收斂完成才通知', async () => {
+    getMock.mockResolvedValue({
+      data: rotationFixture({
+        status: 'abandoned',
+        unsettled: true,
+        members: [memberFixture({ id: 51, account_id: 2, asset_name: 'web-02', state: 'abandoned' })],
+      }),
+    })
+    const wrapper = await mountProgress()
+    expect(wrapper.vm.polling).toBe(false)
+    expect(wrapper.emitted('finished')).toBeFalsy()
+
+    retryMock.mockResolvedValue({
+      data: rotationFixture({
+        status: 'completed',
+        members: [memberFixture({ id: 51, account_id: 2, asset_name: 'web-02', state: 'applied' })],
+      }),
+    })
+    await wrapper.find('[data-test="member-retry-51"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('finished')).toBeTruthy()
   })
 
   it('放棄本輪就地說明後果，且動作前先確認', async () => {
@@ -300,5 +457,234 @@ describe('補跑與放棄', () => {
     const warning = wrapper.find('[data-test="rotation-warning"]').text()
     expect(warning).toContain('目前就位的版本')
     expect(warning).not.toContain('驗證可用')
+  })
+})
+
+describe('主機身分變更的成員', () => {
+  const STOP = 'CHANGE_SECRET_HOST_IDENTITY_CHANGED'
+  const FP = 'SHA256:q3Vt9xLk2mP8rT0aZ4bN7cY1eW6sH5jD'
+  const msg = (key, params) => i18n.global.t(key, params)
+
+  const hostIdentity = (over = {}) => ({
+    status: 'changed',
+    detail: 'generation_changed',
+    phase: 'precheck',
+    verification_sent: false,
+    original: {
+      transport: 'ssh', record_id: 41, algorithm: 'ssh-ed25519', fingerprint: FP,
+      generation: 2, binding: 'bound', bound_at: '2026-10-17T02:00:00Z',
+    },
+    current: {
+      transport: 'ssh', record_id: 41, algorithm: 'ssh-ed25519', fingerprint: FP,
+      generation: 3, reset_pending: false, recorded_at: '2026-10-17T10:05:00Z',
+    },
+    candidate_applied: false,
+    deadline: '2026-10-18T02:00:00Z',
+    expired: false,
+    confirmable: true,
+    ...over,
+  })
+
+  const stoppedMember = (over = {}) => memberFixture({
+    id: 41, account_id: 1, asset_name: 'web-01', username: 'root',
+    state: 'terminal_failed', last_error: STOP, ...over,
+  })
+
+  const rotationWith = (members) => rotationFixture({ members })
+  const dialogOf = (w) => w.findComponent(HostIdentityConfirmDialog)
+
+  async function openAndConfirm(w, member = stoppedMember()) {
+    await w.vm.retryMember(member)
+    await flushPromises()
+    await w.find('[data-test="hic-check-identity"] input').setValue(true)
+    await w.find('[data-test="hic-submit"]').trigger('click')
+    await flushPromises()
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('一般重試成員：請求不帶 body', async () => {
+    const w = await mountProgress()
+    await w.find('[data-test="member-retry-34"]').trigger('click')
+    await flushPromises()
+    expect(retryMock.mock.calls[0]).toEqual([110, 7, 34])
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it('回應的該成員帶 host_identity：開確認對話框（成員種類），不顯示「已補跑」', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const m = stoppedMember()
+    getMock.mockResolvedValue({ data: rotationWith([m]) })
+    const w = await mountProgress()
+    retryMock.mockResolvedValue({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+    await w.find('[data-test="member-retry-41"]').trigger('click')
+    await flushPromises()
+    const dlg = dialogOf(w)
+    expect(dlg.props('modelValue')).toBe(true)
+    expect(dlg.props('kind')).toBe('member')
+    expect(dlg.props('account')).toBe('root')
+    expect(dlg.props('asset')).toBe('web-01')
+    expect(dlg.props('identity').detail).toBe('generation_changed')
+    expect(success).not.toHaveBeenCalled()
+  })
+
+  it('確認後帶 body 重送：body 等於 emit payload，鍵集合只含身分欄位，成功後關閉', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const m = stoppedMember()
+    getMock.mockResolvedValue({ data: rotationWith([m]) })
+    const w = await mountProgress()
+    retryMock.mockReset()
+    retryMock
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, state: 'applied', last_error: undefined }]) })
+    await openAndConfirm(w, m)
+    expect(retryMock).toHaveBeenCalledTimes(2)
+    const emitted = dialogOf(w).emitted('confirm')[0][0]
+    const [credId, rotId, memberId, body] = retryMock.mock.calls[1]
+    expect([credId, rotId, memberId]).toEqual([110, 7, 41])
+    expect(Object.keys(body)).toEqual(['confirm_host_identity'])
+    expect(body.confirm_host_identity).toEqual(emitted)
+    expect(Object.keys(body.confirm_host_identity).sort()).toEqual(
+      ['accept_different_key', 'algorithm', 'fingerprint', 'generation', 'record_id', 'transport'])
+    expect(JSON.stringify(body)).not.toMatch(/password|private_key|secret/i)
+    expect(success).toHaveBeenCalledWith(msg('hostIdentityConfirm.result.verified'))
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it('確認後驗證沒成功：說新憑證仍保留，不沿用「已補跑」', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const m = stoppedMember()
+    getMock.mockResolvedValue({ data: rotationWith([m]) })
+    const w = await mountProgress()
+    retryMock.mockReset()
+    retryMock
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, last_error: 'CHANGE_SECRET_VERIFY_FAILED' }]) })
+    await openAndConfirm(w, m)
+    expect(success).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledWith(msg('hostIdentityConfirm.result.notVerified'))
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it('確認時目標已改變（reason）：顯示該原因碼文案，不算成功', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const m = stoppedMember()
+    getMock.mockResolvedValue({ data: rotationWith([m]) })
+    const w = await mountProgress()
+    retryMock.mockReset()
+    retryMock
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+      .mockResolvedValueOnce({
+        data: rotationWith([{ ...m, last_error: 'CHANGE_SECRET_AUTHZ_TARGET_CHANGED' }]),
+      })
+    await openAndConfirm(w, m)
+    expect(warning).toHaveBeenCalledWith(msg('changeSecretPlans.reason.CHANGE_SECRET_AUTHZ_TARGET_CHANGED'))
+    expect(success).not.toHaveBeenCalled()
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+  })
+
+  it.each([
+    ['different_key_not_accepted', 'hostIdentityConfirm.differentKey.title'],
+    ['not_confirmable', 'hostIdentityConfirm.blocked.contactAdmin'],
+    ['confirmation_pending', 'hostIdentityConfirm.result.moved'],
+  ])('確認遇 409 CONFLICT_HOST_IDENTITY_MOVED（detail=%s）：顯示對應說明、不算成功、關閉並重新載入', async (detail, key) => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const error = vi.spyOn(ElMessage, 'error')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const m = stoppedMember()
+    getMock.mockResolvedValue({ data: rotationWith([m]) })
+    const w = await mountProgress()
+    retryMock.mockReset()
+    retryMock
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+      .mockRejectedValueOnce({
+        response: { status: 409, data: { code: 'CONFLICT_HOST_IDENTITY_MOVED', detail } },
+      })
+    getMock.mockClear()
+    await openAndConfirm(w, m)
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledWith(msg(key))
+    expect(warning).not.toHaveBeenCalled()
+    expect(success).not.toHaveBeenCalled()
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+    expect(getMock).toHaveBeenCalled()
+    expect(i18n.global.te('apiError.CONFLICT_HOST_IDENTITY_MOVED')).toBe(true)
+  })
+
+  it('依序補跑：身分停止者不呼叫，回應帶 host_identity 者列入跳過且不中止，結束時列出兩台與原因', async () => {
+    const success = vi.spyOn(ElMessage, 'success')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const base = [
+      stoppedMember({ id: 41, asset_name: 'web-01' }),
+      memberFixture({ id: 42, account_id: 2, asset_name: 'web-02', state: 'terminal_failed', last_error: 'CHANGE_SECRET_VERIFY_FAILED' }),
+      memberFixture({ id: 43, account_id: 3, asset_name: 'app-01', state: 'changed_unverified' }),
+      memberFixture({ id: 44, account_id: 4, asset_name: 'batch-01', state: 'terminal_failed', last_error: 'CHANGE_SECRET_REMOTE_REJECTED' }),
+    ]
+    getMock.mockResolvedValue({ data: rotationWith(base) })
+    const w = await mountProgress()
+    const order = []
+    retryMock.mockReset()
+    retryMock.mockImplementation(async (_c, _r, memberId) => {
+      order.push(memberId)
+      if (memberId === 42) {
+        return { data: rotationWith(base.map((m) => (m.id === 42 ? { ...m, host_identity: hostIdentity() } : m))) }
+      }
+      return { data: rotationWith(base) }
+    })
+    await w.vm.retryFailed()
+    await flushPromises()
+    expect(order).toEqual([42, 43, 44])
+    expect(order).not.toContain(41)
+    expect(dialogOf(w).props('modelValue')).toBe(false)
+    expect(success).not.toHaveBeenCalled()
+    // 摘要與逐台訊息不再走會自動消失的 toast，改為常駐面板
+    expect(warning).not.toHaveBeenCalled()
+    const report = w.find('[data-test="host-identity-skip-report"]')
+    expect(report.exists()).toBe(true)
+    expect(report.text()).toContain(msg('credentials.rotation.hostIdentitySkipSummary', { done: 2, skipped: 2 }))
+    const lines = report.findAll('[data-test="host-identity-skip-line"]').map((l) => l.text())
+    expect(lines).toEqual([
+      msg('credentials.rotation.hostIdentitySkipStopped', { asset: 'web-01' }),
+      msg('credentials.rotation.hostIdentitySkipFoundOnRetry', { asset: 'web-02' }),
+    ])
+    // 常駐：之後重繪、時間經過都還在；下一次補跑開始才清除
+    await new Promise((r) => setTimeout(r, 50))
+    await flushPromises()
+    expect(w.find('[data-test="host-identity-skip-report"]').exists()).toBe(true)
+  })
+
+  it('確認後主機身分又變更（回應帶 host_identity）：紅色 error，不是 warning', async () => {
+    const error = vi.spyOn(ElMessage, 'error')
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const m = stoppedMember()
+    getMock.mockResolvedValue({ data: rotationWith([m]) })
+    const w = await mountProgress()
+    retryMock.mockReset()
+    retryMock
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+      .mockResolvedValueOnce({ data: rotationWith([{ ...m, host_identity: hostIdentity() }]) })
+    await openAndConfirm(w, m)
+    expect(error).toHaveBeenCalledWith(msg('hostIdentityConfirm.result.moved'))
+    expect(warning).not.toHaveBeenCalled()
+  })
+
+  it('依序補跑：跳過後仍遇請求失敗即停', async () => {
+    const base = [
+      stoppedMember({ id: 41 }),
+      memberFixture({ id: 42, account_id: 2, state: 'terminal_failed' }),
+      memberFixture({ id: 43, account_id: 3, state: 'terminal_failed' }),
+    ]
+    getMock.mockResolvedValue({ data: rotationWith(base) })
+    const w = await mountProgress()
+    retryMock.mockReset()
+    retryMock.mockRejectedValueOnce(new Error('remote rejected'))
+    await w.vm.retryFailed()
+    await flushPromises()
+    expect(retryMock).toHaveBeenCalledTimes(1)
+    expect(retryMock.mock.calls[0][2]).toBe(42)
   })
 })

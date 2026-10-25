@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 )
 
 // fakeAssetChecker 記錄呼叫參數的 AssetPermissionChecker 假件
@@ -28,7 +29,7 @@ func (f *fakeAssetChecker) CheckPermission(ctx context.Context, userID, assetID 
 	f.gotUserID = userID
 	f.gotAssetID = assetID
 	f.gotPerm = perm
-	f.gotRole = ctx.Value("role")
+	f.gotRole = authz.PrincipalFromContext(ctx).LegacyRole()
 	return f.allow, f.err
 }
 
@@ -39,7 +40,7 @@ func newVisibilityRouter(checker AssetPermissionChecker, role string, userID uin
 	r := gin.New()
 	r.GET("/assets/:id/probe", func(c *gin.Context) {
 		if role != "" {
-			c.Set("role", role)
+			SetPrincipal(c, legacyPrincipal(role))
 		}
 		if setUserID {
 			c.Set("userID", userID)

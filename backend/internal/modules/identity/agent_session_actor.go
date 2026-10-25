@@ -27,6 +27,9 @@ func BindAgentSessionPrincipal(tx *gorm.DB, sess *model.Session) error {
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=?", user.ID).First(&token, *sess.AgentTokenID).Error; err != nil {
 		return err
 	}
+	if h := loadLockOrderHook(); h != nil {
+		h("agent_session_after_token_lock", tx, user.ID)
+	}
 	if token.RevokedAt != nil || token.SuspendedAt != nil || !token.ExpiresAt.After(time.Now()) {
 		return errors.New("inactive agent token")
 	}
@@ -35,5 +38,8 @@ func BindAgentSessionPrincipal(tx *gorm.DB, sess *model.Session) error {
 	sess.AgentTokenName = &token.Name // Creation-time snapshot; never re-read by response handlers.
 	sess.ActorKind = &kind
 	sess.OwnerUserID = &ownerID
+	if h := loadLockOrderHook(); h != nil {
+		h("agent_session_principal_bound", tx, user.ID)
+	}
 	return nil
 }

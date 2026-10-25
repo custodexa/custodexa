@@ -1,7 +1,9 @@
 package audit
 
 import (
+	"os"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -130,4 +132,33 @@ func TestStateTableRegistryGuard(t *testing.T) {
 			}
 		}
 	})
+}
+
+// 權限擴充登記項守衛：權限狀態以附證為載體，不進基礎登記清單；
+// 每個擴充項必須有快照測試與竄改矩陣（對帳測試的直改庫情境），雙向比對。
+func TestPermissionExtensionRegistryGuard(t *testing.T) {
+	for _, st := range StateTableRegistry() {
+		if st.Name == StateTablePermission {
+			t.Fatalf("權限擴充項不得進基礎登記清單：基礎快照欄是既有簽章載荷的輸入")
+		}
+	}
+	ext := PermissionExtensionRegistry()
+	if len(ext) == 0 {
+		t.Fatal("權限擴充登記清單為空")
+	}
+	need := map[string]string{
+		"permission_state_snapshot_test.go":  "func TestPermissionStateSnapshot(",
+		"permission_state_reconcile_test.go": "func TestPermissionStateReconcile(",
+	}
+	for file, marker := range need {
+		raw, err := os.ReadFile(file)
+		if err != nil || !strings.Contains(string(raw), marker) {
+			t.Fatalf("權限擴充項缺少 %s 的 %s", file, marker)
+		}
+	}
+	for _, e := range ext {
+		if e.Carrier != CarrierAttestation || e.Name == "" || e.EventSource == "" {
+			t.Errorf("擴充項欄位不齊: %+v", e)
+		}
+	}
 }

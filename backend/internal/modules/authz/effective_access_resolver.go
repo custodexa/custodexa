@@ -8,6 +8,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/modules/authz/disclosure"
 	"gorm.io/gorm"
 )
 
@@ -21,6 +22,8 @@ import (
 type EffectiveAccessResolver struct {
 	repo *assetAuthorizationRepository
 	db   *gorm.DB
+	// e 範圍化讀取的判定器（WithScope 注入）；未注入時 ResolveEffective*For 回錯誤，不退回全量
+	e *ScopeEvaluator
 }
 
 // NewEffectiveAccessResolver 建立有效權限解析器
@@ -60,6 +63,8 @@ type EffectiveAssetEntry struct {
 	Protocol   model.ProtocolType   `json:"protocol"`
 	Permission model.PermissionType `json:"permission"`
 	Paths      []EffectivePath      `json:"paths"`
+	// 範圍化檢視者的溯因被遮蔽時才有值；未範圍化的回應不帶此欄
+	*disclosure.NodeCountField
 }
 
 // EffectiveAssetsResult 主體視角結果。RoleOverride 非空＝subject 具 admin/auditor
@@ -77,6 +82,8 @@ type EffectiveUserEntry struct {
 	Username   string               `json:"username"`
 	Permission model.PermissionType `json:"permission"`
 	Paths      []EffectivePath      `json:"paths"`
+	// 範圍化檢視者的溯因被遮蔽時才有值；未範圍化的回應不帶此欄
+	*disclosure.NodeCountField
 }
 
 // EffectiveUsersResult 客體視角結果。RoleOverrideNote 恆帶：admin/auditor 角色
@@ -104,14 +111,18 @@ var ErrEffectiveSubjectNotFound = errors.New("使用者不存在")
 var ErrEffectiveAssetNotFound = errors.New("資產不存在")
 
 // roleOverrideOf 主體角色隱含判定：角色自 DB 查詢（非 request context），
-// admin 優先於 auditor
+// 內建超管優先於稽核員；以內建身分（builtin_key）判定，不看角色名稱。
+// 回傳值沿用既有的 "admin"／"auditor" 字串，供回應欄位與前端查譯（值域不變）
 func roleOverrideOf(roles []model.Role) string {
 	override := ""
 	for _, r := range roles {
-		if r.Name == model.RoleAdmin {
-			return model.RoleAdmin
+		if r.BuiltinKey == nil {
+			continue
 		}
-		if r.Name == model.RoleAuditor {
+		switch *r.BuiltinKey {
+		case model.BuiltinSuperAdmin:
+			return model.RoleAdmin
+		case model.BuiltinAuditor:
 			override = model.RoleAuditor
 		}
 	}

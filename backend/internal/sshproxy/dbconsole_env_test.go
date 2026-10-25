@@ -54,10 +54,10 @@ func setupConsoleEnv(t *testing.T, protocol string) *consoleEnv {
 	}
 	// 單連線：`:memory:` 配連線池時每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
 		&model.AccessRequest{}, &model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{},
-		&model.SessionCommand{}, &model.AlertRule{}, &model.UserRole{}); err != nil {
+		&model.SessionCommand{}, &model.AlertRule{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -101,6 +101,7 @@ func setupConsoleEnv(t *testing.T, protocol string) *consoleEnv {
 	}
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}

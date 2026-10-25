@@ -17,7 +17,7 @@ func principalFailureQuery(db *gorm.DB, table string) *gorm.DB {
 	return db.Where("mechanism = ? AND cause_params LIKE ?", model.MechanismPrincipalStateIntegrity, `%"table":"`+table+`"%`)
 }
 func validPrincipalTable(table string) bool {
-	return table == StateTablePrincipals || table == StateTableAgentTokens
+	return table == StateTablePrincipals || table == StateTableAgentTokens || table == StateTablePermission
 }
 func principalFailureLock(tx *gorm.DB, table string) error {
 	if tx.Dialector.Name() != "postgres" {

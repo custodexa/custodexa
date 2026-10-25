@@ -73,12 +73,23 @@
         min-width="124"
       >
         <template #default="{ row }">
+          <!-- 引用的共用憑證不在檢視者的範圍內：伺服器已移除名稱與台數，這裡只標示事實 -->
+          <el-tag
+            v-if="row.credential_out_of_scope"
+            size="small"
+            type="info"
+            effect="plain"
+            :data-test="`account-out-of-scope-${row.id}`"
+          >
+            {{ t('assets.editDrawer.outOfScopeCredential') }}
+          </el-tag>
           <span
+            v-else
             class="cred-name"
             :data-test="`account-credential-${row.id}`"
           >{{ credentialName(row) }}</span>
           <el-tag
-            v-if="row.shared_credential"
+            v-if="row.shared_credential && !row.credential_out_of_scope"
             size="small"
             type="primary"
             effect="plain"
@@ -87,7 +98,7 @@
             {{ t('assets.editDrawer.sharedTag', { count: row.binding_count || 1 }) }}
           </el-tag>
           <el-tag
-            v-else
+            v-else-if="!row.credential_out_of_scope"
             size="small"
             type="info"
             effect="plain"
@@ -171,7 +182,7 @@
               link
               size="small"
               type="primary"
-              :disabled="rotationActive(row)"
+              :disabled="rotationActive(row) || !!rowDenied(row, 'secret_fix')"
               :data-test="`account-secret-fix-${row.id}`"
               @click="openSecretFix(row)"
             >
@@ -183,7 +194,7 @@
               link
               size="small"
               type="primary"
-              :disabled="rotationActive(row)"
+              :disabled="rotationActive(row) || !!rowDenied(row, 'rebind')"
               :data-test="`account-rebind-${row.id}`"
               @click="openRebind(row)"
             >
@@ -194,7 +205,7 @@
               link
               size="small"
               type="warning"
-              :disabled="rotationActive(row)"
+              :disabled="rotationActive(row) || !!rowDenied(row, 'detach')"
               :data-test="`account-detach-${row.id}`"
               @click="openDetach(row)"
             >
@@ -204,11 +215,28 @@
               link
               size="small"
               type="danger"
+              :disabled="!!rowDenied(row, 'remove')"
               :data-test="`account-remove-${row.id}`"
               @click="handleRemove(row)"
             >
               {{ t('assets.editDrawer.remove') }}
             </el-button>
+          </div>
+          <!-- 動作旗標由伺服器標示；不可操作的原因就地寫出，不靜默禁用 -->
+          <div
+            v-for="code in rowDeniedCodes(row)"
+            :key="code"
+            class="row-note"
+            :data-test="`account-denied-${code}-${row.id}`"
+          >
+            {{ t(`credentials.actionReason.${code}`) }}
+          </div>
+          <div
+            v-if="row.credential_out_of_scope"
+            class="row-note"
+            :data-test="`account-out-of-scope-note-${row.id}`"
+          >
+            {{ t('assets.editDrawer.outOfScopeNote') }}
           </div>
           <!-- 輪替進行中：同一個理由只寫一次，並說明它擋住哪些動作 -->
           <div
@@ -380,6 +408,7 @@ import CredentialPicker from '@/components/credential/CredentialPicker.vue'
 import CredentialDetachDialog from '@/components/credential/CredentialDetachDialog.vue'
 import CredentialSecretFixDialog from '@/components/credential/CredentialSecretFixDialog.vue'
 import { credentialSecretKind } from '@/constants/credentials'
+import { deniedReason } from '@/utils/credentialActions'
 
 const props = defineProps({
   assetId: { type: [Number, String], default: null },
@@ -410,6 +439,28 @@ const addDisabled = computed(
 const mountedCredentialIds = computed(() =>
   accounts.value.map((row) => row.credential_id).filter(Boolean)
 )
+
+// 帳號列動作旗標（rebind、remove、secret_fix、detach），與寫入端點同一判定。
+// 範圍外憑證的列沒有旗標時，更正與脫離一律不可執行（憑證管理需歸屬在範圍內）
+const OUT_OF_SCOPE_BLOCKED = ['secret_fix', 'detach']
+function rowDenied(row, key) {
+  const code = deniedReason(row, key)
+  if (code) return code
+  if (row?.credential_out_of_scope && OUT_OF_SCOPE_BLOCKED.includes(key)
+    && row.actions?.[key]?.allowed !== true) {
+    return 'out_of_scope'
+  }
+  return ''
+}
+const rowDeniedCodes = (row) => {
+  const codes = new Set()
+  for (const key of ['rebind', 'remove', 'secret_fix', 'detach']) {
+    const code = rowDenied(row, key)
+    // 範圍外憑證列的 out_of_scope 已由專屬說明句涵蓋
+    if (code && !(row?.credential_out_of_scope && code === 'out_of_scope')) codes.add(code)
+  }
+  return [...codes]
+}
 
 const credentialName = (row) => row.credential_name || row.username || ''
 

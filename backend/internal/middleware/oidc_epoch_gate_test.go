@@ -44,7 +44,10 @@ func setupEpochGateRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	}
 	// 純 Go driver 的每條連線是各自獨立的空 DB
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.OIDCProvider{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.OIDCProvider{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

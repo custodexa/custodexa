@@ -147,7 +147,7 @@ func applyEvidenceOffsite(db *gorm.DB) error {
 	return nil
 }
 
-// rollbackEvidenceOffsite 回退＝**資料追蹤不可逆**（design §8）。
+// rollbackEvidenceOffsite 回退＝**資料追蹤不可逆**。
 //
 // drop `offsite_objects` 即失去「哪個錄影的遠端副本在哪個 bucket、哪個 key、
 // 上傳當下的 SHA-256 是多少」；drop `offsite_profiles` 更失去「哪個物件要用哪組

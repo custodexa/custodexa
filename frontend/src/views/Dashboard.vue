@@ -12,24 +12,27 @@
       </template>
     </PageHeader>
 
+    <UpgradeGuidanceCard />
+
     <el-row :gutter="16">
       <el-col
         v-for="card in statCards"
-        :key="card.label"
+        :key="card.key"
         :xs="12"
         :sm="12"
         :md="6"
       >
-        <!-- 可點擊性依 card.to 是否存在而定：錄影佔用卡沒有可跳轉的目標頁
-             （不存在「錄影儲存」頁），隨便指一個頁會讓使用者以為那裡有儲存資訊 -->
+        <!-- 可點擊性依 card.target 是否存在而定：錄影佔用卡沒有可跳轉的目標頁；
+             取不到值的卡也不可點，避免未帶條件就落到清單而被讀成「全部」 -->
         <div
-          v-loading="loading"
+          v-loading="card.status === 'loading'"
           class="stat-card"
-          :class="{ 'stat-card-clickable': card.to }"
-          :role="card.to ? 'button' : undefined"
-          :tabindex="card.to ? 0 : undefined"
-          @click="card.to && $router.push(card.to)"
-          @keydown.enter.space.prevent="card.to && $router.push(card.to)"
+          :class="{ 'stat-card-clickable': card.target }"
+          :data-card="card.key"
+          :role="card.target ? 'button' : undefined"
+          :tabindex="card.target ? 0 : undefined"
+          @click="card.target && $router.push(card.target)"
+          @keydown.enter.space.prevent="card.target && $router.push(card.target)"
         >
           <div
             class="stat-icon"
@@ -40,8 +43,11 @@
             </el-icon>
           </div>
           <div class="stat-text">
-            <div class="stat-value">
-              {{ card.value }}
+            <div
+              class="stat-value"
+              :class="{ 'stat-value-unavailable': card.status === 'error' }"
+            >
+              {{ card.text }}
             </div>
             <div class="stat-label">
               {{ card.label }}
@@ -51,24 +57,27 @@
       </el-col>
     </el-row>
 
-    <!-- 人設待辦卡列：待辦導向，非權限裁切；多角色聯集去重 -->
+    <!-- 待辦卡列：待辦導向，非權限裁切；多角色聯集去重 -->
     <el-row
       v-if="backlogCards.length"
       :gutter="16"
     >
       <el-col
         v-for="card in backlogCards"
-        :key="card.label"
+        :key="card.key"
         :xs="12"
         :sm="12"
         :md="6"
       >
         <div
-          class="stat-card stat-card-clickable"
-          role="button"
-          tabindex="0"
-          @click="$router.push(card.to)"
-          @keydown.enter.space.prevent="$router.push(card.to)"
+          v-loading="card.status === 'loading'"
+          class="stat-card"
+          :class="{ 'stat-card-clickable': card.target }"
+          :data-card="card.key"
+          :role="card.target ? 'button' : undefined"
+          :tabindex="card.target ? 0 : undefined"
+          @click="card.target && $router.push(card.target)"
+          @keydown.enter.space.prevent="card.target && $router.push(card.target)"
         >
           <div
             class="stat-icon"
@@ -79,8 +88,11 @@
             </el-icon>
           </div>
           <div class="stat-text">
-            <div class="stat-value">
-              {{ card.value }}
+            <div
+              class="stat-value"
+              :class="{ 'stat-value-unavailable': card.status === 'error' }"
+            >
+              {{ card.text }}
             </div>
             <div class="stat-label">
               {{ card.label }}
@@ -90,16 +102,19 @@
       </el-col>
     </el-row>
 
+    <!-- 活動面板：三塊各依自己的能力、各自取數，可同時出現 -->
     <el-row
+      v-if="activityPanelCount"
       :gutter="16"
       class="activity-row"
     >
-      <el-col :md="12">
-        <!-- 進行中連線（全域）屬稽核職能；一般 user 改顯示自己的連線摘要，
-             不呼叫需 session:view 的端點 -->
+      <el-col
+        v-if="canSeeSessions"
+        :md="activityColSpan"
+      >
         <div
-          v-if="isPrivileged"
           class="activity-card"
+          data-panel="active-sessions"
         >
           <div class="activity-head">
             <span>{{ $t('dashboard.activeSessionsHead') }}</span>
@@ -127,9 +142,14 @@
             </el-tag>
           </div>
         </div>
+      </el-col>
+      <el-col
+        v-if="showsMine"
+        :md="activityColSpan"
+      >
         <div
-          v-else
           class="activity-card"
+          data-panel="my-connections"
         >
           <div class="activity-head">
             <span>{{ $t('menu.myConnections') }}</span>
@@ -168,10 +188,13 @@
         </div>
       </el-col>
       <el-col
-        v-if="isPrivileged"
-        :md="12"
+        v-if="canAuditRead"
+        :md="activityColSpan"
       >
-        <div class="activity-card">
+        <div
+          class="activity-card"
+          data-panel="recent-alerts"
+        >
           <div class="activity-head">
             <span>{{ $t('dashboard.recentAlertsHead') }}</span>
             <el-link
@@ -215,9 +238,9 @@
     <!-- 每日安全審閱卡（PCI 10.4.1）：只提醒與提供入口，簽核在操作日誌頁的抽屜完成。
          只對 admin／auditor 取數與顯示（狀態端點掛 audit:view） -->
     <DailyReviewCard
-      v-if="isPrivileged && reviewStatus"
+      v-if="canAuditRead && reviewStatus"
       :status="reviewStatus"
-      :is-admin="isAdmin"
+      :can-open-policies="can('securitypolicy:manage')"
     />
 
     <div class="quick-actions">
@@ -256,15 +279,15 @@
           </el-icon>
           <div>
             <div class="action-title">
-              {{ isPrivileged ? $t('menu.assets') : $t('menu.myAssets') }}
+              {{ showsGlobal ? $t('menu.assets') : $t('menu.myAssets') }}
             </div>
             <div class="action-desc">
-              {{ isPrivileged ? $t('dashboard.actionAssetsDescAdmin') : $t('dashboard.actionAssetsDescUser') }}
+              {{ showsGlobal ? $t('dashboard.actionAssetsDescAdmin') : $t('dashboard.actionAssetsDescUser') }}
             </div>
           </div>
         </div>
         <div
-          v-if="isPrivileged"
+          v-if="enterable('/sessions')"
           class="action-card"
           role="button"
           tabindex="0"
@@ -284,7 +307,7 @@
           </div>
         </div>
         <div
-          v-else
+          v-else-if="selfService && enterable('/my-connections')"
           class="action-card"
           role="button"
           tabindex="0"
@@ -304,7 +327,7 @@
           </div>
         </div>
         <div
-          v-if="!isPrivileged"
+          v-if="selfService && enterable('/my-requests')"
           class="action-card"
           role="button"
           tabindex="0"
@@ -324,7 +347,7 @@
           </div>
         </div>
         <div
-          v-if="isPrivileged"
+          v-if="enterable('/audit-logs')"
           class="action-card"
           role="button"
           tabindex="0"
@@ -349,7 +372,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { reactive, ref, computed, watch, onMounted } from 'vue'
 import {
   Server,
   Cable,
@@ -370,368 +393,292 @@ import PageHeader from '@/components/PageHeader.vue'
 import { BRAND } from '@/brand'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatRelativeTime, formatBytes } from '@/utils/format'
-import { useRoles, readEffectiveApprover } from '@/composables/useRoles'
-import { getAssetList } from '@/api/assets'
-import { getSessionStatistics, getActiveSessions, getRecordingStats } from '@/api/sessions'
+import { useCapabilities } from '@/composables/useCapabilities'
+import { getDashboardCard } from '@/api/dashboard'
+import { getActiveSessions } from '@/api/sessions'
 import { getMyConnections } from '@/api/myConnections'
 import { searchAlerts } from '@/api/alerts'
 import { alertLineText } from '@/constants/command-degrade'
 import { getDailyReviewStatus } from '@/api/dailyReviews'
 import DailyReviewCard from '@/components/daily-review/DailyReviewCard.vue'
-import {
-  getMyAccessRequests,
-  getPendingAccessRequestCount,
-} from '@/api/accessRequests'
-import { getAccessReviews } from '@/api/access-reviews'
+import UpgradeGuidanceCard from '@/components/UpgradeGuidanceCard.vue'
+import { canEnter, entryMeta } from '@/router/entryRules'
 import { t } from '@/i18n'
 
-const loading = ref(false)
-const assetTotal = ref(0)
-const activeSessions = ref(0)
-const todaySessions = ref(0)
-const totalSessions = ref(0)
-const todayAlerts = ref(0)
+// 呈現與取數都依後端 /auth/me 的能力，不看角色：
+// - showsGlobal（ui:assets-global）：全域資產檢視的呈現（標題與文案）；
+// - selfService（ui:self-service-actions）：僅管快速操作卡；我的連線與我的申請待審兩卡、本人近期連線面板改看入口規則（showsMine）；
+// - 每張卡、每個面板各依自己的必要能力出現與取數，缺能力時不發請求；
+// - 審核資格以 ui:approvals 為準，admin 不兜底。
+const caps = useCapabilities()
+const { can } = caps
+const showsGlobal = computed(() => can('ui:assets-global'))
+const selfService = computed(() => can('ui:self-service-actions'))
+// 我的連線、我的申請待審：已登入者看自己的資料（authenticated owner/self），
+// 與側欄「我的連線／我的申請」入口同一判準（entryRules 的 signedIn），不看 ui:self-service-actions
+const showsMine = computed(() => canEnter(entryMeta('/my-connections')) && canEnter(entryMeta('/my-requests')))
+const canSeeSessions = computed(() => can('session:view'))
+const canAuditRead = computed(() => can('audit:view'))
+
+// 落點是否可進入：與側欄、路由守衛共用同一個入口規則
+const enterable = (path) => canEnter(entryMeta(path))
+
+const GREEN = 'rgba(78, 196, 122, 0.15)'
+const AMBER = 'rgba(217, 169, 62, 0.15)'
+const RED = 'rgba(229, 96, 79, 0.15)'
+const GREY = 'rgba(139, 148, 158, 0.15)'
+const TEAL = 'rgba(127, 214, 214, 0.15)'
+
+// 十二張卡的登錄。filters 由卡片回應帶來，導覽時原樣放進 route query（不經時間型別轉換）；
+// extraQuery 是落點頁籤等與條件無關的導覽參數，與 filters 分開。
+const CARD_DEFS = [
+  {
+    key: 'assets', row: 'stat', path: '/assets', icon: Server, color: 'var(--ot-primary)', bg: 'var(--ot-primary-dim)',
+    visible: () => can('asset:view'),
+    label: () => (showsGlobal.value ? t('dashboard.statAssetTotal') : t('dashboard.statConnectableAssets')),
+  },
+  {
+    key: 'my-connections', row: 'stat', path: '/my-connections', icon: Cable, color: 'var(--ot-success)', bg: GREEN,
+    visible: () => showsMine.value,
+    label: () => t('menu.myConnections'),
+  },
+  {
+    key: 'my-pending-requests', row: 'stat', path: '/my-requests', icon: ClipboardList, color: 'var(--ot-warning)', bg: AMBER,
+    visible: () => showsMine.value,
+    label: () => t('dashboard.statMyPendingRequests'),
+  },
+  {
+    key: 'active-sessions', row: 'stat', path: '/sessions', extraQuery: { tab: 'active' }, icon: Cable, color: 'var(--ot-success)', bg: GREEN,
+    visible: () => canSeeSessions.value,
+    label: () => t('sessions.tabActive'),
+  },
+  {
+    key: 'today-sessions', row: 'stat', path: '/sessions', extraQuery: { tab: 'history' }, icon: Timer, color: 'var(--ot-warning)', bg: AMBER,
+    visible: () => canSeeSessions.value,
+    label: () => t('dashboard.statTodaySessions'),
+  },
+  {
+    key: 'total-sessions', row: 'stat', path: '/sessions', extraQuery: { tab: 'history' }, icon: FileText, color: 'var(--ot-info)', bg: GREY,
+    visible: () => canSeeSessions.value,
+    label: () => t('dashboard.statTotalSessions'),
+  },
+  {
+    key: 'today-alerts', row: 'stat', path: '/alerts', icon: Bell, color: 'var(--ot-danger)', bg: RED,
+    visible: () => canAuditRead.value,
+    label: () => t('dashboard.statTodayAlerts'),
+  },
+  // 錄影佔用：磁碟實際大小（錄影目錄檔案加總），不是可用空間或使用率
+  //（系統不掌握磁碟總容量，沒有分母就沒有百分比）。無 path：不存在「錄影儲存」頁，也不輪詢
+  {
+    key: 'recording-storage', row: 'stat', path: null, icon: FolderOpen, color: 'var(--ot-info)', bg: GREY,
+    visible: () => canAuditRead.value,
+    label: () => t('dashboard.statRecordingStorage'),
+    format: (d) => formatBytes(d.value ?? 0),
+  },
+  {
+    key: 'unreviewed-alerts', row: 'backlog', path: '/alerts', icon: Bell, color: 'var(--ot-danger)', bg: RED,
+    visible: () => canAuditRead.value,
+    label: () => t('common.unreviewedAlerts'),
+  },
+  {
+    key: 'recording-failures', row: 'backlog', path: '/sessions', extraQuery: { tab: 'active' }, icon: Video,
+    visible: () => canSeeSessions.value,
+    label: () => t('dashboard.backlogRecordingFailures'),
+    color: (d) => (d && d.value > 0 ? 'var(--ot-danger)' : 'var(--ot-info)'),
+    bg: (d) => (d && d.value > 0 ? RED : TEAL),
+  },
+  {
+    key: 'last-access-review', row: 'backlog', path: '/access-reviews', icon: ClipboardCheck,
+    visible: () => canAuditRead.value,
+    label: (d) => (d?.overdue ? t('dashboard.backlogLastReviewOverdue') : t('dashboard.backlogLastReview')),
+    color: (d) => (d?.overdue ? 'var(--ot-danger)' : 'var(--ot-info)'),
+    bg: (d) => (d?.overdue ? RED : TEAL),
+    // 後端以 -1 表示從未複審
+    format: (d) => (d.value < 0 ? '—' : d.value),
+  },
+  // 待審申請排最後（待辦列順序）
+  {
+    key: 'pending-approvals', row: 'backlog', path: '/approvals', icon: Stamp, color: 'var(--ot-warning)', bg: AMBER,
+    visible: () => can('ui:approvals'),
+    label: () => t('dashboard.backlogPendingApprovals'),
+  },
+]
+
+// 取數槽：每張卡、每個面板各一個序號。重新取數、失權、換帳號都會遞增序號，
+// 較早發出的回應回來時序號已不符，直接丟棄，不留舊數。
+const slotSeq = {}
+const runSlot = async (slot, enabled, fetchFn, onStart, onOk, onFail, onClear) => {
+  const seq = (slotSeq[slot] = (slotSeq[slot] || 0) + 1)
+  if (!enabled) {
+    onClear()
+    return
+  }
+  onStart()
+  try {
+    const res = await fetchFn()
+    if (seq !== slotSeq[slot]) return
+    onOk(res)
+  } catch (err) {
+    if (seq !== slotSeq[slot]) return
+    console.error(`載入儀表板項目失敗 (${slot}):`, err)
+    onFail(err)
+  }
+}
+
+// 每張卡一份獨立狀態：idle | loading | ready | error。失敗只影響該卡。
+const cardState = reactive(
+  Object.fromEntries(CARD_DEFS.map((d) => [d.key, { status: 'idle', data: null }]))
+)
+
+const loadCard = (def) =>
+  runSlot(
+    `card:${def.key}`,
+    def.visible(),
+    () => getDashboardCard(def.key),
+    () => {
+      // 重新取數時保留舊值直到新值回來，只切換載入中
+      cardState[def.key].status = 'loading'
+    },
+    (res) => {
+      const data = res?.data && typeof res.data === 'object' && res.value === undefined ? res.data : res
+      cardState[def.key] = { status: 'ready', data }
+    },
+    () => {
+      // 含 403：該卡資料清掉，顯示「未取得」，不冒充 0
+      cardState[def.key] = { status: 'error', data: null }
+    },
+    () => {
+      cardState[def.key] = { status: 'idle', data: null }
+    }
+  )
+
+const pick = (v, d) => (typeof v === 'function' ? v(d) : v)
+
+const cardViews = computed(() =>
+  CARD_DEFS.filter((d) => d.visible()).map((d) => {
+    const st = cardState[d.key]
+    const data = st.data
+    let text = '-'
+    if (st.status === 'error') text = t('dashboard.valueUnavailable')
+    else if (data) text = d.format ? d.format(data) : (data.value ?? '-')
+    const target =
+      d.path && data && canEnter(entryMeta(d.path))
+        ? { path: d.path, query: { ...(data.filters || {}), ...(d.extraQuery || {}) } }
+        : null
+    return {
+      key: d.key,
+      row: d.row,
+      status: st.status,
+      text,
+      label: d.label(data),
+      icon: d.icon,
+      color: pick(d.color, data),
+      bg: pick(d.bg, data),
+      target,
+    }
+  })
+)
+const statCards = computed(() => cardViews.value.filter((c) => c.row === 'stat'))
+const backlogCards = computed(() => cardViews.value.filter((c) => c.row === 'backlog'))
+
+// —— 活動面板：各依自己的能力獨立取數 ——
 const recentActive = ref([])
 const recentAlerts = ref([])
 const myRecentConnections = ref([])
-const myConnectionTotal = ref(0)
-// 錄影目錄目前佔用（bytes）。null＝尚未取得或取得失敗，卡片以 '-' 呈現，
-// 不以 0 冒充「沒有錄影」
-const recordingStorageBytes = ref(null)
 
-// 人設判定：以「不具 admin/auditor」認定一般 user
-//（與後端 admin > auditor > user 優先序一致）；approver 為疊加角色獨立判定。
-// 一般 user 的儀表板不呼叫需 session:view / alert:view 的端點（避免 403）
-const { isAdmin, isAuditor, isEffectiveApprover, isPrivileged } = useRoles()
-
-const statCards = computed(() => {
-  const assetCard = {
-    label: isPrivileged.value
-      ? t('dashboard.statAssetTotal')
-      : t('dashboard.statConnectableAssets'),
-    to: '/assets',
-    value: assetTotal.value,
-    icon: Server,
-    color: 'var(--ot-primary)',
-    bg: 'var(--ot-primary-dim)',
-  }
-  // 一般 user：全域 session 統計與告警屬稽核職能，顯示自助導向卡
-  if (!isPrivileged.value) {
-    return [
-      assetCard,
-      {
-        label: t('menu.myConnections'),
-        to: '/my-connections',
-        value: myConnectionTotal.value,
-        icon: Cable,
-        color: 'var(--ot-success)',
-        bg: 'rgba(78, 196, 122, 0.15)',
-      },
-      {
-        label: t('dashboard.statMyPendingRequests'),
-        to: '/my-requests',
-        value: myPendingRequests.value,
-        icon: ClipboardList,
-        color: 'var(--ot-warning)',
-        bg: 'rgba(217, 169, 62, 0.15)',
-      },
-    ]
-  }
-  return [
-    assetCard,
-    {
-      label: t('sessions.tabActive'),
-      to: '/sessions',
-      value: activeSessions.value,
-      icon: Cable,
-      color: 'var(--ot-success)',
-      bg: 'rgba(78, 196, 122, 0.15)',
+const loadActiveSessions = () =>
+  runSlot(
+    'panel:active-sessions',
+    canSeeSessions.value,
+    () => getActiveSessions(),
+    () => {},
+    (sessions) => {
+      recentActive.value = (sessions || []).slice(0, 5)
     },
-    {
-      label: t('dashboard.statTodaySessions'),
-      to: '/sessions',
-      value: todaySessions.value,
-      icon: Timer,
-      color: 'var(--ot-warning)',
-      bg: 'rgba(217, 169, 62, 0.15)',
-    },
-    {
-      label: t('dashboard.statTotalSessions'),
-      to: '/sessions',
-      value: totalSessions.value,
-      icon: FileText,
-      color: 'var(--ot-info)',
-      bg: 'rgba(139, 148, 158, 0.15)',
-    },
-    {
-      label: t('dashboard.statTodayAlerts'),
-      to: '/alerts',
-      value: todayAlerts.value,
-      icon: Bell,
-      color: 'var(--ot-danger)',
-      bg: 'rgba(229, 96, 79, 0.15)',
-    },
-    // 錄影佔用：磁碟實際大小（錄影目錄檔案加總），**不是**可用空間或使用率
-    //（系統不掌握磁碟總容量，沒有分母就沒有百分比）。無 `to`：不存在「錄影儲存」頁
-    {
-      label: t('dashboard.statRecordingStorage'),
-      value: recordingStorageBytes.value === null
-        ? '-'
-        : formatBytes(recordingStorageBytes.value),
-      icon: FolderOpen,
-      color: 'var(--ot-info)',
-      bg: 'rgba(139, 148, 158, 0.15)',
-    },
-  ]
-})
-
-// —— 人設待辦卡：一律以既有端點取數，不開新後端 ——
-const myPendingRequests = ref(0)
-const approvalPendingTotal = ref(0)
-const unreviewedAlerts = ref(0)
-const recordingFailures = ref(0)
-const reviewDaysAgo = ref(-1)
-const reviewOverdue = ref(false)
-
-const backlogCards = computed(() => {
-  const cards = []
-  // 待審卡與其取數共用「有效審核資格」述詞（見 useRoles.isEffectiveApprover）：
-  // admin 不兜底。述詞不成立就連卡片一起不出現——取不到數而顯示 0 會被讀成「無待辦」。
-  if (isEffectiveApprover.value) {
-    cards.push({
-      label: t('dashboard.backlogPendingApprovals'),
-      to: '/approvals',
-      value: approvalPendingTotal.value,
-      icon: Stamp,
-      color: 'var(--ot-warning)',
-      bg: 'rgba(217, 169, 62, 0.15)',
-    })
-  }
-  if (isAdmin.value || isAuditor.value) {
-    cards.push(
-      {
-        label: t('common.unreviewedAlerts'),
-        to: '/alerts',
-        value: unreviewedAlerts.value,
-        icon: Bell,
-        color: 'var(--ot-danger)',
-        bg: 'rgba(229, 96, 79, 0.15)',
-      },
-      {
-        label: t('dashboard.backlogRecordingFailures'),
-        to: '/sessions',
-        value: recordingFailures.value,
-        icon: Video,
-        color: recordingFailures.value > 0 ? 'var(--ot-danger)' : 'var(--ot-info)',
-        bg:
-          recordingFailures.value > 0
-            ? 'rgba(229, 96, 79, 0.15)'
-            : 'rgba(127, 214, 214, 0.15)',
-      },
-      {
-        label: reviewOverdue.value
-          ? t('dashboard.backlogLastReviewOverdue')
-          : t('dashboard.backlogLastReview'),
-        to: '/access-reviews',
-        value: reviewDaysAgo.value < 0 ? '—' : reviewDaysAgo.value,
-        icon: ClipboardCheck,
-        color: reviewOverdue.value ? 'var(--ot-danger)' : 'var(--ot-info)',
-        bg: reviewOverdue.value
-          ? 'rgba(229, 96, 79, 0.15)'
-          : 'rgba(127, 214, 214, 0.15)',
-      }
-    )
-  }
-  return cards
-})
-
-const loadBacklog = async () => {
-  // 多角色聯集：各分支獨立判定，疊加人設同時取數
-  if (!isPrivileged.value) {
-    // 一般 user（含 user＋approver）：我的申請待審計數（自助端點全量回傳，前端計 pending）
-    try {
-      const res = await getMyAccessRequests()
-      myPendingRequests.value = (res.data || []).filter(
-        (r) => r.status === 'pending'
-      ).length
-    } catch (err) {
-      console.error('載入我的申請計數失敗:', err)
+    () => {},
+    () => {
+      recentActive.value = []
     }
-  }
-  if (isEffectiveApprover.value) {
-    // 待審件數：端點、述詞與容錯都與側邊欄 badge 相同（MainLayout 的 effectiveApprover）
-    try {
-      const res = await getPendingAccessRequestCount({ skipErrorToast: true })
-      approvalPendingTotal.value = (res.count ?? 0) + (res.review_count ?? 0)
-    } catch {
-      // 靜默：badge 同款容錯
-    }
-  }
-  if (isAdmin.value || isAuditor.value) {
-    try {
-      const res = await searchAlerts({ unreviewed: 'true', page: 1, page_size: 1 })
-      unreviewedAlerts.value = res.total ?? 0
-    } catch (err) {
-      console.error('載入未審閱告警計數失敗:', err)
-    }
-    try {
-      const res = await getAccessReviews()
-      reviewDaysAgo.value =
-        res.last_review_days_ago === undefined ? -1 : res.last_review_days_ago
-      reviewOverdue.value = !!res.overdue
-    } catch (err) {
-      console.error('載入存取複審狀態失敗:', err)
-    }
-  }
-}
+  )
 
-// 落地頁活動列表（dashboard 補強）：各取前 5 筆；
-// 一般 user 走自助端點，不觸發需 session:view / alert:view 的呼叫
-const loadActivity = async () => {
-  if (!isPrivileged.value) {
-    try {
-      const res = await getMyConnections({ page: 1, page_size: 5 })
+const loadMyConnections = () =>
+  runSlot(
+    'panel:my-connections',
+    showsMine.value,
+    () => getMyConnections({ page: 1, page_size: 5 }),
+    () => {},
+    (res) => {
       myRecentConnections.value = res.data || []
-      myConnectionTotal.value = res.total ?? 0
-    } catch (err) {
-      console.error('載入我的連線失敗:', err)
+    },
+    () => {},
+    () => {
+      myRecentConnections.value = []
     }
-    return
-  }
-  try {
-    const sessions = await getActiveSessions()
-    const list = sessions || []
-    // 錄影失敗連線計數（已標 recording_error）——
-    // 與進行中列表同一回應，不另發請求
-    recordingFailures.value = list.filter((s) => s.recording_error).length
-    recentActive.value = list.slice(0, 5)
-  } catch (err) {
-    console.error('載入進行中連線失敗:', err)
-  }
-  try {
-    const res = await searchAlerts({ page: 1, page_size: 5 })
-    recentAlerts.value = res.data || []
-  } catch (err) {
-    console.error('載入最近告警失敗:', err)
-  }
-}
+  )
 
-
-// 今日 00:00（本地時區）的 ISO 時間字串
-const startOfTodayISO = () => {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-}
-
-// 今日告警數（API 失敗時容錯顯示 0，不影響其他統計）；一般 user 無 alert:view 不呼叫
-const loadTodayAlerts = async () => {
-  if (!isPrivileged.value) return
-  try {
-    const response = await searchAlerts({
-      start_time: startOfTodayISO(),
-      page: 1,
-      page_size: 1,
-    })
-    todayAlerts.value = response.total ?? 0
-  } catch (error) {
-    console.error('載入今日告警統計失敗:', error)
-    todayAlerts.value = 0
-  }
-}
-
-const loadStatistics = async () => {
-  loading.value = true
-  try {
-    // 一般 user 不呼叫 getSessionStatistics（需 session:view，必 403）
-    if (!isPrivileged.value) {
-      const assetResp = await getAssetList({ page: 1, page_size: 1 })
-      assetTotal.value = assetResp.total ?? 0
-      return
+const loadRecentAlerts = () =>
+  runSlot(
+    'panel:recent-alerts',
+    canAuditRead.value,
+    () => searchAlerts({ page: 1, page_size: 5 }),
+    () => {},
+    (res) => {
+      recentAlerts.value = res.data || []
+    },
+    () => {},
+    () => {
+      recentAlerts.value = []
     }
-    const [assetResp, stats] = await Promise.all([
-      getAssetList({ page: 1, page_size: 1 }),
-      getSessionStatistics(),
-    ])
-    assetTotal.value = assetResp.total ?? 0
-    activeSessions.value = stats.active_sessions ?? 0
-    todaySessions.value = stats.today_sessions ?? 0
-    totalSessions.value = stats.total_sessions ?? 0
-  } catch (error) {
-    console.error('載入儀表板統計失敗:', error)
-  } finally {
-    loading.value = false
-  }
-}
+  )
 
-// 錄影佔用（GET /recordings/stats，掛 audit:view）——一般 user 不發請求，
-// 否則必 403 且全域攔截器會 toast「權限不足」。
-// **按需取用不做輪詢**：後端走遞迴 filepath.Walk，成本隨錄影檔數成長，
-// 做成輪詢等於讓一個閒置分頁持續掃檔案系統（指標側已有 30 秒背景刷新）
-const loadRecordingStorage = async () => {
-  if (!isPrivileged.value) {
-    recordingStorageBytes.value = null
-    return
-  }
-  try {
-    const stats = await getRecordingStats()
-    recordingStorageBytes.value = stats?.total_size ?? null
-  } catch (error) {
-    console.error('載入錄影佔用失敗:', error)
-    recordingStorageBytes.value = null
-  }
-}
+const activityPanelCount = computed(
+  () => [canSeeSessions.value, showsMine.value, canAuditRead.value].filter(Boolean).length
+)
+const activityColSpan = computed(() => (activityPanelCount.value >= 3 ? 8 : 12))
 
 // —— 每日安全審閱卡（PCI 10.4.1）——
-// null＝尚未取得或無權取得：卡片不渲染
+// null＝尚未取得或無權取得：卡片不渲染。狀態端點掛 audit:view，無此能力者不發請求
 const reviewStatus = ref(null)
 
-const loadReviewStatus = async () => {
-  // 狀態查詢掛 audit:view（admin/auditor）——一般 user 不發請求，
-  // 否則必 403 且全域攔截器會 toast「權限不足」
-  if (!isPrivileged.value) {
-    reviewStatus.value = null
-    return
-  }
-  try {
-    const res = await getDailyReviewStatus()
-    reviewStatus.value = res.data || null
-  } catch (error) {
-    console.error('載入每日審閱狀態失敗:', error)
-    reviewStatus.value = null
-  }
-}
+const loadReviewStatus = () =>
+  runSlot(
+    'panel:daily-review',
+    canAuditRead.value,
+    () => getDailyReviewStatus(),
+    () => {},
+    (res) => {
+      reviewStatus.value = res.data || null
+    },
+    () => {
+      reviewStatus.value = null
+    },
+    () => {
+      reviewStatus.value = null
+    }
+  )
 
-// 重新整理：重載全部統計與面板（C4）
+// 重新整理：每張卡、每個面板各自重載，互不等待
 const handleRefresh = () => {
-  loadStatistics()
-  loadTodayAlerts()
-  loadActivity()
-  loadBacklog()
+  CARD_DEFS.forEach(loadCard)
+  loadActiveSessions()
+  loadMyConnections()
+  loadRecentAlerts()
   loadReviewStatus()
-  loadRecordingStorage()
 }
 
-// 審核資格是掛載當下的快照，而 /auth/me 在側欄掛載後才回來並回寫快取。
-// 不接這個事件的話：剛被授予資格的人要重整才看得到待審卡，剛被撤銷的人
-// 會繼續看得到、並在下次取數時打出一則必敗請求。
-const syncApproverEligibility = async () => {
-  const next = readEffectiveApprover()
-  if (next === isEffectiveApprover.value) return
-  isEffectiveApprover.value = next
-  if (next) {
-    await loadBacklog()
-  } else {
-    approvalPendingTotal.value = 0
+// 能力由後端 /auth/me 取得，可能在掛載之後才就緒（登入即可的入口不等能力）：
+// 就緒當下才取數；能力內容或使用者改變時整批重算（失去能力的卡清空，新取得的補取數）
+watch(
+  () => `${caps.ready.value}|${caps.loadedUserId.value}|${caps.permissions.value.join(',')}`,
+  () => {
+    // 能力不可用（登出、換帳號、載入中）時 visible 皆為否：全部清空並使在途回應作廢
+    handleRefresh()
   }
-}
+)
 
 onMounted(() => {
-  handleRefresh()
-  window.addEventListener('ot-user-updated', syncApproverEligibility)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('ot-user-updated', syncApproverEligibility)
+  if (caps.ready.value) handleRefresh()
+  else caps.load()
 })
 </script>
 
@@ -762,6 +709,12 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--ot-text-primary);
   line-height: 1.2;
+}
+
+.stat-value-unavailable {
+  font-size: var(--ot-font-size-md);
+  color: var(--ot-text-secondary);
+  font-weight: 500;
 }
 
 .stat-label {

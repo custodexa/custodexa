@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/asset"
 )
 
@@ -49,13 +50,15 @@ func TestAssetHandlerRotationChannelErrorsAre400(t *testing.T) {
 			Return(nil, asset.ErrInvalidRotationChannelParams)
 		handler := NewAssetHandler(mockAssetService, new(MockAssetAuthorizationService), nil)
 		router := setupTestRouter()
-		router.PUT("/assets/:id", func(c *gin.Context) {
+		router.PUT("/api/v1/assets/:id", func(c *gin.Context) {
+			// 欄位閘以完整路由樣板查登錄，並需要已解析的主體
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			c.Set("userID", uint(1))
 			c.Set("username", "testuser")
 			handler.Update(c)
 		})
 		body := `{"rotation_channel":"windows_winrm","winrm_scheme":"https"}`
-		req := httptest.NewRequest("PUT", "/assets/1", bytes.NewBufferString(body))
+		req := httptest.NewRequest("PUT", "/api/v1/assets/1", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)

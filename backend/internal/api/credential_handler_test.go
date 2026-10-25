@@ -56,13 +56,13 @@ func setupCredentialAPIEnv(t *testing.T) *credentialAPIFixture {
 	require.NoError(t, err)
 	// sqlite `:memory:` 配連線池時每條連線是各自獨立的空 DB
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
+	require.NoError(t, migrateWithAuthz(db, &model.User{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{},
 		&model.Credential{}, &model.CredentialSecretVersion{},
 		&model.CredentialRotation{}, &model.CredentialRotationMember{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
 		&model.AssetHostKey{}, &model.ChangeSecretCandidate{}, &model.ChangeSecretRecord{},
-		&model.ChangeSecretPlan{}, &model.UserRole{}))
+		&model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old })
@@ -70,13 +70,14 @@ func setupCredentialAPIEnv(t *testing.T) *credentialAPIFixture {
 	codec := aesColumnCodec(t, make([]byte, 32))
 	sink := audit.NewTxSink()
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, sink)
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 	authorization := authz.NewAssetAuthorizationService(db)
-	creds := asset.NewCredentialService(assetSvc, codec, sink).WithAuthorization(authorization)
+	creds := asset.NewCredentialService(assetSvc, codec, sink).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(principalCredentialAuthorizer{}).WithSystemAlertSink(recordingSystemAlerts{})
 	candidates, err := asset.NewChangeSecretCandidateService(db, codec, assetSvc, sink)
 	require.NoError(t, err)
 	rotations := asset.NewCredentialRotationService(db, assetSvc, candidates,
-		asset.NewHostKeyService(db), codec, sink, authorization)
+		asset.NewHostKeyService(db), codec, sink, principalCredentialAuthorizer{}).WithSystemAlertSink(recordingSystemAlerts{})
 
 	f := &credentialAPIFixture{
 		db: db, creds: creds, rotations: rotations, assetSvc: assetSvc,
@@ -84,13 +85,14 @@ func setupCredentialAPIEnv(t *testing.T) *credentialAPIFixture {
 			asset.NewRotationReportBuilder(db, asset.NewChangeSecretPlanService(db),
 				func() int { return 0 })),
 		accounts: NewAssetAccountHandler(
-			asset.NewAssetAccountService(assetSvc, codec, sink).WithAuthorization(authorization),
+			asset.NewAssetAccountService(assetSvc, codec, sink).WithAuthorization(authorization).
+				WithManagementAuthorizer(principalCredentialAuthorizer{}).WithSystemAlertSink(recordingSystemAlerts{}).WithAccountWriteScope(allowAllAccountWriteScope{}),
 			authorization),
 	}
 
 	// 兩台資產各帶一個專用憑證的預設掛載
 	for _, spec := range []struct{ name, host string }{{"alpha", "10.9.0.1"}, {"beta", "10.9.0.2"}} {
-		a, cerr := assetSvc.Create(context.Background(), &asset.CreateAssetRequest{
+		a, cerr := assetSvc.Create(asset.WithSystemCaller(context.Background()), &asset.CreateAssetRequest{
 			Name: spec.name, Protocol: model.ProtocolSSH, Host: spec.host, Port: 22,
 			Username: "ops", Password: "dedicated-pw", CreatedBy: 1,
 		})
@@ -115,7 +117,9 @@ func setupCredentialAPIEnv(t *testing.T) *credentialAPIFixture {
 func credAdminCtx() context.Context {
 	ctx := context.WithValue(context.Background(), "userID", uint(1)) //nolint:staticcheck // 沿用既有審計 context 慣例
 	ctx = context.WithValue(ctx, "username", "admin")                 //nolint:staticcheck // 同上
-	return context.WithValue(ctx, "role", model.RoleAdmin)            //nolint:staticcheck // 同上
+	ctx = context.WithValue(ctx, "role", model.RoleAdmin)             //nolint:staticcheck // 同上
+	// 短路判定改讀 context 內的主體（不再比對 role 字串）
+	return authz.ContextWithPrincipal(ctx, legacyPrincipal(model.RoleAdmin))
 }
 
 // credentialTestRouter 以真實入口掛上憑證庫路由（AuthMiddleware → RequireRole →
@@ -125,7 +129,11 @@ func credentialTestRouter(t *testing.T, f *credentialAPIFixture) (*gin.Engine, *
 	gin.SetMode(gin.TestMode)
 	// 世代閘現查 users：token 宣稱的兩個 ID 必須存在，否則整條鏈在認證就被擋下
 	// 而本檔的斷言會落在 401 上假綠
-	seedCredentialGateUsers(t, f.db, 1, 7)
+	seedCredentialGateUsers(t, f.db, 1, 7, credAuditorUserID)
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）：
+	// 1＝管理員、7＝無指派（一般使用者）、credAuditorUserID＝稽核員
+	ensureCredentialGateRole(t, f.db, 1, model.RoleAdmin)
+	ensureCredentialGateRole(t, f.db, credAuditorUserID, model.RoleAuditor)
 
 	authService := identity.NewAuthService("credential-api-test-secret", time.Minute)
 	r := gin.New()
@@ -133,6 +141,29 @@ func credentialTestRouter(t *testing.T, f *credentialAPIFixture) (*gin.Engine, *
 	f.handler.RegisterRoutes(group, authService)
 	f.accounts.RegisterRoutes(group, authService, authz.NewAssetAuthorizationService(f.db))
 	return r, crypto.NewJWTManager("credential-api-test-secret", time.Minute)
+}
+
+// credAuditorUserID 稽核員身分的測試帳號；一般使用者沿用 7。
+// 角色改由資料庫解析後，同一帳號無法同時以 user 與 auditor 兩種 token 出現。
+const credAuditorUserID uint = 8
+
+// credNonAdminUserID 依舊角色字串挑對應的非管理員測試帳號。
+func credNonAdminUserID(role string) uint {
+	if role == model.RoleAuditor {
+		return credAuditorUserID
+	}
+	return 7
+}
+
+// ensureCredentialGateRole 為帳號寫入全域直接指派；已有指派則略過（同一測試可多次裝配路由）。
+func ensureCredentialGateRole(t *testing.T, db *gorm.DB, userID uint, roleName string) {
+	t.Helper()
+	var n int64
+	require.NoError(t, db.Model(&model.UserRole{}).Where("user_id = ?", userID).Count(&n).Error)
+	if n > 0 {
+		return
+	}
+	grantLegacyRole(t, db, userID, roleName)
 }
 
 // seedCredentialGateUsers 在**同一個** DB 上補齊世代閘要查的使用者列。
@@ -169,11 +200,13 @@ func TestCredentialHandlerRoutesAndErrorEnvelope(t *testing.T) {
 		"POST /api/v1/credentials",
 		"POST /api/v1/credentials/:id/bindings",
 		"POST /api/v1/credentials/:id/bindings/:accountId/detach",
+		"POST /api/v1/credentials/:id/impact-confirmations",
 		"POST /api/v1/credentials/:id/rotations",
 		"POST /api/v1/credentials/:id/rotations/:rid/abandon",
 		"POST /api/v1/credentials/:id/rotations/:rid/members/:mid/retry",
 		"POST /api/v1/credentials/:id/scope",
 		"POST /api/v1/credentials/:id/secret",
+		"POST /api/v1/credentials/ownership",
 		"PUT /api/v1/assets/:id/accounts/:accountId/credential",
 		"PUT /api/v1/credentials/:id",
 	}
@@ -244,6 +277,7 @@ func TestCredentialCreateRejectsInvalidAuthMethodAs400(t *testing.T) {
 func TestCredentialReadAuditTrail(t *testing.T) {
 	f := setupCredentialAPIEnv(t)
 	seedCredentialGateUsers(t, f.db, 1)
+	ensureCredentialGateRole(t, f.db, 1, model.RoleAdmin)
 
 	// 審計中介層是留痕的來源，必須掛在鏈上（否則本測試在零列上假綠）；
 	// 同步模式落庫，測試才讀得到那幾列
@@ -336,11 +370,14 @@ func TestNonAdminDTOOmitsCredentialFields(t *testing.T) {
 	r, mgr := credentialTestRouter(t, f)
 
 	// 讓 user 7 對第一台資產有連線權（否則列表被範圍過濾成空而假綠）
-	uid, aid := uint(7), f.assetIDs[0]
-	require.NoError(t, f.db.Create(&model.AssetAuthorization{
-		UserID: &uid, AssetID: &aid, Permission: model.PermissionConnect, GrantedBy: 1,
-		Accounts: model.AccountScope{model.AccountScopeAll},
-	}).Error)
+	// （稽核員改用獨立帳號，比照給同一筆授權，前置條件與原本相同）
+	for _, id := range []uint{7, credAuditorUserID} {
+		uid, aid := id, f.assetIDs[0]
+		require.NoError(t, f.db.Create(&model.AssetAuthorization{
+			UserID: &uid, AssetID: &aid, Permission: model.PermissionConnect, GrantedBy: 1,
+			Accounts: model.AccountScope{model.AccountScopeAll},
+		}).Error)
+	}
 
 	forbidden := []string{"credential_id", "credential_name", "credential_scope",
 		"shared_credential", "effective_version_no", "binding_count"}
@@ -356,7 +393,7 @@ func TestNonAdminDTOOmitsCredentialFields(t *testing.T) {
 	assert.Contains(t, adminBody, "shareduser", "前置條件：清單非空")
 
 	for _, role := range []string{model.RoleUser, model.RoleAuditor} {
-		token, terr := mgr.GenerateToken(7, "normaluser", "u@example.com", role, crypto.AuthContext{})
+		token, terr := mgr.GenerateToken(credNonAdminUserID(role), "normaluser", "u@example.com", role, crypto.AuthContext{})
 		require.NoError(t, terr)
 		body := credentialGet(t, r, path, token)
 		require.Contains(t, body, "\"username\"", role+" 應讀得到帳號選單（前置條件）")
@@ -463,18 +500,19 @@ func credentialCall(t *testing.T, h gin.HandlerFunc, method, path, body string,
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	route := "/assets/:id/accounts"
+	// 掛在正式前綴下：帳號名稱的欄位能力以路由登錄鍵（含 /api/v1）判定
+	route := "/api/v1/assets/:id/accounts"
 	if accountID != 0 {
 		route += "/:accountId"
 	}
 	r.Handle(method, route, func(c *gin.Context) {
 		c.Set("userID", uint(1))
 		c.Set("username", "admin")
-		c.Set("role", model.RoleAdmin)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin))
 		h(c)
 	})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequest(method, "/api/v1"+path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 	return w
@@ -868,7 +906,6 @@ func TestCredentialListFiltersByProtocolCompatibility(t *testing.T) {
 		credentialListErrorField(t, r, adminToken, "?protocol=mysql&windows_openssh=true"))
 }
 
-
 // TestCredentialLibraryDeniesNonAdmin 憑證庫的讀取面對非管理者一律 403。
 //
 // 憑證庫回答的是「哪一組秘密掛在哪些主機上」，那本身即敏感——
@@ -883,7 +920,7 @@ func TestCredentialLibraryDeniesNonAdmin(t *testing.T) {
 	// token 宣稱的 ID 不存在時整條鏈在認證就被擋下，403 的斷言會落在 401 上假綠）
 	const missingID = "999999"
 	for _, role := range []string{model.RoleUser, model.RoleAuditor} {
-		token, err := mgr.GenerateToken(7, "non-admin", "n@example.com", role, crypto.AuthContext{})
+		token, err := mgr.GenerateToken(credNonAdminUserID(role), "non-admin", "n@example.com", role, crypto.AuthContext{})
 		require.NoError(t, err)
 
 		bodies := make(map[string]string, 3)
@@ -904,15 +941,14 @@ func TestCredentialLibraryDeniesNonAdmin(t *testing.T) {
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
 			assert.NotEmpty(t, envelope["code"], "role=%s path=%s 須帶機器碼", role, path)
 			assert.NotEmpty(t, envelope["error"], "role=%s path=%s 須帶 wire fallback 訊息", role, path)
-			// 角色閘的信封是 code＋error＋params（params 是訊息代入值，
-			// 此處恆為 {"role":"admin"}）。逐鍵列舉而非只數個數：多出來的那一鍵
-			// 若哪天改成帶請求上下文，就是把成因送出站了
+			// 能力拒絕的信封只有 code＋error。逐鍵列舉而非只數個數：多出來的那一鍵
+			// 若哪天改成帶請求上下文或所需能力，就是把成因送出站了
 			for key := range envelope {
-				assert.Contains(t, []string{"code", "error", "params"}, key,
+				assert.Contains(t, []string{"code", "error"}, key,
 					"role=%s path=%s 信封多出 %q 鍵：成因不得出站", role, path, key)
 			}
-			assert.Equal(t, map[string]any{"role": "admin"}, envelope["params"],
-				"role=%s path=%s params 只帶所需角色，不帶任何請求上下文", role, path)
+			assert.Equal(t, "AUTH_PERMISSION_DENIED", envelope["code"],
+				"role=%s path=%s 能力拒絕單一碼", role, path)
 			assert.NotContains(t, w.Body.String(), "共用維運帳號", "被拒的回應不得洩漏憑證顯示名")
 			assert.NotContains(t, w.Body.String(), "shareduser", "被拒的回應不得洩漏帳號名")
 			bodies[path] = w.Body.String()

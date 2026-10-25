@@ -247,6 +247,11 @@
     "cancel": "Cancel",
     "retentionShrinkConfirm": "The retention window for {keys} is being shortened. Existing data beyond the new window will be permanently deleted starting 02:00 the next day and cannot be recovered. Apply the new retention policy?",
     "retentionShrinkTitle": "Shorter Retention Will Delete Old Data",
+    "retentionFloorHint": "Minimum 7 days; enter 0 to keep forever",
+    "retentionFloorError": "Must be at least 7 days (enter 0 to keep forever)",
+    "retentionAlertNotice": "Shortening any data retention period is recorded and raises a system alert; delivery depends on the notification channel",
+    "alertOnSaveNotice": "Saving will be recorded and raise a system alert; delivery depends on the notification channel.",
+    "failCloseOffNotice": "Turning this off is recorded and raises a system alert; delivery depends on the notification channel.",
     "confirmApply": "Apply",
     "saved": "Security policies saved",
     "restSection": "Others"
@@ -268,6 +273,14 @@
       "user": {
         "label": "User",
         "description": "Base role: connect to authorized assets; actual capabilities depend on the authorization level (view, connect) and the access policy (open, reason required, approval required)."
+      },
+      "asset_admin": {
+        "label": "Asset administrator",
+        "description": "Manages assets, asset groups and related asset features. Choose nodes when assigning; it then applies only inside the chosen nodes. Management rights do not grant in-platform connection rights."
+      },
+      "authz_admin": {
+        "label": "Authorization administrator",
+        "description": "Manages authorization rules and per-host access policy overrides. Choose nodes when assigning; it then applies only inside the chosen nodes. Management rights do not grant in-platform connection rights."
       }
     },
     "auditAction": {
@@ -288,8 +301,13 @@
       "agent_token_suspended": "Agent token suspended",
       "agent_sessions_terminated": "Agent session termination result",
       "agent_sessions_terminate_late": "Agent session termination exceeded the target",
+      "permission_state_accepted": "Permission state change confirmed",
       "suspend": "Suspended",
       "new_source_ip": "Sign In From New Source",
+      "host_key_mismatch": "Host Key Mismatch",
+      "host_key_adopt": "Adopt Host Key Fingerprint",
+      "host_key_cred_sent": "Credentials Sent After Host Key Mismatch",
+      "retention_floor_raised": "Retention Floor Raised",
       "file_list": "Browse Files",
       "file_upload": "File Upload",
       "file_download": "File Download",
@@ -305,7 +323,11 @@
       "offsite_retention": "Offsite retention cleanup",
       "offsite_integrity": "Offsite integrity mismatch",
       "offsite_profile": "Offsite settings generation change",
-      "offsite_cred_revoke": "Offsite credential revocation"
+      "offsite_cred_revoke": "Offsite credential revocation",
+      "role_definition_create": "Role definition created",
+      "role_definition_copy": "Role definition copied",
+      "role_definition_update": "Role definition updated",
+      "role_definition_delete": "Role definition deleted"
     },
     "auditResource": {
       "agent_token": "Agent token",
@@ -326,6 +348,7 @@
       "syslog_setting": "Syslog Settings",
       "audit_log": "Audit Log",
       "user_group": "User Group",
+      "user_group_role": "User Group Role Assignment",
       "command": "Command",
       "key_management": "Key Management",
       "transmission": "Transmission Security",
@@ -341,6 +364,7 @@
       "audit_integrity": "Audit Integrity Verification",
       "alert_rule": "Alert Rule",
       "notify_channel": "Notification Channel",
+      "system_alert_type": "System Alert Type",
       "oidc_provider": "OIDC Provider",
       "ldap_directory": "LDAP Directory",
       "asset_group": "Asset Group",
@@ -372,7 +396,8 @@
       "offsite_upload": "Offsite storage upload",
       "role_state_integrity": "Role assignment consistency with the audit chain",
       "principal_state_integrity": "Principal and credential state integrity",
-      "dek_unwrap": "Data key re-unwrap"
+      "dek_unwrap": "Data key re-unwrap",
+      "restore_seal": "Seal after restore"
     },
     "cause": {
       "recording_probe_failed": "Recording pre-flight check failed at issuance",
@@ -386,6 +411,7 @@
       "recording_metadata_update_failed": "Failed to update recording metadata",
       "recording_file_missing": "Recording file missing (write failed or recording never started)",
       "session_record_create_failed": "Session record creation failed; connection refused",
+      "host_key_mismatch_record_failed": "Host key mismatch could not be recorded; the connection was stopped before any credentials were sent",
       "audit_write_fallback_file": "Audit batch write failed; fell back to file",
       "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
       "audit_write_sync_refused": "Synchronous audit write failed; the access was refused (content not delivered)",
@@ -408,7 +434,9 @@
       "offsite_integrity_mismatch": "The retrieved offsite copy does not match what was uploaded; delivery was refused",
       "role_state_mismatch": "Role assignments do not match the audit chain (a change was made without an audit record)",
       "principal_state_mismatch": "Principal or credential state does not match the checkpoint chain (a change has no audit record)",
-      "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)"
+      "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)",
+      "restore_seal_deferred": "Seal after restore failed; service is open and the sealing is retried (the checkpoint covering the restored permission state is not in the chain yet)",
+      "restore_seal_state_unreadable": "The pending seal state after a restore could not be read at startup; service is open and a seal was attempted (resolved once a seal succeeds)"
     },
     "endReason": {
       "normal": "Ended Normally",
@@ -644,7 +672,7 @@
       },
       "log_retention": {
         "title": "Log Retention and Review",
-        "hint": "Audit data retention and daily review. Since the checkpoint chain was enabled, audit logs are purged by checkpoint interval: if any row in an interval has not expired, the whole interval is retained, so a few already-expired rows may remain after the first purge (expected behavior, not a defect). Checkpoint retention defaults to 0 (forever) and must not be shorter than the longest of the four data retention keys (0 means forever): the proof must outlive the data it proves, and violating batches are rejected in full."
+        "hint": "Audit data retention and daily review. Since the checkpoint chain was enabled, audit logs are purged by checkpoint interval: if any row in an interval has not expired, the whole interval is retained, so a few already-expired rows may remain after the first purge (expected behavior, not a defect). Checkpoint retention defaults to 0 (forever) and must not be shorter than the longest of the four data retention keys (0 means forever): the proof must outlive the data it proves, and violating batches are rejected in full. Each of the four data retention periods has a minimum number of days and cannot be set shorter."
       },
       "access_policy": {
         "title": "Connection Policy",
@@ -687,6 +715,8 @@
   },
   "dashboard": {
     "headerDesc": "{name} {subtitle} overview",
+    "loadedOfTotal": "{loaded} loaded, {total} total",
+    "valueUnavailable": "Unavailable",
     "statAssetTotal": "Total Assets",
     "statConnectableAssets": "Connectable Assets",
     "statMyPendingRequests": "My Pending Requests",
@@ -718,6 +748,38 @@
     "actionAssetsDescUser": "Browse authorized assets and start sessions",
     "actionSessionsDesc": "View active sessions and play back recordings",
     "actionMyRequestsDesc": "Track access request progress and withdraw requests"
+  },
+  "upgradeGuidance": {
+    "menu": "What's new",
+    "title": "Features and navigation in this release",
+    "changes": "What changed",
+    "nextSteps": "Suggested next steps",
+    "dismiss": "Read later",
+    "reopenHint": "Reopen this card from What's new in the user menu.",
+    "basic": "Navigation follows your available features; connections still depend on asset authorizations.",
+    "superAdminMigration": "Existing administrators become super administrators and retain their existing capabilities.",
+    "roles": "Assign management responsibilities through roles and user groups.",
+    "assets": "Managing assets and credentials does not automatically grant connection access.",
+    "credentialOwnership": "Existing shared credentials are owned by Global and connections continue as before. They can be reassigned to nodes so that node asset administrators maintain them.",
+    "authorization": "Asset authorizations determine which assets and accounts can be used for connections.",
+    "audit": "The alerts page shows Alert Records, Rule Management or System Alerts according to your permissions.",
+    "approvals": "Handle requests you are eligible to review in the approval center.",
+    "localAdmin": "Keep a super administrator account that can sign in locally.",
+    "notifications": "Notification channels are now in system settings. Check their destinations.",
+    "retentionTitle": "Retention periods adjusted during upgrade",
+    "retentionItem": "{item}: {before} days → {after} days",
+    "retentionHint": "The four data retention periods have a 7-day minimum, and 0 still means permanent retention. These are records of upgrade adjustments, not the current settings.",
+    "retentionFollow": "Adjusted so that checkpoint retention still covers data retention.",
+    "uncoveredTitle": "Data retention not covered by checkpoint retention",
+    "uncoveredItem": "{item}: {days}; checkpoint retention: {checkpoint}",
+    "uncoveredHint": "Checkpoint retention does not currently cover these items. Adjust them on the security policies page.",
+    "loadFailed": "Could not load release guidance. Try again.",
+    "saveFailed": "Could not save the dismissal. Try again.",
+    "retentionFailed": "Could not load retention adjustments. Try again.",
+    "goTo": "Go to {name} ›",
+    "currentSetting": "Current setting",
+    "credentialOwnershipStepTitle": "Reassign shared credentials to nodes",
+    "credentialOwnershipStepText": "Credentials owned by Global can be managed only by super administrators and system-wide administrators. The server decides each reassignment against your permissions."
   },
   "dailyReview": {
     "weekdayDate": "{date} ({weekday})",
@@ -993,6 +1055,8 @@
       "asset_deleted": "Asset deleted (data layer record)",
       "asset_group_deleted": "Asset group \"{name}\" deleted; {revoked} authorizations revoked with it",
       "audit_export_requester_revoked": "Export job #{job_id} cancelled: the requester no longer has access",
+      "authz_capability_denied": "Operation denied: insufficient permission",
+      "authz_scope_denied": "Operation denied: the target is outside the allowed management scope",
       "auto_disabled_inactive_account": "Account disabled automatically after {days} days without sign-in",
       "auto_disabled_inactive_account_nodays": "Account disabled automatically after a period without sign-in",
       "credential_abandon": "In-progress credential rotation abandoned",
@@ -1003,6 +1067,7 @@
       "credential_rebind": "Asset account switched to another credential",
       "credential_rotate": "Credential rotated",
       "credential_scope": "Credential scope changed",
+      "credential_set_secret": "Credential secret declared",
       "credential_unbind": "Credential detached from an asset account",
       "credential_update": "Credential updated",
       "event": {
@@ -1018,6 +1083,7 @@
         "external_identity_unbound_and_account_disabled": "External identity unlinked and account disabled",
         "external_user_local_login_attempt": "Externally managed account tried to sign in with a local password",
         "external_user_local_login_attempt_aggregated": "Externally managed account tried {count} more local password sign-ins within {minutes} minutes",
+        "grant_change_graded": "Authorization change graded and alerted",
         "group_role_mapping_create": "Group-to-role mapping rule created",
         "group_role_mapping_delete": "Group-to-role mapping rule deleted",
         "group_role_mapping_update": "Group-to-role mapping rule updated",
@@ -1038,12 +1104,18 @@
         "oidc_flow_error": "External sign-in flow failed ({reason})",
         "oidc_identity_orphan_revoked": "External identity link revoked because its account {previous_username} (ID {previous_user_id}) was deleted: {provider}",
         "oidc_provider_denied": "Identity provider denied the sign-in ({error})",
+        "oidc_provider_settings_change": "Changed identity provider settings",
         "oidc_user_inactive": "External sign-in denied: the account is disabled: {provider}",
         "oidc_user_provisioned": "Account created automatically on first external sign-in: {provider}",
         "oidc_username_conflict": "External sign-in username matches an existing account; not linked: {provider}",
+        "role_binding_range_changed": "Changed the node scope of a role assignment (the assigned role is unchanged)",
+        "role_mapping_pin": "Pinned a role granted by group mapping (it no longer disappears when the external group is removed)",
+        "role_update_agent_restricted_detected": "After a role change, an automation account was found holding a role that includes restricted permissions",
+        "security_admin_account_operated": "Identity operation on a security administrator account",
         "user_converted_to_external_only": "Account switched to external sign-in only",
         "user_deleted": "Account {username} deleted ({identities} external identity links revoked)",
         "user_external_only_conversion_rejected": "Switching to external sign-in only rejected ({reason})",
+        "user_group_manual_member_added": "Member added manually to user group",
         "user_group_manual_member_removed": "Manually added member removed from user group"
       },
       "generic": "{action} {resource}",
@@ -1054,6 +1126,7 @@
       "principal_state_delete": "Account deleted (system state record)",
       "principal_state_update": "Account state changed (system state record)",
       "retention_purge": "Retention purge: deleted {deleted} {target} entries older than {days} days",
+      "membership_revalidation_expired": "Group membership could not be confirmed at external sign-in and the revalidation limit has passed: permissions granted through mapping from this source were withdrawn",
       "retention_purge_failed": "Retention purge failed: {target}",
       "role_mapping_applied": "Roles adjusted by group mapping at external sign-in: added {added}, removed {removed}",
       "role_mapping_applied_added": "Roles added by group mapping at external sign-in: {added}",
@@ -1062,7 +1135,16 @@
       "role_mapping_groups_unknown": "Group mapping skipped at external sign-in: groups could not be read, existing mappings kept",
       "role_mapping_source_attr_unset": "Group mapping skipped at external sign-in: the source has no group attribute configured",
       "user_group_deleted": "User group \"{name}\" deleted; {revoked} authorizations revoked with it",
-      "user_group_mapping_applied": "User groups adjusted by group mapping at external sign-in"
+      "user_group_mapping_applied": "User groups adjusted by group mapping at external sign-in",
+      "credential_authorization_stop": "Credential job stopped: authorization no longer valid",
+      "change_secret_authorization_stop": "Credential job stopped: authorization no longer valid",
+      "credential_recovery_verify": "Limited verification after revocation completed and committed",
+      "credential_rotation_reauthorized": "An authorized person took over a credential rotation and continued it",
+      "credential_rotation_interrupted": "A rotation member interrupted by a service restart was marked as changed, unverified",
+      "change_secret_recovery_verify": "Limited verification after revocation completed and committed",
+      "credential_host_identity_stop": "Change-secret job stopped because the host identity changed; the candidate credential is kept pending manual confirmation",
+      "change_secret_host_identity_stop": "Change-secret job stopped because the host identity changed; the candidate credential is kept pending manual confirmation",
+      "change_secret_reauthorize": "Credential change plans were re-authorized by an authorized person"
     },
     "roleDelta": {
       "headline": "Roles adjusted by group mapping at external sign-in",
@@ -1156,11 +1238,14 @@
       "rotationActiveHint": "This shared credential is being rotated; changing it, leaving it, or correcting its registered value is unavailable until this round ends.",
       "addTitle": "Add account",
       "addHint": "Lists shared credentials usable with this protocol that this asset does not already use.",
+      "addDedicatedNeedsCredentialCreate": "Creating a dedicated account sets its username, which requires permission to create account credentials. Use a shared credential instead, or ask an administrator.",
       "addSubmit": "Add",
       "rebindHintShared": "Only a shared credential can be picked. This host connects with the new credential from then on; the previous credential simply loses one binding and the other hosts on it are unaffected. This cannot be undone.",
       "rebindHintDedicated": "Only a shared credential can be picked. This host connects with the new credential from then on, and the dedicated credential it used until now is reclaimed. This cannot be undone.",
       "rebindSubmit": "Change credential",
-      "rebindDone": "Credential changed"
+      "rebindDone": "Credential changed",
+      "outOfScopeCredential": "Shared credential out of scope",
+      "outOfScopeNote": "The shared credential on this host is outside your scope: you cannot correct its stored value or leave shared, but you can still change the credential or remove the account."
     },
     "headerDescAdmin": "Manage remote hosts, databases, and K8s assets (SSH, RDP, VNC, MySQL, PostgreSQL, Redis, K8s)",
     "headerDescUser": "Assets authorized to you — click Connect to start; restricted assets accept access requests",
@@ -1174,6 +1259,40 @@
     "riskCount": "{n} risk | {n} risks",
     "nodesColumn": "Nodes",
     "ungrouped": "Ungrouped",
+    "scopedOutOfScopeBadge": "+{n} out of scope",
+    "scopedOutOfScopeNodes": "{n} more node(s) outside your scope.",
+    "scopedOutOfScopeAdminOnly": "Nodes outside your scope can only be changed by the administrators of that scope.",
+    "scopedReasonOutOfScopeNodes": "This asset is also attached to {n} node(s) outside your management scope, so it cannot be deleted or disabled. You can remove it from your own nodes instead.",
+    "scopedReasonOutOfScope": "This asset is outside your management scope.",
+    "scopedReasonNoCapability": "You do not have permission for this action.",
+    "tagVisibleOnlyHint": "Only tags used on assets you can see are listed.",
+    "batchOps": {
+      "selectedCount": "{n} selected",
+      "move": "Move",
+      "addTags": "Add tags",
+      "delete": "Delete",
+      "clearSelection": "Clear selection",
+      "moveTitle": "Move {n} asset(s)",
+      "addTagsTitle": "Add tags to {n} asset(s)",
+      "deleteTitle": "Delete {n} asset(s)",
+      "moveTarget": "Target node",
+      "moveTargetPlaceholder": "Select the node to move them into",
+      "moveKeepsOutOfScope": "The assets will be attached to the node you choose; nodes outside your management scope are kept as they are.",
+      "moveNoTarget": "There is no node you can move these assets into.",
+      "deleteConfirm": "This deletes the {n} selected asset(s). The whole batch runs together: if any one cannot be deleted, none are deleted.",
+      "unavailableTitle": "Nothing in the batch was run",
+      "unavailableBody": "{count} of the selected assets cannot be operated on, and no asset was changed. Refresh the list and try again.",
+      "blockedBody": "{count} asset(s) also belong to nodes outside your management scope, so nothing in the batch was deleted. You can detach them from your own nodes instead.",
+      "moveSuccess": "Moved {n} asset(s)",
+      "addTagsSuccess": "Added tags to {n} asset(s)",
+      "deleteSuccess": "Deleted {n} asset(s)",
+      "selectAllPage": "Select all assets on this page",
+      "selectRow": "Select this asset"
+    },
+    "scopedEmptyTitle": "No manageable nodes yet",
+    "scopedEmptyHint": "Your management scope has no active nodes. Contact an administrator to confirm the nodes assigned to you.",
+    "scopedInactiveNotice": "{n} managed node(s) no longer exist and that part of your scope has no effect. Everything else works as usual.",
+    "scopedConnectionOnlyNotice": "Your management scope has no active nodes. Only assets you are authorized to connect to are listed below.",
     "testing": "Testing",
     "testedAt": "Tested {time}",
     "testedAtWithLatency": "Tested {time} (latency {ms}ms)",
@@ -1240,10 +1359,15 @@
     "mountNodes": "Attach to Nodes",
     "mountNodesPlaceholder": "Ungrouped (multiple allowed)",
     "accessPolicy": "Connection Policy",
+    "accessPolicyReadonlyHint": "View only here. Changing this policy requires the access-policy management permission.",
     "hostKey": "Host Key",
-    "hostKeyMeta": "Recorded {time}; connections are rejected on fingerprint mismatch",
+    "hostKeyMeta": "Recorded {time}. If a different fingerprint appears later, terminal sessions, file transfers and connection tests may proceed to authentication and are audited, with a system alert created the first time that fingerprint appears; credential changes and rotations stop",
     "resetKey": "Reset",
-    "hostKeyEmpty": "No record yet — the fingerprint is recorded and pinned on first connection",
+    "hostKeyEmpty": "No record yet — the fingerprint is recorded and pinned on the first connection to this address; an earlier record for the same address is reused",
+    "securityChangeNotice": "Security staff will be notified when you save: this change alters the connection address or relaxes transport verification ({fields})",
+    "tagManagerSuperAdminOnly": "Renaming, merging and deleting tags across all assets is limited to super administrators. To add a new tag, type it directly when editing an asset",
+    "hostKeyResetSuperAdminOnly": "Resetting the host key is limited to super administrators",
+    "hostKeyInherited": "Reusing the earlier record for this address; this asset gets its own record after its first successful connection",
     "applyReasonLabel": "Reason (required; visible to approvers and in the audit trail)",
     "applyDuration": "How long do you need it (minutes)",
     "applyDateStart": "Scheduled start (empty = available right after approval)",
@@ -1272,10 +1396,22 @@
     "portReachableOnly": "Indicates port reachability only; credentials were not verified",
     "unknownReason": "unknown reason",
     "fingerprintCopied": "Fingerprint copied",
-    "hostKeyResetConfirm": "After reset, the fingerprint will be re-recorded on the next connection. Do this only when the target host was truly reinstalled or replaced; otherwise you lose man-in-the-middle protection.",
+    "hostKeyResetConfirm": "After a reset, whatever key the next connection presents becomes the new record. If fingerprints awaiting confirmation are listed above, prefer \"Adopt this fingerprint\". This action is recorded and creates a system alert.",
     "hostKeyResetTitle": "Reset Host Key",
     "hostKeyResetButton": "Confirm Reset",
     "hostKeyResetDone": "Reset — the fingerprint will be re-recorded on the next connection",
+    "hostKeyMismatchTitle": "Fingerprints awaiting confirmation ({count})",
+    "hostKeyMismatchHint": "Fingerprints seen on connections that differ from the record, most recent first",
+    "hostKeyMismatchRow": "First {first}, last {last}, {count} times",
+    "testHostKeyMismatchLead": "Host identity does not match the record: ",
+    "testSuccessHostKeyMismatch": "This host's host key differs from the record, and the platform has sent the sign-in credentials to it. If the host was not reinstalled or replaced, someone may be impersonating it. Do not use it for now. This has been recorded.",
+    "testHostKeyReachabilityNote": "The connection status in the list only means the host can be reached, not that its identity matches.",
+    "testFailedHostKeyMismatch": "Connection test failed ({reason}), and the host key does not match the record: the platform attempted authentication against this host, so a password may have been sent. The event is recorded and a system alert was created the first time this fingerprint appeared",
+    "hostKeyAdopt": "Adopt this fingerprint",
+    "hostKeyAdoptConfirm": "After adoption this fingerprint becomes the record: connections presenting it stop warning, other fingerprints still raise alerts. Confirm with the host's administrator that this fingerprint really belongs to this host first. This action is recorded and creates a system alert.",
+    "hostKeyAdoptSuccess": "Adopted. Connections presenting this fingerprint no longer warn",
+    "hostKeyAdoptSuperAdminOnly": "Only a super administrator can adopt a fingerprint",
+    "hostKeyAdoptButton": "Adopt",
     "updated": "Asset updated",
     "created": "Asset created",
     "createdUngrouped": "Asset created and placed under Ungrouped",
@@ -1363,6 +1499,8 @@
       "colField": "Field",
       "colValue": "Entered value",
       "colProblem": "Problem",
+      "problemNodeUnavailable": "The node does not exist, or you cannot use it",
+      "problemCredentialUnavailable": "The shared credential does not exist, or you cannot use it",
       "downloadErrors": "Download problems (CSV)",
       "importN": "Import {total} assets",
       "confirm": "This creates {total} assets ({pending} without a login credential). It runs as one batch: if any asset fails, none are created.",
@@ -1449,7 +1587,8 @@
           "desc": "For mysql, postgres, redis, mssql. disable, require, verify-ca, or verify-full; blank uses the client default. With verify-ca or verify-full, if the server uses a self-signed or private CA, paste the CA certificate in Edit after importing",
           "example": "require"
         }
-      }
+      },
+      "accessPolicyReadonly": "Filling in the connection policy requires the access-policy management permission, so it cannot be set here"
     },
     "credentialPending": "Credential needed",
     "credentialPendingTooltip": "No login credential yet. Ask an administrator to set one under Edit → Accounts.",
@@ -1569,6 +1708,7 @@
     "idLabel": "Session no. {id}"
   },
   "myConnections": {
+    "notApplicable": "This page lists only your own connection records. Your role does not file connection requests; whether you can connect is still decided by your authorizations and policies.",
     "headerDesc": "Review your own session records",
     "connectedAt": "Connected At",
     "duration": "Duration",
@@ -1601,6 +1741,19 @@
     "causeColumn": "Cause",
     "emptyFailuresTitle": "No failure events yet",
     "emptyFailuresHint": "Audit mechanism failures (e.g. interrupted Syslog forwarding) are recorded here",
+    "permissionAccept": {
+      "column": "Permission state",
+      "button": "Confirm and accept risk",
+      "title": "Confirm permission state change",
+      "hint": "Permission data was changed directly, bypassing the application. Confirming takes the current actual state as the new baseline, closes the alert, and writes who confirmed, why, and a summary of the difference to the audit log. No role or authorization is changed.",
+      "reasonLabel": "Reason for confirmation",
+      "reasonPlaceholder": "For example: checked with operations, this was an emergency fix on that day",
+      "submit": "Confirm and accept risk",
+      "success": "Confirmed. The alert is closed and an audit record was written",
+      "titleUnknown": "Reset the permission state baseline",
+      "hintUnknown": "The permission state comparison cannot be completed (the change record is incomplete or cannot be verified). Until it is reset, later direct changes cannot be detected. Resetting takes the current actual state as the new comparison baseline, closes the alert, and writes who confirmed, why, and a summary of why the comparison failed to the audit log. The damaged records are kept as they are. No role or authorization is changed.",
+      "successUnknown": "Baseline reset. The alert is closed and an audit record was written"
+    },
     "exportDialogTitle": "Export Audit Evidence Package",
     "exportDialogInfo": "The evidence package is a ZIP containing in-scope operation logs, command streams, clipboard contents, related session recordings and daily review records, plus a manifest (exporter, time, per-file SHA-256 chain of custody). It is packaged in the background after you submit; collect it from Downloads when it finishes. At least one scope condition is required.",
     "userId": "User ID",
@@ -1640,7 +1793,11 @@
     "filterKeyNotice": "Showing only changes to the security setting \"{setting}\"",
     "filterKeyClear": "Clear filter",
     "reason": "Reason",
-    "detailsRaw": "Details"
+    "detailsRaw": "Details",
+    "grantMark": {
+      "self_authorization": "Self-authorization",
+      "management_grant": "Management-level grant"
+    }
   },
   "commands": {
     "headerDesc": "Search command and statement records across connections. Command-line entries are reconstructed from keystrokes and recordings are authoritative; query console statements are recorded when submitted.",
@@ -1683,8 +1840,9 @@
     "kindRule": "Rule alert",
     "kindSensitiveReveal": "Sensitive content access",
     "sensitiveRevealDescription": "Sensitive content was accessed; see the per-access audit record for details.",
-    "title": "Command Alerts",
-    "headerDesc": "Dangerous-command alert records and rule management",
+    "title": "Alerts",
+    "headerDesc": "Alert records for dangerous commands and system security events",
+    "channelsHeaderDesc": "Alerts are sent to these channels. Adding, changing, disabling or deleting any channel notifies security staff.",
     "tabAlerts": "Alert Records",
     "severity": "Severity",
     "reviewStatus": "Review Status",
@@ -1828,7 +1986,14 @@
         "notSent": "Not sent",
         "unconfirmed": "Unconfirmed: no response from the server"
       }
-    }
+    },
+    "kindSystemSecurity": "System alert",
+    "channelChangeNotice": "When the URL changes, both the old and the new destination each receive a \"channel changed\" notification, and security staff are notified.",
+    "channelOldUrl": "Old URL",
+    "channelNewUrl": "New URL",
+    "channelDeleteNotice": "After deletion, one more notification is still sent to this channel, and security staff are notified.",
+    "channelPushSystemHint": "\"Push\" only filters general alerts (such as rule alerts and command audit degradation); system alerts are always pushed to every enabled channel.",
+    "tabSystemAlerts": "System Alerts"
   },
   "transmission": {
     "headerDesc": "Transmission enforcement policy and channel encryption inventory (formerly the Channel Encryption Inventory page): each policy level is annotated with its PCI recommendation; the inventory aggregates encryption status and deviations across all channels, and exported snapshots carry a timestamp and generator for use as an audit inventory",
@@ -2047,6 +2212,7 @@
     "createChild": "New Child Node",
     "move": "Move",
     "authorizeNode": "Authorize This Node",
+    "authorizeNodeUnavailable": "This node is outside the scope you manage. It is shown only to locate its children and cannot be authorized directly.",
     "sectionOther": "Others",
     "renameTitle": "Rename Node",
     "createChildTitle": "New Child Node Under \"{name}\"",
@@ -2060,7 +2226,20 @@
     "updated": "Node updated",
     "moved": "Node moved",
     "deleteConfirm": "Delete node \"{name}\"? Only empty nodes without child nodes or directly attached assets can be deleted; authorizations and approver scopes attached to this node will be revoked accordingly. This action cannot be undone.",
-    "deleted": "Node deleted"
+    "deleted": "Node deleted",
+    "scopeBadge": "Scope",
+    "scopeRootLocked": "This is the root of your management scope. Only a super administrator can do this",
+    "superAdminOnly": "Only a super administrator can do this",
+    "locatorAncestor": "Shown only as part of the path. You have no management permission on this node",
+    "deleteBlocked": {
+      "title": "Cannot Delete Node",
+      "scopedBody": "Node \"{path}\" is part of {count} other management scope(s) and cannot be deleted.",
+      "scopedHint": "Contact an identity administrator or a super administrator to adjust these management scopes, then delete the node.",
+      "superBody": "Node \"{path}\" is still referenced by {count} management scope(s). Adjust these assignments before deleting it.",
+      "listTitle": "Management scopes that reference this node",
+      "goEdit": "Go to Edit",
+      "groupMembers": "{count} member(s)"
+    }
   },
   "tagManager": {
     "hint": "Renaming applies to every asset carrying the tag; if the target already exists, they are merged (deduplicated automatically).",
@@ -2257,6 +2436,7 @@
     "queryFailed": "Failed to query metrics"
   },
   "syslogCard": {
+    "changeAlertNotice": "Changes like this are recorded and raise a system alert; delivery depends on the notification channel.",
     "title": "syslog Log Forwarding",
     "hint": "Audit logs are forwarded to an external SIEM in real time (RFC 5424); the database remains the authoritative store",
     "dropped": "{n} entries dropped (buffer overflow)",
@@ -2415,7 +2595,7 @@
     "groupSnapshotNoGroups": "No group value was observed at that sign-in."
   },
   "userGroups": {
-    "headerDesc": "A grouping dimension for authorization subjects (unrelated to RBAC roles): authorizing a group applies to all its members",
+    "headerDesc": "Group users together; authorizing a group authorizes all of its members. A group can also carry roles, which every member receives.",
     "create": "New Group",
     "nameColumn": "Group Name",
     "members": "Members",
@@ -2435,17 +2615,297 @@
     "membersUpdated": "Members updated (authorization takes effect immediately)",
     "deleteConfirmWithAuth": "Deleting group \"{name}\" will revoke {count} authorizations; members immediately lose the access gained through this group. This action cannot be undone.",
     "deleteConfirm": "Delete group \"{name}\"? (This group currently has no authorization records.) This action cannot be undone.",
-    "deleted": "Group deleted; {count} authorizations revoked accordingly"
+    "deleted": "Group deleted; {count} authorizations revoked accordingly",
+    "detail": {
+      "loadFailed": "Unable to load this group",
+      "tabs": {
+        "members": "Members",
+        "roles": "Roles and scope"
+      },
+      "memberCount": "{n} members",
+      "mapping": {
+        "one": "By configuration, members of the {source} group \"{group}\" are mapped into this group and refreshed from {source} at their next sign-in",
+        "many": "By configuration, {items}; members of these groups are mapped into this group and refreshed from each source at their next sign-in",
+        "manyMore": "By configuration, {items}, and {n} more groups; members of these groups are mapped into this group and refreshed from each source at their next sign-in",
+        "item": "{source} \"{group}\"",
+        "sourceDisabled": "Source disabled",
+        "popoverTitle": "External groups mapped into this group by configuration ({n})",
+        "popoverNote": "Only enabled rules are listed. This is configuration; it does not mean every member comes from these groups.",
+        "fallbackTitle": "Some members come from external group mapping",
+        "fallbackBody": "Some members joined through external group mapping. They may come from several sources, existing data, or the mapping configuration may be temporarily unreadable.",
+        "fallbackHint": "The \"External group mapping\" label on the Members tab shows who they are."
+      },
+      "members": {
+        "help": "\"Added manually\" members can be removed here; \"External group mapping\" members are decided by the external directory and cannot be removed here.",
+        "title": "Manage members",
+        "colJoinedVia": "How they joined",
+        "maintainBlocked": "This group carries the \"{role}\" role, so only a super administrator can add or remove members.",
+        "deleteBlocked": "This group carries the \"{role}\" role, so only a super administrator can delete it.",
+        "allUsers": "All users",
+        "manualMembers": "Manual members",
+        "mappedReadonlyTitle": "Members added by mapping",
+        "mappedReadonlyNote": "(decided by the external directory; cannot be removed here)"
+      },
+      "roles": {
+        "title": "Roles of this group ({n})",
+        "protectedBadge": "Protected",
+        "protectedCannotRemove": "Only a super administrator can remove this role.",
+        "help": "A group's roles go to every member, and members see each role on their user page, marked as coming from this group. Protected roles cannot be added or removed here; other roles can be adjusted and saved as usual."
+      },
+      "impact": {
+        "title": "Changes after saving",
+        "members": "{n} members affected",
+        "routesGained": "New pages",
+        "none": "None",
+        "comboNote": "{n} members will end up with a combination that needs confirmation; you will be asked to confirm when saving."
+      }
+    }
   },
   "roles": {
-    "headerDesc": "View system roles and their permission descriptions",
+    "headerDesc": "A role decides which pages a person can see and which data they can change. Which hosts a person can connect to is decided by asset authorizations.",
     "nameColumn": "Role Name",
     "descriptionColumn": "Description",
     "permissionCardTitle": "Role Permission Details",
     "tipTitle": "Note",
-    "tipBody": "System roles are fixed and cannot be created or deleted. To change a user's role, go to the Users page.",
+    "tipBody": "Built-in roles cannot be changed, but you can use them as templates for custom roles. Only a super administrator can add, edit, copy or delete roles; everyone else with view access can read what each role contains. To assign roles to users, go to User Management.",
     "emptyTitle": "No role data yet",
-    "emptyHint": "System roles will appear here"
+    "emptyHint": "System roles will appear here",
+    "identityAdmin": {
+      "name": "Identity administrator",
+      "description": "Manages users, user groups, identity sources and role assignment. Does not include security settings or audit content, and management rights do not grant in-platform connection rights."
+    },
+    "securityAdmin": {
+      "name": "System security administrator",
+      "description": "Manages system-wide security policy, keys, transmission, off-site storage, notification and alert settings. Does not include identity or role management, and management rights do not grant in-platform connection rights."
+    },
+    "state": {
+      "hidden": "Hidden",
+      "read": "Read only",
+      "manage": "Manage",
+      "available": "Available"
+    },
+    "summary": {
+      "manage": "Can manage",
+      "read": "Can view",
+      "available": "Can use",
+      "hidden": "Not granted",
+      "global": "Scope is system-wide",
+      "connectionSeparate": "Management rights do not grant in-platform connection rights; connection must be granted separately",
+      "assignmentTrust": "This role can assign any role other than super administrator, system security administrator and custom roles that include high-risk permissions to others, which is broad delegation of authority. Choose holders as carefully as you would an identity administrator, and give it only to people you trust"
+    },
+    "permissionLabel": {
+      "roleAssign": "Assign roles",
+      "systemalertManage": "System alert grading"
+    },
+    "dangerCombo": {
+      "authz_rules_with_asset_or_credential": "Can manage authorization rules and also manage assets or credentials",
+      "security_with_asset_or_authz": "Holds security settings management and also manages assets or authorization rules",
+      "asset_management_with_connect": "Can manage assets and also connect to them",
+      "identity_with_security": "Can manage identities and role assignments and also holds security settings management",
+      "identity_with_business_or_connect": "Can manage identities and role assignments and also operate business assets or connect"
+    },
+    "list": {
+      "builtinTitle": "Built-in roles ({n})",
+      "customTitle": "Custom roles ({n})",
+      "colFeatures": "Available features",
+      "colScope": "Scope",
+      "colUsers": "Users",
+      "colActions": "Actions",
+      "builtinLocked": "Built-in, cannot be changed",
+      "templateFrom": "Based on \"{name}\"",
+      "blankStart": "Started from blank",
+      "scopeGlobal": "Whole system",
+      "approverAbility": "Approve connection requests",
+      "scopeByReviewer": "By review scope",
+      "scopeNotApplicable": "Not applicable",
+      "actionView": "View",
+      "actionUseAsTemplate": "Use as template",
+      "actionEdit": "Edit",
+      "actionCopy": "Copy",
+      "actionDelete": "Delete",
+      "create": "New role",
+      "viewOnlyNote": "You can view what each role contains. Only a super administrator can add, edit, copy or delete roles.",
+      "unavailable": "Role information is unavailable",
+      "deleteConfirm": "Delete the custom role \"{name}\"? This cannot be undone.",
+      "deleted": "Role deleted",
+      "inUse": {
+        "title": "Still in use, cannot be deleted",
+        "direct": "Assigned directly to {n} people",
+        "groups": "{n} user groups carry this role",
+        "mappings": "{n} external group mapping rules point to this role (disabled rules count too)",
+        "hint": {
+          "users": "Remove this role in User Management first, then come back to delete it.",
+          "groups": "Remove this role in User Groups first, then come back to delete it.",
+          "usersAndGroups": "Remove this role in User Management and User Groups first, then come back to delete it.",
+          "mappings": "Nobody holds it right now, but you still need to delete the rule in the external group mappings under Identity Sources before deleting the role.",
+          "mappingsToo": "Also delete the rules that point to this role in the external group mappings under Identity Sources."
+        },
+        "conflictTitle": "Cannot delete \"{name}\"",
+        "conflictBody": "Someone started using this role before you confirmed, so it was not deleted.",
+        "reloaded": "The list was reloaded; counts and actions are up to date.",
+        "ack": "Got it"
+      },
+      "scopeAtAssignment": "Pick nodes when assigning"
+    },
+    "create": {
+      "title": "New role: start from a template",
+      "fromTemplate": "Start from which template",
+      "blank": "Blank",
+      "adjustLater": "You can adjust each item afterwards.",
+      "name": "Role name",
+      "description": "Description",
+      "descriptionPlaceholder": "(Optional) For example: day-to-day operations of database hosts",
+      "next": "Next: adjust features",
+      "copyTitle": "Copy role",
+      "copyName": "New role name",
+      "created": "Role created",
+      "copied": "Role copied",
+      "updated": "Role saved"
+    },
+    "editor": {
+      "titleNew": "New role",
+      "titleEdit": "Edit role",
+      "titleView": "View role",
+      "badgeCustom": "Custom",
+      "badgeBuiltinLocked": "Built-in, cannot be changed",
+      "holders": "{n} people use it; changes take effect right after saving",
+      "systemFeatures": "System features",
+      "legend": "Hidden = not visible. Read-only = can look but not change. Manage = can add and edit. Available = can open and use.",
+      "detailCount": "Fine-grained actions {n}/{m}",
+      "detailNote": "Connection policy (whether a request or approval is needed before connecting) is not set here; it belongs to Asset Authorizations below.",
+      "groupCount": {
+        "manage": "{n} manage",
+        "read": "{n} read-only",
+        "available": "{n} available",
+        "hidden": "{n} hidden",
+        "allHidden": "All hidden ({n} items)",
+        "autoShown": "{n} shown automatically"
+      },
+      "fixed": {
+        "dashboard": "Dashboard",
+        "workspace": "Workspace",
+        "profile": "Profile",
+        "my_connections": "My connections",
+        "my_requests": "My requests",
+        "my_agents": "My agents",
+        "approvals": "Approvals"
+      },
+      "fixedVisible": {
+        "everyone": "Visible to everyone",
+        "agentOwner": "Visible to people who own an agent",
+        "approver": "Visible to people eligible to approve"
+      },
+      "summary": {
+        "title": "People who hold this role",
+        "missingTitle": "Required features missing",
+        "hiddenTitle": "Not visible",
+        "scopeTitle": "Management scope",
+        "scopeAll": "Whole system",
+        "connectionTitle": "Connection",
+        "connectionNote": "This role does not let anyone connect to hosts. Whether they can connect is decided by asset authorization rules.",
+        "unavailable": "The summary is temporarily unavailable",
+        "unavailableHint": "Your selections on the left are not affected and you can still save.",
+        "scopeNodeSelectable": "Pick nodes when assigning; it applies only inside the chosen nodes",
+        "scopeMixedGlobalOnly": "Includes features that support scoping, but also features that can only apply system-wide, so it can only be assigned system-wide"
+      },
+      "previewInlineUnavailable": "Combinations that need confirmation cannot be checked right now",
+      "comboPanelTitle": "{n} combinations need confirmation",
+      "missing": {
+        "inline": "Missing {items}: people with this role cannot open {screens}. You can still save; nothing is added automatically.",
+        "capability": "Missing view access to {items}: holders cannot see assets, so this item has no use. You can still save; nothing is added automatically.",
+        "summary": "{entry} needs {items}; it is not selected, so holders cannot open {screens}."
+      },
+      "capabilityTitle": "Other capabilities",
+      "capabilityHint": "These belong to no page; ticking one adds only that item",
+      "capability": {
+        "role_assign": "Assign roles",
+        "access_policy_override": "Per-host access policy override",
+        "recording_delete": "Delete recordings"
+      },
+      "capabilityDesc": {
+        "role_assign": "Can give roles to other users.",
+        "access_policy_override": "Can adjust, host by host, whether a request or approval is needed before connecting.",
+        "recording_delete": "Can delete a single session recording; every deletion notifies the security team."
+      },
+      "trustHint": "Holders can hand out any role except super administrator, system security administrator and custom roles that include high-risk permissions. Pick people the same way you would for the identity administrator.",
+      "noPartialDelegation": "There is no setting for \"can only hand out some roles\" or \"only within some scope\".",
+      "conflict": {
+        "title": "Not saved: someone changed this role while you were editing",
+        "body": "Your changes were not sent and did not overwrite theirs; they are still on this screen. Reloading replaces them with the other person's version, so note down what you want to keep first.",
+        "reload": "Reload latest version",
+        "stay": "Stay here",
+        "draftKept": "(Below are still your unsent changes)"
+      },
+      "effectiveNow": "Takes effect right after saving and is recorded in the audit log.",
+      "entry": {
+        "assets": "Assets",
+        "credentials": "Credential vault",
+        "change_secret": "Password change plans",
+        "authorizations": "Asset authorizations",
+        "approver_scopes": "Approver scopes",
+        "users": "User management",
+        "user_groups": "User groups",
+        "roles": "Role management",
+        "identity_sources": "Identity sources",
+        "sessions": "Sessions",
+        "audit_logs": "Audit logs",
+        "checkpoint_verification": "Checkpoint verification",
+        "alerts": "Alerts",
+        "compliance_map": "Compliance map",
+        "access_reviews": "Access reviews",
+        "security_policies": "Security policies",
+        "policy_groups": "Policy groups",
+        "key_management": "Key management",
+        "transmission": "Transmission security",
+        "offsite_storage": "Offsite storage",
+        "syslog": "Log forwarding",
+        "notification_channels": "Notification channels",
+        "system_alerts": "System alerts",
+        "alert_rules": "Alert rules",
+        "schedules": "Schedules",
+        "rotation_schedules": "Rotation schedules",
+        "instance_guard": "Instance guard"
+      },
+      "detail": {
+        "asset": {
+          "view": "View assets",
+          "create": "Create",
+          "update": "Edit",
+          "delete": "Delete",
+          "test": "Test connection"
+        },
+        "asset_account": {
+          "view": "View asset accounts",
+          "update": "Edit asset accounts"
+        },
+        "node": {
+          "manage": "Manage groups"
+        },
+        "credential": {
+          "manage": "Manage credential vault",
+          "view": "View",
+          "create": "Create",
+          "update": "Edit",
+          "set_secret": "Set password or private key",
+          "rotate": "Rotate",
+          "convert_scope": "Change sharing mode",
+          "detach": "Unbind",
+          "delete": "Delete",
+          "bind": "Bind to asset account",
+          "account_rotate": "Change account password"
+        }
+      },
+      "scopable": "Can be scoped",
+      "nodeScopedNotice": "This role has {n} assignments limited to nodes. Newly added features that can only apply system-wide will not take effect on those assignments.",
+      "nodeScopedNoEffectNotice": "This role has {n} assignments limited to nodes. The role's permissions are not restricted by nodes, so the scope on those assignments has no effect."
+    },
+    "assignState": {
+      "protected": "Only a super administrator can assign this",
+      "notOpen": "This role cannot be assigned yet",
+      "notDirectMappable": "This role can only be obtained through a user group and cannot be mapped directly",
+      "notGroupBindable": "This role cannot be given to groups",
+      "managementClass": "Management role"
+    }
   },
   "profile": {
     "headerDesc": "Account information, password, and two-step verification management",
@@ -2638,6 +3098,7 @@
     "title": "Asset Authorization Management",
     "headerDesc": "Manage users' access permissions to assets",
     "batchAuthorize": "Batch Authorize",
+    "tabAccessPolicy": "Connection policy",
     "tabRecords": "Authorization Records",
     "allUsers": "All users",
     "filterUserGroup": "User Group",
@@ -2688,7 +3149,17 @@
     "accountScopeHint": "Accounts are matched by name: only same-named accounts on assets inside the target scope become connectable. The list is a typing aid — names that do not exist yet can be entered.",
     "accountScopeSaved": "Account scope updated",
     "accountScopeFailed": "Failed to update account scope",
-    "accountScopeReserved": "{names} is a reserved scope alias (starts with {'@'}), not an account name. Pick \"All accounts\" to authorize every account"
+    "accountScopeReserved": "{names} is a reserved scope alias (starts with {'@'}), not an account name. Pick \"All accounts\" to authorize every account",
+    "accountScopeSelfLocked": "This rule applies to you, a group you belong to, or an agent you own. You cannot adjust its account scope here; ask a super administrator. Deletion follows the existing permission rules.",
+    "selectorLoadFailed": "Loading failed and the list may be incomplete. Refresh and try again.",
+    "actionReason": {
+      "ticket_bound": "This temporary grant is bound to a request. End it with Revoke; its account scope cannot be changed and it cannot be deleted here.",
+      "not_revocable": "This temporary grant can no longer be revoked (expired, not yet active, or already ended).",
+      "revoke_not_eligible": "You are not eligible to revoke this request's grants, so this temporary grant cannot be revoked by you."
+    },
+    "actionLimit": {
+      "narrow_only": "You did not create this rule, so you can only narrow its account scope, not widen it."
+    }
   },
   "accessReviews": {
     "headerDesc": "Periodic personnel access reviews and sign-off records (PCI 7.2.4 management confirmation)",
@@ -2750,9 +3221,13 @@
     "removeConfirm": "Remove the scope \"{target}\" of {actor}? This action cannot be undone.",
     "removeTitle": "Confirm Removal",
     "removeButton": "Confirm Removal",
-    "removed": "Approver scope removed"
+    "removed": "Approver scope removed",
+    "scopedNotice": "You can manage approver scopes on some nodes only. This page lists the scopes on those nodes and the assets under them.",
+    "applicantManagedGlobally": "Requester-side routing can only be set by someone who manages every scope and also holds the requester-type management permission, so it is not shown here.",
+    "poolScopedNote": "The approver count only includes scopes within the range you can manage; approvers assigned outside it are not counted."
   },
   "myRequests": {
+    "notApplicable": "This page lists only your own request records. Your role does not use the asset request flow; whether you can file a request or connect is still decided by system authorizations and policies.",
     "headerDesc": "View connection request progress, withdraw requests, and see currently available time-limited connections",
     "activeTicketsTitle": "Currently Available Time-limited Connections",
     "connectable": "Connectable",
@@ -2798,6 +3273,7 @@
     "subjectIndividual": "Individual Users",
     "subjectGroup": "User Groups",
     "colGroupName": "Group Name",
+    "colDisplayName": "Display Name",
     "colMemberCount": "Members",
     "searchUserPlaceholder": "Search by username",
     "targetIndividual": "Individual Assets",
@@ -2824,7 +3300,10 @@
     "prevStep": "Previous",
     "nextStep": "Next",
     "batchDoneWithSkipped": "Batch authorization complete: {created} created, {skipped} skipped (already existed)",
-    "batchDone": "Batch authorization complete: {created} authorization records created"
+    "batchDone": "Batch authorization complete: {created} authorization records created",
+    "selfSubjectUser": "You cannot grant authorization to yourself",
+    "selfSubjectAgent": "You own this agent, so you cannot grant authorization to it",
+    "selfGroupNotice": "Groups you belong to cannot be selected: an authorization rule must not include a group the operator belongs to"
   },
   "authzEffective": {
     "selectUserLabel": "Select User",
@@ -2867,7 +3346,8 @@
     "assignRoleConfirm": "{username} does not yet have the Approver role. This will also assign that role and start routing in-scope requests to them. Continue?",
     "assignRoleTitle": "Assign Approver Role",
     "roleAssignedScopeFailed": "The Approver role was assigned, but creating the scope failed. Please retry adding the scope",
-    "scopeAssigned": "Approver scope assigned"
+    "scopeAssigned": "Approver scope assigned",
+    "approverRoleRequiredHint": "Only users who already have the Approver role are listed. To make someone else an approver, ask an administrator who can assign roles to add the Approver role first."
   },
   "securityPolicies": {
     "description": "Security thresholds for sign-in, sessions and log retention. Access control, transport security, keys and offsite storage each have their own page.",
@@ -2879,7 +3359,9 @@
     "insecureTransportOptionHttp": "This deployment does run on http: turn off \"Keep sign-in only on https connections\" on this page and save. It takes effect right away, with no restart."
   },
   "accessControl": {
-    "description": "Whether approval is required before connecting and who approves it: global default plus per-asset overrides, request parameters, and emergency access; each policy item shows its PCI DSS recommended value"
+    "defaultRelaxAlertNotice": "Changes like this are recorded and raise a system alert; delivery depends on the notification channel.",
+    "description": "Whether approval is required before connecting and who approves it: global default plus per-asset overrides, request parameters, and emergency access; each policy item shows its PCI DSS recommended value",
+    "overrideManagedElsewhere": "Per-asset connection policies are set by someone with the access-policy management permission."
   },
   "unseal": {
     "title": "Unseal the System",
@@ -3051,6 +3533,7 @@
     "cleanupGuidance": "Cleanup must finish before unsealing. If it fails, preserve the result and resolve the cause before restarting; do not delete the journal."
   },
   "keyManagement": {
+    "topologyChangeAlertNotice": "Changes like this are recorded and raise a system alert; delivery depends on the notification channel.",
     "description": "Envelope encryption key inventory and rekey wizard; all rotations are manual and the system never rotates keys automatically",
     "rewrapPendingTitle": "KEK rewrap not yet switched over",
     "rewrapPendingDesc": "The new KEK has been rewrapped and persisted, but the service is still running on the old KEK. Store the new KEK you entered in the wizard into the ENCRYPTION_KEY environment variable and restart the service to complete the switch; everything works as usual until then, and key rotation is temporarily disabled (restored after the switch).",
@@ -3242,7 +3725,8 @@
     "sealRestoreDeployment": "To bring the service back, an administrator confirms their identity on the unseal page and chooses to reread the key source from the deployment settings; no key has to be entered by hand.",
     "sealRestoreDelegated": "To bring the service back, somebody has to confirm their identity on the unseal page, check the custodian, and provide the custodian credentials again — sealing wipes the current credentials and the system cannot retrieve them on its own.",
     "sealReconnect": "After unsealing, connections must be opened again. Disconnected connections do not resume automatically.",
-    "dekTtlLocalModeNote": "On this deployment the master key comes from an environment variable or is entered by an administrator at startup, so it already sits in this system's memory. Data key retention in memory below can still be set; what it shortens is how long the data key is kept."
+    "dekTtlLocalModeNote": "On this deployment the master key comes from an environment variable or is entered by an administrator at startup, so it already sits in this system's memory. Data key retention in memory below can still be set; what it shortens is how long the data key is kept.",
+    "policyNeedsPermission": "The key settings on this page (such as key rotation reminder days) are part of the security policies and need the security policy settings permission to view or change. Your current role does not have it."
   },
   "changeSecretPlans": {
     "description": "Scheduled credential rotation: per-account password change and SSH key rotation, committed only after verification with automatic retry",
@@ -3300,6 +3784,7 @@
     "candidatesEmpty": "No unverified credentials",
     "colAttempts": "Attempts",
     "colNextAttempt": "Next retry",
+    "hostIdentityPending": "Awaiting host identity confirmation",
     "colLastError": "Last error",
     "colState": "State",
     "stateApplied": "Pushed, awaiting verification",
@@ -3350,6 +3835,18 @@
       "CHANGE_SECRET_RETRY_PROMOTED": "System retry verified the credential; it has been committed",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "The pending credential content could not be read; see the server log for details",
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "Failed to log in to the target host with the pending credential; see the server log for the detailed remote message",
+      "CHANGE_SECRET_HOST_KEY_MISMATCH": "The host key does not match the record; no credentials were sent. Verify the host, then adopt the new fingerprint or reset the host key in the asset settings",
+      "CHANGE_SECRET_HOST_KEY_CHECK_FAILED": "The host identity could not be confirmed before sending credentials; aborted and the target was not touched. Retry later, and contact an administrator if it persists",
+      "CHANGE_SECRET_AUTHZ_REVOKED": "Stopped: the initiator no longer holds the required permission; the remote target was not touched",
+      "CHANGE_SECRET_SCOPE_BOUND_EXCEEDED": "Target outside the confirmed scope: this shared credential now affects more outside your management scope than you previously confirmed, so the plan is paused. Confirm again to resume it",
+      "CHANGE_SECRET_AUTHZ_CONTEXT_MISSING": "Stopped: this job has no identifiable initiator and needs re-authorization by an authorized user",
+      "CHANGE_SECRET_AUTHZ_UNAVAILABLE": "Stopped: the initiator's permission could not be determined; denied by default",
+      "CHANGE_SECRET_AUTHZ_TARGET_CHANGED": "Verification refused: the target address, channel, account or version has changed",
+      "CHANGE_SECRET_AUTHZ_CONVERGENCE_EXPIRED": "The limited verification after revocation has expired; the candidate is kept for out-of-band handling",
+      "CHANGE_SECRET_AUTHZ_RESTORED": "This credential-change job was set up before a restore and is not sent automatically afterwards; an authorized person must confirm it again (manual retry or re-authorization)",
+      "CHANGE_SECRET_HOST_IDENTITY_CHANGED": "The host identity could not be confirmed to match the one bound to this job; stopped. The new credential is kept and not yet applied, pending confirmation by an authorized person",
+      "CHANGE_SECRET_INTERRUPTED": "The service restarted while this host was being changed, so it is not known whether the host took the new secret; retry to verify it with the new secret",
+      "CHANGE_SECRET_RECOVERED_CLEANUP_PENDING": "Limited verification after revocation succeeded and was committed, but the old SSH public key has not been removed; an authorized person must clean it up",
       "SHARED_CREDENTIAL_TARGET_REQUIRED": "This target is bound to a shared credential and was skipped; start a credential-wide rotation on that credential instead"
     },
     "maxAgeDays": "Maximum credential age override",
@@ -3359,12 +3856,110 @@
     "colChannel": "Channel",
     "secretTypeWindowsHint": "Windows channels support passwords only; SSH key rotation is recorded as skipped for Windows assets",
     "recordsSummary": "{total} records: {success} succeeded, {failed} failed, {unverified} unverified, {skipped} skipped",
-    "recordsNote": "Messages are the localized text of system codes; text returned by the remote host stays in the server log only."
+    "recordsNote": "Messages are the localized text of system codes; text returned by the remote host stays in the server log only.",
+    "saveNotice": "Re-checked with your permissions on the next run: once saved, you become this plan's initiator, and before every run your current permissions are checked again; if they are insufficient the run stops and an alert is raised.",
+    "reconfirmTitle": "Reconfirm password change scope",
+    "reconfirmBody": "This credential also covers {count} hosts outside your management scope, and they will be changed as well. Other administrators are responsible for them, so they are not listed here. The plan resumes only after you confirm.",
+    "reconfirmButton": "Reconfirm",
+    "reconfirmAck": "I understand that these {count} hosts will be changed too",
+    "reconfirmSubmit": "Confirm and save",
+    "reconfirmDone": "Reconfirmed. The plan will run again",
+    "reconfirmTag": "Needs reconfirmation",
+    "reauthorize": {
+      "banner": "{count} scheduled plan(s) are paused because the initiator could not be determined after the upgrade. Their schedules and enabled settings are kept.",
+      "button": "Take over and resume",
+      "confirmTitle": "Re-authorize scheduled plans",
+      "confirm": "These {count} plan(s) will run as you from now on. Before every run your current permissions are checked again; if they are insufficient the run stops and an alert is raised. Take over?",
+      "done": "{count} plan(s) re-authorized",
+      "skipped": "{skipped} plan(s) stay paused because your permissions are insufficient; someone with permission needs to take them over"
+    }
+  },
+  "hostIdentityConfirm": {
+    "title": "Confirm the host identity before verifying",
+    "target": "{asset} / account {account}",
+    "intro": {
+      "notSent": "After this new credential was sent, the key record of this host was updated (for example, it was reset and then recorded again), so automatic verification was stopped. The new credential is kept. It was not used to sign in to the host after the change.",
+      "verifiedNotApplied": "The new credential was already used to sign in to this host and verify it, but it has not been applied yet. Before it was applied, the key record of this host was found to have been updated (for example, it was reset and then recorded again), so it was not applied and automatic verification was stopped. The new credential is kept.",
+      "unknown": "After this new credential was sent, the key record of this host was updated (for example, it was reset and then recorded again), so automatic verification was stopped. It cannot be determined whether the new credential was already used to sign in this time. The new credential is kept."
+    },
+    "summary": {
+      "keyLabel": "Key currently on record",
+      "relationLabel": "Compared with when the new credential was sent",
+      "relationSame": "Same",
+      "relationDifferent": "Different",
+      "relationUnavailable": "Cannot compare",
+      "relationUnavailableHint": "No record from when it was sent",
+      "currentReset": "None (reset, waiting to be recorded again)",
+      "deadlineLabel": "Original deadline",
+      "deadlineActive": "{time} (not yet expired)",
+      "deadlineExpired": "{time} (passed)",
+      "channelLabel": "Password-change channel",
+      "channelOriginalLabel": "Channel when sent",
+      "channelCurrentLabel": "Current channel",
+      "winrmNoKey": "WinRM has no host key"
+    },
+    "checkHint": "First check with the host administrator: whether this host was recently reset, reinstalled, or replaced, and whether the fingerprint on record under \"Details\" belongs to this host.",
+    "checkHintWinrm": "First check with the host administrator: whether this host was recently reset, reinstalled, or replaced, and whether its address still points to the same host.",
+    "details": {
+      "show": "Details (fingerprint, algorithm, record version)",
+      "hide": "Hide details",
+      "original": "When the new credential was sent",
+      "current": "Current record",
+      "fingerprint": "Fingerprint",
+      "algorithm": "Algorithm",
+      "record": "Record version",
+      "recordValue": "#{id} / version {generation}",
+      "time": "Time",
+      "sentAt": "Sent at {time}",
+      "updatedAt": "Last updated at {time}",
+      "copy": "Copy",
+      "legacyOriginal": "Created before the upgrade; no earlier identity on record"
+    },
+    "expiredNotice": "The original deadline has passed ({time}). This confirmation performs a single verification only: automatic retries will not resume and the deadline will not be recalculated. If it does not succeed, you can confirm again.",
+    "foot": {
+      "default": "When you press the button, this new credential is used to sign in to this host once; if it works, it is promoted. The password is not changed again, and the original deadline ({deadline}) stays the same. If it does not succeed, the new credential is kept and you can confirm again. This confirmation is recorded in the audit log together with your name.",
+      "differentKey": "When you press the button, this new credential is used to sign in to this host once; if it works, it is promoted. The password is not changed again, and the original deadline ({deadline}) stays the same. This confirmation is recorded in the audit log together with your name and marked as \"different key accepted\". A system alert was created when the record changed.",
+      "expired": "When you press the button, this new credential is used to sign in to this host once; if it works, it is promoted. The password is not changed again. If it does not succeed, the new credential is kept and you can confirm again. This confirmation is recorded in the audit log together with your name.",
+      "winrm": "When you press the button, this new credential is verified once over WinRM; if it works, it is promoted. The password is not changed again. If it does not succeed, the new credential is kept and you can confirm again. This confirmation is recorded in the audit log together with your name."
+    },
+    "confirm": {
+      "identity": "I have confirmed the identity of this host through a channel outside the platform (for example, by asking the host administrator directly)",
+      "differentKey": "I understand this is a different key, and I still want to send the new credential to this host for verification"
+    },
+    "differentKey": {
+      "title": "This host presented a different key",
+      "body": "After the new credential was sent, the record for this host was replaced with a different key (adopted by a super administrator, or recorded again after a reset). If this host was really reinstalled or replaced, this change is expected. If not, someone may be impersonating this host, and sending the verification would hand the new credential to them."
+    },
+    "blocked": {
+      "resetPending": "The key record of this host is currently reset and is waiting to be recorded again on the next connection. Until the record is rebuilt there is no host identity to check against, so it cannot be confirmed here.",
+      "recordMissing": "This host currently has no key record to check against, so there is no host identity to compare and it cannot be confirmed here. The new credential is kept.",
+      "transportChanged": "This new credential was sent to this host over {from}, and the password-change channel of this host was later changed to {to}. WinRM has no host key to check, so the system cannot confirm that the host it now reaches is the one the credential was sent to, and it cannot be confirmed here. The new credential is kept and has not been used to sign in over {to}.",
+      "contactAdmin": "Contact a super administrator to handle the key record of this host. Once the record is rebuilt, come back, retry, and confirm.",
+      "transportRestore": "Change the password-change channel of this host back to {from} and retry. If it cannot be changed back, contact a super administrator. The new credential is always kept.",
+      "newWorkCandidate": "To change the password with a new job instead: clear this candidate, then change the password with a new job.",
+      "newWorkMember": "To change the password with a new job instead: abandon this round and rotate again (this generates a new password). Clearing the candidate alone does not replace the password, and retrying the member will still be blocked."
+    },
+    "legacy": {
+      "intro": "This job was sent before the upgrade, and the system has no record of the host identity at the time it was sent, so it cannot tell whether the host has changed. Only you can confirm it manually. After you confirm, only one verification is performed: automatic retries will not resume and the deadline will not be recalculated.",
+      "introWinrm": "This job was sent before the upgrade, and the system has no record of the host identity at the time it was sent. This host is changed over WinRM, which has no host key to check, so only you can confirm it manually. After you confirm, only one verification is performed: automatic retries will not resume and the deadline will not be recalculated."
+    },
+    "button": {
+      "cancel": "Cancel",
+      "close": "Close",
+      "submit": "Verify only, do not change the password again"
+    },
+    "result": {
+      "verified": "Verification succeeded; the credential is now promoted",
+      "notVerified": "This verification did not succeed. The new credential is kept. The system will not retry automatically; you can confirm again when needed.",
+      "moved": "The host identity changed again after you confirmed, so this result was not applied. The new credential is kept. Open the confirmation again and check the latest identity."
+    }
   },
   "changeSecretBatches": {
     "credentialName": "Shared credential name",
     "credentialNamePlaceholder": "e.g. Database ops 2026-09",
     "credentialNameRequired": "Enter a name for the shared credential",
+    "unavailableBanner": "The batch was not run. Of the {selected} accounts you selected, {count} are not available to you right now. They may have moved out of your management scope or been deleted. No account password was changed.",
+    "ownershipHint": "The new shared credential will belong to the selected node. Only people who manage that node can see and manage it.",
     "credentialNameDefault": "{username} batch {date}",
     "description": "One-off rotation organized by username: pick a username, read the targets by disposition, and rotate the selected ones together.",
     "usernamePlaceholder": "Select a username",
@@ -3515,7 +4110,8 @@
       "includeSymbol": "Include symbols",
       "excludeAmbiguous": "Exclude look-alike characters",
       "submit": "Start rotation",
-      "accepted": "Rotation started; progress appears in the detail panel"
+      "accepted": "Rotation started; progress appears in the detail panel",
+      "outOfScopeHint": "{out} of the {total} attached hosts are outside your scope. You will be asked to confirm the impact before submitting."
     },
     "detachDialog": {
       "title": "Detach from shared",
@@ -3543,6 +4139,7 @@
       "abandon": "Abandon this round",
       "abandonHint": "Abandoning does not put the old password back on hosts that already took the new one. The credential is marked out of sync and each remaining host has to be retried.",
       "abandonHintFresh": "No host has been touched in this round yet: abandoning drops the round entirely and the credential returns to idle.",
+      "abandonedUnsettledHint": "This round was abandoned and the hosts below are not on the new secret yet. Retrying a host uses this round's new secret; once every host is on it, the credential returns to idle.",
       "abandonTitle": "Abandon this round",
       "abandonMessage": "This abandons the current rotation. Hosts that already took the new password keep it, the credential is marked out of sync, and each remaining host still has to be retried. This cannot be undone.",
       "abandonMessageFresh": "This abandons the current rotation. No host has been touched yet, so the round is dropped entirely and the credential returns to idle. This cannot be undone.",
@@ -3557,6 +4154,9 @@
       "retryDone": "Retried",
       "paused": "On hold",
       "pollingPaused": "Tab in the background; updates paused",
+      "hostIdentitySkipSummary": "Retry in order finished: {done} retried, {skipped} skipped.",
+      "hostIdentitySkipStopped": "Skipped {asset}: its host identity changed after the credential was sent and must be confirmed one host at a time. Press \"Retry\" on that row.",
+      "hostIdentitySkipFoundOnRetry": "Skipped {asset}: the host identity was found to have changed only after the retry sent the credential, and the password was not changed this time. Press \"Retry\" on that row to confirm.",
       "membersEmpty": "This round has no hosts",
       "versionCurrentOnly": "Current v{current}"
     },
@@ -3612,6 +4212,66 @@
       "drawerHint": "{actions} only changes the value registered on the platform; the {noun} on the host is untouched. For a shared credential it applies to every asset it is mounted on.",
       "actionQuoted": "\"{entry}\"",
       "actionSeparator": ", "
+    },
+    "security": {
+      "customSecretWarning": "Entering a custom secret is a sensitive action: it is recorded and raises an alert. You keep custody of the value, and the system cannot vouch for its strength.",
+      "detachWarning": "Detaching from the shared credential with a custom secret is recorded and raises an alert. Other bindings are not affected.",
+      "setSecretWarning": "\"Declare new secret\" only updates the value registered in the system. It does not connect to the target host to change its password, so make sure the actual password on the host matches this value. The action is recorded and raises an alert."
+    },
+    "filterOwnership": "Owner",
+    "outOfScopeChip": "+{count} out of scope",
+    "outOfScopeNote": "{count} more host(s) outside your scope also use this credential and are not listed here. You will be asked to confirm before its password is changed.",
+    "pickerScopedNote": "Only shared credentials owned by nodes you manage are listed.",
+    "ownership": {
+      "label": "Owner",
+      "global": "Global",
+      "globalSub": "Shared company-wide",
+      "asset": "With the asset",
+      "node": "Node",
+      "nodeRef": "Node {id}",
+      "nodePlaceholder": "Select a node",
+      "noSelectable": "There is no node you can choose. Ask a system-wide administrator.",
+      "loadFailed": "Failed to load nodes",
+      "hint": "The owner decides who can manage and attach this credential. You can only choose nodes you manage.",
+      "globalExplain": "Global: only super administrators and asset administrators whose scope is the whole system can manage and attach it.",
+      "nodeExplain": "Node: asset administrators of that node can also manage and attach it."
+    },
+    "actionReason": {
+      "no_capability": "Your role does not allow this action.",
+      "out_of_scope": "This credential is owned outside the scope you manage."
+    },
+    "footer": {
+      "scoped": "Company-wide shared credentials are maintained by system-wide administrators and are not listed here.",
+      "global": "Credentials owned by Global are visible and attachable only to super administrators and asset administrators whose scope is the whole system."
+    },
+    "reassign": {
+      "rowAction": "Reassign to node",
+      "selected": "{count} selected",
+      "title": "Reassign {count} credential(s) to a node",
+      "target": "Reassign to",
+      "hint": "After reassigning, asset administrators of this node can manage and attach them. Attached assets are not affected and connections continue as before.",
+      "submit": "Reassign {count}",
+      "done": "Reassigned {count} credential(s)"
+    },
+    "impact": {
+      "title": "This credential is also used on hosts outside your scope",
+      "account": "Account",
+      "opFix": "- Correct {noun}",
+      "opRotate": "- Rotate the whole group",
+      "leadFix": "After saving, all {total} hosts attached to this credential will use the new {noun}.",
+      "leadRotate": "After submitting, all {total} hosts attached to this credential will be rotated one by one.",
+      "inScope": "In your scope",
+      "outScope": "Out of scope",
+      "countUnit": "{count} host(s)",
+      "outNote": "Managed by other administrators and not listed here",
+      "listTitle": "{count} host(s) in your scope",
+      "colAsset": "Asset",
+      "colNode": "Node",
+      "ackFix": "I understand the {count} host(s) outside my scope will also use the new {noun}",
+      "ackRotate": "I understand the {count} host(s) outside my scope will also be rotated",
+      "detachHint": "Only want to change hosts in your scope? Use \"Leave shared\" on each asset.",
+      "submitFix": "Save and apply to {total} host(s)",
+      "submitRotate": "Rotate and apply to {total} host(s)"
     }
   },
   "notFound": {
@@ -3677,13 +4337,26 @@
     "tokenFailed": "Failed to obtain connection authorization",
     "noShellHint": "This container doesn't seem to have a usable shell (distroless/scratch image). Switch to \"Logs\" mode to view output, or connect to a container in the same pod that has a shell.",
     "connectFailed": "Couldn't establish the connection; check the asset settings and your permissions",
-    "hostKeyContactAdmin": "The host key fingerprint no longer matches the record; the host may have been reinstalled or a man-in-the-middle attack may be in progress. Ask an administrator to verify and reset the host key",
-    "hostKeyGoReset": "Open asset settings to reset the host key",
     "connectionClosed": "The connection to the server has been closed",
     "mssqlBatchHint": "To run your statement, type GO on a line by itself and press Enter. Ending with a semicolon does not run it; the prompt only moves to the next line.",
     "noticeWithRule": "{message} (rule: {rule})"
   },
+  "hostKeyMismatch": {
+    "title": "Host identity does not match the record",
+    "body": "The host key this host presented differs from the platform's record, and the platform has already sent your sign-in credentials. If the host was not reinstalled or replaced, someone may be impersonating it. Disconnect now. This has been recorded.",
+    "goHostKey": "Open asset settings to adopt or reset the host key",
+    "contactAdmin": "Ask an administrator to verify, then adopt the new fingerprint or reset the host key",
+    "dismiss": "Dismiss",
+    "showDetails": "Details",
+    "hideDetails": "Hide details",
+    "detailHostKey": "A host key is the key a host uses to prove its identity. It usually changes when the host is reinstalled or replaced.",
+    "detailCredential": "With password authentication the other side can obtain your password. With private-key authentication only a signature for this connection (and the public key) is sent, never the private key.",
+    "detailAlert": "A system alert was created the first time this fingerprint appeared. Whether it is delivered depends on the notification channel settings and the delivery result."
+  },
   "assetPolicyTable": {
+    "defaultBanner": "The system-wide default is \"{policy}\", set by administrators with security settings permission. The assets below have their own connection policy; changes take effect immediately.",
+    "scopedHint": "You can only pick assets inside nodes you manage",
+    "colNodes": "Nodes",
     "title": "Asset Policy Overrides",
     "liveEffect": "Changes take effect immediately",
     "addOverridePlaceholder": "Search for an asset to add an override",
@@ -3796,6 +4469,23 @@
     "AUTH_AGENT_TOKEN_INVALID": "Invalid agent token",
     "AUTH_AGENT_FORBIDDEN_ROUTE": "Agents cannot access this endpoint",
     "AUTH_REQUEST_ITEM_MISMATCH": "Access request item mismatch",
+    "INTERNAL_SYSTEM_ALERT_RAISE": "System alert handling failed; the change was cancelled",
+    "NOTFOUND_SYSTEM_ALERT_TYPE": "System alert type not found",
+    "ROLE_DEFINITION_CONFLICT": "The role was changed by someone else, or the name is already taken. Reload and try again",
+    "ROLE_DEFINITION_IN_USE": "This role is still in use. Remove its assignments or mappings before deleting it",
+    "ROLE_DEFINITION_LOCKED": "This role is a built-in template and cannot be modified, deleted or copied",
+    "AUTH_PROTECTED_ROLE_ASSIGNMENT": "This assignment involves a protected role. You cannot perform this operation",
+    "MAPPING_ROLE_NOT_DIRECT_MAPPABLE": "This role cannot be mapped directly from an external group. Map the group to a user group and assign the role to that user group instead",
+    "MAPPING_SCOPE_FIELD_REJECTED": "Mapping rules do not support scope or node settings",
+    "AUTH_PROTECTED_ACCOUNT_OPERATION": "This account is protected. You cannot perform this operation",
+    "AUTH_ROLE_ASSIGNMENT_FORBIDDEN": "You do not have permission to assign roles",
+    "VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED": "This entry point only supports system-wide role assignments and cannot specify node scopes. To limit an assignment to nodes, use the entry point that replaces the whole assignment set",
+    "VALIDATION_ROLE_NOT_NODE_SCOPABLE": "This role includes permissions that only apply system-wide, so it cannot be limited to nodes",
+    "VALIDATION_ROLE_BINDING_NODES_EMPTY": "Select at least one node, or switch to system-wide",
+    "VALIDATION_ROLE_BINDING_NODES_INVALID": "Some of the selected nodes no longer exist. Please select again",
+    "VALIDATION_ROLE_NOT_GROUP_BINDABLE": "This role cannot be assigned to a user group",
+    "ROLE_PERMISSION_DEPENDENCY_REQUIRED": "The permission set is missing a required dependency",
+    "ROLE_PERMISSION_INVALID": "The permission set contains an invalid item",
     "VALIDATION_ACCOUNT_NOT_ON_ASSET": "The account does not belong to the specified asset",
     "VALIDATION_AGENT_ACCOUNTS_REQUIRED": "Agent tasks require explicit accounts",
     "RULE_AGENT_SELF_CREATE_DISABLED": "Self-service agent creation is disabled",
@@ -3845,7 +4535,7 @@
     "AUTH_SESSION_STATS_DENIED": "You do not have permission to view this session's metrics",
     "AUTH_SESSION_TERMINATE_ADMIN_ONLY": "Only administrators can force-terminate a session",
     "AUTH_SOURCE_NOT_ALLOWED": "Your current source address is outside the allowed range. Contact an administrator.",
-    "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "Tag filtering is limited to administrative roles",
+    "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "Your account cannot use tag filtering",
     "AUTH_TAG_GOVERNANCE_ADMIN_ONLY": "Only admin may perform tag governance",
     "AUTH_TAG_LIST_PRIVILEGED_ONLY": "Only administrative roles may retrieve the tag list",
     "AUTH_TOKEN_INVALID": "Invalid or expired token",
@@ -3916,6 +4606,7 @@
     "CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION": "The settings were changed by another operation; reload and try again",
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "A provider with the same issuer and client_id already exists",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "This provider still has linked external identities; disable it instead",
+    "CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE": "There is no permission state difference to confirm",
     "CONFLICT_PLAN_NAME_EXISTS": "A plan with this name already exists",
     "CONFLICT_ROTATION_SCHEDULE_INFLIGHT": "This schedule already has a report job in progress",
     "CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS": "Schedule name already exists",
@@ -3924,6 +4615,7 @@
     "CONFLICT_USERNAME_EXISTS": "Username already exists",
     "CONFLICT_USER_ALREADY_EXTERNAL": "This account's credentials are already managed by an external identity provider; no conversion is needed",
     "CONFLICT_USER_GROUP_NAME_EXISTS": "This user group name already exists",
+    "CONFLICT_HOST_IDENTITY_MOVED": "The host identity changed after you confirmed it, or this job cannot be confirmed manually right now. Refresh and try again",
     "INSTANCE_GUARD_ACK_INCOMPLETE": "Acknowledgement incomplete. Tick the confirmation that the other instance has stopped, retype the code shown on this page, and provide an administrator username and password.",
     "INSTANCE_GUARD_ACK_LOCKED": "Too many attempts. Acknowledgements are not being accepted for now; try again later.",
     "INSTANCE_GUARD_ACK_UNAUTHORIZED": "The administrator username or password is incorrect. This acknowledgement was not accepted.",
@@ -4007,6 +4699,7 @@
     "INTERNAL_CHECKPOINT_QUERY": "Failed to query checkpoints",
     "INTERNAL_CHECKPOINT_VERIFY": "Checkpoint verification failed",
     "INTERNAL_CLIPBOARD_QUERY": "Failed to query clipboard events",
+    "INTERNAL_PERMISSION_STATE_ACCEPT": "Failed to confirm the permission state",
     "INTERNAL_TOOL_CALL_ARGUMENTS": "Failed to retrieve tool call arguments",
     "INTERNAL_COMMAND_ALERT_QUERY": "Failed to query alert records",
     "INTERNAL_COMPLIANCE_SNAPSHOT": "Unable to retrieve the compliance assessment",
@@ -4040,6 +4733,7 @@
     "INTERNAL_GUACD_HANDSHAKE": "Failed to establish connection",
     "INTERNAL_HOST_KEY_QUERY": "Failed to query host key",
     "INTERNAL_HOST_KEY_RESET": "Failed to reset host key",
+    "INTERNAL_HOST_KEY_ADOPT": "Failed to adopt the host key fingerprint",
     "INTERNAL_INACTIVITY_EXEMPT": "Failed to set exemption",
     "INTERNAL_K8S_COPY": "File transfer failed",
     "INTERNAL_K8S_POD_LIST": "Failed to list pods",
@@ -4092,6 +4786,8 @@
     "INTERNAL_REFRESH": "Refresh failed",
     "INTERNAL_ROLE_ADD": "Failed to add role",
     "INTERNAL_ROLE_ASSIGN": "Failed to assign roles",
+    "INTERNAL_ROLE_ASSIGNMENT_PREVIEW": "Failed to preview the effect of the role assignment",
+    "INTERNAL_ROLE_DEFINITION_WRITE": "Failed to save the role definition",
     "INTERNAL_ROLE_QUERY": "Failed to query roles",
     "INTERNAL_ROTATION_REPORT_BUILD": "Failed to generate the rotation evidence report",
     "INTERNAL_ROTATION_REPORT_JOB": "Failed to create the report job",
@@ -4162,6 +4858,7 @@
     "NOTFOUND_AUDIT_LOG": "Audit log not found",
     "NOTFOUND_AUTHORIZATION": "Authorization does not exist",
     "NOTFOUND_BATCH_GRANT_REFERENCE": "The {entity} list contains an ID that does not exist",
+    "NOTFOUND_BATCH_ITEMS_UNAVAILABLE": "{count} items cannot be operated on",
     "NOTFOUND_CHANGE_SECRET_BATCH": "Batch rotation not found",
     "NOTFOUND_CHANGE_SECRET_CANDIDATE": "Pending credential not found",
     "NOTFOUND_CHANGE_SECRET_PLAN": "Change-secret plan not found",
@@ -4177,6 +4874,7 @@
     "NOTFOUND_GRANT_REFERENCE": "{entity} does not exist",
     "NOTFOUND_HOST_KEY": "No host key recorded yet (recorded on first connection)",
     "NOTFOUND_HOST_KEY_TO_RESET": "No host key recorded",
+    "NOTFOUND_HOST_KEY_OBSERVATION": "This fingerprint is not in the list awaiting confirmation",
     "NOTFOUND_K8S_FILE": "File not found in the container",
     "NOTFOUND_LDAP_DIRECTORY": "LDAP directory settings do not exist",
     "NOTFOUND_MY_CONNECTION": "Connection not found",
@@ -4208,7 +4906,7 @@
     "RULE_ACCESS_REQUEST_REQUESTER_EXEMPT": "This role does not need to, or may not, submit connection requests",
     "RULE_ACCESS_REQUEST_SELF_APPROVAL": "You cannot approve or reject your own request",
     "RULE_ACCESS_REQUEST_START_IN_PAST": "The scheduled start time cannot be in the past",
-    "RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE": "Only an administrator or the original approver can revoke this temporary grant",
+    "RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE": "You are not eligible to revoke this temporary grant",
     "RULE_ACCOUNT_DEFAULT_MISSING": "Inconsistent account data: the asset has accounts but no default; designate a default account and retry",
     "RULE_ACCOUNT_DEFAULT_REQUIRED": "The default account cannot be deleted while the asset still has other accounts; designate a new default first",
     "RULE_ACCOUNT_DISABLED": "The account is disabled or locked",
@@ -4216,7 +4914,10 @@
     "RULE_ACCOUNT_NONE_USABLE": "The asset has no usable account credentials; add an account first",
     "RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET": "This account uses a shared credential; write the new secret for the whole group from the credential library, or detach this host from the shared credential first",
     "RULE_APPROVER_SCOPE_NOT_APPROVER_ROLE": "The target user does not have the approver role",
+    "RULE_ASSET_BATCH_HAS_OUT_OF_SCOPE_NODES": "{count} asset(s) also belong to nodes outside your management scope; nothing in the batch was deleted",
     "RULE_ASSET_DISABLED": "The asset is disabled and cannot be connected to",
+    "RULE_ASSET_HAS_OUT_OF_SCOPE_NODES": "This asset also belongs to {count} node(s) outside your management scope and cannot be deleted or disabled",
+    "RULE_ASSET_NODE_REQUIRED": "The asset must belong to at least one node",
     "RULE_ASSET_NOT_TEXT_TERMINAL": "This asset does not use a text terminal protocol",
     "RULE_ASSET_TEST_AUTH_FAILED": "Authentication failed; check the asset credentials",
     "RULE_ASSET_TEST_CONNECTION_FAILED": "Connection failed; check the target host and network reachability",
@@ -4245,6 +4946,7 @@
     "RULE_CONSENT_RISKS_CHANGED": "The risk items have changed; please confirm again",
     "RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING": "A dedicated credential has exactly one attachment and cannot be attached to another asset",
     "RULE_CREDENTIAL_DETACH_FAILED": "Detaching from the shared credential did not complete; the attachment still uses the original shared credential",
+    "RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED": "{count} more hosts outside your management scope will also be affected. Review and confirm again before submitting",
     "RULE_CREDENTIAL_IN_USE": "The credential is still attached to assets; detach it before deleting",
     "RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE": "The target's current state does not accept a rerun",
     "RULE_CREDENTIAL_NOT_SHARED": "This operation applies only to shared credentials",
@@ -4291,6 +4993,7 @@
     "RULE_NODE_CYCLE": "A node cannot be moved into itself or one of its descendants",
     "RULE_NODE_DEPTH_EXCEEDED": "Node depth exceeds the limit (10 levels)",
     "RULE_NODE_NOT_EMPTY": "Only an empty node (no child nodes and no directly attached assets) can be deleted",
+    "RULE_NODE_SCOPE_REFERENCED": "Node \"{path}\" is part of {count} other management scope(s) and cannot be deleted",
     "RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE": "Re-enter credentials when changing the storage type, endpoint, or bucket",
     "RULE_OFFSITE_TEST_RATE_LIMITED": "Connection tests are too frequent; try again later",
     "RULE_RECORDING_UNAVAILABLE": "Recording storage is unhealthy; new connections are suspended. Please contact an administrator",
@@ -4307,7 +5010,9 @@
     "RULE_SSH_AUTH_FAILED": "SSH authentication failed; please verify the asset credentials",
     "RULE_SSH_DIAL_TIMEOUT": "Connection to the target host timed out",
     "RULE_SSH_ENDPOINT_MOVED": "SSH no longer goes through this endpoint; use the native terminal endpoint GET /api/v1/ssh",
-    "RULE_SSH_HOST_KEY_CHANGED": "Host key has changed; the connection was refused. If the host was genuinely reinstalled, ask an administrator to reset its host key",
+    "RULE_SSH_HOST_KEY_CHANGED": "Host identity does not match the record: the host key differs from the record, the platform has sent the sign-in credentials, and this has been recorded. If the host was not reinstalled or replaced, someone may be impersonating it. Disconnect now and ask an administrator to verify, then adopt the new fingerprint or reset the host key",
+    "RULE_SSH_HOST_KEY_CHECK_FAILED": "Host key check failed and the connection was stopped; try again later or contact an administrator",
+    "RULE_SSH_HOST_KEY_MISMATCH_REFUSED": "Host identity does not match the record: the host key differs from the record. This connection was refused and no sign-in credentials were sent; this has been recorded. Ask an administrator to verify the host, then adopt the new fingerprint or reset the host key",
     "RULE_SSH_PRIVATE_KEY_INVALID": "The private key set for this account can't be used (wrong format or protected by a passphrase). Ask an administrator to replace the private key.",
     "RULE_SSH_UNREACHABLE": "Unable to reach the target host",
     "RULE_STATS_UNSUPPORTED": "The target host does not support metrics collection",
@@ -4395,6 +5100,7 @@
     "VALIDATION_CREDENTIAL_NAME_INVALID": "Credential name must not contain line breaks or control characters",
     "VALIDATION_CREDENTIAL_NAME_REQUIRED": "A shared credential requires a name",
     "VALIDATION_CREDENTIAL_NAME_TOO_LONG": "Credential name exceeds the 128-character limit",
+    "VALIDATION_CREDENTIAL_OWNERSHIP_INVALID": "Choose an owner for the shared credential: global or one node",
     "VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID": "The private key can't be recognized. Paste the whole private key, including its first and last marker lines. Private keys protected by a passphrase aren't supported yet; remove the passphrase first.",
     "VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID": "The credential protocol family is outside the allowed set",
     "VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID": "The rotation mode must be either one shared secret for the whole group, or a separate random secret per host",
@@ -4485,6 +5191,7 @@
     "VALIDATION_OIDC_SHARED_WIDEN": "This issuer is treated as a shared identity domain and cannot be marked as dedicated. For an enterprise-specific IdP, declare its issuer as dedicated at the deployment layer",
     "VALIDATION_OIDC_TICKET_MISSING": "Login ticket is missing",
     "VALIDATION_PASSWORD_FIELD_MISSING": "Invalid request parameters: the password field is missing",
+    "VALIDATION_PERMISSION_STATE_ACCEPT_REASON": "Enter a reason for the confirmation (1 to 500 characters, no control characters)",
     "VALIDATION_PLAN_BAD_CRON": "Invalid schedule format (standard 5-field cron)",
     "VALIDATION_PLAN_BAD_KEY_STRATEGY": "Key strategy must be either append_replace or exclusive",
     "VALIDATION_PLAN_BAD_MAX_AGE_DAYS": "Credential max age override must be 0 (use global policy) or between 1 and 3650",
@@ -4533,6 +5240,8 @@
     "VALIDATION_SYSLOG_HOST_REQUIRED": "Host is required",
     "VALIDATION_SYSLOG_PORT_RANGE": "Port must be between 1 and 65535",
     "VALIDATION_SYSLOG_PROTOCOL": "Protocol must be udp/tcp/tcp+tls",
+    "VALIDATION_SYSTEM_ALERT_LOCKED": "System alerts can only have their severity adjusted; they cannot be disabled or deleted",
+    "VALIDATION_SYSTEM_ALERT_SEVERITY": "System alert severity must be high, medium, or low",
     "VALIDATION_TAGS_TOTAL_TOO_LONG": "Tags are too long in total (up to 500 characters combined)",
     "VALIDATION_TAG_CONTAINS_COMMA": "Tag must not contain a comma",
     "VALIDATION_TAG_EMPTY": "Tag must not be empty",
@@ -4558,7 +5267,11 @@
     "VALIDATION_ALERT_OUTPUT_BLOCK": "Output cannot be blocked after bytes have been delivered.",
     "CONFLICT_ALERT_ALREADY_REVIEWED": "This alert already had a review result when the request was sent",
     "RULE_ALERT_BATCH_SELF_TRIGGERED": "Alerts triggered by your own sessions are not included in a batch; review them one at a time",
-    "VALIDATION_ALERT_BATCH_NOTE": "The review reason must be at most 500 characters, and a batch review requires one"
+    "VALIDATION_ALERT_BATCH_NOTE": "The review reason must be at most 500 characters, and a batch review requires one",
+    "RULE_AUTHORIZATION_SELF_SUBJECT": "You cannot create or modify authorization rules for yourself, a group you belong to, or an agent you own",
+    "RULE_APPROVER_SCOPE_SUBJECT_OVERLAP": "Approvers and requesters must not overlap",
+    "RULE_AGENT_OWNER_TRANSFER_SELF_GRANT": "The new owner previously created an active authorization or approver scope for this agent, or cast an approval vote that is still in effect, so the transfer is not allowed",
+    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "You can only narrow the account scope of this rule; widening it is not allowed"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "This provider has a groups claim name set, but the groups scope is not requested. Most providers will not emit group claims, so no mapping rule will match and roles already granted by rules are revoked.",
@@ -4630,7 +5343,8 @@
     "transport_syslog_level": "Syslog transmission enforcement level",
     "transport_vnc_level": "VNC transmission enforcement level",
     "web_idle_minutes": "Web session idle timeout",
-    "web_max_session_hours": "Web session max hours"
+    "web_max_session_hours": "Web session max hours",
+    "mapping_revalidation_hours": "Group mapping revalidation limit"
   },
   "policyUnit": {
     "chars": "characters",
@@ -4965,7 +5679,11 @@
     "identifierCopied": "Identifier copied",
     "copyFailed": "Could not copy identifier",
     "sourceAttrMissingHint": "This source has no group field configured. Sign-ins will not sync mappings; you can create rules now, but configure the group field before enabling them.",
-    "unknownObservationRule": "If sign-in cannot confirm a user’s groups, their existing mapped access is kept.",
+    "revalidation": {
+      "limited": "Revalidation limit {limit}: accounts holding permissions from group mappings have sessions of at most {limit}. When a sign-in cannot read the groups and they were last read more than {limit} ago (or never), the roles and user groups granted by mappings are withdrawn; they are computed again from the rules the next time the groups are read. Protocol connections already established follow the existing revocation policy and are outside this limit. Disabling or deleting a rule withdraws the matching permissions when you save.",
+      "unlimited": "Revalidation limit set to no limit: permissions granted by mappings have no time bound. Someone removed from a group at the external source keeps the mapped permissions until their next sign-in, and a sign-in that cannot read the groups always keeps them. Protocol connections already established follow the existing revocation policy. Disabling or deleting a rule withdraws the matching permissions when you save.",
+      "unknown": "The revalidation limit is set in the security policies and its current value cannot be read here. With a limit set, accounts holding permissions from group mappings have sessions no longer than the limit, and when a sign-in cannot read the groups and they were last read longer ago than the limit (or never), the roles and user groups granted by mappings are withdrawn. With no limit, mapped permissions last until the next sign-in. Protocol connections already established follow the existing revocation policy. Disabling or deleting a rule withdraws the matching permissions when you save."
+    },
     "currentUsage": "Asset access {asset_authorizations}, approver scopes {approver_scopes}, requester scopes {requester_scopes}",
     "confirmUsage": "I understand this mapping may grant asset access or approval rights",
     "editIdentityHint": "Old access is removed now; the new rule applies at next sign-in.",
@@ -4993,7 +5711,30 @@
       "user_group_mapping_applied": "User group mapping applied",
       "group_mapping_rule_revoked": "Mapping rule support revoked",
       "group_mapping_source_revoked": "Source mapping support revoked"
-    }
+    },
+    "timing": {
+      "heading": "When mapped roles change",
+      "manager": {
+        "lead": "When an administrator changes a rule: withdrawn at the moment of saving.",
+        "detail": "When an administrator disables or deletes a rule, disables an identity source, or changes a rule's external group or target, the permissions that rule gave are withdrawn at the moment of saving. If the same role also comes from another source (direct assignment, a group or another rule), it is not affected. A modified rule gives access based on the directory's groups when the member next signs in."
+      },
+      "external": {
+        "lead": "When groups change in the external directory: recalculated at the person's next sign-in."
+      }
+    },
+    "targetRoles": "Roles: {roles}",
+    "targetNoRoles": "No roles",
+    "protectedRow": "Only a super administrator can change this",
+    "protectedOption": "Only a super administrator can set this",
+    "managementTarget": "This group carries the management role \"{role}\". The security team will be notified after saving.",
+    "managementRoleTarget": "This role is the management role \"{role}\". The security team will be notified after saving.",
+    "protectedTarget": "This group carries the \"{role}\" role.",
+    "externalDirectoryDecides": "Members of this external group are decided by the directory administrators. Anyone added in the directory receives \"{role}\" at their next sign-in, without going through this page.",
+    "footerRule": "Only a super administrator can add, change, disable or delete a mapping that grants the Super Administrator or System Security Administrator role.",
+    "rolesTabHint": "Here an external group can only be mapped directly to a built-in role that needs no scope. For other roles (for example custom roles), give the role to a user group first, then set up the mapping under \"Groups → User groups\".",
+    "directMapHint": "Do not see the role you want? Roles outside this list (for example custom roles) are obtained through a user group: give the role to the group first, then use \"Groups → User groups\".",
+    "groupRolesUnavailable": "The roles each group carries cannot be read right now, so no option is disabled in advance; the system still checks when you save.",
+    "groupListFailed": "The user group list could not be loaded."
   },
   "identitySources": {
     "title": "Identity sources",
@@ -5018,6 +5759,7 @@
     "lastLoginAt": "Last successful sign-in {time}",
     "neverLoggedIn": "No successful sign-in yet",
     "lastSaved": "Last saved {time}",
+    "configChangeNotice": "Identity source settings have been changed. Security staff will be notified when you save.",
     "ruleCount": "Rules: {count}",
     "ruleCountUnknown": "—",
     "listNote": "Manage rules on each source's External group mappings page. External group changes apply at the next sign-in; disabling a rule or source removes its mapped support immediately. At most one directory can be configured.",
@@ -5629,6 +6371,11 @@
       "tokens": "Agent credential state",
       "differences": "Expected identifiers missing from current state: {missing}; extra identifiers: {extra}"
     },
+    "permissionState": {
+      "title": "Permission state comparison",
+      "unknown": "Comparison cannot be completed",
+      "unknownHint": "The permission state change record is incomplete or cannot be verified, so later direct changes cannot be detected right now. A super administrator can confirm and reset the comparison baseline from the failure events."
+    },
     "roleState": {
       "title": "Role assignments",
       "desc": "Compares the roles held right now against what was signed into the most recent checkpoint, plus every recorded grant and revocation since. A difference means a role was added or removed by editing the database directly, bypassing this system.",
@@ -5720,7 +6467,8 @@
       "extra_rows_valid_hmac": "Extra records present (human review needed)",
       "signature_invalid": "Invalid signature",
       "chain_broken": "Chain broken",
-      "seq_gap": "Numbering not continuous"
+      "seq_gap": "Numbering not continuous",
+      "attestation_invalid": "Permission state proof invalid"
     },
     "statusHint": {
       "purged_legal": "Deleted under the retention policy, and the deletion claim itself passed verification. This is not an anomaly. To check what the deletion was based on, look up the retention period for this kind of data under System settings → Security policies; no further follow-up is needed.",
@@ -5730,7 +6478,8 @@
       "extra_rows_valid_hmac": "This range contains records that were not counted at notarization time, each carrying a valid integrity signature. They may come from a long transaction written after the notarization point, or they may have been inserted afterwards by a holder of the signing key. A person has to judge which (see boundary R1 below). What to weigh: extra records clustered around the notarization point that match work still running at the time are more likely to be late arrivals; records far from that point, or matching no such work, should be treated as inserted after the fact and escalated.",
       "signature_invalid": "The signature of this checkpoint itself does not verify, so nothing it claims can be trusted. Do not draw conclusions about the range from it: bound what is trustworthy using the nearest checkpoints on either side that still verify, check whether the signing key was replaced or the system rebuilt in that period, and compare against the off-box copy.",
       "chain_broken": "The link value to the previous checkpoint, or the adjoining of their ranges, does not match. The period between those two checkpoints is the suspect window: check whether a system restore or a database rollback happened then, and compare that range against the off-box copy.",
-      "seq_gap": "The numbering is not continuous and no matching record of a legitimate deletion under the retention policy exists. Check whether a retention deletion ran over the missing stretch; if no such record exists, treat the checkpoint as removed and reconcile that stretch against the off-box copy."
+      "seq_gap": "The numbering is not continuous and no matching record of a legitimate deletion under the retention policy exists. Check whether a retention deletion ran over the missing stretch; if no such record exists, treat the checkpoint as removed and reconcile that stretch against the off-box copy.",
+      "attestation_invalid": "The checkpoint itself verifies, but the permission state record sealed with it is missing, altered, or fails its signature. What this checkpoint says about its range still holds; what is lost is its proof of the permission state at that time. Check whether that record was cleared or edited directly in the database, and compare against the off-box copy."
     },
     "limits": {
       "title": "What this mechanism protects, and where its boundaries are",
@@ -6023,6 +6772,10 @@
         "login": "Signed in",
         "logout": "Signed out",
         "new_source_ip": "Signed in from a new source address",
+        "host_key_mismatch": "Host key did not match the record on connection: authentication was allowed and the stored sign-in credentials go to an unverified host (recorded)",
+        "host_key_cred_sent": "After a host key mismatch was allowed, the sign-in credentials were sent to that host (with the authentication result)",
+        "retention_floor_raised": "During the upgrade, a data retention period below the minimum was raised to the minimum (or the checkpoint retention followed it), with the old value, new value and reason",
+        "host_key_adopt": "Adopted an observed host key fingerprint as the record",
         "agent_tool_call_args_viewed": "Viewed the sensitive original arguments of a tool call (recorded)",
         "unlock": "Unlocked account",
         "pw_noncompliant": "Password not compliant with policy",
@@ -6032,6 +6785,7 @@
         "agent_token_suspended": "Agent token suspended",
         "agent_sessions_terminated": "Agent session termination result",
         "agent_sessions_terminate_late": "Agent session termination exceeded the target",
+        "permission_state_accepted": "Permission state change confirmed",
         "suspend": "Suspended",
         "file_list": "Browsed files",
         "file_upload": "Uploaded file",
@@ -6049,6 +6803,10 @@
         "offsite_integrity": "Offsite custody: retrieved content did not match what was uploaded",
         "offsite_profile": "Offsite custody: storage settings generation changed",
         "offsite_cred_revoke": "Offsite custody: generation credentials revoked",
+        "role_definition_create": "Created a role definition",
+        "role_definition_copy": "Copied a role definition",
+        "role_definition_update": "Updated a role definition",
+        "role_definition_delete": "Deleted a role definition",
         "migration": "Converted {resource} during upgrade",
         "assign": "Assigned {resource}"
       },
@@ -6308,6 +7066,7 @@
     }
   },
   "offsite": {
+    "changeAlertNotice": "Changes like this are recorded and raise a system alert; delivery depends on the notification channel.",
     "headerDesc": "Configure where evidence copies are stored offsite, and track the upload queue and retrieval status.",
     "loadFailedGuardTitle": "Could not read the offsite storage settings",
     "loadFailedGuardDesc": "Saving is disabled so a blank form cannot overwrite what is on the server. Press Refresh and try again.",
@@ -6703,6 +7462,7 @@
     "mfa_required": "Takes effect at the next sign-in; people already signed in are unaffected.",
     "web_idle_minutes": "Applies to people already signed in as well, who are signed out at the next token renewal at the latest. 0 means no idle timeout.",
     "web_max_session_hours": "Applies only from the next sign-in; people already signed in keep their original limit. 0 means no limit.",
+    "mapping_revalidation_hours": "Accounts holding permissions from group mappings get sessions no longer than this many hours, and mapped permissions are withdrawn when group data stays unreadable past this limit. 0 means no limit; permissions of someone removed from the external group last until their next sign-in.",
     "refresh_cookie_secure": "Applied at the next sign-in or when the sign-in state is renewed, replacing what is already stored in the browser.",
     "session_idle_minutes": "Decided when a connection is established; connections already open are unaffected. 0 means no idle timeout.",
     "session_max_minutes": "Decided when a connection is established; connections already open are unaffected. 0 means no limit.",
@@ -7262,7 +8022,8 @@
       "valid": "Valid",
       "expired": "Expired",
       "suspended": "Suspended",
-      "revoked": "Revoked"
+      "revoked": "Revoked",
+      "restore_invalidated": "Invalidated by restore"
     },
     "quota": "{current} of {max} agents owned",
     "you": "You",
@@ -7439,6 +8200,7 @@
     "noEventsNext": "You can still release with a reason when no record is listed; issue a new key afterwards.",
     "tokenRevoked": "Revoked at {time}",
     "tokenExpired": "Expired at {time}",
+    "tokenRestoreInvalidated": "Invalidated by a restore (issued before it; issue a new key)",
     "statTargets": "Targets counted toward the threshold",
     "countBoundaryShort": "Only targets that were never allowed to be seen count toward the threshold, and this is not the count for the current window.",
     "noPendingHint": "This principal has no auto-suspend awaiting handling. If it is suspended later, the release form appears on this page.",
@@ -7603,5 +8365,379 @@
     "callsValue": "{n} in total",
     "blockedValue": "{n} blocked",
     "emptyNext": "Records appear here once the agent connects and calls a tool."
+  },
+  "sidebar": {
+    "pinned": "Pinned",
+    "pin": "Pin to the top",
+    "unpin": "Unpin",
+    "pinItem": "Pin {name}",
+    "unpinItem": "Unpin {name}"
+  },
+  "capabilities": {
+    "loadFailed": "Your permissions could not be loaded, so some features are hidden for now.",
+    "retry": "Retry"
+  },
+  "permissions": {
+    "credential": {
+      "view": "View credentials",
+      "create": "Create credentials",
+      "update": "Edit credential name and note",
+      "setSecret": "Declare credential secret",
+      "rotate": "Start credential rotation",
+      "convertScope": "Convert credential scope",
+      "detach": "Detach from shared credential",
+      "delete": "Delete credentials",
+      "bind": "Bind and unbind credentials"
+    },
+    "account": {
+      "rotate": "Start account password change"
+    }
+  },
+  "systemAlerts": {
+    "types": {
+      "asset_address_changed": {
+        "name": "Asset address changed",
+        "description": "The host, port, or protocol was modified"
+      },
+      "transport_verification_relaxed": {
+        "name": "Transport verification relaxed",
+        "description": "Certificate checks turned off or encrypted-connection requirements lowered"
+      },
+      "access_policy_relaxed": {
+        "name": "Connection policy relaxed",
+        "description": "A connection policy was relaxed from \"approver approval required\""
+      },
+      "custom_secret_used": {
+        "name": "Custom password used",
+        "description": "A person chose a new password when changing, detaching from a shared credential, or correcting one"
+      },
+      "identity_source_changed": {
+        "name": "Identity source changed",
+        "description": "Connection settings of a directory (LDAP) or OIDC provider were modified"
+      },
+      "security_admin_account_operated": {
+        "name": "Security administrator account operated on",
+        "description": "Someone else changed the password, disabled MFA, or bound an external identity for a security administrator"
+      },
+      "self_privilege_increased": {
+        "name": "Privileges increased for self",
+        "description": "Someone added a role or widened the scope for themselves, or joined a group that carries permissions"
+      },
+      "self_privilege_decreased": {
+        "name": "Privileges reduced for self",
+        "description": "Someone removed their own role or left a group"
+      },
+      "management_role_granted": {
+        "name": "Management role granted to others",
+        "description": "A management role such as asset, authorization, or identity administrator was handed to someone else"
+      },
+      "retention_shortened": {
+        "name": "Retention shortened",
+        "description": "The retention days of operation logs, recordings, command streams, or alert records were shortened"
+      },
+      "offsite_or_syslog_changed": {
+        "name": "Off-site copy or syslog changed",
+        "description": "Disabled, or redirected to another destination"
+      },
+      "key_topology_changed": {
+        "name": "Key settings changed",
+        "description": "How keys are kept was modified"
+      },
+      "recording_failclose_disabled": {
+        "name": "Recording failure no longer blocks connections",
+        "description": "Connections stay allowed when recording storage fails (the failure is still reported)"
+      },
+      "recording_deleted": {
+        "name": "Recording deleted",
+        "description": "Someone deleted a connection recording"
+      },
+      "mapping_revalidation_relaxed": {
+        "name": "External mapping re-validation relaxed",
+        "description": "The re-validation time limit for external group mappings was extended"
+      },
+      "host_key_mismatch": {
+        "name": "Host key mismatch",
+        "description": "The host key seen on connect differs from the recorded one"
+      },
+      "host_key_record_changed": {
+        "name": "Host key record changed",
+        "description": "The host key record was replaced with a new value or reset"
+      },
+      "notification_channel_changed": {
+        "name": "Notification channel changed",
+        "description": "A notification channel was added, modified, disabled, or deleted"
+      },
+      "concurrent_instance_detected": {
+        "name": "Concurrent instance detected",
+        "description": "At startup, another instance may be running against the same database (started with a confirmed override, or other guard-enabled connections were found)"
+      }
+    },
+    "groups": {
+      "addressTransport": "Connection address and transport security",
+      "secret": "Passwords",
+      "identityPrivilege": "Identity and privileges",
+      "securitySettings": "System security settings",
+      "notification": "Notifications"
+    },
+    "catalog": {
+      "title": "System Alerts",
+      "intro": "These alerts are built in. When one occurs, it is generated and sent to every enabled notification channel, and cannot be deleted or disabled. You can adjust the severity to set their priority in the list and in notifications.",
+      "columnType": "Alert type",
+      "columnDefault": "Default severity",
+      "columnEffective": "Severity",
+      "columnRecent": "Last 30 days",
+      "recentCount": "{count}",
+      "adjusted": "Adjusted",
+      "adjust": "Adjust severity",
+      "total": "{count} system alert types",
+      "readonlyHint": "You can view these alerts but do not have permission to adjust their severity.",
+      "loadFailed": "Failed to load system alerts",
+      "empty": "No system alert types",
+      "dialogTitle": "Adjust severity of an alert type",
+      "dialogLevelLabel": "Severity",
+      "optionHigh": "Listed first; notifications are labelled \"High\" (default)",
+      "optionMedium": "Notifications are labelled \"Medium\"",
+      "optionLow": "Notifications are labelled \"Low\"",
+      "dialogNote": "After the change, this type of alert is still generated and sent to every enabled notification channel, regardless of the channel's \"which alerts to push\" setting. The change is recorded in the operation log.",
+      "saved": "Severity adjusted"
+    },
+    "detail": {
+      "title": "System alert",
+      "happened": "What happened",
+      "notice": "System alerts are built in, always generated, and sent to every enabled notification channel. Confirm that this action was approved.",
+      "privilegeTitle": "Privilege changes for {actor}",
+      "columnBefore": "Before",
+      "columnAfter": "After",
+      "roles": "Roles",
+      "manageable": "Manageable assets",
+      "connectable": "Connectable hosts",
+      "none": "None",
+      "count": "{count}",
+      "techTitle": "Technical details",
+      "typeLabel": "Alert type",
+      "typeLocked": "System alert; cannot be deleted or disabled",
+      "severityLabel": "Severity",
+      "severityBasis": "per system alert settings",
+      "deliveryLabel": "Notification delivery",
+      "auditLogLabel": "Operation log",
+      "auditLogMissing": "No matching operation log entry found",
+      "auditLogLink": "View in operation log",
+      "actorLabel": "Operator",
+      "targetLabel": "Target",
+      "paramsLabel": "Parameters",
+      "attempts": "{count} attempt(s)",
+      "loadFailed": "Failed to load system alert details",
+      "occurredAt": "Occurred at",
+      "sourceAddressLabel": "Source address",
+      "deliveredAt": "delivered {time}",
+      "nextAttemptAt": "next attempt {time}"
+    },
+    "targetKinds": {
+      "asset": "Asset",
+      "credential": "Credential",
+      "user": "User",
+      "user_group": "User group",
+      "role_mapping": "Role mapping",
+      "role": "Role",
+      "identity_source": "Identity source",
+      "notification_channel": "Notification channel",
+      "session": "Session",
+      "system_setting": "System setting"
+    },
+    "delivery": {
+      "pending": "Waiting to send",
+      "retrying": "Retrying",
+      "delivered": "Delivered",
+      "abandoned": "Given up",
+      "noDestination": "No enabled notification channel; nothing was sent"
+    }
+  },
+  "accessPolicyDowngrade": {
+    "title": "Relax the connection policy?",
+    "change": "The connection policy of {asset} will change from \"{from}\" to \"{to}\".",
+    "consequenceReason": "After this, requests no longer need manual approval; giving a reason approves them automatically.",
+    "consequenceOpen": "After this, no request or reason is needed; anyone with a standing connect authorization can connect directly.",
+    "notice": "This is a relaxation. Saving records the change in the operation log and creates a system security alert; delivery depends on the notification channel settings and delivery results.",
+    "confirm": "Relax and save",
+    "unknownDefault": "You are about to change the connection policy of {asset}. You cannot read the global default, so the resulting level cannot be confirmed; if it ends up lower than the current setting, this is a relaxation."
+  },
+  "dangerConfirm": {
+    "title": "Please confirm {n} combinations before saving",
+    "titleGeneric": "Please confirm before saving",
+    "notBlocking": "These combinations do not block saving; the change takes effect right away and is recorded in the audit log.",
+    "notBlockingNoCombo": "No combination needs confirmation and nothing blocks saving; the change takes effect right away and is recorded in the audit log.",
+    "notBlockingZero": "This currently affects 0 people. No combination needs confirmation and nothing blocks saving.",
+    "back": "Go back and edit",
+    "proceed": "Save anyway",
+    "affectedTotal": "{n} people affected in total.",
+    "namesNote": "Only you are named; other holders are shown as a count.",
+    "holdersYouAndOthers": "You, and {n} other holders",
+    "holdersOthers": "{n} other holders",
+    "holdersCount": "{n} people",
+    "newlyAdded": "(newly added)",
+    "evaluatedPartial": "This rule affects {total} people. Only {evaluated} of them (including you) were checked this time; the counts above come only from those {evaluated}.",
+    "notifyUnaffectedByCap": "Whether the security team is notified does not depend on this limit.",
+    "notify": {
+      "title": "The security team will be notified after saving",
+      "roleDefinition": "This change gives the role more management features.",
+      "roleDefinitionSelf": "This change gives the role more management features. You also hold this role; any change to your own permissions, increase or decrease, is notified.",
+      "roleDefinitionHeld": "This change gives \"{role}\" more management features. People who hold it gain these pages: {routes}.",
+      "roleDefinitionUnheld": "Nobody holds \"{role}\" right now, but user groups or external group mapping rules use it (disabled rules count too). People who later receive the role through them will also get the new management features.",
+      "directGrant": "This assignment gives the person management features ({roles}) and adds these pages: {routes}.",
+      "selfChange": "This changes your own permissions. Any change to your own permissions, increase or decrease, is notified.",
+      "groupRoles": "This group carries the management role \"{role}\"; every member of the group gets it.",
+      "groupEmpty": "\"{group}\" has no members now, but this change adds the management role \"{role}\"; anyone who joins the group later gets it.",
+      "groupMembers": "This group carries the management role \"{role}\"; the {n} newly added members will get it.",
+      "mappingRule": "The new target \"{target}\" carries the management role \"{role}\"."
+    },
+    "mappedUnaffected": "Members who joined through mapping are not affected by this change.",
+    "oldTargetRevoked": "Permissions from the old target \"{target}\" are withdrawn the moment you save.",
+    "previewFailed": {
+      "title": "Cannot preview the effect of this save",
+      "body": "We cannot confirm right now who this save will affect or whether the security team will be notified.",
+      "hint": "You can still save. Whether a notification is sent is decided by the system as usual and recorded in the audit log."
+    },
+    "comboHint": {
+      "authz_rules_with_asset_or_credential": "People with this role can open connection access for themselves.",
+      "security_with_asset_or_authz": "The same person can change hosts and also change how recordings and logs are kept, so they could act first and then erase the trail. Consider giving these to different people.",
+      "asset_management_with_connect": "The same person can change asset settings and also connect to those assets. Consider giving these to different people.",
+      "identity_with_security": "The same person can assign roles and also change how recordings and logs are kept. Consider giving these to different people.",
+      "identity_with_business_or_connect": "The same person can grant access to others and also operate hosts themselves."
+    }
+  },
+  "userDetail": {
+    "tabs": {
+      "basic": "Basic info",
+      "roles": "Roles and scope"
+    },
+    "header": {
+      "protectedSuper": "Super administrator",
+      "protectedSecurity": "System security administrator"
+    },
+    "banner": {
+      "super": "This account holds the super administrator identity. Actions marked as disabled can only be performed by a super administrator.",
+      "security": "This account holds the system security administrator identity. Password, MFA and external identity changes are still allowed and notify security staff afterwards; disabling and deleting can only be done by a super administrator."
+    },
+    "basic": {
+      "restore": "Restore",
+      "saveChanges": "Save changes"
+    },
+    "accountOps": {
+      "title": "Account actions",
+      "sameAsList": "The same actions as the \"More\" menu in the list",
+      "set_password": {
+        "title": "Change password",
+        "desc": "Set a new local password for this account."
+      },
+      "disable_mfa": {
+        "title": "Disable MFA",
+        "desc": "Two-step verification is on for this person; after disabling, the next sign-in needs only a password."
+      },
+      "unbind_identity": {
+        "title": "Unbind external identity",
+        "desc": "{n} external identities bound."
+      },
+      "unbind_and_disable": {
+        "title": "Unbind and disable",
+        "desc": "Unbind and disable this account at the same time."
+      },
+      "bind_identity": {
+        "title": "Bind external identity",
+        "desc": "Let this person also sign in to this account with the company external sign-in."
+      },
+      "disable": {
+        "title": "Disable account",
+        "desc": "After disabling, this person cannot sign in; data is kept."
+      },
+      "enable": {
+        "title": "Enable account",
+        "desc": "After enabling, this person can sign in again."
+      },
+      "delete": {
+        "title": "Delete account",
+        "desc": "Deletion cannot be undone."
+      },
+      "unlock": {
+        "desc": "Temporarily locked after repeated sign-in failures; unlocking does not re-enable a disabled account."
+      },
+      "status": {
+        "title": "Account status"
+      },
+      "blocked": {
+        "superAccount": "Only a super administrator can do this to a super administrator account.",
+        "lifecycleSuper": "This account holds the super administrator identity; only a super administrator can disable, enable or delete it.",
+        "lifecycleSecurity": "This account holds the system security administrator identity; only a super administrator can disable, enable or delete it."
+      },
+      "notify": {
+        "badge": "Security staff are notified afterwards",
+        "dialogTitle": "Security staff will be notified",
+        "dialogBody": "This account holds the system security administrator identity. After \"{action}\", security staff will be notified. Continue?",
+        "passwordDialog": "This account holds the system security administrator identity. After the password is changed, security staff will be notified."
+      }
+    },
+    "roles": {
+      "manualTitle": "Roles assigned by administrators ({n})",
+      "mappedTitle": "Roles from mappings ({n})",
+      "groupTitle": "From user groups ({n}) - cannot be changed here",
+      "pickRole": "Select a role",
+      "alreadyAdded": "Already added",
+      "newlyAdded": "Newly added",
+      "pinLabel": "Pin as administrator-assigned",
+      "pinProtected": "Only a super administrator can pin this role",
+      "groupUnavailable": "You do not have permission to view user groups, so roles from groups cannot be listed.",
+      "groupUnavailableHint": "This person may still receive roles through groups; the other two sections work as usual.",
+      "goGroup": "Edit in group",
+      "mappedFromMapping": "From mapping"
+    },
+    "change": {
+      "title": "Changes after saving",
+      "routesGained": "New pages",
+      "routesLost": "Pages lost",
+      "none": "None",
+      "notify": "Notification",
+      "notifyValue": "Security staff will be notified after saving",
+      "connection": "Hosts that can be connected",
+      "connectionFixed": "General management abilities do not bring connection rights by themselves; which hosts can be connected is decided by asset authorization, and super administrators follow their existing reserved identity",
+      "effectiveNow": "Takes effect immediately after saving and is recorded in the operation log.",
+      "unavailable": "Preview is temporarily unavailable"
+    },
+    "loadFailed": "Could not load this user"
+  },
+  "roleNodePicker": {
+    "modeAll": "Whole system",
+    "modeNodes": "Specific nodes",
+    "panelHint": "Select nodes; their child nodes, including ones added later, are included automatically.",
+    "searchPlaceholder": "Search nodes",
+    "searchEmpty": "No matching nodes found",
+    "assetCount": "{n} assets",
+    "includesChildren": "includes child nodes",
+    "fromGroup": "From group",
+    "footerUser": "Assigned directly: {nodes} nodes, {direct} assets; plus {extra} assets from groups; {total} assets manageable in total",
+    "footerUserNoGroup": "Assigned directly: {nodes} nodes; {total} assets manageable in total",
+    "footerGroup": "{nodes} nodes selected, {total} assets in total",
+    "treeLoadFailed": "The node list could not be loaded right now. Please try again later.",
+    "countsUnavailable": "Asset counts are temporarily unavailable",
+    "rangeNoEffectNote": "This role's permissions are not limited by node, so the selected range has no effect.",
+    "builtinGlobalOnlyNote": "Built-in roles take effect only when assigned system-wide; limited to nodes, this role grants no permissions.",
+    "tagAssignable": "Can be limited",
+    "tagNoRange": "No range needed",
+    "panelTitleUser": "Management range of {role} (assigned by an administrator)",
+    "panelTitleGroup": "Management range of {role}",
+    "cardCount": "{n} assets, including child nodes",
+    "nodeCountOnly": "Limited to {n} nodes",
+    "nodeMissing": "Node no longer exists",
+    "nodeMissingNote": "{n} nodes in this range no longer exist. That part has no effect and does not become system-wide. The other nodes work as before.",
+    "removeMissing": "Remove missing nodes",
+    "globalOnlyNote": "This role includes permissions that can only apply system-wide. That part has no effect within this range.",
+    "changeManagedAssets": "Manageable assets",
+    "changeAssetsValue": "{after} (was {before})",
+    "changeGroupAssetsNote": "Assets covered by the group's roles become part of every member's management range.",
+    "mappedStillGranted": "An external group still grants this role. Removing it here makes the role apply system-wide.",
+    "mappedStillGrantedGlobal": "An external group still grants this role."
+  },
+  "manageScope": {
+    "label": "You can manage: ",
+    "notAssigned": "Not assigned yet",
+    "more": "{n} more"
   }
 }

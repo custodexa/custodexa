@@ -285,7 +285,9 @@ func convertAccountsToDedicatedCredentials(db *gorm.DB) (credentialConversionSta
 			AuthMethod:     authMethod,
 			ProtocolFamily: asset.ProtocolFamily,
 		}
-		if err := db.Create(&cred).Error; err != nil {
+		// 只寫本 migration 自己的 DDL 建出的欄：之後的增量對 credentials 加的欄（模型同步多了欄位）
+		// 在回滾後重跑本 migration 時尚不存在
+		if err := db.Select(credentialLibraryCredentialFields()).Create(&cred).Error; err != nil {
 			return stats, fmt.Errorf("為帳號 #%d 建立專用憑證失敗: %w", acc.ID, err)
 		}
 
@@ -330,6 +332,15 @@ func convertAccountsToDedicatedCredentials(db *gorm.DB) (credentialConversionSta
 		stats.Retired++
 	}
 	return stats, nil
+}
+
+// credentialLibraryCredentialFields 本 migration 建表時 credentials 的欄（主鍵由資料庫產生，不列入）。
+// 存量搬移建立憑證只寫這些欄，不隨模型日後新增的欄位變動。
+func credentialLibraryCredentialFields() []string {
+	return []string{
+		"CreatedAt", "UpdatedAt", "DeletedAt", "Name", "Scope", "Username", "SecretType", "AuthMethod",
+		"ProtocolFamily", "Note", "CurrentVersionID", "PendingVersionID", "ActiveRotationID", "RotationEpoch",
+	}
 }
 
 // assetConversionFact 存量搬移需要知道的資產事實。

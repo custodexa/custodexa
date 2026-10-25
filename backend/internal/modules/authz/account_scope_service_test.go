@@ -83,10 +83,10 @@ func grantWithScope(t *testing.T, db *gorm.DB, auth model.AssetAuthorization) {
 }
 
 func userCtx() context.Context {
-	return context.WithValue(context.Background(), "role", model.RoleUser)
+	return legacyRoleContext(model.RoleUser)
 } //nolint:staticcheck
 func adminRoleCtx() context.Context {
-	return context.WithValue(context.Background(), "role", model.RoleAdmin)
+	return legacyRoleContext(model.RoleAdmin)
 } //nolint:staticcheck
 
 // TestAccountScope_DefaultAllIsExistingBehaviour 既有授權行為零變化：
@@ -319,7 +319,7 @@ func TestAccountScope_AdminFullAccess(t *testing.T) {
 func TestAccountScope_AuditorNotAutoConnect(t *testing.T) {
 	svc, db := setupScopeEnv(t)
 	assetID := seedScopeFixture(t, db)
-	auditorCtx := context.WithValue(context.Background(), "role", model.RoleAuditor) //nolint:staticcheck
+	auditorCtx := legacyRoleContext(model.RoleAuditor)
 
 	connectScope, err := svc.EffectiveConnectAccountScope(auditorCtx, 99, assetID)
 	if err != nil {
@@ -398,7 +398,7 @@ func TestAuthorizeConnectAccount_ScopeNarrowingTakesEffect(t *testing.T) {
 	if err := svc.AuthorizeConnectAccount(userCtx(), 1, assetID, model.ProtocolSSH, "root"); err != nil {
 		t.Fatalf("@ALL 應放行 root: %v", err)
 	}
-	if _, err := svc.UpdateAccountScope(context.Background(), 1, &[]string{"app"}); err != nil {
+	if _, err := svc.UpdateAccountScope(superAdminOperatorCtx(1), 1, &[]string{"app"}); err != nil {
 		t.Fatalf("收緊範圍: %v", err)
 	}
 	if err := svc.AuthorizeConnectAccount(userCtx(), 1, assetID, model.ProtocolSSH, "root"); err == nil {
@@ -419,7 +419,7 @@ func TestUpdateAccountScope_TicketImmutable(t *testing.T) {
 		UserID: uptrScope(1), AssetID: &assetID, Source: model.AuthorizationSourceTicket,
 		DateStart: &start, DateExpired: &end, Accounts: model.AccountScope{"app"}})
 
-	if _, err := svc.UpdateAccountScope(context.Background(), 1, &[]string{model.AccountScopeAll}); err == nil {
+	if _, err := svc.UpdateAccountScope(superAdminOperatorCtx(1), 1, &[]string{model.AccountScopeAll}); err == nil {
 		t.Fatal("ticket 列的帳號範圍不應可改")
 	}
 }
@@ -490,7 +490,7 @@ func TestUpdateAccountScope_RequiresExplicitAccounts(t *testing.T) {
 	grantWithScope(t, db, model.AssetAuthorization{
 		UserID: uptrScope(1), AssetID: &assetID, Accounts: model.AccountScope{"app"}})
 
-	if _, err := svc.UpdateAccountScope(context.Background(), 1, nil); !errors.Is(err, ErrAccountScopeRequired) {
+	if _, err := svc.UpdateAccountScope(superAdminOperatorCtx(1), 1, nil); !errors.Is(err, ErrAccountScopeRequired) {
 		t.Fatalf("省略 accounts 應回 ErrAccountScopeRequired: %v", err)
 	}
 	// 未被改動：仍為原範圍，未溢授為 @ALL
@@ -511,7 +511,7 @@ func TestUpdateAccountScope_EmptyArrayRejected(t *testing.T) {
 	grantWithScope(t, db, model.AssetAuthorization{
 		UserID: uptrScope(1), AssetID: &assetID, Accounts: model.AccountScope{"app"}})
 
-	if _, err := svc.UpdateAccountScope(context.Background(), 1, &[]string{}); !errors.Is(err, ErrAccountScopeInvalid) {
+	if _, err := svc.UpdateAccountScope(superAdminOperatorCtx(1), 1, &[]string{}); !errors.Is(err, ErrAccountScopeInvalid) {
 		t.Fatalf("空陣列應回 ErrAccountScopeInvalid: %v", err)
 	}
 	scope, err := svc.EffectiveConnectAccountScope(userCtx(), 1, assetID)
@@ -529,14 +529,14 @@ func TestGrantAccountScope_EmptyArrayRejected(t *testing.T) {
 	svc, db := setupScopeEnv(t)
 	assetID := seedScopeFixture(t, db)
 
-	if _, err := svc.Grant(context.Background(), GrantSpec{
+	if _, err := svc.Grant(superAdminOperatorCtx(1), GrantSpec{
 		UserID: uptrScope(1), AssetID: &assetID,
 		Permission: model.PermissionConnect, GrantedBy: 1, Accounts: &[]string{},
 	}); !errors.Is(err, ErrAccountScopeInvalid) {
 		t.Fatalf("建立授權時空陣列應拒收: %v", err)
 	}
 
-	auth, err := svc.Grant(context.Background(), GrantSpec{
+	auth, err := svc.Grant(superAdminOperatorCtx(1), GrantSpec{
 		UserID: uptrScope(1), AssetID: &assetID,
 		Permission: model.PermissionConnect, GrantedBy: 1, Accounts: nil,
 	})

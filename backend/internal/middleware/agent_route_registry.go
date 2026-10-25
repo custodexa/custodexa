@@ -128,11 +128,13 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/alert-rules":
 		return false, true
-	case "GET /api/v1/approver-scopes":
+	case "GET /api/v1/approver-scopes", "GET /api/v1/approver-scopes/approver-options", "GET /api/v1/approver-scopes/target-options":
 		return false, true
 	case "GET /api/v1/asset-groups":
 		return false, true
 	case "GET /api/v1/asset-groups/tree":
+		return false, true
+	case "GET /api/v1/assets/access-policy-overrides":
 		return false, true
 	case "GET /api/v1/assets/:id/files":
 		return false, true
@@ -160,6 +162,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/audit-failures":
 		return false, true
+	case "POST /api/v1/audit-failures/permission-state/accept":
+		return false, true
 	case "GET /api/v1/audit-integrity/verify":
 		return false, true
 	case "GET /api/v1/audit-logs":
@@ -176,6 +180,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/auth/me":
 		return false, true
+	case "GET /api/v1/auth/me/release-guidance/:version":
+		return false, true
 	case "GET /api/v1/auth/methods":
 		return false, true
 	case "GET /api/v1/auth/oidc/:id/begin":
@@ -186,7 +192,13 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/authorizations/effective-assets":
 		return false, true
+	case "GET /api/v1/authorizations/self-subjects":
+		return false, true
 	case "GET /api/v1/authorizations/effective-users":
+		return false, true
+	case "GET /api/v1/authorizations/subject-options":
+		return false, true
+	case "GET /api/v1/authorizations/target-options":
 		return false, true
 	case "GET /api/v1/change-secret-batches":
 		return false, true
@@ -203,6 +215,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "GET /api/v1/change-secret-plans/:id/records":
 		return false, true
 	case "GET /api/v1/command-alerts":
+		return false, true
+	case "GET /api/v1/command-alerts/:id/system-detail", "GET /api/v1/system-alert-types", "PUT /api/v1/system-alert-types/:key":
 		return false, true
 	case "GET /api/v1/commands":
 		return false, true
@@ -227,6 +241,10 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "GET /api/v1/daily-reviews/stats":
 		return false, true
 	case "GET /api/v1/daily-reviews/status":
+		return false, true
+	case "GET /api/v1/dashboard/cards/:key":
+		return false, true
+	case "GET /api/v1/dashboard/retention-adjustments":
 		return false, true
 	case "GET /api/v1/db-console":
 		return false, true
@@ -273,6 +291,15 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "GET /api/v1/recordings/stats":
 		return false, true
 	case "GET /api/v1/recordings/stream":
+		return false, true
+	case "POST /api/v1/role-definitions", "POST /api/v1/role-definitions/:id/copy",
+		"PUT /api/v1/role-definitions/:id", "DELETE /api/v1/role-definitions/:id":
+		return false, true
+	case "GET /api/v1/role-definitions":
+		return false, true
+	case "GET /api/v1/role-definitions/:id":
+		return false, true
+	case "GET /api/v1/role-definitions/descriptors":
 		return false, true
 	case "GET /api/v1/roles":
 		return false, true
@@ -326,6 +353,10 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/user-groups/:id/authorization-count":
 		return false, true
+	case "GET /api/v1/user-groups/:id/external-mappings":
+		return false, true
+	case "GET /api/v1/user-groups/:id/role-bindings":
+		return false, true
 	case "GET /api/v1/users":
 		return false, true
 	case "GET /api/v1/users/:id":
@@ -333,6 +364,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "GET /api/v1/users/:id/agent-tokens":
 		return false, true
 	case "GET /api/v1/users/:id/external-identities":
+		return false, true
+	case "GET /api/v1/users/:id/role-bindings":
 		return false, true
 	case "GET /api/v1/users/local-admin-count":
 		return false, true
@@ -376,9 +409,17 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "POST /api/v1/assets/:id/files/upload":
 		return false, true
+	case "POST /api/v1/assets/:id/host-key/adopt":
+		return false, true
 	case "POST /api/v1/assets/:id/k8s/upload":
 		return false, true
 	case "POST /api/v1/assets/:id/test-connection":
+		return false, true
+	case "POST /api/v1/assets/batch/delete":
+		return false, true
+	case "POST /api/v1/assets/batch/move":
+		return false, true
+	case "POST /api/v1/assets/batch/tags":
 		return false, true
 	case "POST /api/v1/assets/tags/delete":
 		return false, true
@@ -420,15 +461,21 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "POST /api/v1/change-secret-plans/:id/run":
 		return false, true
+	case "POST /api/v1/change-secret-plans/reauthorize":
+		return false, true
 	case "POST /api/v1/command-alerts/:id/review":
 		return false, true
 	case "POST /api/v1/connect-tokens":
 		return false, true
 	case "POST /api/v1/credentials":
 		return false, true
+	case "POST /api/v1/credentials/ownership":
+		return false, true
 	case "POST /api/v1/credentials/:id/bindings":
 		return false, true
 	case "POST /api/v1/credentials/:id/bindings/:accountId/detach":
+		return false, true
+	case "POST /api/v1/credentials/:id/impact-confirmations":
 		return false, true
 	case "POST /api/v1/credentials/:id/rotations":
 		return false, true
@@ -516,6 +563,12 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "POST /api/v1/user-groups":
 		return false, true
+	case "GET /api/v1/role-assignment-options":
+		return false, true
+	case "POST /api/v1/role-assignment-previews":
+		return false, true
+	case "POST /api/v1/role-definitions/summary":
+		return false, true
 	case "POST /api/v1/users":
 		return false, true
 	case "POST /api/v1/users/:id/agent-tokens":
@@ -549,6 +602,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "PUT /api/v1/assets/:id/accounts/:accountId":
 		return false, true
 	case "PUT /api/v1/assets/:id/accounts/:accountId/credential":
+		return false, true
+	case "PUT /api/v1/auth/me/release-guidance/:version":
 		return false, true
 	case "PUT /api/v1/authorizations/:id/accounts":
 		return false, true
@@ -587,6 +642,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "PUT /api/v1/user-groups/:id":
 		return false, true
 	case "PUT /api/v1/user-groups/:id/members":
+		return false, true
+	case "PUT /api/v1/user-groups/:id/role-bindings":
 		return false, true
 	case "PUT /api/v1/users/:id":
 		return false, true

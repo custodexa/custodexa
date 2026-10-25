@@ -103,13 +103,19 @@ func TestCheckpointTamperMatrixToolCalls(t *testing.T) {
 // either historical canonical encoder or the legacy verification assertions.
 func makeHistoricalV2Fixture(t *testing.T, f *verifyFixture) {
 	t.Helper()
+	makeHistoricalFixture(t, f, model.AggSchemeV2)
+}
+
+// makeHistoricalFixture 把現存整條鏈改寫成指定的舊載荷版本並重簽（模擬升級前封的點）。
+func makeHistoricalFixture(t *testing.T, f *verifyFixture, scheme string) {
+	t.Helper()
 	var rows []model.AuditCheckpoint
 	if err := f.db.Order("seq").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	for i := range rows {
 		cp := &rows[i]
-		cp.AggScheme = model.AggSchemeV2
+		cp.AggScheme = scheme
 		cp.ToolCallIDFrom = nil
 		cp.ToolCallIDTo = nil
 		cp.ToolCallRowCount = nil

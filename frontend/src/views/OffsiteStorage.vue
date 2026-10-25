@@ -29,6 +29,13 @@
       </template>
     </PageHeader>
 
+    <p
+      class="alert-notice"
+      data-test="offsite-change-alert-notice"
+    >
+      {{ $t('offsite.changeAlertNotice') }}
+    </p>
+
     <!-- 讀取失敗必須真的擋在表單之前（沿 LDAP 目錄頁的同一條教訓）：
          只放一則 alert 而儲存鈕照樣可按，空白表單送出去就是一次靜默的設定覆寫。
          警示只說「我們替你停了什麼」，怎麼復原由狀態帶承擔 -->
@@ -1597,6 +1604,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.alert-notice {
+  margin: 0 0 var(--ot-space-md);
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
 .page-alert {
   margin-bottom: var(--ot-space-md);
 }

@@ -25,7 +25,7 @@ func TestRecordCarriesCredentialAndVersionSnapshot(t *testing.T) {
 	req := planRequest("整組留記錄", []uint{f.bindingOf(t, accounts[0]).AssetID}, "ops")
 	req.TargetKind = model.PlanTargetCredential
 	req.TargetCredentialID = credID
-	plan, err := f.plans.Create(req)
+	plan, err := f.plans.Create(adminCtx(), req)
 	require.NoError(t, err)
 
 	records := f.runner.RunPlan(plan)
@@ -104,7 +104,7 @@ func TestRecordsByCredentialQuery(t *testing.T) {
 	rec := newSecretRecorder()
 	f.useExecutor(rec)
 
-	plan, err := f.plans.Create(planRequest("兩台各自", []uint{a1, a2}, "ops"))
+	plan, err := f.plans.Create(adminCtx(), planRequest("兩台各自", []uint{a1, a2}, "ops"))
 	require.NoError(t, err)
 	records := f.runner.RunPlan(plan)
 	require.Len(t, records, 2)

@@ -63,6 +63,8 @@ var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 		Reason: "LDAP service bind 密碼欄。同 users。"},
 	{Table: "notification_channels", OwnerModule: "audit",
 		Reason: "通知通道的 url／secret 兩欄。audit 側只讀寫明文語義，密文由 keyvault 的 codec 產生與重包。"},
+	{Table: "system_alert_outbox", OwnerModule: "audit",
+		Reason: "系統告警投遞佇列的目的地快照 url_enc／secret_enc 兩欄。audit 擁有語義（投遞狀態與重送），密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替與退役 DEK 引用掃描必須涵蓋本欄，否則仍在重送的快照會永久不可解。"},
 	{Table: "change_secret_candidates", OwnerModule: "asset",
 		Reason: "改密未驗證候選憑證的 password_enc／private_key_enc 兩欄。同 asset_accounts：asset 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握。"},
 	{Table: "credential_secret_versions", OwnerModule: "asset",

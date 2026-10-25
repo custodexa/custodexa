@@ -20,21 +20,6 @@
           :sub-title="statusDetail"
         >
           <template #extra>
-            <!-- host key 變更引導：admin 直達資產
-                 編輯框重置入口，非 admin 提示聯繫管理員 -->
-            <p
-              v-if="isHostKeyError && !isAdmin"
-              class="host-key-hint"
-            >
-              {{ $t('sshTerminal.hostKeyContactAdmin') }}
-            </p>
-            <el-button
-              v-if="isHostKeyError && isAdmin"
-              type="warning"
-              @click="openAssetHostKey"
-            >
-              {{ $t('sshTerminal.hostKeyGoReset') }}
-            </el-button>
             <el-button
               type="primary"
               @click="reconnect"
@@ -72,6 +57,14 @@
          mysql/postgres 以 `;` 執行、mssql 需要獨立一行的 GO，差異無說明時首次使用者
          會把「打了分號沒反應」誤判為連線失敗。提示由前端呈現，**不寫入終端輸出流**
          （寫進去會混進 asciicast 錄影與會話輸出基準）。關閉後本次會話不再出現。 -->
+    <!-- 主機金鑰與記錄不符：連線已照常建立並留痕告警，由 connected 之後的 notice 觸發；
+         不是撥號失敗，不走錯誤遮罩。終端內另有一行紅字（writeNotice） -->
+    <HostKeyMismatchNotice
+      v-if="hostKeyMismatch"
+      :asset-id="props.assetId"
+      @dismiss="hostKeyMismatch = false"
+    />
+
     <el-alert
       v-if="showBatchHint"
       class="protocol-hint"
@@ -154,7 +147,7 @@ import '@xterm/xterm/css/xterm.css'
 import { xtermTheme } from '@/styles/terminal-theme'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
-import { useRoles } from '@/composables/useRoles'
+import HostKeyMismatchNotice from '@/components/HostKeyMismatchNotice.vue'
 
 const RESIZE_DEBOUNCE_MS = 200
 const PING_INTERVAL_MS = 10000
@@ -183,10 +176,11 @@ const mountRef = ref(null)
 // waiting: 等待容器尺寸 | connecting | connected | closed | error
 const status = ref('waiting')
 const statusDetail = ref('')
-// 撥號失敗的機器可讀錯誤碼：host key 變更時據此出引導
+// 撥號失敗的機器可讀錯誤碼（查核失敗等走一般錯誤畫面，沒有重置或採用入口）
 const errorCode = ref('')
-const { isAdmin } = useRoles()
-const isHostKeyError = computed(() => errorCode.value === 'RULE_SSH_HOST_KEY_CHANGED')
+// 主機金鑰與記錄不符的警示：由 connected 之後的 notice（RULE_SSH_HOST_KEY_CHANGED）觸發
+const hostKeyMismatch = ref(false)
+const HOST_KEY_MISMATCH_CODE = 'RULE_SSH_HOST_KEY_CHANGED'
 // K8s distroless 無 shell：偵測到後於斷線遮罩顯示，避免被泛化「連線已中斷」蓋掉
 const noShellHint = ref('')
 
@@ -340,6 +334,7 @@ async function connect() {
   statusDetail.value = ''
   errorCode.value = ''
   noShellHint.value = ''
+  hostKeyMismatch.value = false
 
   // 兩段式連線（connect-token）：先以 JWT 換一次性 token，
   // WS URL 不再攜帶長效 JWT（query string 防洩漏）；
@@ -409,12 +404,19 @@ async function connect() {
         }
         break
       case 'notice':
-        // 後端控制通知：目前唯一用途是指令阻斷
-        // 警告。會話未斷，故不動 status——僅在終端內以紅字留痕
+        // 後端控制通知（指令阻斷警告、主機金鑰不符警示）：會話未斷，故不動 status——
+        // 終端內以紅字留痕；主機金鑰不符另在終端上方出警示與處理途徑
         writeNotice(msg)
+        if (msg.code === HOST_KEY_MISMATCH_CODE) {
+          hostKeyMismatch.value = true
+        }
         break
       case 'error':
         status.value = 'error'
+        // 不符放行後才失敗（目標拒絕認證等）：憑證可能已送出，警示要留著
+        if (msg.params?.host_key_mismatch === '1') {
+          hostKeyMismatch.value = true
+        }
         // code 三層降級（resolveApiError）：譯文 → 後端 zh data → 通用語
         errorCode.value = msg.code || ''
         statusDetail.value = resolveApiError(
@@ -566,10 +568,6 @@ function openSystem() {
 
 // host key 變更時 admin 直達資產編輯框（Assets.vue 讀 edit query 自動開啟並捲至
 // 主機金鑰欄位）；開新分頁保留工作區既有頁籤
-function openAssetHostKey() {
-  window.open(`/assets?edit=${props.assetId}`, '_blank')
-}
-
 // safeFit 帶防禦的尺寸適配：fit 後實測渲染高度，像素取整/DPR/字型度量
 // 在部分螢幕仍可能溢出半行，超出可視區即退一行保證最底行完整可見
 function safeFit() {
@@ -728,11 +726,5 @@ function cleanup() {
   gap: 12px;
   color: var(--ot-terminal-fg, #e6edf3);
   background: var(--ot-terminal-bg, #0d1117);
-}
-
-.host-key-hint {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--el-color-warning);
 }
 </style>

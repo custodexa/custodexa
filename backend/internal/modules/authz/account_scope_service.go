@@ -55,13 +55,8 @@ func (s *AssetAuthorizationService) resolveAccountScope(
 	requiredPerm model.PermissionType,
 	now time.Time,
 ) (EffectiveAccountScope, error) {
-	if role, ok := ctx.Value("role").(string); ok {
-		if role == model.RoleAdmin {
-			return EffectiveAccountScope{All: true, Matched: true}, nil
-		}
-		if role == model.RoleAuditor && requiredPerm != model.PermissionConnect {
-			return EffectiveAccountScope{All: true, Matched: true}, nil
-		}
+	if PrincipalFromContext(ctx).ConnectionShortcut(requiredPerm) {
+		return EffectiveAccountScope{All: true, Matched: true}, nil
 	}
 
 	if requiredPerm == model.PermissionConnect {

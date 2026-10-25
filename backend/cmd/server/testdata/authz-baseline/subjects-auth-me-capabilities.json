@@ -1,0 +1,1276 @@
+{
+ "manifest_sha256": "f154c6f17b77075d5d54532e5a97d853d5d166529a6bf3adf86ead7c22b52325",
+ "program_version": "dev",
+ "subjects": {
+  "S00": {
+   "body": {
+    "code": "AUTH_TOKEN_MISSING",
+    "error": "未提供認證 token"
+   },
+   "status": 401
+  },
+  "S01": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s01",
+    "email": "baseline-s01@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s01",
+    "id": 2,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "access_policy:manage",
+     "accessreview:manage",
+     "account:rotate",
+     "alert:manage",
+     "alert:view",
+     "alertrule:manage",
+     "approverscope:manage",
+     "approverscope:manage_applicant",
+     "asset:create",
+     "asset:delete",
+     "asset:test",
+     "asset:update",
+     "asset:view",
+     "assetgroup:manage",
+     "audit:integrity_view",
+     "audit:view",
+     "authorization:manage",
+     "changesecret:manage",
+     "compliance:view",
+     "credential:bind",
+     "credential:convert-scope",
+     "credential:create",
+     "credential:delete",
+     "credential:detach",
+     "credential:manage",
+     "credential:rotate",
+     "credential:set-secret",
+     "credential:update",
+     "credential:view",
+     "hostkey:reset",
+     "identity_source:manage",
+     "instanceguard:view",
+     "key:manage",
+     "ldap:manage",
+     "notification_channel:manage",
+     "offsite:manage",
+     "oidc:manage",
+     "policygroup:manage",
+     "policygroup:view",
+     "recording:delete",
+     "role:assign",
+     "role:view",
+     "rotation_schedule:manage",
+     "schedule:manage",
+     "securitypolicy:manage",
+     "session:terminate",
+     "session:view",
+     "syslog:manage",
+     "systemalert:manage",
+     "transmission:manage",
+     "ui:assets-global",
+     "ui:connect-bypass",
+     "ui:super-admin",
+     "user:manage",
+     "usergroup:manage"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "admin"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "access_policy:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "accessreview:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "account:rotate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alertrule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "approverscope:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "approverscope:manage_applicant"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:create"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:test"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:update"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "assetgroup:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:integrity_view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "authorization:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "changesecret:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:bind"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:convert-scope"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:create"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:detach"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:rotate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:set-secret"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:update"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "hostkey:reset"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "identity_source:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "instanceguard:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "key:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "ldap:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "notification_channel:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "offsite:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "oidc:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "recording:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "role:assign"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "role:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "rotation_schedule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "schedule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "securitypolicy:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:terminate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "syslog:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "systemalert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "transmission:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "user:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "usergroup:manage"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s01"
+   },
+   "status": 200
+  },
+  "S02": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s02",
+    "email": "baseline-s02@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s02",
+    "id": 3,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": true,
+    "permissions": [
+     "asset:view",
+     "ui:my-agents",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "user"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s02"
+   },
+   "status": 200
+  },
+  "S03": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s03",
+    "email": "baseline-s03@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s03",
+    "id": 4,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "alert:manage",
+     "alert:view",
+     "asset:view",
+     "audit:integrity_view",
+     "audit:view",
+     "compliance:view",
+     "policygroup:view",
+     "session:view",
+     "ui:assets-global"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "auditor"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "alert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:integrity_view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s03"
+   },
+   "status": 200
+  },
+  "S04": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s04",
+    "email": "baseline-s04@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s04",
+    "id": 5,
+    "is_approver": true,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "ui:approvals",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "approver"
+    ],
+    "scope_summary": [],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s04"
+   },
+   "status": 200
+  },
+  "S05": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s05",
+    "email": "baseline-s05@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s05",
+    "id": 6,
+    "is_approver": true,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "asset:view",
+     "ui:approvals",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "user",
+     "approver"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s05"
+   },
+   "status": 200
+  },
+  "S06": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s06",
+    "email": "baseline-s06@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s06",
+    "id": 7,
+    "is_approver": true,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "access_policy:manage",
+     "accessreview:manage",
+     "account:rotate",
+     "alert:manage",
+     "alert:view",
+     "alertrule:manage",
+     "approverscope:manage",
+     "approverscope:manage_applicant",
+     "asset:create",
+     "asset:delete",
+     "asset:test",
+     "asset:update",
+     "asset:view",
+     "assetgroup:manage",
+     "audit:integrity_view",
+     "audit:view",
+     "authorization:manage",
+     "changesecret:manage",
+     "compliance:view",
+     "credential:bind",
+     "credential:convert-scope",
+     "credential:create",
+     "credential:delete",
+     "credential:detach",
+     "credential:manage",
+     "credential:rotate",
+     "credential:set-secret",
+     "credential:update",
+     "credential:view",
+     "hostkey:reset",
+     "identity_source:manage",
+     "instanceguard:view",
+     "key:manage",
+     "ldap:manage",
+     "notification_channel:manage",
+     "offsite:manage",
+     "oidc:manage",
+     "policygroup:manage",
+     "policygroup:view",
+     "recording:delete",
+     "role:assign",
+     "role:view",
+     "rotation_schedule:manage",
+     "schedule:manage",
+     "securitypolicy:manage",
+     "session:terminate",
+     "session:view",
+     "syslog:manage",
+     "systemalert:manage",
+     "transmission:manage",
+     "ui:approvals",
+     "ui:assets-global",
+     "ui:connect-bypass",
+     "ui:super-admin",
+     "user:manage",
+     "usergroup:manage"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "admin",
+     "approver"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "access_policy:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "accessreview:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "account:rotate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alertrule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "approverscope:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "approverscope:manage_applicant"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:create"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:test"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:update"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "assetgroup:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:integrity_view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "authorization:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "changesecret:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:bind"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:convert-scope"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:create"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:detach"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:rotate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:set-secret"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:update"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "hostkey:reset"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "identity_source:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "instanceguard:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "key:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "ldap:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "notification_channel:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "offsite:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "oidc:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "recording:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "role:assign"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "role:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "rotation_schedule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "schedule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "securitypolicy:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:terminate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "syslog:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "systemalert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "transmission:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "user:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "usergroup:manage"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s06"
+   },
+   "status": 200
+  },
+  "S07": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s07",
+    "email": "baseline-s07@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s07",
+    "id": 8,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "alert:manage",
+     "alert:view",
+     "asset:view",
+     "audit:integrity_view",
+     "audit:view",
+     "compliance:view",
+     "policygroup:view",
+     "session:view",
+     "ui:assets-global"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "user",
+     "auditor"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "alert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:integrity_view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s07"
+   },
+   "status": 200
+  },
+  "S08": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s08",
+    "email": "baseline-s08@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s08",
+    "id": 9,
+    "is_approver": true,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "asset:view",
+     "ui:approvals",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "user"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s08"
+   },
+   "status": 200
+  },
+  "S09": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s09",
+    "email": "baseline-s09@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s09",
+    "id": 10,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "asset:view",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s09"
+   },
+   "status": 200
+  },
+  "S10": {
+   "body": {
+    "active": false,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s10",
+    "email": "baseline-s10@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s10",
+    "id": 11,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "asset:view",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "user"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s10"
+   },
+   "status": 200
+  },
+  "S11": {
+   "body": {
+    "code": "AUTH_TOKEN_INVALID",
+    "error": "無效或過期的 token"
+   },
+   "status": 401
+  },
+  "S12": {
+   "body": {
+    "code": "AUTH_AGENT_FORBIDDEN_ROUTE",
+    "error": "自動化主體不可使用此端點"
+   },
+   "status": 403
+  },
+  "S13": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s13",
+    "email": "baseline-s13@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s13",
+    "id": 13,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "access_policy:manage",
+     "accessreview:manage",
+     "account:rotate",
+     "alert:manage",
+     "alert:view",
+     "alertrule:manage",
+     "approverscope:manage",
+     "approverscope:manage_applicant",
+     "asset:create",
+     "asset:delete",
+     "asset:test",
+     "asset:update",
+     "asset:view",
+     "assetgroup:manage",
+     "audit:integrity_view",
+     "audit:view",
+     "authorization:manage",
+     "changesecret:manage",
+     "compliance:view",
+     "credential:bind",
+     "credential:convert-scope",
+     "credential:create",
+     "credential:delete",
+     "credential:detach",
+     "credential:manage",
+     "credential:rotate",
+     "credential:set-secret",
+     "credential:update",
+     "credential:view",
+     "hostkey:reset",
+     "identity_source:manage",
+     "instanceguard:view",
+     "key:manage",
+     "ldap:manage",
+     "notification_channel:manage",
+     "offsite:manage",
+     "oidc:manage",
+     "policygroup:manage",
+     "policygroup:view",
+     "recording:delete",
+     "role:assign",
+     "role:view",
+     "rotation_schedule:manage",
+     "schedule:manage",
+     "securitypolicy:manage",
+     "session:terminate",
+     "session:view",
+     "syslog:manage",
+     "systemalert:manage",
+     "transmission:manage",
+     "ui:assets-global",
+     "ui:connect-bypass",
+     "ui:super-admin",
+     "user:manage",
+     "usergroup:manage"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "admin"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "access_policy:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "accessreview:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "account:rotate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alert:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "alertrule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "approverscope:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "approverscope:manage_applicant"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:create"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:test"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:update"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "assetgroup:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:integrity_view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "audit:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "authorization:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "changesecret:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:bind"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:convert-scope"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:create"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:detach"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:rotate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:set-secret"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:update"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "credential:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "hostkey:reset"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "identity_source:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "instanceguard:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "key:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "ldap:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "notification_channel:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "offsite:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "oidc:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "policygroup:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "recording:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "role:assign"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "role:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "rotation_schedule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "schedule:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "securitypolicy:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:terminate"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "session:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "syslog:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "systemalert:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "transmission:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "user:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "usergroup:manage"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s13"
+   },
+   "status": 200
+  },
+  "S14": {
+   "body": {
+    "active": true,
+    "can_self_create_agent": false,
+    "display_name": "baseline-s14",
+    "email": "baseline-s14@baseline.test",
+    "external_credential": false,
+    "full_name": "baseline-s14",
+    "id": 14,
+    "is_approver": false,
+    "is_ldap": false,
+    "local_display_name": null,
+    "owns_agents": false,
+    "permissions": [
+     "asset:view",
+     "ui:self-service-actions"
+    ],
+    "product_version": "dev",
+    "provisioning_origin": "local",
+    "roles": [
+     "user"
+    ],
+    "scope_summary": [
+     {
+      "binding_scope": "global",
+      "permission": "asset:view"
+     }
+    ],
+    "source_ip": "192.0.2.1",
+    "totp_enabled": false,
+    "username": "baseline-s14"
+   },
+   "status": 200
+  }
+ }
+}

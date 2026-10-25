@@ -96,8 +96,14 @@ var schemaParityModels = []interface{}{
 	&model.User{},
 	&model.AgentToken{},
 	&model.Role{},
+	&model.PermissionStateEvent{},
 	// 角色指派關聯表：加上來源欄之後不再是純關聯表，需納入結構對照
 	&model.UserRole{},
+	// 權限模型：群組指派、節點範圍、權限狀態
+	&model.UserGroupRole{},
+	&model.RoleBindingNode{},
+	&model.AuthzState{},
+	&model.RolePermission{},
 	// 外部群組對角色映射：規則表與映射事實表
 	&model.GroupRoleMapping{},
 	&model.UserRoleMapping{},
@@ -105,6 +111,7 @@ var schemaParityModels = []interface{}{
 	&model.GroupUserGroupMapping{},
 	&model.UserRoleMappingRuleSupport{},
 	&model.UserGroupMappingRuleSupport{},
+	&model.UserChannelObservation{},
 	&model.UserGroupMember{},
 	&model.Asset{},
 	&model.AssetGroup{},
@@ -112,6 +119,7 @@ var schemaParityModels = []interface{}{
 	&model.AuditLog{},                // 審計日誌
 	&model.Snippet{},                 // terminal-snippets: 命令片段
 	&model.AssetHostKey{},            // host-key-verification: TOFU host key
+	&model.AssetHostKeyMismatch{},    // host-key-verification: 不符觀察紀錄
 	&model.ClipboardEvent{},          // clipboard-audit: 剪貼簿內容留存
 	&model.ChangeSecretPlan{},        // change-secret: 改密計劃
 	&model.ChangeSecretRecord{},      // change-secret: 改密記錄
@@ -195,6 +203,18 @@ var schemaParityModels = []interface{}{
 	// 政策變更歷史（每日簽核的開關與業務時區）。由增量 migration
 	// 20261012_daily_review_signoff 建表，走 schemaDDLStatements() 受兩層 parity 守衛
 	&model.SecurityPolicyHistory{},
+	// 保留下限抬升紀錄。由增量 migration 20261026_security_policy_floor_raises 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛
+	&model.SecurityPolicyFloorRaise{},
+	// 憑證主機身分承接紀錄。由增量 migration 20261027_credential_host_identity 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
+	&model.CredentialHostIdentityConfirmation{},
+	// 使用者版本說明關閉狀態。由增量 migration 20261028_user_release_guidance 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛
+	&model.UserReleaseGuidance{},
+	// 憑證修改的範圍外影響確認。由增量 migration 20261029_credential_ownership 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
+	&model.CredentialImpactConfirmation{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

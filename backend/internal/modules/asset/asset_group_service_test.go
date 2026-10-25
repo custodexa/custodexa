@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"errors"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"strings"
@@ -14,7 +15,7 @@ import (
 
 func setupGroupDB(t *testing.T) (*AssetGroupService, *gorm.DB) {
 	db := setupGroupOnlyDB(t)
-	return NewAssetGroupService(db, audit.NewTxSink(), &cascadingGroupRevoker{}), db
+	return newGroupSvc(db, audit.NewTxSink(), &cascadingGroupRevoker{}), db
 }
 
 // cascadingGroupRevoker 會**真的執行級聯刪除**的 port 替身。
@@ -47,9 +48,9 @@ func setupGroupOnlyDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// AssetAuthorization/ApproverScope：Delete 連動撤銷
+	// AssetAuthorization/ApproverScope：Delete 連動撤銷；Credential：Delete 承接節點歸屬的共用憑證
 	if err := db.AutoMigrate(&model.AssetGroup{}, &model.AssetNode{}, &model.Asset{}, &model.AuditLog{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}); err != nil {
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.Credential{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -90,16 +91,16 @@ func (s *stubAssetGroupRevoker) RevokeByAssetGroup(tx *gorm.DB, groupID uint) (i
 func TestAssetGroupCRUD(t *testing.T) {
 	svc, _ := setupGroupDB(t)
 
-	g, err := svc.Create(&AssetGroupRequest{Name: "生產", Description: "prod"}, 1, "admin", "127.0.0.1")
+	g, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "生產", Description: "prod"}, 1, "admin", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Create(&AssetGroupRequest{Name: "生產"}, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrGroupNameExists) {
+	if _, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "生產"}, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrGroupNameExists) {
 		t.Errorf("同層（根）同名應 409: %v", err)
 	}
 
 	// 同名不同層合法（同層唯一取代全域唯一）
-	child, err := svc.Create(&AssetGroupRequest{Name: "生產", ParentID: &g.ID}, 1, "admin", "127.0.0.1")
+	child, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "生產", ParentID: &g.ID}, 1, "admin", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("不同層同名應合法: %v", err)
 	}
@@ -107,7 +108,7 @@ func TestAssetGroupCRUD(t *testing.T) {
 		t.Fatalf("child parent = %v", child.ParentID)
 	}
 
-	updated, err := svc.Update(g.ID, &AssetGroupRequest{Name: "正式", Description: "renamed"}, 1, "admin", "127.0.0.1")
+	updated, err := svc.Update(context.Background(), g.ID, &AssetGroupRequest{Name: "正式", Description: "renamed"}, 1, "admin", "127.0.0.1")
 	if err != nil || updated.Name != "正式" {
 		t.Fatalf("Update = %+v, %v", updated, err)
 	}
@@ -126,7 +127,7 @@ func TestAssetNodeTreeDepthAndCycle(t *testing.T) {
 	var parent *uint
 	nodes := make([]*model.AssetGroup, 0, 10)
 	for i := 0; i < 10; i++ {
-		g, err := svc.Create(&AssetGroupRequest{Name: "n", ParentID: parent}, 1, "admin", "127.0.0.1")
+		g, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "n", ParentID: parent}, 1, "admin", "127.0.0.1")
 		if err != nil {
 			t.Fatalf("depth %d create: %v", i+1, err)
 		}
@@ -135,16 +136,16 @@ func TestAssetNodeTreeDepthAndCycle(t *testing.T) {
 	}
 
 	// 第 11 層應拒
-	if _, err := svc.Create(&AssetGroupRequest{Name: "n11", ParentID: parent}, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeDepthExceeded) {
+	if _, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "n11", ParentID: parent}, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeDepthExceeded) {
 		t.Fatalf("超深應拒: %v", err)
 	}
 
 	// 環路：把根搬到自己的子孫下應拒
-	if _, err := svc.Move(nodes[0].ID, &nodes[9].ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeCycle) {
+	if _, err := svc.Move(context.Background(), nodes[0].ID, &nodes[9].ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeCycle) {
 		t.Fatalf("環路應拒: %v", err)
 	}
 	// 搬到自身應拒
-	if _, err := svc.Move(nodes[0].ID, &nodes[0].ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeCycle) {
+	if _, err := svc.Move(context.Background(), nodes[0].ID, &nodes[0].ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeCycle) {
 		t.Fatalf("搬到自身應拒: %v", err)
 	}
 
@@ -153,7 +154,7 @@ func TestAssetNodeTreeDepthAndCycle(t *testing.T) {
 	var mParent *uint
 	var mRoot *model.AssetGroup
 	for i := 0; i < 3; i++ {
-		m, err := svc.Create(&AssetGroupRequest{Name: "m", ParentID: mParent}, 1, "admin", "127.0.0.1")
+		m, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "m", ParentID: mParent}, 1, "admin", "127.0.0.1")
 		if err != nil {
 			t.Fatalf("chain2 depth %d: %v", i+1, err)
 		}
@@ -162,15 +163,15 @@ func TestAssetNodeTreeDepthAndCycle(t *testing.T) {
 		}
 		mParent = &m.ID
 	}
-	if _, err := svc.Move(mRoot.ID, &nodes[8].ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeDepthExceeded) {
+	if _, err := svc.Move(context.Background(), mRoot.ID, &nodes[8].ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeDepthExceeded) {
 		t.Fatalf("搬移超深應拒: %v", err)
 	}
 
 	// 合法搬移：nodes[9]（葉）改名後搬到根層（避開與 nodes[0] 同層同名）
-	if _, err := svc.Update(nodes[9].ID, &AssetGroupRequest{Name: "leaf"}, 1, "admin", "127.0.0.1"); err != nil {
+	if _, err := svc.Update(context.Background(), nodes[9].ID, &AssetGroupRequest{Name: "leaf"}, 1, "admin", "127.0.0.1"); err != nil {
 		t.Fatalf("rename leaf: %v", err)
 	}
-	moved, err := svc.Move(nodes[9].ID, nil, 1, "admin", "127.0.0.1")
+	moved, err := svc.Move(context.Background(), nodes[9].ID, nil, 1, "admin", "127.0.0.1")
 	if err != nil || moved.ParentID != nil {
 		t.Fatalf("葉搬根層應成功: %+v, %v", moved, err)
 	}
@@ -179,13 +180,13 @@ func TestAssetNodeTreeDepthAndCycle(t *testing.T) {
 // TestAssetNodeMoveSiblingName 搬移目標層同名 409
 func TestAssetNodeMoveSiblingName(t *testing.T) {
 	svc, _ := setupGroupDB(t)
-	a, _ := svc.Create(&AssetGroupRequest{Name: "A"}, 1, "admin", "127.0.0.1")
-	b, _ := svc.Create(&AssetGroupRequest{Name: "B"}, 1, "admin", "127.0.0.1")
-	if _, err := svc.Create(&AssetGroupRequest{Name: "B", ParentID: &a.ID}, 1, "admin", "127.0.0.1"); err != nil {
+	a, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "A"}, 1, "admin", "127.0.0.1")
+	b, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "B"}, 1, "admin", "127.0.0.1")
+	if _, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "B", ParentID: &a.ID}, 1, "admin", "127.0.0.1"); err != nil {
 		t.Fatalf("A 下建 B: %v", err)
 	}
 	// 根層 B 搬進 A 會撞 A/B
-	if _, err := svc.Move(b.ID, &a.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrGroupNameExists) {
+	if _, err := svc.Move(context.Background(), b.ID, &a.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrGroupNameExists) {
 		t.Fatalf("目標層同名應 409: %v", err)
 	}
 }
@@ -193,11 +194,11 @@ func TestAssetNodeMoveSiblingName(t *testing.T) {
 // TestAssetNodeDeleteOnlyEmpty 僅空節點可刪
 func TestAssetNodeDeleteOnlyEmpty(t *testing.T) {
 	svc, db := setupGroupDB(t)
-	parent, _ := svc.Create(&AssetGroupRequest{Name: "P"}, 1, "admin", "127.0.0.1")
-	child, _ := svc.Create(&AssetGroupRequest{Name: "C", ParentID: &parent.ID}, 1, "admin", "127.0.0.1")
+	parent, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "P"}, 1, "admin", "127.0.0.1")
+	child, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "C", ParentID: &parent.ID}, 1, "admin", "127.0.0.1")
 
 	// 有子節點不可刪
-	if _, err := svc.Delete(parent.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeNotEmpty) {
+	if _, err := svc.Delete(context.Background(), parent.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeNotEmpty) {
 		t.Fatalf("有子節點應拒刪: %v", err)
 	}
 
@@ -209,7 +210,7 @@ func TestAssetNodeDeleteOnlyEmpty(t *testing.T) {
 	if err := db.Create(&model.AssetNode{AssetID: asset.ID, NodeID: child.ID}).Error; err != nil {
 		t.Fatalf("attach: %v", err)
 	}
-	if _, err := svc.Delete(child.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeNotEmpty) {
+	if _, err := svc.Delete(context.Background(), child.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrNodeNotEmpty) {
 		t.Fatalf("有直掛資產應拒刪: %v", err)
 	}
 
@@ -217,13 +218,13 @@ func TestAssetNodeDeleteOnlyEmpty(t *testing.T) {
 	if err := db.Where("asset_id = ?", asset.ID).Delete(&model.AssetNode{}).Error; err != nil {
 		t.Fatalf("detach: %v", err)
 	}
-	if _, err := svc.Delete(child.ID, 1, "admin", "127.0.0.1"); err != nil {
+	if _, err := svc.Delete(context.Background(), child.ID, 1, "admin", "127.0.0.1"); err != nil {
 		t.Fatalf("空節點應可刪: %v", err)
 	}
-	if _, err := svc.Delete(parent.ID, 1, "admin", "127.0.0.1"); err != nil {
+	if _, err := svc.Delete(context.Background(), parent.ID, 1, "admin", "127.0.0.1"); err != nil {
 		t.Fatalf("子節點刪後父應可刪: %v", err)
 	}
-	if _, err := svc.Delete(parent.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrGroupNotFound) {
+	if _, err := svc.Delete(context.Background(), parent.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, ErrGroupNotFound) {
 		t.Errorf("second delete = %v", err)
 	}
 }
@@ -233,8 +234,8 @@ func TestAssetNodeDeleteOnlyEmpty(t *testing.T) {
 func TestAssetGroupDeleteRevokesGrants(t *testing.T) {
 	db := setupGroupOnlyDB(t)
 	revoker := newStubGroupRevoker(1, 1)
-	svc := NewAssetGroupService(db, audit.NewTxSink(), revoker)
-	g, _ := svc.Create(&AssetGroupRequest{Name: "G"}, 1, "admin", "127.0.0.1")
+	svc := newGroupSvc(db, audit.NewTxSink(), revoker)
+	g, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "G"}, 1, "admin", "127.0.0.1")
 
 	uid := uint(7)
 	if err := db.Create(&model.AssetAuthorization{
@@ -248,7 +249,7 @@ func TestAssetGroupDeleteRevokesGrants(t *testing.T) {
 		t.Fatalf("seed scope: %v", err)
 	}
 
-	revoked, err := svc.Delete(g.ID, 1, "admin", "127.0.0.1")
+	revoked, err := svc.Delete(context.Background(), g.ID, 1, "admin", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -293,9 +294,9 @@ func TestAssetGroupDeleteRevokesGrants(t *testing.T) {
 // has_children 與可視集合收斂
 func TestAssetNodeTreeListing(t *testing.T) {
 	svc, db := setupGroupDB(t)
-	prod, _ := svc.Create(&AssetGroupRequest{Name: "prod"}, 1, "admin", "127.0.0.1")
-	kafka, _ := svc.Create(&AssetGroupRequest{Name: "kafka", ParentID: &prod.ID}, 1, "admin", "127.0.0.1")
-	_, _ = svc.Create(&AssetGroupRequest{Name: "sit"}, 1, "admin", "127.0.0.1")
+	prod, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "prod"}, 1, "admin", "127.0.0.1")
+	kafka, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "kafka", ParentID: &prod.ID}, 1, "admin", "127.0.0.1")
+	_, _ = svc.Create(context.Background(), &AssetGroupRequest{Name: "sit"}, 1, "admin", "127.0.0.1")
 
 	a1 := model.Asset{Name: "a1", Protocol: model.ProtocolSSH, Host: "h", Port: 22}
 	a2 := model.Asset{Name: "a2", Protocol: model.ProtocolSSH, Host: "h", Port: 22}
@@ -361,8 +362,8 @@ func TestAssetNodeTreeListing(t *testing.T) {
 // TestAssetMultiMembershipNodeInfo 多歸屬：同資產掛兩節點，NodeIDs/NodePaths 齊全
 func TestAssetMultiMembershipNodeInfo(t *testing.T) {
 	svc, db := setupGroupDB(t)
-	prod, _ := svc.Create(&AssetGroupRequest{Name: "prod"}, 1, "admin", "127.0.0.1")
-	sit, _ := svc.Create(&AssetGroupRequest{Name: "sit"}, 1, "admin", "127.0.0.1")
+	prod, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "prod"}, 1, "admin", "127.0.0.1")
+	sit, _ := svc.Create(context.Background(), &AssetGroupRequest{Name: "sit"}, 1, "admin", "127.0.0.1")
 
 	a := model.Asset{Name: "multi", Protocol: model.ProtocolSSH, Host: "h", Port: 22}
 	db.Create(&a)
@@ -399,12 +400,12 @@ func TestAssetGroupDeleteFailsClosedWhenRevokeFails(t *testing.T) {
 		boom := errors.New("撤銷面故障")
 		rv := newStubGroupRevoker(0, 0)
 		rv.failErr = boom
-		svc := NewAssetGroupService(db, audit.NewTxSink(), rv)
-		g, err := svc.Create(&AssetGroupRequest{Name: "G"}, 1, "admin", "127.0.0.1")
+		svc := newGroupSvc(db, audit.NewTxSink(), rv)
+		g, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "G"}, 1, "admin", "127.0.0.1")
 		if err != nil {
 			t.Fatalf("前置建立: %v", err)
 		}
-		if _, err := svc.Delete(g.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, boom) {
+		if _, err := svc.Delete(context.Background(), g.ID, 1, "admin", "127.0.0.1"); !errors.Is(err, boom) {
 			t.Fatalf("撤銷失敗時刪除應回該錯誤, got %v", err)
 		}
 		var groups int64
@@ -416,12 +417,12 @@ func TestAssetGroupDeleteFailsClosedWhenRevokeFails(t *testing.T) {
 
 	t.Run("撤銷面未注入即拒絕刪除", func(t *testing.T) {
 		db := setupGroupOnlyDB(t)
-		svc := NewAssetGroupService(db, audit.NewTxSink(), nil)
-		g, err := svc.Create(&AssetGroupRequest{Name: "G"}, 1, "admin", "127.0.0.1")
+		svc := newGroupSvc(db, audit.NewTxSink(), nil)
+		g, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "G"}, 1, "admin", "127.0.0.1")
 		if err != nil {
 			t.Fatalf("前置建立: %v", err)
 		}
-		if _, err := svc.Delete(g.ID, 1, "admin", "127.0.0.1"); err == nil {
+		if _, err := svc.Delete(context.Background(), g.ID, 1, "admin", "127.0.0.1"); err == nil {
 			t.Fatal("未注入撤銷面時刪除竟然成功——nil 被當成 no-op，授權將靜默殘留")
 		}
 		var groups int64

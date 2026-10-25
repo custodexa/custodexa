@@ -98,6 +98,7 @@ var mechanismEnum = []string{
 	model.MechanismRoleStateIntegrity,
 	model.MechanismPrincipalStateIntegrity,
 	model.MechanismDEKUnwrap,
+	model.MechanismRestoreSeal,
 }
 
 // ---- 事件常數（值＝現行呼叫點字串，逐一與呼叫點實查對照）----
@@ -159,7 +160,7 @@ func requestScopeParams(extra ...ParamSpec) []ParamSpec {
 
 // registry 事件契約表。新增事件＝同時加常數與此表條目，並補三語 locales
 // （完備性守衛雙向比對，漏任一側即紅）。
-var registry = map[Event]EventSpec{
+var registry = withSystemAlertEvents(map[Event]EventSpec{
 	EventAgentTaskReport:      {Params: []ParamSpec{{Name: "owner_id", Kind: KindInt, Required: true}, {Name: "request_id", Kind: KindInt, Required: true}, {Name: "report_id", Kind: KindInt, Required: true}, {Name: "version", Kind: KindInt, Required: true}, {Name: "user_id", Kind: KindInt, Required: true}}},
 	EventAgentBreakerTripped:  {Params: []ParamSpec{{Name: "owner_id", Kind: KindInt, Required: true}, {Name: "user_id", Kind: KindInt, Required: true}, {Name: "token_id", Kind: KindInt, Required: true}}},
 	EventAccessRequestCreated: {Params: requestScopeParams()},
@@ -273,7 +274,7 @@ var registry = map[Event]EventSpec{
 	EventTest: {
 		Params: []ParamSpec{{Name: "product", Kind: KindOpaque, Required: true}},
 	},
-}
+})
 
 // Spec 取事件契約；未註冊回 ok=false。
 func Spec(event Event) (EventSpec, bool) {

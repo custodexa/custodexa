@@ -15,16 +15,19 @@ var historyKeys = map[string]bool{
 	PolicyDailyReviewTimezone: true,
 }
 
-// policyHistoryLockKey 保留歷史鍵寫入序列化用的交易級鎖鍵（pg advisory lock）。
+// policyHistoryLockKey 政策寫入序列化用的交易級鎖鍵（pg advisory lock）：保留歷史鍵、
+// 五個保留鍵（跨鍵約束在鎖內驗證）、高危鍵與啟動時的保留下限對帳共用這一把。
 // 一把鎖而不是逐鍵鎖：免去多鍵批次的鎖順序問題，也不依賴政策列是否已存在；
-// 這兩個鍵寫入極少，不構成瓶頸
+// 這些鍵寫入極少，不構成瓶頸
 const policyHistoryLockKey int64 = 0x6372_6576_6965_77 // "review" 的位元組，僅需全庫唯一
 
 // policyHistoryHooks 測試同步點（生產為 nil）：控制並行寫入的取鎖次序、在交易內注入失敗
 var policyHistoryHooks struct {
 	beforeLock func(updatedBy string)
 	afterLock  func(updatedBy string)
-	afterWrite func(updatedBy string) error
+	// afterValidate 跨鍵驗證通過之後、寫入之前（並行驗證交錯的測試同步點）
+	afterValidate func(updatedBy string)
+	afterWrite    func(updatedBy string) error
 }
 
 func batchHasHistoryKey(updates map[string]string) bool {

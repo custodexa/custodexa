@@ -29,6 +29,7 @@ func lockVerifierDB(t *testing.T) (*gorm.DB, *model.User) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +37,9 @@ func lockVerifierDB(t *testing.T) (*gorm.DB, *model.User) {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate authz tables: %v", err)
 	}
 	email := "lock-admin@example.invalid"
 	u := &model.User{Username: "lock-admin", Email: &email,
@@ -70,6 +74,24 @@ func TestVerifyInitialAdminCredentialRejectsLockedAccount(t *testing.T) {
 	if _, err := VerifySealAdminCredential(db, "lock-admin", []byte(lockVerifierPassword)); !errors.Is(err, ErrSealInitialAdminInvalid) {
 		t.Fatalf("封存期驗證器同樣應拒絕鎖定中帳號，得 %v", err)
 	}
+	t.Run("節點範圍的超管指派不構成全域超管", func(t *testing.T) {
+		db, u := lockVerifierDB(t)
+		if err := db.AutoMigrate(&model.AssetGroup{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec("UPDATE user_roles SET scope_kind = ? WHERE user_id = ?", model.ScopeKindNodes, u.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := VerifyInitialAdminCredential(db, "lock-admin", []byte(lockVerifierPassword)); !errors.Is(err, ErrSealInitialAdminInvalid) {
+			t.Fatalf("初始管理員驗證應拒絕，得 %v", err)
+		}
+		if _, err := VerifySealAdminCredential(db, "lock-admin", []byte(lockVerifierPassword)); !errors.Is(err, ErrSealInitialAdminInvalid) {
+			t.Fatalf("grant 簽發前的帳密驗證應拒絕，得 %v", err)
+		}
+		if err := VerifySealAdminStillAuthorized(db, u.ID); !errors.Is(err, ErrSealInitialAdminInvalid) {
+			t.Fatalf("grant 使用時重驗應拒絕，得 %v", err)
+		}
+	})
 }
 
 func TestVerifyInitialAdminCredentialAcceptsWhenLockExpiredOrAbsent(t *testing.T) {
@@ -85,6 +107,9 @@ func TestVerifyInitialAdminCredentialAcceptsWhenLockExpiredOrAbsent(t *testing.T
 	id, err := VerifySealAdminCredential(db, "lock-admin", []byte(lockVerifierPassword))
 	if err != nil || id != u.ID {
 		t.Fatalf("封存期驗證器應回該帳號識別，得 id=%d err=%v", id, err)
+	}
+	if err := VerifySealAdminStillAuthorized(db, u.ID); err != nil {
+		t.Fatalf("全域超管的 grant 使用時重驗應通過，得 %v", err)
 	}
 }
 

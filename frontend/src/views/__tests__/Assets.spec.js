@@ -4,6 +4,8 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import Assets from '../Assets.vue'
 import { getAssetGroups, createAsset, testAssetConnection } from '@/api/assets'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // happy-dom 的 MutationObserver 與 el-table key-render-helper 不相容，
 // 以 no-op stub 取代（與 MyConnections.spec.js 同法）
@@ -77,6 +79,7 @@ vi.mock('@/api/assets', () => ({
   deleteAsset: vi.fn(),
   getAssetHostKey: vi.fn(),
   resetAssetHostKey: vi.fn(),
+  adoptAssetHostKey: vi.fn(),
   testAssetConnection: vi.fn(),
   getAssetGroups: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   createAssetGroup: vi.fn(),
@@ -107,6 +110,8 @@ vi.mock('@/api/credentials', () => ({
 
 vi.mock('@/api/authorizations', () => ({
   getEffectiveUsers: vi.fn().mockResolvedValue({ users: [] }),
+  // 節點樹在持授權能力時載入可授權節點候選
+  getAuthorizationTargetOptions: vi.fn().mockResolvedValue({ data: [], total: 0 }),
 }))
 
 // 分組對話框開啟時查全域預設段位（唯讀回顯帶「目前：X」文案）
@@ -151,6 +156,7 @@ const sampleAssets = {
 
 const setUserRoles = (roles) => {
   localStorage.setItem('user', JSON.stringify({ id: 7, username: 'tester', roles }))
+  grantFor(roles)
 }
 
 const mountView = (extraStubs = {}) =>
@@ -165,6 +171,7 @@ describe('Assets 授權狀態欄按角色顯示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     getAssetListMock.mockResolvedValue(sampleAssets)
   })
 
@@ -218,6 +225,7 @@ describe('Assets 破窗緊急連線入口', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
   })
 
   const approvalAsset = (extra = {}) => ({
@@ -291,6 +299,7 @@ describe('Assets 節點樹與資產表單', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     setUserRoles(['admin'])
     getAssetListMock.mockResolvedValue(sampleAssets)
     getAssetGroups.mockResolvedValue({
@@ -416,6 +425,7 @@ describe('Assets 資產標籤', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     getAssetListMock.mockResolvedValue(sampleAssets)
     getAssetTagsMock.mockResolvedValue({
       data: [
@@ -445,6 +455,18 @@ describe('Assets 資產標籤', () => {
     expect(text).toContain('—')
     // 標籤清單端點已載入（篩選/表單/治理共用）
     expect(getAssetTagsMock).toHaveBeenCalled()
+  })
+
+  it('admin 掛載時能力尚未載入、之後才載入：載入後取標籤字典', async () => {
+    resetCapabilities()
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getAssetTagsMock).not.toHaveBeenCalled()
+
+    setUserRoles(['admin'])
+    await flushPromises()
+    expect(getAssetTagsMock).toHaveBeenCalled()
+    expect(wrapper.exists()).toBe(true)
   })
 
   it('一般 user 不渲染標籤篩選下拉、不打標籤清單端點（伺服端 400/403 防護）', async () => {
@@ -519,6 +541,7 @@ describe('Assets 資訊分層', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     getAssetTagsMock.mockResolvedValue({ data: [] })
   })
 
@@ -724,6 +747,7 @@ describe('Assets 資訊分層', () => {
     // admin 存好偏好後，user 登入不受影響（角色分域）
     localStorage.setItem('ot-assets-columns-admin-v1', JSON.stringify(['username', 'nodes']))
     localStorage.clear()
+    resetCapabilities()
     localStorage.setItem('ot-assets-columns-admin-v1', JSON.stringify(['username', 'nodes']))
     setUserRoles(['user'])
     const wrapper2 = mountView()
@@ -793,6 +817,7 @@ describe('Assets 改密通道側車', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     setUserRoles(['admin'])
     getAssetListMock.mockResolvedValue(sampleAssets)
     getAssetGroups.mockResolvedValue({ data: [], total: 0 })

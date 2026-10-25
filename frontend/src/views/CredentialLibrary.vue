@@ -4,6 +4,15 @@
       :title="t('menu.credentials')"
       :description="t('credentials.description')"
     >
+      <template
+        v-if="credentialScopeLine"
+        #meta
+      >
+        <ManageScopeLine
+          :nodes="credentialScopeLine.nodes"
+          :not-assigned="credentialScopeLine.notAssigned"
+        />
+      </template>
       <template #actions>
         <el-button
           data-test="refresh"
@@ -13,6 +22,7 @@
           {{ t('common.refresh') }}
         </el-button>
         <el-button
+          v-if="can('credential:create')"
           type="primary"
           data-test="create-credential"
           @click="openCreate"
@@ -54,6 +64,28 @@
             v-for="value in CREDENTIAL_SCOPE_VALUES"
             :key="value"
             :label="t(`enum.credentialScope.${value}`)"
+            :value="value"
+          />
+        </el-select>
+      </div>
+      <div class="filter">
+        <span class="filter-label">{{ t('credentials.filterOwnership') }}</span>
+        <el-select
+          v-model="filters.ownership"
+          class="ownership"
+          :empty-values="[null, undefined]"
+          :placeholder="t('common.all')"
+          data-test="filter-ownership"
+          @change="applyFilters"
+        >
+          <el-option
+            :label="t('common.all')"
+            value=""
+          />
+          <el-option
+            v-for="value in CREDENTIAL_OWNERSHIP_VALUES"
+            :key="value"
+            :label="t(`credentials.ownership.${value}`)"
             :value="value"
           />
         </el-select>
@@ -129,9 +161,27 @@
       data-test="list-error"
     />
 
+    <!-- 批次改歸：勾選欄與本列只對非範圍化檢視者出現（範圍化檢視者由編輯對話框單筆改歸） -->
+    <div
+      v-if="batchEnabled && selectedRows.length"
+      class="batch-bar"
+      data-test="batch-bar"
+    >
+      <span data-test="batch-count">{{ t('credentials.reassign.selected', { count: selectedRows.length }) }}</span>
+      <el-button
+        type="primary"
+        size="small"
+        data-test="batch-reassign"
+        @click="openReassign(selectedRows)"
+      >
+        {{ t('credentials.reassign.rowAction') }}
+      </el-button>
+    </div>
+
     <div class="split">
       <div class="pane list-pane">
         <CredentialTable
+          ref="tableRef"
           :credentials="credentials"
           :loading="listLoading"
           :load-error="!!listError"
@@ -139,6 +189,11 @@
           :page="page"
           :page-size="pageSize"
           :total="total"
+          :scoped-view="scopedView"
+          :batch-enabled="batchEnabled"
+          :node-paths="nodePaths"
+          @update:selection="selectedRows = $event"
+          @reassign="openReassign([$event])"
           @select="selectCredential"
           @update:page="changePage"
           @update:page-size="changePageSize"
@@ -151,6 +206,7 @@
         <CredentialDetailPanel
           :credential="detail"
           :aggregate-state="aggregateState"
+          :node-paths="nodePaths"
           @edit="openEdit"
           @changed="onDetailChanged"
           @deleted="onDeleted"
@@ -162,6 +218,12 @@
       v-model="formVisible"
       :credential="formTarget"
       @saved="onSaved"
+    />
+
+    <CredentialReassignDialog
+      v-model="reassignVisible"
+      :credentials="reassignTargets"
+      @done="onReassigned"
     />
   </div>
 </template>
@@ -178,21 +240,31 @@
  * 回應。伺服端查詢採後發者為準：連續輸入時先發的回應可能後到，若不丟棄就會用
  * 舊條件的結果覆蓋畫面。
  */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, RotateCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
+import ManageScopeLine from '@/components/ManageScopeLine.vue'
+import { useManageScopeLine } from '@/composables/useManageScope'
 import CredentialTable from '@/components/credential/CredentialTable.vue'
 import CredentialDetailPanel from '@/components/credential/CredentialDetailPanel.vue'
 import CredentialFormDialog from '@/components/credential/CredentialFormDialog.vue'
+import CredentialReassignDialog from '@/components/credential/CredentialReassignDialog.vue'
+import { can } from '@/composables/useCapabilities'
 import { listCredentials, getCredential } from '@/api/credentials'
+import { getAssetGroups } from '@/api/assets'
+import { hasActionFlags } from '@/utils/credentialActions'
 import {
   CREDENTIAL_SCOPE_VALUES,
   CREDENTIAL_SECRET_TYPE_VALUES,
   CREDENTIAL_AGGREGATE_STATE_VALUES,
+  CREDENTIAL_OWNERSHIP_VALUES,
+  credentialDisplayName,
 } from '@/constants/credentials'
 
 const { t } = useI18n()
+// 頁首範圍行：憑證檢視權限點在能力狀態的節點範圍
+const credentialScopeLine = useManageScopeLine('credential:view')
 
 const credentials = ref([])
 const listLoading = ref(false)
@@ -209,7 +281,30 @@ const formTarget = ref(null)
 
 // 沒有獨立的帳號名欄位：關鍵字搜尋同時比對名稱與帳號名，兩個入口做同一件事
 // 只會讓人猜哪一個才是精確比對
-const filters = reactive({ search: '', scope: '', secret_type: '', rotation_state: '' })
+const filters = reactive({ search: '', scope: '', ownership: '', secret_type: '', rotation_state: '' })
+
+// 伺服器只對範圍化檢視者的列附 actions；據此決定頁尾文案，並收起批次改歸（那是全域視角的工具）
+const scopedView = computed(() => credentials.value.some(hasActionFlags))
+const batchEnabled = computed(() => !scopedView.value && can('credential:update'))
+
+const tableRef = ref(null)
+const selectedRows = ref([])
+const reassignVisible = ref(false)
+const reassignTargets = ref([])
+
+// 節點識別 → 完整路徑，歸屬欄顯示用。盡力而為：載入失敗時歸屬欄退回節點編號，不擋頁面
+const nodePaths = ref({})
+async function loadNodePaths() {
+  try {
+    const purpose = can('credential:update') ? 'credential_update' : undefined
+    const res = await getAssetGroups(purpose ? { purpose } : undefined)
+    const map = {}
+    for (const g of res?.data || []) map[g.id] = g.path || g.name
+    nodePaths.value = map
+  } catch (err) {
+    console.warn('[CredentialLibrary] 載入節點路徑失敗:', err?.response?.status)
+  }
+}
 
 let listSeq = 0
 
@@ -221,6 +316,7 @@ async function loadList() {
       search: filters.search || undefined,
       scope: filters.scope || undefined,
       secret_type: filters.secret_type || undefined,
+      ownership: filters.ownership || undefined,
       rotation_state: filters.rotation_state || undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -276,6 +372,7 @@ async function applyFilters() {
 async function resetFilters() {
   filters.search = ''
   filters.scope = ''
+  filters.ownership = ''
   filters.secret_type = ''
   filters.rotation_state = ''
   await applyFilters()
@@ -294,6 +391,17 @@ async function changePageSize(size) {
 
 async function refresh() {
   await Promise.all([loadList(), loadDetail(selectedId.value)])
+}
+
+function openReassign(rows) {
+  reassignTargets.value = rows.map((r) => ({ id: r.id, name: credentialDisplayName(r) }))
+  reassignVisible.value = true
+}
+
+async function onReassigned() {
+  selectedRows.value = []
+  tableRef.value?.clearSelection?.()
+  await refresh()
 }
 
 function openCreate() {
@@ -322,12 +430,16 @@ async function onDeleted() {
   await loadList()
 }
 
-onMounted(loadList)
+onMounted(() => {
+  loadList()
+  loadNodePaths()
+})
 
 defineExpose({
   credentials, detail, aggregateState, selectedId, filters, total, listError,
   loadList, loadDetail, selectCredential, applyFilters, resetFilters, refresh,
   openCreate, openEdit, onDeleted, changePage, changePageSize, page, pageSize,
+  scopedView, batchEnabled, selectedRows, openReassign, reassignVisible, reassignTargets, nodePaths,
 })
 </script>
 
@@ -377,6 +489,21 @@ defineExpose({
 
 .rotation-state {
   width: 140px;
+}
+
+.ownership {
+  width: 120px;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-md);
+  margin-bottom: var(--ot-space-md);
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  background: var(--ot-bg-surface);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-lg);
 }
 
 .list-error {

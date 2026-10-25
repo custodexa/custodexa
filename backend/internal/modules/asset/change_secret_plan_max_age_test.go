@@ -16,7 +16,7 @@ func TestChangeSecretPlanMaxAgeDaysBounds(t *testing.T) {
 	svc := setupPlanDB(t)
 
 	for _, ok := range []int{0, 1, 60, 3650} {
-		plan, err := svc.Create(&ChangeSecretPlanRequest{
+		plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{
 			Name: "ok-" + strconv.Itoa(ok), AssetIDs: []uint{1}, MaxAgeDays: ok,
 		})
 		require.NoError(t, err, "覆蓋 %d 天應被接受", ok)
@@ -24,7 +24,7 @@ func TestChangeSecretPlanMaxAgeDaysBounds(t *testing.T) {
 	}
 
 	for _, bad := range []int{-1, 3651, 4000} {
-		_, err := svc.Create(&ChangeSecretPlanRequest{
+		_, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{
 			Name: "bad-" + strconv.Itoa(bad), AssetIDs: []uint{1}, MaxAgeDays: bad,
 		})
 		if !errors.Is(err, ErrPlanBadMaxAgeDays) {
@@ -32,12 +32,12 @@ func TestChangeSecretPlanMaxAgeDaysBounds(t *testing.T) {
 		}
 	}
 
-	base, err := svc.Create(&ChangeSecretPlanRequest{
+	base, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{
 		Name: "update-target", AssetIDs: []uint{1}, MaxAgeDays: 90,
 	})
 	require.NoError(t, err)
 
-	_, err = svc.Update(base.ID, &ChangeSecretPlanRequest{
+	_, err = svc.Update(adminCtx(), base.ID, &ChangeSecretPlanRequest{
 		Name: "update-target", AssetIDs: []uint{1}, MaxAgeDays: 4000,
 	})
 	if !errors.Is(err, ErrPlanBadMaxAgeDays) {
@@ -48,7 +48,7 @@ func TestChangeSecretPlanMaxAgeDaysBounds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 90, reloaded.MaxAgeDays, "被拒的更新不得留下部分寫入")
 
-	updated, err := svc.Update(base.ID, &ChangeSecretPlanRequest{
+	updated, err := svc.Update(adminCtx(), base.ID, &ChangeSecretPlanRequest{
 		Name: "update-target", AssetIDs: []uint{1}, MaxAgeDays: 0,
 	})
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestChangeSecretPlanMaxAgeDaysBounds(t *testing.T) {
 // 不得靜默變成別的值（既有計劃升級後行為與升級前一致）
 func TestChangeSecretPlanMaxAgeDaysDefaultsToZero(t *testing.T) {
 	svc := setupPlanDB(t)
-	plan, err := svc.Create(&ChangeSecretPlanRequest{Name: "no-field", AssetIDs: []uint{1}})
+	plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "no-field", AssetIDs: []uint{1}})
 	require.NoError(t, err)
 	assert.Equal(t, 0, plan.MaxAgeDays)
 }

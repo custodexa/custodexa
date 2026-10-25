@@ -1213,7 +1213,8 @@ func MaskSensitiveFields(endpoint string, data map[string]interface{}) map[strin
 // 被生命週期清單當成有時序風險的狀態登記一次。
 func endpointAuditFieldSet(endpoint string) map[string]bool {
 	switch endpoint {
-	case "POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release":
+	case "POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release",
+		"POST /api/v1/audit-failures/permission-state/accept":
 		return map[string]bool{"reason": true}
 	case "POST /api/v1/access-requests/:id/revoke":
 		return map[string]bool{"note": true}
@@ -1245,6 +1246,22 @@ func endpointAuditFieldSet(endpoint string) map[string]bool {
 	// 摘要），與安全政策端點逐鍵寫 old→new 的做法同型。
 	case "PUT /api/v1/keys/topology":
 		return map[string]bool{"address": true, "region": true, "role_id": true}
+
+	// 憑證管理歸屬：`ownership` 是歸屬種類與節點識別（`{kind, node_id}`），不含秘密，
+	// 而它正是「這筆憑證改由誰管」的課責內容。批次改歸的 `credential_ids` 命中機密語義
+	// 片段（credential）故不登記，逐筆的前後歸屬由憑證服務自寫的專屬審計列承擔。
+	case "PUT /api/v1/credentials/:id", "POST /api/v1/credentials/ownership":
+		return map[string]bool{"ownership": true}
+	// 範圍外影響確認：`operation` 只取受控值域（宣告新秘密或遠端輪替），說明確認的是哪一種動作
+	case "POST /api/v1/credentials/:id/impact-confirmations":
+		return map[string]bool{"operation": true}
+	// 資產批次操作：`asset_ids` 只答得出「動到哪幾台」，動作的實質是搬到哪個節點、
+	// 加了哪些標籤。節點識別碼與標籤字串皆非秘密，且拒絕時回應不揭露的範圍資訊
+	// 不靠這兩欄（請求本文本來就是呼叫者自己送出的值）。
+	case "POST /api/v1/assets/batch/move":
+		return map[string]bool{"target_node_id": true}
+	case "POST /api/v1/assets/batch/tags":
+		return map[string]bool{"tags": true}
 	}
 	return nil
 }
@@ -1269,6 +1286,7 @@ func EndpointAuditFieldNames(endpoint string) []string {
 func AuditMaskEndpoints() []string {
 	return []string{
 		"POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release",
+		"POST /api/v1/audit-failures/permission-state/accept",
 		"POST /api/v1/access-requests/:id/revoke",
 		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
 		"POST /api/v1/command-alerts/:id/review",
@@ -1276,5 +1294,9 @@ func AuditMaskEndpoints() []string {
 		"PUT /api/v1/ldap-directory",
 		"PUT /api/v1/user-groups/:id/members",
 		"PUT /api/v1/keys/topology",
+		"PUT /api/v1/credentials/:id", "POST /api/v1/credentials/ownership",
+		"POST /api/v1/credentials/:id/impact-confirmations",
+		"POST /api/v1/assets/batch/move",
+		"POST /api/v1/assets/batch/tags",
 	}
 }

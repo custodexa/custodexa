@@ -17,6 +17,7 @@ const ACTION_TAG_TYPES = {
   agent_token_suspended: 'warning',
   agent_sessions_terminated: 'info',
   agent_sessions_terminate_late: 'warning',
+  permission_state_accepted: 'warning',
   create: 'success',
   read: 'info',
   update: 'warning',
@@ -29,6 +30,12 @@ const ACTION_TAG_TYPES = {
   recording_failed: 'danger',
   // 帳號自從未見過的來源位址完成 web 登入的標記列（無告警、無推送）
   new_source_ip: 'warning',
+  // 主機金鑰與記錄不符（互動連線放行並留痕、背景作業拒絕）；採用觀察到的指紋為記錄
+  host_key_mismatch: 'danger',
+  host_key_cred_sent: 'danger',
+  host_key_adopt: 'warning',
+  // 升級時把低於下限的保留天數抬升到下限（收緊，系統寫入）
+  retention_floor_raised: 'warning',
   file_list: 'info',
   file_upload: 'warning',
   file_download: 'warning',
@@ -48,6 +55,10 @@ const ACTION_TAG_TYPES = {
   offsite_integrity: 'danger',
   offsite_profile: 'warning',
   offsite_cred_revoke: 'danger',
+  role_definition_create: 'warning',
+  role_definition_copy: 'warning',
+  role_definition_update: 'warning',
+  role_definition_delete: 'danger',
   // 升級時的一次性轉換留下的標記列（主體為系統）：無法證明同一組秘密的群組
   migration: 'warning',
   // 角色指派授予（resource=user_role）。與 create 分開：對帳以
@@ -76,6 +87,7 @@ export const AUDIT_RESOURCE_VALUES = [
   'syslog_setting',
   'audit_log',
   'user_group',
+  'user_group_role',
   'command',
   'key_management',
   'transmission',
@@ -99,6 +111,8 @@ export const AUDIT_RESOURCE_VALUES = [
   'audit_integrity',
   'alert_rule',
   'notify_channel',
+  // 系統告警類型的分級調整（resource_id 恆為空，類型鍵在 details）
+  'system_alert_type',
   'oidc_provider',
   'ldap_directory',
   'asset_group',
@@ -166,6 +180,8 @@ export const AUDIT_MECHANISM_VALUES = [
   // 資料金鑰重新解封失敗：與 kek_retirement 分開——那一支說的是退役收尾沒收斂
   //（服務不受影響），本支說的是資料現在讀不出也寫不進去，急迫性不同
   'dek_unwrap',
+  // 還原後涵蓋新世代的檢查點未能封出：服務照常開放，補封待下次封章或重啟
+  'restore_seal',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -216,6 +232,8 @@ export const AUDIT_CAUSE_VALUES = [
   'recording_metadata_update_failed',
   'recording_file_missing',
   'session_record_create_failed',
+  // 主機金鑰不符的留痕（審計、觀察紀錄、告警）寫不進去：連線在送出憑證前中止
+  'host_key_mismatch_record_failed',
   'audit_write_fallback_file',
   'audit_write_batch_dropped',
   // 同步（fail-close）審計寫入失敗：逐筆留痕是交付明文的前置條件
@@ -254,6 +272,9 @@ export const AUDIT_CAUSE_VALUES = [
   'principal_state_mismatch',
   // 資料金鑰連續解封失敗：保管處不可達、逾時或拒絕；不回退到任何舊材料
   'dek_unwrap_failed',
+  'restore_seal_deferred',
+  // 啟動時讀不到還原後的待封狀態：不擋啟動，立即嘗試補封
+  'restore_seal_state_unreadable',
 ]
 
 export const AUDIT_CAUSES = {}

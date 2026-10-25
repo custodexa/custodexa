@@ -40,9 +40,9 @@ func setupRoleSourceEnv(t *testing.T) (*gorm.DB, *identity.UserService) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	// UserRole 排在 User／Role 之後（GORM 對關聯表的處理會蓋掉排在它之前的宣告）
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{},
-		&model.AuditLog{}, &model.RefreshToken{},
-		&model.GroupRoleMapping{}, &model.UserRoleMapping{}); err != nil {
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserRole{},
+		&model.AuditLog{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	old := database.DB
@@ -110,6 +110,7 @@ func TestReplaceWithEffectiveSetKeepsSources(t *testing.T) {
 
 	handler := &UserHandler{userService: userService}
 	router := setupTestRouter()
+	router.Use(asSuperAdmin(t, db))
 	router.PUT("/users/:id/roles", handler.AssignRoles)
 
 	// 有效集＝手動集聯集映射集＝三個角色全部
@@ -150,11 +151,13 @@ func TestReplaceWithEffectiveSetKeepsSources(t *testing.T) {
 func TestDiscoveryPreviewRequiresAdmin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的兩個 ID 須存在
-	installEpochGateDB(t, 1, 7)
+	gateDB := installEpochGateDB(t, 1, 7)
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）：1＝admin、7＝無指派
+	grantLegacyRole(t, gateDB, 1, model.RoleAdmin)
 
 	const secret = "discovery-preview-gate-secret"
 	authService := identity.NewAuthService(secret, time.Minute)
-	providers := identity.NewOIDCProviderService(database.DB, nil,
+	providers := newOIDCProviderServiceT(database.DB, nil,
 		&identity.OIDCEgressPolicy{}, nil, "https://bastion.example.com")
 	handler := NewOIDCHandler(providers, nil, "https://bastion.example.com", nil)
 	handler.SetIdentitySources(identity.NewIdentitySourceService(database.DB, audit.NewTxSink()))
@@ -196,11 +199,14 @@ func TestDiscoveryPreviewRequiresAdmin(t *testing.T) {
 // 非管理者。auditor 與一般使用者都必須被擋下；經完整 RegisterRoutes 驗鏈上的守門。
 func TestOIDCProviderStatusRequiresAdmin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	installEpochGateDB(t, 1, 7, 8)
+	gateDB := installEpochGateDB(t, 1, 7, 8)
+	// 角色以資料庫為準：1＝admin、8＝auditor、7＝無指派
+	grantLegacyRole(t, gateDB, 1, model.RoleAdmin)
+	grantLegacyRole(t, gateDB, 8, model.RoleAuditor)
 
 	const secret = "provider-status-gate-secret"
 	authService := identity.NewAuthService(secret, time.Minute)
-	providers := identity.NewOIDCProviderService(database.DB, nil,
+	providers := newOIDCProviderServiceT(database.DB, nil,
 		&identity.OIDCEgressPolicy{}, nil, "https://bastion.example.com")
 	handler := NewOIDCHandler(providers, nil, "https://bastion.example.com", nil)
 	handler.SetIdentitySources(identity.NewIdentitySourceService(database.DB, audit.NewTxSink()))

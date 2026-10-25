@@ -76,6 +76,7 @@ func TestExtractResource(t *testing.T) {
 		{"/api/v1/alert-rules/:id", model.ResourceAlertRule},
 		{"/api/v1/notification-channels/:id", model.ResourceNotifyChannel},
 		{"/api/v1/notification-channels/:id/test", model.ResourceNotifyChannel},
+		{"/api/v1/system-alert-types/:key", model.ResourceSystemAlertType},
 		{"/api/v1/oidc-providers/:id", model.ResourceOIDCProvider},
 		{"/api/v1/ldap-directory", model.ResourceLDAPDirectory},
 		{"/api/v1/ldap-directory/test", model.ResourceLDAPDirectory},

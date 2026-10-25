@@ -12,6 +12,9 @@ import { t } from '@/i18n'
 /** 憑證範圍：專用（恰一個掛載）／共用（具名、可掛多台） */
 export const CREDENTIAL_SCOPE_VALUES = ['dedicated', 'shared']
 
+/** 管理歸屬：全域／隨資產（專用憑證）／節點。值域硬拷後端 `model.CredentialOwner*`。 */
+export const CREDENTIAL_OWNERSHIP_VALUES = ['global', 'asset', 'node']
+
 /** 秘密型別。K8s 的 token 也存在密碼欄，顯示層依協定族呈現，不另設值域 */
 export const CREDENTIAL_SECRET_TYPE_VALUES = ['password', 'ssh_key']
 
@@ -71,8 +74,35 @@ export const AGGREGATE_STATE_TAG_TYPE = {
   out_of_sync: 'danger',
 }
 
-/** 可補跑的成員狀態：只有這兩種終態允許逐台再試 */
+/** 可補跑的成員狀態：這兩種任何時候都允許逐台再試 */
 export const RETRYABLE_MEMBER_STATES = ['terminal_failed', 'changed_unverified']
+
+/**
+ * 本輪仍在執行時也可補跑的成員狀態：授權重驗停止而收束的成員（例如無權者按過補跑），
+ * 由具權者逐台補跑接手。輪替已結束時不給：那時收束的成員多半是整輪放棄或被取代的結果
+ */
+export const RUNNING_RETRYABLE_MEMBER_STATES = ['abandoned']
+
+/**
+ * 本輪仍在執行時只給逐台推進、不併入整批補跑台數的狀態：仍在排隊、但可能已沒有人推進的成員
+ * （例如服務在推進中途重啟）。正常推進中的輪替本來就有排隊的成員，把它們算進「補跑這 N 台」
+ * 會讓人以為那些機器出了問題
+ */
+export const RUNNING_RUNNABLE_MEMBER_STATES = ['queued']
+
+/**
+ * 已放棄、但仍是憑證要收斂的那一輪（輪替回應帶 unsettled）裡，這個成員是否給逐台補跑。
+ * 放棄後不再有任何背景程序推進這一輪，逐台補跑是唯一出口，所以就位與改密中以外的狀態都給：
+ * 整組模式要每台都換到同一版才收斂，連放棄時從未動過的成員也要補跑；拆分模式每台的新秘密
+ * 只在它自己的候選裡，已收束的成員看候選還在不在（成員的 candidate_kept）：放棄時從未動過的
+ * 連候選都清掉了，補跑無物可推，不給；動過遠端後才被停成收束的候選仍在，那台可能已在用它，照給。
+ * 改密中只在推進期間存在，服務重啟殘留的會在啟動時轉為已改未驗證
+ */
+export function unsettledMemberRetryable(mode, state, candidateKept = false) {
+  if (state === 'applied' || state === 'changing') return false
+  if (state === 'abandoned') return mode === 'group' || candidateKept === true
+  return true
+}
 
 /** 密碼長度範圍（與改密計劃同一組界線） */
 export const PASSWORD_LENGTH_MIN = 12

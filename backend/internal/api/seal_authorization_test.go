@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/seal"
 	"github.com/custodexa/backend/pkg/crypto"
@@ -22,7 +23,7 @@ func (b *unreadSealBody) Close() error               { return nil }
 func TestRuntimeSealAuthorization(t *testing.T)   { testSealAuthorization(t, "/api/v1/seal/seal") }
 func TestSealedRestoreAuthorization(t *testing.T) { testSealAuthorization(t, "/api/v1/seal/unseal") }
 func testSealAuthorization(t *testing.T, path string) {
-	for _, scenario := range []string{"anonymous", "scope", "expired", "revoked", "non-admin", "DB-unavailable"} {
+	for _, scenario := range []string{"anonymous", "scope", "expired", "revoked", "non-admin", "nodes-scope-superadmin", "DB-unavailable"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			if err != nil {
@@ -34,7 +35,7 @@ func testSealAuthorization(t *testing.T, path string) {
 			}
 			sqlDB.SetMaxOpenConns(1)
 			defer sqlDB.Close()
-			if err = db.AutoMigrate(&model.User{}, &model.Role{}); err != nil {
+			if err = migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 				t.Fatal(err)
 			}
 			role := "admin"
@@ -59,6 +60,18 @@ func testSealAuthorization(t *testing.T, path string) {
 				token, err = manager.GenerateScopedToken(user.ID, user.Username, "", role, "", -time.Hour, crypto.AuthContext{})
 			case "revoked":
 				err = db.Model(&user).Update("credential_epoch", 1).Error
+			case "nodes-scope-superadmin":
+				// 唯一的超管指派為節點範圍：與一般管理 API 同一語義，不構成全域超管
+				if err = db.AutoMigrate(&model.AssetGroup{}); err != nil {
+					t.Fatal(err)
+				}
+				if err = db.Exec("UPDATE user_roles SET scope_kind = ? WHERE user_id = ?", model.ScopeKindNodes, user.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				p, rerr := authz.NewResolver(db).ResolveUser(user.ID, authz.TokenFacts{})
+				if rerr != nil || p.IsSuperAdmin() || p.Has(authz.PermUserManage) {
+					t.Fatalf("一般解析器不得視其為全域超管（對應 GET /api/v1/users 的 403）：err=%v", rerr)
+				}
 			case "DB-unavailable":
 				err = sqlDB.Close()
 			}
@@ -82,6 +95,31 @@ func testSealAuthorization(t *testing.T, path string) {
 			t.Logf("%s: HTTP %d; material_reads=%d", scenario, out.Code, body.reads)
 		})
 	}
+	t.Run("global-superadmin-passes", func(t *testing.T) {
+		db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sqlDB, _ := db.DB()
+		sqlDB.SetMaxOpenConns(1)
+		defer sqlDB.Close()
+		if err = migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+			t.Fatal(err)
+		}
+		user := model.User{Username: "seal-global", Active: true, Roles: []model.Role{{Name: "admin"}}}
+		if err = db.Create(&user).Error; err != nil {
+			t.Fatal(err)
+		}
+		manager := crypto.NewJWTManager("seal-authorization-test-key", time.Hour)
+		token, err := manager.GenerateToken(user.ID, user.Username, "", "admin", crypto.AuthContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := identity.NewSealAuthorizer("seal-authorization-test-key", db).Authorize(context.Background(), token)
+		if err != nil || id != user.ID {
+			t.Fatalf("真正的全域超管應通過：id=%d err=%v", id, err)
+		}
+	})
 	// **語義變更（委託拓撲與憑證改由介面管理）**：`ui` 模式的解封
 	// 自本版起也要求解封授權脈絡。改前這裡守的是「ui 匿名解封不經 Bearer 授權器」
 	// ——那條性質仍成立（Bearer 授權器不被呼叫），但「匿名可送出」已被明確推翻：

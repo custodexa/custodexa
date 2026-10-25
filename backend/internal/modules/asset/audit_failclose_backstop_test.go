@@ -63,7 +63,8 @@ import (
 // # 誠實界定：覆蓋哪些點
 //
 // 本組覆蓋 manifest 中 `fail-close?＝是` 的交易內產生點（16 點，逐格見下方分節）。不覆蓋：
-//   - AP-39／AP-41／AP-42（刻意 fail-open，收口時保持現況）；
+//   - AP-39（刻意 fail-open，收口時保持現況）；AP-41／AP-42 已於資產敏感變更補償控制改為
+//     fail-close，回滾格在 `TestFailCloseAssetUpdateRollsBackOnAuditFailure`；
 //   - AP-23…AP-25（GORM hook，`Session(NewDB:true)` 明示脫離呼叫方交易——
 //     它們的「fail-close」是 hook 自身回 error 使該次 Create 失敗，語義不同類）；
 //   - AP-56／AP-57（封印回灌自開交易）於本檔不覆蓋，因為它們住 audit 包內、
@@ -115,6 +116,8 @@ type auditHitSpec struct {
 	// Details 子字串比對（空＝不比對）。多數格靠它把同 action/resource 的
 	// hook 事件（Details 恆為空字串）與顯式審計事件分開。
 	Details string
+	// DetailsEmpty 為真時只命中明細恰為空字串的寫入（GORM hook 列），與 Details 互斥。
+	DetailsEmpty bool
 }
 
 func (s auditHitSpec) String() string {
@@ -129,6 +132,9 @@ func (s auditHitSpec) matches(h auditHit) bool {
 		return false
 	}
 	if s.Details != "" && !strings.Contains(h.Details, s.Details) {
+		return false
+	}
+	if s.DetailsEmpty && h.Details != "" {
 		return false
 	}
 	return true
@@ -483,13 +489,13 @@ func TestFailCloseAssetGroupCreateRollsBackOnAuditFailure(t *testing.T) {
 	inj.attach(db)
 
 	inj.control("建立節點", func() error {
-		_, err := svc.Create(&AssetGroupRequest{Name: "ok"}, 1, "admin", "127.0.0.1")
+		_, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "ok"}, 1, "admin", "127.0.0.1")
 		return err
 	}, func() int64 { return countWhere(t, db, &model.AssetGroup{}, "name = ?", "ok") }, 1)
 	auditBefore := countRows(t, db, &model.AuditLog{}) // 對照組留下的合法留痕
 
 	inj.arm()
-	_, err := svc.Create(&AssetGroupRequest{Name: "boom"}, 1, "admin", "127.0.0.1")
+	_, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "boom"}, 1, "admin", "127.0.0.1")
 	inj.assertRolledBack("AP-36 AssetGroupService.Create", err,
 		countWhere(t, db, &model.AssetGroup{}, "name = ?", "boom"),
 		countRows(t, db, &model.AuditLog{})-auditBefore)
@@ -507,7 +513,7 @@ func TestFailCloseAssetGroupDeleteRollsBackOnAuditFailure(t *testing.T) {
 
 	mkGroup := func(name string) uint {
 		t.Helper()
-		g, err := svc.Create(&AssetGroupRequest{Name: name}, 1, "admin", "127.0.0.1")
+		g, err := svc.Create(context.Background(), &AssetGroupRequest{Name: name}, 1, "admin", "127.0.0.1")
 		if err != nil {
 			t.Fatalf("前置建立 %s: %v", name, err)
 		}
@@ -519,7 +525,7 @@ func TestFailCloseAssetGroupDeleteRollsBackOnAuditFailure(t *testing.T) {
 
 	ctrlID := mkGroup("對照")
 	inj.control("刪除節點", func() error {
-		_, err := svc.Delete(ctrlID, 1, "admin", "127.0.0.1")
+		_, err := svc.Delete(context.Background(), ctrlID, 1, "admin", "127.0.0.1")
 		return err
 	}, func() int64 { return countWhere(t, db, &model.AssetGroup{}, "id = ?", ctrlID) }, 0)
 	if got := countRows(t, db, &model.AssetAuthorization{}); got != 0 {
@@ -528,7 +534,7 @@ func TestFailCloseAssetGroupDeleteRollsBackOnAuditFailure(t *testing.T) {
 
 	targetID := mkGroup("待刪")
 	inj.arm()
-	_, err := svc.Delete(targetID, 1, "admin", "127.0.0.1")
+	_, err := svc.Delete(context.Background(), targetID, 1, "admin", "127.0.0.1")
 	inj.assertCausedBy("AP-37：審計失敗時刪除竟然成功——授權撤銷即將無痕發生", err)
 
 	// **級聯撤銷必須一併回滾**：這正是該點 fail-close 的理由（授權變更不可無痕）
@@ -558,8 +564,8 @@ func TestFailCloseWhenSinkNotInjected(t *testing.T) {
 
 	// 對照組：有 sink 時同一輸入成功且確實留痕
 	ctrlDB := newDB()
-	if _, err := NewAssetGroupService(ctrlDB, audit.NewTxSink(), &cascadingGroupRevoker{}).
-		Create(&AssetGroupRequest{Name: "有 sink"}, 1, "admin", "127.0.0.1"); err != nil {
+	if _, err := newGroupSvc(ctrlDB, audit.NewTxSink(), &cascadingGroupRevoker{}).
+		Create(context.Background(), &AssetGroupRequest{Name: "有 sink"}, 1, "admin", "127.0.0.1"); err != nil {
 		t.Fatalf("[對照組] 有注入 sink 時建立應成功: %v", err)
 	}
 	if got := countRows(t, ctrlDB, &model.AssetGroup{}); got != 1 {
@@ -570,9 +576,9 @@ func TestFailCloseWhenSinkNotInjected(t *testing.T) {
 	}
 
 	db := newDB()
-	svc := NewAssetGroupService(db, nil, &cascadingGroupRevoker{}) // 刻意不注入
+	svc := newGroupSvc(db, nil, &cascadingGroupRevoker{}) // 刻意不注入
 
-	_, err := svc.Create(&AssetGroupRequest{Name: "無 sink"}, 1, "admin", "127.0.0.1")
+	_, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "無 sink"}, 1, "admin", "127.0.0.1")
 	if err == nil {
 		t.Fatal("未注入 sink 時建立竟然成功——nil sink 被當成 no-op，審計靜默消失")
 	}
@@ -603,7 +609,7 @@ func TestFailCloseAssetCreateRollsBackOnAuditFailure(t *testing.T) {
 	inj.attach(db)
 
 	inj.control("建立資產（含預設帳號）", func() error {
-		_, err := assets.Create(context.Background(), &CreateAssetRequest{
+		_, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 			Name: "srv-ok", Protocol: model.ProtocolSSH, Host: "10.0.0.1", Port: 22,
 			Username: "root", Password: "s3cret", CreatedBy: 1,
 		})
@@ -614,7 +620,7 @@ func TestFailCloseAssetCreateRollsBackOnAuditFailure(t *testing.T) {
 	}
 
 	inj.arm()
-	_, err := assets.Create(context.Background(), &CreateAssetRequest{
+	_, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-boom", Protocol: model.ProtocolSSH, Host: "10.0.0.2", Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})
@@ -641,7 +647,7 @@ func TestFailCloseAssetAccountCreateRollsBackOnAuditFailure(t *testing.T) {
 	inj.attach(db)
 
 	inj.control("新增資產帳號", func() error {
-		_, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+		_, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 			Username: "ctrl", Password: "pw",
 		})
 		return err
@@ -649,7 +655,7 @@ func TestFailCloseAssetAccountCreateRollsBackOnAuditFailure(t *testing.T) {
 	before := countRows(t, db, &model.AssetAccount{})
 
 	inj.arm()
-	_, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	_, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "deploy", Password: "pw",
 	})
 	inj.assertCausedBy("AP-30：審計失敗時新增資產帳號竟然成功——憑證新增將無痕發生", err)
@@ -664,7 +670,7 @@ func TestFailCloseAssetAccountUpdateRollsBackOnAuditFailure(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 	asset := mustCreateAsset(t, assets, "srv-1", "10.0.0.1")
-	acct, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	acct, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "deploy", Password: "pw",
 	})
 	if err != nil {
@@ -701,7 +707,7 @@ func TestFailCloseAssetAccountDeleteRollsBackOnAuditFailure(t *testing.T) {
 	asset := mustCreateAsset(t, assets, "srv-1", "10.0.0.1")
 	mk := func(name string) uint {
 		t.Helper()
-		a, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{Username: name, Password: "pw"})
+		a, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{Username: name, Password: "pw"})
 		if err != nil {
 			t.Fatalf("前置帳號 %s: %v", name, err)
 		}
@@ -737,7 +743,7 @@ func TestFailCloseAssetAccountSetDefaultRollsBackOnAuditFailure(t *testing.T) {
 	asset := mustCreateAsset(t, assets, "srv-1", "10.0.0.1")
 	mk := func(name string) uint {
 		t.Helper()
-		a, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{Username: name, Password: "pw"})
+		a, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{Username: name, Password: "pw"})
 		if err != nil {
 			t.Fatalf("前置帳號 %s: %v", name, err)
 		}
@@ -845,7 +851,7 @@ func TestFailCloseSyncDefaultAccountUpdateRollsBackOnAuditFailure(t *testing.T) 
 	}
 	ctrlUser := "ctrluser"
 	inj.control("經資產更新同步預設帳號", func() error {
-		_, err := assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Username: &ctrlUser})
+		_, err := assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Username: &ctrlUser})
 		return err
 	}, func() int64 {
 		if nameOf() == ctrlUser {
@@ -856,7 +862,7 @@ func TestFailCloseSyncDefaultAccountUpdateRollsBackOnAuditFailure(t *testing.T) 
 
 	boomUser := "boomuser"
 	inj.arm()
-	_, err := assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Username: &boomUser})
+	_, err := assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Username: &boomUser})
 	inj.assertCausedBy("AP-35：審計失敗時資產憑證同步竟然成功——default 帳號被改寫而無痕", err)
 	if got := nameOf(); got != ctrlUser {
 		t.Fatalf("AP-35：預設帳號 username 已變為 %q 但審計未留痕（回滾失敗）", got)
@@ -889,14 +895,14 @@ func TestFailCloseSyncDefaultAccountCreateRollsBackOnAuditFailure(t *testing.T) 
 	ctrlAsset := mkBare("bare-ctrl")
 	ctrlUser := "ctrluser"
 	inj.control("零帳號資產補建 default", func() error {
-		_, err := assets.Update(adminCtx(), ctrlAsset, &UpdateAssetRequest{Username: &ctrlUser})
+		_, err := assets.Update(WithSystemCaller(adminCtx()), ctrlAsset, &UpdateAssetRequest{Username: &ctrlUser})
 		return err
 	}, func() int64 { return countWhere(t, db, &model.AssetAccount{}, "asset_id = ?", ctrlAsset) }, 1)
 
 	targetAsset := mkBare("bare-boom")
 	boomUser := "boomuser"
 	inj.arm()
-	_, err := assets.Update(adminCtx(), targetAsset, &UpdateAssetRequest{Username: &boomUser})
+	_, err := assets.Update(WithSystemCaller(adminCtx()), targetAsset, &UpdateAssetRequest{Username: &boomUser})
 	inj.assertCausedBy("AP-34：審計失敗時補建 default 帳號竟然成功——新的連線身分被建立而無痕", err)
 	if got := countWhere(t, db, &model.AssetAccount{}, "asset_id = ?", targetAsset); got != 0 {
 		t.Fatalf("AP-34：留下 %d 筆帳號列——交易沒有回滾", got)
@@ -941,7 +947,7 @@ func TestFailCloseAssetChangeRecordersPropagateAuditError(t *testing.T) {
 				old.ID = 1
 				updated := *old
 				updated.Host = "10.0.0.2"
-				return writeAssetChangeAudit(audit.NewTxSink(), tx, old, &updated, 1, "admin", model.ActionUpdate)
+				return writeAssetChangeAudit(audit.NewTxSink(), tx, old, &updated, 1, "admin", model.ActionUpdate, "")
 			},
 		},
 		{
@@ -951,7 +957,7 @@ func TestFailCloseAssetChangeRecordersPropagateAuditError(t *testing.T) {
 				Resource: model.ResourceAsset, Details: `"field":"node_ids"`,
 			},
 			run: func(tx *gorm.DB) error {
-				return writeAssetNodeChangeAudit(audit.NewTxSink(), tx, 1, []uint{1}, []uint{2}, 1, "admin")
+				return writeAssetNodeChangeAudit(audit.NewTxSink(), tx, 1, []uint{1}, []uint{2}, nil, 1, "admin")
 			},
 		},
 	}
@@ -1010,7 +1016,7 @@ func TestAsyncSinkSubstitutionMakesFailCloseTestsGreen(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	degraded := &asyncLikeSink{}
-	svc := NewAssetGroupService(db, degraded, &cascadingGroupRevoker{})
+	svc := newGroupSvc(db, degraded, &cascadingGroupRevoker{})
 	inj := newAuditFaultInjector(t, auditHitSpec{
 		AP: "退化語義（asyncLikeSink）", Action: model.ActionCreate,
 		Resource: model.ResourceAsset, Details: `"asset_node_name"`,
@@ -1018,12 +1024,12 @@ func TestAsyncSinkSubstitutionMakesFailCloseTestsGreen(t *testing.T) {
 	inj.attach(db)
 
 	inj.control("退化 sink 的無故障路徑", func() error {
-		_, err := svc.Create(&AssetGroupRequest{Name: "對照"}, 1, "admin", "127.0.0.1")
+		_, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "對照"}, 1, "admin", "127.0.0.1")
 		return err
 	}, func() int64 { return countWhere(t, db, &model.AssetGroup{}, "name = ?", "對照") }, 1)
 
 	inj.arm()
-	if _, err := svc.Create(&AssetGroupRequest{Name: "退化"}, 1, "admin", "127.0.0.1"); err != nil {
+	if _, err := svc.Create(context.Background(), &AssetGroupRequest{Name: "退化"}, 1, "admin", "127.0.0.1"); err != nil {
 		t.Fatalf("退化語義下建立應成功（這正是問題所在）: %v", err)
 	}
 	if degraded.dropped == 0 {
@@ -1044,7 +1050,7 @@ func TestAsyncSinkSubstitutionMakesFailCloseTestsGreen(t *testing.T) {
 
 func mustCreateAsset(t *testing.T, assets *AssetService, name, host string) *model.Asset {
 	t.Helper()
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})
@@ -1092,4 +1098,133 @@ func TestBackstopGridsDeclareNoParallel(t *testing.T) {
 		}
 	}
 	t.Logf("平行禁令：掃描 %d 行、命中 %d 處", strings.Count(src, "\n")+1, found)
+}
+
+// AP-24（hook 列）／AP-41（節點掛載審計）／AP-42（資產變更審計）：AssetService.Update。
+//
+// 三個寫入點各一格：分別注入該點的審計寫入失敗，斷言整筆更新回滾——資產列、節點掛載與該次
+// 全部審計列（含 GORM hook 在 Save 當下寫的那一列）都不存在；對照組不注入時三種列各在。
+// 每格的前置條件相同：先以無故障的一次更新（改主機並掛上節點 A）建立基準，注入的那次更新
+// 再改主機並改掛節點 B，故回滾後必須回到基準狀態，而不是回到建立時的狀態。
+func TestFailCloseAssetUpdateRollsBackOnAuditFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		spec auditHitSpec
+	}{
+		{"AP-42 資產變更審計", auditHitSpec{
+			AP: "AP-42 AssetService.Update 資產變更審計", Action: model.ActionUpdate,
+			Resource: model.ResourceAsset, Details: `"field":"host"`}},
+		{"AP-41 節點掛載審計", auditHitSpec{
+			AP: "AP-41 AssetService.Update 節點掛載審計", Action: model.ActionUpdate,
+			Resource: model.ResourceAsset, Details: `"field":"node_ids"`}},
+		{"AP-24 hook 列", auditHitSpec{
+			AP: "AP-24 (*Asset).AfterUpdate hook 列", Action: model.ActionUpdate,
+			Resource: model.ResourceAsset, DetailsEmpty: true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupAccountDB(t)
+			assets, _ := newAccountServices(t)
+			assets.SetSecurityChangeAlertSink(&recordingAlertSink{})
+			nodeA, nodeB := &model.AssetGroup{Name: "node-a"}, &model.AssetGroup{Name: "node-b"}
+			if err := db.Create(nodeA).Error; err != nil {
+				t.Fatalf("建立節點 A: %v", err)
+			}
+			if err := db.Create(nodeB).Error; err != nil {
+				t.Fatalf("建立節點 B: %v", err)
+			}
+			asset := mustCreateAsset(t, assets, "srv-upd", "10.0.0.1")
+			inj := newAuditFaultInjector(t, tc.spec)
+			inj.attach(db)
+
+			hostOf := func() string {
+				var row model.Asset
+				if err := db.First(&row, asset.ID).Error; err != nil {
+					t.Fatalf("讀取資產: %v", err)
+				}
+				return row.Host
+			}
+			mountsOf := func() []uint {
+				var ids []uint
+				if err := db.Model(&model.AssetNode{}).Where("asset_id = ?", asset.ID).
+					Order("node_id").Pluck("node_id", &ids).Error; err != nil {
+					t.Fatalf("讀取掛載: %v", err)
+				}
+				return ids
+			}
+			auditCount := func() int64 { return countRows(t, db, &model.AuditLog{}) }
+
+			h1, h2 := "10.0.0.2", "10.0.0.3"
+			inj.control("更新主機並掛載節點", func() error {
+				_, err := assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Host: &h1, NodeIDs: &[]uint{nodeA.ID}})
+				return err
+			}, func() int64 {
+				if hostOf() == h1 && len(mountsOf()) == 1 {
+					return 1
+				}
+				return 0
+			}, 1)
+			// 對照組：三種審計列各在
+			for label, q := range map[string]string{
+				"hook 列": "",
+				"資產變更審計": `%"field":"host"%`,
+				"節點掛載審計": `%"field":"node_ids"%`,
+			} {
+				var n int64
+				if q == "" {
+					n = countWhere(t, db, &model.AuditLog{}, "resource = ? AND action = ? AND (details = '' OR details IS NULL) AND resource_id = ?",
+						model.ResourceAsset, model.ActionUpdate, asset.ID)
+				} else {
+					n = countWhere(t, db, &model.AuditLog{}, "details LIKE ?", q)
+				}
+				if n == 0 {
+					t.Fatalf("[對照組] 缺少 %s", label)
+				}
+			}
+
+			baseAudit := auditCount()
+			inj.arm()
+			_, err := assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Host: &h2, NodeIDs: &[]uint{nodeB.ID}})
+			inj.assertCausedBy(tc.name+"：審計寫入失敗時更新竟然成功", err)
+			if got := hostOf(); got != h1 {
+				t.Fatalf("%s：資產主機為 %q，應回到基準 %q——交易沒有回滾", tc.name, got, h1)
+			}
+			if m := mountsOf(); len(m) != 1 || m[0] != nodeA.ID {
+				t.Fatalf("%s：節點掛載為 %v，應維持 [%d]", tc.name, m, nodeA.ID)
+			}
+			if d := auditCount() - baseAudit; d != 0 {
+				t.Fatalf("%s：回滾後仍多留下 %d 筆審計列（含 hook 列）", tc.name, d)
+			}
+		})
+	}
+
+	// 第四格：系統告警事件寫入失敗（落地面回錯）同樣整筆回滾——資產列、審計列（含 hook 列）皆不存在
+	t.Run("系統告警事件寫入", func(t *testing.T) {
+		db := setupAccountDB(t)
+		assets, _ := newAccountServices(t)
+		rec := &recordingAlertSink{}
+		assets.SetSecurityChangeAlertSink(rec)
+		asset := mustCreateAsset(t, assets, "srv-ev-fail", "10.0.0.1")
+		h1, h2 := "10.0.0.2", "10.0.0.3"
+		if _, err := assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Host: &h1}); err != nil {
+			t.Fatalf("[對照組] 無故障更新: %v", err)
+		}
+		if len(rec.events) != 1 {
+			t.Fatalf("[對照組] 應收到 1 個事件，實得 %d", len(rec.events))
+		}
+		before := countRows(t, db, &model.AuditLog{})
+		sentinel := errors.New("injected alert sink failure")
+		rec.err = sentinel
+		_, err := assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Host: &h2})
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("告警事件寫入失敗時更新竟然成功或錯誤不是哨兵: %v", err)
+		}
+		var row model.Asset
+		if err := db.First(&row, asset.ID).Error; err != nil || row.Host != h1 {
+			t.Fatalf("資產主機為 %q，應回到基準 %q——交易沒有回滾（%v）", row.Host, h1, err)
+		}
+		if d := countRows(t, db, &model.AuditLog{}) - before; d != 0 {
+			t.Fatalf("回滾後仍多留下 %d 筆審計列", d)
+		}
+	})
 }

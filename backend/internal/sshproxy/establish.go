@@ -14,6 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/proxy"
 	"github.com/custodexa/backend/internal/sshmaterial"
 	"github.com/custodexa/backend/pkg/gatewayapi"
@@ -48,6 +49,8 @@ type EstablishFailure struct {
 	Dial    bool
 	Message string
 	Silent  bool
+	// Params 撥號失敗幀的附加參數（目前只有 host_key_mismatch＝"1"：不符放行後才失敗，憑證可能已送出）
+	Params map[string]string
 }
 
 func responseFailure(status int, code apierror.ErrCode) *EstablishFailure {
@@ -62,6 +65,31 @@ func dialFailure(code apierror.ErrCode, message string) *EstablishFailure {
 	f.Message = message
 	return f
 }
+
+// hostKeyPathForGrant 依 grant 的主體種類決定主機金鑰路徑：agent token 主體（含 PrincipalKind 為 agent
+// 或帶 AgentTokenID 的票）為代理終端，屬背景路徑；其餘為人類終端（互動路徑）。
+func hostKeyPathForGrant(grant proxy.ConnectGrant) asset.HostKeyPath {
+	if grant.PrincipalKind == model.KindAgent || grant.AgentTokenID != 0 {
+		return asset.HostKeyPathAgentTerminal
+	}
+	return asset.HostKeyPathTerminal
+}
+
+// hostKeyAuthResult 撥號結果對應的認證結果：成功、目標拒絕認證、其餘（逾時、channel 被拒）為未知
+func hostKeyAuthResult(err error) string {
+	switch {
+	case err == nil:
+		return asset.HostKeyAuthSucceeded
+	case errors.Is(err, ErrAuthFailed):
+		return asset.HostKeyAuthFailed
+	case errors.Is(err, ErrSessionOpenFailed):
+		// session 階段才失敗＝認證已通過
+		return asset.HostKeyAuthSucceeded
+	default:
+		return asset.HostKeyAuthUnknown
+	}
+}
+
 func sessionFailure() *EstablishFailure {
 	return outcomeFailure(connectgate.Deny(http.StatusForbidden, string(apierror.CodeSessionRecordFailed), map[string]any{"reason": "session_unavailable"}))
 }
@@ -76,6 +104,9 @@ type EstablishedTerminal struct {
 	sshClient   *ssh.Client
 	k8sSnapshot *k8sproxy.PodSnapshot
 	k8sLogsMode bool
+	// HostKeyMismatch 本次 SSH 撥號的主機金鑰與記錄不符（已留痕並放行）：
+	// 連線建立後以通知幀送出警示，不是撥號失敗
+	HostKeyMismatch bool
 }
 
 func (h *Handler) establishTerminal(req establishRequest) (*EstablishedTerminal, *EstablishFailure) {
@@ -154,18 +185,33 @@ func (h *Handler) establishTerminal(req establishRequest) (*EstablishedTerminal,
 	var sshClient *ssh.Client
 	var k8sSnapshot *k8sproxy.PodSnapshot
 	var k8sLogsMode bool
+	var hostKeyMismatch bool
+	// 會話公開識別在撥號前配發：主機金鑰不符審計的連線識別與其後建立的會話記錄相同
+	sessionPublicID := session.NewSessionPublicID(userID)
 	if assetRow.Protocol == model.ProtocolSSH {
+		// 主機金鑰回呼帶撥號脈絡（host-key-verification）：不符時終端屬互動路徑，
+		// 回呼在送出憑證前留痕後放行；留痕失敗或讀不到記錄則回 ErrHostKeyCheckFailed 中止
+		// 路徑由伺服端依 grant 的主體種類分類，不信任客戶端自報：自動化代理（agent token 主體）
+		// 無人即時在場，屬背景路徑，不符時拒絕；人類終端為互動路徑
+		hostKeyCB, hostKeyResult := h.HostKeys.CallbackFor(asset.HostKeyDialContext{
+			AssetID: assetID, Path: hostKeyPathForGrant(grant), UserID: userID, Username: h.usernameOf(userID),
+			AccountID: creds.AccountID, ClientIP: req.ClientIP, ConnectionRef: sessionPublicID,
+		})
 		sshConn, err := Dial(ConnConfig{
 			Context: reqCtx, Host: assetRow.Host, Port: assetRow.Port, Username: creds.Username,
 			Password: sshmaterial.NewPassword(password), PrivateKey: privateKey,
-			Cols: cols, Rows: rows, HostKey: h.HostKeys.Callback(assetID),
+			Cols: cols, Rows: rows, HostKey: hostKeyCB,
 		})
+		// 不符放行後憑證已實際送出：無論認證結果都補記（同 correlation_id）
+		h.HostKeys.RecordCredentialSent(hostKeyResult, hostKeyAuthResult(err))
 		if err != nil {
+			// err 只含穩定分類（Dial 已把遠端可控的訊息收斂為原因碼），可進日誌
 			log.Printf("[SSHProxy] SSH 連線失敗: assetID=%d, err=%v", assetID, err)
 			code := dialErrorCode(err)
 			// 私鑰無法解析：錯誤訊息帶解析函式原文，data 改取該碼的 zh fallback 全文，
-			// 舊前端與缺譯文時才看得到原因與處理方式
-			if code == apierror.CodeSSHPrivateKeyInvalid {
+			// 舊前端與缺譯文時才看得到原因與處理方式；主機金鑰不符被拒同樣取該碼全文，
+			// 讓 data 與碼對「未送出憑證」的陳述一致
+			if code == apierror.CodeSSHPrivateKeyInvalid || code == apierror.CodeSSHHostKeyMismatchRefused {
 				return nil, dialFailure(code, zhFallbackOf(code))
 			}
 			// 其餘分類 Dial 已轉為使用者語言（逾時/認證/不可達）；
@@ -174,10 +220,16 @@ func (h *Handler) establishTerminal(req establishRequest) (*EstablishedTerminal,
 			if idx := strings.Index(msg, ": "); idx > 0 {
 				msg = msg[:idx]
 			}
-			return nil, dialFailure(code, msg)
+			f := dialFailure(code, msg)
+			if hostKeyResult.Mismatch() {
+				// 不符放行後才失敗：憑證可能已送到這台主機，錯誤幀帶參數讓前端保留警示
+				f.Params = map[string]string{"host_key_mismatch": "1"}
+			}
+			return nil, f
 		}
 		conn = sshConn
 		sshClient = sshConn.Client()
+		hostKeyMismatch = hostKeyResult.Mismatch()
 	} else if assetRow.Protocol == model.ProtocolK8s {
 		// 連線時選 pod：namespace 取自資產（server-trusted），pod/container/模態由前端帶入
 		// The Kubernetes SDK retains an immutable token; its copies are not erased.
@@ -254,7 +306,7 @@ func (h *Handler) establishTerminal(req establishRequest) (*EstablishedTerminal,
 	sess := h.createSession(userID, assetID, assetRow.Protocol, req.ClientIP, k8sSnapshot,
 		accountSnapshot{ID: creds.AccountID, Username: creds.Username},
 		authProvenance{AgentTokenID: grant.AgentTokenID, AccessRequestID: grant.AccessRequestID, ProviderID: grant.ProviderID, AuthEpoch: grant.AuthEpoch,
-			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, false)
+			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, false, sessionPublicID)
 	if sess == nil {
 		conn.Close()
 		log.Printf("[SSHProxy] session 記錄建立失敗，連線已拒 (userID=%d assetID=%d)", userID, assetID)
@@ -272,7 +324,20 @@ func (h *Handler) establishTerminal(req establishRequest) (*EstablishedTerminal,
 	// 告警列以 session_id 為自然鍵，先觀察就沒有可綁的會話。
 	// 失敗只記 log 不阻連線，且交易整筆回滾，下次自同位址建線補發
 
-	return &EstablishedTerminal{Session: sess, conn: conn, grant: grant, asset: assetRow, cols: cols, rows: rows, sshClient: sshClient, k8sSnapshot: k8sSnapshot, k8sLogsMode: k8sLogsMode}, nil
+	return &EstablishedTerminal{Session: sess, conn: conn, grant: grant, asset: assetRow, cols: cols, rows: rows, sshClient: sshClient, k8sSnapshot: k8sSnapshot, k8sLogsMode: k8sLogsMode, HostKeyMismatch: hostKeyMismatch}, nil
+}
+
+// usernameOf 連線使用者的名稱（grant 只帶 ID）：供主機金鑰不符的審計與告警記操作者。
+// 查不到不補假名：系統告警會因操作者零值而拒絕，不符連線依 fail-close 中止。
+func (h *Handler) usernameOf(userID uint) string {
+	if h.AuthService == nil {
+		return ""
+	}
+	u, err := h.AuthService.GetUserByID(userID)
+	if err != nil || u == nil {
+		return ""
+	}
+	return u.Username
 }
 
 type establishedConsole struct {
@@ -382,7 +447,7 @@ func (h *Handler) establishConsole(req establishRequest) (*establishedConsole, *
 	sess := h.createSession(userID, assetID, assetRow.Protocol, req.ClientIP, nil,
 		accountSnapshot{ID: creds.AccountID, Username: creds.Username},
 		authProvenance{AgentTokenID: grant.AgentTokenID, AccessRequestID: grant.AccessRequestID, ProviderID: grant.ProviderID, AuthEpoch: grant.AuthEpoch,
-			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, true)
+			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, true, "")
 	if sess == nil {
 		_ = dialect.Close()
 		log.Printf("[DBConsole] session 記錄建立失敗，連線已拒 (userID=%d assetID=%d)", userID, assetID)

@@ -9,7 +9,7 @@
 ## Requirements
 
 ### Requirement: OIDC provider 實例管理
-系統 SHALL 支援多個 OIDC provider 實例並存（同一部署可同時啟用 Azure AD、Okta、Google 等），每個實例含顯示名稱、issuer、client_id、client_secret、scopes、admission 模式與啟用狀態，由 admin 經 API 與管理頁 CRUD。client_secret SHALL 以信封加密落庫且為 write-only：任何讀取回應 SHALL NOT 含明文或密文，更新時空值 SHALL 沿用既有 secret 不覆寫。
+系統 SHALL 支援多個 OIDC provider 實例並存（同一部署可同時啟用 Azure AD、Okta、Google 等），每個實例含顯示名稱、issuer、client_id、client_secret、scopes、admission 模式與啟用狀態，由超級管理者或持對應的身分來源設定權限點（OIDC 與目錄各一）者（如身分管理員）經 API 與管理頁（入口另需身分來源管理權限點）CRUD。client_secret SHALL 以信封加密落庫且為 write-only：任何讀取回應 SHALL NOT 含明文或密文，更新時空值 SHALL 沿用既有 secret 不覆寫。
 
 issuer 與 client_id SHALL 於建立後不可變更，且 SHALL 由後端強制（不得僅以前端停用輸入達成）；`(issuer, client_id)` SHALL 唯一。provider SHALL NOT 被硬刪除：已有關聯外部身分時刪除 SHALL 回衝突錯誤，provider 識別碼 SHALL NOT 被重用。
 

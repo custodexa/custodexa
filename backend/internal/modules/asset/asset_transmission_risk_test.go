@@ -39,6 +39,7 @@ func TestAssetListCarriesTransmissionRisks(t *testing.T) {
 	t.Cleanup(func() { database.DB = oldDB })
 
 	assetSvc, err := NewAssetService(aesColumnCodec(t, []byte("dev-key-for-testing-only-ok32bts")), "guacd", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"net/http"
@@ -9,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -21,8 +22,8 @@ type MockAccessRequestService struct {
 	mock.Mock
 }
 
-func (m *MockAccessRequestService) Submit(requesterID uint, username, role string, input authz.SubmitAccessRequestInput) (*model.AccessRequest, error) {
-	args := m.Called(requesterID, username, role, input)
+func (m *MockAccessRequestService) Submit(requesterID uint, username string, requesterExempt bool, input authz.SubmitAccessRequestInput) (*model.AccessRequest, error) {
+	args := m.Called(requesterID, username, requesterExempt, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -103,8 +104,8 @@ func (m *MockAccessRequestService) ExpireOverdue(now time.Time) (int, error) {
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockAccessRequestService) BreakGlass(requesterID uint, username, role string, assetID uint, reason string) (*model.AccessRequest, error) {
-	args := m.Called(requesterID, username, role, assetID, reason)
+func (m *MockAccessRequestService) BreakGlass(requesterID uint, username string, requesterExempt bool, assetID uint, reason string) (*model.AccessRequest, error) {
+	args := m.Called(requesterID, username, requesterExempt, assetID, reason)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -158,7 +159,7 @@ func (m *MockApproverScopeService) List() ([]*model.ApproverScope, error) {
 	return args.Get(0).([]*model.ApproverScope), args.Error(1)
 }
 
-func (m *MockApproverScopeService) Create(spec authz.ApproverScopeSpec) (*model.ApproverScope, error) {
+func (m *MockApproverScopeService) Create(_ context.Context, spec authz.ApproverScopeSpec) (*model.ApproverScope, error) {
 	args := m.Called(spec)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -166,7 +167,7 @@ func (m *MockApproverScopeService) Create(spec authz.ApproverScopeSpec) (*model.
 	return args.Get(0).(*model.ApproverScope), args.Error(1)
 }
 
-func (m *MockApproverScopeService) Delete(id uint) error {
+func (m *MockApproverScopeService) Delete(_ context.Context, id uint) error {
 	return m.Called(id).Error(0)
 }
 
@@ -183,7 +184,7 @@ func newAccessRequestRouter(reqSvc *MockAccessRequestService, scopeSvc *MockAppr
 		if userID != 0 {
 			c.Set("userID", userID)
 			c.Set("username", "tester")
-			c.Set("role", role)
+			middleware.SetPrincipal(c, legacyPrincipal(role))
 		}
 		if isRevokeAdmin != nil {
 			c.Set(middleware.RevokeAdminKey, *isRevokeAdmin)
@@ -227,7 +228,7 @@ func doJSON(r *gin.Engine, method, path string, payload interface{}) *httptest.R
 func TestAccessRequestHandler_Create(t *testing.T) {
 	t.Run("成功建單 201", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
-		reqSvc.On("Submit", uint(5), "tester", "user", mock.MatchedBy(func(in authz.SubmitAccessRequestInput) bool {
+		reqSvc.On("Submit", uint(5), "tester", false, mock.MatchedBy(func(in authz.SubmitAccessRequestInput) bool {
 			return in.AssetID == 3 && in.Reason == "維護" && in.DurationMinutes == 60
 		})).Return(&model.AccessRequest{ID: 9, Status: model.AccessRequestPending}, nil)
 		r, _ := newAccessRequestRouter(reqSvc, nil, 5, "user", nil)
@@ -507,7 +508,7 @@ func TestAccessRequestHandler_BreakGlassRevocation(t *testing.T) {
 
 	t.Run("破窗成功 201（不收時長欄位）", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
-		reqSvc.On("BreakGlass", uint(5), "tester", "user", uint(1), "半夜事故").
+		reqSvc.On("BreakGlass", uint(5), "tester", false, uint(1), "半夜事故").
 			Return(&model.AccessRequest{ID: 20, Status: model.AccessRequestApproved,
 				Kind: model.AccessRequestKindBreakGlass}, nil)
 		r, _ := newAccessRequestRouter(reqSvc, nil, 5, "user", nil)
@@ -530,7 +531,7 @@ func TestAccessRequestHandler_BreakGlassRevocation(t *testing.T) {
 
 	t.Run("開關關閉 403 帶機器可辨 code", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
-		reqSvc.On("BreakGlass", uint(5), "tester", "user", uint(1), "急").
+		reqSvc.On("BreakGlass", uint(5), "tester", false, uint(1), "急").
 			Return(nil, authz.ErrBreakGlassDisabled)
 		r, _ := newAccessRequestRouter(reqSvc, nil, 5, "user", nil)
 		w := doJSON(r, "POST", "/access-requests/break-glass", map[string]interface{}{
@@ -545,7 +546,7 @@ func TestAccessRequestHandler_BreakGlassRevocation(t *testing.T) {
 
 	t.Run("無資格 403", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
-		reqSvc.On("BreakGlass", uint(5), "tester", "user", uint(1), "急").
+		reqSvc.On("BreakGlass", uint(5), "tester", false, uint(1), "急").
 			Return(nil, authz.ErrBreakGlassNotEligible)
 		r, _ := newAccessRequestRouter(reqSvc, nil, 5, "user", nil)
 		w := doJSON(r, "POST", "/access-requests/break-glass", map[string]interface{}{
@@ -556,7 +557,7 @@ func TestAccessRequestHandler_BreakGlassRevocation(t *testing.T) {
 
 	t.Run("重複破窗 409", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
-		reqSvc.On("BreakGlass", uint(5), "tester", "user", uint(1), "急").
+		reqSvc.On("BreakGlass", uint(5), "tester", false, uint(1), "急").
 			Return(nil, authz.ErrDuplicateBreakGlass)
 		r, _ := newAccessRequestRouter(reqSvc, nil, 5, "user", nil)
 		w := doJSON(r, "POST", "/access-requests/break-glass", map[string]interface{}{

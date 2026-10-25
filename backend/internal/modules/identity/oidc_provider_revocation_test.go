@@ -30,13 +30,13 @@ import (
 
 func revocationMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}, &model.Session{},
 		// 群組映射兩表：登入路徑在 provider 未設群組宣告名時會對規則表做一次
 		// 索引計數（缺表即 fail-close）
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{},
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -50,6 +50,7 @@ func revocationDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)
@@ -73,6 +74,7 @@ func revocationConcurrentDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)
@@ -178,7 +180,7 @@ func newRevocationEnv(t *testing.T, db *gorm.DB) *revocationEnv {
 	t.Helper()
 	registry := &fakeRegistry{}
 	env := &revocationEnv{
-		svc:      identity.NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com"),
+		svc:      newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com"),
 		sessions: session.NewSessionService(registry),
 		registry: registry,
 		hub:      newFakeProviderHub(),

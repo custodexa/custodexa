@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -23,8 +23,12 @@ func setupSessionGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的 1／2 兩個 ID 須存在
-	installEpochGateDB(t, 1, 2)
+	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的 ID 須存在。
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）：
+	// 1＝admin、3＝auditor、2＝無指派（一般使用者）
+	db := installEpochGateDB(t, 1, 2, 3)
+	grantLegacyRole(t, db, sessionGateUserID(model.RoleAdmin), model.RoleAdmin)
+	grantLegacyRole(t, db, sessionGateUserID(model.RoleAuditor), model.RoleAuditor)
 
 	jwtSecret := "gate-test-secret"
 	authService := identity.NewAuthService(jwtSecret, time.Minute)
@@ -47,6 +51,17 @@ func setupSessionGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager) {
 	NewSessionCommandHandler(commandMock).RegisterRoutes(group, authService)
 
 	return r, crypto.NewJWTManager(jwtSecret, time.Minute)
+}
+
+// sessionGateUserID 依角色挑 setupSessionGateEnv 備妥的帳號（同一帳號只能有一組角色事實）。
+func sessionGateUserID(role string) uint {
+	switch role {
+	case model.RoleAdmin:
+		return 1
+	case model.RoleAuditor:
+		return 3
+	}
+	return 2
 }
 
 func getWithToken(t *testing.T, r *gin.Engine, path, token string) *httptest.ResponseRecorder {
@@ -87,7 +102,7 @@ func TestSessionReadGate_AuditorAdminStillAllowed(t *testing.T) {
 	r, mgr := setupSessionGateEnv(t)
 
 	for _, role := range []string{"auditor", "admin"} {
-		token, err := mgr.GenerateToken(1, role, role+"@example.com", role, crypto.AuthContext{})
+		token, err := mgr.GenerateToken(sessionGateUserID(role), role, role+"@example.com", role, crypto.AuthContext{})
 		assert.NoError(t, err)
 
 		for _, path := range sensitiveReadPaths {

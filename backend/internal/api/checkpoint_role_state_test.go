@@ -66,9 +66,9 @@ func setupRoleStateAPIFixture(t *testing.T) *roleStateAPIFixture {
 	// `:memory:` 配連線池＝每條連線各自一個空庫，故收斂為單連線
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.AuditLog{},
+	if err := migrateWithAuthz(db, &model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.AuditLog{},
 		&model.AuditCheckpoint{}, &model.AuditCheckpointTrim{},
-		&model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.UserRole{}); err != nil {
+		&model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.IntegrityBaseline{

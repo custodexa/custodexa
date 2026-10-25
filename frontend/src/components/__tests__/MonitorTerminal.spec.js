@@ -110,7 +110,7 @@ describe('MonitorTerminal 觀看票建線', () => {
 
   it('取票失敗即不建線，並呈現錯誤', async () => {
     createMonitorTicket.mockRejectedValue({
-      response: { status: 403, data: { code: 'AUTH_MONITOR_ROLE_REQUIRED' } },
+      response: { status: 403, data: { code: 'AUTH_PERMISSION_DENIED' } },
     })
 
     const wrapper = mountMonitor({ sessionId: 7 })

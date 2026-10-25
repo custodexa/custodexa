@@ -41,7 +41,10 @@ func setupLoginBannerRouter(t *testing.T) *bannerTestEnv {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

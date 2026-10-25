@@ -18,6 +18,16 @@
       </template>
     </PageHeader>
 
+    <el-alert
+      v-if="selfServiceNotApplicable"
+      :title="$t('myRequests.notApplicable')"
+      type="info"
+      :closable="false"
+      show-icon
+      class="not-applicable-note"
+      data-test="self-service-not-applicable"
+    />
+
     <!-- 表單走抽屜：原本開表單會把列表整個換掉，送出前看不到自己已經有哪些單 -->
     <el-drawer
       v-model="createVisible"
@@ -104,10 +114,19 @@
     >
       <!-- 不加 stripe：斑馬列的底色是 bg-elevated，撤回（danger 文字）落在上面
            只有 4.36:1，低於 AA；列與列之間本來就有分隔線，底色不必再差一階 -->
+      <!-- 儀表板「待審申請」落點：列表只載入最近一部分，明說已載入幾筆、全量幾筆，
+           不讓人誤以為就這些 -->
+      <p
+        v-if="pendingOnly"
+        class="loaded-of-total"
+        data-test="loaded-of-total"
+      >
+        {{ $t('dashboard.loadedOfTotal', { loaded: visibleRequests.length, total: pendingTotalText }) }}
+      </p>
       <el-table
         v-loading="loading"
         v-expand-row-a11y
-        :data="requests"
+        :data="visibleRequests"
         style="width: 100%"
       >
         <el-table-column type="expand">
@@ -251,6 +270,9 @@ import RequestItems from '@/components/access-request/RequestItems.vue'
 import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
 import { formatDateTime } from '@/utils/format'
 import { t } from '@/i18n'
+import { useRoute } from 'vue-router'
+import { getDashboardCard } from '@/api/dashboard'
+import { useCapabilities } from '@/composables/useCapabilities'
 import {
   getMyAccessRequests,
   getMyActiveTickets,
@@ -294,9 +316,33 @@ const createdTitle = computed(() => t(`myRequests.created.${createdState.value}`
 
 // 綠色只留給「真的已經可以連線」；還要等人處理的用警示階，與列表狀態標籤同色系
 const createdAlertType = computed(() => createdState.value === 'approved' ? 'success' : 'warning')
+// 管理者與稽核人員也能進入本頁看本人資料；申請資格不因此改變，故明說這頁對其角色的意義
+const { can, ready } = useCapabilities()
+const selfServiceNotApplicable = computed(() => ready.value && !can('ui:self-service-actions'))
 const loading = ref(false)
 const requests = ref([])
 const activeTickets = ref([])
+
+// 儀表板帶入 status=pending：只顯示載入集合中仍待審的單，全量數取卡片同一個來源
+const route = useRoute()
+const pendingOnly = computed(() => route?.query?.status === 'pending')
+const visibleRequests = computed(() =>
+  pendingOnly.value ? requests.value.filter((r) => r.status === 'pending') : requests.value
+)
+const pendingTotal = ref(null)
+const pendingTotalText = computed(() =>
+  pendingTotal.value === null ? t('dashboard.valueUnavailable') : pendingTotal.value
+)
+const loadPendingTotal = async () => {
+  if (!pendingOnly.value) return
+  try {
+    const res = await getDashboardCard('my-pending-requests')
+    const data = res?.data && typeof res.data === 'object' && res.value === undefined ? res.data : res
+    pendingTotal.value = typeof data?.value === 'number' ? data.value : null
+  } catch {
+    pendingTotal.value = null
+  }
+}
 
 const fetchAll = async () => {
   loading.value = true
@@ -304,6 +350,7 @@ const fetchAll = async () => {
     const [reqRes, ticketRes] = await Promise.all([
       getMyAccessRequests(),
       getMyActiveTickets(),
+      loadPendingTotal(),
     ])
     requests.value = reqRes.data || []
     activeTickets.value = ticketRes.data || []
@@ -408,6 +455,10 @@ onMounted(fetchAll)
 </script>
 
 <style scoped>
+.not-applicable-note {
+  margin-bottom: var(--ot-space-lg);
+}
+
 a { color: var(--ot-primary); }
 .my-requests {
   display: flex;
@@ -419,6 +470,12 @@ a { color: var(--ot-primary); }
    那不在間距階上 */
 .my-requests > :deep(.page-header) {
   margin-bottom: 0;
+}
+
+.loaded-of-total {
+  margin: 0 0 var(--ot-space-md);
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
 }
 
 .list-panel {

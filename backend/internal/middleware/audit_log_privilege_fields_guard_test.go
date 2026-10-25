@@ -44,11 +44,11 @@ func privilegeAuditRouter(t *testing.T, role string) (*gin.Engine, *gorm.DB) {
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(7))
 		c.Set("username", "admin-under-test")
-		c.Set("role", role)
+		SetPrincipal(c, legacyPrincipal(role))
 		c.Next()
 	})
 	users := r.Group("/api/v1/users")
-	users.Use(RequireRole("admin"))
+	users.Use(EnforceRegistry())
 	{
 		users.PUT("/:id/roles", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) })
 		users.PUT("/:id/status", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) })

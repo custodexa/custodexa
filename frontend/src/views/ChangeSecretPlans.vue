@@ -14,6 +14,28 @@
       </template>
     </PageHeader>
 
+    <!-- 升級時查不到可歸屬發起者的排程計畫：cron 與啟用設定都在，只是暫停；
+         一個按鈕改由目前操作者承接（之後仍以其當下權限逐次重驗），不要求逐筆編輯 -->
+    <el-alert
+      v-if="pausedPlans.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="paused-banner"
+      :title="$t('changeSecretPlans.reauthorize.banner', { count: pausedPlans.length })"
+      data-test="paused-plans-banner"
+    >
+      <el-button
+        type="warning"
+        size="small"
+        :loading="reauthorizing"
+        data-test="reauthorize-plans"
+        @click="reauthorizePaused"
+      >
+        {{ $t('changeSecretPlans.reauthorize.button') }}
+      </el-button>
+    </el-alert>
+
     <div class="list-panel">
       <el-table
         v-loading="loading"
@@ -21,10 +43,27 @@
         stripe
       >
         <el-table-column
-          prop="name"
           :label="$t('common.name')"
           min-width="140"
-        />
+        >
+          <template #default="{ row }">
+            {{ row.name }}
+            <!-- 上界暫停：與「升級後無法確認發起者」的橫幅分開，原因逐筆寫在計畫旁 -->
+            <div
+              v-if="needsReconfirmation(row)"
+              class="reconfirm-reason"
+              :data-test="`plan-reconfirm-reason-${row.id}`"
+            >
+              <el-tag
+                size="small"
+                type="warning"
+              >
+                {{ $t('changeSecretPlans.reconfirmTag') }}
+              </el-tag>
+              {{ reasonText('CHANGE_SECRET_SCOPE_BOUND_EXCEEDED') }}
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column
           :label="$t('changeSecretPlans.colAssetCount')"
           width="90"
@@ -93,6 +132,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-if="canRun(row)"
               size="small"
               type="warning"
               link
@@ -106,6 +146,16 @@
               @click="openRecords(row)"
             >
               {{ $t('changeSecretPlans.records') }}
+            </el-button>
+            <el-button
+              v-if="needsReconfirmation(row)"
+              size="small"
+              type="warning"
+              link
+              :data-test="`plan-reconfirm-${row.id}`"
+              @click="startReconfirm(row)"
+            >
+              {{ $t('changeSecretPlans.reconfirmButton') }}
             </el-button>
             <el-button
               size="small"
@@ -213,7 +263,13 @@
           width="170"
         >
           <template #default="{ row }">
-            {{ row.abandoned ? '-' : formatDateTime(row.next_attempt_at) }}
+            <span
+              v-if="!row.abandoned && isHostIdentityStopped(row)"
+              data-test="candidate-host-identity-pending"
+            >{{ $t('changeSecretPlans.hostIdentityPending') }}</span>
+            <template v-else>
+              {{ row.abandoned ? '-' : formatDateTime(row.next_attempt_at) }}
+            </template>
           </template>
         </el-table-column>
         <el-table-column
@@ -446,6 +502,13 @@
           <el-switch v-model="form.enabled" />
         </el-form-item>
       </el-form>
+      <el-alert
+        :title="$t('changeSecretPlans.saveNotice')"
+        type="info"
+        :closable="false"
+        show-icon
+        data-test="plan-save-notice"
+      />
       <template #footer>
         <el-button @click="dialogVisible = false">
           {{ $t('common.cancel') }}
@@ -457,6 +520,45 @@
           @click="submit"
         >
           {{ $t('common.save') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 重新確認：範圍外只給台數，由其他管理者負責，這裡不列出 -->
+    <el-dialog
+      :model-value="reconfirmVisible"
+      :title="impactMode === 'edit' ? $t('credentials.impact.title') : $t('changeSecretPlans.reconfirmTitle')"
+      width="520px"
+      :close-on-click-modal="false"
+      data-test="reconfirm-dialog"
+      @update:model-value="(v) => { if (!v) cancelReconfirm() }"
+    >
+      <p
+        v-if="impactMode !== 'edit'"
+        data-test="reconfirm-body"
+      >
+        {{ $t('changeSecretPlans.reconfirmBody', { count: reconfirmCount }) }}
+      </p>
+      <el-checkbox
+        v-model="reconfirmAck"
+        data-test="reconfirm-ack"
+      >
+        {{ impactMode === 'edit'
+          ? $t('credentials.impact.ackRotate', { count: reconfirmCount })
+          : $t('changeSecretPlans.reconfirmAck', { count: reconfirmCount }) }}
+      </el-checkbox>
+      <template #footer>
+        <el-button @click="cancelReconfirm">
+          {{ $t('common.cancel') }}
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="reconfirmWorking"
+          :disabled="!reconfirmAck"
+          data-test="reconfirm-submit"
+          @click="submitReconfirm"
+        >
+          {{ $t('changeSecretPlans.reconfirmSubmit') }}
         </el-button>
       </template>
     </el-dialog>
@@ -548,18 +650,31 @@
         {{ $t('changeSecretPlans.recordsNote') }}
       </p>
     </el-dialog>
+    <HostIdentityConfirmDialog
+      v-model="hostIdentityDialog.visible"
+      :asset="hostIdentityDialog.asset"
+      :account="hostIdentityDialog.account"
+      :identity="hostIdentityDialog.identity"
+      kind="candidate"
+      :submitting="hostIdentityDialog.submitting"
+      @confirm="confirmHostIdentity"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ScheduleFrequencyPicker from '@/components/ScheduleFrequencyPicker.vue'
+import HostIdentityConfirmDialog from '@/components/HostIdentityConfirmDialog.vue'
 import { formatDateTime } from '@/utils/format'
 import { CUSTOM_MODE, describeSchedule, formatRunTime, parseCron } from '@/utils/cron-shape'
 import { t, te } from '@/i18n'
+import { can } from '@/composables/useCapabilities'
+import { useCredentialImpactFlow, skipImpactConflictToast, isImpactConflict } from '@/composables/useCredentialImpactFlow'
+import { resolveApiError } from '@/api/error'
 import { getAssetList } from '@/api/assets'
 import { getScheduleNextRuns } from '@/api/schedules'
 import {
@@ -578,6 +693,7 @@ import {
   getChangeSecretCandidates,
   retryChangeSecretCandidate,
   discardChangeSecretCandidate,
+  reauthorizeChangeSecretPlans,
 } from '@/api/changeSecret'
 
 const plans = ref([])
@@ -660,6 +776,8 @@ function emptyForm() {
     cron: '',
     max_age_days: 0,
     enabled: true,
+    target_kind: 'account',
+    target_credential_id: 0,
   }
 }
 
@@ -792,6 +910,9 @@ function openEdit(row) {
     cron: row.cron,
     max_age_days: row.max_age_days || 0,
     enabled: row.enabled,
+    // 目標欄不在表單上編輯，但儲存時要原樣帶回；漏帶會讓憑證目標計畫被存成帳號目標
+    target_kind: row.target_kind || 'account',
+    target_credential_id: row.target_credential_id || 0,
   }
   dialogVisible.value = true
 }
@@ -812,6 +933,10 @@ function buildPayload() {
     cron: f.cron,
     max_age_days: f.max_age_days,
     enabled: f.enabled,
+    // 帳號目標維持原本的請求本文（不帶目標欄），憑證目標才帶
+    ...(f.target_kind === 'credential'
+      ? { target_kind: 'credential', target_credential_id: f.target_credential_id }
+      : {}),
   }
 }
 
@@ -827,18 +952,103 @@ async function loadCandidates() {
   }
 }
 
-async function retryCandidate(row) {
+const HOST_IDENTITY_STOP_CODE = 'CHANGE_SECRET_HOST_IDENTITY_CHANGED'
+const TARGET_CHANGED_CODE = 'CHANGE_SECRET_AUTHZ_TARGET_CHANGED'
+
+// 背景每輪仍會取出並在連線前擋下，排程時間會讓人以為之後自動處理，故改顯示待確認
+function isHostIdentityStopped(row) {
+  return row.last_error === HOST_IDENTITY_STOP_CODE
+}
+
+const hostIdentityDialog = ref({
+  visible: false,
+  row: null,
+  asset: '',
+  account: '',
+  identity: null,
+  submitting: false,
+})
+
+function openHostIdentityDialog(row, identity) {
+  hostIdentityDialog.value = {
+    visible: true,
+    row,
+    asset: assetName(row.asset_id),
+    account: row.account_username,
+    identity,
+    submitting: false,
+  }
+}
+
+function closeHostIdentityDialog() {
+  hostIdentityDialog.value = { ...hostIdentityDialog.value, visible: false, submitting: false }
+}
+
+// 409 的 detail 由後端放在回應本文；對應說明沿用對話框既有文案
+const CONFLICT_DETAIL_KEY = {
+  not_confirmable: 'hostIdentityConfirm.blocked.contactAdmin',
+  different_key_not_accepted: 'hostIdentityConfirm.differentKey.title',
+  confirmation_pending: 'hostIdentityConfirm.result.moved',
+}
+
+function handleConfirmConflict(err) {
+  const detail = err?.response?.data?.detail
+  // API 層已關閉此請求的全域錯誤 toast，只由這裡顯示一則（error 等級）
+  ElMessage.error(t(CONFLICT_DETAIL_KEY[detail] || 'hostIdentityConfirm.result.moved'))
+  closeHostIdentityDialog()
+  loadCandidates()
+}
+
+// confirmBody 為空：一般重試；有值：帶主機身分確認重送
+async function retryCandidate(row, confirmBody) {
+  const confirming = !!confirmBody
   try {
-    const res = await retryChangeSecretCandidate(row.id)
-    ElMessage.success(
-      res.promoted
-        ? t('changeSecretPlans.retryPromoted')
-        : t('changeSecretPlans.retryStillFailing')
-    )
+    const res = confirming
+      ? await retryChangeSecretCandidate(row.id, { confirm_host_identity: confirmBody })
+      : await retryChangeSecretCandidate(row.id)
+    if (res?.host_identity) {
+      // 主機身分變更而停下：交給使用者確認，不當成已排入重試
+      if (confirming) ElMessage.error(t('hostIdentityConfirm.result.moved'))
+      openHostIdentityDialog(row, res.host_identity)
+      loadCandidates()
+      return
+    }
+    if (confirming) {
+      closeHostIdentityDialog()
+      if (res?.promoted) {
+        ElMessage.success(t('hostIdentityConfirm.result.verified'))
+      } else if (res?.reason === TARGET_CHANGED_CODE) {
+        ElMessage.warning(reasonText(res.reason))
+      } else {
+        // 確認只驗證一次，不會自動再排程，不沿用「已排入下次重試」
+        ElMessage.warning(t('hostIdentityConfirm.result.notVerified'))
+      }
+    } else if (res?.reason === TARGET_CHANGED_CODE) {
+      ElMessage.warning(reasonText(res.reason))
+    } else {
+      ElMessage.success(
+        res.promoted
+          ? t('changeSecretPlans.retryPromoted')
+          : t('changeSecretPlans.retryStillFailing')
+      )
+    }
     loadCandidates()
   } catch (err) {
+    if (confirming && err?.response?.status === 409 &&
+        err.response.data?.code === 'CONFLICT_HOST_IDENTITY_MOVED') {
+      handleConfirmConflict(err)
+      return
+    }
+    if (confirming) closeHostIdentityDialog()
     console.error('[ChangeSecret] 重試候選憑證失敗:', err)
   }
+}
+
+async function confirmHostIdentity(payload) {
+  const row = hostIdentityDialog.value.row
+  if (!row) return
+  hostIdentityDialog.value = { ...hostIdentityDialog.value, submitting: true }
+  await retryCandidate(row, payload)
 }
 
 async function discardCandidate(row) {
@@ -876,18 +1086,143 @@ async function submit() {
   saving.value = true
   try {
     const payload = buildPayload()
-    if (editingId.value) {
-      await updateChangeSecretPlan(editingId.value, payload)
+    const id = editingId.value
+    const send = (extra = {}) =>
+      id
+        ? updateChangeSecretPlan(id, { ...payload, ...extra }, { skipErrorToast: skipImpactConflictToast })
+        : createChangeSecretPlan({ ...payload, ...extra }, { skipErrorToast: skipImpactConflictToast })
+    if (payload.target_kind === 'credential') {
+      // 共用憑證目標：先送出計畫本文；只有後端要求影響確認才取確認並開對話框，
+      // 這樣沒有輪替能力的計畫管理者改名、停用不會被確認端點擋住
+      impactCredentialId.value = payload.target_credential_id
+      afterImpactSent = afterSaved
+      impactMode.value = 'edit'
+      if (await startSendFirst(send)) await afterSaved()
     } else {
-      await createChangeSecretPlan(payload)
+      await send()
+      await afterSaved()
     }
-    ElMessage.success(t('changeSecretPlans.saved'))
-    dialogVisible.value = false
-    load()
   } catch (err) {
     console.error('[ChangeSecret] 儲存失敗:', err)
+    reportImpactConflict(err)
   } finally {
     saving.value = false
+  }
+}
+
+// 影響確認的 409 已被關掉全域提示；走到這裡代表重查後無法完成，要讓使用者看到原因
+function reportImpactConflict(err) {
+  if (isImpactConflict(err)) ElMessage.error(resolveApiError(err.response.data, err.response.status))
+}
+
+async function afterSaved() {
+  ElMessage.success(t('changeSecretPlans.saved'))
+  dialogVisible.value = false
+  await load()
+}
+
+// 立即執行需要對應的語義能力：帳號目標看帳號改密、憑證目標看憑證輪替。
+// 這裡只決定要不要顯示按鈕，強制點在後端（執行前逐次重驗）
+function canRun(row) {
+  return can(row.target_kind === 'credential' ? 'credential:rotate' : 'account:rotate')
+}
+
+// 上界暫停（needs_reconfirmation）：憑證新增了發起者未確認過的範圍外主機。
+// 範圍化發起者只能重新確認並儲存；確認台數取自伺服器的確認回應，前端不自行計算範圍
+const needsReconfirmation = (row) => row.authorization_state === 'needs_reconfirmation'
+
+// 影響確認流程由「重新確認」與一般儲存共用；確認後的收尾各自指定
+const impactCredentialId = ref(null)
+// 'reconfirm'＝計畫已被暫停、確認後恢復執行；'edit'＝一般編輯儲存，文案不提恢復
+const impactMode = ref('reconfirm')
+let afterImpactSent = null
+const reconfirmAck = ref(false)
+const {
+  visible: reconfirmVisible,
+  impact: reconfirmImpact,
+  working: reconfirmWorking,
+  epoch: reconfirmEpoch,
+  start: startImpact,
+  startSendFirst,
+  confirm: confirmImpact,
+  cancel: cancelReconfirm,
+} = useCredentialImpactFlow(() => impactCredentialId.value, 'rotate')
+const reconfirmCount = computed(() => reconfirmImpact.value?.outOfScopeCount ?? 0)
+watch(reconfirmEpoch, () => { reconfirmAck.value = false })
+
+// 以現行計畫內容原樣重存（只換確認欄），不經編輯表單
+function payloadFromRow(row) {
+  const named = parseAccounts(row.accounts).filter((a) => a !== '@ALL')
+  return {
+    name: row.name,
+    asset_ids: parseAssetIds(row.asset_ids),
+    accounts: isAllAccounts(row.accounts) ? ['@ALL'] : named,
+    secret_type: row.secret_type || 'password',
+    key_strategy: row.key_strategy || 'append_replace',
+    password_length: row.password_length || 16,
+    password_include_symbol: row.password_include_symbol !== false,
+    password_exclude_ambiguous: row.password_exclude_ambiguous !== false,
+    cron: row.cron,
+    max_age_days: row.max_age_days || 0,
+    enabled: row.enabled,
+    target_kind: row.target_kind,
+    target_credential_id: row.target_credential_id,
+  }
+}
+
+async function startReconfirm(row) {
+  impactCredentialId.value = row.target_credential_id
+  afterImpactSent = afterReconfirmed
+  impactMode.value = 'reconfirm'
+  const send = (extra) =>
+    updateChangeSecretPlan(row.id, { ...payloadFromRow(row), ...extra }, { skipErrorToast: skipImpactConflictToast })
+  try {
+    if (await startImpact(send)) await afterReconfirmed()
+  } catch (err) {
+    console.error('[ChangeSecret] 重新確認失敗:', err)
+  }
+}
+
+async function submitReconfirm() {
+  if (!reconfirmAck.value) return
+  try {
+    if (await confirmImpact()) await afterImpactSent()
+  } catch (err) {
+    console.error('[ChangeSecret] 重新確認失敗:', err)
+    reportImpactConflict(err)
+  }
+}
+
+async function afterReconfirmed() {
+  ElMessage.success(t('changeSecretPlans.reconfirmDone'))
+  await load()
+}
+
+const pausedPlans = computed(() => plans.value.filter((plan) => plan.authorization_state === 'needs_reauthorization'))
+const reauthorizing = ref(false)
+
+async function reauthorizePaused() {
+  try {
+    await ElMessageBox.confirm(
+      t('changeSecretPlans.reauthorize.confirm', { count: pausedPlans.value.length }),
+      t('changeSecretPlans.reauthorize.confirmTitle'),
+      { type: 'warning' }
+    )
+  } catch {
+    return // 使用者取消
+  }
+  reauthorizing.value = true
+  try {
+    const res = await reauthorizeChangeSecretPlans()
+    ElMessage.success(t('changeSecretPlans.reauthorize.done', { count: res?.count ?? 0 }))
+    if (res?.skipped_plan_ids?.length) {
+      ElMessage.warning(t('changeSecretPlans.reauthorize.skipped', { skipped: res.skipped_plan_ids.length }))
+    }
+    await load()
+  } catch (err) {
+    console.error('[ChangeSecret] 重新授權失敗:', err)
+  } finally {
+    reauthorizing.value = false
   }
 }
 
@@ -974,6 +1309,16 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.reconfirm-reason {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ot-text-secondary);
+}
+
+.paused-banner {
+  margin-bottom: 12px;
+}
+
 .list-panel {
   background: var(--ot-bg-surface);
   border: 1px solid var(--ot-border-subtle);

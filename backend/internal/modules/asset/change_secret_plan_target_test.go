@@ -29,13 +29,13 @@ func TestPlanRejectsSharedCredentialTargetOnSave(t *testing.T) {
 	sharedAssets := []uint{f.bindingOf(t, accounts[0]).AssetID, f.bindingOf(t, accounts[1]).AssetID}
 	dedicatedAsset, _ := f.addHost(t, "h9", "10.3.0.9", "ops")
 
-	_, err := f.plans.Create(planRequest("擋下共用", sharedAssets, "ops"))
+	_, err := f.plans.Create(adminCtx(), planRequest("擋下共用", sharedAssets, "ops"))
 	assert.ErrorIs(t, err, ErrPlanSharedCredentialTarget, "明列帳號名命中共用成員即拒絕")
 
-	_, err = f.plans.Create(planRequest("擋下共用-全帳號", sharedAssets))
+	_, err = f.plans.Create(adminCtx(), planRequest("擋下共用-全帳號", sharedAssets))
 	assert.ErrorIs(t, err, ErrPlanSharedCredentialTarget, "@ALL 範圍同樣命中")
 
-	_, err = f.plans.Create(planRequest("擋下共用-混合", append([]uint{dedicatedAsset}, sharedAssets...), "ops"))
+	_, err = f.plans.Create(adminCtx(), planRequest("擋下共用-混合", append([]uint{dedicatedAsset}, sharedAssets...), "ops"))
 	assert.ErrorIs(t, err, ErrPlanSharedCredentialTarget, "只要有一台命中就整筆拒絕")
 
 	var stored int64
@@ -43,11 +43,11 @@ func TestPlanRejectsSharedCredentialTargetOnSave(t *testing.T) {
 	assert.Zero(t, stored, "被拒的建立不得留下計劃列")
 
 	// 只涵蓋專用憑證的計劃照常建立；建立後改成共用範圍即被更新擋下
-	plan, err := f.plans.Create(planRequest("只有專用", []uint{dedicatedAsset}, "ops"))
+	plan, err := f.plans.Create(adminCtx(), planRequest("只有專用", []uint{dedicatedAsset}, "ops"))
 	require.NoError(t, err)
 	assert.Equal(t, model.PlanTargetAccount, plan.TargetKind, "預設目標種類為帳號")
 
-	_, err = f.plans.Update(plan.ID, planRequest("只有專用", append([]uint{dedicatedAsset}, sharedAssets...), "ops"))
+	_, err = f.plans.Update(adminCtx(), plan.ID, planRequest("只有專用", append([]uint{dedicatedAsset}, sharedAssets...), "ops"))
 	assert.ErrorIs(t, err, ErrPlanSharedCredentialTarget, "更新同樣經過前置驗證")
 }
 
@@ -59,7 +59,7 @@ func TestPlanSkipsSharedCredentialTargetAtRun(t *testing.T) {
 	rec := newSecretRecorder()
 	f.useExecutor(rec)
 
-	plan, err := f.plans.Create(planRequest("存檔時全是專用", []uint{a1, a2}, "ops"))
+	plan, err := f.plans.Create(adminCtx(), planRequest("存檔時全是專用", []uint{a1, a2}, "ops"))
 	require.NoError(t, err)
 
 	// 存檔之後才改綁到共用憑證
@@ -103,7 +103,7 @@ func TestPlanCredentialTargetCoversAllBindings(t *testing.T) {
 	req := planRequest("整組改密", []uint{f.bindingOf(t, accounts[0]).AssetID}, "ops")
 	req.TargetKind = model.PlanTargetCredential
 	req.TargetCredentialID = credID
-	plan, err := f.plans.Create(req)
+	plan, err := f.plans.Create(adminCtx(), req)
 	require.NoError(t, err)
 	require.NotNil(t, plan.TargetCredentialID)
 	assert.Equal(t, credID, *plan.TargetCredentialID)
@@ -160,7 +160,7 @@ func TestPlanDedicatedTargetUnchanged(t *testing.T) {
 	rec := newSecretRecorder()
 	f.useExecutor(rec)
 
-	plan, err := f.plans.Create(planRequest("全專用", []uint{a1, a2}, "ops"))
+	plan, err := f.plans.Create(adminCtx(), planRequest("全專用", []uint{a1, a2}, "ops"))
 	require.NoError(t, err)
 	records := f.runner.RunPlan(plan)
 	require.Len(t, records, 2)

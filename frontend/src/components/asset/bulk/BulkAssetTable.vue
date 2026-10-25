@@ -244,6 +244,8 @@
               v-model="row.access_policy"
               size="small"
               :empty-values="[null, undefined]"
+              :disabled="accessPolicyReadonly"
+              :title="accessPolicyReadonly ? t('assets.bulk.accessPolicyReadonly') : undefined"
               :class="{ 'is-error': hasErr(row, 'access_policy') }"
             >
               <el-option
@@ -429,12 +431,14 @@
  * 不適用該列協定的欄呈「—」且不可編輯；但 CSV 帶進來的不適用值要讓使用者看得到、清得掉，
  * 故「有值」時仍開放編輯，清空後才收成「—」。
  */
-import { h, ref, nextTick } from 'vue'
+import { h, ref, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Info } from 'lucide-vue-next'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
+import { can } from '@/composables/useCapabilities'
+import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 import { credentialDisplayName } from '@/constants/credentials'
-import { resolveApiError } from '@/api/error'
+import { bulkProblemText } from '@/composables/useBulkErrorReport'
 import { PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
 import { BULK_PROTOCOLS, DB_TLS_VERIFY_MODES, fieldApplies } from '@/utils/assetBulk'
 
@@ -454,6 +458,8 @@ const emit = defineEmits(['protocol-change', 'duplicate', 'remove'])
 
 const { t } = useI18n()
 const rootRef = ref(null)
+// 無存取政策權限點：連線政策欄停用，送出列也不帶此鍵（見 rowToPayload）
+const accessPolicyReadonly = computed(() => !can(ACCESS_POLICY_PERM))
 
 const DB_TLS_OPTIONS = [
   { value: '', label: 'assets.bulk.dbTlsDefault' },
@@ -487,7 +493,7 @@ const hasErr = (row, field) => rowErrors(row).some((e) => e.field === field)
 const errs = (row, field) =>
   rowErrors(row)
     .filter((e) => e.field === field)
-    .map((e) => resolveApiError({ code: e.code, params: e.params }))
+    .map((e) => bulkProblemText(e))
 
 const editable = (row, field) => fieldApplies(field, row.protocol) || row[field] !== ''
 

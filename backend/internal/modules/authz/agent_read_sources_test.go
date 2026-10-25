@@ -13,7 +13,7 @@ import (
 func TestAccountSourceIndex(t *testing.T) {
 	s, _, db, agent := setupItemRequestEnv(t)
 	good, bad := []string{"app"}, []string{"not-on-asset"}
-	_, err := s.Submit(agent, "task-agent", model.RoleUser, SubmitAccessRequestInput{Reason: "fixture", DurationMinutes: 30, Items: []ItemInput{{AssetID: 1, Accounts: &good}, {AssetID: 2, Accounts: &bad}}})
+	_, err := s.Submit(agent, "task-agent", false, SubmitAccessRequestInput{Reason: "fixture", DurationMinutes: 30, Items: []ItemInput{{AssetID: 1, Accounts: &good}, {AssetID: 2, Accounts: &bad}}})
 	var detail *AccountNotOnAssetError
 	require.True(t, errors.As(err, &detail))
 	require.Equal(t, 1, detail.ItemIndex)
@@ -27,9 +27,9 @@ func TestQuotaSource(t *testing.T) {
 	s, p, db, agent := setupItemRequestEnv(t)
 	_, err := p.Update(policy.PolicyAgentRequestRatePerHour, "1", "test")
 	require.NoError(t, err)
-	_, err = s.Submit(agent, "task-agent", model.RoleUser, itemInput(1))
+	_, err = s.Submit(agent, "task-agent", false, itemInput(1))
 	require.NoError(t, err)
-	_, err = s.Submit(agent, "task-agent", model.RoleUser, itemInput(2))
+	_, err = s.Submit(agent, "task-agent", false, itemInput(2))
 	var detail *AgentRequestRateError
 	require.True(t, errors.As(err, &detail))
 	require.EqualValues(t, 1, detail.Count)

@@ -128,7 +128,7 @@ func (h *AuditTimelineHandler) Subjects(c *gin.Context) {
 func (h *AuditTimelineHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/audit")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequirePermission(middleware.PermAuditView))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("/timeline", h.Timeline)
 		g.GET("/subjects", h.Subjects)

@@ -1,6 +1,7 @@
 package sshproxy
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"encoding/json"
 	"github.com/custodexa/backend/internal/modules/audit"
@@ -30,9 +31,9 @@ func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPoli
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.AccessRequest{}, &model.SecurityPolicy{},
-		&model.TransmissionConsent{}, &model.AuditLog{}, &model.AuditFailureEvent{}, &model.Session{}, &model.UserRole{}); err != nil {
+		&model.TransmissionConsent{}, &model.AuditLog{}, &model.AuditFailureEvent{}, &model.Session{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -41,6 +42,7 @@ func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPoli
 	t.Cleanup(func() { database.DB = oldDB })
 
 	assetSvc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
@@ -62,7 +64,7 @@ func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPoli
 // asset 1 ∈ group 1（政策由各測試設定）。user 1 持 asset 1 常設 connect
 func seedGateFixture(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	// DB 現查角色事實源：簽發/兌換點 CurrentConnectRole
+	// DB 現查角色事實源：簽發/兌換點 CurrentConnectPrincipal
 	// 折疊 DB roles 判定 admin 特權，不再靠 issueToken 的 mock role——user2 須有真實 admin
 	// role 關聯、user3 須有 auditor role，否則折疊為 user、admin 特權失效
 	roles := []model.Role{{Name: model.RoleUser}, {Name: model.RoleAdmin}, {Name: model.RoleAuditor}}
@@ -128,7 +130,7 @@ func issueToken(h *Handler, userID uint, role string, assetID uint) (int, map[st
 	var keys map[string]interface{}
 	r.POST("/connect-tokens", func(c *gin.Context) {
 		c.Set("userID", userID)
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		h.HandleCreateConnectToken(c)
 		keys = c.Keys
 	})

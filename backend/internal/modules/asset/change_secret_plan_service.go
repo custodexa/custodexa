@@ -1,15 +1,19 @@
 package asset
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 
 	"github.com/custodexa/backend/internal/kernel/dberr"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
@@ -67,11 +71,264 @@ type ChangeSecretPlanRequest struct {
 	TargetKind string `json:"target_kind"`
 	// TargetCredentialID TargetKind=credential 時的目標憑證
 	TargetCredentialID uint `json:"target_credential_id"`
+	// ImpactConfirmationID 範圍化發起者以憑證為目標時的影響確認識別（範圍外掛載須先確認）；其餘情形忽略
+	ImpactConfirmationID string `json:"impact_confirmation_id"`
 }
 
 // ChangeSecretPlanService 改密計劃 CRUD（change-secret 階段 1）
 type ChangeSecretPlanService struct {
 	db *gorm.DB
+	// versions 取發起者當下的權限世代版本（記進授權脈絡，不阻擋建立）；重新授權承接時也用它重驗點擊者，nil＝一律不承接
+	versions CredentialManagementAuthorizer
+	// auditTx 重新授權的審計落地面
+	auditTx port.TxSink
+	// alert 承接未完成的推送（組裝根注入）；nil＝只寫日誌
+	alert func(rule, message string)
+	// scope 讀取投影、建立與修改的範圍收斂（組裝根注入）；nil＝全系統口徑
+	scope ChangeSecretScopePort
+	// impactScope 範圍化發起者以憑證為目標儲存時的影響確認切分（與憑證端點同一來源）
+	impactScope CredentialScopeSource
+	// preTxHook 測試掛點：修改與一鍵重新授權在鎖前讀取之後、承接或儲存交易開始之前呼叫
+	preTxHook func()
+}
+
+// WithAuthorizer 接上管理授權判定器，僅用來在授權脈絡內記錄建立當下的權限世代版本與確實通過的能力鍵。
+// 計畫的儲存不因此多一道阻擋：撤權由執行時的重驗負責。
+func (s *ChangeSecretPlanService) WithAuthorizer(a CredentialManagementAuthorizer) *ChangeSecretPlanService {
+	s.versions = a
+	return s
+}
+
+// planRunCapabilities 計畫執行所需的語義能力（供授權脈絡記錄與執行重驗共用）。
+func planRunCapabilities(targetKind string) []string {
+	if targetKind == model.PlanTargetCredential {
+		return []string{CredCapRotate}
+	}
+	return []string{CredCapAccountRotate}
+}
+
+// recordPlanAuthorization 為計畫新增一列授權脈絡（修訂號遞增）並指向它。
+// ctx 沒有伺服器端主體時不動既有脈絡（回 false）：不以空主體或系統身分替代。
+func (s *ChangeSecretPlanService) recordPlanAuthorization(ctx context.Context, tx *gorm.DB,
+	plan *model.ChangeSecretPlan, via, mountBound string) (bool, error) {
+
+	userID, username := model.UserFromContext(ctx)
+	if userID == 0 {
+		return false, nil
+	}
+	var version int64
+	var sources []string
+	// confirmed 只放判定器確實放行的能力鍵：建立或修改不因缺能力被擋，但證據列不寫沒有發生的確認。
+	// 留空不放寬執行：執行與重試一律以計畫目標種類所需的能力重驗（planRunCapabilities）
+	confirmed := []string{}
+	caps := planRunCapabilities(plan.TargetKind)
+	if s.versions != nil {
+		if d, err := s.versions.AuthorizeCredentialManagement(ctx, tx,
+			CredentialManagementActor{UserID: userID, Username: username},
+			CredentialManagementRequest{Operation: CredOpRun, Capabilities: caps}); err == nil {
+			version, sources = d.AuthzVersion, d.Sources
+			if d.Allowed {
+				confirmed = caps
+			}
+		}
+	}
+	revision := plan.Revision + 1
+	if plan.AuthorizationID == nil {
+		revision = 1
+	}
+	row, err := insertJobAuthorization(credentialManagementGate{authorizer: s.versions}, tx, jobAuthInput{
+		kind: model.JobAuthSourcePlan, sourceID: plan.ID, revision: revision,
+		actorID: userID, actorName: username, via: via, authzVersion: version, sources: sources,
+		capabilities: confirmed, targetBound: AssetIDList(plan), targetMountBound: mountBound,
+	})
+	if err != nil {
+		return false, err
+	}
+	plan.AuthorizationID = &row.ID
+	plan.AuthorizationState = ""
+	plan.Revision = revision
+	return true, nil
+}
+
+// ReauthorizePending 一鍵重新授權：把升級時查不到可歸屬者而暫停的計畫，重新授權給目前的操作者
+// （之後照常以其當下權限重驗）。承接前先以點擊者**當下**的能力對每個計畫的目標做一次重驗
+// （與執行前重驗同一函式）；能力不足的計畫不被承接、維持暫停，列在 skipped，不整批失敗。
+// 承接與它的審計同一交易：審計寫不進去即不承接、計畫維持暫停並列在 skipped，每個計畫告警一次。
+// 略過的審計另以獨立交易嘗試（略過本身沒有本地變更要綁），失敗只留日誌。
+func (s *ChangeSecretPlanService) ReauthorizePending(ctx context.Context) (done, skipped []uint, err error) {
+	uid, uname := model.UserFromContext(ctx)
+	if uid == 0 {
+		return nil, nil, ErrJobAuthorizationMissing
+	}
+	var plans []model.ChangeSecretPlan
+	if err := s.db.Where("authorization_state IN ?",
+		[]string{model.PlanAuthNeedsReauthorization, model.PlanAuthNeedsReconfirmation}).
+		Order("id").Find(&plans).Error; err != nil {
+		return nil, nil, err
+	}
+	// 範圍化點擊者只查、只承接可見的計畫；不可見者不出現在 done 與 skipped
+	if plans, err = s.visibleOnly(ctx, plans); err != nil {
+		return nil, nil, err
+	}
+	if s.preTxHook != nil {
+		s.preTxHook()
+	}
+	gate := credentialManagementGate{authorizer: s.versions}
+	for i := range plans {
+		var plan model.ChangeSecretPlan
+		skipReason := ""
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			if err := s.lockTopology(tx); err != nil {
+				return err
+			}
+			// 鎖後重讀最新列：已不在待承接狀態、已刪或已不可見者不承接，也不列入 done 或 skipped
+			latest, err := latestPlanTx(tx, plans[i].ID)
+			if errors.Is(err, ErrPlanNotFound) {
+				return errReauthorizeGone
+			}
+			if err != nil {
+				return err
+			}
+			if latest.AuthorizationState != model.PlanAuthNeedsReauthorization &&
+				latest.AuthorizationState != model.PlanAuthNeedsReconfirmation {
+				return errReauthorizeGone
+			}
+			if err := s.requireVisibleTx(ctx, tx, latest); err != nil {
+				if errors.Is(err, ErrPlanNotFound) {
+					return errReauthorizeGone
+				}
+				return err
+			}
+			plan = *latest
+			// 待重新確認：只有經全系統來源持有憑證改密者可承接（不帶目標的判定只認全系統來源），
+			// 範圍化點擊者須重新確認並儲存新版，不能以承接略過確認
+			if plan.AuthorizationState == model.PlanAuthNeedsReconfirmation {
+				if _, err := gate.require(ctx, tx, CredentialManagementRequest{
+					Operation: CredOpRotate, Capabilities: []string{CredCapRotate},
+				}); err != nil {
+					skipReason = model.ChangeSecretReasonScopeBoundExceeded
+					return errReauthorizeSkip
+				}
+			}
+			// 目標重驗在承接交易內、以交易內視圖與最新列的目標判定
+			credentialIDs, assetIDs := planRunTargets(&plan)
+			if _, reason := requirePlanRun(gate, ctx, tx, plan.TargetKind, credentialIDs, assetIDs, nil); reason != "" {
+				skipReason = reason
+				return errReauthorizeSkip
+			}
+			if _, err := s.recordPlanAuthorization(ctx, tx, &plan, model.JobAuthViaReauthorized, ""); err != nil {
+				return err
+			}
+			if err := tx.Model(&model.ChangeSecretPlan{}).Where("id = ?", plan.ID).
+				Updates(map[string]any{
+					"authorization_id": plan.AuthorizationID, "authorization_state": "", "revision": plan.Revision,
+				}).Error; err != nil {
+				return err
+			}
+			if err := s.writeReauthorizeAudit(tx, plan.ID, uid, uname, "reauthorized", ""); err != nil {
+				return fmt.Errorf("%w: %v", errReauthorizeAuditFailed, err)
+			}
+			return nil
+		}); err != nil {
+			if errors.Is(err, errReauthorizeGone) {
+				continue
+			}
+			if errors.Is(err, errReauthorizeSkip) {
+				skipped = append(skipped, plan.ID)
+				s.auditReauthorizeSkipped(plan.ID, uid, uname, skipReason)
+				continue
+			}
+			if !errors.Is(err, errReauthorizeAuditFailed) {
+				return done, skipped, err
+			}
+			// 承接已整筆回滾：計畫維持暫停，列入略過，告警一次
+			log.Printf("[ChangeSecretPlan] 重新授權審計寫入失敗，不承接 plan=%d: %v", plan.ID, err)
+			skipped = append(skipped, plan.ID)
+			s.auditReauthorizeSkipped(plan.ID, uid, uname, model.ChangeSecretReasonAuthzUnavailable)
+			if s.alert != nil {
+				s.alert("改密計畫重新授權未完成",
+					fmt.Sprintf("plan_id=%d 承接的審計寫不進去，計畫維持暫停（未承接、未執行），請確認審計儲存後再承接", plan.ID))
+			}
+			continue
+		}
+		done = append(done, plan.ID)
+	}
+	return done, skipped, nil
+}
+
+// errReauthorizeAuditFailed 承接的審計寫入失敗（承接隨之回滾）。
+var errReauthorizeAuditFailed = errors.New("重新授權審計寫入失敗")
+
+// errReauthorizeSkip 承接交易內的目標重驗未通過（不承接、列在 skipped）。
+var errReauthorizeSkip = errors.New("重新授權略過")
+
+// errReauthorizeGone 鎖後重讀時計畫已刪、已不在待承接狀態或已不可見（不承接、不列入回應）。
+var errReauthorizeGone = errors.New("重新授權對象已不適用")
+
+// planRunTargets 計畫執行與承接時重驗的目標：憑證目標帶目標憑證，帳號目標帶資產集合。
+func planRunTargets(plan *model.ChangeSecretPlan) (credentialIDs, assetIDs []uint) {
+	if plan.TargetKind == model.PlanTargetCredential {
+		if plan.TargetCredentialID != nil {
+			return []uint{*plan.TargetCredentialID}, nil
+		}
+		return nil, nil
+	}
+	return nil, AssetIDList(plan)
+}
+
+// WithAuditSink 接上重新授權的審計落地面；nil＝承接一律不成立（審計寫不進去）。
+func (s *ChangeSecretPlanService) WithAuditSink(sink port.TxSink) *ChangeSecretPlanService {
+	s.auditTx = sink
+	return s
+}
+
+// WithAlertNotifier 接上承接未完成的推送（組裝根，與其他改密停止告警同一通道）。
+func (s *ChangeSecretPlanService) WithAlertNotifier(fn func(rule, message string)) *ChangeSecretPlanService {
+	s.alert = fn
+	return s
+}
+
+// auditReauthorizeSkipped 被略過的計畫一則審計（獨立交易）；失敗只留日誌。
+func (s *ChangeSecretPlanService) auditReauthorizeSkipped(planID, uid uint, uname, reason string) {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		return s.writeReauthorizeAudit(tx, planID, uid, uname, "skipped", reason)
+	})
+	if err != nil {
+		log.Printf("[ChangeSecretPlan] 重新授權略過的審計寫入失敗 plan=%d reason=%s: %v", planID, reason, err)
+	}
+}
+
+// writeReauthorizeAudit 每個被處理的計畫一則審計（含被略過者），寫在呼叫端給的交易內；
+// 落地面缺席或寫入失敗回錯誤。
+func (s *ChangeSecretPlanService) writeReauthorizeAudit(tx *gorm.DB, planID, uid uint, uname, outcome, reason string) error {
+	details, _ := json.Marshal(map[string]any{
+		"resource": string(model.ResourceChangeSecretPlan), "operation": "reauthorize",
+		"plan_id": planID, "outcome": outcome, "reason": reason,
+	})
+	status := model.StatusSuccess
+	if outcome != "reauthorized" {
+		status = model.StatusDenied
+	}
+	id := planID
+	return port.WriteInTx(s.auditTx, tx, port.AuditEvent{
+		OccurredAt: time.Now(),
+		Actor:      gatewayapi.Actor{UserID: uid, Username: uname},
+		Action:     string(model.ActionUpdate),
+		Resource:   string(model.ResourceChangeSecretPlan),
+		ResourceID: &id,
+		Status:     string(status),
+		Details:    string(details),
+	})
+}
+
+// PendingReauthorization 目前因無從歸屬發起者而暫停的計畫（供啟動時告警與管理畫面）。
+func (s *ChangeSecretPlanService) PendingReauthorization() ([]model.ChangeSecretPlan, error) {
+	var plans []model.ChangeSecretPlan
+	if err := s.db.Where("authorization_state = ?", model.PlanAuthNeedsReauthorization).
+		Order("id").Find(&plans).Error; err != nil {
+		return nil, err
+	}
+	return plans, nil
 }
 
 // NewChangeSecretPlanService 建立服務
@@ -218,10 +475,10 @@ func (s *ChangeSecretPlanService) Get(id uint) (*model.ChangeSecretPlan, error) 
 // 以憑證為目標者只需確認該憑證存在；以帳號為目標者要擋下共用憑證的成員——
 // **這是兩層擋的第一層**，第二層在執行時（掛載會在計劃存檔之後改變，
 // 只有儲存時擋會漏掉「存檔後才被改綁到共用憑證」的那些）。
-func (s *ChangeSecretPlanService) assertTargetResolvable(req *ChangeSecretPlanRequest) error {
+func (s *ChangeSecretPlanService) assertTargetResolvable(db *gorm.DB, req *ChangeSecretPlanRequest) error {
 	if req.TargetKind == model.PlanTargetCredential {
 		var cred model.Credential
-		if err := s.db.Where("id = ?", req.TargetCredentialID).First(&cred).Error; err != nil {
+		if err := db.Where("id = ?", req.TargetCredentialID).First(&cred).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrPlanTargetCredentialNotFound
 			}
@@ -229,7 +486,7 @@ func (s *ChangeSecretPlanService) assertTargetResolvable(req *ChangeSecretPlanRe
 		}
 		return nil
 	}
-	return s.assertNoSharedCredentialTarget(req)
+	return s.assertNoSharedCredentialTarget(db, req)
 }
 
 // assertNoSharedCredentialTarget 以帳號為目標的計劃不得命中共用憑證的成員。
@@ -238,15 +495,15 @@ func (s *ChangeSecretPlanService) assertTargetResolvable(req *ChangeSecretPlanRe
 // 沒有選取的機器。兩條都不可接受，故在儲存時就要求改以憑證為目標。
 //
 // **命中一個就拒絕整筆**：靜默跳過那幾台會讓管理員以為它們也被涵蓋了。
-func (s *ChangeSecretPlanService) assertNoSharedCredentialTarget(req *ChangeSecretPlanRequest) error {
-	if s.db.Migrator() != nil && !s.db.Migrator().HasTable(&model.Credential{}) {
+func (s *ChangeSecretPlanService) assertNoSharedCredentialTarget(db *gorm.DB, req *ChangeSecretPlanRequest) error {
+	if db.Migrator() != nil && !db.Migrator().HasTable(&model.Credential{}) {
 		return nil
 	}
 	scope := model.NormalizeAccountScope(req.Accounts)
 	if len(scope) == 0 {
 		scope = model.AccountScope{model.AccountScopeAll}
 	}
-	q := s.db.Model(&model.AssetAccount{}).
+	q := db.Model(&model.AssetAccount{}).
 		Joins("JOIN credentials ON credentials.id = asset_accounts.credential_id"+
 			" AND credentials.deleted_at IS NULL").
 		Where("asset_accounts.asset_id IN ?", req.AssetIDs).
@@ -268,13 +525,15 @@ func (s *ChangeSecretPlanService) assertNoSharedCredentialTarget(req *ChangeSecr
 }
 
 // Create 建立計劃
-func (s *ChangeSecretPlanService) Create(req *ChangeSecretPlanRequest) (*model.ChangeSecretPlan, error) {
+func (s *ChangeSecretPlanService) Create(ctx context.Context, req *ChangeSecretPlanRequest) (*model.ChangeSecretPlan, error) {
 	fields, err := validatePlan(req)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertTargetResolvable(req); err != nil {
-		return nil, err
+	if s.scope == nil {
+		if err := s.assertTargetResolvable(s.db, req); err != nil {
+			return nil, err
+		}
 	}
 	enabled := true
 	if req.Enabled != nil {
@@ -291,10 +550,27 @@ func (s *ChangeSecretPlanService) Create(req *ChangeSecretPlanRequest) (*model.C
 		"password_exclude_ambiguous": plan.PasswordExcludeAmbiguous,
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		mountBound, err := s.scopePlanTargetsTx(ctx, tx, req)
+		if err != nil {
+			return err
+		}
 		if err := tx.Create(plan).Error; err != nil {
 			return err
 		}
-		return restoreFalseDefaults(tx, &model.ChangeSecretPlan{}, plan.ID, wanted)
+		if err := restoreFalseDefaults(tx, &model.ChangeSecretPlan{}, plan.ID, wanted); err != nil {
+			return err
+		}
+		// 發起者取自伺服器端主體；沒有主體（程式內部呼叫）的計畫沒有脈絡，排程不會替它執行
+		plan.AuthorizationID, plan.Revision = nil, 0
+		if _, err := s.recordPlanAuthorization(ctx, tx, plan, model.JobAuthViaRequest, mountBound); err != nil {
+			return err
+		}
+		if plan.AuthorizationID == nil {
+			plan.Revision = 1
+			return nil
+		}
+		return tx.Model(&model.ChangeSecretPlan{}).Where("id = ?", plan.ID).
+			Updates(map[string]any{"authorization_id": plan.AuthorizationID, "revision": plan.Revision}).Error
 	}); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || dberr.IsUniqueViolation(err) {
 			return nil, ErrPlanNameExists
@@ -324,8 +600,8 @@ func restoreFalseDefaults(tx *gorm.DB, table any, id uint, wanted map[string]boo
 }
 
 // Update 更新計劃
-func (s *ChangeSecretPlanService) Update(id uint, req *ChangeSecretPlanRequest) (*model.ChangeSecretPlan, error) {
-	plan, err := s.Get(id)
+func (s *ChangeSecretPlanService) Update(ctx context.Context, id uint, req *ChangeSecretPlanRequest) (*model.ChangeSecretPlan, error) {
+	plan, err := s.GetFor(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -333,14 +609,44 @@ func (s *ChangeSecretPlanService) Update(id uint, req *ChangeSecretPlanRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertTargetResolvable(req); err != nil {
-		return nil, err
+	if s.scope == nil {
+		if err := s.assertTargetResolvable(s.db, req); err != nil {
+			return nil, err
+		}
 	}
-	applyPlanFields(plan, req, fields)
-	if req.Enabled != nil {
-		plan.Enabled = *req.Enabled
+	if s.preTxHook != nil {
+		s.preTxHook()
 	}
-	if err := s.db.Save(plan).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockTopology(tx); err != nil {
+			return err
+		}
+		// 拓撲鎖之後以交易內視圖重讀最新列並重判可見：鎖前讀到的快照可能已被另一請求改成不可見的目標
+		latest, err := latestPlanTx(tx, id)
+		if err != nil {
+			return err
+		}
+		if err := s.requireVisibleTx(ctx, tx, latest); err != nil {
+			return err
+		}
+		mountBound, err := s.scopePlanTargetsLockedTx(ctx, tx, req)
+		if err != nil {
+			return err
+		}
+		applyPlanFields(latest, req, fields)
+		if req.Enabled != nil {
+			latest.Enabled = *req.Enabled
+		}
+		// 保存新版計畫採修改者為發起者：新增一列脈絡，舊列不被覆寫；修訂由最新列遞增
+		if _, err := s.recordPlanAuthorization(ctx, tx, latest, model.JobAuthViaRequest, mountBound); err != nil {
+			return err
+		}
+		if err := tx.Save(latest).Error; err != nil {
+			return err
+		}
+		plan = latest
+		return nil
+	}); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || dberr.IsUniqueViolation(err) {
 			return nil, ErrPlanNameExists
 		}

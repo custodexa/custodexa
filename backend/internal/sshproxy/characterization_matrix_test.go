@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,7 +69,7 @@ func gateIssueRequest(h *Handler, userID uint, role string, assetID, accountID u
 	var keys map[string]any
 	r.POST("/connect-tokens", func(c *gin.Context) {
 		c.Set("userID", userID)
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		h.HandleCreateConnectToken(c)
 		keys = c.Keys
 	})

@@ -1036,7 +1036,7 @@ func TestLDAPProbeBindErrorNeverReachesLog(t *testing.T) {
 // 故 fail-close 改回 `if s.gate != nil` 即轉紅
 func TestLDAPTestNilGateFailsClosed(t *testing.T) {
 	db := newLDAPDirectoryDB(t)
-	svc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink()) // 刻意不接閘
+	svc := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink()) // 刻意不接閘
 	dialer := newProbeDialer()
 	installLDAPProbeRuntime(t, dialer, ldapProbeLimits{})
 
@@ -1103,7 +1103,7 @@ func TestLDAPTestPasswordClearConflictRejectedBeforeDial(t *testing.T) {
 func TestLDAPTestCorruptCiphertextDoesNotBlockOtherEndpoint(t *testing.T) {
 	db := newLDAPDirectoryDB(t)
 	var decrypts int32
-	svc := NewLDAPDirectoryService(db, ldapCountingCodec{
+	svc := newLDAPDirectoryServiceT(db, ldapCountingCodec{
 		inner:    aesColumnCodec(t, kmTestKey(0x42)),
 		decrypts: &decrypts,
 	}, audit.NewTxSink())

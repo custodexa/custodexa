@@ -12,6 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/proxy"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
@@ -37,23 +38,27 @@ import (
 // （`connect_gates.go` 的 G-M1）而非此處的 if：判定散在 handler 裡就不進等價表，
 // 閘序守衛也看不到它。
 func (h *Handler) HandleCreateMonitorTicket(c *gin.Context) {
-	userID, claimedRole, ok := h.authenticate(c)
+	userID, claimedPrincipal, ok := h.authenticate(c)
 	if !ok {
 		return
 	}
 
-	// 主體：ClaimedRole＝呼叫端自陳的角色（JWT 快照），僅供溯源，
-	// SHALL NOT 作判定依據——閘序用的角色一律是 G-M1 現查後寫進 st.role 的那一份
+	// 主體：ClaimedRole＝請求脈絡主體的舊主角色（認證當下解析），僅供溯源，
+	// SHALL NOT 作判定依據——閘序用的角色一律是 G-M1 現查後寫進 st.principal 的那一份
 	st := &observerIssueState{}
 	var gate gatewayapi.PolicyGate = connectgate.NewSequence(
 		func(s gatewayapi.ConnectSubject) []connectgate.Gate {
 			return h.monitorTicketPreResolveGates(s, st)
 		}, nil)
 	subj := gatewayapi.ConnectSubject{
-		UserID: userID, ClaimedRole: claimedRole, ClientIP: sourceip.Of(c),
+		UserID: userID, ClaimedRole: claimedPrincipal.LegacyRole(), ClientIP: sourceip.Of(c),
 	}
 	if out := gate.AuthorizePreResolve(c.Request.Context(), subj,
 		gatewayapi.StageIssue); out != nil {
+		if isMonitorCapabilityDenial(out) {
+			middleware.WriteCapabilityDenial(c, middleware.ReservedCapabilityDenial(authz.ReservedSuperAdminOrAuditor))
+			return
+		}
 		h.writeOutcome(c, out)
 		return
 	}
@@ -75,6 +80,13 @@ func (h *Handler) HandleCreateMonitorTicket(c *gin.Context) {
 	h.issueObserverTicket(c, proxy.ObserverGrant{
 		UserID: userID, Purpose: proxy.ObserverPurposeMonitor, SessionID: sessionID,
 	})
+}
+
+// isMonitorCapabilityDenial 監看票閘序的拒絕是否為能力拒絕（G-M1 的監看職能不足）。
+// G-M1 另有連線認證錯誤的分支（帳號停用、鎖定等），其碼不是 AUTH_PERMISSION_DENIED，照原樣寫出。
+func isMonitorCapabilityDenial(out *connectgate.Outcome) bool {
+	return out.Gate == "G-M1" && out.Internal == nil &&
+		out.Decision.Code == string(apierror.CodePermissionDenied)
 }
 
 // HandleCreateShareTicket 處理 POST /api/v1/sessions/share/token：

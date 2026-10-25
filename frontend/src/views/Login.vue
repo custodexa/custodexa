@@ -388,6 +388,7 @@ import {
   consumeReloginContext,
 } from '@/utils/reloginContext'
 import { setAccessToken, announceLogin } from '@/utils/session'
+import { resetCapabilities } from '@/composables/useCapabilities'
 
 const MFA_CODE_LENGTH = 6
 
@@ -686,6 +687,8 @@ const completeLogin = (response, next) => {
   // access token 只存頁面記憶體；續期憑證由後端以 httpOnly cookie 下發，
   // 瀏覽器自動收存，script 讀不到也就帶不走。兩者都不落瀏覽器持久儲存
   setAccessToken(response.token)
+  // 換帳號或重新登入：前一個會話的能力一律作廢，由守衛向 /auth/me 重新取得
+  resetCapabilities()
   localStorage.setItem('user', JSON.stringify(response.user))
   // 通知停在登入頁的其他分頁可以自行前進
   announceLogin()

@@ -146,7 +146,7 @@ import { useDbConsoleSocket } from '@/composables/useDbConsoleSocket'
 import { useResultExport } from './use-result-export'
 import { confirmResend, confirmSwitchDatabase } from './confirmations'
 import { isTxUnsettled } from '@/constants/db-console'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import { t } from '@/i18n'
 
 const props = defineProps({
@@ -171,7 +171,7 @@ const emit = defineEmits([
   'unsettled-change',
 ])
 
-const { isPrivileged } = useRoles()
+const canViewSessions = computed(() => can('session:view'))
 
 const socket = useDbConsoleSocket({
   assetId: props.assetId,
@@ -215,9 +215,9 @@ const dialectTxFailedKey = computed(() =>
   socket.dialect.value === 'mssql' ? 'dbConsole.tx.failedMssql' : 'dbConsole.tx.failed'
 )
 
-// 會話詳情只對具稽核權限者開放；其他人以事件識別轉交，不給一個點了會被擋的連結
+// 會話詳情只對具 session:view 者開放；其他人以事件識別轉交，不給一個點了會被擋的連結
 const auditLinkTo = computed(() => {
-  if (!isPrivileged.value || !socket.sessionId.value || !activeUnit.value) return null
+  if (!canViewSessions.value || !socket.sessionId.value || !activeUnit.value) return null
   return {
     name: 'SessionDetail',
     params: { id: String(socket.sessionId.value) },

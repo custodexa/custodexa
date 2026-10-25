@@ -71,7 +71,10 @@ func installClipboardHandlerAuditDB(t *testing.T) *gorm.DB {
 		t.Fatalf("取底層 sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate audit_logs: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate audit_logs: %v", err)
 	}
 	old := database.DB
@@ -380,14 +383,14 @@ func (e *sensitiveError) Error() string { return e.msg }
 
 // TestClipboardRoutesRequireAuditView 無 audit:view 者被真權限中介層擋在 403：
 // List 與單筆內容端點同閘（user 角色無 audit:view；權限矩陣見
-// authz.RoutePermissions）
+// authz 的內建範本）
 func TestClipboardRoutesRequireAuditView(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(7))
 		c.Set("username", "plainuser")
-		c.Set("role", "user")
+		middleware.SetPrincipal(c, legacyPrincipal("user"))
 		c.Next()
 	})
 	h := NewClipboardEventHandler(
@@ -397,7 +400,7 @@ func TestClipboardRoutesRequireAuditView(t *testing.T) {
 			Content: "must-not-reach-user",
 		}})
 	g := r.Group("/api/v1/sessions/:id/clipboard-events")
-	g.Use(middleware.RequirePermission(middleware.PermAuditView))
+	g.Use(middleware.EnforceRegistry())
 	g.GET("", h.List)
 	g.GET("/:eventID/content", h.GetContent)
 

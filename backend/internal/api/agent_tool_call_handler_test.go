@@ -23,7 +23,10 @@ func TestToolCallQueryPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	old := database.DB
@@ -34,6 +37,8 @@ func TestToolCallQueryPending(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// 角色以資料庫為準：帳號 1 為稽核員，帳號 2 無指派（一般使用者）
+	grantLegacyRole(t, db, 1, model.RoleAuditor)
 	for i, decision := range []string{model.ToolCallPending, model.ToolCallAllowed} {
 		if err := db.Exec(`INSERT INTO agent_tool_calls(seq,user_id,agent_token_id,access_request_id,owner_user_id,tool,args_redacted,decision,denial_code,result_status,result_digest,result_excerpt,masked_count,duration_ms,created_at,integrity_hmac,key_version) VALUES(?,9,8,7,1,'run_command','{"asset_id":3}',?,'','','digest','excerpt',0,0,?,'fixture',1)`, i+1, decision, time.Now()).Error; err != nil {
 			t.Fatal(err)

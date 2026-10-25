@@ -21,6 +21,14 @@
       :title="submitError"
       class="authz-scope__alert"
     />
+    <el-alert
+      v-if="narrowOnly"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="$t('authorizations.actionLimit.narrow_only')"
+      class="authz-scope__alert"
+    />
     <p class="authz-scope__target">
       {{ $t('authorizations.accountScopeTarget', { target: targetLabel }) }}
     </p>
@@ -104,6 +112,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   // 授權列（含 id / asset_id / asset_name / asset_group_id / asset_group_name / accounts）
   row: { type: Object, default: null },
+  // 伺服器標示操作者只能縮小帳號範圍（actions.update_accounts.limit === 'narrow_only'）
+  narrowOnly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'saved'])
 

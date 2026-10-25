@@ -28,7 +28,10 @@ type agentAuthFixture struct {
 func newAgentAuthFixture(t *testing.T) *agentAuthFixture {
 	t.Helper()
 	db := installAnonAuditDB(t)
-	if err := db.AutoMigrate(&model.User{}, &model.AgentToken{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.AgentToken{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	f := &agentAuthFixture{db: db, auth: identity.NewAuthService(anonTestJWTSecret, time.Hour), tokens: identity.NewAgentTokenService(db, audit.NewTxSink())}
@@ -171,7 +174,7 @@ func TestPrincipalKindContext(t *testing.T) {
 				id, exists := GetAgentTokenID(c)
 				if kind == model.KindAgent {
 					uid, _ := GetCurrentUserID(c)
-					if !exists || id != f.token.ID || uid != f.agent.ID || c.GetString("role") != model.RoleUser {
+					if !exists || id != f.token.ID || uid != f.agent.ID || PrincipalFrom(c).LegacyRole() != model.RoleUser {
 						t.Error("agent context")
 					}
 				} else if exists {

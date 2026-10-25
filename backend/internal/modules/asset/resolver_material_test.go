@@ -70,7 +70,7 @@ func tracedAssets(t *testing.T) (*AssetService, *materialTrace, uint, uint) {
 	assets, _ := newAccountServices(t)
 	// 寫入路徑會驗證私鑰可解析，故以執行期產生的真鑰建立
 	keyFixture, _ := testKeyPair(t, "resolver-material")
-	row, err := assets.Create(context.Background(), &CreateAssetRequest{Name: "owned", Protocol: model.ProtocolSSH, Host: "127.0.0.1", Port: 22, Username: "ops", Password: "password-fixture", PrivateKey: keyFixture, CreatedBy: 1})
+	row, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{Name: "owned", Protocol: model.ProtocolSSH, Host: "127.0.0.1", Port: 22, Username: "ops", Password: "password-fixture", PrivateKey: keyFixture, CreatedBy: 1})
 	require.NoError(t, err)
 	var account model.AssetAccount
 	require.NoError(t, db.Where("asset_id = ?", row.ID).First(&account).Error)

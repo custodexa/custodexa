@@ -56,6 +56,7 @@ func newLifecycleService(t *testing.T) *AssetService {
 	t.Helper()
 	key := make([]byte, 32)
 	svc, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	svc.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 	return svc
 }
@@ -81,7 +82,7 @@ func TestUpdate_DisableTransitionTerminatesSessions(t *testing.T) {
 	a := mkLifecycleAsset(t, db, "disable-me", true)
 
 	inactive := false
-	_, err := svc.Update(context.Background(), a.ID, &UpdateAssetRequest{Active: &inactive})
+	_, err := svc.Update(WithSystemCaller(context.Background()), a.ID, &UpdateAssetRequest{Active: &inactive})
 	require.NoError(t, err)
 
 	require.Equal(t, []uint{a.ID}, term.calls,
@@ -101,13 +102,13 @@ func TestUpdate_NonTransitionDoesNotTerminate(t *testing.T) {
 	a := mkLifecycleAsset(t, db, "already-off", false)
 
 	desc := "只改描述"
-	_, err := svc.Update(context.Background(), a.ID, &UpdateAssetRequest{Description: &desc})
+	_, err := svc.Update(WithSystemCaller(context.Background()), a.ID, &UpdateAssetRequest{Description: &desc})
 	require.NoError(t, err)
 	require.Empty(t, term.calls, "對已停用資產的一般編輯不得觸發收線")
 
 	// 反向躍遷（false→true）同樣不收線
 	active := true
-	_, err = svc.Update(context.Background(), a.ID, &UpdateAssetRequest{Active: &active})
+	_, err = svc.Update(WithSystemCaller(context.Background()), a.ID, &UpdateAssetRequest{Active: &active})
 	require.NoError(t, err)
 	require.Empty(t, term.calls, "啟用資產不得觸發收線")
 }
@@ -121,7 +122,7 @@ func TestUpdate_TerminateFailureDoesNotBlockDisable(t *testing.T) {
 	a := mkLifecycleAsset(t, db, "fail-close", true)
 
 	inactive := false
-	got, err := svc.Update(context.Background(), a.ID, &UpdateAssetRequest{Active: &inactive})
+	got, err := svc.Update(WithSystemCaller(context.Background()), a.ID, &UpdateAssetRequest{Active: &inactive})
 	require.NoError(t, err, "收線失敗不得使停用本身失敗")
 	require.False(t, got.Active)
 
@@ -137,7 +138,7 @@ func TestUpdate_NilTerminatorIsSafe(t *testing.T) {
 
 	a := mkLifecycleAsset(t, db, "no-terminator", true)
 	inactive := false
-	_, err := svc.Update(context.Background(), a.ID, &UpdateAssetRequest{Active: &inactive})
+	_, err := svc.Update(WithSystemCaller(context.Background()), a.ID, &UpdateAssetRequest{Active: &inactive})
 	require.NoError(t, err)
 }
 
@@ -168,7 +169,7 @@ func TestDelete_FailsClosedWithoutAuthzRevoker(t *testing.T) {
 	svc := newLifecycleService(t)
 
 	a := mkLifecycleAsset(t, db, "no-revoker", true)
-	err := svc.Delete(a.ID)
+	err := svc.Delete(WithSystemCaller(context.Background()), a.ID)
 	require.Error(t, err, "未注入 authz 級聯撤銷面時，刪除不得成功")
 
 	var count int64

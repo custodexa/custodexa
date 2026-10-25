@@ -27,6 +27,13 @@ type StateTableReport struct {
 // ReconcileTables always returns an entry for every registered projection,
 // including unknown entries. One broken source cannot suppress other results.
 func (r *RoleStateReconciler) ReconcileTables(ctx context.Context) []StateTableReport {
+	reports, _ := r.reconcileAll(ctx)
+	return reports
+}
+
+// reconcileAll 同 ReconcileTables，另回傳權限附證維度的結果（未注入來源時為 nil）。
+// 權限維度不併入清單：清單的讀者（封章合取、簽發前檢查、既有三列）語意不變。
+func (r *RoleStateReconciler) reconcileAll(ctx context.Context) ([]StateTableReport, *PermissionReport) {
 	reports := make([]StateTableReport, 0, len(StateTableRegistry()))
 	for _, table := range StateTableRegistry() {
 		report, err := r.computeTable(ctx, table)
@@ -42,7 +49,12 @@ func (r *RoleStateReconciler) ReconcileTables(ctx context.Context) []StateTableR
 		}
 		reports = append(reports, report)
 	}
-	return reports
+	// 權限附證維度：沿既有失效事件通道回報，但不併入回傳清單（既有三列呈現與基礎對帳合取不變）
+	if PermissionSourcesWired() {
+		rep := r.ReconcilePermission(ctx)
+		return reports, &rep
+	}
+	return reports, nil
 }
 func roleReport(report StateTableReport) *RoleStateReport {
 	out := &RoleStateReport{Covered: report.Covered, State: report.State, SinceSeq: report.SinceSeq, ExpectedHash: report.ExpectedHash, ActualHash: report.ActualHash}
@@ -126,25 +138,19 @@ type StateFailureSink interface {
 }
 
 func (r *RoleStateReconciler) SetStateFailureSink(sink StateFailureSink) { r.stateFailure = sink }
+// settleTable 每次對帳都經持久通道開單或結案：去重以資料庫中同識別且未結案的列為準
+// （ReportStateMismatch／ResolveStateMismatch 對同識別為 no-op），不以行程記憶代替，
+// 因此告警列被刪除或被填上結案時間，下一次對帳就重建並重新通知。
 func (r *RoleStateReconciler) settleTable(report StateTableReport) {
 	if r.stateFailure == nil || !report.Covered || report.State == StateTableUnknown {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.lastKeys == nil {
-		r.lastKeys = map[string]string{}
-	}
 	if report.State == RoleStateMatch {
 		if err := r.stateFailure.ResolveStateMismatch(report.Table); err != nil {
 			log.Printf("[PrincipalState] resolve failed: %v", err)
-			return
 		}
-		delete(r.lastKeys, report.Table)
-		return
-	}
-	key := strconv.FormatUint(uint64(report.SinceSeq), 10) + ":" + report.ActualHash
-	if r.lastKeys[report.Table] == key {
 		return
 	}
 	ids := func(rows []string) string {
@@ -156,9 +162,7 @@ func (r *RoleStateReconciler) settleTable(report StateTableReport) {
 	}
 	if err := r.stateFailure.ReportStateMismatch(report.Table, map[string]string{"table": report.Table, "since_seq": strconv.FormatUint(uint64(report.SinceSeq), 10), "actual_hash": report.ActualHash, "missing": ids(report.Missing), "extra": ids(report.Extra)}); err != nil {
 		log.Printf("[PrincipalState] report failed: %v", err)
-		return
 	}
-	r.lastKeys[report.Table] = key
 }
 
 // Select the same three-stage baseline independently for each registered item.
@@ -168,7 +172,7 @@ func (r *RoleStateReconciler) baselineForTable(ctx context.Context, name string)
 		return r.baselineCheckpoint(ctx)
 	}
 	var candidates []model.AuditCheckpoint
-	if err := r.db.WithContext(ctx).Where("agg_scheme = ? AND role_state_snapshot IS NOT NULL", model.LatestCheckpointScheme).Order("seq DESC").Find(&candidates).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL", []string{model.AggSchemeV3, model.AggSchemeV4}).Order("seq DESC").Find(&candidates).Error; err != nil {
 		return nil, err
 	}
 	var tainted uint

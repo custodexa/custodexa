@@ -30,10 +30,10 @@ import (
 
 // graphicsRedeemState 圖形兌換側閘序的共享中間狀態
 type graphicsRedeemState struct {
-	grant       ConnectGrant
-	currentRole string
-	authzCtx    context.Context
-	creds       *asset.AssetCredentials
+	grant     ConnectGrant
+	principal *authz.Principal
+	authzCtx  context.Context
+	creds     *asset.AssetCredentials
 	// allowedCIDRs 兌換當下現讀的允許來源網段（G-G4 的同一次載入帶出，見 G-G13）
 	allowedCIDRs string
 	// sourceDenyCause 來源閘拒絕時的成因類別（政策不可讀才有值）：只進審計
@@ -81,12 +81,12 @@ func (h *ConnectionHandler) redeemPreResolveGates(
 		{Name: "G-G4", Eval: func() *connectgate.Outcome {
 			// AUTH-1＋角色現況：connect_token 消費時重載
 			// 用戶狀態並取 DB 現查有效角色（停用/鎖定/降權前簽發者於殘窗內須擋）
-			currentRole, allowedCIDRs, connErr := h.AuthService.CurrentConnectRoleAndSourcePolicy(s.UserID)
+			principal, allowedCIDRs, connErr := h.AuthService.CurrentConnectPrincipalAndSourcePolicy(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthCode(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
-			st.currentRole = currentRole
+			st.principal = principal
 			st.allowedCIDRs = allowedCIDRs
 			return nil
 		}},
@@ -150,7 +150,7 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			if h.AccessPolicy == nil {
 				return nil
 			}
-			decision, derr := h.AccessPolicy.CheckConnect(s.UserID, st.currentRole, st.creds.Asset)
+			decision, derr := h.AccessPolicy.CheckConnect(s.UserID, st.principal.IsSuperAdmin(), st.creds.Asset)
 			if derr != nil {
 				log.Printf("[Handler] 兌換點政策閘判定失敗: userID=%d assetID=%d err=%v",
 					s.UserID, o.AssetID, derr)

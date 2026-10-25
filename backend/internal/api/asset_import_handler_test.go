@@ -2,8 +2,10 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
@@ -35,6 +38,11 @@ type importTestEnv struct {
 func setupImportEnv(t *testing.T) *importTestEnv {
 	t.Helper()
 	f := setupCredentialAPIEnv(t)
+	// 與正式組裝同形：掛既有憑證的列走憑證管理關卡（未注入即 fail closed）。
+	// 本檔不驗該關卡的判定（見 cmd/server 的建立路徑憑證能力測試），故全放行
+	f.assetSvc.WithManagementAuthorizer(allowAllCredentialManagement{})
+	// 寫入範圍判定未注入時匯入 fail closed（與單筆建立同一口徑）；本檔不驗範圍，注入全放行替身
+	f.assetSvc.SetAssetWriteScopePort(allowAllImportWriteScope{})
 	gin.SetMode(gin.TestMode)
 	h := NewAssetHandler(f.assetSvc, authz.NewAssetAuthorizationService(f.db), nil)
 	env := &importTestEnv{f: f}
@@ -44,22 +52,50 @@ func setupImportEnv(t *testing.T) *importTestEnv {
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(1))
 		c.Set("username", "admin")
-		c.Set("role", c.GetHeader("X-Test-Role"))
+		middleware.SetPrincipal(c, legacyPrincipal(c.GetHeader("X-Test-Role")))
 		c.Next()
 		env.details = nil
 		if v, ok := c.Get("audit_details"); ok {
 			env.details, _ = v.(map[string]string)
 		}
 	})
-	r.POST("/assets/import/preview", h.PreviewImport)
-	r.POST("/assets/import", h.Import)
+	// 以正式的完整路由樣板註冊：欄位級能力的判定依 (method, c.FullPath()) 查路由登錄
+	r.POST("/api/v1/assets/import/preview", h.PreviewImport)
+	r.POST("/api/v1/assets/import", h.Import)
 	r.GET("/assets", h.List)
 	env.router = r
 	return env
 }
 
+// allowAllImportWriteScope 寫入範圍判定替身：全放行，節點合併照現行整組取代。
+type allowAllImportWriteScope struct{}
+
+func (allowAllImportWriteScope) AuthorizeAssetCreate(context.Context, *gorm.DB, []uint) error {
+	return nil
+}
+
+func (allowAllImportWriteScope) AuthorizeAssetWrite(context.Context, *gorm.DB, asset.AssetWriteOp, uint, []uint) error {
+	return nil
+}
+
+func (allowAllImportWriteScope) MergeAssetNodes(_ context.Context, _ *gorm.DB, _ uint, _, requested []uint) ([]uint, error) {
+	return requested, nil
+}
+
+// AccessPolicyCoversNodes 全放行替身：每組目的節點皆在存取政策範圍內。
+func (allowAllImportWriteScope) AccessPolicyCoversNodes(_ context.Context, _ *gorm.DB, nodeSets [][]uint) ([]bool, error) {
+	out := make([]bool, len(nodeSets))
+	for i := range out {
+		out[i] = true
+	}
+	return out, nil
+}
+
 func (e *importTestEnv) do(t *testing.T, method, path, contentType string, body []byte, role string) (int, map[string]any) {
 	t.Helper()
+	if strings.HasPrefix(path, "/assets/import") {
+		path = "/api/v1" + path
+	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
@@ -381,6 +417,48 @@ func TestImportCommitIsAllOrNothing(t *testing.T) {
 		assert.Equal(t, "admin", a.Username)
 	}
 	assert.Equal(t, map[string]string{"import_source": "csv", "import_count": "4"}, env.details)
+
+	t.Run("capability_revoked_mid_request", testImportCommitCapabilityRevokedMidRequest)
+}
+
+// revocableImportWriteScope 寫入範圍判定替身：revoked 之前全放行，之後回資產建立能力拒絕（交易內重解時已撤回）。
+type revocableImportWriteScope struct {
+	allowAllImportWriteScope
+	revoked *bool
+}
+
+func (s revocableImportWriteScope) AuthorizeAssetCreate(context.Context, *gorm.DB, []uint) error {
+	if *s.revoked {
+		return &authz.AssetWriteCapabilityError{Perm: authz.PermAssetCreate}
+	}
+	return nil
+}
+
+func (s revocableImportWriteScope) AuthorizeAssetWrite(context.Context, *gorm.DB, asset.AssetWriteOp, uint, []uint) error {
+	return nil
+}
+
+// 請求進入後資產建立能力全數撤回：提交交易內重解判為能力拒絕，回 403 而非內部錯誤，零寫入。
+func testImportCommitCapabilityRevokedMidRequest(t *testing.T) {
+	env := setupImportEnv(t)
+	db := env.f.db
+	node := model.AssetGroup{Name: "撤權節點"}
+	require.NoError(t, db.Create(&node).Error)
+	revoked := false
+	env.f.assetSvc.SetAssetWriteScopePort(revocableImportWriteScope{revoked: &revoked})
+	env.f.assetSvc.SetImportPreTxHookForTest(func() { revoked = true })
+	defer env.f.assetSvc.SetImportPreTxHookForTest(nil)
+
+	var before, after int64
+	require.NoError(t, db.Model(&model.Asset{}).Count(&before).Error)
+	body, _ := json.Marshal(map[string]any{"source": "form", "rows": []map[string]any{
+		{"name": "revoked-1", "protocol": "ssh", "host": "10.1.9.1", "node_ids": []uint{node.ID}},
+	}})
+	code, resp := env.do(t, http.MethodPost, "/assets/import", "application/json", body, "")
+	require.Equal(t, http.StatusForbidden, code, "%v", resp)
+	assert.Equal(t, "AUTH_PERMISSION_DENIED", resp["code"])
+	require.NoError(t, db.Model(&model.Asset{}).Count(&after).Error)
+	assert.Equal(t, before, after, "零寫入")
 }
 
 // TestAssetListCredentialPendingFlag 擋「待配憑證資產在列表上看起來可連」
@@ -388,14 +466,14 @@ func TestAssetListCredentialPendingFlag(t *testing.T) {
 	env := setupImportEnv(t)
 	db, svc := env.f.db, env.f.assetSvc
 
-	pending, err := svc.Create(credAdminCtx(), &asset.CreateAssetRequest{
+	pending, err := svc.Create(asset.WithSystemCaller(credAdminCtx()), &asset.CreateAssetRequest{
 		Name: "zero-mount", Protocol: model.ProtocolSSH, Host: "10.2.0.1", Port: 22, CreatedBy: 1})
 	require.NoError(t, err)
-	mounted, err := svc.Create(credAdminCtx(), &asset.CreateAssetRequest{
+	mounted, err := svc.Create(asset.WithSystemCaller(credAdminCtx()), &asset.CreateAssetRequest{
 		Name: "mounted", Protocol: model.ProtocolSSH, Host: "10.2.0.2", Port: 22,
 		Username: "ops", Password: "pw", CreatedBy: 1})
 	require.NoError(t, err)
-	emptied, err := svc.Create(credAdminCtx(), &asset.CreateAssetRequest{
+	emptied, err := svc.Create(asset.WithSystemCaller(credAdminCtx()), &asset.CreateAssetRequest{
 		Name: "emptied", Protocol: model.ProtocolSSH, Host: "10.2.0.3", Port: 22,
 		Username: "ops", Password: "pw", CreatedBy: 1})
 	require.NoError(t, err)

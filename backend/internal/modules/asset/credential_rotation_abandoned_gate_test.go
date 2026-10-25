@@ -74,8 +74,10 @@ func TestAbandonedRotationDoesNotCaptureLaterCandidate(t *testing.T) {
 		Password:   "plan-new-pass",
 	})
 	require.NoError(t, err)
+	// 轉正要求候選有主機身分綁定：經正式回呼補上
+	cand = bindCandidateViaCallback(t, f.db, f.retry.hostKeys, cand.ID, defaultRecorderHostKey())
 
-	assert.True(t, f.retry.RetryOne(cand), "放棄後的計劃候選必須能轉正")
+	assert.True(t, f.retry.RetryOneAs(userCtx(1, "operator"), cand), "放棄後的計劃候選必須能轉正")
 	var left int64
 	require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).
 		Where("account_id = ?", accountID).Count(&left).Error)

@@ -502,6 +502,9 @@ func mergeGroupIntoSharedCredential(tx *gorm.DB, g credentialGroup, seq int) err
 		return fmt.Errorf("讀取群組 %s 的來源憑證失敗: %w", g.Value, err)
 	}
 	name := fmt.Sprintf("%s%d", sharedCredentialAutoNamePrefix, seq)
+	// 本轉換在解封後才執行，晚於歸屬遷移的回填；新建的共用憑證直接帶全域歸屬，
+	// 與回填規則（共用 → global）同義，否則會留下沒有歸屬的列。
+	owner := model.CredentialOwnerGlobal
 	shared := model.Credential{
 		Name:           &name,
 		Scope:          model.CredentialScopeShared,
@@ -509,6 +512,7 @@ func mergeGroupIntoSharedCredential(tx *gorm.DB, g credentialGroup, seq int) err
 		SecretType:     base.SecretType,
 		AuthMethod:     base.AuthMethod,
 		ProtocolFamily: base.ProtocolFamily,
+		OwnerKind:      &owner,
 	}
 	if err := tx.Create(&shared).Error; err != nil {
 		return fmt.Errorf("建立群組 %s 的共用憑證失敗: %w", g.Value, err)

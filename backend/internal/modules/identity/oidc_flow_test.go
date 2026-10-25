@@ -28,6 +28,7 @@ func setupOIDCEnv(t *testing.T) (*OIDCLoginService, *OIDCProviderService, *gorm.
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
@@ -35,14 +36,14 @@ func setupOIDCEnv(t *testing.T) (*OIDCLoginService, *OIDCProviderService, *gorm.
 	sqlDB.SetMaxOpenConns(1)
 
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{},
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{},
 		// 群組映射兩表：登入路徑在 provider 未設群組宣告名時會對規則表做一次
 		// 索引計數（缺表即 fail-close），命中時另寫映射事實列
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
 		&model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
-		&model.UserGroupMappingRuleSupport{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserGroup{}, &model.UserGroupMember{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -82,7 +83,7 @@ func setupOIDCEnv(t *testing.T) (*OIDCLoginService, *OIDCProviderService, *gorm.
 
 	auth := NewAuthService("test-secret", 15*time.Minute)
 	auth.SetSecurityPolicies(policy.NewSecurityPolicyService(db))
-	providers := NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com")
 	// discovery 於本檔不參與（測試直接呼叫流程狀態與憑證層，不經 IdP 往返）
 	login := NewOIDCLoginService(db, providers, NewOIDCDiscoveryService(testEgress()), auth, nil)
 	login.audit = newRecordingAudit()

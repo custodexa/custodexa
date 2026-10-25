@@ -151,7 +151,7 @@ const (
 	// transferTimeoutFloor Put／Fetch 的 deadline 下限（守衛防調得更緊，見
 	// TestTransferTimeoutFloorNotLowered）
 	transferTimeoutFloor = 2 * time.Minute
-	// transferRateBytesPerSec deadline 推導的保守傳輸速率基準（1 MiB/s，design §9）
+	// transferRateBytesPerSec deadline 推導的保守傳輸速率基準（1 MiB/s）
 	transferRateBytesPerSec = 1 << 20
 )
 

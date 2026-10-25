@@ -110,7 +110,28 @@ const broadcastSignal = (type) => {
 export function clearSession(options = {}) {
   accessToken = ''
   clearSessionHint()
+  notifySessionEnded()
   if (options.broadcast) broadcastSignal(SIGNAL_LOGOUT)
+}
+
+// 會話結束的訂閱：持有「依會話而定」的記憶體狀態者（目前使用者能力）在這裡清空，
+// 並使仍在途的請求回應作廢。本模組不 import 它們，避免模組環。
+const sessionEndedListeners = new Set()
+
+/** 訂閱會話結束（登出、續期終敗、他分頁登出訊號）；回傳取消訂閱函式。 */
+export function onSessionEnded(listener) {
+  sessionEndedListeners.add(listener)
+  return () => sessionEndedListeners.delete(listener)
+}
+
+const notifySessionEnded = () => {
+  sessionEndedListeners.forEach((listener) => {
+    try {
+      listener()
+    } catch (error) {
+      console.error('會話結束訂閱處理失敗:', error)
+    }
+  })
 }
 
 /** 使用者於本分頁完成登入後通知其他分頁（停在登入頁的那些可以自行前進）。 */
@@ -376,4 +397,5 @@ export function resetSessionForTests() {
   accessToken = ''
   refreshInFlight = null
   restoreInFlight = null
+  notifySessionEnded()
 }

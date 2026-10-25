@@ -10,6 +10,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
@@ -58,6 +59,9 @@ const (
 	RoleMappingSkipGroupsUnknown = "role_mapping_groups_unknown"
 	UserGroupMappingEventApplied = "user_group_mapping_applied"
 	MappingSkipSourceDisabled    = "group_mapping_source_disabled"
+	// MembershipRevalidationExpired 本次觀測未知（或有規則未設定群組屬性名），
+	// 且該通道最近一次已知觀測已超過重新驗證時限（或從未有過）：該通道的映射支持已收回
+	MembershipRevalidationExpired = "membership_revalidation_expired"
 )
 
 // GroupObservation 一次登入對某條途徑的群組觀測。
@@ -74,6 +78,11 @@ type GroupObservation struct {
 	// HasActiveRules 本來源是否有啟用中的映射規則。
 	// 只在 State 為 unconfigured 時被讀——用來分辨完全短路與留痕跳過
 	HasActiveRules bool
+	// RevalidationHours 映射重新驗證時限（小時，政策 mapping_revalidation_hours 的現值）。
+	// 呼叫端必須在開交易之前讀好傳入（單連線資料庫在交易內讀政策會互相等待）。
+	// nil 表示不套用時限（僅政策服務未注入的單元建構路徑）；0 表示不設限，未知觀測照舊保留；
+	// 正數且未知觀測超過該時限（或從未有已知觀測）即收回該通道的映射支持。
+	RevalidationHours *int
 }
 
 // Channel 本次觀測所屬的通道值。
@@ -85,6 +94,8 @@ func (o GroupObservation) Channel() string {
 type RoleMappingOutcome struct {
 	// Skipped 非空時本次未重算，值為跳過的機器碼
 	Skipped string
+	// Expired 本次因未知觀測超過重新驗證時限而收回了該通道的映射支持
+	Expired bool
 	// Added／Removed 有效角色集這次多了／少了哪些角色（角色名，已排序）
 	Added   []string
 	Removed []string
@@ -155,11 +166,19 @@ func RecomputeMappedRoles(db *gorm.DB, auditSink port.TxSink, user *model.User,
 		if !active {
 			return RoleMappingOutcome{}, nil
 		}
-		return skipRoleMapping(db, auditSink, user, obs, RoleMappingSkipSourceAttrUnset)
+		return unobservedMapping(db, auditSink, user, obs, RoleMappingSkipSourceAttrUnset)
 	case GroupObservationUnknown:
-		return skipRoleMapping(db, auditSink, user, obs, RoleMappingSkipGroupsUnknown)
+		return unobservedMapping(db, auditSink, user, obs, RoleMappingSkipGroupsUnknown)
 	}
+	return recomputeUnderLocks(db, user, obs, func(locked *gorm.DB) (RoleMappingOutcome, error) {
+		return applyRoleMappingLocked(locked, auditSink, user, obs)
+	})
+}
 
+// recomputeUnderLocks 依序取來源鎖與使用者級憑證鎖，在鎖內執行 body；
+// 權限變更的開始與結清包住 body。來源已停用時不執行 body，回報跳過。
+func recomputeUnderLocks(db *gorm.DB, user *model.User, obs GroupObservation,
+	body func(locked *gorm.DB) (RoleMappingOutcome, error)) (RoleMappingOutcome, error) {
 	outcome := RoleMappingOutcome{}
 	apply := func(tx *gorm.DB) error {
 		// The source lock must precede the user lock. Re-read enabled state while
@@ -211,8 +230,18 @@ func RecomputeMappedRoles(db *gorm.DB, auditSink port.TxSink, user *model.User,
 		}
 		var lerr error
 		return withUserCredentialLockTx(tx, user.ID, func(locked *gorm.DB) error {
-			outcome, lerr = applyRoleMappingLocked(locked, auditSink, user, obs)
-			return lerr
+			if err := authz.BeginPermissionChange(locked); err != nil {
+				return err
+			}
+			if h := loadLockOrderHook(); h != nil {
+				h("recompute_after_user_lock", locked, user.ID)
+			}
+			outcome, lerr = body(locked)
+			if lerr != nil {
+				return lerr
+			}
+			// 依據列同步可能只改變成員來源（manual→both）而不推進版本；補記進事件鏈
+			return authz.SettlePermissionChange(locked)
 		})
 	}
 	var err error
@@ -278,7 +307,7 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 	for _, id := range matchedRoleIDs {
 		names = append(names, matchedNames[id])
 	}
-	if err := GuardAgentRoles(user, names); err != nil {
+	if err := GuardAgentRoles(tx, user, names); err != nil {
 		return RoleMappingOutcome{}, err
 	}
 
@@ -384,6 +413,12 @@ func storeGroupObservationSnapshot(tx *gorm.DB, userID uint, obs GroupObservatio
 		"group_snapshot_at":      time.Now(),
 	}).Error; err != nil {
 		return fmt.Errorf("寫入群組觀測快照失敗: %w", err)
+	}
+	// 逐通道的最近已知觀測時間：未知觀測不更新（見 unobserved 判定），已知才推進
+	if err := tx.Exec(`INSERT INTO user_channel_observations (user_id, channel, last_known_at) VALUES (?,?,?)
+ ON CONFLICT (user_id, channel) DO UPDATE SET last_known_at = excluded.last_known_at`,
+		userID, obs.Channel(), time.Now()).Error; err != nil {
+		return fmt.Errorf("寫入通道觀測時間失敗: %w", err)
 	}
 	return nil
 }

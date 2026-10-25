@@ -30,6 +30,8 @@ const (
 	PolicyMFARequired            = "mfa_required"
 	PolicyWebIdleMinutes         = "web_idle_minutes"
 	PolicyWebMaxSessionHours     = "web_max_session_hours"
+	// PolicyMappingRevalidationHours 外部群組映射的有界重新驗證時限（小時；0=不設限）
+	PolicyMappingRevalidationHours = "mapping_revalidation_hours"
 	// PolicyRefreshCookieSecure refresh cookie 是否標記 Secure
 	//（決策 8）：值即該 cookie 的 `Secure` 屬性本身，
 	// 故用「屬性語句」型命名而非 `_enabled` 尾綴（那是功能開關的慣例）。
@@ -96,8 +98,8 @@ const (
 	// 單位與 env `RETENTION_MAX_PER_RUN` 1:1（筆），SeedFromEnv 直接搬值不換算。
 	// **調小才危險**：設成 1 使清理永遠追不上新增量，保留政策實質失效而畫面上
 	// 仍顯示每日在跑，故本鍵設 Min（見 policyDefs 的下界理由）
-	PolicyRetentionMaxPerRun  = "retention_max_per_run"
-	PolicyDailyReviewEnabled  = "daily_review_enabled"
+	PolicyRetentionMaxPerRun = "retention_max_per_run"
+	PolicyDailyReviewEnabled = "daily_review_enabled"
 	// 每日簽核的業務時區（IANA 名稱）：決定切日、準時期限與逾期提醒的送出時間
 	PolicyDailyReviewTimezone = "daily_review_timezone"
 	PolicyFailureAlertEnabled = "failure_alert_enabled"
@@ -242,7 +244,13 @@ var (
 	ErrPolicyUnknownKey = errors.New("未定義的安全政策項")
 	// ErrPolicyInvalidValue 政策值不合法（型別或範圍）
 	ErrPolicyInvalidValue = errors.New("安全政策值不合法")
+	// ErrPolicyChangeAuditMissing 政策變更的交易內審計未提供（強制審計不得靜默略過）
+	ErrPolicyChangeAuditMissing = errors.New("安全政策變更的審計寫入未提供")
 )
+
+// PolicyChangeAuditor 在政策寫入的同一交易內，為一項實際變更（舊≠新）寫入審計。
+// 回非 nil error 時整批政策寫入回滾：政策值、變更歷史與放寬告警都不成立。
+type PolicyChangeAuditor func(tx *gorm.DB, change PolicyChange) error
 
 // PolicyUnknownKeyError 未定義的政策鍵，附鍵名。
 //
@@ -422,6 +430,16 @@ var policyDefs = []PolicyDef{
 		Label: "Web 工作階段最長時數", Unit: "小時",
 	},
 	{
+		// 外部群組映射的有界重新驗證時限：持有映射支持的帳號，其會話絕對壽命不超過此時數，
+		// 且某通道的群組資料已知最近一次觀測超過此時數仍讀不到時，收回該通道的映射權限。
+		// 0=不設限（回到只依 web_max_session_hours，離職者的映射權限保留到下次登入）。
+		// 危險方向朝大（調長或設 0 即放寬）：由上界與「放寬即告警」承擔，不設下界——
+		// 1 小時只是讓使用者頻繁重新登入，不是機制停擺
+		Key: PolicyMappingRevalidationHours, Type: PolicyTypeInt, Default: "12",
+		ZeroDisables: true, Max: 168, // 上界 7 天
+		Label: "外部群組映射重新驗證時限", Unit: "小時",
+	},
+	{
 		// refresh cookie 的 Secure 屬性（決策 8）：
 		// 開啟時瀏覽器僅在 https 連線下保存與回送該 cookie，純 HTTP 下直接丟棄
 		//（使用者每個 access token 壽命就得重新登入）。
@@ -460,29 +478,32 @@ var policyDefs = []PolicyDef{
 		Label: "閒置帳號自動停用天數", Unit: "天",
 	},
 	{
+		// 四個資料保留鍵（操作日誌、指令流、告警記錄、錄影）的合法值域為 {0} ∪ [7, 3650]：
+		// 下界 7 天擋「調到極短＝隔天就清掉自己的操作紀錄」，0＝永久保留不受下界影響。
+		//
 		// 保留天數：min 型 = 保留須 >= 365 才符 10.5.1；
 		// 0=永久保留（不清除）視為「未定義保留政策」判不符建議（引導設明確政策），
 		// 可放寬不擋。出廠 0 = 日常模式不刪任何審計資料
 		Key: PolicyRetentionAuditLogDays, Type: PolicyTypeInt, Default: "0",
-		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Direction: DirectionMin, ZeroDisables: true, Min: RetentionFloorDays, Max: 3650,
 		Label: "操作日誌保留天數", Unit: "天",
 		// 電支 §19-4／§24-1：至少保留 2 年（嚴於 PCI 的 1 年）
 	},
 	{
 		Key: PolicyRetentionSessionCommandDays, Type: PolicyTypeInt, Default: "0",
-		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Direction: DirectionMin, ZeroDisables: true, Min: RetentionFloorDays, Max: 3650,
 		Label: "指令流保留天數", Unit: "天",
 	},
 	{
 		Key: PolicyRetentionAlertDays, Type: PolicyTypeInt, Default: "0",
-		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Direction: DirectionMin, ZeroDisables: true, Min: RetentionFloorDays, Max: 3650,
 		Label: "告警記錄保留天數", Unit: "天",
 	},
 	{
 		// 錄影保留：出廠 90 = 沿既有 recording cleanup 預設；
 		// 初始值由 RECORDING_RETENTION_DAYS 播種（main.go SeedFromEnv），升級行為不變
 		Key: PolicyRetentionRecordingDays, Type: PolicyTypeInt, Default: "90",
-		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Direction: DirectionMin, ZeroDisables: true, Min: RetentionFloorDays, Max: 3650,
 		Label: "連線錄影保留天數", Unit: "天",
 	},
 	{
@@ -903,6 +924,11 @@ type SecurityPolicyService struct {
 	// generation 每次 Update 遞增：Get 於 DB 讀取前後比對，期間有 Update
 	// 就放棄寫快取，防「Get 讀到舊值後把它釘回快取整個 TTL」的 lost-update 競態
 	generation atomic.Uint64
+	// alerts 放寬類政策變更的系統告警落地面（見 mapping_revalidation_alert.go）；
+	// 缺注入時放寬寫入失敗，組裝根啟動自檢拒絕缺注入
+	alerts HighRiskAlertRaiser
+	// readObserver 讀值觀測（只有組裝測試設定）
+	readObserver func(key, value string)
 }
 
 // NewSecurityPolicyService 建立安全政策服務。
@@ -1011,6 +1037,18 @@ func findDef(key string) *PolicyDef {
 
 // Get 取政策現值（快取 → DB → 出廠預設）。未定義的鍵回空字串
 func (s *SecurityPolicyService) Get(key string) string {
+	v := s.get(key)
+	if obs := s.readObserver; obs != nil {
+		obs(key, v)
+	}
+	return v
+}
+
+// SetReadObserver 觀測每一次 Get 讀到的值（啟動順序的組裝測試用；生產不設）。
+// 須在任何讀者建立之前設定，之後不得再改。
+func (s *SecurityPolicyService) SetReadObserver(fn func(key, value string)) { s.readObserver = fn }
+
+func (s *SecurityPolicyService) get(key string) string {
 	def := findDef(key)
 	if def == nil {
 		return ""
@@ -1064,6 +1102,19 @@ func (s *SecurityPolicyService) Get(key string) string {
 	return value
 }
 
+// effectiveStoredValue 存量原始值依讀取路徑規則的有效值：合法即正規化後的原值，
+// 不合法時為最後已知合法值，無則出廠預設。
+func (s *SecurityPolicyService) effectiveStoredValue(key, raw string) string {
+	def := findDef(key)
+	if def == nil {
+		return raw
+	}
+	if normalized, err := normalizePolicyValue(def, raw); err == nil {
+		return normalized
+	}
+	return s.lastGoodOrDefault(key, def)
+}
+
 // lastGoodOrDefault 取最後已知良好值，無則出廠預設（呼叫端自行加鎖或處於單一讀路徑）
 func (s *SecurityPolicyService) lastGoodOrDefault(key string, def *PolicyDef) string {
 	s.mu.RLock()
@@ -1099,6 +1150,12 @@ type PolicyChange struct {
 	Key      string
 	OldValue string
 	NewValue string
+	// CorrelationID 本鍵的變更觸發高危設定告警時才有值：審計 details 的 correlation_id
+	// 與告警共用這個值，供從告警回查操作日誌
+	CorrelationID string
+	// EffectiveOldValue 原始存量值不合法（人工改庫、還原殘留）時，讀取路徑實際生效的舊值
+	// （最後已知合法值或出廠預設）；與 OldValue 相同時為空。高危分類以它為準
+	EffectiveOldValue string
 }
 
 // SeedFromEnv 以環境變數初始化政策列：部署可用 env 決定初值。
@@ -1201,12 +1258,36 @@ func (s *SecurityPolicyService) UpdateBatch(updates map[string]string, updatedBy
 	return s.updateBatch(updates, updatedBy, true)
 }
 
-// updateBatch 批次更新；crossKey 控制是否套用跨鍵約束驗證。
+// UpdateBatchAudited 同 UpdateBatch，另在同一交易內對每項實際變更呼叫 auditor 寫入審計。
+// 審計寫不進去即整批回滾，政策值維持原狀（管理介面的寫入入口走這一支）。
+// auditor 為 nil 時拒絕寫入，不退化成無審計的 UpdateBatch。
+// actor 為操作者（ID、名稱、來源位址）：高危設定告警以它記操作者（系統告警拒收零值操作者）。
+func (s *SecurityPolicyService) UpdateBatchAudited(updates map[string]string, actor PolicyActor, auditor PolicyChangeAuditor) ([]PolicyChange, error) {
+	if auditor == nil {
+		return nil, ErrPolicyChangeAuditMissing
+	}
+	return s.updateBatchWith(updates, actor, true, true, auditor)
+}
+
+// updateBatch 批次更新；crossKey 控制是否套用跨鍵約束驗證。不寫變更審計
+// （審計由 updateBatchWith 的 auditor 在交易內寫）。
 //
 // **唯一 crossKey=false 的入口是 SeedFromEnv**（見該函式的說明）：它是升級相容
 // 路徑，保住既有部署的行為優先於新約束；由此產生的違規狀態不會造成證據損失，
 // retention 執行期偵測到違規即保守跳過鏈修剪
+//
+// 本入口不帶操作者使用者 ID：高危設定告警的落地面拒收零值操作者，所以經這裡的高危
+// 變更（下調保留、關閉錄影故障阻擋、下調全系統預設、放寬映射時限）在正式組裝下會
+// 回錯並整批回滾。管理介面的寫入一律走 UpdateBatchAudited。播種（updatedBy 為
+// PolicySeededBy）不經高危掛點：它是主機層輸入，沒有應用內操作者。
 func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy string, crossKey bool) ([]PolicyChange, error) {
+	return s.updateBatchWith(updates, PolicyActor{Name: updatedBy}, crossKey, updatedBy != PolicySeededBy, nil)
+}
+
+// updateBatchWith 是 updateBatch 的本體；auditor 非 nil 時於同一交易內為每項
+// 實際變更寫審計，失敗即整批回滾。highRisk 為 false 時（只有播種）不經高危掛點。
+func (s *SecurityPolicyService) updateBatchWith(updates map[string]string, actor PolicyActor, crossKey, highRisk bool, auditor PolicyChangeAuditor) ([]PolicyChange, error) {
+	updatedBy := actor.Name
 	// 先整批驗證鍵與值（任何一項不合法即整批拒絕）。
 	// 驗證回傳的終值取代原值進入後續流程——落庫、審計 old→new 與跨鍵驗證讀到的
 	// 必須是同一個字串，否則管理員存的與系統存的會在文字型鍵上分岔
@@ -1223,19 +1304,18 @@ func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy
 		normalized[key] = final
 	}
 	updates = normalized
-	// 單鍵驗證通過後才做跨鍵驗證（它讀的是「已知型別合法」的終值）
-	if crossKey {
-		if err := s.validateCrossKeyRetention(updates); err != nil {
-			return nil, err
-		}
-	}
 
 	var changes []PolicyChange
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// 含保留歷史的鍵時，先取交易級鎖再讀舊值：並行的兩個寫入若讀到同一個舊值，
 		// 歷史只會記下其中一次變更，重播的末值就與現值相反
 		tracked := batchHasHistoryKey(updates)
-		if tracked {
+		// 高危判定也讀舊值：兩個並行寫入若讀到同一個舊值，各自都判為「沒放寬」，
+		// 落地的卻是放寬，所以含高危鍵時同樣先取鎖再讀舊值
+		// 跨鍵約束讀其餘保留鍵的現值：觸及五個保留鍵之一時同樣先取鎖，並在鎖內以本 tx
+		// 驗證（見 validateCrossKeyRetention）。啟動時的保留下限對帳取同一把鎖
+		retention := crossKey && touchesRetentionKeys(updates)
+		if tracked || retention || (highRisk && batchHasHighRiskKey(updates)) {
 			if hook := policyHistoryHooks.beforeLock; hook != nil {
 				hook(updatedBy)
 			}
@@ -1243,6 +1323,15 @@ func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy
 				return err
 			}
 			if hook := policyHistoryHooks.afterLock; hook != nil {
+				hook(updatedBy)
+			}
+		}
+		// 單鍵驗證通過後才做跨鍵驗證（它讀的是「已知型別合法」的終值）
+		if crossKey {
+			if err := s.validateCrossKeyRetention(tx, updates); err != nil {
+				return err
+			}
+			if hook := policyHistoryHooks.afterValidate; hook != nil {
 				hook(updatedBy)
 			}
 		}
@@ -1265,13 +1354,46 @@ func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy
 				return fmt.Errorf("寫入安全政策 %s 失敗: %w", key, err)
 			}
 			if oldValue != value {
-				changes = append(changes, PolicyChange{Key: key, OldValue: oldValue, NewValue: value})
+				change := PolicyChange{Key: key, OldValue: oldValue, NewValue: value}
+				// 高危分類用舊值的有效值（與讀取路徑相同：存量列不合法時取最後已知合法值，
+				// 無則出廠預設）；審計照實記原始存量值，有效值不同時另記
+				effectiveOld := s.effectiveStoredValue(key, oldValue)
+				if effectiveOld != oldValue {
+					change.EffectiveOldValue = effectiveOld
+				}
+				var verdict *highRiskVerdict
+				if highRisk {
+					v, err := classifyHighRisk(tx, key, effectiveOld, value)
+					if err != nil {
+						return err
+					}
+					if v != nil {
+						cid, err := newPolicyCorrelationID()
+						if err != nil {
+							return err
+						}
+						verdict, change.CorrelationID = v, cid
+					}
+				}
+				changes = append(changes, change)
 				if historyKeys[key] {
 					if err := tx.Create(&model.SecurityPolicyHistory{
 						PolicyKey: key, OldValue: oldValue, NewValue: value,
 						ChangedAt: now, ChangedBy: updatedBy, Source: historySourceFor(updatedBy),
 					}).Error; err != nil {
 						return fmt.Errorf("寫入政策 %s 的變更歷史失敗: %w", key, err)
+					}
+				}
+				// 變更審計與政策寫入同成敗：審計寫不進去，這一批政策就不生效
+				if auditor != nil {
+					if err := auditor(tx, change); err != nil {
+						return fmt.Errorf("寫入政策 %s 的變更審計失敗: %w", key, err)
+					}
+				}
+				// 高危告警在審計之後，與審計共用 CorrelationID
+				if verdict != nil {
+					if err := s.raiseHighRisk(tx, actor, key, change.CorrelationID, verdict); err != nil {
+						return err
 					}
 				}
 			}

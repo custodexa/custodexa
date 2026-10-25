@@ -78,7 +78,7 @@ func TestCheckPermission_AdminRole(t *testing.T) {
 	service := NewAssetAuthorizationService(gormDB)
 
 	// 創建帶 admin 角色的 context
-	ctx := context.WithValue(context.Background(), "role", model.RoleAdmin)
+	ctx := legacyRoleContext(model.RoleAdmin)
 	ctx = context.WithValue(ctx, "userID", uint(1))
 
 	// Admin 應該無需查詢數據庫即可獲得權限
@@ -93,7 +93,7 @@ func TestCheckPermission_AdminRole_Connect(t *testing.T) {
 	_, _, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleAdmin)
+	ctx := legacyRoleContext(model.RoleAdmin)
 	ctx = context.WithValue(ctx, "userID", uint(1))
 
 	// admin connect 短路放行，無需查詢數據庫
@@ -109,7 +109,7 @@ func TestCheckPermission_AuditorRole_ViewShortCircuit(t *testing.T) {
 	_, _, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleAuditor)
+	ctx := legacyRoleContext(model.RoleAuditor)
 	ctx = context.WithValue(ctx, "userID", uint(2))
 
 	hasPermission, err := service.CheckPermission(ctx, 2, 200, model.PermissionView)
@@ -124,7 +124,7 @@ func TestCheckPermission_AuditorRole_ConnectDenied(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleAuditor)
+	ctx := legacyRoleContext(model.RoleAuditor)
 	ctx = context.WithValue(ctx, "userID", uint(2))
 
 	// connect 判定落正常授權查詢；auditor 無顯式 grant → 查無 → 拒絕
@@ -145,7 +145,7 @@ func TestCheckPermission_AuditorRole_ConnectExplicitGrant(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleAuditor)
+	ctx := legacyRoleContext(model.RoleAuditor)
 	ctx = context.WithValue(ctx, "userID", uint(2))
 
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "asset_authorizations"`).
@@ -164,7 +164,7 @@ func TestCheckPermission_UserWithPermission(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleUser)
+	ctx := legacyRoleContext(model.RoleUser)
 	ctx = context.WithValue(ctx, "userID", uint(3))
 
 	// Mock 數據庫查詢（找到授權記錄）
@@ -185,7 +185,7 @@ func TestCheckPermission_UserWithoutPermission(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleUser)
+	ctx := legacyRoleContext(model.RoleUser)
 	ctx = context.WithValue(ctx, "userID", uint(4))
 
 	// Mock 數據庫查詢（未找到授權記錄）
@@ -206,7 +206,7 @@ func TestCheckPermission_PermissionHierarchy(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleUser)
+	ctx := legacyRoleContext(model.RoleUser)
 
 	// 用戶擁有 connect 權限，檢查 view 權限應該通過
 	// permission IN (view, connect) 會展開為 2 個參數（J 兩階收斂）
@@ -226,8 +226,11 @@ func TestGrantPermission_Success(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.Background()
+	// 操作者為超管：本人範圍守衛不適用（守衛本身另由 TestAuthorizationSelfSubjectGuard 以 sqlite 驗證）
+	ctx := superAdminOperatorCtx(1)
 
+	// 引用驗證 → 守衛 → 去重 → 寫入在同一交易內
+	mock.ExpectBegin()
 	// 1. 檢查用戶存在
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(10, "testuser"))
@@ -236,12 +239,11 @@ func TestGrantPermission_Success(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(100, "test-server"))
 
-	// 3. 檢查活躍同組合是否已存在（count=0，Grant 統一去重查詢）
+	// 檢查活躍同組合是否已存在（count=0，Grant 統一去重查詢）
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "asset_authorizations"`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	// 4. 創建授權
-	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "asset_authorizations"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
@@ -266,9 +268,11 @@ func TestGrantPermission_UserNotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 檢查用戶存在（不存在）
+	// 交易內檢查用戶存在（不存在 → 回滾）
+	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnError(gorm.ErrRecordNotFound)
+	mock.ExpectRollback()
 
 	auth, err := service.GrantPermission(ctx, 999, 100, model.PermissionView, 1)
 
@@ -287,13 +291,15 @@ func TestGrantPermission_AssetNotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 檢查用戶存在
+	// 交易內檢查用戶存在
+	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(10, "testuser"))
 
-	// 檢查資產存在（不存在）
+	// 檢查資產存在（不存在 → 回滾）
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnError(gorm.ErrRecordNotFound)
+	mock.ExpectRollback()
 
 	auth, err := service.GrantPermission(ctx, 10, 999, model.PermissionView, 1)
 
@@ -308,8 +314,10 @@ func TestGrantPermission_Duplicate(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.Background()
+	ctx := superAdminOperatorCtx(1)
 
+	// 引用驗證與去重在同一交易內
+	mock.ExpectBegin()
 	// 1. 檢查用戶存在
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(10, "testuser"))
@@ -318,9 +326,10 @@ func TestGrantPermission_Duplicate(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(100, "test-server"))
 
-	// 3. 檢查活躍同組合是否已存在（count=1 → 衝突）
+	// 3. 檢查活躍同組合是否已存在（count=1 → 衝突，交易回滾）
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "asset_authorizations"`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectRollback()
 
 	auth, err := service.GrantPermission(ctx, 10, 100, model.PermissionView, 1)
 
@@ -337,24 +346,14 @@ func TestRevokePermission_Success(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. 檢查授權存在（不使用 Preload，簡化測試）
+	// 讀規則與軟刪在同一交易內（交易內讀取不帶 Preload）
+	mock.ExpectBegin()
+	// 1. 檢查授權存在
 	mock.ExpectQuery(`SELECT .+ FROM "asset_authorizations" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "asset_id", "permission"}).
 			AddRow(1, 10, 100, model.PermissionView))
 
-	// GORM Preload 會根據返回的外鍵查詢關聯資料
-	// User: user_id = 10
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-
-	// Asset: asset_id = 100
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-
-	// AssetGroup: asset_group_id (可能不查詢，因為沒有 group)
-
 	// 2. 軟刪除
-	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "asset_authorizations" SET "deleted_at"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
@@ -362,7 +361,7 @@ func TestRevokePermission_Success(t *testing.T) {
 	err := service.RevokePermission(ctx, 1)
 
 	assert.NoError(t, err)
-	// Note: 不檢查 ExpectationsWereMet，因為 AssetGroup 查詢可能不發生
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 // TestRevokePermission_NotFound 測試撤銷不存在的授權
@@ -372,9 +371,11 @@ func TestRevokePermission_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 檢查授權存在（不存在）
+	// 交易內檢查授權存在（不存在 → 回滾）
+	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT .+ FROM "asset_authorizations" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnError(gorm.ErrRecordNotFound)
+	mock.ExpectRollback()
 
 	err := service.RevokePermission(ctx, 999)
 
@@ -460,7 +461,7 @@ func TestGetAuthorizedAssets_AdminRole(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleAdmin)
+	ctx := legacyRoleContext(model.RoleAdmin)
 	ctx = context.WithValue(ctx, "userID", uint(1))
 
 	// Admin 應該查詢所有資產
@@ -484,7 +485,7 @@ func TestGetAuthorizedAssets_UserRole(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleUser)
+	ctx := legacyRoleContext(model.RoleUser)
 	ctx = context.WithValue(ctx, "userID", uint(10))
 
 	// 一般用戶只能查詢有權限的資產：EXISTS 條件涵蓋直授與節點含子樹
@@ -524,7 +525,7 @@ func TestGetAuthorizedAssets_MixedGrantsTakeHighest(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleUser)
+	ctx := legacyRoleContext(model.RoleUser)
 	ctx = context.WithValue(ctx, "userID", uint(10))
 
 	mock.ExpectQuery(`SELECT \* FROM "assets" WHERE \(EXISTS`).
@@ -559,7 +560,7 @@ func TestGetAuthorizedAssets_NoPermissions(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	ctx := context.WithValue(context.Background(), "role", model.RoleUser)
+	ctx := legacyRoleContext(model.RoleUser)
 	ctx = context.WithValue(ctx, "userID", uint(20))
 
 	// 用戶無授權，返回空列表
@@ -583,18 +584,16 @@ func TestRevokePermission_TicketWithRequestBlocked(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
-	// FindByID：回 ticket 來源授權
+	// 交易內讀規則：回 ticket 來源授權
+	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT .+ FROM "asset_authorizations" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "asset_id", "permission", "source"}).
 			AddRow(108, 10, 100, model.PermissionConnect, model.AuthorizationSourceTicket))
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	// 反查申請單：有單 → 守門
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "access_requests" WHERE authorization_id`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectRollback()
 
 	err := service.RevokePermission(context.Background(), 108)
 	assert.ErrorIs(t, err, ErrTicketRevocationRequired)
@@ -606,18 +605,14 @@ func TestRevokePermission_OrphanTicketAllowed(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
+	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT .+ FROM "asset_authorizations" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "asset_id", "permission", "source"}).
 			AddRow(120, 10, 100, model.PermissionConnect, model.AuthorizationSourceTicket))
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "access_requests" WHERE authorization_id`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "asset_authorizations" SET "deleted_at"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
@@ -632,15 +627,11 @@ func TestRevokePermission_ManualUnaffected(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
 
+	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT .+ FROM "asset_authorizations" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "asset_id", "permission", "source"}).
 			AddRow(54, 10, 100, model.PermissionConnect, model.AuthorizationSourceManual))
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectQuery(`SELECT .+ FROM ".+" WHERE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "asset_authorizations" SET "deleted_at"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()

@@ -33,7 +33,10 @@ func TestAssetVisibilityProbeEvent(t *testing.T) {
 	sql, _ := db.DB()
 	sql.SetMaxOpenConns(1)
 	t.Cleanup(func() { sql.Close() })
-	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.AgentVisibilityExposure{}, &model.AgentProbeEvent{}, &model.AuditLog{}, &model.CommandAlert{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.AgentVisibilityExposure{}, &model.AgentProbeEvent{}, &model.AuditLog{}, &model.CommandAlert{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	owner := uint(1)
@@ -64,7 +67,7 @@ func TestAssetVisibilityProbeEvent(t *testing.T) {
 	kind := model.KindAgent
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(2))
-		c.Set("role", model.RoleUser)
+		SetPrincipal(c, legacyPrincipal(model.RoleUser))
 		c.Set("principal_kind", kind)
 		c.Set("agent_token_id", uint(3))
 	})

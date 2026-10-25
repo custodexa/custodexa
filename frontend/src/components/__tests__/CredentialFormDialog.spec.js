@@ -31,6 +31,11 @@ vi.mock('@/api/credentials', () => ({
   updateCredential: (...a) => updateMock(...a),
 }))
 
+// 歸屬欄的節點候選：此檔不驗歸屬（見 scoped-credentials-view.spec.js），回空清單即非範圍化主體
+vi.mock('@/api/assets', () => ({
+  getAssetGroups: vi.fn().mockResolvedValue({ data: [] }),
+}))
+
 const dialogStub = {
   props: ['modelValue'],
   template: '<div v-if="modelValue" class="dialog-stub"><slot /><slot name="footer" /></div>',

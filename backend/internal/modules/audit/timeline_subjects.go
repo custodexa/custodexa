@@ -89,7 +89,7 @@ func parseSeenAt(s string) time.Time {
 
 // ListIPSubjects 位址候選：基準表 DISTINCT、前綴匹配、最近見到降序。
 // 空前綴＝全表聚合（初次聚焦的候選），代價隨基準表大小線性——
-// 表大小上界＝使用者數 × 相異位址數，plan 驗收見 research/subjects-ip-query-plan.md
+// 表大小上界＝使用者數 × 相異位址數。
 func (s *TimelineService) ListIPSubjects(q string, limit int) ([]TimelineIPSubject, error) {
 	if limit <= 0 || limit > timelineSubjectMaxLimit {
 		limit = timelineSubjectMaxLimit

@@ -42,7 +42,7 @@ func (e windowsSSHExecutor) Rotate(ctx context.Context, t rotationTarget, oldSec
 	}
 	client, err := dialSSHPassword(ctx, t.addr, t.username, sshmaterial.CopyPassword(oldSecret), t.hostKeyCB)
 	if err != nil {
-		return &remoteRejectedError{reason: model.ChangeSecretReasonOldCredentialLoginFailed, cause: err}
+		return &remoteRejectedError{reason: oldCredentialLoginReason(err), cause: err}
 	}
 	defer client.Close()
 

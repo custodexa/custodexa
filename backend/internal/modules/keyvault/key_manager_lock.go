@@ -46,6 +46,9 @@ import (
 //
 //	0x6F74_6B03 使用者憑證世代 user-scoped 鎖（userCredentialLockClass，
 //	            user_credential_lock.go；objid 為 userID）
+//	0x6F74_6B04 拓撲序列化鎖（authz.TopologySerializationLockClass，
+//	            authz/topology_lock.go；objid 恆為 1）
+//	0x484B      資產信任變更鎖（hostKeyLockNamespace，asset/hostkey_service.go；objid 為資產編號）
 //
 // **非 advisory 的跨實例互斥亦在此登記**（否則「所有跨實例鎖都能在本檔追溯」的
 // 慣例會有漏）：

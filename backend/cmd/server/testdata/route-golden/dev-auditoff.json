@@ -113,6 +113,11 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/v1/role-definitions/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Delete-fm"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/v1/rotation-report/schedules/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).DeleteSchedule-fm"
     },
@@ -238,6 +243,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/approver-scopes/approver-options",
+      "handler": "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ApproverOptions-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/approver-scopes/target-options",
+      "handler": "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).TargetOptions-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/asset-groups",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).List-fm"
     },
@@ -290,6 +305,11 @@
       "method": "GET",
       "path": "/api/v1/assets/:id/transfer-capabilities",
       "handler": "github.com/custodexa/backend/internal/api.(*SFTPHandler).TransferCapabilities-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/access-policy-overrides",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).ListAccessPolicyOverrides-fm"
     },
     {
       "method": "GET",
@@ -363,6 +383,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/auth/me/release-guidance/:version",
+      "handler": "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).GetState-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/auth/methods",
       "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).LoginMethods-fm"
     },
@@ -390,6 +415,21 @@
       "method": "GET",
       "path": "/api/v1/authorizations/effective-users",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).EffectiveUsers-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/self-subjects",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).SelfSubjects-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/subject-options",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).SubjectOptions-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/target-options",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).TargetOptions-fm"
     },
     {
       "method": "GET",
@@ -430,6 +470,11 @@
       "method": "GET",
       "path": "/api/v1/command-alerts",
       "handler": "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/command-alerts/:id/system-detail",
+      "handler": "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).SystemDetail-fm"
     },
     {
       "method": "GET",
@@ -490,6 +535,16 @@
       "method": "GET",
       "path": "/api/v1/daily-reviews/status",
       "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Status-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/dashboard/cards/:key",
+      "handler": "github.com/custodexa/backend/internal/api.(*DashboardCardHandler).GetCard-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/dashboard/retention-adjustments",
+      "handler": "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RetentionAdjustments-fm"
     },
     {
       "method": "GET",
@@ -638,6 +693,26 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/role-assignment-options",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleAssignmentOptionsHandler).Options-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions/descriptors",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Descriptors-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/roles",
       "handler": "github.com/custodexa/backend/internal/api.(*RoleHandler).List-fm"
     },
@@ -753,6 +828,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/system-alert-types",
+      "handler": "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).List-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/transmission-inventory",
       "handler": "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).Get-fm"
     },
@@ -765,6 +845,16 @@
       "method": "GET",
       "path": "/api/v1/user-groups/:id/authorization-count",
       "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).AuthorizationCount-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/user-groups/:id/external-mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ListExternalMappings-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/user-groups/:id/role-bindings",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ListRoleBindings-fm"
     },
     {
       "method": "GET",
@@ -790,6 +880,11 @@
       "method": "GET",
       "path": "/api/v1/users/:id/external-identities",
       "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).ListExternalIdentities-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/:id/role-bindings",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).ListRoleBindings-fm"
     },
     {
       "method": "GET",
@@ -903,6 +998,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/assets/:id/host-key/adopt",
+      "handler": "github.com/custodexa/backend/internal/api.(*HostKeyHandler).Adopt-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/assets/:id/k8s/upload",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).UploadK8sFile-fm"
     },
@@ -910,6 +1010,21 @@
       "method": "POST",
       "path": "/api/v1/assets/:id/test-connection",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).TestConnection-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/batch/delete",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).BatchDelete-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/batch/move",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).BatchMove-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/batch/tags",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).BatchAddTags-fm"
     },
     {
       "method": "POST",
@@ -935,6 +1050,11 @@
       "method": "POST",
       "path": "/api/v1/audit-export/jobs",
       "handler": "github.com/custodexa/backend/internal/api.(*AuditExportHandler).CreateJob-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audit-failures/permission-state/accept",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).AcceptPermissionState-fm"
     },
     {
       "method": "POST",
@@ -1023,6 +1143,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/change-secret-plans/reauthorize",
+      "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Reauthorize-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/command-alerts/:id/review",
       "handler": "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).Review-fm"
     },
@@ -1053,6 +1178,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/credentials/:id/impact-confirmations",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).ConfirmImpact-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/credentials/:id/rotations",
       "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).StartRotation-fm"
     },
@@ -1075,6 +1205,11 @@
       "method": "POST",
       "path": "/api/v1/credentials/:id/secret",
       "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).SetSecret-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/ownership",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).ReassignOwnership-fm"
     },
     {
       "method": "POST",
@@ -1190,6 +1325,26 @@
       "method": "POST",
       "path": "/api/v1/policy-groups/:code/clauses/:clause_no/confirm",
       "handler": "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).ConfirmClause-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-assignment-previews",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleAssignmentPreviewHandler).Preview-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-definitions",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Create-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-definitions/:id/copy",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Copy-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-definitions/summary",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).DraftSummary-fm"
     },
     {
       "method": "POST",
@@ -1378,6 +1533,11 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/auth/me/release-guidance/:version",
+      "handler": "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).PutState-fm"
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/authorizations/:id/accounts",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).UpdateAccounts-fm"
     },
@@ -1458,6 +1618,11 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/role-definitions/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Update-fm"
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/rotation-report/schedules/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).UpdateSchedule-fm"
     },
@@ -1478,6 +1643,11 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/system-alert-types/:key",
+      "handler": "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).UpdateSeverity-fm"
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/user-groups/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).Update-fm"
     },
@@ -1485,6 +1655,11 @@
       "method": "PUT",
       "path": "/api/v1/user-groups/:id/members",
       "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ReplaceMembers-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/user-groups/:id/role-bindings",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ReplaceRoleBindings-fm"
     },
     {
       "method": "PUT",
@@ -1533,7 +1708,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).Delete-fm"
       ]
     },
@@ -1557,7 +1732,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).DeleteScope-fm"
       ]
     },
@@ -1581,7 +1756,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.RequireRole.func5",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func7",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Delete-fm"
       ]
     },
@@ -1605,7 +1780,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func12",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func12",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Delete-fm"
       ]
     },
@@ -1620,7 +1795,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Delete-fm"
       ]
     },
@@ -1643,6 +1818,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).Delete-fm"
       ]
     },
@@ -1666,7 +1842,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.RequireHostKeyResetSuperAdmin",
         "github.com/custodexa/backend/internal/api.(*HostKeyHandler).Reset-fm"
       ]
     },
@@ -1690,7 +1867,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).Delete-fm"
       ]
     },
@@ -1705,7 +1882,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).DiscardCandidate-fm"
       ]
     },
@@ -1729,7 +1906,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Delete-fm"
       ]
     },
@@ -1744,8 +1921,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Delete-fm"
       ]
     },
@@ -1760,8 +1936,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Unbind-fm"
       ]
     },
@@ -1776,7 +1951,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
       ]
     },
@@ -1791,7 +1966,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
       ]
     },
@@ -1806,7 +1981,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteUserGroupMapping-fm"
       ]
     },
@@ -1821,7 +1996,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).CleanupRetired-fm"
       ]
     },
@@ -1845,7 +2020,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).AbandonRewrap-fm"
       ]
     },
@@ -1860,7 +2035,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Delete-fm"
       ]
     },
@@ -1884,7 +2059,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Delete-fm"
       ]
     },
@@ -1899,7 +2074,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Delete-fm"
       ]
     },
@@ -1914,7 +2089,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).Delete-fm"
       ]
     },
@@ -1929,8 +2104,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).DeleteClause-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/role-definitions/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Delete-fm"
       ]
     },
     {
@@ -1944,7 +2134,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).DeleteSchedule-fm"
       ]
     },
@@ -1968,7 +2158,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).DeleteRecording-fm"
       ]
     },
@@ -1991,6 +2181,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleRevokeShare-fm"
       ]
     },
@@ -2013,6 +2204,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).Delete-fm"
       ]
     },
@@ -2036,7 +2228,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).Delete-fm"
       ]
     },
@@ -2059,8 +2251,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).Delete-fm"
       ]
     },
@@ -2075,6 +2267,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RequireAgentTokenManager-fm",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RevokeAgentToken-fm"
       ]
@@ -2089,8 +2282,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).UnbindExternalIdentity-fm"
       ]
     },
@@ -2105,6 +2298,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ReportVersions-fm"
       ]
     },
@@ -2128,7 +2322,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireAccessRequestHistoryReader.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireAccessRequestHistoryReader.func3",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ListHistory-fm"
       ]
     },
@@ -2151,6 +2346,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ListMine-fm"
       ]
     },
@@ -2173,6 +2369,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).MyTickets-fm"
       ]
     },
@@ -2196,7 +2393,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ListPending-fm"
       ]
     },
@@ -2220,7 +2418,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).PendingCount-fm"
       ]
     },
@@ -2244,7 +2443,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ListPendingReview-fm"
       ]
     },
@@ -2268,7 +2468,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ActiveTickets-fm"
       ]
     },
@@ -2292,7 +2493,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).List-fm"
       ]
     },
@@ -2316,7 +2517,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).Detail-fm"
       ]
     },
@@ -2340,7 +2541,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).GetMatrix-fm"
       ]
     },
@@ -2355,7 +2556,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func7",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequirePermission.func8",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).AgentTasks-fm"
       ]
     },
@@ -2370,7 +2571,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func7",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequirePermission.func8",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).AgentTaskDetail-fm"
       ]
     },
@@ -2385,7 +2586,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).ToolCalls-fm"
       ]
     },
@@ -2400,7 +2601,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).ToolCallArguments-fm"
       ]
     },
@@ -2424,7 +2625,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).List-fm"
       ]
     },
@@ -2448,8 +2649,38 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ListScopes-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/approver-scopes/approver-options",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func6",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).ApproverOptions-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/approver-scopes/target-options",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func6",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).TargetOptions-fm"
       ]
     },
     {
@@ -2471,6 +2702,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).List-fm"
       ]
     },
@@ -2493,6 +2725,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Tree-fm"
       ]
     },
@@ -2516,7 +2749,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).List-fm"
       ]
     },
@@ -2541,8 +2774,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func10",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequireAssetVisible.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func10",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequireAssetVisibleOrManaged.requireAssetVisible.func17",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Get-fm"
       ]
     },
@@ -2557,8 +2790,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequirePermission.func3",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequireAssetVisible.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func7",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).List-fm"
       ]
     },
@@ -2581,6 +2814,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).List-fm"
       ]
     },
@@ -2603,6 +2837,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).Download-fm"
       ]
     },
@@ -2626,7 +2861,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.RequireAssetVisible.func2",
+        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.RequireAssetVisibleOrManaged.requireAssetVisible.func5",
         "github.com/custodexa/backend/internal/api.(*HostKeyHandler).Get-fm"
       ]
     },
@@ -2650,7 +2886,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func16",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func16",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).DownloadK8sFile-fm"
       ]
     },
@@ -2675,8 +2911,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func14",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequireAssetVisible.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func14",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequireAssetVisibleOrManaged.requireAssetVisible.func17",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).ListK8sPods-fm"
       ]
     },
@@ -2690,8 +2926,24 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func3",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).TransferCapabilities-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/access-policy-overrides",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func9",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).ListAccessPolicyOverrides-fm"
       ]
     },
     {
@@ -2714,7 +2966,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).ListTags-fm"
       ]
     },
@@ -2729,7 +2981,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).List-fm"
       ]
     },
@@ -2744,7 +2996,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).PublicKey-fm"
       ]
     },
@@ -2759,7 +3011,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditCheckpointHandler).Verify-fm"
       ]
     },
@@ -2783,7 +3035,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).Export-fm"
       ]
     },
@@ -2798,7 +3050,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).ListJobs-fm"
       ]
     },
@@ -2813,7 +3065,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).DownloadJob-fm"
       ]
     },
@@ -2837,7 +3089,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ExportSigningHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ExportSigningHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*ExportSigningHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ExportSigningHandler).PublicKey-fm"
       ]
     },
@@ -2861,7 +3113,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).List-fm"
       ]
     },
@@ -2885,7 +3137,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.RequireAnyRole.func4",
+        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).Verify-fm"
       ]
     },
@@ -2900,7 +3152,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).Subjects-fm"
       ]
     },
@@ -2915,7 +3167,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuditTimelineHandler).Timeline-fm"
       ]
     },
@@ -2952,7 +3204,24 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).Me-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me/release-guidance/:version",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).GetState-fm"
       ]
     },
     {
@@ -3014,7 +3283,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).List-fm"
       ]
     },
@@ -3038,7 +3307,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).EffectiveAssets-fm"
       ]
     },
@@ -3062,8 +3331,53 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).EffectiveUsers-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/self-subjects",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).SelfSubjects-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/subject-options",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).SubjectOptions-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/target-options",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).TargetOptions-fm"
       ]
     },
     {
@@ -3077,7 +3391,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).ListBatches-fm"
       ]
     },
@@ -3092,7 +3406,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).GetBatch-fm"
       ]
     },
@@ -3107,7 +3421,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).BatchTargets-fm"
       ]
     },
@@ -3122,7 +3436,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).BatchUsernames-fm"
       ]
     },
@@ -3137,7 +3451,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).ListCandidates-fm"
       ]
     },
@@ -3161,7 +3475,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).List-fm"
       ]
     },
@@ -3185,7 +3499,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Records-fm"
       ]
     },
@@ -3209,8 +3523,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/command-alerts/:id/system-detail",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).RegisterRoutes.AuthMiddleware.func3",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).RegisterRoutes.EnforceRegistry.func4",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).SystemDetail-fm"
       ]
     },
     {
@@ -3233,7 +3562,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).RegisterRoutes.AuthMiddleware.func2",
-        "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).Search-fm"
       ]
     },
@@ -3248,7 +3577,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ComplianceHandler).Snapshot-fm"
       ]
     },
@@ -3283,8 +3612,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).List-fm"
       ]
     },
@@ -3299,8 +3627,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Get-fm"
       ]
     },
@@ -3315,8 +3642,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).GetRotation-fm"
       ]
     },
@@ -3340,7 +3666,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).List-fm"
       ]
     },
@@ -3355,7 +3681,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Day-fm"
       ]
     },
@@ -3370,7 +3696,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Pending-fm"
       ]
     },
@@ -3385,7 +3711,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).PendingCount-fm"
       ]
     },
@@ -3400,7 +3726,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Stats-fm"
       ]
     },
@@ -3424,8 +3750,39 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func1",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func1",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Status-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/dashboard/cards/:key",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*DashboardCardHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
+        "github.com/custodexa/backend/internal/api.(*DashboardCardHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*DashboardCardHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*DashboardCardHandler).GetCard-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/dashboard/retention-adjustments",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.AuthMiddleware.func4",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.EnforceRegistry.func5",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RetentionAdjustments-fm"
       ]
     },
     {
@@ -3452,6 +3809,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleDBConsoleExport-fm"
       ]
     },
@@ -3466,7 +3824,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).List-fm"
       ]
     },
@@ -3481,7 +3839,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListExternalGroups-fm"
       ]
     },
@@ -3496,7 +3854,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
       ]
     },
@@ -3511,7 +3869,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
       ]
     },
@@ -3526,7 +3884,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListUserGroupMappings-fm"
       ]
     },
@@ -3541,7 +3899,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UserGroupMappingUsage-fm"
       ]
     },
@@ -3556,7 +3914,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).Get-fm"
       ]
     },
@@ -3593,7 +3951,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).Inventory-fm"
       ]
     },
@@ -3608,7 +3966,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).GetKEKTopology-fm"
       ]
     },
@@ -3623,7 +3981,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Get-fm"
       ]
     },
@@ -3638,7 +3996,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Status-fm"
       ]
     },
@@ -3652,7 +4010,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func7",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ListMyAgents-fm"
       ]
     },
@@ -3675,6 +4034,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*MyConnectionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*MyConnectionHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*MyConnectionHandler).List-fm"
       ]
     },
@@ -3698,7 +4058,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).List-fm"
       ]
     },
@@ -3713,7 +4073,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Failures-fm"
       ]
     },
@@ -3728,7 +4088,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).ListProfiles-fm"
       ]
     },
@@ -3743,7 +4103,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).GetSettings-fm"
       ]
     },
@@ -3758,7 +4118,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Status-fm"
       ]
     },
@@ -3773,7 +4133,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).List-fm"
       ]
     },
@@ -3788,7 +4148,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Get-fm"
       ]
     },
@@ -3803,7 +4163,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Status-fm"
       ]
     },
@@ -3838,7 +4198,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).List-fm"
       ]
     },
@@ -3853,7 +4213,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).Get-fm"
       ]
     },
@@ -3877,7 +4237,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.AuthMiddleware.func7",
-        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.RequirePermission.func8",
+        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).GetRecordingStats-fm"
       ]
     },
@@ -3903,6 +4263,66 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/role-assignment-options",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleAssignmentOptionsHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleAssignmentOptionsHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleAssignmentOptionsHandler).Options-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions/descriptors",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Descriptors-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/roles",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -3921,7 +4341,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RoleHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RoleHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*RoleHandler).List-fm"
       ]
     },
@@ -3936,7 +4356,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).Dataset-fm"
       ]
     },
@@ -3951,7 +4371,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).Records-fm"
       ]
     },
@@ -3966,7 +4386,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).ListSchedules-fm"
       ]
     },
@@ -4003,7 +4423,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).List-fm"
       ]
     },
@@ -4018,7 +4438,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).Def-fm"
       ]
     },
@@ -4042,7 +4462,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).List-fm"
       ]
     },
@@ -4066,7 +4486,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).Get-fm"
       ]
     },
@@ -4090,7 +4510,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).List-fm"
       ]
     },
@@ -4105,7 +4525,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).GetContent-fm"
       ]
     },
@@ -4129,7 +4549,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*SessionCommandHandler).ListBySession-fm"
       ]
     },
@@ -4173,7 +4593,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).GetRecordingMetadata-fm"
       ]
     },
@@ -4197,7 +4617,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).DownloadRecording-fm"
       ]
     },
@@ -4221,7 +4641,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).StreamRecording-fm"
       ]
     },
@@ -4245,7 +4665,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).GetActive-fm"
       ]
     },
@@ -4289,7 +4709,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).GetStatistics-fm"
       ]
     },
@@ -4312,6 +4732,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).List-fm"
       ]
     },
@@ -4354,6 +4775,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleStats-fm"
       ]
     },
@@ -4377,8 +4799,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system-alert-types",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).List-fm"
       ]
     },
     {
@@ -4401,7 +4838,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).Get-fm"
       ]
     },
@@ -4425,7 +4862,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).List-fm"
       ]
     },
@@ -4449,8 +4886,38 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).AuthorizationCount-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/user-groups/:id/external-mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ListExternalMappings-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/user-groups/:id/role-bindings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ListRoleBindings-fm"
       ]
     },
     {
@@ -4472,8 +4939,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).List-fm"
       ]
     },
@@ -4496,8 +4963,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).Get-fm"
       ]
     },
@@ -4511,7 +4978,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func6",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func9",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func10",
         "github.com/custodexa/backend/internal/api.(*UserHandler).AgentBreakerEvents-fm"
       ]
     },
@@ -4526,6 +4994,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RequireAgentTokenManager-fm",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ListAgentTokens-fm"
       ]
@@ -4540,9 +5009,24 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ListExternalIdentities-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/:id/role-bindings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).ListRoleBindings-fm"
       ]
     },
     {
@@ -4555,8 +5039,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).GetLocalAdminCount-fm"
       ]
     },
@@ -4626,6 +5110,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).UpdateMe-fm"
       ]
     },
@@ -4648,6 +5133,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).Create-fm"
       ]
     },
@@ -4671,7 +5157,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).Approve-fm"
       ]
     },
@@ -4694,6 +5181,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).Cancel-fm"
       ]
     },
@@ -4717,7 +5205,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).Reject-fm"
       ]
     },
@@ -4732,6 +5221,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).SubmitReport-fm"
       ]
     },
@@ -4755,7 +5245,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireApproverRole.func4",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).Review-fm"
       ]
     },
@@ -4779,7 +5270,8 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireRevokeEligibility.func4",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireRevokeEligibility.RequireRevokeEligibilityOn.func10",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).Revoke-fm"
       ]
     },
@@ -4802,6 +5294,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).BreakGlass-fm"
       ]
     },
@@ -4825,7 +5318,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.RequireRole.func5",
+        "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AccessReviewHandler).Create-fm"
       ]
     },
@@ -4849,7 +5342,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).Create-fm"
       ]
     },
@@ -4873,7 +5366,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).CreateScope-fm"
       ]
     },
@@ -4897,7 +5390,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Create-fm"
       ]
     },
@@ -4921,7 +5414,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func7",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Create-fm"
       ]
     },
@@ -4936,7 +5429,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Create-fm"
       ]
     },
@@ -4951,7 +5444,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequirePermission.func7",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).SetDefault-fm"
       ]
     },
@@ -4974,6 +5467,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).Mkdir-fm"
       ]
     },
@@ -4996,7 +5490,24 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SFTPHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SFTPHandler).Upload-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/host-key/adopt",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).RegisterRoutes.EnforceRegistry.func4",
+        "github.com/custodexa/backend/internal/api.RequireHostKeyResetSuperAdmin",
+        "github.com/custodexa/backend/internal/api.(*HostKeyHandler).Adopt-fm"
       ]
     },
     {
@@ -5019,7 +5530,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func15",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func15",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).UploadK8sFile-fm"
       ]
     },
@@ -5043,8 +5554,53 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func13",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func13",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).TestConnection-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/batch/delete",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).registerBatchRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).BatchDelete-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/batch/move",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).registerBatchRoutes.EnforceRegistry.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).BatchMove-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/batch/tags",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).registerBatchRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).BatchAddTags-fm"
       ]
     },
     {
@@ -5058,7 +5614,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func9",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Import-fm"
       ]
     },
@@ -5073,7 +5629,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func8",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func7",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).PreviewImport-fm"
       ]
     },
@@ -5097,7 +5653,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).DeleteTag-fm"
       ]
     },
@@ -5121,7 +5677,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RenameTag-fm"
       ]
     },
@@ -5136,8 +5692,24 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuditExportHandler).CreateJob-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audit-failures/permission-state/accept",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.requirePermissionAcceptSuperAdmin",
+        "github.com/custodexa/backend/internal/api.(*AuditFailureHandler).AcceptPermissionState-fm"
       ]
     },
     {
@@ -5202,6 +5774,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).Logout-fm"
       ]
     },
@@ -5225,6 +5798,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).MFADisable-fm"
       ]
     },
@@ -5248,6 +5822,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).MFAEnable-fm"
       ]
     },
@@ -5313,6 +5888,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).MFASetup-fm"
       ]
     },
@@ -5391,7 +5967,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).Create-fm"
       ]
     },
@@ -5415,7 +5991,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).BatchCreate-fm"
       ]
     },
@@ -5430,7 +6006,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).CreateBatch-fm"
       ]
     },
@@ -5445,7 +6021,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RetryCandidate-fm"
       ]
     },
@@ -5469,7 +6045,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Create-fm"
       ]
     },
@@ -5493,8 +6069,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Run-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/change-secret-plans/reauthorize",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Reauthorize-fm"
       ]
     },
     {
@@ -5517,7 +6108,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).Review-fm"
       ]
     },
@@ -5532,7 +6123,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ComplianceHandler).CreateReportJob-fm"
       ]
     },
@@ -5555,6 +6146,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateConnectToken-fm"
       ]
     },
@@ -5569,8 +6161,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Create-fm"
       ]
     },
@@ -5585,8 +6176,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Bind-fm"
       ]
     },
@@ -5601,9 +6191,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Detach-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/impact-confirmations",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).ConfirmImpact-fm"
       ]
     },
     {
@@ -5617,8 +6221,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).StartRotation-fm"
       ]
     },
@@ -5633,8 +6236,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).AbandonRotation-fm"
       ]
     },
@@ -5649,8 +6251,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RetryMember-fm"
       ]
     },
@@ -5665,8 +6266,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).ConvertScope-fm"
       ]
     },
@@ -5681,9 +6281,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).SetSecret-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/ownership",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).ReassignOwnership-fm"
       ]
     },
     {
@@ -5706,7 +6320,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func7",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.EnforceRegistry.func7",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Sign-fm"
       ]
     },
@@ -5721,7 +6335,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateMapping-fm"
       ]
     },
@@ -5736,7 +6350,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateMapping-fm"
       ]
     },
@@ -5751,7 +6365,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateUserGroupMapping-fm"
       ]
     },
@@ -5788,7 +6402,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).Rewrap-fm"
       ]
     },
@@ -5812,7 +6426,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).Rotate-fm"
       ]
     },
@@ -5827,7 +6441,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Test-fm"
       ]
     },
@@ -5842,6 +6456,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/agentmcp.(*Handler).Handle-fm"
       ]
     },
@@ -5855,7 +6470,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func7",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*UserHandler).CreateMyAgent-fm"
       ]
     },
@@ -5878,6 +6494,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*MyConnectionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*MyConnectionHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*MyConnectionHandler).Terminate-fm"
       ]
     },
@@ -5901,7 +6518,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Create-fm"
       ]
     },
@@ -5925,7 +6542,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Test-fm"
       ]
     },
@@ -5940,7 +6557,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RetryObject-fm"
       ]
     },
@@ -5955,7 +6572,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RevokeCredentials-fm"
       ]
     },
@@ -5970,7 +6587,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RetryFailed-fm"
       ]
     },
@@ -5985,7 +6602,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).ConfirmSettings-fm"
       ]
     },
@@ -6000,7 +6617,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).DisableSettings-fm"
       ]
     },
@@ -6015,7 +6632,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Test-fm"
       ]
     },
@@ -6030,7 +6647,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Create-fm"
       ]
     },
@@ -6045,7 +6662,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).DiscoveryPreview-fm"
       ]
     },
@@ -6060,7 +6677,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).Create-fm"
       ]
     },
@@ -6075,8 +6692,68 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).ConfirmClause-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-assignment-previews",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleAssignmentPreviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleAssignmentPreviewHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleAssignmentPreviewHandler).Preview-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-definitions",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Create-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-definitions/:id/copy",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Copy-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-definitions/summary",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).DraftSummary-fm"
       ]
     },
     {
@@ -6090,7 +6767,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).CreateJob-fm"
       ]
     },
@@ -6105,7 +6782,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).CreateSchedule-fm"
       ]
     },
@@ -6120,7 +6797,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RunSchedule-fm"
       ]
     },
@@ -6135,7 +6812,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ScheduleHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ScheduleHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ScheduleHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ScheduleHandler).NextRuns-fm"
       ]
     },
@@ -6189,7 +6866,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).ApplyPreview-fm"
       ]
     },
@@ -6204,7 +6881,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).CompliancePreview-fm"
       ]
     },
@@ -6219,6 +6896,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateMonitorTicket-fm"
       ]
     },
@@ -6242,7 +6920,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*RecordingHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*RecordingHandler).IssueRecordingToken-fm"
       ]
     },
@@ -6265,6 +6943,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateShare-fm"
       ]
     },
@@ -6288,7 +6967,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).Terminate-fm"
       ]
     },
@@ -6303,6 +6982,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateShareTicket-fm"
       ]
     },
@@ -6325,6 +7005,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).Create-fm"
       ]
     },
@@ -6348,7 +7029,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).Test-fm"
       ]
     },
@@ -6371,6 +7052,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "main.AuthMiddleware",
+        "main.EnforceRegistry",
         "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateTransmissionConsent-fm"
       ]
     },
@@ -6394,7 +7076,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*TransmissionInventoryHandler).Export-fm"
       ]
     },
@@ -6418,7 +7100,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).Create-fm"
       ]
     },
@@ -6441,8 +7123,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).Create-fm"
       ]
     },
@@ -6456,7 +7138,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RequireAgentTokenManager-fm",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ReleaseAgentBreaker-fm"
       ]
@@ -6472,6 +7155,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RequireAgentTokenManager-fm",
         "github.com/custodexa/backend/internal/api.(*UserHandler).CreateAgentToken-fm"
       ]
@@ -6486,8 +7170,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).BindExternalIdentity-fm"
       ]
     },
@@ -6501,8 +7185,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).UnbindExternalIdentityAndDisable-fm"
       ]
     },
@@ -6516,8 +7200,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ConvertToExternalOnly-fm"
       ]
     },
@@ -6540,8 +7224,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.AuthMiddleware.func4",
+        "github.com/custodexa/backend/internal/api.(*AuthHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AuthHandler).AdminDisableMFA-fm"
       ]
     },
@@ -6564,8 +7248,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).AddRole-fm"
       ]
     },
@@ -6579,8 +7263,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).PinRole-fm"
       ]
     },
@@ -6603,8 +7287,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).Unlock-fm"
       ]
     },
@@ -6618,8 +7302,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).SourcePolicyCheck-fm"
       ]
     },
@@ -6663,7 +7347,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).Update-fm"
       ]
     },
@@ -6687,7 +7371,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Update-fm"
       ]
     },
@@ -6711,7 +7395,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Move-fm"
       ]
     },
@@ -6735,7 +7419,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func11",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.EnforceRegistry.func11",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Update-fm"
       ]
     },
@@ -6750,7 +7434,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Update-fm"
       ]
     },
@@ -6764,10 +7448,25 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func4",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func5",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RebindAccount-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/auth/me/release-guidance/:version",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.RejectAgentTokenOnHumanPaths.func1",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.AuthMiddleware.func2",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).PutState-fm"
       ]
     },
     {
@@ -6781,7 +7480,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).UpdateAccounts-fm"
       ]
     },
@@ -6805,7 +7504,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Update-fm"
       ]
     },
@@ -6820,8 +7519,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
-        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Update-fm"
       ]
     },
@@ -6836,7 +7534,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateExternalGroupNote-fm"
       ]
     },
@@ -6851,7 +7549,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
       ]
     },
@@ -6866,7 +7564,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
       ]
     },
@@ -6881,7 +7579,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateUserGroupMapping-fm"
       ]
     },
@@ -6896,7 +7594,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).UpdateKEKTopology-fm"
       ]
     },
@@ -6911,7 +7609,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Update-fm"
       ]
     },
@@ -6935,7 +7633,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Update-fm"
       ]
     },
@@ -6950,7 +7648,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).SaveSettings-fm"
       ]
     },
@@ -6965,7 +7663,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Update-fm"
       ]
     },
@@ -6980,7 +7678,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).Rename-fm"
       ]
     },
@@ -6995,7 +7693,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).UpsertClause-fm"
       ]
     },
@@ -7010,7 +7708,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).UpsertAnnotation-fm"
       ]
     },
@@ -7025,8 +7723,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.RequireRole.func3",
+        "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).RegisterRoutes.EnforceRegistry.func3",
         "github.com/custodexa/backend/internal/api.(*PolicyGroupHandler).SetEnabled-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/role-definitions/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Update-fm"
       ]
     },
     {
@@ -7040,7 +7753,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
-        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*RotationReportHandler).UpdateSchedule-fm"
       ]
     },
@@ -7064,7 +7777,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).Update-fm"
       ]
     },
@@ -7087,6 +7800,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SnippetHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SnippetHandler).Update-fm"
       ]
     },
@@ -7110,8 +7824,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SyslogSettingHandler).Update-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/system-alert-types/:key",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*SystemAlertHandler).UpdateSeverity-fm"
       ]
     },
     {
@@ -7134,7 +7863,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).Update-fm"
       ]
     },
@@ -7158,8 +7887,23 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ReplaceMembers-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/user-groups/:id/role-bindings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).ReplaceRoleBindings-fm"
       ]
     },
     {
@@ -7181,8 +7925,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).Update-fm"
       ]
     },
@@ -7205,8 +7949,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).SetInactivityExempt-fm"
       ]
     },
@@ -7229,8 +7973,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ChangePassword-fm"
       ]
     },
@@ -7253,8 +7997,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).AssignRoles-fm"
       ]
     },
@@ -7277,8 +8021,8 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func3",
-        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func4",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).UpdateStatus-fm"
       ]
     }

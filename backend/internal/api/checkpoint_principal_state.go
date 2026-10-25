@@ -54,3 +54,25 @@ func projectPrincipalState(reports []audit.StateTableReport, table string, looku
 	}
 	return nil
 }
+
+// permissionStateView 權限狀態比對無法完成時的出站形狀：狀態與最近的失效事件，不帶錯誤原文。
+type permissionStateView struct {
+	State     string              `json:"state"`
+	LastEvent *roleStateEventView `json:"last_event,omitempty"`
+}
+
+// projectPermissionState 只在無法判定時回傳；相符、不符與尚未涵蓋回 nil（不符另有失效事件）。
+func projectPermissionState(rep *audit.PermissionReport, lookup roleStateNameLookup) *permissionStateView {
+	if rep == nil || rep.State != audit.StateTableUnknown {
+		return nil
+	}
+	view := &permissionStateView{State: rep.State}
+	if names, ok := lookup.(*roleStateLookup); ok {
+		if events, ok := names.events.(stateTableEventSource); ok {
+			if ev, err := events.LatestByStateTable(audit.StateTablePermission); err == nil && ev != nil {
+				view.LastEvent = &roleStateEventView{ID: ev.ID, Mechanism: ev.Mechanism, CauseCode: ev.CauseCode, StartedAt: ev.StartedAt, EndedAt: ev.EndedAt}
+			}
+		}
+	}
+	return view
+}

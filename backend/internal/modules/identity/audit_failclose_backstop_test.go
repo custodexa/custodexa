@@ -576,6 +576,7 @@ func newLDAPSeedBackstopDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫。
 	// seed 路徑跨多次查詢（catalog 探測、marker 查詢、鎖內交易），不釘連線會偶發看不到表。
 	sqlDB, err := db.DB()
@@ -585,8 +586,8 @@ func newLDAPSeedBackstopDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
 		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
-		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{},
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Exec("CREATE TABLE schema_migrations (version varchar(50) PRIMARY KEY, applied_at datetime NOT NULL)").Error; err != nil {
@@ -606,7 +607,7 @@ func newLDAPSeedBackstopDB(t *testing.T) *gorm.DB {
 func newLDAPDirectoryFixture(t *testing.T) (*identity.LDAPDirectoryService, *gorm.DB, identity.LDAPDirectoryRequest) {
 	t.Helper()
 	db := newLDAPDirectoryBackstopDB(t)
-	svc := identity.NewLDAPDirectoryService(db, nil, audit.NewTxSink())
+	svc := newLDAPDirectoryServiceT(db, nil, audit.NewTxSink())
 	svc.SetTransmissionPolicy(ldapAllowAllGate{})
 	req := identity.LDAPDirectoryRequest{
 		Name: "LDAP", URL: "ldaps://ldap.example.com:636",
@@ -743,6 +744,7 @@ func newLDAPDirectoryBackstopDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -751,8 +753,8 @@ func newLDAPDirectoryBackstopDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
 		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
-		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{},
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -783,6 +785,7 @@ func TestAuditWriteFaultInjectionActuallyFires(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.AuditLog{}, &model.AssetGroup{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

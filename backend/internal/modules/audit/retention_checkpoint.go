@@ -300,25 +300,127 @@ func (p *CheckpointPurger) PurgeableIntervals(cutoff time.Time) ([]model.AuditCh
 //     此約束不依賴跨鍵政策驗證（第 7 組），即使政策被 SQL 直改成違規值也成立。
 //  3. **至少留一個檢查點**。全數修剪＝鏈為空＝GenesisIDFrom fail-close，
 //     audit_logs 清除會整個停擺。
+//
+// 修剪錨（第二版）以簽章帶走被剪段的累計權限事實：被剪段曾有附證→至少 attested；曾有驗不過的點
+// →unverified；並承接前一錨（只承接驗過章且接得上現存鏈頭者，證明不了就帶 unverified）。累計單調，
+// 修剪因此不會讓原本沒有可信起點的狀態自行獲得起點。錨值取自簽章可驗的邊界：被剪最後一點驗得過就
+// 以它重算，否則取殘鏈新鏈頭簽章內的 prev_checkpoint_hash（新鏈頭須驗得過）；兩者皆驗不過本輪不剪。
+//
+// 讀前錨、讀鏈、逐點驗章、簽章、刪除、寫入錨在同一交易內以同一份輸入完成；PG 上交易開頭對修剪錨表
+// 取 SHARE ROW EXCLUSIVE 表鎖，兩個並行修剪因此序列化（後者看得到前者寫出的錨）。
 func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTrim, error) {
 	if days <= 0 || p.signer == nil {
 		return 0, nil, nil // 0＝永久保留
 	}
 	cutoff := p.now().UTC().AddDate(0, 0, -days)
-
-	var chain []model.AuditCheckpoint
-	if err := p.db.Order("seq ASC").Find(&chain).Error; err != nil {
-		return 0, nil, fmt.Errorf("讀取檢查點鏈失敗: %w", err)
-	}
-	if len(chain) <= 1 {
-		return 0, nil, nil
-	}
-	genesisIDFrom, err := p.GenesisIDFrom()
+	var trim *model.AuditCheckpointTrim
+	err := p.db.Transaction(func(tx *gorm.DB) error {
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Exec("LOCK TABLE audit_checkpoint_trims IN SHARE ROW EXCLUSIVE MODE").Error; err != nil {
+				return err
+			}
+		}
+		var chain []model.AuditCheckpoint
+		if err := tx.Order("seq ASC").Find(&chain).Error; err != nil {
+			return fmt.Errorf("讀取檢查點鏈失敗: %w", err)
+		}
+		if len(chain) <= 1 {
+			return nil
+		}
+		prev, err := latestTrimTx(tx)
+		if err != nil {
+			return err // 讀取錯誤不當成「沒有前錨」：本輪不剪
+		}
+		cut := trimCutIndex(chain, cutoff)
+		if cut < 0 {
+			return nil
+		}
+		baseline, err := readIntegrityBaseline(tx)
+		if err != nil {
+			return err
+		}
+		inherited := checkpointChainStructure(chain, prev, baseline, p.signer).HeadHistory
+		segment, unverified := model.TrimPermHistoryNone, int64(0)
+		for i := 0; i <= cut; i++ {
+			cp := &chain[i]
+			if _, ok := checkpointPointSignature(cp, p.signer); !ok {
+				unverified++
+			}
+			if checkpointHasAnyPermColumn(cp) {
+				segment = maxTrimPermHistory(segment, model.TrimPermHistoryAttested)
+			}
+		}
+		if unverified > 0 {
+			segment = model.TrimPermHistoryUnverified
+		}
+		link, ok := trimAnchorLink(&chain[cut], &chain[cut+1], p.signer)
+		if !ok {
+			log.Printf("[Retention] 被剪段最後一點 seq=%d 與殘鏈新鏈頭 seq=%d 的簽章皆驗不過，本輪不修剪",
+				chain[cut].Seq, chain[cut+1].Seq)
+			return nil
+		}
+		genesisIDFrom := chain[0].IDFrom
+		for i := range chain {
+			if chain[i].IDFrom < genesisIDFrom {
+				genesisIDFrom = chain[i].IDFrom
+			}
+		}
+		if prev != nil {
+			genesisIDFrom = prev.GenesisIDFrom
+		}
+		history := maxTrimPermHistory(inherited, segment)
+		trim = &model.AuditCheckpointTrim{
+			FromSeq:             chain[0].Seq,
+			LastTrimmedSeq:      chain[cut].Seq,
+			TrimmedCount:        int64(cut + 1),
+			LastTrimmedLinkHash: link,
+			GenesisIDFrom:       genesisIDFrom,
+			PolicyDays:          days,
+			TrimmedAt:           p.now().UTC().Truncate(time.Microsecond),
+			Format:              model.CheckpointTrimFormatV2,
+			PermHistory:         &history,
+			UnverifiedCount:     &unverified,
+		}
+		payload, err := CheckpointTrimSignBytes(trim)
+		if err != nil {
+			return err
+		}
+		version, sig := p.signer.Sign(payload)
+		if version <= 0 || sig == "" {
+			return fmt.Errorf("鏈修剪記錄簽章失敗（version=%d）：不修剪", version)
+		}
+		trim.SigningKeyVersion, trim.Signature = version, sig
+		// 原生 SQL：audit_checkpoints 的 BeforeDelete 全拒，鏈修剪是
+		// spec 定義的唯一清除路徑，與 audit_logs 的收口路徑同一家族。
+		// 刪除與錨定記錄同一交易：不得存在「檢查點沒了但無有效修剪記錄」的持久狀態
+		res := tx.Exec("DELETE FROM audit_checkpoints WHERE seq >= ? AND seq <= ?",
+			trim.FromSeq, trim.LastTrimmedSeq)
+		if res.Error != nil {
+			return fmt.Errorf("修剪檢查點 seq [%d,%d] 失敗: %w", trim.FromSeq, trim.LastTrimmedSeq, res.Error)
+		}
+		if res.RowsAffected != trim.TrimmedCount {
+			return fmt.Errorf("修剪影響 %d 列，與預期 %d 不符：整段回滾",
+				res.RowsAffected, trim.TrimmedCount)
+		}
+		if err := tx.Create(trim).Error; err != nil {
+			return fmt.Errorf("寫入鏈修剪記錄失敗: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, nil, err
 	}
+	if trim == nil {
+		return 0, nil, nil
+	}
+	log.Printf("[Retention] 鏈修剪：seq [%d,%d] 共 %d 個檢查點（保留 %d 天），"+
+		"殘鏈以修剪記錄錨定（累計權限事實 %s、本段驗不過 %d 點）", trim.FromSeq, trim.LastTrimmedSeq,
+		trim.TrimmedCount, days, *trim.PermHistory, *trim.UnverifiedCount)
+	return trim.TrimmedCount, trim, nil
+}
 
-	// 自鏈頭起逐個判定，遇到第一個不可修剪的就停（連續性由此保證）
+// trimCutIndex 自鏈頭起逐個判定，遇到第一個不可修剪的就停（連續性由此保證）；回傳最後可剪的索引（-1＝不剪）。
+func trimCutIndex(chain []model.AuditCheckpoint, cutoff time.Time) int {
 	cut := -1
 	for i := 0; i < len(chain)-1; i++ { // len-1：至少留一個
 		cp := chain[i]
@@ -337,59 +439,21 @@ func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTri
 		}
 		cut = i
 	}
-	if cut < 0 {
-		return 0, nil, nil
-	}
+	return cut
+}
 
-	last := chain[cut]
-	linkHash, err := CheckpointLinkHash(&last)
-	if err != nil {
-		return 0, nil, err
-	}
-	trim := &model.AuditCheckpointTrim{
-		FromSeq:             chain[0].Seq,
-		LastTrimmedSeq:      last.Seq,
-		TrimmedCount:        int64(cut + 1),
-		LastTrimmedLinkHash: linkHash,
-		GenesisIDFrom:       genesisIDFrom,
-		PolicyDays:          days,
-		TrimmedAt:           p.now().UTC().Truncate(time.Microsecond),
-	}
-	payload, err := CheckpointTrimSignBytes(trim)
-	if err != nil {
-		return 0, nil, err
-	}
-	version, sig := p.signer.Sign(payload)
-	if version <= 0 || sig == "" {
-		return 0, nil, fmt.Errorf("鏈修剪記錄簽章失敗（version=%d）：不修剪", version)
-	}
-	trim.SigningKeyVersion, trim.Signature = version, sig
-
-	// 刪除與錨定記錄同一交易——與區間清除同一紀律：不得存在
-	// 「檢查點沒了但無有效修剪記錄」的持久狀態（那是鏈頭被挖的形狀）
-	err = p.db.Transaction(func(tx *gorm.DB) error {
-		// 原生 SQL：audit_checkpoints 的 BeforeDelete 全拒，鏈修剪是
-		// spec 定義的唯一清除路徑，與 audit_logs 的收口路徑同一家族
-		res := tx.Exec("DELETE FROM audit_checkpoints WHERE seq >= ? AND seq <= ?",
-			trim.FromSeq, trim.LastTrimmedSeq)
-		if res.Error != nil {
-			return fmt.Errorf("修剪檢查點 seq [%d,%d] 失敗: %w", trim.FromSeq, trim.LastTrimmedSeq, res.Error)
+// trimAnchorLink 修剪錨的錨值：被剪最後一點驗得過就以它重算鏈接；否則取殘鏈新鏈頭簽章內的
+// prev_checkpoint_hash（新鏈頭須驗得過）；兩者皆驗不過回 false（本輪不剪）。
+func trimAnchorLink(last, newHead *model.AuditCheckpoint, signer permissionSigner) (string, bool) {
+	if _, ok := checkpointPointSignature(last, signer); ok {
+		if link, err := CheckpointLinkHash(last); err == nil {
+			return link, true
 		}
-		if res.RowsAffected != trim.TrimmedCount {
-			return fmt.Errorf("修剪影響 %d 列，與預期 %d 不符：整段回滾",
-				res.RowsAffected, trim.TrimmedCount)
-		}
-		if err := tx.Create(trim).Error; err != nil {
-			return fmt.Errorf("寫入鏈修剪記錄失敗: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, nil, err
 	}
-	log.Printf("[Retention] 鏈修剪：seq [%d,%d] 共 %d 個檢查點（保留 %d 天），"+
-		"殘鏈以修剪記錄錨定", trim.FromSeq, trim.LastTrimmedSeq, trim.TrimmedCount, days)
-	return trim.TrimmedCount, trim, nil
+	if _, ok := checkpointPointSignature(newHead, signer); ok {
+		return newHead.PrevCheckpointHash, true
+	}
+	return "", false
 }
 
 // VerifyTrim 修剪記錄的簽章是否有效（驗證端據此把殘鏈鏈頭錨回被修剪段）

@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import TokenDrawer from '../agent/TokenDrawer.vue'
 import Users from '../../views/Users.vue'
+import UserAccountForm from '@/views/users/components/UserAccountForm.vue'
 import i18n from '@/i18n'
 const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), revoke: vi.fn() }))
 vi.mock('@/api/agents', () => ({ getAgentTokens: api.list, createAgentToken: api.create, revokeAgentToken: api.revoke, createAgentPrincipal: vi.fn() }))
@@ -56,10 +57,10 @@ describe('TokenDrawer', () => {
     await flushPromises()
     w.vm.handleEdit({ id: 3, username: 'human' })
     await flushPromises()
-    expect(w.vm.dialogVisible).toBe(true)
+    expect(w.findComponent(UserAccountForm).vm.dialogVisible).toBe(true)
     w.vm.openTokenDrawer(principal)
     await flushPromises()
-    expect(w.vm.dialogVisible).toBe(false)
+    expect(w.findComponent(UserAccountForm).vm.dialogVisible).toBe(false)
     expect(w.getComponent(TokenDrawer).props('modelValue')).toBe(true)
     w.vm.handleEdit({ id: 3, username: 'human' })
     await flushPromises()

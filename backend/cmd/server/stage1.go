@@ -32,6 +32,13 @@ import (
 
 // stage1 為段 1 的產物，交棒給段 2 與封印狀態機。
 type stage1 struct {
+	// restoreSealPending 本次啟動剛完成待完成的恢復，檢查點步驟成功後須立即封章（sealAfterRestore）。
+	restoreSealPending bool
+	// restoreSealHooked 已向封章器註冊「封章成功即清除待封」回呼（只註冊一次）。
+	restoreSealHooked bool
+	// restoreSealStateErr 啟動時讀不到待封狀態的錯誤：段 2 的告警與審計出口就緒後上報一次。
+	restoreSealStateErr error
+
 	cfg         *config.Config
 	kekDecision *config.KEKDecision
 	// kekProvider 僅 A（env）／C（kms／hsm）模式有值；B（ui）模式為 nil,

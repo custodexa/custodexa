@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"path"
 	"strings"
 	"time"
@@ -24,6 +25,44 @@ const sftpDialTimeout = 5 * time.Second
 
 // 路徑驗證錯誤：必須絕對路徑且不得含 .. 片段
 var ErrInvalidRemotePath = errors.New("遠端路徑必須為絕對路徑且不得包含 ..")
+
+// SFTP 撥號失敗的穩定分類：遠端送來的任何文字（離線訊息、拒絕訊息）都不進錯誤字串
+var (
+	ErrSFTPAuthFailed      = errors.New("SFTP 認證失敗")
+	ErrSFTPDialTimeout     = errors.New("SFTP 連線逾時")
+	ErrSFTPUnreachable     = errors.New("SFTP 無法連線到目標主機")
+	ErrSFTPSubsystemFailed = errors.New("目標拒絕開啟 SFTP 子系統")
+)
+
+// classifySFTPDialError 把 SSH 撥號錯誤收斂為穩定分類；asset 的哨兵（私鑰無法解析、主機金鑰查核失敗、
+// 主機金鑰不符）原樣透傳供 handler 分碼。
+func classifySFTPDialError(err error) error {
+	for _, sentinel := range []error{asset.ErrPrivateKeyInvalid, asset.ErrHostKeyCheckFailed, asset.ErrHostKeyChanged, asset.ErrAssetNoUsableAccount} {
+		if errors.Is(err, sentinel) {
+			return err
+		}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return ErrSFTPDialTimeout
+	}
+	if strings.Contains(err.Error(), "unable to authenticate") || strings.Contains(err.Error(), "no supported methods remain") {
+		return ErrSFTPAuthFailed
+	}
+	return fmt.Errorf("%w (%s)", ErrSFTPUnreachable, sshmaterial.RemoteErrorClass(err))
+}
+
+// sftpAuthResult 撥號結果對應的認證結果（供憑證已送出的補記審計）
+func sftpAuthResult(err error) string {
+	switch {
+	case err == nil:
+		return asset.HostKeyAuthSucceeded
+	case strings.Contains(err.Error(), "unable to authenticate") || strings.Contains(err.Error(), "no supported methods remain"):
+		return asset.HostKeyAuthFailed
+	default:
+		return asset.HostKeyAuthUnknown
+	}
+}
 
 // ErrRemoveDirNotEmpty 刪除目錄失敗（須為空目錄）——可行動指引，handler 以
 // errors.Is 映射專碼，不與「底層出錯」的泛碼混為一談
@@ -94,62 +133,95 @@ func (s *SFTPService) AccountIdentity(assetID, accountID uint) (asset.AccountIde
 	return s.assetService.ResolveAccountIdentity(assetID, accountID)
 }
 
+// FileOpContext 一次檔案操作的連線脈絡（host-key-verification）：主機金鑰不符時的審計、
+// 觀察紀錄與告警以此記連線使用者、連線識別（自會話進入時為會話主鍵，否則 0）與來源位址。
+type FileOpContext struct {
+	UserID    uint
+	Username  string
+	SessionID uint
+	ClientIP  string
+}
+
+func (op FileOpContext) hostKeyDialContext(assetID, accountID uint) asset.HostKeyDialContext {
+	dc := asset.HostKeyDialContext{
+		AssetID: assetID, Path: asset.HostKeyPathFileTransfer,
+		UserID: op.UserID, Username: op.Username, AccountID: accountID, ClientIP: op.ClientIP,
+	}
+	if op.SessionID != 0 {
+		dc.ConnectionRef = fmt.Sprintf("%d", op.SessionID)
+	}
+	return dc
+}
+
+// ListResult 列目錄的結果。HostKeyMismatch 為真表示這次連線的主機金鑰與記錄不符
+// （已留痕並放行），檔案管理據此顯示警示；其他操作不帶旗標，只寫審計。
+type ListResult struct {
+	Entries         []FileEntry
+	HostKeyMismatch bool
+}
+
 // connect 以資產收口模式建立短連線 SFTP client；呼叫端負責 closeFn。
 //
 // accountID=0＝預設帳號：SFTP 獨立入口（檔案管理頁直接進）走預設帳號；
-// 自會話分頁進入者由呼叫端以 AccountForSession 帶入該會話的帳號
-func (s *SFTPService) connect(assetID, accountID uint) (*sftp.Client, func(), error) {
+// 自會話分頁進入者由呼叫端以 AccountForSession 帶入該會話的帳號。
+// 回傳的主機金鑰結果供呼叫端判斷這次連線是否不符（檔案傳輸屬互動路徑，不符時留痕後放行）。
+func (s *SFTPService) connect(assetID, accountID uint, op FileOpContext) (*sftp.Client, func(), *asset.HostKeyDialResult, error) {
 	creds, err := s.assetService.GetWithCredentialsForAccount(assetID, accountID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer creds.Destroy()
 	assetRow := creds.Asset
 	// 零帳號資產：與連線入口同語義，明確回「無可用帳號」而非落到下方
 	// 「未設定可用憑證」——後者訊息指向憑證欄，會誤導管理員去改資產表單
 	if creds.AccountID == 0 {
-		return nil, nil, asset.ErrAssetNoUsableAccount
+		return nil, nil, nil, asset.ErrAssetNoUsableAccount
 	}
 	if assetRow.Protocol != model.ProtocolSSH {
-		return nil, nil, errors.New("僅 SSH 資產支援檔案管理")
+		return nil, nil, nil, errors.New("僅 SSH 資產支援檔案管理")
 	}
 
 	password := sshmaterial.NewPassword(creds.Password)
-	sshClient, err := dialSFTP(context.Background(), creds, password, s.hostKeys.Callback(assetRow.ID))
+	hostKeyCB, hostKeyResult := s.hostKeys.CallbackFor(op.hostKeyDialContext(assetRow.ID, creds.AccountID))
+	sshClient, err := dialSFTP(context.Background(), creds, password, hostKeyCB)
 	creds.Destroy()
+	// 不符放行後憑證已實際送出：無論認證結果都補記（同 correlation_id）
+	s.hostKeys.RecordCredentialSent(hostKeyResult, sftpAuthResult(err))
 	if err != nil {
-		return nil, nil, fmt.Errorf("SSH 連線失敗: %w", err)
+		// 交握與認證錯誤收斂為穩定分類：遠端可控的離線訊息不進日誌與回應
+		return nil, nil, nil, fmt.Errorf("SSH 連線失敗: %w", classifySFTPDialError(err))
 	}
 
 	client, err := sftp.NewClient(sshClient)
 	if err != nil {
 		sshClient.Close()
-		return nil, nil, fmt.Errorf("建立 SFTP 失敗: %w", err)
+		// 冒充主機可把剛收到的密碼塞進 channel reject／子系統拒絕訊息：只留原因碼
+		return nil, nil, nil, fmt.Errorf("%w (%s)", ErrSFTPSubsystemFailed, sshmaterial.RemoteErrorClass(err))
 	}
 
 	closeFn := func() {
 		client.Close()
 		sshClient.Close()
 	}
-	return client, closeFn, nil
+	return client, closeFn, hostKeyResult, nil
 }
 
 // List 列出遠端目錄
-func (s *SFTPService) List(assetID, accountID uint, remotePath string) ([]FileEntry, error) {
+func (s *SFTPService) List(assetID, accountID uint, remotePath string, op FileOpContext) (ListResult, error) {
 	cleaned, err := ValidateRemotePath(remotePath)
 	if err != nil {
-		return nil, err
+		return ListResult{}, err
 	}
 
-	client, closeFn, err := s.connect(assetID, accountID)
+	client, closeFn, hostKey, err := s.connect(assetID, accountID, op)
 	if err != nil {
-		return nil, err
+		return ListResult{}, err
 	}
 	defer closeFn()
 
 	infos, err := client.ReadDir(cleaned)
 	if err != nil {
-		return nil, fmt.Errorf("讀取目錄失敗: %w", err)
+		return ListResult{}, fmt.Errorf("讀取目錄失敗: %w", err)
 	}
 
 	entries := make([]FileEntry, 0, len(infos))
@@ -162,17 +234,17 @@ func (s *SFTPService) List(assetID, accountID uint, remotePath string) ([]FileEn
 			IsDir:   info.IsDir(),
 		})
 	}
-	return entries, nil
+	return ListResult{Entries: entries, HostKeyMismatch: hostKey.Mismatch()}, nil
 }
 
 // Upload 串流上傳到遠端路徑（不落地暫存）
-func (s *SFTPService) Upload(assetID, accountID uint, remotePath string, src io.Reader) (int64, error) {
+func (s *SFTPService) Upload(assetID, accountID uint, remotePath string, src io.Reader, op FileOpContext) (int64, error) {
 	cleaned, err := ValidateRemotePath(remotePath)
 	if err != nil {
 		return 0, err
 	}
 
-	client, closeFn, err := s.connect(assetID, accountID)
+	client, closeFn, _, err := s.connect(assetID, accountID, op)
 	if err != nil {
 		return 0, err
 	}
@@ -192,13 +264,13 @@ func (s *SFTPService) Upload(assetID, accountID uint, remotePath string, src io.
 }
 
 // Download 開啟遠端檔案供串流下載；呼叫端負責關閉回傳的 reader 與連線
-func (s *SFTPService) Download(assetID, accountID uint, remotePath string) (io.ReadCloser, int64, func(), error) {
+func (s *SFTPService) Download(assetID, accountID uint, remotePath string, op FileOpContext) (io.ReadCloser, int64, func(), error) {
 	cleaned, err := ValidateRemotePath(remotePath)
 	if err != nil {
 		return nil, 0, nil, err
 	}
 
-	client, closeFn, err := s.connect(assetID, accountID)
+	client, closeFn, _, err := s.connect(assetID, accountID, op)
 	if err != nil {
 		return nil, 0, nil, err
 	}
@@ -225,13 +297,13 @@ func (s *SFTPService) Download(assetID, accountID uint, remotePath string) (io.R
 }
 
 // Mkdir 建立遠端目錄
-func (s *SFTPService) Mkdir(assetID, accountID uint, remotePath string) error {
+func (s *SFTPService) Mkdir(assetID, accountID uint, remotePath string, op FileOpContext) error {
 	cleaned, err := ValidateRemotePath(remotePath)
 	if err != nil {
 		return err
 	}
 
-	client, closeFn, err := s.connect(assetID, accountID)
+	client, closeFn, _, err := s.connect(assetID, accountID, op)
 	if err != nil {
 		return err
 	}
@@ -244,13 +316,13 @@ func (s *SFTPService) Mkdir(assetID, accountID uint, remotePath string) error {
 }
 
 // Delete 刪除遠端檔案或空目錄
-func (s *SFTPService) Delete(assetID, accountID uint, remotePath string) error {
+func (s *SFTPService) Delete(assetID, accountID uint, remotePath string, op FileOpContext) error {
 	cleaned, err := ValidateRemotePath(remotePath)
 	if err != nil {
 		return err
 	}
 
-	client, closeFn, err := s.connect(assetID, accountID)
+	client, closeFn, _, err := s.connect(assetID, accountID, op)
 	if err != nil {
 		return err
 	}

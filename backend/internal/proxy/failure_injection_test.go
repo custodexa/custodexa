@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"github.com/custodexa/backend/internal/modules/authz"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -151,7 +152,7 @@ func TestGuacFailureInjectionPerGate(t *testing.T) {
 			c := gateGuacContext()
 			st := &graphicsRedeemState{
 				grant:       ConnectGrant{UserID: 1, AssetID: 1, AccountID: cell.accountID},
-				currentRole: model.RoleUser,
+				principal:   authz.NewPrincipal(1, authz.TokenFacts{}, nil),
 				authzCtx:    c.Request.Context(),
 				creds:       creds,
 			}
@@ -188,7 +189,7 @@ func TestGuacNoFaultControl(t *testing.T) {
 	c := gateGuacContext()
 	st := &graphicsRedeemState{
 		grant:       ConnectGrant{UserID: 1, AssetID: 1},
-		currentRole: model.RoleUser,
+		principal:   authz.NewPrincipal(1, authz.TokenFacts{}, nil),
 		authzCtx:    c.Request.Context(),
 		creds:       creds,
 	}

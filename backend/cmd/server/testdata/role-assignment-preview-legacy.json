@@ -1,0 +1,124 @@
+{
+  "direct_roles": {
+    "matched": 1,
+    "subjects": [
+      {
+        "assign_capable": false,
+        "combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "entries_gained": [
+          "assets"
+        ],
+        "entries_lost": [],
+        "management_granted": true,
+        "marks": [
+          "management_grant"
+        ],
+        "new_combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "self": false,
+        "self_direction": "",
+        "user_id": 19
+      }
+    ],
+    "total": 1,
+    "truncated": false
+  },
+  "group_members": {
+    "matched": 2,
+    "subjects": [
+      {
+        "assign_capable": true,
+        "combos": [
+          "authz_rules_with_asset_or_credential",
+          "security_with_asset_or_authz",
+          "asset_management_with_connect",
+          "identity_with_security",
+          "identity_with_business_or_connect"
+        ],
+        "entries_gained": [],
+        "entries_lost": [],
+        "management_granted": false,
+        "marks": [
+          "self_authorization"
+        ],
+        "new_combos": [],
+        "self": true,
+        "self_direction": "increase",
+        "user_id": 2
+      },
+      {
+        "assign_capable": false,
+        "combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "entries_gained": [
+          "assets"
+        ],
+        "entries_lost": [],
+        "management_granted": true,
+        "marks": [
+          "management_grant"
+        ],
+        "new_combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "self": false,
+        "self_direction": "",
+        "user_id": 22
+      }
+    ],
+    "total": 2,
+    "truncated": false
+  },
+  "group_roles": {
+    "matched": 1,
+    "subjects": [
+      {
+        "assign_capable": false,
+        "combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "entries_gained": [],
+        "entries_lost": [],
+        "management_granted": true,
+        "marks": [
+          "management_grant"
+        ],
+        "new_combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "self": false,
+        "self_direction": "",
+        "user_id": 20
+      }
+    ],
+    "total": 2,
+    "truncated": false
+  },
+  "role_definition": {
+    "matched": 1,
+    "subjects": [
+      {
+        "assign_capable": false,
+        "combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "entries_gained": [],
+        "entries_lost": [],
+        "management_granted": false,
+        "marks": null,
+        "new_combos": [
+          "authz_rules_with_asset_or_credential"
+        ],
+        "self": false,
+        "self_direction": "",
+        "user_id": 20
+      }
+    ],
+    "total": 1,
+    "truncated": false
+  }
+}

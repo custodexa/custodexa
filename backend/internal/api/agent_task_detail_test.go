@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/stretchr/testify/require"
@@ -65,8 +66,9 @@ func TestTaskDetailAndSessionQuery(t *testing.T) {
 	for _, resource := range []model.AuditResource{model.ResourceAccessRequest, model.ResourceSession} {
 		found := false
 		for _, row := range logs {
-			if row.Resource == resource && row.Details != "" {
-				require.Contains(t, row.Details, "access_request_id")
+			// 拒絕列另有拒絕細節鍵（denial 等）；只看既有鍵，與加入拒絕細節前的判定相同
+			if details := detailsWithoutDenial(t, row.Details); row.Resource == resource && details != "" {
+				require.Contains(t, details, "access_request_id")
 				found = true
 			}
 		}
@@ -129,4 +131,23 @@ func TestTaskDetailProjectsExecutorAndAssetName(t *testing.T) {
 	require.Equal(t, false, items[0].(map[string]any)["asset_deleted"])
 	require.Equal(t, "db-01", items[1].(map[string]any)["asset_name"])
 	require.Equal(t, true, items[1].(map[string]any)["asset_deleted"])
+}
+
+// detailsWithoutDenial 去掉拒絕細節五鍵後的 details；只剩空物件時回空字串。
+func detailsWithoutDenial(t *testing.T, details string) string {
+	t.Helper()
+	if details == "" {
+		return ""
+	}
+	var m map[string]any
+	require.NoError(t, json.Unmarshal([]byte(details), &m))
+	for _, k := range []string{"denial", "basis", "required", "scope_reason", "count"} {
+		delete(m, k)
+	}
+	if len(m) == 0 {
+		return ""
+	}
+	out, err := json.Marshal(m)
+	require.NoError(t, err)
+	return string(out)
 }

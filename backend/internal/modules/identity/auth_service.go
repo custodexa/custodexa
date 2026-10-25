@@ -81,6 +81,8 @@ type AuthService struct {
 	// 全域 database.DB）。nil＝未注入，回退全域，
 	// 見 auth_epoch_gate.go 的 epochDB() 註解
 	epochGateDB *gorm.DB
+	// restoreGen 持久還原世代來源（restore_generation_gate.go）；nil＝不啟用世代閘
+	restoreGen RestoreGenerationSource
 	// roleState 特權登入時的角色指派比對面（role-assignment-integrity）。
 	// nil＝未接，登入路徑完全不變
 	roleState RoleStateProbe
@@ -90,10 +92,14 @@ type AuthService struct {
 	// 變動卻沒有任何紀錄，正是這個功能最不能出的錯。未設群組屬性名的部署
 	// 根本走不到這裡（完全短路），故未接線不影響任何既有部署
 	mappingAudit port.TxSink
+	// grader 映射重算使 agent 新增持有角色時的提交後偵測落地面；nil＝不偵測（僅測試建構路徑）。
+	grader *GrantGrader
 	// productVersion 產品版本號，**由組裝根注入**（cmd/server 的 main.Version，
 	// 與 /health 同一個變數；本套件不持有任何版本字面值）。空字串＝未注入，
 	// UserInfo.ProductVersion 因 omitempty 不出現——測試建構路徑的回應形狀不變
 	productVersion string
+	// acctOps 帳號身分操作關卡（管理端停用 MFA）；nil 時只有控制權、沒有留痕落地面
+	acctOps *ProtectedAccountOps
 }
 
 // SetProductVersion 注入產品版本號，供登入回應與 GET /auth/me 的使用者資訊帶出
@@ -101,6 +107,9 @@ type AuthService struct {
 func (s *AuthService) SetProductVersion(v string) {
 	s.productVersion = v
 }
+
+// SetGrantGrader 注入提交後偵測所用的審計與告警落地面。
+func (s *AuthService) SetGrantGrader(g *GrantGrader) { s.grader = g }
 
 // SetRoleMappingAuditSink 接上角色映射事件的交易內審計落地面。
 func (s *AuthService) SetRoleMappingAuditSink(sink port.TxSink) {
@@ -833,14 +842,20 @@ func (s *AuthService) authenticateLDAP(
 // 停用該來源的映射規則，或以本地管理員帳號進入修正。
 func (s *AuthService) recomputeLDAPRoleMapping(user *model.User, info *LDAPUserInfo,
 	resolution LDAPLoginResolution) error {
-	outcome, err := RecomputeMappedRoles(database.DB, s.mappingAudit, user,
-		ldapGroupObservation(resolution, info))
+	obs := ldapGroupObservation(resolution, info)
+	// 重新驗證時限在開交易之前讀好（見 GroupObservation.RevalidationHours）
+	obs.RevalidationHours = s.mappingRevalidationBound()
+	outcome, err := RecomputeMappedRoles(database.DB, s.mappingAudit, user, obs)
 	if err != nil {
 		log.Printf("[AuthService] 目錄群組映射重算失敗（fail-close）: userID=%d err=%v", user.ID, err)
 		return err
 	}
 	if outcome.EpochBumped && s.agentTokens != nil {
 		s.agentTokens.finishSuspendedOwner(user.ID)
+	}
+	if user.Kind == model.KindAgent && len(outcome.Added) > 0 {
+		s.grader.afterAgentRoleWrite(database.DB, nil, string(model.ResourceUser), user.ID,
+			[]uint{user.ID}, roleIDsByNames(database.DB, outcome.Added))
 	}
 	if !outcome.Changed() && !outcome.EpochBumped {
 		return nil
@@ -977,6 +992,10 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	if tx.Error != nil {
 		return nil, fmt.Errorf("開始影子使用者供應交易失敗: %w", tx.Error)
 	}
+	if err := authz.BeginPermissionChange(tx); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
 
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
@@ -999,6 +1018,11 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	if err := model.AssignUserRole(tx, user.ID, role.ID, model.RoleOriginLDAP); err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("綁定預設角色失敗: %w", err)
+	}
+	// 權限版本：首次登入帶預設角色，與指派同交易
+	if err := authz.AdvanceVersion(tx); err != nil {
+		tx.Rollback()
+		return nil, err
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -1193,47 +1217,6 @@ func (s *AuthService) CheckUserConnectable(userID uint) error {
 		return err
 	}
 	return checkConnectableUser(&user)
-}
-
-// CurrentConnectRole 一次查詢完成 connect 路徑的「可連線複查」與「現查有效角色」：
-// 載入 active/locked_until/Roles，不可連線
-// 回既有 sentinel（與 CheckUserConnectable 對齊），可連線回 primaryRoleOf 折疊後的現時
-// 角色。connect token 簽發與兌換 SHALL 以此現況角色判定 admin 特權，不得憑 JWT／token
-// 攜帶的角色快照——降權即時生效、撤權殘窗歸零。
-// 與 CheckUserConnectable 並存：後者仍供 refresh／bridge 啟動前複查以 error 語義使用
-func (s *AuthService) CurrentConnectRole(userID uint) (string, error) {
-	role, _, err := s.CurrentConnectRoleAndSourcePolicy(userID)
-	return role, err
-}
-
-// CurrentConnectRoleAndSourcePolicy 同上，另帶出該使用者的允許來源網段儲存字串。
-//
-// **來源閘不另查一趟**：它緊接在角色現查之後，兩道閘吃的是同一列使用者。
-// 分成兩次查詢除了多一次 round-trip，還會在兩次讀取之間開一個新的 TOCTOU 窗口
-// ——角色以舊列判、來源以新列判，而那正是「換個位址在 60 秒內兌換」這類
-// 攻擊要找的縫。CurrentConnectRole 保留為薄包覆，非連線閘的呼叫端零改動。
-//
-// 回傳的字串**不在此判定**：交由呼叫端以 `sourceip.Evaluate` 作成裁決，
-// 判定邏輯全庫只有一份。讀取本身的可用性記帳（政策不可用的降級訊號）在此完成。
-func (s *AuthService) CurrentConnectRoleAndSourcePolicy(userID uint) (string, string, error) {
-	var user model.User
-	if err := database.DB.Preload("Roles").First(&user, userID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", "", ErrUserNotFound
-		}
-		// 使用者列讀不到＝政策不可讀：閘序對此 fail-close，
-		// 但降級訊號要看得見（否則 DB 抖動期間全部連線被擋卻沒有任何面板顯示原因）
-		s.noteSourcePolicyRead(userID, "", err)
-		return "", "", err
-	}
-	if !user.Active {
-		return "", "", ErrUserInactive
-	}
-	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
-		return "", "", ErrAccountLocked
-	}
-	s.noteSourcePolicyRead(userID, user.AllowedCIDRs, nil)
-	return primaryRoleOf(&user), user.AllowedCIDRs, nil
 }
 
 // LoginWithExternalIdentity 外部身分認證通過後的登入後段。

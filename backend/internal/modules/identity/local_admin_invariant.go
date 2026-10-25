@@ -7,6 +7,7 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"gorm.io/gorm"
 )
 
@@ -101,7 +102,8 @@ func localAdminScope(tx *gorm.DB) *gorm.DB {
 	return tx.Model(&model.User{}).
 		Joins("JOIN user_roles ON user_roles.user_id = users.id").
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Where("roles.name = ?", model.RoleAdmin).
+		Where("roles.builtin_key = ?", model.BuiltinSuperAdmin).
+		Where("user_roles.scope_kind = ?", model.ScopeKindGlobal).
 		Where("user_roles.source IN ?", []string{model.RoleSourceManual, model.RoleSourceBoth}).
 		Where("users.active = ?", true).
 		Where("users.deleted_at IS NULL").
@@ -187,7 +189,7 @@ func WithLocalAdminInvariant(db *gorm.DB, targetUserID uint, fn func(tx *gorm.DB
 
 	switch db.Dialector.Name() {
 	case "postgres":
-		return db.Transaction(func(tx *gorm.DB) error {
+		err := db.Transaction(func(tx *gorm.DB) error {
 			// xact lock：隨交易結束自動釋放，無持有者崩潰殘留問題。
 			// 阻塞版（非 try）——見上方取捨說明。
 			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", LocalAdminLockKey).Error; err != nil {
@@ -195,12 +197,45 @@ func WithLocalAdminInvariant(db *gorm.DB, targetUserID uint, fn func(tx *gorm.DB
 			}
 			return run(tx)
 		})
+		authz.NotifyVersionCommittedAfter(db, err)
+		return err
 	case "sqlite":
 		localAdminProcessMu.Lock()
 		defer localAdminProcessMu.Unlock()
-		return db.Transaction(run)
+		err := db.Transaction(run)
+		authz.NotifyVersionCommittedAfter(db, err)
+		return err
 	default:
 		return fmt.Errorf("不支援的資料庫 dialect %q：無跨實例本地管理員互斥實作",
 			db.Dialector.Name())
 	}
+}
+
+// isSuperAdminRole 角色列是否為內建超級管理者範本（依 builtin_key，不看角色名稱）。
+func isSuperAdminRole(r model.Role) bool {
+	return r.BuiltinKey != nil && *r.BuiltinKey == model.BuiltinSuperAdmin
+}
+
+// hasSuperAdminRole 角色集合中是否有內建超級管理者範本。
+func hasSuperAdminRole(roles []model.Role) bool {
+	for _, r := range roles {
+		if isSuperAdminRole(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasEffectiveGlobalSuperAdmin 封印控制（封印授權、解封帳密驗證、grant 使用時重驗）共用的超管判定：
+// 與一般請求同一解析器語義——人類主體，且有全域生效的內建超管身分（直接或經群組）。
+// 節點範圍的超管指派不構成全域超管；agent 主體恆為否。解析失敗回錯，呼叫端一律拒絕。
+func hasEffectiveGlobalSuperAdmin(db *gorm.DB, user *model.User) (bool, error) {
+	if user == nil || user.Kind == model.KindAgent {
+		return false, nil
+	}
+	p, err := authz.NewResolver(db).ResolveUser(user.ID, authz.TokenFacts{SubjectKind: user.Kind})
+	if err != nil {
+		return false, err
+	}
+	return p.IsSuperAdmin(), nil
 }

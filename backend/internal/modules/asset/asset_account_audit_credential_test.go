@@ -56,7 +56,7 @@ func TestAccountAuditCarriesCredentialRef(t *testing.T) {
 	assets, accounts, creds := newCredentialServices(t)
 	_ = creds
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "audit-cred", Protocol: model.ProtocolSSH, Host: "10.7.0.1", Port: 22,
 		Username: "root", Password: "pw0", CreatedBy: 1, CreatedByName: "admin",
 	})
@@ -72,7 +72,7 @@ func TestAccountAuditCarriesCredentialRef(t *testing.T) {
 
 	// 更新（換密碼）
 	newPW := "pw1"
-	_, err = accounts.Update(adminCtx(), asset.ID, first.ID,
+	_, err = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, first.ID,
 		&UpdateAssetAccountRequest{Password: &newPW})
 	require.NoError(t, err)
 	update := findAccountAudit(t, db, asset.ID, model.AccountOpUpdate)
@@ -80,7 +80,7 @@ func TestAccountAuditCarriesCredentialRef(t *testing.T) {
 	assert.Equal(t, model.CredentialScopeDedicated, update.CredentialScope)
 
 	// 第二個帳號 → 切換預設
-	second, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	second, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "deploy", Password: "pw2",
 	})
 	require.NoError(t, err)
@@ -115,14 +115,14 @@ func TestAccountAuditCredentialScopeShared(t *testing.T) {
 	assets, accounts, creds := newCredentialServices(t)
 	_ = creds
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "audit-shared", Protocol: model.ProtocolSSH, Host: "10.7.0.2", Port: 22,
 		Username: "root", Password: "pw0", CreatedBy: 1, CreatedByName: "admin",
 	})
 	require.NoError(t, err)
 
 	shared := newSharedCredential(t, creds, "ops-shared", "shareduser", "shared-pw")
-	acc, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	acc, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		CredentialID: shared.ID,
 	})
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	viaAssetKey, _ := testKeyPair(t, "pk-audit-via-asset")
 
 	// (a) 建立事件：資產建立時直接帶私鑰
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "pk-audit", Protocol: model.ProtocolSSH, Host: "10.7.0.3", Port: 22,
 		Username: "root", PrivateKey: key, CreatedBy: 1, CreatedByName: "admin",
 	})
@@ -165,7 +165,7 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	var account model.AssetAccount
 	require.NoError(t, db.Where("asset_id = ?", asset.ID).First(&account).Error)
 	rotated := rotatedKey
-	_, err = accounts.Update(adminCtx(), asset.ID, account.ID,
+	_, err = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, account.ID,
 		&UpdateAssetAccountRequest{PrivateKey: &rotated})
 	require.NoError(t, err)
 	update := findAccountAudit(t, db, asset.ID, model.AccountOpUpdate)
@@ -173,7 +173,7 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 
 	// (c) 資產表單透明轉寫（syncDefaultAccountFromAsset 寫入點）
 	viaAsset := viaAssetKey
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{PrivateKey: &viaAsset})
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{PrivateKey: &viaAsset})
 	require.NoError(t, err)
 
 	var withPK int

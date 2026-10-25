@@ -810,6 +810,15 @@ MSG_pc_lock_other='單一實例       資料庫鎖由另一個資料庫工作階
                連到同一個資料庫'
 MSG_pc_lock_held='單一實例       這台的後端取得資料庫鎖'
 MSG_pc_lock_unknown='單一實例       後端日誌沒有資料庫鎖的紀錄，無法確認'
+MSG_pc_authz_zero='權限           沒有任何本地超管可以登入。升級照常完成，但從現在起
+               的備份會被標為不可用，restore 會拒絕。這件事已記入
+               稽核日誌。請讓一個本地帳號持有超管角色，再重新備份。
+               若沒有人能登入處理，那是資料庫層的變更，請記入你們
+               自己的變更管理'
+MSG_pc_authz_dangling='權限           有 %s 筆角色指派指向已刪除或不存在的角色。升級照常
+               完成，但從現在起的備份會被標為不可用，restore 會
+               拒絕。這件事已記入稽核日誌。請修正這些指派，再重新
+               備份'
 MSG_pc_entry_bad='對外入口       %s 沒有回應'
 MSG_pc_empty_title='新版接到的是一個空的資料庫，已立即停止所有服務'
 MSG_pc_empty_moved='新版把資料庫當成全新安裝建立了（使用者 %s、連線紀錄 %s；
@@ -1298,6 +1307,23 @@ MSG_rs_bad_release='發行清單的雜湊或版本與備份清單不符。'
 MSG_rs_bad_migrations='migration 摘要或筆數與備份清單不符。'
 
 MSG_rs_bad_fingerprint='主金鑰指紋與快照不符。'
+
+MSG_rs_bad_authz='快照裡的權限摘要不完整或格式不符。'
+
+MSG_rs_bad_authz_version='快照裡的權限摘要，其模型或快照版本不是這份腳本讀得懂的版本。
+請用製作這份備份的版本來還原。'
+
+MSG_rs_bad_authz_refs='快照記錄了權限檢查的發現：這份資料沒有通過還原會做的檢查
+（例如沒有本地超管，或有指派指向不存在的對象）。
+這份備份只能用於診斷，不能還原。'
+
+MSG_rs_bad_whole='備份檔本身完整（校驗相符），但不能在這裡還原：'
+
+MSG_rs_next_authz_version='重新複製檔案不會改變結果。請用製作這份備份的版本，或改用另一份備份。'
+
+MSG_rs_next_authz_refs='重新複製檔案不會改變結果。請改用還原接受的較早備份。
+要讓之後的備份可以還原，請在運行中的系統上處理權限檢查指出的問題
+（例如讓一個本地帳號持有超管角色），再重新備份。'
 
 MSG_rs_bad_state='state.json 的版本與備份清單不符。'
 
@@ -1925,6 +1951,27 @@ MSG_rs_db_check_counts='核對資料庫：%s 筆數不同（匯入後 %s，備�
 MSG_rs_db_check_kek='核對資料庫：active 主金鑰識別不同（匯入後 %s，備份 %s）'
 # 0 arguments
 MSG_rs_db_check_read='核對資料庫：讀不到匯入後的資料'
+# 2 arguments
+MSG_rs_db_check_authz='核對資料庫：匯入後的權限狀態與備份不同（匯入後 %s，備份 %s）'
+# 1 arguments
+MSG_rs_db_check_authz_refs='核對資料庫：權限參照不成立（%s）。
+       權限還原沒有提交。請改用較早的備份，或到這份備份的來源
+       系統處理原因（例如讓一個本地帳號持有超管角色），再重新備份'
+# 0 arguments
+MSG_rs_db_check_authz_conflict='核對資料庫：另有未完成的權限還原紀錄，無法判定續做或重做'
+
+# 0 arguments
+MSG_rs_db_check_legacy_secret='核對資料庫：此備份屬於舊版，要還原的設定中的登入秘密
+       沒有被更換'
+# 0 arguments
+MSG_rs_db_check_legacy_revoke='核對資料庫：備份內的登入會話、agent 憑證與臨時授權
+       沒有全部撤銷'
+# 0 arguments
+MSG_rs_legacy_return_ok='舊版還原：登入秘密已更換，備份內的會話、agent 憑證與
+       臨時授權已撤銷，所有人需重新登入'
+
+# 0 arguments
+MSG_rs_legacy_secret_failed='此備份屬於舊版，需要新的登入秘密，但產生失敗。沒有改動任何東西。'
 # 1 arguments
 MSG_rs_failure_stopped='還原停在第 %s 步。服務維持停止，沒有自動回復。'
 # 1 arguments

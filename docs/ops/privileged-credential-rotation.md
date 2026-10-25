@@ -72,11 +72,15 @@ Where the "external coordination needed" column is not empty, **if that coordina
 
 **When it takes effect: immediately** (the channel cache is refreshed in-process; no restart needed).
 
+**What else a change sets off.** Saving a changed URL or secret is recorded in the audit log and raises a `notification_channel_changed` system security alert, which is sent to the other enabled channels and also to this channel's destination before and after the change; expect that notice at the receiving end during the rotation. System security alerts already queued before the save keep the URL and secret the channel had when they were queued. If the receiving end stops accepting the old secret first, those deliveries fail and are retried until they are marked abandoned 72 hours after they were queued ([Deployment Topology Limits](./deployment-topology-limits.md#system-security-alerts-and-notification-channels)), so let the receiving end accept both secrets until the queue has drained, or accept that those deliveries are lost.
+
 > ### A silent degradation path you have to know about
 >
 > When the channel cache is refreshed, the URL and secret are decrypted into the plaintext used for delivery. **If either fails to decrypt, that channel is skipped outright with no delivery, and only a single log line is written; no alert is produced, and the channel still looks normal in the UI.**
 >
 > This is a deliberate trade-off (better nothing than sending ciphertext as a URL), but the price is that **"looks fine in the interface" does not mean "is delivering."**
+>
+> System security alerts take a different path. For a channel whose settings cannot be decrypted, the alert is still recorded and still sent to every other enabled channel, and that channel's entry in the alert's delivery list is marked abandoned at once with zero attempts, so the gap shows in the alert detail; the operation that raised the alert is not blocked by it. Such a channel can still be edited or deleted; to repair it, enter the URL again and set or clear the secret.
 >
 > When you can hit it: after a KEK change or a change to encryption settings, when the old encrypted columns no longer decrypt.
 >
@@ -121,7 +125,7 @@ For Vault, first read [§14](#vault-transit): the current evidence covers an iso
 
 The KEK is the root of the whole envelope encryption scheme. Rotating it is called a **rewrap** in this product: the existing data keys are wrapped again with a new KEK, and the data itself is not re-encrypted.
 
-**Entry point**: the Key Management page → KEK rewrap wizard (admin only). The related APIs are all admin only:
+**Entry point**: the Key Management page → KEK rewrap wizard (requires the `key:manage` permission, held by the super administrator and the system security administrator templates). The related APIs all require `key:manage`:
 
 | Endpoint | Purpose |
 |---|---|
@@ -133,6 +137,8 @@ The KEK is the root of the whole envelope encryption scheme. Rotating it is call
 KEK retirement is a soft retirement: only the status column changes, and the wrapping material is not cleared. So **until "clear retired data" is run, rolling back to an old KEK at the data layer is always possible** (a last resort, handled manually per §10.4). After the clear runs the material is emptied and unrecoverable; the retirement trail (source, target, timestamps) and the fingerprints are kept permanently.
 
 **Abandoning a rewrap**: the abandoned target is marked retired (with the reason recorded as abandoned) rather than deleted. On a later rewrap the system refuses to reuse any key reference that has appeared before (including retired records), so a brand-new key must be used.
+
+**The topology after a rewrap.** In a delegated key deployment, a rewrap that changes the non-secret topology writes the new topology only after the rewrap itself has succeeded, in one transaction with its audit entry and the `key_topology_changed` system alert. If that write fails, the topology stays as it was, the rewrap is still reported as done (it is not rolled back, and running it again is not the remedy), and an audit entry records that the rewrap succeeded while the topology was not synchronized. To find it, look in the audit log for a `key_management` entry with action `update` and status `failure`, whose request body carries `rewrap_topology_not_synced` in `note`; the backend log carries a line that starts with `[KEKTopology]`. That entry is an ordinary audit entry, so it is not written when the audit log master switch is off, and the rewrap response does not carry this signal. Set the topology yourself in the topology section of the key management page; that save is audited and raises the alert like any other topology change. The alert is always created and left on record; whether anyone receives it depends on the notification channels.
 
 **The steps that complete the switchover differ by KEK mode.** The rewrap itself and the switchover mechanism are the same in every mode, and the switchover is always completed by the **boot sequence** (once the system has verified that the new KEK can unwrap every key, it marks the old wrapped rows retired). What differs is where the new KEK enters the process, and **when that boot sequence can run at all**: in modes A and C at the moment of the restart, while in mode B the system stops in the sealed state after startup and only runs it once someone submits the material on the unseal page, so its switchover completes at unseal:
 
@@ -170,7 +176,7 @@ Verification scope (2026-09-13): HTTP operation of the development build in env,
 
 ## 5. DEK and the audit stamping key
 
-**Entry point**: the Key Management page, or `POST /api/v1/keys/rotate` (admin only), with `purpose` naming what to rotate:
+**Entry point**: the Key Management page, or `POST /api/v1/keys/rotate` (requires `key:manage`), with `purpose` naming what to rotate:
 
 - The data key (which protects encrypted columns such as asset credentials).
 - The audit integrity stamping key.
@@ -213,6 +219,28 @@ For the error guidance when a retired KEK is set by mistake, see [Backup and Res
 > Schedule a maintenance window and notify users in advance.
 
 In release mode the system detects whether `JWT_SECRET` is still the factory placeholder value and refuses to start if it has not been changed.
+
+**`JWT_SECRET` and the restore generation** (from 1.18.0). The key that signs sign-in tokens is derived from `JWT_SECRET` and the restore generation kept in the database. Until the first restore the generation is empty, and the key is `JWT_SECRET` itself. The two change separately:
+
+- A restore by the management script of a backup of 1.18.0 or later sets a new generation and puts `.env` back as the backup holds it. `JWT_SECRET` and its fingerprint on the Key Management page stay the same, every token signed before the restore stops verifying, and the refresh tokens and agent tokens in the backup are refused ([Backup and Restore §5](./backup-and-restore.md#restoring-with-restore)).
+- Replacing `JWT_SECRET` as above does not change the generation.
+- A restart, or another host taking over the same database, keeps the generation.
+
+### Revoking long-lived sign-ins (going back to an older version)
+
+An older version does not know the restore generation of the permission model, so changing `JWT_SECRET` alone leaves refresh tokens, agent tokens and approved temporary grants valid. When you return to an older version by hand, do both at the stop point of the restore commands ([Backup and Restore §5](./backup-and-restore.md#restoring-by-hand), step 5a): after the database is loaded and before any service starts, with every application service on every application host stopped. Do not do them before the load, because the load replaces both the `.env` and the data they act on. If either step fails, do not start the services.
+
+1. Put a new random value in `JWT_SECRET` in the `.env` that the restore put back (at least 32 bytes). With two application hosts, give both the same value before either starts.
+2. With the database stopped from receiving other writes, run the statements below in one session of the deployment's database client (for the bundled database: `docker compose exec -T postgres psql -U <database user> -d <database name>`), then check that each statement reports the rows it changed.
+
+```sql
+UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'restore' WHERE revoked_at IS NULL;
+UPDATE agent_tokens SET revoked_at = now(), revoke_note = 'restore' WHERE revoked_at IS NULL;
+UPDATE asset_authorizations SET date_expired = now()
+ WHERE source = 'ticket' AND deleted_at IS NULL AND (date_expired IS NULL OR date_expired > now());
+```
+
+Everyone signs in again afterwards; agent tokens must be issued anew and temporary grants requested again. Standing authorizations are not changed. When you restore a backup taken before the upgrade with the scripts of the new version, the restore does both steps itself before the older version starts, and records only the fingerprint of the new secret ([Backup and Restore §5.1](./backup-and-restore.md#from-1180-or-later-to-a-version-before-it)). The same two steps, at the same stop point, close the sign-ins of any backup restored by hand, which does not set a new restore generation. The new `JWT_SECRET` stays: the fingerprint check of [Backup and Restore §6](./backup-and-restore.md#6-post-restore-verification-checklist) then compares against it, not against the backup. This does not protect against someone who controls the host.
 
 ---
 
@@ -315,7 +343,7 @@ Whatever you rotated, confirm the following afterwards:
 
 1. **The fingerprints in the key inventory changed as expected** (what should have changed did, and what should not have did not), and update the fingerprint record kept with your backups.
 2. **Press "Test send" once for each enabled notification channel**, and confirm the receiving end actually received it (the silent degradation path in §3).
-3. **The audit record contains a record of this rotation.** Key operations are all admin only and are audited; clearing material additionally records the number of rows cleared and the fingerprint of each key version.
+3. **The audit record contains a record of this rotation.** Key operations all require `key:manage` and are audited; clearing material additionally records the number of rows cleared and the fingerprint of each key version.
 4. If you touched a key on the env side, confirm the startup log after the restart has no fail-closed message.
 
 ---
@@ -351,12 +379,25 @@ The credential's state is one of five values, and the page shows it:
 `partial` is shown ahead of `changing` on purpose: once "some done, some not" is true, that is the
 thing you need to see.
 
-**What advances by itself, and what does not.** Within a round that is still running, hosts that hit
-a retryable failure, and hosts whose remote result is not yet known, are picked up again by the
-retry schedule (the same backoff as the credential change retries). Hosts that ended in a final
-failure, hosts closed out with the round, and **every host in a round you abandoned** are never
-advanced automatically. Those need you to retry them one at a time — a host that certainly cannot
-be changed should not be hammered indefinitely.
+**What advances by itself, and what does not.** Within a round that is still running, the retry
+schedule picks up a host that hit a retryable failure once its own retry time comes, and sends the
+change again; a host whose remote result is not yet known is only logged in to with the new secret,
+and the change is not sent again. Both follow the same backoff as the credential change retries,
+until 24 hours after the round started. Hosts that ended in a final failure, hosts closed out with
+the round, and **every host in a round you abandoned** are never advanced automatically, and the
+schedule never sends the change to them again. Those need you to retry them one at a time: nobody
+has checked which secret such a host is taking now, and a host that certainly cannot be changed
+should not be hammered indefinitely.
+
+**A host that was being changed when the service stopped.** The remote result of that change is
+unknown. At the next start, before any schedule runs, each such host is marked Changed, unverified
+with the reason that the service restarted: its pending secret is kept, nothing is sent to it, an
+audit entry is written in the same step and an alert is raised for it. From then on it is handled
+like any host whose remote result is not known: in a running round the retry schedule logs in to it
+with the new secret, and Retry does the same; neither sends the change again. If it still cannot be
+verified 24 hours after the round started it becomes Failed, and after that only Retry moves it,
+sending the change again. If the audit entry cannot be written, the host is left as it was, the
+alert says so, and the next start tries again.
 
 **Retrying one host** acts on that host only and answers synchronously; it can take tens of seconds,
 because it opens a real connection and verifies the login.
@@ -376,7 +417,10 @@ There are two outcomes:
 - **Otherwise**: the credential goes to `out_of_sync` and stays there. **The only way out is to
   retry the remaining hosts one at a time until every host is on the same version.** While the
   credential is `out_of_sync` the system refuses to start a new round on it — starting one would
-  make "which secret is actually on which host" unanswerable.
+  make "which secret is actually on which host" unanswerable. The abandoned round stays on the
+  credential's page: every host not yet on the new secret that is still bound has the Retry action
+  there, including hosts that were closed out when you abandoned, and when the last one is on the new
+  secret the credential returns to `idle`.
 
 **Do not clear a pending secret to tidy the state up.** That record may be the only copy of a secret
 that is already live on the host; once it is gone, the way back is the host's own console.
@@ -386,6 +430,12 @@ that is already live on the host; once it is gone, the way back is the host's ow
 The other mode gives every host a different new secret and ends the sharing: as each host verifies,
 it is moved onto a credential of its own. When the original credential is left with one host it
 becomes that host's own credential; left with none and with nothing pending, it is removed.
+If you abandon this kind of round after hosts were changed, it stays on the credential's page, and
+every host whose new secret is still kept and that is not yet on a credential of its own has the Retry
+action there, including a host that was stopped after it had been worked on (for example by a Retry
+pressed while the person who started the round had lost the permission). Hosts the new secret had
+certainly not reached when you abandoned had it discarded; they keep the shared credential and have
+nothing to retry.
 
 **There is no undo.** The system does not offer a way to put those hosts back on one shared set —
 the secrets are now genuinely different on each machine. Sharing them again means creating a new
@@ -425,11 +475,83 @@ Two ways forward, both supported:
 
 1. **The credential's state is `idle`** and every binding shows the same version. A credential left
    at `partial` or `out_of_sync` is a change that has not finished.
-2. **The audit record contains this change.** Every action on the credential library is admin only
-   and audited; binding and unbinding additionally record which host was affected, so the change is
+2. **The audit record contains this change.** Every change to the credential library needs the
+   matching credential permission and is audited; binding and unbinding additionally record which host was affected, so the change is
    findable from the host as well as from the credential.
 3. **The rotation evidence report marks the hosts as expected.** A host that has been detached is no
    longer marked as sharing; the report reads the credential's scope.
+
+### 13.7 Who may do this, and what happens when permission is lost
+
+- **Managing credentials and connecting are separate permissions.** Viewing, creating, editing,
+  declaring a new secret, changing the secret on hosts, converting the scope, detaching, deleting and
+  binding each need their own credential permission, and changing a managed account's secret needs
+  the account-rotation permission. Holding a connection permission does not allow managing, and
+  holding a management permission does not allow connecting. The super administrator role holds all
+  of them.
+- **A plan, batch or rotation runs as the person who started it, and the person's current permissions
+  are checked again before each target starts, before each rotation member step and before each
+  candidate retry.** For a scheduled plan that person is the one who last saved the plan, or
+  whoever later took it over with the banner on the credential-change plan page; right after an upgrade it is the user
+  the upgrade found in the audit trail, until the plan is saved or taken over. A rotation taken over
+  with the Retry action on one of its members runs as the person who took it over. A manual
+  "run now" applies to that run only. The check covers the permission itself and, for a person who holds it
+  only through assignments limited to some nodes, whether the target is still within that scope (§13.8). If the person has lost the permission, that
+  piece of work stops, no new change is sent to that host, and an alert and an audit entry are
+  attempted (alerts are de-duplicated, so their count is not an exact tally). On each host the check is
+  made after the new secret has been prepared and before the first write to the host; a key change is
+  checked again before the old key is removed. Verifying the new secret, and for a key change restoring
+  the previous keys when that verification fails, belong to the step already allowed and are not
+  checked again. Each check is completed before the step it allows sends anything to the host, and it
+  does not overlap with a change to where assets, nodes or credentials belong. A move out of scope or a
+  removed permission that takes effect only after a host's check has completed affects the next host or
+  the next checked step. A role removed, directly or through a group, while a host's check is in
+  progress may still let that host be changed once; the next host is checked with the role already
+  removed. The step already allowed is not cut off midway and finishes its normal safety steps. For roles that come from
+  an external identity source, "current permissions" means what the platform last computed for that
+  person; see [Deployment Topology Limits](./deployment-topology-limits.md#roles-granted-from-an-external-identity-source-when-a-change-there-takes-effect).
+- **If the stop came after a change had already been sent to the host,** the candidate or rotation
+  member is kept, not discarded. Within 24 hours of the candidate or rotation being created the
+  platform may still verify it and record the result, as described in
+  [Upgrade SOP §2.5b](./upgrade-sop.md#25b-scheduled-credential-change-plans-after-the-upgrade);
+  after that, or when the target has changed, an authorized person has to decide which secret the
+  host is taking. Candidates and members that are still waiting for a retry are looked at again on
+  their normal schedule, so if the permission is restored they may continue on their own. Work whose host identity has changed is not covered by this: if the host key record was replaced, adopted again, reset or deleted after the job first exchanged host keys with the target, or the job recorded no identity, it stays stopped until a person confirms it, as described in [Upgrade SOP §2.5b](./upgrade-sop.md#25b-scheduled-credential-change-plans-after-the-upgrade). For work from before the upgrade, the first confirmation fixes the target as it is when the confirm button is pressed (a candidate credential from before the upgrade first needs one ordinary Retry, and the target is fixed as it is when that Retry runs); if the target had already been changed before then, this cannot be detected.
+- **Declaring or choosing a secret yourself is a recorded, alerted action, not a blocked one.**
+  Declaring a new secret and detaching a host with a custom secret leave an audit entry and raise an
+  alert. A person who may do this can set a host's
+  password to a value only they know and then connect to that host directly, without passing through
+  this platform. The platform records and alerts; it does not prevent it.
+
+### 13.8 Credential changes by an administrator limited to some nodes
+
+This section describes what happens when a person holds the account-rotation or the credential-rotation permission through an assignment limited to some nodes. Each action is judged by the one permission it needs: a person who holds that permission through any assignment covering the whole system is not limited for that action, even when other permissions of theirs are. For a person who holds it only through assignments limited to some nodes, batches and plans act only on targets within that scope.
+
+- **Batch credential change.** Account names, targets and host counts include only hosts within the scope. The batch list shows a batch when at least one host it selected is within the scope, and the batch's detail counts only those hosts. If any account selected for a new batch is outside the scope or no longer exists, the whole batch is refused and nothing is changed on any host; the response gives only the number of such accounts. In single-password mode the owner of the new shared credential is judged separately, by the credential creation permission: a person who holds that permission through an assignment covering the whole system can make the credential global, and a person who holds it only through assignments limited to some nodes has to give it to a node within that permission's scope. Before each host is changed, the new credential is also checked against the person's credential attach permission; if its owner is outside that permission's scope, the host is not touched and keeps its current credential.
+- **A plan that targets accounts.** Every asset in the plan has to be within the scope, or the plan is not saved. A plan whose assets are not all within the scope is not shown to that person, and running, editing or deleting it behaves as for a plan that does not exist.
+- **A plan that targets a credential.** The credential's owner has to be within the scope. Changing the credential changes every host it is attached to, including hosts outside the scope. If any attached host is outside the scope at the moment of saving, the person is shown how many (a count only, the hosts are not named) and has to confirm before the plan is saved, as when rotating the credential from the credential library. On the plan page, when such a plan is edited and saved and hosts outside the scope are affected, the page asks for this confirmation before the plan is saved; with no host outside the scope affected, the plan is saved directly. When the plan is saved, the platform stores every attachment the credential has at that moment as the bound of that version of the plan.
+
+**When the attachments grow after the plan was saved.** Each run, before anything is sent to any host, splits the credential's current attachments into those on hosts within the scope of the person the run acts for, and the rest. That person is the plan's initiator for a scheduled run and the person who pressed "run now" for a manual one. If that person holds credential rotation only for some nodes and the rest includes an attachment that is not in the bound, the whole run stops and no host is touched. A version saved by a person without a scope limit has no bound, which counts as empty here. For a scheduled run, and for a manual run when the plan's initiator does not hold credential rotation through an assignment covering the whole system, the plan is then marked as needing re-confirmation (`needs_reconfirmation`, reason `CHANGE_SECRET_SCOPE_BOUND_EXCEEDED`). The alert and the audit entry are written once, when the plan enters that state, and the schedule does not run the plan while it is marked. If the plan has been saved again after the run compared its attachments with the bound, the run still stops and the newly saved version is not marked. When the plan's initiator holds credential rotation through an assignment covering the whole system, a manual run by a person limited to some nodes is only refused that once: it leaves a stop audit entry and an alert with the same reason, the plan is not marked and its schedule keeps running. A manual run is also only refused that once when the platform cannot determine the initiator's permission at that moment.
+
+- A new attachment on a host within the scope does not stop the run. It is changed with the other hosts and appears in the run's records.
+- A second account on a host outside the scope is an attachment outside the bound, so it stops the run.
+- A host that was within the scope when the plan was saved and has since been moved out is already in the bound and does not stop the run.
+
+**Getting a paused plan running again.**
+
+- A person limited to some nodes saves the plan again, with the Reconfirm action on the plan's row or by editing and saving it. If hosts outside the scope are still attached, that person confirms their number again before the save. That saves a new version with a new bound and clears the mark. Neither the takeover banner nor "run now" lets such a person skip this save: the banner lists the plan as skipped and leaves it paused, and "run now" stops before anything is sent.
+- A person who holds credential rotation through an assignment covering the whole system can take the plan over with the banner. That person becomes its initiator, the schedule resumes, and from then on each run changes every current attachment without a bound. Or that person can press "run now" once: that run covers every current attachment, the plan stays paused and the schedule still does not run it. Both leave the same audit entries as any takeover or manual run.
+
+**Checks while the work runs.** The checks described in §13.7 also look at whether the target is still within the scope of the person the work runs as: for an account, the host it is on; for a plan that targets a credential, the credential's owner. A target that has left the scope stops with the reason that the authorization was revoked (`CHANGE_SECRET_AUTHZ_REVOKED`), and the other targets continue: in a plan or batch that changes hosts one at a time, only that host stops and each later host is checked on its own. If the person has lost the permission itself, the platform cannot determine it at that moment, or the owner of a batch's new shared credential is outside the scope of the person's credential attach permission, the plan or batch stops at that host and no later host is touched.
+
+**A person without a scope limit** sees no change. A credential-target plan saved by such a person needs no confirmation, stores no bound and changes every current attachment on each run, as before.
+
+**Work from before the upgrade.** Plans, batches, rotations and candidates that exist at the upgrade are not rewritten. Before this version no assignment could be limited to some nodes, so their initiators have no scope limit; that work keeps running and settling as before and is never paused for a bound. Plans already paused for re-authorization stay paused until they are saved or taken over.
+
+**Limits that remain.**
+
+- **Confirming proves that the person was told; it does not stop the change.** A person limited to some nodes who confirms and saves a credential-target plan changes the password on the hosts outside their scope as well. The confirmation only makes sure the number of those hosts was shown before saving. The bound only stops a run from reaching attachments added outside the scope after the save without a new confirmation; it does not limit what was confirmed when the plan was saved. Grant credential rotation with the same care as the right to log in to every host the credential is attached to; see [Deployment Topology Limits](./deployment-topology-limits.md#shared-credentials-within-a-limited-scope-what-the-impact-confirmation-stops-and-what-it-does-not).
+- **Choosing a secret yourself is still recorded, not prevented.** As described in §13.7, a person who may declare a secret or detach a host with a custom secret can do so on hosts within their scope, set the password to a value only they know, and then connect to that host directly without passing through this platform. The platform records and alerts; it does not prevent it.
 
 
 ---

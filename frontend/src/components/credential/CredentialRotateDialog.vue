@@ -11,8 +11,17 @@
         class="summary"
         data-test="rotate-summary"
       >
-        {{ t('credentials.rotateDialog.summary', { count: bindingCount }) }}
+        {{ t('credentials.rotateDialog.summary', { count: totalCount }) }}
       </p>
+      <!-- 範圍外台數取自伺服器：送出前先讓人知道這一次會碰到不在自己範圍內的主機 -->
+      <el-alert
+        v-if="outOfScopeCount > 0"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="t('credentials.rotateDialog.outOfScopeHint', { total: totalCount, out: outOfScopeCount })"
+        data-test="rotate-out-of-scope-hint"
+      />
 
       <el-form
         label-position="top"
@@ -103,6 +112,20 @@
         {{ t('credentials.rotateDialog.submit') }}
       </el-button>
     </template>
+
+    <CredentialImpactDialog
+      :model-value="impactVisible"
+      operation="rotate"
+      :credential-name="credentialName"
+      :username="username"
+      :assets="bindings"
+      :in-scope-count="impact?.inScopeCount || 0"
+      :out-of-scope-count="impact?.outOfScopeCount || 0"
+      :epoch="impactEpoch"
+      :loading="impactWorking"
+      @confirm="confirmImpact"
+      @cancel="flow.cancel()"
+    />
   </el-dialog>
 </template>
 
@@ -114,10 +137,12 @@
  * 那是不可復原的結構改變，故它的後果寫在選項旁而不是送出後的確認框裡——
  * 操作者要在選之前就看見。
  */
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { startCredentialRotation } from '@/api/credentials'
+import CredentialImpactDialog from './CredentialImpactDialog.vue'
+import { skipImpactConflictToast, useCredentialImpactFlow } from '@/composables/useCredentialImpactFlow'
 import {
   PASSWORD_LENGTH_MIN,
   PASSWORD_LENGTH_MAX,
@@ -128,7 +153,13 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   credentialId: { type: [Number, String], default: 0 },
   credentialName: { type: String, default: '' },
+  // 範圍內的掛載列數；範圍化檢視者看不到範圍外的列
   bindingCount: { type: Number, default: 0 },
+  // 範圍外台數（伺服器標示；沒有則為 0）
+  outOfScopeCount: { type: Number, default: 0 },
+  // 範圍內掛載列，確認對話框據此列出清單
+  bindings: { type: Array, default: () => [] },
+  username: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue', 'submitted'])
@@ -136,6 +167,11 @@ const emit = defineEmits(['update:modelValue', 'submitted'])
 const { t } = useI18n()
 
 const submitting = ref(false)
+const totalCount = computed(() => props.bindingCount + props.outOfScopeCount)
+
+// 範圍外影響確認：台數與清單取自伺服器，勾選知情後才以確認識別送出
+const flow = useCredentialImpactFlow(() => props.credentialId, 'rotate')
+const { visible: impactVisible, impact, working: impactWorking, epoch: impactEpoch } = flow
 const form = reactive({
   mode: 'group',
   password_length: PASSWORD_LENGTH_DEFAULT,
@@ -154,23 +190,29 @@ watch(() => props.modelValue, (open) => {
 })
 
 function close(visible = false) {
+  if (visible !== true) flow.cancel()
   emit('update:modelValue', visible === true)
+}
+
+async function sendRotation(extra) {
+  const res = await startCredentialRotation(props.credentialId, {
+    mode: form.mode,
+    policy: {
+      length: form.password_length,
+      include_symbol: form.include_symbol,
+      exclude_ambiguous: form.exclude_ambiguous,
+    },
+    ...extra,
+  }, { skipErrorToast: skipImpactConflictToast })
+  close(false)
+  ElMessage.success(t('credentials.rotateDialog.accepted'))
+  emit('submitted', res?.data || null)
 }
 
 async function submit() {
   submitting.value = true
   try {
-    const res = await startCredentialRotation(props.credentialId, {
-      mode: form.mode,
-      policy: {
-        length: form.password_length,
-        include_symbol: form.include_symbol,
-        exclude_ambiguous: form.exclude_ambiguous,
-      },
-    })
-    close(false)
-    ElMessage.success(t('credentials.rotateDialog.accepted'))
-    emit('submitted', res?.data || null)
+    await flow.start(sendRotation)
   } catch (err) {
     console.error('[CredentialRotate] 發起改密失敗:', err)
   } finally {
@@ -178,7 +220,15 @@ async function submit() {
   }
 }
 
-defineExpose({ form, submit, PASSWORD_LENGTH_MIN, PASSWORD_LENGTH_MAX })
+async function confirmImpact() {
+  try {
+    await flow.confirm()
+  } catch (err) {
+    console.error('[CredentialRotate] 發起改密失敗:', err)
+  }
+}
+
+defineExpose({ form, submit, confirmImpact, flow, PASSWORD_LENGTH_MIN, PASSWORD_LENGTH_MAX })
 </script>
 
 <style scoped>

@@ -3,11 +3,14 @@ package asset
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +37,9 @@ type rotationFixture struct {
 	candidates *ChangeSecretCandidateService
 	remote     *rotationRecorder
 	// perms 輪替引擎所用的權限判定樁：預設全放行，需要驗拒絕面的測試逐台改寫
-	perms *fakePermissionChecker
+	perms *fakeCredentialAuthorizer
+	// alerts 輪替引擎所用的系統告警落地面（記錄用）
+	alerts *fakeAlertSink
 }
 
 // rotationRecorder 可換的執行器：記下每台收到的新秘密與各階段的呼叫次數。
@@ -50,6 +55,10 @@ type rotationRecorder struct {
 	rotateErr    map[string]error
 	verifyErr    map[string]error
 	keyDelivered map[string]string
+	// hostKey 選用：設定時 Rotate／Verify／applyKey 在動作前以它呼叫 rt.hostKeyCB（正式的綁定與比對回呼），
+	// 回錯即不動作並回 remoteRejectedError{oldCredentialLoginReason}。newRotationRecorder 預設補一把：
+	// 成員提交守衛要求成員經正式綁定回呼建立過主機身分；要證明守衛的案例自行指定並製造差異
+	hostKey ssh.PublicKey
 }
 
 func newRotationRecorder() *rotationRecorder {
@@ -58,12 +67,16 @@ func newRotationRecorder() *rotationRecorder {
 		rotateCalls: map[string]int{}, verifyCalls: map[string]int{},
 		rotateErr: map[string]error{}, verifyErr: map[string]error{},
 		keyDelivered: map[string]string{},
+		hostKey:      defaultRecorderHostKey(),
 	}
 }
 
 func (r *rotationRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecret []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := presentHostKeyTo(t, r.hostKey); err != nil {
+		return err
+	}
 	r.rotateCalls[t.asset.Host]++
 	if err := r.rotateErr[t.asset.Host]; err != nil {
 		return err
@@ -75,6 +88,9 @@ func (r *rotationRecorder) Rotate(_ context.Context, t rotationTarget, _, newSec
 func (r *rotationRecorder) Verify(_ context.Context, t rotationTarget, newSecret []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := presentHostKeyTo(t, r.hostKey); err != nil {
+		return err
+	}
 	r.verifyCalls[t.asset.Host]++
 	if err := r.verifyErr[t.asset.Host]; err != nil {
 		return err
@@ -115,9 +131,13 @@ func (r *rotationRecorder) snapshot() (map[string]string, map[string]int, map[st
 
 // keyApplier 金鑰三段式的可換替身：記下每台收到的私鑰並沿用同一組錯誤分流。
 func (r *rotationRecorder) applyKey(ctx context.Context, exec rotationExecutor, rt rotationTarget,
-	_ changeSecretTarget, _, _, newPrivate []byte, _, _, _ string, onDelivered func()) error {
+	_ changeSecretTarget, _, _, newPrivate []byte, _, _, _ string, onDelivered func() error, _ func(string) string) error {
 
 	r.mu.Lock()
+	if err := presentHostKeyTo(rt, r.hostKey); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 	r.rotateCalls[rt.asset.Host]++
 	if err := r.rotateErr[rt.asset.Host]; err != nil {
 		r.mu.Unlock()
@@ -126,7 +146,10 @@ func (r *rotationRecorder) applyKey(ctx context.Context, exec rotationExecutor, 
 	r.keyDelivered[rt.asset.Host] = string(newPrivate)
 	r.mu.Unlock()
 	if onDelivered != nil {
-		onDelivered()
+		// 與正式 helper 同一處置：下達標記寫不進去只記 log，不中止驗證
+		if derr := onDelivered(); derr != nil {
+			log.Printf("[ChangeSecret] 標記候選已下達失敗 asset=%d account=%s err=%v", rt.asset.ID, rt.username, derr)
+		}
 	}
 	return exec.Verify(ctx, rt, newPrivate)
 }
@@ -135,25 +158,27 @@ func setupRotationFixture(t *testing.T) *rotationFixture {
 	t.Helper()
 	db := setupCredentialDB(t)
 	require.NoError(t, db.AutoMigrate(
-		&model.CredentialRotation{}, &model.CredentialRotationMember{},
+		&model.CredentialRotation{}, &model.CredentialRotationMember{}, &model.CredentialJobAuthorization{},
 		&model.AssetHostKey{}, &model.ChangeSecretRecord{},
 	))
 	codec := aesColumnCodec(t, make([]byte, 32))
 	assets, err := NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assets.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
-	accounts := NewAssetAccountService(assets, codec, audit.NewTxSink())
-	creds := NewCredentialService(assets, codec, audit.NewTxSink())
+	accounts := NewAssetAccountService(assets, codec, audit.NewTxSink()).WithAccountWriteScope(allowAllAccountWriteScope{})
+	creds := NewCredentialService(assets, codec, audit.NewTxSink()).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink())
 	candidates, err := NewChangeSecretCandidateService(db, codec, assets, audit.NewTxSink())
 	require.NoError(t, err)
-	perms := &fakePermissionChecker{allow: map[uint]bool{}, defaultAllow: true}
+	perms := newAllowAllAuthorizer()
+	alerts := newFakeAlertSink()
 	rotations := NewCredentialRotationService(db, assets, candidates, NewHostKeyService(db),
-		codec, audit.NewTxSink(), perms)
+		codec, audit.NewTxSink(), perms).WithSystemAlertSink(alerts)
 	remote := newRotationRecorder()
 	rotations.executors = func(string) rotationExecutor { return remote }
 	rotations.keyApplier = remote.applyKey
 	return &rotationFixture{
 		db: db, assets: assets, accounts: accounts, creds: creds,
-		rotations: rotations, candidates: candidates, remote: remote, perms: perms,
+		rotations: rotations, candidates: candidates, remote: remote, perms: perms, alerts: alerts,
 	}
 }
 
@@ -394,7 +419,13 @@ func TestCredentialRotationMemberStateTable(t *testing.T) {
 				return transitionMember(tx, cell.member, to, memberTransition{})
 			})
 			allowed := containsState(wantMemberTransitions[from], to)
-			if allowed {
+			// 逾期（終局失敗／已收束）成員轉入 applied 不在轉移表內：唯一入口是帶
+			// 「驗證成功結果」的人工承接轉移，沒有結果物件時必須被拒（且不是靜默略過）
+			if (from == model.CredentialMemberTerminalFailed || from == model.CredentialMemberAbandoned) &&
+				to == model.CredentialMemberApplied {
+				require.ErrorIsf(t, err, ErrVerifiedConfirmationRequired,
+					"無已驗證確認時逾期成員不得轉入 applied: %s -> %s", from, to)
+			} else if allowed {
 				require.NoErrorf(t, err, "合法轉移被拒: %s -> %s", from, to)
 			} else {
 				require.ErrorIsf(t, err, ErrMemberTransitionNotAllowed,
@@ -444,8 +475,8 @@ func TestCredentialRotationRequiresPermissionOnBoundAssets(t *testing.T) {
 	f := setupRotationFixture(t)
 	credID, accounts := f.sharedOn(t, "驗權共用", "ops", "old-shared", "10.14.0.1", "10.14.0.2")
 	deniedAccount := accounts[1]
-	deniedAsset := f.binding(t, deniedAccount).AssetID
-	f.perms.denyAsset(deniedAsset)
+	// 缺輪替與脫離能力：發起類動作整筆拒絕（能力是整組的，不是逐台的連線權）
+	f.perms.deny(CredCapRotate, CredCapDetach)
 
 	before := f.credential(t, credID)
 	versionsBefore := f.versionCount(t, credID)
@@ -477,15 +508,15 @@ func TestCredentialRotationRequiresPermissionOnBoundAssets(t *testing.T) {
 	assert.EqualValues(t, 0, rotationRows, "被拒的動作不得留下輪替列")
 	assert.EqualValues(t, 0, f.candidateCountFor(t, deniedAccount), "被拒的脫離不得留下候選")
 
-	// 反假綠：補齊那一台的權限後同一個動作即成立，且兩台都被問過
-	f.perms.allow[deniedAsset] = true
-	f.perms.asked = nil
+	// 反假綠：補齊能力後同一個動作即成立，且影響集合涵蓋兩台
+	f.perms.allow(CredCapRotate, CredCapDetach)
+	f.perms.reset()
 	rot, err := f.rotations.Start(adminCtx(), credID, StartRotationRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, rot)
 	for _, accountID := range accounts {
-		assert.Contains(t, f.perms.asked, f.binding(t, accountID).AssetID,
-			"每一台掛載資產都必須被問過")
+		assert.Contains(t, f.perms.askedImpactAssetIDs(), f.binding(t, accountID).AssetID,
+			"每一台掛載資產都必須在影響集合內")
 	}
 }
 
@@ -495,7 +526,7 @@ func TestCredentialRotationRequiresPermissionOnBoundAssets(t *testing.T) {
 func TestCredentialRotationFailsClosedWithoutAuthorization(t *testing.T) {
 	f := setupRotationFixture(t)
 	credID, accounts := f.sharedOn(t, "無判定器", "ops", "old-shared", "10.14.1.1", "10.14.1.2")
-	f.rotations.authz = nil
+	f.rotations.mgmt = credentialManagementGate{}
 
 	_, err := f.rotations.Start(adminCtx(), credID, StartRotationRequest{})
 	assert.ErrorIs(t, err, ErrCredentialAuthzUnavailable, "整組改密")

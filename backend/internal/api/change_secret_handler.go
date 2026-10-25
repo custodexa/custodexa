@@ -6,12 +6,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/modules/authz"
+	"github.com/custodexa/backend/internal/modules/authz/disclosure"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"github.com/gin-gonic/gin"
 )
 
 // ChangeSecretReloader 排程重載介面（避免 api 依賴 scheduler 具體型別）
@@ -27,6 +29,25 @@ type ChangeSecretHandler struct {
 	retry       *asset.ChangeSecretRetryRunner
 	batches     *asset.ChangeSecretBatchService
 	reloader    ChangeSecretReloader
+	// takeover 主機身分人工承接服務。組裝根在啟動時確認它完整就緒才注入；
+	// 未注入的 handler 不處理帶確認的請求
+	takeover *asset.HostIdentityTakeoverService
+	// confirmer 帶確認的重試所呼叫的動作；由 SetHostIdentityTakeover 設為 takeover
+	confirmer hostIdentityConfirmer
+}
+
+// SetHostIdentityTakeover 注入人工承接服務。
+func (h *ChangeSecretHandler) SetHostIdentityTakeover(s *asset.HostIdentityTakeoverService) {
+	h.takeover = s
+	h.confirmer = nil
+	if s != nil {
+		h.confirmer = s
+	}
+}
+
+// HostIdentityTakeoverWired 承接服務已注入且依賴完整（組裝自檢用）。
+func (h *ChangeSecretHandler) HostIdentityTakeoverWired() bool {
+	return h != nil && h.takeover != nil && len(h.takeover.WiringGaps()) == 0
 }
 
 // NewChangeSecretHandler 建立 handler
@@ -72,7 +93,8 @@ func newCandidateDTO(c *model.ChangeSecretCandidate) changeSecretCandidateDTO {
 
 // ListCandidates 未驗證候選憑證清單（不含任何秘密材料）
 func (h *ChangeSecretHandler) ListCandidates(c *gin.Context) {
-	items, err := h.candidates.List()
+	ctx, viewer := batchViewer(c)
+	items, err := h.candidates.ListFor(ctx, viewer)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretCandidateQuery, err)
 		return
@@ -84,23 +106,62 @@ func (h *ChangeSecretHandler) ListCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": out, "total": len(out)})
 }
 
-// RetryCandidate 對單筆候選立即觸發一次重試（同步執行，回傳結果供 UI 立即反映）
+// RetryCandidate 對單筆候選立即觸發一次重試（同步執行，回傳結果供 UI 立即反映）。
+// 選用 body：{"confirm_host_identity": {...}} 明示承接主機身分停止的工作；
+// 不帶 body 時行為與回應形狀不變，只在工作被主機身分守衛擋下時多帶 host_identity。
 func (h *ChangeSecretHandler) RetryCandidate(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "change_secret_candidate"})
 		return
 	}
-	cand, err := h.candidates.Get(uint(id))
+	// 形狀先於一切查詢與服務呼叫：不合法的 body 不會觸及任何狀態
+	confirm, err := parseHostIdentityConfirmBody(c)
 	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	ctx, viewer := batchViewer(c)
+	cand, err := h.candidates.GetFor(ctx, viewer, uint(id))
+	if err != nil {
+		// 範圍外候選與不存在同形（範圍拒絕出口依候選種類回「候選不存在」）
+		var denied *authz.ErrScopeDenied
+		if errors.As(err, &denied) {
+			middleware.RespondScopeDenied(c, denied)
+			return
+		}
 		respondCandidateError(c, apierror.CodeInternalChangeSecretCandidateQuery, err)
 		return
 	}
 	// 候選是單一資產單一帳號的憑證，路徑上的 :id 是候選 id——中介層推導不出主體，
 	// 只有讀出候選後才知道打的是哪台機器（auditor-workbench）
 	setAuditAssetIDValue(c, cand.AssetID)
-	promoted := h.retry.RetryOne(cand)
-	c.JSON(http.StatusOK, gin.H{"promoted": promoted})
+	if confirm != nil {
+		if h.confirmer == nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError,
+				apierror.CodeInternalChangeSecretCandidateQuery, errors.New("人工承接服務未注入"))
+			return
+		}
+		switch cerr := h.confirmer.ConfirmHostIdentityAndVerify(accountContext(c), "candidate", cand.ID, *confirm); {
+		case cerr == nil:
+			c.JSON(http.StatusOK, gin.H{"promoted": true})
+		case errors.Is(cerr, asset.ErrHostIdentityVerifyFailed):
+			// 驗證沒有通過：候選保留、可再次確認，失敗原因在候選的最近錯誤
+			c.JSON(http.StatusOK, gin.H{"promoted": false})
+		case isHostIdentityTargetChanged(cerr):
+			// 授權目標已改變：不是身分異動，候選與工作列都沒被改動
+			c.JSON(http.StatusOK, gin.H{"promoted": false, "reason": model.ChangeSecretReasonAuthzTargetChanged})
+		default:
+			respondHostIdentityConfirmError(c, apierror.CodeInternalChangeSecretCandidateQuery, cerr)
+		}
+		return
+	}
+	res := h.retry.RetryOneAsResult(accountContext(c), cand)
+	if res.HostIdentity != nil {
+		c.JSON(http.StatusOK, gin.H{"promoted": res.Promoted, "host_identity": res.HostIdentity})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"promoted": res.Promoted})
 }
 
 // DiscardCandidate admin 顯式清除候選（破壞性：候選是那把可能已在遠端生效的
@@ -111,13 +172,17 @@ func (h *ChangeSecretHandler) DiscardCandidate(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "change_secret_candidate"})
 		return
 	}
-	userID, username, _ := currentUser(c)
-	// 主體在清除前取：DiscardByAdmin 成功後候選列已不在，事後查不回它屬於哪台資產
-	var assetID uint
-	if cand, gerr := h.candidates.Get(uint(id)); gerr == nil {
-		assetID = cand.AssetID
-	}
-	if err := h.candidates.DiscardByAdmin(uint(id), userID, username); err != nil {
+	_, username, _ := currentUser(c)
+	ctx, viewer := batchViewer(c)
+	// 範圍判定與刪除同一交易；主體（候選所屬資產）由清除交易在刪列前讀出帶回，刪後查不回
+	assetID, err := h.candidates.DiscardFor(ctx, viewer, uint(id), username)
+	if err != nil {
+		// 範圍外候選與不存在同形（範圍拒絕出口依候選種類回「候選不存在」）
+		var denied *authz.ErrScopeDenied
+		if errors.As(err, &denied) {
+			middleware.RespondScopeDenied(c, denied)
+			return
+		}
 		respondCandidateError(c, apierror.CodeInternalChangeSecretCandidateDiscard, err)
 		return
 	}
@@ -136,6 +201,20 @@ func respondCandidateError(c *gin.Context, internalCode apierror.ErrCode, err er
 // respondPlanError 映射 service 錯誤：輸入問題 400、名稱衝突 409、不存在 404，
 // 其餘走呼叫端指定的 internalCode（各端點的 action 不同，訊息不同、碼各自獨立）
 func respondPlanError(c *gin.Context, internalCode apierror.ErrCode, err error) {
+	// 明列資產中有不存在或範圍外者：整份拒絕，只帶筆數（兩種原因同形）
+	var unavailable *asset.BatchItemsUnavailableError
+	if errors.As(err, &unavailable) {
+		middleware.RespondBatchUnavailable(c, unavailable.Count)
+		return
+	}
+	// 範圍外掛載須先確認：只帶範圍外台數（經揭露登錄），計畫未儲存
+	var impactRequired *asset.CredentialImpactConfirmationRequiredError
+	if errors.As(err, &impactRequired) {
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialImpactConfirmationRequired, map[string]any{
+			"count": disclosure.Count(disclosure.OutOfScopeAssetCount, impactRequired.Count),
+		})
+		return
+	}
 	switch {
 	case errors.Is(err, asset.ErrPlanNoAssets):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanNoAssets, nil)
@@ -176,7 +255,7 @@ func (h *ChangeSecretHandler) reload() {
 
 // List 計劃列表
 func (h *ChangeSecretHandler) List(c *gin.Context) {
-	plans, err := h.planService.List()
+	plans, err := h.planService.ListFor(accountContext(c))
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretPlanQuery, err)
 		return
@@ -191,7 +270,7 @@ func (h *ChangeSecretHandler) Create(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
-	plan, err := h.planService.Create(&req)
+	plan, err := h.planService.Create(accountContext(c), &req)
 	if err != nil {
 		respondPlanError(c, apierror.CodeInternalChangeSecretPlanCreate, err)
 		return
@@ -212,7 +291,7 @@ func (h *ChangeSecretHandler) Update(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
-	plan, err := h.planService.Update(uint(id), &req)
+	plan, err := h.planService.Update(accountContext(c), uint(id), &req)
 	if err != nil {
 		respondPlanError(c, apierror.CodeInternalChangeSecretPlanUpdate, err)
 		return
@@ -228,7 +307,7 @@ func (h *ChangeSecretHandler) Delete(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "change_secret_plan"})
 		return
 	}
-	if err := h.planService.Delete(uint(id)); err != nil {
+	if err := h.planService.DeleteFor(accountContext(c), uint(id)); err != nil {
 		respondPlanError(c, apierror.CodeInternalChangeSecretPlanDelete, err)
 		return
 	}
@@ -250,13 +329,28 @@ func (h *ChangeSecretHandler) Run(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "change_secret_plan"})
 		return
 	}
-	plan, err := h.planService.Get(uint(id))
+	plan, err := h.planService.GetFor(accountContext(c), uint(id))
 	if err != nil {
 		respondPlanError(c, apierror.CodeInternalChangeSecretPlanQuery, err)
 		return
 	}
-	go h.runner.RunPlan(plan)
+	// 手動執行以點擊者為發起者並重驗其能力，不改變排程的發起者
+	go h.runner.RunPlanAs(accountContext(c), plan)
 	c.JSON(http.StatusAccepted, gin.H{})
+}
+
+// Reauthorize 一鍵重新授權：升級時查不到可歸屬發起者而暫停的排程計畫，改以目前操作者為
+// 發起者並恢復排程（cron 與啟用設定原樣保留）。之後每次執行仍以該操作者當下的能力重驗。
+// 審計由路由審計中介層記錄（誰、何時、哪些計畫由回應的 plan_ids 帶出）。
+func (h *ChangeSecretHandler) Reauthorize(c *gin.Context) {
+	ids, skipped, err := h.planService.ReauthorizePending(accountContext(c))
+	if err != nil {
+		respondPlanError(c, apierror.CodeInternalChangeSecretPlanUpdate, err)
+		return
+	}
+	h.reload()
+	// skipped：點擊者對該計畫的目標能力不足，或承接的審計寫不進去；兩者都未承接、維持暫停
+	c.JSON(http.StatusOK, gin.H{"plan_ids": ids, "count": len(ids), "skipped_plan_ids": skipped})
 }
 
 // Records 執行記錄
@@ -267,7 +361,7 @@ func (h *ChangeSecretHandler) Records(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	records, err := h.planService.Records(uint(id), limit)
+	records, err := h.planService.RecordsFor(accountContext(c), uint(id), limit)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretRecordQuery, err)
 		return
@@ -279,13 +373,14 @@ func (h *ChangeSecretHandler) Records(c *gin.Context) {
 func (h *ChangeSecretHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/change-secret-plans")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequireRole("admin"))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("", h.List)
 		g.POST("", h.Create)
 		g.PUT("/:id", h.Update)
 		g.DELETE("/:id", h.Delete)
 		g.POST("/:id/run", h.Run)
+		g.POST("/reauthorize", h.Reauthorize)
 		g.GET("/:id/records", h.Records)
 	}
 
@@ -293,7 +388,7 @@ func (h *ChangeSecretHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 	// 跨計劃（計劃刪除後候選仍須被處置），掛在 plan 下會讓它隨計劃消失
 	cg := r.Group("/change-secret-candidates")
 	cg.Use(middleware.AuthMiddleware(authService))
-	cg.Use(middleware.RequireRole("admin"))
+	cg.Use(middleware.EnforceRegistry())
 	{
 		cg.GET("", h.ListCandidates)
 		cg.POST("/:id/retry", h.RetryCandidate)
@@ -304,7 +399,7 @@ func (h *ChangeSecretHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 	//（批次沒有排程、跑完即結束，它的記錄不屬於任何計劃）
 	bg := r.Group("/change-secret-batches")
 	bg.Use(middleware.AuthMiddleware(authService))
-	bg.Use(middleware.RequireRole("admin"))
+	bg.Use(middleware.EnforceRegistry())
 	{
 		bg.GET("/usernames", h.BatchUsernames)
 		bg.GET("/targets", h.BatchTargets)

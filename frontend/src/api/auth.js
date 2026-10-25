@@ -163,13 +163,27 @@ export function updateProfileDisplayName(localDisplayName) {
   })
 }
 
+const USERS_PAGE_SIZE = 200
+const USERS_MAX_PAGES = 50
+
 /**
- * 取得使用者列表
- * @returns {Promise}
+ * 取得全部使用者（分頁取完再合併；後端預設每頁 20，單頁取會漏人）
+ * 以回應的 total 判斷停止，並以頁數上限防止無窮迴圈。
+ * @returns {Promise<{data: Array, total: number}>}
  */
-export function getUsers() {
-  return request({
-    url: '/users',
-    method: 'get',
-  })
+export async function getUsers() {
+  const all = []
+  let total = 0
+  for (let page = 1; page <= USERS_MAX_PAGES; page++) {
+    const res = await request({
+      url: '/users',
+      method: 'get',
+      params: { page, page_size: USERS_PAGE_SIZE },
+    })
+    const rows = Array.isArray(res?.data) ? res.data : []
+    all.push(...rows)
+    total = Number(res?.total) || 0
+    if (rows.length === 0 || all.length >= total) break
+  }
+  return { data: all, total: Math.max(total, all.length) }
 }

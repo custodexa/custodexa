@@ -19,7 +19,7 @@ func TestUserGroupMappingUsageRequiresAcknowledgement(t *testing.T) {
 	if err := f.db.Create(&model.ApproverScope{ApproverID: &f.user.ID, SubjectGroupID: &f.group.ID, GrantedBy: f.user.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	input := UserGroupMappingInput{MatchValue: "ops", UserGroupID: f.group.ID, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}}
+	input := UserGroupMappingInput{MatchValue: "ops", UserGroupID: f.group.ID, Actor: f.act()}
 	_, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, input)
 	var usage *UserGroupMappingUsageAckError
 	if !errors.As(err, &usage) || usage.AssetAuthorizations != 1 || usage.ApproverScopes != 1 || usage.RequesterScopes != 1 {
@@ -35,7 +35,7 @@ func TestExternalGroupNoteSharedAcrossMappingTypes(t *testing.T) {
 	f := newMappingSegmentFixture(t)
 	f.roleRule(t, "ops")
 	f.groupRule(t, "ops")
-	actor := GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}
+	actor := f.act()
 	groups, err := f.service.ListExternalGroups(model.RoleMappingChannelKindProvider, f.provider.ID)
 	if err != nil || len(groups) != 1 {
 		t.Fatalf("共用字典未去重: %v %+v", err, groups)
@@ -65,7 +65,7 @@ func TestExternalGroupNoteAuditFailureRollsBack(t *testing.T) {
 		t.Fatalf("讀取字典: %v %+v", err, groups)
 	}
 	f.service = NewIdentitySourceService(f.db, rejectMappingAudit{})
-	err = f.service.UpdateExternalGroupNote(model.RoleMappingChannelKindProvider, f.provider.ID, groups[0].ID, "private note", GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username})
+	err = f.service.UpdateExternalGroupNote(model.RoleMappingChannelKindProvider, f.provider.ID, groups[0].ID, "private note", f.act())
 	if err == nil {
 		t.Fatal("稽核失敗應中止備註更新")
 	}

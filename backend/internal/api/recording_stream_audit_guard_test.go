@@ -3,19 +3,20 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 )
 
 // 取走錄影本體必須留痕。
@@ -100,6 +101,7 @@ func setupRecordingStreamEnv(t *testing.T) *recStreamEnv {
 	h := NewRecordingHandler(session.NewRecordingService(t.TempDir()), session.NewSessionService(nil), auditService)
 	// 與生產同構：manager 是 handler 自建的那一個，測試不得另立一個影子 manager
 	base.mgr = h.recordingTokens
+	permitRecordingIssue(h.recordingTokens)
 
 	r := gin.New()
 	// 真的審計中介層，位置與 cmd/server/main.go:464 同（全域、v1 之外）
@@ -117,7 +119,7 @@ func setupRecordingStreamEnv(t *testing.T) *recStreamEnv {
 // issueToken 走與生產同一支簽發函式（含世代閘），不手工塞 grant
 func (e *recStreamEnv) issueToken(t *testing.T) string {
 	t.Helper()
-	tok, err := e.handler.recordingTokens.Issue(e.userID, e.sessionID, e.username, crypto.AuthContext{})
+	tok, err := e.handler.recordingTokens.Issue(e.userID, e.sessionID, e.username, crypto.AuthContext{}, authz.TokenFacts{})
 	if err != nil {
 		t.Fatalf("簽發錄影 token: %v", err)
 	}

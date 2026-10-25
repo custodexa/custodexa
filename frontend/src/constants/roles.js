@@ -7,15 +7,15 @@
  * 新增後端角色時：此處補 META＋三語 locale 補 key（完備性單測釘住）；
  * 可指派清單一律由 getRoleList() API 拉取，勿硬編碼。
  */
-import { t } from '@/i18n'
+import { t, te } from '@/i18n'
 
-const meta = (name, tagType) => ({
+const meta = (name, tagType, keys = {}) => ({
   tagType,
   get label() {
-    return t(`enum.role.${name}.label`)
+    return t(keys.label || `enum.role.${name}.label`)
   },
   get description() {
-    return t(`enum.role.${name}.description`)
+    return t(keys.description || `enum.role.${name}.description`)
   },
 })
 
@@ -24,9 +24,21 @@ export const ROLE_META = {
   auditor: meta('auditor', 'warning'),
   approver: meta('approver', 'primary'),
   user: meta('user', 'info'),
+  identity_admin: meta('identity_admin', 'warning', {
+    label: 'roles.identityAdmin.name',
+    description: 'roles.identityAdmin.description',
+  }),
+  security_admin: meta('security_admin', 'warning', {
+    label: 'roles.securityAdmin.name',
+    description: 'roles.securityAdmin.description',
+  }),
 }
 
-export const roleLabel = (name) => ROLE_META[name]?.label || name
+// 內建角色的顯示名：先查中繼資料，再查 enum.role.<識別>.label，都沒有才回原名稱
+export const roleLabel = (name) => {
+  if (ROLE_META[name]) return ROLE_META[name].label
+  return te(`enum.role.${name}.label`) ? t(`enum.role.${name}.label`) : name
+}
 
 export const roleTagType = (name) => ROLE_META[name]?.tagType || 'info'
 

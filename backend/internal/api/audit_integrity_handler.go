@@ -8,7 +8,6 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
-	"github.com/custodexa/backend/internal/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -78,13 +77,13 @@ func (h *AuditIntegrityHandler) Verify(c *gin.Context) {
 func (h *AuditIntegrityHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	tools := r.Group("/agent-tool-calls")
 	tools.Use(middleware.AuthMiddleware(authService))
-	tools.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	tools.Use(middleware.EnforceRegistry())
 	tools.GET("", h.ToolCalls)
 	integrity := r.Group("/audit-integrity")
 	integrity.Use(middleware.AuthMiddleware(authService))
-	integrity.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	integrity.Use(middleware.EnforceRegistry())
 	{
 		integrity.GET("/verify", h.Verify)
 	}
-	r.GET("/agent-tool-calls/:id/arguments", middleware.AuthMiddleware(authService), middleware.RequirePermission(middleware.PermAuditView), h.ToolCallArguments)
+	r.GET("/agent-tool-calls/:id/arguments", middleware.AuthMiddleware(authService), middleware.EnforceRegistry(), h.ToolCallArguments)
 }

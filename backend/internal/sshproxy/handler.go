@@ -46,8 +46,14 @@ var upgrader = websocket.Upgrader{
 // 僅 SSH 撥號分支使用
 func dialErrorCode(err error) apierror.ErrCode {
 	switch {
+	// 主機金鑰查核失敗（讀不到記錄或不符留痕寫不進去）：在送出憑證之前中止，
+	// 不歸為不可達——那會誤導人去查網路
+	case errors.Is(err, asset.ErrHostKeyCheckFailed):
+		return apierror.CodeSSHHostKeyCheckFailed
+	// 主機金鑰不符且本路徑不放行（代理終端）：回呼已在送出憑證前拒絕，
+	// 用拒絕碼而非警示碼——警示碼的文案陳述憑證已送出，對這裡是錯誤陳述
 	case errors.Is(err, asset.ErrHostKeyChanged):
-		return apierror.CodeSSHHostKeyChanged
+		return apierror.CodeSSHHostKeyMismatchRefused
 	// 私鑰無法解析排在認證失敗之前：尚未向目標出示任何認證，與目標拒絕認證是兩回事
 	case errors.Is(err, asset.ErrPrivateKeyInvalid):
 		return apierror.CodeSSHPrivateKeyInvalid
@@ -76,6 +82,11 @@ func k8sDialCode(err error) apierror.ErrCode {
 // code 為 apierror.ErrCode 必填（原「空字串＝尚未 code 化」的 k8s/database
 // 分支已補碼）；msg 為 zh fallback，撥號類傳底層已分類的具體訊息。
 func writeDialError(c *gin.Context, code apierror.ErrCode, msg string) {
+	writeDialErrorParams(c, code, msg, nil)
+}
+
+// writeDialErrorParams 同 writeDialError，另帶淨化後的參數（主機金鑰不符放行後才失敗時標記憑證可能已送出）
+func writeDialErrorParams(c *gin.Context, code apierror.ErrCode, msg string, params map[string]string) {
 	if !websocket.IsWebSocketUpgrade(c.Request) {
 		// 非 WS 分支同步碼化：error 欄由碼的 ZhFallback 渲染，
 		// msg（撥號分類後的具體訊息）只服務 WS 幀的 Data fallback
@@ -89,7 +100,7 @@ func writeDialError(c *gin.Context, code apierror.ErrCode, msg string) {
 		return
 	}
 	defer ws.Close()
-	if raw, encErr := EncodeErrorMessage(code, msg); encErr == nil {
+	if raw, encErr := EncodeErrorMessageWithParams(code, msg, params); encErr == nil {
 		_ = ws.WriteMessage(websocket.TextMessage, raw)
 	}
 	_ = ws.WriteMessage(websocket.CloseMessage,
@@ -291,6 +302,10 @@ func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
 	assetRow := est.asset
 	// 8. 雙向轉發，掛載指令審計旁路（session 建立失敗時無歸屬主鍵，跳過審計）
 	bridge := newBridge(ws, conn, sess, h.SessionService, h.RecordingPath, userID, assetID)
+	if est.HostKeyMismatch {
+		// 主機金鑰與記錄不符（已留痕、已放行）：connected 之後以通知幀送達警示
+		bridge.queueNotice(apierror.CodeSSHHostKeyChanged)
+	}
 
 	if sess != nil {
 		// Registry 登記關閉回呼：通知經 bridge 寫鎖＋文字協議，取代裸 conn 直寫；
@@ -485,6 +500,14 @@ func (h *Handler) HandleMonitor(c *gin.Context) {
 		return
 	}
 
+	// 升級前預檢觀察者主體狀態與憑證世代：已停用／已撤權者在 101 之前就被拒絕。
+	// 鎖內的 JoinWithGenerationGuard 重驗仍保留（預檢後才撤權的競態）
+	if preErr := session.PrecheckObserverBeforeUpgrade(middleware.GetAuthContext(c), observerID); preErr != nil {
+		log.Printf("[Monitor] 升級前預檢拒絕: userID=%d err=%v", observerID, preErr)
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeMonitorRevoked, nil)
+		return
+	}
+
 	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("[Monitor] WebSocket 升級失敗: %v", err)
@@ -555,14 +578,12 @@ func (h *Handler) HandleMonitor(c *gin.Context) {
 //
 // 認證脈絡（authContext）在此不寫：中介層已寫，覆蓋會把它自 claims 解出的脈絡蓋掉。
 // 走票證的兩條 WS 路由由兌換點寫入，見 `redeemObserverTicket`。
-func (h *Handler) authenticate(c *gin.Context) (uint, string, bool) {
+func (h *Handler) authenticate(c *gin.Context) (uint, *authz.Principal, bool) {
 	if id, exists := middleware.GetCurrentUserID(c); exists {
-		role, _ := c.Get("role")
-		roleStr, _ := role.(string)
-		return id, roleStr, true
+		return id, middleware.PrincipalFrom(c), true
 	}
 	apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
-	return 0, "", false
+	return 0, nil, false
 }
 
 // connectionAuthError 連線認證錯誤映射：僅 sentinel 各配一碼，其餘泛化
@@ -586,23 +607,18 @@ func respondConnectionAuthError(c *gin.Context, err error) {
 	apierror.Respond(c, status, code, nil)
 }
 
-// authorizationContext 帶角色的授權判定 context（CheckPermission 與
-// AuthorizeConnectAccount 共用同一 role key 慣例；role 為空即不注入，
-// 由服務層落一般授權查詢）
-func authorizationContext(c *gin.Context, role string) context.Context {
-	ctx := c.Request.Context()
-	if role != "" {
-		ctx = context.WithValue(ctx, "role", role) //nolint:staticcheck // 沿用既有 CheckPermission 的 string key 慣例
-	}
-	return ctx
+// authorizationContext 帶主體的授權判定 context（CheckPermission 與
+// AuthorizeConnectAccount 共用；主體為空即不注入，由服務層落一般授權查詢）
+func authorizationContext(c *gin.Context, p *authz.Principal) context.Context {
+	return authz.ContextWithPrincipal(c.Request.Context(), p)
 }
 
 // checkPermission 檢查連線授權；失敗時已寫入 HTTP 回應
 //
-// role 經 context 傳入：CheckPermission 對 admin 角色自動放行；auditor 為稽核
+// 主體經 context 傳入：CheckPermission 對內建超管自動放行；稽核員為稽核
 // 唯讀，connect 不自動放行，須有顯式授權——與 guacd 路徑一致
-func (h *Handler) checkPermission(c *gin.Context, userID uint, role string, assetID uint) bool {
-	if out := h.connectPermissionOutcome(c, userID, role, assetID); out != nil {
+func (h *Handler) checkPermission(c *gin.Context, userID uint, principal *authz.Principal, assetID uint) bool {
+	if out := h.connectPermissionOutcome(c, userID, principal, assetID); out != nil {
 		h.writeOutcome(c, out)
 		return false
 	}
@@ -613,8 +629,8 @@ func (h *Handler) checkPermission(c *gin.Context, userID uint, role string, asse
 // 判定與回應寫出分離，使同一道閘能以 connectgate.Gate 的形式登記進閘序表。
 // 判定邏輯與回應語義與 checkPermission 完全同源——後者即以本函式實作，
 // 兩條路徑不可能分化
-func (h *Handler) connectPermissionOutcome(c *gin.Context, userID uint, role string, assetID uint) *connectgate.Outcome {
-	ctx := authorizationContext(c, role)
+func (h *Handler) connectPermissionOutcome(c *gin.Context, userID uint, principal *authz.Principal, assetID uint) *connectgate.Outcome {
+	ctx := authorizationContext(c, principal)
 	hasPermission, err := h.AuthorizationService.CheckPermission(ctx, userID, assetID, model.PermissionConnect)
 	if err != nil {
 		log.Printf("[SSHProxy] 權限檢查失敗: userID=%d, assetID=%d, err=%v", userID, assetID, err)
@@ -706,9 +722,11 @@ type authProvenance struct {
 // dbConsole 為真時於同一次 INSERT 標記本會話為查詢主控台會話——
 // 事後 UPDATE 會產生一段「已建立但未標記」的窗口，而會話列表與監看在那段時間
 // 會把它呈現成命令列會話
-func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolType, clientIP string, k8sSnap *k8sproxy.PodSnapshot, acct accountSnapshot, prov authProvenance, dbConsole bool) *model.Session {
+func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolType, clientIP string, k8sSnap *k8sproxy.PodSnapshot, acct accountSnapshot, prov authProvenance, dbConsole bool, publicID string) *model.Session {
 	id := assetID
 	sess := &model.Session{
+		// 公開識別可由呼叫端預先配發（終端在撥號前配發，供主機金鑰不符審計引用）；空值由建立時補產生
+		SessionID: publicID,
 		DBConsole: dbConsole,
 		UserID:    userID,
 		AssetID:   &id,
@@ -771,7 +789,7 @@ func (h *Handler) closeSession(sess *model.Session, reason string) {
 // 對活躍會話的既有 SSH 連線開 channel 採集 /proc 指標；
 // 授權：會話本人或 admin/auditor；非活躍回 404
 func (h *Handler) HandleStats(c *gin.Context) {
-	userID, role, ok := h.authenticate(c)
+	userID, principal, ok := h.authenticate(c)
 	if !ok {
 		return
 	}
@@ -787,7 +805,7 @@ func (h *Handler) HandleStats(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
 		return
 	}
-	if sess.UserID != userID && role != model.RoleAdmin && role != model.RoleAuditor {
+	if sess.UserID != userID && !principal.ViewShortcut() {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
 		return
 	}
@@ -924,6 +942,13 @@ func (h *Handler) HandleShareJoin(c *gin.Context) {
 			errMsg: string(apierror.CodeShareNotFound),
 		})
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeShareNotFound, nil)
+		return
+	}
+
+	// 升級前預檢觀察者主體狀態與憑證世代（同監看）；鎖內重驗保留
+	if preErr := session.PrecheckObserverBeforeUpgrade(middleware.GetAuthContext(c), userID); preErr != nil {
+		log.Printf("[Share] 升級前預檢拒絕: userID=%d err=%v", userID, preErr)
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeMonitorRevoked, nil)
 		return
 	}
 
@@ -1104,14 +1129,14 @@ func parseSizeOutcome(c *gin.Context) (int, int, *connectgate.Outcome) {
 // HandleCreateConnectToken 處理 POST /api/v1/connect-tokens：
 // JWT 認證＋授權檢查後簽發一次性 token，WS 端憑 token 直接建線
 func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
-	userID, claimedRole, ok := h.authenticate(c)
+	userID, claimedPrincipal, ok := h.authenticate(c)
 	if !ok {
 		return
 	}
 
 	issueAuthCtx := middleware.GetAuthContext(c)
 	subj := gatewayapi.ConnectSubject{
-		UserID: userID, ClaimedRole: claimedRole,
+		UserID: userID, ClaimedRole: claimedPrincipal.LegacyRole(),
 		AuthMethod: issueAuthCtx.EffectiveMethod(), ProviderID: issueAuthCtx.ProviderID,
 		AuthEpoch: issueAuthCtx.AuthEpoch, CredEpoch: issueAuthCtx.CredEpoch, ClientIP: sourceip.Of(c),
 	}
@@ -1147,7 +1172,7 @@ func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 // 與簽發同一授權邊界（authenticate＋connectPermissionOutcome）；body 帶使用者
 // 實際看到的風險項 key，與當下不符即 409 要求重新確認
 func (h *Handler) HandleCreateTransmissionConsent(c *gin.Context) {
-	userID, role, ok := h.authenticate(c)
+	userID, principal, ok := h.authenticate(c)
 	if !ok {
 		return
 	}
@@ -1170,7 +1195,7 @@ func (h *Handler) HandleCreateTransmissionConsent(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
 		return
 	}
-	if out := h.connectPermissionOutcome(c, userID, role, req.AssetID); out != nil {
+	if out := h.connectPermissionOutcome(c, userID, principal, req.AssetID); out != nil {
 		if out.Internal == nil && out.Status == http.StatusForbidden && out.Decision.Code == string(apierror.CodeAssetConnectDenied) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
 			return

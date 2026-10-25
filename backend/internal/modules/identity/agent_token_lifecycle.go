@@ -124,7 +124,12 @@ func (s *AgentTokenService) suspendProviderOwnersInTx(tx *gorm.DB, providerID ui
 	return affected, nil
 }
 
-func (s *AuthService) SetAgentTokenService(tokens *AgentTokenService) { s.agentTokens = tokens }
+func (s *AuthService) SetAgentTokenService(tokens *AgentTokenService) {
+	s.agentTokens = tokens
+	if tokens != nil && s.restoreGen != nil {
+		tokens.restoreGen = s.restoreGen
+	}
+}
 
 // Called after credential-epoch transactions; never invalidates a newly issued token.
 func (s *AgentTokenService) finishSuspendedOwner(ownerID uint) {

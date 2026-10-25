@@ -47,6 +47,7 @@ func newKeyManagerDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// OIDCProvider／LDAPDirectory 一併建表：其 client_secret_enc／bind_password_enc
 	// 登記於 envelopeMigrationTargets，AAD 殘餘掃描會逐表計數，缺表即整個掃描失敗
 	// （非本測試意圖）
@@ -146,6 +147,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池若放行第二條連線，
 	// 會讓「寫在 A 連線、讀在 B 連線」偶發查無資料——引用掃描落到空表而誤判
 	// 零引用，屬連線池問題而非受測邏輯問題

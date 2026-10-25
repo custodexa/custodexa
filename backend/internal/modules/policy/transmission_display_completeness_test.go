@@ -355,7 +355,8 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// agent 主體自助建立的兩個政策鍵（60 → 62），完備性基數登記。
 		// 敏感原文調閱告警開關（62 → 63），不計合規偏離。
 		// 每日簽核業務時區（63 → 64），無單位、不對照條文。
-		"policyLabel": 64, "policyUnit": 9, "riskLabel": 10,
+		// 映射重新驗證時限（64 → 65），單位沿用既有的小時。
+		"policyLabel": 65, "policyUnit": 9, "riskLabel": 10,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed
 		// 再由 9 增為 10：改密通道列的說明碼 winrm_rotation_channel

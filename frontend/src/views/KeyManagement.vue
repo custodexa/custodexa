@@ -102,6 +102,12 @@
       <p class="topo-desc">
         {{ $t('keyManagement.topoDesc') }}
       </p>
+      <p
+        class="topo-hint"
+        data-test="kek-topology-alert-notice"
+      >
+        {{ $t('keyManagement.topologyChangeAlertNotice') }}
+      </p>
 
       <!-- 唯讀呈現 -->
       <dl
@@ -183,8 +189,17 @@
     </el-card>
 
     <!-- 金鑰政策鍵設定區（域收編）：
-         提醒天數與清冊同頁；儲存後重載清冊，超齡提醒即時反映 -->
+         提醒天數與清冊同頁；儲存後重載清冊，超齡提醒即時反映。
+         讀寫都要安全政策設定權限：無此權限者不載入、不呈現設定，改以一句說明 -->
+    <p
+      v-if="!canEditKeyPolicy"
+      class="dek-ttl-local-note"
+      data-test="key-policy-permission-note"
+    >
+      {{ $t('keyManagement.policyNeedsPermission') }}
+    </p>
     <PolicyGroupStrip
+      v-if="canEditKeyPolicy"
       :loading="policyLoading"
       :saving="saving"
       :is-dirty="isDirty"
@@ -198,7 +213,7 @@
          時間仍可設定。**只說明、不擋設定**——本鍵在全部 KEK 模式皆可編輯，
          依模式灰掉等於替機構決定它不需要這個旋鈕 -->
     <p
-      v-if="kekGuideMode === 'env' || kekGuideMode === 'ui'"
+      v-if="canEditKeyPolicy && (kekGuideMode === 'env' || kekGuideMode === 'ui')"
       class="dek-ttl-local-note"
       data-test="dek-ttl-local-mode-note"
     >
@@ -206,6 +221,7 @@
     </p>
 
     <PolicyKeySections
+      v-if="canEditKeyPolicy"
       :sections="visibleSections"
       :form-values="formValues"
       :verdicts-by-key="verdictsByKey"
@@ -968,6 +984,7 @@ import PolicyGroupStrip from '@/components/PolicyGroupStrip.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'
 import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import { usePolicyForm } from '@/composables/usePolicyForm'
+import { can } from '@/composables/useCapabilities'
 import { KEY_SECTIONS } from '@/constants/policyDomains'
 import {
   getKeyInventory,
@@ -1014,6 +1031,8 @@ const {
   resetForm,
   save,
 } = usePolicyForm(KEY_SECTIONS)
+// 金鑰政策鍵的讀寫走安全政策端點，需安全政策設定權限（只持金鑰管理權者看不到也改不了）
+const canEditKeyPolicy = computed(() => can('securitypolicy:manage'))
 
 const router = useRouter()
 const sealing = ref(false)
@@ -1934,7 +1953,7 @@ const handleSavePolicies = async () => {
 }
 
 onMounted(() => {
-  loadPolicies()
+  if (canEditKeyPolicy.value) loadPolicies()
   loadInventory()
   loadTopology()
 })

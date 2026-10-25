@@ -51,14 +51,17 @@ func (j offsiteCustodyJournal) RecordInTx(tx *gorm.DB, ev offsite.CustodyEvent) 
 	if err != nil {
 		return err
 	}
-	// 主體恆為系統（UserID=0／Username="system"，沿 recording_failure_report.go 的
-	// 退路慣例）：管理員的重試與測試連線另有中介層審計（admin 主體），兩列不合併。
+	// 管理操作帶真實操作者時記此人；其餘（worker、取回、seed）主體為系統
+	// （UserID=0／Username="system"，沿 recording_failure_report.go 的退路慣例）。
+	// 管理員的重試與測試連線另有中介層審計（admin 主體），兩列不合併。
+	actor, clientIP := custodyActorOf(ev)
 	if err := port.WriteInTx(j.tx, tx, port.AuditEvent{
 		Action:     ev.Action,
 		Resource:   ev.Resource,
 		ResourceID: ev.ResourceID,
 		Status:     ev.Status,
-		Actor:      gatewayapi.Actor{UserID: 0, Username: "system"},
+		Actor:      actor,
+		Request:    gatewayapi.RequestMeta{ClientIP: clientIP},
 		Details:    details,
 	}); err != nil {
 		return fmt.Errorf("寫入離機保管鏈事件失敗: %w", err)
@@ -88,11 +91,27 @@ func (j offsiteCustodyJournal) Record(ev offsite.CustodyEvent) error {
 	return nil
 }
 
-// offsiteCustodyDetails 序列化保管鏈事件的 Details 負載。
+// custodyActorOf 事件的審計主體：帶真實操作者（ID 非 0）時記此人與其來源位址，否則記系統。
+func custodyActorOf(ev offsite.CustodyEvent) (gatewayapi.Actor, string) {
+	if ev.Actor != nil && ev.Actor.ID != 0 {
+		return gatewayapi.Actor{UserID: ev.Actor.ID, Username: ev.Actor.Name}, ev.Actor.IP
+	}
+	return gatewayapi.Actor{UserID: 0, Username: "system"}, ""
+}
+
+// offsiteCustodyDetails 序列化保管鏈事件的 Details 負載（CorrelationID 非空時併入 correlation_id）。
 //
 // **只共用序列化、不共用事件字面量**：理由見型別宣告上方的段落。
 func offsiteCustodyDetails(ev offsite.CustodyEvent) (string, error) {
-	payload, err := json.Marshal(ev.Details)
+	body := ev.Details
+	if ev.CorrelationID != "" {
+		body = make(map[string]any, len(ev.Details)+1)
+		for k, v := range ev.Details {
+			body[k] = v
+		}
+		body["correlation_id"] = ev.CorrelationID
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("序列化離機保管鏈事件內容失敗: %w", err)
 	}

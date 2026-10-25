@@ -55,7 +55,7 @@ type toolArgsEnv struct {
 func newToolArgsEnv(t *testing.T, enabled bool) *toolArgsEnv {
 	t.Helper()
 	e := newAgentReadEnv(t)
-	require.NoError(t, e.db.AutoMigrate(&model.DataKey{}, &model.CommandAlert{}))
+	require.NoError(t, migrateWithAuthz(e.db, &model.DataKey{}, &model.CommandAlert{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	kek, err := crypto.NewEnvKEKProvider(make([]byte, 32))
 	require.NoError(t, err)
 	km, err := keyvault.InitKeyManager(e.db, kek)
@@ -122,7 +122,8 @@ func TestAgentToolCallArgumentsAuditBeforeDecrypt(t *testing.T) {
 	require.NoError(t, e.db.Where("action = ?", model.ActionAgentToolCallArgsViewed).First(&row).Error)
 	require.Equal(t, model.ResourceAgentToolCall, row.Resource)
 	require.EqualValues(t, 1, *row.ResourceID)
-	require.Equal(t, e.owner.ID, row.UserID)
+	// 審計 actor＝查看者（稽核員帳號）；角色改以資料庫指派後，稽核員不再與負責人共用帳號
+	require.Equal(t, e.uid[model.RoleAuditor], row.UserID)
 	var details map[string]any
 	require.NoError(t, json.Unmarshal([]byte(row.Details), &details))
 	require.Equal(t, map[string]any{"tool_call_id": float64(1), "session_id": float64(73), "access_request_id": float64(91), "reason": "investigation"}, details)
@@ -195,7 +196,7 @@ func TestSensitiveRevealAgentToolCallEnabled(t *testing.T) {
 	require.Equal(t, "medium", row.Severity)
 	require.Empty(t, row.Command)
 	require.EqualValues(t, 73, row.SessionID)
-	require.Equal(t, e.owner.ID, row.UserID)
+	require.Equal(t, e.uid[model.RoleAuditor], row.UserID)
 	require.EqualValues(t, 42, *row.AssetID)
 	var meta map[string]any
 	require.NoError(t, json.Unmarshal([]byte(row.Note), &meta))

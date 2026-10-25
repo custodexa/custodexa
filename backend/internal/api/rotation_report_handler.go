@@ -46,14 +46,14 @@ func (h *RotationReportHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 	grp := r.Group("/rotation-report")
 	grp.Use(middleware.AuthMiddleware(authService))
 	{
-		grp.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Dataset)
-		grp.GET("/records", middleware.RequirePermission(middleware.PermAuditView), h.Records)
-		grp.POST("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.CreateJob)
+		grp.GET("", middleware.EnforceRegistry(), h.Dataset)
+		grp.GET("/records", middleware.EnforceRegistry(), h.Records)
+		grp.POST("/jobs", middleware.EnforceRegistry(), h.CreateJob)
 	}
 
 	sch := r.Group("/rotation-report/schedules")
 	sch.Use(middleware.AuthMiddleware(authService))
-	sch.Use(middleware.RequireRole("admin"))
+	sch.Use(middleware.EnforceRegistry())
 	{
 		sch.GET("", h.ListSchedules)
 		sch.POST("", h.CreateSchedule)

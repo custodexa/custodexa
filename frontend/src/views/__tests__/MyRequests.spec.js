@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessageBox } from 'element-plus'
 import MyRequests from '../MyRequests.vue'
+import { t } from '@/i18n'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -17,6 +18,16 @@ class MutationObserverStub {
   }
 }
 vi.stubGlobal('MutationObserver', MutationObserverStub)
+
+// 儀表板落點帶入的 query：各測試自行設定，afterEach 還原
+let routeQuery = {}
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: routeQuery }),
+}))
+const getDashboardCardMock = vi.fn()
+vi.mock('@/api/dashboard', () => ({
+  getDashboardCard: (...a) => getDashboardCardMock(...a),
+}))
 
 const getMyAccessRequestsMock = vi.fn()
 const getMyActiveTicketsMock = vi.fn()
@@ -188,5 +199,71 @@ describe('MyRequests 我的申請', () => {
     expect(text).toContain('緊急') // 破窗單標記
     expect(text).toContain('已提前撤銷') // 撤銷覆蓋狀態文案
     expect(text).toContain('任務已完成') // 撤銷事由
+  })
+})
+
+describe('MyRequests 儀表板待審落點', () => {
+  const mk = (id, status) => ({
+    id,
+    asset_id: 1,
+    asset: { name: '正式資料庫' },
+    reason: `r${id}`,
+    requested_duration_minutes: 60,
+    status,
+    created_at: '2026-07-17T10:00:00+08:00',
+  })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getMyActiveTicketsMock.mockResolvedValue({ data: [], total: 0 })
+    routeQuery = { status: 'pending' }
+  })
+  afterEach(() => {
+    routeQuery = {}
+  })
+
+  it('載入集合被較新的非待審單占滿時，明說已載入 0 筆、全量 201 筆', async () => {
+    // 201 筆待審加 200 筆較新的非待審：列表只回最近 200 筆，全是非待審
+    getMyAccessRequestsMock.mockResolvedValue({
+      data: Array.from({ length: 200 }, (_, i) => mk(1000 - i, 'approved')),
+      total: 200,
+    })
+    getDashboardCardMock.mockResolvedValue({ key: 'my-pending-requests', value: 201, filters: { status: 'pending' } })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getDashboardCardMock).toHaveBeenCalledWith('my-pending-requests')
+    expect(wrapper.find('[data-test="loaded-of-total"]').text()).toBe(t('dashboard.loadedOfTotal', { loaded: 0, total: 201 }))
+  })
+
+  it('列表只留載入集合中的待審單，已載入數等於顯示筆數', async () => {
+    getMyAccessRequestsMock.mockResolvedValue({
+      data: [mk(5, 'pending'), mk(4, 'approved'), mk(3, 'pending')],
+      total: 3,
+    })
+    getDashboardCardMock.mockResolvedValue({ key: 'my-pending-requests', value: 7, filters: { status: 'pending' } })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="loaded-of-total"]').text()).toBe(t('dashboard.loadedOfTotal', { loaded: 2, total: 7 }))
+    expect(wrapper.text()).toContain('r5')
+    expect(wrapper.text()).toContain('r3')
+    expect(wrapper.text()).not.toContain('r4')
+  })
+
+  it('全量數讀不到時顯示未取得，不用載入數冒充', async () => {
+    getMyAccessRequestsMock.mockResolvedValue({ data: [mk(5, 'pending')], total: 1 })
+    getDashboardCardMock.mockRejectedValue(new Error('boom'))
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="loaded-of-total"]').text()).toBe(
+      t('dashboard.loadedOfTotal', { loaded: 1, total: t('dashboard.valueUnavailable') }),
+    )
+  })
+
+  it('沒有帶入條件時不顯示載入數也不讀卡片', async () => {
+    routeQuery = {}
+    getMyAccessRequestsMock.mockResolvedValue(sampleRequests)
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="loaded-of-total"]').exists()).toBe(false)
+    expect(getDashboardCardMock).not.toHaveBeenCalled()
   })
 })

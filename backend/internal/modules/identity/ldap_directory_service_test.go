@@ -50,6 +50,7 @@ func newPolicyServiceForTest(t *testing.T) *policy.SecurityPolicyService {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.SecurityPolicy{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}); err != nil {
@@ -80,6 +81,7 @@ func newLDAPDirectoryDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -90,7 +92,7 @@ func newLDAPDirectoryDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
 		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -111,7 +113,7 @@ func (ldapAllowAllGate) ChannelLevel(string) string                             
 func newLDAPDirectorySvc(t *testing.T) (*LDAPDirectoryService, *gorm.DB) {
 	t.Helper()
 	db := newLDAPDirectoryDB(t)
-	svc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
+	svc := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
 	svc.SetTransmissionPolicy(ldapAllowAllGate{})
 	return svc, db
 }
@@ -466,13 +468,13 @@ func TestLDAPDirectoryResolveTriState(t *testing.T) {
 
 	t.Run("故障不得偽裝未啟用", func(t *testing.T) {
 		db := newLDAPDirectoryDB(t)
-		good := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
+		good := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
 		good.SetTransmissionPolicy(ldapAllowAllGate{})
 		if _, err := good.Upsert(context.Background(), ldapDirReq(nil)); err != nil {
 			t.Fatalf("建立: %v", err)
 		}
 		// 同一份資料，換成解密恆失敗的 codec＝金鑰事故
-		broken := NewLDAPDirectoryService(db, ldapDecryptFailCodec{inner: aesColumnCodec(t, kmTestKey(0x42))}, audit.NewTxSink())
+		broken := newLDAPDirectoryServiceT(db, ldapDecryptFailCodec{inner: aesColumnCodec(t, kmTestKey(0x42))}, audit.NewTxSink())
 
 		dial := broken.ResolveDialSnapshot(context.Background())
 		if dial.State != policy.LDAPResolveFailed {
@@ -720,6 +722,7 @@ func TestLDAPDirectoryConcurrentUpsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
@@ -729,10 +732,10 @@ func TestLDAPDirectoryConcurrentUpsert(t *testing.T) {
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
 		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	svc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
+	svc := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
 	svc.SetTransmissionPolicy(ldapAllowAllGate{})
 
 	entered := make(chan struct{})
@@ -896,7 +899,7 @@ func ldapCompleteRow(enc string) *model.LDAPDirectory {
 func TestLDAPDirectoryNilGateFailsClosed(t *testing.T) {
 	db := newLDAPDirectoryDB(t)
 	// 刻意不呼叫 SetTransmissionPolicy——模擬生產組裝漏掉 setter
-	svc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
+	svc := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
 
 	_, err := svc.Upsert(context.Background(), ldapDirReq(nil))
 	if !errors.Is(err, ErrLDAPTransmissionGateUnavailable) {
@@ -932,7 +935,7 @@ func TestLDAPDirectoryNilGateFailsClosed(t *testing.T) {
 func TestLDAPDirectoryCodecErrorSanitized(t *testing.T) {
 	t.Run("解密錯誤不夾帶密文", func(t *testing.T) {
 		db := newLDAPDirectoryDB(t)
-		good := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
+		good := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
 		good.SetTransmissionPolicy(ldapAllowAllGate{})
 		if _, err := good.Upsert(context.Background(), ldapDirReq(nil)); err != nil {
 			t.Fatalf("建立: %v", err)
@@ -942,7 +945,7 @@ func TestLDAPDirectoryCodecErrorSanitized(t *testing.T) {
 			t.Fatal("前置條件：既存列須有密文")
 		}
 
-		broken := NewLDAPDirectoryService(db, ldapLeakyCodec{inner: aesColumnCodec(t, kmTestKey(0x42))}, audit.NewTxSink())
+		broken := newLDAPDirectoryServiceT(db, ldapLeakyCodec{inner: aesColumnCodec(t, kmTestKey(0x42))}, audit.NewTxSink())
 		broken.SetTransmissionPolicy(ldapAllowAllGate{})
 		logged := captureLDAPLog(t)
 
@@ -966,7 +969,7 @@ func TestLDAPDirectoryCodecErrorSanitized(t *testing.T) {
 
 	t.Run("加密錯誤不夾帶明文", func(t *testing.T) {
 		db := newLDAPDirectoryDB(t)
-		svc := NewLDAPDirectoryService(db, ldapLeakyCodec{
+		svc := newLDAPDirectoryServiceT(db, ldapLeakyCodec{
 			inner:       aesColumnCodec(t, kmTestKey(0x42)),
 			failEncrypt: true,
 		}, audit.NewTxSink())
@@ -1004,7 +1007,7 @@ func TestLDAPNilDependencyResolvesFailedNotPanic(t *testing.T) {
 	})
 
 	t.Run("nil DB 的服務", func(t *testing.T) {
-		svc := NewLDAPDirectoryService(nil, nil, audit.NewTxSink())
+		svc := newLDAPDirectoryServiceT(nil, nil, audit.NewTxSink())
 		if got := svc.ResolveDialSnapshot(context.Background()).State; got != policy.LDAPResolveFailed {
 			t.Errorf("state = %q, want failed", got)
 		}

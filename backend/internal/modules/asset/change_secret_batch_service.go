@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -42,6 +43,9 @@ type ChangeSecretBatchRequest struct {
 	// CredentialName 整批同一組模式下要建立的共用憑證名稱（必填，依共用唯一性檢核）；
 	// 每台各自隨機時忽略
 	CredentialName string `json:"credential_name"`
+	// SharedCredentialOwnership 整批同一組模式新建共用憑證的管理歸屬（形狀與驗證同憑證庫建立）；
+	// 未帶時全域主體為全域、只經節點範圍持有建立能力者為不合法。每台各自隨機時忽略
+	SharedCredentialOwnership *CredentialOwnershipInput `json:"shared_credential_ownership"`
 
 	PasswordLength           int   `json:"password_length"`
 	PasswordIncludeSymbol    *bool `json:"password_include_symbol"`
@@ -73,6 +77,24 @@ type BatchTarget struct {
 type ChangeSecretBatchService struct {
 	db      *gorm.DB
 	reports *RotationReportBuilder
+	// mgmt 建立批次時的管理授權關卡；未注入 fail closed
+	mgmt credentialManagementGate
+	// scope 建立交易內的拓撲鎖、能力來源與資產範圍；未注入＝全系統口徑（見 WithScope）
+	scope ChangeSecretScopePort
+	// ownership 整批同一組模式新共用憑證的歸屬判定；未注入時該模式建立 fail-close
+	ownership CredentialOwnershipScopePort
+}
+
+// WithOwnershipScope 注入整批同一組模式新共用憑證的歸屬判定（組裝根）。
+func (s *ChangeSecretBatchService) WithOwnershipScope(p CredentialOwnershipScopePort) *ChangeSecretBatchService {
+	s.ownership = p
+	return s
+}
+
+// WithManagementAuthorizer 注入憑證管理授權判定器（見 credential_management_authz.go）。
+func (s *ChangeSecretBatchService) WithManagementAuthorizer(a CredentialManagementAuthorizer) *ChangeSecretBatchService {
+	s.mgmt = credentialManagementGate{authorizer: a}
+	return s
 }
 
 // NewChangeSecretBatchService 建立服務
@@ -86,10 +108,15 @@ func (s *ChangeSecretBatchService) liveAccounts() *gorm.DB {
 		Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL")
 }
 
-// Usernames 登記於系統的帳號名清單（附資產數，依帳號名排序）
+// Usernames 登記於系統的帳號名清單（附資產數，依帳號名排序）；不經檢視者投影，見 UsernamesFor
 func (s *ChangeSecretBatchService) Usernames() ([]BatchUsername, error) {
+	return usernamesOn(s.liveAccounts())
+}
+
+// usernamesOn 在給定的帳號母體上彙總帳號名與資產數
+func usernamesOn(q *gorm.DB) ([]BatchUsername, error) {
 	var out []BatchUsername
-	if err := s.liveAccounts().
+	if err := q.
 		Select("asset_accounts.username AS username, COUNT(*) AS asset_count").
 		Group("asset_accounts.username").
 		Order("asset_accounts.username").
@@ -102,13 +129,29 @@ func (s *ChangeSecretBatchService) Usernames() ([]BatchUsername, error) {
 	return out, nil
 }
 
-// Targets 持有該帳號名的全部目標（報告列 ＋ 可改密性）
+// Targets 持有該帳號名的全部目標（報告列 ＋ 可改密性）；不經檢視者投影，見 TargetsFor
 func (s *ChangeSecretBatchService) Targets(username string, asOf time.Time) ([]BatchTarget, error) {
+	return s.targetsIn(username, nil, nil, asOf)
+}
+
+// normalizedUsername 去頭尾空白；空值為必填錯誤
+func normalizedUsername(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		return nil, ErrBatchUsernameRequired
+		return "", ErrBatchUsernameRequired
 	}
-	rows, err := s.reports.AccountRows(model.AccountScope{username}, asOf)
+	return username, nil
+}
+
+// targetsIn 該帳號名的目標；assetFilter 為 nil＝不限資產，空切片＝沒有任何資產；
+// plans 為彙總涵蓋計畫前的可見性投影（nil＝全部計畫）
+func (s *ChangeSecretBatchService) targetsIn(username string, assetFilter []uint, plans PlanFilter,
+	asOf time.Time) ([]BatchTarget, error) {
+	username, err := normalizedUsername(username)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.reports.AccountRowsIn(model.AccountScope{username}, assetFilter, plans, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -178,11 +221,10 @@ func ineligibleReason(asset *model.Asset, row *AccountRow) string {
 	return ""
 }
 
-// matchingAccounts 該帳號名的全部目標帳號（依資產 id 排序）
-func (s *ChangeSecretBatchService) matchingAccounts(username string) ([]model.AssetAccount, error) {
+// matchingAccountsOn 在給定的帳號母體查詢上取該帳號名的全部目標帳號（依資產 id 排序）
+func matchingAccountsOn(q *gorm.DB, username string) ([]model.AssetAccount, error) {
 	var accounts []model.AssetAccount
-	if err := s.liveAccounts().
-		Select("asset_accounts.*").
+	if err := q.Select("asset_accounts.*").
 		Where("asset_accounts.username = ?", username).
 		Order("asset_accounts.asset_id asc, asset_accounts.id asc").
 		Find(&accounts).Error; err != nil {
@@ -191,11 +233,21 @@ func (s *ChangeSecretBatchService) matchingAccounts(username string) ([]model.As
 	return accounts, nil
 }
 
-// Create 驗證請求、解析目標並建立批次列（狀態為執行中）。
+// Create 以背景脈絡建立批次（見 CreateFor）；供沒有請求脈絡的呼叫端使用。
+func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, requesterID uint,
+	requesterName string) (*model.ChangeSecretBatch, []uint, error) {
+	return s.CreateFor(context.Background(), req, requesterID, requesterName)
+}
+
+// CreateFor 驗證請求、解析目標並建立批次列（狀態為執行中）。
 //
 // 回傳目標資產 id 清單供執行器使用：批次的帳號範圍就是那一個帳號名，
 // runner 對每台資產以此範圍解析帳號，通道與跳過語義與計劃完全相同。
-func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, requesterID uint,
+//
+// 順序固定，對所有主體一致：輸入形狀 → 模式決定的能力 → 交易內取拓撲鎖並重判能力 →
+// 範圍與存在 → 帳號名相符 → 零目標 → 依目標的追加能力 → 新共用憑證歸屬 → 名稱查重 → 寫入。
+// 缺能力者在讀任何目標資料之前即被拒，回應不隨目標資料而不同。
+func (s *ChangeSecretBatchService) CreateFor(ctx context.Context, req *ChangeSecretBatchRequest, requesterID uint,
 	requesterName string) (*model.ChangeSecretBatch, []uint, error) {
 
 	username := strings.TrimSpace(req.Username)
@@ -208,27 +260,19 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 	if err := ValidatePasswordLength(req.PasswordLength); err != nil {
 		return nil, nil, err
 	}
-	credentialName, err := s.validateSharedCredentialName(req)
+	credentialName, err := sharedCredentialNameShape(req)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	accounts, err := s.matchingAccounts(username)
-	if err != nil {
+	ctx = contextWithInitiator(ctx, requesterID, requesterName)
+	modeCaps := batchModeCapabilities(req)
+	if err := s.requireModeCapabilities(ctx, s.db, requesterID, modeCaps); err != nil {
 		return nil, nil, err
-	}
-	targets, err := selectTargets(accounts, req)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(targets) == 0 {
-		return nil, nil, ErrBatchNoTargets
 	}
 
 	batch := &model.ChangeSecretBatch{
 		Username:     username,
 		PasswordMode: req.PasswordMode,
-		TargetCount:  len(targets),
 		Status:       model.ChangeSecretBatchRunning,
 		RequestedBy:  requesterID, RequestedByName: requesterName,
 		StartedAt: time.Now(),
@@ -242,11 +286,62 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 		"password_include_symbol":    batch.PasswordIncludeSymbol,
 		"password_exclude_ambiguous": batch.PasswordExcludeAmbiguous,
 	}
+	var targets []model.AssetAccount
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if s.scope != nil {
+			// 拓撲序列化鎖是第一個動作：之後的能力重判與範圍交集看到的是同一份節點樹
+			if err := s.scope.LockTopology(tx); err != nil {
+				return err
+			}
+			if err := s.requireModeCapabilities(ctx, tx, requesterID, modeCaps); err != nil {
+				return err
+			}
+		}
+		var err error
+		targets, err = s.resolveTargets(ctx, tx, requesterID, username, req)
+		if err != nil {
+			return err
+		}
+		if len(targets) == 0 {
+			return ErrBatchNoTargets
+		}
+		// 管理授權：複合請求逐項驗所需能力，任一缺少整批不建立（零寫入）
+		batchCaps, batchDecision, err := s.authorizeBatch(ctx, tx, req, targets)
+		if err != nil {
+			return err
+		}
+		if credentialName != "" {
+			// 歸屬在名稱查重之前：同一交易、拓撲鎖之後判定並持久化，runner 建立憑證時以持久值重驗
+			owner, err := resolveSharedOwnershipTx(ctx, tx, s.ownership, requesterID, CredCapCreate,
+				req.SharedCredentialOwnership)
+			if err != nil {
+				return err
+			}
+			batch.SharedCredentialOwnerKind = owner.Kind
+			batch.SharedCredentialOwnerNodeID = owner.NodeID
+			if err := assertSharedNameFree(tx, credentialName, 0); err != nil {
+				return err
+			}
+		}
+		batch.TargetCount = len(targets)
 		if err := tx.Create(batch).Error; err != nil {
 			return err
 		}
-		return restoreFalseDefaults(tx, &model.ChangeSecretBatch{}, batch.ID, wanted)
+		if err := restoreFalseDefaults(tx, &model.ChangeSecretBatch{}, batch.ID, wanted); err != nil {
+			return err
+		}
+		// 發起者與當次確認的上界（選定的資產）存成不可變授權脈絡，之後的背景執行與補跑沿用
+		auth, err := insertJobAuthorization(s.mgmt, tx, jobAuthInput{
+			kind: model.JobAuthSourceBatch, sourceID: batch.ID, revision: 1,
+			actorID: requesterID, actorName: requesterName, via: model.JobAuthViaRequest,
+			authzVersion: batchDecision.AuthzVersion, sources: batchDecision.Sources, capabilities: batchCaps, targetBound: batchAssetIDs(targets),
+		})
+		if err != nil {
+			return err
+		}
+		batch.AuthorizationID = &auth.ID
+		return tx.Model(&model.ChangeSecretBatch{}).Where("id = ?", batch.ID).
+			Update("authorization_id", auth.ID).Error
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -260,9 +355,101 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 	return batch, assetIDs, nil
 }
 
-// validateSharedCredentialName 整批同一組模式的憑證名稱檢核（送出前先擋，
-// 不讓操作者改完一批機器才被名稱撞名擋下來）。回傳正規化後的名稱；其他模式回空字串。
-func (s *ChangeSecretBatchService) validateSharedCredentialName(req *ChangeSecretBatchRequest) (string, error) {
+// batchModeCapabilities 由模式決定、與目標資料無關的能力：所有批次都改選定帳號的秘密；
+// 整批同一組另會新建共用憑證並逐台掛入。
+func batchModeCapabilities(req *ChangeSecretBatchRequest) []string {
+	caps := []string{CredCapAccountRotate}
+	if req.PasswordMode == model.BatchPasswordShared {
+		caps = append(caps, CredCapCreate, CredCapBind)
+	}
+	return caps
+}
+
+// requireModeCapabilities 不帶目標的能力判定。不帶目標的關卡只認全系統來源：放行即全系統持有；
+// 被拒時若已注入範圍判定，再以任一有效來源（含節點範圍）檢核，持有者往下由範圍收斂目標。
+// 其餘一律回關卡原本的拒絕，不依目標資料分流。
+func (s *ChangeSecretBatchService) requireModeCapabilities(ctx context.Context, db *gorm.DB, requesterID uint,
+	caps []string) error {
+
+	_, err := s.mgmt.require(ctx, db, CredentialManagementRequest{Operation: CredOpRotate, Capabilities: caps})
+	if err == nil || s.scope == nil || requesterID == 0 || errors.Is(err, ErrCredentialAuthzUnavailable) {
+		return err
+	}
+	missing, cerr := s.scope.CapabilityMissing(ctx, db, requesterID, caps)
+	if cerr != nil {
+		return fmt.Errorf("%w: %v", ErrCredentialAuthzUnavailable, cerr)
+	}
+	if missing != "" {
+		return err
+	}
+	return nil
+}
+
+// resolveTargets 交易內解析目標。範圍化主體（帳號改密只經節點範圍持有）：全部符合者只取範圍內，
+// 明列者先計「不存在或資產在範圍外」的筆數，有就整批拒絕，之後才判帳號名相符；
+// 不限範圍者（含未注入範圍判定）沿明列即比對帳號名的現行規則。
+func (s *ChangeSecretBatchService) resolveTargets(ctx context.Context, tx *gorm.DB, requesterID uint,
+	username string, req *ChangeSecretBatchRequest) ([]model.AssetAccount, error) {
+
+	var scope ChangeSecretAssetScope
+	if s.scope != nil {
+		var err error
+		scope, err = s.scope.AssetScope(ctx, tx, requesterID, CredCapAccountRotate)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrCredentialAuthzUnavailable, err)
+		}
+	}
+	live := func() *gorm.DB {
+		q := tx.Model(&model.AssetAccount{}).
+			Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL")
+		if scope.Limited {
+			q = q.Where("asset_accounts.asset_id IN (?)", scope.AssetIDs)
+		}
+		return q
+	}
+	if !scope.Limited {
+		accounts, err := matchingAccountsOn(live(), username)
+		if err != nil {
+			return nil, err
+		}
+		return selectTargets(accounts, req)
+	}
+	if !req.All {
+		ids := uniqueIDs(req.AccountIDs)
+		if len(ids) > 0 {
+			var available int64
+			if err := live().Where("asset_accounts.id IN ?", ids).Count(&available).Error; err != nil {
+				return nil, err
+			}
+			if missing := len(ids) - int(available); missing > 0 {
+				return nil, &BatchItemsUnavailableError{Count: missing}
+			}
+		}
+	}
+	accounts, err := matchingAccountsOn(live(), username)
+	if err != nil {
+		return nil, err
+	}
+	return selectTargets(accounts, req)
+}
+
+// uniqueIDs 去重保序
+func uniqueIDs(ids []uint) []uint {
+	seen := make(map[uint]bool, len(ids))
+	out := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// sharedCredentialNameShape 整批同一組模式的憑證名稱形狀檢核（必填與格式）；撞名在建立交易內、
+// 能力與目標判定之後才查，缺能力者得不到「名稱已被使用」這個資料相依的回應。
+// 回傳正規化後的名稱；其他模式回空字串。
+func sharedCredentialNameShape(req *ChangeSecretBatchRequest) (string, error) {
 	if req.PasswordMode != model.BatchPasswordShared {
 		return "", nil
 	}
@@ -273,7 +460,7 @@ func (s *ChangeSecretBatchService) validateSharedCredentialName(req *ChangeSecre
 	if err := ValidateCredentialName(name); err != nil {
 		return "", err
 	}
-	if err := assertSharedNameFree(s.db, name, 0); err != nil {
+	if err := ValidateCredentialOwnershipInput(req.SharedCredentialOwnership); err != nil {
 		return "", err
 	}
 	return name, nil
@@ -385,4 +572,65 @@ func completeBatch(db *gorm.DB, batchID uint, records []model.ChangeSecretRecord
 // batchSource 告警內容裡的批次識別
 func batchSource(batch *model.ChangeSecretBatch) string {
 	return fmt.Sprintf("batch=%d username=%s", batch.ID, batch.Username)
+}
+
+// authorizeBatch 批次的管理授權（建立交易內，目標已經範圍收斂之後）。
+//
+// 所需能力依模式組合：所有批次都改選定帳號的秘密（account:rotate）；整批同一組會新建
+// 共用憑證並逐台掛入（credential:create、credential:bind）；每台各自隨機遇到共用憑證的
+// 成員時走單台脫離再改（credential:detach、credential:rotate）。影響集合是全部選定的
+// 資產與帳號；不帶來源憑證——拆分只改所選掛載、不改來源共用憑證的秘密，判定依所選資產。
+// 發起者取自 ctx（伺服器端已認證的請求者），不接受 body。
+//
+// 依目標追加的能力判為範圍外時（目標本身已在帳號改密範圍內）收斂為單一 forbidden，
+// 不回範圍拒絕值，回應不揭露哪一台、哪一項。
+func (s *ChangeSecretBatchService) authorizeBatch(ctx context.Context, tx *gorm.DB,
+	req *ChangeSecretBatchRequest, targets []model.AssetAccount) ([]string, CredentialManagementDecision, error) {
+
+	caps := batchModeCapabilities(req)
+	var assetIDs, accountIDs []uint
+	var credIDs []uint
+	for i := range targets {
+		assetIDs = append(assetIDs, targets[i].AssetID)
+		accountIDs = append(accountIDs, targets[i].ID)
+		if targets[i].CredentialID != 0 {
+			credIDs = append(credIDs, targets[i].CredentialID)
+		}
+	}
+	if req.PasswordMode != model.BatchPasswordShared && len(credIDs) > 0 {
+		var shared int64
+		if err := tx.Model(&model.Credential{}).
+			Where("id IN ? AND scope = ?", credIDs, model.CredentialScopeShared).
+			Count(&shared).Error; err != nil {
+			return nil, CredentialManagementDecision{}, fmt.Errorf("%w: 讀取憑證範圍失敗", ErrCredentialAuthzUnavailable)
+		}
+		if shared > 0 {
+			caps = append(caps, CredCapDetach, CredCapRotate)
+		}
+	}
+	decision, err := s.mgmt.require(ctx, tx, CredentialManagementRequest{
+		Operation:    CredOpRotate,
+		Capabilities: caps,
+		AssetIDs:     assetIDs,
+		AccountIDs:   accountIDs,
+	})
+	if err != nil && decision.ScopeDenial != nil {
+		denied := capabilityDenied(ErrCredentialBindForbidden, caps...)
+		denied.(*CapabilityDeniedError).Forbidden = true
+		return caps, decision, denied
+	}
+	return caps, decision, err
+}
+
+// batchAssetIDs 批次確認當下的目標上界（選定的資產，去重保序）。
+func batchAssetIDs(targets []model.AssetAccount) []uint {
+	seen := map[uint]bool{}
+	out := make([]uint, 0, len(targets))
+	for i := range targets {
+		if !seen[targets[i].AssetID] {
+			seen[targets[i].AssetID] = true
+			out = append(out, targets[i].AssetID)
+		}
+	}
+	return out
 }

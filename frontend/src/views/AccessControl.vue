@@ -50,10 +50,26 @@
         <!-- 覆寫表格掛在「連線政策」區塊尾端（工作台主角）：
              全域預設列在上、資產覆寫在下，
              兩層關係一眼可視 -->
-        <AssetPolicyTable
-          v-if="section.keys?.includes('access_policy_default')"
-          :global-policy="savedGlobalPolicy"
-        />
+        <template v-if="section.keys?.includes('access_policy_default')">
+          <p
+            class="alert-notice"
+            data-test="default-relax-alert-notice"
+          >
+            {{ $t('accessControl.defaultRelaxAlertNotice') }}
+          </p>
+          <AssetPolicyTable
+            v-if="canManageAccessPolicy"
+            :global-policy="savedGlobalPolicy"
+          />
+          <!-- 無存取政策權限點：不掛覆寫表、不發資產請求，原位置只留說明 -->
+          <p
+            v-else
+            class="override-elsewhere"
+            data-test="override-managed-elsewhere"
+          >
+            {{ $t('accessControl.overrideManagedElsewhere') }}
+          </p>
+        </template>
       </template>
     </PolicyKeySections>
 
@@ -78,6 +94,8 @@ import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import AssetPolicyTable from '@/components/AssetPolicyTable.vue'
 import { usePolicyForm } from '@/composables/usePolicyForm'
 import { ACCESS_SECTIONS } from '@/constants/policyDomains'
+import { can } from '@/composables/useCapabilities'
+import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 
 // 條目數與規格條列一致；增刪條目時三語 key 必須同步
 const TRANSFER_BOUNDARY_COUNT = 7
@@ -104,6 +122,9 @@ const {
   save,
 } = usePolicyForm(ACCESS_SECTIONS)
 
+// 單台覆寫由存取政策權限點承擔；沒有時不掛覆寫表（全域預設與其他區塊不受影響）
+const canManageAccessPolicy = computed(() => can(ACCESS_POLICY_PERM))
+
 // 覆寫表格的「跟隨全域設定（目前：X）」以已儲存值為準——
 // 未儲存的編輯還不是生效政策，不進文案（spec：全域變更「並儲存」後才更新）
 const savedGlobalPolicy = computed(
@@ -116,8 +137,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.alert-notice {
+  margin: 0 0 var(--ot-space-sm);
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
 .access-control {
   /* MainLayout already provides padding via --ot-space-lg */
+}
+
+.override-elsewhere {
+  margin: var(--ot-space-sm) 0 0;
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
 }
 
 .transfer-boundary {

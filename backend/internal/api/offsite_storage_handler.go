@@ -81,7 +81,7 @@ func NewOffsiteStorageHandler(profiles *offsite.OffsiteProfileService,
 func (h *OffsiteStorageHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/offsite-storage")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequireRole("admin"))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("/status", h.Status)
 		g.GET("/failures", h.Failures)
@@ -526,6 +526,9 @@ func respondOffsiteError(c *gin.Context, err error, fallback apierror.ErrCode) {
 		apierror.Respond(c, http.StatusConflict, apierror.CodeConflictOffsiteProfileBusy, nil)
 	case errors.Is(err, offsite.ErrNoCurrentGeneration):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeConflictOffsiteNoCurrentGeneration, nil)
+	case errors.Is(err, offsite.ErrChangeAlertRaise):
+		// 停用或改目的地的系統告警寫不進去：整筆已回滾，設定不變
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalSystemAlertRaise, err)
 	default:
 		if code := offsiteFailureCode(err); code != "" {
 			apierror.Respond(c, http.StatusConflict, code, nil)

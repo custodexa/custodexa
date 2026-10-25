@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -80,9 +81,20 @@ func (h *AuditCheckpointHandler) SetRoleStateNames(names roleStateNameSource,
 	h.roleNames = &roleStateLookup{names: names, events: events}
 }
 
-// checkpointItem 列表項：只曝露已在 DB 且非機密的欄位（簽章本身是公開可驗的）
+// checkpointItem 列表項：只曝露已在 DB 且非機密的欄位（簽章本身是公開可驗的）。
+// 第四版的點另帶 `perm`（權限附證的摘要、界標、對帳結果與起點旗標，無附證時為 null），
+// 離線驗證者以它重建簽章載荷；快照本體不外送
 type checkpointItem struct {
 	model.AuditCheckpoint
+	Perm *json.RawMessage `json:"perm,omitempty"`
+}
+
+func newCheckpointItem(cp model.AuditCheckpoint) checkpointItem {
+	item := checkpointItem{AuditCheckpoint: cp}
+	if raw := audit.CheckpointPermWire(&cp); raw != nil {
+		item.Perm = &raw
+	}
+	return item
 }
 
 // List 檢查點列表（seq 倒序、分頁、含 anchor 與 purged 狀態）
@@ -102,7 +114,7 @@ func (h *AuditCheckpointHandler) List(c *gin.Context) {
 	}
 	items := make([]checkpointItem, 0, len(rows))
 	for _, r := range rows {
-		items = append(items, checkpointItem{AuditCheckpoint: r})
+		items = append(items, newCheckpointItem(r))
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"items": items, "total": total}})
 }
@@ -135,6 +147,7 @@ func (h *AuditCheckpointHandler) Verify(c *gin.Context) {
 		RoleState:       projectRoleState(chain.RoleState, h.roleNames),
 		PrincipalState:  projectPrincipalState(chain.StateTables, audit.StateTablePrincipals, h.roleNames),
 		AgentTokenState: projectPrincipalState(chain.StateTables, audit.StateTableAgentTokens, h.roleNames),
+		PermissionState: projectPermissionState(chain.Permission, h.roleNames),
 	}}
 
 	wantContent := c.Query("content") == "true" || c.Query("seq_from") != "" ||
@@ -236,7 +249,7 @@ func (h *AuditCheckpointHandler) PublicKey(c *gin.Context) {
 func (h *AuditCheckpointHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/audit-checkpoints")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("", h.List)
 		g.GET("/verify", h.Verify)

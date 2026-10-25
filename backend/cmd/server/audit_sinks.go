@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
@@ -62,6 +63,20 @@ func requireAlertSink(sink gatewayapi.AlertSink) error {
 	return nil
 }
 
+// requireSystemAlertSink 交易內系統告警落地面的注入自檢。
+//
+// 與 requireAuditTxSink 同理由：這個出口是系統告警「發生就一定產生」的唯一路徑，
+// 未注入時寬鬆跳過會讓告警靜默消失而業務照樣成立，所以未接線即拒絕啟動。
+// 同樣以 reflect 驗 typed-nil。
+func requireSystemAlertSink(sink port.SystemAlertSink) error {
+	if isNilSink(sink) {
+		return fmt.Errorf("交易內系統告警落地面（port.SystemAlertSink）未注入：" +
+			"系統告警是補償控制的唯一出口，未接線即拒絕啟動，" +
+			"不得降級為空實作而使告警靜默消失")
+	}
+	return nil
+}
+
 // requireAuditAsyncSinks 非同步審計投遞面的注入自檢（可變參數：主 sink 與 C-plain 直寫 sink）。
 func requireAuditAsyncSinks(sinks ...gatewayapi.AsyncSink) error {
 	for i, sink := range sinks {
@@ -85,4 +100,41 @@ func isNilSink(v any) bool {
 	default:
 		return false
 	}
+}
+
+// verifyIdentitySourceSinks 身分來源設定變更與映射寫入留痕的啟動自檢：目錄與身分提供者兩個服務的
+// 稽核與告警落地面都已注入，映射規則與釘住的授權變更分級已注入。檢的是服務實際持有的欄位（含 typed-nil），不只是組裝根的變數，
+// 所以接線那一行被刪掉或換成別的值都會在啟動時現形。
+func verifyIdentitySourceSinks(ldap, oidc interface{ SourceChangeSinksReady() error },
+	graded ...interface{ GrantGraderReady() error }) error {
+	if isNilSink(ldap) || isNilSink(oidc) {
+		return fmt.Errorf("身分來源服務未建構，無法確認留痕落地面")
+	}
+	if err := ldap.SourceChangeSinksReady(); err != nil {
+		return err
+	}
+	if err := oidc.SourceChangeSinksReady(); err != nil {
+		return err
+	}
+	// 映射規則寫入與釘住的授權變更分級與留痕（自我授權、管理類發放）
+	for _, g := range graded {
+		if isNilSink(g) {
+			return fmt.Errorf("映射規則寫入服務未建構，無法確認授權變更分級與留痕")
+		}
+		if err := g.GrantGraderReady(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// requireIdentityControls 指派關卡、授權變更分級與帳號身分操作關卡的注入自檢。
+// 三者是指派與身分操作的留痕出口：缺任何一件，服務退回只有相容目錄、沒有分級與留痕的內部入口語義，
+// 而 API 與測試都照常通過——所以啟動時 fail-close，不降級。
+func requireIdentityControls(guard *identity.AssignmentGuard, grader *identity.GrantGrader, ops *identity.ProtectedAccountOps) error {
+	if isNilSink(guard) || isNilSink(grader) || isNilSink(ops) {
+		return fmt.Errorf("指派關卡、授權變更分級或帳號身分操作關卡未注入：" +
+			"授權變更與系統安全管理員帳號操作的留痕由它們承擔，未接線即拒絕啟動，不得降級為無留痕的預設")
+	}
+	return nil
 }

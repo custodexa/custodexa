@@ -92,6 +92,9 @@ var (
 // 一部分，故只對具憑證管理權限者回傳（路由層授權點承擔可見性）。
 type CredentialInUseError struct {
 	Assets []string
+	// OutOfScopeAssets 範圍化檢視者看不到的掛載台數；Scoped 為 false 時不適用（全域主體不帶此欄）
+	OutOfScopeAssets int
+	Scoped           bool
 }
 
 func (e *CredentialInUseError) Error() string { return ErrCredentialInUse.Error() }
@@ -108,6 +111,8 @@ type CreateCredentialRequest struct {
 	Note           string `json:"note"`
 	Password       string `json:"password"`
 	PrivateKey     string `json:"private_key"`
+	// Ownership 管理歸屬（nil＝未帶：不限範圍的主體預設全域，範圍化主體必須指定）
+	Ownership *CredentialOwnershipInput `json:"ownership"`
 }
 
 // UpdateCredentialRequest 更新憑證（nil＝不動）。
@@ -118,12 +123,16 @@ type UpdateCredentialRequest struct {
 	Name     *string `json:"name"`
 	Note     *string `json:"note"`
 	Username *string `json:"username"`
+	// Ownership 改歸（僅共用憑證；規則見 credential_ownership_reassign.go）
+	Ownership *CredentialOwnershipInput `json:"ownership"`
 }
 
 // ConvertCredentialScopeRequest 範圍轉換：轉共用時 Name 必填。
 type ConvertCredentialScopeRequest struct {
 	Scope string `json:"scope"`
 	Name  string `json:"name"`
+	// Ownership 轉共用時的管理歸屬（規則同建立）；轉專用帶此欄即不合法
+	Ownership *CredentialOwnershipInput `json:"ownership"`
 }
 
 // CredentialFilter 列表過濾條件（空字串＝該條件不生效）。
@@ -139,6 +148,10 @@ type CredentialFilter struct {
 	// model.ProtocolFamilyForAsset 推導後填入此欄——族別是協定與改密通道共同決定的
 	// 計算值，讓呼叫端自己算會在通道規則改變時開始說謊。
 	ProtocolFamily string
+	// Ownership 管理歸屬篩選（global｜asset｜node）；值域外回 ErrCredentialOwnershipInvalid
+	Ownership string
+	// OwnerNodeID 歸屬節點篩選；範圍化檢視者於範圍外的節點自然回空
+	OwnerNodeID *uint
 }
 
 // CredentialService 憑證的管理面服務。
@@ -148,8 +161,25 @@ type CredentialFilter struct {
 type CredentialService struct {
 	assets  *AssetService
 	crypto  crypto.ColumnCodec
-	authz   assetViewPermissionChecker
+	mgmt    credentialManagementGate
 	auditTx port.TxSink
+	// alerts 自訂秘密使用的系統告警落地面（SetSecret 等）；未注入時該類操作回
+	// port.ErrSystemAlertSinkMissing 並整筆回滾，不退回直接通知
+	alerts port.SystemAlertSink
+	// ownership 共用憑證歸屬的交易內範圍判定（credential_ownership.go）；未注入時建立共用憑證 fail-close
+	ownership CredentialOwnershipScopePort
+	// scope 憑證庫範圍化讀取投影來源（credential_scope.go）；未注入＝不帶範圍化欄位
+	scope CredentialScopeSource
+	// bindPreTxHook、bindLockedHook 測試用接縫（見 SetBindHooksForTest）；正式組裝恆為 nil
+	bindPreTxHook  func()
+	bindLockedHook func(tx *gorm.DB) error
+}
+
+// SetBindHooksForTest 測試用：preTx 在掛載的交易外判定通過之後、開交易之前呼叫；locked 在交易取得
+// 拓撲序列化鎖之後、資產與憑證列鎖及鎖後重判之前呼叫，回錯誤即回滾。用以模擬「判定後狀態被他人
+// 改變」與「同交易內撤權」。正式組裝不呼叫
+func (s *CredentialService) SetBindHooksForTest(preTx func(), locked func(tx *gorm.DB) error) {
+	s.bindPreTxHook, s.bindLockedHook = preTx, locked
 }
 
 // NewCredentialService 建立憑證服務。codec SHALL 與 assets 用同一個實例。
@@ -157,10 +187,16 @@ func NewCredentialService(assets *AssetService, codec crypto.ColumnCodec, auditT
 	return &CredentialService{assets: assets, crypto: codec, auditTx: auditTx}
 }
 
-// WithAuthorization 注入資產可見性判定（受影響資產的權限檢核，檢核面見
-// credential_binding.go 檔頭）。
-func (s *CredentialService) WithAuthorization(authz assetViewPermissionChecker) *CredentialService {
-	s.authz = authz
+// WithManagementAuthorizer 注入憑證管理授權判定器（見 credential_management_authz.go）。
+// 未注入時所有管理操作 fail closed，不是放行。
+func (s *CredentialService) WithManagementAuthorizer(a CredentialManagementAuthorizer) *CredentialService {
+	s.mgmt = credentialManagementGate{authorizer: a}
+	return s
+}
+
+// WithSystemAlertSink 注入交易內系統告警落地面（組裝根）。
+func (s *CredentialService) WithSystemAlertSink(sink port.SystemAlertSink) *CredentialService {
+	s.alerts = sink
 	return s
 }
 
@@ -187,6 +223,16 @@ func ValidateCredentialName(name string) error {
 // 交易把憑證的現行版本指向 v1。這不宣稱該秘密在任何主機上有效——憑證此刻零掛載，
 // 有效與否由第一次掛載後的連線或改密揭露。
 func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialRequest) (*CredentialDTO, error) {
+	decision, err := s.mgmt.require(ctx, nil, CredentialManagementRequest{
+		Operation: CredOpCreate, Capabilities: []string{CredCapCreate},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if decision.ScopeNarrowingRequired && s.ownership == nil {
+		// 只因節點範圍來源放行的建立必須經歸屬判定收斂；判定未注入時拒絕（交易內的歸屬判定同樣 fail closed）
+		return nil, fmt.Errorf("%w: 範圍化建立缺歸屬判定", ErrCredentialAuthzUnavailable)
+	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return nil, ErrCredentialNameRequired
@@ -206,6 +252,9 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 	}
 	if !model.IsProtocolFamily(req.ProtocolFamily) {
 		return nil, ErrCredentialProtocolFamilyInvalid
+	}
+	if err := ValidateCredentialOwnershipInput(req.Ownership); err != nil {
+		return nil, err
 	}
 	if req.SecretType != "" && req.SecretType != model.ChangeSecretTypePassword &&
 		req.SecretType != model.ChangeSecretTypeSSHKey {
@@ -251,6 +300,15 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 		Note:           req.Note,
 	}
 	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 第一個動作取拓撲序列化鎖：歸屬節點不得在判定之後、寫入之前被刪
+		if err := s.beginOwnershipTx(tx); err != nil {
+			return err
+		}
+		owner, err := resolveSharedOwnershipTx(ctx, tx, s.ownership, userID, CredCapCreate, req.Ownership)
+		if err != nil {
+			return err
+		}
+		applyOwnership(cred, owner)
 		if err := assertSharedNameFree(tx, name, 0); err != nil {
 			return err
 		}
@@ -266,12 +324,16 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 			return err
 		}
 		cred.CurrentVersionID = &version.ID
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
 			CredentialID: cred.ID,
 			Operation:    model.AccountOpCreate,
 			Scope:        cred.Scope,
 			Fields:       changedSecretFields(passwordEnc != "", privateKeyEnc != "", false),
-		}, userID, operator)
+			Ownership:    ownershipAudit(owner),
+		}, userID, operator); err != nil {
+			return err
+		}
+		return s.advanceOwnershipVersionTx(tx)
 	})
 	if txErr != nil {
 		return nil, txErr
@@ -298,10 +360,26 @@ func (s *CredentialService) Update(ctx context.Context, id uint, req *UpdateCred
 			return nil, err
 		}
 	}
+	if err := ValidateCredentialOwnershipInput(req.Ownership); err != nil {
+		return nil, err
+	}
+	// 能力判定先於任何查表：不具修改能力者對任何識別（含不存在）同為能力拒絕，
+	// 不得以「無權」與「不存在」的差別探出範圍外憑證是否存在。帳號編輯能力依憑證範圍而定、
+	// 改歸另有歸屬判定，兩者照舊在列鎖之後判
+	if err := s.requireManagement(ctx, nil, CredOpUpdate, []string{CredCapUpdate},
+		[]uint{id}, nil); err != nil {
+		return nil, err
+	}
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.Credential
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 帶改歸時第一個動作取拓撲序列化鎖（其後 Begin），早於資產列與憑證列鎖
+		if req.Ownership != nil {
+			if err := s.beginOwnershipTx(tx); err != nil {
+				return err
+			}
+		}
 		// **全域鎖次序＝先資產列、後憑證列**（見 credential_binding.go 檔頭）。
 		// 改名要同步掛載列上的帳號名副本，那是資產帳號集合的寫入，故受影響資產的
 		// 列鎖必須在憑證列鎖之前取得；只有改名路徑會動到掛載，其餘欄位不必取
@@ -314,8 +392,25 @@ func (s *CredentialService) Update(ctx context.Context, id uint, req *UpdateCred
 		if err != nil {
 			return err
 		}
+		// 中繼資料修改：影響集合是憑證及全部掛載；專用憑證改登入帳號名時，另驗唯一
+		// 掛載的帳號編輯能力。此路徑不接受任何秘密欄位，不能夾帶 SetSecret
+		caps := []string{CredCapUpdate}
+		if req.Username != nil && cred.Scope == model.CredentialScopeDedicated {
+			caps = append(caps, CredCapAccountEdit)
+		}
+		if err := s.requireBoundManagement(ctx, tx, CredOpUpdate, cred.ID, caps...); err != nil {
+			return err
+		}
 		if err := assertNoActiveRotation(cred); err != nil {
 			return err
+		}
+		ownershipChanged := false
+		if req.Ownership != nil {
+			changed, oerr := s.updateOwnershipTx(ctx, tx, userID, operator, cred, *req.Ownership)
+			if oerr != nil {
+				return oerr
+			}
+			ownershipChanged = changed
 		}
 
 		updates := map[string]interface{}{}
@@ -354,7 +449,15 @@ func (s *CredentialService) Update(ctx context.Context, id uint, req *UpdateCred
 		}
 		if len(updates) == 0 {
 			result = cred
-			return nil
+			if !ownershipChanged {
+				return nil
+			}
+			var reloaded model.Credential
+			if err := tx.Where("id = ?", cred.ID).First(&reloaded).Error; err != nil {
+				return fmt.Errorf("重讀憑證失敗: %w", err)
+			}
+			result = &reloaded
+			return s.advanceOwnershipVersionTx(tx)
 		}
 		res := tx.Model(&model.Credential{}).Where("id = ?", cred.ID).Updates(updates)
 		if res.Error != nil {
@@ -369,12 +472,18 @@ func (s *CredentialService) Update(ctx context.Context, id uint, req *UpdateCred
 			return fmt.Errorf("重讀憑證失敗: %w", err)
 		}
 		result = &reloaded
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
 			CredentialID: cred.ID,
 			Operation:    model.AccountOpUpdate,
 			Scope:        cred.Scope,
 			Fields:       fields,
-		}, userID, operator)
+		}, userID, operator); err != nil {
+			return err
+		}
+		if !ownershipChanged {
+			return nil
+		}
+		return s.advanceOwnershipVersionTx(tx)
 	})
 	if err != nil {
 		return nil, err
@@ -416,8 +525,40 @@ func (s *CredentialService) renameDedicatedCredential(tx *gorm.DB, cred *model.C
 // 搜尋比對的是**畫面上看得到的那個名字**：共用憑證是落庫的名稱，專用憑證是
 // 「資產名 / 帳號名」的計算值。後者的 name 欄是空的，只比對 name 會讓每一筆專用
 // 憑證都搜不到，而搜不到不會有任何錯誤——使用者只會以為那筆憑證不存在。
-func (s *CredentialService) List(_ context.Context, filter CredentialFilter) ([]*CredentialDTO, error) {
+func (s *CredentialService) List(ctx context.Context, filter CredentialFilter) ([]*CredentialDTO, error) {
+	decision, err := s.mgmt.require(ctx, nil, CredentialManagementRequest{
+		Operation: CredOpView, Capabilities: []string{CredCapView},
+	})
+	if err != nil {
+		return nil, err
+	}
+	view, err := s.scopeView(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if decision.ScopeNarrowingRequired && view == nil {
+		// 只因節點範圍來源放行的列表必須套檢視集合；投影來源未注入或主體不構成範圍化檢視者時拒絕，不回全量
+		return nil, fmt.Errorf("%w: 範圍化列表缺投影", ErrCredentialAuthzUnavailable)
+	}
 	q := database.DB.Model(&model.Credential{})
+	// 範圍條件與其他篩選一起在查詢內先套用；rotation_state 篩選與切頁在呼叫端其後
+	if view != nil {
+		if q, err = view.ApplyVisible(q); err != nil {
+			return nil, err
+		}
+	}
+	if filter.Ownership != "" {
+		switch filter.Ownership {
+		case model.CredentialOwnerGlobal, model.CredentialOwnerAsset, model.CredentialOwnerNode:
+		default:
+			return nil, ErrCredentialOwnershipInvalid
+		}
+		q = q.Where("credentials.owner_kind = ?", filter.Ownership)
+	}
+	if filter.OwnerNodeID != nil {
+		q = q.Where("credentials.owner_kind = ? AND credentials.owner_node_id = ?",
+			model.CredentialOwnerNode, *filter.OwnerNodeID)
+	}
 	if filter.Scope != "" {
 		if !model.IsCredentialScope(filter.Scope) {
 			return nil, ErrCredentialScopeInvalid
@@ -465,11 +606,19 @@ func (s *CredentialService) List(_ context.Context, filter CredentialFilter) ([]
 		}
 		out = append(out, dto)
 	}
+	if view != nil {
+		if err := s.decorateScoped(database.DB, view, creds, out); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
 // Get 憑證詳情：基本資料＋掛載清單（每台帶其就位版本與特權標記）。
-func (s *CredentialService) Get(_ context.Context, id uint) (*CredentialDetailDTO, error) {
+func (s *CredentialService) Get(ctx context.Context, id uint) (*CredentialDetailDTO, error) {
+	if err := s.requireManagement(ctx, nil, CredOpView, []string{CredCapView}, []uint{id}, nil); err != nil {
+		return nil, err
+	}
 	cred, err := loadCredential(database.DB, id)
 	if err != nil {
 		return nil, err
@@ -482,7 +631,27 @@ func (s *CredentialService) Get(_ context.Context, id uint) (*CredentialDetailDT
 	if err != nil {
 		return nil, err
 	}
-	return &CredentialDetailDTO{CredentialDTO: *base, Bindings: bindings}, nil
+	unsettled, err := unsettledRotationID(database.DB, cred)
+	if err != nil {
+		return nil, err
+	}
+	view, err := s.scopeView(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if view != nil {
+		// 掛載清單只列範圍內資產；範圍外只給台數與旗標
+		if err := s.decorateScoped(database.DB, view, []model.Credential{*cred}, []*CredentialDTO{base}); err != nil {
+			return nil, err
+		}
+		if bindings, _, err = filterBindingsInView(database.DB, view, bindings); err != nil {
+			return nil, err
+		}
+	}
+	if err := projectBindingNodes(database.DB, view, bindings); err != nil {
+		return nil, err
+	}
+	return &CredentialDetailDTO{CredentialDTO: *base, Bindings: bindings, UnsettledRotationID: unsettled}, nil
 }
 
 // ConvertScope 顯式的範圍轉換。
@@ -502,19 +671,45 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 			return nil, err
 		}
 	}
+	// 專用憑證的歸屬恆為隨資產，請求不得指定
+	if err := ValidateCredentialOwnershipInput(req.Ownership); err != nil ||
+		(req.Ownership != nil && req.Scope != model.CredentialScopeShared) {
+		return nil, ErrCredentialOwnershipInvalid
+	}
+	// 能力判定先於任何查表（同修改）：交易內以掛載與轉換目標再判一次照舊
+	if err := s.requireManagement(ctx, nil, CredOpConvertScope, []string{CredCapConvertScope},
+		[]uint{id}, nil); err != nil {
+		return nil, err
+	}
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.Credential
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖在憑證列鎖之前（歸屬寫入與節點刪除同一序列化點）
+		if err := s.beginOwnershipTx(tx); err != nil {
+			return err
+		}
 		cred, err := lockCredentialRow(tx, id)
 		if err != nil {
 			return err
 		}
-		if err := assertNoActiveRotation(cred); err != nil {
+		// 範圍轉換改的是整組的管理語義，後果落在全部掛載上：驗轉換能力與全部影響集合
+		// 範圍化主體：憑證在範圍內，且轉專用時唯一掛載的資產也須在範圍內（不把管理權轉到範圍外資產）
+		var convertTargets []uint
+		if req.Scope == model.CredentialScopeDedicated && cred.Scope == model.CredentialScopeShared {
+			bound, berr := credentialBoundAssetIDs(tx, cred.ID)
+			if berr != nil {
+				return berr
+			}
+			if len(bound) == 1 {
+				convertTargets = bound
+			}
+		}
+		if err := s.requireOwnedManagement(ctx, tx, CredOpConvertScope, cred.ID, convertTargets, CredCapConvertScope); err != nil {
 			return err
 		}
-		// 範圍轉換改的是整組的管理語義，後果落在全部掛載上：逐台驗權
-		if err := s.assertBoundAssetsPermission(ctx, tx, cred.ID); err != nil {
+		// 輪替狀態在關卡之後才看：範圍外與不存在同形，不經進行中的拒絕外露憑證存在與其輪替狀態
+		if err := assertNoActiveRotation(cred); err != nil {
 			return err
 		}
 		if cred.Scope == req.Scope {
@@ -523,8 +718,14 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 		}
 
 		updates := map[string]interface{}{"scope": req.Scope}
+		owner := dedicatedOwnership()
 		switch req.Scope {
 		case model.CredentialScopeShared:
+			o, oerr := resolveSharedOwnershipTx(ctx, tx, s.ownership, userID, CredCapConvertScope, req.Ownership)
+			if oerr != nil {
+				return oerr
+			}
+			owner = o
 			if err := assertSharedNameFree(tx, name, cred.ID); err != nil {
 				return err
 			}
@@ -546,6 +747,9 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 			// 專用憑證的名稱是計算值，同交易清空——留著舊名會讓顯示名有兩個來源
 			updates["name"] = nil
 		}
+		for k, v := range ownershipColumns(owner) {
+			updates[k] = v
+		}
 		res := tx.Model(&model.Credential{}).Where("id = ?", cred.ID).Updates(updates)
 		if res.Error != nil {
 			return credentialUniqueViolation(res.Error, "轉換憑證範圍失敗")
@@ -558,12 +762,16 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 			return fmt.Errorf("重讀憑證失敗: %w", err)
 		}
 		result = &reloaded
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
 			CredentialID: cred.ID,
 			Operation:    credentialOpScope,
 			Scope:        req.Scope,
 			Fields:       []string{"scope"},
-		}, userID, operator)
+			Ownership:    ownershipAudit(owner),
+		}, userID, operator); err != nil {
+			return err
+		}
+		return s.advanceOwnershipVersionTx(tx)
 	})
 	if err != nil {
 		return nil, err
@@ -575,6 +783,8 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 type SetCredentialSecretRequest struct {
 	Password   string `json:"password"`
 	PrivateKey string `json:"private_key"`
+	// ImpactConfirmationID 範圍外影響確認（見 credential_impact.go）；範圍外集合為空時不看此欄
+	ImpactConfirmationID string `json:"impact_confirmation_id"`
 }
 
 // SetSecret 直接寫入新密文：建立一筆新版本並立即生效，**不觸碰遠端**。
@@ -591,6 +801,11 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 	}
 	// 只驗本次帶來的私鑰；私鑰為空＝自現行版本原樣帶過，不重驗庫內既有的
 	if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+		return nil, err
+	}
+	// 能力判定先於任何查表（同修改）：交易內以全部影響集合再判一次照舊
+	if err := s.requireManagement(ctx, nil, CredOpSetSecret, []string{CredCapSetSecret},
+		[]uint{id}, nil); err != nil {
 		return nil, err
 	}
 	var passwordEnc, privateKeyEnc string
@@ -610,17 +825,33 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 	}
 
 	userID, operator := model.UserFromContext(ctx)
+	correlationID, cerr := newAssetCorrelationID()
+	if cerr != nil {
+		return nil, cerr
+	}
 	var result *model.Credential
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 第一個動作取拓撲序列化鎖，其後才取憑證列鎖：與改歸、節點刪除承接同一序列化點，
+		// 範圍外影響集合的重算不會與歸屬或拓撲變更交錯
+		if err := s.assets.lockTopologyTx(tx); err != nil {
+			return err
+		}
 		cred, err := lockCredentialRow(tx, id)
 		if err != nil {
 			return err
 		}
+		// 操作者宣告的密文射程是整組：新版本會同時就位到每一台，故驗宣告能力與全部影響集合
+		if err := s.requireBoundManagement(ctx, tx, CredOpSetSecret, cred.ID, CredCapSetSecret); err != nil {
+			return err
+		}
+		// 輪替狀態在關卡之後才看：範圍外與不存在同形
 		if err := assertNoActiveRotation(cred); err != nil {
 			return err
 		}
-		// 操作者宣告的密文射程是整組：新版本會同時就位到每一台，故逐台驗權
-		if err := s.assertBoundAssetsPermission(ctx, tx, cred.ID); err != nil {
+		// 範圍外掛載須先確認：在寫入任何版本之前重算並消耗，失敗整筆回滾
+		impact, err := impactGuard{scope: s.scope}.enforce(ctx, tx, cred.ID,
+			model.CredentialImpactOpSetSecret, req.ImpactConfirmationID)
+		if err != nil {
 			return err
 		}
 		pwEnc, keyEnc := passwordEnc, privateKeyEnc
@@ -659,12 +890,22 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 			return fmt.Errorf("重讀憑證失敗: %w", err)
 		}
 		result = &reloaded
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
-			CredentialID: cred.ID,
-			Operation:    model.AccountOpUpdate,
-			Scope:        cred.Scope,
-			Fields:       changedSecretFields(req.Password != "", req.PrivateKey != "", false),
-		}, userID, operator)
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
+			CredentialID:  cred.ID,
+			Operation:     model.AccountOpSetSecret,
+			Scope:         cred.Scope,
+			Fields:        changedSecretFields(req.Password != "", req.PrivateKey != "", false),
+			CorrelationID: correlationID,
+			SecretSource:  secretSourceCustom,
+			Extra:         impact.auditDetails(),
+		}, userID, operator); err != nil {
+			return err
+		}
+		// 同交易系統告警：本地變更、服務審計與告警列全有或全無；遠端零 I/O
+		return raiseCustomSecretUsed(s.alerts, tx, customSecretEvent{
+			Entry: customSecretEntryFor(CredOpSetSecret), CredentialID: cred.ID,
+			CorrelationID: correlationID, UserID: userID, Username: operator,
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -678,26 +919,40 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 // 機器變成沒有身分可連的死資產，而操作者在按下去的當下看不到那個後果。
 // 零掛載且無未決候選者可刪，軟刪即釋放名稱（共用名稱的唯一索引只涵蓋未軟刪者）。
 func (s *CredentialService) Delete(ctx context.Context, id uint) error {
+	// 能力判定先於任何查表（同修改）：交易內以全部影響集合再判一次照舊
+	if err := s.requireManagement(ctx, nil, CredOpDelete, []string{CredCapDelete},
+		[]uint{id}, nil); err != nil {
+		return err
+	}
 	userID, operator := model.UserFromContext(ctx)
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	view, err := s.scopeView(ctx)
+	if err != nil {
+		return err
+	}
+	// 仍有掛載時交易內只記下名單，範圍內外的區分在交易結束後做：檢視範圍的查詢走讀取連線，
+	// 不在持有憑證列鎖的交易內另開連線
+	var inUse *CredentialInUseError
+	var bound []boundAsset
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		cred, err := lockCredentialRow(tx, id)
 		if err != nil {
 			return err
 		}
+		// 逐台驗權先於引用檢查：名單本身是共用拓撲的一部分，先回名單再談權限
+		// 等於讓無權者以一次必然失敗的刪除，問出這組秘密還用在哪幾台
+		if err := s.requireBoundManagement(ctx, tx, CredOpDelete, cred.ID, CredCapDelete); err != nil {
+			return err
+		}
+		// 輪替狀態同理在關卡之後才看：範圍外與不存在同形
 		if err := assertNoActiveRotation(cred); err != nil {
 			return err
 		}
-		// 逐台驗權先於引用檢查：名單本身是共用拓撲的一部分，先回名單再談權限
-		// 等於讓無權者以一次必然失敗的刪除，問出這組秘密還用在哪幾台
-		if err := s.assertBoundAssetsPermission(ctx, tx, cred.ID); err != nil {
+		if bound, err = credentialBoundAssets(tx, cred.ID); err != nil {
 			return err
 		}
-		names, err := credentialBoundAssetNames(tx, cred.ID)
-		if err != nil {
-			return err
-		}
-		if len(names) > 0 {
-			return &CredentialInUseError{Assets: names}
+		if len(bound) > 0 {
+			inUse = &CredentialInUseError{}
+			return inUse
 		}
 		pending, err := credentialPendingCandidates(tx, cred.ID)
 		if err != nil {
@@ -713,12 +968,48 @@ func (s *CredentialService) Delete(ctx context.Context, id uint) error {
 		if res.RowsAffected == 0 {
 			return ErrCredentialNotFound
 		}
+		// 範圍外影響確認列隨憑證軟刪同交易清除（確認只對存在的憑證有意義）
+		if err := tx.Where("credential_id = ?", cred.ID).
+			Delete(&model.CredentialImpactConfirmation{}).Error; err != nil {
+			return fmt.Errorf("清除影響確認失敗: %w", err)
+		}
 		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
 			CredentialID: cred.ID,
 			Operation:    model.AccountOpDelete,
 			Scope:        cred.Scope,
 		}, userID, operator)
 	})
+	if inUse == nil || err != error(inUse) {
+		return err
+	}
+	return fillCredentialInUse(inUse, view, bound)
+}
+
+// fillCredentialInUse 刪除被掛載擋下時的名單：範圍化檢視者只含範圍內資產名，範圍外只給台數。
+func fillCredentialInUse(inUse *CredentialInUseError, view CredentialScopeView, bound []boundAsset) error {
+	if view == nil {
+		for _, b := range bound {
+			inUse.Assets = append(inUse.Assets, b.name)
+		}
+		return inUse
+	}
+	ids := make([]uint, 0, len(bound))
+	for _, b := range bound {
+		ids = append(ids, b.id)
+	}
+	inView, err := view.AssetsInView(ids)
+	if err != nil {
+		return err
+	}
+	inUse.Scoped = true
+	for _, b := range bound {
+		if inView[b.id] {
+			inUse.Assets = append(inUse.Assets, b.name)
+		} else {
+			inUse.OutOfScopeAssets++
+		}
+	}
+	return inUse
 }
 
 // --- 共同判定 ---
@@ -797,6 +1088,32 @@ func credentialBoundAssetNames(db *gorm.DB, credentialID uint) ([]string, error)
 		names = append(names, asset.Name)
 	}
 	return names, nil
+}
+
+type boundAsset struct {
+	id   uint
+	name string
+}
+
+// credentialBoundAssets 掛載此憑證的資產（識別與名稱；與 credentialBoundAssetNames 同口徑，已刪除資產不計）。
+func credentialBoundAssets(db *gorm.DB, credentialID uint) ([]boundAsset, error) {
+	var bindings []model.AssetAccount
+	if err := db.Where("credential_id = ?", credentialID).
+		Order("asset_id ASC").Find(&bindings).Error; err != nil {
+		return nil, fmt.Errorf("查詢憑證掛載失敗: %w", err)
+	}
+	out := make([]boundAsset, 0, len(bindings))
+	for i := range bindings {
+		var a model.Asset
+		if err := db.Where("id = ?", bindings[i].AssetID).First(&a).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("查詢資產失敗: %w", err)
+		}
+		out = append(out, boundAsset{id: a.ID, name: a.Name})
+	}
+	return out, nil
 }
 
 // credentialPendingCandidates 指向此憑證的未決候選秘密數。

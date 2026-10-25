@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/custodexa/backend/internal/middleware"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,7 +18,7 @@ import (
 // asRole 以指定角色掛 handler（模擬 AuthMiddleware 注入）
 func asRole(role string, h gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		c.Set("userID", uint(1))
 		c.Set("username", "tester")
 		h(c)

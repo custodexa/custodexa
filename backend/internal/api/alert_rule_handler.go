@@ -135,7 +135,7 @@ func (h *AlertRuleHandler) Delete(c *gin.Context) {
 func (h *AlertRuleHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	rules := r.Group("/alert-rules")
 	rules.Use(middleware.AuthMiddleware(authService))
-	rules.Use(middleware.RequireRole("admin"))
+	rules.Use(middleware.EnforceRegistry())
 	{
 		rules.GET("", h.List)
 		rules.POST("", h.Create)

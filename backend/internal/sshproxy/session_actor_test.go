@@ -30,7 +30,10 @@ func agentSessionFixture(t *testing.T) (*gorm.DB, *sessionmodule.SessionService,
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old })
-	if err := db.AutoMigrate(&model.User{}, &model.AgentToken{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.Session{}, &model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.AgentToken{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.Session{}, &model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	owner := model.User{ID: 1, Username: "owner", Kind: model.KindHuman, Active: true}
@@ -61,7 +64,7 @@ func agentSessionFixture(t *testing.T) (*gorm.DB, *sessionmodule.SessionService,
 func TestSessionActorSnapshot(t *testing.T) {
 	db, service, agent, token, task := agentSessionFixture(t)
 	h := &Handler{SessionService: service}
-	sess := h.createSession(agent.ID, 1, model.ProtocolSSH, "192.0.2.1", nil, accountSnapshot{}, authProvenance{AgentTokenID: token.ID, AccessRequestID: task.ID}, false)
+	sess := h.createSession(agent.ID, 1, model.ProtocolSSH, "192.0.2.1", nil, accountSnapshot{}, authProvenance{AgentTokenID: token.ID, AccessRequestID: task.ID}, false, "")
 	if sess == nil || sess.ActorKind == nil || *sess.ActorKind != model.KindAgent || *sess.OwnerUserID != 1 || *sess.OnBehalfOfUserID != 1 || *sess.AgentTokenID != token.ID || *sess.AccessRequestID != task.ID {
 		t.Fatal(sess)
 	}

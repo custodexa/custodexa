@@ -21,7 +21,7 @@ func TestUpdatePasswordFailsWhenAccountRemovedMidFlight(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "atomic-1", Protocol: model.ProtocolSSH, Host: "10.0.1.1", Port: 22,
 		Username: "root", Password: "old", CreatedBy: 1,
 	})
@@ -47,7 +47,7 @@ func TestUpdatePasswordFailsWhenAccountRenamedMidFlight(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "atomic-2", Protocol: model.ProtocolSSH, Host: "10.0.1.2", Port: 22,
 		Username: "root", Password: "old", CreatedBy: 1,
 	})
@@ -56,7 +56,7 @@ func TestUpdatePasswordFailsWhenAccountRenamedMidFlight(t *testing.T) {
 	require.NoError(t, err)
 
 	renamed := "someone-else"
-	_, err = accounts.Update(adminCtx(), asset.ID, pinned.AccountID,
+	_, err = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, pinned.AccountID,
 		&UpdateAssetAccountRequest{Username: &renamed})
 	require.NoError(t, err)
 
@@ -74,7 +74,7 @@ func TestZeroAccountAssetRejectedByServicePaths(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	k8s, err := assets.Create(context.Background(), &CreateAssetRequest{
+	k8s, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "k8s-zero", Protocol: model.ProtocolK8s, Host: "10.0.1.3", Port: 6443,
 		K8sNamespace: "default", CreatedBy: 1,
 	})
@@ -85,7 +85,7 @@ func TestZeroAccountAssetRejectedByServicePaths(t *testing.T) {
 	_, err = assets.k8sTarget(k8s.ID, "pod", "c")
 	assert.ErrorIs(t, err, ErrAssetNoUsableAccount)
 
-	vnc, err := assets.Create(context.Background(), &CreateAssetRequest{
+	vnc, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "vnc-zero", Protocol: model.ProtocolVNC, Host: "10.0.1.4", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -106,12 +106,12 @@ func TestConcurrentSetDefaultAndDeleteKeepsInvariants(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "race-1", Protocol: model.ProtocolSSH, Host: "10.0.1.5", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
 	require.NoError(t, err)
-	b, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	b, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "b", Password: "pw-b",
 	})
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestConcurrentCreateFirstAccountKeepsSingleDefault(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "race-2", Protocol: model.ProtocolVNC, Host: "10.0.1.6", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestConcurrentCreateFirstAccountKeepsSingleDefault(t *testing.T) {
 	for _, name := range []string{"first", "second"} {
 		go func(username string) {
 			defer wg.Done()
-			_, _ = accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+			_, _ = accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 				Username: username, Password: "pw-" + username,
 			})
 		}(name)
@@ -187,7 +187,7 @@ func TestConcurrentNoteUpdateDoesNotRollbackRotatedSecret(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "race-3", Protocol: model.ProtocolSSH, Host: "10.0.1.7", Port: 22,
 		Username: "root", Password: "old-pw", CreatedBy: 1,
 	})
@@ -202,12 +202,12 @@ func TestConcurrentNoteUpdateDoesNotRollbackRotatedSecret(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, _ = accounts.Update(adminCtx(), asset.ID, accountID,
+		_, _ = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, accountID,
 			&UpdateAssetAccountRequest{Password: &rotated})
 	}()
 	go func() {
 		defer wg.Done()
-		_, _ = accounts.Update(adminCtx(), asset.ID, accountID,
+		_, _ = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, accountID,
 			&UpdateAssetAccountRequest{Note: &note})
 	}()
 	wg.Wait()
@@ -221,7 +221,7 @@ func TestDeleteLastAccountClearsAssetIdentityMirror(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mirror-1", Protocol: model.ProtocolSSH, Host: "10.0.1.8", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -242,7 +242,7 @@ func TestAccountUsernameRejectsAllControlChars(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "ctl-1", Protocol: model.ProtocolSSH, Host: "10.0.1.11", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -258,7 +258,7 @@ func TestAccountUsernameRejectsAllControlChars(t *testing.T) {
 		"a:b",        // 既有：冒號（chpasswd 條目分隔）
 	}
 	for _, name := range bad {
-		_, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{Username: name})
+		_, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{Username: name})
 		assert.ErrorIsf(t, err, ErrAssetAccountUsernameInvalid, "應拒絕 %q", name)
 	}
 }

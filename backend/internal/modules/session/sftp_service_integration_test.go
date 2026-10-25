@@ -37,6 +37,7 @@ func newSFTPServiceForTest(t *testing.T) *SFTPService {
 	key := make([]byte, 32)
 	codec := aesColumnCodec(t, key)
 	assetService, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assetService.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 
 	// 密文落點為 credential_secret_versions.password_enc，AAD 須綁該欄位身分。
@@ -101,6 +102,9 @@ func TestSFTPValidateRemotePath(t *testing.T) {
 	}
 }
 
+// testFileOp 整合測試的檔案操作脈絡（獨立入口、無會話）
+var testFileOp = FileOpContext{UserID: 1, Username: "sftp-it"}
+
 func TestSFTPRoundTrip(t *testing.T) {
 	// Arrange
 	svc := newSFTPServiceForTest(t)
@@ -109,25 +113,26 @@ func TestSFTPRoundTrip(t *testing.T) {
 	content := []byte("sftp-round-trip-content-42\n")
 
 	// Act + Assert: mkdir
-	err := svc.Mkdir(1, 0, remoteDir)
+	err := svc.Mkdir(1, 0, remoteDir, testFileOp)
 	skipIfUnreachable(t, err)
 	require.NoError(t, err)
 
 	// upload
-	written, err := svc.Upload(1, 0, remoteFile, bytes.NewReader(content))
+	written, err := svc.Upload(1, 0, remoteFile, bytes.NewReader(content), testFileOp)
 	require.NoError(t, err)
 	assert.Equal(t, int64(len(content)), written)
 
 	// list：目錄含上傳的檔案
-	entries, err := svc.List(1, 0, remoteDir)
+	listed, err := svc.List(1, 0, remoteDir, testFileOp)
 	require.NoError(t, err)
+	entries := listed.Entries
 	require.Len(t, entries, 1)
 	assert.Equal(t, "hello.txt", entries[0].Name)
 	assert.Equal(t, int64(len(content)), entries[0].Size)
 	assert.False(t, entries[0].IsDir)
 
 	// download round-trip
-	reader, size, closeFn, err := svc.Download(1, 0, remoteFile)
+	reader, size, closeFn, err := svc.Download(1, 0, remoteFile, testFileOp)
 	require.NoError(t, err)
 	downloaded, err := io.ReadAll(reader)
 	reader.Close()
@@ -137,11 +142,11 @@ func TestSFTPRoundTrip(t *testing.T) {
 	assert.Equal(t, content, downloaded)
 
 	// delete 檔案後目錄可刪
-	require.NoError(t, svc.Delete(1, 0, remoteFile))
-	require.NoError(t, svc.Delete(1, 0, remoteDir))
+	require.NoError(t, svc.Delete(1, 0, remoteFile, testFileOp))
+	require.NoError(t, svc.Delete(1, 0, remoteDir, testFileOp))
 
 	// 刪除後 list 應失敗
-	_, err = svc.List(1, 0, remoteDir)
+	_, err = svc.List(1, 0, remoteDir, testFileOp)
 	assert.Error(t, err)
 }
 
@@ -150,10 +155,10 @@ func TestSFTPInvalidPathShortCircuits(t *testing.T) {
 	svc := NewSFTPService(nil, nil)
 
 	// Act + Assert
-	_, err := svc.List(1, 0, "relative/path")
+	_, err := svc.List(1, 0, "relative/path", testFileOp)
 	assert.True(t, errors.Is(err, ErrInvalidRemotePath))
 
-	_, err = svc.Upload(1, 0, "/tmp/../etc/x", bytes.NewReader(nil))
+	_, err = svc.Upload(1, 0, "/tmp/../etc/x", bytes.NewReader(nil), testFileOp)
 	assert.True(t, errors.Is(err, ErrInvalidRemotePath))
 }
 

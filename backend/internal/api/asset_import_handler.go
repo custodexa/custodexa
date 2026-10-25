@@ -16,6 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,7 +42,15 @@ func respondImportError(c *gin.Context, err error) {
 	var fileErr *asset.ImportFileError
 	var rowsErr *asset.ImportRowsInvalidError
 	var stateErr *asset.ImportStateChangedError
+	var writeCapErr *authz.AssetWriteCapabilityError
 	switch {
+	case errors.Is(err, asset.ErrFieldCapabilityDenied),
+		// 掛既有憑證的列缺掛載能力：與欄位能力不足同一出口，不外露缺哪一項
+		errors.Is(err, asset.ErrCredentialBindForbidden):
+		respondAssetCapabilityDenial(c, err)
+	case errors.As(err, &writeCapErr):
+		// 請求進入後資產建立能力已全數撤回（交易內重解）：能力拒絕，不落入內部錯誤
+		middleware.WriteCapabilityDenial(c, middleware.AllOfCapabilityDenial(writeCapErr.Perm))
 	case errors.As(err, &fileErr):
 		apierror.Write(c, http.StatusBadRequest, apierror.ErrorResponse{
 			Code: fileErr.Code, Params: fileErr.Params, Meta: fileErr.Meta})
@@ -80,7 +89,8 @@ func (h *AssetHandler) PreviewImport(c *gin.Context) {
 		respondImportError(c, err)
 		return
 	}
-	preview, err := h.assetService.PreviewImport(c.Request.Context(), batch)
+	// 帶操作者身分：掛載能力由服務層以伺服器端主體判定
+	preview, err := h.assetService.PreviewImport(withFieldCapability(c, assetWriteContext(c, operatorRequestContext(c))), batch)
 	if err != nil {
 		respondImportError(c, err)
 		return
@@ -111,7 +121,7 @@ func (h *AssetHandler) Import(c *gin.Context) {
 	}
 	username, _ := middleware.GetCurrentUsername(c)
 
-	result, err := h.assetService.ImportAssets(operatorRequestContext(c), batch, userID, username)
+	result, err := h.assetService.ImportAssets(withFieldCapability(c, assetWriteContext(c, operatorRequestContext(c))), batch, userID, username)
 	created := 0
 	if result != nil {
 		created = result.Created

@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { mount, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import CredentialBindingList from '@/components/credential/CredentialBindingList.vue'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 憑證的掛載清單。
 //
@@ -11,6 +12,11 @@ import CredentialBindingList from '@/components/credential/CredentialBindingList
 //  3. 輪替進行中時動作不可執行，且**就地寫出原因**——只把鈕灰掉等於沒說。
 
 enableAutoUnmount(afterEach)
+
+// 兩顆動作鈕依能力顯示（credential:detach、credential:bind）；本檔的斷言對象是清單本身，
+// 故預設持有兩項能力
+beforeEach(() => setCapabilitiesForTests(['credential:detach', 'credential:bind']))
+afterEach(() => resetCapabilities())
 
 const bindingFixture = (overrides = {}) => ({
   account_id: 20113,

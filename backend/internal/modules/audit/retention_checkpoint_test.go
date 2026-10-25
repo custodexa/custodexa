@@ -56,7 +56,7 @@ func setupPurgeFixture(t *testing.T) *purgeFixture {
 	}
 	purger := NewCheckpointPurger(db, signer)
 	auditLog := &fakeAuditLogger{}
-	svc := NewRetentionService(db, policy.NewSecurityPolicyService(db), nil, auditLog)
+	svc := NewRetentionService(db, newTestPolicyService(db), nil, auditLog)
 	svc.checkpoints = purger
 	svc.auditLogMode = auditLogPurgeInterval
 	return &purgeFixture{db: db, seal: seal, purger: purger, svc: svc, audit: auditLog, signer: signer}
@@ -247,7 +247,7 @@ func setupStraddleFixture(t *testing.T, pre, post int, freshTail bool) (*purgeFi
 		t.Fatalf("latest: %v", err)
 	}
 	auditLog := &fakeAuditLogger{}
-	svc := NewRetentionService(db, policy.NewSecurityPolicyService(db), nil, auditLog)
+	svc := NewRetentionService(db, newTestPolicyService(db), nil, auditLog)
 	purger := NewCheckpointPurger(db, signer)
 	svc.checkpoints = purger
 	svc.auditLogMode = auditLogPurgeInterval

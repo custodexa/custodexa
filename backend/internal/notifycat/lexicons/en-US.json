@@ -11,6 +11,7 @@
     "recording_metadata_update_failed": "Failed to update recording metadata",
     "recording_file_missing": "Recording file missing (write failed or recording never started)",
     "session_record_create_failed": "Session record creation failed; connection refused",
+    "host_key_mismatch_record_failed": "Host key mismatch could not be recorded; the connection was stopped before any credentials were sent",
     "audit_write_fallback_file": "Audit batch write failed; fell back to file",
     "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
     "audit_write_sync_refused": "Synchronous audit write failed; the operation was refused",
@@ -33,12 +34,26 @@
     "offsite_integrity_mismatch": "A retrieved offsite copy did not match what was uploaded (delivery refused)",
     "role_state_mismatch": "Role assignments do not match the checkpoint chain (a change was made without an audit record)",
     "principal_state_mismatch": "Principal or credential state does not match the checkpoint chain (a change has no audit record)",
-    "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)"
+    "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)",
+    "restore_seal_deferred": "Seal after restore failed; service is open and the sealing is retried (the checkpoint covering the restored permission state is not in the chain yet)",
+    "restore_seal_state_unreadable": "The pending seal state after a restore could not be read at startup; service is open and a seal was attempted (resolved once a seal succeeds)"
   },
   "severity": {
     "high": "High",
     "medium": "Medium",
     "low": "Low"
+  },
+  "host_key_outcome": {
+    "allowed": "allowed: authentication proceeds and the stored sign-in credentials are sent to this host (with password authentication the host can obtain the password)",
+    "refused": "refused: credentials not sent"
+  },
+  "host_key_path": {
+    "terminal": "terminal",
+    "agent_terminal": "agent terminal (automation)",
+    "file_transfer": "file transfer",
+    "connection_test": "connection test",
+    "credential_change": "credential change",
+    "credential_rotation": "credential rotation"
   },
   "alert_state": {
     "blocked": "Blocked",
@@ -158,13 +173,15 @@
     "audit_degraded": "Command could not be reconstructed",
     "new_source_ip": "Account connected from a new source address",
     "sensitive_reveal": "Sensitive content was viewed",
-    "agent_breaker_tripped": "Agent token suspended after repeated probing"
+    "agent_breaker_tripped": "Agent token suspended after repeated probing",
+    "system_security": "A security-relevant system or privilege change occurred"
   },
   "alert_kind_text": {
     "audit_degraded": "This input could not be reliably reconstructed as command text. Check the session recording for what actually happened.",
     "new_source_ip": "This is the account's first connection from this address. To confirm, review that day's records for this address.",
     "sensitive_reveal": "See the audit record of that access for details.",
-    "agent_breaker_tripped": "The token repeatedly referenced assets it cannot see and was suspended. The owner or an administrator needs to review it."
+    "agent_breaker_tripped": "The token repeatedly referenced assets it cannot see and was suspended. The owner or an administrator needs to review it.",
+    "system_security": "See the system alert detail and the operation log for details."
   },
   "degrade_reason": {
     "altscreen_round": "The screen was inside a full-screen program at the time (such as an editor or pager).",

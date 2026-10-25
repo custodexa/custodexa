@@ -48,6 +48,9 @@ func installHaltAdminDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	if err := db.AutoMigrate(&model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate authz tables: %v", err)
+	}
 	hashed, err := crypto.DefaultPasswordHasher().Hash([]byte(haltAdminPassword))
 	if err != nil {
 		t.Fatalf("hash: %v", err)

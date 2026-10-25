@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"gorm.io/gorm"
 )
 
@@ -136,7 +137,11 @@ func syncRoleRuleSupports(tx *gorm.DB, userID uint, channel string, desired []ma
 
 // reconcileGroupMembers updates only the effective projection. A manual row is
 // never removed by a mapping recomputation, even if its last rule disappears.
+//
+// 權限版本：有成員列被新增或移除時於函式尾端推進一次（與寫入同交易）；
+// 沒有任何列變動則不推進。
 func reconcileGroupMembers(tx *gorm.DB, userID uint, groupIDs []uint) (removed []uint, err error) {
+	changed := false
 	for _, groupID := range groupIDs {
 		var count int64
 		if err := tx.Table("user_group_mapping_rule_supports").Where("user_id=? AND user_group_id=?", userID, groupID).Count(&count).Error; err != nil {
@@ -150,11 +155,18 @@ func reconcileGroupMembers(tx *gorm.DB, userID uint, groupIDs []uint) (removed [
 			if err := tx.Exec("INSERT INTO user_group_members (user_group_id,user_id,manual) VALUES (?,?,false)", groupID, userID).Error; err != nil {
 				return nil, err
 			}
+			changed = true
 		} else if count == 0 && len(rows) > 0 && !rows[0].Manual {
 			if err := tx.Exec("DELETE FROM user_group_members WHERE user_group_id=? AND user_id=?", groupID, userID).Error; err != nil {
 				return nil, err
 			}
 			removed = append(removed, groupID)
+			changed = true
+		}
+	}
+	if changed {
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return nil, err
 		}
 	}
 	return removed, nil

@@ -52,13 +52,13 @@
 <script setup>
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { t } from '@/i18n'
-import { roleNames } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import { releaseAgentBreaker } from '@/api/agents'
 import { resolveApiError } from '@/api/error'
 const props = defineProps({ principal: { type: Object, required: true }, actor: { type: Object, required: true } })
 const emit = defineEmits(['released'])
 const reason = ref(''), error = ref(''), validation = ref(''), busy = ref(false), done = ref(false)
-const eligible = computed(() => props.principal.kind === 'agent' && props.actor.id && props.actor.kind !== 'agent' && (roleNames(props.actor.roles).includes('admin') || props.principal.owner_user_id === props.actor.id))
+const eligible = computed(() => props.principal.kind === 'agent' && props.actor.id && props.actor.kind !== 'agent' && (can('user:manage') || props.principal.owner_user_id === props.actor.id))
 let epoch = 0
 watch(() => [props.principal.id, props.actor.id], () => { epoch++; reason.value = ''; error.value = ''; validation.value = ''; busy.value = false; done.value = false })
 async function submit() {

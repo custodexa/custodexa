@@ -75,7 +75,7 @@ type ChainPointResult struct {
 	SealedAt     time.Time  `json:"sealed_at"`
 	AnchorStatus string     `json:"anchor_status"`
 	PurgedAt     *time.Time `json:"purged_at,omitempty"`
-	// Status passed／signature_invalid／chain_broken／seq_gap
+	// Status passed／signature_invalid／payload_invalid／chain_broken／seq_gap／attestation_invalid
 	Status string `json:"status"`
 	// Detail 失敗原因（人讀輔助；狀態才是機器可判定的部分）
 	Detail string `json:"detail,omitempty"`
@@ -125,6 +125,12 @@ type ChainReport struct {
 	// 持有物共用一個結論。nil＝本次未附帶（未接對帳器）
 	RoleState   *RoleStateReport   `json:"role_state,omitempty"`
 	StateTables []StateTableReport `json:"-"`
+	// Permission 權限附證維度的對帳結果（內部；出站由接入層決定只在無法判定時附帶）。nil＝未注入來源
+	Permission *PermissionReport `json:"-"`
+	// TrimmedPermHistory 鏈頭之前（被修剪段）的累計權限事實：none／attested／unverified（內部）。
+	TrimmedPermHistory string `json:"-"`
+	// TrimmedUnverified 最新修剪錨記載的本次被剪段驗不過點數（內部，供診斷；nil＝無第二版錨）。
+	TrimmedUnverified *int64 `json:"-"`
 }
 
 // VerifyChain 結構層全鏈驗證：逐點驗簽章、驗 prev hash 鏈接、驗 seq 連續與區間鄰接。
@@ -156,10 +162,14 @@ func (v *CheckpointVerifier) VerifyChain() (*ChainReport, error) {
 	if trim != nil {
 		seq := trim.LastTrimmedSeq
 		report.TrimmedThroughSeq = &seq
+		report.TrimmedUnverified = trim.UnverifiedCount
 	}
-
-	for i := range chain {
-		res := v.verifyChainPoint(chain, i, trim)
+	structure, err := v.chainStructure(chain, trim)
+	if err != nil {
+		return nil, err
+	}
+	report.TrimmedPermHistory = structure.HeadHistory
+	for _, res := range structure.Points {
 		if res.Status == IntervalStatusPassed {
 			report.Passed++
 		} else {
@@ -188,7 +198,7 @@ func (v *CheckpointVerifier) VerifyChain() (*ChainReport, error) {
 		return nil, fmt.Errorf("計數未封尾段失敗: %w", err)
 	}
 	report.UnsealedRows = unsealed
-	if last.AggScheme == model.AggSchemeV3 && last.ToolCallIDTo != nil {
+	if checkpointHasLedger(last.AggScheme) && last.ToolCallIDTo != nil {
 		var n int64
 		if err := v.db.Model(&model.AgentToolCall{}).Where("id > ?", *last.ToolCallIDTo).Count(&n).Error; err != nil {
 			return nil, err
@@ -198,7 +208,7 @@ func (v *CheckpointVerifier) VerifyChain() (*ChainReport, error) {
 		report.ToolCallUnsealedFromID = &from
 	}
 	if v.roleState != nil {
-		report.StateTables = v.roleState.ReconcileTables(context.Background())
+		report.StateTables, report.Permission = v.roleState.reconcileAll(context.Background())
 		for _, state := range report.StateTables {
 			if state.Table == StateTableUserRoles {
 				if state.State != StateTableUnknown {
@@ -229,126 +239,30 @@ func (v *CheckpointVerifier) reconcileRoleState() *RoleStateReport {
 	return report
 }
 
-// verifyChainPoint 單點的結構層判定。
-//
-// 判定順序：簽章 → seq 連續 → 鏈接（prev hash 與區間鄰接）。簽章不過時
-// 後兩者不必再判——一個驗不過的檢查點，它的 seq 與 id_from 都是攻擊者寫的
-func (v *CheckpointVerifier) verifyChainPoint(chain []model.AuditCheckpoint, i int,
-	trim *model.AuditCheckpointTrim) ChainPointResult {
-	cp := chain[i]
-	res := ChainPointResult{
-		Seq: cp.Seq, IDFrom: cp.IDFrom, IDTo: cp.IDTo, RowCount: cp.RowCount,
-		SealedAt: cp.SealedAt, AnchorStatus: cp.AnchorStatus, PurgedAt: cp.PurgedAt,
-		Status: IntervalStatusPassed,
-	}
-	payload, err := CheckpointSignBytes(&cp)
+// chainStructure 結構層逐點結果（與權限起點判定共用同一個純函式）。完整性基準在此讀入：
+// 讀取回錯即回錯，讀不到列則以 nil 傳入（genesis 判 chain_broken，既有語義）。
+func (v *CheckpointVerifier) chainStructure(chain []model.AuditCheckpoint, trim *model.AuditCheckpointTrim) (chainStructure, error) {
+	baseline, err := readIntegrityBaseline(v.db)
 	if err != nil {
-		// 載荷建不出來與簽章驗不過是兩件事（見 IntervalStatusPayloadInvalid）：
-		// 結構層與內容層對同一個檢查點必須給同一個答案，否則兩份報表互相矛盾
-		res.Status = IntervalStatusSignatureInvalid
-		if errors.Is(err, ErrCheckpointPayloadInvalid) {
-			res.Status = IntervalStatusPayloadInvalid
-		}
-		res.Detail = err.Error()
-		return res
+		return chainStructure{}, err
 	}
-	ok, err := v.purger.signer.Verify(cp.SigningKeyVersion, payload, cp.Signature)
-	if err != nil || !ok {
-		res.Status = IntervalStatusSignatureInvalid
-		res.Detail = fmt.Sprintf("簽章驗證失敗（鑰版本 v%d）", cp.SigningKeyVersion)
-		if err != nil {
-			res.Detail = fmt.Sprintf("%s: %v", res.Detail, err)
-		}
-		return res
+	var signer permissionSigner
+	if v.purger != nil && v.purger.signer != nil {
+		signer = v.purger.signer
 	}
-
-	if i == 0 {
-		return v.verifyChainHead(cp, trim, res)
-	}
-
-	prev := chain[i-1]
-	if prev.AggScheme == model.AggSchemeV3 && cp.AggScheme != model.AggSchemeV3 {
-		res.Status = IntervalStatusPayloadInvalid
-		res.Detail = "checkpoint scheme downgrade after v3"
-		return res
-	}
-	if cp.Seq != prev.Seq+1 {
-		res.Status = ChainStatusSeqGap
-		res.Detail = fmt.Sprintf("seq 不連續：前一點 seq=%d", prev.Seq)
-		return res
-	}
-	linkHash, err := CheckpointLinkHash(&prev)
-	if err != nil {
-		res.Status = ChainStatusChainBroken
-		res.Detail = err.Error()
-		return res
-	}
-	if cp.PrevCheckpointHash != linkHash {
-		res.Status = ChainStatusChainBroken
-		res.Detail = "prev_checkpoint_hash 與前一點重算值不符"
-		return res
-	}
-	if cp.IDFrom != prev.IDTo+1 {
-		// 區間鄰接是 spec 明文要求：不鄰接代表中間有一段 id 不受任何檢查點覆蓋
-		res.Status = ChainStatusChainBroken
-		res.Detail = fmt.Sprintf("區間不鄰接：前一點 id_to=%d、本點 id_from=%d", prev.IDTo, cp.IDFrom)
-	}
-	if cp.AggScheme == model.AggSchemeV3 {
-		want := uint(1)
-		if prev.AggScheme == model.AggSchemeV3 && prev.ToolCallIDTo != nil {
-			want = *prev.ToolCallIDTo + 1
-		}
-		if *cp.ToolCallIDFrom != want {
-			res.Status = ChainStatusChainBroken
-			res.Detail = fmt.Sprintf("ledger interval not adjacent: want from=%d got=%d", want, *cp.ToolCallIDFrom)
-		}
-	}
-	return res
+	return checkpointChainStructure(chain, trim, baseline, signer), nil
 }
 
-// verifyChainHead 鏈頭的錨定判定：genesis 錨 integrity_baselines、
-// 修剪後的鏈頭錨修剪記錄。
-//
-// **鏈頭是攻擊者最想動的地方**（刪掉最舊幾個檢查點就沒有人能證明那段資料
-// 曾存在）。故鏈頭必須指得出它接在什麼東西後面：不是 seq=1 又沒有修剪記錄
-// 就是 seq_gap，不接受「鏈本來就從這裡開始」的說法
-func (v *CheckpointVerifier) verifyChainHead(cp model.AuditCheckpoint,
-	trim *model.AuditCheckpointTrim, res ChainPointResult) ChainPointResult {
-	if trim != nil && trim.LastTrimmedSeq+1 == cp.Seq {
-		ok, err := v.purger.VerifyTrim(trim)
-		if err != nil || !ok {
-			res.Status = ChainStatusSeqGap
-			res.Detail = "鏈頭修剪記錄簽章驗不過"
-			return res
-		}
-		if cp.PrevCheckpointHash != trim.LastTrimmedLinkHash {
-			res.Status = ChainStatusChainBroken
-			res.Detail = "鏈頭 prev_checkpoint_hash 與修剪記錄的錨不符"
-		}
-		return res
+// readIntegrityBaseline genesis 錨定用的完整性基準（id=1）。讀取回錯即回錯；沒有列回 nil。
+func readIntegrityBaseline(db *gorm.DB) (*model.IntegrityBaseline, error) {
+	var rows []model.IntegrityBaseline
+	if err := db.Where("id = ?", 1).Limit(1).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("讀取完整性基準失敗: %w", err)
 	}
-	if cp.Seq != 1 {
-		res.Status = ChainStatusSeqGap
-		res.Detail = fmt.Sprintf("鏈頭 seq=%d 既非 genesis 亦無對應的修剪記錄", cp.Seq)
-		return res
+	if len(rows) == 0 {
+		return nil, nil
 	}
-	var baseline model.IntegrityBaseline
-	if err := v.db.First(&baseline, 1).Error; err != nil {
-		res.Status = ChainStatusChainBroken
-		res.Detail = "完整性基準不可讀，genesis 無錨可驗"
-		return res
-	}
-	want, err := CheckpointGenesisPrevHash(baseline.MaxLogID, baseline.BaselineAt)
-	if err != nil {
-		res.Status = ChainStatusChainBroken
-		res.Detail = err.Error()
-		return res
-	}
-	if cp.PrevCheckpointHash != want {
-		res.Status = ChainStatusChainBroken
-		res.Detail = "genesis 的 prev_checkpoint_hash 與完整性基準重算值不符"
-	}
-	return res
+	return &rows[0], nil
 }
 
 // IntervalReport 內容層逐區間結果（結構層欄位一併帶出，供 UI 單表呈現）
@@ -392,12 +306,16 @@ func (v *CheckpointVerifier) VerifyContentBySeq(seqFrom, seqTo uint) (*ContentRe
 
 	report := &ContentReport{SeqFrom: seqFrom, SeqTo: seqTo,
 		Intervals: []IntervalReport{}, StatusCounts: map[string]int64{}}
+	structure, err := v.chainStructure(chain, trim)
+	if err != nil {
+		return nil, err
+	}
 	for i := range chain {
 		cp := chain[i]
 		if cp.Seq < seqFrom || cp.Seq > seqTo {
 			continue
 		}
-		item := IntervalReport{ChainPointResult: v.verifyChainPoint(chain, i, trim)}
+		item := IntervalReport{ChainPointResult: structure.Points[i]}
 		if item.Status == IntervalStatusPassed {
 			content, err := v.purger.VerifyIntervalContent(&cp, policyDays, v.intervalDeps())
 			if err != nil {

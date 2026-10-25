@@ -33,6 +33,19 @@ const (
 	// 不進告警表（登入無會話可綁；且登入與建線各響一次會違反「同位址不重響」）。
 	// 與基準表的插入同交易寫入，失敗整筆回滾、下次登入再補。varchar(20) 內
 	ActionNewSourceIP AuditAction = "new_source_ip"
+	// ActionHostKeyMismatch SSH 撥號時主機金鑰與記錄不符（host-key-verification）：
+	// 每次不符連線一筆，與觀察紀錄、系統告警同交易寫入，在送出憑證（或拒絕）之前。
+	// Details 記新舊指紋、記錄來源、路徑與處置；不含任何秘密。17 字元，varchar(20) 內
+	ActionHostKeyMismatch AuditAction = "host_key_mismatch"
+	// ActionHostKeyAdopt 超級管理者把一個觀察到的指紋採用為資產的主機金鑰記錄。14 字元
+	ActionHostKeyAdopt AuditAction = "host_key_adopt"
+	// ActionHostKeyCredSent 主機金鑰不符放行後，登入憑證已實際送到該主機（認證階段完成）：
+	// 與不符審計同 correlation_id，details 記認證結果。18 字元
+	ActionHostKeyCredSent AuditAction = "host_key_cred_sent"
+	// ActionRetentionFloorRaised 升級對帳把低於下限的資料保留天數抬升到下限，或讓檢查點保留
+	// 跟隨抬升（resource=security_policy）：與政策列、抬升紀錄同交易寫入；details 記鍵、原值、
+	// 新值、下限與理由碼。22 字元
+	ActionRetentionFloorRaised AuditAction = "retention_floor_raised"
 
 	// SFTP 檔案操作
 	ActionFileList     AuditAction = "file_list"
@@ -58,6 +71,9 @@ const (
 	ActionAgentSessionsTerminated    AuditAction = "agent_sessions_terminated"
 	ActionAgentSessionsTerminateLate AuditAction = "agent_sessions_terminate_late"
 	ActionReview                     AuditAction = "review" // 破窗事後補審
+	// ActionPermissionStateAccepted 超管確認權限狀態「無來源變動」並以目前狀態為新基準
+	// （resource=audit_failure；details 記確認人、原因、差集摘要與事件序號）
+	ActionPermissionStateAccepted AuditAction = "permission_state_accepted"
 
 	// ActionAssign 角色指派授予（resource=user_role）。
 	//
@@ -90,6 +106,13 @@ const (
 	// Details 只記機器可讀的原因與受影響的實體識別，不含任何秘密材料。9 字元，
 	// 在 varchar(20) 內
 	ActionMigration AuditAction = "migration"
+
+	// 角色定義服務的四個動作（resource=role，resource_id＝角色 ID）。
+	// 與角色指派的 assign／revoke 分開：定義寫入不改任何主體的指派。22 字元以內，欄寬 32。
+	ActionRoleDefinitionCreate AuditAction = "role_definition_create"
+	ActionRoleDefinitionCopy   AuditAction = "role_definition_copy"
+	ActionRoleDefinitionUpdate AuditAction = "role_definition_update"
+	ActionRoleDefinitionDelete AuditAction = "role_definition_delete"
 )
 
 // AuditResource 審計資源類型
@@ -143,6 +166,8 @@ const (
 	// ResourceUserGroup 使用者群組（授權主體分組；
 	// 刪群組連動撤授權時 Details 記 group_name 與 revoked_authorizations 筆數）
 	ResourceUserGroup AuditResource = "user_group"
+	// ResourceUserGroupRole 使用者群組的角色指派（動作 assign／revoke）。
+	ResourceUserGroupRole AuditResource = "user_group_role"
 	// ResourceUserRole 角色指派關聯（`user_roles` 的單筆 (user_id, role_id)）。
 	//
 	// **與 ResourceUser 分開**：對帳把本資源的列當作狀態機的事件流重放，
@@ -227,6 +252,9 @@ const (
 	// **刻意縮寫**：`notification_channel` 恰為 20 字元，貼齊 resource 欄 varchar(20)
 	// 上限而零餘裕（同 ResourceSecurityPolicy 的取捨）；`notify_channel` 14 字
 	ResourceNotifyChannel AuditResource = "notify_channel"
+	// ResourceSystemAlertType 系統告警類型的分級調整：`:key` 是類型鍵（字串，非自增 id），
+	// **resource_id 恆為 nil**，類型鍵與前後分級進 details。17 字元，在 resource 欄上限內
+	ResourceSystemAlertType AuditResource = "system_alert_type"
 	// ResourceOIDCProvider OIDC 身分提供者設定：`:id` 指向**提供者列 id**。
 	// 註：`/auth/oidc/:id/begin`／`/auth/oidc/callback` 是登入流程端點、鏈中無認證
 	// 中介層（審計中介層必然早退），不由本分類涵蓋

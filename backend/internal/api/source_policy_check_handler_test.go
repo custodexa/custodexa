@@ -70,7 +70,10 @@ func setupSourcePolicyCheckEnv(t *testing.T, mws ...gin.HandlerFunc) (*gin.Engin
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	old := database.DB

@@ -36,7 +36,9 @@ func setupAllowedDBTestDB(t *testing.T) *gorm.DB {
 func newAllowedDBService(t *testing.T) *AssetService {
 	t.Helper()
 	svc, err := NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	svc.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
+	svc.SetSecurityChangeAlertSink(&recordingAlertSink{})
 	return svc
 }
 
@@ -102,7 +104,7 @@ func TestCreateAssetRejectsAllowedDatabasesOnNonConsoleProtocol(t *testing.T) {
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	_, err := svc.Create(context.Background(), &CreateAssetRequest{
+	_, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "ssh-with-list", Protocol: model.ProtocolSSH, Host: "10.0.0.1", Port: 22,
 		Username: "root", AllowedDatabases: model.StringList{"app"},
 	})
@@ -119,7 +121,7 @@ func TestUpdateAssetRejectsAllowedDatabasesOnNonConsoleProtocol(t *testing.T) {
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mysql-a", Protocol: model.ProtocolMySQL, Host: "10.0.0.2", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"app"},
 	})
@@ -127,7 +129,7 @@ func TestUpdateAssetRejectsAllowedDatabasesOnNonConsoleProtocol(t *testing.T) {
 
 	ssh := model.ProtocolSSH
 	list := model.StringList{"app"}
-	_, err = svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{
+	_, err = svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{
 		Protocol: &ssh, AllowedDatabases: &list,
 	})
 	require.ErrorIs(t, err, ErrInvalidAllowedDatabases)
@@ -149,7 +151,7 @@ func TestAllowedDatabasesStoredWithoutDialing(t *testing.T) {
 	svc := newAllowedDBService(t)
 
 	start := time.Now()
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mysql-blackhole", Protocol: model.ProtocolMySQL, Host: "192.0.2.1", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"does-not-exist-on-target"},
 	})
@@ -170,7 +172,7 @@ func TestAllowedDatabasesClearedOnProtocolSwitch(t *testing.T) {
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mysql-b", Protocol: model.ProtocolMySQL, Host: "10.0.0.3", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"app", "report", "staging"},
 	})
@@ -178,7 +180,7 @@ func TestAllowedDatabasesClearedOnProtocolSwitch(t *testing.T) {
 
 	// ── 改協議為 ssh：請求**不帶** allowed_databases，伺服端仍須清空 ──
 	ssh := model.ProtocolSSH
-	updated, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{Protocol: &ssh})
+	updated, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{Protocol: &ssh})
 	require.NoError(t, err)
 	require.Empty(t, updated.AllowedDatabases)
 
@@ -218,7 +220,7 @@ func TestAllowedDatabasesClearedOnProtocolSwitch(t *testing.T) {
 
 	// ── 改回 mysql：清單仍空，不得靜默恢復 ──
 	mysql := model.ProtocolMySQL
-	back, err := svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{Protocol: &mysql})
+	back, err := svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{Protocol: &mysql})
 	require.NoError(t, err)
 	require.Empty(t, back.AllowedDatabases)
 
@@ -234,14 +236,14 @@ func TestAllowedDatabasesExplicitClearIsNotReportedAsServerCleared(t *testing.T)
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(context.Background(), &CreateAssetRequest{
+	created, err := svc.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mysql-c", Protocol: model.ProtocolMySQL, Host: "10.0.0.4", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"app"},
 	})
 	require.NoError(t, err)
 
 	empty := model.StringList{}
-	_, err = svc.Update(updateCtx(), created.ID, &UpdateAssetRequest{AllowedDatabases: &empty})
+	_, err = svc.Update(WithSystemCaller(updateCtx()), created.ID, &UpdateAssetRequest{AllowedDatabases: &empty})
 	require.NoError(t, err)
 
 	var logs []model.AuditLog

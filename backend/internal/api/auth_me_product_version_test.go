@@ -38,9 +38,10 @@ func setupMeVersionEnv(t *testing.T, version string) (*gin.Engine, string) {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1) // :memory: 每條連線各自獨立空庫
-	if err := db.AutoMigrate(
+	if err := migrateWithAuthz(db,
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{},
+		&model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}, &model.AuthzState{}, &model.AssetGroup{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

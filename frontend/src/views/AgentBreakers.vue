@@ -147,7 +147,7 @@ import { formatDateTime } from '@/utils/format'
 import { getCurrentUser } from '@/api/auth'
 import { getUserDetail } from '@/api/user'
 import { getMyAgents, getAgentBreakerEvents, getAgentTokens, listAgentPrincipals } from '@/api/agents'
-import { roleNames } from '@/composables/useRoles'
+import { can, loadCapabilities } from '@/composables/useCapabilities'
 import { resolveApiError } from '@/api/error'
 import PageHeader from '@/components/PageHeader.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
@@ -156,7 +156,10 @@ import AgentBreakerEvents from '@/components/agent/AgentBreakerEvents.vue'
 const route = useRoute()
 const principal = ref(null), actor = ref({}), loading = ref(false), error = ref(''), released = ref(false)
 const selectedId = ref(null), chosenId = ref(null), choices = ref([]), choicePage = ref(1), choiceTotal = ref(0)
-const canManage = computed(() => roleNames(actor.value.roles).includes('admin') || principal.value?.owner_user_id === actor.value.id)
+// 管理任一 agent 主體（讀使用者詳情、列出全部 agent、解除斷路）＝user:manage；
+// 稽核讀取斷路事件＝audit:view。本人是負責人（ownership）是另一條路徑，不由能力推得
+const manageAny = computed(() => can('user:manage'))
+const canManage = computed(() => manageAny.value || principal.value?.owner_user_id === actor.value.id)
 const targetId = computed(() => chosenId.value || (/^\d+$/.test(String(route.query.user_id || '')) && Number.isSafeInteger(Number(route.query.user_id)) && Number(route.query.user_id) > 0 ? Number(route.query.user_id) : null))
 let epoch = 0
 async function load() {
@@ -167,15 +170,16 @@ async function load() {
   try {
     const response = await getCurrentUser(); if (version !== epoch) return
     actor.value = response.data || response
-    const roles = roleNames(actor.value.roles)
+    await loadCapabilities(); if (version !== epoch) return
+    const manage = manageAny.value, auditRead = can('audit:view')
     if (!id) {
-      if (roles.includes('admin')) { const result = await listAgentPrincipals({ kind: 'agent', page: choicePage.value, page_size: 20 }); if (version === epoch) { choices.value = result.data || []; choiceTotal.value = result.total || 0 } }
-      else if (!roles.includes('auditor')) { const result = await getMyAgents(); if (version === epoch) { choices.value = result.data || []; choiceTotal.value = 0 } }
+      if (manage) { const result = await listAgentPrincipals({ kind: 'agent', page: choicePage.value, page_size: 20 }); if (version === epoch) { choices.value = result.data || []; choiceTotal.value = result.total || 0 } }
+      else if (!auditRead) { const result = await getMyAgents(); if (version === epoch) { choices.value = result.data || []; choiceTotal.value = 0 } }
       return
     }
     let user
-    if (roles.includes('admin')) user = (await getUserDetail(id)).data
-    else if (roles.includes('auditor')) {
+    if (manage) user = (await getUserDetail(id)).data
+    else if (auditRead) {
       const result = await getAgentBreakerEvents(id, { limit: 20, offset: 0 })
       user = { id, kind: 'agent', breaker_pending_at: result.breaker_pending_at }
       // A non-admin may read these tokens only as owner. Read access remains
@@ -193,7 +197,7 @@ async function load() {
     if (version !== epoch) return
     if (user?.owner_user_id && !user.owner_username) {
       if (user.owner_user_id === actor.value.id) user = { ...user, owner_username: actor.value.username }
-      else if (roles.includes('admin')) {
+      else if (manage) {
         // User detail does not project owner_username yet. Use the existing admin-only read.
         try {
           const owner = (await getUserDetail(user.owner_user_id)).data
@@ -209,8 +213,8 @@ async function load() {
 }
 // 解除之後要重新發一把鑰匙：管理者在使用者管理的鑰匙抽屜、負責人在「我的 agent」
 // 直達該 agent 的鑰匙抽屜：admin 走使用者管理的 open 查詢，負責人走自己的清單
-const keysHref = computed(() => roleNames(actor.value.roles).includes('admin') ? `/users?open=${principal.value?.id || ''}` : '/my-agents')
-const reissueHref = computed(() => roleNames(actor.value.roles).includes('admin') ? '/users' : '/my-agents')
+const keysHref = computed(() => manageAny.value ? `/users?open=${principal.value?.id || ''}` : '/my-agents')
+const reissueHref = computed(() => manageAny.value ? '/users' : '/my-agents')
 function choose(id) { chosenId.value = id }
 function openSelected() { if (Number.isSafeInteger(selectedId.value) && selectedId.value > 0) choose(selectedId.value) }
 function changeChoices(page) { choicePage.value = page; load() }

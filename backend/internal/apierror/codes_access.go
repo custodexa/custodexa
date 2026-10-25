@@ -69,7 +69,7 @@ var (
 	CodeAccessRequestSelfApproval     = register("RULE_ACCESS_REQUEST_SELF_APPROVAL", Descriptor{ZhFallback: "不得核准或拒絕自己的申請"})
 	CodeNotEligibleApprover           = register("RULE_ACCESS_REQUEST_NOT_ELIGIBLE_APPROVER", Descriptor{ZhFallback: "申請資產不在您的審核範圍內"})
 	CodeRequesterExempt               = register("RULE_ACCESS_REQUEST_REQUESTER_EXEMPT", Descriptor{ZhFallback: "此角色不需或不得提出連線申請"})
-	CodeNotRevokeEligible             = register("RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE", Descriptor{ZhFallback: "僅管理員或原核准人可撤銷此臨時授權"})
+	CodeNotRevokeEligible             = register("RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE", Descriptor{ZhFallback: "你沒有撤銷這筆臨時授權的資格"})
 
 	// 破窗開關關閉＝封 API；前端據此碼隱藏入口自癒（原 legacy 小寫碼
 	// break_glass_disabled，改走 registry 後 code 值變更，見 change 回報）。
@@ -79,7 +79,14 @@ var (
 	CodeNotBreakGlass         = register("RULE_BREAK_GLASS_NOT_APPLICABLE", Descriptor{ZhFallback: "此申請單非破窗連線，無需補審"})
 
 	CodeScopeNotApproverRole = register("RULE_APPROVER_SCOPE_NOT_APPROVER_ROLE", Descriptor{ZhFallback: "目標使用者不具 approver 角色"})
-	CodeDailyReviewDisabled  = register("RULE_DAILY_REVIEW_DISABLED", Descriptor{ZhFallback: "每日審閱功能未啟用"})
+	// 防自我授權（本人範圍＝操作者本人、本人直接所屬的群組、本人擁有的 agent）：
+	// 三碼皆不帶主體名稱、識別值或規則數量，細節只進審計
+	CodeAuthorizationSelfSubject    = register("RULE_AUTHORIZATION_SELF_SUBJECT", Descriptor{ZhFallback: "不得對自己、自己所屬的群組或自己擁有的 agent 建立或調整授權規則"})
+	CodeApproverScopeSubjectOverlap = register("RULE_APPROVER_SCOPE_SUBJECT_OVERLAP", Descriptor{ZhFallback: "審核方與申請人不得重疊"})
+	CodeAgentOwnerTransferSelfGrant = register("RULE_AGENT_OWNER_TRANSFER_SELF_GRANT", Descriptor{ZhFallback: "新擁有者曾替此 agent 建立仍有效的授權、審核範圍或核准票，不得轉移"})
+	// 非建立者、非超管只能縮小既有規則的帳號範圍（有效規則的範圍不超過 granted_by 主張的範圍）
+	CodeAccountScopeWidenRestricted = register("RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED", Descriptor{ZhFallback: "非規則建立者只能縮小帳號範圍，不能擴大"})
+	CodeDailyReviewDisabled         = register("RULE_DAILY_REVIEW_DISABLED", Descriptor{ZhFallback: "每日審閱功能未啟用"})
 
 	// 每日簽核的日界規則：進行中的當天不能簽；日終後的落庫寬限內也不能簽，
 	// 可簽時刻（RFC3339，帶業務時區位移）是使用者知道「幾點再來」的必需資訊

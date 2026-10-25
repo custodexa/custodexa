@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import WorkspaceAssetSidebar from '../workspace/WorkspaceAssetSidebar.vue'
 import { getAssetList } from '@/api/assets'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 工作區左側資產側欄：寬度、每列版面、分組樹與搜尋、存取狀態標示、全量載入。
 // 與分頁的互動（點擊開分頁、說明框不發簽發、重新整理不重建分頁）在 Workspace.spec.js
@@ -58,6 +60,8 @@ const sidebarStyleWidth = (wrapper) => wrapper.find('.workspace-sidebar').attrib
 const resetSidebarEnv = () => {
   vi.clearAllMocks()
   localStorage.clear()
+  resetCapabilities()
+  grantFor(['user'])
   roInstances.length = 0
 }
 

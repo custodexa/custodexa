@@ -23,6 +23,7 @@ func TestCreateAssetWithoutCredentialSourceHasNoMount(t *testing.T) {
 	h, db, _ := setupPolicyGateTest(t)
 	seedGateFixture(t, db)
 	svc, err := asset.NewAssetService(aesColumnCodec(t, make([]byte, 32)), "localhost", 4822, audit.NewTxSink())
+	svc.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 	ctx := context.WithValue(context.Background(), "userID", uint(2)) //nolint:staticcheck // 沿用既有審計 context 慣例
 	ctx = context.WithValue(ctx, "username", "u-admin")               //nolint:staticcheck // 同上
@@ -34,7 +35,7 @@ func TestCreateAssetWithoutCredentialSourceHasNoMount(t *testing.T) {
 		{model.ProtocolSSH, 22}, {model.ProtocolRDP, 3389}, {model.ProtocolMySQL, 3306},
 		{model.ProtocolPostgres, 5432}, {model.ProtocolMSSQL, 1433},
 	} {
-		created, err := svc.Create(ctx, &asset.CreateAssetRequest{
+		created, err := svc.Create(asset.WithSystemCaller(ctx), &asset.CreateAssetRequest{
 			Name: "pending-" + string(tc.protocol), Protocol: tc.protocol, Host: "10.0.0.1", Port: tc.port,
 			CreatedBy: 2, CreatedByName: "u-admin",
 		})
@@ -68,7 +69,7 @@ func TestCreateAssetWithoutCredentialSourceHasNoMount(t *testing.T) {
 		require.Equal(t, "RULE_ACCOUNT_NONE_USABLE", redeemResp["code"], "%s: code=%d resp=%v", tc.protocol, code, redeemResp)
 	}
 
-	_, err = svc.Create(ctx, &asset.CreateAssetRequest{
+	_, err = svc.Create(asset.WithSystemCaller(ctx), &asset.CreateAssetRequest{
 		Name: "secret-without-username", Protocol: model.ProtocolSSH, Host: "10.0.0.2", Port: 22,
 		Password: "pw-only", CreatedBy: 2,
 	})

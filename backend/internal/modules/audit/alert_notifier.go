@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -270,6 +271,9 @@ type AlertNotifier struct {
 	channels []model.NotificationChannel
 
 	queue chan model.CommandAlert
+	// pending 已入列但尚未投遞完成的告警數（含 worker 已取出、執行中者）；
+	// 純觀測用，不參與任何流程判斷
+	pending atomic.Int64
 	// startOnce 確保 worker 只起一條：推送順序與 log 可讀性依賴單 worker
 	startOnce sync.Once
 }
@@ -379,9 +383,15 @@ func (n *AlertNotifier) Start() {
 // 呼叫點在告警入庫路徑上，滿載時丟棄記 log 而非阻塞——
 // 通知是告警的附加價值，絕不反向影響告警入庫與會話
 func (n *AlertNotifier) Enqueue(alert model.CommandAlert) {
+	// 系統安全告警只走持久投遞佇列，不進記憶體佇列（門檻不得過濾它，也不得送兩次）。
+	if alert.Kind == model.AlertKindSystemSecurity {
+		return
+	}
+	n.pending.Add(1)
 	select {
 	case n.queue <- alert:
 	default:
+		n.pending.Add(-1)
 		log.Printf("[AlertNotifier] 推送佇列已滿，丟棄告警通知 (alert_id=%d, rule=%s)", alert.ID, alert.RuleName)
 	}
 }
@@ -390,7 +400,14 @@ func (n *AlertNotifier) Enqueue(alert model.CommandAlert) {
 func (n *AlertNotifier) worker() {
 	for alert := range n.queue {
 		n.notify(alert)
+		n.pending.Add(-1)
 	}
+}
+
+// PendingNotifications 回傳已入列、尚未投遞完成的告警數（含執行中）。
+// 純觀測介面，供需要等待佇列清空的呼叫端（測試）使用，不改變任何行為
+func (n *AlertNotifier) PendingNotifications() int64 {
+	return n.pending.Load()
 }
 
 // NotifyEvent 發送結構化系統事件至所有啟用通道（取代散文版

@@ -54,7 +54,7 @@ type RevokeRouteEligibility struct {
 	// IsAdmin 操作者具 admin 角色（呼叫端寫入 RevokeAdminKey，service 層據此走
 	// 「admin 兜底」撤銷資格分支）
 	IsAdmin bool
-	// Allowed 放行與否（admin OR 有效審核者）
+	// Allowed 放行與否（admin OR 有效審核者 OR 持授權規則管理能力的任一有效指派）
 	Allowed bool
 	// RoleQueryFailed 角色查詢失敗（呼叫端須回 CodeInternalRoleQuery）
 	RoleQueryFailed bool
@@ -66,13 +66,21 @@ type RevokeRouteEligibility struct {
 //
 // **判準與收斂前的 `RequireApproverRole` 相同**（admin OR approver 角色 OR 屬任一
 // 審核方群組），故撤銷端點行為零變更；細緻資格（原核准人 vs 範圍命中）仍由
-// service 的 `eligibleToRevoke` 裁決，本守衛只做粗篩與 admin 旗標傳遞。
+// service 的撤銷交易（RevokeItem）逐項裁決，本守衛只做粗篩與 admin 旗標傳遞。
+//
+// 粗閘放寬為「既有資格，或持授權規則管理能力的任一有效指派」：只決定能否進入，不判範圍、
+// 不是最終裁決；範圍與逐項資格在撤銷交易內判定。以正式目錄解析。
 func EvaluateRevokeRouteEligibility(db *gorm.DB, userID uint) (RevokeRouteEligibility, error) {
+	return EvaluateRevokeRouteEligibilityOn(db, ProductCatalogue(), userID)
+}
+
+// EvaluateRevokeRouteEligibilityOn 與 EvaluateRevokeRouteEligibility 同一判準，另指定目錄（測試與組裝用）。
+func EvaluateRevokeRouteEligibilityOn(db *gorm.DB, cat Catalogue, userID uint) (RevokeRouteEligibility, error) {
 	var adminCount int64
 	if err := db.Table("user_roles").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = ? AND roles.name = ? AND roles.deleted_at IS NULL",
-			userID, model.RoleAdmin).
+		Where("user_roles.user_id = ? AND roles.builtin_key = ? AND user_roles.scope_kind = ? AND roles.deleted_at IS NULL",
+			userID, model.BuiltinSuperAdmin, model.ScopeKindGlobal).
 		Count(&adminCount).Error; err != nil {
 		return RevokeRouteEligibility{RoleQueryFailed: true}, fmt.Errorf("查詢 admin 角色失敗: %w", err)
 	}
@@ -87,13 +95,20 @@ func EvaluateRevokeRouteEligibility(db *gorm.DB, userID uint) (RevokeRouteEligib
 			ScopeQueryFailed: !roleQueryFailed,
 		}, err
 	}
-	return RevokeRouteEligibility{Allowed: allowed}, nil
+	if allowed {
+		return RevokeRouteEligibility{Allowed: true}, nil
+	}
+	holds, err := holdsAuthorizationManage(db, cat, userID)
+	if err != nil {
+		return RevokeRouteEligibility{RoleQueryFailed: true}, fmt.Errorf("查詢授權規則管理能力失敗: %w", err)
+	}
+	return RevokeRouteEligibility{Allowed: holds}, nil
 }
 
 // IsAccessRequestHistoryAuditor is a live role read, exclusive to the read-only
 // history route. It must never grant approval or revocation eligibility.
 func IsAccessRequestHistoryAuditor(db *gorm.DB, userID uint) (bool, error) {
 	var n int64
-	err := db.Table("user_roles").Joins("JOIN roles ON user_roles.role_id=roles.id").Where("user_roles.user_id=? AND roles.name=? AND roles.deleted_at IS NULL", userID, model.RoleAuditor).Count(&n).Error
+	err := db.Table("user_roles").Joins("JOIN roles ON user_roles.role_id=roles.id").Where("user_roles.user_id=? AND roles.builtin_key=? AND user_roles.scope_kind=? AND roles.deleted_at IS NULL", userID, model.BuiltinAuditor, model.ScopeKindGlobal).Count(&n).Error
 	return n > 0, err
 }

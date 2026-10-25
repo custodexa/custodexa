@@ -87,7 +87,7 @@ func TestUsersEmptyPasswordImpliesExternalAcrossWritePaths(t *testing.T) {
 
 	// (4) OIDC 首登供應（JIT）
 	jit := jitProvider(t, env.db)
-	login := NewOIDCLoginService(env.db, NewOIDCProviderService(env.db, nil, testEgress(), nil,
+	login := NewOIDCLoginService(env.db, newOIDCProviderServiceT(env.db, nil, testEgress(), nil,
 		"https://bastion.example.com"), NewOIDCDiscoveryService(testEgress()), env.auth, nil)
 	login.audit = newRecordingAudit()
 	if _, err := login.resolveOrProvision(jit, oidcClaims("sub-jit", map[string]any{

@@ -141,6 +141,27 @@ setup() {
   ! grep -Eq '^(up|start)' "$DB/events"
 }
 
+@test "rollback judge: the permission model migration of 1.18.0 refuses a direct return to 1.17.x and prints the restore command" {
+  # The version string under test is the one the code registers, not a copy typed here.
+  local mig=20261016_authz_permission_model
+  grep -q "Version: \"$mig\"" "$SRC/../../backend/internal/database/migrations.go" || { echo "migration $mig not registered"; return 1; }
+  # Upgraded 1.17.9 -> 1.18.0; the database now holds the migration the snapshot did not.
+  switched 1.17.9 1.18.0 succeeded 13
+  printf '%s\n' "$mig" >>"$DB/migrations"
+  # This release does not list the version before as compatible (no rehearsal record exists for it).
+  jq -e '(.rollback_compatible // []) | index("1.17.9") | not' "$ROOT/releases/1.18.0/MANIFEST.json" >/dev/null
+  decide cx_rb_premise cx_rb_judge
+  [ "$status" -eq 1 ] && [[ $output == *"reason=changed added=$mig "* ]] || { echo "$output"; return 1; }
+  # The command itself refuses, changes nothing, starts nothing, and names the restore command.
+  : >"$DB/events"
+  cp "$ROOT/state.json" "$DB/before"
+  rb_run en --yes
+  [ "$status" -eq 3 ] && [[ $output == *"$mig"* ]] && [[ $output == *"custodexa.sh restore "* ]] || { echo "$output"; return 1; }
+  cmp "$ROOT/state.json" "$DB/before"
+  [ "$(readlink "$ROOT/current")" = releases/1.18.0 ]
+  ! grep -Eq '^(stop|up|start)' "$DB/events"
+}
+
 @test "rollback images: each image of the version before must be here with the ID recorded then" {
   switched 1.16.1 1.16.2 succeeded 13
   decide cx_rb_premise cx_rb_images

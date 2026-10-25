@@ -57,13 +57,14 @@ func setupRecordingTokenEnv(t *testing.T) *recTokenEnv {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	seedAuthzState(t, db)
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
 		&model.AuditLog{}, &model.UserRole{},
 		// provider 刪除會先查有無群組映射規則（仍有規則者拒刪），缺表即 fail-close
 		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
 		&model.UserGroup{}, &model.UserGroupMember{}, &model.UserRoleMapping{},
-		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -73,9 +74,10 @@ func setupRecordingTokenEnv(t *testing.T) *recTokenEnv {
 	env := &recTokenEnv{
 		mgr:       NewRecordingTokenManager(),
 		users:     identity.NewUserService(db, authz.NewAssetAuthorizationService(db)),
-		providers: identity.NewOIDCProviderService(db, nil, &identity.OIDCEgressPolicy{}, nil, "https://bastion.example.com"),
+		providers: newOIDCProviderServiceT(db, nil, &identity.OIDCEgressPolicy{}, nil, "https://bastion.example.com"),
 		db:        db,
 	}
+	permitRecordingIssue(env.mgr)
 	// 與 cmd/server/stage2.go 的組裝同構：同一個 manager 同時掛在兩條撤銷管道上
 	env.users.SetRecordingTokenRevoker(env.mgr)
 	env.providers.SetRecordingTokenRevoker(env.mgr)
@@ -144,7 +146,7 @@ func (e *recTokenEnv) seedUserWithIdentity(t *testing.T, username string, provid
 // providerID 必須對應真實且啟用的 provider——這正是該閘要驗的東西
 func (e *recTokenEnv) mustIssue(t *testing.T, userID, sessionID, providerID uint) string {
 	t.Helper()
-	tok, err := e.mgr.Issue(userID, sessionID, "rec-subject", crypto.AuthContext{ProviderID: providerID})
+	tok, err := e.mgr.Issue(userID, sessionID, "rec-subject", crypto.AuthContext{ProviderID: providerID}, authz.TokenFacts{})
 	if err != nil {
 		t.Fatalf("簽發錄影 token: %v", err)
 	}

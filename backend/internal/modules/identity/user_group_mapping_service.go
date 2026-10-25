@@ -6,6 +6,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
 )
@@ -17,13 +18,15 @@ const (
 )
 
 type UserGroupMappingInput struct {
-	MatchValue               string                `json:"match_value"`
-	UserGroupID              uint                  `json:"user_group_id"`
-	Enabled                  *bool                 `json:"enabled"`
-	RiskAcknowledged         bool                  `json:"risk_acknowledged"`
-	SourceConfigAcknowledged bool                  `json:"source_config_acknowledged"`
-	Note                     string                `json:"note"`
-	Actor                    GroupRoleMappingActor `json:"-"`
+	MatchValue               string `json:"match_value"`
+	UserGroupID              uint   `json:"user_group_id"`
+	Enabled                  *bool  `json:"enabled"`
+	RiskAcknowledged         bool   `json:"risk_acknowledged"`
+	SourceConfigAcknowledged bool   `json:"source_config_acknowledged"`
+	Note                     string `json:"note"`
+	// 範圍欄位只用來偵測並整筆拒絕（映射規則本身沒有範圍）
+	MappingScopeFields
+	Actor GroupRoleMappingActor `json:"-"`
 }
 
 func userGroupMappingRow(tx *gorm.DB, kind string, sourceID, ruleID uint) (*model.GroupUserGroupMapping, error) {
@@ -65,6 +68,9 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 	if s == nil || s.db == nil {
 		return nil, ErrMappingServiceUnavailable
 	}
+	if in.MappingScopeFields.Present() {
+		return nil, ErrMappingScopeFieldRejected
+	}
 	match, err := validateMatchValue(kind, in.MatchValue)
 	if err != nil {
 		return nil, err
@@ -75,11 +81,21 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 	}
 	var result *model.GroupUserGroupMapping
 	err = withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		source, err := resolveSource(tx, kind, sourceID)
 		if err != nil {
 			return err
 		}
 		if err := validateMappingTargetGroup(tx, in.UserGroupID); err != nil {
+			return err
+		}
+		newRoles, err := groupRoleIDs(tx, in.UserGroupID)
+		if err != nil {
+			return err
+		}
+		if err := s.guardMappingTargets(tx, in.Actor, nil, newRoles); err != nil {
 			return err
 		}
 		usage, err := usageOfUserGroup(tx, in.UserGroupID)
@@ -91,6 +107,12 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 		}
 		if !source.attrSet && !in.SourceConfigAcknowledged {
 			return &MappingAckRequiredError{Warnings: []string{mappingWarningSourceAttrUnset}}
+		}
+		tracker, err := s.beginUserGroupMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
+			OldMatch: match, NewMatch: match, NewEnabled: enabled, Created: true,
+		}, 0, in.UserGroupID)
+		if err != nil {
+			return err
 		}
 		groupID, err := ensureExternalGroupWithNote(tx, kind, sourceID, match, in.Note)
 		if err != nil {
@@ -110,6 +132,13 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 				return err
 			}
 		}
+		// 權限版本：新規則於下一次登入重算即授出群組成員資格，與建列同交易
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return err
+		}
+		if err := tracker.finish(tx, row.ID); err != nil {
+			return err
+		}
 		if err := s.auditUserGroupMapping(tx, in.Actor, model.ActionCreate, UserGroupMappingEventCreate, kind, sourceID, match, in.RiskAcknowledged, in.SourceConfigAcknowledged, row); err != nil {
 			return err
 		}
@@ -123,12 +152,18 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 	if s == nil || s.db == nil {
 		return nil, ErrMappingServiceUnavailable
 	}
+	if in.MappingScopeFields.Present() {
+		return nil, ErrMappingScopeFieldRejected
+	}
 	match, err := validateMatchValue(kind, in.MatchValue)
 	if err != nil {
 		return nil, err
 	}
 	var result *model.GroupUserGroupMapping
 	err = withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		source, err := resolveSource(tx, kind, sourceID)
 		if err != nil {
 			return err
@@ -139,6 +174,30 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 		}
 		if err := validateMappingTargetGroup(tx, in.UserGroupID); err != nil {
 			return err
+		}
+		var dictionary model.ExternalGroup
+		if err := tx.First(&dictionary, old.ExternalGroupID).Error; err != nil {
+			return err
+		}
+		enabled := old.Enabled
+		if in.Enabled != nil {
+			enabled = *in.Enabled
+		}
+		wasEnabled := old.Enabled
+		identityChanged := dictionary.MatchValue != match || old.UserGroupID != in.UserGroupID
+		// 沒有任何實際變動的存檔不是授權變更，不做守衛裁決
+		if identityChanged || enabled != wasEnabled {
+			oldRoles, err := groupRoleIDs(tx, old.UserGroupID)
+			if err != nil {
+				return err
+			}
+			newRoles, err := groupRoleIDs(tx, in.UserGroupID)
+			if err != nil {
+				return err
+			}
+			if err := s.guardMappingTargets(tx, in.Actor, oldRoles, newRoles); err != nil {
+				return err
+			}
 		}
 		if !source.attrSet && !in.SourceConfigAcknowledged {
 			return &MappingAckRequiredError{Warnings: []string{mappingWarningSourceAttrUnset}}
@@ -152,15 +211,16 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 				return &UserGroupMappingUsageAckError{usage}
 			}
 		}
-		var dictionary model.ExternalGroup
-		if err := tx.First(&dictionary, old.ExternalGroupID).Error; err != nil {
-			return err
+		var tracker *mappingTracker
+		if identityChanged || enabled != wasEnabled {
+			tracker, err = s.beginUserGroupMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
+				OldMatch: dictionary.MatchValue, NewMatch: match, OldEnabled: wasEnabled, NewEnabled: enabled,
+			}, old.UserGroupID, in.UserGroupID)
+			if err != nil {
+				return err
+			}
 		}
-		enabled := old.Enabled
-		if in.Enabled != nil {
-			enabled = *in.Enabled
-		}
-		if dictionary.MatchValue != match || old.UserGroupID != in.UserGroupID {
+		if identityChanged {
 			newGroupID, err := ensureExternalGroupWithNote(tx, kind, sourceID, match, in.Note)
 			if err != nil {
 				return err
@@ -168,6 +228,9 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 			next := &model.GroupUserGroupMapping{LDAPDirectoryID: old.LDAPDirectoryID, OIDCProviderID: old.OIDCProviderID, ExternalGroupID: newGroupID, UserGroupID: in.UserGroupID, Enabled: enabled, CreatedBy: in.Actor.ID}
 			if err := tx.Create(next).Error; err != nil {
 				return err
+			}
+			if h := loadLockOrderHook(); h != nil {
+				h("mapping_group_after_rule_insert", tx, in.Actor.ID)
 			}
 			if !enabled {
 				if err := tx.Model(next).Update("enabled", false).Error; err != nil {
@@ -193,6 +256,15 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 			old.Enabled = enabled
 			result = old
 		}
+		// 權限版本：比對值、目標群組或啟用旗標有實際變動才推進（與寫入同交易）
+		if identityChanged || enabled != wasEnabled {
+			if err := authz.AdvanceVersion(tx); err != nil {
+				return err
+			}
+			if err := tracker.finish(tx, result.ID); err != nil {
+				return err
+			}
+		}
 		return s.auditUserGroupMapping(tx, in.Actor, model.ActionUpdate, UserGroupMappingEventUpdate, kind, sourceID, match, in.RiskAcknowledged, in.SourceConfigAcknowledged, result)
 	})
 	return result, err
@@ -203,6 +275,9 @@ func (s *IdentitySourceService) DeleteUserGroupMapping(kind string, sourceID, ru
 		return ErrMappingServiceUnavailable
 	}
 	return withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		if _, err := resolveSource(tx, kind, sourceID); err != nil {
 			return err
 		}
@@ -210,10 +285,34 @@ func (s *IdentitySourceService) DeleteUserGroupMapping(kind string, sourceID, ru
 		if err != nil {
 			return err
 		}
+		oldRoles, err := groupRoleIDs(tx, row.UserGroupID)
+		if err != nil {
+			return err
+		}
+		if err := s.guardMappingTargets(tx, actor, oldRoles, nil); err != nil {
+			return err
+		}
+		var oldGroup model.ExternalGroup
+		if err := tx.First(&oldGroup, row.ExternalGroupID).Error; err != nil {
+			return err
+		}
+		tracker, err := s.beginUserGroupMappingWrite(tx, actor, kind, sourceID, mappingWrite{
+			OldMatch: oldGroup.MatchValue, OldEnabled: row.Enabled, Deleted: true,
+		}, row.UserGroupID, 0)
+		if err != nil {
+			return err
+		}
 		if err := revokeMappingSupportsLocked(tx, s.auditTx, kind, sourceID, "group", ruleID); err != nil {
 			return err
 		}
 		if err := tx.Delete(row).Error; err != nil {
+			return err
+		}
+		// 權限版本：與軟刪除同交易
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return err
+		}
+		if err := tracker.finish(tx, ruleID); err != nil {
 			return err
 		}
 		var group model.ExternalGroup

@@ -324,6 +324,7 @@ import { roleLabel } from '@/constants/roles'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 import { setAccessToken } from '@/utils/session'
+import { applyCurrentUser } from '@/composables/useCapabilities'
 import {
   getCurrentUser,
   getMFASetup,
@@ -398,10 +399,16 @@ const submitDisplayName = async (rawValue) => {
     const info = await updateProfileDisplayName(rawValue)
     account.value = info || {}
     displayNameInput.value = info?.local_display_name || ''
-    // 合併回快取（保留登入時其他欄位），並廣播給側欄即時反映
+    // 合併回快取（保留登入時其他欄位），並廣播給側欄即時反映。
+    // PATCH 回應也帶能力投影：整批替換共用能力狀態，快取只留顯示用欄位（不是能力的權威）
     try {
+      applyCurrentUser(info)
+      // 能力只活在記憶體（applyCurrentUser），快取只留顯示欄位
+      const display = { ...(info || {}) }
+      delete display.permissions
+      delete display.scope_summary
       const cached = JSON.parse(localStorage.getItem('user') || '{}')
-      localStorage.setItem('user', JSON.stringify({ ...cached, ...(info || {}) }))
+      localStorage.setItem('user', JSON.stringify({ ...cached, ...display }))
       window.dispatchEvent(new Event('ot-user-updated'))
     } catch (e) {
       console.error('同步使用者快取失敗:', e)

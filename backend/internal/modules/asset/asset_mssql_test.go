@@ -17,9 +17,10 @@ func TestCreateMSSQLRequiresUsername(t *testing.T) {
 	_, _, _ = setupAssetMockDB(t)
 	key := make([]byte, 32)
 	service, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 	assert.NoError(t, err)
 
-	_, err = service.Create(context.Background(), &CreateAssetRequest{
+	_, err = service.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name:      "mssql-no-user",
 		Protocol:  model.ProtocolMSSQL,
 		Host:      "10.0.0.9",

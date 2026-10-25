@@ -34,6 +34,30 @@ var keysRequiringMin = map[string]string{
 		"即代表舊區間在被合法清除前永遠輪不到重驗，內容層對那段歷史實質關閉而畫面上仍在推進",
 }
 
+// keysRequiringEvidenceFloor 證據保留類：調小會讓設定者在短時間內清掉自己的操作紀錄。
+// 保留期的設定者與被審計者可能是同一人，所以「調短＝少留資料」不再只是誠實可見的
+// 政策選擇——設成 1 天，隔天排程就把前一天的紀錄清掉。這類鍵設下界，取值由產品裁決
+// （7 天）；0＝永久保留仍合法（ZeroDisables），不受下界影響。檢查點保留鍵不在此類，
+// 它不是資料本身，只受跨鍵約束。
+var keysRequiringEvidenceFloor = map[string]string{
+	PolicyRetentionAuditLogDays:       "操作日誌：調短可清掉設定者自己的操作紀錄",
+	PolicyRetentionSessionCommandDays: "指令流：調短可清掉設定者自己的會話指令紀錄",
+	PolicyRetentionAlertDays:          "告警記錄：調短可清掉設定者觸發的告警紀錄",
+	PolicyRetentionRecordingDays:      "錄影：調短可清掉設定者自己的會話錄影",
+}
+
+// allKeysRequiringMin 兩類需要下界的鍵（預算／逾時類與證據保留類）的聯集。
+func allKeysRequiringMin() map[string]string {
+	out := make(map[string]string, len(keysRequiringMin)+len(keysRequiringEvidenceFloor))
+	for k, v := range keysRequiringMin {
+		out[k] = v
+	}
+	for k, v := range keysRequiringEvidenceFloor {
+		out[k] = v
+	}
+	return out
+}
+
 // keysNotRequiringMin 不需要 Min 的 int 型鍵，附不需要的理由。
 // 理由分兩類：(a) 危險方向朝「大」，Max 已蓋住；(b) 調小是誠實且可見的政策選擇
 // （例如保留天數調短＝少留資料，會在 PCI 偏離摘要中顯示，不是偽裝成還開著）
@@ -51,18 +75,15 @@ var keysNotRequiringMin = map[string]string{
 	PolicyAssetSecretMaxAgeDays: "危險方向朝大（資產帳號憑證可用更久），Direction=max ＋ PCI／電支偏離摘要已蓋住；" +
 		"調小是更嚴格，且本鍵不驅動任何機制——它只是報告判定逾期的基準線，" +
 		"不存在「調小即機制停擺而畫面上仍在跑」的形態",
-	PolicyWebIdleMinutes:              "危險方向朝大（閒置更久才登出），Direction=max 已蓋住；調小是更嚴格",
-	PolicyWebMaxSessionHours:          "危險方向朝大，調小是更嚴格",
-	PolicySessionIdleMinutes:          "危險方向朝大，調小是更嚴格",
-	PolicySessionMaxMinutes:           "危險方向朝大，調小是更嚴格",
-	PolicyInactiveDisableDays:         "危險方向朝大（閒置帳號更久才停用），調小是更嚴格",
-	PolicyRetentionAuditLogDays:       "調小＝少留資料，是誠實且可見的政策選擇（PCI 偏離摘要顯示），非機制停擺",
-	PolicyRetentionSessionCommandDays: "同上",
-	PolicyRetentionAlertDays:          "同上",
-	PolicyRetentionRecordingDays:      "同上",
+	PolicyWebIdleMinutes:           "危險方向朝大（閒置更久才登出），Direction=max 已蓋住；調小是更嚴格",
+	PolicyWebMaxSessionHours:       "危險方向朝大，調小是更嚴格",
+	PolicyMappingRevalidationHours: "危險方向朝大（時限調長或設 0＝映射權限更久才重新驗證），由 Max=168 與放寬即告警承擔；1 小時只是讓使用者頻繁重新登入，不是機制停擺",
+	PolicySessionIdleMinutes:       "危險方向朝大，調小是更嚴格",
+	PolicySessionMaxMinutes:        "危險方向朝大，調小是更嚴格",
+	PolicyInactiveDisableDays:      "危險方向朝大（閒置帳號更久才停用），調小是更嚴格",
 	PolicyOffsiteLocalRetentionDays: "調小＝本機副本更早清除，而錄影仍可自離機副本取回" +
 		"；那是磁碟預算的誠實選擇，不是任何機制停擺。0＝不提前清（ZeroDisables）",
-	PolicyRetentionCheckpointDays:        "同上，另受跨鍵約束（不得低於四個資料保留鍵）",
+	PolicyRetentionCheckpointDays:        "檢查點鏈不是資料本身；調小受跨鍵約束（不得低於四個資料保留鍵），不另設下界",
 	PolicyAuditCheckpointIntervalSeconds: "危險方向朝大（週期設成 24 小時＝實質不封存），Max=86400 ＋ 不可為 0 已蓋住",
 	PolicyAuditCheckpointRowThreshold:    "危險方向朝大（門檻設到極高＝實質不提前封存），Max=1000000 ＋ 不可為 0 已蓋住",
 	PolicyAuditChainRecentVerifyDays: "危險方向朝大（窗口大到與全鏈層重疊，只多出成本），Max=30 已蓋住；" +
@@ -91,8 +112,13 @@ func TestEveryIntPolicyKeyIsClassifiedForMinBound(t *testing.T) {
 		if def.Type != PolicyTypeInt {
 			continue
 		}
-		_, requires := keysRequiringMin[def.Key]
+		_, budget := keysRequiringMin[def.Key]
+		_, evidence := keysRequiringEvidenceFloor[def.Key]
 		_, exempt := keysNotRequiringMin[def.Key]
+		if budget && evidence {
+			t.Errorf("政策鍵 %s 同時出現在兩類需要下界的表，分類必須互斥", def.Key)
+		}
+		requires := budget || evidence
 		switch {
 		case requires && exempt:
 			t.Errorf("政策鍵 %s 同時出現在兩張分類表，分類必須互斥", def.Key)
@@ -108,7 +134,7 @@ func TestEveryIntPolicyKeyIsClassifiedForMinBound(t *testing.T) {
 // TestKeysRequiringMinHaveMin 分類表 → 定義表：需要下界的鍵必須真的設了 Min，
 // 且 Min 須在有效值域內。**拿掉任一 Min 即轉紅。**
 func TestKeysRequiringMinHaveMin(t *testing.T) {
-	for key, why := range keysRequiringMin {
+	for key, why := range allKeysRequiringMin() {
 		def := findDef(key)
 		if def == nil {
 			t.Errorf("keysRequiringMin 列了不存在的鍵 %s", key)
@@ -147,7 +173,7 @@ func TestKeysNotRequiringMinHaveNoMin(t *testing.T) {
 // TestMinBoundRejectsBelowFloor 三個搬遷鍵各自拒絕低於下界的值。
 // **這是本 change 的核心行為斷言**：拿掉 validatePolicyValue 的下界檢查即轉紅
 func TestMinBoundRejectsBelowFloor(t *testing.T) {
-	for key := range keysRequiringMin {
+	for key := range allKeysRequiringMin() {
 		def := findDef(key)
 		if def == nil {
 			t.Fatalf("政策鍵 %s 不存在", key)
@@ -217,7 +243,7 @@ func TestMinAndZeroDisablesAreOrthogonal(t *testing.T) {
 // TestMinIsExposedToFrontend Min 須隨政策定義送到前端，否則輸入框擋不住、
 // 使用者只會在存檔時撞牆——下界要在輸入當下就可見
 func TestMinIsExposedToFrontend(t *testing.T) {
-	for key := range keysRequiringMin {
+	for key := range allKeysRequiringMin() {
 		def := findDef(key)
 		if def == nil {
 			t.Fatalf("政策鍵 %s 不存在", key)

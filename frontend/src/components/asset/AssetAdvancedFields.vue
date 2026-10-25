@@ -68,14 +68,29 @@
             :label="name"
             :value="name"
           />
+          <!-- 範圍化檢視者：候選只含看得到的資產上用過的標籤 -->
+          <template
+            v-if="scoped"
+            #footer
+          >
+            <div
+              class="form-tip"
+              data-test="tag-visible-hint"
+            >
+              {{ t('assets.tagVisibleOnlyHint') }}
+            </div>
+          </template>
         </el-select>
       </el-form-item>
       <!-- 掛載節點（多歸屬）：樹狀多選、全路徑顯示；空＝未分組。節點 CRUD 在資產頁左樹 -->
-      <el-form-item :label="t('assets.mountNodes')">
+      <el-form-item
+        :label="t('assets.mountNodes')"
+        prop="node_ids"
+      >
         <el-tree-select
           v-model="form.node_ids"
           :data="nodeOptions"
-          :props="{ label: 'name', children: 'children' }"
+          :props="{ label: 'name', children: 'children', disabled: 'disabled' }"
           node-key="id"
           multiple
           check-strictly
@@ -84,6 +99,15 @@
           :placeholder="t('assets.mountNodesPlaceholder')"
           class="full"
         />
+        <!-- 範圍外歸屬只顯示個數：看不到名稱，也不會被這次送出移除 -->
+        <div
+          v-if="scoped && scoped.outOfScope > 0"
+          class="form-tip"
+          data-test="out-of-scope-nodes-hint"
+        >
+          {{ t('assets.scopedOutOfScopeNodes', { n: scoped.outOfScope }) }}
+          {{ t('assets.scopedOutOfScopeAdminOnly') }}
+        </div>
       </el-form-item>
       <!-- 連線政策：政策掛資產本身，主要設定入口 -->
       <el-form-item :label="t('assets.accessPolicy')">
@@ -92,7 +116,9 @@
         <el-select
           v-model="form.access_policy"
           :empty-values="[null, undefined]"
+          :disabled="accessPolicyReadonly"
           class="full"
+          data-test="access-policy-select"
         >
           <el-option
             :label="inheritPolicyLabel"
@@ -105,6 +131,14 @@
             :value="value"
           />
         </el-select>
+        <!-- 無存取政策權限點：欄位唯讀，送出時也不帶此鍵 -->
+        <div
+          v-if="accessPolicyReadonly"
+          class="form-tip"
+          data-test="access-policy-readonly-hint"
+        >
+          {{ t('assets.accessPolicyReadonlyHint') }}
+        </div>
       </el-form-item>
       <el-form-item
         v-if="isEdit"
@@ -114,7 +148,16 @@
           v-model="form.active"
           :active-text="t('common.enabled')"
           :inactive-text="t('common.disabled')"
+          :disabled="activeDenied"
+          data-test="active-switch"
         />
+        <div
+          v-if="activeDenied"
+          class="form-tip"
+          data-test="active-denied-hint"
+        >
+          {{ activeDeniedText }}
+        </div>
       </el-form-item>
 
       <el-form-item
@@ -421,7 +464,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
+import { can } from '@/composables/useCapabilities'
+import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 import { isDatabaseProtocol, isDBConsoleProtocol } from '@/utils/protocol'
+import { actionDenial, denialText } from '@/utils/scopedAssets'
 import {
   WINRM_SCHEME_VALUES,
   WINRM_TLS_MODE_VALUES,
@@ -436,6 +482,8 @@ const props = defineProps({
   tagNames: { type: Array, default: () => [] },
   inheritPolicyLabel: { type: String, default: '' },
   title: { type: String, default: '' },
+  // 範圍化表單狀態（見 useScopedAssetsPage）；null＝沿現行
+  scoped: { type: Object, default: null },
 })
 
 const emit = defineEmits([
@@ -447,6 +495,16 @@ const emit = defineEmits([
 ])
 
 const { t } = useI18n()
+
+// 無存取政策權限點：連線政策欄唯讀（送出時由 Assets.vue 一併不帶此鍵）
+const accessPolicyReadonly = computed(() => !can(ACCESS_POLICY_PERM))
+
+// 停用／啟用另受刪停規則限制：帶旗標時只看伺服器的 disable 旗標
+const activeDenial = computed(() =>
+  props.scoped?.actions ? actionDenial({ actions: props.scoped.actions }, 'disable') : null
+)
+const activeDenied = computed(() => !!activeDenial.value)
+const activeDeniedText = computed(() => denialText(t, activeDenial.value))
 
 const activeNames = ref([])
 const serverError = ref(false)
@@ -481,7 +539,9 @@ const hasValue = computed(() => {
 
 // k8s 的 namespace 是必填且住在收合區：協議一選就展開，
 // 否則使用者會對著一個看不見的必填欄位卡住
-const hasRequiredField = computed(() => form.value.protocol === 'k8s')
+const hasRequiredField = computed(
+  () => form.value.protocol === 'k8s' || props.scoped?.mode === 'create'
+)
 
 const markState = computed(() => {
   if (serverError.value) return 'error'

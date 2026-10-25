@@ -22,7 +22,7 @@ import (
 // issuer. It does not open an agent-facing connect-token HTTP route.
 func TestSubjectKindRequestDeclarationCannotOverrideAgentCredential(t *testing.T) {
 	h, db := setupGenerationTest(t)
-	require.NoError(t, db.AutoMigrate(&model.AgentToken{}, &model.AlertRule{}))
+	require.NoError(t, migrateWithAuthz(db, &model.AgentToken{}, &model.AlertRule{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	require.NoError(t, db.Model(&model.User{}).Where("id=1").Updates(map[string]any{"kind": model.KindAgent, "owner_user_id": 2}).Error)
 	accountID := seedAccount(t, db, 1, "app", true)
 	task, _ := seedEnvelope(t, db, model.AccountScope{"app"})
@@ -68,7 +68,7 @@ func TestSubjectKindRequestDeclarationCannotOverrideAgentCredential(t *testing.T
 
 func TestPrincipalKindGrantBindsConsoleSessionMatcher(t *testing.T) {
 	h, db := setupGenerationTest(t)
-	require.NoError(t, db.AutoMigrate(&model.AlertRule{}))
+	require.NoError(t, migrateWithAuthz(db, &model.AlertRule{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	agentRule := model.AlertRule{Name: "agent-only", Pattern: "SELECT", SubjectKind: model.KindAgent, Direction: model.DirectionInput, Action: "block", Severity: "high", Enabled: true}
 	allRule := model.AlertRule{Name: "all-subjects", Pattern: "DROP", SubjectKind: model.AlertSubjectAll, Direction: model.DirectionInput, Action: "block", Severity: "high", Enabled: true}
 	require.NoError(t, db.Create(&agentRule).Error)

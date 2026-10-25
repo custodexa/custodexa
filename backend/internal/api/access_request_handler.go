@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -20,8 +21,16 @@ import (
 // ApproverScopeServiceInterface 審核範圍服務接口（測試注入）
 type ApproverScopeServiceInterface interface {
 	List() ([]*model.ApproverScope, error)
-	Create(spec authz.ApproverScopeSpec) (*model.ApproverScope, error)
-	Delete(id uint) error
+	Create(ctx context.Context, spec authz.ApproverScopeSpec) (*model.ApproverScope, error)
+	Delete(ctx context.Context, id uint) error
+}
+
+// ApproverScopeScopedReads 審核範圍的範圍化讀取面（authz.ApproverScopeService 實作）：
+// 列表投影、審核方目錄與客體候選。服務未實作時列表退回全量（內部建構與測試用），兩個選擇端點 fail-close。
+type ApproverScopeScopedReads interface {
+	ListFor(ctx context.Context) (*authz.ApproverScopeListView, error)
+	ApproverOptions(ctx context.Context) (*authz.ApproverOptionsResult, error)
+	TargetOptions(ctx context.Context, q authz.ApproverTargetQuery) (*authz.ApproverTargetPage, error)
 }
 
 // AccessRequestHandler 申請核准流 API
@@ -140,19 +149,16 @@ func respondAccessRequestError(c *gin.Context, internalCode apierror.ErrCode, er
 	}
 }
 
-// requesterIdentity 從 context 取申請人身分
-func requesterIdentity(c *gin.Context) (uint, string, string, bool) {
+// requesterIdentity 從 context 取申請人身分；第三個回傳值＝申請人是否豁免申請
+// （內建超管或稽核員身分，由主體判定）
+func requesterIdentity(c *gin.Context) (uint, string, bool, bool) {
 	userID, exists := middleware.GetCurrentUserID(c)
 	if !exists {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
-		return 0, "", "", false
+		return 0, "", false, false
 	}
 	username, _ := middleware.GetCurrentUsername(c)
-	role := ""
-	if v, ok := c.Get("role"); ok {
-		role, _ = v.(string)
-	}
-	return userID, username, role, true
+	return userID, username, middleware.PrincipalFrom(c).ViewShortcut(), true
 }
 
 // notEffectiveAdmin 審核資格收斂：`admin` 角色本身不構成有效審核資格，
@@ -205,7 +211,7 @@ type createAccessRequestReq struct {
 
 // Create POST /access-requests 提出申請
 func (h *AccessRequestHandler) Create(c *gin.Context) {
-	userID, username, role, ok := requesterIdentity(c)
+	userID, username, exempt, ok := requesterIdentity(c)
 	if !ok {
 		return
 	}
@@ -225,7 +231,7 @@ func (h *AccessRequestHandler) Create(c *gin.Context) {
 			items[i] = authz.ItemInput{AssetID: item.AssetID, Accounts: item.Accounts}
 		}
 	}
-	created, err := h.requests.Submit(userID, username, role, authz.SubmitAccessRequestInput{
+	created, err := h.requests.Submit(userID, username, exempt, authz.SubmitAccessRequestInput{
 		AssetID: req.AssetID,
 		Items:   items, ExecutorUserID: req.ExecutorUserID,
 		Reason:          req.Reason,
@@ -446,7 +452,7 @@ type breakGlassReq struct {
 // BreakGlass POST /access-requests/break-glass 破窗緊急連線（登入即可；
 // 開關/資格/段位全在 service 層裁決，關閉時 403 break_glass_disabled）
 func (h *AccessRequestHandler) BreakGlass(c *gin.Context) {
-	userID, username, role, ok := requesterIdentity(c)
+	userID, username, exempt, ok := requesterIdentity(c)
 	if !ok {
 		return
 	}
@@ -455,7 +461,7 @@ func (h *AccessRequestHandler) BreakGlass(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBreakGlassFields, nil)
 		return
 	}
-	created, err := h.requests.BreakGlass(userID, username, role, req.AssetID, req.Reason)
+	created, err := h.requests.BreakGlass(userID, username, exempt, req.AssetID, req.Reason)
 	if err != nil {
 		respondAccessRequestError(c, apierror.CodeInternalBreakGlassSubmit, err)
 		return
@@ -560,8 +566,30 @@ type createApproverScopeReq struct {
 	SubjectGroupID uint `json:"subject_group_id"`
 }
 
-// ListScopes GET /approver-scopes 範圍清單（admin only）
+// ListScopes GET /approver-scopes 範圍清單：超級管理者維持現行形狀；其他持有者依範圍投影並帶精簡 DTO。
 func (h *AccessRequestHandler) ListScopes(c *gin.Context) {
+	if reads, ok := h.scopes.(ApproverScopeScopedReads); ok {
+		view, err := reads.ListFor(operatorContext(c))
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalApproverScopeQuery, err)
+			return
+		}
+		if view.Full {
+			c.JSON(http.StatusOK, gin.H{"data": view.Rows, "total": len(view.Rows)})
+			return
+		}
+		rows := make([]approverScopeDTO, 0, len(view.Rows))
+		for _, r := range view.Rows {
+			rows = append(rows, toApproverScopeDTO(r))
+		}
+		body := gin.H{"data": rows, "total": len(rows), "coverage": view.Coverage,
+			"min_approvals": view.MinApprovals, "applicant_manageable": view.ApplicantManageable}
+		if view.NodeScoped {
+			body["management_scope"] = "nodes"
+		}
+		c.JSON(http.StatusOK, body)
+		return
+	}
 	scopes, err := h.scopes.List()
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalApproverScopeQuery, err)
@@ -570,7 +598,53 @@ func (h *AccessRequestHandler) ListScopes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": scopes, "total": len(scopes)})
 }
 
-// CreateScope POST /approver-scopes 分配範圍（admin only、審計經中介層；
+// ApproverOptions GET /approver-scopes/approver-options 審核方目錄（有限欄位，無 email）。
+func (h *AccessRequestHandler) ApproverOptions(c *gin.Context) {
+	reads, ok := h.scopes.(ApproverScopeScopedReads)
+	if !ok {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalApproverScopeQuery, errors.New("approver scope reads not wired"))
+		return
+	}
+	out, err := reads.ApproverOptions(operatorContext(c))
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalApproverScopeQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// TargetOptions GET /approver-scopes/target-options 客體候選（kind=asset|node，依審核範圍管理鍵的集合述詞投影）。
+func (h *AccessRequestHandler) TargetOptions(c *gin.Context) {
+	reads, ok := h.scopes.(ApproverScopeScopedReads)
+	if !ok {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalApproverScopeQuery, errors.New("approver scope reads not wired"))
+		return
+	}
+	q := authz.ApproverTargetQuery{Kind: c.Query("kind"), Search: c.Query("search")}
+	if q.Kind != "asset" && q.Kind != "node" {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
+	q.Page, _ = strconv.Atoi(c.Query("page"))
+	q.PageSize, _ = strconv.Atoi(c.Query("page_size"))
+	if v := c.Query("node_id"); v != "" {
+		id, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		n := uint(id)
+		q.NodeID = &n
+	}
+	out, err := reads.TargetOptions(operatorContext(c), q)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalApproverScopeQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// CreateScope POST /approver-scopes 分配範圍（持審核範圍管理權限點者，範圍化主體另經範圍判定；審計經中介層；
 // 客體四維恰一：asset_id/asset_group_id/subject_user_id/subject_group_id）
 func (h *AccessRequestHandler) CreateScope(c *gin.Context) {
 	userID, _, _, ok := requesterIdentity(c)
@@ -601,8 +675,12 @@ func (h *AccessRequestHandler) CreateScope(c *gin.Context) {
 	if req.SubjectGroupID != 0 {
 		spec.SubjectGroupID = &req.SubjectGroupID
 	}
-	scope, err := h.scopes.Create(spec)
+	// 操作者以請求脈絡主體為準：服務層核對 GrantedBy 與主體一致
+	scope, err := h.scopes.Create(operatorContext(c), spec)
 	if err != nil {
+		if respondApproverScopeScopeError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, authz.ErrScopeTargetInvalid):
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeScopeTargetInvalid, nil)
@@ -610,6 +688,8 @@ func (h *AccessRequestHandler) CreateScope(c *gin.Context) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeScopeActorInvalid, nil)
 		case errors.Is(err, authz.ErrNotApproverRole):
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeScopeNotApproverRole, nil)
+		case errors.Is(err, authz.ErrApproverScopeSubjectOverlap):
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeApproverScopeSubjectOverlap, nil)
 		case errors.Is(err, authz.ErrScopeExists):
 			apierror.Respond(c, http.StatusConflict, apierror.CodeApproverScopeExists, nil)
 		default:
@@ -617,17 +697,26 @@ func (h *AccessRequestHandler) CreateScope(c *gin.Context) {
 		}
 		return
 	}
+	if p := middleware.PrincipalFrom(c); p != nil && !p.IsSuperAdmin() {
+		if _, scoped := h.scopes.(ApproverScopeScopedReads); scoped {
+			c.JSON(http.StatusCreated, toApproverScopeDTO(scope))
+			return
+		}
+	}
 	c.JSON(http.StatusCreated, scope)
 }
 
-// DeleteScope DELETE /approver-scopes/:id 移除範圍（admin only）
+// DeleteScope DELETE /approver-scopes/:id 移除範圍（持審核範圍管理權限點者，範圍化主體另經範圍判定）
 func (h *AccessRequestHandler) DeleteScope(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidApproverScopeID, nil)
 		return
 	}
-	if err := h.scopes.Delete(uint(id)); err != nil {
+	if err := h.scopes.Delete(operatorContext(c), uint(id)); err != nil {
+		if respondApproverScopeScopeError(c, err) {
+			return
+		}
 		if errors.Is(err, authz.ErrScopeNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeApproverScopeNotFound, nil)
 			return
@@ -641,10 +730,10 @@ func (h *AccessRequestHandler) DeleteScope(c *gin.Context) {
 // RegisterRoutes 註冊路由：申請側登入即可（service 層拒 admin/auditor 申請）；
 // 審核側 RequireApproverRole 即時查 DB roles（**不含 admin**）；
 // 撤銷側 RequireRevokeEligibility（admin OR 有效審核者，與審核端點分離）；
-// 範圍管理 admin only（＝admin 脫困路徑之一，不得加掛審核類守衛）
+// 範圍管理經登錄閘以審核範圍管理權限點判定（脫困路徑之一，不得加掛審核類守衛）
 func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	requests := r.Group("/access-requests")
-	requests.Use(middleware.AuthMiddleware(authService))
+	requests.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	{
 		requests.POST("", h.Create)
 		requests.POST("/:id/reports", h.SubmitReport)
@@ -679,14 +768,16 @@ func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 	}
 
 	scopes := r.Group("/approver-scopes")
-	scopes.Use(middleware.AuthMiddleware(authService), middleware.RequireRole("admin"))
+	scopes.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	{
 		scopes.GET("", h.ListScopes)
 		scopes.POST("", h.CreateScope)
 		scopes.DELETE("/:id", h.DeleteScope)
+		scopes.GET("/approver-options", h.ApproverOptions)
+		scopes.GET("/target-options", h.TargetOptions)
 	}
 	// Append new groups to preserve existing middleware closure identities in route goldens.
-	tasks := r.Group("/agent-tasks", middleware.AuthMiddleware(authService), middleware.RequirePermission(middleware.PermAuditView))
+	tasks := r.Group("/agent-tasks", middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	tasks.GET("", h.AgentTasks)
 	tasks.GET("/:requestId", h.AgentTaskDetail)
 

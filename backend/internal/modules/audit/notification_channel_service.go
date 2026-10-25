@@ -2,17 +2,24 @@ package audit
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"log"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // 通道驗證錯誤：handler 以 errors.Is 區分 400（輸入問題）與 500（系統問題）
@@ -75,8 +82,31 @@ type NotificationChannelService struct {
 	// 消除「組裝順序錯置時以錯誤 codec 寫出密文」的窗口。
 	// nil＝明文直通（僅單測建構路徑，生產組裝一律注入）
 	codec crypto.ColumnCodec
+
+	// systemAlerts 通道變更時產生系統告警的交易內落地面。
+	// 建構後由組裝根注入；未注入時需要它的路徑回 port.ErrSystemAlertSinkMissing。
+	systemAlerts port.SystemAlertSink
 	// transmission 傳輸政策閘；nil＝閘不生效
 	transmission *policy.TransmissionPolicyService
+	// auditTx 通道變更的服務層審計落地面（與變更同交易，寫不進去變更就不成立）。
+	// 建構後由組裝根注入；未注入時三個寫入操作回 port.ErrTxSinkMissing。
+	auditTx port.TxSink
+}
+
+// ChannelActor 通道寫入操作的操作者（審計與系統告警都需要可指認的人）。
+type ChannelActor struct {
+	ID   uint
+	Name string
+	IP   string
+}
+
+func (r *NotificationChannelRequest) actor() ChannelActor {
+	return ChannelActor{ID: r.ActorID, Name: r.ActorName, IP: r.ActorIP}
+}
+
+// SetAuditTxSink 注入交易內審計落地面（組裝根）。
+func (s *NotificationChannelService) SetAuditTxSink(sink port.TxSink) {
+	s.auditTx = sink
 }
 
 // NewNotificationChannelService 創建通知通道服務；codec 為 secret/url 的信封
@@ -85,52 +115,32 @@ func NewNotificationChannelService(db *gorm.DB, codec crypto.ColumnCodec) *Notif
 	return &NotificationChannelService{db: db, codec: codec}
 }
 
+// SetSystemAlertSink 注入交易內系統告警落地面（組裝根）。
+func (s *NotificationChannelService) SetSystemAlertSink(sink port.SystemAlertSink) {
+	s.systemAlerts = sink
+}
+
 // SetTransmissionPolicy 注入傳輸政策閘（main 組裝時）
 func (s *NotificationChannelService) SetTransmissionPolicy(tp *policy.TransmissionPolicyService) {
 	s.transmission = tp
 }
 
-// checkTransmissionGate 存檔閘：以「存檔後生效的 URL」判定；
-// 通過且屬 warn 確認情境時把聲明入審計
-func (s *NotificationChannelService) checkTransmissionGate(effectiveURL string, req *NotificationChannelRequest, channelName string) error {
+// checkTransmissionGate 存檔閘：以「存檔後生效的 URL」判定。
+// 通過且屬 warn 確認情境時回傳被確認的風險項，由呼叫端併入同交易的通道審計列
+// （URL 屬 secret 不落審計，風險項本身不含網址）
+func (s *NotificationChannelService) checkTransmissionGate(effectiveURL string, req *NotificationChannelRequest) ([]policy.RiskItem, error) {
 	if s.transmission == nil {
-		return nil
+		return nil, nil
 	}
 	risks := s.transmission.NotifyRisks(effectiveURL)
 	if err := s.transmission.CheckSettingSave(policy.TransportChannelNotify, risks, req.RiskAcknowledged); err != nil {
-		return err
+		return nil, err
 	}
 	if len(risks) > 0 && req.RiskAcknowledged &&
 		s.transmission.ChannelLevel(policy.TransportChannelNotify) == policy.TransportLevelWarn {
-		s.auditAcknowledgment(req, channelName, risks)
+		return risks, nil
 	}
-	return nil
-}
-
-// auditAcknowledgment warn 確認聲明入審計（管理員/時間/設定摘要/風險項；
-// URL 屬 secret 不落審計，僅記通道名）
-func (s *NotificationChannelService) auditAcknowledgment(req *NotificationChannelRequest, channelName string, risks []policy.RiskItem) {
-	details, err := json.Marshal(map[string]interface{}{
-		"event":   "setting_ack",
-		"channel": policy.TransportChannelNotify,
-		"name":    channelName,
-		"risks":   risks,
-	})
-	if err != nil {
-		details = []byte(`{"event":"setting_ack","channel":"notify"}`)
-	}
-	entry := &model.AuditLog{
-		Action:   model.ActionUpdate,
-		Resource: model.ResourceTransmission,
-		Status:   model.StatusSuccess,
-		UserID:   req.ActorID,
-		Username: req.ActorName,
-		ClientIP: req.ActorIP,
-		Details:  string(details),
-	}
-	if err := s.db.Create(entry).Error; err != nil {
-		log.Printf("[NotificationChannel] 傳輸確認聲明稽核寫入失敗: %v", err)
-	}
+	return nil, nil
 }
 
 // channelSettingChange 變更詳情的單筆形狀（沿安全政策端點的 changes[] 慣例）
@@ -140,38 +150,243 @@ type channelSettingChange struct {
 	New   string `json:"new"`
 }
 
-// auditMinSeverityChange 推送門檻改動的前後值留痕。
+// 通道變更型態（系統告警 change 參數與審計詳情共用）。
+const (
+	channelChangeCreated  = "created"
+	channelChangeUpdated  = "updated"
+	channelChangeDisabled = "disabled"
+	channelChangeEnabled  = "enabled"
+	channelChangeDeleted  = "deleted"
+)
+
+// channelAuditDetails 通道變更審計列的詳情。
 //
-// 中介層的請求本文只記新值，答不出「這次從哪一檔改到哪一檔」（例如收窄到只有高等級
-// 的那一刻關掉了哪些等級），故由持有舊值的 service 另寫一列。門檻未變時不寫。
-// 寫入走根 DB、失敗只記 log（fail-open）：已生效的設定不因留痕失敗回捲，
-// 同一檔 auditAcknowledgment 與安全政策端點的取捨。details 無 URL 與 secret
-func (s *NotificationChannelService) auditMinSeverityChange(req *NotificationChannelRequest, channelID uint, oldValue, newValue string) {
-	details, err := json.Marshal(map[string]interface{}{
-		"event": "channel_min_severity_change",
-		"name":  req.Name,
-		"changes": []channelSettingChange{
-			{Field: "min_severity", Old: oldValue, New: newValue},
-		},
-	})
+// 不含 secret 與完整網址：網址只以遮罩形出現（保留 scheme、host 與末 4 碼），secret 只記
+// 「已設定／已清除」。傳輸風險確認與門檻前後值併在同一列，而不是另寫根 DB 的旁路列。
+type channelAuditDetails struct {
+	Event            string                 `json:"event"`
+	Change           string                 `json:"change"`
+	Name             string                 `json:"name"`
+	CorrelationID    string                 `json:"correlation_id"`
+	Changes          []channelSettingChange `json:"changes"`
+	URLBefore        string                 `json:"url_before,omitempty"`
+	URLAfter         string                 `json:"url_after,omitempty"`
+	TransportRiskAck []policy.RiskItem      `json:"transport_risk_ack,omitempty"`
+}
+
+// channelAlertRaiser 系統告警落地面的內部變體：可附加額外目的地快照。
+// 公開 port 只有 RaiseInTx；通道變更需要把變更前後的目的地併入，所以組裝根注入的實作
+// 必須同時滿足本介面，否則通道寫入回錯（不降級成漏送）。
+type channelAlertRaiser interface {
+	raise(tx *gorm.DB, ev port.SystemAlertEvent, extra []systemAlertDestination) (port.SystemAlertReceipt, error)
+}
+
+var errChannelAlertRaiserUnsupported = errors.New("系統告警落地面不支援附加目的地，通道變更無法產生告警")
+
+func newChannelCorrelationID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("產生關聯識別失敗: %w", err)
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
+// plainChannel 通道列的明文視圖（只在記憶體內短暫存在，不入審計與回應）。
+type plainChannel struct {
+	row    model.NotificationChannel
+	url    string
+	secret string
+	// unreadable 網址或密鑰任一解不開：審計與差異仍用解得開的那一欄，
+	// 但這一側不作為額外投遞目的地（避免以空密鑰對原本有簽章的端點送出未簽章通知）。
+	unreadable bool
+}
+
+func (s *NotificationChannelService) plain(ch model.NotificationChannel) (plainChannel, error) {
+	u, err := readChannelValue(s.codec, keyvault.RefChannelURL, ch.URL)
 	if err != nil {
-		details = []byte(`{"event":"channel_min_severity_change"}`)
+		return plainChannel{}, fmt.Errorf("解密通道 URL 失敗: %w", err)
+	}
+	sec, err := readChannelValue(s.codec, keyvault.RefChannelSecret, ch.Secret)
+	if err != nil {
+		return plainChannel{}, fmt.Errorf("解密通道 secret 失敗: %w", err)
+	}
+	return plainChannel{row: ch, url: u, secret: sec}, nil
+}
+
+// plainOrUnreadable 同 plain，但解不開的欄位以空值繼續：管理員必須能修復或刪除設定壞掉的通道，
+// 否則只能進資料庫刪列。網址與密鑰各自解，只有解不開的那一欄當成空值——密鑰壞掉時改網址，
+// 審計與告警仍記得到遮罩後的前後網址。原因只記伺服器日誌。
+func (s *NotificationChannelService) plainOrUnreadable(ch model.NotificationChannel) plainChannel {
+	p := plainChannel{row: ch}
+	if u, err := readChannelValue(s.codec, keyvault.RefChannelURL, ch.URL); err != nil {
+		log.Printf("[NotificationChannel] 通道 %d（%s）的網址無法解讀，以空值繼續: %v", ch.ID, ch.Name, err)
+		p.unreadable = true
+	} else {
+		p.url = u
+	}
+	if sec, err := readChannelValue(s.codec, keyvault.RefChannelSecret, ch.Secret); err != nil {
+		log.Printf("[NotificationChannel] 通道 %d（%s）的簽章密鑰無法解讀，以空值繼續: %v", ch.ID, ch.Name, err)
+		p.unreadable = true
+	} else {
+		p.secret = sec
+	}
+	return p
+}
+
+// diffChannels 比較變更前後（任一側可為 nil）並回傳欄位差異與變更型態。
+// URL 與 secret 以明文比較，但輸出只有遮罩形與「已設定／已清除」。
+func diffChannels(before, after *plainChannel) (changes []channelSettingChange, fields []string, kind string) {
+	add := func(field, old, new string) {
+		changes = append(changes, channelSettingChange{Field: field, Old: old, New: new})
+		fields = append(fields, field)
+	}
+	switch {
+	case before == nil && after != nil:
+		kind = channelChangeCreated
+		add("name", "", after.row.Name)
+		add("type", "", after.row.Type)
+		add("url", "", maskChannelURL(after.url))
+		if after.secret != "" {
+			add("secret", "", "set")
+		}
+		add("enabled", "", strconv.FormatBool(after.row.Enabled))
+		add("language", "", after.row.Language)
+		add("min_severity", "", after.row.MinSeverity)
+		return changes, fields, kind
+	case before != nil && after == nil:
+		kind = channelChangeDeleted
+		add("name", before.row.Name, "")
+		add("type", before.row.Type, "")
+		add("url", maskChannelURL(before.url), "")
+		add("enabled", strconv.FormatBool(before.row.Enabled), "")
+		return changes, fields, kind
+	}
+	if before.row.Name != after.row.Name {
+		add("name", before.row.Name, after.row.Name)
+	}
+	if before.row.Type != after.row.Type {
+		add("type", before.row.Type, after.row.Type)
+	}
+	if before.url != after.url {
+		add("url", maskChannelURL(before.url), maskChannelURL(after.url))
+	}
+	if before.secret != after.secret {
+		switch {
+		case after.secret == "":
+			add("secret", "set", "cleared")
+		case before.secret == "":
+			add("secret", "unset", "set")
+		default:
+			add("secret", "set", "set")
+		}
+	}
+	if before.row.Enabled != after.row.Enabled {
+		add("enabled", strconv.FormatBool(before.row.Enabled), strconv.FormatBool(after.row.Enabled))
+	}
+	if before.row.Language != after.row.Language {
+		add("language", before.row.Language, after.row.Language)
+	}
+	if before.row.MinSeverity != after.row.MinSeverity {
+		add("min_severity", before.row.MinSeverity, after.row.MinSeverity)
+	}
+	kind = channelChangeUpdated
+	if before.row.Enabled != after.row.Enabled {
+		if after.row.Enabled {
+			kind = channelChangeEnabled
+		} else {
+			kind = channelChangeDisabled
+		}
+	}
+	return changes, fields, kind
+}
+
+// recordChannelChange 在呼叫方交易內寫服務層審計並產生 notification_channel_changed 系統告警。
+// 任一步失敗回錯，由呼叫方讓錯誤逸出交易閉包使整筆回滾。
+//
+// 告警目的地＝其他啟用通道 ∪ 本通道變更前快照 ∪ 本通道變更後快照（由落地面去重）：
+// 停用或刪除時舊目的地仍收到通知，建立即停用的通道也收到「已建立」。
+func (s *NotificationChannelService) recordChannelChange(tx *gorm.DB, actor ChannelActor, action model.AuditAction,
+	channelID uint, before, after *plainChannel, riskAck []policy.RiskItem) error {
+	changes, fields, kind := diffChannels(before, after)
+	corr, err := newChannelCorrelationID()
+	if err != nil {
+		return err
+	}
+	name := ""
+	details := channelAuditDetails{Event: "notification_channel_change", Change: kind, CorrelationID: corr,
+		Changes: changes, TransportRiskAck: riskAck}
+	if before != nil {
+		name = before.row.Name
+		details.URLBefore = maskChannelURL(before.url)
+	}
+	if after != nil {
+		name = after.row.Name
+		details.URLAfter = maskChannelURL(after.url)
+	}
+	details.Name = name
+	raw, err := json.Marshal(details)
+	if err != nil {
+		return fmt.Errorf("編碼通道審計詳情失敗: %w", err)
 	}
 	id := channelID
-	entry := &model.AuditLog{
-		Action:     model.ActionUpdate,
-		Resource:   model.ResourceNotifyChannel,
+	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{
+		Actor:      gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
+		Action:     string(action),
+		Resource:   string(model.ResourceNotifyChannel),
 		ResourceID: &id,
-		Status:     model.StatusSuccess,
-		UserID:     req.ActorID,
-		Username:   req.ActorName,
-		ClientIP:   req.ActorIP,
-		ErrorMsg:   fmt.Sprintf("min_severity old=%s new=%s", oldValue, newValue),
-		Details:    string(details),
+		Status:     string(model.StatusSuccess),
+		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
+		Details:    string(raw),
+	}); err != nil {
+		return fmt.Errorf("通道變更審計留痕失敗: %w", err)
 	}
-	if err := s.db.Create(entry).Error; err != nil {
-		log.Printf("[NotificationChannel] 推送門檻變更稽核寫入失敗 (channel_id=%d): %v", channelID, err)
+
+	// 沒有任何欄位變動的重複存檔不產生告警（沒有發生值得通知的事）；審計列仍留。
+	if kind == channelChangeUpdated && len(changes) == 0 {
+		return nil
 	}
+	// 前後快照直接用已解開的明文；任一欄解不開的一側不作為額外目的地
+	// （仍啟用的通道由落地面以「解不開」留下放棄紀錄）。
+	var extra []systemAlertDestination
+	for _, side := range []*plainChannel{before, after} {
+		if side == nil || side.unreadable || side.url == "" {
+			continue
+		}
+		id := side.row.ID
+		extra = append(extra, systemAlertDestination{
+			Type: side.row.Type, Name: side.row.Name, Language: side.row.Language,
+			SourceChannelID: &id, URL: side.url, Secret: side.secret,
+		})
+	}
+	params := map[string]string{"change": kind}
+	if kind != channelChangeCreated && kind != channelChangeDeleted && len(fields) > 0 {
+		params["changed_fields"] = strings.Join(fields, ",")
+	}
+	if details.URLBefore != "" {
+		params["url_before"] = details.URLBefore
+	}
+	if details.URLAfter != "" {
+		params["url_after"] = details.URLAfter
+	}
+	ev := port.SystemAlertEvent{
+		Type:          port.SystemAlertNotificationChannelChanged,
+		Actor:         port.SystemAlertActor{UserID: actor.ID, Username: actor.Name},
+		ClientIP:      actor.IP,
+		Target:        port.SystemAlertTarget{Kind: port.SystemAlertTargetNotificationChannel, ID: strconv.FormatUint(uint64(channelID), 10)},
+		CorrelationID: corr,
+		Params:        params,
+	}
+	if s.systemAlerts == nil {
+		return port.ErrSystemAlertSinkMissing
+	}
+	raiser, ok := s.systemAlerts.(channelAlertRaiser)
+	if !ok {
+		return errChannelAlertRaiserUnsupported
+	}
+	if _, err := raiser.raise(tx, ev, extra); err != nil {
+		return fmt.Errorf("產生通道變更系統告警失敗: %w", err)
+	}
+	return nil
 }
 
 // sealChannelValue 加密落庫值；codec 未注入時明文直通（單測路徑）。
@@ -360,7 +575,8 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		secret = ""
 	}
 	// 傳輸政策閘：驗證之後、落庫之前
-	if err := s.checkTransmissionGate(req.URL, req, req.Name); err != nil {
+	riskAck, err := s.checkTransmissionGate(req.URL, req)
+	if err != nil {
 		return nil, err
 	}
 
@@ -381,21 +597,29 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		Language:    language,
 		MinSeverity: minSeverity,
 	}
+	// 寫入、服務層審計與系統告警同一個交易：任一步失敗整筆回滾，推送快取不重載。
+	//
 	// `Enabled` 欄帶 default:true，而 GORM 對帶 default 的欄位遇零值會改用預設值
 	// ——直接 Create 會讓「建立時就停用」靜默變成啟用、照常推送。落庫後在同一交易內
 	// 補寫請求值（沿 rotation_report_schedule_service.Create 的作法）
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&channel).Error; err != nil {
-			return err
+			return fmt.Errorf("建立通知通道失敗: %w", err)
 		}
-		if enabled {
-			return nil
+		if !enabled {
+			channel.Enabled = false
+			if err := tx.Model(&model.NotificationChannel{}).Where("id = ?", channel.ID).
+				Update("enabled", false).Error; err != nil {
+				return fmt.Errorf("建立通知通道失敗: %w", err)
+			}
 		}
-		channel.Enabled = false
-		return tx.Model(&model.NotificationChannel{}).Where("id = ?", channel.ID).
-			Update("enabled", false).Error
+		after, perr := s.plain(channel)
+		if perr != nil {
+			return perr
+		}
+		return s.recordChannelChange(tx, req.actor(), model.ActionCreate, channel.ID, nil, &after, riskAck)
 	}); err != nil {
-		return nil, fmt.Errorf("建立通知通道失敗: %w", err)
+		return nil, err
 	}
 
 	_ = s.toDisplay(&channel)
@@ -442,7 +666,8 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 			effectiveURL = plain
 		}
 	}
-	if err := s.checkTransmissionGate(effectiveURL, req, req.Name); err != nil {
+	riskAck, err := s.checkTransmissionGate(effectiveURL, req)
+	if err != nil {
 		return nil, err
 	}
 
@@ -485,32 +710,70 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 	if req.Language != nil {
 		updates["language"] = *req.Language
 	}
-	// 門檻前值須在 Updates 之前取：Updates 會把新值寫回 channel
-	previousMinSeverity := channel.MinSeverity
 	if req.MinSeverity != nil {
 		updates["min_severity"] = *req.MinSeverity
 	}
-	if err := s.db.Model(channel).Updates(updates).Error; err != nil {
-		return nil, fmt.Errorf("更新通知通道失敗: %w", err)
-	}
-	if req.MinSeverity != nil && *req.MinSeverity != previousMinSeverity {
-		s.auditMinSeverityChange(req, channel.ID, previousMinSeverity, *req.MinSeverity)
+
+	// 讀前列、更新、審計與系統告警同一個交易：任一步失敗整筆回滾，推送快取不重載
+	var stored model.NotificationChannel
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 變更前快照在交易內讀（PostgreSQL 加列鎖）：兩人同時改同一通道時，
+		// 後者的「變更前」是前者提交後的值，實際的前一個目的地才會收到通知。
+		// 解不開的通道仍可修復。
+		q := tx
+		if tx.Dialector.Name() == "postgres" {
+			q = tx.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var current model.NotificationChannel
+		if err := q.First(&current, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrChannelNotFound
+			}
+			return fmt.Errorf("查詢通知通道失敗: %w", err)
+		}
+		before := s.plainOrUnreadable(current)
+		if err := tx.Model(&model.NotificationChannel{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			return fmt.Errorf("更新通知通道失敗: %w", err)
+		}
+		if err := tx.First(&stored, id).Error; err != nil {
+			return fmt.Errorf("讀回通知通道失敗: %w", err)
+		}
+		after := s.plainOrUnreadable(stored)
+		return s.recordChannelChange(tx, req.actor(), model.ActionUpdate, id, &before, &after, riskAck)
+	}); err != nil {
+		return nil, err
 	}
 
-	// channel 欄位在 Updates 後反映新落庫值（沿用時保留 getStored 讀到的舊值）
-	_ = s.toDisplay(channel)
+	// 回應用落庫後的列（沿用時保留的舊值已隨讀回一併呈現）
+	result := stored
+	_ = s.toDisplay(&result)
 	ReloadAlertNotifier()
-	return channel, nil
+	return &result, nil
 }
 
-// Delete 刪除通道；成功後刷新推送快取
-func (s *NotificationChannelService) Delete(id uint) error {
-	result := s.db.Delete(&model.NotificationChannel{}, id)
-	if result.Error != nil {
-		return fmt.Errorf("刪除通知通道失敗: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return ErrChannelNotFound
+// Delete 刪除通道；成功後刷新推送快取。
+// 刪除前的快照併入告警目的地，故舊目的地在通道列已不存在之後仍會收到「已刪除」通知。
+func (s *NotificationChannelService) Delete(id uint, actor ChannelActor) error {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var row model.NotificationChannel
+		if err := tx.First(&row, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrChannelNotFound
+			}
+			return fmt.Errorf("查詢通知通道失敗: %w", err)
+		}
+		// 解不開的通道也要能刪。
+		before := s.plainOrUnreadable(row)
+		res := tx.Delete(&model.NotificationChannel{}, id)
+		if res.Error != nil {
+			return fmt.Errorf("刪除通知通道失敗: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrChannelNotFound
+		}
+		return s.recordChannelChange(tx, actor, model.ActionDelete, id, &before, nil, nil)
+	}); err != nil {
+		return err
 	}
 
 	ReloadAlertNotifier()

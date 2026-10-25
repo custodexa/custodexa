@@ -15,10 +15,11 @@
         class="node-count"
       >{{ counts.all }}</span></span>
       <el-button
-        v-if="isAdmin"
+        v-if="showCreateRoot"
         link
         type="primary"
         size="small"
+        class="create-root-btn"
         @click="openCreate(null)"
       >
         <el-icon><Plus /></el-icon>
@@ -37,13 +38,21 @@
       @node-click="selectNode"
     >
       <template #default="{ data }">
-        <div class="tree-node-row">
+        <div
+          class="tree-node-row"
+          :class="{ 'is-locator': data.locator_only === true }"
+          :title="data.locator_only === true ? $t('nodeTree.locatorAncestor') : undefined"
+        >
           <span class="node-label">
             {{ data.name }}
+            <span
+              v-if="data.scope_root === true"
+              class="scope-badge"
+            >{{ $t('nodeTree.scopeBadge') }}</span>
             <span class="node-count">{{ data.subtree_asset_count }}</span>
           </span>
           <el-dropdown
-            v-if="isAdmin"
+            v-if="showMenu(data)"
             trigger="click"
             class="node-menu"
             @command="(cmd) => handleMenu(cmd, data)"
@@ -56,23 +65,57 @@
             </el-icon>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="create-child">
+                <el-dropdown-item
+                  v-if="itemState(data, 'create-child').visible"
+                  command="create-child"
+                  :disabled="itemState(data, 'create-child').disabled"
+                >
                   {{ $t('nodeTree.createChild') }}
                 </el-dropdown-item>
-                <el-dropdown-item command="rename">
+                <el-dropdown-item
+                  v-if="itemState(data, 'rename').visible"
+                  command="rename"
+                  :disabled="itemState(data, 'rename').disabled"
+                >
                   {{ $t('common.rename') }}
-                </el-dropdown-item>
-                <el-dropdown-item command="move">
-                  {{ $t('nodeTree.move') }}
-                </el-dropdown-item>
-                <el-dropdown-item command="authorize">
-                  {{ $t('nodeTree.authorizeNode') }}
+                  <span
+                    v-if="itemState(data, 'rename').reason"
+                    class="item-reason"
+                  >{{ $t(itemState(data, 'rename').reason) }}</span>
                 </el-dropdown-item>
                 <el-dropdown-item
+                  v-if="itemState(data, 'move').visible"
+                  command="move"
+                  :disabled="itemState(data, 'move').disabled"
+                >
+                  {{ $t('nodeTree.move') }}
+                  <span
+                    v-if="itemState(data, 'move').reason"
+                    class="item-reason"
+                  >{{ $t(itemState(data, 'move').reason) }}</span>
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="canAuthorizeNodes"
+                  command="authorize"
+                  :disabled="!canAuthorizeNode(data)"
+                >
+                  {{ $t('nodeTree.authorizeNode') }}
+                  <span
+                    v-if="!canAuthorizeNode(data)"
+                    class="item-reason"
+                  >{{ $t('nodeTree.authorizeNodeUnavailable') }}</span>
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="itemState(data, 'delete').visible"
                   command="delete"
+                  :disabled="itemState(data, 'delete').disabled"
                   divided
                 >
                   {{ $t('common.delete') }}
+                  <span
+                    v-if="itemState(data, 'delete').reason"
+                    class="item-reason"
+                  >{{ $t(itemState(data, 'delete').reason) }}</span>
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -159,7 +202,7 @@
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
             check-strictly
-            clearable
+            :clearable="allowRootMove"
             :placeholder="$t('nodeTree.movePlaceholder')"
             style="width: 100%"
           />
@@ -172,20 +215,38 @@
         <el-button
           type="primary"
           :loading="saving"
+          :disabled="!allowRootMove && !moveParentId"
           @click="submitMove"
         >
           {{ $t('common.confirm') }}
         </el-button>
       </template>
     </el-dialog>
+
+    <NodeDeleteBlockedDialog
+      v-model="blockedVisible"
+      :path="blockedInfo.path"
+      :count="blockedInfo.count"
+      :references="blockedInfo.references"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Ellipsis } from 'lucide-vue-next'
 import { t } from '@/i18n'
+import { can } from '@/composables/useCapabilities'
+import {
+  hasRowFlags,
+  hasAnyAction,
+  scopedActionStates,
+  filterMoveCandidates,
+} from '@/composables/useNodeTreeScope'
+import NodeDeleteBlockedDialog from '@/components/NodeDeleteBlockedDialog.vue'
+import { getAuthorizationTargetOptions } from '@/api/authorizations'
+import { isSelectableNode, loadSelector } from '@/utils/authzSelectors'
 import {
   getAssetList,
   getAssetNodeTree,
@@ -196,9 +257,41 @@ import {
   deleteAssetGroup,
 } from '@/api/assets'
 
-defineProps({
-  isAdmin: { type: Boolean, default: false },
-})
+// 節點操作依各自的後端能力顯示（不以單一「可管理」包住全部動作）：
+// 新增／改名／移動／刪除節點＝assetgroup:manage；跳去授權頁＝authorization:manage
+const canManageNodes = computed(() => can('assetgroup:manage'))
+const canAuthorizeNodes = computed(() => can('authorization:manage'))
+
+// 根層建立與搬到根層：範圍化檢視者的根層回應附 can_create_root，以它為準；
+// 回應沒有這個欄位（非範圍化檢視者）時沿用 canManageNodes。尚未載入前同樣沿用
+const rootCanCreate = ref(null)
+const showCreateRoot = computed(() =>
+  typeof rootCanCreate.value === 'boolean' ? rootCanCreate.value : canManageNodes.value
+)
+const allowRootMove = computed(() => rootCanCreate.value !== false)
+
+// 選單項目的呈現：節點帶旗標時逐項依 can_*，否則沿用 canManageNodes
+const LEGACY_ITEMS = ['create-child', 'rename', 'move', 'delete']
+const itemState = (node, command) => {
+  if (hasRowFlags(node)) return scopedActionStates(node)[command]
+  const on = canManageNodes.value && LEGACY_ITEMS.includes(command)
+  return { visible: on, disabled: false, reason: '' }
+}
+// 帶旗標的節點，四項動作旗標皆 false 時不顯示選單（manageable=false 本身不隱藏）
+const showMenu = (node) =>
+  hasRowFlags(node)
+    ? hasAnyAction(node) || canAuthorizeNodes.value
+    : canManageNodes.value || canAuthorizeNodes.value
+
+// 「授權此節點」只對節點候選中可授權的節點啟用：可不可授權只認授權選擇器回的 selectable，
+// 其他節點（祖先定位節點、候選之外、候選尚未載入或載入失敗）停用並說明
+const authorizableNodeIds = ref(new Set())
+const loadAuthorizableNodes = async () => {
+  if (!canAuthorizeNodes.value) return
+  const res = await loadSelector(getAuthorizationTargetOptions, { kind: 'node' })
+  authorizableNodeIds.value = new Set(res.rows.filter(isSelectableNode).map((n) => n.id))
+}
+const canAuthorizeNode = (node) => authorizableNodeIds.value.has(node?.id)
 
 // select payload：null＝全部、'ungrouped'＝未分組、物件＝節點（含 id/name/path）
 const emit = defineEmits(['select', 'authorize'])
@@ -216,6 +309,10 @@ const loadChildren = async (node, resolve) => {
   try {
     const parentId = node.level === 0 ? null : node.data.id
     const res = await getAssetNodeTree(parentId)
+    // 根層回應的頂層欄位（can_create_root）要留下，不能只取 res.data
+    if (node.level === 0) {
+      rootCanCreate.value = typeof res.can_create_root === 'boolean' ? res.can_create_root : null
+    }
     resolve(res.data || [])
   } catch (error) {
     console.error('載入節點樹失敗:', error)
@@ -237,11 +334,19 @@ const loadCounts = async () => {
     console.error('載入資產計數失敗:', error)
   }
 }
-onMounted(loadCounts)
+onMounted(() => {
+  loadCounts()
+  loadAuthorizableNodes()
+})
+// 直接開啟或重新整理頁面時，掛載早於能力載入：能力到齊後再取一次候選
+watch(canAuthorizeNodes, (on) => {
+  if (on) loadAuthorizableNodes()
+})
 
 const reloadTree = () => {
   treeKey.value += 1
   loadCounts()
+  loadAuthorizableNodes()
 }
 defineExpose({ reloadTree })
 
@@ -327,7 +432,9 @@ const moveTarget = ref(null)
 const moveParentId = ref(null)
 const moveOptions = ref([])
 
-const buildMoveOptions = (flat, excludeId) => {
+const buildMoveOptions = (all, excludeId) => {
+  // 結構性走訪（避環路用）以完整平面列表進行；候選再依旗標收斂，不以祖先推算授權
+  const flat = all
   // 先收集 excludeId 的全部子孫
   const childrenOf = new Map()
   flat.forEach((n) => {
@@ -349,7 +456,7 @@ const buildMoveOptions = (flat, excludeId) => {
   }
 
   const byId = new Map()
-  flat.forEach((n) => {
+  filterMoveCandidates(flat).forEach((n) => {
     if (!excluded.has(n.id)) byId.set(n.id, { id: n.id, name: n.path || n.name, parent_id: n.parent_id, children: [] })
   })
   const roots = []
@@ -393,6 +500,19 @@ const submitMove = async () => {
   }
 }
 
+// 刪除被管理範圍引用而被擋：超級管理者的回應帶 references，其他持有者只有筆數
+const blockedVisible = ref(false)
+const blockedInfo = ref({ path: '', count: 0, references: null })
+const showBlocked = (node, body) => {
+  const count = Number(body?.params?.count)
+  blockedInfo.value = {
+    path: String(body?.params?.path ?? node.path ?? node.name ?? ''),
+    count: Number.isFinite(count) ? count : 0,
+    references: Array.isArray(body?.references) ? body.references : null,
+  }
+  blockedVisible.value = true
+}
+
 const handleDelete = async (node) => {
   try {
     await ElMessageBox.confirm(
@@ -414,6 +534,8 @@ const handleDelete = async (node) => {
     reloadTree()
   } catch (error) {
     console.error('刪除節點失敗:', error)
+    const body = error?.response?.data
+    if (body?.code === 'RULE_NODE_SCOPE_REFERENCED') showBlocked(node, body)
   }
 }
 
@@ -481,6 +603,26 @@ const handleMenu = (cmd, data) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tree-node-row.is-locator .node-label {
+  color: var(--ot-text-secondary);
+  font-style: italic;
+}
+
+.scope-badge {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.item-reason {
+  display: block;
+  font-size: 11px;
+  color: var(--ot-text-secondary);
 }
 
 .node-count {

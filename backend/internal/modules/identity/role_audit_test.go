@@ -26,6 +26,7 @@ func setupRoleAuditDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// **單連線**：`:memory:` 配連線池時每條連線是各自獨立的空 DB
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -33,12 +34,13 @@ func setupRoleAuditDB(t *testing.T) *gorm.DB {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{},
-		&model.PasswordHistory{}, &model.RefreshToken{}); err != nil {
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
 	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
-	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
+	// 對帳來源會 LEFT JOIN 節點範圍列，所以該表與 user_roles 一起建
+	if err := db.AutoMigrate(&model.UserRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	oldDB := database.DB

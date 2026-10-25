@@ -61,7 +61,7 @@ var (
 
 // --- AUTH_*（角色閘；狀態碼沿用遷移前，不因碼化改變）---
 var (
-	CodeTagFilterPrivilegedOnly = register("AUTH_TAG_FILTER_PRIVILEGED_ONLY", Descriptor{ZhFallback: "標籤篩選僅限管理角色"})
+	CodeTagFilterPrivilegedOnly = register("AUTH_TAG_FILTER_PRIVILEGED_ONLY", Descriptor{ZhFallback: "你的帳號不能使用標籤篩選"})
 	CodeTagListPrivilegedOnly   = register("AUTH_TAG_LIST_PRIVILEGED_ONLY", Descriptor{ZhFallback: "僅管理角色可取得標籤清單"})
 	CodeTagGovernanceAdminOnly  = register("AUTH_TAG_GOVERNANCE_ADMIN_ONLY", Descriptor{ZhFallback: "僅 admin 可執行標籤治理"})
 )
@@ -83,6 +83,33 @@ var (
 	CodeNodeDepthExceeded = register("RULE_NODE_DEPTH_EXCEEDED", Descriptor{ZhFallback: "節點深度超過上限（10 層）"})
 	CodeNodeCycle         = register("RULE_NODE_CYCLE", Descriptor{ZhFallback: "不可搬移到自身或其子孫節點"})
 	CodeNodeNotEmpty      = register("RULE_NODE_NOT_EMPTY", Descriptor{ZhFallback: "僅可刪除無子節點且無直掛資產的空節點"})
+	// CodeNodeScopeReferenced 節點仍是管理範圍的一部分，刪除被擋（含超級管理者）。path 為節點路徑
+	// （目標已通過範圍判定）；count 為引用的指派筆數，只接受揭露登錄產出的計數值。
+	CodeNodeScopeReferenced = register("RULE_NODE_SCOPE_REFERENCED", Descriptor{
+		ZhFallback: "節點「{path}」是另外 {count} 項管理範圍的一部分，無法刪除",
+		Params: []ParamSpec{
+			{Key: "path", Kind: ParamOpaque},
+			{Key: "count", Kind: ParamInt},
+		},
+	})
+	// CodeAssetHasOutOfScopeNodes 刪除或停用被範圍外歸屬擋下（HTTP 409）。count 為該操作能力範圍外的歸屬數，
+	// 只接受揭露登錄產出的計數值；不帶節點名稱或識別碼。
+	CodeAssetHasOutOfScopeNodes = register("RULE_ASSET_HAS_OUT_OF_SCOPE_NODES", Descriptor{
+		ZhFallback: "此資產另有 {count} 個節點不在你的管理範圍內，無法刪除或停用",
+		Params: []ParamSpec{
+			{Key: "count", Kind: ParamInt},
+		},
+	})
+	// CodeAssetNodeRequired 沒有全域能力的主體建立或更新後，資產歸屬不得為空（HTTP 400）。
+	CodeAssetNodeRequired = register("RULE_ASSET_NODE_REQUIRED", Descriptor{ZhFallback: "資產至少須掛在一個節點"})
+	// CodeAssetBatchHasOutOfScopeNodes 批次刪除被範圍外歸屬擋下（HTTP 409）。count 為受阻的資產台數
+	// （每台一次，不論範圍外歸屬數），由批次服務計數；不帶資產或節點的名稱與識別碼。
+	CodeAssetBatchHasOutOfScopeNodes = register("RULE_ASSET_BATCH_HAS_OUT_OF_SCOPE_NODES", Descriptor{
+		ZhFallback: "有 {count} 台資產另有節點不在你的管理範圍內，整批沒有刪除",
+		Params: []ParamSpec{
+			{Key: "count", Kind: ParamInt},
+		},
+	})
 )
 
 // --- RULE_ASSET_TEST_*（ConnectionTestResult.Message 碼化）---

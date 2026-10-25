@@ -105,14 +105,28 @@ func installGuardStatusDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.Role{}, &model.UserGroup{}); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	// 伺服器端解析主體：關聯表分批遷移（避免被 many2many 隱式兩欄表蓋掉）
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate authz tables: %v", err)
 	}
 	for _, name := range []string{"guard-admin", "guard-user"} {
 		email := name + "@example.invalid"
 		u := model.User{Username: name, Email: &email, Password: "x"}
 		if err := db.Create(&u).Error; err != nil {
 			t.Fatalf("建使用者 %s: %v", name, err)
+		}
+		// guard-admin 持內建超管；guard-user 沒有任何指派（視同一般使用者）
+		if name == "guard-admin" {
+			role := model.Role{Name: model.RoleAdmin}
+			if err := db.Create(&role).Error; err != nil {
+				t.Fatalf("建角色: %v", err)
+			}
+			if err := db.Create(&model.UserRole{UserID: u.ID, RoleID: role.ID, Source: model.RoleSourceManual}).Error; err != nil {
+				t.Fatalf("指派角色: %v", err)
+			}
 		}
 	}
 	old := database.DB

@@ -462,6 +462,27 @@ func (g *InstanceGuard) State() GuardState {
 	return g.state
 }
 
+// ProbePeers 當下對等數：同庫其他守衛版實例的連線數。
+//
+// **在守衛自己的釘選連線上查**——對等 SQL 以 pid <> pg_backend_pid() 排除查詢者，
+// 釘選連線帶守衛的 application_name，所以只排除本實例自己的守衛連線；
+// 改在一般連線池上跑會把本實例的守衛連線算成對等。SQLite 分支恆回 0。
+// 不改守衛狀態、不寫事件；查詢失敗回錯（不以 0 假稱無對等）。
+func (g *InstanceGuard) ProbePeers(ctx context.Context) (int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	g.mu.Lock()
+	backend := g.backend
+	g.mu.Unlock()
+	if backend == nil || !backend.connected() {
+		return 0, errGuardNotConnected
+	}
+	qctx, cancel := g.queryCtx(ctx)
+	defer cancel()
+	return backend.countPeers(qctx)
+}
+
 // Snapshot 守衛狀態的完整快照。
 func (g *InstanceGuard) Snapshot() GuardSnapshot {
 	g.mu.Lock()
@@ -575,6 +596,15 @@ func InstanceGuardSnapshot() GuardSnapshot {
 		return GuardSnapshot{}
 	}
 	return g.Snapshot()
+}
+
+// InstanceGuardProbePeers 包級單例的一次性對等數查詢（見 ProbePeers）；守衛尚未建立時回錯。
+func InstanceGuardProbePeers(ctx context.Context) (int, error) {
+	g := instanceGuard.Load()
+	if g == nil {
+		return 0, errGuardNotConnected
+	}
+	return g.ProbePeers(ctx)
 }
 
 // SetInstanceGuardEventSink 注入事件 sink（段 2 組裝根）；守衛未建立時為 no-op。

@@ -4,7 +4,7 @@ import { ROLE_META, roleLabel, roleTagType, roleDescription } from '../roles'
 // 角色顯示中繼資料完備性：
 // 後端 seed 四角色必須每個都有 label/tagType/description——
 // 新增後端角色時此測試逼你補 META（缺漏=裸英文+缺說明段）
-const SEEDED_ROLES = ['admin', 'auditor', 'approver', 'user']
+const SEEDED_ROLES = ['admin', 'auditor', 'approver', 'user', 'identity_admin', 'security_admin']
 
 describe('ROLE_META 完備性', () => {
   it.each(SEEDED_ROLES)('%s 具備 label/tagType/description', (name) => {
@@ -18,6 +18,11 @@ describe('ROLE_META 完備性', () => {
     expect(roleLabel('approver')).toBe('審核人員')
     expect(roleLabel('user')).toBe('一般使用者')
     expect(roleLabel('admin')).toBe('管理員')
+  })
+
+  it('內建管理類角色顯示中文名，不露原始鍵', () => {
+    expect(roleLabel('identity_admin')).toBe('身分管理員')
+    expect(roleLabel('security_admin')).toBe('系統安全管理員')
   })
 
   it('未知角色優雅退回：原文＋info 色＋空說明', () => {

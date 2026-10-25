@@ -74,7 +74,7 @@ func (h *TransmissionInventoryHandler) Export(c *gin.Context) {
 func (h *TransmissionInventoryHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	group := r.Group("/transmission-inventory")
 	group.Use(middleware.AuthMiddleware(authService))
-	group.Use(middleware.RequireRole("admin"))
+	group.Use(middleware.EnforceRegistry())
 	{
 		group.GET("", h.Get)
 		group.POST("/export", h.Export)

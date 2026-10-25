@@ -8,6 +8,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { listAssetAccounts } from '@/api/assetAccounts'
 import { createConnectToken, createConnectTokenWithConsent } from '@/api/connect'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -118,6 +120,8 @@ describe('Workspace 頁籤邏輯', () => {
     vi.clearAllMocks()
     routeQuery.asset = undefined
     localStorage.clear()
+    resetCapabilities()
+    grantFor(['user'])
     listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
   })
 
@@ -212,6 +216,8 @@ describe('Workspace 頁籤右鍵選單', () => {
     vi.clearAllMocks()
     routeQuery.asset = undefined
     localStorage.clear()
+    resetCapabilities()
+    grantFor(['user'])
     listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
   })
 
@@ -289,6 +295,8 @@ describe('Workspace 多帳號連線', () => {
     vi.clearAllMocks()
     routeQuery.asset = undefined
     localStorage.clear()
+    resetCapabilities()
+    grantFor(['user'])
     listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
   })
 
@@ -484,6 +492,8 @@ describe('Workspace 查詢主控台入口', () => {
     vi.clearAllMocks()
     routeQuery.asset = undefined
     localStorage.clear()
+    resetCapabilities()
+    grantFor(['user'])
     listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
     getAssetList.mockResolvedValue({ data: DB_ASSETS, total: DB_ASSETS.length })
   })
@@ -705,6 +715,8 @@ const resetSidebarEnv = () => {
   vi.clearAllMocks()
   routeQuery.asset = undefined
   localStorage.clear()
+  resetCapabilities()
+  grantFor(['user'])
   roInstances.length = 0
   listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
 }

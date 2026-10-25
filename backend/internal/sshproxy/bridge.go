@@ -81,6 +81,15 @@ type bridge struct {
 	outputSinks []outputSink
 	inputSinks  []inputSink
 	resizeSinks []resizeSink
+
+	// pendingNotices 連線建立時就要送達的通知（目前只有主機金鑰不符警示）：
+	// 在 connected 之後、任何輸出之前依序送出
+	pendingNotices []apierror.ErrCode
+}
+
+// queueNotice 登記一則在 connected 之後立即送出的通知幀（須在 Run 前呼叫）
+func (b *bridge) queueNotice(code apierror.ErrCode) {
+	b.pendingNotices = append(b.pendingNotices, code)
 }
 
 func newBridge(
@@ -175,6 +184,9 @@ func (b *bridge) Run() {
 		connectedPayload = fmt.Sprintf(`{"session_id":%d}`, b.session.ID)
 	}
 	b.writeMessage(MsgConnected, connectedPayload)
+	for _, code := range b.pendingNotices {
+		b.writeNoticeMessage(code, nil)
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)

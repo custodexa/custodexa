@@ -129,6 +129,7 @@ var policyKeyZhLabels = identityLabels(
 	"mfa_required",
 	"web_idle_minutes",
 	"web_max_session_hours",
+	"mapping_revalidation_hours",
 	// refresh cookie 的 Secure 屬性
 	"refresh_cookie_secure",
 	"session_idle_minutes",
@@ -248,4 +249,18 @@ var (
 	CodeInternalTransmissionInventoryBuild = register("INTERNAL_TRANSMISSION_INVENTORY_BUILD", Descriptor{ZhFallback: "彙整通道清冊失敗"})
 
 	CodeInternalClipboardQuery = register("INTERNAL_CLIPBOARD_QUERY", Descriptor{ZhFallback: "查詢剪貼簿記錄失敗"})
+)
+
+// --- 權限狀態「無來源變動」確認 ---
+var (
+	// CodeValidationPermissionStateAcceptReason 確認原因缺少、過長或含控制字元
+	CodeValidationPermissionStateAcceptReason = register("VALIDATION_PERMISSION_STATE_ACCEPT_REASON",
+		Descriptor{ZhFallback: "請填寫確認原因（1 至 500 字，不可含控制字元）"})
+	// CodeConflictPermissionStateNotAcceptable 目前沒有可確認的權限狀態差異（相符或尚未涵蓋）；
+	// 對帳無法判定時改為重設比對基準，不回本碼。不帶狀態細節
+	CodeConflictPermissionStateNotAcceptable = register("CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE",
+		Descriptor{ZhFallback: "目前沒有可確認的權限狀態差異"})
+	// CodeInternalPermissionStateAccept 確認過程失敗（交易已回滾，沒有留下確認）
+	CodeInternalPermissionStateAccept = register("INTERNAL_PERMISSION_STATE_ACCEPT",
+		Descriptor{ZhFallback: "確認權限狀態失敗"})
 )

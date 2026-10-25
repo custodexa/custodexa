@@ -789,7 +789,7 @@ import {
 } from '@/constants/db-console'
 import { isKnownOffsiteStatus, offsiteStatusTagType } from '@/constants/offsite'
 import { getOffsiteSettings, retryOffsiteObject } from '@/api/offsiteStorage'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 
 const route = useRoute()
 const router = useRouter()
@@ -897,7 +897,8 @@ const anchorConsoleEvent = async () => {
 // 離機保存狀態（evidence-offsite-storage）
 // ---------------------------------------------------------------------------
 
-const { isAdmin } = useRoles()
+// 離機重試與設定讀取都掛 offsite:manage（後端才是強制點）
+const canManageOffsite = computed(() => can('offsite:manage'))
 const offsiteRetrying = ref(false)
 // 設定表是否非空（`configured`）。**三態**：null＝還沒讀到／讀不到（本頁不宣稱）、
 // true／false＝伺服端事實。只有 admin 讀得到離機端點，故非 admin 恆為 null。
@@ -925,16 +926,16 @@ const offsiteTagType = computed(() => offsiteStatusTagType(offsiteStatus.value))
 
 const offsiteTooltip = computed(() => t(`offsite.stateHint.${offsiteStatus.value || 'none'}`))
 
-// 重試只對「卡住的兩態」開放，且只有 admin 打得通端點（後端才是強制點）
+// 重試只對「卡住的兩態」開放，且只有具 offsite:manage 者打得通端點（後端才是強制點）
 const OFFSITE_RETRYABLE_STATES = ['failed', 'integrity_mismatch']
 const offsiteRetryable = computed(
-  () => isAdmin.value && OFFSITE_RETRYABLE_STATES.includes(offsiteStatus.value)
+  () => canManageOffsite.value && OFFSITE_RETRYABLE_STATES.includes(offsiteStatus.value)
 )
 // 重試＝以**本機檔**重傳同一個 key；本機沒有檔就沒有可傳的東西
 const offsiteRetryEnabled = computed(() => session.value?.has_recording === true)
 
 const fetchOffsiteConfigured = async () => {
-  if (!isAdmin.value) return
+  if (!canManageOffsite.value) return
   try {
     const res = await getOffsiteSettings({ skipErrorToast: true })
     offsiteConfigured.value = res?.configured === true

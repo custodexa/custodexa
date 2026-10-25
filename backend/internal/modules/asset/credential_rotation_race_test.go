@@ -405,17 +405,21 @@ func funcKey(fn *ast.FuncDecl) string {
 // 「它的呼叫端有沒有先鎖資產」，而不是讓它靜靜地加入一個由生產碼算出來的集合。
 func TestCredentialOnlyLockSitesAreEnumerated(t *testing.T) {
 	want := map[string]string{
-		"lockCredentialRowsOrdered":                    "取鎖本體（依憑證識別升冪）",
-		"lockCredentialsForBindingRemoval":             "呼叫端 removeAssetBindings 已先取資產列鎖",
-		"appendDeclaredSecret":                         "呼叫端（帳號／資產更新）已先取資產列鎖",
-		"rebindBindingToCredential":                    "呼叫端 promoteToCredential 已先取資產列鎖",
-		"CredentialService.ConvertScope":               "只動憑證列",
-		"CredentialService.SetSecret":                  "只動憑證與版本列",
-		"CredentialService.Delete":                     "只動憑證列",
-		"CredentialRotationService.Start":              "只動憑證列",
-		"CredentialRotationService.Abandon":            "只動憑證列",
-		"CredentialRotationService.startSplitRotation": "只動憑證列",
-		"settleBatchSharedCredential":                  "只動憑證列（範圍收尾）",
+		"lockCredentialRowsOrdered":                       "取鎖本體（依憑證識別升冪）",
+		"lockCredentialsForBindingRemoval":                "呼叫端 removeAssetBindings 已先取資產列鎖",
+		"appendDeclaredSecret":                            "呼叫端（帳號／資產更新）已先取資產列鎖",
+		"rebindBindingToCredential":                       "呼叫端 promoteToCredential 已先取資產列鎖",
+		"CredentialService.ConvertScope":                  "只動憑證列",
+		"CredentialService.SetSecret":                     "只動憑證與版本列",
+		"CredentialService.Delete":                        "只動憑證列",
+		"CredentialRotationService.startGroupRotation":    "只動憑證列",
+		"CredentialRotationService.Abandon":               "只動憑證列",
+		"CredentialRotationService.startSplitRotation":    "只動憑證列",
+		"settleBatchSharedCredential":                     "只動憑證列（範圍收尾）",
+		"CredentialService.ConfirmImpact":                 "只讀掛載，只寫確認列與讀取審計",
+		"ChangeSecretPlanService.scopeCredentialTargetTx": "計畫儲存只讀掛載、寫計畫與授權脈絡（交易已先取拓撲序列化鎖）",
+		"lockReassignRowsTx":                              "改歸只動憑證歸屬欄（交易已先取拓撲序列化鎖）",
+		"cascadeCredentialOwnershipTx":                    "節點刪除承接只動憑證歸屬欄（節點刪除交易已先取拓撲序列化鎖）",
 		// 新建資產的掛載：那一列此刻還不存在，資產列鎖無物可鎖（見
 		// lockAssetForAccountMutation 的註解），互斥由建立本身的唯一性承擔
 		"AssetService.Create": "掛載列於本交易內才建立，無既有列可鎖",

@@ -56,7 +56,7 @@ func itemInput(asset uint) SubmitAccessRequestInput {
 func TestSubmitAccessRequestItems(t *testing.T) {
 	t.Run("legacy mirrors one item", func(t *testing.T) {
 		s, _, _, _ := setupItemRequestEnv(t)
-		r, e := s.Submit(1, "human", model.RoleUser, itemInput(1))
+		r, e := s.Submit(1, "human", false, itemInput(1))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -70,7 +70,7 @@ func TestSubmitAccessRequestItems(t *testing.T) {
 		in.Items = []ItemInput{{1, in.Accounts}, {3, in.Accounts}}
 		in.AssetID = 0
 		in.Accounts = nil
-		r, e := s.Submit(agent, "agent", model.RoleUser, in)
+		r, e := s.Submit(agent, "agent", false, in)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -86,7 +86,7 @@ func TestSubmitAccessRequestItems(t *testing.T) {
 	t.Run("exclusive shapes and bounds", func(t *testing.T) {
 		for _, in := range []SubmitAccessRequestInput{{AssetID: 1, Items: []ItemInput{{AssetID: 2}}}, {Items: []ItemInput{}}, {Items: []ItemInput{{AssetID: 1}, {AssetID: 1}}}, {Items: make([]ItemInput, 21)}} {
 			s, _, db, _ := setupItemRequestEnv(t)
-			_, e := s.Submit(1, "human", model.RoleUser, in)
+			_, e := s.Submit(1, "human", false, in)
 			if !errors.Is(e, ErrRequestItemsShape) {
 				t.Fatal(e)
 			}
@@ -110,7 +110,7 @@ func TestSubmitAccessRequestSegment(t *testing.T) {
 			if mode == "assisted" {
 				in.ExecutorUserID = &agent
 			}
-			r, e := s.Submit(id, "actor", model.RoleUser, in)
+			r, e := s.Submit(id, "actor", false, in)
 			if mode == "human" {
 				if !errors.Is(e, ErrPolicyOpenNoRequest) {
 					t.Fatal(e)
@@ -141,7 +141,7 @@ func TestSubmitRejectsAccountNotOnAsset(t *testing.T) {
 	in := itemInput(1)
 	names := []string{"app", "absent"}
 	in.Accounts = &names
-	_, e := s.Submit(1, "human", model.RoleUser, in)
+	_, e := s.Submit(1, "human", false, in)
 	if !errors.Is(e, ErrAccountNotOnAsset) {
 		t.Fatal(e)
 	}
@@ -178,7 +178,7 @@ func TestAgentItemRequiresAccounts(t *testing.T) {
 				if mode == "assisted" {
 					in.ExecutorUserID = &agent
 				}
-				r, e := s.Submit(id, "actor", model.RoleUser, in)
+				r, e := s.Submit(id, "actor", false, in)
 				if mode == "human" {
 					if e != nil || !r.Accounts.IsAll() {
 						t.Fatal(r, e)
@@ -216,7 +216,7 @@ func TestSubmitExecutorVisibilityIntersection(t *testing.T) {
 				}
 				db.Where("user_id=? AND asset_id=3", id).Delete(&model.AssetAuthorization{})
 			}
-			r, e := s.Submit(1, "human", model.RoleUser, in)
+			r, e := s.Submit(1, "human", false, in)
 			switch side {
 			case "inactive", "human_executor":
 				if !errors.Is(e, ErrAccessRequestNotFound) {
@@ -248,11 +248,11 @@ func TestSubmitDuplicatePendingItem(t *testing.T) {
 	in.Items = []ItemInput{{2, in.Accounts}, {1, in.Accounts}}
 	in.AssetID = 0
 	in.Accounts = nil
-	first, e := s.Submit(1, "human", model.RoleUser, in)
+	first, e := s.Submit(1, "human", false, in)
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = s.Submit(1, "human", model.RoleUser, itemInput(1))
+	_, e = s.Submit(1, "human", false, itemInput(1))
 	var duplicate *DuplicatePendingItemError
 	if !errors.As(e, &duplicate) || duplicate.RequestID != first.ID || duplicate.ItemID != first.Items[1].ID {
 		t.Fatal(e)
@@ -283,7 +283,7 @@ func TestAgentRequestRateLimit(t *testing.T) {
 			if dimension == "human" {
 				id = 1
 			}
-			if _, e := s.Submit(id, "actor", model.RoleUser, itemInput(1)); e != nil {
+			if _, e := s.Submit(id, "actor", false, itemInput(1)); e != nil {
 				t.Fatal(e)
 			}
 			quotaQueries := 0
@@ -295,7 +295,7 @@ func TestAgentRequestRateLimit(t *testing.T) {
 					}
 				})
 			}
-			r, e := s.Submit(id, "actor", model.RoleUser, itemInput(2))
+			r, e := s.Submit(id, "actor", false, itemInput(2))
 			if dimension == "human" {
 				if e != nil || r == nil || quotaQueries != 0 {
 					t.Fatal("human quota regression", e, quotaQueries)
@@ -317,7 +317,7 @@ func TestAgentRequestRateLimit(t *testing.T) {
 			} else {
 				db.Model(&model.AccessRequest{}).Where("requester_id=?", agent).Update("status", model.AccessRequestRejected)
 			}
-			if _, e := s.Submit(agent, "actor", model.RoleUser, itemInput(2)); e != nil {
+			if _, e := s.Submit(agent, "actor", false, itemInput(2)); e != nil {
 				t.Fatal("released capacity not observed", e)
 			}
 		})

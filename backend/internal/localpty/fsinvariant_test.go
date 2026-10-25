@@ -227,7 +227,7 @@ var shortProbeExcludedTrees = []string{"/app", "/go"}
 //   - `/usr/local/go`：語言 toolchain，映像建置時寫入（14179 檔／283 MB）
 //
 // 我方沒有任何路徑往這兩棵寫東西，故憑證不可能「非預期地」出現於此。要讓它出現
-// 需在容器內手動寫入——那是信任邊界內（charter §6 C 類），且該前提下
+// 需在容器內手動寫入——那已在信任邊界內，且該前提下
 // `/proc/<backend>/environ` 是短得多的路徑，由 TestCLIUserCannotReadBackendProcessEnviron
 // 獨立守著。
 //

@@ -42,7 +42,10 @@ func setupAlertDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("開啟 sqlite 失敗: %v", err)
 	}
-	if err := db.AutoMigrate(&model.CommandAlert{}, &model.SyslogSetting{}, &model.AlertRule{}); err != nil {
+	if err := db.AutoMigrate(&model.CommandAlert{}, &model.SyslogSetting{}, &model.AlertRule{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("建表失敗: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("建表失敗: %v", err)
 	}
 	return db

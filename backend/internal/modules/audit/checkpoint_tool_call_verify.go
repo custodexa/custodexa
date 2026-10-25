@@ -46,7 +46,7 @@ type ToolCallIntervalResult struct {
 }
 
 func (v *CheckpointVerifier) verifyToolCallInterval(cp *model.AuditCheckpoint) (*ToolCallIntervalResult, error) {
-	if cp.AggScheme != model.AggSchemeV3 {
+	if !checkpointHasLedger(cp.AggScheme) {
 		return &ToolCallIntervalResult{Status: "not_covered"}, nil
 	}
 	r := &ToolCallIntervalResult{IDFrom: *cp.ToolCallIDFrom, IDTo: *cp.ToolCallIDTo, RowCount: *cp.ToolCallRowCount, Status: IntervalStatusPassed}

@@ -18,7 +18,7 @@ import (
 func TestBlockedAgentInputRecordedAndRedacted(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.AlertRule{}))
+	require.NoError(t, migrateWithAuthz(db, &model.AlertRule{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	require.NoError(t, db.Create(&model.AlertRule{Name: "card", Pattern: sensitivescan.CardPattern, Direction: model.DirectionOutput, Enabled: true, Action: "alert"}).Error)
 	matcher := audit.InitAlertMatcher(db, nil)
 	require.NoError(t, matcher.LoadRules())

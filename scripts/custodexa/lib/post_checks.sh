@@ -14,6 +14,8 @@
 #   counts         users and sessions equal, audit_logs not fewer                         FAIL
 #   keys           the four fingerprints equal; a snapshot that is not usable: WARN       FAIL
 #   instance lock  "held" in the log; held by another database session                    FAIL
+#   permissions    the migration warned: no local super administrator or dangling          WARN
+#                  assignments (backups from now on are not restorable; the upgrade goes on)
 #   entry          the HTTPS (or, behind an external ingress, HTTP) port answers          WARN
 # What cannot be read is a warning, not a stop, except where the list above says FAIL: a value that
 # is missing proves nothing either way, and the manual checks on the closing screen remain.
@@ -21,6 +23,9 @@
 readonly CX_PC_BASELINE='執行 migration: 20260816_schema_baseline'
 readonly CX_PC_LOCK_HELD='[InstanceGuard] 單實例鎖狀態=held'
 readonly CX_PC_LOCK_OTHER='由另一個資料庫工作階段持有'
+# Printed by the backend when its permission-model migration finds data that restore will refuse
+# (no local super administrator, or assignments that point at nothing). The upgrade is not stopped.
+readonly CX_PC_AUTHZ_WARN='[AuthzModelMigration] WARN '
 
 declare -ga CX_PC_ROWS=() # mark, text, mark, text, ...
 CX_PC_FAIL=0 CX_PC_LOG="" CX_PC_AFTER=""
@@ -124,6 +129,21 @@ cx_pc_lock() {
   fi
 }
 
+# cx_pc_authz: the migration of this start warned that the data cannot be restored from now on.
+# A warning only: nothing is stopped. The backend writes the audit row itself once it is up.
+cx_pc_authz() {
+  local line n d
+  line=$(printf '%s\n' "$CX_PC_LOG" | grep -F "$CX_PC_AUTHZ_WARN" | tail -n 1) || line=""
+  [ -n "$line" ] || return 0
+  n=$(printf '%s\n' "$line" | sed -n 's/.*local_super_admins=\([0-9][0-9]*\).*/\1/p')
+  d=$(printf '%s\n' "$line" | sed -n 's/.*dangling_assignments=\([0-9][0-9]*\).*/\1/p')
+  if [ "${n:-1}" = 0 ]; then
+    cx_pc_row WARN pc_authz_zero
+  else
+    cx_pc_row WARN pc_authz_dangling "${d:-?}"
+  fi
+}
+
 # cx_pc_entry: the way users come in answers (any 2xx or 3xx).
 cx_pc_entry() {
   local url code
@@ -181,6 +201,7 @@ cx_up_post_checks() {
   rm -f "$tmp"
   cx_pc_data
   cx_pc_lock
+  cx_pc_authz
   cx_pc_entry
   if [ "$CX_PC_FAIL" = 1 ]; then
     cx_up_step_line FAIL "$n" "$(cx_msg up_step_check)"

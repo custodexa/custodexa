@@ -27,6 +27,8 @@ const (
 // 候選列（信封加密），批次結束後系統內不再有它的第二份副本。
 type ChangeSecretBatch struct {
 	ID uint `gorm:"primarykey" json:"id"`
+	// AuthorizationID 發起者授權脈絡；空值＝升級前的舊批次
+	AuthorizationID *uint `json:"authorization_id,omitempty"`
 	// Username 帳號名：目標集合＝掛在未刪除資產上、名為此值的未刪除帳號
 	Username string `gorm:"size:100;not null;index" json:"username"`
 	// PasswordMode 見 BatchPassword* 常數
@@ -39,6 +41,11 @@ type ChangeSecretBatch struct {
 	SharedCredentialName string `gorm:"-" json:"-"`
 	// SharedCredentialID 執行時建立的具名共用憑證識別（同 SharedCredentialName，不落庫）
 	SharedCredentialID uint `gorm:"-" json:"-"`
+	// SharedCredentialOwnerKind 整批同一組模式要新建的共用憑證歸屬種類（global｜node）；建立批次時寫入，
+	// 執行時以同一驗證重驗。舊列為 global（與升級前相同）。不序列化
+	SharedCredentialOwnerKind string `gorm:"size:16;not null;default:global" json:"-"`
+	// SharedCredentialOwnerNodeID 歸屬為 node 時的節點；其餘為空。不序列化
+	SharedCredentialOwnerNodeID *uint `json:"-"`
 
 	// 密碼策略：語義與計劃相同
 	PasswordLength           int  `gorm:"default:16" json:"password_length"`

@@ -321,7 +321,7 @@
                 :range-separator="$t('sessions.rangeSeparator')"
                 :start-placeholder="$t('sessions.startTime')"
                 :end-placeholder="$t('sessions.endTime')"
-                @change="handleFilter"
+                @change="handleRangeChange"
               />
             </el-form-item>
             <el-form-item>
@@ -675,6 +675,42 @@ const filterForm = reactive({
 })
 const dateRange = ref(null)
 
+// 儀表板帶入的時間界線：伺服端產生的字串含微秒，原樣保存並原樣送出，不經 Date 轉換
+//（Date 只到毫秒，會截掉尾端而與卡片的計數口徑對不上）。使用者自己改時間或重置即清掉。
+const carriedStart = ref('')
+const carriedEnd = ref('')
+// 錄影失敗卡的落點：活動列表只留錄影失敗的會話（對全量活動列表套述詞）
+const recordingErrorOnly = ref(false)
+
+const queryOf = () => {
+  const q = router.currentRoute?.value?.query
+  return q && typeof q === 'object' ? q : {}
+}
+const queryText = (v) => (typeof v === 'string' ? v : '')
+const applyDashboardQuery = () => {
+  const q = queryOf()
+  const tab = queryText(q.tab)
+  if (tab === 'active' || tab === 'history') activeTab.value = tab
+  const status = queryText(q.status)
+  // 活動頁籤本身就是進行中，狀態只對歷史列表有意義
+  if (activeTab.value === 'history' && ['active', 'closed', 'disconnected'].includes(status)) filterForm.status = status
+  const start = queryText(q.start_time)
+  const end = queryText(q.end_time)
+  if (start && end) {
+    carriedStart.value = start
+    carriedEnd.value = end
+    // 選擇器只作顯示；實際送出的是上面兩個原字串
+    const a = new Date(start)
+    const b = new Date(end)
+    if (!Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime())) dateRange.value = [a, b]
+  }
+  recordingErrorOnly.value = queryText(q.recording_error) === 'true'
+}
+const clearCarriedRange = () => {
+  carriedStart.value = ''
+  carriedEnd.value = ''
+}
+
 // 自動刷新
 const autoRefresh = ref(true)
 let refreshTimer = null
@@ -684,7 +720,9 @@ const fetchActiveSessions = async () => {
   loading.value = true
   try {
     const sessions = await getActiveSessions()
-    activeSessions.value = sessions
+    activeSessions.value = recordingErrorOnly.value
+      ? sessions.filter((s) => s.recording_error)
+      : sessions
   } catch (error) {
     console.error('取得活動 Session 失敗:', error)
   } finally {
@@ -747,7 +785,10 @@ const fetchSessionList = async () => {
     }
 
     // 處理時間範圍
-    if (dateRange.value && dateRange.value.length === 2) {
+    if (carriedStart.value && carriedEnd.value) {
+      params.start_time = carriedStart.value
+      params.end_time = carriedEnd.value
+    } else if (dateRange.value && dateRange.value.length === 2) {
       params.start_time = dateRange.value[0].toISOString()
       params.end_time = dateRange.value[1].toISOString()
     }
@@ -815,12 +856,19 @@ const handleFilter = () => {
   fetchSessionList()
 }
 
+// 使用者自己改時間：不再沿用儀表板帶入的原字串
+const handleRangeChange = () => {
+  clearCarriedRange()
+  handleFilter()
+}
+
 // 重置過濾
 const handleResetFilter = () => {
   filterForm.actor_kind = ''
   filterForm.protocol = ''
   filterForm.status = ''
   dateRange.value = null
+  clearCarriedRange()
   pagination.page = 1
   fetchSessionList()
 }
@@ -899,7 +947,9 @@ const formatDuration = (startTime) => {
 
 // 掛載時取得資料
 onMounted(() => {
-  fetchActiveSessions()
+  applyDashboardQuery()
+  if (activeTab.value === 'history') fetchSessionList()
+  else fetchActiveSessions()
   if (autoRefresh.value) {
     startAutoRefresh()
   }

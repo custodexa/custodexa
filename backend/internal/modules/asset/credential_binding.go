@@ -42,6 +42,9 @@ import (
 // 掛載同時動資產的帳號集合與憑證的掛載集合，兩者各有互斥點。次序反過來寫的那一
 // 條路徑會與其餘路徑交錯死鎖，而死鎖只在並行時出現、單測永遠看不到。
 //
+// Bind 與 Rebind 另在交易第一個動作取拓撲序列化鎖（與改歸、節點刪除同一把），
+// 其後才是資產列與憑證列；取得序列化鎖之後不再取使用者或群組鎖。
+//
 // 這是**全套件唯一的次序**，不是本檔的區域慣例。持久列鎖只有兩個入口：
 // 資產列＝`lockAssetForAccountMutation`（asset_account_service.go），
 // 憑證列＝`lockCredentialRow`（credential_resolver.go）。同時取兩者的路徑一律：
@@ -107,11 +110,13 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 	if err := validateAccountNote(req.Note); err != nil {
 		return nil, err
 	}
-	asset, err := s.assets.GetByID(req.AssetID)
-	if err != nil {
+	// 先驗能力再查資產：無權者不得靠「資產不存在」與「無權」的差別探測存在性
+	if err := s.requireManagement(ctx, nil, CredOpBind, []string{CredCapBind},
+		[]uint{credentialID}, []uint{req.AssetID}); err != nil {
 		return nil, err
 	}
-	if err := s.assertAssetPermission(ctx, asset.ID); err != nil {
+	asset, err := s.assets.GetByID(req.AssetID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -121,12 +126,31 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 		Privileged: req.Privileged,
 		Note:       req.Note,
 	}
+	if s.bindPreTxHook != nil {
+		s.bindPreTxHook()
+	}
 	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖：交易第一個動作，早於資產列與憑證列鎖，與改歸、節點刪除序列化。
+		// 掛載不是權限資料：不呼叫 Begin、不推進權限版本
+		if err := s.assets.lockTopologyTx(tx); err != nil {
+			return err
+		}
+		if s.bindLockedHook != nil {
+			if err := s.bindLockedHook(tx); err != nil {
+				return err
+			}
+		}
 		if err := lockAssetForAccountMutation(tx, asset.ID); err != nil {
 			return err
 		}
 		cred, err := lockCredentialRow(tx, credentialID)
 		if err != nil {
+			return err
+		}
+		// 鎖後重判：與交易外同一道關卡，以鎖後重讀的主體與憑證歸屬判定。交易外判定之後才提交的
+		// 改歸或撤權在此生效；早於任何依憑證狀態的判斷，不讓範圍外憑證的狀態經錯誤分流外露
+		if err := s.requireManagement(ctx, tx, CredOpBind, []string{CredCapBind},
+			[]uint{credentialID}, []uint{asset.ID}); err != nil {
 			return err
 		}
 		if err := assertNoActiveRotation(cred); err != nil {
@@ -188,6 +212,16 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 	return newAccountDTO(database.DB, account)
 }
 
+// assetScopeDenialAsBindingNotFound 把「掛載所在資產在範圍外」的拒絕改成掛載不存在，
+// 其餘錯誤（含憑證層拒絕、能力拒絕、內部錯誤）原樣回傳。資產種類字串與 authz 一致，由卸載與脫離的同形測試鎖定。
+func assetScopeDenialAsBindingNotFound(err error) error {
+	var d scopeDeniedTarget
+	if errors.As(err, &d) && d.ScopeDeniedTargetKind() == scopeDeniedKindAsset {
+		return ErrCredentialBindingNotFound
+	}
+	return err
+}
+
 // Unbind 卸載某筆掛載：只移除掛載列與其就位版本，**不更動目標主機上的密碼**。
 //
 // 卸載專用憑證的唯一掛載時同一交易刪除該憑證——零掛載的專用憑證是孤兒，
@@ -195,6 +229,12 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 func (s *CredentialService) Unbind(ctx context.Context, credentialID, accountID uint) error {
 	if accountID == 0 {
 		return ErrCredentialBindingNotFound
+	}
+	// 憑證層判定先於掛載查詢：範圍外憑證與不存在同形。先查掛載會讓「該帳號掛在這筆憑證上」
+	// 與「不存在」分流，帳號識別即可用來還原被隱去的憑證識別與範圍外掛載關係
+	if err := s.requireManagement(ctx, nil, CredOpBind, []string{CredCapBind},
+		[]uint{credentialID}, nil); err != nil {
+		return err
 	}
 	userID, operator := model.UserFromContext(ctx)
 	return database.DB.Transaction(func(tx *gorm.DB) error {
@@ -206,8 +246,10 @@ func (s *CredentialService) Unbind(ctx context.Context, credentialID, accountID 
 			}
 			return fmt.Errorf("查詢掛載失敗: %w", err)
 		}
-		if err := s.assertAssetPermission(ctx, binding.AssetID); err != nil {
-			return err
+		if err := s.requireManagement(ctx, tx, CredOpBind, []string{CredCapBind},
+			[]uint{credentialID}, []uint{binding.AssetID}); err != nil {
+			// 範圍外資產上的掛載與不存在的掛載同形，掛載識別不得成為跨範圍的存在性探測
+			return assetScopeDenialAsBindingNotFound(err)
 		}
 		if err := lockAssetForAccountMutation(tx, binding.AssetID); err != nil {
 			return err
@@ -267,17 +309,22 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 	if accountID == 0 {
 		return nil, ErrAssetAccountNotFound
 	}
-	asset, err := s.assets.GetByID(assetID)
-	if err != nil {
+	if err := s.requireManagement(ctx, nil, CredOpBind, []string{CredCapBind},
+		[]uint{credentialID}, []uint{assetID}); err != nil {
 		return nil, err
 	}
-	if err := s.assertAssetPermission(ctx, asset.ID); err != nil {
+	asset, err := s.assets.GetByID(assetID)
+	if err != nil {
 		return nil, err
 	}
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.AssetAccount
 	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖：交易第一個動作，早於資產列與兩筆憑證列鎖（不呼叫 Begin、不推進權限版本）
+		if err := s.assets.lockTopologyTx(tx); err != nil {
+			return err
+		}
 		if err := lockAssetForAccountMutation(tx, asset.ID); err != nil {
 			return err
 		}
@@ -291,6 +338,12 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 		if binding.CredentialID == credentialID {
 			result = binding
 			return nil
+		}
+		// 改綁只驗新憑證與目標資產：被換掉的舊憑證不驗歸屬，因為目標資產在操作者範圍內，
+		// 該帳號的掛載本由資產側管理
+		if err := s.requireManagement(ctx, tx, CredOpBind, []string{CredCapBind},
+			[]uint{credentialID}, []uint{asset.ID}); err != nil {
+			return err
 		}
 		// 兩筆憑證按識別升冪取鎖：兩條互為來源與去向的改綁若各按自己的順序取，
 		// 會各持對方要的那一列
@@ -358,6 +411,8 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 			Scope:        cred.Scope,
 			AssetID:      asset.ID,
 			AccountID:    binding.ID,
+
+			PreviousCredentialID: oldCred.ID,
 		}, userID, operator)
 	})
 	if txErr != nil {
@@ -572,48 +627,56 @@ func clearAssetIdentityMirror(tx *gorm.DB, assetID uint) error {
 	return nil
 }
 
-// assertAssetPermission 單一受影響資產的權限檢核（掛載、卸載、改綁各只動一台）。
+// BindingAssetID 取掛載列所屬的資產識別，供審計主體鍵注入。
 //
-// 判定用的是資產權限階梯的**上限**（兩階為 view < connect）：能連上那台機器的人
-// 才談得上決定它用哪一組秘密登入。authz 為 nil＝未注入判定（僅供不涉及跨資產
-// 後果的既有單測建構），生產組裝一律注入。
-func (s *CredentialService) assertAssetPermission(ctx context.Context, assetID uint) error {
-	if s.authz == nil {
-		return nil
+// 只回識別、不回任何憑證內容，故不要求讀取能力：卸載與脫離的操作者不一定持有
+// credential:view，審計主體鍵不該因此遺失。取不到回 0（主體鍵是查詢的便利，
+// 不該讓一次合法的操作因為多查一次失敗而被拒）。
+func (s *CredentialService) BindingAssetID(credentialID, accountID uint) uint {
+	var assetID uint
+	if err := database.DB.Model(&model.AssetAccount{}).
+		Where("id = ? AND credential_id = ?", accountID, credentialID).
+		Select("asset_id").Limit(1).Scan(&assetID).Error; err != nil {
+		return 0
 	}
-	operatorID, _ := model.UserFromContext(ctx)
-	allowed, err := s.authz.CheckPermission(ctx, operatorID, assetID, model.PermissionConnect)
-	if err != nil {
-		return fmt.Errorf("判定資產權限失敗: %w", err)
-	}
-	if !allowed {
-		log.Printf("[Credential] 受影響資產不可管理，拒絕操作: operator=%d assetID=%d", operatorID, assetID)
-		return ErrCredentialBindForbidden
-	}
-	return nil
+	return assetID
 }
 
-// assertBoundAssetsPermission 影響全部掛載的動作：逐台驗操作者對受影響資產的權限。
+// requireManagement 以語義能力判管理授權（見 credential_management_authz.go），
+// 不再以資產 connect 判管理。判定器缺席 fail closed。
+func (s *CredentialService) requireManagement(ctx context.Context, db *gorm.DB, op CredentialOperation,
+	caps []string, credentialIDs, assetIDs []uint) error {
+
+	_, err := s.mgmt.require(ctx, db, CredentialManagementRequest{
+		Operation: op, Capabilities: caps, CredentialIDs: credentialIDs, AssetIDs: assetIDs,
+	})
+	return err
+}
+
+// requireBoundManagement 影響全部掛載的動作：能力檢核加上同交易算出的影響集合。
 //
-// 改秘密、換範圍、刪憑證的後果不落在單一台上——新秘密會同時就位到每一台，範圍換了
-// 改變的是整組的管理語義，刪除則讓整組失去登入身分。逐台驗而非「有一台有權就放行」：
-// 權限是每一台各自的事實，取聯集會讓最寬的那一台替其餘各台決定。
-//
-// 掛載集合於呼叫端的交易與憑證列鎖之內讀取，避免「驗過之後又被掛上一台」。
-func (s *CredentialService) assertBoundAssetsPermission(ctx context.Context, db *gorm.DB, credentialID uint) error {
-	if s.authz == nil {
-		return nil
-	}
-	assetIDs, err := credentialBoundAssetIDs(db, credentialID)
+// 改秘密、換範圍、刪憑證的後果落在憑證當下的全部掛載上。掛載集合於呼叫端的交易與
+// 憑證列鎖之內讀取，避免「驗過之後又被掛上一台」；零掛載時能力仍然要驗，不能空迴圈放行。
+func (s *CredentialService) requireBoundManagement(ctx context.Context, db *gorm.DB, op CredentialOperation,
+	credentialID uint, caps ...string) error {
+
+	return s.requireOwnedManagement(ctx, db, op, credentialID, nil, caps...)
+}
+
+// requireOwnedManagement 同 requireBoundManagement，另可指定須在範圍內的目標資產（轉專用的唯一掛載、
+// 脫離與卸載選定的那一台）。範圍化主體對全部掛載只以憑證歸屬判定，全域主體的判定不變。
+func (s *CredentialService) requireOwnedManagement(ctx context.Context, db *gorm.DB, op CredentialOperation,
+	credentialID uint, targetAssetIDs []uint, caps ...string) error {
+
+	mounted, err := credentialBoundAssetIDs(db, credentialID)
 	if err != nil {
 		return err
 	}
-	for _, assetID := range assetIDs {
-		if err := s.assertAssetPermission(ctx, assetID); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = s.mgmt.require(ctx, db, CredentialManagementRequest{
+		Operation: op, Capabilities: caps, CredentialIDs: []uint{credentialID},
+		AssetIDs: targetAssetIDs, MountedAssetIDs: mounted,
+	})
+	return err
 }
 
 // credentialBoundAssetIDs 掛載此憑證的資產識別（去重、序穩定）。
@@ -651,6 +714,21 @@ type credentialAudit struct {
 	AssetID uint
 	// AccountID 受影響的掛載列
 	AccountID uint
+	// CorrelationID／SecretSource 自訂秘密事件的關聯識別與秘密來源（見 credential_secret_event.go）
+	CorrelationID string
+	SecretSource  string
+	// RotationID 關聯的輪替工作（意圖與結果兩筆審計以它連結）
+	RotationID uint
+	// Ownership 本操作寫入的管理歸屬（建立、範圍轉換、改歸）；nil＝本操作不涉歸屬
+	Ownership *credentialOwnershipAudit
+	// OwnershipBefore 改歸前的歸屬（改歸與節點刪除承接）
+	OwnershipBefore *credentialOwnershipAudit
+	// PreviousCredentialID 改綁前掛載所引用的憑證（只有改綁帶）
+	PreviousCredentialID uint
+	// Action 覆寫審計 action（空＝依操作名推導）；影響確認以讀取記錄
+	Action model.AuditAction
+	// Extra 附加的 details 鍵（值為字串，鍵名由呼叫端引用常數）
+	Extra map[string]string
 }
 
 // credentialAuditDetails 審計詳情的序列化形狀。
@@ -664,6 +742,17 @@ type credentialAuditDetails struct {
 	Scope        string   `json:"scope,omitempty"`
 	Fields       []string `json:"fields,omitempty"`
 	AccountID    uint     `json:"account_id,omitempty"`
+	// CorrelationID 與同交易系統告警同值；SecretSource 為 custom｜random，不含任何秘密
+	CorrelationID string `json:"correlation_id,omitempty"`
+	SecretSource  string `json:"secret_source,omitempty"`
+	// RotationID 關聯的輪替工作；意圖與結果兩筆審計以它連結
+	RotationID uint `json:"rotation_id,omitempty"`
+	// Ownership 寫入的管理歸屬（只帶種類與節點識別）
+	Ownership *credentialOwnershipAudit `json:"ownership,omitempty"`
+	// OwnershipBefore 改歸前的歸屬
+	OwnershipBefore *credentialOwnershipAudit `json:"ownership_before,omitempty"`
+	// PreviousCredentialID 改綁前的憑證識別（只有改綁帶；credential_id 是改綁後的新憑證）
+	PreviousCredentialID uint `json:"previous_credential_id,omitempty"`
 }
 
 // writeCredentialAudit 記錄憑證操作審計（交易內落地，失敗即回滾）。
@@ -673,17 +762,31 @@ type credentialAuditDetails struct {
 // AssetID，使它同時出現在該台資產的時間線上——主體只有產生點知道，落地器不得推導。
 func writeCredentialAudit(sink port.TxSink, tx *gorm.DB, a credentialAudit, userID uint, operator string) error {
 	details := credentialAuditDetails{
-		Resource:     string(model.ResourceCredential),
-		CredentialID: a.CredentialID,
-		Operation:    a.Operation,
-		Scope:        a.Scope,
-		Fields:       a.Fields,
-		AccountID:    a.AccountID,
+		Resource:        string(model.ResourceCredential),
+		CredentialID:    a.CredentialID,
+		Operation:       a.Operation,
+		Scope:           a.Scope,
+		Fields:          a.Fields,
+		AccountID:       a.AccountID,
+		CorrelationID:   a.CorrelationID,
+		SecretSource:    a.SecretSource,
+		RotationID:      a.RotationID,
+		Ownership:       a.Ownership,
+		OwnershipBefore: a.OwnershipBefore,
+
+		PreviousCredentialID: a.PreviousCredentialID,
 	}
 	detailsJSON, err := json.Marshal(details)
+	if err == nil && len(a.Extra) > 0 {
+		detailsJSON, err = mergeAuditExtra(detailsJSON, a.Extra)
+	}
 	if err != nil {
 		log.Printf("序列化憑證變更詳情失敗: %v", err)
 		detailsJSON = []byte("{}")
+	}
+	action := auditActionForAccountOp(a.Operation)
+	if a.Action != "" {
+		action = a.Action
 	}
 	credentialID := a.CredentialID
 	// 受影響資產於字面量之前算好：主體鍵是產生點的一部分，事後才補上的欄位
@@ -696,11 +799,25 @@ func writeCredentialAudit(sink port.TxSink, tx *gorm.DB, a credentialAudit, user
 	return port.WriteInTx(sink, tx, port.AuditEvent{
 		OccurredAt: time.Now(),
 		Actor:      gatewayapi.Actor{UserID: userID, Username: operator},
-		Action:     string(auditActionForAccountOp(a.Operation)),
+		Action:     string(action),
 		Resource:   string(model.ResourceCredential),
 		ResourceID: &credentialID,
 		AssetID:    assetID,
 		Status:     string(model.StatusSuccess),
 		Details:    string(detailsJSON),
 	})
+}
+
+// mergeAuditExtra 把附加鍵併入已序列化的 details（附加鍵不得覆蓋既有鍵）。
+func mergeAuditExtra(base []byte, extra map[string]string) ([]byte, error) {
+	m := map[string]any{}
+	if err := json.Unmarshal(base, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range extra {
+		if _, exists := m[k]; !exists {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
 }

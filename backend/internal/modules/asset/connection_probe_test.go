@@ -166,6 +166,7 @@ func TestConnectionDispatchUnsupportedProtocolNeverReachesGuacd(t *testing.T) {
 
 	_, mock, _ := setupAssetMockDB(t)
 	service, err := NewAssetService(aesColumnCodec(t, make([]byte, 32)), host, port, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
 
 	expectAssetWithDefaultAccount(t, mock, service, "ftp", "127.0.0.1", 21)

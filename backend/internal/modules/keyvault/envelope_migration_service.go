@@ -89,6 +89,10 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	{table: "ldap_directories", column: "bind_password_enc"},
 	{table: "notification_channels", column: "secret"},
 	{table: "notification_channels", column: "url"},
+	// 系統告警投遞佇列的目的地快照。與 model 同批入冊：本清單同時是 DEK 輪替重加密與
+	// 退役 DEK 銷毀前的引用掃描來源，漏登會使仍在重送的快照永久不可解
+	{table: "system_alert_outbox", column: "url_enc"},
+	{table: "system_alert_outbox", column: "secret_enc"},
 	// RDP/VNC 剪貼簿留存內容。
 	// 與 model 同批入冊——本清單同時是 DEK 輪替重加密與退役 DEK 銷毀前的
 	// 引用掃描來源，漏登會使該欄密文永久不可解（剪貼簿審計證據整批損毀）。

@@ -72,7 +72,7 @@ func TestAgentVisibilityExposureDisclosureAndClassification(t *testing.T) {
 
 func TestAgentVisibilityExposureItemApproval(t *testing.T) {
 	s, _, db, agent := setupItemRequestEnv(t)
-	req, err := s.Submit(agent, "agent", model.RoleUser, itemInput(1))
+	req, err := s.Submit(agent, "agent", false, itemInput(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,14 +87,14 @@ func TestAgentVisibilityExposureItemApproval(t *testing.T) {
 	if got, err := ClassifyAgentProbe(db, agent, 1); err != nil || got != model.ProbeRevoked {
 		t.Fatal(got, err)
 	}
-	if _, err := s.Submit(agent, "agent", model.RoleUser, itemInput(3)); err != nil {
+	if _, err := s.Submit(agent, "agent", false, itemInput(3)); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := ClassifyAgentProbe(db, agent, 3); err != nil || got != model.ProbeRevoked {
 		t.Fatal("automatic approval", got, err)
 	}
 	// Human item approval must not add disclosures.
-	human, err := s.Submit(1, "human", model.RoleUser, itemInput(1))
+	human, err := s.Submit(1, "human", false, itemInput(1))
 	if err != nil {
 		t.Fatal(err)
 	}

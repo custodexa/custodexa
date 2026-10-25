@@ -6,7 +6,7 @@ vi.mock('../request', () => ({
   default: (...args) => requestMock(...args),
 }))
 
-import { getAuditFailures } from '../auditFailures'
+import { acceptPermissionState, getAuditFailures } from '../auditFailures'
 
 describe('auditFailures API methods', () => {
   beforeEach(() => {
@@ -20,6 +20,15 @@ describe('auditFailures API methods', () => {
       url: '/audit-failures',
       method: 'get',
       params,
+    })
+  })
+
+  it('acceptPermissionState posts the reason to the super-admin confirmation endpoint', () => {
+    acceptPermissionState({ reason: '已核對' })
+    expect(requestMock).toHaveBeenCalledWith({
+      url: '/audit-failures/permission-state/accept',
+      method: 'post',
+      data: { reason: '已核對' },
     })
   })
 })

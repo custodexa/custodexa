@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"log"
 	"strconv"
@@ -109,7 +110,7 @@ type DecideInput struct {
 
 // AccessRequestServiceInterface 申請核准流服務介面（handler 注入用）
 type AccessRequestServiceInterface interface {
-	Submit(requesterID uint, username, role string, input SubmitAccessRequestInput) (*model.AccessRequest, error)
+	Submit(requesterID uint, username string, requesterExempt bool, input SubmitAccessRequestInput) (*model.AccessRequest, error)
 	Cancel(requesterID uint, requestID uint) (*model.AccessRequest, error)
 	Approve(actorID uint, isAdmin bool, requestID uint, input DecideInput) (*model.AccessRequest, error)
 	Reject(actorID uint, isAdmin bool, requestID uint, note string) (*model.AccessRequest, error)
@@ -122,7 +123,7 @@ type AccessRequestServiceInterface interface {
 	ExpireOverdue(now time.Time) (int, error)
 
 	// 破窗、提前撤銷、補審
-	BreakGlass(requesterID uint, username, role string, assetID uint, reason string) (*model.AccessRequest, error)
+	BreakGlass(requesterID uint, username string, requesterExempt bool, assetID uint, reason string) (*model.AccessRequest, error)
 	Revoke(actorID uint, isAdmin bool, username string, requestID uint, note string) (*model.AccessRequest, error)
 	Review(actorID uint, isAdmin bool, requestID uint, disposition, note string) (*model.AccessRequest, error)
 	ListPendingReview(actorID uint, isAdmin bool) ([]*model.AccessRequest, error)
@@ -143,6 +144,12 @@ type AccessRequestService struct {
 	notifier       *audit.AlertNotifier
 	// sessions 撤銷即斷線收線；nil＝不聯動（測試路徑或政策恆關部署）
 	sessions SessionTerminator
+	// revokeScope 撤銷資格的授權規則管理範圍判定；組裝期必注入（RequireRevokeWiring）。
+	// nil 只出現在不經 HTTP 入口的程式內部建構（測試），此時只走既有逐項資格
+	revokeScope *AuthorizationWriteScope
+	// txSink 撤銷審計的交易內落地面；組裝期必注入（RequireRevokeWiring）。
+	// nil 只出現在不經 HTTP 入口的程式內部建構（測試），此時沿用提交後的單列審計
+	txSink port.TxSink
 }
 
 // SessionTerminator 撤銷授權時強制終斷該使用者對該資產的進行中會話。
@@ -180,8 +187,8 @@ func NewAccessRequestService(
 // Submit 提出申請：事由必填、時長≤政策上限、可預約起始、去重擋在途單、
 // open 段拒建單；reason 段同交易即時自動核准（決定者記 system、auto 標記）——
 // 與強制審核共用同一表單與資料軌（決議 B）
-func (s *AccessRequestService) Submit(requesterID uint, username, role string, input SubmitAccessRequestInput) (*model.AccessRequest, error) {
-	return s.submitItems(requesterID, username, role, input)
+func (s *AccessRequestService) Submit(requesterID uint, username string, requesterExempt bool, input SubmitAccessRequestInput) (*model.AccessRequest, error) {
+	return s.submitItems(requesterID, username, requesterExempt, input)
 }
 
 // expireOverduePendingFor 就地作廢單一使用者×資產的逾期 pending 單（CAS，
@@ -218,8 +225,8 @@ func (s *AccessRequestService) duplicatePendingError(requesterID, assetID uint) 
 // 決議 C：核准人可下修時長/推遲起始，不可上調——優於申請值即拒
 // eligibleToDecide 決定資格＝admin 兜底 OR 審核範圍命中；禁自核先於資格判定硬擋
 func (s *AccessRequestService) eligibleToDecide(actorID uint, isAdmin bool, req *model.AccessRequest) error {
-	if req.RequesterID == actorID {
-		return ErrSelfApproval
+	if err := s.selfDecisionBlocked(s.db, actorID, req); err != nil {
+		return err
 	}
 	// admin 兜底＝具核准資格（quorum 語義下計一票、不單票繞過門檻，
 	// 見 Approve 的 quorumApprove；各 isAdmin 短路點語義以此為準）
@@ -348,18 +355,21 @@ func (s *AccessRequestService) MyActiveTickets(requesterID uint, now time.Time) 
 // 禁在本檔另寫等價 SQL；涵蓋規則變更一律改 repository 家族區
 
 // pendingScopeFilter 待審查詢共用條件：pending＋未逾期（惰性過濾）＋範圍過濾＋
-// 排除本人單（對抗驗收 UX 修正：自己的申請自己不能核，出現在待審只會誤導、
+// 排除本人單、執行者本人的單，且範圍內須仍有 pending 項目（對抗驗收 UX 修正：自己的申請自己不能核，出現在待審只會誤導、
 // 且核准鈕點了必 403；禁自核在待審視圖就先過濾掉，admin 亦然——admin 不申請故無影響）
 func (s *AccessRequestService) pendingScopeFilter(actorID uint, isAdmin bool, now time.Time) *gorm.DB {
+	// 申請人為本人擁有的 agent 的單同樣排除：對它核准必回自核禁止，列出只會誤導
+	//（單筆判定見 selfDecisionBlocked，兩者同一判定式）
 	q := s.db.Model(&model.AccessRequest{}).
 		Where("status = ? AND pending_expires_at > ? AND requester_id <> ?",
-			model.AccessRequestPending, now, actorID)
-	if !isAdmin {
-		q = q.Where(requestItemScopeRouteCondition(),
-			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID,
-			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID)
+			model.AccessRequestPending, now, actorID).
+		Where(ownAgentRequesterCondition+" AND "+executorExclusionCondition, actorID, actorID)
+	if isAdmin {
+		return q.Where(anyPendingItemCondition())
 	}
-	return q
+	return q.Where(pendingItemScopeRouteCondition(),
+		actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID,
+		actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID)
 }
 
 // ListPending 待審列表（approver 依範圍過濾；admin 全量）
@@ -579,12 +589,12 @@ func (s *AccessRequestService) notify(event notifycat.Event, requestID uint, ass
 // 鎖定申請人列＋去重（有效破窗票證擋 409）＋建單（kind=break_glass、
 // review_status=pending_review）＋即時核准（固定短窗政策鍵，忽略 client 時長/起始）。
 // 不動同資產在途 pending 一般單（緊急優先，原單照常裁決）
-func (s *AccessRequestService) BreakGlass(requesterID uint, username, role string, assetID uint, reason string) (*model.AccessRequest, error) {
+func (s *AccessRequestService) BreakGlass(requesterID uint, username string, requesterExempt bool, assetID uint, reason string) (*model.AccessRequest, error) {
 	if !s.policies.GetBool(policy.PolicyBreakGlassEnabled) {
 		return nil, ErrBreakGlassDisabled
 	}
-	// admin 有政策豁免不需破窗（避免雙旁路語義混淆）；auditor 不得連線資產
-	if role == model.RoleAdmin || role == model.RoleAuditor {
+	// 超管有政策豁免不需破窗（避免雙旁路語義混淆）；稽核員不得連線資產（requesterExempt 由呼叫端依主體判定）
+	if requesterExempt {
 		return nil, ErrRequesterExempt
 	}
 	if reason == "" {
@@ -628,11 +638,15 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username, role strin
 
 	var req *model.AccessRequest
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// 鎖定申請人列串行同人破窗（Postgres FOR UPDATE；SQLite 測試路徑
+		// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
+		if probe := LockOrderProbeHook(); probe != nil {
+			probe(tx, LockLayerUserRow, requesterID)
+		}
+		// 鎖定申請人列串行同人破窗（Postgres FOR NO KEY UPDATE；SQLite 測試路徑
 		// 單連線本就串行，跳過不支援的鎖語法）——去重檢查與建單間無競態窗
 		if tx.Dialector.Name() == "postgres" {
 			var locked model.User
-			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			if err := tx.Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).
 				Select("id").First(&locked, requesterID).Error; err != nil {
 				return fmt.Errorf("鎖定申請人失敗: %w", err)
 			}
@@ -704,32 +718,10 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username, role strin
 }
 
 // Revoke 臨時授權提前撤銷：同交易軟刪票證（CAS 先到者贏）＋單附註
-// 三欄（不動狀態機——approved 終態不變）；資格分流見 eligibleToRevoke；
+// 三欄（不動狀態機——approved 終態不變）；資格分流見 RevokeItem；
 // 政策開啟時交易後收線（失敗不回滾）
 func (s *AccessRequestService) Revoke(actorID uint, isAdmin bool, username string, requestID uint, note string) (*model.AccessRequest, error) {
 	return s.RevokeItem(actorID, isAdmin, username, requestID, 0, note)
-}
-
-// eligibleToRevoke 撤銷資格（六題 4）：一般單＝admin OR 原核准人；
-// 自動核准/破窗單（無真人核准人）＝admin OR 範圍命中 approver
-func (s *AccessRequestService) eligibleToRevoke(actorID uint, isAdmin bool, req *model.AccessRequest) error {
-	if isAdmin {
-		return nil
-	}
-	if req.ApproverID != nil {
-		if *req.ApproverID == actorID {
-			return nil
-		}
-		return ErrNotRevokeEligible
-	}
-	covered, err := s.authzRepo.ApproverScopeCoversRequest(actorID, req.AssetID, req.RequesterID)
-	if err != nil {
-		return err
-	}
-	if !covered {
-		return ErrNotRevokeEligible
-	}
-	return nil
 }
 
 // Review 破窗事後補審：資格＝範圍命中 approver OR admin、破窗人
@@ -869,4 +861,61 @@ func (s *AccessRequestService) NotifyOverdueReviews(now time.Time) (int, error) 
 			map[string]string{"timeout_hours": strconv.Itoa(timeoutHours)})
 	}
 	return notified, nil
+}
+
+// selfDecisionBlockedLocked 交易內版本：先鎖申請人的使用者列（agent 申請人的擁有關係以這一列
+// 為準，與擁有者轉移 guardOwnerTransfer 一樣先鎖此列再判定），再做同一判定。交易外的判定只是
+// 快速失敗，不作為寫票與發票證的依據：擁有者轉移可以插在交易外判定與交易之間。
+func (s *AccessRequestService) selfDecisionBlockedLocked(tx *gorm.DB, actorID uint, req *model.AccessRequest) error {
+	if h := loadLockOrderHook(); h != nil {
+		h("request_decide_before_requester_lock", tx, req.RequesterID)
+	}
+	if err := lockUserRows(tx, []uint{req.RequesterID}); err != nil {
+		return err
+	}
+	return s.selfDecisionBlocked(tx, actorID, req)
+}
+
+// dependentDeciders 與申請人不獨立的主體：申請人、執行者，以及申請人為 agent 時的現任擁有者。
+// 須在 selfDecisionBlockedLocked 之後呼叫（擁有關係已鎖定，交易內不會再變）。
+func dependentDeciders(tx *gorm.DB, req *model.AccessRequest) ([]uint, error) {
+	ids := []uint{req.RequesterID}
+	if req.ExecutorUserID != nil {
+		ids = append(ids, *req.ExecutorUserID)
+	}
+	var owners []uint
+	if err := tx.Model(&model.User{}).
+		Where("id = ? AND kind = ? AND owner_user_id IS NOT NULL", req.RequesterID, model.KindAgent).
+		Pluck("owner_user_id", &owners).Error; err != nil {
+		return nil, fmt.Errorf("查詢申請人擁有者失敗: %w", err)
+	}
+	return append(ids, owners...), nil
+}
+
+// independentVoteCount 計票只算與申請人獨立的票：先前投票者若在投票後成為申請人 agent 的
+// 擁有者，其票不計入門檻（票列保留供稽核，不刪）。擁有者轉移守衛已拒絕持有效票者接手，
+// 這裡是計票側的第二道，不依賴轉移一定經過守衛。
+func independentVoteCount(tx *gorm.DB, requestID, itemID uint, dependents []uint) (int64, error) {
+	var votes int64
+	err := tx.Model(&model.AccessRequestApproval{}).
+		Where("request_id = ? AND item_id = ? AND approver_id NOT IN ?", requestID, itemID, dependents).
+		Count(&votes).Error
+	return votes, err
+}
+
+// selfDecisionBlocked 自我核准的唯一判定式：操作者是申請人、執行者，或申請人是操作者
+// 擁有的 agent（擁有關係以決定當下現查為準），四條決定路徑（逐項核准、逐項拒絕、
+// 舊整單路徑、批次核決）與待審過濾共用此結論。
+func (s *AccessRequestService) selfDecisionBlocked(db *gorm.DB, actorID uint, req *model.AccessRequest) error {
+	if actorID == req.RequesterID || req.ExecutorUserID != nil && actorID == *req.ExecutorUserID {
+		return ErrSelfApproval
+	}
+	own, err := (SelfGrantGuard{}).IsOwnAgentRequest(db, actorID, req.RequesterID)
+	if err != nil {
+		return err
+	}
+	if own {
+		return ErrSelfApproval
+	}
+	return nil
 }

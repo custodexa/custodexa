@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Alerts from '../Alerts.vue'
+import NotificationChannels from '../NotificationChannels.vue'
+import NotificationChannelPanel from '@/components/alerts/NotificationChannelPanel.vue'
 import { t } from '@/i18n'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 本檔掛載後從不卸載，殘留元件在 document 上累積使單測耗時隨測試序單調
 // 上升（單獨跑實測 709ms→6962ms，約 10 倍）——全量並行時末幾格逼近逾時上限而轉紅
@@ -49,8 +53,10 @@ vi.mock('@/api/alerts', () => ({
   testChannel: (...args) => testChannelMock(...args),
 }))
 
+// 儀表板落點帶入的 query：各測試自行設定，afterEach 還原
+let routeQuery = {}
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: routerPushMock }),
+  useRouter: () => ({ push: routerPushMock, currentRoute: { value: { query: routeQuery } } }),
 }))
 
 const sampleAlerts = [
@@ -87,6 +93,7 @@ const sampleRules = [
 
 const setUserRoles = (roles) => {
   localStorage.setItem('user', JSON.stringify({ username: 'tester', roles }))
+  grantFor(roles)
 }
 
 const mountAlerts = () =>
@@ -96,10 +103,22 @@ const mountAlerts = () =>
     },
   })
 
+// 通道面板已搬到系統設定的獨立頁（頁殼掛載時載入列表）；下列通道案例改掛該頁，斷言不變
+const mountChannels = () =>
+  mount(NotificationChannels, {
+    global: {
+      plugins: [ElementPlus],
+    },
+  })
+
+// 通道面板是獨立元件：通道表單與動作的狀態在它的 vm 上
+const channelPanel = (wrapper) => wrapper.findComponent(NotificationChannelPanel).vm
+
 describe('Alerts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     searchAlertsMock.mockResolvedValue({ data: sampleAlerts, total: 2 })
     getAlertRulesMock.mockResolvedValue({ data: sampleRules })
   })
@@ -114,7 +133,7 @@ describe('Alerts', () => {
       page: 1,
       page_size: 20,
     })
-    expect(wrapper.text()).toContain('指令告警')
+    expect(wrapper.text()).toContain('危險指令與系統安全事件的告警記錄')
     expect(wrapper.text()).toContain('rm -rf /')
     expect(wrapper.text()).toContain('刪除根目錄')
   })
@@ -323,7 +342,7 @@ describe('Alerts', () => {
     setUserRoles(['admin'])
     updateChannelMock.mockResolvedValue({})
 
-    const wrapper = mountAlerts()
+    const wrapper = mountChannels()
     await flushPromises()
 
     // url 為遮罩值（後端回應不含全文）
@@ -331,16 +350,16 @@ describe('Alerts', () => {
 
     // 開啟編輯：has_secret 帶入表單供狀態顯示，hasSecret 不進 payload；
     // url 不回填（遮罩值進 maskedUrl 僅供顯示）
-    wrapper.vm.openChannelDialog(row)
+    channelPanel(wrapper).openChannelDialog(row)
     await flushPromises() // 表單掛載後 rules 生效（C6：submit 走 validate）
-    expect(wrapper.vm.channelForm.hasSecret).toBe(true)
-    expect(wrapper.vm.channelForm.url).toBe('')
-    expect(wrapper.vm.channelForm.maskedUrl).toBe('https://hooks.example.com/****t/x')
+    expect(channelPanel(wrapper).channelForm.hasSecret).toBe(true)
+    expect(channelPanel(wrapper).channelForm.url).toBe('')
+    expect(channelPanel(wrapper).channelForm.maskedUrl).toBe('https://hooks.example.com/****t/x')
 
     // 只改名、不重填 secret/url：payload 帶空 secret 與空 url + clear_secret=false（後端沿用既有值）；
     // risk_acknowledged=false（傳輸閘：首次存檔不預設確認）；skipErrorToast 供 warn 確認流程攔截
-    wrapper.vm.channelForm.name = 'ops-renamed'
-    await wrapper.vm.handleSaveChannel()
+    channelPanel(wrapper).channelForm.name = 'ops-renamed'
+    await channelPanel(wrapper).handleSaveChannel()
     await flushPromises()
     expect(updateChannelMock).toHaveBeenCalledWith(
       9,
@@ -362,10 +381,10 @@ describe('Alerts', () => {
 
     // 勾選清除簽名：clear_secret=true
     updateChannelMock.mockClear()
-    wrapper.vm.openChannelDialog(row)
+    channelPanel(wrapper).openChannelDialog(row)
     await flushPromises()
-    wrapper.vm.channelForm.clearSecret = true
-    await wrapper.vm.handleSaveChannel()
+    channelPanel(wrapper).channelForm.clearSecret = true
+    await channelPanel(wrapper).handleSaveChannel()
     await flushPromises()
     expect(updateChannelMock).toHaveBeenCalledWith(9, expect.objectContaining({ clear_secret: true }), expect.anything())
   })
@@ -374,15 +393,15 @@ describe('Alerts', () => {
     setUserRoles(['admin'])
     createChannelMock.mockResolvedValue({})
 
-    const wrapper = mountAlerts()
+    const wrapper = mountChannels()
     await flushPromises()
 
-    wrapper.vm.openChannelDialog()
+    channelPanel(wrapper).openChannelDialog()
     await flushPromises() // 表單掛載後 rules 生效（C6：submit 走 validate）
-    wrapper.vm.channelForm.name = 'ops-slack'
-    wrapper.vm.channelForm.type = 'slack'
-    wrapper.vm.channelForm.url = 'https://hooks.slack.com/services/x'
-    await wrapper.vm.handleSaveChannel()
+    channelPanel(wrapper).channelForm.name = 'ops-slack'
+    channelPanel(wrapper).channelForm.type = 'slack'
+    channelPanel(wrapper).channelForm.url = 'https://hooks.slack.com/services/x'
+    await channelPanel(wrapper).handleSaveChannel()
     await flushPromises()
 
     expect(createChannelMock).toHaveBeenCalledWith(
@@ -421,7 +440,7 @@ describe('Alerts', () => {
     const wrapper = mountAlerts()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('指令告警')
+    expect(wrapper.text()).toContain('危險指令與系統安全事件的告警記錄')
     expect(wrapper.vm.alertsLoading).toBe(false)
   })
 
@@ -446,12 +465,12 @@ describe('Alerts', () => {
     setUserRoles(['admin'])
     createChannelMock.mockResolvedValue({})
 
-    const wrapper = mountAlerts()
+    const wrapper = mountChannels()
     await flushPromises()
 
-    wrapper.vm.openChannelDialog()
+    channelPanel(wrapper).openChannelDialog()
     await flushPromises()
-    expect(wrapper.vm.channelForm.language).toBe('zh-TW')
+    expect(channelPanel(wrapper).channelForm.language).toBe('zh-TW')
     // 選項以各語言自身文字呈現（不隨介面語言翻譯）；el-dialog／el-select 的
     // 內容分別落在 wrapper 與 teleport 到 body 的 popper，兩處合併後斷言
     const dialogText = wrapper.text() + document.body.textContent
@@ -461,11 +480,11 @@ describe('Alerts', () => {
       expect(dialogText, `語系選項缺 ${label}`).toContain(label)
     }
 
-    wrapper.vm.channelForm.name = 'ops-ja'
-    wrapper.vm.channelForm.type = 'slack'
-    wrapper.vm.channelForm.url = 'https://hooks.slack.com/services/x'
-    wrapper.vm.channelForm.language = 'ja-JP'
-    await wrapper.vm.handleSaveChannel()
+    channelPanel(wrapper).channelForm.name = 'ops-ja'
+    channelPanel(wrapper).channelForm.type = 'slack'
+    channelPanel(wrapper).channelForm.url = 'https://hooks.slack.com/services/x'
+    channelPanel(wrapper).channelForm.language = 'ja-JP'
+    await channelPanel(wrapper).handleSaveChannel()
     await flushPromises()
 
     expect(createChannelMock).toHaveBeenCalledWith(
@@ -477,17 +496,17 @@ describe('Alerts', () => {
   it('channel edit prefills language from the row and falls back to zh-TW when absent', async () => {
     setUserRoles(['admin'])
 
-    const wrapper = mountAlerts()
+    const wrapper = mountChannels()
     await flushPromises()
 
-    wrapper.vm.openChannelDialog({ id: 5, name: 'ops-en', type: 'slack', url: '***', enabled: true, language: 'en-US' })
+    channelPanel(wrapper).openChannelDialog({ id: 5, name: 'ops-en', type: 'slack', url: '***', enabled: true, language: 'en-US' })
     await flushPromises()
-    expect(wrapper.vm.channelForm.language).toBe('en-US')
+    expect(channelPanel(wrapper).channelForm.language).toBe('en-US')
 
     // 舊列（後端尚未回 language）不得把 undefined 送進 payload
-    wrapper.vm.openChannelDialog({ id: 6, name: 'legacy', type: 'webhook', url: '***', enabled: true })
+    channelPanel(wrapper).openChannelDialog({ id: 6, name: 'legacy', type: 'webhook', url: '***', enabled: true })
     await flushPromises()
-    expect(wrapper.vm.channelForm.language).toBe('zh-TW')
+    expect(channelPanel(wrapper).channelForm.language).toBe('zh-TW')
   })
 
   // 推送門檻（依等級過濾通知）
@@ -499,21 +518,21 @@ describe('Alerts', () => {
       data: [{ id: 11, name: 'p1-oncall', type: 'slack', url: '***', enabled: true, language: 'zh-TW', min_severity: 'high' }],
     })
 
-    const wrapper = mountAlerts()
+    const wrapper = mountChannels()
     await flushPromises()
 
     // 新增：預設全部告警，選項與範圍說明照畫稿
-    wrapper.vm.openChannelDialog()
+    channelPanel(wrapper).openChannelDialog()
     await flushPromises()
-    expect(wrapper.vm.channelForm.minSeverity).toBe('low')
+    expect(channelPanel(wrapper).channelForm.minSeverity).toBe('low')
     const dialogText = wrapper.text() + document.body.textContent
     for (const label of ['推送哪些告警', '全部告警', '中、高等級', '只有高等級', '被略過的中、低等級告警仍記在告警頁']) {
       expect(dialogText, `對話框缺「${label}」`).toContain(label)
     }
-    wrapper.vm.channelForm.name = 'p1'
-    wrapper.vm.channelForm.url = 'https://hooks.example.com/p1'
-    wrapper.vm.channelForm.minSeverity = 'high'
-    await wrapper.vm.handleSaveChannel()
+    channelPanel(wrapper).channelForm.name = 'p1'
+    channelPanel(wrapper).channelForm.url = 'https://hooks.example.com/p1'
+    channelPanel(wrapper).channelForm.minSeverity = 'high'
+    await channelPanel(wrapper).handleSaveChannel()
     await flushPromises()
     expect(createChannelMock).toHaveBeenCalledWith(
       expect.objectContaining({ min_severity: 'high' }),
@@ -521,22 +540,22 @@ describe('Alerts', () => {
     )
 
     // 編輯：自列回填
-    wrapper.vm.openChannelDialog({ id: 11, name: 'p1-oncall', type: 'slack', url: '***', enabled: true, min_severity: 'medium' })
+    channelPanel(wrapper).openChannelDialog({ id: 11, name: 'p1-oncall', type: 'slack', url: '***', enabled: true, min_severity: 'medium' })
     await flushPromises()
-    expect(wrapper.vm.channelForm.minSeverity).toBe('medium')
+    expect(channelPanel(wrapper).channelForm.minSeverity).toBe('medium')
 
     // 列表的啟用開關只送 name／type／enabled：帶了 min_severity 就會把門檻重設
     const row = { id: 11, name: 'p1-oncall', type: 'slack', enabled: true, min_severity: 'high' }
-    await wrapper.vm.handleChannelToggle(row, false)
+    await channelPanel(wrapper).handleChannelToggle(row, false)
     await flushPromises()
     const togglePayload = updateChannelMock.mock.calls.at(-1)[1]
     expect(togglePayload).not.toHaveProperty('min_severity')
 
     // 列表「推送」欄
-    await wrapper.vm.fetchChannels()
+    await channelPanel(wrapper).fetchChannels()
     await flushPromises()
-    expect(wrapper.vm.channelMinSeverityLabel('high')).toBe('只有高等級')
-    expect(wrapper.vm.channelMinSeverityLabel(undefined)).toBe('全部告警')
+    expect(channelPanel(wrapper).channelMinSeverityLabel('high')).toBe('只有高等級')
+    expect(channelPanel(wrapper).channelMinSeverityLabel(undefined)).toBe('全部告警')
   })
 
   it('shows empty state when no alerts exist', async () => {
@@ -547,5 +566,39 @@ describe('Alerts', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('尚無告警記錄')
+  })
+
+  describe('儀表板落點條件', () => {
+    const START = '2026-10-19T00:00:00.000000+08:00'
+    const END = '2026-10-19T23:59:59.999500+08:00'
+    afterEach(() => {
+      routeQuery = {}
+    })
+
+    it('帶入的日界線原字串（含微秒）與未審閱條件原樣送出列表請求', async () => {
+      setUserRoles(['auditor'])
+      routeQuery = { unreviewed: 'true', start_time: START, end_time: END }
+      mountAlerts()
+      await flushPromises()
+      expect(searchAlertsMock).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        unreviewed: 'true',
+        start_time: START,
+        end_time: END,
+      })
+    })
+
+    it('重置後不再帶入儀表板條件', async () => {
+      setUserRoles(['auditor'])
+      routeQuery = { unreviewed: 'true', start_time: START, end_time: END }
+      const wrapper = mountAlerts()
+      await flushPromises()
+      searchAlertsMock.mockClear()
+      const reset = wrapper.findAll('button').find((b) => b.text() === t('common.reset'))
+      await reset.trigger('click')
+      await flushPromises()
+      expect(searchAlertsMock).toHaveBeenLastCalledWith({ page: 1, page_size: 20 })
+    })
   })
 })

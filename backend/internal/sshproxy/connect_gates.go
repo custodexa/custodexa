@@ -50,11 +50,11 @@ type ConnectTokenRequest struct {
 
 // issueState 簽發側閘序的共享中間狀態：前一道閘算出、後面的閘要用的東西
 type issueState struct {
-	input    *ConnectTokenRequest
-	role     string
-	req      connectTokenRequest
-	assetRow *model.Asset
-	identity asset.AccountIdentity
+	input     *ConnectTokenRequest
+	principal *authz.Principal
+	req       connectTokenRequest
+	assetRow  *model.Asset
+	identity  asset.AccountIdentity
 	// allowedCIDRs 該使用者的允許來源網段儲存字串，由 G-I2 的同一次載入帶出
 	// （來源閘不另查一趟，見 G-I15）
 	allowedCIDRs string
@@ -93,12 +93,12 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			// 的正式 JWT 仍能走到此處，降權 admin 亦然。不覆蓋則其後所有 admin 短路（授權/錄影
 			// fail-close 例外/政策豁免/簽發）皆憑 JWT 角色快照放行。CheckUserConnectable
 			// 的可連線複查併入本次查詢，不多查一趟
-			role, allowedCIDRs, connErr := h.AuthService.CurrentConnectRoleAndSourcePolicy(s.UserID)
+			principal, allowedCIDRs, connErr := h.AuthService.CurrentConnectPrincipalAndSourcePolicy(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthError(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
-			st.role = role
+			st.principal = principal
 			st.allowedCIDRs = allowedCIDRs
 			return nil
 		}},
@@ -137,7 +137,7 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-I5", Eval: func() *connectgate.Outcome {
-			return h.connectPermissionOutcome(c, s.UserID, st.role, st.req.AssetID)
+			return h.connectPermissionOutcome(c, s.UserID, st.principal, st.req.AssetID)
 		}},
 		{Name: "G-I6", Eval: func() *connectgate.Outcome {
 			// 停用資產連線硬擋：授權檢查之後（保未授權
@@ -202,7 +202,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 				return nil
 			}
 			if aerr := h.AuthorizationService.AuthorizeConnectAccount(
-				authorizationContext(c, st.role), s.UserID, o.AssetID,
+				authorizationContext(c, st.principal), s.UserID, o.AssetID,
 				model.ProtocolType(o.Protocol), o.Username); aerr != nil {
 				if errors.Is(aerr, authz.ErrAccountNotAuthorized) {
 					// 與「帳號不存在」共用一碼：分流回應會讓端點成為「哪些帳號存在」的探測器
@@ -226,7 +226,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 						map[string]string{model.CauseParamDetail: probeErr.Error()})
 				}
 				if h.RecordingFailClose != nil && h.RecordingFailClose() {
-					if st.role != model.RoleAdmin {
+					if !st.principal.IsSuperAdmin() {
 						return connectgate.Deny(http.StatusForbidden,
 							string(apierror.CodeRecordingUnavailable),
 							map[string]any{"reason": "recording_unavailable"})
@@ -247,7 +247,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 			if h.AccessPolicy == nil {
 				return nil
 			}
-			decision, err := h.AccessPolicy.CheckConnect(s.UserID, st.role, st.assetRow)
+			decision, err := h.AccessPolicy.CheckConnect(s.UserID, st.principal.IsSuperAdmin(), st.assetRow)
 			if err != nil {
 				log.Printf("[AccessPolicy] 政策閘判定失敗: userID=%d assetID=%d err=%v", s.UserID, o.AssetID, err)
 				return connectgate.DenyInternal(http.StatusInternalServerError,
@@ -308,10 +308,10 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 
 // redeemState SSH 兌換側閘序的共享中間狀態
 type redeemState struct {
-	grant       proxy.ConnectGrant
-	currentRole string
-	cols, rows  int
-	creds       *asset.AssetCredentials
+	grant      proxy.ConnectGrant
+	principal  *authz.Principal
+	cols, rows int
+	creds      *asset.AssetCredentials
 	// allowedCIDRs 兌換當下現讀的允許來源網段（G-S3 的同一次載入帶出）。
 	// **不信簽發**：票證可能在允許的位址簽出，再換個位址來兌換
 	allowedCIDRs string
@@ -358,12 +358,12 @@ func (h *Handler) redeemPreResolveGates(c *gin.Context,
 			// AUTH-1＋角色現況：connect_token 於停用/鎖定/
 			// 降權前簽發者，兌換時重載用戶狀態並取 DB 現查有效角色（即時撤權殘窗 = 60s TTL；
 			// 不重載＝停用/降權者仍可開新 shell）。currentRole 供下方授權/政策重查判定 admin 特權
-			currentRole, allowedCIDRs, connErr := h.AuthService.CurrentConnectRoleAndSourcePolicy(s.UserID)
+			principal, allowedCIDRs, connErr := h.AuthService.CurrentConnectPrincipalAndSourcePolicy(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthError(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
-			st.currentRole = currentRole
+			st.principal = principal
 			st.allowedCIDRs = allowedCIDRs
 			return nil
 		}},
@@ -430,13 +430,13 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			// 兌換前，其連線授權/ticket/存取政策/角色若遭撤銷或收緊，於此即時生效——撤權
 			// 殘窗（原以 60s TTL 為上界）歸零。role 用 DB 現查 currentRole，不憑角色快照
 			// 授予 admin 特權
-			return h.connectPermissionOutcome(c, s.UserID, st.currentRole, o.AssetID)
+			return h.connectPermissionOutcome(c, s.UserID, st.principal, o.AssetID)
 		}},
 		{Name: "G-S10", Eval: func() *connectgate.Outcome {
 			if h.AccessPolicy == nil {
 				return nil
 			}
-			decision, perr := h.AccessPolicy.CheckConnect(s.UserID, st.currentRole, st.creds.Asset)
+			decision, perr := h.AccessPolicy.CheckConnect(s.UserID, st.principal.IsSuperAdmin(), st.creds.Asset)
 			if perr != nil {
 				log.Printf("[SSHProxy] 兌換點政策閘判定失敗: userID=%d assetID=%d err=%v",
 					s.UserID, o.AssetID, perr)
@@ -481,7 +481,7 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 				return nil
 			}
 			if aerr := h.AuthorizationService.AuthorizeConnectAccount(
-				authorizationContext(c, st.currentRole), s.UserID, o.AssetID,
+				authorizationContext(c, st.principal), s.UserID, o.AssetID,
 				model.ProtocolType(o.Protocol), o.Username); aerr != nil {
 				if errors.Is(aerr, authz.ErrAccountNotAuthorized) {
 					log.Printf("[SSHProxy] 帳號已移出授權範圍，拒絕建線: userID=%d assetID=%d accountID=%d",
@@ -538,7 +538,7 @@ func assetDisabledOutcome() *connectgate.Outcome {
 // observerIssueState 監看票簽發閘序的共享中間狀態
 type observerIssueState struct {
 	// role 由 G-M1 現查後寫入，供閘序內部判定（不採信 JWT 快照）
-	role string
+	principal *authz.Principal
 }
 
 // monitorTicketPreResolveGates 監看票簽發側的閘序。
@@ -551,15 +551,16 @@ func (h *Handler) monitorTicketPreResolveGates(s gatewayapi.ConnectSubject,
 			// 稽核職能現查：JWT 的角色快照壽命以分鐘計，降權者持降權前的正式
 			// token 仍會走到此處。不現查則降權後仍簽得出監看票，而票一旦簽出，
 			// 兌換端只驗票不驗人——降權要到 token 自然過期才生效
-			role, connErr := h.AuthService.CurrentConnectRole(s.UserID)
+			principal, connErr := h.AuthService.CurrentConnectPrincipal(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthError(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
-			st.role = role
-			if role != model.RoleAdmin && role != model.RoleAuditor {
+			st.principal = principal
+			if !principal.ViewShortcut() {
+				// 能力拒絕：回應由簽發端點經能力拒絕的單一寫出函式寫出（見 HandleCreateMonitorTicket）
 				return connectgate.Deny(http.StatusForbidden,
-					string(apierror.CodeMonitorRoleRequired), nil)
+					string(apierror.CodePermissionDenied), nil)
 			}
 			return nil
 		}},

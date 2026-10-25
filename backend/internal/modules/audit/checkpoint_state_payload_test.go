@@ -141,25 +141,11 @@ func TestCheckpointV1PayloadStillVerifies(t *testing.T) {
 		t.Fatalf("seal: %v", err)
 	}
 
-	makeHistoricalV2Fixture(t, f)
-	last, err = f.seal.Latest()
-	if err != nil {
+	// 升級前封的點改寫成 v1 形態（載荷不含 state），再由現行封章器續接：鏈上版本序遞增
+	makeHistoricalFixture(t, f, model.AggSchemeV1)
+	var legacy model.AuditCheckpoint
+	if err := f.db.Where("seq = ?", last.Seq).First(&legacy).Error; err != nil {
 		t.Fatal(err)
-	}
-	// 手工續接一個 v1 形態的檢查點（模擬升級前封的點）
-	prevHash, err := CheckpointLinkHash(last)
-	if err != nil {
-		t.Fatalf("link hash: %v", err)
-	}
-	emptyHash, emptyCount := ComputeAggHash(nil)
-	legacy := model.AuditCheckpoint{
-		Seq: last.Seq + 1, IDFrom: last.IDTo + 1, IDTo: last.IDTo,
-		RowCount: emptyCount, AggHash: emptyHash,
-		AggScheme:          model.AggSchemeV1,
-		PrevCheckpointHash: prevHash,
-		SealedAt:           time.Now().UTC(),
-		SigningKeyVersion:  1,
-		AnchorStatus:       model.AnchorStatusDisabled,
 	}
 	payload, err := CheckpointSignBytes(&legacy)
 	if err != nil {
@@ -168,9 +154,8 @@ func TestCheckpointV1PayloadStillVerifies(t *testing.T) {
 	if strings.Contains(string(payload), "state") {
 		t.Fatalf("v1 載荷含 state 欄：舊檢查點的位元組被改動了\n%s", payload)
 	}
-	_, legacy.Signature = f.signer.Sign(payload)
-	if err := f.db.Create(&legacy).Error; err != nil {
-		t.Fatalf("寫入舊形態檢查點: %v", err)
+	if _, err := f.seal.SealNow(); err != nil {
+		t.Fatalf("v1 之後續封現行版本: %v", err)
 	}
 
 	if got := f.statusOf(t, legacy.Seq).Status; got != IntervalStatusPassed {

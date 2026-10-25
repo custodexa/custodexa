@@ -236,6 +236,8 @@ import {
   rowToPayload,
 } from '@/utils/assetBulk'
 import { useBulkErrorReport } from '@/composables/useBulkErrorReport'
+import { can } from '@/composables/useCapabilities'
+import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 
 defineProps({
   modelValue: { type: Boolean, default: false },
@@ -331,7 +333,7 @@ function remove(row) {
 // —— 檢查 ——
 function buildBatch() {
   const items = entries.value.map((r) => {
-    const { row, localErrors } = rowToPayload(r)
+    const { row, localErrors } = rowToPayload(r, { includeAccessPolicy: can(ACCESS_POLICY_PERM) })
     return { key: r.key, row: { ...row, line: lines.value[r.key] }, localErrors, raw: r.raw }
   })
   const snapshot = JSON.stringify(items.map((i) => [i.row, i.raw]))

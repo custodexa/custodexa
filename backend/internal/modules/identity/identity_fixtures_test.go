@@ -153,11 +153,12 @@ func setupUserGroupDB(t *testing.T) (*identity.UserGroupService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
+	seedAuthzState(t, db)
+	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.UserGroupRole{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
 		&model.ApproverScope{}, &model.AuditLog{}, &model.GroupUserGroupMapping{},
-		&model.UserGroupMappingRuleSupport{}, &model.UserGroupMember{},
-		&model.RefreshToken{}); err != nil {
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserGroupMember{},
+		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return identity.NewUserGroupService(db, audit.NewTxSink(), authz.NewAssetAuthorizationService(db)), db
@@ -215,6 +216,7 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
@@ -224,14 +226,14 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 	// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity），
 	// 缺表即整筆回滾——生產序由 migration 先建全部表
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{}, &model.AuditLog{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{},
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.UserRole{},
 		// 群組映射兩表：登入路徑在 provider 未設群組宣告名時會對規則表做一次
 		// 索引計數（缺表即 fail-close）
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
 		&model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
-		&model.UserGroupMappingRuleSupport{}, &model.UserGroup{}, &model.UserGroupMember{}); err != nil {
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserGroup{}, &model.UserGroupMember{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
@@ -269,7 +271,7 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 
 	auth := identity.NewAuthService("test-secret", 15*time.Minute)
 	auth.SetSecurityPolicies(policy.NewSecurityPolicyService(db))
-	providers := identity.NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com")
 	// discovery 於本檔不參與（測試直接呼叫流程狀態與憑證層，不經 IdP 往返）
 	login := identity.NewOIDCLoginService(db, providers, identity.NewOIDCDiscoveryService(testEgress()), auth, nil)
 	login.SetAuditSinkForTest(newRecordingAudit())
@@ -318,5 +320,17 @@ func invalidationReason(disabling, secretRotated bool) string {
 		return "provider_secret_rotated"
 	default:
 		return "provider_disabled"
+	}
+}
+
+// seedAuthzState 補上權限版本表與初始列（同包複本見 identity_testhelper_test.go；
+// 外部測試包看不到同包 helper，故各留一份）。
+func seedAuthzState(tb testing.TB, db *gorm.DB) {
+	tb.Helper()
+	if err := db.AutoMigrate(&model.AuthzState{}); err != nil {
+		tb.Fatalf("migrate authz_state: %v", err)
+	}
+	if err := db.Exec("INSERT INTO authz_state (id, version) VALUES (1, 0)").Error; err != nil {
+		tb.Fatalf("seed authz_state: %v", err)
 	}
 }

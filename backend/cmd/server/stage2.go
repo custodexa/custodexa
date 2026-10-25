@@ -26,6 +26,7 @@ import (
 	"github.com/custodexa/backend/internal/api"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/k8sproxy"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/keyvault"
@@ -68,6 +69,10 @@ var stage2ServiceInventory = []string{
 	// 落點在 ldapDirectoryService 之前是契約——它是第一個消費者，且 postUnsealMigrations
 	// 的 LDAP seed 在段 2 期間就會寫審計
 	"auditTxSink",
+	// retentionFloorReconcile：保留下限的升級對帳（啟動步驟、非常駐服務）。
+	// 落點緊接 auditTxSink 之後是契約——它經交易內審計落地面留痕，且必須早於
+	// 任何保留讀者（recordingService 之後的錄影保留讀取、檢查點驗證、保留清理）
+	"retentionFloorReconcile",
 	"ldapDirectoryService",
 	"transmissionPolicy",
 	"auditFailureService",
@@ -94,6 +99,10 @@ var stage2ServiceInventory = []string{
 	// alertSink：指令告警落地面＋未注入即 fail-close 的啟動自檢。
 	// 落點在 alertMatcher／sshHandler 之前是契約——兩者是它僅有的消費者
 	"alertSink",
+	"systemAlertSink",
+	// instanceGuardStartupCheck：啟動時偵測其他實例並發系統告警（只告警、不阻擋啟動）。
+	// 落點在 systemAlertSink 之後是契約——告警落地面是它的消費者；且早於改密與重試排程的啟動
+	"instanceGuardStartupCheck",
 	"alertMatcher",
 	"alertNotifier",
 	"kekRetirementMonitor",
@@ -103,6 +112,7 @@ var stage2ServiceInventory = []string{
 	"checkpointSigning",
 	"sshHandler",
 	"hostKeyService",
+	"credentialRotationInterruptedRecovery",
 	"changeSecretScheduler",
 	"changeSecretRetryScheduler",
 	"accessRequestScheduler",
@@ -125,10 +135,35 @@ var stage2ServiceInventory = []string{
 	// rotationReportScheduler：輪替證據報告排程。
 	// **登記在打包 worker 之後＝停在它之前**：先停止建新工作單，再停打包器
 	"rotationReportScheduler",
+	// systemAlertOutboxWorker：系統告警持久投遞程序。
+	// **排在 starts 末位＝恢復放行之後才啟動**（starts[0] 的恢復封章先於所有 worker），
+	// 也就是還原後備份內未送完的佇列列此刻才續送；停止在最前面，不在關閉資料庫之後送信
+	"systemAlertOutboxWorker",
 	// metricsRefresher：接替原 perfMonitor 的段 2 末步位置。
 	// 刷新的是查詢成本不對稱的指標（DB 查詢、檔案系統遍歷），故定期刷新而非
 	// 於每次採集時同步查詢——後者會讓外部採集頻率直接放大成本系統的負載
 	"metricsRefresher",
+}
+
+// stage2PolicyServiceObserver 段 2 建構政策服務後立即以它呼叫（組裝測試用；生產恆為 nil）。
+// 測試藉此在任何讀者建立之前接上讀值觀測，證明保留讀者第一次讀到的是對帳後的值。
+var stage2PolicyServiceObserver func(*policy.SecurityPolicyService)
+
+// stage2BackgroundGate 段 2 背景排程、worker 與轉發迴圈的啟動閘（測試用選項）。
+//
+// 生產恆為 nil：全部照常啟動，行為與未設此閘時相同。權限決策基準測試設為
+// 回 false 的函式，使背景工作不在情境之間自行觸發；情境需要排程效果時改為
+// 明確呼叫其執行體。被閘下的項目仍執行啟動前的同步準備（檢查點 genesis、
+// 轉發設定載入），故 HTTP 可觀察的初始狀態與生產相同。
+var stage2BackgroundGate func(name string) bool
+
+// stage2HostIdentityTakeoverOverride 段 2 建好人工承接服務、做缺依賴檢查之前以它轉手（組裝測試用；生產恆為 nil）。
+// 測試藉此換入缺依賴的服務，驗證段 2 在任何排程啟動前就回錯。
+var stage2HostIdentityTakeoverOverride func(*asset.HostIdentityTakeoverService) *asset.HostIdentityTakeoverService
+
+// stage2BackgroundAllowed 該項背景工作是否照常啟動（閘未設定即一律允許）。
+func stage2BackgroundAllowed(name string) bool {
+	return stage2BackgroundGate == nil || stage2BackgroundGate(name)
 }
 
 // appGraph 是段 2 的產物：完整服務圖＋其資源收束袋。
@@ -243,6 +278,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 
 	// 安全政策服務：政策數值後台可調，鎖定/密碼 validator 的讀取來源
 	policyService := policy.NewSecurityPolicyService(database.DB)
+	if stage2PolicyServiceObserver != nil {
+		stage2PolicyServiceObserver(policyService)
+	}
 	// 協議會話逾時政策以既有 env 初始化（升級相容：既有部署值沿用，政策頁設定後 env 不再介入）
 	policyService.SeedFromEnv(policy.PolicySessionIdleMinutes, "SSH_IDLE_TIMEOUT_MINUTES")
 	policyService.SeedFromEnv(policy.PolicySessionMaxMinutes, "SSH_MAX_SESSION_MINUTES")
@@ -311,6 +349,15 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	}
 	mark("auditTxSink")
 
+	// 保留下限的升級對帳：存量 1–6 天的資料保留值抬升到下限，必要時檢查點保留跟隨，
+	// 每項同交易審計並記抬升紀錄。**必須早於任何保留讀者與保留排程**（錄影保留讀取、
+	// 檢查點驗證、保留清理都在其後建構）：先讀到舊值的讀者會以退回值運作。失敗整筆回滾、
+	// 段 2 失敗，不帶著一半抬升的狀態啟動
+	if err := reconcileRetentionFloor(policyService, auditTxSink); err != nil {
+		return fail("retentionFloorReconcile", err)
+	}
+	mark("retentionFloorReconcile")
+
 	ldapDirectoryService := identity.NewLDAPDirectoryService(database.DB, keyManager, auditTxSink)
 	mark("ldapDirectoryService")
 
@@ -349,7 +396,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 			auditFailureService.Report(mechanism, causeCode, params)
 		}
 	})
-	syslogForwarder.Start()
+	if stage2BackgroundAllowed("syslogForwarder") {
+		syslogForwarder.Start()
+	} else {
+		// 閘下時仍載入現行設定：啟用與否是 HTTP 可觀察的狀態，不得因停用迴圈而改變
+		syslogForwarder.Reload()
+	}
 	g.bag.AddFunc("syslogForwarder", func(context.Context) error {
 		syslogForwarder.Stop()
 		return nil
@@ -423,7 +475,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 初始化服務（MFA TOTP secret 加解密走信封 key manager）。
 	// access token 固定短效 15 分：撤銷殘窗上限，
 	// 會話續命走 /auth/refresh（rotation＋DB 撤銷），不再發 24h 長效 token
-	authService, err := identity.NewAuthServiceWithMFA(cfg.Security.JWTSecret, identity.AccessTokenTTL, keyManager)
+	authService, err := newRestoreAwareAuthService(database.DB, cfg.Security.JWTSecret, identity.AccessTokenTTL, keyManager)
 	if err != nil {
 		return fail("NewAuthServiceWithMFA", err)
 	}
@@ -473,6 +525,23 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	authorizationService := authz.NewAssetAuthorizationService(database.DB)
 	// 資產刪除即撤銷其授權與審核範圍（走 tx-taking 窄 port）
 	assetService.SetAuthorizationRevoker(authorizationService)
+	// 拓撲寫入（建立、匯入、掛載更新）在同交易內取拓撲鎖並推進權限版本
+	assetService.SetTopologyPermissionPort(authz.TopologyPermissionAdapter{})
+	// 範圍判定器：拓撲唯讀介面由 asset 端提供、在此注入；正式目錄的 scoped-enforced 仍為 0，
+	// 節點範圍來源尚無路由消費（下游各段取用 routeServices.scopeEvaluator）
+	// 拓撲讀取器在此建一次：範圍判定器、指派關卡的節點涵蓋讀取、授權變更分類器的涵蓋讀取共用同一個實例
+	scopeTopology := asset.NewScopeTopologyReader()
+	scopeEvaluator := newScopeEvaluatorOn(scopeTopology)
+	// 授權規則寫入（建立、批次、調整帳號範圍、刪除）的交易內範圍判定；未注入即拒絕啟動
+	authorizationService.SetWriteScope(authz.NewAuthorizationWriteScope(scopeEvaluator))
+	if err := requireAuthorizationWriteScope(authorizationService); err != nil {
+		return fail("authorizationWriteScope", err)
+	}
+	// 資產寫入（建立、更新、停用、刪除）的交易內範圍判定與掛載變更審計的涵蓋快照；未注入時非系統呼叫者的寫入一律拒絕
+	assetService.SetAssetWriteScopePort(authz.NewAssetWriteScope(scopeEvaluator))
+	// 單台覆寫清單的範圍投影：只依存取政策權限點的有效指派
+	assetService.SetAccessPolicyOverrideScopePort(authz.NewAccessPolicyOverrideScope(scopeEvaluator))
+	assetService.SetCoverageSnapshotPort(authz.NewTopologyCoverageReader(asset.NewScopeTopologyReader()))
 
 	// 初始化連線註冊表（先創建，供 SessionService 使用）
 	registry := proxy.NewConnectionRegistry()
@@ -542,6 +611,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 			})
 		}
 	}
+
+	// 權限模型遷移當下資料已不具還原資格（無本地超管或有懸空指派）的留痕：遷移在段 1，故在此補上。
+	logAuthzUpgradeWarning(auditService)
 
 	// ── 離機儲存（evidence-offsite-storage） ────────────────────────────
 	//
@@ -615,6 +687,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 使用者服務（頂層建立，供 v1 路由與閒置停用排程器共用）：自助改密端點依賴。
 	// 停用帳號即時撤權收線：撤 refresh 之外同步終斷進行中協議會話
 	userService := identity.NewUserService(database.DB, authorizationService)
+	// agent 擁有者轉移的防自我授權 port（identity 定義、authz 實作）：未注入時轉移 fail-close
+	userService.SetOwnerTransferGuard(authz.SelfGrantGuard{})
 	userService.SetSecurityPolicies(policyService)
 	userService.SetSessionTerminator(sessionService)
 	agentTokens := identity.NewAgentTokenService(database.DB, auditTxSink)
@@ -633,6 +707,84 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		return fail("alertSink", err)
 	}
 	mark("alertSink")
+
+	// 交易內系統告警落地面：生產端在自己的業務交易內呼叫，告警列、明細與投遞佇列列
+	// 與業務變更同交易提交。**唯一建構點**，建構後立即自檢；codec 用於目的地快照的信封加密。
+	systemAlertSink := audit.NewSystemAlertSink(keyManager)
+	if err := requireSystemAlertSink(systemAlertSink); err != nil {
+		return fail("systemAlertSink", err)
+	}
+	mark("systemAlertSink")
+	// 啟動時偵測其他實例（確認覆寫啟動，或查得同庫其他守衛版實例的連線）：成立即同交易寫
+	// instance_guard 審計與系統安全告警。**落點必須在系統告警落地面建構與自檢之後、改密排程啟動
+	// 之前**；只告警不阻擋啟動，失敗只記 CRITICAL
+	_ = newInstanceGuardStartupCheck(database.DB, auditTxSink, systemAlertSink).Run(ctx)
+	mark("instanceGuardStartupCheck")
+	// 安全政策高危設定（保留下調、錄影故障阻擋關閉、全系統預設下調、映射時限放寬）的告警
+	// 與政策寫入同交易、在同交易審計之後；缺注入時高危寫入失敗
+	policyService.SetHighRiskAlertRaiser(policyHighRiskAlertAdapter{sink: systemAlertSink})
+	if err := policyService.HighRiskAlertSinkReady(); err != nil {
+		return fail("policyHighRiskAlertSink", err)
+	}
+	// 離機副本停用與改目的地的告警與保管鏈事件同鎖交易；缺注入時兩條路徑回錯
+	offsiteProfiles.SetChangeAlertRaiser(offsiteChangeAlertAdapter{sink: systemAlertSink})
+	if err := offsiteProfiles.ChangeAlertSinkReady(); err != nil {
+		return fail("offsiteChangeAlertSink", err)
+	}
+	// 刪錄影先在交易內留審計與告警、提交後才刪檔；錄影服務早於告警落地面建構，以 setter 後綁
+	recordingService.SetEvidenceSinks(auditTxSink, systemAlertSink)
+	if err := recordingService.EvidenceSinksReady(); err != nil {
+		return fail("recordingDeleteSinks", err)
+	}
+
+	// 指派關卡、授權變更分級與帳號身分操作關卡：三者與兩個落地面（auditTxSink、
+	// systemAlertSink）同生命週期，**落點必須在兩個落地面建構與自檢之後**。
+	// 目標集合為完整集合（升級前存量角色、新範本與自訂角色），由 newMappingAssignmentGuard 決定，
+	// 各入口共用同一個實例。三者缺一即拒絕啟動，不降級為無留痕的預設。
+	assignmentGuard := newMappingAssignmentGuard()
+	// 節點範圍指派的節點存在讀取與涵蓋讀取（關卡）、分類器的涵蓋讀取：與範圍判定器同源
+	wireScopedBindingReaders(assignmentGuard, scopeTopology)
+	grantGrader := identity.NewGrantGrader(auditTxSink, systemAlertSink)
+	// 映射規則寫入餵危險組合預覽（與角色指派預覽同一個 authz 實作；唯讀、不阻擋）
+	grantGrader.SetMappingImpactPreview(identity.NewAuthzMappingImpactPreview(nil))
+	protectedAccountOps := identity.NewProtectedAccountOps(auditTxSink, systemAlertSink)
+	if err := requireIdentityControls(assignmentGuard, grantGrader, protectedAccountOps); err != nil {
+		return fail("identityControls", err)
+	}
+	userService.SetAssignmentGuard(assignmentGuard)
+	userService.SetGrantGrader(grantGrader)
+	authService.SetGrantGrader(grantGrader)
+	userService.SetProtectedAccountOps(protectedAccountOps)
+	authService.SetProtectedAccountOps(protectedAccountOps)
+	// 角色定義的唯讀面：投影與寫入關卡共用同一個目標集合（assignmentGuard 的目錄），
+	// 兩邊不會對同一角色看到不同的開放狀態。
+	roleProjector := identity.NewRoleProjector(database.DB, assignmentGuard)
+	roleDefinitionService := identity.NewRoleDefinitionService(database.DB, auditTxSink, identity.NewPermissionChainEventWriter(), grantGrader)
+	roleDefinitionReader := identity.NewRoleDefinitionReader(roleDefinitionService, roleProjector)
+	// 申請人型審核範圍管理鍵補鍵：先 dry-run 記錄報告，再正式執行（重跑零寫入）。失敗不啟動，不靜默略過。
+	{
+		events := identity.NewPermissionChainEventWriter()
+		dry, kerr := identity.BackfillApproverScopeManagementKey(context.Background(), database.DB, auditTxSink, events, true)
+		if kerr != nil {
+			return fail("approverScopeKey", kerr)
+		}
+		if !dry.AlreadyDone { // 只執行一次：標記存在即不再補（含管理員之後撤掉的鍵）
+			log.Printf("[ApproverScopeKey] 待補鍵角色 %d 個: %v", dry.Candidates, dry.RoleIDs)
+			rep, kerr := identity.BackfillApproverScopeManagementKey(context.Background(), database.DB, auditTxSink, events, false)
+			if kerr != nil {
+				return fail("approverScopeKey", kerr)
+			}
+			log.Printf("[ApproverScopeKey] 已補鍵 %d 個角色: %v", rep.Updated, rep.RoleIDs)
+		}
+	}
+	userGroupService := identity.NewUserGroupService(database.DB, auditTxSink, authorizationService)
+	userGroupService.SetAssignmentGuard(assignmentGuard)
+	userGroupService.SetGrantGrader(grantGrader)
+	for _, check := range []func() error{userService.RequireControls, userGroupService.RequireControls, authService.RequireControls} {
+		if err := check(); err != nil {
+			return fail("identityControls", err)
+		}
+	}
 
 	// 註冊危險指令告警路由（command-alerts）：
 	// 啟動即載入規則快取供 recorder 路徑比對；載入失敗不致命（無快取=不告警）
@@ -680,6 +832,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 
 	// codec 為建構參數（cutover）：secret/url 一律以 ColumnCodec 寫 enc:a1
 	notificationChannelService := audit.NewNotificationChannelService(database.DB, keyManager)
+	notificationChannelService.SetSystemAlertSink(systemAlertSink)
+	// 身分來源設定變更：目錄與身分提供者的設定寫入與告警同交易
+	ldapDirectoryService.SetSystemAlertSink(systemAlertSink)
+	assetService.SetSecurityChangeAlertSink(systemAlertSink) // 資產位址與傳輸放寬事件
+	assetService.SetAccessPolicyDefaultReader(policyService) // 單台覆寫降級判定的全域預設（與告警同交易讀一次）
+	notificationChannelService.SetAuditTxSink(auditTxSink)
 	notificationChannelService.SetTransmissionPolicy(transmissionPolicy) // 傳輸政策閘
 	mark("notificationChannelService")
 
@@ -696,6 +854,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	oidcProviderService := identity.NewOIDCProviderService(
 		database.DB, keyManager, oidcEgress, cfg.OIDC.DedicatedIssuers, cfg.OIDC.PublicBaseURL)
 	oidcProviderService.SetMappingAuditSink(auditTxSink)
+	oidcProviderService.SetSystemAlertSink(systemAlertSink)
 	oidcDiscovery := identity.NewOIDCDiscoveryService(oidcEgress)
 	oidcLoginService := identity.NewOIDCLoginService(
 		database.DB, oidcProviderService, oidcDiscovery, authService, auditService)
@@ -706,7 +865,18 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 只讀 discovery 的快取（不撥號），故一併注入
 	identitySourceService := identity.NewIdentitySourceService(database.DB, auditTxSink)
 	identitySourceService.SetDiscovery(oidcDiscovery)
+	// 映射規則與釘住、直接指派、群組指派共用同一個指派關卡與授權變更分級器（上方組裝區塊建構的單一實例）：
+	// 目標集合是組裝決定，不是設定或請求可切換的開關；新範本放行時改 newMappingAssignmentGuard 這一處。
+	// 兩邊各自建構會讓同一角色在直接指派被擋、經映射卻放行，或分級口徑分岔，故此處不重複建構。
+	identitySourceService.SetAssignmentGuard(assignmentGuard)
+	userService.SetPinAuditSink(auditTxSink)
+	identitySourceService.SetGrantGrader(grantGrader)
 	identitySourceService.SetPublicBaseURL(cfg.OIDC.PublicBaseURL)
+	// 身分來源設定變更的留痕落地面（審計與告警）缺任一個即拒絕啟動：
+	// 設定變更不加權限門檻，留痕是它唯一的補償控制，不得在缺落地面時靜默略過
+	if err := verifyIdentitySourceSinks(ldapDirectoryService, oidcProviderService, identitySourceService, userService); err != nil {
+		return fail("identitySourceSinks", err)
+	}
 	mark("oidcServices")
 
 	// 匯出簽章服務（10.3.4）：首啟自動生成 Ed25519 金鑰，
@@ -759,7 +929,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	wireAgentProbeBreaker(database.DB, auditTxSink, alertSink, authorizationService, agentTokens, sshHandler.ConnectTokens, agentProbeLimits(policyService), audit.NotifyAgentOwner)
 	// host-key-verification: TOFU host key 服務（SSH 與 SFTP 共用）
 	hostKeyService := asset.NewHostKeyService(database.DB)
+	// 主機金鑰不符的交易內留痕：審計與系統告警落地面都必須晚於各自的建構與自檢注入；
+	// 未注入即所有不符連線 fail-close（查核失敗）、採用回 500
+	hostKeyService.SetAuditTxSink(auditTxSink)
+	hostKeyService.SetSystemAlertSink(systemAlertSink)
 	sshHandler.HostKeys = hostKeyService
+	// VNC 檔案傳輸側車：把同位址已記錄的主機金鑰交給 guacd 驗證（無記錄時不帶參數，不做首次信任）
+	connHandler.HostKeys = hostKeyService
 	assetService.SetHostKeyService(hostKeyService) // SSH 直連測試共用 TOFU
 	// **釋放路徑待補**：MonitorHub／ShareManager／ConnectTokenManager
 	// 與 statsClients 持有的活躍 *ssh.Client 皆無全量關閉入口。同上，不登記空
@@ -791,26 +967,80 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 都吃 keyManager）：兩份 codec 會讓待生效版本寫得進去卻讀不回來，而症狀出現的
 	// 時機是改密收斂之後、那台機器下一次連線的時候。
 	//
-	// authz 注入使掛載、卸載、範圍轉換、刪除與發起改密逐台驗操作者對受影響資產的
-	// 權限——這些動作的射程是憑證的全部掛載，只驗其中一台等於讓權限最寬的那一台
-	// 替其餘各台決定。輪替引擎的 authz 是**建構期必填的位置參數**：可選欄位會留下
-	// 一個「忘記注入就退回無驗權」的開關。
+	// 管理授權判定器使掛載、卸載、範圍轉換、刪除、SetSecret 與發起改密以語義能力
+	// （credential:*、account:rotate）加影響集合判定，不再以資產 connect 判管理。
+	// 兩個服務的判定器都是 fail-closed：未注入就拒絕，沒有放行的退路。
+	credentialManagement := newCredentialManagementAdapter(authz.NewResolver(database.DB)).withScope(scopeEvaluator, database.DB)
+	// 改密停止類事件（承接未完成、授權失效停止、排程暫停）的推送：只借告警通知通道，
+	// 不入告警列（理由見 asset.ChangeSecretStopNotifier）
+	changeSecretStopNotify := asset.ChangeSecretStopNotifier(alertNotifier)
+	// 計畫的授權脈絡記錄建立當下的權限世代（不阻擋儲存；撤權由執行時重驗負責）
+	changeSecretPlanService.WithAuthorizer(credentialManagement).WithAuditSink(auditTxSink).
+		WithAlertNotifier(changeSecretStopNotify)
+	// 資產表單與帳號表單內嵌的密碼／私鑰宣告是 SetSecret 的同義入口，同一個判定器
+	assetService.WithManagementAuthorizer(credentialManagement).WithSystemAlertSink(systemAlertSink)
+	// 共用憑證歸屬：建立與轉共用在交易內（拓撲序列化鎖之後）依建立能力的指派範圍判定；未注入即 fail-close
+	credentialOwnershipScope := authz.NewCredentialOwnershipScope(scopeEvaluator)
 	credentialService := asset.NewCredentialService(assetService, keyManager, auditTxSink).
-		WithAuthorization(authorizationService)
+		WithManagementAuthorizer(credentialManagement).WithSystemAlertSink(systemAlertSink).
+		WithOwnershipScope(credentialOwnershipScope).
+		WithScopeSource(authz.NewCredentialScopeReader(scopeEvaluator, database.DB))
 	credentialRotations := asset.NewCredentialRotationService(
 		database.DB, assetService, changeSecretCandidates, hostKeyService,
-		keyManager, auditTxSink, authorizationService)
+		keyManager, auditTxSink, credentialManagement).WithSystemAlertSink(systemAlertSink).
+		WithStopNotifier(changeSecretStopNotify).
+		WithScopeSource(authz.NewCredentialScopeReader(scopeEvaluator, database.DB))
+	// 服務重啟時停在「改密中」的輪替成員：轉為已送出未驗證（遠端結果未知的保守狀態，
+	// 候選保留；之後背景依候選退避與人工補跑都只以新秘密驗證、不下達），轉換與審計同交易、
+	// 每台告警一次。
+	// **必須早於改密排程、重試排程與路由掛載**：三者都可能推進同一批成員，收束要在
+	// 任何推進開始之前做完。查詢失敗只記日誌，不阻擋啟動（殘留成員留到下次啟動）
+	if n, rerr := credentialRotations.RecoverInterruptedMembers(); rerr != nil {
+		log.Printf("[CredentialRotation] 啟動時收束改密中的成員失敗（不阻擋啟動）: %v", rerr)
+	} else if n > 0 {
+		log.Printf("[CredentialRotation] 啟動時把 %d 個改密中的成員轉為已送出未驗證", n)
+	}
+	mark("credentialRotationInterruptedRecovery")
 
 	// 改密執行器接上輪替引擎：**不接的後果是功能缺一角而非壞掉**——批次
 	// per_target 對共用憑證成員一律記 skipped，計劃的憑證目標完全不執行
 	changeSecretRunner := asset.NewChangeSecretRunner(
 		database.DB, assetService, changeSecretCandidates, hostKeyService, alertNotifier).
-		WithRotationService(credentialRotations)
-	changeSecretScheduler := scheduler.NewChangeSecretScheduler(changeSecretPlanService, changeSecretRunner)
+		WithRotationService(credentialRotations).
+		// 背景執行前以工作發起者當下的能力重驗；失權、無從判定、缺發起者即停並留痕
+		WithManagementAuthorizer(credentialManagement).WithAuditSink(auditTxSink).
+		// 整組模式建立的具名共用憑證：同一歸屬判定（以發起者在交易內重解）
+		WithOwnershipScope(credentialOwnershipScope)
+	changeSecretScheduler := scheduler.NewChangeSecretScheduler(changeSecretPlanService, changeSecretRunner).
+		WithPausedPlanNotifier(changeSecretStopNotify)
+
+	// 候選重試執行器在此建構（排程於後面啟動），因為人工承接服務需要它，而承接服務的
+	// 缺依賴檢查必須早於任何排程啟動。
+	changeSecretRetryRunner := asset.NewChangeSecretRetryRunner(
+		database.DB, changeSecretCandidates, assetService, hostKeyService, alertNotifier).
+		WithRotationService(credentialRotations).
+		WithManagementAuthorizer(credentialManagement).
+		WithAuditSink(auditTxSink)
+
+	// 主機身分人工承接服務：候選走重試執行器、輪替成員走輪替引擎，兩者缺一，
+	// 帶確認的請求就會停在「流程未完成」或根本無法驗證。**缺依賴即拒絕啟動，且早於改密排程**：
+	// 讓漏接的症狀是啟動失敗，不是有人按下確認時才發現
+	hostIdentityTakeover := asset.NewHostIdentityTakeoverService(database.DB, credentialManagement).
+		WithCandidateRunner(changeSecretRetryRunner).
+		WithMemberRunner(credentialRotations)
+	hostIdentityTakeover.SetAuditTxSink(auditTxSink)
+	if stage2HostIdentityTakeoverOverride != nil {
+		hostIdentityTakeover = stage2HostIdentityTakeoverOverride(hostIdentityTakeover)
+	}
+	if err := hostIdentityTakeoverWiringError(hostIdentityTakeover.WiringGaps()); err != nil {
+		return fail("hostIdentityTakeoverWiring", err)
+	}
 	if err := seal.CheckCancelStep(ctx, "changeSecretScheduler.Start"); err != nil {
 		return fail("changeSecretScheduler.Start", err)
 	}
-	changeSecretScheduler.Start()
+	if stage2BackgroundAllowed("changeSecretScheduler") {
+		changeSecretScheduler.Start()
+	}
 	// 阻擋項 2（RESOURCES.md）：現況 main 無對應 defer，屬既有洩漏；此處補上
 	g.bag.AddFunc("changeSecretScheduler", func(context.Context) error {
 		changeSecretScheduler.Stop()
@@ -824,14 +1054,23 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// **輪替引擎在此是硬前提**：不接的話，輪替建立的候選到期時歸屬判準仍會擋下
 	// 單帳號轉正（fail-close，資料不會壞），但成員永遠不會被推進——停在
 	// 「已下達、尚未驗證」的機器就此無人管，而畫面上看不出任何異常
-	changeSecretRetryRunner := asset.NewChangeSecretRetryRunner(
-		database.DB, changeSecretCandidates, assetService, hostKeyService, alertNotifier).
-		WithRotationService(credentialRotations)
+	// （重試執行器已於上方建構，這裡接續做授權重驗自檢與排程啟動）
+	//
+	// 三處重驗判定器缺任一即拒絕啟動（不靠執行期拒絕才發現漏接）
+	if err := credentialAuthorizationWiringError(credentialAuthorizationWiringGaps(map[string]revalidationWired{
+		"changeSecretRunner":      changeSecretRunner,
+		"changeSecretRetryRunner": changeSecretRetryRunner,
+		"credentialRotations":     credentialRotations,
+	})); err != nil {
+		return fail("credentialAuthorizationWiring", err)
+	}
 	changeSecretRetryScheduler := scheduler.NewChangeSecretRetryScheduler(changeSecretRetryRunner)
 	if err := seal.CheckCancelStep(ctx, "changeSecretRetryScheduler.Start"); err != nil {
 		return fail("changeSecretRetryScheduler.Start", err)
 	}
-	changeSecretRetryScheduler.Start()
+	if stage2BackgroundAllowed("changeSecretRetryScheduler") {
+		changeSecretRetryScheduler.Start()
+	}
 	g.bag.AddFunc("changeSecretRetryScheduler", func(context.Context) error {
 		changeSecretRetryScheduler.Stop()
 		return nil
@@ -865,12 +1104,20 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 撤銷即斷線政策開啟時收線（沿 Terminate CAS）
 	accessRequestService.SetSessionService(sessionService)
 	accessRequestService.SetAccountPresenceSource(asset.RequestAccountPresent)
+	// 撤銷：範圍內的授權規則管理能力持有者具撤銷資格；撤銷審計與撤銷同交易。兩者未注入即拒絕啟動
+	accessRequestService.SetRevokeScope(authz.NewAuthorizationWriteScope(scopeEvaluator))
+	accessRequestService.SetAuditTxSink(auditTxSink)
+	if err := requireAccessRequestRevokeWiring(accessRequestService); err != nil {
+		return fail("accessRequestRevokeWiring", err)
+	}
 	accessRequestScheduler := scheduler.NewAccessRequestTimeoutScheduler(accessRequestService)
 	if err := seal.CheckCancelStep(ctx, "accessRequestScheduler.Start"); err != nil {
 		return fail("accessRequestScheduler.Start", err)
 	}
-	if err := accessRequestScheduler.Start(); err != nil {
-		return fail("accessRequestScheduler.Start", err)
+	if stage2BackgroundAllowed("accessRequestScheduler") {
+		if err := accessRequestScheduler.Start(); err != nil {
+			return fail("accessRequestScheduler.Start", err)
+		}
 	}
 	g.bag.AddFunc("accessRequestScheduler", func(context.Context) error {
 		accessRequestScheduler.Stop()
@@ -890,6 +1137,15 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	audit.SetUserRolesSource(identity.SnapshotUserRolePairs)
 	audit.SetPrincipalSource(identity.SnapshotPrincipalStates)
 	audit.SetAgentTokenSource(identity.SnapshotAgentTokenStates)
+	// 權限附證的兩個所有者來源（authz 與 identity 各提供一部分）：同一份一致性視圖內合併；來源未注入時封章 fail-close。
+	audit.SetPermissionSources(authz.PermissionStateAuthzPart, identity.PermissionStateIdentityPart)
+	// 首次啟用與合法權限寫入的交界鎖（authz_state 列鎖由 authz 提供）；PG 上未注入時首次啟用 fail-close。
+	audit.SetPermissionActivationLock(authz.LockStateForPermissionActivation)
+	// 範圍化管理範本（資產管理員、授權管理員）的種入：需要上面的附證來源已注入，才會與事件鏈同交易；
+	// 必須在對外服務之前完成。寫入失敗即停止啟動（同內建政策組種子）。
+	if _, err := runScopedTemplateSeed(context.Background(), database.DB); err != nil {
+		return fail("scopedTemplateSeed", err)
+	}
 	checkpointPurger := audit.NewCheckpointPurger(database.DB, checkpointSigning)
 	checkpointService := audit.NewCheckpointService(database.DB, checkpointSigning, syslogForwarder,
 		func(mechanism, causeCode string, params map[string]string, recovered bool) {
@@ -912,8 +1168,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	roleStateReconciler := audit.NewRoleStateReconciler(database.DB, auditFailureService)
 	checkpointService.SetRoleStateReconciler(roleStateReconciler)
 	checkpointVerifier.SetRoleStateReconciler(roleStateReconciler)
+	roleStateReconciler.SetPermissionAttestSigner(checkpointSigning)
 	authService.SetRoleStateProbe(roleStateReconciler)
 	agentTokens.SetIntegrityProbe(roleStateReconciler)
+	permissionAcceptService := audit.NewPermissionAcceptService(database.DB, auditTxSink, roleStateReconciler) // 超管確認權限狀態無來源變動
 
 	// 檢查點鏈兩層自動驗證的編排者。
 	//
@@ -949,26 +1207,42 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		auditExportJobService, rotationReportBuilder)
 	// 以帳號為主軸的批次改密：目標清單取自報告建構者的同一份資料集，
 	// 故在建構者之後建構
-	changeSecretBatchService := asset.NewChangeSecretBatchService(database.DB, rotationReportBuilder)
+	changeSecretScope := authz.NewChangeSecretScope(scopeEvaluator)
+	changeSecretBatchService := asset.NewChangeSecretBatchService(database.DB, rotationReportBuilder).
+		WithManagementAuthorizer(credentialManagement).
+		WithScope(changeSecretScope)
+	// 整批同一組模式新共用憑證的歸屬：建立批次時判定並持久化，runner 以同一判定器重驗
+	changeSecretBatchService.WithOwnershipScope(credentialOwnershipScope)
+	// 候選列表與重試依同一份帳號改密讀取範圍投影
+	changeSecretCandidates.WithScope(changeSecretScope)
+	// 改密計畫的讀取投影、建立與修改的範圍收斂，以及範圍化發起者的影響確認與掛載上界
+	changeSecretPlanService.WithScope(changeSecretScope, authz.NewCredentialScopeReader(scopeEvaluator, database.DB))
 
 	deps, err := buildRouteDeps(cfg, routeServices{
-		credentials:          credentials,
-		kmsProvider:          s1.kekDecision.KMS.Provider,
-		metrics:              s1.metrics,
-		checkpointVerifier:   checkpointVerifier,
-		agentTokenService:    agentTokens,
-		chainVerifyStatus:    chainVerifyService,
-		checkpointSigning:    checkpointSigning,
-		authService:          authService,
-		auditService:         auditService,
-		auditTxSink:          auditTxSink,
-		auditDirectSink:      auditDirectSink,
-		authorizationService: authorizationService,
-		policyService:        policyService,
-		transmissionPolicy:   transmissionPolicy,
-		ldapDirectoryService: ldapDirectoryService,
-		offsiteProfiles:      offsiteProfiles,
-		offsiteLedger:        offsiteLedger,
+		credentials:           credentials,
+		credentialManagement:  credentialManagement,
+		systemAlertSink:       systemAlertSink,
+		kmsProvider:           s1.kekDecision.KMS.Provider,
+		metrics:               s1.metrics,
+		checkpointVerifier:    checkpointVerifier,
+		agentTokenService:     agentTokens,
+		chainVerifyStatus:     chainVerifyService,
+		checkpointSigning:     checkpointSigning,
+		authService:           authService,
+		auditService:          auditService,
+		auditTxSink:           auditTxSink,
+		userGroupService:      userGroupService,
+		roleDefinitionReader:  roleDefinitionReader,
+		roleDefinitionService: roleDefinitionService,
+		roleProjector:         roleProjector,
+		auditDirectSink:       auditDirectSink,
+		authorizationService:  authorizationService,
+		scopeEvaluator:        scopeEvaluator,
+		policyService:         policyService,
+		transmissionPolicy:    transmissionPolicy,
+		ldapDirectoryService:  ldapDirectoryService,
+		offsiteProfiles:       offsiteProfiles,
+		offsiteLedger:         offsiteLedger,
 		offsiteDescribers: []api.OffsiteOwnerDescriber{
 			recordingOffsiteAdapter, exportOffsiteAdapter,
 		},
@@ -980,6 +1254,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		recordingService:           recordingService,
 		dailyReviewService:         dailyReviewService,
 		auditFailureService:        auditFailureService,
+		permissionAcceptService:    permissionAcceptService,
 		alertSink:                  alertSink,
 		notificationChannelService: notificationChannelService,
 		oidcProviderService:        oidcProviderService,
@@ -1002,6 +1277,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		changeSecretBatches:        changeSecretBatchService,
 		credentialService:          credentialService,
 		credentialRotations:        credentialRotations,
+		hostIdentityTakeover:       hostIdentityTakeover,
 		sourceIPBaseline:           sourceIPBaseline,
 		auditExportService:         auditExportService,
 		auditExportJobs:            auditExportJobService,
@@ -1015,6 +1291,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		return fail("buildRouteDeps", err)
 	}
 	g.deps = deps
+	// 權限版本的提交後通知接到錄影票管理器：權限寫入提交後重驗版本落後的持有者。
+	// 服務圖釋放時解除登記（重新解封會建新圖，舊管理器不得繼續收通知）
+	unregisterRecordingTokenListener := authz.RegisterVersionCommitListener(deps.recording.TokenManager().OnPermissionVersionCommitted)
+	g.bag.AddFunc("recordingTokenVersionListener", func(context.Context) error {
+		unregisterRecordingTokenListener()
+		return nil
+	})
 	mark("apiHandlers")
 
 	// 排程器群：
@@ -1023,22 +1306,26 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		name  string
 		start func() error
 		stop  func()
+		// prepare 為 start 內含的同步準備步驟，只在啟動閘關閉時單獨執行
+		// （見 stage2BackgroundGate）；生產路徑不讀此欄
+		prepare func() error
 	}{
-		{"retentionScheduler", nil, nil},
-		{"reviewReminderScheduler", nil, nil},
-		{"inactivityScheduler", nil, nil},
-		{"kekRetirementScheduler", nil, nil},
-		{"reconcileScheduler", nil, nil},
-		{"checkpointScheduler", nil, nil},
-		{"chainVerifyScheduler", nil, nil},
+		{"retentionScheduler", nil, nil, nil},
+		{"reviewReminderScheduler", nil, nil, nil},
+		{"inactivityScheduler", nil, nil, nil},
+		{"kekRetirementScheduler", nil, nil, nil},
+		{"reconcileScheduler", nil, nil, nil},
+		{"checkpointScheduler", nil, nil, nil},
+		{"chainVerifyScheduler", nil, nil, nil},
 		// offsiteUploader 登記在 auditExportJobWorker **之前**＝停在它之後
 		// （ResourceBag 反序釋放）：上傳 worker 讀 export 產物，先停打包器再停它，
 		// 才不會出現「產物還在寫、上傳已停」以外的順序
-		{"offsiteUploader", nil, nil},
-		{"auditExportJobWorker", nil, nil},
+		{"offsiteUploader", nil, nil, nil},
+		{"auditExportJobWorker", nil, nil, nil},
 		// rotationReportScheduler 登記在 auditExportJobWorker **之後**＝停在它之前：
 		// 先讓建單那一側停下來，打包器才不會在收束途中又領到新件
-		{"rotationReportScheduler", nil, nil},
+		{"rotationReportScheduler", nil, nil, nil},
+		{"systemAlertOutboxWorker", nil, nil, nil},
 	}
 	retentionService := audit.NewRetentionService(database.DB, policyService, recordingService, auditService)
 	// audit_logs 改走檢查點區間清除（本行是唯一切換點）：
@@ -1055,7 +1342,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 未啟用時一次查詢也不會發出
 	retentionService.SetOffsiteRecordingRetention(recordingService)
 	retentionScheduler := scheduler.NewRetentionScheduler(retentionService)
-	starts[0].start, starts[0].stop = retentionScheduler.Start, retentionScheduler.Stop
+	starts[0].start, starts[0].stop = sealBeforeFirstStart(s1, restoreSealWrap(checkpointService, auditFailureAdapter{auditFailureService}, auditService), retentionScheduler.Start), retentionScheduler.Stop
 	reviewReminderScheduler := scheduler.NewDailyReviewReminderScheduler(dailyReviewService)
 	starts[1].start, starts[1].stop = reviewReminderScheduler.Start, reviewReminderScheduler.Stop
 	inactivityService := identity.NewInactivityService(database.DB, policyService, userService, auditService)
@@ -1071,7 +1358,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// Start 內含 genesis 建立，失敗即啟動失敗——沒有 genesis 的排程器
 	// 每輪都會失敗，是「活著但什麼都沒保護」的靜默狀態
 	checkpointScheduler := scheduler.NewCheckpointScheduler(checkpointService)
-	starts[5].start, starts[5].stop = checkpointScheduler.Start, checkpointScheduler.Stop
+	starts[5].start, starts[5].stop = sealAfterRestore(s1, restoreSealWrap(checkpointService, auditFailureAdapter{auditFailureService}, auditService), checkpointScheduler.Start), checkpointScheduler.Stop
+	starts[5].prepare = sealAfterRestore(s1, restoreSealWrap(checkpointService, auditFailureAdapter{auditFailureService}, auditService), checkpointService.EnsureGenesis)
 	// 檢查點鏈兩層自動驗證：
 	// 每分鐘判到期，近期層買低延遲（隨封章觸發、驗最近 N 天已封區間）、
 	// 全鏈層買無盲區（依政策週期跑結構層全鏈＋內容層滾動窗）。
@@ -1097,9 +1385,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// panic recover、領件與每次重試重驗申請者。
 	//
 	// 申請者重驗閉包由組裝根組出（audit 模組不直讀 users 表）：允許＝帳號存在
-	// 且啟用且任一角色具 audit:view。與 RequirePermission 的判定等價——
-	// middleware 取 primaryRole（優先序 admin>auditor>user），而 audit:view 僅
-	// admin/auditor 具備，故「任一角色具權」與「最高優先角色具權」同值。
+	// 且啟用且主體的有效能力含 audit:view（與路由登錄執行點同一個解析器與判定）。
 	// (allowed=false, err=nil)＝失權取消；err 非 nil＝查詢面故障，交給重試
 	// （查不到不等於失權，誤取消會把暫時性故障放大成申請者的損失）
 	exportJobVerify := func(userID uint) (bool, error) {
@@ -1113,12 +1399,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		if !user.Active {
 			return false, nil
 		}
-		for i := range user.Roles {
-			if authz.RoutePermissions(user.Roles[i].Name, authz.PermAuditView) {
-				return true, nil
-			}
+		// 與 AuthMiddleware 同一個解析器：以主體的有效能力判定 audit:view（不看 JWT 角色）
+		principal, err := authz.NewResolver(database.DB).ResolveUser(userID, authz.TokenFacts{SubjectKind: user.Kind})
+		if err != nil {
+			return false, err
 		}
-		return false, nil
+		return principal.Has(authz.PermAuditView), nil
 	}
 	// 離機上傳 worker。**未啟用時不建 goroutine**：
 	// 啟動時無現行世代（設定表零列＝從未設定，或零現行世代＝已停用）即只記一行
@@ -1205,12 +1491,25 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	}
 	starts[9].stop = rotationReportScheduler.Stop
 
+	systemAlertOutboxWorker := audit.NewSystemAlertOutboxWorker(database.DB, keyManager)
+	starts[10].start = func() error {
+		systemAlertOutboxWorker.Start()
+		return nil
+	}
+	starts[10].stop = systemAlertOutboxWorker.Stop
+
 	for _, s := range starts {
 		if err := seal.CheckCancelStep(ctx, s.name); err != nil {
 			return fail(s.name, err)
 		}
-		if err := s.start(); err != nil {
-			return fail(s.name, err)
+		if stage2BackgroundAllowed(s.name) {
+			if err := s.start(); err != nil {
+				return fail(s.name, err)
+			}
+		} else if s.prepare != nil {
+			if err := s.prepare(); err != nil {
+				return fail(s.name, err)
+			}
 		}
 		stop := s.stop
 		g.bag.AddFunc(s.name, func(context.Context) error {
@@ -1266,11 +1565,14 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		s1.metrics.RegisterOffsiteUploadLane()
 	}
 
-	stopRefresher := observability.StartRefresher(
-		s1.metrics,
-		newMetricsRefreshSources(database.DB, sessionService, recordingService,
-			offsiteQueueSource(offsiteGenerations > 0, offsiteLedger, offsiteProfiles, offsiteFetcher)),
-		observability.DefaultRefreshInterval)
+	var stopRefresher observability.StopRefresherFunc = func(context.Context) error { return nil }
+	if stage2BackgroundAllowed("metricsRefresher") {
+		stopRefresher = observability.StartRefresher(
+			s1.metrics,
+			newMetricsRefreshSources(database.DB, sessionService, recordingService,
+				offsiteQueueSource(offsiteGenerations > 0, offsiteLedger, offsiteProfiles, offsiteFetcher)),
+			observability.DefaultRefreshInterval)
+	}
 
 	// 停止＝送信號＋等待進行中的刷新結束（見 observability.StopWaitBudget）。
 	// 直接把收束 ctx 交給它：關機總預算是共用的，refresher 只該花掉自己那份。
@@ -1516,9 +1818,21 @@ type routeServices struct {
 	// auditTxSink 交易內審計落地面：節點樹與使用者群組的刪除留痕與
 	// 業務變更同交易，寫不進去即整筆回滾
 	auditTxSink port.TxSink
+	// userGroupService 使用者群組服務：關卡與分級已在組裝根注入並自檢，buildRouteDeps 不再自行建構。
+	userGroupService *identity.UserGroupService
+	// roleDefinitionReader 角色定義唯讀服務（讀取端點）；roleProjector 同一個投影器，
+	// 另供使用者單筆回應的帳號操作保護分類。兩者在組裝根建構，與指派關卡共用目標集合。
+	roleDefinitionReader *identity.RoleDefinitionReader
+	// roleDefinitionService 角色定義寫入服務：與 roleDefinitionReader 是同一個實例（已注入分級器），
+	// 供寫入方法使用；由角色定義的四條寫入路由呼叫。
+	roleDefinitionService *identity.RoleDefinitionService
+	roleProjector         *identity.RoleProjector
 	// auditDirectSink C-plain 兩點的直寫投遞面：不受 AuditLogEnabled 管制
 	auditDirectSink      gatewayapi.AsyncSink
 	authorizationService *authz.AssetAuthorizationService
+	// scopeEvaluator 範圍判定器（正式目錄、asset 端拓撲唯讀介面）；不取鎖、不寫表，
+	// 需與拓撲寫入序列化的呼叫方先取拓撲序列化鎖再呼叫
+	scopeEvaluator       *authz.ScopeEvaluator
 	policyService        *policy.SecurityPolicyService
 	transmissionPolicy   *policy.TransmissionPolicyService
 	ldapDirectoryService *identity.LDAPDirectoryService
@@ -1536,6 +1850,7 @@ type routeServices struct {
 	recordingService           *session.RecordingService
 	dailyReviewService         *audit.DailyReviewService
 	auditFailureService        *audit.AuditFailureService
+	permissionAcceptService    *audit.PermissionAcceptService
 	alertSink                  gatewayapi.AlertSink
 	notificationChannelService *audit.NotificationChannelService
 	oidcProviderService        *identity.OIDCProviderService
@@ -1565,6 +1880,12 @@ type routeServices struct {
 	// 帳號憑證庫：管理面與輪替引擎（codec 與 assetService 同一實例）
 	credentialService   *asset.CredentialService
 	credentialRotations *asset.CredentialRotationService
+	// hostIdentityTakeover 主機身分人工承接服務（段 2 已確認依賴完整才會走到路由建構）
+	hostIdentityTakeover *asset.HostIdentityTakeoverService
+	// credentialManagement 憑證管理授權判定器（帳號服務的內嵌宣告關卡共用同一個）
+	credentialManagement asset.CredentialManagementAuthorizer
+	// systemAlertSink 交易內系統告警落地面（帳號服務的內嵌宣告共用同一個）
+	systemAlertSink port.SystemAlertSink
 	// auditExportService／auditExportJobs 段 2 建構（與打包 worker 共用實例），
 	// buildRouteDeps 只組 handler
 	auditExportService *audit.AuditExportService
@@ -1609,6 +1930,10 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	authHandler.SetSourcePolicyReader(s.authService)
 	oidcHandler.SetSourcePolicyReader(s.authService)
 
+	// 目前使用者範圍摘要的節點名稱路徑：經 asset 的拓撲唯讀介面（無狀態讀取器，與範圍判定同型別）。
+	// 未注入時只持全域指派者照常回應，有節點範圍條目者回解析失敗
+	authHandler.SetScopeNodePathReader(asset.NewScopeTopologyReader())
+
 	// 政策組（規範條文與安全設定的對照）與合規判定：一份判定供三處投影
 	//（設定頁的分區偏離數、合規對照頁、套用預覽）。**建一次注入**——各處各建
 	// 一份不會壞掉，但同一時點的三個畫面會各算各的，而分歧不會有任何一處報錯
@@ -1621,6 +1946,37 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// 安全政策管理路由（admin；變更入審計，PCI 10.2.2）
 	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService,
 		complianceService, policyGroupRepo)
+	// 政策變更審計與政策寫入同交易：注入段 2 啟動自檢過的同一個交易內落地面
+	securityPolicyHandler.SetAuditTxSink(s.auditTxSink)
+	// 版本說明：本人關閉狀態（與審計同交易）與保留調整告知（唯讀 policy 介面）。
+	// 任一依賴缺少即組裝失敗，不建出請求時才回空清單或略過審計的 handler
+	releaseGuidanceService, err := identity.NewReleaseGuidanceService(database.DB, s.auditTxSink)
+	if err != nil {
+		return routeDeps{}, fmt.Errorf("版本說明關閉狀態服務: %w", err)
+	}
+	releaseGuidanceHandler, err := api.NewReleaseGuidanceHandler(releaseGuidanceService, s.policyService)
+	if err != nil {
+		return routeDeps{}, fmt.Errorf("版本說明 handler: %w", err)
+	}
+	// 儀表板逐卡資料：來源是各頁既有的列表／統計服務，任一缺少即組裝失敗
+	dashboardAssets, err := api.NewDashboardAssetCounter(s.assetService, s.authorizationService,
+		authz.NewAssetScopeReader(s.scopeEvaluator, database.DB))
+	if err != nil {
+		return routeDeps{}, fmt.Errorf("儀表板資產卡來源: %w", err)
+	}
+	dashboardCardHandler, err := api.NewDashboardCardHandler(api.DashboardCardDeps{
+		Assets:        dashboardAssets,
+		Sessions:      s.sessionService,
+		MyConnections: session.NewMyConnectionService(s.sessionService),
+		Alerts:        audit.NewCommandAlertService(database.DB),
+		Recordings:    s.recordingService,
+		Reviews:       authz.NewAccessReviewService(database.DB),
+		Requests:      s.accessRequestService,
+		DB:            database.DB,
+	})
+	if err != nil {
+		return routeDeps{}, fmt.Errorf("儀表板逐卡 handler: %w", err)
+	}
 	// 政策組管理（讀取 admin＋auditor，寫入 admin）與合規對照（唯讀）
 	policyGroupHandler := api.NewPolicyGroupHandler(policyGroupRepo, complianceService, s.auditService)
 	complianceHandler := api.NewComplianceHandler(complianceService, policyGroupRepo, s.auditExportJobs, s.auditService)
@@ -1630,6 +1986,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// syslog 轉發設定（10.3.3，admin 限定）
 	syslogSettingHandler := api.NewSyslogSettingHandler(database.DB, s.syslogForwarder, s.auditService)
 	syslogSettingHandler.SetTransmissionPolicy(s.transmissionPolicy) // 傳輸政策閘
+	// 設定存檔的兩列審計與目的地變更告警同交易：缺任一落地面即拒絕啟動
+	syslogSettingHandler.SetEvidenceSinks(s.auditTxSink, s.systemAlertSink)
+	if err := syslogSettingHandler.EvidenceSinksReady(); err != nil {
+		return routeDeps{}, err
+	}
 
 	// audit_logs 完整性驗證（10.3.4；admin＋auditor）
 	auditIntegrityHandler := api.NewAuditIntegrityHandler(database.DB, s.auditIntegrity)
@@ -1647,13 +2008,28 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	auditCheckpointHandler.SetRoleStateNames(s.userService, s.auditFailureService)
 
 	// 註冊資產管理路由（注入授權服務）
-	assetHandler := api.NewAssetHandler(s.assetService, s.authorizationService, s.auditDirectSink)
+	// 登錄閘的目標範圍判定：判定器與正式宣告表經 handler 建構參數交給登錄閘（宣告表現為空，行為不變）
+	scopeGate := middleware.NewScopeGate(database.DB, s.scopeEvaluator, authz.RouteScopeDeclarations())
+	assetHandler := api.NewAssetHandler(s.assetService, s.authorizationService, s.auditDirectSink, scopeGate)
 	assetHandler.SetDataTransfer(s.dataTransferService) // K8s 檔案進出的資料傳輸閘（4.3）
+	// K8s 檔案進出的資料面裁決：與連線簽發同一組閘函式（sshproxy 簽發側閘序）；
+	// 未注入時 handler 一律拒絕，不回退為放行
+	assetHandler.SetDataPlaneAuthorizer(s.sshHandler)
+	assetScopeReader := authz.NewAssetScopeReader(s.scopeEvaluator, database.DB)
+	assetHandler.SetAssetScope(assetScopeReader)
+	// 標籤書寫歸一的參照：範圍化檢視者以資產列表同一聯集為參照，其他主體全表
+	s.assetService.SetTagReferencePort(api.NewAssetTagReference(s.authorizationService, assetScopeReader))
 
 	// 資產帳號 CRUD
-	assetAccountHandler := api.NewAssetAccountHandler(
-		asset.NewAssetAccountService(s.assetService, s.keyManager, s.auditTxSink).WithAuthorization(s.authorizationService),
-		s.authorizationService)
+	assetAccountService := asset.NewAssetAccountService(s.assetService, s.keyManager, s.auditTxSink).WithAuthorization(s.authorizationService).
+		WithManagementAuthorizer(s.credentialManagement).WithSystemAlertSink(s.systemAlertSink).
+		WithAccountWriteScope(authz.NewAssetWriteScope(s.scopeEvaluator))
+	assetAccountHandler := api.NewAssetAccountHandler(assetAccountService, s.authorizationService, scopeGate)
+	// 帳號列表與逐資產守門接受資產管理可視（須早於 RegisterRoutes）
+	assetAccountHandler.SetAssetManagementVisibility(authz.NewAssetScopeReader(s.scopeEvaluator, database.DB))
+	assetAccountHandler.SetAccountCredentialScope(authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB))
+	// 範圍外憑證帳號列的動作旗標：與更換憑證、移除帳號、更正秘密、脫離的寫入端點同一組判定
+	assetAccountHandler.SetAccountRowActions(asset.NewAccountRowActionJudge(s.credentialService, assetAccountService))
 
 	sessionHandler := api.NewSessionHandler(s.sessionService)
 	sessionHandler.SetRecordingProbe(s.recordingService)
@@ -1669,6 +2045,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 	dailyReviewHandler := api.NewDailyReviewHandler(s.dailyReviewService)
 	auditFailureHandler := api.NewAuditFailureHandler(s.auditFailureService)
+	auditFailureHandler.SetPermissionAccept(s.permissionAcceptService)
 
 	// 通道加密清冊＋稽核匯出（admin-only）
 	transmissionInventoryHandler := api.NewTransmissionInventoryHandler(
@@ -1676,6 +2053,8 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		s.auditService,
 	)
 	notificationChannelHandler := api.NewNotificationChannelHandler(s.notificationChannelService)
+	// 系統告警目錄與明細（分級權限點／稽核檢視）；分級調整與審計同交易。
+	systemAlertHandler := api.NewSystemAlertHandler(audit.NewSystemAlertCatalogService(database.DB, s.auditTxSink))
 
 	// LDAP 目錄設定（admin-only singleton 資源）。
 	// 服務層已於段 2 建構並注入 codec 與傳輸政策閘，handler 只是轉接層
@@ -1705,6 +2084,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	jwtFingerprint := crypto.Fingerprint([]byte(cfg.Security.JWTSecret))
 	keyManagementHandler := api.NewKeyManagementHandler(database.DB, s.keyManager, s.policyService, jwtFingerprint, s.exportSigning)
 	keyManagementHandler.SetAuditService(s.auditService) // 清理退役資料顯式留痕
+	// 拓撲變更（端點與重包流程）的成功審計與系統告警同交易；缺任一落地面即拒絕啟動
+	keyManagementHandler.SetEvidenceSinks(s.auditTxSink, s.systemAlertSink)
+	if err := keyManagementHandler.EvidenceSinksReady(); err != nil {
+		return routeDeps{}, err
+	}
 	// 委託重包目標的 provider 建構器：組裝根是唯一知道本部署
 	// KMS 組態的地方，故由此注入；未注入時委託分支回「尚未提供」而非靜默退化
 	factory := buildDelegatedRewrapProvider
@@ -1718,16 +2102,29 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	keyManagementHandler.SetCheckpointSigning(s.checkpointSigning)
 
 	snippetHandler := api.NewSnippetHandler(session.NewSnippetService(database.DB))
-	assetGroupHandler := api.NewAssetGroupHandler(asset.NewAssetGroupService(database.DB, s.auditTxSink, s.authorizationService), s.authorizationService, s.authorizationService)
-	userGroupHandler := api.NewUserGroupHandler(identity.NewUserGroupService(database.DB, s.auditTxSink, s.authorizationService))
+	assetGroupService := asset.NewAssetGroupService(database.DB, s.auditTxSink, s.authorizationService)
+	// 節點搬移與刪除在同交易內取拓撲鎖並推進權限版本
+	assetGroupService.SetTopologyPermissionPort(authz.TopologyPermissionAdapter{})
+	// 節點寫入的交易內範圍判定、刪除前的範圍引用查詢與搬移的涵蓋快照；三者未注入時對應寫入一律拒絕
+	assetGroupService.SetNodeWriteScopePort(authz.NewNodeWriteScope(s.scopeEvaluator))
+	assetGroupService.SetNodeScopeReferencePort(authz.NewNodeScopeReferenceReader())
+	assetGroupService.SetCoverageSnapshotPort(authz.NewTopologyCoverageReader(asset.NewScopeTopologyReader()))
+	assetGroupHandler := api.NewAssetGroupHandler(assetGroupService, s.authorizationService, s.authorizationService)
+	assetGroupHandler.SetNodeTreeScope(authz.NewNodeTreeScopeReader(s.scopeEvaluator, database.DB))
+	userGroupHandler := api.NewUserGroupHandler(s.userGroupService)
 
 	userHandler := api.NewUserHandler(s.userService)
 	userHandler.SetAgentTokenService(s.agentTokenService)
 	userHandler.SetAuditService(s.auditService)
 	userHandler.SetSourcePolicyReader(s.authService)
+	userHandler.SetAccountOpsProjector(s.roleProjector)
 
 	roleHandler := api.NewRoleHandler(s.userService)
-	authorizationHandler := api.NewAuthorizationHandler(s.authorizationService, authz.NewEffectiveAccessResolver(database.DB))
+	authorizationHandler := api.NewAuthorizationHandler(s.authorizationService, authz.NewEffectiveAccessResolver(database.DB).WithScope(s.scopeEvaluator))
+	// 本人範圍唯讀端點與授權規則守衛同一判定函式；未注入時端點 fail-close
+	authorizationHandler.SetSelfSubjectsReader(authz.SelfGrantGuard{})
+	// 服務層已在組裝期確認注入範圍判定（RequireWriteScope），寫入端點的能力與範圍交由交易內裁決
+	authorizationHandler.EnableScopedWrites(authz.NewAuthorizationRowActions(database.DB, s.accessRequestService), authz.NewAuthorizationSelectors(database.DB, s.scopeEvaluator))
 	// 審計服務為建構子必填：`/recordings/stream` 未套 AuthMiddleware，審計中介層
 	// 因無身分而整筆跳過，取走錄影本體的留痕完全靠 handler 自寫（audit-resource-
 	// classification-closure）。漏接＝取證無痕，故不留 setter 形態
@@ -1755,6 +2152,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 	accessReviewHandler := api.NewAccessReviewHandler(authz.NewAccessReviewService(database.DB), s.auditService)
 	hostKeyHandler := api.NewHostKeyHandler(s.hostKeyService, s.authorizationService)
+	hostKeyHandler.SetAssetManagementVisibility(authz.NewAssetScopeReader(s.scopeEvaluator, database.DB))
 	// 單筆剪貼簿內容調閱：解密＋逐筆留痕
 	// （fail-close，留痕不成即不交付），審計失敗經告警鏈揭露
 	clipboardContentService := session.NewClipboardContentService(
@@ -1766,18 +2164,26 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	auditTimelineHandler := api.NewAuditTimelineHandler(audit.NewTimelineService(database.DB))
 	changeSecretHandler := api.NewChangeSecretHandler(s.changeSecretPlanService, s.changeSecretRunner,
 		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretBatches, s.changeSecretScheduler)
+	changeSecretHandler.SetHostIdentityTakeover(s.hostIdentityTakeover)
 
-	// 帳號憑證庫（admin ＋ credential:manage）：服務層於段 2 建構並注入 authz 與
+	// 帳號憑證庫（路由層認憑證語義能力任一，服務層逐項裁決）：服務層於段 2 建構並注入 authz 與
 	// codec，handler 只是轉接層。輪替狀態的判定沿用報告建構者——列表左欄與證據
 	// 報告若各有一套嚴重度口徑，同一組秘密會在兩個畫面上顯示成兩種合規狀態
 	credentialHandler := api.NewCredentialHandler(s.credentialService, s.credentialRotations,
 		s.rotationReportBuilder)
+	credentialHandler.SetHostIdentityTakeover(s.hostIdentityTakeover)
 
 	rotationReportHandler := api.NewRotationReportHandler(s.rotationReportBuilder,
 		s.rotationReportSchedules, s.auditService)
 
+	approverScopeService := authz.NewApproverScopeService(database.DB)
+	approverScopeService.SetWriteScope(authz.NewApproverScopeWriteScope(s.scopeEvaluator), s.scopeEvaluator)
+	approverScopeService.SetPolicies(s.policyService)
+	if err := approverScopeService.RequireWriteScope(); err != nil {
+		return routeDeps{}, fmt.Errorf("審核範圍的範圍判定未注入，拒絕啟動: %w", err)
+	}
 	accessRequestHandler := api.NewAccessRequestHandler(
-		s.accessRequestService, authz.NewApproverScopeService(database.DB), database.DB)
+		s.accessRequestService, approverScopeService, database.DB)
 	accessRequestHandler.SetAgentTaskReports(audit.NewAgentTaskReports(database.DB, audit.NewTxSink(), authz.ReadAgentTaskForReport, identity.ReadAgentAuditPrincipal, audit.NotifyAgentOwner))
 
 	// 資產列表連線入口三態標註（伺服端單一事實源）
@@ -1799,6 +2205,8 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 		auth:                  authHandler,
 		securityPolicy:        securityPolicyHandler,
+		releaseGuidance:       releaseGuidanceHandler,
+		dashboardCards:        dashboardCardHandler,
 		policyGroup:           policyGroupHandler,
 		compliance:            complianceHandler,
 		schedule:              scheduleHandler,
@@ -1816,6 +2224,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		auditFailure:          auditFailureHandler,
 		transmissionInventory: transmissionInventoryHandler,
 		notificationChannel:   notificationChannelHandler,
+		systemAlert:           systemAlertHandler,
 		oidc:                  oidcHandler,
 		ldapDirectory:         ldapDirectoryHandler,
 		identitySource:        identitySourceHandler,
@@ -1826,6 +2235,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		snippet:               snippetHandler,
 		assetGroup:            assetGroupHandler,
 		userGroup:             userGroupHandler,
+		roleAssignmentPreview: api.NewRoleAssignmentPreviewHandler(authz.NewCapabilityPreviewerWithMappings(database.DB, identity.RoleMappingRuleCount).WithGroupMemberPlanner(identity.PlanManualMembers).WithMappingRulePlanner(identity.PlanMappingRuleChange).WithScopeEvaluator(s.scopeEvaluator)),
+		roleAssignmentOptions: api.NewRoleAssignmentOptionsHandler(assetGroupService, identity.NewRoleNodeScopabilityReader(database.DB)),
+		roleDefinition:        api.NewRoleDefinitionHandler(s.roleDefinitionReader, s.roleDefinitionService),
 		user:                  userHandler,
 		role:                  roleHandler,
 		authorization:         authorizationHandler,
@@ -1856,4 +2268,16 @@ func (g *appGraph) MaterialGate() *seal.MaterialGate {
 		return nil
 	}
 	return g.keyManager.MaterialGate()
+}
+
+// newScopeEvaluator 以正式目錄與 asset 端拓撲唯讀介面組裝範圍判定器，並登記授權規則面、憑證與改密候選的目標種類。
+func newScopeEvaluator() *authz.ScopeEvaluator {
+	return newScopeEvaluatorOn(asset.NewScopeTopologyReader())
+}
+
+// newScopeEvaluatorOn 同 newScopeEvaluator，但使用呼叫端給的拓撲讀取器（讓組裝根的其他消費者共用同一個實例）。
+func newScopeEvaluatorOn(topo *asset.ScopeTopologyReader) *authz.ScopeEvaluator {
+	return authz.NewScopeEvaluator(authz.ProductCatalogue(), topo,
+		append(authz.AuthorizationScopeResolvers(), authz.CredentialScopeResolver(),
+			authz.ChangeSecretCandidateScopeResolver())...)
 }

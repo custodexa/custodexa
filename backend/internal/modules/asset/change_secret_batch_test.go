@@ -2,8 +2,10 @@ package asset
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
 	"github.com/custodexa/backend/internal/model"
@@ -35,6 +38,8 @@ type batchFixture struct {
 	plans      *ChangeSecretPlanService
 	reports    *RotationReportBuilder
 	batches    *ChangeSecretBatchService
+	// authz 與 runner、retry、輪替、批次、計畫共用的判定樁（測試可明列拒絕的能力）
+	authz *fakeCredentialAuthorizer
 }
 
 func setupBatchFixture(t *testing.T) *batchFixture {
@@ -44,25 +49,30 @@ func setupBatchFixture(t *testing.T) *batchFixture {
 		&model.AssetHostKey{}, &model.ChangeSecretPlan{}, &model.ChangeSecretRecord{},
 		&model.ChangeSecretCandidate{}, &model.ChangeSecretBatch{},
 		&model.CredentialRotation{}, &model.CredentialRotationMember{},
+		&model.CredentialJobAuthorization{},
 	))
 	assets, accounts := newAccountServices(t)
 	codec := aesColumnCodec(t, make([]byte, 32))
-	creds := NewCredentialService(assets, codec, audit.NewTxSink())
+	creds := NewCredentialService(assets, codec, audit.NewTxSink()).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink())
 	candidates, err := NewChangeSecretCandidateService(db, codec, assets, audit.NewTxSink())
 	require.NoError(t, err)
 	hostKeys := NewHostKeyService(db)
-	plans := NewChangeSecretPlanService(db)
+	az := newAllowAllAuthorizer()
+	plans := NewChangeSecretPlanService(db).WithAuthorizer(az).WithAuditSink(audit.NewTxSink())
 	reports := NewRotationReportBuilder(db, plans, func() int { return 0 })
 	rotations := NewCredentialRotationService(db, assets, candidates, hostKeys, codec,
-		audit.NewTxSink(), &fakePermissionChecker{defaultAllow: true})
+		audit.NewTxSink(), az).WithSystemAlertSink(newFakeAlertSink())
 	return &batchFixture{
 		db: db, assets: assets, accounts: accounts, creds: creds, candidates: candidates,
 		rotations: rotations,
-		runner:    NewChangeSecretRunner(db, assets, candidates, hostKeys, nil).WithRotationService(rotations),
-		retry:     NewChangeSecretRetryRunner(db, candidates, assets, hostKeys, nil).WithRotationService(rotations),
-		plans:     plans,
-		reports:   reports,
-		batches:   NewChangeSecretBatchService(db, reports),
+		runner: NewChangeSecretRunner(db, assets, candidates, hostKeys, nil).WithOwnershipScope(globalOwnershipScopeForTest{}).WithRotationService(rotations).
+			WithManagementAuthorizer(az),
+		retry: NewChangeSecretRetryRunner(db, candidates, assets, hostKeys, nil).WithRotationService(rotations).
+			WithManagementAuthorizer(az),
+		plans:   plans,
+		reports: reports,
+		batches: NewChangeSecretBatchService(db, reports).WithManagementAuthorizer(az).WithOwnershipScope(globalOwnershipScopeForTest{}),
+		authz:   az,
 	}
 }
 
@@ -109,7 +119,7 @@ func sharedBatchRequest(username, credentialName string, ids ...uint) *ChangeSec
 // addHost 建一台 ssh 資產（含預設帳號憑證），回傳資產 id 與帳號 id
 func (f *batchFixture) addHost(t *testing.T, name, host, username string) (uint, uint) {
 	t.Helper()
-	a, err := f.assets.Create(context.Background(), &CreateAssetRequest{
+	a, err := f.assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: 22,
 		Username: username, Password: "old-" + name, CreatedBy: 1,
 	})
@@ -142,18 +152,50 @@ type secretRecorder struct {
 	verifyErr   map[string]error
 	rotateCalls map[string]int
 	verifyCalls map[string]int
+	// hostKey 選用：設定時 Rotate／Verify 在動作前以它呼叫 rt.hostKeyCB（正式的綁定與比對回呼），
+	// 回錯即不動作並回 remoteRejectedError{oldCredentialLoginReason}。不設定者不握手，
+	// 不得用來證明主機身分守衛
+	hostKey ssh.PublicKey
+	// noHostKey 讓替身完全不握手（hostKey 預設由 newSecretRecorder 補一把，成員與候選的提交守衛都要求
+	// 經正式綁定回呼建立過主機身分）：案例的語義依賴「候選沒有主機身分綁定、資產沒有主機金鑰記錄」
+	noHostKey bool
+	// afterVerify 選用：Verify 成功之後呼叫（參數為目標主機），供案例在驗證與提交之間注入事件
+	afterVerify func(host string)
+}
+
+// presentHostKey 模擬遠端出示主機金鑰：走目標上的正式回呼，早於任何動作。
+func (s *secretRecorder) presentHostKey(t rotationTarget) error {
+	if s.noHostKey {
+		return nil
+	}
+	return presentHostKeyTo(t, s.hostKey)
+}
+
+// presentHostKeyTo 以 key 呼叫目標上的正式主機金鑰回呼；key 或回呼為空則不握手。
+func presentHostKeyTo(t rotationTarget, key ssh.PublicKey) error {
+	if key == nil || t.hostKeyCB == nil {
+		return nil
+	}
+	if err := t.hostKeyCB(t.addr, &net.TCPAddr{IP: net.ParseIP(t.asset.Host), Port: 22}, key); err != nil {
+		return &remoteRejectedError{reason: oldCredentialLoginReason(err), cause: err}
+	}
+	return nil
 }
 
 func newSecretRecorder() *secretRecorder {
 	return &secretRecorder{
 		rotated: map[string]string{}, rotateErr: map[string]error{}, verifyErr: map[string]error{},
 		rotateCalls: map[string]int{}, verifyCalls: map[string]int{},
+		hostKey: defaultRecorderHostKey(),
 	}
 }
 
 func (s *secretRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecret []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.presentHostKey(t); err != nil {
+		return err
+	}
 	s.rotateCalls[t.asset.Host]++
 	if err := s.rotateErr[t.asset.Host]; err != nil {
 		return err
@@ -165,8 +207,17 @@ func (s *secretRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecre
 func (s *secretRecorder) Verify(_ context.Context, t rotationTarget, _ []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.presentHostKey(t); err != nil {
+		return err
+	}
 	s.verifyCalls[t.asset.Host]++
-	return s.verifyErr[t.asset.Host]
+	if err := s.verifyErr[t.asset.Host]; err != nil {
+		return err
+	}
+	if s.afterVerify != nil {
+		s.afterVerify(t.asset.Host)
+	}
+	return nil
 }
 
 // snapshotCalls 每台的改密與驗證呼叫次數（推進與否要看得出「有沒有真的再打一次」）
@@ -194,7 +245,43 @@ func (s *secretRecorder) secretOf(host string) string {
 	return s.rotated[host]
 }
 
+// bindCandidateViaCallback 以正式的綁定回呼為候選建立主機身分綁定（遠端出示預設鑰），並回傳重讀後的列。
+// 給「候選不是經替身執行器握手建立」的案例：綁定、記錄與比對都走正式碼，不直接寫列為 bound。
+func bindCandidateViaCallback(t *testing.T, db *gorm.DB, hk *HostKeyService, candID uint, key ssh.PublicKey) *model.ChangeSecretCandidate {
+	t.Helper()
+	var cand model.ChangeSecretCandidate
+	require.NoError(t, db.First(&cand, candID).Error)
+	var asset model.Asset
+	require.NoError(t, db.First(&asset, cand.AssetID).Error)
+	cb, _ := hk.CallbackForBinding(HostKeyDialContext{AssetID: cand.AssetID, Path: HostKeyPathCredentialChange},
+		HostKeyBindTarget{CandidateID: cand.ID})
+	require.NoError(t, cb(rotationAddr(&asset, asset.EffectiveRotationChannel()),
+		&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 22}, key))
+	require.NoError(t, db.First(&cand, candID).Error)
+	require.Equal(t, model.HostKeyBindingBound, cand.HostKeyBinding)
+	return &cand
+}
+
+// defaultRecorderHostKey 替身預設出示的主機公鑰（固定種子，同一測試內各台共用）。
+func defaultRecorderHostKey() ssh.PublicKey {
+	pub, err := ssh.NewPublicKey(ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public())
+	if err != nil {
+		panic(err)
+	}
+	return pub
+}
+
+// useExecutor 換上替身執行器。替身未指定 hostKey 時補一把：批次與重試的提交守衛要求候選經正式綁定回呼
+// 建立過主機身分，替身不握手就永遠停在 pending。要證明守衛的案例自行指定 hostKey 並讓它出現差異。
 func (f *batchFixture) useExecutor(rec *secretRecorder) {
+	if rec.hostKey == nil && !rec.noHostKey {
+		rec.hostKey = defaultRecorderHostKey()
+	}
+	f.setExecutors(rec)
+}
+
+// setExecutors 只換執行器，不補預設主機金鑰。
+func (f *batchFixture) setExecutors(rec *secretRecorder) {
 	factory := func(string) rotationExecutor { return rec }
 	f.runner.executors = factory
 	f.retry.executors = factory

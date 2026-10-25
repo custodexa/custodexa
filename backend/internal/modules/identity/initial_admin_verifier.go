@@ -71,7 +71,7 @@ func verifyLocalAdminCredential(db *gorm.DB, username string, password []byte) (
 		return nil, ErrSealInitialAdminInvalid
 	}
 	var user model.User
-	if err := db.Preload("Roles").Where("username = ?", username).First(&user).Error; err != nil {
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSealInitialAdminInvalid
 		}
@@ -86,14 +86,11 @@ func verifyLocalAdminCredential(db *gorm.DB, username string, password []byte) (
 	if user.IsExternal() || !user.Active || user.Password == "" {
 		return nil, ErrSealInitialAdminInvalid
 	}
-	hasAdmin := false
-	for _, r := range user.Roles {
-		if r.Name == model.RoleAdmin {
-			hasAdmin = true
-			break
-		}
+	isAdmin, err := hasEffectiveGlobalSuperAdmin(db, &user)
+	if err != nil {
+		return nil, fmt.Errorf("解析初始管理員角色失敗: %w", err)
 	}
-	if !hasAdmin {
+	if !isAdmin {
 		return nil, ErrSealInitialAdminInvalid
 	}
 	// 密碼比對照做再判鎖定：鎖定中的帳號與密碼錯誤回同一個錯誤，且兩者都付出
@@ -150,7 +147,7 @@ func VerifySealAdminStillAuthorized(db *gorm.DB, userID uint) error {
 		return ErrSealInitialAdminInvalid
 	}
 	var user model.User
-	if err := db.Preload("Roles").First(&user, userID).Error; err != nil {
+	if err := db.First(&user, userID).Error; err != nil {
 		return ErrSealInitialAdminInvalid
 	}
 	if user.IsExternal() || !user.Active {
@@ -159,10 +156,8 @@ func VerifySealAdminStillAuthorized(db *gorm.DB, userID uint) error {
 	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
 		return ErrSealInitialAdminInvalid
 	}
-	for _, r := range user.Roles {
-		if r.Name == model.RoleAdmin {
-			return nil
-		}
+	if isAdmin, err := hasEffectiveGlobalSuperAdmin(db, &user); err == nil && isAdmin {
+		return nil
 	}
 	return ErrSealInitialAdminInvalid
 }

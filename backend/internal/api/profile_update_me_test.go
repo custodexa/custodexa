@@ -27,9 +27,11 @@ func setupUpdateMeEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.DB) 
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(
+	assert.NoError(t, migrateWithAuthz(db, 
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}))
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{},
+		// /auth/me 回應的能力投影逐請求解析主體，需要權限模型的表
+		&model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}, &model.AuthzState{}, &model.AssetGroup{}))
 	oldDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = oldDB })

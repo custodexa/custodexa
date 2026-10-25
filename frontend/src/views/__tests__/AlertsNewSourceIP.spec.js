@@ -5,6 +5,7 @@
 // ——兩個欄位同時說謊。位址就是這一列的內容本身，且必須一鍵進得去位址樞紐，
 // 否則稽核員得自己複製位址、切樞紐、重設時間窗。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createRouter, createWebHistory } from 'vue-router'
@@ -74,6 +75,7 @@ const mountAlerts = () => {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.setItem('user', JSON.stringify({ id: 1, roles: ['admin'] }))
+  grantFor(['admin'])
   searchAlertsMock.mockResolvedValue({
     data: [newSourceAlert()],
     total: 1,

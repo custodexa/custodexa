@@ -504,7 +504,7 @@ func TestConsoleRealMatcherFailsCloseWhenRulesUnavailable(t *testing.T) {
 	f := newConsoleFixture(t, d)
 
 	// 失效通報的落地面（不初始化的話通報無處可寫，看不出它有沒有發生）
-	if err := f.env.db.AutoMigrate(&model.AuditFailureEvent{}); err != nil {
+	if err := migrateWithAuthz(f.env.db, &model.AuditFailureEvent{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate audit_failure_events: %v", err)
 	}
 	audit.InitAuditFailure(f.env.db, policy.NewSecurityPolicyService(f.env.db))
@@ -541,7 +541,7 @@ func TestConsoleRealMatcherFailsCloseWhenRulesUnavailable(t *testing.T) {
 	}
 
 	// 規則來源恢復：同一個比對器不必等人去改規則就該復原，且行為與規則正常時無異
-	if err := f.env.db.AutoMigrate(&model.AlertRule{}); err != nil {
+	if err := migrateWithAuthz(f.env.db, &model.AlertRule{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate alert_rules: %v", err)
 	}
 	f.runQuery("SELECT 1")

@@ -33,6 +33,7 @@ func newLDAPSeedDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -127,6 +128,7 @@ func TestLDAPSeedTableMissingIsNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	// 連 schema_migrations 都沒有：真正的「表不存在」環境
 	if err := RunLDAPEnvSeed(db, nil, audit.NewTxSink()); err != nil {
 		t.Fatalf("表不存在時 MUST no-op 不回錯: %v", err)

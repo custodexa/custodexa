@@ -19,6 +19,9 @@ import {
   MEMBER_STATE_TAG_TYPE,
   AGGREGATE_STATE_TAG_TYPE,
   RETRYABLE_MEMBER_STATES,
+  RUNNING_RETRYABLE_MEMBER_STATES,
+  RUNNING_RUNNABLE_MEMBER_STATES,
+  unsettledMemberRetryable,
   PASSWORD_LENGTH_MIN,
   PASSWORD_LENGTH_MAX,
   PASSWORD_LENGTH_DEFAULT,
@@ -88,6 +91,35 @@ describe('顯示中繼資料涵蓋整個值域', () => {
     // 就位與改密中沒有「再試一次」可言：讓它們可補跑等於允許重複改密
     expect(RETRYABLE_MEMBER_STATES).not.toContain('applied')
     expect(RETRYABLE_MEMBER_STATES).not.toContain('changing')
+  })
+
+  it('執行中才可補跑的狀態同樣是成員狀態的子集，且不含就位與改密中', () => {
+    for (const state of [...RUNNING_RETRYABLE_MEMBER_STATES, ...RUNNING_RUNNABLE_MEMBER_STATES]) {
+      expect(CREDENTIAL_MEMBER_STATE_VALUES, state).toContain(state)
+      expect(['applied', 'changing'], state).not.toContain(state)
+    }
+  })
+
+  it('已放棄但未收斂的一輪：就位與改密中以外都給補跑，拆分模式的已收束成員看候選還在不在', () => {
+    for (const state of CREDENTIAL_MEMBER_STATE_VALUES) {
+      for (const kept of [false, true]) {
+        const group = unsettledMemberRetryable('group', state, kept)
+        const split = unsettledMemberRetryable('split', state, kept)
+        const label = `${state} kept=${kept}`
+        if (state === 'applied' || state === 'changing') {
+          expect(group, label).toBe(false)
+          expect(split, label).toBe(false)
+        } else if (state === 'abandoned') {
+          expect(group, label).toBe(true)
+          expect(split, label).toBe(kept)
+        } else {
+          expect(group, label).toBe(true)
+          expect(split, label).toBe(true)
+        }
+      }
+    }
+    // 舊回應沒有這一欄：視為候選不在
+    expect(unsettledMemberRetryable('split', 'abandoned')).toBe(false)
   })
 })
 

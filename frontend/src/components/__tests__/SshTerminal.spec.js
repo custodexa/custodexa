@@ -96,6 +96,8 @@ class ResizeObserverMock {
 import { createConnectTokenWithConsent } from '@/api/connect'
 import SshTerminal from '../SshTerminal.vue'
 import { t } from '@/i18n'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 const mountTerminal = () =>
   mount(SshTerminal, {
@@ -129,6 +131,7 @@ describe('SshTerminal', () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
     localStorage.clear()
+    resetCapabilities()
   })
 
   it('容器尺寸為零時不連線，等首個非零尺寸才連線', async () => {
@@ -257,47 +260,120 @@ describe('SshTerminal', () => {
     wrapper.unmount()
   })
 
-  it('host key 變更：admin 見前往資產設定按鈕，點擊開啟編輯深連結', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 1, roles: ['admin'] }))
+  // 主機金鑰與記錄不符改為警示（不是撥號失敗）：connected 後以 notice 送達，連線不關閉。
+  // 超管看到「前往資產設定採用或重置主機金鑰」入口，其他人看到聯絡管理員的提示；終端內另寫一行紅字
+  it('主機金鑰不符 notice：admin 見採用或重置入口，點擊開啟編輯深連結，終端寫紅字', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1 }))
+    grantFor(['admin'])
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     const wrapper = mountTerminal()
     await layoutReady(wrapper)
 
+    WebSocketMock.instances[0].receive({ type: 'connected', data: '{"session_id":1}' })
     WebSocketMock.instances[0].receive({
-      type: 'error',
+      type: 'notice',
       code: 'RULE_SSH_HOST_KEY_CHANGED',
-      data: '主機金鑰已變更',
+      data: '主機金鑰與記錄不符',
     })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('主機金鑰已變更')
-    const goBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('前往資產設定重置主機金鑰'))
-    expect(goBtn).toBeTruthy()
+    expect(wrapper.find('[data-test="host-key-mismatch-notice"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('已替你送出登入憑證')
+    const written = terminalMock.write.mock.calls.map((c) => String(c[0])).join('')
+    expect(written).toContain('\x1b[31m')
+    expect(written).toContain('主機身分與記錄不符')
+    expect(written).toContain('平台已送出登入憑證')
+    const goBtn = wrapper.find('[data-test="host-key-mismatch-go"]')
+    expect(goBtn.exists()).toBe(true)
+    expect(goBtn.text()).toBe(t('hostKeyMismatch.goHostKey'))
     await goBtn.trigger('click')
     expect(openSpy).toHaveBeenCalledWith('/assets?edit=7', '_blank')
+    // 連線未斷：不是錯誤遮罩
+    expect(wrapper.find('.status-overlay').exists()).toBe(false)
     openSpy.mockRestore()
     wrapper.unmount()
   })
 
-  it('host key 變更：非 admin 見聯繫管理員提示、無重置入口', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 2, roles: ['user'] }))
+  it('主機金鑰不符 notice：非 admin 見聯繫管理員提示、無入口', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 2 }))
+    grantFor(['user'])
+    const wrapper = mountTerminal()
+    await layoutReady(wrapper)
+
+    WebSocketMock.instances[0].receive({ type: 'connected', data: '{"session_id":1}' })
+    WebSocketMock.instances[0].receive({
+      type: 'notice',
+      code: 'RULE_SSH_HOST_KEY_CHANGED',
+      data: '主機金鑰與記錄不符',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="host-key-mismatch-contact"]').text()).toBe(t('hostKeyMismatch.contactAdmin'))
+    expect(wrapper.find('[data-test="host-key-mismatch-go"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('不符放行後目標拒絕認證：error 幀帶 host_key_mismatch 參數，警示仍顯示（憑證可能已送出）', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 2 }))
+    grantFor(['user'])
     const wrapper = mountTerminal()
     await layoutReady(wrapper)
 
     WebSocketMock.instances[0].receive({
       type: 'error',
-      code: 'RULE_SSH_HOST_KEY_CHANGED',
-      data: '主機金鑰已變更',
+      code: 'RULE_SSH_AUTH_FAILED',
+      data: 'SSH 認證失敗',
+      params: { host_key_mismatch: '1' },
     })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('請聯絡管理員確認後重置主機金鑰')
-    const goBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('前往資產設定重置主機金鑰'))
-    expect(goBtn).toBeFalsy()
+    expect(wrapper.find('.status-overlay').exists()).toBe(true)
+    expect(wrapper.find('[data-test="host-key-mismatch-notice"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('已替你送出登入憑證')
+    wrapper.unmount()
+  })
+
+  it('主機金鑰查核失敗走一般錯誤畫面：沒有重置或採用入口', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1 }))
+    grantFor(['admin'])
+    const wrapper = mountTerminal()
+    await layoutReady(wrapper)
+
+    WebSocketMock.instances[0].receive({
+      type: 'error',
+      code: 'RULE_SSH_HOST_KEY_CHECK_FAILED',
+      data: '主機金鑰查核失敗',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.status-overlay').exists()).toBe(true)
+    expect(wrapper.text()).toContain(t('apiError.RULE_SSH_HOST_KEY_CHECK_FAILED'))
+    expect(wrapper.find('[data-test="host-key-mismatch-notice"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="host-key-mismatch-go"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('採用')
+    wrapper.unmount()
+  })
+
+  // 不放行路徑（代理終端等）遇主機金鑰不符：拒絕且未送出憑證，錯誤畫面不得沿用「已送出登入憑證」的警示說法
+  it('主機金鑰不符被拒：錯誤畫面陳述未送出憑證，不含已送出說法，不掛不符警示', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 2 }))
+    grantFor(['user'])
+    const wrapper = mountTerminal()
+    await layoutReady(wrapper)
+
+    WebSocketMock.instances[0].receive({
+      type: 'error',
+      code: 'RULE_SSH_HOST_KEY_MISMATCH_REFUSED',
+      data: '主機身分與記錄不符：這次連線已拒絕',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.status-overlay').exists()).toBe(true)
+    expect(wrapper.text()).toContain(t('apiError.RULE_SSH_HOST_KEY_MISMATCH_REFUSED'))
+    expect(wrapper.text()).toContain('未送出任何登入憑證')
+    expect(wrapper.text()).not.toContain('已送出')
+    expect(wrapper.text()).not.toContain('已替你送出')
+    expect(wrapper.find('[data-test="host-key-mismatch-notice"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -480,6 +556,7 @@ describe('SshTerminal 行動快捷鍵列', () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
     localStorage.clear()
+    resetCapabilities()
   })
 
   it('桌面環境不渲染鍵列；強制行動旗標後渲染六鍵', async () => {
@@ -531,6 +608,7 @@ describe('SshTerminal mssql 批次終止符提示', () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
     localStorage.clear()
+    resetCapabilities()
   })
 
   const mountWithProtocol = (protocol) =>

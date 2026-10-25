@@ -75,8 +75,8 @@ const (
 //	mysql/postgres/redis/mssql  僅 TCP 埠可達（刻意不做握手與認證）
 //	k8s                     API server 可達 + TLS 通過 + token 具 pods/exec 權限
 var connectionProbes = map[model.ProtocolType]connectionProbe{
-	model.ProtocolSSH: {name: probeNameSSHDirect, run: func(s *AssetService, _ context.Context, creds *AssetCredentials, timeout int) *ConnectionTestResult {
-		return s.testSSHDirect(creds.Asset.ID, creds, timeout)
+	model.ProtocolSSH: {name: probeNameSSHDirect, run: func(s *AssetService, ctx context.Context, creds *AssetCredentials, timeout int) *ConnectionTestResult {
+		return s.testSSHDirect(ctx, creds.Asset.ID, creds, timeout)
 	}},
 	model.ProtocolRDP:      {name: probeNameGuacd, run: (*AssetService).probeGuacd},
 	model.ProtocolVNC:      {name: probeNameGuacd, run: (*AssetService).probeGuacd},

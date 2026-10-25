@@ -39,7 +39,7 @@ func NewIdentitySourceHandler(sources *identity.IdentitySourceService) *Identity
 func (h *IdentitySourceHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/identity-sources")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequireRole("admin"))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("", h.List)
 		g.GET("/:type/:sourceId/mappings", h.ListMappings)
@@ -323,6 +323,10 @@ func (h *IdentitySourceHandler) DeleteMapping(c *gin.Context) {
 // **需要確認**先於其他哨兵比對：它是型別錯誤（帶命中的警告碼），
 // 先比哨兵會把警告清單整片吃掉，而那份清單正是介面要顯示給操作者確認的內容。
 func respondMappingError(c *gin.Context, kind string, err error) {
+	// 指派關卡與映射守衛的拒絕：原樣轉成機器碼，不帶角色或權限名
+	if respondPrincipalError(c, err) {
+		return
+	}
 	var ackErr *identity.MappingAckRequiredError
 	if errors.As(err, &ackErr) {
 		warnings := make([]map[string]string, 0, len(ackErr.Warnings))

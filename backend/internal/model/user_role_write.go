@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"gorm.io/gorm"
 )
@@ -76,6 +77,60 @@ type UserRoleAuditDetails struct {
 	UserID   uint   `json:"user_id"`
 	RoleID   uint   `json:"role_id"`
 	Origin   string `json:"origin"`
+	// 以下只在「只改範圍」的審計列出現（動作 update）。範圍值為 "global" 或節點編號陣列
+	//（至多 RangeAuditMaxNodes 個，另附總數）；節點編號不是個資。
+	Event            string `json:"event,omitempty"`
+	RangeBefore      any    `json:"range_before,omitempty"`
+	RangeAfter       any    `json:"range_after,omitempty"`
+	RangeBeforeCount int    `json:"range_before_count,omitempty"`
+	RangeAfterCount  int    `json:"range_after_count,omitempty"`
+}
+
+// RangeAuditMaxNodes 範圍變更審計列每側最多列出的節點編號數。
+const RangeAuditMaxNodes = 100
+
+// RoleBindingRangeChangedEvent 只改範圍的審計 details 事件名。
+const RoleBindingRangeChangedEvent = "role_binding_range_changed"
+
+// RangeAuditValue 把範圍（nil 或空＝全域）轉成審計值與總數：全域為 "global"，
+// 否則為升冪節點編號陣列（超過上限只列前 RangeAuditMaxNodes 個）。
+func RangeAuditValue(nodes []uint) (any, int) {
+	if len(nodes) == 0 {
+		return "global", 0
+	}
+	sorted := append([]uint(nil), nodes...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	total := len(sorted)
+	if total > RangeAuditMaxNodes {
+		sorted = sorted[:RangeAuditMaxNodes]
+	}
+	return sorted, total
+}
+
+// RecordUserRoleRangeChange 於 tx 內為一筆直接指派的範圍改變留痕（動作 update，不改有效角色集）。
+// 與角色增減共用同一個審計產生點；寫不進去即回 error，呼叫端須讓它逸出交易。
+func RecordUserRoleRangeChange(tx *gorm.DB, userID, roleID uint, origin string, before, after []uint) error {
+	return recordUserRoleChange(tx, ActionUpdate, userID, roleID, origin, [][]uint{before, after})
+}
+
+// AssignUserRoleInRange 同 AssignUserRole，但新建的指派將以節點範圍持有：assign 審計列另帶
+// `range_after`（節點編號陣列與總數，不帶 event），使依審計重放的對帳還原得出這筆指派的
+// 起始範圍，而不必另寫一列範圍變更。範圍本身（範圍種類與節點列）由呼叫端在同交易寫入。
+// nodes 為空即同 AssignUserRole。
+func AssignUserRoleInRange(tx *gorm.DB, userID, roleID uint, origin string, nodes []uint) error {
+	res := tx.Exec(
+		"INSERT INTO user_roles (user_id, role_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+		userID, roleID)
+	if res.Error != nil {
+		return fmt.Errorf("寫入角色指派失敗: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil
+	}
+	if len(nodes) == 0 {
+		return recordUserRoleChange(tx, ActionAssign, userID, roleID, origin, nil)
+	}
+	return recordUserRoleChange(tx, ActionAssign, userID, roleID, origin, [][]uint{nodes})
 }
 
 // AssignUserRole 於 tx 內授予一筆角色指派並同交易留痕。
@@ -86,16 +141,7 @@ type UserRoleAuditDetails struct {
 //
 // 回 error 時呼叫方 SHALL 讓它逸出交易閉包：審計寫不進去，角色就不許掛上。
 func AssignUserRole(tx *gorm.DB, userID, roleID uint, origin string) error {
-	res := tx.Exec(
-		"INSERT INTO user_roles (user_id, role_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-		userID, roleID)
-	if res.Error != nil {
-		return fmt.Errorf("寫入角色指派失敗: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return nil
-	}
-	return recordUserRoleChange(tx, ActionAssign, userID, roleID, origin)
+	return AssignUserRoleInRange(tx, userID, roleID, origin, nil)
 }
 
 // AssignUserRoleAtSeed 初始管理員播種專用：授予角色但**不留痕**。
@@ -132,7 +178,7 @@ func RevokeUserRole(tx *gorm.DB, userID, roleID uint, origin string) error {
 	if res.RowsAffected == 0 {
 		return nil
 	}
-	return recordUserRoleChange(tx, ActionRevoke, userID, roleID, origin)
+	return recordUserRoleChange(tx, ActionRevoke, userID, roleID, origin, nil)
 }
 
 // recordUserRoleChange 角色指派變更的**唯一**審計產生點（manifest AP-87）。
@@ -140,11 +186,22 @@ func RevokeUserRole(tx *gorm.DB, userID, roleID uint, origin string) error {
 // 主體取自交易的 context（同 Asset hook 的 getUserFromContext）：管理面路徑帶得到
 // 操作者，系統與登入供應路徑落在 (0, "system")。**origin 才是路徑的權威**——
 // 主體會因呼叫層是否帶 context 而有無，路徑不會
-func recordUserRoleChange(tx *gorm.DB, action AuditAction, userID, roleID uint, origin string) error {
-	operatorID, operator := getUserFromContext(tx.Statement.Context)
-	details, err := json.Marshal(UserRoleAuditDetails{
+func recordUserRoleChange(tx *gorm.DB, action AuditAction, userID, roleID uint, origin string, rng [][]uint) error {
+	d := UserRoleAuditDetails{
 		Resource: string(ResourceUserRole), UserID: userID, RoleID: roleID, Origin: origin,
-	})
+	}
+	if len(rng) == 1 { // 新建的指派以節點範圍持有：[起始範圍]，只在 assign 列帶 range_after
+		av, ac := RangeAuditValue(rng[0])
+		d.RangeAfter, d.RangeAfterCount = av, ac
+	}
+	if len(rng) == 2 { // 只改範圍：[變更前, 變更後]
+		bv, bc := RangeAuditValue(rng[0])
+		av, ac := RangeAuditValue(rng[1])
+		d.Event, d.RangeBefore, d.RangeAfter = RoleBindingRangeChangedEvent, bv, av
+		d.RangeBeforeCount, d.RangeAfterCount = bc, ac
+	}
+	operatorID, operator := getUserFromContext(tx.Statement.Context)
+	details, err := json.Marshal(d)
 	if err != nil {
 		return fmt.Errorf("序列化角色指派稽核詳情失敗: %w", err)
 	}
@@ -210,6 +267,26 @@ func SetUserRoleSource(tx *gorm.DB, userID, roleID uint, source string) error {
 	return nil
 }
 
+// SetUserRoleScope 更新一列角色指派的範圍種類（global／nodes）。
+// 節點集合由 role_binding_nodes 另存，呼叫端在同交易內同步；範圍種類不屬於有效集合的成員，
+// 不留痕，版本推進與審計由呼叫端負責。
+func SetUserRoleScope(tx *gorm.DB, userID, roleID uint, scopeKind string) error {
+	switch scopeKind {
+	case ScopeKindGlobal, ScopeKindNodes:
+	default:
+		return fmt.Errorf("未知的角色指派範圍種類: %q", scopeKind)
+	}
+	res := tx.Exec("UPDATE user_roles SET scope_kind = ? WHERE user_id = ? AND role_id = ?",
+		scopeKind, userID, roleID)
+	if res.Error != nil {
+		return fmt.Errorf("更新角色指派範圍失敗: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("更新角色指派範圍失敗：(%d, %d) 無對應列", userID, roleID)
+	}
+	return nil
+}
+
 // AssignUserRoleWithSource 於 tx 內授予一筆角色指派、落指定來源並同交易留痕。
 //
 // 與 AssignUserRole 的差別只有來源值：後者走欄位預設（管理者指派），
@@ -230,5 +307,5 @@ func AssignUserRoleWithSource(tx *gorm.DB, userID, roleID uint, source, origin s
 	if res.RowsAffected == 0 {
 		return nil
 	}
-	return recordUserRoleChange(tx, ActionAssign, userID, roleID, origin)
+	return recordUserRoleChange(tx, ActionAssign, userID, roleID, origin, nil)
 }

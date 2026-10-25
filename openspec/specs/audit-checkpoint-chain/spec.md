@@ -3,7 +3,9 @@
 ## Purpose
 
 審計序列的完整性證明：以 audit_logs 的 id 閉區間為單位週期性封章，聚合區間內列的完整性指紋、鏈接前一檢查點、以 Ed25519 簽章並向 syslog 離機錨定，使「中段列被抽走」「整段被刪除並偽裝成無事發生」成為可偵測事件，並使合法的保留政策清除與惡意抽列在驗證結果中可區分。列級 HMAC 證明內容真偽、本能力證明序列完整，兩者職責不互相取代。
+
 ## Requirements
+
 ### Requirement: 檢查點以 audit_logs 的 id 區間為覆蓋主軸
 
 檢查點 SHALL 以 audit_logs 的自增 **id 區間**為覆蓋單位：第 n 個檢查點覆蓋閉區間 `[id_from, id_to]`，其中 `id_from = 前一檢查點 id_to + 1`、`id_to` 為封章觸發時刻觀測到的 `MAX(id)`。相鄰檢查點的區間 SHALL 無縫鄰接且不重疊，全鏈自 genesis 起 SHALL 完整覆蓋 `[genesis id_from, 最新 id_to]` 而無空隙。
@@ -219,11 +221,11 @@ syslog 轉發未啟用時，驗證頁 SHALL 顯著呈現降級聲明：無離機
 
 ### Requirement: 檢查點驗證的角色邊界
 
-檢查點列表、驗證與公鑰取用端點 SHALL 對 admin **與** auditor 兩種角色開放（auditor 為出具證明的人）；一般 user 角色 SHALL 一律回 403。前端路由守衛 SHALL 與後端一致（`roles: ['admin','auditor']`）。
+檢查點列表、驗證與公鑰取用端點 SHALL 對 admin **與** auditor 兩種角色開放（auditor 為出具證明的人）；一般 user 角色 SHALL 一律回 403。後端 SHALL 以檢查點檢視權限點（`audit:integrity_view`）放行這三個端點，超級管理者與稽核員的內建範本都持有此權限點；前端入口 SHALL 依同一權限點判定，與後端一致。
 
-auditor 於檢查點相關介面 SHALL 無任何寫操作：封章參數、保留政策鍵、syslog 設定等一切設定 SHALL 維持 admin only。
+auditor 於檢查點相關介面 SHALL 無任何寫操作：封章參數、保留政策鍵、syslog 設定等一切設定 SHALL 維持僅限超級管理者或持對應設定權限點者（如系統安全管理員）。
 
-現行角色中介僅支援單一角色比對，本能力 SHALL 以可重用的多角色放行機制或與既有 admin-or-auditor 模式一致的檢查實現，且 SHALL 由測試釘住三種角色（admin／auditor／user）對每個端點的期望結果。
+放行 SHALL 由路由登錄表以權限點判定，且 SHALL 由測試釘住三種角色（admin／auditor／user）對每個端點的期望結果。
 
 #### Scenario: auditor 可驗不可改
 
@@ -549,4 +551,3 @@ auditor 於檢查點相關介面 SHALL 無任何寫操作：封章參數、保�
 
 - **WHEN** 稽核人員閱讀自動驗證狀態區塊
 - **THEN** 該區塊明示其為營運狀態而非完整性證明，並指向失效事件記錄與離機錨定作為真正的證據
-

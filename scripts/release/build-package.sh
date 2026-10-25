@@ -271,7 +271,8 @@ ln -s current/custodexa.sh "$root/custodexa.sh"
 # changed, since older databases keep the marker.
 runtime_marker_first_versions='20260804_ldap_env_seeded 1.0.0
 20260825_offsite_env_seeded 1.1.0
-20260906_credential_secrets_converted 1.6.0'
+20260906_credential_secrets_converted 1.6.0
+20261030_approver_scope_management_key 1.18.0'
 
 runtime_markers_json() { # <source tree>
   local go=$1/backend/internal/database names name val ids="" id ver row out
@@ -395,6 +396,21 @@ shared=$(jq -r 'to_entries | group_by("\(.value.ref):\(.value.tag)")[] | select(
 notes_json='{"zh-TW": [], "en": [], "ja": []}'
 [ -n "$notes" ] && notes_json=$(cat "$notes")
 mig=$(migrations_json "$source")
+
+# ---- rollback_compatible never crosses the permission model ----
+# A migration that gives the data a model an earlier version cannot read: the way back is the backup
+# taken before the upgrade, never a list in this release. One row per such migration with the first
+# release that carries it; a build that carries it and lists an earlier version is stopped, record or not.
+data_model_first_versions='20261016_authz_permission_model 1.18.0'
+while read -r model_id model_first; do
+  [ -n "$model_id" ] || continue
+  jq -e --arg m "$model_id" 'index($m) != null' <<<"$mig" >/dev/null || continue
+  for v in "${compat_list[@]+"${compat_list[@]}"}"; do
+    version_lt "$v" "$model_first" \
+      || continue
+    die "--rollback-compatible $v: this release carries the data model migration $model_id (first in $model_first), which $v cannot read; a way back across it is the backup taken before the upgrade, not a list in the release"
+  done
+done <<<"$data_model_first_versions"
 markers=$(runtime_markers_json "$source")
 src_sha=$(cx_tree_sha256 "$rel/source")
 jq -n --arg v "$version" --arg min "$min_source" --arg at "$released_at" \

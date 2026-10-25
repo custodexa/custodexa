@@ -1,6 +1,35 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-10-11（`policy_clause_controls.comparator` 值域加 `signoff_record`（只供內建組，PCI DSS 10.4.1 改用）；不加表、不加 migration）
+> **最後更新**：2026-10-25（`20261101_scoped_template_builtin_keys`：`roles_builtin_key_check` 重建，值域加 `asset_admin`／`authz_admin`；只有 DDL、不建新表、不改任何列，兩個範圍化管理範本（資產管理員、授權管理員）由啟動資料步驟種入；migration 總數 +1，表數不變）
+> 前次更新：2026-10-21（`change_secret_plans.authorization_state` 值域補 `needs_reconfirmation`（憑證目標計畫由只經節點範圍持有憑證改密者執行、範圍外掛載超出該版掛載上界，且計畫發起者的憑證改密沒有全系統來源時暫停）；`credential_job_authorizations` 的 `target_bound` 用途更正為批次讀取投影與由批次發起之拆分的資產上界。表結構不變，migration 與表數不變：migration 總數 49、應用資料表 87 張、全庫 90 張表）
+> 前次更新：2026-10-21（合併兩項同期增量：`20261031_change_secret_scope_columns`（改密批次與背景工作授權加欄，見下一列）與審核範圍管理鍵補鍵的執行期標記 `20261030_approver_scope_management_key`（`runtimeMarkerVersions` 由三個增為四個，見再下一列，不計入 migration）；migration 總數 49、應用資料表 87 張、全庫 90 張表）
+> 前次更新：2026-10-21（`20261031_change_secret_scope_columns`：`change_secret_batches` 加 `shared_credential_owner_kind`（非空、預設 `global`）與 `shared_credential_owner_node_id`（可空）兩欄，記整批同一組模式要新建的共用憑證歸屬；`credential_job_authorizations` 加 `target_mount_bound`（非空、預設空字串），記範圍化發起者儲存憑證目標計畫時的掛載上界；只加欄、不回填，既有列取預設值；不提供 Down。migration 總數 49、應用資料表 87 張、全庫 90 張表）
+> 前次更新：2026-10-21（`runtimeMarkerVersions` 的成員由三個增為四個：新增審核範圍管理鍵補鍵的執行期標記 `20261030_approver_scope_management_key`，fail-close 段與 post-unseal 佇列段同步列舉；它是段 2 啟動步驟、不在 post-unseal 佇列內。表結構不變，migration 與表數不變：migration 總數 48、全庫 90 張表）
+> 前次更新：2026-10-21（`20261029_credential_ownership`：`credentials` 加 `owner_kind`、`owner_node_id` 兩欄與複合索引 `idx_credentials_owner`，新表 `credential_impact_confirmations`（修改共用憑證時的範圍外影響確認，歸 asset，見第 75 節）；資料步驟只填 `owner_kind` 為 NULL 的列（共用→`global`、專用→`asset`）並在同交易內重算比對，報告以固定前綴寫入日誌；不提供 Down。migration 總數 48、應用資料表 87 張、全庫 90 張表）
+> 前次更新：2026-10-20（第 7 節 `audit_logs` 補「狀態語義與拒絕細節」：授權拒絕的審計分類改由出口留下的分類標記判定，能力拒絕與範圍拒絕（對外回 404）皆記 `status=denied`，`details` 新增 `denial`、`basis`、`required`、`scope_reason`、`count` 五個鍵且不覆寫既有鍵；表結構不變，migration 與表數不變：migration 總數 47、全庫 89 張表）
+> 前次更新：2026-10-20（第 65 節 `authz_state.version` 的推進來源補上資產拓撲寫入：建立資產並掛載節點（單筆與批次匯入）、資產的節點掛載集合實際改變、刪除仍有掛載的資產、節點搬移、節點刪除，各在寫入交易內至多推進一次；改名、改描述、掛載集合不變的更新與節點建立不推進。表結構不變，migration 與表數不變：migration 總數 47、全庫 89 張表）
+> 前次更新：2026-10-20（合併兩項同期增量：`20261027_credential_host_identity`（見下一列；新表 `credential_host_identity_confirmations` 的說明移為第 74 節）與 `20261028_user_release_guidance`（第 73 節），migration 依版本順序 20261027 在 20261028 之前；總覽的表數敘述更新為應用資料表 86 張、增量 migration 建 42 張、全新安裝共 89 張，增量建表清單補上 `credential_host_identity_confirmations`；migration 總數 47、全庫 89 張表）
+> 前次更新：2026-10-20（總覽與第 28 節的表數敘述更正為現況：應用資料表 85 張、增量 migration 建 41 張、全新安裝共 88 張，並逐一列出增量建的表；表結構不變，migration 與表數不變：migration 總數 46、全庫 88 張表）
+> 前次更新：2026-10-19（`20261027_credential_host_identity`：`asset_host_keys` 加主機信任世代 `trust_generation`；`change_secret_candidates`、`credential_rotation_members` 各加主機身分綁定欄（`host_key_binding`、`host_key_transport` 等）與停止通知去重鍵，成員另加派送標記 `secret_sent_at`；新表 `credential_host_identity_confirmations`（逐工作、只驗證的人工承接紀錄，無外鍵，歸 asset，見第 74 節）；資料步驟只對升級前成員保守寫入派送標記，快照欄不回填；失權後有限驗證改為比對工作綁定的主機身分）
+> 前次更新：2026-10-19（`20261028_user_release_guidance`：新表 `user_release_guidance`（使用者對某個說明版本的關閉紀錄，複合主鍵 `(user_id, notice_version)`，`user_id` 外鍵指向 `users` 並隨帳號列刪除而刪除，歸 identity，見第 73 節），只建表、不回填、不改既有表；第 72 節補上現已有唯讀端點讀取抬升紀錄；migration 總數 46、全庫 88 張表）
+> 前次更新：2026-10-19（第 67 節 `role_permissions` 的對外寫入口敘述更正為現況；表結構與欄位不變，migration 與表數不變）
+> 前次更新：2026-10-18（`20261026_security_policy_floor_raises`：新表 `security_policy_floor_raises`（升級時把存量過低的資料保留值抬升到下限的紀錄，歸 policy，見第 72 節），只建表、不回填、不改既有表；migration 總數 45、全庫 87 張表）
+> 前次更新：2026-10-18（`20261025_host_key_mismatch`：新表 `asset_host_key_mismatches`（連線時出現過、與記錄不符且尚未確認的主機金鑰觀察，唯一索引 `(asset_id, observed_fingerprint)`，歸 asset，見第 13a 節），不回填；主機金鑰不符改為依路徑處置、記錄不自動覆蓋，超級管理者可採用觀察指紋；migration 總數 44、全庫 86 張表）
+> 前次更新：2026-10-18（`20261022_credential_job_authorization` 同一未發版 migration 內補欄：`credential_rotation_members` 加 `requeued_by`、`requeued_by_name`、`requeued_authz_version`、`requeued_at`（逐台補跑重新排入的操作者、當時通過的權限世代與時刻，與狀態轉移同交易落列；之後每次派送另以重排者重驗）；不新增 migration，表數與索引數不變）
+> 前次更新：2026-10-18（`20261024_system_alert_delivery_key`：`system_alert_outbox` 加 `delivery_key`（32 個十六進位字元的隨機投遞識別，唯一索引 `idx_system_alert_outbox_delivery_key`），既有列各回填一個值；送給收端的投遞識別改用它，還原後不再與還原前發出的識別重複；migration 總數 43、全庫 85 張表不變）
+> 前次更新：2026-10-18（合併後：`20261018_checkpoint_v4_attestation`（檢查點第四版載荷，`audit_checkpoints`／`audit_checkpoint_trims` 加卸欄與一條部分索引）與 `20261022_credential_job_authorization`、`20261023_credential_recovery_alert` 並存，執行序為 v4 在 `20261020_mapping_observation_times` 之後、`20261022_credential_job_authorization` 之前；migration 總數 42（baseline 之後增量 41）、全庫 85 張表；版本一覽、升級注意三類清單與總數同步；`20261022_credential_job_authorization` 一列的 Down 欄補回；各項說明見下列）
+> 前次更新：2026-10-18（`20261023_credential_recovery_alert`：`change_secret_candidates`、`credential_rotation_members` 各加可空的 `recovery_alerted_at`（失權後有限驗證的告警去重，每個候選、每個輪替成員只發一次）；只加欄、不回填；migration 總數 41、全庫 85 張表不變；另把 `20261022_credential_job_authorization` 補進版本一覽的條數與升級注意的分類）
+> 前次更新：2026-10-18（合併兩項增量：`20261018_checkpoint_v4_attestation`（檢查點第四版載荷，`audit_checkpoints`／`audit_checkpoint_trims` 加卸欄與一條部分索引）與 `20261022_credential_job_authorization`（`credential_job_authorizations` 一張表與憑證工作加欄）並存；migration 總數 41、全庫 85 張表；兩項說明見下兩列）
+> 前次更新：2026-10-18（`20261018_checkpoint_v4_attestation`：`audit_checkpoints` 加 `perm_origin`、卸下 `perm_signature`、加部分索引 `idx_audit_checkpoints_perm_trace`；`audit_checkpoint_trims` 加 `format`、`perm_history`、`unverified_count`；檢查點第四版載荷把權限附證納入檢查點自己的簽章；migration 總數 40、全庫 84 張表不變）
+> 前次更新：2026-10-18（合併憑證背景工作授權：`20261022_credential_job_authorization`（`credential_job_authorizations` 一張表，計畫／批次／輪替／候選與輪替成員加欄，說明見下一列）與先前合併的各項增量 `20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times` 並存；migration 總數 40、全庫 85 張表；各項說明見下列）
+> 前次更新：2026-10-17（`20261022_credential_job_authorization`：`change_secret_candidates`、`credential_rotation_members` 各加 `target_fingerprint` 目標指紋欄（同一未發版 migration 內補欄，不新增 migration）；新表 `credential_job_authorizations`（歸 asset，不可變授權脈絡）；`change_secret_plans` 加 `authorization_id`／`authorization_state`／`revision`；`change_secret_batches`／`credential_rotations`／`change_secret_candidates` 加 `authorization_id`；`credential_rotation_members` 加 `dispatch_claimed_at`／`dispatch_authz_version`；資料步驟回填已啟用排程計畫的發起者；`credential_job_authorizations` 加 `restore_generation`）
+> 前次更新：2026-10-17（合併同日各項增量：`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`（`system_alert_details`／`system_alert_outbox`／`system_alert_severity_overrides` 三張表）、`20261019_asset_host_key_address`（`asset_host_keys` 加三欄與一條索引）、`20261020_mapping_observation_times`（`user_channel_observations`）；migration 總數 39、全庫 84 張表；各項說明見下列）
+> 前次更新：2026-10-17（`20261019_asset_host_key_address`：`asset_host_keys` 加 `host`、`port`、`reset_pending` 三欄與 (host, port) 索引 `idx_asset_host_keys_address`，依撥號位址回填（含已軟刪資產）；migration 總數 +1；同日 `20261017_permission_state_attestation`：新表 `permission_state_events`（歸 audit）；`audit_checkpoints` 加 `perm_*` 六欄；`authz_state` 加 `restore_*` 五欄；`refresh_tokens`／`agent_tokens`／`asset_authorizations` 各加 `restore_generation`；migration 總數 35、全庫 80 張表；同日 `20261017_role_definitions`：`roles` 加 `definition_version`、`template_role_id`，`roles_builtin_key_check` 值域加 `identity_admin`／`security_admin`；新表 `role_permissions`；種兩個鎖定範本；`authz_state` 不再是只有寫入端）
+> 前次更新：2026-10-17（`20261017_permission_state_attestation`：新表 `permission_state_events`（歸 audit）；`audit_checkpoints` 加 `perm_*` 六欄；`authz_state` 加 `restore_*` 五欄；`refresh_tokens`／`agent_tokens`／`asset_authorizations` 各加 `restore_generation`；migration 總數 35、全庫 80 張表；同日 `20261017_role_definitions`：`roles` 加 `definition_version`、`template_role_id`，`roles_builtin_key_check` 值域加 `identity_admin`／`security_admin`；新表 `role_permissions`；種兩個鎖定範本；`authz_state` 不再是只有寫入端）
+> 前次更新：2026-10-17（`20261017_permission_state_event_integrity`：`permission_state_events` 加 `integrity_hmac`、`key_version` 兩欄（逐列完整性驗證碼，與 `audit_logs` 同一組完整性密鑰），既有列不回填；migration 總數 35、全庫 79 張表不變）
+> 前次更新：2026-10-16（`20261017_permission_state_attestation`：新表 `permission_state_events`（歸 audit）；`audit_checkpoints` 加 `perm_*` 六欄；`authz_state` 加 `restore_*` 五欄；`refresh_tokens`／`agent_tokens`／`asset_authorizations` 各加 `restore_generation`；migration 總數 34、全庫 79 張表；`authz_state` 不再是只有寫入端）
+> 前次更新：2026-10-16（`20261016_authz_permission_model`：`roles` 加 `builtin_key`、`user_roles` 加 `scope_kind`；新表 `user_group_roles`／`role_binding_nodes`／`authz_state`；migration 總數 33、全庫 78 張表；同日修正權限版本推進範圍的描述、遷移報告讀取的表、CHECK 條數）
+> 前次更新：2026-10-11（`policy_clause_controls.comparator` 值域加 `signoff_record`（只供內建組，PCI DSS 10.4.1 改用）；不加表、不加 migration）
 > 前次更新：2026-10-11（`20261012_daily_review_signoff`：`daily_review_logs` 加所屬日起訖、簽核時刻、時區、準時期限、遲簽與延遲原因、涵蓋方式、來源狀態、啟用依據等 11 欄並回填；新表 `security_policy_history`；政策鍵 `daily_review_timezone`；migration 總數 32、全庫 75 張表）
 > 前次更新：2026-09-30（`20260930_identity_group_mappings` 加外部群組字典、使用者群組規則與兩類逐規則支持；`user_group_members.manual` 與角色規則字典外鍵）
 > 前次更新：2026-09-29（`notification_channels` 加 `min_severity` 推送門檻欄與 CHECK，migration `20260929_notification_channel_min_severity`；ER 圖補 `language`、`min_severity`；migration 總數 30）
@@ -50,25 +79,32 @@
 | 模型 | 表名 | 建表來源 | 說明 |
 |------|------|----------|------|
 | User | `users` | baseline（`idx_users_username`／`idx_users_email` 兩條 partial unique）＋增量 `20260826_source_ip_forensics` 加 `allowed_cidrs` 欄＋增量 `20260908_group_role_mapping` 加群組觀測快照三欄 | 系統用戶（含 LDAP 標記、MFA/TOTP、帳號鎖定/強制改密/閒置停用豁免、允許來源網段、群組觀測快照） |
-| AgentToken | `agent_tokens` | 增量 `20260921_identity_agent_principal`；token_hash 唯一索引 | agent 憑證雜湊與失效狀態 |
+| AgentToken | `agent_tokens` | 增量 `20260921_identity_agent_principal`；token_hash 唯一索引＋增量 `20261017_permission_state_attestation` 加 `restore_generation` 欄 | agent 憑證雜湊、失效狀態與簽發時的還原世代 |
 | AgentToolCall | `agent_tool_calls` | 增量 `20260921_agent_audit_ledger`，UNIQUE user_id/seq 與五項 CHECK | 兩階段呼叫帳本、列級 HMAC 與 v3 聚合 |
 | AgentTaskReport | `agent_task_reports` | 同上，UNIQUE request/version | 不可變報告版本 |
 | AgentProbeEvent | `agent_probe_events` | 同上，class CHECK | 三分類範圍外引用 |
 | AgentVisibilityExposure | `agent_visibility_exposures` | 增量 `20260921_agent_visibility_exposures`，複合主鍵 | 主體曾獲告知識別字的事實 |
-| Role | `roles` | baseline | 角色定義 |
-| UserRole | `user_roles` | baseline＋增量 `20260908_group_role_mapping` 加 `source` 欄 | 用戶-角色關聯表（M2M，由 baseline 顯式建表；`source` 記這一列是管理者指派、外部群組映射賦予，還是兩者並存） |
+| Role | `roles` | baseline＋增量 `20261016_authz_permission_model` 加 `builtin_key` 欄與一條部分唯一索引、一條 CHECK＋增量 `20261017_role_definitions` 加 `definition_version`、`template_role_id` 並放寬該 CHECK 值域 | 角色定義；`builtin_key` 非空者為鎖定的內建範本（`super_admin`／`auditor`／`user`／`approver`／`identity_admin`／`security_admin`／`asset_admin`／`authz_admin`） |
+| RolePermission | `role_permissions` | 增量 `20261017_role_definitions`，複合主鍵，外鍵 `fk_role_permissions_role` | 自訂角色的明列權限鍵集合（見第 67 節） |
+| UserRole | `user_roles` | baseline＋增量 `20260908_group_role_mapping` 加 `source` 欄＋增量 `20261016_authz_permission_model` 加 `scope_kind` 欄 | 用戶-角色關聯表（M2M，由 baseline 顯式建表；`source` 記這一列是管理者指派、外部群組映射賦予，還是兩者並存） |
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
 | UserGroupMember | `user_group_members` | baseline＋`20260930_identity_group_mappings` 加 `manual` | 用戶-群組有效成員投影；手動與逐規則映射支持的聯集 |
+| UserChannelObservation | `user_channel_observations` | 增量 `20261020_mapping_observation_times`，複合主鍵，外鍵 `fk_user_channel_observations_user` | 逐（帳號，通道）最近一次已知群組觀測時間，有界重新驗證的依據（見第 71 節） |
+| UserGroupRole | `user_group_roles` | 增量 `20261016_authz_permission_model`，複合主鍵 | 使用者群組 × 角色指派（見第 63 節） |
+| RoleBindingNode | `role_binding_nodes` | 同上，複合主鍵 | 範圍為節點的指派所涵蓋的節點（見第 64 節） |
+| AuthzState | `authz_state` | 同上，單列 CHECK＋增量 `20261017_permission_state_attestation` 加 `restore_*` 五欄 | 權限版本、權限模型遷移報告、還原世代與最近一次還原交易（見第 65 節） |
+| PermissionStateEvent | `permission_state_events` | 增量 `20261017_permission_state_attestation`，`seq` 唯一索引、`kind` CHECK＋增量 `20261017_permission_state_event_integrity` 加 `integrity_hmac`、`key_version` | 權限狀態的可重放變更事件，歸稽核模組（audit）（見第 66 節） |
+| CredentialJobAuthorization | `credential_job_authorizations` | 增量 `20261022_credential_job_authorization`，`idx_credential_job_authorizations_source`＝`(source_kind, source_id)`、`source_kind` CHECK | 背景工作的發起者授權脈絡（不可變列；見文末「憑證背景工作授權增量」） |
 | Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄＋增量 `20260904_windows_local_account_rotation` 加改密通道六欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
 | AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引＋增量 `20260906_credential_library` 加 `credential_id`／`effective_version_id` 與 `idx_asset_accounts_credential` partial unique＋增量 `20260906_credential_library_contract` 卸下兩個密文欄與群組索引 | 憑證掛載列（這台以哪筆憑證登入、就位在哪一版；本表不再持有密文，至多一 default） |
 | Credential | `credentials` | **增量 `20260906_credential_library`（非 baseline）**（`idx_credentials_shared_name` partial unique＝共用名稱唯一且軟刪後可重用） | 登入秘密的唯一真相（範圍、帳號名、秘密型別、協定族、輪替指標） |
 | CredentialSecretVersion | `credential_secret_versions` | **增量 `20260906_credential_library`（非 baseline）**（`(credential_id, version_no)` 唯一） | 憑證的**不可變**密文版本；`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
 | CredentialRotation | `credential_rotations` | **增量 `20260906_credential_library`（非 baseline）** | 一次輪替（整組或拆分）的狀態與密碼策略 |
-| CredentialRotationMember | `credential_rotation_members` | **增量 `20260906_credential_library`（非 baseline）**（`(rotation_id, account_id)` 唯一） | 輪替的逐掛載成員（七態狀態機＋四個快照欄） |
+| CredentialRotationMember | `credential_rotation_members` | **增量 `20260906_credential_library`（非 baseline）**（`(rotation_id, account_id)` 唯一） | 輪替的逐掛載成員（七態狀態機＋四個快照欄；增量 `20261027_credential_host_identity` 加主機身分綁定欄與派送標記 `secret_sent_at`，見第 51 節） |
 | AssetGroup | `asset_groups` | baseline（`idx_asset_groups_sibling_name` 同層唯一，partial unique 表達式索引） | 資產節點樹（parent_id 自參照、同層唯一） |
 | AssetNode | `asset_nodes` | baseline | 資產×節點成員（多歸屬 M2M） |
 | Session | `sessions` | baseline＋增量 `20260825_evidence_offsite`（離機指標欄與兩條部分索引）、`20260826_source_ip_forensics`（`idx_sessions_client_ip_start`）、`20260826_db_query_console`（`db_console` 欄） | 連線會話（含 K8s 快照、斷線原因、帳號快照、主控台標記） |
-| AssetAuthorization | `asset_authorizations` | baseline（CHECK `chk_auth_target`＋`chk_authz_subject_xor`；四條 partial unique） | 資產授權（主體 user XOR user_group、客體 asset XOR asset_group、時效窗、source 來源標記） |
+| AssetAuthorization | `asset_authorizations` | baseline（CHECK `chk_auth_target`＋`chk_authz_subject_xor`；四條 partial unique）＋增量 `20261017_permission_state_attestation` 加 `restore_generation` 欄 | 資產授權（主體 user XOR user_group、客體 asset XOR asset_group、時效窗、source 來源標記、臨時授權的簽發世代） |
 | AccessRequest | `access_requests` | baseline（`idx_access_request_pending_dedup` partial unique） | 連線申請單（三段存取政策核准流，CAS 狀態機） |
 | ApproverScope | `approver_scopes` | baseline（CHECK `chk_approver_scope_actor`＋`chk_approver_scope_target`；八條 partial unique） | approver 審核範圍（資產/節點/申請人/使用者群組四維恰一） |
 | AccessRequestItem | `access_request_items` | 增量 `20260921_access_request_items`／`20260921_access_request_item_decisions` | 任務項、逐項核准與票證、政策快照 |
@@ -77,13 +113,20 @@
 | SessionCommand | `session_commands` | baseline（CHECK `session_commands_degraded_no_text`）＋增量 `20260826_db_query_console`（十一個結果事實欄、三條 CHECK、三個部分索引） | 指令與查詢語句稽核記錄（文字終端重組列＋查詢主控台執行單位列，以 `result_status` 是否為空區分） |
 | AlertRule | `alert_rules` | baseline（CHECK action／severity；`uniq_alert_rules_name` 唯一索引＝種子 `ON CONFLICT` 的衝突目標）＋`baseline_seed.go` baseline 12 條輸入＋direction 增量 2 條輸出，再加 subject 增量 2 條 agent/input/block，共 16 條內建規則 | 輸入指令告警/阻斷與輸出敏感資料告警規則 |
 | CommandAlert | `command_alerts` | baseline（CHECK severity／kind／kind↔rule_id；**刻意無 FK**——rule_id/session_id 為觸發快照冗餘，規則改名或刪除不得破壞歷史告警） | 危險指令告警記錄（含審閱處置欄位） |
+| SystemAlertDetail | `system_alert_details` | 增量 `20261018_system_security_alerts`，主鍵即 `command_alerts.id`（外鍵級聯刪除） | 系統安全告警的結構化明細（見第 68 節） |
+| SystemAlertOutbox | `system_alert_outbox` | 同上，三條 CHECK、外鍵級聯刪除＋增量 `20261024_system_alert_delivery_key` 加 `delivery_key` 與唯一索引 | 系統安全告警的逐目的地持久投遞佇列（見第 69 節） |
+| SystemAlertSeverityOverride | `system_alert_severity_overrides` | 同上，主鍵為類型鍵、分級 CHECK | 系統安全告警的逐類型分級覆寫（見第 70 節） |
 | NotificationChannel | `notification_channels` | baseline（CHECK type／language）＋`20260929_notification_channel_min_severity`（`min_severity`＋CHECK） | 告警 webhook 通知通道 |
 | ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存（內容信封加密，`content_enc` 登記於 `envelopeMigrationTargets`；另存 `content_length`／`content_status`） |
-| AssetHostKey | `asset_host_keys` | baseline | SSH host key TOFU 記錄 |
+| AssetHostKey | `asset_host_keys` | baseline＋增量 `20261019_asset_host_key_address` 加 `host`、`port`、`reset_pending` 與 `(host, port)` 索引＋增量 `20261027_credential_host_identity` 加 `trust_generation` | SSH host key TOFU 記錄（帶撥號位址與主機信任世代） |
+| AssetHostKeyMismatch | `asset_host_key_mismatches` | 增量 `20261025_host_key_mismatch`（含唯一索引 `(asset_id, observed_fingerprint)`） | 連線時出現過、與記錄不符且尚未確認的主機金鑰觀察（見第 13a 節） |
+| SecurityPolicyFloorRaise | `security_policy_floor_raises` | 增量 `20261026_security_policy_floor_raises`（只建表，主鍵為 bigserial） | 保留下限的升級抬升紀錄（見第 72 節） |
+| UserReleaseGuidance | `user_release_guidance` | 增量 `20261028_user_release_guidance`（只建表，複合主鍵 `(user_id, notice_version)`，外鍵 `fk_user_release_guidance_user` 隨帳號列刪除而刪除） | 使用者對說明版本的關閉狀態（見第 73 節） |
+| CredentialHostIdentityConfirmation | `credential_host_identity_confirmations` | 增量 `20261027_credential_host_identity`（主鍵 bigserial，唯一索引 `(kind, job_id, revision)`，無外鍵） | 逐工作、只驗證的主機身分人工承接紀錄（見第 74 節） |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
 | ChangeSecretPlan | `change_secret_plans` | baseline＋增量 `20260903_rotation_evidence_report` 加 `max_age_days` 欄＋增量 `20260906_credential_library` 加 `target_kind`／`target_credential_id` | 改密計劃（目標為資產集×帳號範圍，或一筆憑證的全部掛載） |
 | ChangeSecretRecord | `change_secret_records` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與索引＋增量 `20260906_credential_library` 加三個憑證快照欄 | 改密執行記錄 |
-| ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄＋增量 `20260906_credential_library` 加三個憑證快照欄＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
+| ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄＋增量 `20260906_credential_library` 加三個憑證快照欄＋增量 `20260906_credential_library_contract` 卸下 `shared_group`＋增量 `20261027_credential_host_identity` 加主機身分綁定欄 | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
 | ChangeSecretBatch | `change_secret_batches` | 增量 `20260905_account_batch_rotation`＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 以帳號為主軸的批次改密（一列一次批次；不存任何密碼） |
 | SecurityPolicy | `security_policies` | baseline | PCI 安全政策 key-value |
 | PolicyGroup | `policy_groups` | **增量 `20260909_policy_groups`（非 baseline）**（主鍵為組代號字串） | 政策組（一份對照條文的容器；內建組隨產品版本發布，自建組由機構維護） |
@@ -92,7 +135,7 @@
 | PolicyClauseAnnotation | `policy_clause_annotations` | **增量 `20260909_policy_groups`（非 baseline）**（複合主鍵 `(group_code, clause_no)`） | 機構掛在條文上的備註與人工確認記錄（**刻意無 FK**——條文被標記移除後備註仍須存在且可讀） |
 | KEKTopology | `kek_topologies` | **增量 `20260913_kek_topology`（非 baseline）**（`kek_topologies_singleton_check` CHECK ＋ `idx_kek_topologies_singleton` unique，兩道合起來才保證單列） | 委託模式的**非秘密**拓撲：主金鑰送去哪裡解（服務商、保管處位址、Transit 金鑰名、角色識別、服務區域）。**全部欄位明文且不得改為信封加密欄**——讀取時點在已封存狀態，受信封保護的欄位在那個時點解不出來。秘密不在本表 |
 | PasswordHistory | `password_histories` | baseline | 密碼歷史，防重用（PCI 8.3.7） |
-| RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
+| RefreshToken | `refresh_tokens` | baseline＋增量 `20261017_permission_state_attestation` 加 `restore_generation` 欄 | Web 會話 refresh 憑證（PCI 8.2.8） |
 | AccessReview | `access_reviews` | baseline | 週期性存取複審簽核（不可變，PCI 7.2.4） |
 | DailyReviewLog | `daily_review_logs` | baseline＋增量 `20261012_daily_review_signoff` 加 11 欄並回填 | 每日審閱簽核（PCI 10.4.1）；所屬日與簽核時刻分欄 |
 | SecurityPolicyHistory | `security_policy_history` | 增量 `20261012_daily_review_signoff` | 標了「保留歷史」的安全政策鍵（`daily_review_enabled`、`daily_review_timezone`）的每一次變更 |
@@ -100,9 +143,9 @@
 | SyslogSetting | `syslog_settings` | baseline | syslog 轉發設定（PCI 10.3.3） |
 | ExportSigningKey | `export_signing_keys` | baseline | 匯出簽章金鑰（PCI 10.3.4） |
 | IntegrityBaseline | `integrity_baselines` | baseline | 完整性啟用基準（PCI 10.3.4） |
-| AuditCheckpoint | `audit_checkpoints` | baseline | 稽核檢查點鏈（id 區間聚合＋鏈接＋Ed25519 簽章，偵測「列被刪」） |
+| AuditCheckpoint | `audit_checkpoints` | baseline＋增量 `20261017_permission_state_attestation` 加 `perm_*` 六欄＋增量 `20261018_checkpoint_v4_attestation` 加 `perm_origin`、卸 `perm_signature`、建部分索引 `idx_audit_checkpoints_perm_trace` | 稽核檢查點鏈（id 區間聚合＋鏈接＋Ed25519 簽章，偵測「列被刪」；第四版起權限附證在簽章載荷之內） |
 | CheckpointSigningKey | `checkpoint_signing_keys` | baseline | 檢查點鏈簽章鑰（Ed25519，自始帶版本欄；`private_key_enc` 登記於 `envelopeMigrationTargets`） |
-| AuditCheckpointTrim | `audit_checkpoint_trims` | baseline | 檢查點鏈修剪記錄（殘鏈的新起點錨定，不可變；刻意獨立於 audit_logs——留痕會過期，錨定不會） |
+| AuditCheckpointTrim | `audit_checkpoint_trims` | baseline＋增量 `20261018_checkpoint_v4_attestation` 加 `format`、`perm_history`、`unverified_count` | 檢查點鏈修剪記錄（殘鏈的新起點錨定，不可變；刻意獨立於 audit_logs——留痕會過期，錨定不會） |
 | AuditChainVerifyState | `audit_chain_verify_states` | baseline | 檢查點鏈兩層自動驗證的營運狀態（單列，ID 恆為 1；兩層各記最近執行時點、滾動重驗位置、未結案失敗區間集合）。**營運狀態非證明**：不在鏈的覆蓋範圍內，具 DB 寫入權者可改 |
 | AuditRetentionWatermark | `audit_retention_watermarks` | baseline（`class` 唯一索引；**無 `deleted_at`**——本表永不刪除） | 保留期清除水位（每類別一列，永久保留；調查工作台的 `present`／`purged` 三態來源） |
 | AuditExportJob | `audit_export_jobs` | **migration（增量 `20260824_audit_export_jobs`，非 baseline）**＋增量 `20260903_rotation_evidence_report` 加 `kind` 欄與 `(kind, status)` 索引 | 匯出工作單追蹤（純狀態表，非證據；種類分流：證據包綁申請者本人並以部分唯一索引去重，輪替證據報告為共用產物） |
@@ -125,20 +168,24 @@
 | UserGroupMappingRuleSupport | `user_group_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 使用者群組逐規則支持 |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **72 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **28 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **87 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **43 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
+`credential_job_authorizations`，`credential_impact_confirmations`，
 群組映射六表 `group_role_mappings`／`user_role_mappings`／`external_groups`／`group_user_group_mappings`／`user_role_mapping_rule_supports`／`user_group_mapping_rule_supports`，
 政策組四表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，
 `kek_topologies`，`agent_tokens`，`access_request_items`，
 agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_events`／`agent_visibility_exposures`，
-與 `security_policy_history`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **75 張**表
+權限模型三表 `user_group_roles`／`role_binding_nodes`／`authz_state`，
+`permission_state_events`、`role_permissions`，`security_policy_history`、`security_policy_floor_raises`，
+系統安全告警三表 `system_alert_outbox`／`system_alert_details`／`system_alert_severity_overrides`，
+`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，與 `user_release_guidance`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **90 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含三十一條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含四十九條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -149,7 +196,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共三十二條：baseline 加三十一條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共五十條：baseline 加四十九條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -166,8 +213,9 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 且 baseline 尚未套用，`RunMigrations` 會**在任何寫入之前**拒絕啟動
 （判定在 `migrations.go` 的 `RunMigrations`，錯誤文案在同檔的 `legacySchemaError`）。
 判定會先扣掉 `runtimeMarkerVersions`——那些是模組借用本表做的執行期冪等標記，不是 migration
-（現況三個成員：LDAP env seed 的 `20260804_ldap_env_seeded`、離機儲存 env seed 的
-`20260825_offsite_env_seeded`、憑證密文轉換的 `20260906_credential_secrets_converted`）。
+（現況四個成員：LDAP env seed 的 `20260804_ldap_env_seeded`、離機儲存 env seed 的
+`20260825_offsite_env_seeded`、憑證密文轉換的 `20260906_credential_secrets_converted`、
+審核範圍管理鍵補鍵的 `20261030_approver_scope_management_key`）。
 **本版不提供既有資料庫的就地升級路徑**；維運面的處置見
 [docs/ops/upgrade-sop.md](./ops/upgrade-sop.md)。
 
@@ -179,6 +227,8 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 erDiagram
     users ||--o{ user_roles : has
     roles ||--o{ user_roles : has
+    user_groups ||--o{ user_group_roles : assigned
+    roles ||--o{ user_group_roles : assigned
     users ||--o{ user_group_members : member_of
     user_groups ||--o{ user_group_members : has
     user_groups ||--o{ asset_authorizations : granted_to
@@ -311,6 +361,17 @@ erDiagram
         uint pending_version_id FK
         uint active_rotation_id FK
         int rotation_epoch
+        string owner_kind
+        uint owner_node_id
+    }
+
+    credential_impact_confirmations {
+        string id PK
+        uint credential_id
+        uint user_id
+        string operation
+        int authz_version
+        string out_of_scope_asset_ids
     }
 
     credential_secret_versions {
@@ -390,6 +451,7 @@ erDiagram
         string source
         string accounts
         uint granted_by FK
+        string restore_generation
     }
 
     user_groups {
@@ -511,6 +573,9 @@ erDiagram
         string algorithm
         string fingerprint
         string public_key
+        string host
+        int port
+        bool reset_pending
     }
 
     snippets {
@@ -563,6 +628,7 @@ erDiagram
         uint provider_id
         int auth_epoch
         int cred_epoch
+        string restore_generation
         time revoked_at
         string revoked_reason
     }
@@ -760,6 +826,7 @@ const (
 | `revoke_note` | text | `revoke_note` |
 | `suspended_at` | timestamptz NULL | `suspended_at` |
 | `suspended_reason` | text | `suspended_reason` |
+| `restore_generation` | varchar(64) NOT NULL DEFAULT `''` | 不輸出 JSON；簽發當下的還原世代（第 65 節），空字串＝簽發於從未還原過的世代。驗證時與目前世代不同即拒絕，與撤銷、停用走同一個無效出口；不改列、不刪列。由增量 `20261017_permission_state_attestation` 加欄，存量列為空字串 |
 
 owner 憑證世代進位時，同交易停用名下 token；不保存 token 的 owner 世代快照。
 重新啟用 owner 不恢復舊 token。兩種失效狀態皆冪等，狀態寫入與相關稽核同交易。
@@ -779,6 +846,11 @@ owner 憑證世代進位時，同交易停用名下 token；不保存 token 的 
 | `DeletedAt` | gorm.DeletedAt | `index` | `-` | 軟刪除 |
 | `Name` | string | `uniqueIndex;not null;size:50` | `name` | 角色名稱 |
 | `Description` | string | `size:200` | `description` | 角色描述 |
+| `DefinitionVersion` | int64 | `not null;default:0` | `-` | 定義版本，由增量 `20261017_role_definitions` 加欄。`0` 為升級前存量的相容角色目錄（`GET /roles` 只列這個目錄；各指派寫入口另接受範本與自訂角色）；範本與服務建立的自訂角色一律 `>= 1`，每次修改或刪除加一 |
+| `TemplateRoleID` | *uint | - | `-` | 自訂角色的起手來源角色 ID，僅作說明；來源被刪除時清空，不影響已複製的集合 |
+| `BuiltinKey` | *string | `size:32` | `-`（不出現在 API 回應） | 內建範本識別，由增量 `20261016_authz_permission_model` 加欄。非空者為鎖定的內建範本：`super_admin`（名稱 `admin`）／`auditor`／`user`／`approver`；NULL 為非內建角色。部分唯一索引 `uq_roles_builtin_key`（`WHERE builtin_key IS NOT NULL`）保證每個識別至多一列，CHECK `roles_builtin_key_check` 限定值域（`20261017_role_definitions` 起另含 `identity_admin`／`security_admin` 兩個鎖定的管理範本，`20261101_scoped_template_builtin_keys` 起再含 `asset_admin`／`authz_admin` 兩個可限定節點的鎖定範本） |
+
+**範圍化管理範本的種入**: 內建角色清單現為八個識別：`super_admin`（名稱 `admin`）、`auditor`、`user`、`approver`、`identity_admin`、`security_admin`、`asset_admin`、`authz_admin`。後兩者的儲存名稱與識別同值（`asset_admin`、`authz_admin`），`definition_version` 為 `1`，權限集合在程式中、不寫 `role_permissions`，顯示名稱由前端語系檔提供；角色說明保存在角色列，列表依 API 回傳值顯示。`20261101_scoped_template_builtin_keys` 只重建 CHECK，不寫任何角色列；兩列由服務啟動時的資料步驟在權限附證來源注入之後、對外服務之前種入：單一交易內依序開始權限變更、寫兩列、推進權限版本，附證已啟用時同交易留下一筆可重放事件，未啟用則不寫事件。種入不建任何指派，升級後沒有人持有這兩個角色。重入時兩列已存在且內容相同則零寫入；預定名稱或識別已被其他角色占用、或同識別的列內容不同時，整筆不套用、不改寫該列，啟動日誌以固定前綴 `[ScopedTemplateSeed]` 列出衝突（`conflicts` 與 `conflict_detail`），服務照常啟動。僅當原因是可編輯的自訂角色占用名稱時，改名後下一次啟動補做；內建識別衝突、已軟刪的列、定義版本或權限列不同者，改名無法排除，該列維持原狀，須先在資料庫修正。
 
 **預設角色常數**:
 ```go
@@ -807,7 +879,7 @@ const (
 `TestUserRoleJoinModelPreloadIgnoresExtraColumns` 釘住）
 **建表方式**: baseline（`baseline_schema_identity.go`）建 `(role_id, user_id)` 複合主鍵與
 兩條外鍵 `fk_user_roles_role`→`roles(id)`、`fk_user_roles_user`→`users(id)`；
-＋增量 `20260908_group_role_mapping` 加 `source` 欄。無其他索引
+＋增量 `20260908_group_role_mapping` 加 `source` 欄＋增量 `20261016_authz_permission_model` 加 `scope_kind` 欄與 CHECK。無其他索引
 
 **維護紀律（本表曾經沒有守衛，現在有了）**: 加上 `source` 欄之前，本表沒有 model 結構，
 故不在 `schemaParityModels` 的射程內——改 model 既不會動到本表、也不會有任何測試變紅。
@@ -821,6 +893,7 @@ const (
 |------------------|------|------|
 | `role_id` | bigint NOT NULL | 角色；複合主鍵之一 |
 | `user_id` | bigint NOT NULL | 使用者；複合主鍵之一 |
+| `scope_kind` | varchar(8) NOT NULL DEFAULT `'global'` | 這一列指派的範圍種類：`global`（全域）／`nodes`（一組節點，節點列在 `role_binding_nodes`）。CHECK `user_roles_scope_kind_check`；model 欄位 `json:"-"`，不出現在 API 回應。存量列一律落在 `global`。由增量 `20261016_authz_permission_model` 加欄 |
 | `source` | varchar(16) NOT NULL DEFAULT `'manual'` | 這一列的來源三態：`manual`（只由管理者指派）／`mapped`（只由外部群組映射賦予）／`both`（兩者並存）。由增量 `20260908_group_role_mapping` 加欄 |
 
 無 `created_at`／`deleted_at`：關聯為硬刪（增刪列即掛/摘）。
@@ -1182,6 +1255,7 @@ const (
 | `Source` | string | `type:varchar(20)` | `source` | 授權來源 `manual`（預設，BeforeCreate 空值回填）/ `ticket`（核准流臨時授權，帶時效窗） |
 | `Accounts` | AccountScope（`[]string`） | `type:text`（DB 端 NOT NULL DEFAULT `["@ALL"]`） | `accounts,omitempty` | 帳號範圍：`["@ALL"]`＝客體範圍內資產全部帳號（行為與多帳號前一致），或具名 username 清單（語義＝範圍內資產上的同名帳號）。**不參與唯一索引**——帳號範圍是授權列屬性、非去重維度（收緊範圍＝改既有列，不是新增列）。 |
 | `GrantedBy` | uint | `not null` | `granted_by` | 授權者 ID（ticket 列＝核准人；自動核准因 FK 記申請人＋申請單 auto_approved 標記辨識） |
+| `RestoreGeneration` | string | `size:64;not null;default:''` | `-`（不出現在 API 回應） | 臨時授權（`source='ticket'`，含破窗）核准當下的還原世代；常設授權恆為空字串。還原交易把未刪除、未到期的 ticket 列設為「現在到期」（沿用到期語義，記錄留存），兌換 SQL 不另比對本欄。由增量 `20261017_permission_state_attestation` 加欄 |
 
 **權限類型常數**（兩階制，移除 manage）:
 ```go
@@ -1311,6 +1385,28 @@ const (
     StatusDenied  AuditStatus = "denied"
 )
 ```
+
+**狀態語義與拒絕細節**（`backend/internal/middleware/denial_audit.go`）:
+
+`status` 由審計中介層單點判定，順序如下：
+1. 請求脈絡上有拒絕分類標記者記 `denied`。標記由能力拒絕與範圍拒絕的寫出函式設定，寫出函式本身不寫審計列；該請求的審計列由審計中介層讀取標記後寫入；範圍拒絕對外回 404，仍記 `denied`，不依狀態碼記為 `failure`。整批無法操作（對外回 `NOTFOUND_BATCH_ITEMS_UNAVAILABLE`）同樣記 `denied`。
+2. 無標記：HTTP 2xx 記 `success`，403 記 `denied`，其餘記 `failure`。非由範圍判定產生的 404（例如全域主體查無資源）因此維持 `failure`，且不帶 `denial` 鍵。
+
+規則拒絕（主體具備能力，被業務規則、目標狀態或主體類別擋下；含與能力拒絕共用 `AUTH_PERMISSION_DENIED` 者）不留分類標記，`details` 沿用各自的原因鍵（例如 `deny_reason`），不會被記成缺少某個權限點。
+
+對外回應不再攜帶的拒絕細節寫入 `details`（JSON 物件）。只新增下列五個鍵，與既有鍵（查詢摘要、`deny_reason` 等）合併時**只補不覆寫**：同名鍵已存在時保留既有值；既有 `details` 不是 JSON 物件時原樣保留並記日誌，不以拒絕細節取代。
+
+| 鍵 | 出現於 | 值 |
+|---|---|---|
+| `denial` | 所有帶標記的拒絕 | `capability`（能力拒絕）或 `scope`（範圍拒絕） |
+| `basis` | `denial=capability` | 判定依據：`all_of`（需全部所列權限點）、`any_of`（持其一即可）、`reserved`（保留給特定內建身分或資格的操作）、`unregistered`（未登錄路由的預設拒絕） |
+| `required` | `denial=capability` | 逗號分隔：`all_of`／`any_of` 為權限點鍵；`reserved` 為受控條件值 `superadmin`、`superadmin_or_auditor`、`approver_eligibility`、`revoke_eligibility` 之一；`unregistered` 為空字串 |
+| `scope_reason` | `denial=scope` | 受控原因碼：`out_of_scope`（範圍外、已刪除與不存在同一值）、`resolver_missing`、`topology_unavailable`、`kind_unmapped`（資源種類未登記，對外回能力拒絕的 403 單一形狀）、`batch_items_unavailable`（整批無法操作） |
+| `count` | `scope_reason=batch_items_unavailable` | 無法操作的筆數（十進位整數字串） |
+
+新增的拒絕細節不含目標、節點、使用者或群組的名稱或識別碼；此限制不及於同一列原有的 `details`。所需權限點與保留條件只在這裡出現，不在對外回應中。操作日誌與每日審閱把 `denial=capability` 與 `denial=scope` 分別歸為可讀原因 `authz_capability_denied`、`authz_scope_denied`（三語文案齊備），其餘原因分類不受影響。
+
+本節只描述 `details` 的內容與 `status` 的判定，不改欄位、索引與 migration。
 
 **索引列表**（以 `pg_indexes.indexdef` 實測為準，非照抄宣告）:
 - `idx_audit_created_at` - `(created_at)`
@@ -1483,7 +1579,7 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 **檔案**: `backend/internal/model/command_alert.go`
 **建表方式**: baseline（`baseline_schema_audit.go`），含 `severity`／`kind`／`kind↔rule_id` 三條 CHECK。
 `command_alerts_kind_check` 的值域由增量 migration `20260826_source_ip_forensics` 重建擴充
-（`DROP CONSTRAINT` → `ADD CONSTRAINT ... CHECK (kind IN ('rule','audit_degraded','new_source_ip'))`，**約束名不變**；其後 `20260922_agent_breaker_alert` 加 `agent_breaker_tripped`、`migration_sensitive_reveal_alert` 加 `sensitive_reveal`，同法重建）。
+（`DROP CONSTRAINT` → `ADD CONSTRAINT ... CHECK (kind IN ('rule','audit_degraded','new_source_ip'))`，**約束名不變**；其後 `20260922_agent_breaker_alert` 加 `agent_breaker_tripped`、`migration_sensitive_reveal_alert` 加 `sensitive_reveal`、`20261018_system_security_alerts` 加 `system_security`，同法重建；後者另重建 `command_alerts_session_ref`，讓系統安全告警也可不帶會話）。
 **刻意不設外鍵**：`rule_id`／`session_id` 是觸發當下的快照冗餘，規則改名或刪除不得破壞歷史告警
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -1491,8 +1587,8 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `RuleID` | *uint | - | `rule_id,omitempty` | 命中規則 ID。**指標型且 DB 為 nullable**：`kind='audit_degraded'` 的告警沒有規則可指，值型會把「無規則」寫成 0 |
 | `RuleName` | string | `size:100;not null` | `rule_name` | 規則名稱快照（冗餘，免 JOIN）。**降級類填機器碼**（該類無規則名可快照，同 `alert_notifier` 的 `testRuleName` 慣例） |
-| `Kind` | string | `size:20;not null` | `kind` | 告警來源類別，現行值域五值：`rule`（規則比對／阻斷）／`audit_degraded`（指令稽核降級）／`new_source_ip`（帳號首次自某來源位址建線）／`agent_breaker_tripped`（agent 熔斷跳閘）／`sensitive_reveal`（解密調閱機敏原文，政策 `alert_on_sensitive_reveal` 開啟時）。CHECK 限定值域（`command_alerts_kind_check`，由 `20260826_source_ip_forensics` 重建擴充），另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`——故 `rule` 以外四類的 `rule_id` 必為 NULL。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它；新來源位址告警同理 |
-| `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域：`audit_degraded_span`／`new_source_ip_session`／`RULE_AGENT_BREAKER_TRIPPED`／`sensitive_reveal`，見 `model/command_alert.go` 的 `AlertReason*`／`AlertKind*` 常數）；輸入規則類為空字串；輸出規則類為 `o1:<base36 count>`，只存命中次數、不存原文或位移 |
+| `Kind` | string | `size:20;not null` | `kind` | 告警來源類別，現行值域六值：`rule`（規則比對／阻斷）／`audit_degraded`（指令稽核降級）／`new_source_ip`（帳號首次自某來源位址建線）／`agent_breaker_tripped`（agent 熔斷跳閘）／`sensitive_reveal`（解密調閱機敏原文，政策 `alert_on_sensitive_reveal` 開啟時）／`system_security`（系統安全告警，明細在 `system_alert_details`，見第 68 節）。CHECK 限定值域（`command_alerts_kind_check`，由 `20260826_source_ip_forensics` 重建擴充），另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`——故 `rule` 以外五類的 `rule_id` 必為 NULL。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它；新來源位址告警同理 |
+| `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域：`audit_degraded_span`／`new_source_ip_session`／`RULE_AGENT_BREAKER_TRIPPED`／`sensitive_reveal`，以及系統安全告警的類型鍵（與 `rule_name`、`system_alert_details.alert_type` 同值），見 `model/command_alert.go` 的 `AlertReason*`／`AlertKind*` 常數）；輸入規則類為空字串；輸出規則類為 `o1:<base36 count>`，只存命中次數、不存原文或位移 |
 | `SessionID` | uint | `not null` | `session_id` | 所屬會話 ID |
 | `UserID` | uint | `not null` | `user_id` | 用戶 ID（冗餘） |
 | `AssetID` | *uint | - | `asset_id` | 資產 ID（冗餘，手動連線可為 NULL） |
@@ -1596,7 +1692,7 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 
 **表名**: `asset_host_keys`
 **檔案**: `backend/internal/model/host_key.go`
-**建表方式**: baseline（`baseline_schema_asset.go`），含 `idx_asset_host_keys_asset_id`＝`UNIQUE (asset_id)`
+**建表方式**: baseline（`baseline_schema_asset.go`），含 `idx_asset_host_keys_asset_id`＝`UNIQUE (asset_id)`；`host`、`port`、`reset_pending` 三欄與 `idx_asset_host_keys_address` 由增量 `20261019_asset_host_key_address` 加入並回填既有列的位址；`trust_generation` 由增量 `20261027_credential_host_identity` 加入（`bigint NOT NULL DEFAULT 1`，既有列為 1）
 ——TOFU 的「一資產至多一筆已信任指紋」即由這條唯一索引承載
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -1606,11 +1702,48 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 | `Algorithm` | string | `size:64;not null` | `algorithm` | 金鑰演算法 |
 | `Fingerprint` | string | `size:128;not null` | `fingerprint` | `SHA256:xxx` 格式指紋 |
 | `PublicKey` | string | `type:text;not null` | `-` | base64 公鑰本體（不外露） |
+| `Host` | string | `size:255;not null;default:''` | `-` | 記錄當時的撥號主機（正規化；推不出者留空） |
+| `Port` | int | `not null;default:0` | `-` | 記錄當時的撥號埠 |
+| `ResetPending` | bool | `not null;default:false` | `-` | 本資產「重置待記錄」標記：下次連線不比對、直接記錄當次指紋並清除 |
+| `TrustGeneration` | int64 | `not null;default:1` | `-` | 主機信任世代：新建列為 1；採用觀察指紋、生效的重置、重置後首次連線記錄到另一把金鑰三條路徑，由應用程式在寫入該列的同一交易以欄位運算加 1。增量 `20261027_credential_host_identity` |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
+**索引**: `idx_asset_host_keys_address`（`host`, `port`），供同位址沿用查詢。
+
 **設計說明**:
-- TOFU：首連記錄，之後指紋不符即拒線
+- TOFU：首連記錄。之後指紋不符時依路徑處置：終端、檔案傳輸與連線測試照常建立並留痕告警，改密與輪替拒絕撥號；記錄維持原指紋，直到超級管理者採用一個觀察到的指紋（寫入本表、清除第 13a 節的觀察列）或重置後由下一次連線重新記錄
+- 記錄帶撥號位址；資產刪除後記錄保留，同位址新資產沿用其指紋比對，位址從未有過記錄才首次信任
+- 重置只標記待記錄、不刪列；重置與採用都在同一交易產生 `host_key_record_changed` 系統安全告警
+- **信任世代的推進規則**：世代只由新版服務推進，共三條路徑：採用觀察指紋（指紋或演算法與自身列不同時才加 1）、生效的重置（旗標由否變是時加 1；已在待記錄狀態的重複重置不再加）、重置後首次連線記錄到另一把金鑰（與原記錄不同時才加 1），三條路徑都在改寫該列的同一交易內以 `trust_generation + 1` 欄位運算完成。資料庫層不建觸發器也不做預設運算，因此不經新版服務的寫入（例如直接改表）不會推進世代；這是已知的邊界，不是保證。世代與列 ID 併用比較：刪列重建後世代從 1 起，列 ID 已不同
+
+---
+
+### 13a. AssetHostKeyMismatch（主機金鑰不符觀察紀錄）
+
+**表名**: `asset_host_key_mismatches`
+**檔案**: `backend/internal/model/host_key.go`
+**建表方式**: 增量 `20261025_host_key_mismatch`（建表＋唯一索引 `idx_asset_host_key_mismatches_asset_fp`＝`UNIQUE (asset_id, observed_fingerprint)`），不回填
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `AssetID` | uint | `not null;uniqueIndex(…,priority:1)` | `asset_id` | 資產 ID（不建外鍵；資產刪除時保留，與指紋記錄一致） |
+| `Host` | string | `size:255;not null;default:''` | `-` | 觀察當時的撥號主機（正規化） |
+| `Port` | int | `not null;default:0` | `-` | 觀察當時的撥號埠 |
+| `RecordedFingerprint` | string | `size:128;not null` | `-` | 比對所用記錄的指紋（自身或同位址記錄） |
+| `ObservedAlgorithm` | string | `size:64;not null` | `algorithm` | 目標出示的金鑰演算法 |
+| `ObservedFingerprint` | string | `size:128;not null;uniqueIndex(…,priority:2)` | `fingerprint` | 目標出示的指紋（`SHA256:xxx`） |
+| `ObservedPublicKey` | string | `type:text;not null` | `-` | 出示的公鑰本體（base64；採用時寫成完整記錄，檢視不外露） |
+| `FirstSeenAt` | time.Time | `not null` | `first_seen_at` | 此指紋第一次出現 |
+| `LastSeenAt` | time.Time | `not null` | `last_seen_at` | 最近一次出現 |
+| `FirstAllowedAt` | *time.Time | - | `-` | 主機金鑰檢查第一次允許互動連線繼續進入 SSH 認證流程的時刻；不代表認證資料已送出或連線已成功（那由同關聯識別的 `host_key_cred_sent` 審計記錄）。尚無互動放行紀錄時為空 |
+| `SeenCount` | int | `not null;default:1` | `seen_count` | 出現次數（每次不符連線累計） |
+
+**設計說明**:
+- 鍵是（資產、出示指紋）：同一指紋再出現只累計次數與最近時間；筆數上限為資產數乘以未確認的不同指紋數，不隨連線次數成長，不另立保留政策
+- 與不符審計、`host_key_mismatch` 系統安全告警同交易寫入，在送出憑證之前；寫入失敗整筆回滾、連線中止
+- 超級管理者採用其中一筆或重置後重新記錄時，同交易刪除該資產全部觀察列
 
 ---
 
@@ -1659,6 +1792,9 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 | `MaxAgeDays` | int | `not null;default:0` | `max_age_days` | 憑證最長使用天數的計劃層覆蓋（天）：0＝沿用全域政策鍵 `asset_secret_max_age_days`，大於 0 即覆蓋，值域與該鍵相同（1–3650），越界於儲存時被拒。**只影響輪替證據報告的適用天數計算**，不改變計劃的執行時機或改密行為。由增量 `20260903_rotation_evidence_report` 加欄 |
 | `TargetKind` | string | `size:16;not null;default:account` | `target_kind` | 目標種類：`account`＝資產集 × 帳號範圍（既有語義）；`credential`＝一筆憑證的全部掛載，走整組輪替。存量列由 migration 以 default 回填為 `account`，即其實際語義。由增量 `20260906_credential_library` 加欄 |
 | `TargetCredentialID` | *uint | - | `target_credential_id` | `TargetKind=credential` 時的目標憑證（`credentials.id`）；其餘種類為 NULL。同上增量 |
+| `AuthorizationID` | *uint | - | `authorization_id` | 目前生效的發起者授權脈絡（`credential_job_authorizations.id`）；NULL＝沒有可指認的發起者。增量 `20261022_credential_job_authorization` |
+| `AuthorizationState` | string | `size:24;not null;default:''` | `authorization_state` | 空＝尚未標記待重新授權（不保證 `authorization_id` 非 NULL：升級只回填啟用且有排程的計畫）；`needs_reauthorization`＝升級時查不到可歸屬者，或還原後世代不符被排程發現而暫停（排程不執行，cron 與 enabled 保留）；`needs_reconfirmation`＝憑證目標計畫的該次發起者（排程為計畫發起者，手動執行為點擊者）只經節點範圍持有憑證改密，而該憑證當下掛載的範圍外部分超出該版掛載上界（`credential_job_authorizations.target_mount_bound`，空＝空集合）而暫停，停止原因碼 `CHANGE_SECRET_SCOPE_BOUND_EXCEEDED`（排程不執行，cron 與 enabled 保留）；手動執行時只在計畫發起者的憑證改密沒有全系統來源時轉入，否則只拒絕該次執行、此欄不變。兩種暫停都在儲存新版時清空 |
+| `Revision` | int | `not null;default:1` | `revision` | 授權脈絡修訂號，每次儲存計畫遞增 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
@@ -1728,7 +1864,8 @@ const (
 ——「一帳號至多一筆未驗證候選」即由這條唯一索引承載（**非** partial：本表無 `deleted_at`）；
 另有 `asset_id`／`abandoned`／`next_attempt_at` 三條一般索引（重試排程掃描依賴之）；無外鍵。
 增量 `20260906_credential_library` 加 `credential_id`／`credential_name`／`target_version_id` 三個快照欄；
-增量 `20260906_credential_library_contract` 卸下 `shared_group`
+增量 `20260906_credential_library_contract` 卸下 `shared_group`；
+增量 `20261027_credential_host_identity` 加主機身分綁定八欄（見欄位表末段）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -1752,6 +1889,15 @@ const (
 | `LastAttemptAt` | time.Time | - | `last_attempt_at` | 最後嘗試時間 |
 | `NextAttemptAt` | time.Time | `index` | `next_attempt_at` | 下次嘗試時間（排程掃描鍵） |
 | `LastError` | string | `size:512` | `last_error` | 最後錯誤 |
+| `RecoveryAlertedAt` | *time.Time | - | `-` | 首次進入失權後有限驗證、發出告警的時刻；NULL＝尚未發過。增量 `20261023_credential_recovery_alert` |
+| `HostKeyBinding` | string | `size:16;not null;default:'legacy'` | `-` | 主機身分綁定狀態：`legacy`（升級前建立，沒有歷史身分）、`pending`（新版建立，尚未完成任何金鑰交換）、`bound`（已綁定）。新版建立的列為 `pending`；既有列因欄位預設而為 `legacy`。增量 `20261027_credential_host_identity` |
+| `HostKeyTransport` | string | `size:16;not null;default:''` | `-` | 綁定當時的傳輸種類：`ssh`、`winrm`；`bound` 之前為空字串 |
+| `HostKeyRecordID` | uint | `not null;default:0` | `-` | 綁定當時 `asset_host_keys` 自身列的 ID；`bound` 之前、以及 `winrm` 為 0 |
+| `HostKeyAlgorithm` | string | `size:64;not null;default:''` | `-` | 綁定當時的主機金鑰演算法 |
+| `HostKeyFingerprint` | string | `size:128;not null;default:''` | `-` | 綁定當時的主機金鑰指紋 |
+| `HostKeyGeneration` | int64 | `not null;default:0` | `-` | 綁定當時 `asset_host_keys.trust_generation` 的值 |
+| `HostKeyBoundAt` | *time.Time | - | `-` | 綁定時刻；`bound` 之前為 NULL |
+| `HostIdentityAlertedKey` | *string | `size:64` | `-` | 已為哪個「身分狀態」寫過停止審計並通知的去重鍵；NULL＝從未寫過。去重鍵與審計在同一交易內推進 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
@@ -1759,6 +1905,7 @@ const (
 - 秘密於**動遠端之前**落庫：後端在「已下達改密、尚未驗證」的窗口被砍時，
   候選若只在記憶體即永久遺失，帳號直接鎖死。
 - 候選列的存在**即代表**該掛載的秘密處於「未驗證」狀態，不另設會與之漂移的狀態欄位。
+- **主機身分綁定**：新版建立的候選為 `pending`；背景派送在首次金鑰交換、送出任何認證之前，於主機金鑰信任鎖內的短交易重讀自身列，確認它仍等於本次握手的金鑰，再以條件式更新（僅 `host_key_binding = 'pending'` 的列）寫成 `bound` 並一併寫入傳輸、記錄 ID、演算法、指紋、世代與綁定時刻；受影響列不為 1 或任何一步失敗，連線在送出認證之前中止。其後同一候選的重試與驗證以這份快照比對，快照與自身列不符（列缺失、待重新記錄、世代或指紋改變）即停止。升級前建立的候選為 `legacy`、快照欄為零值，一般候選的列存在即視為秘密已送出或結果未知，故 `legacy` 候選不會被綁定成新身分。快照欄與去重鍵不進任何 DTO
 - **憑證快照三欄同時是重試排程的分流依據**：帶憑證識別與目標版本者屬某一輪輪替的成員，
   一律交回成員路徑推進。走錯路徑會在共用憑證上多開一個版本、在成員轉移之外改寫就位版本，
   拆分模式下更會把那台唯一的新秘密寫回原本要脫離的共用憑證。
@@ -1800,10 +1947,10 @@ const (
 | `session_idle_minutes` | int | `60` | max | 協議會話閒置逾時（0=停用；上界 10080；以 `SSH_IDLE_TIMEOUT_MINUTES` 初始化） |
 | `session_max_minutes` | int | `0` | - | 協議會話最長時長（0=不限；上界 525600；以 `SSH_MAX_SESSION_MINUTES` 初始化） |
 | `inactive_disable_days` | int | `0` | max | 閒置帳號自動停用天數（0=關閉；上界 3650） |
-| `retention_audit_log_days` | int | `0` | min | 操作日誌保留天數（0=永久保留＝未定義保留政策，判不符；上界 3650） |
-| `retention_session_command_days` | int | `0` | min | 指令流保留天數（同上） |
-| `retention_alert_days` | int | `0` | min | 告警記錄保留天數（同上） |
-| `retention_recording_days` | int | `90` | min | 會話錄影保留天數（初始值由 `RECORDING_RETENTION_DAYS` 播種） |
+| `retention_audit_log_days` | int | `0` | min | 操作日誌保留天數（0=永久保留＝未定義保留政策，判不符；其餘值須在 7 至 3650） |
+| `retention_session_command_days` | int | `0` | min | 指令流保留天數（0=永久保留，判不符；其餘值須在 7 至 3650） |
+| `retention_alert_days` | int | `0` | min | 告警記錄保留天數（0=永久保留，判不符；其餘值須在 7 至 3650） |
+| `retention_recording_days` | int | `90` | min | 會話錄影保留天數（0=永久保留；其餘值須在 7 至 3650；初始值由 `RECORDING_RETENTION_DAYS` 播種，播種值落在 1 至 6 會被忽略） |
 | `daily_review_enabled` | bool | `false` | - | 每日審閱簽核（保留變更歷史，見 `security_policy_history`） |
 | `daily_review_timezone` | timezone | `UTC` | - | 每日簽核的業務時區（IANA 名稱，以 `time.LoadLocation` 驗證，拒 `Local` 與空字串；首次啟動依 `TZ` → `/etc/localtime` → `UTC` 播種，已有列不覆蓋；改後自下一個日期生效；保留變更歷史；不對照任何條文） |
 | `failure_alert_enabled` | bool | `false` | - | 稽核失效告警通知（失效事件記錄恆開，此鍵僅控通知） |
@@ -1878,6 +2025,7 @@ const (
 | `AuthEpoch` | int | `not null;default:0` | `-` | 認證脈絡：簽發當下的 provider 世代（`oidc_providers.auth_epoch` 快照），刷新時比對現行值。同 migration |
 | `CredEpoch` | int | `not null;default:0` | `-` | 認證脈絡：簽發當下的使用者世代（`users.credential_epoch` 快照）。同 migration |
 | `RevokedAt` | *time.Time | `index` | `revoked_at,omitempty` | 撤銷時間 |
+| `RestoreGeneration` | string | `size:64;not null;default:''` | `-` | 簽發當下的還原世代（第 65 節），空字串＝簽發於從未還原過的世代。刷新時與目前世代不同即拒絕（不撤銷、不改列）；rotation 沿用舊列的值。由增量 `20261017_permission_state_attestation` 加欄 |
 | `RevokedReason` | string | `size:32` | `revoked_reason,omitempty` | 撤銷原因（見下），供稽核與 reuse detection 判別 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 
@@ -1896,6 +2044,8 @@ const (
     RefreshRevokeCredentialEpoch  = "credential_epoch"  // 使用者憑證世代推進（解綁外部身分／改為僅外部登入等）
 )
 ```
+
+另有一個值不是 Go 常數：`restore`，由管理腳本把沒有權限模型的備份還原到舊版時以單一交易寫入（`scripts/custodexa/lib/restore_db_check.sh` 的 `cx_rs_legacy_return`；`agent_tokens.revoke_note` 同值）。
 
 **設計說明**:
 - 刷新時輪替（舊列標 `rotated`、發新列）；已輪替列再被提交＝憑證洩漏訊號，撤銷該使用者全部 refresh（家族撤銷，RFC 9700）
@@ -2125,7 +2275,7 @@ per user×asset 一列（唯一索引冪等更新）。不存 `expires_at`——
 **檔案**: `backend/internal/database/migrations.go`
 **建表方式**: **不由 baseline 建立**——`RunMigrations` 的 bootstrap DDL
 （`migrations.go` 的 `schemaMigrationsBootstrapDDL`），也是產品程式碼中唯一的 `CREATE TABLE IF NOT EXISTS`。
-雞生蛋：baseline 該不該執行正是靠讀本表判定，故它必須先於 baseline 存在。**全庫唯一的例外**：其餘表中 46 張由 baseline 建立、23 張由其後的增量 migration 建立
+雞生蛋：baseline 該不該執行正是靠讀本表判定，故它必須先於 baseline 存在。**全庫唯一的例外**：其餘表中 46 張由 baseline 建立、43 張由其後的增量 migration 建立
 
 | 欄位 | 類型 | GORM Tags | 說明 |
 |------|------|-----------|------|
@@ -2520,7 +2670,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共三十二條**——baseline 一條，其後的增量三十一條
+**現行 migration 共五十條**：baseline 一條，其後的增量四十九條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2557,31 +2707,50 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260929_notification_channel_min_severity` | `notification_channels` 加 `min_severity character varying(10) DEFAULT 'low' NOT NULL` 與 CHECK `notification_channels_min_severity_check`（`low`／`medium`／`high`；見第 11 節），共 **2 條 DDL**，無回填；既有通道以 default 取得 `low`（全部告警），升級後推送行為不變 | `rollbackNotificationChannelMinSeverity`：卸 CHECK 與欄位。**有損但方向安全**：門檻設定沒有第二處存放，回退後一律回到全部推送 |
 | `20260930_identity_group_mappings` | 新增 `external_groups`、`group_user_group_mappings` 及兩種逐規則支持表，角色規則加字典外鍵，有效群組成員加 `manual`；舊角色事實依同來源同角色的啟用規則建立支持，無規則事實撤除並記遷移稽核，舊成員標為手動；不推進憑證世代 | `rollbackIdentityGroupMappings`：拒絕執行；回退以升級前備份還原 |
 | `20261012_daily_review_signoff` | 每日簽核改版：`daily_review_logs` 加 11 欄（`signed_at`、`timezone`、`timezone_inferred`、`window_start`、`window_end`、`due_at`、`late`、`delay_reason`、`coverage`、`source_status`、`enabled_basis`；見第 21 節），建 `security_policy_history` 與 `idx_security_policy_history_key_at`（`(policy_key, changed_at)`；見第 21a 節），共 **21 條 DDL**（11 加欄、1 建表、1 索引、8 條回填後的 `SET NOT NULL`）。**回填既有簽核列**：`signed_at=created_at`；`timezone` 為升級當下偵測的伺服器時區並標 `timezone_inferred=true`；起訖、準時期限依該時區計算，`late=false`；`coverage=until_signed`（舊快照只涵蓋到簽核時刻）；`source_status=complete`；`enabled_basis=recorded`；`review_date` 與 `snapshot_json` 不動。**重建啟用歷史**：由操作日誌中的政策變更紀錄重播 `daily_review_enabled`，無法證明開關狀態的區段（審計已清除、前後銜接不上、與現值不一致）一律推定為開並以 `migration_presumed_*` 來源標明，推定區段以 baseline 建立時刻為起點；有簽核紀錄的日子一律在範圍內（`migration_sign_record`）。時區歷史寫一筆初值（`migration_upgrade`），政策列尚無 `daily_review_timezone` 時寫入同一偵測值。回填量與 `daily_review_logs` 列數及政策變更審計列數成正比。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackDailyReviewSignoff`：刪 11 欄與 `security_policy_history`。**Down 有損、開發庫限定**：失去延遲原因、切日時區、遲簽標示與全部變更歷史。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20261016_authz_permission_model` | 權限模型：`roles` 加 `builtin_key varchar(32)` 與部分唯一索引 `uq_roles_builtin_key`、CHECK `roles_builtin_key_check`（值域四個內建範本識別）；`user_roles` 加 `scope_kind varchar(8) NOT NULL DEFAULT 'global'` 與 CHECK `user_roles_scope_kind_check`；新表 `user_group_roles`、`role_binding_nodes`、`authz_state`（見第 63 至 65 節）。同一交易內於 DDL 之後執行資料步驟：前置檢查四個內建角色名各「恰一列未刪除」或「完全缺列」（只剩軟刪除列或多列未刪除即整筆不套用，連 DDL 都不執行）、缺列者依種子補建、只對 `builtin_key IS NULL` 的四個內建名稱列標記、套用前後各算一次遷移報告且須逐字相同（不同則整筆回滾）、寫入 `authz_state` 初始列與報告（已有報告則不動）。不改寫任何 `user_roles` 既有列 | `rollbackAuthzPermissionModel`：**一律回拒絕錯誤**。舊版看不到群組指派與內建範本識別，指回上一版不是安全操作；回退只走還原升級前備份。管理腳本因此拒絕直接指回 |
+| `20261017_permission_state_attestation` | 權限附證與還原世代：新表 `permission_state_events` 與唯一索引 `uq_permission_state_events_seq`、CHECK `permission_state_events_kind_check`（見第 66 節）；`audit_checkpoints` 加 `perm_state_snapshot`、`perm_format`、`perm_event_seq`、`perm_event_head`、`perm_reconciled`、`perm_signature` 六個可空欄（第 37 節；`perm_signature` 其後由 `20261018_checkpoint_v4_attestation` 卸下）；`authz_state` 加 `restore_generation`、`restore_op_id`、`restore_input_digest`、`restore_status`（皆 NOT NULL DEFAULT `''`）與可空的 `restored_at`（第 65 節）；`refresh_tokens`、`agent_tokens`、`asset_authorizations` 各加 `restore_generation varchar(64) NOT NULL DEFAULT ''`。共 **16 條無條件 DDL**，無資料步驟、無回填：存量檢查點的附證欄為 NULL（尚未涵蓋），存量世代為空字串（升級不讓任何人登出） | `rollbackPermissionStateAttestation`：**一律回拒絕錯誤**。與 `20261016_authz_permission_model` 同一個模型邊界，回退只走還原升級前備份 |
+| `20261017_permission_state_event_integrity` | 權限狀態事件的逐列完整性驗證碼：`permission_state_events` 加 `integrity_hmac character varying(64) DEFAULT '' NOT NULL` 與 `key_version bigint DEFAULT 0 NOT NULL`（第 66 節）。共 **2 條無條件 DDL**，無資料步驟、無回填：執行時拿不到完整性密鑰，既有列保持空字串，對帳時視為不可信、計為無來源變動並告警，由超級管理員確認後成為新基準 | `rollbackPermissionEventIntegrity`：**一律回拒絕錯誤**。與 `20261016_authz_permission_model` 同一個模型邊界，回退只走還原升級前備份 |
+| `20261017_role_definitions` | 角色定義：`roles` 加 `definition_version bigint NOT NULL DEFAULT 0`、`template_role_id bigint`；`roles_builtin_key_check` 重建為含 `identity_admin`／`security_admin` 的值域；新表 `role_permissions`（`role_id`＋`permission_key` 複合主鍵、外鍵指向 `roles`；見第 67 節）。前置檢查：預定的兩個範本名稱已被任何角色（含軟刪列）使用即整筆不套用且不留部分結構。資料步驟：補建兩個鎖定範本（不指派任何人）；DDL 前後各算一次存量角色與全部指派的摘要報告，須逐字相同，否則整筆回滾。存量列的 `definition_version` 皆為 `0`，不改任何 `user_roles`／`user_group_roles` 列 | `rollbackRoleDefinitions`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261018_system_security_alerts` | 系統安全告警：重建 `command_alerts_kind_check` 使值域含 `system_security`，重建 `command_alerts_session_ref` 使 `session_id` 為空也允許此種告警（`rule_id` 必為空由既有的 kind↔rule_id CHECK 承擔）；新表 `system_alert_details`（主鍵即 `command_alerts.id`，外鍵級聯刪除；類型與未轉發兩條索引；見第 68 節）、`system_alert_outbox`（逐目的地投遞佇列，目的地網址與簽章密鑰信封加密；狀態、目的地類型、語言三條 CHECK，告警與到期兩條索引；見第 69 節）、`system_alert_severity_overrides`（逐類型分級覆寫，分級 CHECK；見第 70 節）。共 **11 條 DDL**（4 條重建約束、3 建表、4 索引），只加結構、不回填，升級本身不產生告警或投遞列 | `rollbackSystemSecurityAlerts`：**一律回拒絕錯誤**。告警與投遞紀錄屬證據，回退只走還原升級前備份 |
+| `20261019_asset_host_key_address` | 主機指紋記錄的撥號位址：`asset_host_keys` 加 `host character varying(255) DEFAULT '' NOT NULL`、`port bigint DEFAULT 0 NOT NULL`、`reset_pending boolean DEFAULT false NOT NULL` 與索引 `idx_asset_host_keys_address`＝`(host, port)`（見第 13 節），共 **4 條 DDL**。DDL 之後同一交易內**回填**：以 `LEFT JOIN assets`（不濾軟刪）逐列依 `model.Asset.HostKeyAddress` 推出撥號位址，只寫 `host` 仍為空的列的 `host`、`port`；擁有者資產已不存在或協定沒有 SSH 撥號者留空，下次自身列相符時補上。不動 `asset_id`、指紋與公鑰；可重入 | `rollbackHostKeyAddress` 反序卸索引與三欄，**只供 parity 守衛與開發環境**；生產沒有回滾入口，回退只走還原升級前備份 |
+| `20261020_mapping_observation_times` | 逐（帳號，通道）最近已知群組觀測時間：新表 `user_channel_observations`（複合主鍵 `(user_id, channel)`，外鍵 `fk_user_channel_observations_user` 指向 `users`；見第 71 節），共 **2 條 DDL**。DDL 之後同一交易內以 `INSERT … SELECT … ON CONFLICT (user_id, channel) DO NOTHING` **回填**：凡在 `user_role_mapping_rule_supports` 或 `user_group_mapping_rule_supports` 持有支持的（帳號，通道）得一列，`last_known_at` 取 `users.group_snapshot_channel`／`group_snapshot_at` 快照時間（僅快照通道有）與 migration 執行時刻較晚者，使重新驗證時限從升級起算；快照通道無支持時仍得一列快照時間，既無支持也無快照者不建列；不改任何規則、支持或角色列，重跑不覆寫較新的觀測 | `rollbackMappingObservationTimes`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261018_checkpoint_v4_attestation` | 檢查點第四版載荷：`audit_checkpoints` 加 `perm_origin boolean`（可空）、卸下 `perm_signature`，並建部分索引 `idx_audit_checkpoints_perm_trace`（`(seq)`，述詞為六個 `perm_*` 欄任一非 NULL；對帳端判定「是否有附證痕跡」的 EXISTS 查詢用同一述詞）；`audit_checkpoint_trims` 加 `format bigint NOT NULL DEFAULT 1`、`perm_history varchar(16)`、`unverified_count bigint`（第 37、39 節）。共 **6 條無條件 DDL**，無資料步驟、無回填：存量檢查點的 `perm_origin` 為 NULL（第四版之前的點不走第四版載荷），存量修剪錨為 `format=1`、原載荷照驗 | `rollbackCheckpointV4Attestation`：**一律回拒絕錯誤**；卸下的欄無法重建，回退只走還原升級前備份 |
+| `20261022_credential_job_authorization` | 憑證背景工作授權：新表 `credential_job_authorizations`；`change_secret_plans` 加 `authorization_id`、`authorization_state`、`revision`；`change_secret_batches`、`credential_rotations` 加 `authorization_id`；`change_secret_candidates` 加 `authorization_id`、`target_fingerprint`；`credential_rotation_members` 加 `dispatch_claimed_at`、`dispatch_authz_version`、`target_fingerprint`、`requeued_by`、`requeued_by_name`、`requeued_authz_version`、`requeued_at`。資料步驟只處理已啟用且有排程的計畫：由審計列回填最後修改者或建立者，查不到才標 `needs_reauthorization` 暫停（排程與啟用設定保留）；可重入，不動任何秘密 | `rollbackCredentialJobAuthorization`：**一律回拒絕錯誤**（授權脈絡屬證據）；回退只走還原升級前備份 |
+| `20261023_credential_recovery_alert` | 失權後有限驗證的告警去重：`change_secret_candidates`、`credential_rotation_members` 各加 `recovery_alerted_at timestamp with time zone`（可空）。只加欄、不回填 | `rollbackCredentialRecoveryAlert`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261024_system_alert_delivery_key` | 系統安全告警投遞識別：`system_alert_outbox` 加 `delivery_key character varying(32) DEFAULT '' NOT NULL`，對既有列以 `md5(random()::text \|\| id::text)` 各回填一次，再建唯一索引 `idx_system_alert_outbox_delivery_key`（見第 69 節）。共 **2 條 DDL** 加 1 條回填；升級時佇列通常為空 | `rollbackSystemAlertDeliveryKey`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261025_host_key_mismatch` | 主機金鑰不符觀察紀錄：新表 `asset_host_key_mismatches`（見第 13a 節）與唯一索引 `idx_asset_host_key_mismatches_asset_fp`＝`(asset_id, observed_fingerprint)`，共 **2 條 DDL**，不回填、不動 `asset_host_keys` | `rollbackHostKeyMismatch`：拒絕執行（觀察紀錄是安全事件證據）；回退以升級前備份還原 |
+| `20261026_security_policy_floor_raises` | 保留下限抬升紀錄：新表 `security_policy_floor_raises`（見第 72 節），共 **1 條 DDL**，不回填、不改既有表；抬升本身不在 migration 內做，由每次啟動的冪等對帳執行 | `rollbackSecurityPolicyFloorRaises`：**一律回拒絕錯誤**（抬升紀錄是升級告知的依據）；回退以升級前備份還原 |
+| `20261027_credential_host_identity` | 憑證主機身分：`asset_host_keys` 加 `trust_generation bigint NOT NULL DEFAULT 1`；`change_secret_candidates`、`credential_rotation_members` 各加八個綁定欄（`host_key_binding` 預設 `legacy`、`host_key_transport`、`host_key_record_id`、`host_key_algorithm`、`host_key_fingerprint`、`host_key_generation`、`host_key_bound_at`、`host_identity_alerted_key`）；`credential_rotation_members` 另加 `secret_sent_at`；建新表 `credential_host_identity_confirmations`（第 73 節）與其兩條索引，共 **21 條 DDL**。**資料步驟只有一個**：對 `host_key_binding = 'legacy'` 且 `secret_sent_at` 為 NULL 的成員，依既有證據保守寫入派送標記（寫入 migration 執行的時刻）。整組模式：成員狀態為 `changing`／`changed_unverified`／`applied`，或該帳號有候選列，或改密紀錄有同帳號、同目標版本且狀態為 `unverified`／`success` 的列；拆分模式：不看候選列，只看成員狀態為上述三者，或改密紀錄有同帳號、同憑證、執行時刻不早於該輪開始時刻且狀態為 `unverified`／`success` 的列。這是派送歷史的證據，不是身分回填：綁定快照欄全部維持零值，世代不回填。資料步驟可重入，只處理標記為空的 legacy 成員，不覆寫已寫入的值，不讀寫任何秘密欄位。不建資料庫觸發器 | `rollbackCredentialHostIdentity`：**一律回拒絕錯誤**（人工承接紀錄是證據）；回退只走還原升級前備份 |
+| `20261028_user_release_guidance` | 使用者版本說明關閉狀態：新表 `user_release_guidance`（見第 73 節），共 **1 條 DDL**（建表語句內含複合主鍵與指向 `users` 的外鍵），不回填、不改既有表 | `rollbackUserReleaseGuidance`：**一律回拒絕錯誤**；表內只有個人偏好，丟失的代價是說明卡再出現一次，回退以升級前備份還原 |
+| `20261029_credential_ownership` | 憑證管理歸屬：`credentials` 加 `owner_kind character varying(16)`、`owner_node_id bigint`（皆可空）與複合索引 `idx_credentials_owner`；新表 `credential_impact_confirmations`（第 75 節）與唯一索引 `idx_credential_impact_confirmations_actor`，共 **5 條 DDL**。**資料步驟**：只對 `owner_kind` 為 NULL 的列回填，共用憑證設為 `global`、專用憑證設為 `asset`（含已軟刪的列，同一規則）；預先設定過的列保留不動，故可重入。回填前先算報告，回填後以同一函式重算，待設定應為 0、其餘欄與預估一致，不一致即回傳錯誤使整筆交易回滾。報告（`shared_to_global`、`dedicated_to_asset`、`already_set`、`dedicated_not_single_binding`，只含筆數）以固定前綴 `credential_ownership_migration_report` 寫入後端日誌，供備份試跑與正式升級逐欄比對。不符「專用憑證恰一個未刪除掛載」的列只計入報告、不阻擋升級 | `rollbackCredentialOwnership`：**一律回拒絕錯誤**，不提供回滾；回退只走還原升級前備份 |
+| `20261031_change_secret_scope_columns` | 改密範圍欄位：`change_secret_batches` 加 `shared_credential_owner_kind character varying(16) NOT NULL DEFAULT 'global'` 與 `shared_credential_owner_node_id bigint`；`credential_job_authorizations` 加 `target_mount_bound text NOT NULL DEFAULT ''`，共 **3 條 DDL**。只加欄、不回填，既有列取預設值（批次歸屬為 `global`、掛載上界為空），可隨升級前備份還原 | `rollbackChangeSecretScopeColumns`：**一律回拒絕錯誤**，不提供回滾；回退只走還原升級前備份 |
+| `20261101_scoped_template_builtin_keys` | 範圍化管理範本的內建識別值域：`roles_builtin_key_check` 重建為含 `asset_admin`／`authz_admin` 的值域（共八個識別）。只有 DDL，不寫角色列、不改任何 `user_roles`／`user_group_roles` 列；兩個範本列由啟動資料步驟種入（見 Role 欄位表之後的「範圍化管理範本的種入」） | `rollbackScopedTemplateBuiltinKeys`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的三十一條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的四十九條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
-> - **讀寫存量資料列，耗時隨對應表的列數成長（6 條）**：
+> - **讀寫存量資料列，耗時隨對應表的列數成長（12 條）**：
 >   `20260826_source_ip_forensics`（冷啟動回填，以 `INSERT … SELECT` 彙整 `sessions` 與 `audit_logs` 的登入成功列）、
 >   `20260906_credential_library`（逐筆把存活的 `asset_accounts` 列轉為專用憑證，帳號數通常遠小於會話與稽核的存量）、
 >   `20260921_access_request_items`（以 `INSERT … SELECT` 為每張未軟刪的 `access_requests` 回填一項）、
 >   `20260921_access_request_item_decisions`（三段 `UPDATE`，連結 `access_request_items`、`access_requests`、
->   `asset_authorizations` 與 `access_request_approvals`）、`20260930_identity_group_mappings`（既有角色規則與映射事實建立字典及逐規則支持，既有群組成員標為手動）、`20261012_daily_review_signoff`（回填既有 `daily_review_logs` 列，並逐列讀取政策變更的 `audit_logs` 列重建每日審閱的啟用歷史）。
-> - **只寫固定少量的列，不隨存量成長（3 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
->   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）。
-> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（22 條）**。其中 10 條在既有表上建索引或加 CHECK／外鍵：
+>   `asset_authorizations` 與 `access_request_approvals`）、`20260930_identity_group_mappings`（既有角色規則與映射事實建立字典及逐規則支持，既有群組成員標為手動）、`20261012_daily_review_signoff`（回填既有 `daily_review_logs` 列，並逐列讀取政策變更的 `audit_logs` 列重建每日審閱的啟用歷史）、`20261019_asset_host_key_address`（逐列回填 `asset_host_keys` 的撥號位址，讀 `assets`；另在該表建 `(host, port)` 索引）、`20261020_mapping_observation_times`（以 `INSERT … SELECT` 自 `users` 的群組快照與兩張映射支持表回填 `user_channel_observations`）、`20261022_credential_job_authorization`（對每個已啟用且有排程的計畫查詢 `audit_logs` 指認發起者，寫入授權列或標記暫停；耗時隨這類計畫的數量與 `audit_logs` 的存量成長）、`20261024_system_alert_delivery_key`（對 `system_alert_outbox` 的既有列各回填一個隨機投遞識別，再建唯一索引；升級時該表通常為空）、`20261027_credential_host_identity`（對 `credential_rotation_members` 的 legacy 成員做兩段條件式 `UPDATE`，相關子查詢讀 `change_secret_candidates`、`change_secret_records`、`credential_rotations`；耗時隨成員與改密紀錄的列數成長，另有 21 條 DDL 在三張既有表加欄、建一張新表）、`20261029_credential_ownership`（對 `owner_kind` 為 NULL 的 `credentials` 列做兩段條件式 `UPDATE` 回填歸屬，回填前後各算一次報告，其中一欄以相關子查詢讀 `asset_accounts`；耗時隨憑證與帳號的列數成長，另有 5 條 DDL 在 `credentials` 加兩欄與一個複合索引、建一張新表與其唯一索引）。
+> - **只寫固定少量的列，不隨存量成長（5 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
+>   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）、`20261016_authz_permission_model`（標記至多 4 個內建角色列、補建缺列的內建角色、寫 `authz_state` 一列；遷移報告需計數 `user_roles`、`roles` 與 `users`，該段耗時隨這三表的列數成長，其餘為 DDL）、`20261017_role_definitions`（補建 2 個鎖定範本；前後摘要需讀 `roles`、`user_roles`、`user_group_roles`，該段耗時隨這三表的列數成長）。
+> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（30 條）**。`20261025_host_key_mismatch`（新表＋唯一索引）、`20261026_security_policy_floor_raises`（新表）與 `20261028_user_release_guidance`（新表，含指向 `users` 的外鍵）屬此類。其中 12 條在既有表上建索引或加 CHECK／外鍵：
 >   `20260825_evidence_offsite`（`sessions`）、`20260826_db_query_console`（`session_commands`）、
 >   `20260903_rotation_evidence_report`（`asset_accounts`、`audit_export_jobs`）、`20260905_account_batch_rotation`（`change_secret_records`）、
 >   `20260921_identity_agent_principal`（`users`、`sessions`）、`20260921_principal_integrity`（`audit_failure_events`）、
 >   `20260921_agent_audit_ledger`（`sessions`、`alert_rules`）、`20260921_agent_breaker_alert` 與 `20260924_sensitive_reveal_alert`
->   （`command_alerts`）、`20260929_notification_channel_min_severity`（`notification_channels`，另加一個帶常數預設的欄）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
->   另外 12 條只建新表、加帶常數預設或可空的欄、放寬欄位型別，或卸欄與卸索引：
+>   （`command_alerts`）、`20260929_notification_channel_min_severity`（`notification_channels`，另加一個帶常數預設的欄）、`20261018_system_security_alerts`（重建 `command_alerts` 兩條 CHECK，另建三張新表）、`20261018_checkpoint_v4_attestation`（`audit_checkpoints` 建一條部分索引，另加欄、卸欄，`audit_checkpoint_trims` 加三欄）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
+>   另外 15 條只建新表、加帶常數預設或可空的欄、放寬欄位型別，或卸欄與卸索引：
 >   `20260824_audit_export_jobs`、`20260903_security_policies_value_text`、`20260904_windows_local_account_rotation`、
 >   `20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、
 >   `20260909_policy_groups`、`20260913_kek_topology`、`20260921_agent_audit_actions`、`20260921_agent_visibility_exposures`、
->   `20260922_agent_session_token_name`、`20260924_agent_tool_call_args_retained`。依 PostgreSQL 的一般行為，
+>   `20260922_agent_session_token_name`、`20260924_agent_tool_call_args_retained`、`20261017_permission_state_attestation`、
+>   `20261017_permission_state_event_integrity`、`20261023_credential_recovery_alert`。依 PostgreSQL 的一般行為，
 >   這些語句通常不需掃描或重寫既有列，耗時通常與存量無關。
 >
 > 升級程序見 `docs/ops/upgrade-sop.md`。
@@ -2613,6 +2782,11 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 第 2 至 4 項的標記寫入 `schema_migrations` 但**不是 migration**，故一律登記於
 `runtimeMarkerVersions`——漏登會讓每個跑過該項的安裝在下次啟動被自己的 fail-close 擋住。
+佇列之外另有一個同性質的標記：段 2 啟動步驟中的審核範圍管理鍵補鍵（標記
+`20261030_approver_scope_management_key`，不需 codec，故不進本佇列）替持有 `approverscope:manage`
+的自訂角色補上 `approverscope:manage_applicant`，同樣登記於 `runtimeMarkerVersions`。其標記語義亦為
+「已完成評估」：零候選也寫入，之後不再挑候選，管理員事後撤掉的鍵不會在重啟時被補回；任一角色的補鍵
+失敗即該角色整筆回滾、不寫標記並中止啟動；已補完的角色保留，下次啟動重跑時因已持有兩鍵而略過。
 兩項 env seed 的標記語義為**「已完成評估」而非「已建立資料」**——實際 seed、env 未啟用、
 資料表非空三種終局皆寫入標記，僅基礎設施失敗不寫（留待下次啟動重試）。
 此語義使「資料列被硬刪後 env 仍為啟用」不會靜默重建一個外部認證來源。
@@ -2739,6 +2913,12 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
 | `RoleStateSnapshot` | *string | `type:text` | `role_state_snapshot` | 快照本體（正規化編碼，只含識別、不含帳號名或任何個資），使外部驗證者能自行重算雜湊而不必信任摘要欄。在簽章涵蓋內 |
 | `RoleStateCount` | *int64 | 無 | `role_state_count` | 快照筆數，為本體的投影、供呈現與快路徑使用；簽章載荷內的筆數由本體現算，本欄本身不在簽章涵蓋內 |
 | `RoleStateReconciled` | *bool | 無 | `role_state_reconciled` | 封章當下對帳的結論（三態：相符／不符／無基準可比而為 NULL）。不符不阻止封章——檢查點記的是現況，把現況擋下來只會讓證據缺一段 |
+| `PermStateSnapshot` | *string | `type:text` | `-` | 權限附證：封章當下的權限狀態快照（固定格式、canonical 編碼，只含具型別識別與外部比對字串的不可逆指紋，不含名稱、電子郵件或秘密）。以下六欄皆可空：附證啟用之前、以及第四版之前的檢查點為 NULL（該維度「尚未涵蓋」）；皆於封章時隨列寫入，不在 `BeforeUpdate` 白名單內。由增量 `20261017_permission_state_attestation` 加欄。**第四版（`cp-agg-v4`）起六欄由檢查點自己的簽章涵蓋**：載荷的 `perm` 鍵由這組欄位重建（快照摘要由本體現算），清空、部分清空或改動任一欄都使該點自己驗不過；列表 API 以 `perm` 物件外送摘要、界標、對帳結果與起點旗標，不外送本體 |
+| `PermFormat` | *int | 無 | `-` | 快照格式版本；未知版本拒絕解碼，不退回舊格式；須等於快照本體的格式版本 |
+| `PermEventSeq` | *int64 | 無 | `-` | 封章當下 `permission_state_events` 的鏈頭序號 |
+| `PermEventHead` | *string | `type:varchar(64)` | `-` | 該鏈頭事件的 digest（封章時由事件現算） |
+| `PermReconciled` | *bool | 無 | `-` | 封章當下權限狀態對帳的結論（相符／不符／無法判定為 NULL）；只有相符的附證或起點成為後續對帳的基準 |
+| `PermOrigin` | *bool | 無 | `-` | 本點是否為可信起點：封章當下以驗過章的事實（整條現存鏈逐點驗章通過、無任何附證痕跡、修剪歷史為 none、事件表為空）證明此前從未有附證，且首次啟用事件與本點同交易提交。為 true 時事件序號必為 1。帶附證的點恆非 NULL；由增量 `20261018_checkpoint_v4_attestation` 加欄 |
 | `CreatedAt` | time.Time | - | `created_at` | 落庫時間 |
 
 **ORM 守衛**：`BeforeDelete` 全拒；`BeforeUpdate` **僅**放行 `anchor_status`／`purged_at`／`purge_signature`／
@@ -2793,8 +2973,13 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
 | `PolicyDays` | int | `not null` | `policy_days` | 觸發本次修剪的 `retention_checkpoint_days` 值 |
 | `TrimmedAt` | time.Time | `not null` | `trimmed_at` | 修剪時刻 |
 | `SigningKeyVersion` | int | `not null` | `signing_key_version` | 簽章鑰版本 |
-| `Signature` | string | `type:varchar(128);not null` | `signature` | Ed25519 簽章（涵蓋上列全部欄位） |
+| `Signature` | string | `type:varchar(128);not null` | `signature` | Ed25519 簽章（涵蓋上列全部欄位；第二版另涵蓋下方兩欄） |
+| `Format` | int | `not null;default:1` | `format` | 簽章載荷版本：1＝原載荷（存量錨，位元組不變）；2＝另帶被剪段的累計權限事實。未知值不 fallback，驗章一律不過。由增量 `20261018_checkpoint_v4_attestation` 加欄 |
+| `PermHistory` | *string | `type:varchar(16)` | `perm_history` | 被剪段（含之前所有修剪）的累計權限事實，單調不回退：`none`＜`attested`（曾有附證）＜`unverified`（曾有驗不過的點，或證明不了前一錨）。新錨先承接前一錨：只承接驗過章且接得上現存鏈頭者，缺錨、壞錨、換錨、未知格式一律帶 `unverified`。`format=2` 必填 |
+| `UnverifiedCount` | *int64 | 無 | `unverified_count` | 本次被剪段中驗不過的點數（只計本次，供診斷；安全判定只用 `perm_history`）。`format=2` 必填 |
 | `CreatedAt` | time.Time | - | `created_at` | 落庫時間 |
+
+**修剪的一致性**：讀前錨、讀鏈、逐點驗章、簽章、刪除、寫錨在同一交易內完成（PostgreSQL 於交易開頭對本表取 `SHARE ROW EXCLUSIVE` 表鎖，兩個並行修剪因此序列化）；讀前錨失敗本輪不剪。錨值優先以被剪最後一點重算，該點驗不過時改取殘鏈新鏈頭簽章內的 `prev_checkpoint_hash`，兩者皆驗不過本輪不剪。
 
 **ORM 守衛**：`BeforeUpdate`／`BeforeDelete` 全拒（與 `audit_checkpoints` 同級）。
 **執行期保守閘**：政策若經 SQL 直改而違反跨鍵約束（檢查點保留期短於資料保留期），
@@ -3265,6 +3450,8 @@ pending → uploading → uploaded → local_purged
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `Username` | string | `size:100;not null;index` | `username` | 帳號名：目標集合＝掛在未刪除資產上、名為此值的未刪除帳號 |
 | `PasswordMode` | string | `size:16;not null` | `password_mode` | `per_target`＝每個目標各自隨機；`shared`＝全部目標同一組新密碼 |
+| `SharedCredentialOwnerKind` | string | `size:16;not null;default:global` | -（不序列化） | 整批同一組模式要新建的共用憑證歸屬種類：`global`｜`node`。建立批次時寫入，執行時以同一驗證重驗；升級前的批次為 `global`。增量 `20261031_change_secret_scope_columns` |
+| `SharedCredentialOwnerNodeID` | *uint | - | -（不序列化） | 歸屬為 `node` 時的節點；其餘為 NULL。增量 `20261031_change_secret_scope_columns` |
 | `PasswordLength` | int | `default:16` | `password_length` | 密碼策略：長度（語義與計劃相同） |
 | `PasswordIncludeSymbol` | bool | `default:true` | `password_include_symbol` | 密碼策略：是否含符號 |
 | `PasswordExcludeAmbiguous` | bool | `default:true` | `password_exclude_ambiguous` | 密碼策略：是否排除易混淆字元 |
@@ -3329,6 +3516,8 @@ pending → uploading → uploaded → local_purged
 | `PendingVersionID` | *uint | - | `pending_version_id` | 本次整組輪替的目標版本；同一憑證同時至多一個 |
 | `ActiveRotationID` | *uint | - | `active_rotation_id` | 非空＝輪替進行中。列鎖之外的第二道判定：掛載、卸載、直接寫入密文、範圍轉換、刪除與再輪替一律先取列鎖再讀本欄 |
 | `RotationEpoch` | int64 | `not null;default:0` | `rotation_epoch` | 每次啟動輪替遞增；成員列快照此值——同一憑證的兩輪輪替若只靠輪替識別區分，事後查詢分不出成員列屬於哪一代 |
+| `OwnerKind` | *string | `size:16` | `-`（以 `ownership.kind` 投影） | 管理歸屬：`global`（只有全域主體能管理與掛載）、`node`（歸屬一個節點，節點本身或其祖先在指派範圍內者可管理）、`asset`（專用憑證，依其掛載的資產判定：任一掛載的資產在範圍內即可見，單筆管理判定取最早建立的那一筆掛載）。**與 `Scope` 是兩件事**：`Scope` 是共用／專用，歸屬回答「誰能管理」；共用憑證為 `global` 或 `node`，專用憑證恆為 `asset`。升級前的列為 NULL，由增量 migration 回填；之後每個建立與改歸交易都在同一交易內寫入，不以 GORM hook 補預設 |
+| `OwnerNodeID` | *uint | - | `-`（以 `ownership.node_id` 投影） | `OwnerKind=node` 時必填，其餘為空。無外鍵：節點刪除時由節點刪除交易承接歸屬，不靠 cascade |
 
 **索引**（DDL 於 `backend/internal/database/migration_credential_library.go`）:
 - `credentials_pkey`＝`(id)`。
@@ -3337,6 +3526,7 @@ pending → uploading → uploaded → local_purged
 - `idx_credentials_scope_deleted_at`＝`(scope, deleted_at)`：清單過濾以範圍為軸，且一律排除軟刪列。
 - Partial unique index `idx_credentials_shared_name`＝`(name) WHERE scope = 'shared' AND deleted_at IS NULL`
   ——專用的 NULL 名稱不入索引故不互撞；排除軟刪列使名稱在刪除後可立即重用。
+- `idx_credentials_owner`＝`(owner_kind, owner_node_id)`（增量 `20261029_credential_ownership` 加入，DDL 於 `backend/internal/database/migration_credential_ownership.go`）：清單的歸屬篩選與範圍集合述詞以歸屬為軸。
 
 **無外鍵、無 CHECK**：值域由服務層與 model 常數承擔，沿本庫既有慣例。
 
@@ -3413,7 +3603,7 @@ pending → uploading → uploaded → local_purged
 
 **表名**: `credential_rotation_members`
 **檔案**: `backend/internal/model/credential.go`
-**建表方式**: 同上，增量 `20260906_credential_library`
+**建表方式**: 同上，增量 `20260906_credential_library`；增量 `20261027_credential_host_identity` 加主機身分綁定八欄與派送標記
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -3430,6 +3620,16 @@ pending → uploading → uploaded → local_purged
 | `AttemptCount` | int | `default:0` | `attempt_count` | 嘗試次數 |
 | `NextAttemptAt` | *time.Time | - | `next_attempt_at` | 下次嘗試時刻（重試排程掃描鍵） |
 | `LastError` | string | `size:64` | `last_error` | 機器可讀的失敗原因碼；**不落任何秘密材料或主機回應原文** |
+| `RecoveryAlertedAt` | *time.Time | - | `-` | 首次進入失權後有限驗證、發出告警的時刻；NULL＝尚未發過。增量 `20261023_credential_recovery_alert` |
+| `HostKeyBinding` | string | `size:16;not null;default:'legacy'` | `-` | 主機身分綁定狀態：`legacy`（升級前建立，沒有歷史身分）、`pending`（新版建立，尚未完成任何金鑰交換）、`bound`（已綁定）。新版建立的列為 `pending`；既有列因欄位預設而為 `legacy`。增量 `20261027_credential_host_identity` |
+| `HostKeyTransport` | string | `size:16;not null;default:''` | `-` | 綁定當時的傳輸種類：`ssh`、`winrm`；`bound` 之前為空字串 |
+| `HostKeyRecordID` | uint | `not null;default:0` | `-` | 綁定當時 `asset_host_keys` 自身列的 ID；`bound` 之前、以及 `winrm` 為 0 |
+| `HostKeyAlgorithm` | string | `size:64;not null;default:''` | `-` | 綁定當時的主機金鑰演算法 |
+| `HostKeyFingerprint` | string | `size:128;not null;default:''` | `-` | 綁定當時的主機金鑰指紋 |
+| `HostKeyGeneration` | int64 | `not null;default:0` | `-` | 綁定當時 `asset_host_keys.trust_generation` 的值 |
+| `HostKeyBoundAt` | *time.Time | - | `-` | 綁定時刻；`bound` 之前為 NULL |
+| `HostIdentityAlertedKey` | *string | `size:64` | `-` | 已為哪個「身分狀態」寫過停止審計並通知的去重鍵；NULL＝從未寫過。去重鍵與審計在同一交易內推進 |
+| `SecretSentAt` | *time.Time | - | `-` | 派送標記：本成員的目標秘密第一次進入「可能已在遠端生效或結果不可知」的時刻；NULL＝沒有此類證據。**單調**：只會由 NULL 寫成時刻，沒有任何路徑寫回 NULL，已有值不覆寫。增量 `20261027_credential_host_identity` |
 | `AppliedAt` | *time.Time | - | `applied_at` | 就位時刻 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
@@ -3447,6 +3647,8 @@ pending → uploading → uploaded → local_purged
 - **重試排程只推進「進行中」那一輪**裡處於 `retry_wait` 或 `changed_unverified` 且已到嘗試時刻的成員。
   `terminal_failed` 與 `abandoned` 要由操作者顯式補跑——自動重排會讓一台確定改不動的機器被
   無限期反覆嘗試。
+- **派送標記 `secret_sent_at` 的寫入時機**：成員狀態轉入 `changed_unverified`、轉入 `applied`，或由 `changing` 直接收束為 `abandoned` 時，與狀態轉移在同一個 UPDATE 內以 `COALESCE(secret_sent_at, now)` 寫入；乾淨失敗（`changing` 轉 `retry_wait`／`terminal_failed`）不寫。因此它是「可能已送出」的持久證據，不隨成員之後的狀態回頭而清除。
+- **主機身分綁定**：新版建立的成員為 `pending`。派送前的分流依證據決定路線：`pending`，或 `bound`／`legacy` 且派送標記為 NULL，走首次派送並綁定（寫入以條件式 UPDATE 在 `state = 'changing'` 且上述條件下進行，受影響列須恰為 1）；已 `bound` 且派送標記非空，沿原快照比對、不重綁；`legacy` 且派送標記非空，或整組模式下該帳號已有候選列，沒有可比對的歷史身分而秘密已送出或結果未知，撥號前停止。拆分模式不看候選列（起始交易就替每個成員建好候選，乾淨失敗也不刪，存在與否都不是送出證據）。WinRM 沒有金鑰交換，只寫傳輸為 `winrm`、其餘快照欄為零值的綁定證據，之後不做主機金鑰比對。
 
 ---
 
@@ -3782,8 +3984,236 @@ pending → uploading → uploaded → local_purged
 
 - sessions：nullable actor_kind varchar(16) CHECK human／agent；on_behalf_of_user_id 與 owner_user_id 為 nullable bigint REFERENCES users；revoked_during_session_at 為 nullable timestamptz。前置的 agent_token_id／access_request_id 不重建。人類舊列保留 NULL。
 - audit_checkpoints：nullable tool_call_id_from、tool_call_id_to、tool_call_row_count bigint 與 tool_call_agg_hash varchar(64)，v3 載荷在 v2 欄序末尾加這四欄；v1／v2 仍照原版驗證。
-- command_alerts：kind 擴至 varchar(32)，CHECK 加 agent_breaker_tripped；session_id nullable，但 CHECK 只允許此種熔斷告警無會話。既有規則／降級／新來源告警仍需 session_id。
+- command_alerts：kind 擴至 varchar(32)，CHECK 加 agent_breaker_tripped；session_id nullable，但 CHECK 只允許此種熔斷告警無會話（其後 `20261018_system_security_alerts` 另放行 `system_security`）。既有規則／降級／新來源告警仍需 session_id。
 - 增量依序為 agent_audit_ledger、agent_breaker_alert、agent_visibility_exposures、agent_subject_rules。Down 不刪歸責證據。舊版不理解新規則主體、可空告警或 v3 載荷，回退須先保全升級後證據，再使用升級前一致備份；不得在現行 DB 刪欄或重簽鏈。
+
+### 63. user_group_roles（使用者群組 × 角色指派）
+
+**表名**: `user_group_roles`；**檔案**: `backend/internal/model/authz_state.go`（`model.UserGroupRole`）；歸授權模組（authz）所有，其他模組只經 authz 的對外函式寫入。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `user_group_id` | bigint NOT NULL | 使用者群組；複合主鍵之一 |
+| `role_id` | bigint NOT NULL | 角色；複合主鍵之一 |
+| `scope_kind` | varchar(8) NOT NULL DEFAULT `'global'` | `global`／`nodes`，CHECK `user_group_roles_scope_kind_check` |
+| `created_at` | timestamptz NOT NULL | 建立時間 |
+| `created_by` | bigint NULL | 建立者 |
+
+由 `20261016_authz_permission_model` 建立。未宣告外鍵，群組或角色刪除不會級聯清除本表的列。升級後本表為空；寫入口為 `PUT /api/v1/user-groups/:id/role-bindings`（整組替換群組的角色指派），與群組成員異動、群組刪除一樣在同一交易推進權限版本（見第 65 節）。
+
+### 64. role_binding_nodes（節點範圍指派所涵蓋的節點）
+
+**表名**: `role_binding_nodes`；**檔案**: 同上（`model.RoleBindingNode`）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `subject_kind` | varchar(16) NOT NULL | `user`／`user_group`，CHECK `role_binding_nodes_subject_kind_check`；複合主鍵之一 |
+| `subject_id` | bigint NOT NULL | 使用者或使用者群組的 id；複合主鍵之一 |
+| `role_id` | bigint NOT NULL | 角色；複合主鍵之一 |
+| `node_id` | bigint NOT NULL | 資產節點；複合主鍵之一（各含子樹） |
+
+由 `20261016_authz_permission_model` 建立。未宣告外鍵。升級後本表為空；`scope_kind` 為 `nodes` 的指派才會在此有列。
+
+### 65. authz_state（權限狀態，單列）
+
+**表名**: `authz_state`；**檔案**: 同上（`model.AuthzState`）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | integer NOT NULL DEFAULT 1 | 主鍵；CHECK `authz_state_single_row_check`（`id = 1`）保證只有一列 |
+| `version` | bigint NOT NULL DEFAULT 0 | 權限版本。下列寫入與該寫入同一交易、於寫入之後加一：角色指派（直接指派、使用者群組的角色指派替換、外部群組映射的賦予與撤銷、釘住、建立帳號時帶預設角色，含外部登入首次建立帳號）、使用者群組的成員異動（含登入時依映射重算）與群組刪除、外部群組映射規則的建立、修改與刪除（含身分來源刪除時一併刪除其規則）、帳號的啟用、停用與刪除（含解綁外部身分並停用）、agent 擁有者變更；資產拓撲的寫入：建立資產並掛載節點（單筆與批次匯入）、資產的節點掛載集合實際改變、刪除仍有掛載的資產、節點搬移、節點刪除（連同同一交易內對指向該節點之授權的級聯撤銷），每筆寫入交易至多推進一次。只改節點名稱或描述、掛載集合不變的資產更新、建立不掛載節點的資產、節點建立（新節點下尚無資產）不推進；資產授權規則的寫入，本版不推進。共用憑證的歸屬寫入（建立共用憑證、專用與共用之間的範圍轉換、變更擁有節點、單筆與批次改歸）於同一交易推進，每交易一次；批次改歸沒有任何一筆實際改變時不推進。唯讀呼叫與不改變狀態的呼叫不推進 |
+| `model_migrated_at` | timestamptz NULL | 權限模型遷移寫入報告的時間 |
+| `model_migration_report` | text NULL | 權限模型遷移報告（JSON）：各內建角色的指派計數（全部、映射來源、兩者並存）、本地管理員數、未知角色名與其指派數、懸空指派數、本次補建的內建角色。不含時間與環境資訊，同一份輸入資料得同一份文字；已有報告則不覆寫 |
+| `restore_generation` | varchar(64) NOT NULL DEFAULT `''` | 還原世代：256-bit 隨機值（hex）。空字串＝從未還原過（legacy 世代），升級與一般重啟不改它。只在還原交易內換新，與 `version + 1` 同一交易；重啟與重跑遷移保持已提交值。登入簽章金鑰由 `JWT_SECRET` 與本欄派生（空世代即 `JWT_SECRET` 本身），讀不到本欄時一律拒絕驗證而不退回原鑰 |
+| `restore_op_id` | varchar(64) NOT NULL DEFAULT `''` | 最近一次還原交易的操作識別（管理腳本的還原時間戳） |
+| `restore_input_digest` | varchar(64) NOT NULL DEFAULT `''` | 最近一次還原匯入的 dump 的 SHA-256。同一個（操作識別、輸入摘要）已提交過即視為同一次還原的接續，不再換世代；不同即為另一次匯入 |
+| `restore_status` | varchar(16) NOT NULL DEFAULT `''` | `pending`（還原交易已提交，後端尚未完成放行）／`seal_pending`（後端啟動時已記下 `restore` 事件〔附證已啟用時同交易〕，涵蓋新世代的檢查點尚未封出；重啟後仍在，啟動時補封）／`done`（涵蓋新世代的檢查點已封出）／空字串（從未還原） |
+| `restored_at` | timestamptz NULL | 還原交易提交的時間 |
+
+由 `20261016_authz_permission_model` 建立；遷移同一交易內寫入初始列（`version = 0`）。`restore_*` 五欄由增量 `20261017_permission_state_attestation` 加欄，存量列為空值。授權判定不讀 `version`；讀者是權限狀態快照（備份的 `snapshot.txt` 摘要與檢查點附證）與還原世代的讀取（登入簽章金鑰、refresh／agent 憑證的世代比對）。表所有權歸授權模組（authz）。
+
+### 66. permission_state_events（權限狀態事件鏈）
+
+**表名**: `permission_state_events`；**檔案**: `backend/internal/model/permission_state_event.go`（`model.PermissionStateEvent`）。**表所有權歸稽核模組（audit）**；其他模組經 `authz.BeginPermissionChange`／`AdvanceVersion`／`SettlePermissionChange` 與 audit 的對外函式寫入，不直接寫表。只追加，不刪除；唯一的更新是下文的段 2 前補章。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial PRIMARY KEY | 主鍵 |
+| `seq` | bigint NOT NULL，唯一索引 `uq_permission_state_events_seq` | 鏈序號，連續 |
+| `version` | bigint NOT NULL | 寫入當下的 `authz_state.version` |
+| `kind` | varchar(16) NOT NULL，CHECK `permission_state_events_kind_check` | `activate`（附證啟用的基準；與它的第一個帶附證檢查點在同一封章交易內提交，該啟用是否為可信起點由那個檢查點簽章內的起點旗標決定）／`change`（一次權限變更，與資料寫入同一交易）／`restore`（還原後由後端記下）／`untraced`（偵測到兩次合法事件之間有繞過應用程式的直接改庫，差集獨立成一筆）／`accept`（超級管理員確認不符並以目前狀態為新基準；對帳無法判定時為重設比對基準，`delta` 帶 `rebase: true`；見 API_SPEC「稽核失效事件」） |
+| `op_id` | varchar(64) NOT NULL | 操作識別 |
+| `prev_digest` | varchar(64) NOT NULL | 前一事件的 digest（雜湊鏈） |
+| `before_digest`／`after_digest` | varchar(64) NOT NULL | 事件前後權限狀態快照的 digest |
+| `delta` | text NOT NULL | 元素層級差集（具型別識別），重放的輸入 |
+| `after_body` | text NOT NULL | 事件後的完整 canonical 快照，供寫下一筆事件時計算差集 |
+| `digest` | varchar(64) NOT NULL | 本事件的 digest |
+| `activated_seq` | bigint NULL | 僅 `activate` 事件：同交易封出的檢查點序號（僅供人讀；不是起點判定的輸入） |
+| `created_at` | timestamptz NOT NULL | 寫入時間 |
+| `integrity_hmac` | varchar(64) NOT NULL DEFAULT `''` | 逐列完整性驗證碼（HMAC-SHA256 hex，固定域 `permission_state_event_v1`），涵蓋由欄位重算的 digest、列上的 digest、`after_body` 的雜湊、`activated_seq` 與鑰版本；與 `audit_logs.integrity_hmac` 用同一組完整性密鑰。空字串＝未蓋章（升級前的舊列，或寫入當下取不到密鑰），對帳時視為不可信。由增量 `20261017_permission_state_event_integrity` 加欄 |
+| `key_version` | bigint NOT NULL DEFAULT 0 | 蓋章鑰版本（與 `audit_logs.key_version` 同一條版本鏈）。同上加欄 |
+
+由 `20261017_permission_state_attestation` 建立，升級後為空；第一次封章時在同一個封章交易內寫入 `activate` 事件後才開始累積（封章失敗則一併回滾）。事件寫入失敗時，同交易的權限變更與版本推進一併回滾。完整性分兩層：雜湊鏈加上檢查點附證（`audit_checkpoints.perm_*`）錨定序列與鏈頭；逐列的 `integrity_hmac` 證明該列由持有完整性密鑰的應用程式寫入。重放時驗證碼不符或缺失的列一律計為無來源變動（`accept` 列亦同，不清掉先前的無來源變動；帶重設標記的 `accept` 只在驗證碼有效時作為重放起點）。完整性密鑰取不到時照常寫入、不擋操作，該列在對帳時告警；後端段 2 之前（還原完成時）寫下的列，由同一行程在完整性服務建立時補章，這是本表唯一的更新。鏈尾在下一次封章之後才受附證簽章錨定，與 `audit_logs` 尾端相同。快照與事件不含名稱、電子郵件或秘密，外部群組比對字串只存不可逆指紋。
+
+### 67. role_permissions（自訂角色的權限鍵集合）
+
+**表名**: `role_permissions`；**檔案**: `backend/internal/model/authz_state.go`（`model.RolePermission`）。所有者模組為 identity。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `role_id` | bigint NOT NULL | 角色 ID；外鍵 `fk_role_permissions_role` 指向 `roles` |
+| `permission_key` | varchar(64) NOT NULL | 權限目錄中的明列鍵；與 `role_id` 組成複合主鍵。只存明列鍵，不存「管理整組」之類的萬用值，也不存呈現專用的 `ui:` 鍵 |
+
+由 `20261017_role_definitions` 建立。升級後本表為空；內建與鎖定範本的集合在程式中，不在本表。自訂角色由內部角色定義服務在同一交易內寫入本表、推進定義版本與權限版本並留下審計；對外寫入口為角色管理頁面與 `/api/v1/role-definitions` 的新增、複製、修改、刪除四條寫入路由，僅超級管理者可在服務層通過；既有 `GET /roles` 維持升級前的相容角色目錄；各指派入口另接受範本與自訂角色，照常經過保護角色與指派能力等規則（自訂角色不能直接作外部群組映射的目標）。刪除自訂角色採軟刪並改名釋出名稱，本表的列保留作歷史。整張表隨資料庫備份一併保存。權限狀態快照格式 2 的 `role_perms`（角色與權限鍵）與 `role_defs`（角色 ID、定義版本、範本來源；不含名稱與說明）兩個集合涵蓋本表與 `roles` 的定義欄，因此自訂角色的內容進封章附證、事件鏈差集、備份摘要的 `authz.digest`，以及還原前的參照核對（未知權限鍵、懸空角色或範本來源、負數定義版本、內建或存量角色上的權限列一律拒絕）；格式 1 的舊快照與封章仍可解碼與驗章。
+
+### 68. system_alert_details（系統安全告警明細）
+
+**表名**: `system_alert_details`；**檔案**: `backend/internal/model/system_alert.go`（`model.SystemAlertDetail`）。表所有權歸稽核模組（audit）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `alert_id` | bigint NOT NULL，主鍵 | 即 `command_alerts.id`（`kind = 'system_security'` 的那一列）；外鍵 `fk_system_alert_details_alert`，`ON DELETE CASCADE`：告警被保留政策清除時明細一併刪除 |
+| `alert_type` | varchar(64) NOT NULL，索引 `idx_system_alert_details_type` | 告警類型鍵（登錄於系統告警目錄）；與告警列的 `rule_name`、`reason_code` 同值 |
+| `target_kind` | varchar(32) NOT NULL | 告警對象的種類 |
+| `target_id` | varchar(128) NOT NULL DEFAULT `''` | 告警對象的識別 |
+| `params` | text NOT NULL DEFAULT `'{}'` | 參數（JSON）：只能使用該類型在目錄中宣告的鍵，不含秘密，網址只存遮罩後的值；不塞進告警列的 `command` 欄 |
+| `correlation_id` | varchar(64) NOT NULL DEFAULT `''` | 關聯識別：與產生端同交易稽核列 `details` 內的同名欄同值，供從告警回查操作日誌 |
+| `published_at` | timestamptz NULL，部分索引 `idx_system_alert_details_unpublished`（`published_at IS NULL`） | 離機轉發（syslog）完成時刻；NULL＝尚未轉發，投遞程序每輪先補轉發 |
+| `created_at` | timestamptz NOT NULL | 事件發生時間 |
+
+由 `20261018_system_security_alerts` 建立，升級後為空。告警列、明細與各目的地的投遞列在同一交易內寫入。
+
+### 69. system_alert_outbox（系統安全告警投遞佇列）
+
+**表名**: `system_alert_outbox`；**檔案**: 同上（`model.SystemAlertOutbox`）。表所有權歸稽核模組（audit）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial PRIMARY KEY | 主鍵（只供內部；送給收端的投遞識別是 `delivery_key`） |
+| `alert_id` | bigint NOT NULL，索引 `idx_system_alert_outbox_alert` | 所屬告警；外鍵 `fk_system_alert_outbox_alert`，`ON DELETE CASCADE` |
+| `dest_type` | varchar(20) NOT NULL，CHECK `system_alert_outbox_dest_type_check`（`webhook`／`slack`） | 目的地類型 |
+| `dest_name` | varchar(100) NOT NULL DEFAULT `''` | 目的地名稱快照 |
+| `dest_language` | varchar(8) NOT NULL，CHECK `system_alert_outbox_language_check`（`zh-TW`／`en-US`／`ja-JP`） | 送出內容的語言 |
+| `source_channel_id` | bigint NULL | 產生當下對應的通知通道；之後通道改址或刪除不影響重送 |
+| `url_enc` | text NOT NULL | 目的地網址快照，信封加密（登記於 `envelopeMigrationTargets`） |
+| `secret_enc` | text NOT NULL DEFAULT `''` | 簽章密鑰快照，信封加密（同上） |
+| `state` | varchar(16) NOT NULL DEFAULT `'pending'`，CHECK `system_alert_outbox_state_check` | `pending`／`retrying`／`delivered`／`abandoned` |
+| `attempts` | integer NOT NULL DEFAULT 0 | 已嘗試次數 |
+| `next_attempt_at` | timestamptz NOT NULL，部分索引 `idx_system_alert_outbox_due`（`state IN ('pending','retrying')`） | 下次可投遞時刻（指數退避） |
+| `lease_until` | timestamptz NULL | 認領租約到期時刻 |
+| `last_error` | text NOT NULL DEFAULT `''` | 最後一次失敗的原因（已脫敏、截斷） |
+| `delivered_at` | timestamptz NULL | 投遞成功時刻 |
+| `created_at` | timestamptz NOT NULL | 建立時間 |
+| `delivery_key` | varchar(32) NOT NULL DEFAULT `''`，唯一索引 `idx_system_alert_outbox_delivery_key` | 送給收端的投遞識別（payload 的 `delivery_id`）：排入當下隨機產生的 32 個十六進位字元，同一列重送不變；還原備份後新建的列必為新值，不會與還原前發出的識別重複。增量 `20261024_system_alert_delivery_key` |
+
+由 `20261018_system_security_alerts` 建立（`delivery_key` 由 `20261024_system_alert_delivery_key` 補上），升級後為空。投遞語義為至少一次：失敗以指數退避續送，重啟後依本表狀態接續，自建立起超過時窗仍未成功即標為 `abandoned`。啟用中但網址或密鑰密文解不開的通道也會得到一列：建立時即為 `abandoned`、`attempts` 為 0、`last_error` 記原因、`url_enc` 與 `secret_enc` 留空，讓明細看得到該目的地沒送，而產生告警的業務操作不受影響。分級只影響處理順序與顯示，不決定是否送出，不看通道的推送門檻。
+
+### 70. system_alert_severity_overrides（系統安全告警分級覆寫）
+
+**表名**: `system_alert_severity_overrides`；**檔案**: 同上（`model.SystemAlertSeverityOverride`）。表所有權歸稽核模組（audit）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `alert_type` | varchar(64) NOT NULL，主鍵 | 告警類型鍵 |
+| `severity` | varchar(10) NOT NULL，CHECK `system_alert_severity_overrides_severity_check`（`high`／`medium`／`low`） | 覆寫後的分級 |
+| `updated_by` | bigint NOT NULL | 最後修改者 |
+| `updated_at` | timestamptz NOT NULL | 最後修改時間 |
+
+由 `20261018_system_security_alerts` 建立，升級後為空；沒有列的類型使用目錄登錄的預設分級。
+
+### 71. user_channel_observations（逐通道最近已知群組觀測）
+
+**表名**: `user_channel_observations`；**檔案**: `backend/internal/model/identity_group_mapping.go`（`model.UserChannelObservation`）。所有者模組為 identity。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `user_id` | bigint NOT NULL | 帳號；外鍵 `fk_user_channel_observations_user` 指向 `users`；複合主鍵之一 |
+| `channel` | varchar(64) NOT NULL | 登入通道（外部身分來源）；複合主鍵之一 |
+| `last_known_at` | timestamptz NOT NULL | 該通道最近一次確實讀到群組的時間 |
+
+由 `20261020_mapping_observation_times` 建立，並回填：凡持有角色或使用者群組映射支持的（帳號，通道）得一列，時間取 `users` 既有群組快照與升級當下較晚者；快照通道照舊得一列快照時間。只供有界重新驗證：登入時該通道讀不到群組，且最近已知觀測超過政策 `mapping_revalidation_hours`（0＝不設限）或沒有列，即收回該通道的全部映射支持；未知觀測不更新本列。本表不參與授權判定，授權一律走映射事實與支持表。
+
+### 72. security_policy_floor_raises（保留下限抬升紀錄）
+
+**表名**: `security_policy_floor_raises`；**檔案**: `backend/internal/model/security_policy.go`（`model.SecurityPolicyFloorRaise`）。表所有權歸 policy 模組（由 `retention_floor.go` 的啟動對帳寫入，審計模組不寫此表）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial，主鍵 `security_policy_floor_raises_pkey` | 主鍵 |
+| `policy_key` | varchar(64) NOT NULL | 被抬升的政策鍵（四個資料保留鍵之一，或跟隨抬升的檢查點保留鍵） |
+| `old_value` | text NOT NULL | 抬升前的值 |
+| `new_value` | text NOT NULL | 抬升後的值 |
+| `reason` | varchar(32) NOT NULL | 理由碼：`below_floor`（資料保留值低於下限）、`cross_key_follow`（檢查點保留為保住原本成立的涵蓋關係而跟隨抬升）。無 CHECK，值域由程式常數限定 |
+| `raised_at` | timestamptz NOT NULL | 抬升時刻 |
+| `product_version` | varchar(64) NOT NULL | 執行抬升的產品版本 |
+
+由 `20261026_security_policy_floor_raises` 建立，升級後為空；沒有索引、沒有外鍵、不回填。啟動時的冪等對帳把存量 1 至 6 天的資料保留值抬升到下限（7 天），每改一個鍵記一列，與政策值的更新在同一交易；對帳可重入，已達下限的鍵不再產生列。審計日誌會被保留政策清除，管理者可能在升級多日後才首次登入，所以抬升紀錄另存於本表，不受審計保留清除，可事後查到哪些保留鍵在升級時被抬升、由什麼值抬到什麼值；本表由啟動時的對帳寫入；`GET /api/v1/dashboard/retention-adjustments` 唯讀取用它（見 API_SPEC 的儀表板 API 一節），儀表板的新版說明卡以此列出升級時被抬升的保留項目，也可直接查表。本表不參與授權判定與保留判定。
+
+### 73. user_release_guidance（使用者版本說明關閉狀態）
+
+**表名**: `user_release_guidance`；**檔案**: `backend/internal/model/user_release_guidance.go`（`model.UserReleaseGuidance`）。表所有權歸 identity 模組（只由 `ReleaseGuidanceService` 讀寫，見 `backend/internal/modules/identity/release_guidance.go`）。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `user_id` | bigint NOT NULL，複合主鍵之一；外鍵 `fk_user_release_guidance_user` 指向 `users(id)`，`ON DELETE CASCADE` | 關閉說明的使用者，一律取自認證結果 |
+| `notice_version` | varchar(32) NOT NULL，複合主鍵之一 | 說明版本；目前只有 `1.18.0`，與產品修補版號分開 |
+| `dismissed_at` | timestamptz NOT NULL | 首次關閉的時刻 |
+
+主鍵為 `user_release_guidance_pkey` ＝ `(user_id, notice_version)`，沒有其他索引。
+
+由 `20261028_user_release_guidance` 建立，升級後為空，不回填：缺列即尚未關閉，所以升級後每位使用者第一次登入都會看到說明卡。關閉是冪等寫入（鍵衝突時什麼都不改），`dismissed_at` 因此保留首次關閉的時刻；只有真的新增了一列，才在同一交易內寫一列 `update`／`user` 審計。本表只存個人偏好，不存說明全文，也不存任何帳號、資產或憑證資訊；不參與授權判定，不加入權限事件與附證投影；屬完整資料庫備份的範圍，還原備份後關閉狀態回到備份當時的樣子。帳號列被實際刪除時，該使用者的列隨之刪除。對外介面見 API_SPEC 的版本說明關閉狀態一節。
+
+### 74. credential_host_identity_confirmations（憑證工作的主機身分人工承接紀錄）
+
+**表名**: `credential_host_identity_confirmations`；**檔案**: `backend/internal/model/host_key.go`（`model.CredentialHostIdentityConfirmation`）。逐工作、只驗證的人工承接紀錄；不改寫工作列上原有的綁定快照。**無外鍵、不 cascade**：一般候選轉正後會被刪除，承接證據必須留下。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial，主鍵 `credential_host_identity_confirmations_pkey` | 主鍵 |
+| `kind` | varchar(16) NOT NULL | 工作種類：`candidate`（一般候選）或 `member`（輪替成員） |
+| `job_id` | bigint NOT NULL | 工作列 ID（無外鍵） |
+| `revision` | bigint NOT NULL DEFAULT 1 | 同一工作的第幾次確認，從 1 起 |
+| `asset_id` | bigint NOT NULL | 目標資產 |
+| `account_id` | bigint NOT NULL DEFAULT 0 | 目標帳號 |
+| `confirmed_by`、`confirmed_by_name` | bigint NOT NULL；varchar(100) NOT NULL DEFAULT '' | 確認者與當時的名稱快照 |
+| `confirmed_transport` | varchar(16) NOT NULL | 確認當時的傳輸種類 |
+| `confirmed_record_id`、`confirmed_algorithm`、`confirmed_fingerprint`、`confirmed_generation` | bigint；varchar(64)；varchar(128)；bigint，皆 NOT NULL DEFAULT | 確認當時的主機身分（記錄 ID、演算法、指紋、信任世代） |
+| `accept_different_key` | boolean NOT NULL DEFAULT false | 確認者是否明確接受與原快照不同的金鑰 |
+| `original_binding`、`original_transport`、`original_record_id`、`original_fingerprint`、`original_generation` | varchar(16)；varchar(16)；bigint；varchar(128)；bigint，皆 NOT NULL DEFAULT | 確認當時工作列上原有的綁定狀態與快照，供事後對照 |
+| `original_initiator_id`、`original_initiator_unknown` | bigint NOT NULL DEFAULT 0；boolean NOT NULL DEFAULT false | 工作原發起者；無從得知時標記為未知 |
+| `authz_version` | bigint NOT NULL DEFAULT 0 | 確認當時的權限世代 |
+| `restore_generation` | varchar(64) NOT NULL DEFAULT '' | 確認當時的持久還原世代 |
+| `client_ip` | varchar(64) NOT NULL DEFAULT '' | 確認請求的來源位址 |
+| `created_at`、`started_at`、`consumed_at` | timestamptz，可空 | 建立、開始使用、消耗的時刻 |
+| `outcome` | varchar(24) NOT NULL DEFAULT '' | 結果，model 註記的值域為空、`verified`、`verify_failed`、`identity_moved`、`commit_failed`、`unknown`；無 CHECK，值域由程式常數限定 |
+
+索引：唯一索引 `idx_credential_host_identity_confirmations_job`＝`(kind, job_id, revision)`；一般索引 `idx_credential_host_identity_confirmations_consumed`＝`(kind, job_id, consumed_at)`。由 `20261027_credential_host_identity` 建立，升級後為空，不回填。本表不參與授權判定。
+
+**承接流程中的寫入語義**：每次確認先在短交易內讀取並比對當下的主機身分，插入一列（`revision` 為該工作既有列數加一，`started_at` 與插入同一筆語句寫入），並與審計寫在同一交易；同一工作同時只允許一列未消耗（`consumed_at` 為空）的紀錄。交易外對目標做一次邏輯驗證，之後以條件式更新同時寫 `consumed_at` 與 `outcome`：驗證成功（`verified`）時，這次更新與工作本身的就位提交在同一交易，任一失敗則一起回滾、紀錄仍未消耗；驗證失敗（`verify_failed`）、確認到執行之間身分又變（`identity_moved`）、就位提交失敗（`commit_failed`）也各自消耗該列。服務啟動時，所有仍未消耗的紀錄一律收斂為 `unknown` 並寫入 `consumed_at`，不重放；之後同一工作可再確認，產生下一個 `revision`。已消耗的列不再改寫。逾期（終局失敗或已收束）的輪替成員只能經由這條已驗證的承接路徑就位。
+
+---
+
+### 75. credential_impact_confirmations（共用憑證修改的範圍外影響確認）
+
+**表名**: `credential_impact_confirmations`；**檔案**: `backend/internal/model/credential.go`（`model.CredentialImpactConfirmation`）。**建表方式**: 增量 migration `20261029_credential_ownership`。
+
+修改共用憑證（更正登記值、整組或拆分改密）前，若憑證另有掛載在操作者範圍外的資產，操作者須先取得一筆確認。本表只保存伺服器端的事實：當時的範圍外資產集合。該集合不出站，回應只有不透明確認識別與台數。**無外鍵、不 cascade**；憑證軟刪時由刪除交易同交易清掉該憑證的確認列。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | varchar(32)，主鍵 `credential_impact_confirmations_pkey` | 128 位元隨機十六進位，即回給操作者的不透明確認識別 |
+| `credential_id` | bigint NOT NULL | 目標憑證（`credentials.id`） |
+| `user_id` | bigint NOT NULL | 取得確認的操作者 |
+| `operation` | varchar(16) NOT NULL，CHECK `operation IN ('set_secret','rotate')` | 確認所屬的動作 |
+| `authz_version` | bigint NOT NULL DEFAULT 0 | 建立當時的權限版本 |
+| `out_of_scope_asset_ids` | text NOT NULL DEFAULT '[]' | 建立當時的範圍外資產識別集合（JSON 陣列文字），只用於提交時比對 |
+| `created_at` | timestamptz，可空 | 建立時間 |
+
+索引：唯一索引 `idx_credential_impact_confirmations_actor`＝`(user_id, credential_id, operation)`，同一（操作者、憑證、動作）只保留一列，新確認以同交易刪除舊列取代。
+
+**寫入語義**：提交時在憑證列鎖內重算範圍外集合；集合為空時不看確認；否則確認缺漏、已使用、操作者／憑證／動作不符，或當下集合超出確認保存的集合，一律拒絕並不留任何變更；集合縮小或相同則照常執行並刪除該列（單次使用）。本表不設時效。確認只證明操作者知情，不是授權，伺服器每次提交仍自行重算。
+
+---
 
 ## 已知 model 與 baseline 差異（維護注意）
 
@@ -3801,9 +4231,10 @@ pending → uploading → uploaded → local_purged
    （6 條 baseline＋2 條來自離機儲存增量 migration＋1 條來自查詢主控台增量 migration 的
    `idx_session_commands_event_id`）另以 `pg_get_indexdef` 逐字比對釘在
    `baseline_parity_pg_test.go` 的 `baselineStructuralAssertions`。
-3. **CHECK 約束同樣只由建表語句承載**（20 條：13 條 baseline＋2 條來自離機儲存增量 migration
+3. **CHECK 約束同樣只由建表語句承載**（26 條：13 條 baseline＋2 條來自離機儲存增量 migration
    ＋3 條來自查詢主控台增量 migration＋1 條來自群組映射增量 migration 的
-   `chk_group_role_mapping_source`＋1 條來自輸出規則 direction 增量 migration）。GORM 不產出 inline CHECK，故
+   `chk_group_role_mapping_source`＋1 條來自輸出規則 direction 增量 migration
+   ＋5 條來自權限模型增量 migration＋1 條來自權限附證增量 migration 的 `permission_state_events_kind_check`）。GORM 不產出 inline CHECK，故
    `chk_auth_target`／`chk_authz_subject_xor`／`chk_approver_scope_*`／`singleton = 1`／
    三個枚舉 CHECK 全部由建表語句承載。放寬任何一條，不合法的列就寫得進去而無錯誤。
 4. **種子資料不在 schema 比對的射程內**。16 條內建告警規則由 `baseline_seed.go` 依 baseline（12 條）、direction 增量（2 條）與 subject 增量（2 條）階段寫入；
@@ -3837,3 +4268,29 @@ pending → uploading → uploaded → local_purged
 ### Agent 會話名稱快照增量（2026-09-22）
 
 `sessions.agent_token_name varchar(100) NULL` 保存建線交易當下 token 名稱；只在 `BindAgentSessionPrincipal` 讀取已驗證的 token 時賦值一次，讀取端不得 join token 現值。migration `20260922_agent_session_token_name` 只加欄，既有會話維持 NULL；Down 不刪欄／不回填，停用讀寫須部署舊版應用。既有授權欄、IssueConnectGrant 與閘序不變。
+
+### 憑證背景工作授權增量（2026-10-17）
+
+`credential_job_authorizations`（歸 asset）：背景工作（排程計畫、批次、輪替）的發起者授權脈絡，**不可變列**——修改計畫時新增一列、修訂號遞增，舊列保留。欄位：`schema_version`（讀到未知值即拒絕恢復）、`source_kind`（`plan`｜`batch`｜`rotation`，CHECK）、`source_id`、`revision`、`actor_id`／`actor_kind`／`actor_name`、`auth_source`（`request`｜`audit_backfill`｜`reauthorized`｜`manual_candidate`｜`manual_run`；`manual_run` 為手動執行計畫時以點擊者為發起者另存的一列，計畫本身的脈絡引用不變）、`authz_version`（建立當下的權限世代，觀察快照）、`capabilities`（確認的能力鍵，JSON；執行重驗時以它決定要驗哪些能力，空或損毀時退回預設）、`target_bound`（建立當下保存的資產 ID 快照，JSON；空陣列表示依來源設定動態展開。批次的這一欄是選定目標的資產，供範圍化檢視者的批次列表與詳情判定可見性；由批次發起的拆分輪替，這一欄是選定的資產，成員所在資產不在其中即停止派送）、`target_mount_bound`（範圍化發起者儲存憑證目標計畫時，該憑證當下全部掛載的上界：資產帳號列識別的升冪 JSON 陣列；全域發起者與升級前的列為空字串；增量 `20261031_change_secret_scope_columns`）、`restore_generation`（建立當下的持久還原世代，空字串＝建立於還原世代出現之前；執行前與目前世代比對，不符即停止背景派送，見備份與還原營運文件）、`confirmed_at`。**它不是一張票**：執行時一律以發起者當下的能力重驗；`authz_version` 只是觀察快照，`capabilities` 決定重驗的能力集合，`restore_generation` 是背景派送的隔離條件，都會影響行為，不可當成純稽核附註。
+
+引用欄：`change_secret_plans.authorization_id`、`change_secret_batches.authorization_id`、`credential_rotations.authorization_id`、`change_secret_candidates.authorization_id`；升級前的舊批次、輪替、候選保持 NULL，不補任何主體；具權者可手動補跑輪替成員或重試一般候選來承接（輪替承接新增一列 `auth_source=reauthorized` 的授權脈絡並掛到輪替上）。`credential_rotation_members.dispatch_claimed_at`／`dispatch_authz_version` 記錄最近一次遠端步驟放行的時刻與當時的權限世代。
+
+目標指紋：`change_secret_candidates.target_fingerprint`、`credential_rotation_members.target_fingerprint`（`varchar(64) NOT NULL DEFAULT ''`）保存候選或成員建立當下的目標雜湊（位址、通道、掛載、帳號、憑證引用的雜湊，不含任何秘密）。發起者失去權限後，只有已確認下達、建立未滿 24 小時、指紋仍與目前目標相符、且工作所綁定的主機身分仍等於資產當下的主機金鑰記錄的候選或成員，才可進行僅驗證並提交本地狀態的有限收斂；指紋為空字串（升級前建立的舊資料）不放行。具權者手動重試舊候選通過重驗時，只對尚無指紋者補記當下目標的指紋（已有指紋不覆寫），並新增一列 `auth_source=manual_candidate` 的授權脈絡。目標指紋本身的定義不變，仍不含主機金鑰。主機身分另由工作列上的綁定快照（見下一節）承載：有限收斂在撥號前查庫，工作列須為 `bound` 且快照的記錄 ID、信任世代、指紋與演算法全部等於自身列當下的值，自身列不得處於待重新記錄（WinRM 工作沒有主機金鑰可比，只比對傳輸種類）；記錄缺失、待重新記錄、世代或指紋改變、傳輸種類與資產當下有效通道不同、或升級前建立且秘密已送出或結果未知而沒有歷史身分（`legacy`）的工作，一律以「主機身分變更」為由停止，不進入有限驗證；查詢失敗歸「無法判定」。放行時的審計理由含 `host_identity_match`。提交本地狀態的交易內會在取得主機金鑰信任鎖後再比對一次，不符即回滾並保留候選。
+
+有限驗證告警去重：`change_secret_candidates.recovery_alerted_at`、`credential_rotation_members.recovery_alerted_at`（`timestamp with time zone`，可空；增量 `20261023_credential_recovery_alert`）記錄該候選或成員第一次進入有限收斂、發出「進入有限驗證」告警的時刻。發送前以條件式更新（僅在欄為 NULL 時寫入）搶下發送權，並行的手動重試與排程只會有一方發出；更新失敗，或更新落空後讀不到該欄已有值，一律照發告警，失敗方向是重複而不是遺漏。去重以候選、成員為單位，同一帳號之後的新候選或新輪替會各自發一次。升級時既有列為 NULL，正處於有限收斂中的候選或成員至多再發一次。
+
+升級說明：欄位與表都在同一支 migration 內建立，未發版環境升級時不需額外步驟；欄位以空字串預設，既有列不回填，因此升級前建立的候選與成員在發起者失權時不會進入有限收斂；一般候選由具權者在候選清單重試，進行中輪替的成員由具權者在輪替頁逐台補跑承接。`restore_generation` 同樣在這支 migration 內建立；資料步驟回填的授權列記升級當下的持久還原世代（升級前已還原過的部署，既有排程不因世代為空而停擺）。
+
+### 憑證主機身分增量（2026-10-19）
+
+增量 `20261027_credential_host_identity`，把改密候選與輪替成員綁到「首次送出秘密時的那一台主機」，之後的重試、驗證與提交都核對同一個身分。涉及三組欄位：
+
+- `asset_host_keys.trust_generation`（`bigint NOT NULL DEFAULT 1`）：主機信任世代，推進規則見第 13 節。
+- `change_secret_candidates`、`credential_rotation_members` 的綁定欄：`host_key_binding`（`legacy`｜`pending`｜`bound`）、`host_key_transport`（`ssh`｜`winrm`）、`host_key_record_id`、`host_key_algorithm`、`host_key_fingerprint`、`host_key_generation`、`host_key_bound_at`，另有停止通知去重鍵 `host_identity_alerted_key`。`legacy` 是升級前列的欄位預設；新版建立的列為 `pending`；`pending` 在首次金鑰交換、送出任何認證之前，於主機金鑰信任鎖內的短交易改寫為 `bound` 並寫入快照。快照欄在 `bound` 之前為零值，migration 不回填快照。
+- `credential_rotation_members.secret_sent_at`：派送標記，單調（只由 NULL 寫成時刻，不覆寫、不清除），見第 51 節。
+
+**升級前成員的保守標記**：migration 對 `legacy` 且標記為空的成員，依既有證據（成員狀態、候選列、改密紀錄）寫入派送標記，判準見版本一覽。已留下送出證據的升級前成員維持 `legacy`，撥號前停止，系統不會自動把它綁到目前的主機身分；沒有證據的升級前成員標記維持 NULL，之後首次派送時照常綁定。沒有留下證據的歷史無從得知，系統不補全。
+
+**世代的邊界**：世代由應用程式推進，資料庫層沒有觸發器。混版期間舊版服務的採用或重置，以及直接改表的操作，都不會推進世代，新版因此看不出該主機的信任已變；因此升級前應先停掉所有舊版實例。
+
+**人工承接紀錄**：第 74 節的表保存逐工作、只驗證的承接證據；它不改寫工作列的原快照，也不隨一般候選轉正被刪除。

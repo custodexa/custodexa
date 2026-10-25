@@ -14,6 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/modules/authz/disclosure"
 	"github.com/custodexa/backend/internal/modules/identity"
 )
 
@@ -46,7 +47,11 @@ type CredentialServiceInterface interface {
 	Unbind(ctx context.Context, credentialID, accountID uint) error
 	Rebind(ctx context.Context, assetID, accountID, credentialID uint) (*asset.AssetAccountDTO, error)
 	ConvertScope(ctx context.Context, id uint, req *asset.ConvertCredentialScopeRequest) (*asset.CredentialDTO, error)
+	ReassignOwnership(ctx context.Context, req *asset.ReassignCredentialOwnershipRequest) (*asset.ReassignCredentialOwnershipResult, error)
 	SetSecret(ctx context.Context, id uint, req *asset.SetCredentialSecretRequest) (*asset.CredentialDTO, error)
+	ConfirmImpact(ctx context.Context, id uint, req *asset.ConfirmCredentialImpactRequest) (*asset.ConfirmCredentialImpactResult, error)
+	// BindingAssetID 掛載所屬資產識別（審計主體鍵用，不經讀取能力，只回識別）。
+	BindingAssetID(credentialID, accountID uint) uint
 }
 
 // CredentialRotationServiceInterface 憑證輪替引擎（介面化供測試注入）。
@@ -56,10 +61,16 @@ type CredentialRotationServiceInterface interface {
 	Detach(ctx context.Context, credentialID, accountID uint, req asset.DetachCredentialRequest) (*model.CredentialRotation, error)
 	Run(ctx context.Context, rotationID uint) error
 	RunMember(ctx context.Context, rotationID, memberID uint) error
+	RunMemberResult(ctx context.Context, rotationID, memberID uint,
+		origin asset.RotationRecordOrigin) (*asset.MemberRunResult, error)
 	Abandon(ctx context.Context, rotationID uint) error
+	// RequireRotationTarget 補跑與放棄的憑證層判定，須先於 Rotation 與任何輪次狀態檢查
+	RequireRotationTarget(ctx context.Context, credentialID uint) error
 	Rotation(credentialID, rotationID uint) (*model.CredentialRotation, error)
 	Members(rotationID uint) ([]model.CredentialRotationMember, error)
 	AggregateState(credentialID uint) (string, error)
+	UnsettledRotationID(credentialID uint) (uint, error)
+	CandidateKeptMembers(rotationID uint) (map[uint]bool, error)
 }
 
 // CredentialRotationStatusResolver 一筆憑證的輪替合規狀態（其全部掛載的狀態桶取最嚴）。
@@ -77,6 +88,24 @@ type CredentialHandler struct {
 	// rotationStatus 列表的輪替狀態篩選。**建構期必填**：設為可選欄位＋nil 時
 	// 不過濾，等於讓「只看逾期的那幾筆」靜默回成全部——而畫面上看不出差別
 	rotationStatus CredentialRotationStatusResolver
+	// takeover 主機身分人工承接服務。組裝根在啟動時確認它完整就緒才注入
+	takeover *asset.HostIdentityTakeoverService
+	// confirmer 帶確認的補跑所呼叫的動作；由 SetHostIdentityTakeover 設為 takeover
+	confirmer hostIdentityConfirmer
+}
+
+// SetHostIdentityTakeover 注入人工承接服務。
+func (h *CredentialHandler) SetHostIdentityTakeover(s *asset.HostIdentityTakeoverService) {
+	h.takeover = s
+	h.confirmer = nil
+	if s != nil {
+		h.confirmer = s
+	}
+}
+
+// HostIdentityTakeoverWired 承接服務已注入且依賴完整（組裝自檢用）。
+func (h *CredentialHandler) HostIdentityTakeoverWired() bool {
+	return h != nil && h.takeover != nil && len(h.takeover.WiringGaps()) == 0
 }
 
 // NewCredentialHandler 建立 handler。三個相依皆為建構期必填：
@@ -94,8 +123,8 @@ func NewCredentialHandler(credentials CredentialServiceInterface,
 
 // credentialRotationDTO 一次輪替的對外表示（不含任何秘密材料）。
 type credentialRotationDTO struct {
-	ID           uint `json:"id"`
-	CredentialID uint `json:"credential_id"`
+	ID           uint  `json:"id"`
+	CredentialID uint  `json:"credential_id"`
 	Epoch        int64 `json:"epoch"`
 	// Mode 見 model.CredentialRotationMode* 常數
 	Mode string `json:"mode"`
@@ -106,8 +135,11 @@ type credentialRotationDTO struct {
 	StartedAt       string `json:"started_at"`
 	FinishedAt      string `json:"finished_at,omitempty"`
 	// AggregateState 憑證當下的聚合態（見 model.CredentialAggregate* 常數）
-	AggregateState string                        `json:"aggregate_state,omitempty"`
-	Members        []credentialRotationMemberDTO `json:"members"`
+	AggregateState string `json:"aggregate_state,omitempty"`
+	// Unsettled 本輪已放棄、但仍是憑證要逐台補跑至收斂的那一輪（見憑證詳情的
+	// unsettled_rotation_id）；呈現面據此決定放棄後還給哪些成員補跑
+	Unsettled bool                          `json:"unsettled,omitempty"`
+	Members   []credentialRotationMemberDTO `json:"members"`
 }
 
 // credentialRotationMemberDTO 輪替的逐掛載成員。
@@ -126,6 +158,13 @@ type credentialRotationMemberDTO struct {
 	NextAttemptAt string `json:"next_attempt_at,omitempty"`
 	LastError     string `json:"last_error,omitempty"`
 	AppliedAt     string `json:"applied_at,omitempty"`
+	// CandidateKept 該掛載的候選仍在（只在已放棄、仍待逐台補跑的那一輪帶出）：拆分模式
+	// 已收束的成員有候選才給補跑——那台可能已在用候選裡的新秘密
+	CandidateKept bool `json:"candidate_kept,omitempty"`
+	// HostIdentity 本次補跑被主機身分守衛擋下時的唯讀檢視；只在補跑的回應中出現於被補跑的那一台
+	HostIdentity *asset.HostIdentityView `json:"host_identity,omitempty"`
+	// Reason 帶確認的補跑因授權目標已改變而未執行時的既有原因碼；其他情形不帶
+	Reason string `json:"reason,omitempty"`
 }
 
 const credentialTimeLayout = "2006-01-02T15:04:05Z07:00"
@@ -172,6 +211,8 @@ type startRotationBody struct {
 	Mode string `json:"mode"`
 	// Policy 密碼生成策略（語義與改密計劃相同）
 	Policy asset.PasswordPolicy `json:"policy"`
+	// ImpactConfirmationID 範圍外影響確認識別（範圍外集合為空時不看）
+	ImpactConfirmationID string `json:"impact_confirmation_id"`
 }
 
 // --- 錯誤出口 ---
@@ -181,14 +222,31 @@ type startRotationBody struct {
 // 已知哨兵依 errors.Is 映射到機器碼，未知一律 RespondInternal（成因只落伺服端
 // 日誌）。**「不存在」與「不可見」在同一個 case 上**：兩者必須產生位元相同的回應。
 func respondCredentialError(c *gin.Context, internalCode apierror.ErrCode, err error) {
+	if respondCredentialOwnershipError(c, err) {
+		return
+	}
 	var inUse *asset.CredentialInUseError
 	if errors.As(err, &inUse) {
 		// 名單走回應 body 而非錯誤 params：params 只收受控值域，資產名是自由字串。
 		// 名單本身只對具憑證管理權限者可見，而本端點已在該授權點之後
-		c.JSON(http.StatusConflict, gin.H{
-			"code":   string(apierror.CodeCredentialInUse),
-			"assets": inUse.Assets,
+		body := gin.H{"code": string(apierror.CodeCredentialInUse), "assets": inUse.Assets}
+		if inUse.Scoped {
+			// 範圍化檢視者：名單只含範圍內資產名，範圍外只給台數（揭露登錄固定欄名與函式）
+			body[disclosure.FieldOutOfScopeAssetCount] = disclosure.Count(disclosure.OutOfScopeAssetCount, inUse.OutOfScopeAssets)
+		}
+		c.JSON(http.StatusConflict, body)
+		return
+	}
+	var impactRequired *asset.CredentialImpactConfirmationRequiredError
+	if errors.As(err, &impactRequired) {
+		// 台數經揭露登錄的範圍外台數轉出；零變更、零遠端（交易已回滾）
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialImpactConfirmationRequired, map[string]any{
+			"count": disclosure.Count(disclosure.OutOfScopeAssetCount, impactRequired.Count),
 		})
+		return
+	}
+	if errors.Is(err, asset.ErrCredentialImpactOperationInvalid) {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
 		return
 	}
 	var detachFailed *asset.CredentialDetachFailedError
@@ -202,6 +260,11 @@ func respondCredentialError(c *gin.Context, internalCode apierror.ErrCode, err e
 		return
 	}
 
+	// 範圍化檢視者的能力拒絕（判定先於目標解析，與目標存在與否無關）：單一 forbidden
+	if asset.IsForbiddenCapabilityDenial(err) {
+		respondAssetCapabilityDenial(c, err)
+		return
+	}
 	switch {
 	case errors.Is(err, asset.ErrCredentialNotFound),
 		// 對受影響資產無權限與憑證不存在共用收斂回應：分流即成為存在性探測器
@@ -358,6 +421,21 @@ func (h *CredentialHandler) List(c *gin.Context) {
 		return
 	}
 	filter.ProtocolFamily = family
+	filter.Ownership = c.Query("ownership")
+	if filter.Ownership != "" && filter.Ownership != model.CredentialOwnerGlobal &&
+		filter.Ownership != model.CredentialOwnerAsset && filter.Ownership != model.CredentialOwnerNode {
+		respondInvalidQueryParam(c, "ownership")
+		return
+	}
+	if raw := c.Query("owner_node_id"); raw != "" {
+		nodeID, perr := strconv.ParseUint(raw, 10, 32)
+		if perr != nil || nodeID == 0 {
+			respondInvalidQueryParam(c, "owner_node_id")
+			return
+		}
+		n := uint(nodeID)
+		filter.OwnerNodeID = &n
+	}
 	rotationState := c.Query("rotation_state")
 	if rotationState != "" && !asset.IsRotationBucket(rotationState) {
 		respondInvalidQueryParam(c, "rotation_state")
@@ -391,7 +469,12 @@ func (h *CredentialHandler) List(c *gin.Context) {
 	if page > 0 {
 		items = credentialPageSlice(items, page, pageSize)
 	}
-	c.JSON(http.StatusOK, gin.H{"data": items, "total": total})
+	rows, err := credentialRowsJSON(items)
+	if err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialList, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": rows, "total": total})
 }
 
 // 列表分頁的預設與上限。上限是為了讓「一次要一萬筆」這種請求不必逐筆投影。
@@ -497,11 +580,16 @@ func (h *CredentialHandler) Get(c *gin.Context) {
 	}
 	// 聚合態併入詳情：憑證庫的動作區要據它決定哪些動作此刻可執行，
 	// 讓前端再打一次改密端點才問得到會多出一個可能不一致的中間狀態
-	if state, serr := h.rotations.AggregateState(id); serr == nil {
-		c.JSON(http.StatusOK, gin.H{"data": detail, "aggregate_state": state})
+	data, derr := credentialDetailJSON(detail)
+	if derr != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialGet, derr)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": detail})
+	if state, serr := h.rotations.AggregateState(id); serr == nil {
+		c.JSON(http.StatusOK, gin.H{"data": data, "aggregate_state": state})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": data})
 }
 
 // Create 建立共用憑證（零掛載的待用狀態）。
@@ -636,6 +724,21 @@ func (h *CredentialHandler) ConvertScope(c *gin.Context) {
 	c.JSON(http.StatusOK, dto)
 }
 
+// ReassignOwnership 批次改歸共用憑證的管理歸屬（整批原子；任一筆不可操作只回筆數）。
+func (h *CredentialHandler) ReassignOwnership(c *gin.Context) {
+	var req asset.ReassignCredentialOwnershipRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	res, err := h.credentials.ReassignOwnership(credentialContext(c), &req)
+	if err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialUpdate, err)
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
 // SetSecret 直接寫入新密文（建新版本，不動遠端；供補登既有密碼）。
 func (h *CredentialHandler) SetSecret(c *gin.Context) {
 	id, ok := credentialParam(c)
@@ -655,6 +758,34 @@ func (h *CredentialHandler) SetSecret(c *gin.Context) {
 	c.JSON(http.StatusOK, dto)
 }
 
+// ConfirmImpact 建立範圍外影響確認：宣告新秘密或遠端輪替提交前，先取得範圍外台數與不透明確認識別。
+// 範圍外集合為空回 required=false；回應不含任何範圍外資產識別、名稱或節點。
+func (h *CredentialHandler) ConfirmImpact(c *gin.Context) {
+	id, ok := credentialParam(c)
+	if !ok {
+		return
+	}
+	var req asset.ConfirmCredentialImpactRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	res, err := h.credentials.ConfirmImpact(credentialContext(c), id, &req)
+	if err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialSecret, err)
+		return
+	}
+	body, err := withOutOfScopeCount(res, res.OutOfScopeAssets)
+	if err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialSecret, err)
+		return
+	}
+	if res.OutOfScopeAssets == 0 {
+		delete(body, disclosure.FieldOutOfScopeAssetCount)
+	}
+	c.JSON(http.StatusOK, body)
+}
+
 // StartRotation 發起改密（整組或拆分）。**非同步**：n 台各自連線與驗證，
 // 同步等待會讓請求掛到逾時。回 202 與輪替識別，進度由 GET 進度端點輪詢。
 func (h *CredentialHandler) StartRotation(c *gin.Context) {
@@ -667,7 +798,7 @@ func (h *CredentialHandler) StartRotation(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
 		return
 	}
-	req := asset.StartRotationRequest{Policy: body.Policy}
+	req := asset.StartRotationRequest{Policy: body.Policy, ImpactConfirmationID: body.ImpactConfirmationID}
 	ctx := credentialContext(c)
 
 	var rot *model.CredentialRotation
@@ -699,6 +830,11 @@ func (h *CredentialHandler) GetRotation(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// 進度查詢與詳情同一道檢視裁決：範圍外與不存在的憑證在此收斂為同形回應
+	if _, err := h.credentials.Get(credentialContext(c), id); err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationGet, err)
+		return
+	}
 	rot, err := h.rotations.Rotation(id, rid)
 	if err != nil {
 		respondCredentialError(c, apierror.CodeInternalCredentialRotationGet, err)
@@ -708,6 +844,8 @@ func (h *CredentialHandler) GetRotation(c *gin.Context) {
 }
 
 // RetryMember 逐台補跑。**同步**：只動一台，操作者要當下的結果。
+// 選用 body：{"confirm_host_identity": {...}} 明示承接主機身分停止的成員；
+// 不帶 body 時行為與回應形狀不變，只在成員被主機身分守衛擋下時該成員多帶 host_identity。
 func (h *CredentialHandler) RetryMember(c *gin.Context) {
 	id, ok := credentialParam(c)
 	if !ok {
@@ -721,21 +859,87 @@ func (h *CredentialHandler) RetryMember(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// 形狀先於一切查詢與服務呼叫：不合法的 body 不會觸及任何狀態
+	confirm, err := parseHostIdentityConfirmBody(c)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	// 憑證層判定先於輪替歸屬查詢：範圍外憑證與不存在同形，輪替識別不得用來探測範圍外的輪次
+	if err := h.rotations.RequireRotationTarget(credentialContext(c), id); err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, err)
+		return
+	}
 	// 憑證識別是判定的一部分：先確認該輪替屬於路徑上的憑證，再推進成員
 	if _, err := h.rotations.Rotation(id, rid); err != nil {
 		respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, err)
 		return
 	}
-	if err := h.rotations.RunMember(credentialContext(c), rid, mid); err != nil {
-		respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, err)
-		return
+	var (
+		hostIdentity *asset.HostIdentityView
+		reason       string
+	)
+	if confirm != nil {
+		switch cerr := h.confirmMember(c, rid, mid, *confirm); {
+		case cerr == nil, errors.Is(cerr, asset.ErrHostIdentityVerifyFailed):
+			// 驗證沒有通過：成員保留、可再次確認，失敗原因在成員的最近錯誤
+		case isHostIdentityTargetChanged(cerr):
+			reason = model.ChangeSecretReasonAuthzTargetChanged
+		default:
+			respondHostIdentityMemberError(c, cerr)
+			return
+		}
+	} else {
+		res, err := h.rotations.RunMemberResult(credentialContext(c), rid, mid, asset.RotationRecordOrigin{})
+		if err != nil {
+			respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, err)
+			return
+		}
+		if res != nil {
+			hostIdentity = res.HostIdentity
+		}
 	}
 	rot, err := h.rotations.Rotation(id, rid)
 	if err != nil {
 		respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": h.rotationView(rot)})
+	view := h.rotationView(rot)
+	for i := range view.Members {
+		if view.Members[i].ID == mid {
+			view.Members[i].HostIdentity = hostIdentity
+			view.Members[i].Reason = reason
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": view})
+}
+
+// confirmMember 帶確認的補跑：先確認成員屬於該輪替（不存在與不屬於同一回應），再交給承接服務。
+func (h *CredentialHandler) confirmMember(c *gin.Context, rid, mid uint, req asset.HostIdentityConfirmRequest) error {
+	members, err := h.rotations.Members(rid)
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range members {
+		found = found || members[i].ID == mid
+	}
+	if !found {
+		return asset.ErrCredentialRotationMemberNotFound
+	}
+	if h.confirmer == nil {
+		return errors.New("人工承接服務未注入")
+	}
+	return h.confirmer.ConfirmHostIdentityAndVerify(credentialContext(c), "member", mid, req)
+}
+
+// respondHostIdentityMemberError 承接錯誤的出口：成員不存在走憑證端點既有的 404，其餘與候選共用同一組對映。
+func respondHostIdentityMemberError(c *gin.Context, err error) {
+	if errors.Is(err, asset.ErrCredentialRotationMemberNotFound) {
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeCredentialRotationMemberNotFound, nil)
+		return
+	}
+	respondHostIdentityConfirmError(c, apierror.CodeInternalCredentialRotationRetry, err)
 }
 
 // AbandonRotation 放棄本輪（不回滾已動過的遠端；未動過的成員標為放棄）。
@@ -746,6 +950,11 @@ func (h *CredentialHandler) AbandonRotation(c *gin.Context) {
 	}
 	rid, ok := credentialRotationParam(c)
 	if !ok {
+		return
+	}
+	// 憑證層判定先於輪替歸屬與「已結束」的狀態檢查：範圍外憑證與不存在同形
+	if err := h.rotations.RequireRotationTarget(credentialContext(c), id); err != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationAbandon, err)
 		return
 	}
 	if _, err := h.rotations.Rotation(id, rid); err != nil {
@@ -804,7 +1013,24 @@ func (h *CredentialHandler) rotationView(rot *model.CredentialRotation) credenti
 		log.Printf("[Credential] 查詢聚合態失敗: credential=%d err=%v", rot.CredentialID, err)
 		aggregate = ""
 	}
-	return newRotationDTO(rot, members, aggregate)
+	out := newRotationDTO(rot, members, aggregate)
+	if rot.Status == model.CredentialRotationAbandoned {
+		unsettled, uerr := h.rotations.UnsettledRotationID(rot.CredentialID)
+		if uerr != nil {
+			log.Printf("[Credential] 查詢未收束輪替失敗: credential=%d err=%v", rot.CredentialID, uerr)
+		}
+		out.Unsettled = uerr == nil && unsettled == rot.ID
+		if out.Unsettled {
+			kept, kerr := h.rotations.CandidateKeptMembers(rot.ID)
+			if kerr != nil {
+				log.Printf("[Credential] 查詢成員候選失敗: rotation=%d err=%v", rot.ID, kerr)
+			}
+			for i := range out.Members {
+				out.Members[i].CandidateKept = kept[out.Members[i].ID]
+			}
+		}
+	}
+	return out
 }
 
 // bindingAssetID 取掛載列所屬的資產識別，供審計主體鍵注入。
@@ -812,16 +1038,7 @@ func (h *CredentialHandler) rotationView(rot *model.CredentialRotation) credenti
 // 取不到時回 0（`setAuditAssetIDValue` 對 0 是空操作）：主體鍵是查詢的便利，
 // 不該讓一次合法的卸載因為多查一次失敗而被拒。
 func (h *CredentialHandler) bindingAssetID(credentialID, accountID uint) uint {
-	detail, err := h.credentials.Get(context.Background(), credentialID)
-	if err != nil || detail == nil {
-		return 0
-	}
-	for _, b := range detail.Bindings {
-		if b.AccountID == accountID {
-			return b.AssetID
-		}
-	}
-	return 0
+	return h.credentials.BindingAssetID(credentialID, accountID)
 }
 
 // runRotationAsync 於背景推進整輪。
@@ -845,8 +1062,9 @@ func (h *CredentialHandler) runRotationAsync(rotationID uint) {
 
 // RegisterRoutes 註冊憑證庫路由。
 //
-// 整組 admin ＋ credential:manage：憑證是登入身分的本體，其管理面的權限不得低於
-// 改資產。掛載清單與拓撲同受此授權點保護（見 credential_handler 檔頭）。
+// 讀取路由認憑證檢視能力；寫入路由在路由層只確認主體持有任一憑證語義管理能力
+// （補跑與放棄只認遠端輪替能力），各動作所需的能力與影響集合由服務層逐項裁決。
+// 憑證是登入身分的本體，掛載清單與拓撲同受這組授權保護（見 credential_handler 檔頭）。
 //
 // 單台脫離只有這一支端點（`/credentials/:id/bindings/:accountId/detach`）：
 // 編輯資產抽屜與憑證庫掛載列都打它——兩支端點的規則會漂移，而漂移的方向是
@@ -854,11 +1072,11 @@ func (h *CredentialHandler) runRotationAsync(rotationID uint) {
 func (h *CredentialHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/credentials")
 	g.Use(middleware.AuthMiddleware(authService))
-	g.Use(middleware.RequireRole("admin"))
-	g.Use(middleware.RequirePermission(middleware.PermCredentialManage))
+	g.Use(middleware.EnforceRegistry())
 	{
 		g.GET("", h.List)
 		g.POST("", h.Create)
+		g.POST("/ownership", h.ReassignOwnership)
 		g.GET("/:id", h.Get)
 		g.PUT("/:id", h.Update)
 		g.DELETE("/:id", h.Delete)
@@ -867,6 +1085,7 @@ func (h *CredentialHandler) RegisterRoutes(r *gin.RouterGroup, authService *iden
 		g.POST("/:id/bindings/:accountId/detach", h.Detach)
 		g.POST("/:id/scope", h.ConvertScope)
 		g.POST("/:id/secret", h.SetSecret)
+		g.POST("/:id/impact-confirmations", h.ConfirmImpact)
 		g.POST("/:id/rotations", h.StartRotation)
 		g.GET("/:id/rotations/:rid", h.GetRotation)
 		g.POST("/:id/rotations/:rid/members/:mid/retry", h.RetryMember)
@@ -877,8 +1096,7 @@ func (h *CredentialHandler) RegisterRoutes(r *gin.RouterGroup, authService *iden
 	// 路徑上的主體是資產而非憑證，審計主體鍵因此由路由層即可推導
 	rebind := r.Group("/assets/:id/accounts/:accountId")
 	rebind.Use(middleware.AuthMiddleware(authService))
-	rebind.Use(middleware.RequireRole("admin"))
-	rebind.Use(middleware.RequirePermission(middleware.PermCredentialManage))
+	rebind.Use(middleware.EnforceRegistry())
 	{
 		rebind.PUT("/credential", h.RebindAccount)
 	}

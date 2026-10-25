@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"golang.org/x/crypto/ssh"
 	"sync"
 	"testing"
 
@@ -25,11 +26,16 @@ type fakeExecutor struct {
 	verifyCalls []rotationTarget
 	rotateErr   error
 	verifyErr   error
+	// hostKey 選用：設定時動作前以它呼叫 t.hostKeyCB（同 secretRecorder）
+	hostKey ssh.PublicKey
 }
 
 func (f *fakeExecutor) Rotate(_ context.Context, t rotationTarget, _, _ []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := presentHostKeyTo(t, f.hostKey); err != nil {
+		return err
+	}
 	f.rotateCalls = append(f.rotateCalls, t)
 	return f.rotateErr
 }
@@ -37,6 +43,9 @@ func (f *fakeExecutor) Rotate(_ context.Context, t rotationTarget, _, _ []byte) 
 func (f *fakeExecutor) Verify(_ context.Context, t rotationTarget, _ []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := presentHostKeyTo(t, f.hostKey); err != nil {
+		return err
+	}
 	f.verifyCalls = append(f.verifyCalls, t)
 	return f.verifyErr
 }
@@ -70,7 +79,7 @@ func (c *channelRecorder) sawChannel(channel string) bool {
 func (f *csFixture) addRotationAsset(t *testing.T, req *CreateAssetRequest) uint {
 	t.Helper()
 	req.CreatedBy = 1
-	asset, err := f.assets.Create(context.Background(), req)
+	asset, err := f.assets.Create(WithSystemCaller(context.Background()), req)
 	require.NoError(t, err)
 	var acct model.AssetAccount
 	require.NoError(t, f.db.Where("asset_id = ?", asset.ID).First(&acct).Error)
@@ -110,7 +119,7 @@ func TestRotationExecutorSelectedByChannel(t *testing.T) {
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTP,
 	})
 
-	fake := &fakeExecutor{}
+	fake := &fakeExecutor{hostKey: defaultRecorderHostKey()}
 	rec := &channelRecorder{inner: func(string) rotationExecutor { return fake }}
 	f.runner.executors = rec.factory
 

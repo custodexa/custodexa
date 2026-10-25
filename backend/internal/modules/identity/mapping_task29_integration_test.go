@@ -47,7 +47,7 @@ func TestMappedGroupAuthorizationAndApproverEligibilityImmediate(t *testing.T) {
 	disabled := false
 	if _, err := f.service.UpdateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, ruleID, UserGroupMappingInput{
 		MatchValue: "external-operators", UserGroupID: groupID, Enabled: &disabled, RiskAcknowledged: true,
-		Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username},
+		Actor: f.act(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestMappedGroupAuthorizationAndApproverEligibilityImmediate(t *testing.T) {
 	enabled := true
 	if _, err := f.service.UpdateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, ruleID, UserGroupMappingInput{
 		MatchValue: "external-operators", UserGroupID: groupID, Enabled: &enabled, RiskAcknowledged: true,
-		Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username},
+		Actor: f.act(),
 	}); err != nil {
 		t.Fatal(err)
 	}

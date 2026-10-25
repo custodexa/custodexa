@@ -9,12 +9,15 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/k8sproxy"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -73,7 +76,7 @@ func (m *MockAssetService) Update(ctx context.Context, id uint, req *asset.Updat
 	return args.Get(0).(*model.Asset), args.Error(1)
 }
 
-func (m *MockAssetService) Delete(id uint) error {
+func (m *MockAssetService) Delete(_ context.Context, id uint) error {
 	args := m.Called(id)
 	return args.Error(0)
 }
@@ -112,6 +115,14 @@ func (m *MockAssetService) AssetIDsForNodeFilter(nodeID *uint, includeSubtree, u
 	return args.Get(0).(map[uint]bool), args.Error(1)
 }
 
+func (m *MockAssetService) ListTagsForAssetIDs(ids []uint) ([]asset.TagCount, error) {
+	args := m.Called(ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]asset.TagCount), args.Error(1)
+}
+
 func (m *MockAssetService) ListTags() ([]asset.TagCount, error) {
 	args := m.Called()
 	if args.Get(0) == nil {
@@ -128,6 +139,21 @@ func (m *MockAssetService) RenameTag(ctx context.Context, from, to string) (int6
 func (m *MockAssetService) DeleteTag(ctx context.Context, name string) (int64, error) {
 	args := m.Called(name)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockAssetService) BatchMove(ctx context.Context, ids []uint, targetNodeID uint) (asset.BatchResult, error) {
+	args := m.Called(ids, targetNodeID)
+	return args.Get(0).(asset.BatchResult), args.Error(1)
+}
+
+func (m *MockAssetService) BatchAddTags(ctx context.Context, ids []uint, tags []string) (asset.BatchResult, error) {
+	args := m.Called(ids, tags)
+	return args.Get(0).(asset.BatchResult), args.Error(1)
+}
+
+func (m *MockAssetService) BatchDelete(ctx context.Context, ids []uint) (asset.BatchResult, error) {
+	args := m.Called(ids)
+	return args.Get(0).(asset.BatchResult), args.Error(1)
 }
 
 // MockAssetAuthorizationService - AssetAuthorizationService 的 mock
@@ -219,7 +245,7 @@ func TestAssetHandler_List(t *testing.T) {
 		router := setupTestRouter()
 		// 收斂後全量分支僅 admin/auditor 可達
 		router.GET("/assets", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.List(c)
 		})
 
@@ -257,7 +283,7 @@ func TestAssetHandler_List(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.List(c)
 		})
 
@@ -294,7 +320,7 @@ func TestAssetHandler_List(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.List(c)
 		})
 
@@ -327,7 +353,7 @@ func TestAssetHandler_List(t *testing.T) {
 		router.GET("/assets", func(c *gin.Context) {
 			// 模擬認證中間件設定 userID
 			c.Set("userID", uint(1))
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.List(c)
 		})
 
@@ -375,7 +401,7 @@ func TestAssetHandler_List(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.List(c)
 		})
 
@@ -410,7 +436,7 @@ func TestAssetHandler_List(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.List(c)
 		})
 
@@ -594,7 +620,7 @@ func TestAssetHandler_Get(t *testing.T) {
 		router := setupTestRouter()
 		// admin 不做逐資產授權檢查
 		router.GET("/assets/:id", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Get(c)
 		})
 
@@ -643,7 +669,7 @@ func TestAssetHandler_Get(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets/:id", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Get(c)
 		})
 
@@ -680,7 +706,7 @@ func TestAssetHandler_ServerSideScoping(t *testing.T) {
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
 			c.Set("userID", uint(7))
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.List(c)
 		})
 
@@ -717,7 +743,7 @@ func TestAssetHandler_ServerSideScoping(t *testing.T) {
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
 			c.Set("userID", uint(7))
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.List(c)
 		})
 
@@ -770,7 +796,7 @@ func TestAssetHandler_ServerSideScoping(t *testing.T) {
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
 			c.Set("userID", uint(7))
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.List(c)
 		})
 
@@ -802,7 +828,7 @@ func TestAssetHandler_ServerSideScoping(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets/:id",
-			func(c *gin.Context) { c.Set("userID", uint(7)); c.Set("role", "user") },
+			func(c *gin.Context) { c.Set("userID", uint(7)); middleware.SetPrincipal(c, legacyPrincipal("user")) },
 			middleware.RequireAssetVisible(mockAuthService), handler.Get)
 
 		req := httptest.NewRequest("GET", "/assets/42", nil)
@@ -829,7 +855,7 @@ func TestAssetHandler_ServerSideScoping(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets/:id",
-			func(c *gin.Context) { c.Set("userID", uint(7)); c.Set("role", "user") },
+			func(c *gin.Context) { c.Set("userID", uint(7)); middleware.SetPrincipal(c, legacyPrincipal("user")) },
 			middleware.RequireAssetVisible(mockAuthService), handler.Get)
 
 		req := httptest.NewRequest("GET", "/assets/42", nil)
@@ -851,7 +877,7 @@ func TestAssetHandler_ServerSideScoping(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
 		router.GET("/assets/:id/k8s/pods",
-			func(c *gin.Context) { c.Set("userID", uint(7)); c.Set("role", "user") },
+			func(c *gin.Context) { c.Set("userID", uint(7)); middleware.SetPrincipal(c, legacyPrincipal("user")) },
 			middleware.RequireAssetVisible(mockAuthService), handler.ListK8sPods)
 
 		req := httptest.NewRequest("GET", "/assets/42/k8s/pods", nil)
@@ -883,7 +909,9 @@ func TestAssetHandler_Update(t *testing.T) {
 
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
-		router.PUT("/assets/:id", func(c *gin.Context) {
+		router.PUT("/api/v1/assets/:id", func(c *gin.Context) {
+			// 欄位閘以完整路由樣板查登錄，並需要已解析的主體
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			c.Set("userID", uint(1))
 			c.Set("username", "testuser")
 			handler.Update(c)
@@ -894,7 +922,7 @@ func TestAssetHandler_Update(t *testing.T) {
 			"host": "192.168.1.101",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
-		req := httptest.NewRequest("PUT", "/assets/1", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("PUT", "/api/v1/assets/1", bytes.NewBuffer(jsonBody))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -916,13 +944,17 @@ func TestAssetHandler_Update(t *testing.T) {
 
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
-		router.PUT("/assets/:id", handler.Update)
+		router.PUT("/api/v1/assets/:id", func(c *gin.Context) {
+			// 欄位閘以完整路由樣板查登錄，並需要已解析的主體
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
+			handler.Update(c)
+		})
 
 		requestBody := map[string]interface{}{
 			"name": "test",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
-		req := httptest.NewRequest("PUT", "/assets/invalid", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("PUT", "/api/v1/assets/invalid", bytes.NewBuffer(jsonBody))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -944,9 +976,13 @@ func TestAssetHandler_Update(t *testing.T) {
 
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
-		router.PUT("/assets/:id", handler.Update)
+		router.PUT("/api/v1/assets/:id", func(c *gin.Context) {
+			// 欄位閘以完整路由樣板查登錄，並需要已解析的主體
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
+			handler.Update(c)
+		})
 
-		req := httptest.NewRequest("PUT", "/assets/1", bytes.NewBuffer([]byte("invalid json")))
+		req := httptest.NewRequest("PUT", "/api/v1/assets/1", bytes.NewBuffer([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -969,13 +1005,17 @@ func TestAssetHandler_Update(t *testing.T) {
 
 		handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
 		router := setupTestRouter()
-		router.PUT("/assets/:id", handler.Update)
+		router.PUT("/api/v1/assets/:id", func(c *gin.Context) {
+			// 欄位閘以完整路由樣板查登錄，並需要已解析的主體
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
+			handler.Update(c)
+		})
 
 		requestBody := map[string]interface{}{
 			"name": "test",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
-		req := httptest.NewRequest("PUT", "/assets/999", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("PUT", "/api/v1/assets/999", bytes.NewBuffer(jsonBody))
 		req.Header.Set("Content-Type", "application/json")
 
 		w := httptest.NewRecorder()
@@ -1219,6 +1259,7 @@ func TestAssetHandler_DownloadK8sFile_NoLeak(t *testing.T) {
 		Return(errors.New(secret))
 
 	handler := NewAssetHandler(mockAssetService, mockAuthService, nil)
+	handler.SetDataPlaneAuthorizer(allowAllDataPlane{})
 	router := setupTestRouter()
 	router.GET("/assets/:id/k8s/download", func(c *gin.Context) {
 		c.Set("userID", uint(7))
@@ -1261,7 +1302,7 @@ func TestAssetHandler_AuditorEntryPermission(t *testing.T) {
 		router := setupTestRouter()
 		router.GET("/assets", func(c *gin.Context) {
 			c.Set("userID", userID)
-			c.Set("role", role)
+			middleware.SetPrincipal(c, legacyPrincipal(role))
 			handler.List(c)
 		})
 		return router
@@ -1403,11 +1444,11 @@ func TestAssetHandler_ErrorEnvelope(t *testing.T) {
 		assert.Equal(t, "asset", params["resource"])
 	})
 
-	t.Run("標籤清單角色閘回 403 AUTH_TAG_LIST_PRIVILEGED_ONLY", func(t *testing.T) {
+	t.Run("標籤清單角色閘回 403 能力拒絕單一形狀", func(t *testing.T) {
 		handler := NewAssetHandler(new(MockAssetService), new(MockAssetAuthorizationService), nil)
 		router := setupTestRouter()
 		router.GET("/assets/tags", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.ListTags(c)
 		})
 
@@ -1415,7 +1456,8 @@ func TestAssetHandler_ErrorEnvelope(t *testing.T) {
 		router.ServeHTTP(w, httptest.NewRequest("GET", "/assets/tags", nil))
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
-		assert.Equal(t, "AUTH_TAG_LIST_PRIVILEGED_ONLY", decode(w)["code"])
+		assert.Equal(t, "AUTH_PERMISSION_DENIED", decode(w)["code"])
+		assert.Len(t, decode(w), 2, "能力拒絕本文只有 code、error")
 	})
 
 	t.Run("標籤改名驗證錯誤回 400 VALIDATION_TAG_TOO_LONG", func(t *testing.T) {
@@ -1425,7 +1467,7 @@ func TestAssetHandler_ErrorEnvelope(t *testing.T) {
 		handler := NewAssetHandler(mockAssetService, new(MockAssetAuthorizationService), nil)
 		router := setupTestRouter()
 		router.POST("/assets/tags/rename", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.RenameTag(c)
 		})
 
@@ -1445,6 +1487,7 @@ func TestK8sCopyNoAccountReason(t *testing.T) {
 			svc := new(MockAssetService)
 			auth := new(MockAssetAuthorizationService)
 			handler := NewAssetHandler(svc, auth, nil)
+			handler.SetDataPlaneAuthorizer(allowAllDataPlane{})
 			r := setupTestRouter()
 			r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); handler.DownloadK8sFile(c) })
 			r.POST("/assets/:id/k8s/upload", func(c *gin.Context) { c.Set("userID", uint(7)); handler.UploadK8sFile(c) })
@@ -1483,6 +1526,7 @@ func TestK8sCopyNoAccountReason(t *testing.T) {
 		svc := new(MockAssetService)
 		svc.On("K8sCopyFromPod", mock.Anything, uint(7), "mypod", "myctr", "/tmp/file", mock.AnythingOfType("string")).Return(errors.New("copy failed")).Once()
 		handler := NewAssetHandler(svc, new(MockAssetAuthorizationService), nil)
+		handler.SetDataPlaneAuthorizer(allowAllDataPlane{})
 		r := setupTestRouter()
 		r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); handler.DownloadK8sFile(c) })
 		w := httptest.NewRecorder()
@@ -1497,15 +1541,45 @@ func TestK8sCopyNoAccountReason(t *testing.T) {
 		svc.AssertExpectations(t)
 	})
 	t.Run("permission precedes copy", func(t *testing.T) {
+		// 路由登錄為已認證（資料面類別），授權改由資料面裁決器承擔：裁決拒絕時回該閘的既有碼
 		svc := new(MockAssetService)
 		handler := NewAssetHandler(svc, new(MockAssetAuthorizationService), nil)
+		handler.SetDataPlaneAuthorizer(denyConnectDataPlane{})
 		r := setupTestRouter()
-		r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); c.Set("role", "user") }, middleware.RequirePermission(middleware.PermAssetUpdate), handler.DownloadK8sFile)
+		// 登錄鍵以完整樣板查表：一般使用者通過登錄（已認證），再由裁決器拒絕
+		r.GET("/api/v1/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); middleware.SetPrincipal(c, legacyPrincipal("user")) }, middleware.EnforceRegistry(), handler.DownloadK8sFile)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest("GET", "/assets/7/k8s/download?pod=mypod&container=myctr&path=/tmp/file", nil))
-		if w.Code != http.StatusForbidden {
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/assets/7/k8s/download?pod=mypod&container=myctr&path=/tmp/file", nil))
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "AUTH_ASSET_CONNECT_DENIED") {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 		}
 		svc.AssertNotCalled(t, "K8sCopyFromPod", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
+	t.Run("authorizer missing fails closed", func(t *testing.T) {
+		svc := new(MockAssetService)
+		handler := NewAssetHandler(svc, new(MockAssetAuthorizationService), nil)
+		r := setupTestRouter()
+		r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); handler.DownloadK8sFile(c) })
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/assets/7/k8s/download?pod=mypod&container=myctr&path=/tmp/file", nil))
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		svc.AssertNotCalled(t, "K8sCopyFromPod", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+// allowAllDataPlane 資料面裁決的測試替身：恆通過（本檔只測 handler 的其餘分支；
+// 裁決本體由 cmd/server 的 TestK8sDataPlaneAdjudication 以真閘序驗證）。
+type allowAllDataPlane struct{}
+
+func (allowAllDataPlane) AuthorizeDataPlane(*gin.Context, gatewayapi.ConnectSubject, uint, string) *gatewayapi.Denial {
+	return nil
+}
+
+// denyConnectDataPlane 資料面裁決的測試替身：以連線授權閘的既有拒絕回應。
+type denyConnectDataPlane struct{}
+
+func (denyConnectDataPlane) AuthorizeDataPlane(*gin.Context, gatewayapi.ConnectSubject, uint, string) *gatewayapi.Denial {
+	return &gatewayapi.Denial{Status: http.StatusForbidden, Decision: gatewayapi.Decision{Code: string(apierror.CodeAssetConnectDenied)}}
 }

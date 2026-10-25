@@ -13,6 +13,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
@@ -82,6 +83,9 @@ type GroupRoleMappingInput struct {
 	Role             string `json:"role"`
 	Enabled          *bool  `json:"enabled"`
 	RiskAcknowledged bool   `json:"risk_acknowledged"`
+
+	// 範圍欄位只用來偵測並整筆拒絕（映射規則本身沒有範圍）
+	MappingScopeFields
 
 	// Actor 由 handler 填入
 	Actor GroupRoleMappingActor `json:"-"`
@@ -231,9 +235,9 @@ func validateMatchValue(kind, raw string) (string, error) {
 }
 
 // mappingWarningsOf 這條規則命中哪些需要確認的情形（順序固定，供比對穩定）
-func mappingWarningsOf(roleName string, attrSet bool) []string {
+func mappingWarningsOf(role *model.Role, attrSet bool) []string {
 	var out []string
-	if roleName == model.RoleAdmin {
+	if role != nil && isSuperAdminRole(*role) {
 		out = append(out, mappingWarningTargetsAdminRole)
 	}
 	if !attrSet {
@@ -357,20 +361,19 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 	if s == nil || s.db == nil {
 		return nil, ErrMappingServiceUnavailable
 	}
-	source, err := resolveSource(s.db, kind, sourceID)
-	if err != nil {
+	if in.MappingScopeFields.Present() {
+		return nil, ErrMappingScopeFieldRejected
+	}
+	if _, err := resolveSource(s.db, kind, sourceID); err != nil {
 		return nil, err
 	}
 	matchValue, err := validateMatchValue(kind, in.MatchValue)
 	if err != nil {
 		return nil, err
 	}
-	role, err := roleByName(s.db, in.Role)
+	role, err := s.mappingDirectRole(s.db, in.Role)
 	if err != nil {
 		return nil, err
-	}
-	if warnings := mappingWarningsOf(role.Name, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
-		return nil, &MappingAckRequiredError{Warnings: warnings}
 	}
 	enabled := true
 	if in.Enabled != nil {
@@ -397,7 +400,24 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 	// 啟用，下一次登入重算即授出角色。落庫後在同一交易內補寫請求值，審計列隨後
 	// 讀同一個結構，記下的即實際落庫值
 	if err := withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
-		if _, err := resolveSource(tx, kind, sourceID); err != nil {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
+		source, err := resolveSource(tx, kind, sourceID)
+		if err != nil {
+			return err
+		}
+		// 守衛先於風險確認：沒有資格寫入的操作者不該被要求確認一件做不了的事
+		if err := s.guardMappingTargets(tx, in.Actor, nil, []uint{role.ID}); err != nil {
+			return err
+		}
+		if warnings := mappingWarningsOf(role, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
+			return &MappingAckRequiredError{Warnings: warnings}
+		}
+		tracker, err := s.beginRoleMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
+			OldMatch: matchValue, NewMatch: matchValue, NewEnabled: enabled, Created: true,
+		}, 0, role.ID)
+		if err != nil {
 			return err
 		}
 		groupID, err := ensureExternalGroupWithNote(tx, kind, sourceID, matchValue, in.Note)
@@ -414,6 +434,13 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 				Update("enabled", false).Error; err != nil {
 				return fmt.Errorf("建立群組映射規則失敗: %w", err)
 			}
+		}
+		// 權限版本：新規則於下一次登入重算即授出角色，與建列同交易
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return err
+		}
+		if err := tracker.finish(tx, row.ID); err != nil {
+			return err
 		}
 		return s.auditMapping(tx, in.Actor, model.ActionCreate, MappingAuditEventCreate,
 			kind, sourceID, row, role.Name, in.RiskAcknowledged, source)
@@ -434,8 +461,10 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 	if s == nil || s.db == nil {
 		return nil, ErrMappingServiceUnavailable
 	}
-	source, err := resolveSource(s.db, kind, sourceID)
-	if err != nil {
+	if in.MappingScopeFields.Present() {
+		return nil, ErrMappingScopeFieldRejected
+	}
+	if _, err := resolveSource(s.db, kind, sourceID); err != nil {
 		return nil, err
 	}
 	row, err := mappingRowOf(s.db, kind, sourceID, ruleID)
@@ -446,12 +475,9 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 	if err != nil {
 		return nil, err
 	}
-	role, err := roleByName(s.db, in.Role)
+	role, err := s.mappingDirectRole(s.db, in.Role)
 	if err != nil {
 		return nil, err
-	}
-	if warnings := mappingWarningsOf(role.Name, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
-		return nil, &MappingAckRequiredError{Warnings: warnings}
 	}
 	oldMatch, oldRole, oldEnabled := row.MatchValue, row.RoleID, row.Enabled
 	row.MatchValue = matchValue
@@ -460,7 +486,11 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 		row.Enabled = *in.Enabled
 	}
 	if err := withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
-		if _, err := resolveSource(tx, kind, sourceID); err != nil {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
+		source, err := resolveSource(tx, kind, sourceID)
+		if err != nil {
 			return err
 		}
 		current, err := mappingRowOf(tx, kind, sourceID, ruleID)
@@ -471,6 +501,24 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 			return fmt.Errorf("映射規則已被並行修改，請重試")
 		}
 		identityChanged := oldMatch != matchValue || oldRole != role.ID
+		// 沒有任何實際變動的存檔不是授權變更，不做守衛裁決
+		if identityChanged || oldEnabled != row.Enabled {
+			if err := s.guardMappingTargets(tx, in.Actor, []uint{oldRole}, []uint{role.ID}); err != nil {
+				return err
+			}
+		}
+		if warnings := mappingWarningsOf(role, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
+			return &MappingAckRequiredError{Warnings: warnings}
+		}
+		var tracker *mappingTracker
+		if identityChanged || oldEnabled != row.Enabled {
+			tracker, err = s.beginRoleMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
+				OldMatch: oldMatch, NewMatch: matchValue, OldEnabled: oldEnabled, NewEnabled: row.Enabled,
+			}, oldRole, role.ID)
+			if err != nil {
+				return err
+			}
+		}
 		if identityChanged {
 			groupID, err := ensureExternalGroupWithNote(tx, kind, sourceID, matchValue, in.Note)
 			if err != nil {
@@ -479,6 +527,9 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 			next := &model.GroupRoleMapping{LDAPDirectoryID: current.LDAPDirectoryID, OIDCProviderID: current.OIDCProviderID, ExternalGroupID: groupID, MatchValue: matchValue, RoleID: role.ID, Enabled: row.Enabled, CreatedBy: in.Actor.ID}
 			if err := tx.Create(next).Error; err != nil {
 				return err
+			}
+			if h := loadLockOrderHook(); h != nil {
+				h("mapping_role_after_rule_insert", tx, in.Actor.ID)
 			}
 			if !row.Enabled {
 				if err := tx.Model(next).Update("enabled", false).Error; err != nil {
@@ -499,6 +550,15 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 				}
 			}
 			if err := tx.Model(&model.GroupRoleMapping{}).Where("id=?", row.ID).Update("enabled", row.Enabled).Error; err != nil {
+				return err
+			}
+		}
+		// 權限版本：比對值、角色或啟用旗標有實際變動才推進（與寫入同交易）
+		if identityChanged || oldEnabled != row.Enabled {
+			if err := authz.AdvanceVersion(tx); err != nil {
+				return err
+			}
+			if err := tracker.finish(tx, row.ID); err != nil {
 				return err
 			}
 		}
@@ -543,10 +603,23 @@ func (s *IdentitySourceService) DeleteMapping(kind string, sourceID, ruleID uint
 		roleName = row.Role.Name
 	}
 	return withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		if _, err := resolveSource(tx, kind, sourceID); err != nil {
 			return err
 		}
-		if _, err := mappingRowOf(tx, kind, sourceID, ruleID); err != nil {
+		current, err := mappingRowOf(tx, kind, sourceID, ruleID)
+		if err != nil {
+			return err
+		}
+		if err := s.guardMappingTargets(tx, actor, []uint{current.RoleID}, nil); err != nil {
+			return err
+		}
+		tracker, err := s.beginRoleMappingWrite(tx, actor, kind, sourceID, mappingWrite{
+			OldMatch: current.MatchValue, OldEnabled: current.Enabled, Deleted: true,
+		}, current.RoleID, 0)
+		if err != nil {
 			return err
 		}
 		if err := revokeMappingSupportsLocked(tx, s.auditTx, kind, sourceID, "role", ruleID); err != nil {
@@ -554,6 +627,13 @@ func (s *IdentitySourceService) DeleteMapping(kind string, sourceID, ruleID uint
 		}
 		if err := tx.Delete(&model.GroupRoleMapping{}, row.ID).Error; err != nil {
 			return fmt.Errorf("刪除群組映射規則失敗: %w", err)
+		}
+		// 權限版本：與軟刪除同交易
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return err
+		}
+		if err := tracker.finish(tx, ruleID); err != nil {
+			return err
 		}
 		return s.auditMapping(tx, actor, model.ActionDelete, MappingAuditEventDelete,
 			kind, sourceID, row, roleName, false, source)
@@ -573,22 +653,6 @@ func mappingRowOf(tx *gorm.DB, kind string, sourceID, ruleID uint) (*model.Group
 	}
 	if len(rows) == 0 {
 		return nil, ErrMappingRuleNotFound
-	}
-	return &rows[0], nil
-}
-
-// roleByName 以角色名取角色列
-func roleByName(tx *gorm.DB, name string) (*model.Role, error) {
-	v := strings.TrimSpace(name)
-	if v == "" {
-		return nil, ErrMappingRoleUnknown
-	}
-	var rows []model.Role
-	if err := tx.Where("name = ?", v).Limit(1).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("查詢角色失敗: %w", err)
-	}
-	if len(rows) == 0 {
-		return nil, ErrMappingRoleUnknown
 	}
 	return &rows[0], nil
 }

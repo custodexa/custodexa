@@ -146,6 +146,29 @@ export function createApproverScope(data) {
   })
 }
 
+/**
+ * 審核方候選目錄：{ users: [{ id, username, display_name, active, is_approver, selectable }], groups: [{ id, name }] }
+ */
+export function getApproverScopeApproverOptions() {
+  return request({
+    url: '/approver-scopes/approver-options',
+    method: 'get',
+  })
+}
+
+/**
+ * 客體候選（依審核範圍管理權限投影）
+ * @param {Object} params - { kind: 'asset'|'node', search?, node_id?, page?, page_size?（上限 1000） }
+ * 回 { kind, data, total, page, page_size }；節點另帶 path 與 selectable（假者只作定位祖先）
+ */
+export function getApproverScopeTargetOptions(params) {
+  return request({
+    url: '/approver-scopes/target-options',
+    method: 'get',
+    params,
+  })
+}
+
 /** 移除審核範圍（admin only） */
 export function deleteApproverScope(id) {
   return request({

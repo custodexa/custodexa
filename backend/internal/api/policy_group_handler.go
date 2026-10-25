@@ -586,14 +586,14 @@ func (h *PolicyGroupHandler) RegisterRoutes(r *gin.RouterGroup, authService *ide
 	groups.Use(middleware.AuthMiddleware(authService))
 
 	read := groups.Group("")
-	read.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	read.Use(middleware.EnforceRegistry())
 	{
 		read.GET("", h.List)
 		read.GET(policyGroupCodePath, h.Get)
 	}
 
 	write := groups.Group("")
-	write.Use(middleware.RequireRole(model.RoleAdmin))
+	write.Use(middleware.EnforceRegistry())
 	{
 		write.POST("", h.Create)
 		write.PUT(policyGroupCodePath, h.Rename)

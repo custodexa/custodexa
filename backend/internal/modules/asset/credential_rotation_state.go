@@ -110,6 +110,72 @@ type memberTransition struct {
 	BumpAttempt bool
 	// NextAttemptAt 下次嘗試時刻（retry_wait 用）
 	NextAttemptAt *time.Time
+	// Verified 人工承接的邏輯驗證成功結果。逾期（終局失敗或已收束）成員轉入已就位
+	// 只接受帶它的轉移；其他轉移忽略此欄
+	Verified *verifiedConfirmation
+}
+
+// verifiedConfirmation 一次人工承接的「驗證成功」結果。
+//
+// 套件內未匯出；正式碼只有承接服務在單次邏輯驗證回 nil 之後的一處會建構它，
+// 未驗證、驗證失敗與驗證進行中都拿不到。transitionMember 只能核對紀錄身分與未消耗，
+// 分不出驗證是否成功，所以「驗證成功」完全由那唯一的建構點承擔。
+type verifiedConfirmation struct {
+	kind           string
+	jobID          uint
+	confirmationID uint
+	revision       int64
+	transport      string
+	algorithm      string
+	fingerprint    string
+}
+
+// ErrVerifiedConfirmationRequired 逾期成員轉入已就位卻沒有驗證成功的結果。
+var ErrVerifiedConfirmationRequired = errors.New("逾期的輪替成員只能經人工承接驗證成功後就位")
+
+// ErrVerifiedConfirmationInvalid 驗證結果與成員或承接紀錄對不上（零值身分、錯誤工作或次序、已消耗）。
+var ErrVerifiedConfirmationInvalid = errors.New("人工承接的驗證結果與承接紀錄不符")
+
+// isExpiredMemberState 逾期後停在終局的成員狀態：就位只能走人工承接。
+func isExpiredMemberState(state string) bool {
+	return state == model.CredentialMemberTerminalFailed || state == model.CredentialMemberAbandoned
+}
+
+// admitVerifiedApply 逾期成員轉入已就位的放行檢查：結果物件的身分欄不得為零值、須指向本成員，
+// 並在交易內重讀承接紀錄確認仍未消耗。不碰消耗本身，消耗在狀態更新成功之後。
+func admitVerifiedApply(tx *gorm.DB, member *model.CredentialRotationMember, opt memberTransition) error {
+	if opt.Verified == nil {
+		return ErrVerifiedConfirmationRequired
+	}
+	if opt.Verified.confirmationID == 0 || opt.Verified.jobID == 0 || opt.Verified.revision <= 0 ||
+		opt.Verified.kind != takeoverKindMember || opt.Verified.jobID != member.ID {
+		return ErrVerifiedConfirmationInvalid
+	}
+	var n int64
+	if err := tx.Model(&model.CredentialHostIdentityConfirmation{}).
+		Where("id = ? AND kind = ? AND job_id = ? AND revision = ? AND consumed_at IS NULL AND outcome = ''",
+			opt.Verified.confirmationID, opt.Verified.kind, opt.Verified.jobID, opt.Verified.revision).Count(&n).Error; err != nil {
+		return fmt.Errorf("重讀承接紀錄失敗: %w", err)
+	}
+	if n != 1 {
+		return ErrVerifiedConfirmationInvalid
+	}
+	return nil
+}
+
+// consumeVerifiedApply 同交易條件式消耗承接紀錄；受影響列數不為 1 即失敗，呼叫端整筆回滾。
+func consumeVerifiedApply(tx *gorm.DB, opt memberTransition) error {
+	res := tx.Model(&model.CredentialHostIdentityConfirmation{}).
+		Where("id = ? AND kind = ? AND job_id = ? AND revision = ? AND consumed_at IS NULL AND outcome = ''",
+			opt.Verified.confirmationID, opt.Verified.kind, opt.Verified.jobID, opt.Verified.revision).
+		Updates(map[string]any{"consumed_at": time.Now(), "outcome": takeoverOutcomeVerified})
+	if res.Error != nil {
+		return fmt.Errorf("消耗承接紀錄失敗: %w", res.Error)
+	}
+	if res.RowsAffected != 1 {
+		return ErrConfirmationNotConsumable
+	}
+	return nil
 }
 
 // transitionMember 於交易內套用一次成員狀態轉移。
@@ -125,7 +191,13 @@ func transitionMember(tx *gorm.DB, member *model.CredentialRotationMember,
 	if member == nil {
 		return ErrCredentialRotationMemberNotFound
 	}
-	if !isMemberTransitionAllowed(member.State, to) {
+	// 逾期成員轉入已就位：不在轉移表內，唯一的入口是帶驗證成功結果的轉移
+	verifiedApply := to == model.CredentialMemberApplied && isExpiredMemberState(member.State)
+	if verifiedApply {
+		if err := admitVerifiedApply(tx, member, opt); err != nil {
+			return err
+		}
+	} else if !isMemberTransitionAllowed(member.State, to) {
 		return fmt.Errorf("%w: %s -> %s", ErrMemberTransitionNotAllowed, member.State, to)
 	}
 
@@ -137,6 +209,16 @@ func transitionMember(tx *gorm.DB, member *model.CredentialRotationMember,
 		updates["attempt_count"] = member.AttemptCount + 1
 	}
 	updates["next_attempt_at"] = opt.NextAttemptAt
+
+	now := time.Now()
+	// 派送標記（單調）：轉入 changed_unverified 或 applied，或由 changing 直接收束
+	// （放棄）時，同一個 UPDATE 內把「第一次可能已生效或結果不可知」的時刻寫下。
+	// COALESCE 保證只由 NULL 寫成時刻、不覆寫既有值；乾淨失敗（changing 轉
+	// retry_wait／terminal_failed）與 queued 之類其餘轉移不寫，也沒有任何路徑寫回 NULL
+	writesSentMark := memberTransitionMarksSent(member.State, to)
+	if writesSentMark {
+		updates["secret_sent_at"] = gorm.Expr("COALESCE(secret_sent_at, ?)", now)
+	}
 
 	var appliedAt *time.Time
 	if to == model.CredentialMemberApplied {
@@ -153,7 +235,6 @@ func transitionMember(tx *gorm.DB, member *model.CredentialRotationMember,
 		if err := setBindingEffectiveVersion(tx, account, *member.TargetVersionID); err != nil {
 			return err
 		}
-		now := time.Now()
 		appliedAt = &now
 		updates["applied_at"] = appliedAt
 	}
@@ -169,6 +250,11 @@ func transitionMember(tx *gorm.DB, member *model.CredentialRotationMember,
 	if res.RowsAffected == 0 {
 		return ErrMemberTransitionNotAllowed
 	}
+	if verifiedApply {
+		if err := consumeVerifiedApply(tx, opt); err != nil {
+			return err
+		}
+	}
 
 	member.State = to
 	member.LastError = opt.LastError
@@ -179,7 +265,25 @@ func transitionMember(tx *gorm.DB, member *model.CredentialRotationMember,
 	if appliedAt != nil {
 		member.AppliedAt = appliedAt
 	}
+	if writesSentMark && member.SecretSentAt == nil {
+		member.SecretSentAt = &now
+	}
 	return nil
+}
+
+// memberTransitionMarksSent 一次轉移是否同時寫派送標記。
+//
+// 寫：轉入 changed_unverified、轉入 applied、由 changing 轉入 abandoned。
+// 不寫：由 changing 轉入 retry_wait／terminal_failed（乾淨失敗，遠端確定不是新秘密）、
+// 由其他狀態轉入 abandoned（從未下達或標記早已寫下）、轉入 queued／changing。
+func memberTransitionMarksSent(from, to string) bool {
+	switch to {
+	case model.CredentialMemberChangedUnverified, model.CredentialMemberApplied:
+		return true
+	case model.CredentialMemberAbandoned:
+		return from == model.CredentialMemberChanging
+	}
+	return false
 }
 
 // memberBackoffTransition 依嘗試次數與本輪起始時刻決定「還能重試」或「終局失敗」。

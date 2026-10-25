@@ -28,8 +28,8 @@ import (
 func extIdentityMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.ApproverScope{}, &model.RefreshToken{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{},
+		&model.ApproverScope{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{},
 		// model.UserRole：本地管理員計數讀 user_roles.source，而 many2many
@@ -58,6 +58,7 @@ func extIdentityDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)
@@ -112,6 +113,7 @@ func newExtIdentityEnv(t *testing.T, db *gorm.DB) *extIdentityEnv {
 	}
 	env.svc.audit = env.audit
 	env.svc.SetSessionTerminator(env.sessions)
+	env.svc.SetOwnerTransferGuard(authz.SelfGrantGuard{})
 	env.svc.SetSubscriptionTerminator(env.subs)
 	env.svc.SetRecordingTokenRevoker(env.tokens)
 	return env
@@ -630,6 +632,7 @@ func extIdentityConcurrentDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)

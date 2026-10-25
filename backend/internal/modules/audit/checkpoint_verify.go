@@ -45,6 +45,10 @@ const (
 	// 驗簽，兩者在報表上同形會讓「欄位被清空」與「簽章被換掉」無法分辨，
 	// 而前者往往是升級或回滾出了錯、後者是竄改
 	IntervalStatusPayloadInvalid = "payload_invalid"
+	// IntervalStatusAttestationInvalid 檢查點本身驗得過，但其權限附證缺漏、被改或簽章驗不過
+	// （附證啟用之後的每一點都必須帶可驗的附證）。與簽章無效分開：檢查點的區間主張仍可信，
+	// 失去的是該點對權限狀態的證明
+	IntervalStatusAttestationInvalid = "attestation_invalid"
 )
 
 // IntervalVerifyDeps 內容層驗證的兩個外部能力。

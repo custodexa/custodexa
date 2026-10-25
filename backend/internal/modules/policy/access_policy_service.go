@@ -83,11 +83,7 @@ func (s *AccessPolicyService) AccessPolicyOf(asset *model.Asset) string {
 	if asset.AccessPolicy != nil && isValidAccessPolicy(*asset.AccessPolicy) {
 		return *asset.AccessPolicy
 	}
-	v := s.policies.Get(PolicyAccessPolicyDefault)
-	if !isValidAccessPolicy(v) {
-		return model.AccessPolicyOpen
-	}
-	return v
+	return EffectiveTier(nil, s.policies.Get(PolicyAccessPolicyDefault))
 }
 
 // 連線入口三態值（reason_required/approval_required 沿閘常數）
@@ -109,16 +105,9 @@ const (
 // 入參是各資產的 `access_policy` 欄位值（nil＝未設定），輸出與輸入同長同序。
 func (s *AccessPolicyService) ResolveSegments(assetPolicies []*string) []string {
 	globalPolicy := s.policies.Get(PolicyAccessPolicyDefault)
-	if !isValidAccessPolicy(globalPolicy) {
-		globalPolicy = model.AccessPolicyOpen
-	}
 	out := make([]string, len(assetPolicies))
 	for i, v := range assetPolicies {
-		if v != nil && isValidAccessPolicy(*v) {
-			out[i] = *v
-			continue
-		}
-		out[i] = globalPolicy
+		out[i] = EffectiveTier(v, globalPolicy)
 	}
 	return out
 }
@@ -127,12 +116,12 @@ func (s *AccessPolicyService) ResolveSegments(assetPolicies []*string) []string 
 // SFTP 檔案資料面與 connect-token 共用此閘，非 open 段位同樣蓋常設 connect——
 // 否則強制審核只保護終端、不保護同資產的檔案傳輸。資產不存在回 gorm.ErrRecordNotFound，
 // 呼叫端據此回 404（不洩漏存在性）
-func (s *AccessPolicyService) CheckConnectByAssetID(userID uint, role string, assetID uint) (AccessPolicyDecision, error) {
+func (s *AccessPolicyService) CheckConnectByAssetID(userID uint, superAdmin bool, assetID uint) (AccessPolicyDecision, error) {
 	var asset model.Asset
 	if err := s.db.Select("id", "access_policy").First(&asset, assetID).Error; err != nil {
 		return AccessPolicyDecision{}, err
 	}
-	return s.CheckConnect(userID, role, &asset)
+	return s.CheckConnect(userID, superAdmin, &asset)
 }
 
 // CheckConnect 政策閘判定：connect-token 簽發點第三道閘，
@@ -140,7 +129,7 @@ func (s *AccessPolicyService) CheckConnectByAssetID(userID uint, role string, as
 // 非 open 段位蓋過常設 connect——僅時窗內核准流（source=ticket）授權放行；
 // reason 與 approval 的差別只在申請將被即時自動核准，不是攔不攔。
 // admin 豁免放行（呼叫端寫審計獨立標記）；auditor 與一般 user 同攔
-func (s *AccessPolicyService) CheckConnect(userID uint, role string, asset *model.Asset) (AccessPolicyDecision, error) {
+func (s *AccessPolicyService) CheckConnect(userID uint, superAdmin bool, asset *model.Asset) (AccessPolicyDecision, error) {
 	policy := s.AccessPolicyOf(asset)
 	if policy == model.AccessPolicyOpen {
 		return AccessPolicyDecision{Allowed: true, Policy: policy}, nil
@@ -153,7 +142,7 @@ func (s *AccessPolicyService) CheckConnect(userID uint, role string, asset *mode
 	if ticket {
 		return AccessPolicyDecision{Allowed: true, Policy: policy}, nil
 	}
-	if role == model.RoleAdmin {
+	if superAdmin {
 		return AccessPolicyDecision{Allowed: true, AdminExemption: true, Policy: policy}, nil
 	}
 

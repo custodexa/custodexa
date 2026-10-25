@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"net"
 	"net/http/httptest"
 	"strings"
@@ -26,7 +27,7 @@ import (
 func TestExistenceProbeConnectionResponses(t *testing.T) {
 	request := func(h *Handler, method, path, body string, user uint, role string) *httptest.ResponseRecorder {
 		r := gin.New()
-		r.Use(func(c *gin.Context) { c.Set("userID", user); c.Set("role", role) })
+		r.Use(func(c *gin.Context) { c.Set("userID", user); middleware.SetPrincipal(c, legacyPrincipal(role)) })
 		r.POST("/connect-tokens", h.HandleCreateConnectToken)
 		r.POST("/transmission-consents", h.HandleCreateTransmissionConsent)
 		r.GET("/ssh/sessions/:id/stats", h.HandleStats)

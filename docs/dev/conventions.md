@@ -45,9 +45,9 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 
 同族事實：
 
-- **auditor 權限是顯式獨立定義**（`backend/internal/modules/authz/route_permissions.go:59-65`
-  的 `auditorPermissions`），**不以 `append(userPermissions, …)` 繼承 user**——
-  否則從 user 移除 audit/alert view 會連帶架空 auditor。該檔註解已自陳此裁決（`:57-58`）。
+- **auditor 權限是顯式獨立定義**（`backend/internal/modules/authz/builtin_templates.go:34-39`
+  的稽核員範本，在 `TemplatePermissions` 內逐一列出權限），**不從一般使用者清單繼承**——
+  否則從 user 移除 audit/alert view 會連帶架空 auditor。
 - **TOTP 防重放**＝記錄已消耗的 time-step 索引（⌊unix/30⌋）並拒絕 step ≤ last。
   「同窗拒絕」不夠：允許 skew=1 時同時有 3 個有效 step。
 - **WS 路由漏掛 AuthMiddleware 不會有任何編譯或測試訊號**——handler 內
@@ -65,6 +65,25 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 - **鎖序固定 system → provider → user**；組合出口為 `WithCapabilityLocks`
   （`backend/internal/modules/identity/oidc_provider_lock.go:118`）。
   鎖內只做 DB 判定與標記；關閉 WS、收線一律在鎖外執行。
+- **有效角色集與帳號生命週期共用使用者鎖**：凡會改變某位使用者有效角色集的寫入
+  （直接指派、群組角色替換——含純新增、群組成員異動、刪群組、映射重算）SHALL 持該使用者的
+  憑證鎖（`user_credential_lock.go`）；停用、刪除、啟用的「持保護角色者限超管」判定在同一把鎖內
+  重讀角色再寫狀態。
+  多使用者路徑先依使用者編號升冪預取全部使用者鎖，再呼叫權限變更的開頭與推進權限版本（已知的兩類例外列在本節最後一點）：
+  完整順序 `system → provider → group 列鎖（FOR NO KEY UPDATE）→ user（升冪；每位先憑證鎖、緊接 users 列）→ 拓撲序列化鎖 → 業務列（權限、拓撲與憑證列）→ authz_state`，
+  版本推進恆在最後；反向（先推進版本再取使用者鎖或 users 列，或先取拓撲序列化鎖再取使用者或群組鎖）會形成循環等待。
+  PG 交錯測試：`protected_account_lifecycle_pg_test.go`、`TestUserLockOrderPG`、`TestSessionUserLockOrderPG`、`TestPermissionWriteLockOrder`；測試期動態守衛：取得拓撲序列化鎖之後再取使用者或群組鎖、同一交易內使用者編號倒退、憑證鎖之後未緊接同一使用者的列鎖，皆失敗（對已持有者重入不算；前兩項另有本節最後一點的已知例外，只在指定位置放行）。
+- **使用者層有兩種鎖，不可互相代稱**：使用者憑證鎖（`user_credential_lock.go`；PostgreSQL 為交易級 advisory 鎖，SQLite 為行程內 per-user mutex）與 `users` 實體列鎖。PostgreSQL 上 helper 取得憑證鎖後立即以 `FOR NO KEY UPDATE` 鎖同一使用者的 `users` 列（已軟刪的列照鎖，不存在的列不報錯）。只需要列鎖的路徑（agent 擁有者轉移、agent 自建、簽 agent 憑證、授權規則主體判定、申請人鎖定、agent 熔斷）同樣用 `FOR NO KEY UPDATE`。
+- **被外鍵參照的父表（`users`、`user_groups`）的明示列鎖一律 `FOR NO KEY UPDATE`**：這個模式與外鍵檢查取得的 `FOR KEY SHARE` 相容，寫入指向某位使用者或某個群組的列時不會等它的列鎖；鎖與鎖之間仍互斥。這兩張表不得取 `FOR UPDATE`；`users` 不得新增會被外鍵使用的非部分唯一索引；兩張表都不硬刪。硬刪父列一定取 `FOR UPDATE`，必須在任何使用者鎖與拓撲序列化鎖之前取得，且新增前要先分析所有指向它的外鍵寫入者。群組改名會因名稱唯一索引取 `FOR UPDATE` 等級的鎖，改名交易之後不得再取使用者層鎖。`TestParentRowLockModeGuard` 掃描兩種寫法（SQL 字串與 GORM `clause.Locking`）。
+- **使用者層的順序是單一全序**：同一交易需要多位使用者時，依編號升冪逐位取得；同一位先取憑證鎖、緊接著取列鎖，中間不取其他使用者的鎖；只需要列鎖的使用者插在同一個編號序列裡。持有較大編號的使用者鎖之後，不得再取較小編號、尚未持有的使用者鎖（重入不受限：對已持有者再執行一次取鎖語句不會阻塞，不算新的取得）。只取列鎖的多列集合以單一 `... ORDER BY id FOR NO KEY UPDATE` 取得，只排序傳入的 slice 不算。所需的使用者集合在取鎖前算出，每位的首次取得都在寫任何權限列、開始權限變更之前完成（群組刪除與成員替換同樣先預取全部成員）；取鎖後重讀判定依據的欄位（例如 agent 的擁有者），與計畫不符時整筆回錯，不在持部分鎖時補取（升冪、首次取得時點與不補取三項的例外只有本節最後一點列的兩類）。SQLite 的 per-user mutex 不可重入，多使用者預取在 SQLite 是 no-op，內層照舊逐人取放。
+- **拓撲序列化鎖**由 authz 提供（PostgreSQL 交易級 advisory 鎖、SQLite 不改值寫入）。凡讀取拓撲後寫入、或寫入拓撲與節點歸屬、建立或變更指向資產或節點的授權與審核範圍列或帶節點範圍的角色指派的交易（只因刪除使用者或群組而撤銷、清除既有列者不在此列），在交易開頭（需要的群組與使用者鎖之後）、任何權限、拓撲與憑證列鎖之前取得；取得之後不得再取尚未持有的使用者或群組鎖（本節最後一點的第三類除外）；判定在取鎖之後於同一交易重讀（Read Committed），不沿用鎖前結果。`BeginPermissionChange` 不取任何鎖。不讀也不寫拓撲的權限寫入不取此鎖。
+- **業務列在使用者層之後**：申請單、agent 憑證等業務列鎖在需要的使用者鎖之後取得；核決申請時先鎖申請人列、再鎖申請單。
+- **已知的三類例外與風險**（只有這三類；其他違反上述順序的寫法都是缺陷，新增路徑不得援引）：
+  - 群組角色替換與群組刪除先鎖群組、預取當下的全部成員。若外部身分對應在預取之後才把新成員加入同一群組，兩者在原處補取該成員的使用者鎖（群組角色替換在推進權限版本之後、群組刪除在逐人處理時），補取前記一行警告（群組編號與成員編號）；不跳過該成員的失權處理，也不改成拒絕。互等可涉及三方以上（例如晚加入的成員與 agent 憑證簽發、擁有者轉移），結果相同：恰一方死結中止、整筆回滾、可重試。
+  - 外部身分對應與外部來源的撤銷入口先開始權限變更，再逐位取受影響使用者的鎖。
+  - 帶節點範圍的群組角色替換已先取得拓撲序列化鎖，第一類的補取因此也發生在拓撲序列化鎖之後；與另一筆持該成員使用者鎖、等拓撲序列化鎖的交易同時發生時，同樣中止其中一筆，警告行與處理方式同第一類。
+
+  這三類可能違反升冪、在推進權限版本之後或在拓撲序列化鎖之後取使用者鎖。與另一筆持同一使用者鎖的交易同時發生時，PostgreSQL 以死結中止其中一筆並整筆回滾，操作可重試，權限狀態與事件鏈不留下半筆變更。測試期的鎖序檢查須能辨識這兩處：第一類與第三類只在指定的補取點、且同時有警告行時放行，第二類只在這些撤銷入口放行，其餘逆序照常報錯。
 - **凡「以既有身分產生新長效能力」皆須鎖內三步**（重查前提 → 讀世代 → 建立）：
   兌換建 session、監看訂閱加入、callback 簽票、exchange、refresh 輪替皆屬之。
   refresh 輪替以 refresh 列**自身**的世代簽發 access，不得改成現查（洗世代缺陷）。

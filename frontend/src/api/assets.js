@@ -20,6 +20,23 @@ export function getAssetList(params) {
 }
 
 /**
+ * 取得連線政策覆寫清單（範圍化主體只看到自己可管理節點內的資產）
+ * @param {Object} params - 查詢參數
+ * @param {boolean} params.overridden - true 只列已覆寫（預設）；false 搭配 search 找可加入覆寫的候選
+ * @param {string} params.search - 搜尋關鍵字（名稱、主機）
+ * @param {number} params.page - 頁碼（從 1 開始）
+ * @param {number} params.page_size - 每頁大小
+ * @returns {Promise} { data, total, page, page_size, meta: { global_default, scoped } }
+ */
+export function getAccessPolicyOverrides(params) {
+  return request({
+    url: '/assets/access-policy-overrides',
+    method: 'get',
+    params,
+  })
+}
+
+/**
  * 取得資產詳情
  * @param {number} id - 資產 ID
  * @returns {Promise}
@@ -134,6 +151,40 @@ export function importAssets(data) {
   })
 }
 
+// 批次動作由呼叫端就地顯示的兩種整批拒絕，不走全域 toast
+const BATCH_INLINE_CODES = [
+  'NOTFOUND_BATCH_ITEMS_UNAVAILABLE',
+  'RULE_ASSET_BATCH_HAS_OUT_OF_SCOPE_NODES',
+]
+const batchSkipToast = (error) => BATCH_INLINE_CODES.includes(error?.response?.data?.code)
+
+/**
+ * 批次搬移：整批在單一交易內執行，任一台無法操作則整批不執行
+ * @param {{ asset_ids: number[], target_node_id: number }} data
+ * @returns {Promise} { data: { affected, unchanged } }
+ */
+export function batchMoveAssets(data) {
+  return request({ url: '/assets/batch/move', method: 'post', data, skipErrorToast: batchSkipToast })
+}
+
+/**
+ * 批次加標籤（與各資產既有標籤合併）
+ * @param {{ asset_ids: number[], tags: string[] }} data
+ * @returns {Promise} { data: { affected, unchanged } }
+ */
+export function batchAddAssetTags(data) {
+  return request({ url: '/assets/batch/tags', method: 'post', data, skipErrorToast: batchSkipToast })
+}
+
+/**
+ * 批次刪除
+ * @param {{ asset_ids: number[] }} data
+ * @returns {Promise} { data: { affected, unchanged } }
+ */
+export function batchDeleteAssets(data) {
+  return request({ url: '/assets/batch/delete', method: 'post', data, skipErrorToast: batchSkipToast })
+}
+
 /**
  * 更新資產
  * @param {number} id - 資產 ID
@@ -189,9 +240,26 @@ export function resetAssetHostKey(id) {
   return request({ url: `/assets/${id}/host-key`, method: 'delete' })
 }
 
-/** 節點平面列表（含 parent_id/path/直掛 assets） */
-export function getAssetGroups() {
-  return request({ url: '/asset-groups', method: 'get' })
+/** 採用觀察到的指紋為資產 host key 記錄（admin；只接受待確認清單中的指紋） */
+export function adoptAssetHostKey(id, fingerprint) {
+  return request({
+    url: `/assets/${id}/host-key/adopt`,
+    method: 'post',
+    data: { fingerprint },
+    skipErrorToast: true,
+  })
+}
+
+/**
+ * 節點平面列表（含 parent_id/path/直掛 assets）。
+ * params 選用：purpose 指定選擇用途（asset_create、asset_update、credential_create、
+ * credential_update、credential_convert_scope），範圍化檢視者才會多附 selectable；
+ * 不帶參數時請求與回應不變。
+ */
+export function getAssetGroups(params) {
+  const config = { url: '/asset-groups', method: 'get' }
+  if (params) config.params = params
+  return request(config)
 }
 
 /** 節點樹惰性載入（parent_id 空＝根層；含直掛/含子樹計數與 has_children） */
@@ -218,7 +286,12 @@ export function moveAssetGroup(id, parentId) {
 
 /** 刪除節點（admin；僅空節點可刪，節點授權與審核範圍連動撤銷） */
 export function deleteAssetGroup(id) {
-  return request({ url: `/asset-groups/${id}`, method: 'delete' })
+  return request({
+    url: `/asset-groups/${id}`,
+    method: 'delete',
+    // 被管理範圍引用而無法刪除時，由刪除被擋對話框呈現，不再彈通用錯誤提示
+    skipErrorToast: (error) => error?.response?.data?.code === 'RULE_NODE_SCOPE_REFERENCED',
+  })
 }
 
 /**

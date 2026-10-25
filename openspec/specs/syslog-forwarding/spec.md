@@ -2,10 +2,12 @@
 
 ## Purpose
 審計事件向外部 syslog 目的地的轉發：以 RFC5424 格式轉發三類事件，轉發走有界緩衝並與審計主鏈隔離（外部目的地不可用不得阻塞或反噬主審計鏈），受 syslog 傳輸政策門治理，測試訊息內容機器化，並明確其證明力邊界——外部 syslog 為補充副本，不取代錨定於檢查點鏈的主審計來源。
+
 ## Requirements
+
 ### Requirement: syslog 目的地設定
 
-系統 SHALL 提供 Web UI 設定 syslog 轉發:開關、目的地 host/port、協議(UDP/TCP/TCP+TLS)、TLS CA(選填);設定 SHALL 限 admin,變更 SHALL 入審計。UI SHALL 提供「發送測試訊息」按鈕並回報成功或失敗**狀態**(失敗時呈現泛化提示,具體技術原因不對外揭露——見下段)。
+系統 SHALL 提供 Web UI 設定 syslog 轉發:開關、目的地 host/port、協議(UDP/TCP/TCP+TLS)、TLS CA(選填);設定 SHALL 限超級管理者或持 syslog 轉發設定權限點(`syslog:manage`)者,變更 SHALL 入審計;設定卡位於安全政策頁,頁面入口另需安全政策設定權限點。UI SHALL 提供「發送測試訊息」按鈕並回報成功或失敗**狀態**(失敗時呈現泛化提示,具體技術原因不對外揭露——見下段)。
 
 測試訊息端點的回應 SHALL 以 HTTP 狀態碼表達成敗:送達成功回 2xx;**送達失敗 SHALL 回錯誤狀態碼(502,對端不可達語義)而非以 2xx 攜帶失敗旗標**,與通知通道測試端點的回應語義一致。失敗回應 SHALL 帶機器可辨錯誤碼(`apierror` 目錄註冊碼),使前端得以三語呈現;失敗原因的具體技術細節(連線拒絕/逾時/TLS 驗證失敗)SHALL 僅記於伺服端 log,對外回應 SHALL 為泛化提示,不洩漏目的地網路拓撲。UI SHALL 於失敗時仍呈現明確的失敗狀態(不得因狀態碼改變而靜默)。
 
@@ -116,4 +118,3 @@ syslog 轉發設定的建立與更新 SHALL 受 syslog 傳輸政策約束：warn
 
 - **WHEN** 部署未啟用 syslog 轉發
 - **THEN** 全部檢查點的 `anchor_status` 為 `disabled`，驗證頁顯著呈現無離機錨定的降級聲明
-

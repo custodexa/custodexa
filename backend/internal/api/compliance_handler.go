@@ -110,7 +110,7 @@ func (h *ComplianceHandler) decorate(snapshot policy.ComplianceSnapshot,
 func (h *ComplianceHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	compliance := r.Group("/compliance")
 	compliance.Use(middleware.AuthMiddleware(authService))
-	compliance.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	compliance.Use(middleware.EnforceRegistry())
 	{
 		compliance.GET("/snapshot", h.Snapshot)
 		compliance.POST("/report-jobs", h.CreateReportJob)

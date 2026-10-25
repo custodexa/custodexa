@@ -30,7 +30,7 @@ func setupAccountDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
 		&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
-		&model.AssetGroup{}, &model.AssetNode{},
+		&model.AssetGroup{}, &model.AssetNode{}, &model.CredentialJobAuthorization{},
 	))
 	oldDB := database.DB
 	database.DB = db
@@ -43,8 +43,13 @@ func newAccountServices(t *testing.T) (*AssetService, *AssetAccountService) {
 	key := make([]byte, 32)
 	codec := aesColumnCodec(t, key)
 	assets, err := NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assets.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
-	return assets, NewAssetAccountService(assets, codec, audit.NewTxSink())
+	assets.SetAssetWriteScopePort(allowAllAssetWriteScope{})
+	auth := newAllowAllAuthorizer()
+	assets.WithManagementAuthorizer(auth).WithSystemAlertSink(newFakeAlertSink())
+	return assets, NewAssetAccountService(assets, codec, audit.NewTxSink()).
+		WithManagementAuthorizer(auth).WithSystemAlertSink(newFakeAlertSink()).WithAccountWriteScope(allowAllAccountWriteScope{})
 }
 
 func adminCtx() context.Context {
@@ -57,7 +62,7 @@ func TestCreateAssetWritesDefaultAccountOnly(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-1", Protocol: model.ProtocolSSH, Host: "10.0.0.1", Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})
@@ -91,7 +96,7 @@ func TestCreateAssetWithoutCredentialsHasNoAccount(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "vnc-1", Protocol: model.ProtocolVNC, Host: "10.0.0.2", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -111,14 +116,14 @@ func TestUpdateAssetWritesThroughToDefaultAccount(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-2", Protocol: model.ProtocolSSH, Host: "10.0.0.3", Port: 22,
 		Username: "root", Password: "old", CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
 	newUser, newPass := "deploy", "rotated"
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{
 		Username: &newUser, Password: &newPass,
 	})
 	require.NoError(t, err)
@@ -138,13 +143,13 @@ func TestUpdateAssetCreatesDefaultAccountWhenMissing(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "vnc-2", Protocol: model.ProtocolVNC, Host: "10.0.0.4", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
 	pw := "vncpass"
-	_, err = assets.Update(adminCtx(), asset.ID, &UpdateAssetRequest{Password: &pw})
+	_, err = assets.Update(WithSystemCaller(adminCtx()), asset.ID, &UpdateAssetRequest{Password: &pw})
 	require.NoError(t, err)
 
 	var account model.AssetAccount
@@ -160,14 +165,14 @@ func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-3", Protocol: model.ProtocolSSH, Host: "10.0.0.5", Port: 22,
 		Username: "root", Password: "rootpw", CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
 	// 第二個帳號（非 default）
-	app, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	app, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "app", Password: "apppw", Privileged: false, Note: "服務帳號",
 	})
 	require.NoError(t, err)
@@ -175,7 +180,7 @@ func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	assert.True(t, app.HasPassword)
 
 	// 同名帳號衝突
-	_, err = accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{Username: "app"})
+	_, err = accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{Username: "app"})
 	assert.ErrorIs(t, err, ErrAssetAccountUsernameExists)
 
 	list, err := accounts.List(asset.ID)
@@ -221,12 +226,12 @@ func TestGetCredentialsRejectsForeignAccount(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	a1, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a1, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "a1", Protocol: model.ProtocolSSH, Host: "10.0.0.8", Port: 22,
 		Username: "root", Password: "pw1", CreatedBy: 1,
 	})
 	require.NoError(t, err)
-	a2, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a2, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "a2", Protocol: model.ProtocolSSH, Host: "10.0.0.9", Port: 22,
 		Username: "root", Password: "pw2", CreatedBy: 1,
 	})
@@ -254,17 +259,17 @@ func TestAccountUsernameValidation(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-4", Protocol: model.ProtocolSSH, Host: "10.0.0.10", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
-	_, err = accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{Username: "evil\nroot"})
+	_, err = accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{Username: "evil\nroot"})
 	assert.ErrorIs(t, err, ErrAssetAccountUsernameInvalid)
-	_, err = accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{Username: "a:b"})
+	_, err = accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{Username: "a:b"})
 	assert.ErrorIs(t, err, ErrAssetAccountUsernameInvalid)
-	_, err = accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	_, err = accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: strings.Repeat("x", 101),
 	})
 	assert.ErrorIs(t, err, ErrAssetAccountUsernameTooLong)
@@ -275,13 +280,13 @@ func TestAccountAuditNeverContainsSecrets(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-5", Protocol: model.ProtocolSSH, Host: "10.0.0.11", Port: 22,
 		Username: "root", Password: "plain-secret", CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
-	created, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	created, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "svc", Password: "another-secret",
 	})
 	require.NoError(t, err)
@@ -323,7 +328,7 @@ func TestUpdatePasswordPinsAccountAcrossDefaultSwitch(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
+	asset, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "srv-6", Protocol: model.ProtocolSSH, Host: "10.0.0.12", Port: 22,
 		Username: "root", Password: "old-root-pw", CreatedBy: 1,
 	})
@@ -336,7 +341,7 @@ func TestUpdatePasswordPinsAccountAcrossDefaultSwitch(t *testing.T) {
 	require.NotZero(t, pinnedID)
 
 	// 執行期間：管理員新增帳號並切換 default
-	other, err := accounts.Create(adminCtx(), asset.ID, &CreateAssetAccountRequest{
+	other, err := accounts.Create(WithSystemCaller(adminCtx()), asset.ID, &CreateAssetAccountRequest{
 		Username: "backup", Password: "backup-pw",
 	})
 	require.NoError(t, err)
@@ -367,12 +372,12 @@ func TestUpdatePasswordRejectsForeignAccount(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	a1, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a1, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "p1", Protocol: model.ProtocolSSH, Host: "10.0.0.13", Port: 22,
 		Username: "root", Password: "pw1", CreatedBy: 1,
 	})
 	require.NoError(t, err)
-	a2, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a2, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "p2", Protocol: model.ProtocolSSH, Host: "10.0.0.14", Port: 22,
 		Username: "root", Password: "pw2", CreatedBy: 1,
 	})

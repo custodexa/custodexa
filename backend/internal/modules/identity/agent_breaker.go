@@ -5,6 +5,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -16,7 +17,11 @@ import (
 // same user row. The lock is database-owned and works across server processes.
 func LockProbePrincipal(tx *gorm.DB, userID uint) (uint, error) {
 	var user model.User
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+	// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
+	if probe := authz.LockOrderProbeHook(); probe != nil {
+		probe(tx, authz.LockLayerUserRow, userID)
+	}
+	if err := tx.Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).First(&user, userID).Error; err != nil {
 		return 0, err
 	}
 	if user.Kind != model.KindAgent || user.OwnerUserID == nil {
@@ -45,19 +50,23 @@ func (s *AgentTokenService) TripProbeBreakerInTx(tx *gorm.DB, userID, tokenID ui
 func (s *AgentTokenService) FinishProbeBreaker(tokenID uint) {
 	s.finishTermination(tokenID, gatewayapi.Actor{Username: "system"})
 }
-func (s *AgentTokenService) ReleaseProbeBreaker(userID uint, reason, role string, actor gatewayapi.Actor) error {
+func (s *AgentTokenService) ReleaseProbeBreaker(userID uint, reason string, isSuperAdmin bool, actor gatewayapi.Actor) error {
 	if strings.TrimSpace(reason) == "" || len(reason) > 1000 {
 		return &PrincipalError{Code: apierror.CodeBadParams, Status: 400}
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		var user, caller model.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+		// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
+		if probe := authz.LockOrderProbeHook(); probe != nil {
+			probe(tx, authz.LockLayerUserRow, userID)
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).First(&user, userID).Error; err != nil {
 			return err
 		}
 		if err := tx.First(&caller, actor.UserID).Error; err != nil {
 			return err
 		}
-		if caller.Kind != model.KindHuman || user.Kind != model.KindAgent || user.OwnerUserID == nil || (role != model.RoleAdmin && *user.OwnerUserID != actor.UserID) {
+		if caller.Kind != model.KindHuman || user.Kind != model.KindAgent || user.OwnerUserID == nil || (!isSuperAdmin && *user.OwnerUserID != actor.UserID) {
 			return &PrincipalError{Code: apierror.CodePermissionDenied, Status: 403}
 		}
 		if user.BreakerPendingAt == nil {

@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import CredentialLibrary from '@/views/CredentialLibrary.vue'
 import CredentialRotateDialog from '@/components/credential/CredentialRotateDialog.vue'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 帳號憑證庫的主從檢視。
 //
@@ -29,6 +30,7 @@ const getMock = vi.fn()
 const getRotationMock = vi.fn()
 const convertScopeMock = vi.fn()
 const setSecretMock = vi.fn()
+const impactMock = vi.fn()
 
 vi.mock('@/api/credentials', () => ({
   listCredentials: (...a) => listMock(...a),
@@ -41,6 +43,7 @@ vi.mock('@/api/credentials', () => ({
   detachCredentialBinding: vi.fn(),
   convertCredentialScope: (...a) => convertScopeMock(...a),
   setCredentialSecret: (...a) => setSecretMock(...a),
+  confirmCredentialImpact: (...a) => impactMock(...a),
   startCredentialRotation: vi.fn(),
   getCredentialRotation: (...a) => getRotationMock(...a),
   retryCredentialRotationMember: vi.fn(),
@@ -49,6 +52,7 @@ vi.mock('@/api/credentials', () => ({
 
 vi.mock('@/api/assets', () => ({
   getAssetList: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  getAssetGroups: vi.fn().mockResolvedValue({ data: [] }),
 }))
 
 const dialogStub = {
@@ -143,6 +147,7 @@ async function mountWithSelection(detail = detailFixture()) {
 }
 
 beforeEach(() => {
+  grantFor(['admin'])
   vi.clearAllMocks()
   listMock.mockResolvedValue({ data: listFixture(), total: 7 })
   getMock.mockResolvedValue({ data: detailFixture(), aggregate_state: 'idle' })
@@ -151,6 +156,7 @@ beforeEach(() => {
   })
   convertScopeMock.mockResolvedValue({ data: credentialFixture({ id: 11, scope: 'shared' }) })
   setSecretMock.mockResolvedValue({ id: 1 })
+  impactMock.mockResolvedValue({ required: false, in_scope_count: 1 })
 })
 
 // 專用憑證（單一掛載），用於「轉為共用」那一組案例
@@ -249,21 +255,23 @@ describe('篩選', () => {
     })
   })
 
-  it('重設清空四個條件並重新查詢', async () => {
+  it('重設清空五個條件並重新查詢', async () => {
     const wrapper = await mountPage()
 
     wrapper.vm.filters.scope = 'dedicated'
     wrapper.vm.filters.search = 'root'
+    wrapper.vm.filters.ownership = 'global'
     wrapper.vm.filters.secret_type = 'password'
     wrapper.vm.filters.rotation_state = 'changing'
     await wrapper.vm.resetFilters()
     await flushPromises()
 
     expect(wrapper.vm.filters).toEqual({
-      scope: '', search: '', secret_type: '', rotation_state: '',
+      scope: '', search: '', ownership: '', secret_type: '', rotation_state: '',
     })
     expect(listMock.mock.calls.at(-1)[0]).toEqual({
       scope: undefined,
+      ownership: undefined,
       secret_type: undefined,
       rotation_state: undefined,
       search: undefined,
@@ -399,6 +407,13 @@ describe('詳情', () => {
 
     expect(wrapper.find('[data-test="rotation-progress"]').exists()).toBe(true)
     expect(getRotationMock).toHaveBeenCalledWith(1, 7)
+  })
+
+  it('放棄後仍有主機未收斂：詳情帶回那一輪，面板照常顯示（逐台補跑的入口）', async () => {
+    const wrapper = await mountWithSelection(detailFixture({ unsettled_rotation_id: 9 }))
+
+    expect(wrapper.find('[data-test="rotation-progress"]').exists()).toBe(true)
+    expect(getRotationMock).toHaveBeenCalledWith(1, 9)
   })
 })
 

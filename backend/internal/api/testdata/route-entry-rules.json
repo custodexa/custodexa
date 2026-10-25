@@ -1,0 +1,246 @@
+[
+  {
+    "path": "/access-control",
+    "kind": "all",
+    "permissions": [
+      "securitypolicy:manage"
+    ]
+  },
+  {
+    "path": "/access-reviews",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/alerts",
+    "kind": "any",
+    "permissions": [
+      "audit:view",
+      "alertrule:manage",
+      "systemalert:manage"
+    ]
+  },
+  {
+    "path": "/approvals",
+    "kind": "all",
+    "permissions": [
+      "ui:approvals"
+    ]
+  },
+  {
+    "path": "/approver-scopes",
+    "kind": "all",
+    "permissions": [
+      "approverscope:manage"
+    ]
+  },
+  {
+    "path": "/assets",
+    "kind": "signed_in",
+    "permissions": []
+  },
+  {
+    "path": "/audit-logs",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/audit/agent-tasks",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/audit/exports",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/audit/workbench",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/authorizations",
+    "kind": "all",
+    "permissions": [
+      "authorization:manage"
+    ]
+  },
+  {
+    "path": "/change-secret-batches",
+    "kind": "all",
+    "permissions": [
+      "changesecret:manage"
+    ]
+  },
+  {
+    "path": "/change-secret-plans",
+    "kind": "all",
+    "permissions": [
+      "changesecret:manage"
+    ]
+  },
+  {
+    "path": "/checkpoint-verification",
+    "kind": "all",
+    "permissions": [
+      "audit:integrity_view"
+    ]
+  },
+  {
+    "path": "/commands",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/compliance-map",
+    "kind": "all",
+    "permissions": [
+      "compliance:view"
+    ]
+  },
+  {
+    "path": "/credentials",
+    "kind": "any",
+    "permissions": [
+      "credential:view",
+      "credential:create",
+      "credential:update",
+      "credential:set-secret",
+      "credential:rotate",
+      "credential:convert-scope",
+      "credential:detach",
+      "credential:delete",
+      "credential:bind",
+      "credential:manage"
+    ]
+  },
+  {
+    "path": "/dashboard",
+    "kind": "signed_in",
+    "permissions": []
+  },
+  {
+    "path": "/identity-sources",
+    "kind": "all",
+    "permissions": [
+      "identity_source:manage"
+    ]
+  },
+  {
+    "path": "/key-management",
+    "kind": "all",
+    "permissions": [
+      "key:manage"
+    ]
+  },
+  {
+    "path": "/my-agents",
+    "kind": "all",
+    "permissions": [
+      "ui:my-agents"
+    ]
+  },
+  {
+    "path": "/my-connections",
+    "kind": "signed_in",
+    "permissions": []
+  },
+  {
+    "path": "/my-requests",
+    "kind": "signed_in",
+    "permissions": []
+  },
+  {
+    "path": "/notification-channels",
+    "kind": "all",
+    "permissions": [
+      "notification_channel:manage"
+    ]
+  },
+  {
+    "path": "/offsite-storage",
+    "kind": "all",
+    "permissions": [
+      "offsite:manage"
+    ]
+  },
+  {
+    "path": "/policy-groups",
+    "kind": "all",
+    "permissions": [
+      "policygroup:manage"
+    ]
+  },
+  {
+    "path": "/profile",
+    "kind": "signed_in",
+    "permissions": []
+  },
+  {
+    "path": "/roles",
+    "kind": "all",
+    "permissions": [
+      "role:view"
+    ]
+  },
+  {
+    "path": "/rotation-evidence",
+    "kind": "all",
+    "permissions": [
+      "audit:view"
+    ]
+  },
+  {
+    "path": "/security-policies",
+    "kind": "all",
+    "permissions": [
+      "securitypolicy:manage"
+    ]
+  },
+  {
+    "path": "/sessions",
+    "kind": "all",
+    "permissions": [
+      "session:view"
+    ]
+  },
+  {
+    "path": "/transmission-inventory",
+    "kind": "all",
+    "permissions": [
+      "transmission:manage"
+    ]
+  },
+  {
+    "path": "/user-groups",
+    "kind": "all",
+    "permissions": [
+      "usergroup:manage"
+    ]
+  },
+  {
+    "path": "/users",
+    "kind": "all",
+    "permissions": [
+      "user:manage"
+    ]
+  },
+  {
+    "path": "/workspace",
+    "kind": "signed_in",
+    "permissions": []
+  }
+]

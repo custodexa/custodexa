@@ -28,15 +28,30 @@ func setupSyslogGateEnv(t *testing.T) (*gin.Engine, *policy.SecurityPolicyServic
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.SyslogSetting{}, &model.SecurityPolicy{}); err != nil {
+	if err := db.AutoMigrate(&model.SyslogSetting{}, &model.SecurityPolicy{}, &model.Role{}, &model.UserGroup{}); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(evidenceSinkModels()...); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
 	}
 	policies := policy.NewSecurityPolicyService(db)
 	handler := NewSyslogSettingHandler(db, audit.NewSyslogForwarder(db), nil)
 	handler.SetTransmissionPolicy(policy.NewTransmissionPolicyService(policies, nil))
+	handler.SetEvidenceSinks(audit.NewTxSink(), audit.NewSystemAlertSink(nil))
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	// 存檔的系統告警拒收零值操作者：測試直接掛路由，以中介層補上已認證的操作者
+	router.Use(func(c *gin.Context) {
+		c.Set("userID", uint(1))
+		c.Set("username", "admin")
+	})
 	router.PUT("/syslog-settings", handler.Update)
 	router.POST("/syslog-settings/test", handler.Test)
 	return router, policies, db

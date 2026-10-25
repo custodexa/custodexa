@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"context"
 	"encoding/json"
 	"errors"
@@ -38,7 +39,7 @@ func (m *MockAssetGroupService) Tree(parentID *uint, vis *asset.TreeVisibility) 
 	return args.Get(0).([]asset.TreeNode), args.Error(1)
 }
 
-func (m *MockAssetGroupService) Create(req *asset.AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
+func (m *MockAssetGroupService) Create(_ context.Context, req *asset.AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
 	args := m.Called(req, actorID, actorName, clientIP)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -46,7 +47,7 @@ func (m *MockAssetGroupService) Create(req *asset.AssetGroupRequest, actorID uin
 	return args.Get(0).(*model.AssetGroup), args.Error(1)
 }
 
-func (m *MockAssetGroupService) Update(id uint, req *asset.AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
+func (m *MockAssetGroupService) Update(_ context.Context, id uint, req *asset.AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
 	args := m.Called(id, req, actorID, actorName, clientIP)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -54,7 +55,7 @@ func (m *MockAssetGroupService) Update(id uint, req *asset.AssetGroupRequest, ac
 	return args.Get(0).(*model.AssetGroup), args.Error(1)
 }
 
-func (m *MockAssetGroupService) Move(id uint, newParentID *uint, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
+func (m *MockAssetGroupService) Move(_ context.Context, id uint, newParentID *uint, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
 	args := m.Called(id, newParentID, actorID, actorName, clientIP)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -62,7 +63,7 @@ func (m *MockAssetGroupService) Move(id uint, newParentID *uint, actorID uint, a
 	return args.Get(0).(*model.AssetGroup), args.Error(1)
 }
 
-func (m *MockAssetGroupService) Delete(id uint, actorID uint, actorName, clientIP string) (int64, error) {
+func (m *MockAssetGroupService) Delete(_ context.Context, id uint, actorID uint, actorName, clientIP string) (int64, error) {
 	args := m.Called(id, actorID, actorName, clipOrEmpty(clientIP))
 	return args.Get(0).(int64), args.Error(1)
 }
@@ -113,7 +114,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, mockAuth, new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.List(c)
 		})
 
@@ -140,7 +141,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, mockAuth, new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			c.Set("userID", uint(7))
 			handler.List(c)
 		})
@@ -171,7 +172,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, mockAuth, new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			c.Set("userID", uint(7))
 			handler.List(c)
 		})
@@ -200,7 +201,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, mockAuth, new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			c.Set("userID", uint(7))
 			handler.List(c)
 		})
@@ -222,7 +223,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, mockAuth, new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.List(c)
 		})
 
@@ -243,7 +244,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, mockAuth, new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			c.Set("userID", uint(7))
 			handler.List(c)
 		})
@@ -266,7 +267,7 @@ func TestAssetGroupHandler_Tree_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, new(MockAssetAuthorizationService), new(MockNodeVisibility))
 		router := setupTestRouter()
 		router.GET("/asset-groups/tree", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Tree(c)
 		})
 
@@ -288,7 +289,7 @@ func TestAssetGroupHandler_Tree_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, new(MockAssetAuthorizationService), mockVis)
 		router := setupTestRouter()
 		router.GET("/asset-groups/tree", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			c.Set("userID", uint(7))
 			handler.Tree(c)
 		})
@@ -309,7 +310,7 @@ func TestAssetGroupHandler_Tree_Scoping(t *testing.T) {
 		handler := newGroupHandlerForTest(mockGroups, new(MockAssetAuthorizationService), mockVis)
 		router := setupTestRouter()
 		router.GET("/asset-groups/tree", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			c.Set("userID", uint(7))
 			handler.Tree(c)
 		})

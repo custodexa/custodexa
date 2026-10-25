@@ -34,8 +34,9 @@ const (
 
 // CustodyEvent 一筆保管鏈事件。
 //
-// **主體恆為系統**（UserID=0／Username="system"，沿 recording_failure_report.go 的
-// 退路慣例）——管理員的重試與測試連線另有中介層審計（admin 主體），兩列不合併。
+// 主體預設為系統（UserID=0／Username="system"，沿 recording_failure_report.go 的
+// 退路慣例）；管理操作（停用、切換世代、設定存檔）帶 Actor 時記真實操作者。
+// 管理員的重試與測試連線另有中介層審計（admin 主體），兩列不合併。
 //
 // Details **不含端點、不含憑證與其遮罩**：bucket 與 key 是
 // 對帳所需的最小集合，端點只在設定面顯示為 origin。
@@ -49,6 +50,11 @@ type CustodyEvent struct {
 	Status string
 	// Details JSON 負載
 	Details map[string]any
+	// Actor 管理操作的真實操作者（選填）：非 nil 且 ID 非 0 時審計列記此人，
+	// 否則（worker、取回、seed）維持系統主體
+	Actor *OffsiteActor
+	// CorrelationID 與同交易系統告警共用的關聯識別（選填，非空時寫入 details）
+	CorrelationID string
 }
 
 // CustodyJournal 保管鏈事件的落地面（消費者側窄介面）。

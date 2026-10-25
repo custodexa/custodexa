@@ -20,8 +20,9 @@ var resourceZhLabels = map[string]string{
 	"audit_log":          "稽核日誌",
 }
 
-// roleZhLabels is the allowlist + zh label for the {role} param of AUTH_ROLE_REQUIRED
-// (RequireRole is only ever called with these developer-controlled role ids).
+// roleZhLabels is the allowlist + zh label for the {role} param of AUTH_ROLE_REQUIRED.
+// That code is retired (see RetiredDenialCodes); the labels stay so that older
+// clients and stored audit records still render.
 var roleZhLabels = map[string]string{
 	"admin":    "管理員",
 	"auditor":  "稽核人員",
@@ -41,15 +42,18 @@ var (
 	CodeScopedTokenDenied = register("AUTH_SCOPED_TOKEN_DENIED", Descriptor{ZhFallback: "此 token 尚未完成登入流程，不可存取一般 API"})
 	CodeMFAIncomplete     = register("AUTH_MFA_INCOMPLETE", Descriptor{ZhFallback: "MFA 驗證尚未完成"})
 
-	// role gate; {role} is interpolated raw in the fallback (matches current text)
+	// Retired: no longer emitted (capability denials use CodePermissionDenied).
+	// Kept registered, with its {role} param, for older clients.
 	CodeRoleRequired = register("AUTH_ROLE_REQUIRED", Descriptor{
 		ZhFallback: "權限不足：此操作需要 {role} 角色",
 		Params:     []ParamSpec{{Key: "role", Kind: ParamEnum, EnumNS: "role", ZhLabels: roleZhLabels}},
 	})
 
-	// generic permission gate; required_permission travels as Meta, not text
+	// The single capability-denial code. The response carries only code and
+	// error; the basis of the decision goes to the audit detail.
 	CodePermissionDenied = register("AUTH_PERMISSION_DENIED", Descriptor{ZhFallback: "權限不足"})
 
+	// Retired: no longer emitted (see RetiredDenialCodes).
 	CodeApproverRequired = register("AUTH_APPROVER_REQUIRED", Descriptor{ZhFallback: "權限不足：需審核人員或管理員身分"})
 )
 
@@ -221,9 +225,16 @@ var (
 // --- RULE_SSH_* (terminal dial failures surfaced over the WS error message).
 // ZhFallback mirrors the sshproxy sentinel texts. ---
 var (
-	CodeSSHHostKeyChanged = register("RULE_SSH_HOST_KEY_CHANGED", Descriptor{ZhFallback: "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯絡管理員重置 host key"})
-	CodeSSHAuthFailed     = register("RULE_SSH_AUTH_FAILED", Descriptor{ZhFallback: "SSH 認證失敗，請確認資產憑證"})
-	CodeSSHDialTimeout    = register("RULE_SSH_DIAL_TIMEOUT", Descriptor{ZhFallback: "連線目標主機逾時"})
+	// 主機金鑰與記錄不符的警示（通知幀與測試結果，不是撥號失敗）：只用於互動連線（人類終端、
+	// 檔案傳輸、連線測試）照常建立的情境，文案陳述登入憑證已送出。拒絕情境不得用這個碼
+	CodeSSHHostKeyChanged = register("RULE_SSH_HOST_KEY_CHANGED", Descriptor{ZhFallback: "主機身分與記錄不符：主機金鑰（host key）和記錄不同，平台已送出登入憑證，此事已記錄。若主機沒有重灌或更換，可能有人冒充，請立即中斷，並聯絡管理員確認後採用新指紋或重置主機金鑰"})
+	// 主機金鑰與記錄不符且本次撥號被拒絕（代理終端等無人在場的路徑）：留痕後在送出任何登入憑證之前中止。
+	// 與警示碼分開，因為兩者對「憑證是否已送出」的陳述相反；改密與輪替的拒絕另以改密原因碼呈現
+	CodeSSHHostKeyMismatchRefused = register("RULE_SSH_HOST_KEY_MISMATCH_REFUSED", Descriptor{ZhFallback: "主機身分與記錄不符：主機金鑰（host key）和記錄不同，這次連線已拒絕，未送出任何登入憑證，此事已記錄。請聯絡管理員確認主機後採用新指紋或重置主機金鑰"})
+	// 主機金鑰查核失敗：讀不到記錄，或不符時審計、觀察紀錄、告警寫不進去；都在送出憑證之前中止
+	CodeSSHHostKeyCheckFailed = register("RULE_SSH_HOST_KEY_CHECK_FAILED", Descriptor{ZhFallback: "主機金鑰查核失敗，連線已中止；請稍後再試或聯絡管理員"})
+	CodeSSHAuthFailed         = register("RULE_SSH_AUTH_FAILED", Descriptor{ZhFallback: "SSH 認證失敗，請確認資產憑證"})
+	CodeSSHDialTimeout        = register("RULE_SSH_DIAL_TIMEOUT", Descriptor{ZhFallback: "連線目標主機逾時"})
 	// 就位版本的私鑰無法解析：尚未向目標主機出示任何認證，與目標拒絕認證（AUTH_FAILED）分開
 	CodeSSHPrivateKeyInvalid = register("RULE_SSH_PRIVATE_KEY_INVALID", Descriptor{ZhFallback: "這個帳號設定的私鑰無法使用（格式錯誤或設有保護密碼），請聯絡管理員更換私鑰。"})
 	CodeSSHUnreachable       = register("RULE_SSH_UNREACHABLE", Descriptor{ZhFallback: "無法連線到目標主機"})

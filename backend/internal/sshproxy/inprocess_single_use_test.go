@@ -26,7 +26,7 @@ func TestConnectTokenSingleUseAcrossMCPAndWS(t *testing.T) {
 			sqlDB.SetMaxOpenConns(1)
 			prepareRedeemableAsset(t, h, db)
 			h.Registry = proxy.NewConnectionRegistry()
-			require.NoError(t, db.AutoMigrate(&model.SessionCommand{}, &model.AlertRule{}, &model.CommandAlert{}))
+			require.NoError(t, migrateWithAuthz(db, &model.SessionCommand{}, &model.AlertRule{}, &model.CommandAlert{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 			matcher := audit.InitAlertMatcher(db, nil)
 			require.NoError(t, matcher.LoadRules())
 			t.Cleanup(func() { audit.InitAlertMatcher(nil, nil) })

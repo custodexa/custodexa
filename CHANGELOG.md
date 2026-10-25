@@ -2,6 +2,392 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.18.0 — roles built from permissions, and administration limited to nodes (2026-10-25)
+
+Schema changes. Upgrading runs eighteen migrations. They build the new permission model, record
+the host identity of credential-change work, give every credential a managing owner and add
+system security alerts. Every existing role assignment stays as it is. A 1.14.x, 1.15.x, 1.16.x
+or 1.17.x package deployment upgrades with `custodexa.sh upgrade 1.18.0`; from a release before
+1.17.0 the upgrade also runs the 1.17.0 migration. Once 1.18.0 has started, `custodexa.sh
+rollback` does not switch back and prints how to restore the backup the upgrade took. Read
+[Upgrading to 1.18.0: the permission model migration][1180-sop] in the upgrade SOP first.
+
+### What you need to do
+
+#### Before the upgrade
+
+- Rehearse: restore the pre-upgrade backup into an isolated environment, never onto production,
+  start 1.18.0 and keep the log lines starting `[AuthzModelMigration] report=` and
+  `credential_ownership_migration_report`. After the production upgrade, account for each
+  difference from the rehearsal by what changed since the backup, and keep both with the record.
+- Run the query under "Check before you start" in the credential ownership part of the
+  [1.18.0 upgrade section][1180-sop] against the production database. It has to return 0.
+- If 1.18.0 stops at start-up with an error that names a role, correct that role as the role
+  checks in the same section describe, or restore the backup. An existing role named
+  `identity_admin` or `security_admin` also stops it.
+- Stop every old instance that uses the same database, the standby and instances on other hosts
+  included, until step 5 of [2.3 Stopping the service][1180-sop-stop] reads 0 connections. Let
+  credential-change work in the middle of a step finish first.
+- With OIDC or LDAP group mappings, rehearse sign-in and token renewal with an account that gets
+  grants from a mapping, and check that it keeps them. Such sign-ins, older ones included, now last
+  at most the Group mapping revalidation limit, 12 hours by default; set another value on the
+  Security Policies page before you reopen access ([details][1180-topo-external]).
+- If operation logs, command streams, alert records or recordings are kept for 1 to 6 days, make
+  room for at least 7 days of them, and change configuration scripts so that none sets 1 to 6.
+- Tell your users about the host key change under "Host keys" below, and route the
+  `host_key_mismatch` alert to the people who handle it ([what to do][1180-topo-hostkey]).
+- Check integrations that branch on denial codes or on `required_permission`
+  ([Change in the codes that external API callers see][1180-sop-codes]).
+
+#### After the upgrade
+
+- If the closing screen shows a Permissions warning, or the backend log a line starting
+  `[AuthzModelMigration] WARN`, resolve what the migration report names. Then take a backup and
+  check that its `snapshot.txt` says `usable=true` before you rely on it.
+- Correct the retention pairs named by start-up log lines starting `[SecurityPolicy]`; until then
+  any save that touches retention is refused.
+- If the `[ScopedTemplateSeed]` lines report a conflict, rename the custom role that uses
+  `asset_admin` or `authz_admin` and restart ([Two new built-in roles][1180-sop-roles]).
+- On the Secret Rotation page, check each plan's initiator and the result of its first run after
+  the upgrade. A plan whose initiator could not be found, and plans in `skipped_plan_ids`, stay
+  paused until someone with the needed permissions uses Reauthorize ([2.5b][1180-sop-plans]).
+- Take over change-secret work left from before the upgrade as [2.5b][1180-sop-plans] describes,
+  after checking that its address and account are the ones the secret was sent to. Retry a
+  candidate once on the candidate list, then confirm its host identity. For a rotation member that
+  had sent its secret, confirm the host identity on the credential's rotation; the first
+  confirmation records the target. Other rotation members only need Retry there. A candidate
+  nobody retries is marked abandoned 24 hours after it was created. Do not clear a candidate: it
+  can hold the only copy of a secret already in effect on the host.
+- Assign the new roles yourself if you want to split administration, on an account's Roles and
+  scope tab or through a user group. Nobody holds the four new templates after the upgrade.
+- Before you delegate nodes, reassign the shared credentials those administrators should manage
+  from Global to a node in the Credential library, and have someone not limited to nodes review
+  each dedicated credential the ownership report counts as `dedicated_not_single_binding`.
+- Keep at least one notification channel enabled and make sure someone reads system security
+  alerts, including those about protected accounts. Channels now live on Notification Channels
+  under System Settings: update runbooks and bookmarks, and send a test from there. Webhook
+  receivers accept `system_security_alert` and drop repeats with the same `delivery_id`. A channel
+  you disable or delete may still receive the notice of that change and notifications queued
+  before it.
+- When a permission state failure event opens, investigate it on the Failure Events tab of
+  Operation Logs; if the state is intended, a super administrator accepts it with a reason. This
+  does not repair a checkpoint, so check Integrity Verification separately
+  ([details][1180-topo-host]).
+
+#### When you restore a backup or go back to an earlier release
+
+- Use `restore` ([Restoring with `restore`][1180-br-restore]). With a backup of 1.18.0 or later
+  it ends every earlier sign-in, agent token and approved temporary access: issue agent tokens and
+  have temporary access requested again. A restore by hand ends none of them, so complete step 5a
+  of [Restoring by hand][1180-br-hand] before any application service starts.
+- Complete the [post-restore verification checklist][1180-br-check]: revoke again what was revoked
+  or changed after the backup was taken, and confirm that no "Seal after restore" alert is open.
+- If a new backup has `usable=false`, correct each cause on the `unusable` line of its
+  `snapshot.txt` ([3.8][1180-br-backups]) and take a new one.
+- The pre-upgrade backup is the only way back to an earlier release. Run the `restore` command
+  that `rollback` prints; it also replaces `JWT_SECRET` and revokes refresh tokens, agent tokens
+  and temporary access. By hand, do both with the statements in
+  [Revoking long-lived sign-ins][1180-pcr-revoke]. Then check that a token issued before the
+  restore is refused and a new sign-in works.
+
+#### If you integrate with the API or automate administration
+
+- Treat HTTP 403 with `AUTH_PERMISSION_DENIED` as a missing permission, and handle the answers
+  under "Requests that answer differently". A 404 can be a scope denial, recorded as `denied`.
+- When a write answers 500 because its audit record or alert could not be written, nothing was
+  applied; retry once the cause is fixed. This covers identity source settings, asset address and
+  transport changes, temporary access revocation, recording deletion, notification channels and
+  the security settings that raise an alert. Recording deletion can also answer 500 after the
+  recording was removed from the database, when only the file could not be removed. A retry then
+  answers 404 `NOTFOUND_SESSION_RECORDING`; only then remove the file by hand.
+- Give custom roles and service accounts the permission each operation needs, as listed under
+  "Permission checks", and review who holds `authorization:manage` and `credential:bind`, since
+  both allow more than before.
+- Run automation that grants or revokes protected roles as a super administrator, and keep one
+  available for the protected-account operations listed below.
+- Hand over to another qualified operator any flow in which an administrator authorizes
+  themselves, a group they belong to or an agent they own, or decides their own agent's request.
+- Map an external group to a custom role, Asset administrator or Authorization administrator
+  through a user group, and send no scope or node fields to mappings. Send node limits only in
+  `role_nodes` and handle its three new codes. Clients that read `scope_summary` handle `nodes`
+  entries.
+- In audit and SIEM rules, link an audit record to its alert by `correlation_id` where both carry
+  one. One revocation of temporary access can write up to three records with the same action and
+  no shared `correlation_id`, so do not count those records as revocations.
+- Roles now apply on the next request, without a new sign-in.
+- Playback and download clients get a new recording ticket after a refused one, monitoring and
+  share clients handle an HTTP error before the WebSocket upgrade, checkpoint verifiers and import
+  tools read `cp-agg-v4` and `perm`, and backup parsers accept the `authz.*` lines.
+- Custom terminal, file transfer and connection test clients show a warning when an answer
+  carries `RULE_SSH_HOST_KEY_CHANGED` or `host_key_mismatch`, also when authentication then fails.
+  A working connection no longer means that the host key matched the record.
+- Keep the initiators of long-running change-secret plans active.
+- Before deleting a node used as the scope of a role assignment, change that assignment. Until
+  then the delete answers 409 `RULE_NODE_SCOPE_REFERENCED`, also for a super administrator.
+
+#### If your custom roles limit permissions to nodes
+
+- Give asset creation and credential creation on the same nodes: an asset with an inline password
+  or private key needs credential creation on every submitted node.
+- Roles with `changesecret:manage` for the whole system and `account:rotate` on some nodes see only
+  the accounts within the `account:rotate` scope on the Secret Rotation pages.
+- Clients used by administrators limited to nodes send `ownership` when they create or convert a
+  shared credential, and get an impact confirmation before changing or rotating a shared
+  credential used outside their scope.
+
+### New capabilities
+
+#### Roles and permissions
+
+- Super administrators create, copy, edit and delete custom roles on the Roles page, through
+  `/api/v1/role-definitions` with `expected_version`. Built-in roles cannot be changed, and an
+  assigned role cannot be deleted. An edit that would give an agent holding the role a permission
+  agents may not hold answers 403.
+- Four new locked templates: Identity administrator (accounts and sign-in) and System security
+  administrator (security settings, alerts, notification channels) for the whole system, and the
+  two for nodes below.
+- User groups hold roles for their members: `GET` and `PUT /api/v1/user-groups/:id/role-bindings`.
+- Before you save a role change, the page shows its effect through
+  `POST /api/v1/role-assignment-previews`. `GET /api/v1/users/:id` adds `account_ops`, which
+  classifies the operations on that account by the protected-account rules.
+- `GET` and `PATCH /api/v1/auth/me` add `permissions` and `scope_summary`, for display only. Keys
+  starting with `ui:` cannot be assigned.
+- Each management page opens for the permission it needs; `GET /api/v1/roles` keeps the old list.
+
+#### Administration limited to nodes
+
+A role assigned for some nodes applies to those nodes and the nodes below them. Each permission is
+checked against the nodes of the assignment it comes from.
+[Limiting a role to nodes][1180-topo-limit] and the sections after it describe what such a holder
+can do and what the product only records.
+
+##### Assigning a role for some nodes
+
+- `PUT /api/v1/users/:id/roles` and `PUT /api/v1/user-groups/:id/role-bindings` take an optional
+  `role_nodes` object from role to node IDs. A role left out keeps its scope, a newly added one is
+  system-wide, and `null` makes it system-wide. `GET /api/v1/users/:id/role-bindings` is new.
+- Three new 400 codes, with nothing written: `VALIDATION_ROLE_NOT_NODE_SCOPABLE` when the role
+  holds a permission that applies only system-wide, as the super administrator, auditor, Identity
+  administrator and System security administrator do; `VALIDATION_ROLE_BINDING_NODES_EMPTY` for an
+  empty list (send `null` for system-wide); `VALIDATION_ROLE_BINDING_NODES_INVALID` for a node
+  that does not exist or was deleted. Other assignment entry points answer scope or node fields
+  with 400 `VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED`. Agents cannot be assigned roles for nodes.
+- A node-limited assignment never widens to the whole system. The built-in User and Approver
+  roles take effect only system-wide: limited to nodes, they are saved but grant nothing, and the
+  response lists them under `node_range_no_effect`.
+- Narrowing a role's nodes revokes the refresh tokens of users who lose coverage. A role that an
+  external mapping also grants stays, system-wide, when its direct assignment is removed.
+
+##### Choosing nodes on the assignment page
+
+- On the Roles and scope tab of a user or user group, each role can be set to Whole system or
+  Specific nodes, child nodes included. The tab estimates the assets in the asset list's
+  management scope that the selection gives, which is not the number every operation can act on.
+  `GET /api/v1/role-assignment-options` supplies the nodes and the roles that can be limited, to
+  holders of the role assignment permission for the whole system.
+
+##### Asset administrator and Authorization administrator templates, and the scope summary in the page header
+
+- Asset administrator manages assets, nodes, the credential library with its credential changes,
+  and credential change plans. Authorization administrator manages authorization rules, approver
+  scopes and per-asset connection policy; the system-wide default policy stays with the System
+  security administrator. Both are designed to be assigned for some nodes, and neither grants
+  connections ([Roles and what each one manages][1180-topo-roles]).
+- `scope_summary` gives `binding_scope` `global` when a system-wide assignment gives the
+  permission, and otherwise `nodes` with `nodes: [{id, path}]`.
+- For holders limited to nodes, the Assets, Credential library and Asset Authorization pages show
+  "You can manage:" with the node paths in the page header.
+
+##### What an administrator limited to nodes works with
+
+- Nodes inside the scope can be created, edited and moved, but not one's own scope root or at the
+  root level (403). Targets outside the scope answer 404, like missing ones.
+- A managed asset lists only its nodes within the scope, and an update's `node_ids` replaces only
+  those. An asset left in no node answers 400 `RULE_ASSET_NODE_REQUIRED`; deleting or disabling
+  one that also belongs to nodes outside the scope answers 409 `RULE_ASSET_HAS_OUT_OF_SCOPE_NODES`.
+  Managing an asset does not allow connecting to it.
+- Connection policy, authorization rules and asset or node approver scopes are managed for the
+  assets and nodes within the scope.
+- A shared credential is managed by those whose credential permissions cover its owning node.
+  Changing or rotating the secret of one that assets outside the scope also use takes an impact
+  confirmation (`POST /api/v1/credentials/:id/impact-confirmations`); without it the request
+  answers 409 `RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED` ([what it stops][1180-topo-creds]).
+- Secret Rotation pages show, and bulk import accepts, only accounts and nodes in the scope. A batch
+  naming an unavailable target is refused whole with 404 `NOTFOUND_BATCH_ITEMS_UNAVAILABLE`, and an
+  import whose data changed before the write answers 409 `CONFLICT_ASSET_IMPORT_STATE_CHANGED`.
+
+#### Assets and credentials
+
+- Every shared credential has a managing owner, Global or a node, set with `ownership`. Reassign
+  one with `PUT /api/v1/credentials/:id` or several with `POST /api/v1/credentials/ownership`.
+- Assets can be moved, tagged and deleted in batches with `POST /api/v1/assets/batch/move`,
+  `/batch/tags` and `/batch/delete`, all or nothing. The backend sets no limit on the number of
+  assets; the bundled proxy limits the body to 1 MiB by default and answers 413 above it. A batch
+  runs in one transaction, so split very large ones ([details][1180-topo-assets]).
+- Asset Authorization has a Connection policy tab (`GET /api/v1/assets/access-policy-overrides`).
+
+#### Other additions
+
+- System security alerts cover high-risk changes to settings, permissions, credentials, host keys
+  and notification channels. They cannot be disabled or deleted. Each is queued for every enabled
+  channel and retried for up to 72 hours, so a receiver can get it more than once; a channel whose
+  settings cannot be read is recorded as not delivered.
+- New checkpoints (`cp-agg-v4`) also sign roles, assignments and external mappings, and
+  unrecorded or unverifiable permission state changes raise an alert.
+- Dashboard cards load one by one, and every user sees a card about this release.
+
+### What changes for deployers
+
+#### Permission checks
+
+- Capability denials answer 403 with a body of exactly `error` and `code`
+  (`AUTH_PERMISSION_DENIED`). No longer sent: `AUTH_ROLE_REQUIRED`,
+  `AUTH_TAG_LIST_PRIVILEGED_ONLY`, `AUTH_TAG_GOVERNANCE_ADMIN_ONLY`,
+  `AUTH_SESSION_TERMINATE_ADMIN_ONLY`, `AUTH_MONITOR_ROLE_REQUIRED` and `AUTH_APPROVER_REQUIRED`.
+  Rule denials keep their codes.
+- Operations that now need a permission of their own, refused whole when any is missing (each
+  field is listed in [docs/API_SPEC.md][1180-api]):
+
+  | Operation | Needs |
+  | --- | --- |
+  | Creating or importing an asset with a non-empty `access_policy` | `asset:create` and `access_policy:manage` |
+  | Updating an asset's `access_policy`, also with `null` or an unchanged value | `access_policy:manage`, plus `asset:update` when other fields are sent; `null` keeps the policy |
+  | Login password or private key in the asset and account forms | `credential:create` when created, `credential:set-secret` when replaced, even with `credential:manage` |
+  | Account name, SFTP and other inline credential fields | The matching `credential:create`, `credential:update` or `credential:set-secret`, or `credential:manage` for the whole system |
+  | Credential columns in the account list | `credential:view`, or `credential:manage` for the whole system |
+  | Attaching an existing shared credential (`credential_id`) | `credential:bind` |
+  | Reading credentials, and creating, editing, changing the secret of, rotating, converting, detaching, deleting or attaching one | `credential:view` to read, and for each action the credential permission named after it |
+  | Retrying or abandoning a rotation | `credential:rotate` |
+  | Kubernetes file upload and download | A connection authorization for the asset and account, in place of `asset:update` |
+  | Deleting a recording | `recording:delete` |
+
+- After request-shape validation, credential updates, deletion, scope conversion and secret
+  replacement check the action permission before looking up the credential. Batch creation checks
+  the permissions required by its mode before resolving targets or checking for a name conflict.
+  Missing those permissions returns 403 `AUTH_PERMISSION_DENIED`, including for a missing
+  credential, a conflicting name or invalid targets. Permissions that depend on the batch targets
+  are checked after the targets are resolved.
+
+#### Requests that answer differently
+
+| Request | Before | Now |
+| --- | --- | --- |
+| `PUT /api/v1/authorizations/:id/accounts` from a holder of `authorization:manage` who is not a super administrator | 403 | Allowed within the caller's scope: narrowing for anyone, widening for the creator of the rule |
+| Creating an applicant approver scope whose approvers include an applicant | Allowed | 400 `RULE_APPROVER_SCOPE_SUBJECT_OVERLAP` |
+| Transferring an agent's owner when the new owner would grant themselves access or holds a valid approval for it | Allowed | 409 `RULE_AGENT_OWNER_TRANSFER_SELF_GRANT` |
+| Approver scope list and create responses for a caller who is not a super administrator | Full model | IDs and display names, with no email address, roles or asset address |
+
+#### Protected roles, accounts and self-approval
+
+- The super administrator, the System security administrator and custom roles that contain any of
+  nine high-risk permissions, listed in [docs/API_SPEC.md][1180-api], are protected. Only a super
+  administrator grants or revokes them, by any route including user groups and external mappings;
+  anyone else gets 403 `AUTH_PROTECTED_ROLE_ASSIGNMENT`.
+- Only a super administrator sets a super administrator's password, disables their multi-factor
+  authentication, binds an external identity to them or changes their roles, and only a super
+  administrator enables, disables or deletes an account holding the super administrator or System
+  security administrator role. An account administrator can still unbind a super administrator's
+  external identity while another way to sign in remains. When someone who is not a super
+  administrator sets a System security administrator's password, disables their multi-factor
+  authentication, or binds or unbinds their external identity, the change goes through and raises
+  an alert.
+- Someone who is not a super administrator cannot authorize themselves, a group they belong to or
+  an agent they own: 403 `RULE_AUTHORIZATION_SELF_SUBJECT`.
+- Holders of `authorization:manage` can revoke temporary access when every asset the revocation
+  changes is within their scope.
+- Applicant approver scopes need `approverscope:manage_applicant`, which the first start of 1.18.0
+  gives once to every custom role holding `approverscope:manage`; if that fails, the start stops.
+- An owner deciding a request of their own agent counts as deciding their own request.
+
+#### External identity sources
+
+- External groups map straight only to the super administrator, auditor, user, approver, Identity
+  administrator and System security administrator roles. Another existing role answers 400
+  `MAPPING_ROLE_NOT_DIRECT_MAPPABLE`, and a value other than `null` in `nodes`, `node_ids`,
+  `scope`, `scope_kind` or `scope_nodes` answers 400 `MAPPING_SCOPE_FIELD_REJECTED`.
+- When a sign-in cannot read the account's groups, it keeps that channel's mapped grants if
+  `mapping_revalidation_hours` is 0 or the last reading is within it, and withdraws them
+  otherwise. An overage marker, or no groups claim name set while enabled rules remain, counts as
+  unreadable; with a claim name set, a token carrying neither that claim nor an overage marker
+  counts as no groups and withdraws them at once. With a limit above 0 and later sign-ins through
+  the same source, mapped grants stay usable for at most about the limit plus one session length
+  after the last reading. To take access away sooner, disable the account in Custodexa
+  ([details][1180-topo-external]).
+
+#### Audit records
+
+- Asset updates record every changeable field, secrets masked. Address changes, weaker transport
+  checks, identity source changes and notification channel changes raise an alert in the same
+  transaction. Node moves and asset placement record `topology_coverage`.
+- Shortening retention, turning off fail-closed recording, loosening a connection policy,
+  lengthening `mapping_revalidation_hours`, redirecting syslog, confirming or turning off offsite
+  storage, changing the key layout, and using or detaching a custom secret also raise a system
+  security alert.
+
+#### Credential changes
+
+- Change-secret plans, batches, rotations and retries record who started them and check that
+  person's current permissions for each target at every run. When the permission is gone or the
+  data was restored in between, the next check stops the work and keeps its candidate secret.
+  After a permission loss, a change already confirmed as sent may still be verified by logging in
+  to the unchanged target with the candidate secret, within its 24 hours and while the host
+  identity matches; the secret is not changed again.
+- At a restart, rotation members that were Changing become `changed_unverified`, secrets kept.
+- Work that has sent a secret is tied to the host identity of its first connection. Adopting or
+  resetting the host key, or a different transport, stops it. Work stopped by a host key change,
+  and candidates and sent rotation members from before the upgrade, continue only after a host
+  identity confirmation: retry with `confirm_host_identity`, plus `accept_different_key` when the
+  key differs. Confirming does not extend the 24 hours from the candidate's creation or the
+  rotation's start.
+
+#### Host keys
+
+- An interactive SSH connection (terminal, file transfer or connection test) to a host whose key
+  does not match the record now continues to authentication and shows a warning. Credential
+  changes and agent-channel terminals still refuse and send no credentials.
+- Host key records follow the host and port, so an asset created again at the same address keeps
+  the recorded key. After a host is reinstalled, a super administrator adopts a fingerprint that
+  connections have seen (`POST /api/v1/assets/:id/host-key/adopt`) or resets the record.
+
+#### Retention, recordings and backups
+
+- Data retention takes 0 or 7 to 3650 days. At each start, stored values of 1 to 6 are raised to 7
+  and recorded as `retention_floor_raised`.
+- Deleting a recording writes its audit record and a `recording_deleted` alert before the file is
+  removed. A recording ticket stops working when its holder loses access to recordings.
+- A backup with broken permission references or no eligible local super administrator is marked
+  `usable=false`. After a restore the service seals a covering checkpoint before it opens; when it
+  cannot, it opens with the "Seal after restore" alert.
+
+### Fixes
+
+- An edited change-secret plan whose target is a shared credential keeps that target when saved.
+- User pickers load up to 10,000 users, in pages of 200.
+- `rollback` with an external database picks the right client and uses the database's TLS settings.
+- Dashboard cards that fail to load show an error instead of 0, and the asset count matches the
+  asset list.
+- Approval lists and counts leave out the user's own requests, those of agents they own and items
+  they already decided.
+
+[1180-sop]: docs/ops/upgrade-sop.md#upgrading-to-1180-the-permission-model-migration
+[1180-sop-roles]: docs/ops/upgrade-sop.md#two-new-built-in-roles-asset-administrator-and-authorization-administrator
+[1180-sop-codes]: docs/ops/upgrade-sop.md#change-in-the-codes-that-external-api-callers-see
+[1180-sop-stop]: docs/ops/upgrade-sop.md#23-stopping-the-service
+[1180-sop-plans]: docs/ops/upgrade-sop.md#25b-scheduled-credential-change-plans-after-the-upgrade
+[1180-br-restore]: docs/ops/backup-and-restore.md#restoring-with-restore
+[1180-br-hand]: docs/ops/backup-and-restore.md#restoring-by-hand
+[1180-br-check]: docs/ops/backup-and-restore.md#6-post-restore-verification-checklist
+[1180-br-backups]: docs/ops/backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments
+[1180-pcr-revoke]: docs/ops/privileged-credential-rotation.md#revoking-long-lived-sign-ins-going-back-to-an-older-version
+[1180-topo-host]: docs/ops/deployment-topology-limits.md#what-the-products-roles-do-not-reach-the-host
+[1180-topo-roles]: docs/ops/deployment-topology-limits.md#roles-and-what-each-one-manages
+[1180-topo-limit]: docs/ops/deployment-topology-limits.md#limiting-a-role-to-nodes
+[1180-topo-assets]: docs/ops/deployment-topology-limits.md#managing-assets-within-a-limited-scope-what-it-does-not-grant-and-what-the-product-only-records
+[1180-topo-creds]: docs/ops/deployment-topology-limits.md#shared-credentials-within-a-limited-scope-what-the-impact-confirmation-stops-and-what-it-does-not
+[1180-topo-external]: docs/ops/deployment-topology-limits.md#roles-granted-from-an-external-identity-source-when-a-change-there-takes-effect
+[1180-topo-hostkey]: docs/ops/deployment-topology-limits.md#when-an-ssh-host-key-does-not-match-the-record
+[1180-api]: docs/API_SPEC.md
+
 ## 1.17.9 — workspace maintenance fixes (2026-10-15)
 
 No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with

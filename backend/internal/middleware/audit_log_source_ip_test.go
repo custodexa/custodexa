@@ -67,7 +67,7 @@ func sourceIPAuditRouter(t *testing.T, trustProxy bool) (*gin.Engine, *gorm.DB) 
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(7))
 		c.Set("username", "operator-under-test")
-		c.Set("role", "admin")
+		SetPrincipal(c, legacyPrincipal("admin"))
 		c.Next()
 	})
 	r.POST("/api/v1/assets", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) })

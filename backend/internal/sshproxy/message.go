@@ -103,6 +103,21 @@ func EncodeErrorMessage(code apierror.ErrCode, data string) ([]byte, error) {
 	return json.Marshal(Message{Type: MsgError, Data: data, Code: string(code)})
 }
 
+// EncodeErrorMessageWithParams 同 EncodeErrorMessage，另帶淨化後的 Params（值過 SanitizeOpaque）
+func EncodeErrorMessageWithParams(code apierror.ErrCode, data string, params map[string]string) ([]byte, error) {
+	if code == "" {
+		return nil, fmt.Errorf("sshproxy: MsgError 幀必須帶非空 apierror 碼")
+	}
+	var clean map[string]string
+	if len(params) > 0 {
+		clean = make(map[string]string, len(params))
+		for k, v := range params {
+			clean[k] = notifycat.SanitizeOpaque(v)
+		}
+	}
+	return json.Marshal(Message{Type: MsgError, Data: data, Code: string(code), Params: clean})
+}
+
 // EncodeCodedErrorMessage 是 EncodeErrorMessage 的常見情形：Data 直接取碼的
 // zh fallback，呼叫點無需碰任何文案。
 func EncodeCodedErrorMessage(code apierror.ErrCode) ([]byte, error) {

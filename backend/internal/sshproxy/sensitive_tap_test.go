@@ -65,7 +65,10 @@ func testSensitiveTap(t *testing.T, sink *sensitiveCapture, protocol string) *se
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { sqlDB.Close() })
-	if err := db.AutoMigrate(&model.AlertRule{}); err != nil {
+	if err := db.AutoMigrate(&model.AlertRule{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	rules := sensitiveRules()
@@ -220,7 +223,10 @@ func TestSensitiveTapOverflowAudit(t *testing.T) {
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	defer sqlDB.Close()
-	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	old := database.DB

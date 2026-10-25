@@ -30,6 +30,13 @@
       show-icon
     />
 
+    <ConfigChangeNotice
+      kind="oidc"
+      :form="form"
+      :saved-snapshot="savedSnapshot"
+      :active="isEdit"
+    />
+
     <OIDCProviderSelector
       v-model="provider"
       :is-edit="isEdit"
@@ -530,6 +537,7 @@ import SourceDetailLayout from './components/SourceDetailLayout.vue'
 import SourceSection, { SOURCE_SECTION_OPEN_KEY } from './components/SourceSection.vue'
 import GroupMappingEntry from './components/GroupMappingEntry.vue'
 import PreflightPanel from './components/PreflightPanel.vue'
+import ConfigChangeNotice from './components/ConfigChangeNotice.vue'
 import OIDCProviderSelector from './components/OIDCProviderSelector.vue'
 import OIDCProviderGuide from './components/OIDCProviderGuide.vue'
 import OIDCIssuerVerdict from './components/OIDCIssuerVerdict.vue'

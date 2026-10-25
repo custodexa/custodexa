@@ -59,6 +59,10 @@ func newHandler(ssh *sshproxy.Handler, idleTimeout time.Duration) *Handler {
 	h := &Handler{ssh: ssh, sessions: make(map[string]*ownedSession), watchers: make(map[string]bool), now: time.Now}
 	if ssh != nil && ssh.DB != nil {
 		h.ledger = audit.NewAgentToolCallLedger(ssh.DB, audit.GetAuditIntegrity())
+		// This instance only serves request submission and status reads for agents. It is
+		// built without the scope evaluator and the in-transaction audit sink, so it must
+		// not be used for revocation: revoking through it would skip the scope check and
+		// fall back to post-commit audit.
 		h.requests = authz.NewAccessRequestService(ssh.DB, policy.NewSecurityPolicyService(ssh.DB), ssh.AccessPolicy, ssh.AuditService, nil)
 		h.requests.SetAccountPresenceSource(asset.RequestAccountPresent)
 		h.requests.SetSessionService(ssh.SessionService)

@@ -7,6 +7,7 @@ import ElementPlus, { ElMessageBox } from 'element-plus'
 import AssetEditDrawerContent from '@/components/asset/AssetEditDrawerContent.vue'
 import Assets from '@/views/Assets.vue'
 import { createAssetAccount, deleteAssetAccount } from '@/api/assetAccounts'
+import { setCapabilitiesForTests, resetCapabilities } from '@/composables/useCapabilities'
 
 // 編輯資產抽屜的內容。
 //
@@ -70,6 +71,7 @@ vi.mock('@/api/assets', () => ({
     created_at: '2026-09-01T00:00:00Z',
   }),
   resetAssetHostKey: vi.fn(),
+  adoptAssetHostKey: vi.fn(),
   testAssetConnection: vi.fn(),
   getAssetGroups: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   getAssetNodeTree: vi.fn().mockResolvedValue({ data: [] }),
@@ -236,6 +238,7 @@ async function mountContent(props = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  setCapabilitiesForTests(['asset:update', 'credential:manage'])
   listAssetAccountsMock.mockResolvedValue({ data: accountFixture(), total: 2 })
   listCredentialsMock.mockResolvedValue({
     data: [
@@ -281,6 +284,8 @@ describe('帳號表的憑證來源', () => {
     expect(wrapper.find('[data-test="account-version-22"]').text()).toContain('就位')
   })
 })
+
+afterEach(() => resetCapabilities())
 
 describe('列動作', () => {
   it('共用且非預設的一列上四個動作都可達', async () => {
@@ -449,6 +454,49 @@ describe('更正共用憑證的登記值', () => {
     expect(getCredentialMock).toHaveBeenCalledWith(110)
     expect(wrapper.find('[data-test="secret-fix-asset-2"]').text()).toContain('（這台）')
     expect(wrapper.find('[data-test="secret-fix-asset-3"]').text()).not.toContain('這台')
+  })
+})
+
+// 後端 06e29e9c：帶帳號名稱的新增（這台專用）需要 credential:manage；
+// 缺能力要在畫面上預先說明，不是按下去才收到 403。
+describe('帳號名稱的欄位能力', () => {
+  async function openAdd(wrapper) {
+    await wrapper.find('[data-test="account-add"]').trigger('click')
+    await flushPromises()
+    return wrapper.find('[data-test="account-add-row"]')
+  }
+  const dedicatedRadio = (row) =>
+    row.find('[data-test="credential-mode"] input[value="dedicated"]')
+
+  it('缺 credential:manage：「這台專用」停用並寫出原因，共用來源仍可用', async () => {
+    setCapabilitiesForTests(['asset:update'])
+    const wrapper = await mountContent()
+    // 入口本身不停用：共用來源不帶帳號名稱，缺能力者仍可掛共用憑證
+    expect(wrapper.find('[data-test="account-add"]').attributes('disabled')).toBeUndefined()
+    const row = await openAdd(wrapper)
+
+    expect(dedicatedRadio(row).element.disabled).toBe(true)
+    const note = row.find('[data-test="credential-dedicated-disabled-note"]')
+    expect(note.exists()).toBe(true)
+    expect(note.text()).toContain('新增憑證')
+    expect(row.find('input[value="shared"]').element.disabled).toBe(false)
+  })
+
+  it('持有 credential:manage：「這台專用」可選且不顯示停用說明', async () => {
+    setCapabilitiesForTests(['asset:update', 'credential:manage'])
+    const wrapper = await mountContent()
+    const row = await openAdd(wrapper)
+
+    expect(dedicatedRadio(row).element.disabled).toBe(false)
+    expect(row.find('[data-test="credential-dedicated-disabled-note"]').exists()).toBe(false)
+  })
+
+  it('設為預設只需 asset:update，缺 credential:manage 也不停用', async () => {
+    setCapabilitiesForTests(['asset:update'])
+    const wrapper = await mountContent()
+    const btn = wrapper.find('[data-test="account-set-default-21"]')
+    expect(btn.exists()).toBe(true)
+    expect(btn.attributes('disabled')).toBeUndefined()
   })
 })
 

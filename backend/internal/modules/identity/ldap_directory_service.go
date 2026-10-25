@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
@@ -215,7 +216,13 @@ type LDAPDirectoryService struct {
 	codec crypto.ColumnCodec
 	// gate 傳輸政策存檔閘；nil＝閘不生效（未接線的單測路徑）
 	gate LDAPTransmissionGate
+	// alerts 系統告警落地面（身分來源設定變更告警）；缺注入時設定變更寫入失敗
+	// （組裝根啟動自檢拒絕啟動）。事件與設定寫入同一交易，寫入失敗整筆回滾
+	alerts port.SystemAlertSink
 }
+
+// SetSystemAlertSink 注入系統告警落地面（組裝時，須晚於落地面建構與自檢）。
+func (s *LDAPDirectoryService) SetSystemAlertSink(sink port.SystemAlertSink) { s.alerts = sink }
 
 // NewLDAPDirectoryService 建立目錄設定服務
 func NewLDAPDirectoryService(db *gorm.DB, codec crypto.ColumnCodec, auditTx port.TxSink) *LDAPDirectoryService {
@@ -607,6 +614,10 @@ func (s *LDAPDirectoryService) upsertLocked(
 	}
 
 	oldMappingSourceEnabled := existing != nil && existing.Enabled
+	var prev model.LDAPDirectory
+	if existing != nil {
+		prev = *existing
+	}
 	row.Name = input.Name
 	row.URL = input.URL
 	row.BindDN = input.BindDN
@@ -628,6 +639,10 @@ func (s *LDAPDirectoryService) upsertLocked(
 		return LDAPDirectoryView{}, nil, err
 	}
 	if oldMappingSourceEnabled && !row.Enabled {
+		// 目錄列不在權限投影內；映射撤銷前隔離既有直寫
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return LDAPDirectoryView{}, nil, err
+		}
 		if err := revokeMappingSupportsLocked(tx, s.auditTx, model.RoleMappingChannelKindDirectory, row.ID, "source", 0); err != nil {
 			return LDAPDirectoryView{}, nil, err
 		}
@@ -635,7 +650,11 @@ func (s *LDAPDirectoryService) upsertLocked(
 
 	// 審計與寫列同事務：外部認證來源被建立／改指向卻無審計紀錄，不是可接受的
 	// 終局（沿 seed 路徑的同一裁決）
-	if err := s.auditSave(tx, req, action, row, risks); err != nil {
+	correlationID, err := newSourceCorrelationID()
+	if err != nil {
+		return LDAPDirectoryView{}, nil, err
+	}
+	if err := s.auditSave(tx, req, action, row, risks, correlationID); err != nil {
 		return LDAPDirectoryView{}, nil, err
 	}
 	// URL 變更為高權重事件：admin 對外部身分來源的指向權是被信任的，
@@ -644,6 +663,29 @@ func (s *LDAPDirectoryService) upsertLocked(
 		if err := s.auditURLChange(tx, req, row, oldURL, validation.ParsedURL); err != nil {
 			return LDAPDirectoryView{}, nil, err
 		}
+	}
+	// 來源設定變更告警與設定、審計同交易；不加權限限制
+	secretChanged := req.BindPassword != "" || req.ClearBindPassword
+	var fields []string
+	if existing == nil {
+		fields = append(fields, "created")
+		fields = append(fields, ldapSetFields(row)...)
+	} else {
+		fields = changedFields(
+			fieldPair{"name", prev.Name, row.Name}, fieldPair{"url", prev.URL, row.URL},
+			fieldPair{"bind_dn", prev.BindDN, row.BindDN}, fieldPair{"base_dn", prev.BaseDN, row.BaseDN},
+			fieldPair{"user_filter", prev.UserFilter, row.UserFilter},
+			fieldPair{"attr_email", prev.AttrEmail, row.AttrEmail}, fieldPair{"attr_fullname", prev.AttrFullName, row.AttrFullName},
+			fieldPair{"attr_group", prev.AttrGroup, row.AttrGroup},
+			fieldPair{"tls_verify", boolStr(prev.SkipTLSVerify), boolStr(row.SkipTLSVerify)},
+			fieldPair{"enabled", boolStr(prev.Enabled), boolStr(row.Enabled)})
+		if secretChanged {
+			fields = append(fields, "bind_password")
+		}
+	}
+	if err := raiseIdentitySourceChanged(tx, s.alerts, GroupRoleMappingActor(req.Actor),
+		sourceChange{Kind: sourceKindLDAP, SourceID: row.ID, Fields: fields, SecretChanged: &secretChanged}, correlationID); err != nil {
+		return LDAPDirectoryView{}, nil, err
 	}
 	return ldapDirectoryViewOf(row), nil, nil
 }
@@ -661,6 +703,9 @@ func (s *LDAPDirectoryService) Delete(ctx context.Context, actor LDAPDirectoryAc
 		// 仍有映射規則者拒刪（鎖內判定：鎖外預讀會讓一次併發的規則建立漏掉）。
 		// 目錄的刪除是軟刪、重建走新列換到新識別，不擋的話「刪掉重設」之後
 		// 全部目錄映射規則變孤兒，而來源詳情頁的映射區段看不出異常
+		if err := authz.BeginPermissionChange(tx); err != nil {
+			return err
+		}
 		if err := cleanupMappingHistoryForSourceLocked(tx, s.auditTx, model.RoleMappingChannelKindDirectory, row.ID); err != nil {
 			if errors.Is(err, ErrMappingSourceHasRules) {
 				return ErrLDAPDirectoryHasMappings
@@ -679,7 +724,16 @@ func (s *LDAPDirectoryService) Delete(ctx context.Context, actor LDAPDirectoryAc
 		if err := tx.Delete(&model.LDAPDirectory{}, row.ID).Error; err != nil {
 			return err
 		}
-		return s.auditDelete(tx, actor, row)
+		correlationID, err := newSourceCorrelationID()
+		if err != nil {
+			return err
+		}
+		if err := s.auditDelete(tx, actor, row, correlationID); err != nil {
+			return err
+		}
+		secretChanged := row.BindPasswordEnc != ""
+		return raiseIdentitySourceChanged(tx, s.alerts, GroupRoleMappingActor(actor),
+			sourceChange{Kind: sourceKindLDAP, SourceID: row.ID, Fields: []string{"deleted"}, SecretChanged: &secretChanged}, correlationID)
 	})
 	if err != nil {
 		return ldapDirectoryWriteError(err)
@@ -762,6 +816,9 @@ const (
 // 路徑傳 s.db，收口前後逐條相同。
 func (s *LDAPDirectoryService) ldapDirectoryAuditLog(db *gorm.DB, actor LDAPDirectoryActor, action model.AuditAction,
 	status model.AuditStatus, resourceID *uint, details map[string]any) error {
+	if actor.ID == 0 && actor.Name == "" {
+		actor.Name = SystemSourceActorName // 內部與系統呼叫：操作者明確記為系統
+	}
 	payload, err := json.Marshal(details)
 	if err != nil {
 		return fmt.Errorf("序列化 LDAP 目錄設定稽核內容失敗: %w", err)
@@ -782,10 +839,11 @@ func (s *LDAPDirectoryService) ldapDirectoryAuditLog(db *gorm.DB, actor LDAPDire
 
 // auditSave 建立／更新事件（不記密碼與密文）
 func (s *LDAPDirectoryService) auditSave(tx *gorm.DB, req LDAPDirectoryRequest,
-	action model.AuditAction, row *model.LDAPDirectory, risks []policy.RiskItem) error {
+	action model.AuditAction, row *model.LDAPDirectory, risks []policy.RiskItem, correlationID string) error {
 	id := row.ID
 	return s.ldapDirectoryAuditLog(tx, req.Actor, action, model.StatusSuccess, &id, map[string]any{
 		"event":                 LDAPAuditEventSave,
+		"correlation_id":        correlationID,
 		"directory_id":          row.ID,
 		"url":                   ldapCanonicalOrEmpty(row.URL),
 		"enabled":               row.Enabled,
@@ -834,13 +892,14 @@ func (s *LDAPDirectoryService) auditURLChange(tx *gorm.DB, req LDAPDirectoryRequ
 }
 
 // auditDelete 刪除事件
-func (s *LDAPDirectoryService) auditDelete(tx *gorm.DB, actor LDAPDirectoryActor, row *model.LDAPDirectory) error {
+func (s *LDAPDirectoryService) auditDelete(tx *gorm.DB, actor LDAPDirectoryActor, row *model.LDAPDirectory, correlationID string) error {
 	id := row.ID
 	return s.ldapDirectoryAuditLog(tx, actor, model.ActionDelete, model.StatusSuccess, &id, map[string]any{
-		"event":        LDAPAuditEventDelete,
-		"directory_id": row.ID,
-		"url":          ldapCanonicalOrEmpty(row.URL),
-		"enabled":      row.Enabled,
+		"event":          LDAPAuditEventDelete,
+		"correlation_id": correlationID,
+		"directory_id":   row.ID,
+		"url":            ldapCanonicalOrEmpty(row.URL),
+		"enabled":        row.Enabled,
 	})
 }
 
@@ -875,4 +934,25 @@ func ldapCanonicalOrEmpty(raw string) string {
 		return ""
 	}
 	return origin
+}
+
+// ldapSetFields 建立時有值的欄位代碼（供來源設定變更事件列出）。
+func ldapSetFields(row *model.LDAPDirectory) []string {
+	var out []string
+	for _, f := range []fieldPair{
+		{"name", "", row.Name}, {"url", "", row.URL}, {"bind_dn", "", row.BindDN}, {"base_dn", "", row.BaseDN},
+		{"user_filter", "", row.UserFilter}, {"attr_email", "", row.AttrEmail},
+		{"attr_fullname", "", row.AttrFullName}, {"attr_group", "", row.AttrGroup},
+	} {
+		if f.After != "" {
+			out = append(out, f.Name)
+		}
+	}
+	if row.SkipTLSVerify {
+		out = append(out, "tls_verify")
+	}
+	if row.Enabled {
+		out = append(out, "enabled")
+	}
+	return out
 }

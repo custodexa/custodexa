@@ -260,6 +260,10 @@ type AssetAccountService struct {
 	// 綁具體型別會產生 asset→authz 出向邊，而 authz 的遷入順序排在 asset 之後。
 	// 介面**刻意不匯出**：外部呼叫端傳的是具體型別，不需要指名這個介面。
 	authz assetViewPermissionChecker
+	// mgmt 內嵌宣告秘密的管理授權關卡；未注入 fail closed
+	mgmt credentialManagementGate
+	// alerts 內嵌宣告秘密的系統告警落地面；未注入時內嵌宣告回 port.ErrSystemAlertSinkMissing 並回滾
+	alerts port.SystemAlertSink
 	// crypto 憑證加解密。
 	//
 	// **不再穿透 `s.assets.crypto`**：穿透讓 asset 服務的未匯出欄位成為本服務的
@@ -270,6 +274,21 @@ type AssetAccountService struct {
 	crypto crypto.ColumnCodec
 	// auditTx 交易內審計落地面（T-2 收口）；nil 即 fail-close。
 	auditTx port.TxSink
+	// writeScope 帳號寫入的交易內範圍判定（隨所屬資產）；非系統呼叫者未注入即 fail-close
+	writeScope AccountWriteScopePort
+}
+
+// WithManagementAuthorizer 注入憑證管理授權判定器：帳號表單內嵌的密碼／私鑰宣告
+// 屬於 SetSecret 的同義入口。未注入時此類宣告 fail closed。
+func (s *AssetAccountService) WithManagementAuthorizer(a CredentialManagementAuthorizer) *AssetAccountService {
+	s.mgmt = credentialManagementGate{authorizer: a}
+	return s
+}
+
+// WithSystemAlertSink 注入交易內系統告警落地面（組裝根）。
+func (s *AssetAccountService) WithSystemAlertSink(sink port.SystemAlertSink) *AssetAccountService {
+	s.alerts = sink
+	return s
 }
 
 // assetViewPermissionChecker 資產可見性判定（消費者側窄介面，見 authz 欄註解）。
@@ -510,8 +529,29 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 	if _, err := s.assets.GetByID(assetID); err != nil {
 		return nil, err
 	}
+	if err := s.earlyAccountScopeCheck(ctx, assetID, 0); err != nil {
+		return nil, err
+	}
 	source, err := normalizeCredentialSource(req)
 	if err != nil {
+		return nil, err
+	}
+	// 以請求帶入的帳號名稱建帳號＝寫入帳號名稱欄位，與資產表單同一欄位能力。
+	// 非預設帳號也要判：建非預設帳號再切成預設，名稱就鏡像回資產。
+	// 掛既有共用憑證時名稱取自憑證、請求不帶名稱，由掛載能力承擔。
+	// 欄位判定不載入任何資料，先於憑證語義能力；經建立憑證能力（非相容能力）通過的名稱另判 create
+	namedViaSemantic := false
+	if source.Username != "" {
+		semantic, err := requireFieldCapabilities(ctx, []string{"username"})
+		if err != nil {
+			return nil, err
+		}
+		namedViaSemantic = semantic.any("username")
+	}
+	// 憑證語義能力（與資產建立同一套）：掛既有共用憑證需 bind、內嵌秘密或經語義能力帶名稱（新建專用憑證）
+	// 需 create，目標＝這台資產。只持資產更新能力者不得把共用憑證掛到這台上；先驗能力再載入憑證，不留存在性探測
+	if err := requireCreateCredentialCaps(s.mgmt, ctx, nil, nonZeroIDs(source.CredentialID), assetID,
+		source.Password != "" || source.PrivateKey != "", namedViaSemantic, s.writeScope != nil); err != nil {
 		return nil, err
 	}
 	if err := ValidateAccountUsername(source.Username); err != nil {
@@ -558,7 +598,16 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 	userID, operator := model.UserFromContext(ctx)
 
 	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
+		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, 0); err != nil {
+			return err
+		}
 		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
+			return err
+		}
+		// 交易內以實際寫入的來源再判一次（任何寫入之前）
+		if err := requireCreateCredentialCaps(s.mgmt, ctx, tx, nonZeroIDs(source.CredentialID), assetID,
+			passwordEnc != "" || privateKeyEnc != "", namedViaSemantic, s.writeScope != nil); err != nil {
 			return err
 		}
 		// **資產列以 tx 讀**：交易外的 database.DB 在單連線的測試庫上會等一條
@@ -721,6 +770,9 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 	if _, err := s.assets.GetByID(assetID); err != nil {
 		return nil, err
 	}
+	if err := s.earlyAccountScopeCheck(ctx, assetID, accountID); err != nil {
+		return nil, err
+	}
 	// 只在本次帶了非空私鑰時驗證；未帶或空字串＝沿用現行私鑰，不重驗庫內既有的
 	if req.PrivateKey != nil {
 		if err := ValidatePrivateKey(*req.PrivateKey); err != nil {
@@ -766,6 +818,10 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 	var result *model.AssetAccount
 
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
+		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, accountID); err != nil {
+			return err
+		}
 		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
 			return err
 		}
@@ -785,6 +841,18 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		updates := map[string]interface{}{}
 		fields := make([]string, 0, 5)
 		if req.Username != nil && *req.Username != account.Username {
+			// 改名與資產表單的帳號名稱同一欄位能力；以交易內重讀的現值判定「實際會變更」，
+			// 任何寫入之前拒絕
+			semantic, err := requireFieldCapabilities(ctx, []string{"username"})
+			if err != nil {
+				return err
+			}
+			// 經更新憑證能力（非相容能力）通過：以這台資產為目標判定
+			if semantic.any("username") {
+				if err := requireCredentialFieldOn(s.mgmt, ctx, tx, CredOpUpdate, CredCapUpdate, assetID); err != nil {
+					return err
+				}
+			}
 			updates["username"] = *req.Username
 			fields = append(fields, "username")
 		}
@@ -840,6 +908,10 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		}
 
 		if secretChanged {
+			// 內嵌宣告秘密與憑證庫的 SetSecret 同一道關卡（缺權整筆零寫入）
+			if err := requireDeclaredSecretOn(s.mgmt, ctx, tx, assetID); err != nil {
+				return err
+			}
 			// 操作者宣告的密文：憑證追加版本、憑證的現行版本與本掛載的就位版本
 			// 同交易指向它。未被本次更動的那一欄自就位版本原樣帶過來，
 			// 只改密碼不得順手清掉私鑰（反之亦然）
@@ -877,7 +949,7 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		}
 		result = updatedAccount
 		credID, credScope := credentialAuditRef(tx, updatedAccount.CredentialID)
-		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
+		audit := model.AssetAccountAudit{
 			AssetID:         assetID,
 			AccountID:       updatedAccount.ID,
 			Username:        updatedAccount.Username,
@@ -885,7 +957,15 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 			Fields:          fields,
 			CredentialID:    credID,
 			CredentialScope: credScope,
-		}, userID, operator)
+		}
+		if err := stampDeclaredSecretAudit(&audit, secretChanged); err != nil {
+			return err
+		}
+		if err := writeAssetAccountAudit(s.auditTx, tx, audit, userID, operator); err != nil {
+			return err
+		}
+		// 內嵌宣告與憑證庫 SetSecret 同義：同交易告警，缺落地面整筆回滾
+		return raiseDeclaredSecret(s.alerts, tx, audit, secretChanged, userID, operator)
 	})
 	if err != nil {
 		return nil, err
@@ -915,6 +995,10 @@ func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uin
 
 	userID, operator := model.UserFromContext(ctx)
 	return database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
+		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, accountID); err != nil {
+			return err
+		}
 		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
 			return err
 		}
@@ -984,6 +1068,10 @@ func (s *AssetAccountService) SetDefault(ctx context.Context, assetID, accountID
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.AssetAccount
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
+		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, accountID); err != nil {
+			return err
+		}
 		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
 			return err
 		}
@@ -1112,7 +1200,7 @@ func mirrorDefaultAccountToAsset(tx *gorm.DB, account *model.AssetAccount) error
 // 空密文＝不動既有憑證（沿用 UpdateAssetRequest「密碼空字串不更新」的既有語義），
 // 不是清空。資產原本零帳號時就地建一筆 default——否則舊表單改了 username／密碼，
 // 連線端（讀帳號）卻什麼都拿不到。
-func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.Asset,
+func syncDefaultAccountFromAsset(auditTx port.TxSink, alerts port.SystemAlertSink, tx *gorm.DB, asset *model.Asset,
 	passwordEnc, privateKeyEnc string, userID uint, operator string) error {
 	if err := ValidateAccountUsername(asset.Username); err != nil {
 		return err
@@ -1147,7 +1235,7 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 			return accountUniqueViolation(err, "建立預設帳號失敗")
 		}
 		credID, credScope := credentialAuditRef(tx, account.CredentialID)
-		return writeAssetAccountAudit(auditTx, tx, model.AssetAccountAudit{
+		audit := model.AssetAccountAudit{
 			AssetID:         asset.ID,
 			AccountID:       account.ID,
 			Username:        account.Username,
@@ -1155,7 +1243,15 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 			Fields:          changedSecretFields(passwordEnc != "", privateKeyEnc != "", true),
 			CredentialID:    credID,
 			CredentialScope: credScope,
-		}, userID, operator)
+		}
+		declared := passwordEnc != "" || privateKeyEnc != ""
+		if err := stampDeclaredSecretAudit(&audit, declared); err != nil {
+			return err
+		}
+		if err := writeAssetAccountAudit(auditTx, tx, audit, userID, operator); err != nil {
+			return err
+		}
+		return raiseDeclaredSecret(alerts, tx, audit, declared, userID, operator)
 	}
 
 	// 掛載必有憑證：存量轉換已保證此事，殘態一律大聲失敗而不就地補一筆
@@ -1221,7 +1317,7 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 		}
 	}
 	credID, credScope := credentialAuditRef(tx, account.CredentialID)
-	return writeAssetAccountAudit(auditTx, tx, model.AssetAccountAudit{
+	audit := model.AssetAccountAudit{
 		AssetID:         asset.ID,
 		AccountID:       account.ID,
 		Username:        asset.Username,
@@ -1229,7 +1325,14 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 		Fields:          fields,
 		CredentialID:    credID,
 		CredentialScope: credScope,
-	}, userID, operator)
+	}
+	if err := stampDeclaredSecretAudit(&audit, secretChanged); err != nil {
+		return err
+	}
+	if err := writeAssetAccountAudit(auditTx, tx, audit, userID, operator); err != nil {
+		return err
+	}
+	return raiseDeclaredSecret(alerts, tx, audit, secretChanged, userID, operator)
 }
 
 // credentialAuditRef 取審計要記的憑證識別與範圍。

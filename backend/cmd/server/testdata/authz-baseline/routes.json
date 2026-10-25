@@ -1,0 +1,3604 @@
+{
+ "version": 1,
+ "routes": [
+  {
+   "method": "DELETE",
+   "path": "/api/v1/alert-rules/:id",
+   "params": {
+    "id": "{alertRule.custom}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Deletes the fixture rule; matcher cache is reloaded by the handler."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/approver-scopes/:id",
+   "params": {
+    "id": "{approverScope.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Admin only; removing the fixture scope is undone by the per-scenario reset."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/asset-groups/:id",
+   "params": {
+    "id": "{assetGroup.empty}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Only an empty node (no children, no member assets) can be deleted."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/assets/:id",
+   "params": {
+    "id": "{asset.vnc}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Cascades authorization revocation and binding removal for the asset."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/assets/:id/accounts/:accountId",
+   "params": {
+    "id": "{asset.ssh}",
+    "accountId": "{account.ssh2}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/assets/:id/files",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "query": {
+    "path": "/tmp/baseline.txt"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Remote side is the local receiver, so the success path ends in the remote-failure branch (502) after all authorization gates."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/assets/:id/host-key",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Requires a stored host key row for the asset; otherwise 404."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/authorizations/:id",
+   "params": {
+    "id": "{authorization.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Manual-source row; ticket-source rows return 409."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/change-secret-candidates/:id",
+   "params": {
+    "id": "{changeSecretCandidate.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/change-secret-plans/:id",
+   "params": {
+    "id": "{changeSecretPlan.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/credentials/:id",
+   "params": {
+    "id": "{credential.unbound}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Credential must have zero bindings, no active rotation and no pending candidate."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/credentials/:id/bindings/:accountId",
+   "params": {
+    "id": "{credential.shared}",
+    "accountId": "{account.sshShared}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{roleMapping.spare}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Deletes a spare role-mapping rule so the subject fixtures keep their mapped roles."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{roleMapping.spare}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Alias of the mappings route; same handler and fixture."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{userGroupMapping.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Revokes mapping supports of the rule before deleting it."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/keys/retired-material",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Baseline key table has no retired material, so the success path returns empty purged/skipped lists and writes one audit row; no key material or in-process key cache is touched. Revisit if fixtures ever add retired DEK versions."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/keys/rewrap",
+   "subject_hint": "S01",
+   "body_mode": "minimal",
+   "reason": "No KEK rewrap is pending in the baseline, so the call ends in a conflict; creating a pending rewrap first would change in-process key manager state that the per-scenario database reset does not restore.",
+   "note": "Expected 409 KEY_NO_REWRAP_PENDING for admins; the authorization decision is still observed."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/ldap-directory",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Singleton route; needs a live directory row with no mapping rules, otherwise 404 or 409."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/notification-channels/:id",
+   "params": {
+    "id": "{notificationChannel.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/oidc-providers/:id",
+   "params": {
+    "id": "{oidcProvider.spare}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Must target a provider without bound identities or mapping rules, otherwise 409."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/policy-groups/:code",
+   "params": {
+    "code": "{policyGroup.custom}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Only custom groups can be deleted; built-in groups return 403 POLICY_GROUP_BUILTIN_READONLY."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/policy-groups/:code/clauses/:clause_no",
+   "params": {
+    "code": "{policyGroup.custom}",
+    "clause_no": "{policyClause.custom}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/rotation-report/schedules/:id",
+   "params": {
+    "id": "{rotationReportSchedule.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/sessions/:id/recording",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Deletes the recording file on disk; the DB reset does not restore it, so the file must be recreated per scenario."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/sessions/:id/share",
+   "params": {
+    "id": "{session.active}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Requires an in-memory share on the session (process state, not DB); create it before each scenario."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/snippets/:id",
+   "params": {
+    "id": "{snippet.S02}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Snippets are owner-scoped; other callers get not-found."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/user-groups/:id",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Cascades: revokes group authorizations and approver scopes, bumps member credential epochs."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/users/:id",
+   "params": {
+    "id": "{user.target}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Target must not own agent users and must not be the last admin."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/users/:id/agent-tokens/:tokenId",
+   "params": {
+    "id": "{user.S12}",
+    "tokenId": "{agentToken.spare}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Send no body: the handler only binds JSON when Content-Length is non-zero. Uses a spare token so the S12 credential stays valid."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/users/:id/external-identities/:identityId",
+   "params": {
+    "id": "{user.extTarget}",
+    "identityId": "{externalIdentity.extTarget}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Target keeps a local password, so unbinding does not remove its last login path."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/:id/reports",
+   "params": {
+    "id": "{accessRequest.agentTask}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Readable by admin, auditor, the executing agent, the requester and the agent owner; others get 404, not 403."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/history",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S04",
+   "body_mode": "full",
+   "note": "Approvers and auditors pass the route guard; admin alone does not."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/mine",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/mine/tickets",
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Lists the tickets created by the approved and break-glass fixtures."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/pending",
+   "subject_hint": "S04",
+   "body_mode": "full",
+   "note": "Filtered by approver scope; admin without approver role is rejected by the route guard."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/pending/count",
+   "subject_hint": "S04",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/reviews/pending",
+   "subject_hint": "S04",
+   "body_mode": "full",
+   "note": "Shows the break-glass fixture awaiting review."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-requests/tickets",
+   "subject_hint": "S04",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-reviews",
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Response carries last_review_days_ago, which depends on the clock; normalize or pin the clock."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-reviews/:id",
+   "params": {
+    "id": "{accessReview.1}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/access-reviews/matrix",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/agent-tasks",
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Requires the audit view permission; agent principals are denied by the agent route allowlist."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/agent-tasks/:requestId",
+   "params": {
+    "requestId": "{accessRequest.agentTask}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Returns 404 unless the effective executor of the request is an agent user."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/agent-tool-calls",
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Admin or auditor role."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/agent-tool-calls/:id/arguments",
+   "params": {
+    "id": "{agentToolCall.1}"
+   },
+   "query": {
+    "reason": "baseline evidence review"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "The reason query is required; success writes an audit row and a sensitive-reveal report."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/alert-rules",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/approver-scopes",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/asset-groups",
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Non-privileged callers get a filtered tree; S01 sees all nodes."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/asset-groups/tree",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/accounts",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Non-credential-managers receive the slim DTO."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/files",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "query": {
+    "path": "/tmp"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Remote side is the local receiver (expected 502 after authorization gates)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/files/download",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "query": {
+    "path": "/tmp/baseline.txt"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Remote side is the local receiver (expected 502 after authorization and transfer gates)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/host-key",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/k8s/download",
+   "params": {
+    "id": "{asset.k8s}"
+   },
+   "query": {
+    "pod": "baseline-pod",
+    "container": "app",
+    "path": "/tmp/baseline.txt"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "kubectl is a recording stand-in; if it does not create the local file the handler returns 404 K8S_FILE_NOT_FOUND after the transfer gate and the remote call."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/k8s/pods",
+   "params": {
+    "id": "{asset.k8s}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "K8s API is the local receiver; expected 502 classified error after authorization."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/transfer-capabilities",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/tags",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Handler rejects non-privileged roles with 403; admin or auditor succeeds."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-checkpoints",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-checkpoints/public-key",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-checkpoints/verify",
+   "query": {
+    "content": "true",
+    "from": "2020-01-01",
+    "to": "2099-12-31"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Date range triggers the content layer; fixed wide range keeps the result deterministic."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-export",
+   "query": {
+    "pack": "event_report",
+    "subject": "user",
+    "user_id": "{user.S02}",
+    "start_time": "2020-01-01T00:00:00Z",
+    "end_time": "2099-12-31T23:59:59Z"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Synchronous endpoint accepts only event reports; response is a zip stream, record by hash."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-export/jobs",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Default kind lists only the caller's own evidence bundle jobs."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-export/jobs/:id/download",
+   "params": {
+    "id": "{exportJob.doneS03}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Download is bound to the requester: any other subject with audit:view gets 403 EXPORT_JOB_REQUESTER_ONLY by design."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-export/public-key",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-failures",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/audit-failures/permission-state/accept",
+   "body": {
+    "reason": "baseline accept"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Super administrator only. The fixture state has no detected permission-state mismatch, so the expected outcome after the gates is 409 CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE and nothing is written."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-integrity/verify",
+   "query": {
+    "from": "2020-01-01",
+    "to": "2099-12-31"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-logs",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-logs/:id",
+   "params": {
+    "id": "{auditLog.1}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit-logs/resource/:resource/:id",
+   "params": {
+    "resource": "asset",
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "resource must be asset, session or user."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit/subjects",
+   "query": {
+    "type": "user",
+    "q": "",
+    "limit": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/audit/timeline",
+   "query": {
+    "subject": "user",
+    "subject_id": "{user.S02}",
+    "from": "2020-01-01T00:00:00Z",
+    "to": "2099-12-31T23:59:59Z"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/auth/banner",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Public. Returns enabled=false unless the login banner body policy is set."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/auth/me",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/auth/methods",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Public."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/auth/oidc/:id/begin",
+   "params": {
+    "id": "{oidcProvider.1}"
+   },
+   "query": {
+    "binding": "4f1c2b3a5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708",
+    "next": "/"
+   },
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Public. binding must be 64 hex chars. Needs PUBLIC_BASE_URL and an enabled provider; discovery hits the local OIDC receiver, which answers 404, so the expected outcome is the remote-failure branch after the outbound call."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/auth/oidc/callback",
+   "query": {
+    "state": "{oidcFlow.state}",
+    "code": "baseline-code"
+   },
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "Completing the callback requires a signed ID token from a live identity provider, and the local receiver does not complete the protocol.",
+   "note": "Seeded flow state lets the request consume the state and reach the outbound discovery call before redirecting with an error."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations",
+   "query": {
+    "user_id": "{user.S02}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "At most one of user_id/user_group_id/asset_id/node_id."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations/effective-assets",
+   "query": {
+    "user_id": "{user.S02}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations/effective-users",
+   "query": {
+    "asset_id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations/self-subjects",
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Self-scoped read: the caller's own id, direct groups and owned agents; super admins get applies=false."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-batches",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-batches/:id",
+   "params": {
+    "id": "{changeSecretBatch.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-batches/targets",
+   "query": {
+    "username": "{accountName.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-batches/usernames",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-candidates",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-plans",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/change-secret-plans/:id/records",
+   "params": {
+    "id": "{changeSecretPlan.1}"
+   },
+   "query": {
+    "limit": "50"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/command-alerts",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/commands",
+   "query": {
+    "keyword": "ls"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/compliance/snapshot",
+   "subject_hint": "S03",
+   "body_mode": "complete"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/connect",
+   "query": {
+    "connect_token": "{connectToken.rdp}"
+   },
+   "ws": true,
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Ticket-authenticated (no JWT middleware); the ticket must be issued per scenario for the calling subject. Only the pre-upgrade HTTP decision is asserted."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/credentials",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/credentials/:id",
+   "params": {
+    "id": "{credential.shared}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/credentials/:id/rotations/:rid",
+   "params": {
+    "id": "{credential.rotating}",
+    "rid": "{credentialRotation.running}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/daily-reviews",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/daily-reviews/days/:date",
+   "params": {
+    "date": "{date.reviewable}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "A future date returns 400 DAILY_REVIEW_DAY_NOT_ENDED; use the same ended, in-scope day as the sign scenario."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/daily-reviews/pending",
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/daily-reviews/pending/count",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/daily-reviews/stats",
+   "query": {
+    "period": "30d"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/daily-reviews/status",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/db-console",
+   "query": {
+    "connect_token": "{connectToken.mysql}"
+   },
+   "ws": true,
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Ticket-authenticated; database dial targets the local receiver, so a non-upgrade request ends in 502 after all gates."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/db-console/sessions/:id/results/:event_id/export",
+   "params": {
+    "id": "{session.active}",
+    "event_id": "01J0000000000000000000000A"
+   },
+   "subject_hint": "S02",
+   "body_mode": "minimal",
+   "reason": "Success requires a live query-console session holding a cached result set in process memory, which an isolated in-process run cannot establish.",
+   "note": "Owner and active-session checks are still exercised; the request ends at the live-console lookup (404)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/external-groups",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "userGroupId": "{userGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/instance-guard",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Snapshot includes host name, pid and start time; normalize them."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/instance-guard/halt",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Unauthenticated; on a running instance it returns state running. A configured source allowlist that excludes the test client yields 403."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/keys",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/keys/topology",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/ldap-directory",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/ldap-directory/status",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Returns 404 when no live directory row exists."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/my/agents",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/my/connections",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/notification-channels",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/offsite-storage/failures",
+   "query": {
+    "page": "1",
+    "size": "20"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/offsite-storage/profiles",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/offsite-storage/settings",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/offsite-storage/status",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Probes the current generation (credential state, bucket governance) against the offsite receiver."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/oidc-providers",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/oidc-providers/:id",
+   "params": {
+    "id": "{oidcProvider.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/oidc-providers/:id/status",
+   "params": {
+    "id": "{oidcProvider.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/ping",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Unauthenticated."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/policy-groups",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/policy-groups/:code",
+   "params": {
+    "code": "{policyGroup.custom}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recordings/stats",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recordings/stream",
+   "query": {
+    "rtoken": "{recordingToken.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "No JWT middleware; authorization is the playback token, which must be issued per scenario."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/roles",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/rotation-report",
+   "query": {
+    "scope_kind": "all",
+    "language": "en-US"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/rotation-report/records",
+   "query": {
+    "scope_kind": "all",
+    "period_start": "2026-01-01T00:00:00Z",
+    "period_end": "2026-12-31T00:00:00Z",
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/rotation-report/schedules",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/seal/status",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Unauthenticated; depends on a seal machine being wired into the test service graph."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/security-policies",
+   "subject_hint": "S01",
+   "body_mode": "complete"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/security-policies/defs/:key",
+   "params": {
+    "key": "key_cryptoperiod_reminder_days"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/clipboard-events",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/clipboard-events/:eventID/content",
+   "params": {
+    "id": "{session.closed}",
+    "eventID": "{clipboardEvent.1}"
+   },
+   "query": {
+    "reason": "baseline review"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Decrypts stored content and writes a fail-close audit row before delivery."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/commands",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/monitor",
+   "params": {
+    "id": "{session.active}"
+   },
+   "query": {
+    "connect_token": "{observerTicket.monitor}"
+   },
+   "ws": true,
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Observer ticket issued per scenario for the calling subject and this session; only the pre-upgrade HTTP decision is asserted."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/recording",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/recording/download",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/recording/stream",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/active",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/share/:code/ws",
+   "params": {
+    "code": "{shareCode.active}"
+   },
+   "query": {
+    "connect_token": "{observerTicket.share}"
+   },
+   "ws": true,
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Needs an in-memory share code on the active session and a share-purpose observer ticket bound to that code."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/statistics",
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/snippets",
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/ssh",
+   "query": {
+    "connect_token": "{connectToken.ssh}",
+    "cols": "80",
+    "rows": "24"
+   },
+   "ws": true,
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Ticket-authenticated; SSH dial targets the local receiver. Only the pre-upgrade HTTP decision is asserted."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/ssh/sessions/:id/stats",
+   "params": {
+    "id": "{session.active}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "minimal",
+   "reason": "Success requires a live SSH client registered for the session in process memory, which only exists while a real terminal connection is open.",
+   "note": "Owner/role check runs; the request ends at SESSION_NOT_ONLINE (404)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/syslog-settings",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/transmission-inventory",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Admin only; success writes an audit row."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/user-groups",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/user-groups/:id/authorization-count",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id",
+   "params": {
+    "id": "{user.target}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/agent-breaker/events",
+   "params": {
+    "id": "{user.S12}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Handler-level check: caller must be admin, auditor, or the agent owner; target must be an agent."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/agent-tokens",
+   "params": {
+    "id": "{user.S12}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Route middleware allows admin or the agent owner."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/external-identities",
+   "params": {
+    "id": "{user.S13}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/local-admin-count",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/health",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Unauthenticated; response carries the build version."
+  },
+  {
+   "method": "GET",
+   "path": "/healthz",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Unauthenticated."
+  },
+  {
+   "method": "GET",
+   "path": "/metrics",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Not a JWT route: 200 for everyone when no metrics token is configured, 401 for everyone otherwise. Body is text exposition with counters; record hash or status only."
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/auth/me",
+   "body": {
+    "local_display_name": "Baseline Display Name"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "The local_display_name key must be present; other keys are ignored."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests",
+   "body": {
+    "asset_id": "{asset.request}",
+    "reason": "baseline access request",
+    "duration_minutes": 60
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Admin and auditor requesters are rejected with 403 in the service; the target asset must not be in the open access segment."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/:id/approve",
+   "params": {
+    "id": "{accessRequest.pending}"
+   },
+   "body": {
+    "note": "approved in baseline"
+   },
+   "subject_hint": "S04",
+   "body_mode": "full",
+   "note": "Approver scope must cover the request asset or requester; pending_expires_at must be after the test clock."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/:id/cancel",
+   "params": {
+    "id": "{accessRequest.pending}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Owner scoped: callers other than the requester get 404."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/:id/reject",
+   "params": {
+    "id": "{accessRequest.pending}"
+   },
+   "body": {
+    "note": "rejected in baseline"
+   },
+   "subject_hint": "S04",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/:id/reports",
+   "params": {
+    "id": "{accessRequest.agentTask}"
+   },
+   "body": {
+    "body": "baseline task report"
+   },
+   "subject_hint": "S12",
+   "body_mode": "full",
+   "note": "Only the executing agent may submit; the first report is accepted while the task is open. Success notifies the agent owner."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/:id/review",
+   "params": {
+    "id": "{accessRequest.breakGlass}"
+   },
+   "body": {
+    "disposition": "confirmed",
+    "note": "reviewed in baseline"
+   },
+   "subject_hint": "S04",
+   "body_mode": "full",
+   "note": "The break-glass requester may not review their own request."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/:id/revoke",
+   "params": {
+    "id": "{accessRequest.approved}"
+   },
+   "body": {
+    "note": "revoked in baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Admin or effective approver passes the route guard; needs an approved item with a live ticket. Success may terminate sessions on the asset."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-requests/break-glass",
+   "body": {
+    "asset_id": "{asset.request}",
+    "reason": "baseline emergency access"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Requires the break-glass policy switch on, a standing connect authorization and a non-open asset segment; otherwise 403 or 400."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/access-reviews",
+   "body": {
+    "note": "baseline access review"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Admin only; stores a full matrix snapshot and an audit row."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/alert-rules",
+   "body": {
+    "name": "baseline-rule-new",
+    "pattern": "^baseline-new$",
+    "severity": "low",
+    "action": "alert",
+    "enabled": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/approver-scopes",
+   "body": {
+    "approver_id": "{user.S05}",
+    "asset_id": "{asset.rdp}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Exactly one approver and one target; returns 409 if the same scope already exists in the fixture set."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/asset-groups",
+   "body": {
+    "name": "baseline-node-new",
+    "description": "baseline",
+    "parent_id": "{assetGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets",
+   "body": {
+    "name": "baseline-asset-new",
+    "protocol": "ssh",
+    "host": "127.0.0.1",
+    "port": "{port.ssh}",
+    "username": "baseline",
+    "password": "Baseline-Pass-123",
+    "description": "baseline",
+    "node_ids": [
+     "{assetGroup.1}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/accounts",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "body": {
+    "username": "baseline-extra",
+    "password": "Baseline-Pass-123",
+    "note": "baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/accounts/:accountId/set-default",
+   "params": {
+    "id": "{asset.ssh}",
+    "accountId": "{account.ssh2}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/files/mkdir",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "body": {
+    "path": "/tmp/baseline-dir"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Remote side is the local receiver (expected 502 after gates)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/files/upload",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "content_type": "multipart",
+   "multipart": {
+    "fields": {
+     "path": "/tmp"
+    },
+    "files": {
+     "file": {
+      "name": "a.txt",
+      "content": "hello"
+     }
+    }
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Remote side is the local receiver (expected 502 after gates)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/host-key/adopt",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "body": {
+    "fingerprint": "SHA256:authz-baseline-not-observed"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Fingerprint is never in the asset's observation list, so the super administrator gets 404 and nothing changes."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/k8s/upload",
+   "params": {
+    "id": "{asset.k8s}"
+   },
+   "content_type": "multipart",
+   "multipart": {
+    "fields": {
+     "pod": "baseline-pod",
+     "container": "app",
+     "dest_path": "/tmp"
+    },
+    "files": {
+     "file": {
+      "name": "a.txt",
+      "content": "hello"
+     }
+    }
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "kubectl is a recording stand-in."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/test-connection",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "body": {
+    "timeout": 2
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Dial result is carried in the 200 body; the receiver is hit."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/import",
+   "body": {
+    "source": "form",
+    "rows": [
+     {
+      "name": "baseline-import-1",
+      "protocol": "ssh",
+      "host": "127.0.0.1",
+      "port": "{port.ssh}",
+      "credential_id": null,
+      "tags": "",
+      "node_ids": [],
+      "description": "baseline"
+     }
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Body must be application/json; unknown fields are rejected (DisallowUnknownFields)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/import/preview",
+   "body": {
+    "source": "form",
+    "rows": [
+     {
+      "name": "baseline-import-1",
+      "protocol": "ssh",
+      "host": "127.0.0.1",
+      "port": "{port.ssh}",
+      "credential_id": null
+     }
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only; application/json (text/csv also accepted)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/tags/delete",
+   "body": {
+    "name": "{tag.b}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/tags/rename",
+   "body": {
+    "from": "{tag.a}",
+    "to": "baseline-renamed"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/audit-export/jobs",
+   "query": {
+    "pack": "evidence_bundle",
+    "user_id": "{user.S02}",
+    "start_time": "2020-01-01T00:00:00Z",
+    "end_time": "2099-12-31T23:59:59Z"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Filter is read from the query string, not the body; expects 202. Export job worker is gated off, so the job stays pending."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/change-password",
+   "body": {
+    "old_password": "{password.common}",
+    "new_password": "BaselineRotated2026pw"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Old password is the caller's own; new password must meet length and letter+digit policy and differ from history. Fails by design for agent and external-only subjects."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/login",
+   "body": {
+    "username": "{user.targetName}",
+    "password": "{password.common}"
+   },
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Public. Target must be active, unlocked, without MFA and without must_change_password, or the response is a scoped intermediate token instead of a session."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/logout",
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "No refresh cookie needed; returns 200 and clears the cookie."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/mfa/disable",
+   "body": {
+    "password": "{password.common}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Password is the caller's own; succeeds even when MFA is not enabled."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/mfa/enable",
+   "body": {
+    "code": "000000"
+   },
+   "subject_hint": "S02",
+   "body_mode": "minimal",
+   "reason": "Success requires a valid time-based one-time code derived from a secret generated in a previous request."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/mfa/enroll/confirm",
+   "body": {
+    "code": "000000"
+   },
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "Success requires an enrollment-scoped bearer token plus a valid time-based one-time code, neither of which a subject session carries.",
+   "note": "Public route; reads its own bearer token instead of the session middleware."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/mfa/enroll/setup",
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "Success requires an enrollment-scoped bearer token, which no subject session carries.",
+   "note": "Public route; a header override with an enrollment token would make it reachable."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/mfa/setup",
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Writes a freshly generated pending secret; response secret and QR data are random and need masking."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/mfa/verify",
+   "body": {
+    "pending_token": "baseline-pending-token",
+    "code": "000000"
+   },
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "Success requires a pending-scoped token from a first login step plus a valid time-based one-time code.",
+   "note": "Public."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/oidc/exchange",
+   "body": {
+    "ticket": "{oidcTicket.plain}",
+    "browser_secret": "{oidcTicket.browserSecret}"
+   },
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Public. Consumes a seeded login ticket for S13 and issues a session plus refresh cookie."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/refresh",
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "The refresh credential is read only from an httpOnly cookie, which the request catalog cannot carry.",
+   "note": "Public. A cookie field plus a seeded refresh token would make it reachable."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/authorizations",
+   "body": {
+    "user_id": "{user.target}",
+    "asset_id": "{asset.rdp}",
+    "permission": "connect"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/authorizations/batch",
+   "body": {
+    "user_ids": [
+     "{user.target}"
+    ],
+    "asset_ids": [
+     "{asset.mysql}",
+     "{asset.postgres}"
+    ],
+    "permission": "view"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/change-secret-batches",
+   "body": {
+    "username": "{accountName.ssh}",
+    "all": true,
+    "password_mode": "per_target"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Starts the batch runner asynchronously after the 202; it dials the receiver.",
+   "settle_ms": 300
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/change-secret-candidates/:id/retry",
+   "params": {
+    "id": "{changeSecretCandidate.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Synchronous retry dials the receiver; 200 with promoted=false is the expected outcome."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/change-secret-plans",
+   "body": {
+    "name": "baseline-plan-new",
+    "asset_ids": [
+     "{asset.ssh}"
+    ],
+    "accounts": [
+     "{accountName.ssh}"
+    ],
+    "cron": "0 3 * * *",
+    "enabled": false
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/change-secret-plans/:id/run",
+   "params": {
+    "id": "{changeSecretPlan.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Runs asynchronously after the 202; the async writes may race the per-scenario DB reset.",
+   "settle_ms": 300
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/change-secret-plans/reauthorize",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Takes over paused plans as the caller; the fixture has none paused, so the expected answer is an empty plan list."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/command-alerts/:id/review",
+   "params": {
+    "id": "{commandAlert.1}"
+   },
+   "body": {
+    "disposition": "benign",
+    "note": "baseline review"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/compliance/report-jobs",
+   "body": {
+    "group": "{policyGroup.custom}",
+    "language": "en-US",
+    "retention_days": 30
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Group must exist and be enabled; expects 202."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/connect-tokens",
+   "body": {
+    "asset_id": "{asset.ssh}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials",
+   "body": {
+    "name": "baseline-credential-new",
+    "username": "baseline-new",
+    "protocol_family": "ssh",
+    "password": "Baseline-Pass-123",
+    "note": "baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/bindings",
+   "params": {
+    "id": "{credential.unbound}"
+   },
+   "body": {
+    "asset_id": "{asset.ssh}",
+    "is_default": false,
+    "note": "baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/bindings/:accountId/detach",
+   "params": {
+    "id": "{credential.shared}",
+    "accountId": "{account.sshShared}"
+   },
+   "body": {
+    "source": "custom",
+    "password": "Baseline-Pass-123"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Runs the rotation synchronously against the receiver; expected 409 CREDENTIAL_DETACH_FAILED after all gates (remote-failure branch)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/rotations",
+   "params": {
+    "id": "{credential.shared}"
+   },
+   "body": {
+    "mode": "group",
+    "policy": {
+     "length": 16,
+     "include_symbol": true,
+     "exclude_ambiguous": true
+    }
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Rotation advances asynchronously after the 202 and dials the receiver.",
+   "settle_ms": 300
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/rotations/:rid/abandon",
+   "params": {
+    "id": "{credential.rotating}",
+    "rid": "{credentialRotation.running}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/rotations/:rid/members/:mid/retry",
+   "params": {
+    "id": "{credential.rotating}",
+    "rid": "{credentialRotation.running}",
+    "mid": "{credentialRotationMember.failed}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Member transitions to queued and runs once against the receiver."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/scope",
+   "params": {
+    "id": "{credential.shared}"
+   },
+   "body": {
+    "scope": "dedicated"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Shared-to-dedicated requires exactly one binding."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/secret",
+   "params": {
+    "id": "{credential.unbound}"
+   },
+   "body": {
+    "password": "Baseline-Pass-456"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/daily-reviews",
+   "body": {
+    "review_date": "{date.reviewable}",
+    "note": "Baseline sign-off",
+    "delay_reason": "Baseline capture"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Requires alert:manage (admin or auditor). delay_reason is supplied because the day is past its due time."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "body": {
+    "match_value": "baseline-new-role-group",
+    "role": "auditor",
+    "note": "created by baseline",
+    "enabled": true,
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "risk_acknowledged covers the source-attribute-unset warning."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "body": {
+    "match_value": "baseline-new-role-group",
+    "role": "auditor",
+    "note": "created by baseline",
+    "enabled": true,
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Alias of the mappings route."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}"
+   },
+   "body": {
+    "match_value": "baseline-new-ug-group",
+    "user_group_id": "{userGroup.1}",
+    "enabled": true,
+    "risk_acknowledged": true,
+    "source_config_acknowledged": true,
+    "note": "created by baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Both acknowledgement flags set: the target group already has members and authorizations."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/instance-guard/ack",
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "The handler returns 409 before reading the body unless the instance is in halt mode, which a running in-process server never enters.",
+   "note": "Unauthenticated; expected 409 for every subject."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/keys/rewrap",
+   "body": {
+    "mode": "baseline-invalid"
+   },
+   "subject_hint": "S01",
+   "body_mode": "minimal",
+   "reason": "A successful rewrap writes pending key rows and sets an in-process pending flag that the per-scenario database reset does not restore, so every later scenario would observe a different key manager state.",
+   "note": "Unknown mode is rejected with 400 KEY_REWRAP_MODE after the authorization chain."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/keys/rotate",
+   "body": {
+    "purpose": "baseline-invalid"
+   },
+   "subject_hint": "S01",
+   "body_mode": "minimal",
+   "reason": "A successful rotation bumps the active key version in the in-process key cache, which the per-scenario database reset does not restore, so later scenarios would run against a key table that no longer matches memory.",
+   "note": "Passes binding and is rejected with 400 KEY_ROTATE_PURPOSE_INVALID inside the handler."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/ldap-directory/test",
+   "body": {
+    "url": "ldap://127.0.0.1:{port.ldap}",
+    "bind_dn": "cn=svc-baseline,dc=example,dc=test",
+    "base_dn": "dc=example,dc=test",
+    "user_filter": "(uid=%s)",
+    "attr_email": "mail",
+    "attr_fullname": "cn",
+    "attr_group": "memberOf",
+    "bind_password": "baseline-bind-secret",
+    "skip_tls_verify": false,
+    "enabled": true,
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Dials the local LDAP receiver; expect a 200 with failed stages. An in-process per-actor and per-target limiter applies."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/mcp",
+   "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+     "protocolVersion": "2025-06-18",
+     "capabilities": {},
+     "clientInfo": {
+      "name": "baseline",
+      "version": "1"
+     }
+    }
+   },
+   "subject_hint": "S12",
+   "body_mode": "full",
+   "note": "Requires an agent bearer token (cxa_ prefix) and Accept: application/json, text/event-stream; human JWTs get 401.",
+   "headers": {
+    "Accept": "application/json, text/event-stream"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/my/agents",
+   "body": {
+    "username": "baseline-agent-new",
+    "purpose": "baseline capture"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Requires agent self-creation enabled in policy with a per-owner limit above the current count."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/my/connections/:id/terminate",
+   "params": {
+    "id": "{session.active}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Owner-scoped: the session must belong to the caller and be active."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/notification-channels",
+   "body": {
+    "name": "baseline-channel-new",
+    "type": "webhook",
+    "url": "{url.notify}",
+    "enabled": true,
+    "language": "en-US",
+    "min_severity": "low",
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "risk_acknowledged satisfies the transmission gate for an http URL when the notify channel level is warn; strict level would reject http."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/notification-channels/:id/test",
+   "params": {
+    "id": "{notificationChannel.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Sends one request to the notify receiver; 200 with success flag."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/offsite-storage/objects/:id/retry",
+   "params": {
+    "id": "{offsiteObject.failed}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Object must be in state failed, otherwise 404."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/offsite-storage/profiles/:id/revoke-credentials",
+   "params": {
+    "id": "{offsiteProfile.current}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Expects 204; a generation already revoked returns 409."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/offsite-storage/retry-failed",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/offsite-storage/settings/confirm",
+   "body": {
+    "provider": "s3",
+    "endpoint": "{url.offsite}",
+    "bucket": "baseline-bucket-2",
+    "region": "us-east-1",
+    "path_style": false,
+    "expected_current_generation_id": "{offsiteProfile.current}",
+    "settings_digest": "{offsite.confirmDigest}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Generation switch confirmation; digest must match the normalized settings in this body."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/offsite-storage/settings/disable",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Requires a current generation; otherwise 409."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/offsite-storage/test",
+   "body": {
+    "provider": "s3",
+    "endpoint": "{url.offsite}",
+    "bucket": "baseline-bucket",
+    "region": "us-east-1"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Handler returns 200 with passed=false when the receiver answers 503; rate limited per actor (5 per 12 s)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/oidc-providers",
+   "body": {
+    "name": "Baseline OIDC new",
+    "issuer": "{url.oidc}",
+    "client_id": "baseline-client-new",
+    "client_secret": "baseline-client-secret",
+    "scopes": "profile email",
+    "admission_mode": "prebound_only",
+    "enabled": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "http issuer is accepted only when its host is in OIDC_ALLOWED_INTERNAL_HOSTS and the server is not in release mode."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/oidc-providers/discovery-preview",
+   "body": {
+    "issuer": "{url.oidc}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Fetches discovery from the local OIDC receiver, which answers 404, so the expected outcome is 502 after the outbound call."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/policy-groups",
+   "body": {
+    "code": "baseline-custom-new",
+    "name": "Baseline custom group",
+    "locale": "en-US"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/policy-groups/:code/clauses/:clause_no/confirm",
+   "params": {
+    "code": "{policyGroup.custom}",
+    "clause_no": "{policyClause.custom}"
+   },
+   "body": {
+    "note": "Baseline confirmation"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/rotation-report/jobs",
+   "body": {
+    "scope_kind": "all",
+    "scope_id": 0,
+    "period_start": "2026-01-01T00:00:00Z",
+    "period_end": "2026-02-01T00:00:00Z",
+    "language": "en-US"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/rotation-report/schedules",
+   "body": {
+    "name": "baseline-schedule-new",
+    "cron": "0 3 * * *",
+    "enabled": false,
+    "scope_kind": "all",
+    "scope_id": 0,
+    "retention_days": 30,
+    "language": "en-US"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/rotation-report/schedules/:id/run",
+   "params": {
+    "id": "{rotationReportSchedule.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Fails with 409 if the schedule already has an in-flight job."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/schedules/next-runs",
+   "body": {
+    "cron": "0 3 * * *",
+    "count": 3
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Response depends on wall clock; normalize run timestamps."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/seal/authorize",
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "On an unsealed instance the handler returns 409 before reading the body; success requires the sealed state, which the shared baseline service graph does not enter.",
+   "note": "Unauthenticated; expected 409 for every subject."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/seal/seal",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "A successful seal releases the service graph; the framework rebuilds the environment before the next scenario."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/seal/unseal",
+   "subject_hint": "S00",
+   "body_mode": "minimal",
+   "reason": "Success requires the sealed state plus an unseal grant from the authorize step; on an unsealed instance the request is rejected without any state change.",
+   "note": "Without a grant header the response is 401; the decision does not depend on the JWT subject."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/security-policies/apply-preview",
+   "body": {
+    "scope": [],
+    "mode": "strictest",
+    "group_code": "",
+    "draft": {}
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/security-policies/compliance/preview",
+   "body": {
+    "draft": {
+     "key_cryptoperiod_reminder_days": "365"
+    },
+    "temp_controls": []
+   },
+   "subject_hint": "S01",
+   "body_mode": "complete"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/sessions/:id/monitor-token",
+   "params": {
+    "id": "{session.active}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Admin or auditor only; the session must be an active text-terminal session."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/sessions/:id/recording/token",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/sessions/:id/share",
+   "params": {
+    "id": "{session.active}"
+   },
+   "body": {
+    "ttl_minutes": 10
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Owner-only; creates an in-memory share code."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/sessions/:id/terminate",
+   "params": {
+    "id": "{session.active}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Admin only; no live connection is registered, so only the DB row is updated."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/sessions/share/token",
+   "body": {
+    "code": "{shareCode.active}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Issuance does not validate the code; validation happens on redemption."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/snippets",
+   "body": {
+    "name": "baseline-snippet-new",
+    "content": "uptime"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/syslog-settings/test",
+   "body": {
+    "host": "127.0.0.1",
+    "port": "{port.syslog}",
+    "protocol": "tcp",
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Dials the syslog TCP receiver; if the receiver closes before the write completes the handler returns 502 SYSLOG_TEST_FAILED."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/transmission-consents",
+   "body": {
+    "asset_id": "{asset.vnc}",
+    "risk_keys": [
+     "vnc_unencrypted"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Needs the VNC transport level policy set to warn; at the default level the service returns 400. Non-admin callers need connect permission on the asset."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/transmission-inventory/export",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Admin only; response has a generated timestamp and attachment header."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/user-groups",
+   "body": {
+    "name": "baseline-new-group",
+    "description": "created by baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users",
+   "body": {
+    "username": "baseline-new-user",
+    "password": "BaselineNewUser2026pw",
+    "email": "baseline-new-user@example.com",
+    "full_name": "Baseline New User",
+    "roles": [
+     "user"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/agent-breaker/release",
+   "params": {
+    "id": "{user.agentBreaker}"
+   },
+   "body": {
+    "reason": "released by baseline"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Target agent must have a pending breaker, otherwise 409."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/agent-tokens",
+   "params": {
+    "id": "{user.S12}"
+   },
+   "body": {
+    "name": "baseline-token",
+    "expires_at": "2099-01-01T00:00:00Z"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "expires_at is compared with wall-clock time, so a far-future literal is used."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/external-identities",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "provider_id": "{oidcProvider.1}",
+    "subject": "baseline-new-subject"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/external-identities/:identityId/unbind-and-disable",
+   "params": {
+    "id": "{user.extTarget}",
+    "identityId": "{externalIdentity.extTarget}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/external-only",
+   "params": {
+    "id": "{user.extTarget}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Needs at least one bound identity on an enabled provider; clears the local password."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/mfa/disable",
+   "params": {
+    "id": "{user.target}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/roles/:role",
+   "params": {
+    "id": "{user.target}",
+    "role": "auditor"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/roles/pin",
+   "params": {
+    "id": "{user.S13}"
+   },
+   "body": {
+    "role": "admin"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Role must be held through a mapping only; S13 holds admin through the external group mapping. Additive, not destructive."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/unlock",
+   "params": {
+    "id": "{user.target}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/source-policy/check",
+   "body": {
+    "allowed_cidrs": [
+     "10.0.0.0/8"
+    ],
+    "address": "10.1.2.3"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/health",
+   "subject_hint": "S00",
+   "body_mode": "full",
+   "note": "Unauthenticated; same handler as GET."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/alert-rules/:id",
+   "params": {
+    "id": "{alertRule.custom}"
+   },
+   "body": {
+    "name": "baseline-rule-edited",
+    "pattern": "^baseline-edit$",
+    "severity": "medium",
+    "action": "alert",
+    "protocols": "ssh"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/asset-groups/:id",
+   "params": {
+    "id": "{assetGroup.1}"
+   },
+   "body": {
+    "name": "baseline-node-1-renamed",
+    "description": "baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Name change writes a rename audit row; a description-only change writes none."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/asset-groups/:id/move",
+   "params": {
+    "id": "{assetGroup.2}"
+   },
+   "body": {
+    "parent_id": "{assetGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/assets/:id",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "body": {
+    "description": "baseline updated"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/assets/:id/accounts/:accountId",
+   "params": {
+    "id": "{asset.ssh}",
+    "accountId": "{account.ssh2}"
+   },
+   "body": {
+    "note": "baseline updated"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Note-only update avoids the shared-credential secret conflict."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/assets/:id/accounts/:accountId/credential",
+   "params": {
+    "id": "{asset.ssh}",
+    "accountId": "{account.ssh2}"
+   },
+   "body": {
+    "credential_id": "{credential.unbound}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/authorizations/:id/accounts",
+   "params": {
+    "id": "{authorization.1}"
+   },
+   "body": {
+    "accounts": [
+     "{accountName.ssh}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Handler re-reads the caller's current role from the DB; only a current admin passes."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/change-secret-plans/:id",
+   "params": {
+    "id": "{changeSecretPlan.1}"
+   },
+   "body": {
+    "name": "baseline-plan-1-updated",
+    "asset_ids": [
+     "{asset.ssh}"
+    ],
+    "accounts": [
+     "{accountName.ssh}"
+    ],
+    "cron": "0 4 * * *",
+    "enabled": false
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/credentials/:id",
+   "params": {
+    "id": "{credential.unbound}"
+   },
+   "body": {
+    "note": "baseline updated"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "externalGroupId": "{externalGroup.1}"
+   },
+   "body": {
+    "note": "updated by baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{roleMapping.spare}"
+   },
+   "body": {
+    "match_value": "baseline-spare-role-group",
+    "role": "auditor",
+    "enabled": false,
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Same match_value and role as the fixture so only the enabled flag changes."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{roleMapping.spare}"
+   },
+   "body": {
+    "match_value": "baseline-spare-role-group",
+    "role": "auditor",
+    "enabled": false,
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Alias of the mappings route."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{userGroupMapping.1}"
+   },
+   "body": {
+    "match_value": "baseline-ug-group",
+    "user_group_id": "{userGroup.1}",
+    "enabled": false,
+    "risk_acknowledged": true,
+    "source_config_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Same match_value and group as the fixture so only the enabled flag changes."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/keys/topology",
+   "body": {
+    "region": "us-east-1"
+   },
+   "subject_hint": "S01",
+   "body_mode": "minimal",
+   "reason": "The baseline runs with a local key encryption key, which has no editable topology fields, so every update is rejected; the success path exists only under a delegated key service deployment.",
+   "note": "Expected 400 KEY_TOPOLOGY_NOT_EDITABLE for admins, plus an audit row recording the rejected attempt."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/ldap-directory",
+   "body": {
+    "name": "Baseline Directory",
+    "url": "ldap://127.0.0.1:{port.ldap}",
+    "bind_dn": "cn=svc-baseline,dc=example,dc=test",
+    "base_dn": "dc=example,dc=test",
+    "user_filter": "(uid=%s)",
+    "attr_email": "mail",
+    "attr_fullname": "cn",
+    "attr_group": "memberOf",
+    "bind_password": "baseline-bind-secret",
+    "skip_tls_verify": false,
+    "enabled": true,
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Upsert of the singleton; risk_acknowledged covers the plaintext-transport warning unless the LDAP transport level is strict."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/notification-channels/:id",
+   "params": {
+    "id": "{notificationChannel.1}"
+   },
+   "body": {
+    "name": "baseline-channel-edited",
+    "type": "webhook",
+    "url": "{url.notify}",
+    "min_severity": "medium",
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/offsite-storage/settings",
+   "body": {
+    "provider": "s3",
+    "endpoint": "{url.offsite}",
+    "bucket": "baseline-bucket",
+    "region": "us-east-1",
+    "path_style": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Same provider/endpoint/bucket/prefix/region as the fixture generation, so it updates in place instead of returning needs_confirmation."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/oidc-providers/:id",
+   "params": {
+    "id": "{oidcProvider.1}"
+   },
+   "body": {
+    "name": "Baseline OIDC renamed"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Issuer and client_id are immutable and omitted."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/policy-groups/:code",
+   "params": {
+    "code": "{policyGroup.custom}"
+   },
+   "body": {
+    "name": "Baseline custom group renamed"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/policy-groups/:code/clauses/:clause_no",
+   "params": {
+    "code": "{policyGroup.custom}",
+    "clause_no": "{policyClause.custom}"
+   },
+   "body": {
+    "title": "Baseline clause",
+    "summary": "Self-attested clause used by the baseline",
+    "kind": "self_attested",
+    "controls": []
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/policy-groups/:code/clauses/:clause_no/annotation",
+   "params": {
+    "code": "{policyGroup.custom}",
+    "clause_no": "{policyClause.custom}"
+   },
+   "body": {
+    "note": "Baseline annotation"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/policy-groups/:code/enabled",
+   "params": {
+    "code": "{policyGroup.custom}"
+   },
+   "body": {
+    "enabled": false
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/rotation-report/schedules/:id",
+   "params": {
+    "id": "{rotationReportSchedule.1}"
+   },
+   "body": {
+    "name": "baseline-schedule-1-updated",
+    "cron": "0 4 * * *",
+    "enabled": false,
+    "scope_kind": "all",
+    "scope_id": 0,
+    "retention_days": 60,
+    "language": "en-US"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/security-policies",
+   "body": {
+    "policies": {
+     "login_banner_title": "Baseline notice"
+    }
+   },
+   "subject_hint": "S01",
+   "body_mode": "complete",
+   "note": "Text policy with no effect while the banner body is empty; policy cache must be reset after this scenario."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/snippets/:id",
+   "params": {
+    "id": "{snippet.S02}"
+   },
+   "body": {
+    "name": "baseline-snippet-1",
+    "content": "df -h"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/syslog-settings",
+   "body": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": "{port.syslog}",
+    "protocol": "tcp",
+    "risk_acknowledged": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Reloads the forwarder; reset with Reload after the scenario."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/user-groups/:id",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "body": {
+    "name": "baseline-group-1-renamed",
+    "description": "updated by baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/user-groups/:id/members",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "body": {
+    "manual_user_ids": [
+     "{user.S08}",
+     "{user.target}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Keeps S08 as a member and adds the target."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/users/:id",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "full_name": "Baseline Target Renamed"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/users/:id/inactivity-exempt",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "exempt": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/users/:id/password",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "password": "BaselineAdminSet2026pw"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Target must be a local human account."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/users/:id/roles",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "manual_roles": [
+     "user",
+     "auditor"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "The legacy roles field is rejected; only manual_roles is sent."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/users/:id/status",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "active": false
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/command-alerts/:id/system-detail",
+   "params": {
+    "id": "{commandAlert.1}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "The fixture alert is an ordinary command alert, so the expected outcome after the gates is not found."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/system-alert-types",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only catalog of system alert types."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/system-alert-types/:key",
+   "params": {
+    "key": "key_topology_changed"
+   },
+   "body": {
+    "severity": "high"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Writes the default severity, so repeated captures stay stable."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/role-assignment-previews",
+   "body": {
+    "kind": "direct_roles",
+    "user_id": "{user.target}",
+    "role_ids": [
+     "{role.auditor}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only preview; nothing is written."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/user-groups/:id/role-bindings",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Lists the fixture group's role bindings."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/user-groups/:id/role-bindings",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "body": {
+    "role_ids": [
+     "{role.user}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Binds only the base user role every member already holds, so later subjects see the same state."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/role-definitions",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/role-definitions/descriptors",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/role-definitions/:id",
+   "params": {
+    "id": "{role.auditor}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/role-definitions/summary",
+   "body": {
+    "permissions": [
+     "asset:view"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only draft summary; nothing is written."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/role-definitions",
+   "body": {
+    "name": "baseline-custom-role",
+    "description": "created by baseline",
+    "permissions": [
+     "asset:view"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/role-definitions/:id/copy",
+   "params": {
+    "id": "{role.auditor}"
+   },
+   "body": {
+    "name": "baseline-copied-role",
+    "description": "copied by baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/role-definitions/:id",
+   "params": {
+    "id": "{role.auditor}"
+   },
+   "body": {
+    "name": "baseline-renamed-role",
+    "description": "updated by baseline",
+    "permissions": [
+     "asset:view"
+    ],
+    "expected_version": 1
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Targets a built-in role, so the definition is locked and the call ends in a refusal for every subject allowed through."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/role-definitions/:id",
+   "params": {
+    "id": "{role.auditor}"
+   },
+   "query": {
+    "expected_version": "1"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Targets a built-in role, so the definition is locked and the call ends in a refusal for every subject allowed through."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/user-groups/:id/external-mappings",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/auth/me/release-guidance/:version",
+   "params": {
+    "version": "1.18.0"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/auth/me/release-guidance/:version",
+   "params": {
+    "version": "1.18.0"
+   },
+   "body": {
+    "dismissed": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Records only the caller's own dismissal; the per-scenario reset clears it."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/retention-adjustments",
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/cards/:key",
+   "params": {
+    "key": "assets"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "One card key stands for the route; per-card and unknown-key answers are bounded by the dashboard card authorization test."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/batch/move",
+   "body": {
+    "asset_ids": [
+     "{asset.vnc}"
+    ],
+    "target_node_id": "{assetGroup.2}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Moves one fixture asset to the second node; the batch is atomic and per-row scope is checked inside the transaction."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/batch/tags",
+   "body": {
+    "asset_ids": [
+     "{asset.vnc}"
+    ],
+    "tags": [
+     "{tag.b}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Adds an existing fixture tag to one untagged asset; the batch is atomic."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/batch/delete",
+   "body": {
+    "asset_ids": [
+     "{asset.vnc}"
+    ]
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Deletes the same asset as the single-asset delete row; the batch is atomic."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/ownership",
+   "body": {
+    "credential_ids": [
+     "{credential.shared}"
+    ],
+    "ownership": {
+     "kind": "global"
+    }
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Batch reassignment of shared credential ownership to global; the whole batch is atomic."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/credentials/:id/impact-confirmations",
+   "params": {
+    "id": "{credential.shared}"
+   },
+   "body": {
+    "operation": "set_secret"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Computes the out-of-scope mounts for a secret update; an unscoped caller gets required=false and no row is written."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations/subject-options",
+   "query": {
+    "kind": "user"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Subject directory for the authorization form with a fixed field set; kind is required."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations/target-options",
+   "query": {
+    "kind": "asset"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Target candidates for the authorization form, projected to the caller's management scope; kind is required."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/access-policy-overrides",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only list of assets whose access policy overrides the global default; defaults to overridden=true."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/approver-scopes/approver-options",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only approver directory with a limited field set and no email."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/approver-scopes/target-options",
+   "query": {
+    "kind": "asset"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only target candidates for approver scopes; kind is required."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/role-bindings",
+   "params": {
+    "id": "{user.S13}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Lists the direct role bindings of a fixture user, node ids for node-scoped rows."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/role-assignment-options",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only; lists every undeleted node with subtree asset counts and the role scopability classes."
+  }
+ ]
+}

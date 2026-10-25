@@ -47,8 +47,27 @@ type AuditCheckpointTrim struct {
 	SigningKeyVersion int    `gorm:"not null" json:"signing_key_version"`
 	Signature         string `gorm:"type:varchar(128);not null" json:"signature"`
 
+	// Format 簽章載荷版本：1＝原載荷（存量錨，位元組不變）；2＝另帶被剪段的累計權限事實。
+	// 未知值不 fallback，驗章一律不過
+	Format int `gorm:"not null;default:1" json:"format"`
+	// PermHistory 被剪段（含之前所有修剪）的累計權限事實，單調不回退：
+	// none＜attested（曾有附證）＜unverified（曾有驗不過的點，或證明不了前一錨）。format=2 必填
+	PermHistory *string `gorm:"type:varchar(16)" json:"perm_history,omitempty"`
+	// UnverifiedCount 本次被剪段中驗不過的點數（只計本次，供診斷）。format=2 必填
+	UnverifiedCount *int64 `json:"unverified_count,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// 修剪錨載荷版本與累計權限事實的值域。
+const (
+	CheckpointTrimFormatV1 = 1
+	CheckpointTrimFormatV2 = 2
+
+	TrimPermHistoryNone       = "none"
+	TrimPermHistoryAttested   = "attested"
+	TrimPermHistoryUnverified = "unverified"
+)
 
 // TableName 指定表名
 func (AuditCheckpointTrim) TableName() string {

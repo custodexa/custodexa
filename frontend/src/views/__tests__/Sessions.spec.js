@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Sessions from '../Sessions.vue'
+import { t } from '@/i18n'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -20,7 +21,11 @@ class MutationObserverStub {
 vi.stubGlobal('MutationObserver', MutationObserverStub)
 
 const pushMock = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: pushMock }) }))
+// 儀表板落點帶入的 query：各測試自行設定，afterEach 還原
+let routeQuery = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: pushMock, currentRoute: { value: { query: routeQuery } } }),
+}))
 
 const getSessionListMock = vi.fn()
 const getActiveSessionsMock = vi.fn()
@@ -206,4 +211,62 @@ describe('Sessions 主控台小標', () => {
     expect(wrapper.findAll('[data-test="console-badge"]').length).toBe(1)
     wrapper.unmount()
   }, 15000)
+})
+
+describe('Sessions 儀表板落點條件', () => {
+  const START = '2026-10-19T00:00:00.000000+08:00'
+  const END = '2026-10-19T23:59:59.999500+08:00'
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getActiveSessionsMock.mockResolvedValue([])
+    getSessionListMock.mockResolvedValue({ data: [], total: 0 })
+  })
+  afterEach(() => {
+    routeQuery = {}
+  })
+
+  it('今日連線落歷史頁籤，日界線原字串（含微秒）原樣送出', async () => {
+    routeQuery = { tab: 'history', start_time: START, end_time: END }
+    mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    expect(getSessionListMock).toHaveBeenCalledWith({
+      page: 1,
+      page_size: 20,
+      actor_kind: undefined,
+      protocol: undefined,
+      status: undefined,
+      start_time: START,
+      end_time: END,
+    })
+    expect(getActiveSessionsMock).not.toHaveBeenCalled()
+  })
+
+  it('錄影失敗落點停在活動頁籤，對全量活動列表只留錄影失敗者', async () => {
+    routeQuery = { tab: 'active', status: 'active', recording_error: 'true' }
+    getActiveSessionsMock.mockResolvedValue([
+      row({ id: 91, status: 'active', recording_error: 'disk_full' }),
+      row({ id: 92, status: 'active', recording_error: '' }),
+      row({ id: 93, status: 'active', recording_error: 'flush_failed' }),
+    ])
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain(t('common.sessionRef', { id: 91 }))
+    expect(text).toContain(t('common.sessionRef', { id: 93 }))
+    expect(text).not.toContain(t('common.sessionRef', { id: 92 }))
+    expect(getSessionListMock).not.toHaveBeenCalled()
+  })
+
+  it('重置後歷史請求不再帶入儀表板的日界線', async () => {
+    routeQuery = { tab: 'history', start_time: START, end_time: END }
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    getSessionListMock.mockClear()
+    const reset = wrapper.findAll('button').find((b) => b.text() === t('common.reset'))
+    await reset.trigger('click')
+    await flushPromises()
+    const params = getSessionListMock.mock.calls.at(-1)[0]
+    expect(params.start_time).toBeUndefined()
+    expect(params.end_time).toBeUndefined()
+  })
 })

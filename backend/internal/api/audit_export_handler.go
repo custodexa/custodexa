@@ -348,10 +348,10 @@ func (h *AuditExportHandler) auditExport(c *gin.Context, userID uint, username s
 func (h *AuditExportHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	grp := r.Group("/audit-export")
 	grp.Use(middleware.AuthMiddleware(authService))
-	grp.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Export)
+	grp.GET("", middleware.EnforceRegistry(), h.Export)
 	// 證據包非同步匯出 job：
 	// 發起／清單／下載三端點同閘 audit:view；下載另綁申請者本人（handler 內）
-	grp.POST("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.CreateJob)
-	grp.GET("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.ListJobs)
-	grp.GET("/jobs/:id/download", middleware.RequirePermission(middleware.PermAuditView), h.DownloadJob)
+	grp.POST("/jobs", middleware.EnforceRegistry(), h.CreateJob)
+	grp.GET("/jobs", middleware.EnforceRegistry(), h.ListJobs)
+	grp.GET("/jobs/:id/download", middleware.EnforceRegistry(), h.DownloadJob)
 }

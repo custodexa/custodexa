@@ -51,6 +51,11 @@ func expectFinishLoginUpdate(mock sqlmock.Sqlmock) {
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "users"`).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
+	// 發放 refresh 憑證前讀映射支持（角色、使用者群組各一次；無支持）
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "user_role_mapping_rule_supports"`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "user_group_mapping_rule_supports"`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "refresh_tokens"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))

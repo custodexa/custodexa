@@ -63,12 +63,12 @@ func setupLDAPDirectoryEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *poli
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(4)
-	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
+	if err := migrateWithAuthz(db, &model.LDAPDirectory{}, &model.AuditLog{},
 		&model.SecurityPolicy{}, &model.User{}, &model.Role{}, &model.UserRole{},
 		// 目錄刪除會先查有無群組映射規則（仍有規則者拒刪），缺表即 fail-close
 		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
 		&model.UserGroup{}, &model.UserGroupMember{}, &model.UserRoleMapping{},
-		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func setupLDAPDirectoryEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *poli
 	t.Cleanup(func() { database.DB = oldDB })
 
 	policies := policy.NewSecurityPolicyService(db)
-	directories := identity.NewLDAPDirectoryService(db, nil, audit.NewTxSink())
+	directories := newLDAPDirectoryServiceT(db, nil, audit.NewTxSink())
 	directories.SetTransmissionPolicy(policy.NewTransmissionPolicyService(policies, directories.RiskViewProvider()))
 
 	r := gin.New()
@@ -108,6 +108,8 @@ func ldapAdminToken(t *testing.T, mgr *crypto.JWTManager, db *gorm.DB, userID ui
 	t.Helper()
 	username := "admin" + strconv.FormatUint(uint64(userID), 10)
 	ldapSeedUser(t, db, userID, username)
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）
+	grantLegacyRole(t, db, userID, model.RoleAdmin)
 	token, err := mgr.GenerateToken(userID, username, "admin@example.com", "admin", crypto.AuthContext{})
 	if err != nil {
 		t.Fatalf("簽發 token: %v", err)
@@ -508,7 +510,14 @@ func TestLDAPDirectoryDelete(t *testing.T) {
 // **逐條逐角色檢查**：只驗 GET 會讓「PUT 忘了掛角色閘」這種最危險的形態溜過
 func TestLDAPDirectoryRequiresAdmin(t *testing.T) {
 	r, mgr, _, db := setupLDAPDirectoryEnv(t)
-	ldapSeedUser(t, db, 200, "someone")
+	// 角色以資料庫為準：每個角色各用一個帳號並寫入指派（user 不寫，視同一般使用者）
+	roleUsers := map[string]uint{"user": 200, "auditor": 201, "approver": 202}
+	for role, id := range roleUsers {
+		ldapSeedUser(t, db, id, "someone-"+role)
+		if role != "user" {
+			grantLegacyRole(t, db, id, role)
+		}
+	}
 
 	routes := []struct {
 		method string
@@ -521,7 +530,7 @@ func TestLDAPDirectoryRequiresAdmin(t *testing.T) {
 		{http.MethodPost, "/api/v1/ldap-directory/test", validLDAPPayload()},
 	}
 	for _, role := range []string{"user", "auditor", "approver"} {
-		token, err := mgr.GenerateToken(200, "someone", "u@example.com", role, crypto.AuthContext{})
+		token, err := mgr.GenerateToken(roleUsers[role], "someone-"+role, "u@example.com", role, crypto.AuthContext{})
 		if err != nil {
 			t.Fatalf("簽發 token: %v", err)
 		}

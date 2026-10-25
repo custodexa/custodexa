@@ -77,9 +77,9 @@ func TestEncodeErrorMessage(t *testing.T) {
 	}{
 		{
 			name: "帶 code 的撥號失敗",
-			code: apierror.CodeSSHHostKeyChanged,
-			data: "主機金鑰已變更",
-			want: `{"type":"error","data":"主機金鑰已變更","code":"RULE_SSH_HOST_KEY_CHANGED"}`,
+			code: apierror.CodeSSHHostKeyMismatchRefused,
+			data: "連線已拒絕",
+			want: `{"type":"error","data":"連線已拒絕","code":"RULE_SSH_HOST_KEY_MISMATCH_REFUSED"}`,
 		},
 		{
 			name: "k8s 撥號失敗已 code 化（原空 code 分支）",

@@ -1,6 +1,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -22,11 +23,32 @@ var (
 )
 
 // ApproverScopeService 審核範圍管理（後擴為四維）：
-// admin only 分配，approver×（資產 XOR 節點
+// 持審核範圍管理權限點者分配（申請人型另需申請人型管理），approver×（資產 XOR 節點
 // XOR 使用者 XOR 使用者群組）。資產側與授權客體同構；申請人側為 OR 資格擴充。
 // CRUD 審計由路由中介層記錄（POST/DELETE /approver-scopes → approver_scope）
 type ApproverScopeService struct {
 	db *gorm.DB
+	// writeScope 審核範圍的交易內範圍判定。組裝期必注入（RequireWriteScope 檢查）；
+	// 未注入走不判定的內部路徑（程式內部建構與測試用）。
+	writeScope   *ApproverScopeWriteScope
+	e            *ScopeEvaluator
+	minApprovals interface{ GetInt(key string) int }
+}
+
+// SetWriteScope 注入審核範圍的範圍判定與判定器（組裝時）；判定器供列表投影與選擇端點使用。
+func (s *ApproverScopeService) SetWriteScope(w *ApproverScopeWriteScope, e *ScopeEvaluator) {
+	s.writeScope, s.e = w, e
+}
+
+// SetPolicies 注入最少核准人數的讀取來源（列表回應帶現值）。
+func (s *ApproverScopeService) SetPolicies(p interface{ GetInt(key string) int }) { s.minApprovals = p }
+
+// RequireWriteScope 組裝自檢：範圍判定與判定器皆已注入。
+func (s *ApproverScopeService) RequireWriteScope() error {
+	if s == nil || s.writeScope == nil || s.e == nil {
+		return ErrApproverScopeWriteScopeMissing
+	}
+	return nil
 }
 
 // NewApproverScopeService 建立審核範圍服務
@@ -59,8 +81,15 @@ func (s *ApproverScopeService) List() ([]*model.ApproverScope, error) {
 }
 
 // Create 分配審核範圍：審核方恰一（個人須具 approver 角色；群組即資格零代配）、
-// 客體四維恰一、引用存在、活躍組合去重
-func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverScope, error) {
+// 客體四維恰一、引用存在、活躍組合去重。
+//
+// 操作者只認 ctx 帶入的請求脈絡主體（與授權規則建立同一個 trustedOperator）：
+// 脈絡無主體即拒，spec.GrantedBy 與主體不符也拒（超管不例外）。granted_by 會被
+// 擁有者轉移守衛讀取，記成別人等於替日後的轉移開洞。
+func (s *ApproverScopeService) Create(ctx context.Context, spec ApproverScopeSpec) (*model.ApproverScope, error) {
+	if _, err := trustedOperator(ctx, spec.GrantedBy); err != nil {
+		return nil, err
+	}
 	actors := 0
 	for _, p := range []*uint{spec.ApproverID, spec.ApproverGroupID} {
 		if p != nil {
@@ -80,9 +109,32 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		return nil, ErrScopeTargetInvalid
 	}
 
+	var created *model.ApproverScope
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 鎖序：拓撲序列化鎖第一個動作 → 同交易重解主體並判定 → 既有驗證 → 寫入
+		if s.writeScope != nil {
+			if err := LockScopeTopologyTx(tx); err != nil {
+				return err
+			}
+			if err := s.writeScope.DecideCreate(ctx, tx, spec); err != nil {
+				return err
+			}
+		}
+		var err error
+		created, err = s.createOn(tx, spec)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// createOn 交易內的既有驗證與寫入（引用存在、審核方資格、不相交、去重）。
+func (s *ApproverScopeService) createOn(tx *gorm.DB, spec ApproverScopeSpec) (*model.ApproverScope, error) {
 	if spec.ApproverID != nil {
 		var principal model.User
-		if err := s.db.First(&principal, *spec.ApproverID).Error; err != nil {
+		if err := tx.First(&principal, *spec.ApproverID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, ErrNotApproverRole
 			}
@@ -93,10 +145,10 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		}
 		// 個人審核方須具 approver 角色（範圍掛在審核職能上，掛非 approver 是配置錯誤）
 		var roleCount int64
-		err := s.db.Table("user_roles").
+		err := tx.Table("user_roles").
 			Joins("JOIN roles ON user_roles.role_id = roles.id").
-			Where("user_roles.user_id = ? AND roles.name = ? AND roles.deleted_at IS NULL",
-				*spec.ApproverID, model.RoleApprover).
+			Where("user_roles.user_id = ? AND roles.builtin_key = ? AND user_roles.scope_kind = ? AND roles.deleted_at IS NULL",
+				*spec.ApproverID, model.BuiltinApprover, model.ScopeKindGlobal).
 			Count(&roleCount).Error
 		if err != nil {
 			return nil, fmt.Errorf("查詢使用者角色失敗: %w", err)
@@ -107,7 +159,7 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 	}
 	if spec.ApproverGroupID != nil {
 		// 群組審核方：群組即資格（成員無需 approver 角色），僅驗存在
-		if err := s.db.First(&model.UserGroup{}, *spec.ApproverGroupID).Error; err != nil {
+		if err := tx.First(&model.UserGroup{}, *spec.ApproverGroupID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("使用者群組不存在: ID=%d", *spec.ApproverGroupID)
 			}
@@ -116,7 +168,7 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 	}
 
 	if spec.AssetID != nil {
-		if err := s.db.First(&model.Asset{}, *spec.AssetID).Error; err != nil {
+		if err := tx.First(&model.Asset{}, *spec.AssetID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("資產不存在: ID=%d", *spec.AssetID)
 			}
@@ -124,7 +176,7 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		}
 	}
 	if spec.AssetGroupID != nil {
-		if err := s.db.First(&model.AssetGroup{}, *spec.AssetGroupID).Error; err != nil {
+		if err := tx.First(&model.AssetGroup{}, *spec.AssetGroupID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("資產分組不存在: ID=%d", *spec.AssetGroupID)
 			}
@@ -132,7 +184,7 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		}
 	}
 	if spec.SubjectUserID != nil {
-		if err := s.db.First(&model.User{}, *spec.SubjectUserID).Error; err != nil {
+		if err := tx.First(&model.User{}, *spec.SubjectUserID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("使用者不存在: ID=%d", *spec.SubjectUserID)
 			}
@@ -140,7 +192,7 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		}
 	}
 	if spec.SubjectGroupID != nil {
-		if err := s.db.First(&model.UserGroup{}, *spec.SubjectGroupID).Error; err != nil {
+		if err := tx.First(&model.UserGroup{}, *spec.SubjectGroupID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("使用者群組不存在: ID=%d", *spec.SubjectGroupID)
 			}
@@ -148,9 +200,15 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		}
 	}
 
+	// 申請人型範圍：審核方集合與申請人集合不得相交（資產型／節點型沒有申請人集合，
+	// 不判定）。只在建立當下判定，事後成員異動不追溯（self_grant_guard.go）
+	if err := (SelfGrantGuard{}).CheckApproverScope(tx, spec); err != nil {
+		return nil, err
+	}
+
 	// 活躍同組合去重（partial 唯一索引同語義，先查後寫給可讀錯誤；索引兜底）
 	var count int64
-	q := s.db.Model(&model.ApproverScope{})
+	q := tx.Model(&model.ApproverScope{})
 	if spec.ApproverID != nil {
 		q = q.Where("approver_id = ?", *spec.ApproverID)
 	} else {
@@ -182,12 +240,12 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 		SubjectGroupID:  spec.SubjectGroupID,
 		GrantedBy:       spec.GrantedBy,
 	}
-	if err := s.db.Create(scope).Error; err != nil {
+	if err := tx.Create(scope).Error; err != nil {
 		return nil, fmt.Errorf("建立審核範圍失敗: %w", err)
 	}
 
 	var result model.ApproverScope
-	if err := s.db.Preload("Approver").Preload("ApproverGroup").
+	if err := tx.Preload("Approver").Preload("ApproverGroup").
 		Preload("Asset").Preload("AssetGroup").
 		Preload("SubjectUser").Preload("SubjectGroup").
 		First(&result, scope.ID).Error; err != nil {
@@ -196,14 +254,39 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 	return &result, nil
 }
 
-// Delete 移除審核範圍（軟刪；可視第三來源即刻失效）
-func (s *ApproverScopeService) Delete(id uint) error {
-	res := s.db.Delete(&model.ApproverScope{}, id)
-	if res.Error != nil {
-		return fmt.Errorf("刪除審核範圍失敗: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return ErrScopeNotFound
-	}
-	return nil
+// Delete 移除審核範圍（軟刪；可視第三來源即刻失效）。
+// 已注入範圍判定時：交易內取拓撲鎖 → 判定審核範圍管理鍵（範圍外、不存在同形）→ 讀列 →
+// 申請人型列另判申請人型管理鍵（不放行與不存在同形）→ 刪除。
+func (s *ApproverScopeService) Delete(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		scoped := s.writeScope != nil
+		if scoped {
+			if err := LockScopeTopologyTx(tx); err != nil {
+				return err
+			}
+			if err := s.writeScope.DecideRow(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		var row model.ApproverScope
+		if err := tx.Select("id", "asset_id", "asset_group_id").First(&row, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrScopeNotFound
+			}
+			return fmt.Errorf("查詢審核範圍失敗: %w", err)
+		}
+		if scoped && row.AssetID == nil && row.AssetGroupID == nil {
+			if err := s.writeScope.DecideApplicantRow(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		res := tx.Delete(&model.ApproverScope{}, id)
+		if res.Error != nil {
+			return fmt.Errorf("刪除審核範圍失敗: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrScopeNotFound
+		}
+		return nil
+	})
 }

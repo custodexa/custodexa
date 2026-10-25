@@ -242,7 +242,7 @@ func TestSourceStatusSummaryEntraSkipsGroupsScopeWarning(t *testing.T) {
 func TestProviderDetailCarriesRedirectURI(t *testing.T) {
 	db := setupMappingDB(t)
 	provider := seedMappingProvider(t, db, "groups", "openid groups")
-	svc := identity.NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com")
+	svc := newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com")
 
 	dto, err := svc.Get(provider.ID)
 	if err != nil {
@@ -270,7 +270,7 @@ func TestProviderDetailCarriesRedirectURI(t *testing.T) {
 func TestProviderDetailRedirectURIUnsetIsIdentifiable(t *testing.T) {
 	db := setupMappingDB(t)
 	provider := seedMappingProvider(t, db, "groups", "openid groups")
-	svc := identity.NewOIDCProviderService(db, nil, testEgress(), nil, "")
+	svc := newOIDCProviderServiceT(db, nil, testEgress(), nil, "")
 
 	dto, err := svc.Get(provider.ID)
 	if err != nil {

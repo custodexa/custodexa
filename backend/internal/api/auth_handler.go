@@ -53,6 +53,9 @@ type AuthHandler struct {
 	// sourcePolicy 允許來源網段的現讀面（G1 強制點）。
 	// **nil 即 fail-close**（不是放行）：見 source_policy_gate.go 的 requireSourceAllowed
 	sourcePolicy sourcePolicyReader
+	// scopeNodePaths 目前使用者範圍摘要的節點路徑來源。nil 時只持全域指派者照常回應；
+	// 有節點範圍條目者回解析失敗（不以全域條目兜底），見 auth_me_projection.go
+	scopeNodePaths scopeNodePathReader
 }
 
 // loginEventThrottled 登入限流的聚合審計事件名。
@@ -537,7 +540,19 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	// 只回本人的來源＝呼叫端自己送出的那個位址，無新資料暴露
 	userInfo.SourceIP = h.auditSourceIP(c)
 
-	c.JSON(http.StatusOK, userInfo)
+	// 能力投影（僅新增欄位）：與上面的 UserInfo 資格值同一次組裝。解析失敗沿用
+	// 原查詢失敗的回應，不回舊角色推估值
+	principal, err := resolveProjectionPrincipal(c, userID)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserInfoQuery, err)
+		return
+	}
+	paths, err := h.currentUserNodePaths(principal)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserInfoQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, buildCurrentUserResponse(userInfo, principal, paths))
 }
 
 // UpdateMe 自助更新個人資料。
@@ -577,6 +592,19 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		return
 	}
 
+	// 投影用的主體在寫入**之前**準備：寫入成功後不再新增一條可能失敗的解析查詢，
+	// 否則會出現「資料已更新卻回 500」。主體取得失敗時尚未產生任何副作用；節點路徑同理先取
+	principal, err := resolveProjectionPrincipal(c, userID)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserInfoQuery, err)
+		return
+	}
+	paths, err := h.currentUserNodePaths(principal)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserInfoQuery, err)
+		return
+	}
+
 	userInfo, err := h.authService.UpdateOwnDisplayName(userID, localDisplayName)
 	if err != nil {
 		switch {
@@ -593,7 +621,7 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, userInfo)
+	c.JSON(http.StatusOK, buildCurrentUserResponse(userInfo, principal, paths))
 }
 
 // ChangePasswordRequest 自助改密請求
@@ -776,7 +804,7 @@ func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 
 		// 需要認證的路由
 		authenticated := auth.Group("")
-		authenticated.Use(middleware.AuthMiddleware(authService))
+		authenticated.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 		{
 			authenticated.POST("/logout", h.Logout)
 			authenticated.GET("/me", h.Me)
@@ -793,7 +821,7 @@ func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 	// 管理員救援路由：與 UserHandler 相同的 admin 限定模式
 	adminUsers := r.Group("/users")
 	adminUsers.Use(middleware.AuthMiddleware(authService))
-	adminUsers.Use(middleware.RequireRole("admin"))
+	adminUsers.Use(middleware.EnforceRegistry())
 	{
 		adminUsers.POST("/:id/mfa/disable", h.AdminDisableMFA)
 	}

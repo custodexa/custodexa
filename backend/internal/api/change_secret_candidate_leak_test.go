@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/custodexa/backend/internal/middleware"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,11 +57,11 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
+	if err := migrateWithAuthz(db, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetHostKey{},
-		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
+		&model.ChangeSecretPlan{}, &model.CredentialJobAuthorization{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
 		&model.ChangeSecretBatch{},
-		&model.CredentialRotation{}, &model.CredentialRotationMember{}); err != nil {
+		&model.CredentialRotation{}, &model.CredentialRotationMember{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -77,6 +78,7 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 
 	codec := aesColumnCodec(t, make([]byte, 32))
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
@@ -85,11 +87,11 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 		t.Fatalf("candidate service: %v", err)
 	}
 	hostKeys := asset.NewHostKeyService(db)
-	runner := asset.NewChangeSecretRunner(db, assetSvc, candidates, hostKeys, nil)
-	retry := asset.NewChangeSecretRetryRunner(db, candidates, assetSvc, hostKeys, nil)
+	runner := asset.NewChangeSecretRunner(db, assetSvc, candidates, hostKeys, nil).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(allowAllCredentialManagement{})
+	retry := asset.NewChangeSecretRetryRunner(db, candidates, assetSvc, hostKeys, nil).WithManagementAuthorizer(allowAllCredentialManagement{})
 	planSvc := asset.NewChangeSecretPlanService(db)
 
-	cand, err := candidates.Create(context.Background(), asset.CandidateInput{
+	cand, err := candidates.Create(asset.WithSystemCaller(context.Background()), asset.CandidateInput{
 		AssetID: 1, AccountID: 1, AccountUsername: "root",
 		SecretType: model.ChangeSecretTypeSSHKey,
 		Password:   leakProbePassword, PrivateKey: leakProbePrivateKey,
@@ -113,7 +115,7 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 	// 第二台資產走**真的 runner**：帳號憑證經 asset service 加密落庫，
 	// 主機指向保證連不上的位址，runner 因而產生自己的新秘密、建候選、
 	// 失敗後寫 record.error。這條路徑才驗得到「runner 產生的秘密不外洩」
-	target, err := assetSvc.Create(context.Background(), &asset.CreateAssetRequest{
+	target, err := assetSvc.Create(asset.WithSystemCaller(context.Background()), &asset.CreateAssetRequest{
 		Name: "runner-target", Protocol: model.ProtocolSSH,
 		Host: "127.0.0.1", Port: 1, Username: "root",
 		Password: leakProbeAssetPassword, CreatedBy: 1,
@@ -132,7 +134,9 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 	if err := db.Create(plan).Error; err != nil {
 		t.Fatalf("seed plan: %v", err)
 	}
-	recs := runner.RunPlan(plan)
+	// 手動執行：以測試主體（id 1）為發起者，走與背景相同的重驗關卡
+	clickCtx := context.WithValue(context.WithValue(context.Background(), "userID", uint(1)), "username", "admin") //nolint:staticcheck // 沿用既有審計 context 慣例
+	recs := runner.RunPlanAs(clickCtx, plan)
 	if len(recs) == 0 {
 		t.Fatal("runner 未產生任何記錄：反射面斷言將由空資料假綠")
 	}
@@ -140,7 +144,8 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 	// 批次側同樣走真的 runner：整批同一組模式對同一台連不上的目標跑一次，
 	// 產生批次列與批次記錄——批次端點的反射面才有東西可比
 	reports := asset.NewRotationReportBuilder(db, planSvc, func() int { return 0 })
-	batches := asset.NewChangeSecretBatchService(db, reports)
+	batches := asset.NewChangeSecretBatchService(db, reports).WithManagementAuthorizer(allowAllCredentialManagement{}).
+		WithOwnershipScope(globalOwnershipScopeForTest{})
 	batch, assetIDs, err := batches.Create(&asset.ChangeSecretBatchRequest{
 		Username: "root", All: true, PasswordMode: model.BatchPasswordShared,
 		CredentialName: "洩漏面探針批次",
@@ -154,9 +159,9 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 
 	// 憑證庫端點同樣是候選與憑證密文的反射面：憑證詳情帶掛載清單與版本序號，
 	// 改密進度帶逐成員的失敗原因——兩者都是「把字串送到 API」的通道
-	creds := asset.NewCredentialService(assetSvc, codec, audit.NewTxSink())
+	creds := asset.NewCredentialService(assetSvc, codec, audit.NewTxSink()).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(allowAllCredentialManagement{}).WithSystemAlertSink(recordingSystemAlerts{})
 	rotations := asset.NewCredentialRotationService(db, assetSvc, candidates, hostKeys,
-		codec, audit.NewTxSink(), allowAllAssetPermissions{})
+		codec, audit.NewTxSink(), allowAllCredentialManagement{}).WithSystemAlertSink(recordingSystemAlerts{})
 
 	handler := NewChangeSecretHandler(planSvc, runner, candidates, retry, batches, nil)
 	return handler, NewCredentialHandler(creds, rotations, reports), db, &stored
@@ -170,7 +175,7 @@ func candidateRouter(h *ChangeSecretHandler, c *CredentialHandler) *gin.Engine {
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(1))
 		c.Set("username", "admin")
-		c.Set("role", "admin")
+		middleware.SetPrincipal(c, legacyPrincipal("admin"))
 	})
 	r.GET("/change-secret-candidates", h.ListCandidates)
 	r.POST("/change-secret-candidates/:id/retry", h.RetryCandidate)
@@ -187,6 +192,7 @@ func candidateRouter(h *ChangeSecretHandler, c *CredentialHandler) *gin.Engine {
 	// 即等於該端點未被本守衛涵蓋
 	r.GET("/credentials", c.List)
 	r.POST("/credentials", c.Create)
+	r.POST("/credentials/ownership", c.ReassignOwnership)
 	r.GET("/credentials/:id", c.Get)
 	r.PUT("/credentials/:id", c.Update)
 	r.DELETE("/credentials/:id", c.Delete)
@@ -195,6 +201,7 @@ func candidateRouter(h *ChangeSecretHandler, c *CredentialHandler) *gin.Engine {
 	r.POST("/credentials/:id/bindings/:accountId/detach", c.Detach)
 	r.POST("/credentials/:id/scope", c.ConvertScope)
 	r.POST("/credentials/:id/secret", c.SetSecret)
+	r.POST("/credentials/:id/impact-confirmations", c.ConfirmImpact)
 	r.POST("/credentials/:id/rotations", c.StartRotation)
 	r.GET("/credentials/:id/rotations/:rid", c.GetRotation)
 	r.POST("/credentials/:id/rotations/:rid/members/:mid/retry", c.RetryMember)
@@ -314,6 +321,8 @@ func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
 		{"PUT", "/credentials/1", `{"note":"probe"}`},
 		{"POST", "/credentials/1/scope", `{"scope":"shared","name":"探針轉共用"}`},
 		{"POST", "/credentials/1/secret", `{"password":"` + leakProbeAssetPassword + `"}`},
+		{"POST", "/credentials/1/impact-confirmations", `{"operation":"set_secret"}`},
+		{"POST", "/credentials/ownership", `{"credential_ids":[1],"ownership":{"kind":"global"}}`},
 		{"POST", "/credentials/1/bindings", `{"asset_id":1}`},
 		{"POST", "/credentials/1/rotations", `{"mode":"nope"}`},
 		{"POST", "/credentials/1/rotations/1/members/1/retry", ""},

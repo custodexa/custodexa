@@ -9,7 +9,6 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
-	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/identity"
 )
 
@@ -92,7 +91,7 @@ func (h *ScheduleHandler) NextRuns(c *gin.Context) {
 func (h *ScheduleHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	schedules := r.Group("/schedules")
 	schedules.Use(middleware.AuthMiddleware(authService))
-	schedules.Use(middleware.RequireRole(model.RoleAdmin))
+	schedules.Use(middleware.EnforceRegistry())
 	{
 		schedules.POST("/next-runs", h.NextRuns)
 	}

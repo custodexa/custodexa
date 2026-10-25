@@ -16,7 +16,10 @@ import (
 
 func TestProbeBreakerTrip(t *testing.T) {
 	db, sessions, agent, token, task := agentSessionFixture(t)
-	if err := db.AutoMigrate(&model.AgentProbeEvent{}, &model.CommandAlert{}, &model.Asset{}, &model.AgentVisibilityExposure{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentProbeEvent{}, &model.CommandAlert{}, &model.Asset{}, &model.AgentVisibilityExposure{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(&model.Asset{ID: 77, Name: "unexposed"}).Error; err != nil {

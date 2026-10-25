@@ -2,7 +2,6 @@ package asset
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -35,6 +34,7 @@ func setupCredentialDB(t *testing.T) *gorm.DB {
 		&model.Asset{}, &model.AssetAccount{}, &model.Credential{},
 		&model.CredentialSecretVersion{}, &model.ChangeSecretCandidate{},
 		&model.AuditLog{}, &model.AssetGroup{}, &model.AssetNode{},
+		&model.CredentialImpactConfirmation{},
 	))
 	oldDB := database.DB
 	database.DB = db
@@ -47,16 +47,20 @@ func newCredentialServices(t *testing.T) (*AssetService, *AssetAccountService, *
 	t.Helper()
 	codec := aesColumnCodec(t, make([]byte, 32))
 	assets, err := NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assets.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
-	accounts := NewAssetAccountService(assets, codec, audit.NewTxSink())
-	creds := NewCredentialService(assets, codec, audit.NewTxSink())
+	assets.WithManagementAuthorizer(newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink())
+	accounts := NewAssetAccountService(assets, codec, audit.NewTxSink()).
+		WithManagementAuthorizer(newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink()).WithAccountWriteScope(allowAllAccountWriteScope{})
+	creds := NewCredentialService(assets, codec, audit.NewTxSink()).WithOwnershipScope(globalOwnershipScopeForTest{}).
+		WithManagementAuthorizer(newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink())
 	return assets, accounts, creds
 }
 
 // newSSHAsset 建一台不帶任何憑證來源的 SSH 資產（零掛載）。
 func newSSHAsset(t *testing.T, assets *AssetService, name, host string) *model.Asset {
 	t.Helper()
-	a, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: 22,
 		Username: "seed", Password: "seed-pw", CreatedBy: 1,
 	})
@@ -67,7 +71,7 @@ func newSSHAsset(t *testing.T, assets *AssetService, name, host string) *model.A
 // newBareAsset 建一台零掛載的資產（VNC 不強制 username）。
 func newBareAsset(t *testing.T, assets *AssetService, name, host string) *model.Asset {
 	t.Helper()
-	a, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolVNC, Host: host, Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -142,7 +146,7 @@ func TestCredentialUsernameImmutable(t *testing.T) {
 	require.NoError(t, err)
 
 	renamed := "ops-renamed"
-	_, err = accounts.Update(adminCtx(), asset.ID, binding.ID, &UpdateAssetAccountRequest{Username: &renamed})
+	_, err = accounts.Update(WithSystemCaller(adminCtx()), asset.ID, binding.ID, &UpdateAssetAccountRequest{Username: &renamed})
 	assert.ErrorIs(t, err, ErrCredentialUsernameImmutable,
 		"掛載改名是共用憑證改名的側門，必須走同一條規則")
 
@@ -152,7 +156,7 @@ func TestCredentialUsernameImmutable(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	ok := "ops-new"
-	updated, err := accounts.Update(adminCtx(), dedicatedAsset.ID, list[0].ID,
+	updated, err := accounts.Update(WithSystemCaller(adminCtx()), dedicatedAsset.ID, list[0].ID,
 		&UpdateAssetAccountRequest{Username: &ok})
 	require.NoError(t, err, "專用憑證恰一掛載，改名只需在該資產內重驗")
 	assert.Equal(t, "ops-new", updated.Username)
@@ -299,66 +303,6 @@ func TestCredentialConvertToDedicatedRequiresExactlyOneBinding(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, model.CredentialScopeDedicated, converted.Scope)
-}
-
-// 影響全部掛載的動作須對**每一台**掛載資產驗權，其中一台無權即整筆拒絕。
-//
-// 只驗其中一台等於讓操作者拿一台他管得到的機器，決定另外幾台他管不到的機器
-// 怎麼登入——改秘密會讓新版本同時就位到每一台，換範圍與刪除同樣是整組的後果。
-func TestCredentialWideOperationsRequirePermissionOnAllBoundAssets(t *testing.T) {
-	db := setupCredentialDB(t)
-	assets, accounts, creds := newCredentialServices(t)
-
-	shared := newSharedCredential(t, creds, "wide-shared", "ops", "pw")
-	hosts := make([]*model.Asset, 0, 3)
-	for i, name := range []string{"wide-a", "wide-b", "wide-c"} {
-		a := newSSHAsset(t, assets, name, "10.2.7."+string(rune('1'+i)))
-		list, lerr := accounts.List(a.ID)
-		require.NoError(t, lerr)
-		require.NoError(t, accounts.Delete(adminCtx(), a.ID, list[0].ID))
-		_, berr := creds.Bind(adminCtx(), shared.ID, &BindCredentialRequest{AssetID: a.ID})
-		require.NoError(t, berr)
-		hosts = append(hosts, a)
-	}
-	require.Len(t, hosts, 3)
-
-	// 第三台無權：前兩台有權不足以放行
-	checker := &fakePermissionChecker{allow: map[uint]bool{
-		hosts[0].ID: true, hosts[1].ID: true, hosts[2].ID: false,
-	}}
-	creds = creds.WithAuthorization(checker)
-	versionsBefore := credentialVersionIDs(t, db, shared.ID)
-
-	_, err := creds.SetSecret(adminCtx(), shared.ID, &SetCredentialSecretRequest{Password: "new-pw"})
-	assert.ErrorIs(t, err, ErrCredentialBindForbidden, "改秘密影響全部掛載")
-	assert.Equal(t, versionsBefore, credentialVersionIDs(t, db, shared.ID),
-		"被拒的改秘密不得留下新版本")
-
-	_, err = creds.ConvertScope(adminCtx(), shared.ID, &ConvertCredentialScopeRequest{
-		Scope: model.CredentialScopeDedicated,
-	})
-	assert.ErrorIs(t, err, ErrCredentialBindForbidden, "換範圍的後果落在整組上")
-	assert.NotErrorIs(t, err, ErrCredentialToDedicatedMultiBinding,
-		"權限不足時不得先回規則錯誤——那會透露這組秘密掛了幾台")
-
-	err = creds.Delete(adminCtx(), shared.ID)
-	assert.ErrorIs(t, err, ErrCredentialBindForbidden)
-	var inUse *CredentialInUseError
-	assert.False(t, errors.As(err, &inUse),
-		"權限不足時不得回掛載資產名單——那是共用拓撲，正是要擋下的東西")
-
-	var stillThere model.Credential
-	require.NoError(t, db.First(&stillThere, shared.ID).Error)
-	assert.Equal(t, model.CredentialScopeShared, stillThere.Scope, "被拒的動作不得改變憑證")
-
-	// 補齊第三台的權限後同一個動作即成立，且三台都被問過
-	checker.allow[hosts[2].ID] = true
-	checker.asked = nil
-	_, err = creds.SetSecret(adminCtx(), shared.ID, &SetCredentialSecretRequest{Password: "new-pw"})
-	require.NoError(t, err)
-	for i := range hosts {
-		assert.Contains(t, checker.asked, hosts[i].ID, "每一台掛載資產都必須被問過")
-	}
 }
 
 // 仍有掛載時拒刪，並回掛載該憑證的資產名單。

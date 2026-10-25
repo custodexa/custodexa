@@ -7,8 +7,8 @@ import {
   BLOCKED_ENTRY_STATES,
 } from '../asset-access'
 
-const user = { isPrivileged: false }
-const admin = { isPrivileged: true }
+const user = { selfService: true }
+const admin = { selfService: false }
 
 describe('assetEntryState 五態', () => {
   it.each([

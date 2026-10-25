@@ -145,7 +145,7 @@ func TestLDAPShadowUserReprovisionedAfterDelete(t *testing.T) {
 	if err := env.db.AutoMigrate(&model.UserGroup{}, &model.UserGroupMember{}, &model.ApproverScope{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
-		&model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, stmt := range []string{

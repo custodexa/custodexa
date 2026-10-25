@@ -16,6 +16,9 @@ func BindAgentSessionTask(tx *gorm.DB, sess *model.Session) error {
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&task, *sess.AccessRequestID).Error; err != nil {
 		return err
 	}
+	if h := loadLockOrderHook(); h != nil {
+		h("agent_session_after_task_lock", tx, sess.UserID)
+	}
 	if executorIDValue(task.ExecutorUserID, task.RequesterID) != sess.UserID || task.ClosedAt != nil {
 		return errors.New("agent task unavailable")
 	}

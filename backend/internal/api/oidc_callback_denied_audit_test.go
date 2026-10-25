@@ -126,13 +126,16 @@ func setupCallbackDeniedEnv(t *testing.T) *callbackDeniedEnv {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
 		&model.UserExternalIdentity{}, &model.OIDCFlowState{}, &model.OIDCLoginTicket{},
-		&model.GroupRoleMapping{}, &model.AuditLog{}); err != nil {
+		&model.GroupRoleMapping{}, &model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("user_roles: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	oldDB := database.DB
@@ -142,7 +145,7 @@ func setupCallbackDeniedEnv(t *testing.T) *callbackDeniedEnv {
 	auth := identity.NewAuthService("oidc-callback-secret", 15*time.Minute)
 	auth.SetSecurityPolicies(policy.NewSecurityPolicyService(db))
 	egress := &identity.OIDCEgressPolicy{AllowInsecureHosts: []string{"127.0.0.1"}}
-	providers := identity.NewOIDCProviderService(db, nil, egress, nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, egress, nil, "https://bastion.example.com")
 	login := identity.NewOIDCLoginService(db, providers, identity.NewOIDCDiscoveryService(egress), auth, nil)
 	auditService := audit.NewAuditLogService(&config.FeatureFlags{
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,

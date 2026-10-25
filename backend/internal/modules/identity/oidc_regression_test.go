@@ -49,6 +49,7 @@ func setupRegressionEnv(t *testing.T) *regressionEnv {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
@@ -56,8 +57,8 @@ func setupRegressionEnv(t *testing.T) *regressionEnv {
 	sqlDB.SetMaxOpenConns(1)
 
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{}, &model.AuditLog{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{}); err != nil {
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後

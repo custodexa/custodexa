@@ -22,6 +22,13 @@
       </el-tag>
     </div>
 
+    <p
+      class="syslog-alert-notice"
+      data-test="syslog-change-alert-notice"
+    >
+      {{ $t('syslogCard.changeAlertNotice') }}
+    </p>
+
     <el-form
       :model="syslogForm"
       label-width="90px"
@@ -282,6 +289,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.syslog-alert-notice {
+  margin: 0 0 var(--ot-space-sm);
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
 .policy-card {
   padding: var(--ot-space-md);
   margin-bottom: var(--ot-space-md);

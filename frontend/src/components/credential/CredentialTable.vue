@@ -4,6 +4,7 @@
     data-test="credential-table"
   >
     <el-table
+      ref="tableRef"
       v-loading="loading"
       :data="pageRows"
       height="100%"
@@ -12,6 +13,7 @@
       :current-row-key="selectedId"
       class="table"
       @current-change="onCurrent"
+      @selection-change="onSelection"
     >
       <!-- 載入失敗時不說「還沒有任何憑證」：那句話與事實相反，原因由呼叫端就地說明 -->
       <template #empty>
@@ -23,6 +25,15 @@
         />
         <span v-else />
       </template>
+
+      <!-- 批次改歸的勾選欄：只有伺服器標示可批次改歸的主體（非範圍化檢視者）才有；專用憑證恆隨資產，不可勾 -->
+      <el-table-column
+        v-if="batchEnabled"
+        type="selection"
+        width="44"
+        :selectable="isRowSelectable"
+        data-test="credential-col-select"
+      />
 
       <!-- 編號＝憑證主鍵：批次匯入資產時 credential_id 欄填的就是它，故放最左、等寬字 -->
       <el-table-column
@@ -87,6 +98,16 @@
       </el-table-column>
 
       <el-table-column
+        :label="t('credentials.ownership.label')"
+        min-width="130"
+        show-overflow-tooltip
+      >
+        <template #default="{ row }">
+          <span :data-test="`credential-ownership-${row.id}`">{{ ownershipText(row) }}</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column
         :label="t('credentials.colSecretType')"
         width="92"
       >
@@ -97,11 +118,17 @@
 
       <el-table-column
         :label="t('credentials.colBindings')"
-        width="88"
+        width="150"
         align="right"
       >
         <template #default="{ row }">
           <span :data-test="`credential-bindings-${row.id}`">{{ row.binding_count }}</span>
+          <!-- 範圍外台數取自伺服器；只給台數，不列名稱 -->
+          <span
+            v-if="outOfScopeCount(row) > 0"
+            class="out-chip"
+            :data-test="`credential-out-of-scope-${row.id}`"
+          >{{ t('credentials.outOfScopeChip', { count: outOfScopeCount(row) }) }}</span>
         </template>
       </el-table-column>
 
@@ -133,7 +160,34 @@
           <span class="muted">{{ updatedAtText(row) }}</span>
         </template>
       </el-table-column>
+
+      <el-table-column
+        v-if="batchEnabled"
+        :label="t('common.actions')"
+        width="110"
+        data-test="credential-col-actions"
+      >
+        <template #default="{ row }">
+          <el-button
+            v-if="row.scope === 'shared'"
+            link
+            type="primary"
+            size="small"
+            :data-test="`credential-reassign-${row.id}`"
+            @click.stop="emit('reassign', row)"
+          >
+            {{ t('credentials.reassign.rowAction') }}
+          </el-button>
+        </template>
+      </el-table-column>
     </el-table>
+
+    <p
+      class="footnote"
+      data-test="credential-footnote"
+    >
+      {{ scopedView ? t('credentials.footer.scoped') : t('credentials.footer.global') }}
+    </p>
 
     <div class="pagination">
       <el-pagination
@@ -162,11 +216,12 @@
  * 端點未帶時回全部，故本元件在收到超過一頁份量的資料時自行切一頁出來——
  * 兩種回應形狀下畫面都只顯示一頁，不會因為端點回了全部就把整份倒出來。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { credentialDisplayName } from '@/constants/credentials'
+import { outOfScopeCount } from '@/utils/credentialActions'
 
 const props = defineProps({
   credentials: { type: Array, default: () => [] },
@@ -177,9 +232,15 @@ const props = defineProps({
   page: { type: Number, default: 1 },
   pageSize: { type: Number, default: 20 },
   total: { type: Number, default: 0 },
+  // 範圍化檢視者的視角（伺服器對該主體的列附了 actions）：決定頁尾文案
+  scopedView: { type: Boolean, default: false },
+  // 顯示勾選欄與列操作欄（批次改歸）；範圍化檢視者沒有
+  batchEnabled: { type: Boolean, default: false },
+  // 節點識別 → 完整路徑；查不到退回節點編號
+  nodePaths: { type: Object, default: () => ({}) },
 })
 
-const emit = defineEmits(['select', 'update:page', 'update:pageSize'])
+const emit = defineEmits(['select', 'update:page', 'update:pageSize', 'update:selection', 'reassign'])
 
 const { t } = useI18n()
 
@@ -203,6 +264,26 @@ function secretTypeLabel(row) {
 // 列表只到分鐘：秒數在這裡沒有判斷價值，卻要吃掉一個中文名字的寬度。
 // 需要精確到秒的場合在詳情與審計列上
 const updatedAtText = (row) => formatDateTime(row.updated_at).slice(0, 16)
+
+function ownershipText(row) {
+  const o = row?.ownership
+  if (!o) return t('credentials.empty')
+  if (o.kind === 'global') return t('credentials.ownership.global')
+  if (o.kind === 'asset') return t('credentials.ownership.asset')
+  return props.nodePaths[o.node_id] || t('credentials.ownership.nodeRef', { id: o.node_id })
+}
+
+const isRowSelectable = (row) => row.scope === 'shared'
+
+function onSelection(rows) {
+  emit('update:selection', rows)
+}
+
+// 不可命名為 elTable：script setup 會把與元件標籤同名（el-table → elTable）的綁定當成元件解析
+const tableRef = ref(null)
+// 批次改歸完成或換頁條件變動後，由呼叫端清掉勾選
+const clearSelection = () => tableRef.value?.clearSelection?.()
+defineExpose({ clearSelection })
 
 function onCurrent(row) {
   if (row) emit('select', row)
@@ -250,6 +331,20 @@ function onPageSize(size) {
   color: var(--ot-text-secondary);
   font-size: var(--ot-font-size-sm);
   white-space: nowrap;
+}
+
+.out-chip {
+  margin-left: var(--ot-space-xs);
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-xs);
+  white-space: nowrap;
+}
+
+.footnote {
+  margin: 0;
+  padding: var(--ot-space-sm) var(--ot-space-md) 0;
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
 }
 
 .pagination {

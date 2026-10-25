@@ -18,6 +18,13 @@
       }}</span>
     </div>
 
+    <!-- 主機金鑰與記錄不符（列目錄回應帶 host_key_mismatch）：連線已照常建立並留痕告警 -->
+    <HostKeyMismatchNotice
+      v-if="hostKeyMismatch"
+      :asset-id="assetId"
+      @dismiss="hostKeyMismatch = false"
+    />
+
     <!-- 資料傳輸能力提示（data-transfer-control 6.2）：哪些動作被政策擋下先講明白，
          不讓使用者點下去才吃 403。瀏覽與列目錄不受此區塊影響 -->
     <el-alert
@@ -170,6 +177,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { User } from 'lucide-vue-next'
 import { listFiles, uploadFile, downloadFile, mkdir, deleteFile } from '@/api/files'
 import { useTransferCapabilities } from '@/composables/useTransferCapabilities'
+import HostKeyMismatchNotice from '@/components/HostKeyMismatchNotice.vue'
 import { t, currentLocale } from '@/i18n'
 
 const props = defineProps({
@@ -204,6 +212,8 @@ const sessionKey = computed(() => (props.sessionId ? Number(props.sessionId) : n
 const currentPath = ref('/')
 const entries = ref([])
 const loading = ref(false)
+// 最近一次列目錄的主機金鑰是否與記錄不符（只有列目錄回應帶旗標；缺欄或 false 視為相符）
+const hostKeyMismatch = ref(false)
 
 // 資料傳輸有效能力（data-transfer-control 6.2）：**呈現用，非強制點**——
 // 真正的閘在後端四個檔案端點，前端把不可用動作先標成不可用只是為了不讓
@@ -252,6 +262,7 @@ async function refresh() {
     // 載入途中身分又變了：這份結果對應的是舊帳號，丟棄（watcher 會再載一次）
     if (identity !== sessionKey.value) return
     entries.value = res.entries || []
+    hostKeyMismatch.value = res.host_key_mismatch === true
     loadedSessionId.value = identity
   } catch (err) {
     console.error('[FileManager] 讀取目錄失敗:', err?.response?.status, err?.response?.data?.code)

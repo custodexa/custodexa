@@ -59,28 +59,29 @@ import (
 // 這份清單是可執行契約：任何搬檔造成的登記重排會在此逐位失敗，而不是在某個
 // 收束窗口靜靜地少歸零一段金鑰。
 var expectedReleaseRegistration = []string{
-	"localKEK",                   // Registered before keyManager so LIFO wipes the raw local KEK last.
-	"vaultClient",                // Closed after key-dependent resources and before the raw local KEK.
-	"keyManager",                 // Released after dependent resources and before the raw local KEK.
-	"auditFailureService",        // R-3
-	"syslogForwarder",            // R-4　晚於 R-5 執行（先解 hook 再停轉發器）
-	"auditIntegrity",             // R-5　SetAuditCreateHooks(nil,nil) ＋ 解單例
-	"connectionRegistry",         // R-6
-	"auditService",               // R-7　已知排序張力，見本檔末
-	"alertMatcher",               // R-8
-	"alertNotifier",              // R-9　必須早於兩排程器登記 ⇒ 晚於其停止（危險點 2）
-	"exportSigning",              // R-10 衍生材料，早於根材料執行
-	"checkpointSigning",          // R-10b 同上（檢查點簽章鑰，多版本逐一歸零）
-	"changeSecretScheduler",      // R-11
-	"changeSecretRetryScheduler", // R-11b
-	"accessRequestScheduler",     // R-12
-	"retentionScheduler",         // 迴圈登記（manifest §7 摺疊）
-	"reviewReminderScheduler",    // 迴圈登記
-	"inactivityScheduler",        // 迴圈登記
-	"kekRetirementScheduler",     // 迴圈登記
-	"reconcileScheduler",         // 迴圈登記
-	"checkpointScheduler",        // 迴圈登記（audit-checkpoint-chain 第 4 組）
-	"chainVerifyScheduler",       // 迴圈登記
+	"localKEK",                      // Registered before keyManager so LIFO wipes the raw local KEK last.
+	"vaultClient",                   // Closed after key-dependent resources and before the raw local KEK.
+	"keyManager",                    // Released after dependent resources and before the raw local KEK.
+	"auditFailureService",           // R-3
+	"syslogForwarder",               // R-4　晚於 R-5 執行（先解 hook 再停轉發器）
+	"auditIntegrity",                // R-5　SetAuditCreateHooks(nil,nil) ＋ 解單例
+	"connectionRegistry",            // R-6
+	"auditService",                  // R-7　已知排序張力，見本檔末
+	"alertMatcher",                  // R-8
+	"alertNotifier",                 // R-9　必須早於兩排程器登記 ⇒ 晚於其停止（危險點 2）
+	"exportSigning",                 // R-10 衍生材料，早於根材料執行
+	"checkpointSigning",             // R-10b 同上（檢查點簽章鑰，多版本逐一歸零）
+	"changeSecretScheduler",         // R-11
+	"changeSecretRetryScheduler",    // R-11b
+	"accessRequestScheduler",        // R-12
+	"recordingTokenVersionListener", // R-12b 錄影票管理器的權限版本通知解除登記
+	"retentionScheduler",            // 迴圈登記（manifest §7 摺疊）
+	"reviewReminderScheduler",       // 迴圈登記
+	"inactivityScheduler",           // 迴圈登記
+	"kekRetirementScheduler",        // 迴圈登記
+	"reconcileScheduler",            // 迴圈登記
+	"checkpointScheduler",           // 迴圈登記（audit-checkpoint-chain 第 4 組）
+	"chainVerifyScheduler",          // 迴圈登記
 	// offsiteUploader 登記於 auditExportJobWorker **之前** ⇒ LIFO 下停在它之後：
 	// 上傳 worker 讀 export 產物，先停打包器才不會有「產物還在寫、上傳已停」以外的順序
 	"offsiteUploader",      // 迴圈登記（evidence-offsite-storage）
@@ -88,6 +89,9 @@ var expectedReleaseRegistration = []string{
 	// rotationReportScheduler 登記於 auditExportJobWorker **之後** ⇒ LIFO 下停在它之前：
 	// 先停止建新工作單，打包器才不會在收束途中又領到新件
 	"rotationReportScheduler", // 迴圈登記（rotation-evidence-report）
+	// systemAlertOutboxWorker 登記於 starts 末位：恢復封章先於所有 worker，
+	// 且 LIFO 下它最先停（不在資料庫關閉之後還送信）
+	"systemAlertOutboxWorker", // 迴圈登記（系統安全告警持久投遞）
 	"metricsRefresher",        // R-13 段 2 最後登記（接替 perfMonitor）
 	"sealJournalReplay",       // R-1　publishStage2 內登記 ⇒ 最先被等待
 }
@@ -423,6 +427,7 @@ var lifecycleAuditProducingStartupCalls = []string{
 	"ReconcileStartup",          // session 啟動清掃：收斂殘留 active
 	"ReportOnStartup",           // KEK 退役 degraded 首次評估
 	"ReportAADResidueOnStartup", // 非終態格式殘值啟動哨兵
+	"RecoverInterruptedMembers", // 重啟時停在改密中的輪替成員：轉換與審計同交易
 }
 
 // TestLifecycleAuditStampHookPrecedesAuditProducingSteps 危險點 1 的結構面守衛。

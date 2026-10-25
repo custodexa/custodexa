@@ -57,6 +57,12 @@ var (
 	RefChannelSecret = crypto.CipherRef{Table: "notification_channels", Column: "secret"}
 	RefChannelURL    = crypto.CipherRef{Table: "notification_channels", Column: "url"}
 
+	// system_alert_outbox：系統告警投遞佇列的目的地快照（網址與簽章密鑰）。
+	// 與 notification_channels 的欄位刻意分立：快照是產生當下的副本，
+	// 通道之後改址或刪除都不影響重送，兩者的 AAD 綁定不得共用
+	RefSystemAlertOutboxURL    = crypto.CipherRef{Table: "system_alert_outbox", Column: "url_enc"}
+	RefSystemAlertOutboxSecret = crypto.CipherRef{Table: "system_alert_outbox", Column: "secret_enc"}
+
 	// oidc_providers
 	RefOIDCClientSecret = crypto.CipherRef{Table: "oidc_providers", Column: "client_secret_enc"}
 
@@ -92,6 +98,7 @@ var allCipherRefs = []crypto.CipherRef{
 	RefChangeSecretCandidatePassword, RefChangeSecretCandidatePrivateKey,
 	RefUserTOTPSecret, RefExportSigningPrivateKey, RefCheckpointSigningPrivateKey,
 	RefChannelSecret, RefChannelURL,
+	RefSystemAlertOutboxURL, RefSystemAlertOutboxSecret,
 	RefOIDCClientSecret,
 	RefLDAPBindPassword,
 	RefClipboardContent, RefAgentToolCallArgs,

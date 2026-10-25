@@ -25,9 +25,11 @@ type importLookups struct {
 	nodePaths     map[uint]string   // 節點 id → 全路徑
 	pathToIDs     map[string][]uint // 全路徑 → 節點 id（不唯一時多筆）
 	credentials   map[uint]*model.Credential
+	// scope 逐列範圍判定（零值＝不限）
+	scope *importScope
 }
 
-func (s *AssetService) loadImportLookups(db *gorm.DB, rows []ImportRow) (*importLookups, error) {
+func (s *AssetService) loadImportLookups(ctx context.Context, db *gorm.DB, rows []ImportRow) (*importLookups, error) {
 	lk := &importLookups{existingNames: map[string]bool{}, tagSpelling: map[string]string{},
 		credentials: map[uint]*model.Credential{}}
 
@@ -50,12 +52,9 @@ func (s *AssetService) loadImportLookups(db *gorm.DB, rows []ImportRow) (*import
 			lk.existingNames[n] = true
 		}
 	}
-	tags, err := s.ListTags()
-	if err != nil {
+	var err error
+	if lk.tagSpelling, err = s.tagSpellingRefTx(ctx, db); err != nil {
 		return nil, err
-	}
-	for _, tc := range tags {
-		lk.tagSpelling[canonicalTag(tc.Name)] = tc.Name
 	}
 	if lk.nodePaths, err = NodePathMap(db); err != nil {
 		return nil, err
@@ -120,17 +119,25 @@ func displayLine(r ImportRow, index int) int {
 
 // validateImportBatch 逐列完整驗證（預檢與寫入共用）。回傳逐列報告，以及每一列
 // 通過時的寫入準備（未通過的列為 nil）。非驗證性錯誤（查詢失敗）以 error 回傳
+// sc 為交易外已完成的憑證掛載判定（importCredentialScope）；節點範圍在查表後於此判定。
 func (s *AssetService) validateImportBatch(ctx context.Context, batch *ImportBatch,
-	createdBy uint, createdByName string) (*ImportPreview, []*preparedAsset, error) {
+	createdBy uint, createdByName string, sc *importScope) (*ImportPreview, []*preparedAsset, error) {
 
 	rows := make([]ImportRow, len(batch.Rows))
 	for i := range batch.Rows {
 		rows[i] = normalizeImportRow(batch.Rows[i])
 	}
-	lk, err := s.loadImportLookups(database.DB, rows)
+	lk, err := s.loadImportLookups(ctx, database.DB, rows)
 	if err != nil {
 		return nil, nil, err
 	}
+	if sc == nil {
+		sc = &importScope{}
+	}
+	if err := s.importNodeScope(ctx, database.DB, sc, importReferencedNodeIDs(rows, lk)); err != nil {
+		return nil, nil, err
+	}
+	lk.scope = sc
 
 	reports := make([]ImportRowReport, len(rows))
 	nodeIDs := make([][]uint, len(rows))
@@ -148,6 +155,10 @@ func (s *AssetService) validateImportBatch(ctx context.Context, batch *ImportBat
 		nodeIDs[i] = validateImportRowFields(&rows[i], rep, lk)
 		rep.Values = rows[i]
 		rep.Values.NodeIDs = nodeIDs[i]
+	}
+	// 存取政策覆寫的範圍：與欄位能力同級、先於逐列錯誤；任一列不符整批拒絕
+	if err := s.importAccessPolicyScope(ctx, database.DB, rows, reports, nodeIDs); err != nil {
+		return nil, nil, err
 	}
 
 	markBatchDuplicateNames(rows, reports, lk)
@@ -287,7 +298,7 @@ func validateImportNodes(r *ImportRow, rep *ImportRowReport, lk *importLookups,
 	if len(r.NodePaths) > 0 {
 		for _, p := range r.NodePaths {
 			matches := lk.pathToIDs[p]
-			if len(matches) != 1 {
+			if len(matches) != 1 || lk.scope.outOfScope(matches[0]) {
 				add(fieldErrP(importFieldNodes, apierror.CodeAssetImportNodePath, map[string]any{"path": p}))
 				continue
 			}
@@ -302,7 +313,7 @@ func validateImportNodes(r *ImportRow, rep *ImportRowReport, lk *importLookups,
 		}
 	} else {
 		for _, id := range r.NodeIDs {
-			if _, ok := lk.nodePaths[id]; !ok {
+			if _, ok := lk.nodePaths[id]; !ok || lk.scope.outOfScope(id) {
 				add(fieldErr(importFieldNodes, apierror.CodeAssetNodeNotFound))
 				break
 			}
@@ -311,6 +322,10 @@ func validateImportNodes(r *ImportRow, rep *ImportRowReport, lk *importLookups,
 				ids = append(ids, id)
 			}
 		}
+	}
+	// 資產建立能力只經節點範圍持有者，新增的資產須放在範圍內節點
+	if lk.scope != nil && lk.scope.nodesLimited && len(r.NodePaths) == 0 && len(r.NodeIDs) == 0 {
+		add(fieldErr(importFieldNodes, apierror.CodeAssetNodeRequired))
 	}
 	rep.Resolved.NodePaths = make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -344,7 +359,8 @@ func validateImportCredential(r *ImportRow, rep *ImportRowReport, lk *importLook
 		return
 	}
 	cred := lk.credentials[uint(*r.CredentialID)]
-	if cred == nil {
+	// 範圍外（含全域歸屬對範圍化主體）與不存在同形，且排在狀態檢查之前，不回顯名稱
+	if cred == nil || (lk.scope != nil && lk.scope.credOut[cred.ID]) {
 		add(fieldErr(importFieldCredentialID, apierror.CodeCredentialNotFound))
 		return
 	}

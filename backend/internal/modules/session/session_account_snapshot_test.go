@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -13,6 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 )
 
 // 會話帳號雙快照的不可變性（asset-accounts spec
@@ -25,13 +27,13 @@ func TestSessionAccountSnapshotImmutable(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&model.Session{}))
 	assets, accounts := newAccountServices(t)
 
-	assetRow, err := assets.Create(context.Background(), &asset.CreateAssetRequest{
+	assetRow, err := assets.Create(asset.WithSystemCaller(context.Background()), &asset.CreateAssetRequest{
 		Name: "srv-snap", Protocol: model.ProtocolSSH, Host: "10.0.0.9", Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})
 	require.NoError(t, err)
 
-	app, err := accounts.Create(adminCtx(), assetRow.ID, &asset.CreateAssetAccountRequest{
+	app, err := accounts.Create(asset.WithSystemCaller(adminCtx()), assetRow.ID, &asset.CreateAssetAccountRequest{
 		Username: "app", Password: "apppw",
 	})
 	require.NoError(t, err)
@@ -47,7 +49,7 @@ func TestSessionAccountSnapshotImmutable(t *testing.T) {
 
 	// 帳號改名 → 快照不得跟著變
 	renamed := "app-renamed"
-	_, err = accounts.Update(adminCtx(), assetRow.ID, app.ID, &asset.UpdateAssetAccountRequest{Username: &renamed})
+	_, err = accounts.Update(asset.WithSystemCaller(adminCtx()), assetRow.ID, app.ID, &asset.UpdateAssetAccountRequest{Username: &renamed})
 	require.NoError(t, err)
 
 	var after model.Session
@@ -122,8 +124,36 @@ func newAccountServices(t *testing.T) (*asset.AssetService, *asset.AssetAccountS
 	key := make([]byte, 32)
 	codec := aesColumnCodec(t, key)
 	assets, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assets.SetTopologyPermissionPort(noopTopologyPort{})
 	require.NoError(t, err)
-	return assets, asset.NewAssetAccountService(assets, codec, audit.NewTxSink())
+	// 與原件同步：表單內嵌的密碼／私鑰宣告是 SetSecret 的同義入口，判定器與告警落地面
+	// 皆 fail closed（未注入即拒絕），生產由組裝根注入（cmd/server/stage2.go）。
+	auth := allowAllCredentialAuthorizer{}
+	alerts := &discardAlertSink{}
+	assets.WithManagementAuthorizer(auth).WithSystemAlertSink(alerts)
+	return assets, asset.NewAssetAccountService(assets, codec, audit.NewTxSink()).
+		WithManagementAuthorizer(auth).WithSystemAlertSink(alerts).WithAccountWriteScope(allowAllAccountWriteScope{})
+}
+
+// allowAllCredentialAuthorizer 一律放行的憑證管理判定器（session 側只驗帳號快照，不驗授權）。
+type allowAllCredentialAuthorizer struct{}
+
+func (allowAllCredentialAuthorizer) AuthorizeCredentialManagement(_ context.Context, _ *gorm.DB,
+	_ asset.CredentialManagementActor, _ asset.CredentialManagementRequest) (asset.CredentialManagementDecision, error) {
+	return asset.CredentialManagementDecision{Allowed: true, AuthzVersion: 1}, nil
+}
+
+// discardAlertSink 收下告警但不落地的系統告警落地面。
+type discardAlertSink struct {
+	mu     sync.Mutex
+	raised int
+}
+
+func (d *discardAlertSink) RaiseInTx(_ *gorm.DB, _ port.SystemAlertEvent) (port.SystemAlertReceipt, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.raised++
+	return port.SystemAlertReceipt{AlertID: uint(d.raised)}, nil
 }
 
 // adminCtx 審計操作者 context（原件隨 asset_account_service_test.go 遷入 asset 包）。

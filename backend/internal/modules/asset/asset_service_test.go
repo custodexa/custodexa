@@ -111,6 +111,7 @@ func TestCreate(t *testing.T) {
 	// 創建 service（使用 32 字節密鑰）
 	key := make([]byte, 32)
 	service, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 	assert.NoError(t, err)
 
 	req := &CreateAssetRequest{
@@ -155,7 +156,7 @@ func TestCreate(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Create(context.Background(), req)
+	asset, err := service.Create(WithSystemCaller(context.Background()), req)
 	assert.NoError(t, err)
 	assert.NotNil(t, asset)
 	assert.Equal(t, req.Name, asset.Name)
@@ -173,6 +174,7 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	password := "mySecretPassword123!"
 	req := &CreateAssetRequest{
@@ -212,7 +214,7 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Create(context.Background(), req)
+	asset, err := service.Create(WithSystemCaller(context.Background()), req)
 	assert.NoError(t, err)
 
 	// 核心驗證：密文改落 default 帳號（見 asset_accounts INSERT 期望），
@@ -228,6 +230,7 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	// 寫入路徑會驗證私鑰可解析，故以執行期產生的真鑰建立
 	privateKey, _ := testKeyPair(t, "create-with-key")
@@ -268,7 +271,7 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Create(context.Background(), req)
+	asset, err := service.Create(WithSystemCaller(context.Background()), req)
 	assert.NoError(t, err)
 	assert.True(t, asset.HasPrivateKey)
 	assert.Empty(t, asset.PrivateKeyEnc, "內嵌私鑰欄位不再寫入（密文落 default 帳號）")
@@ -281,6 +284,7 @@ func TestCreate_DuplicateName(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	req := &CreateAssetRequest{
 		Name:      "existing-server",
@@ -295,7 +299,7 @@ func TestCreate_DuplicateName(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE name`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
 
-	asset, err := service.Create(context.Background(), req)
+	asset, err := service.Create(WithSystemCaller(context.Background()), req)
 	assert.Error(t, err)
 	assert.Equal(t, ErrAssetNameExists, err)
 	assert.Nil(t, asset)
@@ -307,6 +311,7 @@ func TestCreate_InvalidProtocol(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	req := &CreateAssetRequest{
 		Name:      "test-server",
@@ -317,7 +322,7 @@ func TestCreate_InvalidProtocol(t *testing.T) {
 		CreatedBy: 1,
 	}
 
-	asset, err := service.Create(context.Background(), req)
+	asset, err := service.Create(WithSystemCaller(context.Background()), req)
 	assert.Error(t, err)
 	assert.Equal(t, ErrInvalidProtocol, err)
 	assert.Nil(t, asset)
@@ -368,6 +373,7 @@ func TestAsset_GetByID(t *testing.T) {
 			_, mock, _ := setupAssetMockDB(t)
 			key := make([]byte, 32)
 			service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+			service.SetTopologyPermissionPort(noopTopologyPort{})
 
 			tt.setupMock(mock)
 
@@ -395,6 +401,7 @@ func TestGetWithCredentialsDefault(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	// 先加密密碼和私鑰（密文須以落點欄位的列身分綁定 AAD，否則讀端解不開）。
 	// 落點自憑證庫化之後是憑證的密文版本列，AAD 身分隨之改為該表該欄
@@ -445,6 +452,7 @@ func TestGetWithCredentialsForAccount_CrossAssetRejected(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	mock.ExpectQuery(`SELECT .+ FROM "assets"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(1, "target"))
@@ -466,6 +474,8 @@ func TestUpdate(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
+	service.SetSecurityChangeAlertSink(&recordingAlertSink{})
 
 	// GetByID - First query for asset
 	rows := sqlmock.NewRows([]string{"id", "name", "protocol", "host", "port", "username", "group_id"}).
@@ -489,6 +499,10 @@ func TestUpdate(t *testing.T) {
 
 	// Save
 	mock.ExpectBegin()
+	// 交易內重讀舊列並加列鎖
+	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE id = .+ FOR UPDATE`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "protocol", "host", "port", "username", "group_id"}).
+			AddRow(1, "old-name", model.ProtocolSSH, "192.168.1.1", 22, "admin", nil))
 	// 改名：持名稱鎖時交易內再查一次（排除自己）
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "assets" WHERE name = .+ AND id <>`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
@@ -499,7 +513,7 @@ func TestUpdate(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
 
-	asset, err := service.Update(context.Background(), 1, req)
+	asset, err := service.Update(WithSystemCaller(context.Background()), 1, req)
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 
@@ -514,6 +528,9 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
+	service.SetSecurityChangeAlertSink(&recordingAlertSink{})
+	service.WithManagementAuthorizer(newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink())
 
 	oldPassword := "oldPassword"
 	// assets.password_enc 自資產多帳號階段 2 起凍結不再寫入，
@@ -537,6 +554,10 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 
 	// Update operation
 	mock.ExpectBegin()
+	// 交易內重讀舊列並加列鎖
+	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE id = .+ FOR UPDATE`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "password_enc", "has_password", "group_id"}).
+			AddRow(1, "server", oldEncryptedPassword, true, nil))
 	mock.ExpectExec(`UPDATE "assets" SET`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	// AfterUpdate hook 在交易內插入 audit_log（GORM/Postgres 用 RETURNING，走 Query）
@@ -571,7 +592,7 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Update(context.Background(), 1, req)
+	asset, err := service.Update(WithSystemCaller(adminCtx()), 1, req)
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 
@@ -589,6 +610,7 @@ func TestDelete(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 	// 資產刪除須連動撤銷 authz 的授權與審核範圍（塊 2）。
 	// 未注入即 fail-close，故此處注入替身；替身不下 SQL，無須額外 mock 期望
 	revoker := &fakeAuthzRevoker{}
@@ -606,6 +628,12 @@ func TestDelete(t *testing.T) {
 
 	// 軟刪除（節點成員先於資產清除）
 	mock.ExpectBegin()
+	// 交易內的存在檢查（以交易內為準；交易外的查詢只為提早 404）
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "assets"`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	// 取鎖之後重讀掛載（決定是否推進權限版本）；本例零掛載
+	mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
+		WillReturnRows(sqlmock.NewRows([]string{"node_id"}))
 	mock.ExpectExec(`DELETE FROM "asset_nodes"`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	// 掛載與其專用憑證同交易回收：先取資產列鎖（帳號集合的互斥點），再查掛載。
@@ -621,7 +649,7 @@ func TestDelete(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
 
-	err := service.Delete(1)
+	err := service.Delete(WithSystemCaller(context.Background()), 1)
 	assert.NoError(t, err)
 	assert.Equal(t, []uint{1}, revoker.calls,
 		"刪除資產必須連動撤銷其授權與審核範圍")
@@ -635,11 +663,12 @@ func TestDelete_NotExists(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	mock.ExpectQuery(`SELECT .+ FROM "assets"`).
 		WillReturnError(gorm.ErrRecordNotFound)
 
-	err := service.Delete(999)
+	err := service.Delete(WithSystemCaller(context.Background()), 999)
 	assert.Error(t, err)
 	assert.Equal(t, ErrAssetNotFound, err)
 }
@@ -742,6 +771,7 @@ func TestAsset_List(t *testing.T) {
 			_, mock, _ := setupAssetMockDB(t)
 			key := make([]byte, 32)
 			service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+			service.SetTopologyPermissionPort(noopTopologyPort{})
 
 			tt.setupMock(mock)
 
@@ -760,6 +790,7 @@ func TestAsset_List(t *testing.T) {
 func TestValidateProtocol(t *testing.T) {
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 
 	tests := []struct {
 		name     string
@@ -844,9 +875,10 @@ func TestCreateRejectsInvalidDBTLSMode(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 	assert.NoError(t, err)
 
-	_, err = service.Create(context.Background(), &CreateAssetRequest{
+	_, err = service.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name:      "bad-tls-mode",
 		Protocol:  model.ProtocolPostgres,
 		Host:      "db.example.com",
@@ -870,9 +902,10 @@ func TestUpdateRejectsInvalidDBTLSMode(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
+	service.SetTopologyPermissionPort(noopTopologyPort{})
 	assert.NoError(t, err)
 
 	bad := "PREFER"
-	_, err = service.Update(context.Background(), 1, &UpdateAssetRequest{DBTLSMode: &bad})
+	_, err = service.Update(WithSystemCaller(context.Background()), 1, &UpdateAssetRequest{DBTLSMode: &bad})
 	assert.ErrorIs(t, err, ErrInvalidDBTLSMode)
 }

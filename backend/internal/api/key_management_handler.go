@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"io"
@@ -13,13 +14,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -36,8 +37,8 @@ type KeyManagementHandler struct {
 	// checkpointSigning 檢查點鏈簽章鑰（audit-checkpoint-chain 3.4）：
 	// 清冊只曝露公鑰指紋與版本，私鑰無任何出口
 	checkpointSigning *keyvault.CheckpointSigningService
-	auditService   *audit.AuditLogService         // 清理退役資料的顯式留痕
-	sealState      SealStateProbe                 // 封印狀態探針（組裝根注入）
+	auditService      *audit.AuditLogService // 清理退役資料的顯式留痕
+	sealState         SealStateProbe         // 封印狀態探針（組裝根注入）
 	// delegatedProvider 委託重包目標的 provider 建構器（組裝根注入）。
 	// 未注入時委託分支回「尚未提供」，SHALL NOT 靜默退化為本地目標。
 	delegatedProvider keyvault.DelegatedProviderFactory
@@ -48,6 +49,10 @@ type KeyManagementHandler struct {
 	// auditTopologyHook 拓撲變更留痕的觀察點（見 topologyAuditRecord）。
 	// 正式路徑不注入；留痕本身一律走 auditService。
 	auditTopologyHook func(topologyAuditRecord)
+	// txSink／alerts 拓撲變更的交易內成功審計與系統告警落地面（組裝根注入；缺任一即
+	// 拓撲寫入失敗、拓撲維持原值）
+	txSink port.TxSink
+	alerts port.SystemAlertSink
 }
 
 // SetDelegatedProviderFactory 注入委託重包目標的 provider 建構器（組裝根呼叫）。
@@ -116,8 +121,8 @@ type envKeyView struct {
 	// ManagedBy deployer（JWT/KEK）或 system（Ed25519 匯出簽章鑰）
 	ManagedBy string `json:"managed_by"`
 	// Version 鑰版本（僅自始帶版本欄的鑰有值，如檢查點簽章鑰）
-	Version int `json:"version,omitempty"`
-	Note      string `json:"note"`
+	Version int    `json:"version,omitempty"`
+	Note    string `json:"note"`
 	// NoteCode 說明機器碼（前端查譯 keyEnvNote.<code>）
 	NoteCode string `json:"note_code,omitempty"`
 }
@@ -174,7 +179,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		version := h.checkpointSigning.ActiveVersion()
 		pubB64 := h.checkpointSigning.ActivePublicKeyBase64()
 		ev := envKeyView{Name: "檢查點簽章鑰 (Ed25519)", NameCode: "audit_checkpoint", ManagedBy: "system",
-			Note: "稽核檢查點鏈的簽章鑰；私鑰信封加密落庫、無匯出入口，公鑰供離線驗章",
+			Note:     "稽核檢查點鏈的簽章鑰；私鑰信封加密落庫、無匯出入口，公鑰供離線驗章",
 			NoteCode: "audit_checkpoint", PublicKey: pubB64, Version: version}
 		if fp, err := h.checkpointSigning.PublicKeyFingerprint(version); err == nil {
 			ev.Fingerprint = fp
@@ -506,7 +511,7 @@ func (h *KeyManagementHandler) CleanupRetired(c *gin.Context) {
 func (h *KeyManagementHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	keys := r.Group("/keys")
 	keys.Use(middleware.AuthMiddleware(authService))
-	keys.Use(middleware.RequireRole("admin"))
+	keys.Use(middleware.EnforceRegistry())
 	{
 		keys.GET("", h.Inventory)
 		// 委託拓撲：唯一的認證寫入面（見 kek_topology_handler.go 檔頭）
@@ -529,7 +534,6 @@ func (h *KeyManagementHandler) persistRewrapTopology(c *gin.Context, payload *re
 	if len(keyvault.EditableTopologyFields(provider)) == 0 {
 		return
 	}
-	before, _ := keyvault.LoadKEKTopology(h.db)
 	in := keyvault.KEKTopologyInput{
 		Provider: provider, Region: payload.Region, Address: payload.Address,
 		RoleID: payload.RoleID, UpdatedBy: currentActorName(c),
@@ -537,18 +541,22 @@ func (h *KeyManagementHandler) persistRewrapTopology(c *gin.Context, payload *re
 		// 不另存一份可與之分歧的副本。
 		TransitKeyName: rewrapTransitKeyName(provider, payload.KeyRef),
 	}
-	beforeSummary := topologySummary(before)
-	afterSummary := topologySummary(&model.KEKTopology{Provider: provider, Region: in.Region,
-		Address: in.Address, RoleID: in.RoleID, TransitKeyName: in.TransitKeyName})
-	if _, _, err := keyvault.SaveKEKTopology(h.db, in); err != nil {
+	// 與拓撲端點共用交易內寫入（鎖、成功審計、系統告警同交易）
+	if _, _, _, err := h.saveTopologyInTx(c, in, topologySourceRewrap); err != nil {
 		// 不改回應碼：重包本身已成功，把它報成失敗會誘使操作者重跑一次重包。
-		// 留痕記下「拓撲未同步」這個事實，由管理者在金鑰管理頁補上。
-		log.Printf("[KEKTopology] 重包成功但拓撲落庫失敗（請於金鑰管理頁補設）: %v", err)
-		h.auditTopologyChange(c, provider, beforeSummary, afterSummary, false, apierror.CodeKeyTopologyInvalid)
+		// 拓撲交易已回滾（維持原值）；留痕記下「重包成功、拓撲未同步」，由管理者在
+		// 金鑰管理頁補設（補設走拓撲端點，照常留審計並建立告警）
+		log.Printf("[KEKTopology] 重包成功但拓撲未同步（請於金鑰管理頁補設）: %v", err)
+		before, _ := keyvault.LoadKEKTopology(h.db)
+		afterSummary := topologySummary(&model.KEKTopology{Provider: provider, Region: in.Region,
+			Address: in.Address, RoleID: in.RoleID, TransitKeyName: in.TransitKeyName})
+		code := apierror.CodeKeyTopologyInvalid
+		if errors.Is(err, errTopologyAlertRaise) {
+			code = apierror.CodeInternalSystemAlertRaise
+		}
+		h.auditTopologyChangeWith(c, provider, topologySummary(before), afterSummary, false, code, "rewrap_topology_not_synced")
 		return
 	}
-	h.auditTopologyChange(c, provider, beforeSummary, afterSummary, true, "")
-	h.notifyTopologyChange(currentActorName(c), provider, beforeSummary, afterSummary)
 }
 
 // rewrapTopologyProvider 把重包判別子映射為拓撲服務商。

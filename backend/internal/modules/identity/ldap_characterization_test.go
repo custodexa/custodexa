@@ -100,6 +100,9 @@ func TestCharacterization_CaseVariantUsernameGetsIndependentShadowAccount(t *tes
 	// 角色指派的同交易留痕（role-assignment-integrity）
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	// 權限版本推進：與角色指派同交易，置於提交之前
+	mock.ExpectExec(`UPDATE authz_state SET version = version \+ 1`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	expectFinishLoginUpdate(mock)
@@ -170,6 +173,9 @@ func TestCharacterization_ShadowUsernameComesFromRequestInputNotDirectoryAttribu
 	// 角色指派的同交易留痕（role-assignment-integrity）
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	// 權限版本推進：與角色指派同交易，置於提交之前
+	mock.ExpectExec(`UPDATE authz_state SET version = version \+ 1`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	expectFinishLoginUpdate(mock)

@@ -97,6 +97,25 @@
         v-if="unit"
         class="policy-unit"
       >{{ unit }}</span>
+      <!-- 資料保留鍵的下限：提示常駐，輸入 1..min-1 時換成紅字錯誤。
+           不夾值、不改使用者輸入，儲存鈕由父層依同一判定停用 -->
+      <span
+        v-if="floorViolated"
+        class="policy-help policy-help-error"
+        role="alert"
+        :data-test="`retention-floor-error-${policy.key}`"
+      >{{ $t('policyForm.retentionFloorError') }}</span>
+      <span
+        v-else-if="hasFloor"
+        class="policy-help"
+        :data-test="`retention-floor-hint-${policy.key}`"
+      >{{ $t('policyForm.retentionFloorHint') }}</span>
+      <!-- 錄影故障阻擋開關：關閉不是靜默放寬 -->
+      <span
+        v-if="policy.key === 'recording_failclose_enabled'"
+        class="policy-help"
+        data-test="failclose-off-notice"
+      >{{ $t('policyForm.failCloseOffNotice') }}</span>
     </div>
 
     <div class="policy-actions">
@@ -115,7 +134,15 @@
 <script setup>
 import { computed } from 'vue'
 import { Info } from 'lucide-vue-next'
-import { allowsEmpty, enumLabel, policyLabel, policyMin, policyUnit } from '@/utils/policyFormat'
+import {
+  allowsEmpty,
+  enumLabel,
+  hasRetentionFloor,
+  policyLabel,
+  policyMin,
+  policyUnit,
+  retentionFloorViolated,
+} from '@/utils/policyFormat'
 import DailyReviewTimezoneField from './daily-review/DailyReviewTimezoneField.vue'
 
 const props = defineProps({
@@ -132,6 +159,8 @@ defineEmits(['update:value', 'info'])
 
 const label = computed(() => policyLabel(props.policy))
 const unit = computed(() => policyUnit(props.policy))
+const hasFloor = computed(() => hasRetentionFloor(props.policy))
+const floorViolated = computed(() => retentionFloorViolated(props.policy, props.value))
 
 // 字數以 Unicode code point 計，與後端上限同一口徑；
 // String.length 是 UTF-16 單位，補充平面字元會被算成兩個
@@ -169,6 +198,7 @@ const textLength = (value) => Array.from(value || '').length
 
 .policy-control {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--ot-space-sm);
 }
@@ -193,6 +223,16 @@ const textLength = (value) => Array.from(value || '').length
 .policy-unit {
   color: var(--ot-text-secondary);
   font-size: var(--ot-font-size-sm);
+}
+
+.policy-help {
+  flex-basis: 100%;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+}
+
+.policy-help-error {
+  color: var(--ot-danger);
 }
 
 .policy-actions {

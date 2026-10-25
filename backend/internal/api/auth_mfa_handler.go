@@ -12,6 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -304,7 +305,7 @@ func (h *AuthHandler) AdminDisableMFA(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.AdminDisableMFA(uint(targetID)); err != nil {
+	if err := h.authService.AdminDisableMFABy(identity.Operator{UserID: adminID, Username: adminName, ClientIP: sourceip.Of(c)}, uint(targetID)); err != nil {
 		status := principalErrorStatus(err, http.StatusInternalServerError)
 		if errors.Is(err, identity.ErrUserNotFound) {
 			status = http.StatusNotFound

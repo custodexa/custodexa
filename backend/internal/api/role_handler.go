@@ -47,7 +47,7 @@ func (h *RoleHandler) List(c *gin.Context) {
 func (h *RoleHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	roles := r.Group("/roles")
 	roles.Use(middleware.AuthMiddleware(authService))
-	roles.Use(middleware.RequireRole("admin"))
+	roles.Use(middleware.EnforceRegistry())
 	{
 		roles.GET("", h.List)
 	}

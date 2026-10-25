@@ -26,6 +26,10 @@ type ownedSession struct {
 	output     string
 	base       int64
 	notice     string
+	// carried 連線建立時（或兩次工具呼叫之間）送達、尚未隨任何工具結果帶出的通知碼：
+	// 建線當下的主機金鑰不符警示會早於第一個 run_command，而每次呼叫開頭會清空 notice，
+	// 所以另存一份，併入下一個工具結果的 notices 後清空（只帶出一次）
+	carried    []string
 	malformed  bool
 	notify     chan struct{}
 	replies    chan map[string]any
@@ -78,6 +82,9 @@ func (e *ownedSession) read() {
 			code, _ := m["code"].(string)
 			e.mu.Lock()
 			e.notice = code
+			if code != "" {
+				e.carried = append(e.carried, code)
+			}
 			e.mu.Unlock()
 			fallthrough
 		case "ready", "result", "unit_started", "closed":
@@ -255,6 +262,7 @@ func (e *ownedSession) operation(ctx context.Context, name string, raw json.RawM
 			e.staleStart = start
 		}
 		v["call_id"] = callID
+		e.attachCarriedNotices(v)
 		isError := result.IsError
 		result = jsonResult(v)
 		result.IsError = isError
@@ -267,6 +275,35 @@ func (e *ownedSession) operation(ctx context.Context, name string, raw json.RawM
 		return codeResult("VALIDATION_BAD_REQUEST")
 	}
 }
+
+// attachCarriedNotices 把建線以來尚未帶出的通知碼併入本次工具結果的 notices（去重、只帶一次）。
+func (e *ownedSession) attachCarriedNotices(v map[string]any) {
+	e.mu.Lock()
+	carried := e.carried
+	e.carried = nil
+	e.mu.Unlock()
+	if len(carried) == 0 {
+		return
+	}
+	notices, _ := v["notices"].([]any)
+	seen := map[string]bool{}
+	for _, n := range notices {
+		if m, ok := n.(map[string]any); ok {
+			if code, ok := m["code"].(string); ok {
+				seen[code] = true
+			}
+		}
+	}
+	for _, code := range carried {
+		if seen[code] {
+			continue
+		}
+		seen[code] = true
+		notices = append(notices, map[string]any{"code": code})
+	}
+	v["notices"] = notices
+}
+
 func (e *ownedSession) collect(ctx context.Context, start int64, timeout time.Duration, stale string) *mcp.CallToolResult {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()

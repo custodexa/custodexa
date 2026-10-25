@@ -47,7 +47,7 @@
         {{ $t('dailyReview.card.disabledFrom') }}
       </p>
       <a
-        v-if="isAdmin"
+        v-if="canOpenPolicies"
         class="review-link"
         href="/security-policies"
         data-test="dr-card-policy-link"
@@ -202,7 +202,7 @@ import {
 const props = defineProps({
   // GET /daily-reviews/status 的回應
   status: { type: Object, required: true },
-  isAdmin: { type: Boolean, default: false },
+  canOpenPolicies: { type: Boolean, default: false },
 })
 
 // 歷次簽核在操作日誌頁的「每日簽核」分頁；該頁只認白名單內的 tab 值

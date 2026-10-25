@@ -47,6 +47,9 @@ type RefreshToken struct {
 	AuthEpoch  int    `gorm:"not null;default:0" json:"-"`
 	CredEpoch  int    `gorm:"not null;default:0" json:"-"`
 
+	// RestoreGeneration 簽發當下的恢復世代；空＝簽發於 legacy 世代。
+	RestoreGeneration string `gorm:"size:64;not null;default:''" json:"-"`
+
 	RevokedAt *time.Time `gorm:"index" json:"revoked_at,omitempty"`
 	// RevokedReason 撤銷原因（RefreshRevoke* 常數），供審計與 reuse detection 判別
 	RevokedReason string `gorm:"size:32" json:"revoked_reason,omitempty"`

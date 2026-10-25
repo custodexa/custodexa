@@ -75,9 +75,9 @@ func userHasAdminRole(u *model.User) bool {
 	return false
 }
 
-// seedRoles 建立預設角色
-func seedRoles() error {
-	roles := []model.Role{
+// builtinRoleSeeds 四個內建角色的種子定義（seedRoles 與權限模型遷移共用的單一來源）。
+func builtinRoleSeeds() []model.Role {
+	return []model.Role{
 		{
 			Name:        model.RoleAdmin,
 			Description: "系統管理員，擁有所有權限",
@@ -97,6 +97,11 @@ func seedRoles() error {
 			Description: "審核人員，可核准/拒絕審核範圍內的連線申請",
 		},
 	}
+}
+
+// seedRoles 建立預設角色
+func seedRoles() error {
+	roles := builtinRoleSeeds()
 
 	for _, role := range roles {
 		// 檢查角色是否已存在

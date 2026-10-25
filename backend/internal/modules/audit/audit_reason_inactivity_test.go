@@ -27,9 +27,10 @@ func TestInactivityDisableRecordsDays(t *testing.T) {
 		sqlDB.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatal(err)
 	}
+	seedAuthzState(t, db)
 	oldDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = oldDB })

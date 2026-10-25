@@ -84,8 +84,18 @@ func setupDeleteRevokeDB(t *testing.T) (*gorm.DB, *asset.AssetService) {
 	// 資產刪除的級聯撤銷經 tx-taking 窄 port 交由 authz 寫入：
 	// asset 不直接碰他模組的表。未注入即 fail-close，故此處注入真實的 authz 服務
 	svc.SetAuthorizationRevoker(NewAssetAuthorizationService(db))
+	// 資產刪除屬拓撲寫入，需要權限版本窄 port；本檔不驗版本行為，注入不做事的替身
+	svc.SetTopologyPermissionPort(deleteRevokeNoopTopologyPort{})
 	return db, svc
 }
+
+// deleteRevokeNoopTopologyPort 只讓拓撲寫入通過「port 已注入」的前置檢查。
+type deleteRevokeNoopTopologyPort struct{}
+
+func (deleteRevokeNoopTopologyPort) LockTopology(*gorm.DB) error           { return nil }
+func (deleteRevokeNoopTopologyPort) BeginPermissionChange(*gorm.DB) error  { return nil }
+func (deleteRevokeNoopTopologyPort) AdvanceVersion(*gorm.DB) error         { return nil }
+func (deleteRevokeNoopTopologyPort) SettlePermissionChange(*gorm.DB) error { return nil }
 
 func mkDeleteRevokeAsset(t *testing.T, db *gorm.DB, name string) *model.Asset {
 	t.Helper()
@@ -132,7 +142,7 @@ func TestDeleteAsset_AuthorizationsStopMatchingPermissionQueries(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, scopesBefore, "前置條件：刪除前 AccountScopesFor 須有命中")
 
-	require.NoError(t, svc.Delete(a.ID))
+	require.NoError(t, svc.Delete(asset.WithSystemCaller(context.Background()), a.ID))
 
 	// ① 權限檢查不再命中（缺陷本體）
 	ok, err = repo.CheckPermission(userID, a.ID, []model.PermissionType{model.PermissionConnect})
@@ -169,7 +179,7 @@ func TestDeleteAsset_DoesNotAffectOtherAssets(t *testing.T) {
 	mkDeleteRevokeAuth(t, db, userID, target.ID, model.PermissionConnect)
 	mkDeleteRevokeAuth(t, db, userID, other.ID, model.PermissionConnect)
 
-	require.NoError(t, svc.Delete(target.ID))
+	require.NoError(t, svc.Delete(asset.WithSystemCaller(context.Background()), target.ID))
 
 	ok, err := repo.CheckPermission(userID, other.ID, []model.PermissionType{model.PermissionConnect})
 	require.NoError(t, err)

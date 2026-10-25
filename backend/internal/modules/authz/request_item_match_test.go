@@ -67,11 +67,11 @@ func TestAccountScopeTicketIsolation(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			s, _, db, _ := setupItemRequestEnv(t)
 			// Human @ALL -> app historical tasks, no standing connect: exact drill shape.
-			old, err := s.Submit(1, "human", model.RoleUser, SubmitAccessRequestInput{AssetID: 2, Reason: "older", DurationMinutes: 60})
+			old, err := s.Submit(1, "human", false, SubmitAccessRequestInput{AssetID: 2, Reason: "older", DurationMinutes: 60})
 			if err != nil {
 				t.Fatal(err)
 			}
-			newer, err := s.Submit(1, "human", model.RoleUser, itemInput(2))
+			newer, err := s.Submit(1, "human", false, itemInput(2))
 			if err != nil {
 				t.Fatal(err)
 			}

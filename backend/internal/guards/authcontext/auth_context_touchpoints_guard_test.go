@@ -201,6 +201,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/access_request_handler.go", fn: "AccessRequestHandler.RegisterRoutes", count: 3, source: "申請單、審核範圍與 agent 任務唯讀端點各進相同現查認證閘；任務端點另限 audit:view"},
 	{symbol: "AuthMiddleware", file: "internal/api/access_review_handler.go", fn: "AccessReviewHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/alert_rule_handler.go", fn: "AlertRuleHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/system_alert_handler.go", fn: "SystemAlertHandler.RegisterRoutes", count: 2, source: "系統告警目錄（分級權限點）與明細（稽核檢視）兩組路由各進相同的現查認證閘，權限另由路由登錄表裁決"},
 	{symbol: "AuthMiddleware", file: "internal/api/asset_account_handler.go", fn: "AssetAccountHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/asset_group_handler.go", fn: "AssetGroupHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/asset_handler.go", fn: "AssetHandler.RegisterRoutes", count: 1},
@@ -251,6 +252,8 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/offsite_storage_handler.go", fn: "OffsiteStorageHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/recording_handler.go", fn: "RecordingHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/role_handler.go", fn: "RoleHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/dashboard_card_handler.go", fn: "DashboardCardHandler.RegisterRoutes", count: 1, source: "儀表板逐卡路由先擋 agent token 再進現查認證閘；主體只取自認證結果，每張卡的能力由卡片登錄在 handler 內逐卡裁決"},
+	{symbol: "AuthMiddleware", file: "internal/api/release_guidance_handler.go", fn: "ReleaseGuidanceHandler.RegisterRoutes", count: 2, source: "版本說明兩個路由群組（本人關閉狀態、保留調整告知）各進相同現查認證閘；本人群組另先擋 agent token，主體只取自認證結果，告知端點的權限由路由登錄表裁決"},
 	// 輪替證據報告：2 處為兩個權限層級各自的群組——讀取面（資料集／逐列／手動產出）
 	// 掛 audit:view，排程面另疊 RequireRole("admin")。兩群都必須各自掛認證：
 	// 中介層是群組級的，漏掛任一群即等於該群匿名可達（讀取面會洩出全庫帳號的
@@ -266,6 +269,9 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// （`/assets/:id/transfer-capabilities`）。後者雖是唯讀呈現面，仍須掛認證——
 	// 它回答「這個人對這台機器能不能傳檔」，無認證即成為授權關係的匿名探測器。
 	{symbol: "AuthMiddleware", file: "internal/api/sftp_handler.go", fn: "SFTPHandler.RegisterRoutes", count: 2},
+	{symbol: "AuthMiddleware", file: "internal/api/role_assignment_preview_handler.go", fn: "RoleAssignmentPreviewHandler.RegisterRoutes", count: 1, source: "角色指派影響預覽（唯讀）進相同現查認證閘，權限另由路由登錄表裁決，handler 再依預覽種類重驗寫入能力"},
+	{symbol: "AuthMiddleware", file: "internal/api/role_assignment_options_handler.go", fn: "RoleAssignmentOptionsHandler.RegisterRoutes", count: 1, source: "指派選項（唯讀）進相同現查認證閘，權限由路由登錄表裁決"},
+	{symbol: "AuthMiddleware", file: "internal/api/role_definition_handler.go", fn: "RoleDefinitionHandler.RegisterRoutes", count: 1, source: "角色定義讀取進相同現查認證閘，權限由路由登錄表裁決（角色檢視能力）"},
 	{symbol: "AuthMiddleware", file: "internal/api/snippet_handler.go", fn: "SnippetHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/syslog_setting_handler.go", fn: "SyslogSettingHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/transmission_inventory_handler.go", fn: "TransmissionInventoryHandler.RegisterRoutes", count: 1},
@@ -296,8 +302,10 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "provider 單鎖的薄包裝（停用／刪除／密鑰輪替的失效流程用）"},
 	{symbol: "WithCapabilityLocks", file: "internal/modules/session/session_provider_termination.go", fn: "SessionService.CreateWithGenerationGuard", count: 1,
 		source: "connect token 兌換建 session：grant 的 method/provider/兩種世代"},
-	{symbol: "WithCapabilityLocks", file: "internal/modules/session/session_provider_termination.go", fn: "JoinWithGenerationGuard", count: 1,
-		source: "監看／分享訂閱 Join：觀察者自身的 ObserverContext 脈絡"},
+	{symbol: "WithCapabilityLocks", file: "internal/modules/session/session_provider_termination.go", fn: "JoinWithGenerationGuardTx", count: 1,
+		source: "監看／分享訂閱 Join 與錄影票簽發：呼叫端自身的認證脈絡（JoinWithGenerationGuard 是其包裝）"},
+	{symbol: "JoinWithGenerationGuardTx", file: "internal/modules/session/session_provider_termination.go", fn: "JoinWithGenerationGuard", count: 1,
+		source: "監看／分享訂閱 Join 的包裝：觀察者自身的 ObserverContext 脈絡原樣傳入"},
 	{symbol: "WithCapabilityLocks", file: "internal/modules/identity/oidc_login_service.go", fn: "OIDCLoginService.issueTicket", count: 1,
 		source: "callback 簽 ticket：ticket 是使用者世代的第一個攜帶者（flow state 不帶）"},
 	{symbol: "WithCapabilityLocks", file: "internal/modules/identity/oidc_login_service.go", fn: "OIDCLoginService.Exchange", count: 1,
@@ -313,7 +321,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "監看訂閱建立前的鎖內世代複查（middleware.GetAuthContext 的脈絡）"},
 	{symbol: "JoinWithGenerationGuard", file: "internal/sshproxy/handler.go", fn: "Handler.HandleShareJoin", count: 1,
 		source: "分享訂閱建立前的鎖內世代複查（撤銷治理須與監看一致）"},
-	{symbol: "JoinWithGenerationGuard", file: "internal/api/recording_token.go", fn: "RecordingTokenManager.Issue", count: 1,
+	{symbol: "JoinWithGenerationGuardTx", file: "internal/api/recording_token.go", fn: "RecordingTokenManager.Issue", count: 1,
 		source: "錄影 token 簽發：借用同一「鎖內重讀前提 → 世代比對 → 非阻塞集合操作」契約，" +
 			"使簽發與 RevokeByUser／RevokeByProvider 的掃描不會交錯出漏網的 grant"},
 
@@ -331,8 +339,8 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "閘門本體：以 database.DB 委派（單一實作，交易版與非交易版同源）"},
 	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/session/session_provider_termination.go", fn: "SessionService.CreateWithGenerationGuard", count: 1,
 		source: "兌換建 session 的鎖內世代比對（讀與寫須同交易視圖）"},
-	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/session/session_provider_termination.go", fn: "JoinWithGenerationGuard", count: 1,
-		source: "訂閱建立的鎖內世代比對"},
+	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/session/session_provider_termination.go", fn: "checkObserverState", count: 1,
+		source: "監看／分享觀察者的世代比對：JoinWithGenerationGuard 鎖內重驗（tx）與 PrecheckObserverBeforeUpgrade 升級前預檢（根 DB）共用，脈絡皆為兌票恢復的 ObserverContext"},
 	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/identity/oidc_login_service.go", fn: "OIDCLoginService.Exchange", count: 1,
 		source: "ticket 兌換的鎖內世代比對（與原子消費同鎖同交易）"},
 	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/identity/auth_refresh_service.go", fn: "AuthService.RefreshSession", count: 1,
@@ -384,9 +392,6 @@ var authContextHomonymDecls = map[string]string{
 	"github.com/custodexa/backend/internal/api.SealGrantStore.Issue": "解封授權脈絡的簽發（非憑證；每次使用重新判定資格）",
 	// internal/seal 狀態機的套件級 Resolve(Situation)
 	"github.com/custodexa/backend/internal/seal..Resolve": "封印狀態機的情境解析",
-	// host key TOFU 驗證回呼（`hostKeys.Callback(assetID)` 回 ssh.HostKeyCallback），
-	// 與認證脈絡無關
-	"github.com/custodexa/backend/internal/modules/asset.HostKeyService.Callback": "host key TOFU 回呼",
 	// 交易級聯撤銷 authz 的 approver_scopes（7.4 的 tx-taking 窄 port），
 	// 與 `RecordingTokenManager.RevokeByUser`（錄影 token 失效）**只是同名**。
 	// 它撤的是「審核者範圍」這種授權資料，不簽發也不失效任何憑證。
@@ -395,7 +400,7 @@ var authContextHomonymDecls = map[string]string{
 	"github.com/custodexa/backend/internal/modules/identity.authorizationCascadeRevoker.RevokeByUser": "交易級聯撤銷授權資料（identity 側窄介面）",
 }
 
-// maxAuthContextHomonymDecls 同名例外的條數上限（現況 9）。
+// maxAuthContextHomonymDecls 同名例外的條數上限（現況 8）。
 //
 // **這個常數是本表的付費閘**：沒有它，允許清單可以無聲長大——每加一筆就有一個
 // 宣告自貫穿點掃描面消失，而消失本身不需要任何人簽字，也不會有任何數字在 PR diff
@@ -403,7 +408,7 @@ var authContextHomonymDecls = map[string]string{
 //
 // 上限是**收緊用的**：發現某個例外其實不該存在時刪掉它並調低此數，是正確方向；
 // 為了讓守衛變綠而調高它，等同於宣告「這一批認證脈絡不再有人看守」。
-const maxAuthContextHomonymDecls = 9
+const maxAuthContextHomonymDecls = 8
 
 // authContextWatchedSymbols 需要掃描呼叫點的符號集合。
 //
@@ -426,7 +431,7 @@ var authContextWatchedSymbols = []string{
 	"VerifyCredentialGeneration", "VerifyCredentialGenerationByUserID",
 	"VerifyCredentialGenerationTx",
 	// 序列化側（3.8b 通則：以既有身分或憑證產生新長效能力的位置）
-	"WithCapabilityLocks", "CreateWithGenerationGuard", "JoinWithGenerationGuard",
+	"WithCapabilityLocks", "CreateWithGenerationGuard", "JoinWithGenerationGuard", "JoinWithGenerationGuardTx",
 	// 失效側（RecordingTokenManager 不得列為例外）
 	"RevokeByUser", "RevokeByProvider",
 	"DisconnectByUser", "DisconnectByProvider",

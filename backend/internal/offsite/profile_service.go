@@ -204,6 +204,8 @@ type OffsiteProfileService struct {
 	clients map[uint]cachedClient
 	// testLimiter 連線測試的資源上限（test_ratelimit.go）
 	testLimiter *offsiteTestLimiter
+	// alerts 停用與改目的地的系統告警落地面（組裝根注入；未注入時兩條路徑回錯）
+	alerts ChangeAlertRaiser
 }
 
 // offsiteTestActorKey 限流鍵：優先取使用者 id，退回來源位址。
@@ -639,12 +641,23 @@ func (s *OffsiteProfileService) Disable(ctx context.Context, actor OffsiteActor)
 		if neverUploaded > 0 {
 			details["never_uploaded_count"] = neverUploaded
 		}
-		return s.journal.RecordInTx(tx, CustodyEvent{
-			Action:   CustodyActionProfile,
-			Resource: string(model.ResourceSession),
-			Status:   string(model.StatusSuccess),
-			Details:  details,
-		})
+		details["actor_id"] = actor.ID
+		details["actor_name"] = actor.Name
+		cid, err := newCustodyCorrelationID()
+		if err != nil {
+			return err
+		}
+		if err := s.journal.RecordInTx(tx, CustodyEvent{
+			Action:        CustodyActionProfile,
+			Resource:      string(model.ResourceSession),
+			Status:        string(model.StatusSuccess),
+			Details:       details,
+			Actor:         &actor,
+			CorrelationID: cid,
+		}); err != nil {
+			return err
+		}
+		return s.raiseChange(tx, OffsiteChangeDisabled, actor, cid)
 	})
 	if err != nil {
 		return offsiteProfileWriteError(err)
@@ -794,28 +807,43 @@ func (s *OffsiteProfileService) switchGenerationLocked(ctx context.Context, tx *
 	if err := tx.Create(row).Error; err != nil {
 		return ProfileView{}, err
 	}
+	cid := ""
 	if current != nil {
+		if cid, err = newCustodyCorrelationID(); err != nil {
+			return ProfileView{}, err
+		}
 		details := map[string]any{
 			"old_generation_id":       current.GenerationID,
 			"old_profile_fingerprint": current.ProfileFingerprint,
 			"bucket":                  current.Bucket,
 			"count":                   moved,
 			"new_generation_id":       row.GenerationID,
+			"actor_id":                actor.ID,
+			"actor_name":              actor.Name,
 		}
 		if neverUploaded > 0 {
 			details["never_uploaded_count"] = neverUploaded
 		}
 		if err := s.journal.RecordInTx(tx, CustodyEvent{
-			Action:   CustodyActionProfile,
-			Resource: string(model.ResourceSession),
-			Status:   string(model.StatusSuccess),
-			Details:  details,
+			Action:        CustodyActionProfile,
+			Resource:      string(model.ResourceSession),
+			Status:        string(model.StatusSuccess),
+			Details:       details,
+			Actor:         &actor,
+			CorrelationID: cid,
 		}); err != nil {
 			return ProfileView{}, err
 		}
 	}
-	if err := s.auditSaveInTx(tx, row, norm, actor, "create"); err != nil {
+	if err := s.auditSaveInTxWith(tx, row, norm, actor, "create", cid); err != nil {
 		return ProfileView{}, err
+	}
+	// 已有現行世代時切到新世代＝改目的地（Save 直接切換與 Confirm 共用這一處）：
+	// 兩筆保管鏈事件之後、同一鎖交易內告警；初次建立不告警
+	if current != nil {
+		if err := s.raiseChange(tx, OffsiteChangeDestinationChanged, actor, cid); err != nil {
+			return ProfileView{}, err
+		}
 	}
 	return profileViewOf(row), nil
 }
@@ -880,12 +908,21 @@ func checkCredentialReuse(current *model.OffsiteProfile, norm normalizedSettings
 // 離機落點被改寫卻無審計紀錄不是可接受的終局。
 func (s *OffsiteProfileService) auditSaveInTx(tx *gorm.DB, row *model.OffsiteProfile,
 	norm normalizedSettings, actor OffsiteActor, action string) error {
+	return s.auditSaveInTxWith(tx, row, norm, actor, action, "")
+}
+
+// auditSaveInTxWith 同 auditSaveInTx；correlationID 非空時（切換世代）與同交易的退役事件、
+// 改目的地告警共用。事件帶真實操作者。
+func (s *OffsiteProfileService) auditSaveInTxWith(tx *gorm.DB, row *model.OffsiteProfile,
+	norm normalizedSettings, actor OffsiteActor, action, correlationID string) error {
 	gen := row.GenerationID
 	return s.journal.RecordInTx(tx, CustodyEvent{
-		Action:     CustodyActionProfile,
-		Resource:   string(model.ResourceSession),
-		ResourceID: &gen,
-		Status:     string(model.StatusSuccess),
+		Action:        CustodyActionProfile,
+		Resource:      string(model.ResourceSession),
+		ResourceID:    &gen,
+		Status:        string(model.StatusSuccess),
+		Actor:         &actor,
+		CorrelationID: correlationID,
 		Details: map[string]any{
 			"event":               "offsite_settings_" + action,
 			"generation_id":       row.GenerationID,

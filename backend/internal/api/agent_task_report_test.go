@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -29,7 +30,7 @@ func reportFixture(t *testing.T) (*gorm.DB, *audit.AgentTaskReports, *gin.Engine
 	sql, _ := db.DB()
 	sql.SetMaxOpenConns(1)
 	t.Cleanup(func() { sql.Close() })
-	if err = db.AutoMigrate(&model.User{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AgentTaskReport{}, &model.AuditLog{}); err != nil {
+	if err = migrateWithAuthz(db, &model.User{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AgentTaskReport{}, &model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	owner := uint(1)
@@ -57,7 +58,7 @@ func reportFixture(t *testing.T) (*gorm.DB, *audit.AgentTaskReports, *gin.Engine
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(2))
 		c.Set("username", "agent")
-		c.Set("role", model.RoleUser)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleUser))
 	})
 	r.POST("/tasks/:id/reports", h.SubmitReport)
 	r.GET("/tasks/:id/reports", h.ReportVersions)

@@ -96,5 +96,123 @@
       "title": "自動化主体の探索遮断",
       "text": "主体 {user_id} のトークン {token_id} を探索遮断により停止しました。責任者：{owner_id}。"
     }
+  },
+  "asset_address_changed": {
+    "default": {
+      "title": "資産の接続先が変更されました",
+      "text": "{actor} が[資産 {asset_name} の]接続先設定を変更しました：{changed_fields}（レベル：{severity}）。"
+    }
+  },
+  "transport_verification_relaxed": {
+    "default": {
+      "title": "通信の検証が緩和されました",
+      "text": "{actor} が[資産 {asset_name} の]通信検証設定を緩和しました：{relaxed_settings}（レベル：{severity}）。"
+    }
+  },
+  "access_policy_relaxed": {
+    "default": {
+      "title": "アクセスポリシーが引き下げられました",
+      "text": "{actor} が[資産 {asset_name} の]アクセスポリシーを引き下げました（{relax_type}）：{before_level} → {after_level}[、上書きのない資産 {affected_assets} 台に影響]（レベル：{severity}）。"
+    }
+  },
+  "custom_secret_used": {
+    "default": {
+      "title": "カスタムシークレットが使用されました",
+      "text": "{actor} が[資産 {asset_name} の]パスワードをカスタム方式で処理しました（{entry}）（レベル：{severity}）。"
+    }
+  },
+  "identity_source_changed": {
+    "default": {
+      "title": "ID ソースの設定が変更されました",
+      "text": "{actor} が {source_kind} ID ソースを変更しました：{changed_fields}[；バインドパスワード変更：{bind_password_changed}][；このソースのスーパー管理者数：{super_admin_count}]（レベル：{severity}）。"
+    }
+  },
+  "security_admin_account_operated": {
+    "default": {
+      "title": "セキュリティ管理者アカウントが操作されました",
+      "text": "{actor} がセキュリティ管理者アカウントに対して「{action}」を実行しました（レベル：{severity}）。"
+    }
+  },
+  "self_privilege_increased": {
+    "default": {
+      "title": "自身の権限が増加しました",
+      "text": "{actor} が自身の権限を増やしました（{path}）：ロール {roles_before} → {roles_after}[；管理可能 {manageable_before} → {manageable_after}][；接続可能 {connectable_before} → {connectable_after}]（レベル：{severity}）。"
+    }
+  },
+  "self_privilege_decreased": {
+    "default": {
+      "title": "自身の権限が減少しました",
+      "text": "{actor} が自身の権限を減らしました（{path}）：ロール {roles_before} → {roles_after}[；管理可能 {manageable_before} → {manageable_after}][；接続可能 {connectable_before} → {connectable_after}]（レベル：{severity}）。"
+    }
+  },
+  "management_role_granted": {
+    "default": {
+      "title": "管理系ロールが付与されました",
+      "text": "{actor} が管理系ロール {role_name} を {recipient} に付与しました（{path}）[；範囲：{scope_summary}]（レベル：{severity}）。"
+    }
+  },
+  "retention_shortened": {
+    "default": {
+      "title": "保存期間が短縮されました",
+      "text": "{actor} が {data_class} の保存日数を短縮しました：{days_before} → {days_after}（0 は無期限）（レベル：{severity}）。"
+    }
+  },
+  "offsite_or_syslog_changed": {
+    "default": {
+      "title": "オフサイトコピーまたは syslog が変更されました",
+      "text": "{actor} が {subject} の設定を変更しました：{change}（レベル：{severity}）。"
+    }
+  },
+  "key_topology_changed": {
+    "default": {
+      "title": "鍵管理構成が変更されました",
+      "text": "{actor} が鍵管理構成を変更しました：{change_kind}（レベル：{severity}）。"
+    }
+  },
+  "recording_failclose_disabled": {
+    "default": {
+      "title": "録画失敗時の遮断が無効化されました",
+      "text": "{actor} が録画失敗時の遮断保護を無効化しました（レベル：{severity}）。"
+    }
+  },
+  "recording_deleted": {
+    "default": {
+      "title": "録画が削除されました",
+      "text": "{actor} がセッション {session_id} の録画を削除しました（レベル：{severity}）。"
+    }
+  },
+  "mapping_revalidation_relaxed": {
+    "default": {
+      "title": "外部メンバー再検証の期限が緩和されました",
+      "text": "{actor} が外部メンバー再検証の期限を緩和しました：{hours_before} → {hours_after} 時間（0 は無制限）（レベル：{severity}）。"
+    }
+  },
+  "host_key_mismatch": {
+    "default": {
+      "title": "ホストキーが記録と一致しません",
+      "text": "{actor} の {path} 接続でホストキーが記録と一致しませんでした（処置：{outcome}；記録元：{record_source}）：記録 {recorded_fingerprint}、実際 {observed_fingerprint}（{observed_algorithm}）[；接続識別 {connection_ref}]（レベル：{severity}）。"
+    }
+  },
+  "host_key_record_changed": {
+    "default": {
+      "title": "ホストキー記録が変更されました",
+      "text": "{actor} がホストキー記録に対して「{change}」を実行しました：以前の記録 {previous_fingerprint}、採用 {adopted_fingerprint}（レベル：{severity}）。"
+    }
+  },
+  "notification_channel_changed": {
+    "default": {
+      "title": "通知チャネルが変更されました",
+      "text": "{actor} が通知チャネルに対して「{change}」を実行しました[；変更項目：{changed_fields}][；URL {url_before} → {url_after}]（レベル：{severity}）。"
+    }
+  },
+  "concurrent_instance_detected": {
+    "overridden": {
+      "title": "並行して動作するインスタンスの可能性を検出しました（確認による上書き起動）",
+      "text": "起動時チェック（{actor}）：このインスタンスは確認による上書きで起動しました。ロック取得時に、別のインスタンスが単一インスタンスロックを保持していました[；確認元：{confirm_source}][；確認者：{confirmed_by}][；起動時に確認したガード対応の接続数：{peers}]（ピア数の照会：{peers_query}）（レベル：{severity}）。"
+    },
+    "peers": {
+      "title": "並行して動作するインスタンスの可能性を検出しました（他の接続）",
+      "text": "起動時チェック（{actor}）：起動時に、同じデータベースへ接続しているガード対応の別インスタンスの接続を確認しました[（{peers} 件）]（ピア数の照会：{peers_query}）（レベル：{severity}）。"
+    }
   }
 }

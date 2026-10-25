@@ -194,6 +194,24 @@ type offsiteTestRig struct {
 	codec   *fakeCodec
 	journal *recordingJournal
 	factory *countingFactory
+	alerts  *recordingChangeAlerts
+}
+
+// recordingChangeAlerts 記錄停用與改目的地的告警；fail 時回錯（驗整筆回滾）。
+type recordingChangeAlerts struct {
+	mu     sync.Mutex
+	alerts []ChangeAlert
+	fail   bool
+}
+
+func (r *recordingChangeAlerts) RaiseOffsiteChangeInTx(_ *gorm.DB, a ChangeAlert) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.fail {
+		return errors.New("注入告警失敗")
+	}
+	r.alerts = append(r.alerts, a)
+	return nil
 }
 
 func newOffsiteRig(t *testing.T) *offsiteTestRig {
@@ -206,9 +224,11 @@ func newOffsiteRig(t *testing.T) *offsiteTestRig {
 	svc.SetLedger(ledger)
 	factory := &countingFactory{}
 	svc.SetClientFactoryForTest(factory.build)
+	alerts := &recordingChangeAlerts{}
+	svc.SetChangeAlertRaiser(alerts)
 	// 每支測試各自重置 pre-write hook，避免跨測試殘留
 	t.Cleanup(func() { offsiteProfilePreWriteHook = nil })
-	return &offsiteTestRig{db: db, svc: svc, ledger: ledger, codec: codec, journal: journal, factory: factory}
+	return &offsiteTestRig{db: db, svc: svc, ledger: ledger, codec: codec, journal: journal, factory: factory, alerts: alerts}
 }
 
 // s3Settings 一組合法的 s3 設定（帶靜態憑證）。

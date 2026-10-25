@@ -20,7 +20,10 @@ func setupApproverGuardDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.ApproverScope{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.ApproverScope{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	roles := []model.Role{{Name: model.RoleAdmin}, {Name: model.RoleUser}, {Name: model.RoleApprover}}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"net/http"
@@ -14,13 +15,17 @@ import (
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // SecurityPolicyHandler 安全政策 API handler（admin 限定）
 type SecurityPolicyHandler struct {
 	policyService *policy.SecurityPolicyService
 	auditService  *audit.AuditLogService
+	// auditTx 政策變更審計的交易內落地面：審計與政策寫入同成敗（PCI 10.2.2）
+	auditTx port.TxSink
 	// compliance 判定契約：列表的逐鍵判定、草稿回饋與套用預覽三處共用同一次建構
 	compliance *policy.ComplianceService
 	// groups 政策組讀取面：頁首的生效組列要組名，判定結果只帶代號
@@ -34,10 +39,15 @@ func NewSecurityPolicyHandler(policyService *policy.SecurityPolicyService,
 	return &SecurityPolicyHandler{
 		policyService: policyService,
 		auditService:  auditService,
+		auditTx:       audit.NewTxSink(),
 		compliance:    compliance,
 		groups:        groups,
 	}
 }
+
+// SetAuditTxSink 替換政策變更審計的交易內落地面（組裝根注入啟動自檢過的同一個；
+// 測試注入會失敗的落地面以驗證回滾）。設為 nil 時政策寫入一律失敗，不會無審計放行。
+func (h *SecurityPolicyHandler) SetAuditTxSink(sink port.TxSink) { h.auditTx = sink }
 
 // securityPolicyItem 政策項視圖加上它對各生效政策組的判定。
 //
@@ -229,8 +239,15 @@ func (h *SecurityPolicyHandler) Update(c *gin.Context) {
 	username, _ := middleware.GetCurrentUsername(c)
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	// 單一交易內批次更新（驗證與落庫皆在服務層，中途失敗全回滾不半套生效）
-	changes, err := h.policyService.UpdateBatch(req.Policies, username)
+	// 單一交易內批次更新（驗證與落庫皆在服務層，中途失敗全回滾不半套生效）。
+	// 只審計真正有變動者（舊≠新，old→new，PCI 10.2.2），且審計與政策寫入同一交易：
+	// 審計寫不進去，政策值就不變
+	// 高危鍵的變更另在同一交易內、審計之後建立系統告警，審計 details 與告警共用關聯識別
+	actor := policy.PolicyActor{ID: userID, Name: username, ClientIP: sourceip.Of(c)}
+	_, err := h.policyService.UpdateBatchAudited(req.Policies, actor,
+		func(tx *gorm.DB, ch policy.PolicyChange) error {
+			return h.auditPolicyChange(tx, c, userID, username, ch)
+		})
 	if err != nil {
 		// 批次一次送多鍵，故錯誤必須指名是哪一鍵，否則 admin 無從得知該改哪一項
 		var unknownKey *policy.PolicyUnknownKeyError
@@ -262,13 +279,12 @@ func (h *SecurityPolicyHandler) Update(c *gin.Context) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodePolicyInvalidValue, nil)
 			return
 		}
+		if errors.Is(err, policy.ErrHighRiskAlertRaise) {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalSystemAlertRaise, err)
+			return
+		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalPolicyWrite, err)
 		return
-	}
-
-	// 交易提交後才審計，且僅審計真正有變動者（舊≠新，old→new，PCI 10.2.2）
-	for _, ch := range changes {
-		h.auditPolicyChange(c, userID, username, ch.Key, ch.OldValue, ch.NewValue)
 	}
 
 	h.List(c)
@@ -315,6 +331,39 @@ func policyChangeAuditFields(key, oldValue, newValue string) (details, errorMsg 
 	if def == nil || def.Type != policy.PolicyTypeText {
 		return "", model.PolicyChangeAuditMessage(key, oldValue, newValue)
 	}
+	return policyTextChangeDetails(key, oldValue, newValue)
+}
+
+// policyChangeAuditFieldsWithCorrelation 同 policyChangeAuditFields；本鍵的變更觸發高危設定
+// 告警時（correlationID 非空），details 另帶 correlation_id 供從告警回查本列；原始存量值
+// 不合法時另帶 effective_old_value。非文字鍵原本沒有 details，此時只放這兩欄。
+func policyChangeAuditFieldsWithCorrelation(key, oldValue, newValue, correlationID, effectiveOld string) (details, errorMsg string) {
+	details, errorMsg = policyChangeAuditFields(key, oldValue, newValue)
+	if correlationID == "" && effectiveOld == "" {
+		return details, errorMsg
+	}
+	payload := map[string]any{}
+	if details != "" {
+		if err := json.Unmarshal([]byte(details), &payload); err != nil {
+			payload = map[string]any{}
+		}
+	}
+	if correlationID != "" {
+		payload["correlation_id"] = correlationID
+	}
+	// 原始存量值不合法時，另記讀取路徑實際生效的舊值（告警的前值以它為準）
+	if effectiveOld != "" {
+		payload["effective_old_value"] = effectiveOld
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return details, errorMsg
+	}
+	return string(encoded), errorMsg
+}
+
+// policyTextChangeDetails 文字鍵的變更詳情（舊值與新值全文放進 changes[]）。
+func policyTextChangeDetails(key, oldValue, newValue string) (details, errorMsg string) {
 	payload := struct {
 		Changes []policyChangeDetail `json:"changes"`
 	}{Changes: []policyChangeDetail{{Field: key, Old: oldValue, New: newValue}}}
@@ -334,24 +383,23 @@ type policyChangeDetail struct {
 	New   string `json:"new"`
 }
 
-// auditPolicyChange 政策變更審計（10.2.2：who/what/when/old→new）
-func (h *SecurityPolicyHandler) auditPolicyChange(c *gin.Context, userID uint, username, key, oldValue, newValue string) {
-	if h.auditService == nil {
-		return
-	}
-	details, errorMsg := policyChangeAuditFields(key, oldValue, newValue)
-	h.auditService.Log(&audit.AuditLogEntry{
-		UserID:     userID,
-		Username:   username,
-		Action:     model.ActionUpdate,
-		Resource:   model.ResourceSecurityPolicy,
-		Status:     model.StatusSuccess,
-		Method:     c.Request.Method,
-		Path:       c.Request.URL.Path,
-		ClientIP:   sourceip.Of(c),
-		StatusCode: http.StatusOK,
-		ErrorMsg:   errorMsg,
-		Details:    details,
+// auditPolicyChange 政策變更審計（10.2.2：who/what/when/old→new）。
+// 在政策寫入的交易內同步落地；回 error 即整批政策寫入回滾。
+func (h *SecurityPolicyHandler) auditPolicyChange(tx *gorm.DB, c *gin.Context, userID uint, username string, ch policy.PolicyChange) error {
+	details, errorMsg := policyChangeAuditFieldsWithCorrelation(ch.Key, ch.OldValue, ch.NewValue, ch.CorrelationID, ch.EffectiveOldValue)
+	return port.WriteInTx(h.auditTx, tx, port.AuditEvent{
+		Actor:    gatewayapi.Actor{UserID: userID, Username: username},
+		Action:   string(model.ActionUpdate),
+		Resource: string(model.ResourceSecurityPolicy),
+		Status:   string(model.StatusSuccess),
+		Request: gatewayapi.RequestMeta{
+			Method:     c.Request.Method,
+			Path:       c.Request.URL.Path,
+			ClientIP:   sourceip.Of(c),
+			StatusCode: http.StatusOK,
+		},
+		ErrorMsg: errorMsg,
+		Details:  details,
 	})
 }
 
@@ -359,7 +407,7 @@ func (h *SecurityPolicyHandler) auditPolicyChange(c *gin.Context, userID uint, u
 func (h *SecurityPolicyHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	policies := r.Group("/security-policies")
 	policies.Use(middleware.AuthMiddleware(authService))
-	policies.Use(middleware.RequireRole("admin"))
+	policies.Use(middleware.EnforceRegistry())
 	{
 		policies.GET("", h.List)
 		policies.PUT("", h.Update)

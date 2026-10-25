@@ -4,6 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"gorm.io/gorm"
+
+	"github.com/custodexa/backend/internal/model"
 )
 
 // 保留政策的跨鍵約束（audit-checkpoint-chain／security-policy spec
@@ -88,17 +92,21 @@ func RetentionCovers(checkpointDays, dataDays int) bool {
 //
 // 誤擋風險已由出廠值消除，並由 `TestCrossKeyRetentionDoesNotBlockFactoryState`
 // 雙向釘住（出廠狀態下四個資料鍵逐一設任意合法值皆須通過）。
-func (s *SecurityPolicyService) validateCrossKeyRetention(updates map[string]string) error {
+//
+// **在寫入交易內、取得保留序列化鎖之後呼叫**，現值以同一個 tx 直接讀（不經快取）：
+// 驗證若在鎖外或讀快取，兩筆各自合法的批次（一筆調長資料鍵、一筆調短檢查點）
+// 可並行通過驗證，合起來卻落成違規終態。
+func (s *SecurityPolicyService) validateCrossKeyRetention(tx *gorm.DB, updates map[string]string) error {
 	if !touchesRetentionKeys(updates) {
 		return nil
 	}
 
-	cpDays, err := s.terminalIntValue(updates, PolicyRetentionCheckpointDays)
+	cpDays, err := s.terminalIntValue(tx, updates, PolicyRetentionCheckpointDays)
 	if err != nil {
 		return err
 	}
 	for _, key := range dataRetentionKeys {
-		days, err := s.terminalIntValue(updates, key)
+		days, err := s.terminalIntValue(tx, updates, key)
 		if err != nil {
 			return err
 		}
@@ -128,8 +136,9 @@ func touchesRetentionKeys(updates map[string]string) bool {
 // terminalIntValue 該鍵在本批次套用後的終值：批次帶了就取批次值，否則取現值。
 //
 // 批次值此時已通過單鍵驗證（UpdateBatch 的呼叫順序），故解析失敗只可能是
-// 呼叫順序被改動——回錯而非默默當 0（當 0 會被讀成「永久」，方向完全相反）
-func (s *SecurityPolicyService) terminalIntValue(updates map[string]string, key string) (int, error) {
+// 呼叫順序被改動——回錯而非默默當 0（當 0 會被讀成「永久」，方向完全相反）。
+// 現值以 tx 直接讀列（見 txIntValue），讀取失敗回錯，不退回快取或出廠預設。
+func (s *SecurityPolicyService) terminalIntValue(tx *gorm.DB, updates map[string]string, key string) (int, error) {
 	if raw, ok := updates[key]; ok {
 		n, err := strconv.Atoi(raw)
 		if err != nil {
@@ -137,5 +146,32 @@ func (s *SecurityPolicyService) terminalIntValue(updates map[string]string, key 
 		}
 		return n, nil
 	}
-	return s.GetInt(key), nil
+	return s.txIntValue(tx, key)
+}
+
+// txIntValue 以給定 tx 讀 int 型政策的有效值：無列取出廠預設；存量列不合法時沿讀取路徑
+// 的規則取最後已知合法值或出廠預設；資料庫讀取失敗回錯（不當成預設值）。
+func (s *SecurityPolicyService) txIntValue(tx *gorm.DB, key string) (int, error) {
+	def := findDef(key)
+	if def == nil {
+		return 0, &PolicyUnknownKeyError{Key: key}
+	}
+	value := def.Default
+	var row model.SecurityPolicy
+	switch err := tx.Where("key = ?", key).First(&row).Error; {
+	case err == nil:
+		if normalized, verr := normalizePolicyValue(def, row.Value); verr == nil {
+			value = normalized
+		} else {
+			value = s.lastGoodOrDefault(key, def)
+		}
+	case errors.Is(err, gorm.ErrRecordNotFound):
+	default:
+		return 0, fmt.Errorf("讀取政策 %s 現值失敗: %w", key, err)
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, &PolicyInvalidValueError{Key: key, Reason: "須為非負整數"}
+	}
+	return n, nil
 }

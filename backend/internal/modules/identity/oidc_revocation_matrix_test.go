@@ -43,6 +43,7 @@ func revMatrixDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)
@@ -50,9 +51,9 @@ func revMatrixDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.ApproverScope{}, &model.SecurityPolicy{}, &model.PasswordHistory{},
-		&model.RefreshToken{}, &model.OIDCProvider{}, &model.UserExternalIdentity{},
+		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.Session{},
-		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{},
+		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
 		&model.UserRoleMappingRuleSupport{},
 		&model.UserGroupMember{},
@@ -244,7 +245,7 @@ func newRevMatrixEnv(t *testing.T, db *gorm.DB) *revMatrixEnv {
 
 	registry := &revMatrixRegistry{}
 	sessions := session.NewSessionService(registry)
-	providers := identity.NewOIDCProviderService(db, nil, testEgress(), nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, testEgress(), nil, "https://bastion.example.com")
 	login := identity.NewOIDCLoginService(db, providers, identity.NewOIDCDiscoveryService(testEgress()), auth, nil)
 	login.SetAuditSinkForTest(newRecordingAudit())
 

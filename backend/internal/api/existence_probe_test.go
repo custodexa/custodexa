@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -21,7 +22,11 @@ import (
 func TestExistenceProbeRequestResponses(t *testing.T) {
 	request := func(h *AccessRequestHandler, method, path, body string, user uint, role string) *httptest.ResponseRecorder {
 		r := gin.New()
-		r.Use(func(c *gin.Context) { c.Set("userID", user); c.Set("username", "requester"); c.Set("role", role) })
+		r.Use(func(c *gin.Context) {
+			c.Set("userID", user)
+			c.Set("username", "requester")
+			middleware.SetPrincipal(c, legacyPrincipal(role))
+		})
 		r.POST("/access-requests", h.Create)
 		r.GET("/access-requests/:id/reports", h.ReportVersions)
 		r.POST("/access-requests/:id/reports", h.SubmitReport)
@@ -41,7 +46,7 @@ func TestExistenceProbeRequestResponses(t *testing.T) {
 	}
 	t.Run("executor", func(t *testing.T) {
 		db, _, owner, agent := principalAPIEnv(t)
-		require.NoError(t, db.AutoMigrate(&model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.AgentVisibilityExposure{}, &model.SecurityPolicy{}, &model.NotificationChannel{}))
+		require.NoError(t, migrateWithAuthz(db, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.AgentVisibilityExposure{}, &model.SecurityPolicy{}, &model.NotificationChannel{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 		previousDB := database.DB
 		database.DB = db
 		t.Cleanup(func() { database.DB = previousDB })

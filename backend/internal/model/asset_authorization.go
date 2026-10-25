@@ -171,6 +171,10 @@ type AssetAuthorization struct {
 	// 由 20260718 migration 處理，寫入端顯式設值（BeforeCreate 兜底 manual）
 	Source string `gorm:"type:varchar(20)" json:"source"`
 
+	// RestoreGeneration 臨時授權（ticket／break-glass）簽發當下的恢復世代；
+	// 常設授權恆為空且不受世代影響。
+	RestoreGeneration string `gorm:"size:64;not null;default:''" json:"-"`
+
 	// Accounts 帳號範圍：預設 `["@ALL"]`（客體範圍內
 	// 資產的全部帳號，行為與多帳號前一致），可個別指定 username 清單
 	//（語義＝範圍內資產上的同名帳號）。

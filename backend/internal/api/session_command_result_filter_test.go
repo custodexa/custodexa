@@ -148,7 +148,7 @@ func TestSearchFilterKeepsAuditViewGate(t *testing.T) {
 		"user 對跨會話搜尋應 403")
 
 	for _, role := range []string{"auditor", "admin"} {
-		token, err := mgr.GenerateToken(1, role, role+"@example.com", role, crypto.AuthContext{})
+		token, err := mgr.GenerateToken(sessionGateUserID(role), role, role+"@example.com", role, crypto.AuthContext{})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, getWithToken(t, r, path, token).Code,
 			"%s 對跨會話搜尋應 200", role)

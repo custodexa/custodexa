@@ -101,6 +101,8 @@ var knownAccountabilityVoids = map[string]string{
 	"PUT /api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId | api.(*IdentitySourceHandler).UpdateExternalGroupNote": "note 為自由文字且可能含秘密，HTTP 本文保持遮罩；AP-110 同交易專屬列記字典識別與前後長度，不記原文",
 	"POST /api/v1/access-requests/:id/reports | api.(*AccessRequestHandler).SubmitReport":                                                  "報告正文可能含敏感內容，HTTP 本文保持遮罩；報告版本、任務、body_hash 由 AP-101 同交易專屬列課責，正文依任務報告讀取權限提供",
 	"DELETE /api/v1/users/:id/agent-tokens/:tokenId | api.(*UserHandler).RevokeAgentToken":                                                 "note 為自由文字，可能含秘密，維持遮蔽；撤銷對象及結果由 agent_token revoke／agent_token_revoked 與 agent_sessions_terminated 專屬列課責",
+	"POST /api/v1/role-assignment-previews | api.(*RoleAssignmentPreviewHandler).Preview":                                                  "唯讀預覽，不寫資料、不推進版本；本文只是預覽參數。實際的指派、成員異動與角色定義變更由各寫入端點的同交易專屬審計列課責（角色定義寫入、群組角色指派、授權變更分級）",
+	"POST /api/v1/assets/:id/host-key/adopt | api.(*HostKeyHandler).Adopt":                                                                 "本文只有要採用的指紋；採用前後的指紋、演算法與該觀察的出現時間與次數由 AP-221 同交易專屬列課責（details），HTTP 本文維持 default-deny 遮罩",
 	// ── 本文全為機密 ──────────────────────────────────────────────
 	"POST /api/v1/auth/change-password | api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
 	// Logout／Refresh 不再綁定任何 request body

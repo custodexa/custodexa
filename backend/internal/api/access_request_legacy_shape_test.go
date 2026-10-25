@@ -46,7 +46,7 @@ func TestAccessRequestLegacyShape(t *testing.T) {
 			case "create":
 				method, path = "POST", "/access-requests"
 				payload = map[string]any{"asset_id": 3, "accounts": []string{"app"}, "reason": "maintenance", "duration_minutes": 60, "date_start": at}
-				svc.On("Submit", uint(5), "tester", "user", mock.MatchedBy(func(in authz.SubmitAccessRequestInput) bool {
+				svc.On("Submit", uint(5), "tester", false, mock.MatchedBy(func(in authz.SubmitAccessRequestInput) bool {
 					return in.AssetID == 3 && in.Items == nil && in.ExecutorUserID == nil && in.Accounts != nil && len(*in.Accounts) == 1 && (*in.Accounts)[0] == "app" && in.Reason == "maintenance" && in.DurationMinutes == 60 && in.DateStart.Equal(at)
 				})).Return(row, nil)
 			case "mine":
@@ -92,7 +92,7 @@ func TestAccessRequestLegacyShape(t *testing.T) {
 
 func TestAccessRequestItemsCreateBinding(t *testing.T) {
 	svc := new(MockAccessRequestService)
-	svc.On("Submit", uint(5), "tester", "user", mock.MatchedBy(func(in authz.SubmitAccessRequestInput) bool {
+	svc.On("Submit", uint(5), "tester", false, mock.MatchedBy(func(in authz.SubmitAccessRequestInput) bool {
 		return in.AssetID == 0 && in.ExecutorUserID != nil && *in.ExecutorUserID == 8 && len(in.Items) == 2 && in.Items[0].AssetID == 3 && in.Items[1].AssetID == 4 && (*in.Items[1].Accounts)[0] == "app"
 	})).Return(&model.AccessRequest{ID: 9}, nil)
 	r, _ := newAccessRequestRouter(svc, nil, 5, "user", nil)

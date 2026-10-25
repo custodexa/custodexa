@@ -126,6 +126,8 @@ HOOK
   chmod +x "$FAKE_DOCKER_REPLAY/hook"
   export BK_PG_DIGEST
   echo unsealed >"$DB/seal"
+  # RS_E_BEFORE: a function of the test that sets the source deployment up before its backup.
+  [ -z "${RS_E_BEFORE:-}" ] || "$RS_E_BEFORE"
   bash "$ROOT/custodexa.sh" backup --yes --lang en >"$BATS_TEST_TMPDIR/producer.log" 2>&1 || {
     cat "$BATS_TEST_TMPDIR/producer.log"; return 1;
   }

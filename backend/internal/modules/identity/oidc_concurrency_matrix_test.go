@@ -64,8 +64,8 @@ const pgMatrixTestSchema = "oidc_matrix_test"
 // （本檔的競態發生在簽 ticket 與兌換 ticket 兩個點上）
 func matrixMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
+		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}, &model.Session{},
 		&model.OIDCLoginTicket{}, &model.OIDCFlowState{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
@@ -132,7 +132,7 @@ func newMatrixEnvOn(t *testing.T, dbA, dbB *gorm.DB) *matrixEnv {
 	auth := identity.NewAuthService("test-secret", 15*time.Minute)
 	auth.SetSecurityPolicies(policy.NewSecurityPolicyService(dbA))
 
-	providers := identity.NewOIDCProviderService(dbA, nil, testEgress(), nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(dbA, nil, testEgress(), nil, "https://bastion.example.com")
 	login := identity.NewOIDCLoginService(dbA, providers, identity.NewOIDCDiscoveryService(testEgress()), auth, nil)
 	login.SetAuditSinkForTest(newRecordingAudit())
 
@@ -559,6 +559,7 @@ func TestCapabilityLockOrderingHasNoDeadlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql db: %v", err)

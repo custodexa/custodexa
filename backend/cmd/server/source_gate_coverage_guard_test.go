@@ -108,6 +108,9 @@ var sourceGateNotJudged = map[string]string{
 		"其 source_ip 欄只回本人這次請求的來源，無新資料暴露",
 	"PATCH /api/v1/auth/me": "非認證因子（僅 local_display_name）：盤點表的邊界第 3 條" +
 		"——範圍止於認證因子，擴到一般寫入等於每請求判一次（規格明列的非目標）",
+	"GET /api/v1/auth/me/release-guidance/:version": "唯讀的個人偏好（版本說明是否已關閉），不寫任何認證狀態、不含來源資訊",
+	"PUT /api/v1/auth/me/release-guidance/:version": "非認證因子：只寫本人對某說明版本的關閉旗標，" +
+		"範圍止於認證因子，擴到一般寫入等於每請求判一次（規格明列的非目標）",
 	"POST /api/v1/auth/logout": "撤銷自己的憑證。擋掉它只會讓清單外的人**無法登出**，" +
 		"安全方向相反",
 	"GET /api/v1/auth/banner": "登入前告示讀取，使用者尚未解析（與登入方式列舉同理：無身分可判、亦不寫任何認證狀態）",

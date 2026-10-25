@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// TestTransferTimeoutFloorNotLowered deadline 下限守衛（design §9：常數附守衛
+// TestTransferTimeoutFloorNotLowered deadline 下限守衛（常數附守衛，
 // 防調得更緊）。下限被調低時，大檔上傳在慢速線路上會被自己的 deadline 砍斷、
 // 進入永遠成功不了的重試循環。調高要重推導速率基準，不在本守衛射程。
 func TestTransferTimeoutFloorNotLowered(t *testing.T) {

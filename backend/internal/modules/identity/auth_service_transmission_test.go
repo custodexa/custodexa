@@ -26,7 +26,8 @@ func setupLDAPGateEnv(t *testing.T, view policy.LDAPRiskView) (*AuthService, *po
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	seedAuthzState(t, db)
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

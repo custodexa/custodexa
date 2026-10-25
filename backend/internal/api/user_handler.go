@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 // UserServiceInterface 用戶服務接口（用於測試注入）
@@ -44,6 +47,84 @@ type UserServiceInterface interface {
 	ConvertToExternalOnly(userID uint, actor identity.IdentityAdminActor) error
 }
 
+// 帶操作者的指派入口：服務實作了共用指派關卡的入口時一律走關卡（生產組裝的服務都有）；
+// 測試替身沒有這組方法時退回原入口，語義與關卡接入前相同。
+type guardedUserWrites interface {
+	CreateBy(op identity.Operator, req *identity.CreateUserRequest, opts ...identity.DirectAssignOptions) (*model.User, error)
+	AddRoleBy(op identity.Operator, userID uint, roleName string, opts ...identity.DirectAssignOptions) error
+	AssignRolesBy(op identity.Operator, userID uint, roleNames []string, opts ...identity.DirectAssignOptions) (*identity.RoleAssignResult, error)
+}
+
+// 釘住的帶操作者入口（同樣只在服務實作時走關卡；生產組裝的服務都有）。
+type guardedPin interface {
+	PinMappedRoleBy(op identity.Operator, userID uint, roleName string) (*identity.RoleSets, error)
+}
+
+// 帳號身分操作（設定密碼、綁定、解綁）的帶操作者入口：服務實作了就一律走帳號身分操作關卡。
+type guardedAccountOps interface {
+	ChangePasswordBy(op identity.Operator, userID uint, newPassword string) error
+	BindExternalIdentityBy(op identity.Operator, userID, providerID uint, subject string) (*identity.ExternalIdentityDTO, error)
+	UnbindExternalIdentityBy(op identity.Operator, userID, identityID uint) error
+	UnbindExternalIdentityAndDisableBy(op identity.Operator, userID, identityID uint) error
+}
+
+// 停用、啟用與刪除帳號的帶操作者入口：持保護角色的帳號只有超管能處置（關卡在服務邊界）。
+// 生產組裝的服務必定實作（下方編譯期斷言）；只有不帶這組方法的測試替身會退回原入口。
+type guardedAccountLifecycle interface {
+	UpdateStatusBy(op identity.Operator, userID uint, active bool) error
+	DeleteWithSummaryBy(op identity.Operator, id uint) (identity.DeletedUserSummary, error)
+}
+
+var _ guardedAccountLifecycle = (*identity.UserService)(nil)
+
+// protectedAccountDenyReason 帳號身分操作關卡拒絕時寫進該次請求審計列 details 的原因碼
+// （與共用指派關卡拒絕「受保護帳號」時的原因碼同值）。
+const protectedAccountDenyReason = "protected_account"
+
+// markProtectedAccountRefusal 關卡拒絕時在審計列帶出事件與原因碼（只寫原因碼，不寫角色或請求值）。
+func markProtectedAccountRefusal(c *gin.Context, err error, event string) {
+	if errors.Is(err, identity.ErrProtectedAccountOperation) {
+		c.Set("audit_details", map[string]string{"event": event, "deny_reason": protectedAccountDenyReason})
+	}
+}
+
+func operatorOf(c *gin.Context) identity.Operator {
+	a := identityActor(c)
+	return identity.Operator{UserID: a.UserID, Username: a.Username, ClientIP: a.ClientIP}
+}
+
+// scope 為請求帶了範圍或節點欄位：帶操作者入口交給關卡裁決；沒有關卡入口的服務一律在此拒絕，
+// 不讓節點請求以全域寫入。
+func (h *UserHandler) createUser(c *gin.Context, req *identity.CreateUserRequest, scope bool) (*model.User, error) {
+	if g, ok := h.userService.(guardedUserWrites); ok {
+		return g.CreateBy(operatorOf(c), req, identity.DirectAssignOptions{ScopeRequested: scope})
+	}
+	if scope {
+		return nil, identity.ErrRoleBindingScopeUnsupported
+	}
+	return h.userService.Create(req)
+}
+
+func (h *UserHandler) addRole(c *gin.Context, userID uint, roleName string, scope bool) error {
+	if g, ok := h.userService.(guardedUserWrites); ok {
+		return g.AddRoleBy(operatorOf(c), userID, roleName, identity.DirectAssignOptions{ScopeRequested: scope})
+	}
+	if scope {
+		return identity.ErrRoleBindingScopeUnsupported
+	}
+	return h.userService.AddRole(userID, roleName)
+}
+
+func (h *UserHandler) assignRoles(c *gin.Context, userID uint, roleNames []string, scope bool, nodes map[string]identity.RoleNodesValue) (*identity.RoleAssignResult, error) {
+	if g, ok := h.userService.(guardedUserWrites); ok {
+		return g.AssignRolesBy(operatorOf(c), userID, roleNames, identity.DirectAssignOptions{ScopeRequested: scope, RoleNodes: nodes})
+	}
+	if scope || len(nodes) > 0 {
+		return nil, identity.ErrRoleBindingScopeUnsupported
+	}
+	return h.userService.AssignRoles(userID, roleNames)
+}
+
 // UserHandler 用戶 API handler
 type UserHandler struct {
 	agentTokens *identity.AgentTokenService
@@ -53,6 +134,13 @@ type UserHandler struct {
 	// sourcePolicy 允許來源網段的現讀面（G1 強制點）。管理者對他人認證因子的
 	// 三個端點依**操作者本人**的清單判定。**nil 即 fail-close**
 	sourcePolicy sourcePolicyReader
+	// accountOps 單筆回應的帳號操作保護分類投影；nil 時單筆回應不帶該鍵
+	accountOps accountOpsProjector
+}
+
+// accountOpsProjector 目標帳號對操作者的帳號操作保護分類（唯讀）。
+type accountOpsProjector interface {
+	AccountOps(operatorID, targetID uint) (map[string]string, error)
 }
 
 // NewUserHandler 創建用戶 handler
@@ -61,6 +149,9 @@ func NewUserHandler(userService UserServiceInterface) *UserHandler {
 		userService: userService,
 	}
 }
+
+// SetAccountOpsProjector 注入帳號操作保護分類投影（組裝根）。
+func (h *UserHandler) SetAccountOpsProjector(p accountOpsProjector) { h.accountOps = p }
 
 // SetAuditService 注入審計服務（解鎖事件顯式留痕）
 func (h *UserHandler) SetAuditService(auditService *audit.AuditLogService) {
@@ -133,14 +224,15 @@ func (h *UserHandler) List(c *gin.Context) {
 
 // Create 創建用戶
 func (h *UserHandler) Create(c *gin.Context) {
+	// 綁定時保留原文：JSON 綁定會丟掉不認得的鍵，範圍或節點欄位要從原文看
 	var req identity.CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
 
 	// 調用服務創建用戶
-	user, err := h.userService.Create(&req)
+	user, err := h.createUser(c, &req, boundBodyRequestsRoleScope(c))
 	if err != nil {
 		if respondPrincipalError(c, err) {
 			return
@@ -200,10 +292,25 @@ func (h *UserHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"data":      user,
 		"role_sets": sets,
-	})
+	}
+	// account_ops：只在單筆回應，對目前操作者的保護身分分類，不是完整的可執行性
+	if h.accountOps != nil {
+		operatorID, _ := middleware.GetCurrentUserID(c)
+		ops, err := h.accountOps.AccountOps(operatorID, uint(id))
+		if err != nil {
+			if errors.Is(err, identity.ErrUserNotFound) {
+				apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
+				return
+			}
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserQuery, err)
+			return
+		}
+		resp["account_ops"] = ops
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // Update 更新用戶
@@ -235,6 +342,11 @@ func (h *UserHandler) Update(c *gin.Context) {
 		if errors.Is(err, identity.ErrEmailConflict) {
 			// email 撞其他 live 帳號回 409（非通用 500）
 			apierror.Respond(c, http.StatusConflict, apierror.CodeEmailConflict, nil)
+			return
+		}
+		if errors.Is(err, authz.ErrAgentOwnerTransferSelfGrant) {
+			// 新擁有者曾替該 agent 建立仍有效的授權或申請人型審核範圍：擁有者不變
+			apierror.Respond(c, http.StatusConflict, apierror.CodeAgentOwnerTransferSelfGrant, nil)
 			return
 		}
 		if errors.Is(err, identity.ErrInvalidEmail) {
@@ -271,8 +383,14 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	}
 
 	// 調用服務
-	summary, err := h.userService.DeleteWithSummary(uint(id))
+	var summary identity.DeletedUserSummary
+	if g, ok := h.userService.(guardedAccountLifecycle); ok {
+		summary, err = g.DeleteWithSummaryBy(operatorOf(c), uint(id))
+	} else {
+		summary, err = h.userService.DeleteWithSummary(uint(id))
+	}
 	if err != nil {
+		markProtectedAccountRefusal(c, err, "user_delete_rejected")
 		if respondPrincipalError(c, err) {
 			return
 		}
@@ -324,10 +442,11 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 	// 用戶端一次刪光該使用者由外部群組賦予的角色，而且沒有任何訊號。
 	// 指標型別即 presence 語義——鍵在不在，與值是不是空陣列是兩件事
 	var req struct {
-		ManualRoles *[]string `json:"manual_roles"`
-		Roles       *[]string `json:"roles"`
+		ManualRoles *[]string       `json:"manual_roles"`
+		Roles       *[]string       `json:"roles"`
+		RoleNodes   json.RawMessage `json:"role_nodes"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
@@ -340,8 +459,31 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 		return
 	}
 
+	// role_nodes：省略保留、null 改全域、陣列改節點；鍵必須在 manual_roles 內，否則整筆拒絕
+	roleNodes, ok := parseRoleNodes(req.RoleNodes)
+	if !ok {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
+	listed := map[string]bool{}
+	for _, n := range *req.ManualRoles {
+		listed[n] = true
+	}
+	for k := range roleNodes {
+		if !listed[k] {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+	}
+	scopeOther := false
+	if v, ok := c.Get(gin.BodyBytesKey); ok {
+		if raw, ok := v.([]byte); ok {
+			scopeOther = bodyRequestsRoleScopeExceptNodes(raw)
+		}
+	}
+
 	// 調用服務
-	result, err := h.userService.AssignRoles(uint(id), *req.ManualRoles)
+	result, err := h.assignRoles(c, uint(id), *req.ManualRoles, scopeOther, roleNodes)
 	if err != nil {
 		if respondPrincipalError(c, err) {
 			return
@@ -367,10 +509,14 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 
 	// 回應帶套用後的兩份集合與揭露欄（被忽略的映射角色以機器碼回，文案由前端依碼決定）。
 	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"role_sets":   result.Sets,
 		"disclosures": result.Disclosures,
-	})
+	}
+	if len(result.NodeRangeNoEffect) > 0 {
+		resp["node_range_no_effect"] = result.NodeRangeNoEffect
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // PinRole 釘住：把僅由映射賦予的角色升為並存。
@@ -386,11 +532,21 @@ func (h *UserHandler) PinRole(c *gin.Context) {
 	var req struct {
 		Role string `json:"role"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
-	sets, err := h.userService.PinMappedRole(uint(id), req.Role)
+	// 釘住只收全域：帶任何範圍或節點欄位整筆拒絕，不因 JSON 綁定忽略未知鍵而當成全域釘住
+	if boundBodyRequestsRoleScope(c) {
+		respondPrincipalError(c, identity.ErrRoleBindingScopeUnsupported)
+		return
+	}
+	var sets *identity.RoleSets
+	if g, ok := h.userService.(guardedPin); ok {
+		sets, err = g.PinMappedRoleBy(operatorOf(c), uint(id), req.Role)
+	} else {
+		sets, err = h.userService.PinMappedRole(uint(id), req.Role)
+	}
 	if err != nil {
 		if respondPrincipalError(c, err) {
 			return
@@ -418,7 +574,13 @@ func (h *UserHandler) AddRole(c *gin.Context) {
 		return
 	}
 	roleName := c.Param("role")
-	if err := h.userService.AddRole(uint(id), roleName); err != nil {
+	// 本端點不收 body；帶了範圍或節點欄位的 body 一樣整筆拒絕
+	raw, err := c.GetRawData()
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
+	if err := h.addRole(c, uint(id), roleName, bodyRequestsRoleScope(raw)); err != nil {
 		if respondPrincipalError(c, err) {
 			return
 		}
@@ -462,8 +624,20 @@ func (h *UserHandler) UpdateStatus(c *gin.Context) {
 	}
 
 	// 調用服務
-	err = h.userService.UpdateStatus(uint(id), *req.Active)
+	if g, ok := h.userService.(guardedAccountLifecycle); ok {
+		err = g.UpdateStatusBy(operatorOf(c), uint(id), *req.Active)
+	} else {
+		err = h.userService.UpdateStatus(uint(id), *req.Active)
+	}
 	if err != nil {
+		event := "user_disable_rejected"
+		if *req.Active {
+			event = "user_enable_rejected"
+		}
+		markProtectedAccountRefusal(c, err, event)
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -513,7 +687,11 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 	}
 
 	// 調用服務
-	err = h.userService.ChangePassword(uint(id), req.Password)
+	if g, ok := h.userService.(guardedAccountOps); ok {
+		err = g.ChangePasswordBy(operatorOf(c), uint(id), req.Password)
+	} else {
+		err = h.userService.ChangePassword(uint(id), req.Password)
+	}
 	if err != nil {
 		if respondPrincipalError(c, err) {
 			return
@@ -685,6 +863,9 @@ func parseUserAndIdentityID(c *gin.Context) (uint, uint, bool) {
 // 規則拒絕（登入途徑歸零、最後本地 admin）一律 4xx＋精確機器碼：這些是合法的
 // 業務裁決，落到 RespondInternal 會變成 500，管理者只會看到「伺服器錯誤」
 func respondIdentityError(c *gin.Context, err error, internalCode apierror.ErrCode) {
+	if respondPrincipalError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, identity.ErrUserNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
@@ -749,7 +930,12 @@ func (h *UserHandler) BindExternalIdentity(c *gin.Context) {
 		return
 	}
 
-	dto, err := h.userService.BindExternalIdentity(uint(id), req.ProviderID, req.Subject, identityActor(c))
+	var dto *identity.ExternalIdentityDTO
+	if g, ok := h.userService.(guardedAccountOps); ok {
+		dto, err = g.BindExternalIdentityBy(operatorOf(c), uint(id), req.ProviderID, req.Subject)
+	} else {
+		dto, err = h.userService.BindExternalIdentity(uint(id), req.ProviderID, req.Subject, identityActor(c))
+	}
 	if err != nil {
 		respondIdentityError(c, err, apierror.CodeInternalExternalIdentityBind)
 		return
@@ -763,7 +949,13 @@ func (h *UserHandler) UnbindExternalIdentity(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.userService.UnbindExternalIdentity(userID, identityID, identityActor(c)); err != nil {
+	var err error
+	if g, ok := h.userService.(guardedAccountOps); ok {
+		err = g.UnbindExternalIdentityBy(operatorOf(c), userID, identityID)
+	} else {
+		err = h.userService.UnbindExternalIdentity(userID, identityID, identityActor(c))
+	}
+	if err != nil {
 		respondIdentityError(c, err, apierror.CodeInternalExternalIdentityUnbind)
 		return
 	}
@@ -776,7 +968,13 @@ func (h *UserHandler) UnbindExternalIdentityAndDisable(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.userService.UnbindExternalIdentityAndDisable(userID, identityID, identityActor(c)); err != nil {
+	var err error
+	if g, ok := h.userService.(guardedAccountOps); ok {
+		err = g.UnbindExternalIdentityAndDisableBy(operatorOf(c), userID, identityID)
+	} else {
+		err = h.userService.UnbindExternalIdentityAndDisable(userID, identityID, identityActor(c))
+	}
+	if err != nil {
 		respondIdentityError(c, err, apierror.CodeInternalExternalIdentityUnbind)
 		return
 	}
@@ -815,17 +1013,17 @@ func (h *UserHandler) GetLocalAdminCount(c *gin.Context) {
 // RegisterRoutes 註冊用戶相關路由
 func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	tokens := r.Group("/users/:id/agent-tokens")
-	tokens.Use(middleware.AuthMiddleware(authService), h.RequireAgentTokenManager)
+	tokens.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry(), h.RequireAgentTokenManager)
 	tokens.POST("", h.CreateAgentToken)
 	tokens.GET("", h.ListAgentTokens)
 	tokens.DELETE("/:tokenId", h.RevokeAgentToken)
 	breakers := r.Group("/users/:id/agent-breaker")
-	breakers.Use(middleware.AuthMiddleware(authService), h.RequireAgentTokenManager)
+	breakers.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry(), h.RequireAgentTokenManager)
 	breakers.POST("/release", h.ReleaseAgentBreaker)
 
 	users := r.Group("/users")
 	users.Use(middleware.AuthMiddleware(authService))
-	users.Use(middleware.RequireRole("admin"))
+	users.Use(middleware.EnforceRegistry())
 	{
 		users.GET("", h.List)
 		users.POST("", h.Create)
@@ -839,6 +1037,7 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		users.PUT("/:id", h.Update)
 		users.DELETE("/:id", h.Delete)
 		users.PUT("/:id/roles", h.AssignRoles)
+		users.GET("/:id/role-bindings", h.ListRoleBindings)
 		// 釘住：把外部群組賦予的角色固定為管理者指派。靜態段與 `/:role` 同層並存
 		// （gin 支援同層 static/param 兄弟節點）。**獨立端點而非替換端點的副作用**
 		// ——升格之後那個角色不再隨外部群組異動消失，那是一個顯式決定
@@ -858,12 +1057,12 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		users.POST("/:id/external-identities/:identityId/unbind-and-disable", h.UnbindExternalIdentityAndDisable)
 		users.POST("/:id/external-only", h.ConvertToExternalOnly)
 	}
-	myAgents := r.Group("/my/agents", middleware.AuthMiddleware(authService))
+	myAgents := r.Group("/my/agents", middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	myAgents.POST("", h.CreateMyAgent)
 	myAgents.GET("", h.ListMyAgents)
 
 	// Append new groups to preserve existing middleware closure identities in route goldens.
-	events := r.Group("/users/:id/agent-breaker/events", middleware.AuthMiddleware(authService))
+	events := r.Group("/users/:id/agent-breaker/events", middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	events.GET("", h.AgentBreakerEvents)
 
 }

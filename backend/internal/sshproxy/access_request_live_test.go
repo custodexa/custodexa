@@ -40,7 +40,7 @@ func TestAccessRequestAgentLive(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.ApproverScope{}, &model.AgentToken{}, &model.SessionCommand{}, &model.AlertRule{}, &model.CommandAlert{}))
+	require.NoError(t, migrateWithAuthz(db, &model.AccessRequestItem{}, &model.AccessRequestApproval{}, &model.ApproverScope{}, &model.AgentToken{}, &model.SessionCommand{}, &model.AlertRule{}, &model.CommandAlert{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	require.NoError(t, db.Model(&model.User{}).Where("id=1").Updates(map[string]any{"kind": model.KindAgent, "owner_user_id": 2}).Error)
 	require.NoError(t, db.Model(&model.User{}).Where("id=2").Update("kind", model.KindHuman).Error)
 	require.NoError(t, db.Model(&model.Asset{}).Where("id=1").Updates(map[string]any{"host": "ssh-test", "port": 2222, "access_policy": model.AccessPolicyApproval}).Error)

@@ -95,6 +95,10 @@ type ConnectionHandler struct {
 	// 位址建線者在同一交易內得到一筆告警列。**失敗不阻連線**但一律記 log；
 	// 交易失敗即整筆回滾，下次自同位址建線補發。nil 僅限既有測試路徑
 	SourceIPBaseline *audit.SourceIPBaseline
+	// HostKeys 已記錄的 SSH 主機金鑰查詢（host-key-verification）：VNC 檔案傳輸側車由 guacd 自行撥 SFTP，
+	// 平台只把同位址已記錄的主機金鑰交給 guacd 驗證（sftp-host-key）；沒有記錄時不帶參數、維持現況，
+	// 這條通道不做首次信任、也不記錄新指紋。nil＝不帶參數
+	HostKeys SidecarHostKeyLookup
 	// ClipboardEncrypt 剪貼簿內容加密器，
 	// 交給每條連線的 ClipboardTap。走建構子注入（同 auditService 的理由）：
 	// 剪貼簿落庫即密文是安全紅線，缺線的後果是全部剪貼簿事件退化為缺口紀錄
@@ -208,8 +212,8 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 	defer creds.Destroy()
 	st.creds = creds
-	// role key 慣例沿用既有 CheckPermission（兩道 authz 閘共用同一 ctx）
-	st.authzCtx = context.WithValue(c.Request.Context(), "role", st.currentRole) //nolint:staticcheck // 沿用既有 CheckPermission 的 string key 慣例
+	// 主體隨 ctx 傳遞（兩道 authz 閘共用同一 ctx）：保留身分短路由主體判定
+	st.authzCtx = authz.ContextWithPrincipal(c.Request.Context(), st.principal)
 	// 已解析客體：AccountID 維持 grant 帶的**選擇器**值（0＝預設帳號），
 	// Username 為解封後實際會用的帳號名——後者正是帳號範圍閘的輸入
 	resolved := st.contractObject()
@@ -287,6 +291,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 			params["sftp-hostname"] = assetRow.Host
 			params["sftp-port"] = strconv.Itoa(assetRow.SftpPort)
 			params["sftp-username"] = assetRow.SftpUsername
+			applySidecarHostKey(params, h.HostKeys, assetRow.Host, assetRow.SftpPort)
 			sidecarSecret = sftpPwd
 			// Guacd requires immutable strings; dropping references cannot erase its copies.
 			if err := sftpPwd.Borrow(func(raw []byte) error { params["sftp-password"] = string(raw); return nil }); err != nil {

@@ -26,7 +26,7 @@ func setupMinSeverityChannelDB(t *testing.T) (*NotificationChannelService, *gorm
 	if err := db.AutoMigrate(&model.NotificationChannel{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return NewNotificationChannelService(db, nil), db
+	return newChannelSvc(t, db, nil), db
 }
 
 func mustMinSeverity(t *testing.T, svc *NotificationChannelService, id uint) string {
@@ -44,7 +44,7 @@ func mustMinSeverity(t *testing.T, svc *NotificationChannelService, id uint) str
 func TestChannelMinSeverityPersistence(t *testing.T) {
 	svc, _ := setupMinSeverityChannelDB(t)
 
-	created, err := svc.Create(&NotificationChannelRequest{Name: "siem", URL: "https://hooks.example.com/a"})
+	created, err := svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "siem", URL: "https://hooks.example.com/a"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestChannelMinSeverityPersistence(t *testing.T) {
 		t.Fatalf("default min_severity = %q, want low", got)
 	}
 
-	p1, err := svc.Create(&NotificationChannelRequest{Name: "p1", URL: "https://hooks.example.com/b",
+	p1, err := svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "p1", URL: "https://hooks.example.com/b",
 		MinSeverity: strPtr(model.AlertSeverityHigh)})
 	if err != nil {
 		t.Fatalf("Create high: %v", err)
@@ -62,14 +62,14 @@ func TestChannelMinSeverityPersistence(t *testing.T) {
 	}
 
 	disabled := false
-	if _, err := svc.Update(p1.ID, &NotificationChannelRequest{Name: "p1", Type: "webhook", Enabled: &disabled}); err != nil {
+	if _, err := svc.Update(p1.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "p1", Type: "webhook", Enabled: &disabled}); err != nil {
 		t.Fatalf("toggle Update: %v", err)
 	}
 	if got := mustMinSeverity(t, svc, p1.ID); got != model.AlertSeverityHigh {
 		t.Fatalf("enable toggle reset min_severity to %q, want high", got)
 	}
 
-	if _, err := svc.Update(p1.ID, &NotificationChannelRequest{Name: "p1", MinSeverity: strPtr(model.AlertSeverityMedium)}); err != nil {
+	if _, err := svc.Update(p1.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "p1", MinSeverity: strPtr(model.AlertSeverityMedium)}); err != nil {
 		t.Fatalf("Update medium: %v", err)
 	}
 	if got := mustMinSeverity(t, svc, p1.ID); got != model.AlertSeverityMedium {
@@ -77,10 +77,10 @@ func TestChannelMinSeverityPersistence(t *testing.T) {
 	}
 
 	for _, bad := range []string{"", "critical", "HIGH"} {
-		if _, err := svc.Update(p1.ID, &NotificationChannelRequest{Name: "p1", MinSeverity: strPtr(bad)}); !errors.Is(err, ErrInvalidChannelMinSeverity) {
+		if _, err := svc.Update(p1.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "p1", MinSeverity: strPtr(bad)}); !errors.Is(err, ErrInvalidChannelMinSeverity) {
 			t.Errorf("Update min_severity=%q err = %v, want ErrInvalidChannelMinSeverity", bad, err)
 		}
-		if _, err := svc.Create(&NotificationChannelRequest{Name: "x", URL: "https://hooks.example.com/c", MinSeverity: strPtr(bad)}); !errors.Is(err, ErrInvalidChannelMinSeverity) {
+		if _, err := svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "x", URL: "https://hooks.example.com/c", MinSeverity: strPtr(bad)}); !errors.Is(err, ErrInvalidChannelMinSeverity) {
 			t.Errorf("Create min_severity=%q err = %v, want ErrInvalidChannelMinSeverity", bad, err)
 		}
 	}
@@ -94,14 +94,16 @@ func TestChannelMinSeverityPersistence(t *testing.T) {
 // threshold unchanged adds no such record.
 func TestChannelMinSeverityChangeAudited(t *testing.T) {
 	svc, db := setupMinSeverityChannelDB(t)
-	created, err := svc.Create(&NotificationChannelRequest{Name: "p1-oncall", URL: "https://hooks.example.com/a"})
+	created, err := svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "p1-oncall", URL: "https://hooks.example.com/a"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	countRows := func() int64 {
 		var n int64
-		db.Model(&model.AuditLog{}).Where("resource = ?", model.ResourceNotifyChannel).Count(&n)
+		// 門檻前後值併在通道變更審計列的 changes 內，不再另寫旁路列。
+		db.Model(&model.AuditLog{}).Where("resource = ? AND action = ? AND details LIKE ?",
+			model.ResourceNotifyChannel, model.ActionUpdate, `%"field":"min_severity"%`).Count(&n)
 		return n
 	}
 
@@ -114,7 +116,7 @@ func TestChannelMinSeverityChangeAudited(t *testing.T) {
 		t.Fatalf("audit rows after low->high = %d, want 1", got)
 	}
 	var row model.AuditLog
-	if err := db.Where("resource = ?", model.ResourceNotifyChannel).First(&row).Error; err != nil {
+	if err := db.Where("resource = ? AND action = ?", model.ResourceNotifyChannel, model.ActionUpdate).First(&row).Error; err != nil {
 		t.Fatalf("read audit row: %v", err)
 	}
 	if row.Action != model.ActionUpdate || row.Status != model.StatusSuccess ||
@@ -145,7 +147,7 @@ func TestChannelMinSeverityChangeAudited(t *testing.T) {
 	if _, err := svc.Update(created.ID, req); err != nil {
 		t.Fatalf("Update same: %v", err)
 	}
-	if _, err := svc.Update(created.ID, &NotificationChannelRequest{Name: "p1-renamed"}); err != nil {
+	if _, err := svc.Update(created.ID, &NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "p1-renamed"}); err != nil {
 		t.Fatalf("Update rename: %v", err)
 	}
 	if got := countRows(); got != 1 {

@@ -19,6 +19,11 @@ type AgentToken struct {
 	RevokeNote        string     `gorm:"type:text" json:"revoke_note"`
 	SuspendedAt       *time.Time `json:"suspended_at"`
 	SuspendedReason   string     `gorm:"type:text" json:"suspended_reason"`
+	// RestoreGeneration 簽發當下的恢復世代；空＝簽發於 legacy 世代。
+	RestoreGeneration string `gorm:"size:64;not null;default:''" json:"-"`
+	// RestoreInvalidated 列表投影（不入庫）：簽發世代與目前還原世代不同，真實入口已拒絕這把鑰匙
+	// （備份帶回的舊鑰匙即使資料列仍顯示有效）。只在為真時出現在回應，且僅 List 填入。
+	RestoreInvalidated bool `gorm:"-" json:"restore_invalidated,omitempty"`
 }
 
 func (AgentToken) TableName() string { return "agent_tokens" }

@@ -81,7 +81,8 @@ markers_block() {
 markers_pinned() {
   [ "$(jq -r '.[] | select(.id == "20260804_ldap_env_seeded") | .first_version' <<<"$1")" = 1.0.0 ] &&
     [ "$(jq -r '.[] | select(.id == "20260825_offsite_env_seeded") | .first_version' <<<"$1")" = 1.1.0 ] &&
-    [ "$(jq -r '.[] | select(.id == "20260906_credential_secrets_converted") | .first_version' <<<"$1")" = 1.6.0 ]
+    [ "$(jq -r '.[] | select(.id == "20260906_credential_secrets_converted") | .first_version' <<<"$1")" = 1.6.0 ] &&
+    [ "$(jq -r '.[] | select(.id == "20261030_approver_scope_management_key") | .first_version' <<<"$1")" = 1.18.0 ]
 }
 
 # markers_tree: the real Go sources of the database package in $TREE.

@@ -234,6 +234,10 @@ services:
       # 離機保管的狀態值域唯讀掛載：前端十態對照表直讀 Go 常數雙向比對
       # （offsite.spec.js 的 /repo 路徑；無此掛載該案例 skip）
       - ./backend/internal/offsite:/repo/backend/internal/offsite:ro
+      # Authorization decision baseline: subjects' /auth/me answers are the
+      # input of the entry-rule spec (authz-baseline-entries.spec.js reads the
+      # /repo path first; without it the spec fails rather than skips)
+      - ./backend/cmd/server/testdata/authz-baseline:/repo/backend/cmd/server/testdata/authz-baseline:ro
     environment:
       NODE_ENV: development
     depends_on:

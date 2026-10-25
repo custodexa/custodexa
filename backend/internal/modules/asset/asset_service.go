@@ -24,6 +24,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -83,7 +84,11 @@ type AssetService struct {
 	bytesCrypto material.BytesColumnCodec
 	// resolver 憑證取密的單一入口（見 credential_resolver.go）。與 crypto 同一個
 	// codec 實例：兩份 codec 會讓寫入與讀取走不同的加密路徑而無人察覺
-	resolver  *CredentialResolver
+	resolver *CredentialResolver
+	// mgmt 內嵌宣告秘密（資產表單的密碼／私鑰）的管理授權關卡；未注入 fail closed
+	mgmt credentialManagementGate
+	// alerts 內嵌宣告秘密的系統告警落地面；未注入時內嵌宣告回 port.ErrSystemAlertSinkMissing 並回滾
+	alerts    port.SystemAlertSink
 	guacdHost string
 	guacdPort int
 	// hostKeys SSH 直連測試的 host key 驗證（setter 注入避免改建構簽名）
@@ -97,12 +102,34 @@ type AssetService struct {
 	// authzRevoker 資產刪除時的 authz 級聯撤銷（tx-taking 窄 port）。
 	// **nil 即 fail-close**：Delete 拒絕在不撤銷授權的情況下完成
 	authzRevoker assetAuthorizationRevoker
+	// topologyPort 拓撲寫入的權限版本窄 port（見 topology_permission.go）。
+	// **nil 即 fail-close**：單筆建立、批次匯入與帶節點的更新回 ErrTopologyPermissionPortMissing 並回滾
+	topologyPort TopologyPermissionPort
 	// sessions 資產停用時的收線面。
 	// 介面而非直接依賴 SessionService，避免 service 相互耦合（沿 identity.SessionTerminator 形狀）。
 	// **nil 即不收線**：測試建構路徑可略，生產組裝一律注入
 	sessions SessionTerminator
+	// systemAlerts 交易內系統告警落地面（位址與傳輸放寬事件）。
+	// **nil 即 fail-close**：更新命中事件類別時 `port.RaiseInTx` 回 ErrSystemAlertSinkMissing，
+	// 整筆回滾；沒有命中事件的更新不經過它。
+	systemAlerts port.SystemAlertSink
+	// accessDefaults 存取政策全域預設讀取面（單台覆寫降級判定用）；
+	// nil 時覆寫值要變更的更新回 ErrAccessPolicyDefaultMissing 並回滾
+	accessDefaults AccessPolicyDefaultReader
+	// overrideScope 單台覆寫清單的範圍投影（存取政策權限點）；nil 時清單查詢 fail-close
+	overrideScope AccessPolicyOverrideScopePort
+	// writeScope 建立、更新、停用與刪除的交易內範圍判定（見 asset_write_scope_port.go）。
+	// **nil 即 fail-close**：非系統呼叫者的寫入回 ErrAssetWriteScopePortMissing 並回滾
+	writeScope AssetWriteScopePort
+	// tagReference 標籤書寫歸一的參照可視集合（見 asset_tag_reference.go）；未注入取全表。
+	tagReference TagReferencePort
+	// coverage 掛載變更審計的涵蓋快照。**nil 即 fail-close**：非系統呼叫者的掛載變更回
+	// ErrCoverageSnapshotPortMissing 並回滾；系統呼叫者略過、審計列不帶涵蓋
+	coverage CoverageSnapshotPort
 	// importPreTxHook 測試用接縫（見 SetImportPreTxHookForTest）；正式組裝恆為 nil
 	importPreTxHook func()
+	// importTxStartHook 測試用接縫（見 SetImportTxStartHookForTest）；正式組裝恆為 nil
+	importTxStartHook func(tx *gorm.DB)
 }
 
 // SessionTerminator 停用資產時強制終斷該資產上全部進行中協議會話。
@@ -127,6 +154,44 @@ type assetAuthorizationRevoker interface {
 // SetAuthorizationRevoker 注入 authz 級聯撤銷面（main 組裝時）
 func (s *AssetService) SetAuthorizationRevoker(r assetAuthorizationRevoker) {
 	s.authzRevoker = r
+}
+
+// SetSecurityChangeAlertSink 注入交易內系統告警落地面（main 組裝時；必須晚於落地面建構與自檢）
+func (s *AssetService) SetSecurityChangeAlertSink(sink port.SystemAlertSink) {
+	s.systemAlerts = sink
+}
+
+// WithManagementAuthorizer 注入憑證管理授權判定器：資產表單內嵌的密碼／私鑰宣告
+// 屬於 SetSecret 的同義入口，與憑證庫同一道關卡。未注入時此類宣告 fail closed。
+func (s *AssetService) WithManagementAuthorizer(a CredentialManagementAuthorizer) *AssetService {
+	s.mgmt = credentialManagementGate{authorizer: a}
+	return s
+}
+
+// WithSystemAlertSink 注入交易內系統告警落地面（組裝根）。
+func (s *AssetService) WithSystemAlertSink(sink port.SystemAlertSink) *AssetService {
+	s.alerts = sink
+	return s
+}
+
+// requireSemanticAccountFields 資產更新經語義能力通過的帳號名稱、SFTP 帳號與 SFTP 密碼：帳號名稱類判
+// 更新憑證、SFTP 密碼判更換憑證秘密，目標＝這台資產。經相容能力通過者不在集合內，維持只經欄位層；
+// 登入密碼與私鑰另由 requireDeclaredSecret 判定，不在此處。
+func (s *AssetService) requireSemanticAccountFields(ctx context.Context, tx *gorm.DB, assetID uint, semantic semanticFields) error {
+	if semantic.any("username", "sftp_username") {
+		if err := requireCredentialFieldOn(s.mgmt, ctx, tx, CredOpUpdate, CredCapUpdate, assetID); err != nil {
+			return err
+		}
+	}
+	if semantic.any("sftp_password") {
+		return requireCredentialFieldOn(s.mgmt, ctx, tx, CredOpSetSecret, CredCapSetSecret, assetID)
+	}
+	return nil
+}
+
+// requireDeclaredSecret 內嵌宣告秘密的授權：影響集合是這一台資產（共用憑證在寫入面另行拒絕）。
+func (s *AssetService) requireDeclaredSecret(ctx context.Context, tx *gorm.DB, assetID uint) error {
+	return requireDeclaredSecretOn(s.mgmt, ctx, tx, assetID)
 }
 
 // SetSessionTerminator 注入會話收線面（main 組裝時）
@@ -186,6 +251,10 @@ type AssetFilter struct {
 	// CredentialPending 只列待配憑證（沒有任何未刪除掛載）的資產；
 	// 僅 admin/auditor 全量分支使用（一般 user 帶參數由 handler 拒 400）
 	CredentialPending bool
+
+	// RestrictIDs 非 nil＝只列這些資產（範圍化檢視者的可視聯集；空集合即無資產）；
+	// 與其餘條件同 query，COUNT 與分頁前生效
+	RestrictIDs []uint
 }
 
 // AssetListResponse 資產列表回應
@@ -289,6 +358,9 @@ type UpdateAssetRequest struct {
 	// 存取政策段位：nil＝不動、''＝清回跟隨全域（NULL）。
 	// 白名單在 service 驗（指標欄位 omitempty 不放行顯式空字串）
 	AccessPolicy *string `json:"access_policy"`
+	// accessPolicyKey 本文帶 access_policy 鍵（含值為 null，AccessPolicy 此時為 nil）；由 UnmarshalJSON 設定。
+	// 範圍與欄位能力以「有鍵」判定，與欄位閘同一判準；null 不改覆寫值
+	accessPolicyKey bool
 
 	// RDP 傳輸安全：顯式 ''＝重設回沿現狀。
 	// 不用 binding oneof——指標欄位的 omitempty 不放行顯式空字串，白名單在 service 驗
@@ -431,6 +503,8 @@ type preparedAsset struct {
 	privateKeyEnc      string
 	createdBy          uint
 	createdByName      string
+	// coverageAudit 初始掛載審計附拓撲涵蓋（單筆建立；批次匯入不經此）
+	coverageAudit bool
 }
 
 // operatorContext 確保交易 context 帶操作者身分（GORM hook 由此取操作者）。
@@ -457,10 +531,24 @@ func requiresUsername(protocol model.ProtocolType) bool {
 // 開啟，使 AfterCreate 稽核列記到操作者而非 system
 func (s *AssetService) Create(ctx context.Context, req *CreateAssetRequest) (*model.Asset, error) {
 	ctx = operatorContext(ctx, req.CreatedBy, req.CreatedByName)
+	// 欄位級能力：載入任何東西、寫入任何東西之前判定。經建立憑證能力（非相容能力）通過的
+	// 帳號與秘密欄位，交易內另以送出的節點為目標判定；結果帶入交易閉包，交易內不重算欄位層
+	semantic, err := requireFieldCapabilities(ctx, createRestrictedFields(req))
+	if err != nil {
+		return nil, err
+	}
+	namedViaSemantic := createNamedViaSemantic(semantic)
+	// 憑證語義能力：掛既有共用憑證需 bind、內嵌秘密（新建專用憑證）需 create。
+	// 先驗能力再載入憑證：無權者不得靠「憑證不存在」與「無權」的差別探測存在性
+	if err := requireCreateCredentialCaps(s.mgmt, ctx, nil, nonZeroIDs(req.CredentialID), 0,
+		createDeclaresSecret(req), false, s.writeScope != nil); err != nil {
+		return nil, err
+	}
 	p, err := s.prepareCreate(ctx, req, prepareOptions{})
 	if err != nil {
 		return nil, err
 	}
+	p.coverageAudit = true
 
 	// 固定鎖序：名稱鎖 → treeStructMu → 交易內憑證列鎖
 	assetNameMu.Lock()
@@ -470,13 +558,49 @@ func (s *AssetService) Create(ctx context.Context, req *CreateAssetRequest) (*mo
 	defer treeStructMu.Unlock()
 	accountCreated := false
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖：交易第一個動作，早於能力判定的讀取與任何憑證列鎖
+		if err := s.lockTopologyTx(tx); err != nil {
+			return err
+		}
+		// 鎖後同交易判定初始歸屬（範圍外、不存在同形；零歸屬限全域持有者），早於憑證列鎖
+		if err := s.authorizeCreateScopeTx(ctx, tx, p.nodeIDs); err != nil {
+			return err
+		}
+		// 帶非空存取政策覆寫：目的節點至少一個在存取政策範圍內，否則與不持該權限點同形整筆拒絕
+		if err := s.authorizeCreateAccessPolicyTx(ctx, tx, p.asset.AccessPolicy, p.nodeIDs); err != nil {
+			return err
+		}
+		// 交易內以實際組裝出的憑證來源再判一次（寫入之前）：掛載判 bind；建立專用憑證以送出的
+		// 節點為目標判 create，每個節點都須涵蓋（不依賴初始歸屬判定的範圍收斂）
+		if err := requireCreateCredentialCaps(s.mgmt, ctx, tx, nonZeroIDs(p.sharedCredentialID), 0,
+			false, false, s.writeScope != nil); err != nil {
+			return err
+		}
+		if p.passwordEnc != "" || p.privateKeyEnc != "" || namedViaSemantic {
+			if err := requireCreateCredentialOnNodes(s.mgmt, ctx, tx, p.nodeIDs); err != nil {
+				return err
+			}
+		}
 		creds, lerr := lockCredentialRowsOrdered(tx, p.sharedCredentialID)
 		if lerr != nil {
 			return lerr
 		}
+		// 掛載到節點才改變拓撲；零掛載的資產不在任何節點範圍內，不推進版本
+		mounted := len(p.nodeIDs) > 0
+		if mounted {
+			if err := s.beginTopologyChangeTx(tx); err != nil {
+				return err
+			}
+		}
 		created, cerr := s.createPreparedTx(ctx, tx, p, creds)
 		accountCreated = created
-		return cerr
+		if cerr != nil {
+			return cerr
+		}
+		if mounted {
+			return s.advanceTopologyVersionTx(tx)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -590,7 +714,7 @@ func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetReques
 	normalizedTags := req.Tags
 	if !opts.tagsNormalized {
 		var err error
-		normalizedTags, err = s.NormalizeTagsForWrite(req.Tags)
+		normalizedTags, err = s.NormalizeTagsForWriteTx(ctx, database.DB, req.Tags)
 		if err != nil {
 			return nil, err
 		}
@@ -812,15 +936,27 @@ func (s *AssetService) createPreparedTx(ctx context.Context, tx *gorm.DB, p *pre
 			return false, fmt.Errorf("記錄預設帳號建立稽核失敗: %w", err)
 		}
 	}
+	var mc *mountCoverage
+	if p.coverageAudit && len(p.nodeIDs) > 0 {
+		m, err := s.beginMountCoverageTx(ctx, tx, asset.ID)
+		if err != nil {
+			return false, err
+		}
+		mc = m
+	}
 	for _, nodeID := range p.nodeIDs {
 		if err := tx.Create(&model.AssetNode{AssetID: asset.ID, NodeID: nodeID}).Error; err != nil {
 			return false, fmt.Errorf("掛載節點失敗: %w", err)
 		}
 	}
+	cov, err := mc.finishTx(s, tx, asset.ID)
+	if err != nil {
+		return false, err
+	}
 	// 初始掛載留痕（AfterCreate hook 只記建立事件無 node_ids 明細）。
 	// 寫不了稽核就不做：失敗回錯使整筆回滾
 	if len(p.nodeIDs) > 0 && p.createdBy != 0 {
-		if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, nil, p.nodeIDs, p.createdBy, p.createdByName); err != nil {
+		if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, nil, p.nodeIDs, cov, p.createdBy, p.createdByName); err != nil {
 			return false, fmt.Errorf("記錄初始節點掛載稽核失敗: %w", err)
 		}
 	}
@@ -856,6 +992,15 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 	// 待配憑證：沒有任何未刪除的掛載（與零帳號閘同一判準）
 	if filter.CredentialPending {
 		query = query.Where("NOT EXISTS (SELECT 1 FROM asset_accounts aa WHERE aa.asset_id = assets.id AND aa.deleted_at IS NULL)")
+	}
+
+	// 可視聯集限制：先於計數與分頁
+	if filter.RestrictIDs != nil {
+		if len(filter.RestrictIDs) == 0 {
+			query = query.Where("1 = 0")
+		} else {
+			query = query.Where("assets.id IN ?", filter.RestrictIDs)
+		}
 	}
 
 	// 節點過濾：含子樹＝節點自身＋全部後代的掛載聯集
@@ -1020,76 +1165,86 @@ func (s *AssetService) commitBindingSecret(assetID, accountID uint, pinnedUserna
 	secretType, passwordEnc, privateKeyEnc, auditField, failMsg string) error {
 
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
-			return err
-		}
-		// 交易內重讀（軟刪 scope 由 GORM 自動套用），取得 IsDefault 與現況 username
-		account, err := resolveAssetAccount(tx, assetID, accountID)
-		if err != nil {
-			return err
-		}
-		if account == nil || account.Username != pinnedUsername {
+		return s.commitBindingSecretTx(tx, assetID, accountID, pinnedUsername,
+			secretType, passwordEnc, privateKeyEnc, auditField, failMsg)
+	})
+}
+
+// commitBindingSecretTx 是 commitBindingSecret 在呼叫端已開啟的交易內的實作：版本新增、就位、
+// 預設帳號鏡像與審計全部寫進 tx，不自開交易。呼叫端須自行保證交易內只有這一條提交鏈
+// （候選轉正在同一交易內接著刪候選，並在取憑證列之前先做主機身分比對）。
+func (s *AssetService) commitBindingSecretTx(tx *gorm.DB, assetID, accountID uint, pinnedUsername,
+	secretType, passwordEnc, privateKeyEnc, auditField, failMsg string) error {
+
+	if err := lockAssetForAccountMutation(tx, assetID); err != nil {
+		return err
+	}
+	// 交易內重讀（軟刪 scope 由 GORM 自動套用），取得 IsDefault 與現況 username
+	account, err := resolveAssetAccount(tx, assetID, accountID)
+	if err != nil {
+		return err
+	}
+	if account == nil || account.Username != pinnedUsername {
+		return ErrAssetAccountNotFound
+	}
+	cred, err := lockCredentialRow(tx, account.CredentialID)
+	if err != nil {
+		if errors.Is(err, ErrCredentialNotFound) {
 			return ErrAssetAccountNotFound
 		}
-		cred, err := lockCredentialRow(tx, account.CredentialID)
-		if err != nil {
-			if errors.Is(err, ErrCredentialNotFound) {
-				return ErrAssetAccountNotFound
-			}
-			return err
-		}
-		if cred.Username != pinnedUsername {
-			return ErrAssetAccountNotFound
-		}
+		return err
+	}
+	if cred.Username != pinnedUsername {
+		return ErrAssetAccountNotFound
+	}
 
-		// 未被本次更動的那一欄自就位版本原樣帶過來（密文原樣搬、不解密）：
-		// 金鑰輪替只動私鑰，把密碼一併清掉會讓原本密碼可登入的帳號在金鑰失效時
-		// 失去唯一的備援入口；密碼輪替對私鑰同理
-		if account.EffectiveVersionID != nil {
-			var cerr error
-			passwordEnc, privateKeyEnc, cerr = carryOverVersionCiphertext(tx, cred.ID,
-				*account.EffectiveVersionID, passwordEnc, privateKeyEnc)
-			if cerr != nil {
-				return cerr
-			}
+	// 未被本次更動的那一欄自就位版本原樣帶過來（密文原樣搬、不解密）：
+	// 金鑰輪替只動私鑰，把密碼一併清掉會讓原本密碼可登入的帳號在金鑰失效時
+	// 失去唯一的備援入口；密碼輪替對私鑰同理
+	if account.EffectiveVersionID != nil {
+		var cerr error
+		passwordEnc, privateKeyEnc, cerr = carryOverVersionCiphertext(tx, cred.ID,
+			*account.EffectiveVersionID, passwordEnc, privateKeyEnc)
+		if cerr != nil {
+			return cerr
 		}
+	}
 
-		version, err := appendCredentialVersion(tx, cred.ID, secretType,
-			passwordEnc, privateKeyEnc, model.CredentialVersionReasonRotation)
-		if err != nil {
+	version, err := appendCredentialVersion(tx, cred.ID, secretType,
+		passwordEnc, privateKeyEnc, model.CredentialVersionReasonRotation)
+	if err != nil {
+		return fmt.Errorf("%s: %w", failMsg, err)
+	}
+	// 就位：系統路徑呼叫本函式的時機已在遠端驗證通過之後，故同交易改寫。
+	// **走單一掛載的既有入口**，不自己下 UPDATE——該入口另外強制「版本必須
+	// 屬於本掛載的憑證」，且零列一律回 ErrAssetAccountNotFound（掛載於本交易
+	// 可見範圍內被移除或改綁），絕不記成功審計。
+	// **不得改走整組入口**：本函式的密文是系統產生的，遠端是否收下只有這一台
+	// 驗證過；把全部掛載一併推到新版會讓其他主機拿著沒換過的舊密去連新版
+	if err := setBindingEffectiveVersion(tx, account, version.ID); err != nil {
+		if errors.Is(err, ErrCredentialVersionNotFound) {
 			return fmt.Errorf("%s: %w", failMsg, err)
 		}
-		// 就位：系統路徑呼叫本函式的時機已在遠端驗證通過之後，故同交易改寫。
-		// **走單一掛載的既有入口**，不自己下 UPDATE——該入口另外強制「版本必須
-		// 屬於本掛載的憑證」，且零列一律回 ErrAssetAccountNotFound（掛載於本交易
-		// 可見範圍內被移除或改綁），絕不記成功審計。
-		// **不得改走整組入口**：本函式的密文是系統產生的，遠端是否收下只有這一台
-		// 驗證過；把全部掛載一併推到新版會讓其他主機拿著沒換過的舊密去連新版
-		if err := setBindingEffectiveVersion(tx, account, version.ID); err != nil {
-			if errors.Is(err, ErrCredentialVersionNotFound) {
-				return fmt.Errorf("%s: %w", failMsg, err)
-			}
+		return err
+	}
+	if err := setCredentialCurrentVersion(tx, cred.ID, version.ID); err != nil {
+		return err
+	}
+	if account.IsDefault {
+		if err := mirrorDefaultAccountToAsset(tx, account); err != nil {
 			return err
 		}
-		if err := setCredentialCurrentVersion(tx, cred.ID, version.ID); err != nil {
-			return err
-		}
-		if account.IsDefault {
-			if err := mirrorDefaultAccountToAsset(tx, account); err != nil {
-				return err
-			}
-		}
-		credID, credScope := credentialAuditRef(tx, account.CredentialID)
-		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:         assetID,
-			AccountID:       account.ID,
-			Username:        account.Username,
-			Operation:       model.AccountOpUpdate,
-			Fields:          []string{auditField},
-			CredentialID:    credID,
-			CredentialScope: credScope,
-		}, 0, "system")
-	})
+	}
+	credID, credScope := credentialAuditRef(tx, account.CredentialID)
+	return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
+		AssetID:         assetID,
+		AccountID:       account.ID,
+		Username:        account.Username,
+		Operation:       model.AccountOpUpdate,
+		Fields:          []string{auditField},
+		CredentialID:    credID,
+		CredentialScope: credScope,
+	}, 0, "system")
 }
 
 // GetByID 根據 ID 取得資產
@@ -1280,18 +1435,266 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	if err != nil {
 		return nil, err
 	}
+	// 範圍外與不存在同形：先於欄位能力與值驗證（以交易內判定為準）
+	if err := s.earlyUpdateScopeCheck(ctx, id, req); err != nil {
+		return nil, err
+	}
+	// 欄位級能力：目標已載入、尚未寫入任何東西；以「實際會變更」判定，交易內以重讀的列再判一次
+	if _, err := requireFieldCapabilities(ctx, updateRestrictedFields(oldAsset.Username, oldAsset.SftpUsername, req)); err != nil {
+		return nil, err
+	}
 
-	// 複製一份用於比較
+	out, err := s.applyUpdate(ctx, id, oldAsset, req, true)
+	if err != nil {
+		// 帶存取政策覆寫者：範圍判定先於值驗證（範圍外與不存在同形，判定在取鎖的交易內）
+		if updateNeedsAccessPolicyScope(ctx, req) {
+			if serr := s.accessPolicyScopeBeforeValidation(ctx, id, req); serr != nil {
+				return nil, serr
+			}
+		}
+		return nil, err
+	}
+	asset := out.asset
+	passwordEnc, privateKeyEnc, newNodeIDs := out.passwordEnc, out.privateKeyEnc, out.newNodeIDs
+
+	// 提取用戶資訊並儲存到 context（供 GORM Hooks 使用）
+	userID, _ := ctx.Value("userID").(uint)
+	username, _ := ctx.Value("username").(string)
+
+	// 固定鎖序：名稱鎖 → treeStructMu → 交易。改名時持名稱鎖至交易結束，
+	// 與單筆建立、批次匯入序列化「查名稱＋寫入」
+	if req.Name != nil {
+		assetNameMu.Lock()
+		defer assetNameMu.Unlock()
+	}
+	// 使用事務來記錄變更（涉節點掛載時以 treeStructMu 與樹結構變更互斥）
+	if req.NodeIDs != nil {
+		treeStructMu.Lock()
+		defer treeStructMu.Unlock()
+	}
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		// 拓撲序列化鎖：涉節點掛載、停用候選（請求帶 active=false）或需範圍判定的更新時是交易第一個動作，
+		// 早於資產列鎖。條件取較寬者（可能多取，不可漏取）；只有集合改變才推進版本
+		mountChanged := false
+		var scopeCurrent []uint
+		if updateTakesTopologyLock(ctx, req) {
+			if err := s.lockTopologyTx(tx); err != nil {
+				return err
+			}
+			// 鎖後同交易重讀歸屬並判定（資產列鎖之前）；停用候選另套刪停規則
+			cur, err := s.authorizeUpdateScopeTx(ctx, tx, id, req)
+			if err != nil {
+				return err
+			}
+			scopeCurrent = cur
+		}
+		// 交易內重讀舊列（PostgreSQL 以列鎖，SQLite 由交易序列化）：diff 與後續的告警判定
+		// 一律以交易內舊值計算；交易外的 GetByID 只作提早 404 與提早驗證。
+		fresh, err := lockAssetForUpdateTx(tx, id)
+		if err != nil {
+			return err
+		}
+		// 交易外讀取之後列被他人改過：以交易內舊列為基底重新套用請求，
+		// 避免整列 Save 把他人的變更靜默蓋回舊值，審計 diff 也才對得上實際的前後值。
+		if !fresh.UpdatedAt.Equal(oldAsset.UpdatedAt) {
+			rebased, aerr := s.applyUpdate(ctx, id, fresh, req, false)
+			if aerr != nil {
+				return aerr
+			}
+			asset = rebased.asset
+			passwordEnc, privateKeyEnc, newNodeIDs = rebased.passwordEnc, rebased.privateKeyEnc, rebased.newNodeIDs
+		}
+		oldAsset = fresh
+		semantic, err := requireFieldCapabilities(ctx, updateRestrictedFields(fresh.Username, fresh.SftpUsername, req))
+		if err != nil {
+			return err
+		}
+		// 經語義能力通過的帳號名稱與 SFTP 側車欄位：以這台資產為目標判定（任何寫入之前）
+		if err := s.requireSemanticAccountFields(ctx, tx, id, semantic); err != nil {
+			return err
+		}
+		// 範圍化合併：只替換主體看得到且在編輯能力範圍內的既有歸屬（系統呼叫者照現行整組取代）
+		if req.NodeIDs != nil {
+			merged, err := s.mergeNodesScopeTx(ctx, tx, id, scopeCurrent, newNodeIDs)
+			if err != nil {
+				return err
+			}
+			newNodeIDs = merged
+		}
+
+		// 改名：持名稱鎖時再查一次（交易外的檢查只供提早回報）
+		if req.Name != nil {
+			if err := assertAssetNameFreeTx(tx, asset.Name, id); err != nil {
+				return err
+			}
+		}
+		// 在 context 中傳遞用戶資訊
+		txCtx := context.WithValue(ctx, "userID", userID)
+		txCtx = context.WithValue(txCtx, "username", username)
+
+		// 儲存到資料庫（會觸發 AfterUpdate Hook；hook 與本交易同一連線，失敗即整筆回滾）
+		if err := tx.WithContext(txCtx).Save(asset).Error; err != nil {
+			return fmt.Errorf("更新資產失敗: %w", err)
+		}
+
+		// 憑證／username 透明轉寫 default 帳號，與資產更新同交易
+		if req.Username != nil || passwordEnc != "" || privateKeyEnc != "" {
+			if passwordEnc != "" || privateKeyEnc != "" {
+				if err := s.requireDeclaredSecret(txCtx, tx, asset.ID); err != nil {
+					return err
+				}
+			}
+			if err := syncDefaultAccountFromAsset(s.auditTx, s.alerts, tx, asset, passwordEnc, privateKeyEnc, userID, username); err != nil {
+				return err
+			}
+		}
+
+		// 節點掛載同步：M2M 不經 hook diff，
+		// 成員變更在此顯式審計（node_ids 舊→新）；驗證在交易內。審計寫不進去即整筆回滾
+		if req.NodeIDs != nil {
+			if err := validateNodeIDsTx(tx, newNodeIDs); err != nil {
+				return err
+			}
+			oldNodeIDs, err := assetNodeIDs(tx, asset.ID)
+			if err != nil {
+				return err
+			}
+			mountChanged = !uintSetEqual(oldNodeIDs, newNodeIDs)
+			var mc *mountCoverage
+			if mountChanged {
+				if err := s.beginTopologyChangeTx(tx); err != nil {
+					return err
+				}
+				m, err := s.beginMountCoverageTx(ctx, tx, asset.ID)
+				if err != nil {
+					return err
+				}
+				mc = m
+			}
+			if err := replaceAssetNodes(tx, asset.ID, newNodeIDs); err != nil {
+				return err
+			}
+			cov, err := mc.finishTx(s, tx, asset.ID)
+			if err != nil {
+				return err
+			}
+			if userID != 0 && mountChanged {
+				if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, oldNodeIDs, newNodeIDs, cov, userID, username); err != nil {
+					return fmt.Errorf("記錄節點掛載變更失敗: %w", err)
+				}
+			}
+		}
+		// 交易內重判目標範圍（以本交易已寫入的掛載為準）：判出拒絕即整筆回滾、拒絕值原樣交回
+		if err := recheckTargetScopeTx(ctx, tx); err != nil {
+			return err
+		}
+
+		// 記錄詳細變更（使用 DiffAsset）。審計寫不進去即整筆回滾
+		if userID != 0 {
+			// 位址與傳輸放寬事件：以交易內舊值與套用後新值判定；命中時審計明細帶同一個關聯識別
+			events := ClassifyAssetSecurityChange(oldAsset, asset)
+			// 單台覆寫降級：全域預設在此只讀一次，覆寫值與有效段位的前後比較共用
+			tierChange, terr := s.classifyAccessPolicyUpdate(req, oldAsset, asset)
+			if terr != nil {
+				return terr
+			}
+			relaxed := tierChange != nil && tierChange.Result == policy.TierChangeDowngraded
+			corr := ""
+			if len(events) > 0 || relaxed {
+				c, cerr := newAssetCorrelationID()
+				if cerr != nil {
+					return cerr
+				}
+				corr = c
+			}
+			if err := writeAssetChangeAudit(s.auditTx, tx, oldAsset, asset, userID, username, model.ActionUpdate, corr); err != nil {
+				return fmt.Errorf("記錄資產變更失敗: %w", err)
+			}
+			if err := raiseAssetSecurityEvents(s.systemAlerts, tx, asset, events, userID, username, corr); err != nil {
+				return err
+			}
+			// 交易次序：覆寫值（Save）→ 資產變更審計 → 告警事件；任一失敗整筆回滾
+			if err := raiseAccessPolicyRelaxed(s.systemAlerts, tx, asset, tierChange, userID, username, corr); err != nil {
+				return err
+			}
+		}
+
+		// 權限版本推進放在交易最後（授權狀態表恆在最後才第一次觸碰）
+		if mountChanged {
+			return s.advanceTopologyVersionTx(tx)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 停用即收線：只在 true→false 的**躍遷**觸發。
+	// 對已停用資產的其他編輯不重複收線——否則審計上會出現一連串「因停用而斷線」
+	// 而其實沒有停用動作發生。收線失敗**不回滾停用**（停用的主要目標是阻斷後續
+	// 存取，收線是縱深；沿 access_request_service 撤銷收線的既有裁決）
+	if oldAsset.Active && !asset.Active && s.sessions != nil {
+		if n, terr := s.sessions.TerminateByAsset(id, model.EndReasonAssetDisabled); terr != nil {
+			log.Printf("[AssetService] 資產停用收線失敗 (asset=%d): %v", id, terr)
+		} else if n > 0 {
+			log.Printf("[AssetService] 資產停用收線 %d 個會話 (asset=%d)", n, id)
+		}
+	}
+
+	// 推導欄位以套用後的值重算：asset 是從 GetByID 複製來的，帶的是更新前的投影，
+	// 清了 CA 憑證仍會回「持有」。與建立回應同形，抹去 CA 憑證本體
+	fillRotationProjection(asset, true)
+
+	// 回應帶最新節點資訊（掛載於交易內同步，
+	// 回傳物件須重填避免舊值誤導前端）
+	single := []model.Asset{*asset}
+	if err := FillNodeInfo(database.DB, single); err != nil {
+		log.Printf("節點資訊填充失敗（回應不帶節點欄）: %v", err)
+		return asset, nil
+	}
+
+	return &single[0], nil
+}
+
+// lockAssetForUpdateTx 交易內重讀資產列並加列鎖（SQLite 無列鎖語法，由交易序列化）。
+// 列不存在（含已軟刪）回 ErrAssetNotFound，與 GetByID 一致。
+func lockAssetForUpdateTx(tx *gorm.DB, id uint) (*model.Asset, error) {
+	var row model.Asset
+	q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).Limit(1).Find(&row)
+	if q.Error != nil {
+		return nil, fmt.Errorf("重讀資產失敗: %w", q.Error)
+	}
+	if q.RowsAffected == 0 {
+		return nil, ErrAssetNotFound
+	}
+	return &row, nil
+}
+
+// updateOutcome 套用更新請求到某個基底列後的結果。
+type updateOutcome struct {
+	asset         *model.Asset
+	passwordEnc   string
+	privateKeyEnc string
+	newNodeIDs    []uint
+}
+
+// applyUpdate 把更新請求套用到 base 的副本上（驗證、加密、清殘值），不碰資料庫寫入。
+// checkName 為真時以交易外查詢提早回報名稱重複；交易內重套用時為假（交易內另有鎖下檢查）。
+func (s *AssetService) applyUpdate(ctx context.Context, id uint, base *model.Asset, req *UpdateAssetRequest, checkName bool) (*updateOutcome, error) {
+	// 複製一份作為套用基底
 	asset := &model.Asset{}
-	*asset = *oldAsset
+	*asset = *base
 
 	// 更新欄位
 	if req.Name != nil {
 		// 檢查名稱是否重複（排除自己）
-		var existing model.Asset
-		result := database.DB.Where("name = ? AND id != ?", *req.Name, id).First(&existing)
-		if result.Error == nil {
-			return nil, ErrAssetNameExists
+		if checkName {
+			var existing model.Asset
+			result := database.DB.Where("name = ? AND id != ?", *req.Name, id).First(&existing)
+			if result.Error == nil {
+				return nil, ErrAssetNameExists
+			}
 		}
 		asset.Name = *req.Name
 	}
@@ -1354,7 +1757,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	}
 
 	if req.Tags != nil {
-		normalizedTags, err := s.NormalizeTagsForWrite(*req.Tags)
+		normalizedTags, err := s.NormalizeTagsForWriteTx(ctx, database.DB, *req.Tags)
 		if err != nil {
 			return nil, err
 		}
@@ -1493,104 +1896,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		clearRotationChannel(asset)
 	}
 
-	// 提取用戶資訊並儲存到 context（供 GORM Hooks 使用）
-	userID, _ := ctx.Value("userID").(uint)
-	username, _ := ctx.Value("username").(string)
-
-	// 固定鎖序：名稱鎖 → treeStructMu → 交易。改名時持名稱鎖至交易結束，
-	// 與單筆建立、批次匯入序列化「查名稱＋寫入」
-	if req.Name != nil {
-		assetNameMu.Lock()
-		defer assetNameMu.Unlock()
-	}
-	// 使用事務來記錄變更（涉節點掛載時以 treeStructMu 與樹結構變更互斥）
-	if req.NodeIDs != nil {
-		treeStructMu.Lock()
-		defer treeStructMu.Unlock()
-	}
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
-		// 改名：持名稱鎖時再查一次（交易外的檢查只供提早回報）
-		if req.Name != nil {
-			if err := assertAssetNameFreeTx(tx, asset.Name, id); err != nil {
-				return err
-			}
-		}
-		// 在 context 中傳遞用戶資訊
-		txCtx := context.WithValue(ctx, "userID", userID)
-		txCtx = context.WithValue(txCtx, "username", username)
-
-		// 儲存到資料庫（會觸發 AfterUpdate Hook）
-		if err := tx.WithContext(txCtx).Save(asset).Error; err != nil {
-			return fmt.Errorf("更新資產失敗: %w", err)
-		}
-
-		// 憑證／username 透明轉寫 default 帳號，與資產更新同交易
-		if req.Username != nil || passwordEnc != "" || privateKeyEnc != "" {
-			if err := syncDefaultAccountFromAsset(s.auditTx, tx, asset, passwordEnc, privateKeyEnc, userID, username); err != nil {
-				return err
-			}
-		}
-
-		// 節點掛載同步：M2M 不經 hook diff，
-		// 成員變更在此顯式審計（node_ids 舊→新）；驗證在交易內
-		if req.NodeIDs != nil {
-			if err := validateNodeIDsTx(tx, newNodeIDs); err != nil {
-				return err
-			}
-			oldNodeIDs, err := assetNodeIDs(tx, asset.ID)
-			if err != nil {
-				return err
-			}
-			if err := replaceAssetNodes(tx, asset.ID, newNodeIDs); err != nil {
-				return err
-			}
-			if userID != 0 && !uintSetEqual(oldNodeIDs, newNodeIDs) {
-				if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, oldNodeIDs, newNodeIDs, userID, username); err != nil {
-					log.Printf("記錄節點掛載變更失敗: %v", err)
-				}
-			}
-		}
-
-		// 記錄詳細變更（使用 diffAsset）
-		if userID != 0 {
-			if err := writeAssetChangeAudit(s.auditTx, tx, oldAsset, asset, userID, username, model.ActionUpdate); err != nil {
-				log.Printf("記錄資產變更失敗: %v", err)
-				// 不中斷事務，只記錄錯誤
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	// 停用即收線：只在 true→false 的**躍遷**觸發。
-	// 對已停用資產的其他編輯不重複收線——否則審計上會出現一連串「因停用而斷線」
-	// 而其實沒有停用動作發生。收線失敗**不回滾停用**（停用的主要目標是阻斷後續
-	// 存取，收線是縱深；沿 access_request_service 撤銷收線的既有裁決）
-	if oldAsset.Active && !asset.Active && s.sessions != nil {
-		if n, terr := s.sessions.TerminateByAsset(id, model.EndReasonAssetDisabled); terr != nil {
-			log.Printf("[AssetService] 資產停用收線失敗 (asset=%d): %v", id, terr)
-		} else if n > 0 {
-			log.Printf("[AssetService] 資產停用收線 %d 個會話 (asset=%d)", n, id)
-		}
-	}
-
-	// 推導欄位以套用後的值重算：asset 是從 GetByID 複製來的，帶的是更新前的投影，
-	// 清了 CA 憑證仍會回「持有」。與建立回應同形，抹去 CA 憑證本體
-	fillRotationProjection(asset, true)
-
-	// 回應帶最新節點資訊（掛載於交易內同步，
-	// 回傳物件須重填避免舊值誤導前端）
-	single := []model.Asset{*asset}
-	if err := FillNodeInfo(database.DB, single); err != nil {
-		log.Printf("節點資訊填充失敗（回應不帶節點欄）: %v", err)
-		return asset, nil
-	}
-
-	return &single[0], nil
+	return &updateOutcome{asset: asset, passwordEnc: passwordEnc, privateKeyEnc: privateKeyEnc, newNodeIDs: newNodeIDs}, nil
 }
 
 // Delete 刪除資產（軟刪除）；節點成員同交易硬刪（
@@ -1599,37 +1905,28 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 //
 // 掛載與其專用憑證同交易一併移除（removeAssetBindings）：這台機器不在了，
 // 以它為唯一掛載的專用憑證就沒有主體，留著只會在憑證庫裡累積刪不掉的無主列。
-func (s *AssetService) Delete(id uint) error {
+func (s *AssetService) Delete(ctx context.Context, id uint) error {
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
 
-	// 檢查資產是否存在
+	// 檢查資產是否存在（提早 404；交易內再查一次為準）
 	_, err := s.GetByID(id)
 	if err != nil {
 		return err
 	}
 
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("asset_id = ?", id).Delete(&model.AssetNode{}).Error; err != nil {
-			return fmt.Errorf("清除節點成員失敗: %w", err)
-		}
-		// 授權與審核範圍隨資產失效（塊 2）：權限查詢只查
-		// asset_authorizations 單表、不 join assets，故資產被刪後授權仍會命中。
-		// 兩張表皆屬 authz，**故經 tx-taking 窄 port 交由擁有者寫入**，asset 不直接
-		// 碰他模組的表（tx-taking 窄 port，同 AssetGroupService.Delete 的處置）。
-		// 未注入即 fail-close——靜默略過會留下幽靈授權與懸掛審核範圍
-		if s.authzRevoker == nil {
-			return fmt.Errorf("authz 級聯撤銷面未注入：資產刪除不得在不撤銷授權的情況下完成")
-		}
-		if _, _, err := s.authzRevoker.RevokeByAsset(tx, id); err != nil {
+		// 拓撲序列化鎖：交易第一個動作，早於範圍判定的讀取、removeAssetBindings 的憑證列鎖與資產列鎖
+		if err := s.lockTopologyTx(tx); err != nil {
 			return err
 		}
-		// 掛載與隨之孤兒的專用憑證：先於資產列軟刪，資產列鎖此時還鎖得到
-		if err := removeAssetBindings(tx, id); err != nil {
+		changed, err := s.DeleteTx(ctx, tx, id)
+		if err != nil {
 			return err
 		}
-		if err := tx.Delete(&model.Asset{}, id).Error; err != nil {
-			return fmt.Errorf("刪除資產失敗: %w", err)
+		// 有掛載的資產被刪等於一組節點少了一個成員；零掛載只取鎖、不推進（與建立同口徑）
+		if changed {
+			return s.advanceTopologyVersionTx(tx)
 		}
 		return nil
 	})
@@ -1912,8 +2209,11 @@ type ConnectionTestResult struct {
 	Code      apierror.ErrCode `json:"code,omitempty"`
 	LatencyMs int64            `json:"latency_ms,omitempty"`
 	ErrorCode string           `json:"error_code,omitempty"`
-	Protocol  string           `json:"protocol"`
-	TestedAt  time.Time        `json:"tested_at"`
+	// WarningCode 成功但附帶的警示碼（apierror registry）：目前只有主機金鑰與記錄不符
+	//（連線測試屬互動路徑，不符時已留痕並放行）
+	WarningCode apierror.ErrCode `json:"warning_code,omitempty"`
+	Protocol    string           `json:"protocol"`
+	TestedAt    time.Time        `json:"tested_at"`
 }
 
 // setFailure 設定失敗原因：機器碼 + 同碼 ZhFallback 的過渡文案。
@@ -2018,7 +2318,7 @@ func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout
 // testSSHDirect SSH 資產直連測試（test-connection 修復：guacd 退場後 SSH 撥測走原生路徑）。
 // 吃 AssetCredentials 而非拆散的 asset+秘密：username 與密碼、私鑰必須同帳號。
 // 由 connectionProbes["ssh"] 呼叫；timeout 已於分派前夾制。
-func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, timeout int) *ConnectionTestResult {
+func (s *AssetService) testSSHDirect(ctx context.Context, assetID uint, creds *AssetCredentials, timeout int) *ConnectionTestResult {
 	defer creds.Destroy()
 	asset := creds.Asset
 	result := &ConnectionTestResult{Protocol: string(asset.Protocol), TestedAt: time.Now()}
@@ -2034,8 +2334,26 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	// 無任何秘密、或私鑰無法解析時都不撥號：前者無從測起，後者正式連線同樣會失敗
 	start := time.Now()
 	password := sshmaterial.NewPassword(creds.Password)
-	client, err := dialSSHProbe(context.Background(), fmt.Sprintf("%s:%d", asset.Host, asset.Port), creds.Username, password, creds.PrivateKey, s.hostKeys.Callback(assetID), time.Duration(timeout)*time.Second)
+	// 主機金鑰回呼帶撥號脈絡：連線使用者為測試發起者、連線識別留空（host-key-verification）
+	userID, username := model.UserFromContext(ctx)
+	hostKeyCB, hostKeyResult := s.hostKeys.CallbackFor(HostKeyDialContext{
+		AssetID: assetID, Path: HostKeyPathConnectionTest, UserID: userID, Username: username,
+		AccountID: creds.AccountID, ClientIP: clientIPFromContext(ctx),
+	})
+	client, err := dialSSHProbe(context.Background(), fmt.Sprintf("%s:%d", asset.Host, asset.Port), creds.Username, password, creds.PrivateKey, hostKeyCB, time.Duration(timeout)*time.Second)
 	creds.Destroy()
+	if hostKeyResult.Mismatch() {
+		// 不符放行：憑證已送到這台未核對的主機，無論撥測結果都附警示碼並補記（同 correlation_id）
+		result.WarningCode = apierror.CodeSSHHostKeyChanged
+		authResult := HostKeyAuthUnknown
+		switch {
+		case err == nil:
+			authResult = HostKeyAuthSucceeded
+		case strings.Contains(err.Error(), "unable to authenticate"):
+			authResult = HostKeyAuthFailed
+		}
+		s.hostKeys.RecordCredentialSent(hostKeyResult, authResult)
+	}
 	switch {
 	case errors.Is(err, errProbeNoSecret):
 		result.setFailure(apierror.CodeAssetTestNoAccount, ErrorCodeNoUsableAccount)
@@ -2047,10 +2365,11 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	}
 	result.LatencyMs = time.Since(start).Milliseconds()
 	if err != nil {
-		// 碼化：host key 變更與認證失敗直接复用 RULE_SSH_*（同一事實同一文案）
+		// 碼化：主機金鑰查核失敗與認證失敗直接复用 RULE_SSH_*（同一事實同一文案）；
+		// 主機金鑰不符不是失敗（互動路徑放行，見下方 warning_code）
 		switch {
-		case errors.Is(err, ErrHostKeyChanged):
-			result.setFailure(apierror.CodeSSHHostKeyChanged, "host_key_changed")
+		case errors.Is(err, ErrHostKeyCheckFailed):
+			result.setFailure(apierror.CodeSSHHostKeyCheckFailed, "host_key_check_failed")
 		case strings.Contains(err.Error(), "unable to authenticate"):
 			result.setFailure(apierror.CodeSSHAuthFailed, "auth_failed")
 		default:
@@ -2065,30 +2384,46 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	return result
 }
 
-func (s *AssetService) updateOwnedPassword(assetID, accountID uint, username string, secret *material.Secret) error {
-	if accountID == 0 {
-		return ErrAssetAccountNotFound
-	}
+// encryptOwnedPassword 把候選轉正要寫入的密碼加密成憑證版本欄位的密文。
+// **必須在開提交交易之前呼叫**：加密可能經資料金鑰快取到期去查 data_keys、呼叫外部保管處解封，
+// 這些都不得發生在持有資產列鎖與主機金鑰鎖的交易內。
+func (s *AssetService) encryptOwnedPassword(secret *material.Secret) (string, error) {
 	encrypted, err := material.Use(secret, func(raw []byte) (string, error) {
 		return s.bytesCrypto.EncryptBytesFor(context.Background(), keyvault.RefCredentialVersionPassword, raw)
 	})
 	if err != nil {
-		return fmt.Errorf("加密密碼失敗: %w", err)
+		return "", fmt.Errorf("加密密碼失敗: %w", err)
 	}
-	return s.commitBindingSecret(assetID, accountID, username, model.ChangeSecretTypePassword, encrypted, "", "password", "更新帳號密碼失敗")
+	return encrypted, nil
 }
 
-func (s *AssetService) updateOwnedPrivateKey(assetID, accountID uint, username string, secret *material.Secret) error {
-	if accountID == 0 {
-		return ErrAssetAccountNotFound
-	}
+// encryptOwnedPrivateKey 私鑰版的 encryptOwnedPassword，同樣必須在開交易之前呼叫。
+func (s *AssetService) encryptOwnedPrivateKey(secret *material.Secret) (string, error) {
 	encrypted, err := material.Use(secret, func(raw []byte) (string, error) {
 		return s.bytesCrypto.EncryptBytesFor(context.Background(), keyvault.RefCredentialVersionPrivateKey, raw)
 	})
 	if err != nil {
-		return fmt.Errorf("加密私鑰失敗: %w", err)
+		return "", fmt.Errorf("加密私鑰失敗: %w", err)
 	}
-	return s.commitBindingSecret(assetID, accountID, username, model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
+	return encrypted, nil
+}
+
+// updateOwnedPasswordTx 候選轉正的密碼提交：在呼叫端的交易內建新版本、就位、鏡像並寫審計。
+// 密文由呼叫端在開交易前以 encryptOwnedPassword 備好，交易內不做加密。
+func (s *AssetService) updateOwnedPasswordTx(tx *gorm.DB, assetID, accountID uint, username, encrypted string) error {
+	if accountID == 0 {
+		return ErrAssetAccountNotFound
+	}
+	return s.commitBindingSecretTx(tx, assetID, accountID, username, model.ChangeSecretTypePassword, encrypted, "", "password", "更新帳號密碼失敗")
+}
+
+// updateOwnedPrivateKeyTx 候選轉正的私鑰提交：在呼叫端的交易內建新版本、就位、鏡像並寫審計。
+// 密文由呼叫端在開交易前以 encryptOwnedPrivateKey 備好，交易內不做加密。
+func (s *AssetService) updateOwnedPrivateKeyTx(tx *gorm.DB, assetID, accountID uint, username, encrypted string) error {
+	if accountID == 0 {
+		return ErrAssetAccountNotFound
+	}
+	return s.commitBindingSecretTx(tx, assetID, accountID, username, model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
 }
 
 // dialSSHProbe 撥測撥號：password 與 privateKey 的所有權移交本函式，返回前一律銷毀。

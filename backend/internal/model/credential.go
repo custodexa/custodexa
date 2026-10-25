@@ -137,7 +137,44 @@ type Credential struct {
 	// RotationEpoch 每次啟動輪替遞增，成員列快照此值——同一憑證的兩輪輪替
 	// 若只靠 rotation_id 區分，事後查詢分不出成員列屬於哪一代
 	RotationEpoch int64 `gorm:"not null;default:0" json:"rotation_epoch"`
+
+	// OwnerKind 管理歸屬（見 CredentialOwner* 常數）：共用為 global 或 node，專用為 asset。
+	// 與 Scope 是兩件事：Scope 是共用／專用，歸屬是「誰能管理」。升級前的列為 NULL，
+	// 由增量 migration 回填；之後每個建立與改歸交易都必須寫入。複合索引
+	// (owner_kind, owner_node_id) 只在 migration DDL 宣告。API 以 ownership 物件投影，本欄不直接輸出
+	OwnerKind *string `gorm:"size:16" json:"-"`
+	// OwnerNodeID OwnerKind=node 時必填，其餘為空
+	OwnerNodeID *uint `json:"-"`
 }
+
+// 憑證管理歸屬。
+const (
+	// CredentialOwnerGlobal 全域：只有全域主體能管理與掛載
+	CredentialOwnerGlobal = "global"
+	// CredentialOwnerNode 歸屬一個節點：節點本身或其祖先在指派範圍內者可管理
+	CredentialOwnerNode = "node"
+	// CredentialOwnerAsset 隨資產：專用憑證，依其唯一掛載的資產判定
+	CredentialOwnerAsset = "asset"
+)
+
+// CredentialImpactConfirmation 修改共用憑證時的範圍外影響確認：保存操作者當時的範圍外資產集合，
+// 提交時重算，擴大即退回、縮小照過、單次使用。ID 為 128 位元隨機十六進位，只回給操作者不透明識別；
+// 範圍外資產識別只留在伺服器。同一（操作者、憑證、動作）只保留一列（唯一索引與 migration DDL 同欄序）。
+type CredentialImpactConfirmation struct {
+	ID                 string    `gorm:"primaryKey;size:32" json:"-"`
+	CredentialID       uint      `gorm:"not null;uniqueIndex:idx_credential_impact_confirmations_actor,priority:2" json:"-"`
+	UserID             uint      `gorm:"not null;uniqueIndex:idx_credential_impact_confirmations_actor,priority:1" json:"-"`
+	Operation          string    `gorm:"size:16;not null;uniqueIndex:idx_credential_impact_confirmations_actor,priority:3" json:"-"`
+	AuthzVersion       int64     `gorm:"not null;default:0" json:"-"`
+	OutOfScopeAssetIDs string    `gorm:"type:text;not null;default:'[]'" json:"-"`
+	CreatedAt          time.Time `json:"-"`
+}
+
+// 影響確認的動作。
+const (
+	CredentialImpactOpSetSecret = "set_secret"
+	CredentialImpactOpRotate    = "rotate"
+)
 
 // TableName 指定表名
 func (Credential) TableName() string {
@@ -195,6 +232,8 @@ type CredentialRotation struct {
 	// RequestedBy 發起者 id 與名字快照（使用者可能隨後改名或刪除）
 	RequestedBy     uint   `json:"requested_by"`
 	RequestedByName string `gorm:"size:100" json:"requested_by_name"`
+	// AuthorizationID 本輪的授權脈絡；背景推進一律由此取得發起者
+	AuthorizationID *uint `json:"authorization_id,omitempty"`
 
 	// 密碼策略：語義與改密計劃相同
 	PasswordLength           int  `gorm:"default:16" json:"password_length"`
@@ -239,6 +278,37 @@ type CredentialRotationMember struct {
 
 	AttemptCount  int        `gorm:"default:0" json:"attempt_count"`
 	NextAttemptAt *time.Time `json:"next_attempt_at"`
+	// DispatchClaimedAt／DispatchAuthzVersion 最近一次遠端步驟前的 claim 時刻與
+	// 當時重驗通過的權限世代版本（遠端 I/O 之前先落，供稽核與爭搶判斷）
+	DispatchClaimedAt    *time.Time `json:"dispatch_claimed_at,omitempty"`
+	DispatchAuthzVersion int64      `gorm:"not null;default:0" json:"dispatch_authz_version"`
+	// RequeuedBy／RequeuedByName／RequeuedAuthzVersion／RequeuedAt 最近一次逐台補跑把本成員
+	// 重新排入的操作者、當時通過判定的權限世代與時刻，與狀態轉移同交易落列；0／NULL＝本成員
+	// 未被重新排入過。之後每次派送（手動或背景接手）除本輪發起者外另以重排者當下的能力重驗
+	RequeuedBy           uint       `gorm:"not null;default:0" json:"requeued_by"`
+	RequeuedByName       string     `gorm:"size:100;not null;default:''" json:"requeued_by_name"`
+	RequeuedAuthzVersion int64      `gorm:"not null;default:0" json:"requeued_authz_version"`
+	RequeuedAt           *time.Time `json:"requeued_at,omitempty"`
+	// TargetFingerprint 成員建立當下的目標指紋（不含秘密）；失權後的有限驗證只在指紋仍相符時進行
+	TargetFingerprint string `gorm:"size:64;not null;default:''" json:"-"`
+	// RecoveryAlertedAt 本成員首次進入失權後有限驗證、發出告警的時刻；NULL＝尚未發過（每成員只發一次）
+	RecoveryAlertedAt *time.Time `json:"-"`
+
+	// 主機身分綁定（首次金鑰交換、認證之前寫入；全部不進任何 DTO）。
+	// HostKeyBinding：legacy＝升級前建立、無歷史身分；pending＝新版建立、尚未完成任何金鑰交換；
+	// bound＝已綁定。其餘欄位在 bound 之前為零值。
+	HostKeyBinding     string     `gorm:"size:16;not null;default:'legacy'" json:"-"`
+	HostKeyTransport   string     `gorm:"size:16;not null;default:''" json:"-"`
+	HostKeyRecordID    uint       `gorm:"not null;default:0" json:"-"`
+	HostKeyAlgorithm   string     `gorm:"size:64;not null;default:''" json:"-"`
+	HostKeyFingerprint string     `gorm:"size:128;not null;default:''" json:"-"`
+	HostKeyGeneration  int64      `gorm:"not null;default:0" json:"-"`
+	HostKeyBoundAt     *time.Time `json:"-"`
+	// HostIdentityAlertedKey 已為哪個「身分狀態」寫過停止審計並通知的去重鍵；NULL＝從未寫過
+	HostIdentityAlertedKey *string `gorm:"size:64" json:"-"`
+	// SecretSentAt 派送標記：本成員的目標秘密第一次進入「可能已在遠端生效或結果不可知」的時刻。
+	// 單調：只會由 NULL 寫成時刻，沒有任何路徑寫回 NULL
+	SecretSentAt *time.Time `json:"-"`
 	// LastError 機器可讀的失敗原因碼，不落任何秘密材料或主機回應原文
 	LastError string     `gorm:"size:64" json:"last_error"`
 	AppliedAt *time.Time `json:"applied_at"`

@@ -29,6 +29,8 @@
         :asset-name="assetName"
         show-privileged
         compact
+        :dedicated-disabled="!canNameAccount"
+        :dedicated-disabled-note="t('assets.editDrawer.addDedicatedNeedsCredentialCreate')"
         @update:model="Object.assign(model, $event)"
       />
       <div
@@ -79,6 +81,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { createAssetAccount } from '@/api/assetAccounts'
+import { can } from '@/composables/useCapabilities'
 import { getEffectiveUsers } from '@/api/authorizations'
 import { effectiveAccessNote } from '@/utils/keyDisplay'
 import { isDatabaseProtocol } from '@/utils/protocol'
@@ -96,6 +99,9 @@ const props = defineProps({
 const emit = defineEmits(['added', 'cancel'])
 
 const { t } = useI18n()
+
+// 帶帳號名稱的新增與資產表單的帳號名稱同一欄位能力（後端強制，這裡只負責預先說明）
+const canNameAccount = computed(() => can('credential:create') || can('credential:manage'))
 
 const formRef = ref(null)
 const submitting = ref(false)

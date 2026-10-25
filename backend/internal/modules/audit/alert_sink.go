@@ -107,11 +107,20 @@ func (s *alertRecorder) PublishCommitted(rows []model.CommandAlert) {
 			if row.Kind == model.AlertKindAgentBreaker {
 				continue
 			}
+			// 系統安全告警由持久投遞程序送出：走記憶體佇列會被通道門檻過濾，
+			// 也會與投遞程序重複送出同一筆。
+			if row.Kind == model.AlertKindSystemSecurity {
+				continue
+			}
 			notifier.Enqueue(row)
 		}
 	}
 	if forwarder := GetSyslogForwarder(); forwarder != nil {
 		for i := range rows {
+			// 離機轉發同樣只由投遞程序做一次。
+			if rows[i].Kind == model.AlertKindSystemSecurity {
+				continue
+			}
 			forwarder.EnqueueAlert(&rows[i])
 		}
 	}

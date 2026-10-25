@@ -13,6 +13,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
@@ -40,6 +41,7 @@ type AgentTokenService struct {
 	terminator     AgentSessionTerminator
 	db             *gorm.DB
 	sink           port.TxSink
+	restoreGen     RestoreGenerationSource
 }
 
 func NewAgentTokenService(db *gorm.DB, sink port.TxSink) *AgentTokenService {
@@ -68,40 +70,56 @@ func (s *AgentTokenService) Create(userID uint, req CreateAgentTokenRequest, act
 		return nil, &PrincipalError{Code: apierror.CodeValidationExecutorNotAgent, Status: 400}
 	}
 	var result CreatedAgentToken
-	// Serialize issuance against owner epoch invalidation, then lock the target row.
-	err := WithUserCredentialLock(s.db, *target.OwnerUserID, func(tx *gorm.DB) error {
-		var fresh model.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&fresh, userID).Error; err != nil {
-			return err
-		}
-		if fresh.Kind != model.KindAgent || fresh.OwnerUserID == nil || *fresh.OwnerUserID != *target.OwnerUserID {
-			return ErrAgentOwnerRequired
-		}
-		if fresh.BreakerPendingAt != nil {
-			return &PrincipalError{Code: apierror.CodeRuleAgentBreakerPending, Status: 409}
-		}
-		if err := validateAgentOwner(tx, fresh.OwnerUserID); err != nil {
-			return err
-		}
-		plaintext, digest, err := GenerateAgentToken()
-		if err != nil {
-			return err
-		}
-		result = CreatedAgentToken{AgentToken: model.AgentToken{UserID: userID, Name: req.Name, TokenHash: digest, CreatedBy: actor.UserID, ExpiresAt: req.ExpiresAt.UTC().Truncate(time.Microsecond)}, Token: plaintext}
-		if err := tx.Create(&result.AgentToken).Error; err != nil {
-			return err
-		}
-		return s.record(tx, &result.AgentToken, model.ActionCreate, actor)
+	// Serialize issuance against owner epoch invalidation and agent state changes. The owner
+	// takes (advisory, row) and the agent takes its row, all in ascending user id order, so the
+	// order never depends on which of the two ids is smaller. Kind, owner, breaker and owner
+	// eligibility are re-read once the locks are held.
+	ownerID := *target.OwnerUserID
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		return withUserLockPlanTx(tx, ownerID, userID, func(tx *gorm.DB) error {
+			return s.createLocked(tx, userID, ownerID, req, actor, &result)
+		})
 	})
+	// 簽發交易沿用使用者憑證鎖的提交後通知
+	authz.NotifyVersionCommittedAfter(s.db, err)
 	if err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
+
+func (s *AgentTokenService) createLocked(tx *gorm.DB, userID, ownerID uint, req CreateAgentTokenRequest, actor gatewayapi.Actor, result *CreatedAgentToken) error {
+	var fresh model.User
+	if err := tx.First(&fresh, userID).Error; err != nil {
+		return err
+	}
+	if fresh.Kind != model.KindAgent || fresh.OwnerUserID == nil || *fresh.OwnerUserID != ownerID {
+		return ErrAgentOwnerRequired
+	}
+	if fresh.BreakerPendingAt != nil {
+		return &PrincipalError{Code: apierror.CodeRuleAgentBreakerPending, Status: 409}
+	}
+	if err := validateAgentOwner(tx, fresh.OwnerUserID); err != nil {
+		return err
+	}
+	plaintext, digest, err := GenerateAgentToken()
+	if err != nil {
+		return err
+	}
+	gen, err := currentRestoreGeneration(s.restoreGen, tx)
+	if err != nil {
+		return err
+	}
+	*result = CreatedAgentToken{AgentToken: model.AgentToken{UserID: userID, Name: req.Name, TokenHash: digest, CreatedBy: actor.UserID, ExpiresAt: req.ExpiresAt.UTC().Truncate(time.Microsecond), RestoreGeneration: gen}, Token: plaintext}
+	if err := tx.Create(&result.AgentToken).Error; err != nil {
+		return err
+	}
+	return s.record(tx, &result.AgentToken, model.ActionCreate, actor)
+}
 func (s *AgentTokenService) List(userID uint) ([]model.AgentToken, error) {
 	result := []model.AgentToken{}
 	err := s.db.Where("user_id = ?", userID).Order("id").Find(&result).Error
-	return result, s.fillTokenCreatorNames(result, err)
+	return result, s.fillTokenCreatorNames(result, s.markRestoreInvalidated(result, err))
 }
 func (s *AgentTokenService) Revoke(userID, tokenID uint, note string, actor gatewayapi.Actor) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error { return s.changeState(tx, userID, tokenID, note, actor, false) })
@@ -162,6 +180,9 @@ func agentTokenAuditDetails(token *model.AgentToken) map[string]any {
 // suspendOwnedInTx is the credential-epoch prerequisite for authentication. Session
 // termination belongs to the subsequent lifecycle work; state + audit are atomic here.
 func (s *AgentTokenService) suspendOwnedInTx(tx *gorm.DB, ownerID uint) error {
+	if h := loadLockOrderHook(); h != nil {
+		h("agent_tokens_before_suspend", tx, ownerID)
+	}
 	var agents []uint
 	if err := tx.Model(&model.User{}).Where("kind = ? AND owner_user_id = ?", model.KindAgent, ownerID).Pluck("id", &agents).Error; err != nil {
 		return err
@@ -222,6 +243,10 @@ func (s *AuthService) ValidateAgentToken(plaintext, ip string) (*AgentTokenIdent
 	}
 	if !row.ExpiresAt.After(time.Now()) {
 		return nil, "agent_token_expired"
+	}
+	// 備份帶回的舊世代憑證不可用（含備份內仍顯示有效者）；與撤銷／停權同一個 invalid 出口
+	if !restoreGenerationAccepts(s.restoreGen, db, row.RestoreGeneration) {
+		return nil, invalid
 	}
 	if row.RevokedAt != nil {
 		return nil, string(apierror.CodeAuthAgentTokenRevoked)

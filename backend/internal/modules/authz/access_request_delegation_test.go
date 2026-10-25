@@ -13,7 +13,7 @@ func TestSubmitDelegatedRequestOwnerIndependent(t *testing.T) {
 	require.NoError(t, db.Model(&model.User{}).Where("id=?", agent).Update("owner_user_id", owner).Error)
 	in := itemInput(1)
 	in.ExecutorUserID = &agent
-	req, err := s.Submit(requester, "human", model.RoleUser, in)
+	req, err := s.Submit(requester, "human", false, in)
 	require.NoError(t, err)
 	req, err = s.Approve(2, false, req.ID, DecideInput{})
 	require.NoError(t, err)

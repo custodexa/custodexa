@@ -57,6 +57,8 @@ func writeAssetAccountAudit(sink port.TxSink, tx *gorm.DB, a model.AssetAccountA
 		Fields:          a.Fields,
 		CredentialID:    a.CredentialID,
 		CredentialScope: a.CredentialScope,
+		CorrelationID:   a.CorrelationID,
+		SecretSource:    a.SecretSource,
 	}
 	detailsJSON, err := json.Marshal(details)
 	if err != nil {
@@ -80,12 +82,13 @@ func writeAssetAccountAudit(sink port.TxSink, tx *gorm.DB, a model.AssetAccountA
 }
 
 // writeAssetChangeAudit 記錄資產變更（原 model.RecordAssetChange）。
+// correlationID 非空時寫入明細，供從系統告警回查同交易的這筆操作日誌。
 //
 // **「無變更即不記錄」的語義逐字保留**：`ActionUpdate` 且 diff 為空時回 nil 且
 // 不產生任何審計列——收口前如此，收口後亦然。這一條若被順手改成「總是寫一列」，
 // 既有的審計列數斷言會整批漂移。
 func writeAssetChangeAudit(sink port.TxSink, tx *gorm.DB, old, new *model.Asset,
-	userID uint, username string, action model.AuditAction) error {
+	userID uint, username string, action model.AuditAction, correlationID string, batch ...assetBatchTag) error {
 
 	changes := model.DiffAsset(old, new)
 	if len(changes) == 0 && action == model.ActionUpdate {
@@ -93,7 +96,8 @@ func writeAssetChangeAudit(sink port.TxSink, tx *gorm.DB, old, new *model.Asset,
 		return nil
 	}
 
-	details := model.AssetChangeDetails{Changes: changes}
+	details := model.AssetChangeDetails{Changes: changes, CorrelationID: correlationID}
+	applyAssetBatchTag(&details, batch)
 	// 伺服端自動清空允許資料庫清單的留痕。
 	//
 	// **判定自 old／new 推得而非由呼叫端傳入**：Update 的驗證保證了「非主控台協議
@@ -140,16 +144,13 @@ func writeAssetChangeAudit(sink port.TxSink, tx *gorm.DB, old, new *model.Asset,
 
 // writeAssetNodeChangeAudit 節點掛載變更審計（原 model.RecordAssetNodeChange）。
 // M2M 成員不經 hook diff，由 service 節點同步邏輯顯式呼叫，記 node_ids 舊→新。
+// cov 非 nil 時 details 附 topology_coverage（同交易取的變更前後涵蓋差集）；序列化失敗即回錯使整筆回滾。
 func writeAssetNodeChangeAudit(sink port.TxSink, tx *gorm.DB, assetID uint,
-	oldNodeIDs, newNodeIDs []uint, userID uint, username string) error {
+	oldNodeIDs, newNodeIDs []uint, cov *TopologyCoverage, userID uint, username string, batch ...assetBatchTag) error {
 
-	details := model.AssetChangeDetails{Changes: []model.AssetChange{
-		{Field: "node_ids", Old: oldNodeIDs, New: newNodeIDs},
-	}}
-	detailsJSON, err := json.Marshal(details)
+	detailsJSON, err := nodeChangeDetailsJSON(oldNodeIDs, newNodeIDs, cov, batch...)
 	if err != nil {
-		log.Printf("序列化節點變更詳情失敗: %v", err)
-		detailsJSON = []byte("{}")
+		return err
 	}
 
 	return port.WriteInTx(sink, tx, port.AuditEvent{

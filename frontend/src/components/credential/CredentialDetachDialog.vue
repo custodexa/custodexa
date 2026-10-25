@@ -129,6 +129,15 @@
                 class="source-hint"
                 data-test="detach-custom-hint"
               >{{ t('credentials.detachDialog.customHint') }}</span>
+              <!-- 自訂值會留紀錄並發告警：先說清楚再讓人按下去，不加關卡 -->
+              <el-alert
+                type="warning"
+                :closable="false"
+                show-icon
+                :title="t('credentials.security.customSecretWarning')"
+                :description="t('credentials.security.detachWarning')"
+                data-test="detach-custom-warning"
+              />
             </template>
           </div>
         </el-radio-group>

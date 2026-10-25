@@ -26,7 +26,7 @@ func mustTime(t *testing.T, s string) time.Time {
 // 而報告據此算出的最後改密時刻會憑空變舊，或整個帳號掉進「無記錄」桶。
 func TestRecordsByAccountsIgnoresUsername(t *testing.T) {
 	svc := setupPlanDB(t)
-	plan, err := svc.Create(&ChangeSecretPlanRequest{Name: "p", AssetIDs: []uint{1}})
+	plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "p", AssetIDs: []uint{1}})
 	require.NoError(t, err)
 
 	const accountID = 42
@@ -60,7 +60,7 @@ func TestRecordsByAccountsIgnoresUsername(t *testing.T) {
 // 右開使連續兩期不重複計入同一筆；狀態為空即含 failed 與 skipped。
 func TestRecordsByAccountsFiltersIntervalAndStatus(t *testing.T) {
 	svc := setupPlanDB(t)
-	plan, err := svc.Create(&ChangeSecretPlanRequest{Name: "p", AssetIDs: []uint{1}})
+	plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "p", AssetIDs: []uint{1}})
 	require.NoError(t, err)
 
 	const accountID = 7
@@ -101,7 +101,7 @@ func TestRecordsByAccountsFiltersIntervalAndStatus(t *testing.T) {
 // failed 不算；無成功記錄者不出現在 map 內（與「很久以前改過」可分辨）。
 func TestLastSuccessByAccountPicksMax(t *testing.T) {
 	svc := setupPlanDB(t)
-	plan, err := svc.Create(&ChangeSecretPlanRequest{Name: "p", AssetIDs: []uint{1}})
+	plan, err := svc.Create(adminCtx(), &ChangeSecretPlanRequest{Name: "p", AssetIDs: []uint{1}})
 	require.NoError(t, err)
 
 	add := func(accountID uint, at, status string) {

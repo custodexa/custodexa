@@ -26,10 +26,11 @@ func setupUserGroupDB(t *testing.T) (*UserGroupService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
 		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{},
-		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserGroupMember{}, &model.RefreshToken{}); err != nil {
+		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewUserGroupService(db, audit.NewTxSink(), authz.NewAssetAuthorizationService(db)), db
@@ -170,7 +171,7 @@ func TestUserGroupDeleteCascade(t *testing.T) {
 	}
 	// 審計留痕
 	var entry model.AuditLog
-	if err := db.Where("resource = ?", model.ResourceUserGroup).First(&entry).Error; err != nil {
+	if err := db.Where("resource = ? AND action = ?", model.ResourceUserGroup, model.ActionDelete).First(&entry).Error; err != nil {
 		t.Fatalf("審計記錄應存在: %v", err)
 	}
 	if !strings.Contains(entry.Details, "revoked_authorizations") || entry.Username != "admin" {
@@ -202,7 +203,8 @@ func setupBatchEnv(t *testing.T) (*authz.AssetAuthorizationService, *gorm.DB, []
 
 func TestGrantBatch_ExpandAndSkip(t *testing.T) {
 	svc, db, users, group := setupBatchEnv(t)
-	ctx := context.Background()
+	// 操作者為超管（既有測試以 grantedBy=1 授給 user 1 本人）：本人範圍守衛對超管不適用
+	ctx := batchSuperAdminCtx()
 
 	// 預先存在一筆（u1×a1×connect）→ 批次時跳過
 	u1 := users[0].ID
@@ -254,7 +256,8 @@ func TestGrantBatch_ExpandAndSkip(t *testing.T) {
 // 不因唯一索引衝突整批回滾回錯（先查後寫並發不安全，改交 DB 兜底）
 func TestGrantBatch_ConflictSkipNotError(t *testing.T) {
 	svc, db, users, _ := setupBatchEnv(t)
-	ctx := context.Background()
+	// 操作者為超管（既有測試以 grantedBy=1 授給 user 1 本人）：本人範圍守衛對超管不適用
+	ctx := batchSuperAdminCtx()
 
 	// 預置 u1×a1×view
 	u1 := users[0].ID
@@ -283,7 +286,8 @@ func TestGrantBatch_ConflictSkipNotError(t *testing.T) {
 
 func TestGrantBatch_Validation(t *testing.T) {
 	svc, _, users, _ := setupBatchEnv(t)
-	ctx := context.Background()
+	// 操作者為超管（既有測試以 grantedBy=1 授給 user 1 本人）：本人範圍守衛對超管不適用
+	ctx := batchSuperAdminCtx()
 
 	// 空主體/空客體
 	if _, err := svc.GrantBatch(ctx, nil, nil, []uint{1}, nil, model.PermissionView, 1, nil); !errors.Is(err, authz.ErrBatchEmpty) {
@@ -315,4 +319,13 @@ func TestGrantBatch_ExpansionLimit(t *testing.T) {
 	if _, err := svc.GrantBatch(context.Background(), []uint{users[0].ID}, nil, manyAssets, nil, model.PermissionView, 1, nil); !errors.Is(err, authz.ErrBatchTooLarge) {
 		t.Errorf("超上限 = %v, want authz.ErrBatchTooLarge", err)
 	}
+}
+
+// batchSuperAdminCtx 帶內建超管主體的 context：GrantBatch 的本人範圍守衛對超管不適用，
+// 脈絡無主體時以 grantedBy 為操作者套用守衛（本檔既有案例以 1 授給 user 1 本人）。
+func batchSuperAdminCtx() context.Context {
+	p := authz.NewPrincipal(1, authz.TokenFacts{}, []authz.Assignment{{
+		RoleName: model.RoleAdmin, BuiltinKey: model.BuiltinSuperAdmin, Via: authz.ViaDirect, Scope: model.ScopeKindGlobal,
+	}})
+	return authz.ContextWithPrincipal(context.Background(), p)
 }

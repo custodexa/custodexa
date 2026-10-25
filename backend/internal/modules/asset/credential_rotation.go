@@ -104,6 +104,8 @@ func lockRotationAccount(accountID uint) func() {
 type StartRotationRequest struct {
 	// Policy 密碼型別的生成策略；語義與改密計劃相同
 	Policy PasswordPolicy
+	// ImpactConfirmationID 範圍外影響確認（見 credential_impact.go）；範圍外集合為空時不看此欄
+	ImpactConfirmationID string
 }
 
 // CredentialRotationService 共用憑證的輪替引擎。
@@ -119,27 +121,74 @@ type CredentialRotationService struct {
 	crypto     crypto.ColumnCodec
 	auditTx    port.TxSink
 
-	// authz 受影響資產的權限判定。發起改密會改掉遠端主機上的登入秘密，射程是該
-	// 憑證當下的**全部掛載**——只驗其中一台等於讓權限最寬的那一台替其餘各台決定。
+	// mgmt 憑證管理授權關卡（見 credential_management_authz.go）。發起改密會改掉遠端
+	// 主機上的登入秘密，射程是該憑證當下的**全部掛載**：以語義能力（credential:rotate、
+	// credential:detach 等）加同交易影響集合判定，不再以資產 connect 判管理。
 	//
-	// **建構期必填**：設為可選欄位＋nil 時放行，等於留一個「忘記注入就退回無驗權」
-	// 的開關，而那個開關沒有任何機器盯著。萬一仍以 nil 到達（顯式傳 nil），
-	// 驗權面一律 fail-close 拒絕，不以放行收場
-	authz assetViewPermissionChecker
+	// **建構期必填**：判定器缺席（顯式傳 nil）時一律 fail-close 拒絕，不以放行收場
+	mgmt credentialManagementGate
+
+	// alerts 自訂秘密使用的系統告警落地面（單台脫離的意圖）。未注入時脫離回
+	// port.ErrSystemAlertSinkMissing 並整筆回滾，遠端零 I/O；隨機整組輪替不需要它
+	alerts port.SystemAlertSink
+
+	// scope 範圍化檢視者的投影來源（影響確認的範圍外集合）；未注入＝不要求確認
+	scope CredentialScopeSource
+
+	// stopNotify 授權停止的推送（組裝根注入）；nil＝只寫日誌與審計
+	stopNotify func(rule, message string)
+
+	// stopCollectors 逐台補跑期間收集主機身分停止檢視的收集器（成員 ID 為鍵）；只在補跑進行中有值
+	stopCollectors sync.Map
 
 	// executors 依通道取執行器（與改密執行器同一組工廠）。**可換**是為了讓狀態機的
 	// 測試不必真的連上任何目標機——選路與三態處理是本結構的責任，遠端協定不是
 	executors func(channel string) rotationExecutor
+	// crashAfterVerify 測試掛點：人工承接的單次驗證成功之後、就位提交之前呼叫，
+	// 回錯誤即原樣返回（模擬行程在此點結束：不寫任何結果）
+	crashAfterVerify func() error
 
 	// keyApplier 金鑰型別的遠端三段式（加新 → 驗新 → 刪舊）。可換的理由同 executors：
 	// 三段式需要一條跨越「動遠端」與「驗證」的已認證 SFTP 連線，表達不進 executors 介面
 	keyApplier sshKeyApplier
+
+	// verifyPrecheckHook 測試用：補跑驗證（含人工承接的成員驗證）第一道預檢通過之後、取回目標描述之前呼叫
+	verifyPrecheckHook func()
+
+	// confirmedCommitHook 測試用：人工承接的就位交易內、消耗承接紀錄之後、提交之前呼叫，回錯誤即回滾
+	confirmedCommitHook func(tx *gorm.DB) error
+
+	// claimHook 測試用：成員派送領取的同步點（stage 見 claimStage*）。tx 只在交易內的階段非 nil；
+	// 交易外的階段可以等待別的交易，交易內的階段不得等待被本交易擋住的交易
+	claimHook func(stage string, tx *gorm.DB, memberID uint)
 }
 
-// sshKeyApplier 金鑰三段式的遠端段簽名（見 applySSHKeyOnTarget）。
+// 成員派送領取的測試同步點。
+const (
+	// claimStageBeforeTx 判定短交易開始之前（交易外）
+	claimStageBeforeTx = "before_claim_tx"
+	// claimStageClaimed 交易內、領取已寫入、提交之前
+	claimStageClaimed = "claim_written"
+	// claimStageCommitted 領取已提交、任何遠端 I/O 之前（交易外）
+	claimStageCommitted = "claim_committed"
+)
+
+// WithScopeSource 注入範圍化投影來源（組裝根）：發起輪替時以它算範圍外集合並要求影響確認。
+func (s *CredentialRotationService) WithScopeSource(src CredentialScopeSource) *CredentialRotationService {
+	s.scope = src
+	return s
+}
+
+// WithSystemAlertSink 注入交易內系統告警落地面（組裝根）。
+func (s *CredentialRotationService) WithSystemAlertSink(sink port.SystemAlertSink) *CredentialRotationService {
+	s.alerts = sink
+	return s
+}
+
+// sshKeyApplier 金鑰三段式的遠端段簽名（見 applySSHKeyOnTargetChecked）；recheck 在首次寫入與刪舊鑰之前各重驗一次。
 type sshKeyApplier func(ctx context.Context, exec rotationExecutor, rt rotationTarget,
 	tgt changeSecretTarget, oldPassword, oldPrivateKey, newPrivate []byte, newLine, previousLine,
-	keyStrategy string, onDelivered func()) error
+	keyStrategy string, onDelivered func() error, recheck func(stage string) string) error
 
 // NewCredentialRotationService 建立輪替服務。
 //
@@ -148,58 +197,65 @@ type sshKeyApplier func(ctx context.Context, exec rotationExecutor, rt rotationT
 func NewCredentialRotationService(db *gorm.DB, assets *AssetService,
 	candidates *ChangeSecretCandidateService, hostKeys *HostKeyService,
 	codec crypto.ColumnCodec, auditTx port.TxSink,
-	authz assetViewPermissionChecker) *CredentialRotationService {
+	authz CredentialManagementAuthorizer) *CredentialRotationService {
 
 	return &CredentialRotationService{
 		db: db, assets: assets, candidates: candidates, hostKeys: hostKeys,
-		crypto: codec, auditTx: auditTx, authz: authz,
+		crypto: codec, auditTx: auditTx, mgmt: credentialManagementGate{authorizer: authz},
 		executors:  rotationExecutorFor,
-		keyApplier: applySSHKeyOnTarget,
+		keyApplier: applySSHKeyOnTargetChecked,
 	}
 }
 
-// assertAssetPermission 單一受影響資產的權限檢核。
-//
-// 判準與掛載面同一條（`credential_binding.go` 的同名方法）：以資產權限階梯的上限
-// 判定——能連上那台機器的人才談得上改掉它的登入秘密。回的是與「憑證不存在」
-// 共用的收斂哨兵，分流即製造存在性探測器。
-//
-// 判定器缺席時拒絕而非放行：無從判定「這個人管不管得到這幾台」時改掉遠端秘密，
-// 與判定為無權在後果上相同。
-func (s *CredentialRotationService) assertAssetPermission(ctx context.Context, assetID uint) error {
-	if s.authz == nil {
-		return ErrCredentialAuthzUnavailable
-	}
-	operatorID, _ := model.UserFromContext(ctx)
-	allowed, err := s.authz.CheckPermission(ctx, operatorID, assetID, model.PermissionConnect)
-	if err != nil {
-		return fmt.Errorf("判定資產權限失敗: %w", err)
-	}
-	if !allowed {
-		return ErrCredentialBindForbidden
-	}
-	return nil
+// requireManagement 以語義能力判管理授權；判定器缺席拒絕而非放行：無從判定「這個人
+// 管不管得到」時改掉遠端秘密，與判定為無權在後果上相同。回的是與「憑證不存在」共用
+// 收斂的哨兵，分流即製造存在性探測器。
+func (s *CredentialRotationService) requireManagement(ctx context.Context, db *gorm.DB, op CredentialOperation,
+	caps []string, credentialIDs, assetIDs, accountIDs []uint) error {
+
+	_, err := s.requireManagementDecision(ctx, db, op, caps, credentialIDs, assetIDs, accountIDs)
+	return err
 }
 
-// assertBoundAssetsPermission 逐台驗操作者對該憑證全部掛載資產的權限。
+// requireManagementDecision 同 requireManagement，另回判定當下的權限世代版本
+// （起始輪替時寫進授權脈絡）。
+func (s *CredentialRotationService) requireManagementDecision(ctx context.Context, db *gorm.DB, op CredentialOperation,
+	caps []string, credentialIDs, assetIDs, accountIDs []uint) (CredentialManagementDecision, error) {
+
+	return s.mgmt.require(ctx, db, CredentialManagementRequest{
+		Operation: op, Capabilities: caps, CredentialIDs: credentialIDs,
+		AssetIDs: assetIDs, AccountIDs: accountIDs,
+	})
+}
+
+// requireBoundManagement 整組動作：能力加上同交易讀出的全部掛載影響集合。
 //
 // 於呼叫端的交易與憑證列鎖之內讀取掛載集合，避免「驗過之後又被掛上一台」。
-func (s *CredentialRotationService) assertBoundAssetsPermission(ctx context.Context,
-	db *gorm.DB, credentialID uint) error {
+func (s *CredentialRotationService) requireBoundManagement(ctx context.Context, db *gorm.DB,
+	op CredentialOperation, credentialID uint, caps ...string) error {
 
-	if s.authz == nil {
-		return ErrCredentialAuthzUnavailable
-	}
+	_, err := s.requireBoundManagementDecision(ctx, db, op, credentialID, caps...)
+	return err
+}
+
+func (s *CredentialRotationService) requireBoundManagementDecision(ctx context.Context, db *gorm.DB,
+	op CredentialOperation, credentialID uint, caps ...string) (CredentialManagementDecision, error) {
+
 	assetIDs, err := credentialBoundAssetIDs(db, credentialID)
 	if err != nil {
-		return err
+		return CredentialManagementDecision{}, err
 	}
-	for _, assetID := range assetIDs {
-		if err := s.assertAssetPermission(ctx, assetID); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.mgmt.require(ctx, db, CredentialManagementRequest{
+		Operation: op, Capabilities: caps, CredentialIDs: []uint{credentialID}, MountedAssetIDs: assetIDs,
+	})
+}
+
+// RequireRotationTarget 遠端輪替入口（整組起始、逐台補跑、放棄）的憑證層判定：只帶憑證、不帶資產，
+// 先於輪替歸屬、成員、輪次狀態與掛載的任何查詢。範圍化主體眼中範圍外與不存在同為範圍拒絕；
+// 全域主體只驗能力，存在與否由其後的查詢回答。
+func (s *CredentialRotationService) RequireRotationTarget(ctx context.Context, credentialID uint) error {
+	return s.requireManagement(ctx, nil, CredOpRotate, []string{CredCapRotate},
+		[]uint{credentialID}, nil, nil)
 }
 
 // Rotation 取一筆輪替並確認它屬於該憑證。
@@ -226,10 +282,26 @@ func (s *CredentialRotationService) Rotation(credentialID, rotationID uint) (*mo
 // 新秘密若只在記憶體即永久遺失，而遠端可能已經換過去了。
 func (s *CredentialRotationService) Start(ctx context.Context, credentialID uint,
 	req StartRotationRequest) (*model.CredentialRotation, error) {
+	return s.startGroupRotation(ctx, credentialID, req, nil)
+}
 
+// startGroupRotation 整組起始本體。bound 為 nil＝一般入口（範圍外掛載須影響確認）；
+// 非 nil＝計畫路徑（以該版掛載上界比對取代確認，見 enforcePlanMountBound）。
+func (s *CredentialRotationService) startGroupRotation(ctx context.Context, credentialID uint,
+	req StartRotationRequest, bound *PlanMountBound) (*model.CredentialRotation, error) {
+
+	// 憑證層判定先於任何狀態檢查：範圍外憑證的進行中、未收斂與零掛載不得與不存在分流
+	// （交易內仍以鎖後讀出的全部掛載再判一次，那一次才是寫入前的權威判定）
+	if err := s.RequireRotationTarget(ctx, credentialID); err != nil {
+		return nil, err
+	}
 	userID, operator := model.UserFromContext(ctx)
 	var out *model.CredentialRotation
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 第一個動作取拓撲序列化鎖，其後才取憑證列鎖（與宣告新秘密同一次序）
+		if err := s.lockTopologyTx(tx); err != nil {
+			return err
+		}
 		cred, err := lockCredentialRow(tx, credentialID)
 		if err != nil {
 			return err
@@ -247,8 +319,20 @@ func (s *CredentialRotationService) Start(ctx context.Context, credentialID uint
 		if len(bindings) == 0 {
 			return ErrCredentialRotationNoBinding
 		}
-		// 逐台驗權在列鎖與掛載讀取之後：本輪要動的就是這一組主機
-		if err := s.assertBoundAssetsPermission(ctx, tx, cred.ID); err != nil {
+		// 驗權在列鎖與掛載讀取之後：本輪要動的就是這一組主機
+		decision, err := s.requireBoundManagementDecision(ctx, tx, CredOpRotate, cred.ID, CredCapRotate)
+		if err != nil {
+			return err
+		}
+		// 範圍外掛載須先確認：在建立任何版本與輪替列之前重算並消耗。計畫路徑的確認已在儲存時消費，
+		// 改以該版掛載上界比對（同一份 bindings，比對與成員快照之間沒有空隙）
+		var impact *impactOutcome
+		if bound == nil {
+			if impact, err = (impactGuard{scope: s.scope}).enforce(ctx, tx, cred.ID,
+				model.CredentialImpactOpRotate, req.ImpactConfirmationID); err != nil {
+				return err
+			}
+		} else if err := s.enforcePlanMountBound(ctx, tx, bindings, bound); err != nil {
 			return err
 		}
 
@@ -269,7 +353,7 @@ func (s *CredentialRotationService) Start(ctx context.Context, credentialID uint
 			PasswordExcludeAmbiguous: req.Policy.ExcludeAmbiguous,
 			StartedAt:                time.Now(),
 		}
-		if err := createRotationRow(tx, rot); err != nil {
+		if err := createRotationRow(s.mgmt, tx, rot, decision, []string{CredCapRotate}, nil); err != nil {
 			return err
 		}
 		if err := snapshotRotationMembers(tx, rot, bindings, &version.ID); err != nil {
@@ -289,12 +373,22 @@ func (s *CredentialRotationService) Start(ctx context.Context, credentialID uint
 			Operation:    credentialOpRotate,
 			Scope:        cred.Scope,
 			Fields:       []string{"pending_version_id", "active_rotation_id"},
+			Extra:        impact.auditDetails(),
 		}, userID, operator)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// lockTopologyTx 輪替起始交易的第一個動作：取與改歸、節點刪除承接相同的拓撲序列化鎖。
+// 未組裝資產服務或其拓撲 port 時回 ErrTopologyPermissionPortMissing（fail-close，整筆不建立）。
+func (s *CredentialRotationService) lockTopologyTx(tx *gorm.DB) error {
+	if s.assets == nil {
+		return ErrTopologyPermissionPortMissing
+	}
+	return s.assets.lockTopologyTx(tx)
 }
 
 // buildRotationVersion 產生本輪的新秘密並落成一筆待生效版本。
@@ -354,7 +448,8 @@ func normalizeRotationPolicy(p PasswordPolicy) PasswordPolicy {
 // 兩欄帶 default:true：gorm 對零值改用 DB 預設值並回填到 rot，於是「不含符號」的
 // 一輪會被記成含符號（密碼本身依請求策略產生，錯的是紀錄）。整組與拆分兩個起始
 // 入口共用本函式，須在起始交易內呼叫
-func createRotationRow(tx *gorm.DB, rot *model.CredentialRotation) error {
+func createRotationRow(gate credentialManagementGate, tx *gorm.DB, rot *model.CredentialRotation, decision CredentialManagementDecision,
+	caps []string, targetBound []uint) error {
 	wanted := map[string]bool{
 		"password_include_symbol":    rot.PasswordIncludeSymbol,
 		"password_exclude_ambiguous": rot.PasswordExcludeAmbiguous,
@@ -367,6 +462,24 @@ func createRotationRow(tx *gorm.DB, rot *model.CredentialRotation) error {
 	}
 	rot.PasswordIncludeSymbol = wanted["password_include_symbol"]
 	rot.PasswordExcludeAmbiguous = wanted["password_exclude_ambiguous"]
+	// 發起者存成不可變授權脈絡：背景補跑與重試沿用這個發起者並以其當下能力重驗。
+	// 沒有發起者（程式內部呼叫）不補脈絡，補跑時會因缺脈絡而停止
+	if rot.RequestedBy == 0 {
+		return nil
+	}
+	auth, err := insertJobAuthorization(gate, tx, jobAuthInput{
+		kind: model.JobAuthSourceRotation, sourceID: rot.ID, revision: 1,
+		actorID: rot.RequestedBy, actorName: rot.RequestedByName, via: model.JobAuthViaRequest,
+		authzVersion: decision.AuthzVersion, sources: decision.Sources, capabilities: caps, targetBound: targetBound,
+	})
+	if err != nil {
+		return err
+	}
+	rot.AuthorizationID = &auth.ID
+	if err := tx.Model(&model.CredentialRotation{}).Where("id = ?", rot.ID).
+		Update("authorization_id", auth.ID).Error; err != nil {
+		return fmt.Errorf("記錄輪替授權脈絡失敗: %w", err)
+	}
 	return nil
 }
 
@@ -395,7 +508,10 @@ func snapshotRotationMembers(tx *gorm.DB, rot *model.CredentialRotation,
 			FromVersionID:   binding.EffectiveVersionID,
 			TargetVersionID: targetVersionID,
 			State:           model.CredentialMemberQueued,
+			// 新版建立：尚未完成任何金鑰交換，與升級前的 legacy 可區分
+			HostKeyBinding: model.HostKeyBindingPending,
 		}
+		member.TargetFingerprint = targetFingerprintOf(&asset, &binding)
 		if err := tx.Create(member).Error; err != nil {
 			return fmt.Errorf("建立輪替成員失敗: %w", err)
 		}
@@ -647,6 +763,10 @@ func (s *CredentialRotationService) Abandon(ctx context.Context, rotationID uint
 		if err != nil {
 			return err
 		}
+		// 放棄是遠端輪替的一環：與發起輪替同一能力與影響集合（憑證及全部掛載），寫入前判定
+		if err := s.requireBoundManagement(ctx, tx, CredOpRotate, cred.ID, CredCapRotate); err != nil {
+			return err
+		}
 		// **取鎖後重讀，且要確認本輪仍是憑證進行中的那一輪**：等鎖期間本輪可能
 		// 已經收斂完成，而下一輪已經發起。以取鎖前的快照續走，清掉的會是別人
 		// 那一輪的進行中識別——那一輪從此沒有任何路徑推得動，畫面上卻只看到
@@ -685,9 +805,13 @@ func (s *CredentialRotationService) Abandon(ctx context.Context, rotationID uint
 				touched = true
 				continue
 			}
-			if err := transitionMember(tx, &member, model.CredentialMemberAbandoned,
-				memberTransition{}); err != nil {
-				return err
+			// 已收束的成員（例如授權重驗停止的）維持原狀：同態轉移不在轉移表內，
+			// 硬轉會讓整個放棄失敗
+			if member.State != model.CredentialMemberAbandoned {
+				if err := transitionMember(tx, &member, model.CredentialMemberAbandoned,
+					memberTransition{}); err != nil {
+					return err
+				}
 			}
 			// 收束的定義就是「從未動過遠端」，故它的候選必然不在任何主機上生效。
 			// 留著它會靜默擋住這個掛載後續全部的改密請求（候選存在即記為略過），
@@ -761,6 +885,196 @@ func (s *CredentialRotationService) ActiveRotationFor(credentialID uint) (*model
 	return loadRotation(s.db, *cred.ActiveRotationID)
 }
 
+// UnsettledRotationID 憑證「已放棄但仍有未收束成員」的那一輪（無則 0）。
+//
+// 放棄之後憑證的進行中識別即清空，只看它的呈現面就再也找不到那一輪，而那正是
+// 「之後逐台補跑」唯一的入口。有進行中的輪替時回 0（呈現面以進行中那一輪為準）。
+func (s *CredentialRotationService) UnsettledRotationID(credentialID uint) (uint, error) {
+	cred, err := loadCredential(s.db, credentialID)
+	if err != nil {
+		return 0, err
+	}
+	return unsettledRotationID(s.db, cred)
+}
+
+// unsettledRotationScan 往回看的已放棄輪替數上限（有界；同一憑證累積的放棄輪數很少）。
+const unsettledRotationScan = 20
+
+// unsettledRotationID 見 UnsettledRotationID。
+func unsettledRotationID(db *gorm.DB, cred *model.Credential) (uint, error) {
+	if cred == nil || (cred.ActiveRotationID != nil && *cred.ActiveRotationID != 0) {
+		return 0, nil
+	}
+	// 輪替表不存在＝這個裝配裡沒有輪替引擎，不可能有放棄的輪替（同 rotationMemberForAccount）
+	if db.Migrator() != nil && !db.Migrator().HasTable(&model.CredentialRotation{}) {
+		return 0, nil
+	}
+	var rots []model.CredentialRotation
+	if err := db.Where("credential_id = ? AND status = ?", cred.ID, model.CredentialRotationAbandoned).
+		Order("id DESC").Limit(unsettledRotationScan).Find(&rots).Error; err != nil {
+		return 0, fmt.Errorf("查詢已放棄的輪替失敗: %w", err)
+	}
+	for i := range rots {
+		open, err := rotationHasUnsettledMembers(db, cred, &rots[i])
+		if err != nil {
+			return 0, err
+		}
+		if open {
+			return rots[i].ID, nil
+		}
+	}
+	return 0, nil
+}
+
+// rotationHasUnsettledMembers 已放棄的一輪是否還有可逐台補跑至收斂的成員。
+//
+// 只算掛載仍在、仍引用本憑證的成員（卸下的那一台已不由這組秘密登入），且排除改密中
+// （那一格只在推進期間存在，殘留者由啟動時的收束轉為已送出未驗證）。
+//   - 整組：本輪的目標仍須是憑證的待生效版本（被宣告的密文取代後補跑一律被拒），
+//     此時就位以外的每一台都要補跑才收斂，含放棄時從未動過遠端而收束的成員。
+//   - 拆分：每台的新秘密只存在它自己的候選裡，故已收束的成員看候選還在不在：放棄時
+//     從未動過遠端的成員連候選都清掉了，補跑無物可推，不算；動過遠端之後才被停成收束的
+//     （例如放棄後發起者失權時有人按了補跑）候選仍在，那台可能已在用它，照算。
+func rotationHasUnsettledMembers(db *gorm.DB, cred *model.Credential, rot *model.CredentialRotation) (bool, error) {
+	members, err := surfacedAfterAbandon(db, cred, rot)
+	return len(members) > 0, err
+}
+
+// surfacedAfterAbandon 已放棄的一輪裡，此刻給逐台補跑的成員（判準見 rotationHasUnsettledMembers）。
+func surfacedAfterAbandon(db *gorm.DB, cred *model.Credential, rot *model.CredentialRotation) ([]model.CredentialRotationMember, error) {
+	if rot.Mode == model.CredentialRotationModeGroup {
+		if rot.TargetVersionID == nil || cred.PendingVersionID == nil ||
+			*rot.TargetVersionID == 0 || *cred.PendingVersionID != *rot.TargetVersionID {
+			return nil, nil
+		}
+	}
+	members, err := rotationMembers(db, rot.ID)
+	if err != nil {
+		return nil, err
+	}
+	var out []model.CredentialRotationMember
+	for i := range members {
+		kept, kerr := accountHasCandidate(db, members[i].AccountID)
+		if kerr != nil {
+			return nil, kerr
+		}
+		if !memberRetryableAfterAbandon(rot.Mode, members[i].State, kept) {
+			continue
+		}
+		live, lerr := memberBindingIsLive(db, cred.ID, &members[i])
+		if lerr != nil {
+			return nil, lerr
+		}
+		if live {
+			out = append(out, members[i])
+		}
+	}
+	return out, nil
+}
+
+// accountHasCandidate 該掛載此刻是否還有候選列。
+func accountHasCandidate(db *gorm.DB, accountID uint) (bool, error) {
+	var count int64
+	if err := db.Model(&model.ChangeSecretCandidate{}).Where("account_id = ?", accountID).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("查詢掛載的候選失敗: %w", err)
+	}
+	return count > 0, nil
+}
+
+// memberRetryableAfterAbandon 已放棄的一輪裡，這個狀態的成員是否給逐台補跑（見上）。
+// candidateKept＝該掛載的候選仍在，只影響拆分模式已收束的成員。
+func memberRetryableAfterAbandon(mode, state string, candidateKept bool) bool {
+	switch state {
+	case model.CredentialMemberApplied, model.CredentialMemberChanging:
+		return false
+	case model.CredentialMemberAbandoned:
+		return mode == model.CredentialRotationModeGroup || candidateKept
+	}
+	return true
+}
+
+// CandidateKeptMembers 已放棄、仍待逐台補跑的一輪裡，候選仍在的成員（成員識別集合）。
+//
+// 呈現面據此決定拆分模式已收束的成員給不給補跑（判準見 rotationHasUnsettledMembers）。
+func (s *CredentialRotationService) CandidateKeptMembers(rotationID uint) (map[uint]bool, error) {
+	members, err := rotationMembers(s.db, rotationID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[uint]bool{}
+	for i := range members {
+		kept, kerr := accountHasCandidate(s.db, members[i].AccountID)
+		if kerr != nil {
+			return nil, kerr
+		}
+		if kept {
+			out[members[i].ID] = true
+		}
+	}
+	return out, nil
+}
+
+// abandonedRotationHoldsCandidate 這筆候選是否是某個已放棄、此刻仍在憑證詳情給逐台補跑的
+// 輪替成員的候選。
+//
+// 放棄後掛載對計劃與批次重新開放，之後建立的候選屬於那些路徑，不能被誤認：整組的候選帶本輪
+// 的目標版本（版本識別全域唯一），拆分的候選建立於本輪起始、早於放棄。
+func abandonedRotationHoldsCandidate(db *gorm.DB, cand *model.ChangeSecretCandidate) (bool, error) {
+	if cand == nil || cand.AccountID == 0 {
+		return false, nil
+	}
+	if db.Migrator() != nil && !db.Migrator().HasTable(&model.CredentialRotationMember{}) {
+		return false, nil
+	}
+	var members []model.CredentialRotationMember
+	err := db.Model(&model.CredentialRotationMember{}).
+		Joins("JOIN credential_rotations ON credential_rotations.id = credential_rotation_members.rotation_id").
+		Where("credential_rotation_members.account_id = ?", cand.AccountID).
+		Where("credential_rotation_members.state <> ?", model.CredentialMemberApplied).
+		Where("credential_rotations.status = ?", model.CredentialRotationAbandoned).
+		Where("credential_rotations.credential_id = ?", cand.CredentialID).
+		Order("credential_rotation_members.id DESC").Limit(unsettledRotationScan).
+		Find(&members).Error
+	if err != nil {
+		return false, fmt.Errorf("查詢掛載所屬的已放棄輪替失敗: %w", err)
+	}
+	for i := range members {
+		m := &members[i]
+		rot, rerr := loadRotation(db, m.RotationID)
+		if rerr != nil {
+			return false, rerr
+		}
+		if !rotationOwnsCandidate(rot, m, cand) {
+			continue
+		}
+		cred, cerr := loadCredential(db, rot.CredentialID)
+		if cerr != nil {
+			return false, cerr
+		}
+		surfaced, serr := surfacedAfterAbandon(db, cred, rot)
+		if serr != nil {
+			return false, serr
+		}
+		for j := range surfaced {
+			if surfaced[j].ID == m.ID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// rotationOwnsCandidate 候選是否由這一輪為這個成員建立（見 abandonedRotationHoldsCandidate）。
+func rotationOwnsCandidate(rot *model.CredentialRotation, member *model.CredentialRotationMember,
+	cand *model.ChangeSecretCandidate) bool {
+
+	if rot.Mode == model.CredentialRotationModeSplit {
+		return cand.TargetVersionID == 0 && rot.FinishedAt != nil && !cand.CreatedAt.After(*rot.FinishedAt)
+	}
+	return cand.TargetVersionID != 0 && member.TargetVersionID != nil && *member.TargetVersionID == cand.TargetVersionID
+}
+
 // Members 取某輪替的全部成員（供呈現面與逐台補跑挑選目標）。
 func (s *CredentialRotationService) Members(rotationID uint) ([]model.CredentialRotationMember, error) {
 	return rotationMembers(s.db, rotationID)
@@ -777,6 +1091,7 @@ type DueRotationMember struct {
 //
 // applied 是本輪終態；queued 由發起端的推進負責；abandoned／terminal_failed 要由
 // 操作者顯式補跑（自動重排會讓一台確定改不動的機器被無限期地反覆嘗試）。
+// 候選重試排程同樣不碰後兩者，見 AdvanceMemberInBackground。
 var memberPendingStates = []string{
 	model.CredentialMemberRetryWait,
 	model.CredentialMemberChangedUnverified,

@@ -32,6 +32,8 @@ vi.mock('@/api/authorizations', () => ({
   batchCreateAuthorizations: vi.fn(),
   getEffectiveAssets: vi.fn().mockResolvedValue({ assets: [] }),
   getEffectiveUsers: vi.fn().mockResolvedValue({ users: [] }),
+  getAuthorizationSubjectOptions: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  getAuthorizationTargetOptions: vi.fn().mockResolvedValue({ data: [], total: 0 }),
 }))
 
 vi.mock('@/api/accessRequests', () => ({

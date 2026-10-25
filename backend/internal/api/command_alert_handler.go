@@ -213,7 +213,7 @@ func (h *CommandAlertHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 	alerts := r.Group("/command-alerts")
 	alerts.Use(middleware.AuthMiddleware(authService))
 
-	alerts.GET("", middleware.RequirePermission(middleware.PermAuditView), h.List)
+	alerts.GET("", middleware.EnforceRegistry(), h.List)
 	// 審閱處置屬告警管理，掛 alert:manage（auditor/admin 有；user 無）
-	alerts.POST("/:id/review", middleware.RequirePermission(middleware.PermAlertManage), h.Review)
+	alerts.POST("/:id/review", middleware.EnforceRegistry(), h.Review)
 }

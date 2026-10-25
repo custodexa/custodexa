@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -632,7 +633,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		router := setupTestRouter()
 		router.POST("/sessions/:id/terminate", func(c *gin.Context) {
 			// 模擬認證中間件設定 role
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Terminate(c)
 		})
 
@@ -655,7 +656,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		handler := NewSessionHandler(mockSessionService)
 		router := setupTestRouter()
 		router.POST("/sessions/:id/terminate", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Terminate(c)
 		})
 
@@ -679,7 +680,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		handler := NewSessionHandler(mockSessionService)
 		router := setupTestRouter()
 		router.POST("/sessions/:id/terminate", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Terminate(c)
 		})
 
@@ -705,7 +706,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		handler := NewSessionHandler(mockSessionService)
 		router := setupTestRouter()
 		router.POST("/sessions/:id/terminate", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Terminate(c)
 		})
 
@@ -748,7 +749,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		handler := NewSessionHandler(mockSessionService)
 		router := setupTestRouter()
 		router.POST("/sessions/:id/terminate", func(c *gin.Context) {
-			c.Set("role", "user")
+			middleware.SetPrincipal(c, legacyPrincipal("user"))
 			handler.Terminate(c)
 		})
 
@@ -761,7 +762,8 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Equal(t, "AUTH_SESSION_TERMINATE_ADMIN_ONLY", response["code"])
+		assert.Equal(t, "AUTH_PERMISSION_DENIED", response["code"])
+		assert.Len(t, response, 2, "能力拒絕本文只有 code、error")
 	})
 
 	t.Run("Service 層錯誤", func(t *testing.T) {
@@ -773,7 +775,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 		handler := NewSessionHandler(mockSessionService)
 		router := setupTestRouter()
 		router.POST("/sessions/:id/terminate", func(c *gin.Context) {
-			c.Set("role", "admin")
+			middleware.SetPrincipal(c, legacyPrincipal("admin"))
 			handler.Terminate(c)
 		})
 

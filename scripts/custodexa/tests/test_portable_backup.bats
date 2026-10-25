@@ -516,6 +516,7 @@ count.sessions=42
 count.audit_logs=1234
 migration=20260816_schema_baseline
 migration=20260901_add_x
+authz.model=legacy
 fp.jwt=$(fp "$BK_JWT")
 fp.kek=5a5a5a5a5a5a5a5a
 fp.export_signing=$(fp AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA)

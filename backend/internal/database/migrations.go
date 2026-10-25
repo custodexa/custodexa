@@ -227,6 +227,156 @@ var migrations = []Migration{
 		Up:      applyDailyReviewSignoff,
 		Down:    rollbackDailyReviewSignoff,
 	},
+	{
+		// 權限模型：內建範本識別、指派範圍種類、
+		// 群組指派、節點範圍、權限狀態。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261016_authz_permission_model",
+		Name:    "authz_permission_model",
+		Up:      applyAuthzPermissionModel,
+		Down:    rollbackAuthzPermissionModel,
+	},
+	{
+		// 權限附證與恢復世代（權限模型調和與還原）：權限狀態事件表、檢查點附證欄、
+		// 持久恢復世代與票證簽發世代欄。只加結構、不回填；**不提供 Down**。
+		Version: "20261017_permission_state_attestation",
+		Name:    "permission_state_attestation",
+		Up:      applyPermissionStateAttestation,
+		Down:    rollbackPermissionStateAttestation,
+	},
+	{
+		// 權限狀態事件的逐列完整性驗證碼（與審計列同一組完整性密鑰）。只加兩欄、不回填；
+		// 既有列保持未蓋章，對帳時視為不可信並告警。**不提供 Down**。
+		Version: "20261017_permission_state_event_integrity",
+		Name:    "permission_state_event_integrity",
+		Up:      applyPermissionEventIntegrity,
+		Down:    rollbackPermissionEventIntegrity,
+	},
+	{
+		// 角色定義：定義版本、起手來源、自訂權限集合、
+		// 兩個鎖定管理範本。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261017_role_definitions",
+		Name:    "role_definitions",
+		Up:      applyRoleDefinitions,
+		Down:    rollbackRoleDefinitions,
+	},
+	{
+		// 系統安全告警：來源類別 system_security、明細、持久投遞佇列與分級覆寫三張表。
+		// 只加結構、不回填；**不提供 Down**（證據不得被回滾刪除）。
+		Version: "20261018_system_security_alerts",
+		Name:    "system_security_alerts",
+		Up:      applySystemSecurityAlerts,
+		Down:    rollbackSystemSecurityAlerts,
+	},
+	{
+		// 主機指紋記錄的撥號位址：asset_host_keys 加 host、port、reset_pending 與
+		// (host, port) 索引，並回填既有列（含已軟刪資產）。**不提供 Down**：回退只走升級前備份。
+		Version: "20261019_asset_host_key_address",
+		Name:    "asset_host_key_address",
+		Up:      applyHostKeyAddress,
+		Down:    rollbackHostKeyAddress,
+	},
+	{
+		// 逐（帳號，通道）最近已知群組觀測時間（外部角色映射用）：
+		// 有界重新驗證判定未知觀測是否超時的依據。新增一張表並由既有快照回填該通道；
+		// 回填可重入。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261020_mapping_observation_times",
+		Name:    "mapping_observation_times",
+		Up:      applyMappingObservationTimes,
+		Down:    rollbackMappingObservationTimes,
+	},
+	{
+		// 檢查點第四版載荷：權限附證改由檢查點自己的簽章涵蓋。audit_checkpoints 加起點旗標欄、
+		// 卸下獨立附證簽章欄並加一條附證痕跡部分索引；修剪錨加載荷版本與累計權限事實三欄。
+		// 只改結構、無資料步驟；**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261018_checkpoint_v4_attestation",
+		Name:    "checkpoint_v4_attestation",
+		Up:      applyCheckpointV4Attestation,
+		Down:    rollbackCheckpointV4Attestation,
+	},
+	{
+		// 憑證背景工作授權：不可變授權脈絡表、計畫／批次／輪替／候選的授權引用、
+		// 輪替成員的 dispatch claim 欄；資料步驟對升級前已啟用的排程計畫回填發起者，
+		// 完全查不到可歸屬者的才暫停。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261022_credential_job_authorization",
+		Name:    "credential_job_authorization",
+		Up:      applyCredentialJobAuthorization,
+		Down:    rollbackCredentialJobAuthorization,
+	},
+	{
+		// 失權後有限驗證的告警去重：候選與輪替成員各加 recovery_alerted_at。
+		// 只加欄、不回填；**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261023_credential_recovery_alert",
+		Name:    "credential_recovery_alert",
+		Up:      applyCredentialRecoveryAlert,
+		Down:    rollbackCredentialRecoveryAlert,
+	},
+	{
+		// 系統安全告警投遞識別：system_alert_outbox 加 delivery_key 與唯一索引，既有列各回填一個隨機值。
+		// 送給收端的投遞識別改用它，還原備份後不會與還原前發出的識別重複。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261024_system_alert_delivery_key",
+		Name:    "system_alert_delivery_key",
+		Up:      applySystemAlertDeliveryKey,
+		Down:    rollbackSystemAlertDeliveryKey,
+	},
+	{
+		// 主機金鑰不符觀察紀錄：新表 asset_host_key_mismatches 與（資產、出示指紋）唯一索引。
+		// 不回填、不動 asset_host_keys。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261025_host_key_mismatch",
+		Name:    "host_key_mismatch",
+		Up:      applyHostKeyMismatch,
+		Down:    rollbackHostKeyMismatch,
+	},
+	{
+		// 保留下限抬升紀錄：新表 security_policy_floor_raises。只建表、不回填；
+		// 保留值的抬升在啟動對帳內做。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261026_security_policy_floor_raises",
+		Name:    "security_policy_floor_raises",
+		Up:      applySecurityPolicyFloorRaises,
+		Down:    rollbackSecurityPolicyFloorRaises,
+	},
+	{
+		// 憑證主機身分：asset_host_keys 加主機信任世代；候選與輪替成員加綁定欄，成員另加派送標記；
+		// 新表 credential_host_identity_confirmations（無外鍵）。唯一的資料步驟是對 legacy 成員依既有
+		// 證據保守寫入派送標記，快照欄不回填。世代由應用程式推進，不建資料庫觸發器。
+		// **不提供 Down**：回退只走還原升級前備份。
+		Version: "20261027_credential_host_identity",
+		Name:    "credential_host_identity",
+		Up:      applyCredentialHostIdentity,
+		Down:    rollbackCredentialHostIdentity,
+	},
+	{
+		// 使用者版本說明關閉狀態：新表 user_release_guidance。只建表、不回填，缺列即尚未關閉。
+		// **不提供 Down**：回退只走還原升級前備份。
+		Version: "20261028_user_release_guidance",
+		Name:    "user_release_guidance",
+		Up:      applyUserReleaseGuidance,
+		Down:    rollbackUserReleaseGuidance,
+	},
+	{
+		// 憑證管理歸屬：credentials 加 owner_kind、owner_node_id 與複合索引；新表 credential_impact_confirmations。
+		// 資料步驟只填 owner_kind 為 NULL 的列（共用→global、專用→asset），套用後重算報告不一致即回滾；
+		// 報告以固定前綴寫日誌供試跑與正式升級比對。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261029_credential_ownership",
+		Name:    "credential_ownership",
+		Up:      applyCredentialOwnership,
+		Down:    rollbackCredentialOwnership,
+	},
+	{
+		// 改密範圍欄位：change_secret_batches 加共用憑證歸屬兩欄（既有列取 global）、
+		// credential_job_authorizations 加計畫掛載上界（既有列為空）。只加欄，不回填。**不提供 Down**。
+		Version: "20261031_change_secret_scope_columns",
+		Name:    "change_secret_scope_columns",
+		Up:      applyChangeSecretScopeColumns,
+		Down:    rollbackChangeSecretScopeColumns,
+	},
+	{
+		// 內建識別值域加入兩個範圍化管理範本（roles_builtin_key_check 重建）。只有 DDL，不種任何角色列
+		// （列由啟動資料步驟在權限附證來源注入後種入）。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261101_scoped_template_builtin_keys",
+		Name:    "scoped_template_builtin_keys",
+		Up:      applyScopedTemplateBuiltinKeys,
+		Down:    rollbackScopedTemplateBuiltinKeys,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -236,6 +386,16 @@ var migrations = []Migration{
 // 增量 migration 出現起即為「baseline＋增量」的串接，守衛只看 baseline 會讓
 // 增量表的漂移整張脫離射程。**不供執行**——執行面由 RunMigrations 依已套用
 // 集合分別跑，兩者串接執行會在全新庫上重複建表。回填語句不在此列（不是 schema）。
+// MigrationVersions 已登記的增量 migration 版本（依登記順序）。
+// 供測試與營運檢查核對「某項結構由哪個 migration 建立」，不執行任何 migration。
+func MigrationVersions() []string {
+	out := make([]string, len(migrations))
+	for i, m := range migrations {
+		out[i] = m.Version
+	}
+	return out
+}
+
 func schemaDDLStatements() []string {
 	out := append(baselineSchemaStatements(), auditExportJobsDDL()...)
 	out = append(out, evidenceOffsiteDDL()...)
@@ -263,7 +423,24 @@ func schemaDDLStatements() []string {
 	out = append(out, agentSessionTokenNameDDL()...)
 	out = append(out, notificationChannelMinSeverityDDL()...)
 	out = append(out, identityGroupMappingsDDL()...)
-	return append(out, dailyReviewSignoffDDL()...)
+	out = append(out, dailyReviewSignoffDDL()...)
+	out = append(out, authzPermissionModelDDL()...)
+	out = append(out, permissionStateAttestationDDL()...)
+	out = append(out, permissionEventIntegrityDDL()...)
+	out = append(out, roleDefinitionsDDL()...)
+	out = append(out, systemSecurityAlertsDDL()...)
+	out = append(out, hostKeyAddressDDL()...)
+	out = append(out, mappingObservationTimesDDL()...)
+	out = append(out, checkpointV4AttestationDDL()...)
+	out = append(out, credentialJobAuthorizationDDL()...)
+	out = append(out, credentialRecoveryAlertDDL()...)
+	out = append(out, systemAlertDeliveryKeyDDL()...)
+	out = append(out, hostKeyMismatchDDL()...)
+	out = append(out, securityPolicyFloorRaisesDDL()...)
+	out = append(out, credentialHostIdentityDDL()...)
+	out = append(out, userReleaseGuidanceDDL()...)
+	out = append(out, credentialOwnershipDDL()...)
+	return append(out, changeSecretScopeColumnsDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity
@@ -309,8 +486,15 @@ const LDAPSeedMarkerVersion = "20260804_ldap_env_seeded"
 // （營運文件明載；env 不再回灌）。
 const OffsiteSeedMarkerVersion = "20260825_offsite_env_seeded"
 
+// ApproverScopeKeyMarkerVersion 申請人型審核範圍管理鍵補鍵資料步驟的執行標記。
+//
+// 語義是「已完成評估」：補鍵只在升級後的第一次啟動執行一次，之後不再挑候選——否則管理員刻意撤掉某角色的
+// 申請人型管理鍵後，下次重啟會被補回。寫入端在 internal/modules/identity（GORM 建立，非原生 INSERT）。
+const ApproverScopeKeyMarkerVersion = "20261030_approver_scope_management_key"
+
 var runtimeMarkerVersions = []string{
 	LDAPSeedMarkerVersion,
+	ApproverScopeKeyMarkerVersion,
 	OffsiteSeedMarkerVersion,
 	// 憑證密文的欄位身分改綁與既有隱性共用關係的合併：兩者都需要 codec，
 	// 故走解封後佇列而非 versioned migration，以本標記記錄「已評估完畢」

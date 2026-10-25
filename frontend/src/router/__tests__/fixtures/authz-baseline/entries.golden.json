@@ -1,0 +1,3159 @@
+{
+ "count": 525,
+ "recaptures": [
+  "2026-10-15: initial capture",
+  "2026-10-19: append entries /notification-channels (notification channel entry)"
+ ],
+ "records": [
+  {
+   "subject": "S00",
+   "path": "/access-control",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/access-reviews",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/alerts",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/approvals",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/approver-scopes",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/assets",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/audit-logs",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/audit/agent-tasks",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/audit/exports",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/audit/workbench",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/authorizations",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/change-secret-batches",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/change-secret-plans",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/checkpoint-verification",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/commands",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/compliance-map",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/credentials",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/dashboard",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/identity-sources",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/key-management",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/my-agents",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/my-connections",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/my-requests",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/notification-channels",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/offsite-storage",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/policy-groups",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/roles",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/rotation-evidence",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/security-policies",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/sessions",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/transmission-inventory",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/user-groups",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/users",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
+   "path": "/workspace",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S01",
+   "path": "/access-control",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/alerts",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S01",
+   "path": "/approver-scopes",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/audit-logs",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/audit/agent-tasks",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/audit/exports",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/audit/workbench",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/authorizations",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/change-secret-batches",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/change-secret-plans",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/checkpoint-verification",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/commands",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/compliance-map",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/credentials",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/identity-sources",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/key-management",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S01",
+   "path": "/my-connections",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S01",
+   "path": "/my-requests",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S01",
+   "path": "/notification-channels",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/offsite-storage",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/policy-groups",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/roles",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/rotation-evidence",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/security-policies",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/sessions",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/transmission-inventory",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/user-groups",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/users",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/my-agents",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S02",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/alerts",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/audit-logs",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/audit/agent-tasks",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/audit/exports",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/audit/workbench",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/checkpoint-verification",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/commands",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/compliance-map",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/my-connections",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/my-requests",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/rotation-evidence",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/sessions",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S03",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/approvals",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S04",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/approvals",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S05",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/access-control",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/alerts",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/approvals",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/approver-scopes",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/audit-logs",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/audit/agent-tasks",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/audit/exports",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/audit/workbench",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/authorizations",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/change-secret-batches",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/change-secret-plans",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/checkpoint-verification",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/commands",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/compliance-map",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/credentials",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/identity-sources",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/key-management",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S06",
+   "path": "/my-connections",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S06",
+   "path": "/my-requests",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S06",
+   "path": "/notification-channels",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/offsite-storage",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/policy-groups",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/roles",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/rotation-evidence",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/security-policies",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/sessions",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/transmission-inventory",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/user-groups",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/users",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/alerts",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/audit-logs",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/audit/agent-tasks",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/audit/exports",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/audit/workbench",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/checkpoint-verification",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/commands",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/compliance-map",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/my-connections",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/my-requests",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/rotation-evidence",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/sessions",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S07",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/approvals",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S08",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S09",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S09",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S09",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S09",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S09",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S09",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S10",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S10",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S10",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S10",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S10",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S10",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S11",
+   "path": "/access-control",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/access-reviews",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/alerts",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/approvals",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/approver-scopes",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/assets",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/audit-logs",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/audit/agent-tasks",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/audit/exports",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/audit/workbench",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/authorizations",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/change-secret-batches",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/change-secret-plans",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/checkpoint-verification",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/commands",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/compliance-map",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/credentials",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/dashboard",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/identity-sources",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/key-management",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/my-agents",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/my-connections",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/my-requests",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/notification-channels",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/offsite-storage",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/policy-groups",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/roles",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/rotation-evidence",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/security-policies",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/sessions",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/transmission-inventory",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/user-groups",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/users",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/workspace",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/access-control",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/access-reviews",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/alerts",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/approvals",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/approver-scopes",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/assets",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/audit-logs",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/audit/agent-tasks",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/audit/exports",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/audit/workbench",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/authorizations",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/change-secret-batches",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/change-secret-plans",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/checkpoint-verification",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/commands",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/compliance-map",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/credentials",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/dashboard",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/identity-sources",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/key-management",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/my-agents",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/my-connections",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/my-requests",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/notification-channels",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/offsite-storage",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/policy-groups",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/roles",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/rotation-evidence",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/security-policies",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/sessions",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/transmission-inventory",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/user-groups",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/users",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/workspace",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S13",
+   "path": "/access-control",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/alerts",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S13",
+   "path": "/approver-scopes",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/audit-logs",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/audit/agent-tasks",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/audit/exports",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/audit/workbench",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/authorizations",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/change-secret-batches",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/change-secret-plans",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/checkpoint-verification",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/commands",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/compliance-map",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/credentials",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/identity-sources",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/key-management",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S13",
+   "path": "/my-connections",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S13",
+   "path": "/my-requests",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S13",
+   "path": "/notification-channels",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/offsite-storage",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/policy-groups",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/roles",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/rotation-evidence",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/security-policies",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/sessions",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/transmission-inventory",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/user-groups",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/users",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S14",
+   "path": "/access-control",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/alerts",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/approvals",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/approver-scopes",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/assets",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S14",
+   "path": "/audit-logs",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/audit/agent-tasks",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/audit/exports",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/audit/workbench",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/authorizations",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/change-secret-batches",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/change-secret-plans",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/checkpoint-verification",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/commands",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/compliance-map",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/credentials",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/dashboard",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S14",
+   "path": "/identity-sources",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/key-management",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/my-agents",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/my-connections",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S14",
+   "path": "/my-requests",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S14",
+   "path": "/notification-channels",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/offsite-storage",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/policy-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/profile",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S14",
+   "path": "/roles",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/rotation-evidence",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/security-policies",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/sessions",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/transmission-inventory",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/user-groups",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/users",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/workspace",
+   "menu_visible": true,
+   "guard_result": "allow"
+  }
+ ]
+}

@@ -12,6 +12,7 @@ import {
   getMFASetup,
   enableMFA,
   disableMFA,
+  getUsers,
 } from '../auth'
 import { adminDisableMFA } from '../user'
 
@@ -70,5 +71,22 @@ describe('auth API MFA methods', () => {
       url: '/users/42/mfa/disable',
       method: 'post',
     })
+  })
+})
+
+describe('getUsers pagination', () => {
+  it('fetches every page until total is reached', async () => {
+    const mk = (from, n) => Array.from({ length: n }, (_, i) => ({ id: from + i }))
+    requestMock.mockReset()
+    requestMock
+      .mockResolvedValueOnce({ data: mk(1, 20), total: 45 })
+      .mockResolvedValueOnce({ data: mk(21, 20), total: 45 })
+      .mockResolvedValueOnce({ data: mk(41, 5), total: 45 })
+    const res = await getUsers()
+    expect(res.data).toHaveLength(45)
+    expect(res.total).toBe(45)
+    expect(requestMock).toHaveBeenCalledTimes(3)
+    expect(requestMock.mock.calls.map((c) => c[0].params.page)).toEqual([1, 2, 3])
+    expect(requestMock.mock.calls[0][0].params.page_size).toBeGreaterThan(0)
   })
 })

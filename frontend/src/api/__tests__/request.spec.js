@@ -66,6 +66,10 @@ describe('response interceptor', () => {
   it('clears credentials and redirects to /login on 401', async () => {
     setAccessToken('abc123')
     localStorage.setItem('user', '{"username":"admin"}')
+    // 續期被伺服器明確拒絕（有回應）才是認證結論；沒有回應屬傳輸失敗，不清會話
+    const postSpy = vi.spyOn(axios, 'post').mockRejectedValue({
+      response: { status: 401, data: { code: 'AUTH_TOKEN_INVALID' } },
+    })
 
     await expect(
       responseHandler.rejected(makeError(401, { code: 'AUTH_TOKEN_INVALID' }))
@@ -74,6 +78,7 @@ describe('response interceptor', () => {
     expect(getAccessToken()).toBe('')
     expect(localStorage.getItem('user')).toBeNull()
     expect(window.location.href).toContain('/login')
+    postSpy.mockRestore()
   })
 
   it('maps 400 to server error message', async () => {

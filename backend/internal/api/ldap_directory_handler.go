@@ -53,7 +53,7 @@ func NewLDAPDirectoryHandler(directories *identity.LDAPDirectoryService) *LDAPDi
 func (h *LDAPDirectoryHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	dir := r.Group("/ldap-directory")
 	dir.Use(middleware.AuthMiddleware(authService))
-	dir.Use(middleware.RequireRole("admin"))
+	dir.Use(middleware.EnforceRegistry())
 	{
 		dir.GET("", h.Get)
 		dir.PUT("", h.Update)

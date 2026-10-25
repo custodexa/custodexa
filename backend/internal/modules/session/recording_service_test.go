@@ -297,69 +297,7 @@ func TestRecordingService_GetRecordingStats_InProgressAndProbeFiles(t *testing.T
 	assert.Equal(t, int64(2048), stats.TotalSize)
 }
 
-func TestRecordingService_DeleteRecording(t *testing.T) {
-	service, tmpDir, _, mock, cleanup := setupTestRecordingService(t)
-	defer cleanup()
-
-	t.Run("成功刪除錄製檔案", func(t *testing.T) {
-		// 創建測試檔案
-		filePath := createTestRecordingFile(t, tmpDir, 20, "2025-10-20")
-
-		// Mock SELECT query
-		rows := sqlmock.NewRows([]string{"id", "recording_path", "has_recording", "recording_size"}).
-			AddRow(20, filePath, true, 1024)
-
-		mock.ExpectQuery(`SELECT \* FROM "sessions"`).
-			WithArgs(20, sqlmock.AnyArg()).
-			WillReturnRows(rows)
-
-		// Mock UPDATE query：GORM map update 字母序為 has_recording, recording_path, recording_size, updated_at
-		// WHERE id = 20（不含 deleted_at，實際 5 個參數）
-		mock.ExpectBegin()
-		mock.ExpectExec(`UPDATE "sessions"`).
-			WithArgs(false, "", int64(0), sqlmock.AnyArg(), 20).
-			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
-
-		// 驗證檔案存在
-		_, err := os.Stat(filePath)
-		assert.NoError(t, err)
-
-		// 刪除錄製
-		err = service.DeleteRecording(20)
-		assert.NoError(t, err)
-
-		// 驗證檔案已刪除
-		_, err = os.Stat(filePath)
-		assert.True(t, os.IsNotExist(err))
-
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("Session 不存在", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT \* FROM "sessions"`).
-			WithArgs(9999, sqlmock.AnyArg()).
-			WillReturnError(gorm.ErrRecordNotFound)
-
-		err := service.DeleteRecording(9999)
-		assert.ErrorIs(t, err, ErrSessionNotFound)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("Session 沒有錄製檔案", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"id", "recording_path", "has_recording"}).
-			AddRow(21, "", false)
-
-		mock.ExpectQuery(`SELECT \* FROM "sessions"`).
-			WithArgs(21, sqlmock.AnyArg()).
-			WillReturnRows(rows)
-
-		err := service.DeleteRecording(21)
-		assert.ErrorIs(t, err, ErrSessionHasNoRecording)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
+// 刪錄影的行為由 TestRecordingDeleteAuditFirst（recording_delete_test.go）以真落地面驗證。
 func TestRecordingService_CleanupOldRecordings(t *testing.T) {
 	service, tmpDir, _, mock, cleanup := setupTestRecordingService(t)
 	defer cleanup()

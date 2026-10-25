@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { t } from '@/i18n'
 import ElementPlus from 'element-plus'
 import Approvals from '../Approvals.vue'
 
@@ -26,6 +27,7 @@ const rejectMock = vi.fn()
 const revokeMock = vi.fn()
 const reviewMock = vi.fn()
 const getReviewsMock = vi.fn()
+const getCountMock = vi.fn()
 
 vi.mock('@/api/accessRequests', () => ({
   getPendingAccessRequests: (...a) => getPendingMock(...a),
@@ -36,6 +38,7 @@ vi.mock('@/api/accessRequests', () => ({
   revokeAccessRequest: (...a) => revokeMock(...a),
   reviewBreakGlass: (...a) => reviewMock(...a),
   getPendingReviews: (...a) => getReviewsMock(...a),
+  getPendingAccessRequestCount: (...a) => getCountMock(...a),
 }))
 
 const samplePending = {
@@ -82,6 +85,7 @@ describe('Approvals 審核中心', () => {
     getHistoryMock.mockResolvedValue(sampleHistory)
     getTicketsMock.mockResolvedValue({ data: [], total: 0 })
     getReviewsMock.mockResolvedValue({ data: [], total: 0 })
+    getCountMock.mockResolvedValue({ count: 1, review_count: 0 })
   })
 
   it('待審空狀態渲染自訂文案（title 實際顯示）', async () => {
@@ -104,6 +108,39 @@ describe('Approvals 審核中心', () => {
     expect(text).toContain('正式資料庫')
     expect(text).toContain('例行維護')
     expect(text).toContain('待審（1）')
+  })
+
+  it('列表被截斷時待審頁籤顯示總數，不是已載入列數（與「已載入 N 筆，共 M 筆」的 M 同源）', async () => {
+    getPendingMock.mockResolvedValue(samplePending)
+    getCountMock.mockResolvedValue({ count: 236, review_count: 7 })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const tabs = wrapper.find('.el-tabs__header').text()
+    expect(tabs).toContain(t('approvals.pendingTabCount', { n: 236 }))
+    expect(tabs).toContain(t('approvals.reviewTabCount', { n: 7 }))
+    expect(tabs).not.toContain(t('approvals.pendingTabCount', { n: samplePending.data.length }))
+    expect(wrapper.find('[data-test="pending-loaded-of-total"]').text()).toContain('236')
+  })
+
+  it('全量讀不到時頁籤只顯示名稱，不用已載入列數冒充總數', async () => {
+    getPendingMock.mockResolvedValue(samplePending)
+    getCountMock.mockRejectedValue(new Error('boom'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    const tabs = wrapper.find('.el-tabs__header').text()
+    expect(tabs).toContain(t('approvals.pendingTab'))
+    expect(tabs).not.toContain(t('approvals.pendingTabCount', { n: samplePending.data.length }))
+  })
+
+  it('已載入／全量說明在表格下方', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const table = wrapper.find('[data-test="pending-table"]').element
+    const note = wrapper.find('[data-test="pending-loaded-of-total"]').element
+    expect(table.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('核准對話框預填申請時長且上限鎖在申請值（只能縮短）', async () => {

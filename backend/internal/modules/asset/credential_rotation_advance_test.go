@@ -18,7 +18,7 @@ import (
 
 // useRotationExecutor 讓三條路徑（逐帳號、重試、輪替）共用同一個假執行器
 func (f *batchFixture) useRotationExecutor(rec *secretRecorder) {
-	f.useExecutor(rec)
+	f.setExecutors(rec)
 	f.rotations.executors = func(string) rotationExecutor { return rec }
 }
 
@@ -102,10 +102,12 @@ func TestRetryRunnerRoutesRotationCandidatesToMember(t *testing.T) {
 	assert.False(t, f.retry.RetryOne(&cand), "輪替來源的候選不得走單帳號轉正")
 	assert.EqualValues(t, 2, f.versionCountOf(t, credID), "單帳號轉正若跑了，這裡會多一版")
 
-	// 讓候選到期、成員未到期：唯一還能推進它的就是候選列的歸屬分流
+	// 讓候選到期、成員沒有自己的退避（遠端結果未知而轉入已送出未驗證時即如此）：
+	// 到期成員掃描看不到它，唯一還能推進它的就是候選列的歸屬分流
 	require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", cand.ID).
 		Update("next_attempt_at", time.Now().Add(-time.Minute)).Error)
-	f.setMemberNextAttempt(t, memberB.ID, time.Now().Add(time.Hour))
+	require.NoError(t, f.db.Model(&model.CredentialRotationMember{}).Where("id = ?", memberB.ID).
+		Update("next_attempt_at", nil).Error)
 	rec.mu.Lock()
 	delete(rec.verifyErr, "10.5.1.2")
 	rec.mu.Unlock()

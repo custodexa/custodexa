@@ -41,7 +41,7 @@ func TestCreateAssetWithSharedCredentialRequiresConverged(t *testing.T) {
 	shared := newSharedCredential(t, creds, "ops-unconverged", "ops", "pw-1")
 	markCredentialOutOfSync(t, shared.ID)
 
-	_, err := assets.Create(context.Background(), &CreateAssetRequest{
+	_, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "new-host", Protocol: model.ProtocolSSH, Host: "10.8.1.1", Port: 22,
 		CredentialID: shared.ID, CreatedBy: 1, CreatedByName: "admin",
 	})
@@ -60,7 +60,7 @@ func TestCreateAssetWithConvergedSharedCredentialSucceeds(t *testing.T) {
 	assets, _, creds := newCredentialServices(t)
 
 	shared := newSharedCredential(t, creds, "ops-converged", "ops", "pw-1")
-	a, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "ok-host", Protocol: model.ProtocolSSH, Host: "10.8.1.2", Port: 22,
 		CredentialID: shared.ID, CreatedBy: 1, CreatedByName: "admin",
 	})

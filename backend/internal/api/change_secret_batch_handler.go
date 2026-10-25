@@ -1,15 +1,17 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/gin-gonic/gin"
 )
 
 // 以帳號名為軸的批次改密端點（admin only，與計劃同閘）。
@@ -47,16 +49,23 @@ func newBatchDTO(b *model.ChangeSecretBatch) changeSecretBatchDTO {
 		ID: b.ID, Username: b.Username, PasswordMode: b.PasswordMode,
 		PasswordLength: b.PasswordLength, PasswordIncludeSymbol: b.PasswordIncludeSymbol,
 		PasswordExcludeAmbiguous: b.PasswordExcludeAmbiguous,
-		TargetCount: b.TargetCount, SuccessCount: b.SuccessCount, FailedCount: b.FailedCount,
+		TargetCount:              b.TargetCount, SuccessCount: b.SuccessCount, FailedCount: b.FailedCount,
 		UnverifiedCount: b.UnverifiedCount, SkippedCount: b.SkippedCount, Status: b.Status,
 		RequestedBy: b.RequestedBy, RequestedByName: b.RequestedByName,
 		StartedAt: b.StartedAt, FinishedAt: b.FinishedAt, CreatedAt: b.CreatedAt,
 	}
 }
 
-// BatchUsernames 登記於系統的帳號名清單（附資產數）
+// batchViewer 讀取投影的檢視者與脈絡（主體取自已認證的請求，不接受參數）
+func batchViewer(c *gin.Context) (context.Context, uint) {
+	userID, _, _ := currentUser(c)
+	return assetWriteContext(c, operatorRequestContext(c)), userID
+}
+
+// BatchUsernames 登記於系統的帳號名清單（附資產數；範圍化檢視者只計範圍內資產）
 func (h *ChangeSecretHandler) BatchUsernames(c *gin.Context) {
-	names, err := h.batches.Usernames()
+	ctx, viewer := batchViewer(c)
+	names, err := h.batches.UsernamesFor(ctx, viewer)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretBatchQuery, err)
 		return
@@ -67,7 +76,8 @@ func (h *ChangeSecretHandler) BatchUsernames(c *gin.Context) {
 // BatchTargets 持有該帳號名的全部目標（報告列＋可改密性）
 func (h *ChangeSecretHandler) BatchTargets(c *gin.Context) {
 	asOf := time.Now()
-	targets, err := h.batches.Targets(c.Query("username"), asOf)
+	ctx, viewer := batchViewer(c)
+	targets, err := h.batches.TargetsFor(ctx, viewer, c.Query("username"), asOf)
 	if err != nil {
 		respondBatchError(c, apierror.CodeInternalChangeSecretBatchQuery, err)
 		return
@@ -86,7 +96,8 @@ func (h *ChangeSecretHandler) CreateBatch(c *gin.Context) {
 		return
 	}
 	userID, username, _ := currentUser(c)
-	batch, assetIDs, err := h.batches.Create(&req, userID, username)
+	ctx := assetWriteContext(c, operatorRequestContext(c))
+	batch, assetIDs, err := h.batches.CreateFor(ctx, &req, userID, username)
 	if err != nil {
 		respondBatchError(c, apierror.CodeInternalChangeSecretBatchCreate, err)
 		return
@@ -97,7 +108,8 @@ func (h *ChangeSecretHandler) CreateBatch(c *gin.Context) {
 
 // ListBatches 最近批次
 func (h *ChangeSecretHandler) ListBatches(c *gin.Context) {
-	items, err := h.batches.List()
+	ctx, viewer := batchViewer(c)
+	items, err := h.batches.ListFor(ctx, viewer)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretBatchQuery, err)
 		return
@@ -116,14 +128,14 @@ func (h *ChangeSecretHandler) GetBatch(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "change_secret_batch"})
 		return
 	}
-	batch, err := h.batches.Get(uint(id))
-	if err != nil {
-		respondBatchError(c, apierror.CodeInternalChangeSecretBatchQuery, err)
+	ctx, viewer := batchViewer(c)
+	batch, records, err := h.batches.DetailFor(ctx, viewer, uint(id))
+	if errors.Is(err, asset.ErrBatchRecordsQuery) {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretRecordQuery, err)
 		return
 	}
-	records, err := h.batches.Records(batch.ID)
 	if err != nil {
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretRecordQuery, err)
+		respondBatchError(c, apierror.CodeInternalChangeSecretBatchQuery, err)
 		return
 	}
 	if records == nil {
@@ -134,6 +146,17 @@ func (h *ChangeSecretHandler) GetBatch(c *gin.Context) {
 
 // respondBatchError 映射 service 錯誤：輸入問題 400、不存在 404，其餘走呼叫端指定的 internalCode
 func respondBatchError(c *gin.Context, internalCode apierror.ErrCode, err error) {
+	// 明列目標中有不存在或範圍外者：整批拒絕，只帶筆數（兩種原因同形）
+	var unavailable *asset.BatchItemsUnavailableError
+	if errors.As(err, &unavailable) {
+		middleware.RespondBatchUnavailable(c, unavailable.Count)
+		return
+	}
+	// 整批同一組的新共用憑證歸屬：碼與形狀同憑證庫建立（不合法 400、範圍外與不存在節點同形 404、
+	// 範圍化主體要求全域為單一 forbidden）
+	if respondCredentialOwnershipError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, asset.ErrBatchUsernameRequired):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBatchUsernameRequired, nil)
@@ -160,6 +183,9 @@ func respondBatchError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialNameExists, nil)
 	case errors.Is(err, asset.ErrBatchNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeBatchNotFound, nil)
+	// 管理能力不足：沿既有權限不足碼，不外露缺哪一項；判定器缺席是配置錯誤，走內部碼
+	case errors.Is(err, asset.ErrCredentialBindForbidden):
+		respondAssetCapabilityDenial(c, err)
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, internalCode, err)
 	}

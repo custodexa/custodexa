@@ -147,6 +147,70 @@ var sinkWiringRegistry = []sinkWiring{
 			},
 		},
 	},
+	{
+		guard:    "requireSystemAlertSink",
+		variable: "systemAlertSink",
+		consumers: []sinkConsumer{
+			{
+				kind: consumerCallArg, target: "SetSystemAlertSink",
+				why: "通知通道服務：通道新增、修改、刪除在同交易內產生通道變更告警，拆線即變更不留告警",
+			},
+			{
+				kind: consumerCallArg, target: "SetSecurityChangeAlertSink",
+				why: "資產服務：改位址或放寬傳輸驗證在同交易內產生系統告警，拆線則該類更新一律回錯（fail-close）",
+			},
+		},
+	},
+	{
+		guard:    "requireIdentityControls",
+		variable: "assignmentGuard",
+		consumers: []sinkConsumer{
+			{
+				kind: consumerCallArg, target: "SetAssignmentGuard",
+				why: "使用者與群組服務共用同一個指派關卡；拆線即服務退回預設關卡，保護目標與指派能力的目標集合不再由組裝根決定",
+			},
+		},
+	},
+	{
+		guard:    "requireIdentityControls",
+		variable: "grantGrader",
+		consumers: []sinkConsumer{
+			{
+				kind: consumerCallArg, target: "SetGrantGrader",
+				why: "授權變更分級與留痕：拆線即自我授權與管理類發放不產生告警事件與審計標記，而操作本身照常成功",
+			},
+		},
+	},
+	{
+		guard:    "requireIdentityControls",
+		variable: "protectedAccountOps",
+		consumers: []sinkConsumer{
+			{
+				kind: consumerCallArg, target: "SetProtectedAccountOps",
+				why: "帳號身分操作關卡：拆線即對系統安全管理員帳號的改密、停 MFA、綁定與解綁不留事件，操作者與目標帳號無痕",
+			},
+		},
+	},
+	{
+		guard:    "requireAuthorizationWriteScope",
+		variable: "authorizationService",
+		consumers: []sinkConsumer{
+			{
+				kind: consumerStructField, target: "authorizationService",
+				why: "routeServices 注入：授權規則寫入端點拿到的必須是已注入範圍判定的同一個服務；拆線即端點改用未判定範圍的服務，範圍外寫入不被擋",
+			},
+		},
+	},
+	{
+		guard:    "requireAccessRequestRevokeWiring",
+		variable: "accessRequestService",
+		consumers: []sinkConsumer{
+			{
+				kind: consumerStructField, target: "accessRequestService",
+				why: "routeServices 注入：撤銷端點拿到的必須是已注入範圍判定與交易內審計的同一個服務；拆線即撤銷不判定範圍、審計失敗不回滾",
+			},
+		},
+	},
 }
 
 // assemblyRootFiles 組裝根（cmd/server）的非測試檔 AST。

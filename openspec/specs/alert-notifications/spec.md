@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: Webhook channel management
-Admins SHALL manage notification channels (name, type, url, optional secret, enabled) and trigger a test delivery. Invalid URLs MUST be rejected. Channel type SHALL be one of `webhook` or `slack`; unknown types SHALL be rejected. The secret SHALL never be returned to clients; on update, an empty secret SHALL preserve the existing value, and clearing the secret SHALL require an explicit `clear_secret` flag. The secret and HMAC signature SHALL apply only to `webhook` channels; `slack` channels SHALL NOT send a signature and their secret SHALL be forced empty on create/update (has_secret always false).
+Principals holding the notification channel management capability (the super administrator, the system security administrator template, or a custom role granted that capability) SHALL manage notification channels (name, type, url, optional secret, enabled) and trigger a test delivery. Principals without that capability, including auditors and identity or asset administrators, SHALL be rejected on every channel endpoint, including listing and test delivery; each rejection SHALL leave one request audit entry with status denied and SHALL NOT write the channel, a service-layer channel audit row, or a system security alert. Channel endpoints SHALL be guarded by that capability, not by a hardcoded role name. Invalid URLs MUST be rejected. Channel type SHALL be one of `webhook` or `slack`; unknown types SHALL be rejected. The secret SHALL never be returned to clients; on update, an empty secret SHALL preserve the existing value, and clearing the secret SHALL require an explicit `clear_secret` flag. The secret and HMAC signature SHALL apply only to `webhook` channels; `slack` channels SHALL NOT send a signature and their secret SHALL be forced empty on create/update (has_secret always false).
 
 The stored secret and the channel url SHALL be envelope-encrypted at rest (data DEK). API responses SHALL NOT return the full url: it SHALL be masked preserving scheme, host, and the last 4 characters (e.g. `https://hooks.slack.com/****abcd`). On update, an empty url SHALL preserve the existing value (same semantics as secret). Delivery and test-send SHALL decrypt at send time with behavior unchanged.
 
@@ -39,10 +39,16 @@ The stored secret and the channel url SHALL be envelope-encrypted at rest (data 
 - **WHEN** a channel with secret and url is persisted and the DB rows are inspected directly
 - **THEN** both values are stored as envelope ciphertext (version-prefixed), not plaintext
 
+#### Scenario: Principal without the channel capability is rejected
+- **WHEN** an auditor, an identity administrator, or a principal holding only asset management capabilities lists, creates, updates, deletes, or test-sends a notification channel
+- **THEN** every request is rejected; no channel is written, no service-layer channel audit row or system security alert is produced, and the request audit records one entry with status denied for each rejected request
+
 ### Requirement: Alert push delivery
 When a command alert is created, the system SHALL asynchronously POST a payload to every enabled channel whose push threshold admits the alert's severity (see Requirement: 通道推送等級門檻), formatted per channel type, retrying up to 3 times with backoff. `webhook` channels SHALL receive a JSON payload (alert, rule, session context) signed with HMAC-SHA256 in X-OT-Signature when a secret is set. `slack` channels SHALL receive a Slack-compatible message body (`text` field with severity, rule, command, and session context) and SHALL NOT include a signature header. Slack `text` content SHALL escape mrkdwn control characters (`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`) so that command text containing shell redirection/operators renders correctly. Delivery failures MUST NOT affect alert persistence or sessions.
 
 Alerts whose source kind is not a rule (command audit degraded, new source address, sensitive content access, agent probe breaker) carry a machine identifier in `rule_name` and an intentionally empty command. For these kinds the `slack` text SHALL use a plain-language title for the kind and a plain-language line stating what happened and where to look, both rendered in the channel language; it SHALL NOT show the machine identifier as the title and SHALL NOT render an empty command block. For the command audit degraded kind, the text SHALL state that the input could not be reliably reconstructed as command text and SHALL point the reader to the session recording; when the degrade reason of the rounds that opened the alert can be resolved, the text SHALL add one plain-language line describing the circumstance, and when it cannot be resolved the line SHALL be omitted rather than guessed. The text SHALL NOT characterize the event as an attack or as benign, and the severity SHALL remain as recorded. Rule-kind alerts (including legacy rows without a kind and test notifications) SHALL keep their existing `slack` rendering. The `webhook` payload and syslog forwarding SHALL keep every machine field (`kind`, `reason_code`, `rule_name`, `command` and the rest) unchanged in name and value; the plain-language text exists only in the `slack` body.
+
+System security alerts are recorded with their own source kind and SHALL NOT enter this push path: they SHALL be delivered only through the persistent outbox defined by the system security alerts capability, so that the in-memory queue, its retry limit, and channel push thresholds never drop or filter them. Every other kind keeps the delivery described above unchanged.
 
 #### Scenario: Signed webhook delivery
 - **WHEN** an alert triggers and a webhook channel has a secret
@@ -75,6 +81,10 @@ Alerts whose source kind is not a rule (command audit degraded, new source addre
 #### Scenario: Rule alerts and machine fields unchanged
 - **WHEN** a rule-kind alert is pushed to `slack` and any alert is pushed to `webhook` or forwarded to syslog
 - **THEN** the rule alert's Slack text is identical to its rendering before this change, and the webhook and syslog payloads carry the same field names and values as before, including `rule_name: "audit_degraded_span"` for a degraded alert
+
+#### Scenario: System security alert bypasses the push queue
+- **WHEN** a system security alert is committed while a `slack` channel and a `webhook` channel are enabled
+- **THEN** the alert is not placed on the command alert push queue; each channel receives it once through the persistent outbox, and command alerts created at the same time are still pushed through the queue as before
 
 ### Requirement: 通知通道傳輸政策門
 通知通道建立與更新 SHALL 受通知傳輸政策約束：warn 檔下 URL 為 http 時，儲存 SHALL 要求管理員附風險確認聲明，確認入審計；strict 檔下 http URL SHALL 被拒絕存檔並回明確原因。off 檔（預設）行為與現狀一致（http/https 皆可存）。既有 http 通道在政策收緊後 SHALL 不被自動停用，但 SHALL 在通道列表與通道清冊標示偏離。
@@ -222,9 +232,9 @@ Alerts whose source kind is not a rule (command audit degraded, new source addre
 ### Requirement: 通道推送等級門檻
 每個通知通道 SHALL 具備推送門檻欄 `min_severity`，值域為 `low`／`medium`／`high`（依序對應畫面的「全部告警」「中、高等級」「只有高等級」），並以資料庫 CHECK 約束保障。建立通道未指定門檻時 SHALL 預設 `low`；既有通道升級後 SHALL 取得 `low`，推送行為與升級前相同。更新時**省略該欄 SHALL 保留既有值**；傳入空值或白名單以外的值 SHALL 以 `VALIDATION_CHANNEL_MIN_SEVERITY` 機器碼拒絕（嚴格匹配）。不提供「全部不推送」的檔位；要完全不收，停用通道。
 
-門檻 SHALL 只作用於告警推送（命令告警與其他以告警形式推送的事件）：告警等級為 `high`／`medium`／`low` 之一時，等級不低於通道門檻才推送到該通道；等級為空或不在三值內的告警 SHALL 照送。系統事件（無等級）與測試發送 SHALL NOT 受門檻影響，照常送到啟用中的通道。門檻 SHALL NOT 改變告警的入庫與 syslog 轉發：兩者在排入推送之前即已依既有規則處理，與任何通道的門檻無關。某則告警沒有任何通道收時，系統 MAY 略過僅供推送內容使用的查詢。
+門檻 SHALL 只作用於告警推送（命令告警與其他以告警形式推送的事件）：告警等級為 `high`／`medium`／`low` 之一時，等級不低於通道門檻才推送到該通道；等級為空或不在三值內的告警 SHALL 照送。系統事件（無等級）與測試發送 SHALL NOT 受門檻影響，照常送到啟用中的通道。系統安全告警雖帶分級，SHALL NOT 受門檻影響：不論其分級為何，都 SHALL 經持久投遞送到產生當下每一個啟用中的通道；門檻只過濾一般告警。門檻 SHALL NOT 改變告警的入庫與 syslog 轉發：兩者在排入推送之前即已依既有規則處理，與任何通道的門檻無關。某則告警沒有任何通道收時，系統 MAY 略過僅供推送內容使用的查詢。
 
-門檻實際改變時，系統 SHALL 寫一筆稽核紀錄，記錄操作者、通道識別與改動前後的門檻值；通道設定端點的請求本文稽核 SHALL 原樣記錄 `min_severity` 的值，SHALL NOT 以遮罩值取代。UI SHALL 在設定旁說明：被略過的中、低等級告警仍記在告警頁；啟用中的通道仍會收到系統事件、測試發送與無法判定等級的告警。
+門檻實際改變時，系統 SHALL 寫一筆稽核紀錄，記錄操作者、通道識別與改動前後的門檻值；通道設定端點的請求本文稽核 SHALL 原樣記錄 `min_severity` 的值，SHALL NOT 以遮罩值取代。UI SHALL 在設定旁說明：被略過的中、低等級告警仍記在告警頁；啟用中的通道仍會收到系統事件、測試發送與無法判定等級的告警。通道列表 SHALL 另說明系統告警不受推送門檻篩選、一律推送到每一個啟用中的通道。
 
 #### Scenario: 預設全部告警
 - **WHEN** 管理員建立通道未提供 `min_severity`，或系統自未有此欄的版本升級
@@ -265,3 +275,35 @@ Alerts whose source kind is not a rule (command audit degraded, new source addre
 #### Scenario: 門檻改動留下前後值
 - **WHEN** 管理員把通道門檻由 `low` 改為 `high`
 - **THEN** 稽核紀錄中有一筆可讀出操作者、通道、改動前 `low` 與改動後 `high`；門檻未改變的更新不產生這筆紀錄
+
+#### Scenario: 系統安全告警不受門檻過濾
+- **WHEN** 通道門檻為 `high` 且已啟用，系統先後產生一則分級為 low 與一則分級為 medium 的系統安全告警，同時有一則 medium 的規則告警
+- **THEN** 該通道收到兩則系統安全告警，沒有收到那則 medium 規則告警
+
+### Requirement: 通道變更通知新舊目的地與同交易審計
+
+通知通道的建立、修改（含名稱、類型、網址、簽章密鑰、語系、推送門檻與啟停）與刪除 SHALL 在單一交易內完成三件事：通道寫入、服務層審計列、一筆通道變更類的系統安全告警。任一步失敗 SHALL 整筆回滾，通道內容、推送快取、審計與告警皆不留下部分結果。沒有任何欄位實際變動的重複存檔 SHALL 只寫審計列、SHALL NOT 產生告警。審計列 SHALL 記錄操作者、通道識別、變更型態、變更欄位與遮罩後的前後網址；傳輸風險確認與推送門檻的前後值 SHALL 併入同一列，SHALL NOT 另以失敗不回滾的方式寫入。審計與告警 SHALL NOT 含簽章密鑰或完整網址。
+
+該告警的投遞目的地 SHALL 為下列三者的聯集，並以相同的類型、網址與密鑰去重：其他啟用中的通道、本通道變更前的目的地、本通道變更後的目的地。變更前與變更後的目的地 SHALL 不論本通道當時是否啟用都收到通知，使停用、建立即停用與改址都無法避開舊或新的目的地；網址或簽章密鑰無法解開的那一側除外。刪除 SHALL 與保存舊目的地的投遞快照在同一交易完成，通知在提交後自快照送出；重送 SHALL 使用快照，SHALL NOT 以之後的通道設定取代。測試發送不是變更，SHALL NOT 產生此告警。
+
+此機制只讓變更被新舊兩端與審計得知，SHALL NOT 被描述為能阻止具通道管理能力者先改去向再執行其他高危動作。
+
+#### Scenario: 改網址時新舊兩端都收到
+- **WHEN** 持通道管理能力者把啟用中通道的網址由舊址改為新址
+- **THEN** 舊址與新址各收到一則通道變更通知，其他啟用通道也收到，且審計列記錄遮罩後的前後網址
+
+#### Scenario: 停用時舊目的地仍收到
+- **WHEN** 把一個啟用中的通道停用
+- **THEN** 該通道的目的地收到一則通道已停用的通知，之後的一般告警不再送到該通道
+
+#### Scenario: 刪除後仍通知被刪的目的地
+- **WHEN** 刪除一個通道
+- **THEN** 通道列已不存在，該通道原本的目的地仍收到一則通道已刪除的通知；目的地暫時失敗時重送仍送往原目的地
+
+#### Scenario: 只改名稱不重複送
+- **WHEN** 只修改通道名稱或推送門檻
+- **THEN** 本通道只收到一則通知，不因前後目的地相同而收到兩則
+
+#### Scenario: 審計或告警寫入失敗即回滾
+- **WHEN** 通道修改時審計列或系統安全告警無法寫入
+- **THEN** 請求失敗，通道設定、推送快取、審計與告警都維持修改前的狀態

@@ -30,6 +30,13 @@
       show-icon
     />
 
+    <ConfigChangeNotice
+      kind="ldap"
+      :form="form"
+      :saved-snapshot="savedSnapshot"
+      :active="configured"
+    />
+
     <el-form
       ref="formRef"
       v-loading="loading"
@@ -338,6 +345,7 @@ import SourceDetailLayout from './components/SourceDetailLayout.vue'
 import SourceSection from './components/SourceSection.vue'
 import GroupMappingEntry from './components/GroupMappingEntry.vue'
 import PreflightPanel from './components/PreflightPanel.vue'
+import ConfigChangeNotice from './components/ConfigChangeNotice.vue'
 import { t } from '@/i18n'
 import { formatDateTime } from '@/utils/format'
 import { confirmDestructive } from '@/utils/confirm'

@@ -127,7 +127,7 @@ func (h *OIDCHandler) throttle(c *gin.Context, g *sourceAbuseGuard, event string
 func (h *OIDCHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	admin := r.Group("/oidc-providers")
 	admin.Use(middleware.AuthMiddleware(authService))
-	admin.Use(middleware.RequireRole("admin"))
+	admin.Use(middleware.EnforceRegistry())
 	{
 		admin.GET("", h.List)
 		admin.POST("", h.Create)
@@ -241,6 +241,7 @@ func (h *OIDCHandler) Create(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCProviderPayload, nil)
 		return
 	}
+	req.Actor = currentMappingActor(c)
 	dto, err := h.providers.Create(&req)
 	if err != nil {
 		h.respondProviderError(c, err)
@@ -260,6 +261,7 @@ func (h *OIDCHandler) Update(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCProviderPayload, nil)
 		return
 	}
+	req.Actor = currentMappingActor(c)
 	dto, err := h.providers.Update(id, &req)
 	if err != nil {
 		h.respondProviderError(c, err)
@@ -274,7 +276,7 @@ func (h *OIDCHandler) Delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.providers.Delete(id); err != nil {
+	if err := h.providers.DeleteBy(currentMappingActor(c), id); err != nil {
 		h.respondProviderError(c, err)
 		return
 	}

@@ -3,6 +3,8 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import RotationEvidence from '../RotationEvidence.vue'
 import { ROTATION_BUCKETS, BUCKET_SUMMARY_FIELD } from '@/constants/rotationEvidence'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 輪替證據頁。
 //
@@ -143,6 +145,7 @@ const dataset = (over = {}) => ({
 
 const setRoles = (roles) => {
   localStorage.setItem('user', JSON.stringify({ id: 5, username: 'tester', roles }))
+  grantFor(roles)
 }
 
 const mountPage = async () => {
@@ -153,6 +156,7 @@ const mountPage = async () => {
 
 beforeEach(() => {
   localStorage.clear()
+  resetCapabilities()
   vi.clearAllMocks()
   reportMock.mockResolvedValue(dataset())
   recordsMock.mockResolvedValue({ data: [], total: 0, page: 1, page_size: 20, truncated: false })

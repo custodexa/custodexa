@@ -247,6 +247,11 @@
     "cancel": "取消",
     "retentionShrinkConfirm": "{keys} 的保留期限縮短，超出新期限的既有資料將於次日 02:00 起被永久清除且不可還原。確定套用新的保留政策？",
     "retentionShrinkTitle": "保留期限縮短將清除舊資料",
+    "retentionFloorHint": "最少 7 天，填 0 表示永久保留",
+    "retentionFloorError": "不能少於 7 天（填 0 表示永久保留）",
+    "retentionAlertNotice": "調短任何一項資料保留天數都會記錄並建立系統告警，送達取決於通知通道",
+    "alertOnSaveNotice": "儲存後會記錄並建立系統告警，送達取決於通知通道。",
+    "failCloseOffNotice": "關閉時會記錄並建立系統告警，送達取決於通知通道。",
     "confirmApply": "確定套用",
     "saved": "安全政策已儲存",
     "restSection": "其他"
@@ -268,6 +273,14 @@
       "user": {
         "label": "一般使用者",
         "description": "基礎角色：可連線已獲授權的資產；具體能力取決於授權等級（檢視、連線）與存取政策（開放、需理由、需審核）。"
+      },
+      "asset_admin": {
+        "label": "資產管理員",
+        "description": "管理資產與資產分組等資產相關功能；指派時可選節點，只在所選節點內生效。管理權不自動帶來平台內連線權。"
+      },
+      "authz_admin": {
+        "label": "授權管理員",
+        "description": "管理資產授權規則與單台主機的存取政策；指派時可選節點，只在所選節點內生效。管理權不自動帶來平台內連線權。"
       }
     },
     "auditAction": {
@@ -288,8 +301,13 @@
       "agent_token_suspended": "自動化權杖已停用",
       "agent_sessions_terminated": "自動化會話終止結果",
       "agent_sessions_terminate_late": "自動化會話終止超過目標時效",
+      "permission_state_accepted": "已確認權限狀態變動",
       "suspend": "已停用",
       "new_source_ip": "自新來源位址登入",
+      "host_key_mismatch": "主機金鑰與記錄不符",
+      "host_key_adopt": "採用主機金鑰指紋",
+      "host_key_cred_sent": "主機金鑰不符後憑證已送出",
+      "retention_floor_raised": "保留下限抬升",
       "file_list": "檔案瀏覽",
       "file_upload": "檔案上傳",
       "file_download": "檔案下載",
@@ -305,7 +323,11 @@
       "offsite_retention": "離機到期清除",
       "offsite_integrity": "離機完整性不符",
       "offsite_profile": "離機設定世代變更",
-      "offsite_cred_revoke": "離機憑證撤銷"
+      "offsite_cred_revoke": "離機憑證撤銷",
+      "role_definition_create": "角色定義新增",
+      "role_definition_copy": "角色定義複製",
+      "role_definition_update": "角色定義修改",
+      "role_definition_delete": "角色定義刪除"
     },
     "auditResource": {
       "agent_token": "自動化權杖",
@@ -326,6 +348,7 @@
       "syslog_setting": "Syslog 設定",
       "audit_log": "稽核日誌",
       "user_group": "使用者群組",
+      "user_group_role": "使用者群組角色指派",
       "command": "指令",
       "key_management": "金鑰管理",
       "transmission": "傳輸安全",
@@ -341,6 +364,7 @@
       "audit_integrity": "稽核完整性驗證",
       "alert_rule": "告警規則",
       "notify_channel": "通知通道",
+      "system_alert_type": "系統告警類型",
       "oidc_provider": "OIDC 提供者",
       "ldap_directory": "LDAP 目錄",
       "asset_group": "資產分組",
@@ -372,7 +396,8 @@
       "offsite_upload": "離機儲存上傳",
       "role_state_integrity": "角色指派與稽核鏈的一致性",
       "principal_state_integrity": "主體與憑證狀態完整性",
-      "dek_unwrap": "資料金鑰的重新取得"
+      "dek_unwrap": "資料金鑰的重新取得",
+      "restore_seal": "還原後封章"
     },
     "cause": {
       "recording_probe_failed": "簽發點錄影前置檢查失敗",
@@ -386,6 +411,7 @@
       "recording_metadata_update_failed": "錄影 metadata 更新失敗",
       "recording_file_missing": "錄影檔缺失（寫入失敗或錄製未啟動）",
       "session_record_create_failed": "會話記錄建立失敗，連線已拒",
+      "host_key_mismatch_record_failed": "主機金鑰不符的留痕寫入失敗，連線已在送出憑證前中止",
       "audit_write_fallback_file": "稽核批次寫入失敗，已降級至檔案",
       "audit_write_batch_dropped": "稽核批次寫入失敗，檔案降級已關閉、批次丟棄",
       "audit_write_sync_refused": "同步稽核寫入失敗，該次調閱已拒絕（內容未交付）",
@@ -407,8 +433,10 @@
       "offsite_upload_stalled": "同一物件的上傳租約反覆到期，上傳卡住",
       "offsite_integrity_mismatch": "取回的離機副本與上傳當下不符，已拒絕交付",
       "role_state_mismatch": "角色指派與稽核鏈不符（有變更未經應用程式留痕）",
-      "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經应用程式留痕）",
-      "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）"
+      "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經應用程式留痕）",
+      "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）",
+      "restore_seal_deferred": "還原後封章失敗，服務已照常開放並待補封（涵蓋還原後權限狀態的檢查點尚未進鏈）",
+      "restore_seal_state_unreadable": "啟動時讀不到還原後的待封狀態，服務照常開放並已嘗試補封（補封成功即結案）"
     },
     "endReason": {
       "normal": "正常結束",
@@ -644,7 +672,7 @@
       },
       "log_retention": {
         "title": "日誌保留與審閱",
-        "hint": "稽核資料保留與每日審閱。操作日誌自檢查點鏈啟用起改以「檢查點區間」為清除單位：區間內只要有一列未過期，整段暫不清除，故首輪清除後可能看到少量已過期列仍在（預期行為，非缺陷）。檢查點保留天數出廠為 0＝永久，且不得短於四個資料保留鍵中最長者（0 視為永久）——證明必須活得比它所證明的資料久，違反時整批儲存被拒"
+        "hint": "稽核資料保留與每日審閱。操作日誌自檢查點鏈啟用起改以「檢查點區間」為清除單位：區間內只要有一列未過期，整段暫不清除，故首輪清除後可能看到少量已過期列仍在（預期行為，非缺陷）。檢查點保留天數出廠為 0＝永久，且不得短於四個資料保留鍵中最長者（0 視為永久）——證明必須活得比它所證明的資料久，違反時整批儲存被拒。四項資料保留天數都有最少天數，不能再短。"
       },
       "access_policy": {
         "title": "連線政策",
@@ -687,6 +715,8 @@
   },
   "dashboard": {
     "headerDesc": "{name} {subtitle}總覽",
+    "loadedOfTotal": "已載入 {loaded} 筆，共 {total} 筆",
+    "valueUnavailable": "未取得",
     "statAssetTotal": "資產總數",
     "statConnectableAssets": "可連資產",
     "statMyPendingRequests": "我的申請待審",
@@ -718,6 +748,38 @@
     "actionAssetsDescUser": "瀏覽已授權的資產並發起連線",
     "actionSessionsDesc": "檢視進行中連線與歷史錄影回放",
     "actionMyRequestsDesc": "追蹤連線申請進度與撤回"
+  },
+  "upgradeGuidance": {
+    "menu": "新版說明",
+    "title": "這一版的功能與入口",
+    "changes": "升級後有什麼不同",
+    "nextSteps": "建議接下來做",
+    "dismiss": "稍後再看",
+    "reopenHint": "關閉後可從使用者選單的「新版說明」重開。",
+    "basic": "入口依你可用的功能顯示；連線仍由資產授權決定。",
+    "superAdminMigration": "既有管理者已轉為超級管理者，原有功能維持。",
+    "roles": "可透過角色與使用者群組分配管理工作。",
+    "assets": "管理資產與帳號憑證不會自動取得連線權。",
+    "credentialOwnership": "既有的共用憑證歸屬為「全域」，連線照常。可以改歸到節點，交給該節點的資產管理員維護。",
+    "authorization": "資產授權決定可連線的對象與帳號。",
+    "audit": "告警頁依你的權限顯示告警記錄、規則管理或系統告警。",
+    "approvals": "從審核中心處理你有資格審核的申請。",
+    "localAdmin": "建議保留一個本機登入的超級管理者。",
+    "notifications": "通知通道已移到系統設定，請確認通知目的地。",
+    "retentionTitle": "升級時調整的保留天數",
+    "retentionItem": "{item}：{before} 天 → {after} 天",
+    "retentionHint": "四項資料保留天數最少 7 天，0 仍為永久保留。以下是升級時的調整紀錄，不是目前設定。",
+    "retentionFollow": "為了讓檢查點保留繼續涵蓋資料保留，一併調整。",
+    "uncoveredTitle": "檢查點保留目前未涵蓋的項目",
+    "uncoveredItem": "{item}：{days}；檢查點保留：{checkpoint}",
+    "uncoveredHint": "檢查點保留目前未涵蓋這些項目，請到安全政策頁調整。",
+    "loadFailed": "無法載入新版說明，請重試。",
+    "saveFailed": "無法儲存關閉狀態，請重試。",
+    "retentionFailed": "無法載入保留調整紀錄，請重試。",
+    "goTo": "前往{name} ›",
+    "currentSetting": "目前設定",
+    "credentialOwnershipStepTitle": "把共用憑證改歸到節點",
+    "credentialOwnershipStepText": "歸屬「全域」的憑證只有超級管理者與管理全系統的人能管理，改歸由伺服器依你的權限裁決。"
   },
   "dailyReview": {
     "weekdayDate": "{date}（{weekday}）",
@@ -993,6 +1055,8 @@
       "asset_deleted": "刪除資產（資料層紀錄）",
       "asset_group_deleted": "刪除資產分組「{name}」，連帶撤銷 {revoked} 筆授權",
       "audit_export_requester_revoked": "申請者已失去權限，系統取消匯出工作 #{job_id}",
+      "authz_capability_denied": "權限不足，操作被拒絕",
+      "authz_scope_denied": "目標不在可管理的範圍內，操作被拒絕",
       "auto_disabled_inactive_account": "帳號逾 {days} 天未登入，系統自動停用",
       "auto_disabled_inactive_account_nodays": "帳號逾期未登入，系統自動停用",
       "credential_abandon": "放棄進行中的憑證輪替",
@@ -1003,6 +1067,7 @@
       "credential_rebind": "資產帳號改用另一份憑證",
       "credential_rotate": "輪替憑證",
       "credential_scope": "變更憑證的使用範圍",
+      "credential_set_secret": "宣告新的憑證秘密",
       "credential_unbind": "從資產帳號卸載憑證",
       "credential_update": "修改憑證",
       "event": {
@@ -1018,6 +1083,7 @@
         "external_identity_unbound_and_account_disabled": "解除外部身分綁定並停用帳號",
         "external_user_local_login_attempt": "外部身分帳號嘗試以本機密碼登入",
         "external_user_local_login_attempt_aggregated": "外部身分帳號 {minutes} 分鐘內又嘗試以本機密碼登入 {count} 次",
+        "grant_change_graded": "授權變更命中告警分級",
         "group_role_mapping_create": "新增群組對角色的映射規則",
         "group_role_mapping_delete": "刪除群組對角色的映射規則",
         "group_role_mapping_update": "修改群組對角色的映射規則",
@@ -1038,12 +1104,18 @@
         "oidc_flow_error": "外部登入流程失敗（{reason}）",
         "oidc_identity_orphan_revoked": "{provider} 的外部身分原本綁定的帳號 {previous_username}（編號 {previous_user_id}）已刪除，作廢這筆綁定",
         "oidc_provider_denied": "身分提供者拒絕登入（{error}）",
+        "oidc_provider_settings_change": "變更身分提供者設定",
         "oidc_user_inactive": "經 {provider} 登入被拒：帳號已停用",
         "oidc_user_provisioned": "首次外部登入，自動建立帳號：{provider}",
         "oidc_username_conflict": "外部登入的帳號名與既有帳號相同，未接管：{provider}",
+        "role_binding_range_changed": "調整角色指派的節點範圍（指派的角色不變）",
+        "role_mapping_pin": "釘住映射賦予的角色（不再隨外部群組移除而消失）",
+        "role_update_agent_restricted_detected": "角色修改後，偵測到自動化帳號持有含受限權限點的角色",
+        "security_admin_account_operated": "對系統安全管理員帳號執行身分操作",
         "user_converted_to_external_only": "帳號改為僅外部登入",
         "user_deleted": "刪除帳號 {username}（連帶作廢外部身分綁定 {identities} 筆）",
         "user_external_only_conversion_rejected": "改為僅外部登入被拒（{reason}）",
+        "user_group_manual_member_added": "手動加入成員到使用者群組",
         "user_group_manual_member_removed": "從使用者群組移除手動加入的成員"
       },
       "generic": "{action}{resource}",
@@ -1054,6 +1126,7 @@
       "principal_state_delete": "帳號刪除（系統留存的狀態紀錄）",
       "principal_state_update": "帳號狀態變更（系統留存的狀態紀錄）",
       "retention_purge": "保留期限清除：{target}超過 {days} 天的資料，刪除 {deleted} 筆",
+      "membership_revalidation_expired": "外部登入時未能確認群組成員資格，且已超過重新驗證時限：已收回該來源經映射取得的權限",
       "retention_purge_failed": "保留期限清除失敗：{target}",
       "role_mapping_applied": "外部登入時依群組映射調整角色：加上 {added}，移除 {removed}",
       "role_mapping_applied_added": "外部登入時依群組映射加上角色：{added}",
@@ -1062,7 +1135,16 @@
       "role_mapping_groups_unknown": "外部登入時未套用群組映射：這次讀不到群組資料，保留原有映射",
       "role_mapping_source_attr_unset": "外部登入時未套用群組映射：來源沒有設定群組屬性",
       "user_group_deleted": "刪除使用者群組「{name}」，連帶撤銷 {revoked} 筆授權",
-      "user_group_mapping_applied": "外部登入時依群組映射調整使用者群組"
+      "user_group_mapping_applied": "外部登入時依群組映射調整使用者群組",
+      "credential_authorization_stop": "改密工作因授權失效停止",
+      "change_secret_authorization_stop": "改密工作因授權失效停止",
+      "credential_recovery_verify": "失權後的有限驗證已完成並提交",
+      "credential_rotation_reauthorized": "具權者承接輪替並繼續執行",
+      "credential_rotation_interrupted": "服務重啟時中斷的輪替成員已轉為已送出未驗證",
+      "change_secret_recovery_verify": "失權後的有限驗證已完成並提交",
+      "credential_host_identity_stop": "主機身分異動，改密工作已停止，候選憑證保留待人工確認",
+      "change_secret_host_identity_stop": "主機身分異動，改密工作已停止，候選憑證保留待人工確認",
+      "change_secret_reauthorize": "改密排程計畫已由具權者重新授權"
     },
     "roleDelta": {
       "headline": "外部登入時依群組映射調整角色",
@@ -1156,11 +1238,14 @@
       "rotationActiveHint": "這筆共用憑證正在改密，本輪結束前無法更換憑證、脫離共用或更正登記值。",
       "addTitle": "新增帳號",
       "addHint": "只列出此協議可用、且這台尚未掛載的共用憑證。",
+      "addDedicatedNeedsCredentialCreate": "需要「新增憑證」的權限才能為這台新增專用帳號（帳號名稱由此填入）。請改用共用憑證，或請管理員協助。",
       "addSubmit": "加入",
       "rebindHintShared": "只能換成共用憑證。這台之後改以新憑證連線；原憑證少一台掛載，掛在它上面的其餘主機不受影響。此操作無法復原。",
       "rebindHintDedicated": "只能換成共用憑證。這台之後改以新憑證連線，原本這台專用的憑證會一併回收。此操作無法復原。",
       "rebindSubmit": "確定更換",
-      "rebindDone": "已更換憑證"
+      "rebindDone": "已更換憑證",
+      "outOfScopeCredential": "範圍外的共用憑證",
+      "outOfScopeNote": "這台用的共用憑證不在你的管理範圍內：不能更正登記值或脫離共用，仍可更換憑證或移除。"
     },
     "headerDescAdmin": "管理遠端主機、資料庫與 K8s 資產（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
     "headerDescUser": "已授權給你的資產，點「連線」即可開始；受管制的資產可提出連線申請",
@@ -1174,6 +1259,40 @@
     "riskCount": "風險 {n}",
     "nodesColumn": "所屬節點",
     "ungrouped": "未分組",
+    "scopedOutOfScopeBadge": "＋{n} 範圍外",
+    "scopedOutOfScopeNodes": "另有 {n} 個範圍外節點。",
+    "scopedOutOfScopeAdminOnly": "範圍外的節點只能由該範圍的管理者調整。",
+    "scopedReasonOutOfScopeNodes": "此資產另掛在 {n} 個你管理範圍外的節點，無法刪除或停用；可改為移出你的節點。",
+    "scopedReasonOutOfScope": "這筆資產不在你的管理範圍內。",
+    "scopedReasonNoCapability": "你沒有這項操作的權限。",
+    "tagVisibleOnlyHint": "只列出你看得到的資產上用過的標籤。",
+    "batchOps": {
+      "selectedCount": "已選 {n} 台",
+      "move": "搬移",
+      "addTags": "加標籤",
+      "delete": "刪除",
+      "clearSelection": "取消選取",
+      "moveTitle": "搬移 {n} 台資產",
+      "addTagsTitle": "為 {n} 台資產加標籤",
+      "deleteTitle": "刪除 {n} 台資產",
+      "moveTarget": "目的節點",
+      "moveTargetPlaceholder": "選擇要搬入的節點",
+      "moveKeepsOutOfScope": "搬移後這些資產會掛在你選的節點；不在你管理範圍內的節點會保留不動。",
+      "moveNoTarget": "沒有可搬入的節點。",
+      "deleteConfirm": "將刪除已選的 {n} 台資產。整批一起執行，任何一台無法刪除就全部都不會刪除。",
+      "unavailableTitle": "整批沒有執行",
+      "unavailableBody": "其中 {count} 台無法操作，所有資產都沒有改動。請重新整理列表後再試一次。",
+      "blockedBody": "有 {count} 台資產另有節點不在你的管理範圍內，整批沒有刪除。可改為移出你的節點。",
+      "moveSuccess": "已搬移 {n} 台資產",
+      "addTagsSuccess": "已為 {n} 台資產加上標籤",
+      "deleteSuccess": "已刪除 {n} 台資產",
+      "selectAllPage": "選取本頁全部資產",
+      "selectRow": "選取此資產"
+    },
+    "scopedEmptyTitle": "目前沒有可管理的節點",
+    "scopedEmptyHint": "你的管理範圍內尚無有效節點，請聯絡管理員確認你被指派的節點。",
+    "scopedInactiveNotice": "有 {n} 個管理節點已不存在，該部分範圍不生效，其餘照常。",
+    "scopedConnectionOnlyNotice": "管理範圍目前沒有有效節點，以下只列出你有連線授權的資產。",
     "testing": "測試中",
     "testedAt": "測於 {time}",
     "testedAtWithLatency": "測於 {time}（延遲 {ms}ms）",
@@ -1240,10 +1359,15 @@
     "mountNodes": "掛載節點",
     "mountNodesPlaceholder": "未分組（可多選）",
     "accessPolicy": "連線政策",
+    "accessPolicyReadonlyHint": "這裡只能檢視；調整此政策需要存取政策管理權限，請由持有此權限的人處理",
     "hostKey": "主機金鑰",
-    "hostKeyMeta": "記錄於 {time}；指紋不符時連線將被拒絕",
+    "hostKeyMeta": "記錄於 {time}；之後出現不同指紋時，終端、檔案傳輸與連線測試可繼續認證並留下審計，該指紋首次出現時建立系統告警；改密與輪替則停止",
     "resetKey": "重置",
-    "hostKeyEmpty": "尚無記錄——首次連線時自動記錄並鎖定指紋",
+    "hostKeyEmpty": "尚無記錄——此位址首次連線時自動記錄並鎖定指紋；若此位址曾有記錄則沿用",
+    "securityChangeNotice": "儲存後會通知安全人員：本次變更了連線位址或放寬了傳輸驗證（{fields}）",
+    "tagManagerSuperAdminOnly": "標籤的全面改名、合併與刪除僅限超級管理員。要加新標籤，在編輯資產時直接輸入即可",
+    "hostKeyResetSuperAdminOnly": "重置主機金鑰僅限超級管理員",
+    "hostKeyInherited": "沿用此位址先前的記錄；本資產首次連線成功後會有自己的記錄",
     "applyReasonLabel": "連線理由（必填，審核人與稽核紀錄都會看到）",
     "applyDuration": "需要使用多久（分鐘）",
     "applyDateStart": "預約開始時間（留空＝核准後立即可用）",
@@ -1272,10 +1396,22 @@
     "portReachableOnly": "僅代表連接埠可達、未驗證憑證",
     "unknownReason": "未知原因",
     "fingerprintCopied": "指紋已複製",
-    "hostKeyResetConfirm": "重置後下次連線將重新記錄指紋。僅在目標主機確實重灌/換機時操作，否則將失去中間人攻擊防護。",
+    "hostKeyResetConfirm": "重置後，下一次連線出示的任何金鑰都會成為新記錄。若上方已列出待確認的指紋，建議改用「採用這個指紋」。此操作會記錄並建立系統告警。",
     "hostKeyResetTitle": "重置主機金鑰",
     "hostKeyResetButton": "確認重置",
     "hostKeyResetDone": "已重置，下次連線重新記錄",
+    "hostKeyMismatchTitle": "待確認的指紋（{count}）",
+    "hostKeyMismatchHint": "與記錄不同、連線時出現過的指紋，最近的在前",
+    "hostKeyMismatchRow": "首次 {first}・最近 {last}・共 {count} 次",
+    "testHostKeyMismatchLead": "主機身分與記錄不符：",
+    "testSuccessHostKeyMismatch": "這台主機的主機金鑰（host key）和記錄不同，平台已把登入憑證送給它。若主機沒有重灌或更換，可能有人冒充，請先不要使用。此事已記錄。",
+    "testHostKeyReachabilityNote": "列表上的連線狀態只代表連得上，不代表主機身分相符。",
+    "testFailedHostKeyMismatch": "連線測試失敗（{reason}），且主機金鑰與記錄不符：平台已向這台主機嘗試認證，密碼可能已送出。事件已記錄，該指紋首次出現時已建立系統告警",
+    "hostKeyAdopt": "採用這個指紋",
+    "hostKeyAdoptConfirm": "採用後，這個指紋成為記錄，出示它的連線不再警示，其他指紋仍會告警。請先向主機管理者確認這個指紋確實屬於這台主機。此操作會記錄並建立系統告警。",
+    "hostKeyAdoptSuccess": "已採用，出示這個指紋的連線不再警示",
+    "hostKeyAdoptSuperAdminOnly": "只有超級管理者能採用",
+    "hostKeyAdoptButton": "採用",
     "updated": "已更新資產",
     "created": "已新增資產",
     "createdUngrouped": "已新增資產，已置於未分組",
@@ -1363,6 +1499,8 @@
       "colField": "欄位",
       "colValue": "填寫內容",
       "colProblem": "問題",
+      "problemNodeUnavailable": "節點不存在，或你無法使用",
+      "problemCredentialUnavailable": "共用憑證不存在，或你無法使用",
       "downloadErrors": "下載錯誤清單（CSV）",
       "importN": "匯入 {total} 台資產",
       "confirm": "將建立 {total} 台資產（其中 {pending} 台未指定登入憑證）。此操作會整批完成，任一台失敗則全部不建立。",
@@ -1449,7 +1587,8 @@
           "desc": "適用 mysql、postgres、redis、mssql。disable require verify-ca verify-full；留空＝沿用用戶端預設。選 verify-ca 或 verify-full 時，伺服器若使用自簽或私有 CA，請於匯入後在編輯中貼上 CA 憑證",
           "example": "require"
         }
-      }
+      },
+      "accessPolicyReadonly": "填寫連線政策需要存取政策管理權限，這裡不能填寫"
     },
     "credentialPending": "待配憑證",
     "credentialPendingTooltip": "尚未設定登入憑證。請管理員在「編輯 → 帳號」中指定。",
@@ -1569,6 +1708,7 @@
     "idLabel": "連線編號 {id}"
   },
   "myConnections": {
+    "notApplicable": "此頁只列出你本人的連線紀錄。你的角色不需要先提出連線申請，管理者與稽核人員的連線仍依各自的授權與政策判定。",
     "headerDesc": "檢視自己的連線紀錄",
     "connectedAt": "連線時間",
     "duration": "時長",
@@ -1601,6 +1741,19 @@
     "causeColumn": "原因",
     "emptyFailuresTitle": "尚無失效事件",
     "emptyFailuresHint": "稽核機制失效（如 Syslog 轉發中斷）將記錄於此",
+    "permissionAccept": {
+      "column": "權限狀態確認",
+      "button": "確認並接受風險",
+      "title": "確認權限狀態變動",
+      "hint": "偵測到權限資料曾被繞過系統直接修改。確認後會以目前的實際狀態作為新基準、告警結案，並把確認人、原因與差異摘要寫入稽核日誌。這不會修改任何角色或授權。",
+      "reasonLabel": "確認原因",
+      "reasonPlaceholder": "例如：已與維運人員核對，這是某日的緊急修復",
+      "submit": "確認並接受風險",
+      "success": "已確認，告警已結案並留下稽核紀錄",
+      "titleUnknown": "重設權限狀態比對基準",
+      "hintUnknown": "權限狀態比對無法完成（變更紀錄不完整或無法驗證），在重設之前，之後的直接修改都無法被偵測。重設會以目前的實際狀態作為新的比對基準、告警結案，並把確認人、原因與無法完成的原因摘要寫入稽核日誌。被破壞的紀錄會原樣保留，不會修改任何角色或授權。",
+      "successUnknown": "已重設比對基準，告警已結案並留下稽核紀錄"
+    },
     "exportDialogTitle": "匯出稽核證據包",
     "exportDialogInfo": "證據包為 ZIP，含範圍內的操作日誌、指令流、剪貼簿內容、關聯連線錄影與每日簽核紀錄，以及一份 manifest（匯出者、時間、每檔 SHA-256 保管鏈）。送出後在背景打包，完成後到下載中心取件。至少需指定一個範圍條件。",
     "userId": "使用者 ID",
@@ -1640,7 +1793,11 @@
     "filterKeyNotice": "只看安全政策「{setting}」的變更",
     "filterKeyClear": "清除篩選",
     "reason": "原因",
-    "detailsRaw": "詳細資訊"
+    "detailsRaw": "詳細資訊",
+    "grantMark": {
+      "self_authorization": "自我授權",
+      "management_grant": "管理類授權"
+    }
   },
   "commands": {
     "headerDesc": "跨連線搜尋指令與語句記錄。命令列的內容重組自按鍵流，以錄影回放為準；查詢主控台的語句於送出時登記。",
@@ -1683,8 +1840,9 @@
     "kindRule": "規則告警",
     "kindSensitiveReveal": "敏感原文調閱",
     "sensitiveRevealDescription": "有人調閱了敏感原文；詳情請查逐筆調閱稽核。",
-    "title": "指令告警",
-    "headerDesc": "危險指令告警記錄與規則管理",
+    "title": "告警",
+    "headerDesc": "危險指令與系統安全事件的告警記錄",
+    "channelsHeaderDesc": "告警會送到這些通道。任何通道的新增、修改、停用或刪除，都會通知安全人員。",
     "tabAlerts": "告警記錄",
     "severity": "嚴重程度",
     "reviewStatus": "審閱狀態",
@@ -1828,7 +1986,14 @@
         "notSent": "未送出",
         "unconfirmed": "待確認：沒有收到伺服器回應"
       }
-    }
+    },
+    "kindSystemSecurity": "系統告警",
+    "channelChangeNotice": "修改網址時，舊的與新的目的地都會各收到一則「通道已變更」通知，並通知安全人員。",
+    "channelOldUrl": "舊網址",
+    "channelNewUrl": "新網址",
+    "channelDeleteNotice": "刪除後仍會送一則通知到這個通道，並通知安全人員。",
+    "channelPushSystemHint": "「推送」只篩選一般告警（例如規則告警、指令稽核降級）；系統告警一律推送到每一個啟用中的通道。",
+    "tabSystemAlerts": "系統告警"
   },
   "transmission": {
     "headerDesc": "傳輸強制政策與通道加密清冊（原「通道加密清冊」頁）：政策等級每項標示 PCI 建議值；清冊彙整全通道加密狀態與偏離，匯出快照帶時間戳與產生者，可作稽核 inventory",
@@ -2047,6 +2212,7 @@
     "createChild": "新增子節點",
     "move": "搬移",
     "authorizeNode": "授權此節點",
+    "authorizeNodeUnavailable": "這個節點在你的授權管理範圍外，僅作為路徑定位，不能直接授權。",
     "sectionOther": "其他",
     "renameTitle": "節點改名",
     "createChildTitle": "於「{name}」下新增子節點",
@@ -2060,7 +2226,20 @@
     "updated": "節點已更新",
     "moved": "節點已搬移",
     "deleteConfirm": "確定刪除節點「{name}」？僅無子節點且無直掛資產的空節點可刪；掛此節點的授權與審核範圍將連動撤銷。此操作無法復原。",
-    "deleted": "節點已刪除"
+    "deleted": "節點已刪除",
+    "scopeBadge": "範圍",
+    "scopeRootLocked": "這是你的管理範圍的根節點，只有超級管理者能執行此動作",
+    "superAdminOnly": "只有超級管理者能執行此動作",
+    "locatorAncestor": "僅作為上層路徑顯示，你在此節點沒有管理權限",
+    "deleteBlocked": {
+      "title": "無法刪除節點",
+      "scopedBody": "節點「{path}」是另外 {count} 項管理範圍的一部分，無法刪除。",
+      "scopedHint": "請聯絡身分管理員或超級管理者，調整這些管理範圍後再刪除。",
+      "superBody": "節點「{path}」仍被 {count} 項管理範圍引用，需先調整這些指派才能刪除。",
+      "listTitle": "引用此節點的管理範圍",
+      "goEdit": "前往修改",
+      "groupMembers": "{count} 位成員"
+    }
   },
   "tagManager": {
     "hint": "改名套用至所有含該標籤的資產；目標已存在即合併（自動去重）。",
@@ -2257,6 +2436,7 @@
     "queryFailed": "指標查詢失敗"
   },
   "syslogCard": {
+    "changeAlertNotice": "這類變更會記錄並建立系統告警，送達取決於通知通道。",
     "title": "syslog 日誌轉發",
     "hint": "稽核日誌即時轉發至外部 SIEM（RFC 5424）；資料庫仍為權威儲存",
     "dropped": "已丟棄 {n} 筆（緩衝溢出）",
@@ -2415,7 +2595,7 @@
     "groupSnapshotNoGroups": "該次登入未觀測到任何群組值。"
   },
   "userGroups": {
-    "headerDesc": "授權主體的分組維度（與 RBAC 角色無關）：對群組授權即對全體成員生效",
+    "headerDesc": "把使用者分成一組；對群組授權，就是對全體成員授權。群組也可以帶角色，每位成員都會取得。",
     "create": "新增群組",
     "nameColumn": "群組名稱",
     "members": "成員",
@@ -2435,17 +2615,297 @@
     "membersUpdated": "成員已更新（授權即時生效）",
     "deleteConfirmWithAuth": "刪除群組「{name}」將連動撤銷 {count} 筆授權，成員立即失去經此群組取得的存取權。此操作無法復原。",
     "deleteConfirm": "確定刪除群組「{name}」嗎？（該群組目前無授權記錄）此操作無法復原。",
-    "deleted": "群組已刪除，連動撤銷 {count} 筆授權"
+    "deleted": "群組已刪除，連動撤銷 {count} 筆授權",
+    "detail": {
+      "loadFailed": "無法載入這個群組",
+      "tabs": {
+        "members": "成員",
+        "roles": "角色與範圍"
+      },
+      "memberCount": "{n} 位成員",
+      "mapping": {
+        "one": "依設定，{source}「{group}」群組的成員會映射進這個群組，在下次登入時依{source}更新",
+        "many": "依設定，{items}；這些群組的成員會映射進這個群組，在下次登入時依各來源更新",
+        "manyMore": "依設定，{items}，另有 {n} 個群組；這些群組的成員會映射進這個群組，在下次登入時依各來源更新",
+        "item": "{source}「{group}」",
+        "sourceDisabled": "來源已停用",
+        "popoverTitle": "依設定映射進這個群組的外部群組（{n}）",
+        "popoverNote": "只列啟用中的規則。這是設定，不代表每位成員都來自這些群組。",
+        "fallbackTitle": "部分成員來自外部群組映射",
+        "fallbackBody": "有些成員是經外部群組映射加入的。可能來自多個來源、既有資料，或暫時讀不到映射設定。",
+        "fallbackHint": "成員分頁的「外部群組映射」標籤會標出是哪些人。"
+      },
+      "members": {
+        "help": "「手動加入」可以在這裡移除；「外部群組映射」由外部目錄決定，這裡不能移除。",
+        "title": "成員維護",
+        "colJoinedVia": "加入方式",
+        "maintainBlocked": "這個群組帶有「{role}」角色，只有超級管理者能加入或移除成員。",
+        "deleteBlocked": "這個群組帶有「{role}」角色，只有超級管理者能刪除。",
+        "allUsers": "全部使用者",
+        "manualMembers": "手動成員",
+        "mappedReadonlyTitle": "經映射加入的成員",
+        "mappedReadonlyNote": "（由外部目錄決定，這裡不能移除）"
+      },
+      "roles": {
+        "title": "這個群組的角色（{n}）",
+        "protectedBadge": "受保護",
+        "protectedCannotRemove": "只有超級管理者能移除這個角色。",
+        "help": "群組的角色會給每一位成員，成員在使用者頁會看到這個角色，標示來自本群組。受保護的角色不能在這裡增減，其他角色照常可以調整並儲存。"
+      },
+      "impact": {
+        "title": "儲存後的變化",
+        "members": "影響成員 {n} 位",
+        "routesGained": "新增入口",
+        "none": "無",
+        "comboNote": "成員中有 {n} 人會出現需要確認的組合，儲存時會請你確認。"
+      }
+    }
   },
   "roles": {
-    "headerDesc": "檢視系統角色和權限說明",
+    "headerDesc": "角色決定一個人在後台看得到哪些頁面、能改哪些資料。能連線到哪些主機，由資產授權決定。",
     "nameColumn": "角色名稱",
     "descriptionColumn": "說明",
     "permissionCardTitle": "角色權限說明",
     "tipTitle": "提示",
-    "tipBody": "目前系統角色為固定角色，不支援新增或刪除。如需修改使用者角色，請前往「使用者管理」頁面進行操作。",
+    "tipBody": "內建角色不能修改，可作為範本新增自訂角色。新增、修改、複製與刪除角色只有超級管理者能做，其他有檢視權限的人可以查看每個角色的內容。要替使用者指派角色，請前往「使用者管理」。",
     "emptyTitle": "尚無角色資料",
-    "emptyHint": "系統角色將在此顯示"
+    "emptyHint": "系統角色將在此顯示",
+    "identityAdmin": {
+      "name": "身分管理員",
+      "description": "管理使用者、使用者群組、身分來源與角色指派。不含系統安全設定與稽核內容，管理權不自動帶來平台內連線權。"
+    },
+    "securityAdmin": {
+      "name": "系統安全管理員",
+      "description": "管理全系統安全政策、金鑰、傳輸、異地儲存、通知與告警設定。不含身分與角色管理，管理權不自動帶來平台內連線權。"
+    },
+    "state": {
+      "hidden": "隱藏",
+      "read": "唯讀",
+      "manage": "管理",
+      "available": "可用"
+    },
+    "summary": {
+      "manage": "可管理",
+      "read": "可檢視",
+      "available": "可使用",
+      "hidden": "未授予",
+      "global": "範圍為全系統",
+      "connectionSeparate": "管理權不自動帶來平台內連線權，連線需另外授予",
+      "assignmentTrust": "此角色可把超級管理者、系統安全管理員與含高風險權限點的自訂角色以外的角色指派給他人，等同廣泛發權；人選應比照身分管理員，只交給可信任的人"
+    },
+    "permissionLabel": {
+      "roleAssign": "指派角色",
+      "systemalertManage": "系統告警分級"
+    },
+    "dangerCombo": {
+      "authz_rules_with_asset_or_credential": "同時能管理授權規則，又能管理資產或憑證",
+      "security_with_asset_or_authz": "同時持有安全設定管理，又能管理資產或授權規則",
+      "asset_management_with_connect": "同時能管理資產，又能連線這些資產",
+      "identity_with_security": "同時能管理身分與角色指派，又持有安全設定管理",
+      "identity_with_business_or_connect": "同時能管理身分與角色指派，又能操作業務資產或連線"
+    },
+    "list": {
+      "builtinTitle": "內建角色（{n}）",
+      "customTitle": "自訂角色（{n}）",
+      "colFeatures": "可用的功能",
+      "colScope": "管理範圍",
+      "colUsers": "使用者",
+      "colActions": "操作",
+      "builtinLocked": "內建，不能修改",
+      "templateFrom": "以「{name}」為範本",
+      "blankStart": "從空白開始",
+      "scopeGlobal": "全系統",
+      "approverAbility": "核准連線申請",
+      "scopeByReviewer": "依審核範圍",
+      "scopeNotApplicable": "不適用",
+      "actionView": "檢視",
+      "actionUseAsTemplate": "以此為範本新增",
+      "actionEdit": "編輯",
+      "actionCopy": "複製",
+      "actionDelete": "刪除",
+      "create": "新增角色",
+      "viewOnlyNote": "你可以檢視每個角色的內容。新增、修改、複製或刪除角色，只有超級管理者能做。",
+      "unavailable": "無法取得角色資訊",
+      "deleteConfirm": "確定要刪除自訂角色「{name}」嗎？刪除後無法復原。",
+      "deleted": "已刪除角色",
+      "inUse": {
+        "title": "還在使用中，不能刪除",
+        "direct": "直接指派給 {n} 人",
+        "groups": "{n} 個使用者群組帶有這個角色",
+        "mappings": "{n} 條外部群組映射規則指向這個角色（已停用的規則也算）",
+        "hint": {
+          "users": "先到「使用者管理」把這個角色拿掉，再回來刪除。",
+          "groups": "先到「使用者群組」把這個角色拿掉，再回來刪除。",
+          "usersAndGroups": "先到「使用者管理」與「使用者群組」把這個角色拿掉，再回來刪除。",
+          "mappings": "雖然目前沒有人持有，仍要先到「身分來源」的外部群組映射刪除這條規則，再回來刪除。",
+          "mappingsToo": "另外要到「身分來源」的外部群組映射刪除指向這個角色的規則。"
+        },
+        "conflictTitle": "無法刪除「{name}」",
+        "conflictBody": "在你確認刪除之前，已經有人開始使用這個角色，所以沒有刪除。",
+        "reloaded": "列表已重新載入，人數與操作已更新。",
+        "ack": "知道了"
+      },
+      "scopeAtAssignment": "指派時選節點"
+    },
+    "create": {
+      "title": "新增角色：從範本開始",
+      "fromTemplate": "從哪個範本開始",
+      "blank": "空白",
+      "adjustLater": "之後可以逐項調整。",
+      "name": "角色名稱",
+      "description": "說明",
+      "descriptionPlaceholder": "（選填）例如：負責資料庫主機的日常維運",
+      "next": "下一步：調整功能",
+      "copyTitle": "複製角色",
+      "copyName": "新角色名稱",
+      "created": "已新增角色",
+      "copied": "已複製角色",
+      "updated": "已儲存角色"
+    },
+    "editor": {
+      "titleNew": "新增角色",
+      "titleEdit": "編輯角色",
+      "titleView": "檢視角色",
+      "badgeCustom": "自訂",
+      "badgeBuiltinLocked": "內建・不能修改",
+      "holders": "{n} 人使用中，儲存後立即生效",
+      "systemFeatures": "系統功能",
+      "legend": "隱藏＝看不到　唯讀＝只能看　管理＝可以新增與修改　可用＝可以打開使用",
+      "detailCount": "細分動作 {n}／{m}",
+      "detailNote": "連線政策（連線前要不要申請、要不要核准）不在這裡，屬於下方的「資產授權」。",
+      "groupCount": {
+        "manage": "{n} 管理",
+        "read": "{n} 唯讀",
+        "available": "{n} 可用",
+        "hidden": "{n} 隱藏",
+        "allHidden": "全部隱藏（{n} 項）",
+        "autoShown": "{n} 項自動顯示"
+      },
+      "fixed": {
+        "dashboard": "儀表板",
+        "workspace": "工作區",
+        "profile": "個人資料",
+        "my_connections": "我的連線",
+        "my_requests": "我的申請",
+        "my_agents": "我的 agent",
+        "approvals": "審核中心"
+      },
+      "fixedVisible": {
+        "everyone": "所有人可見",
+        "agentOwner": "擁有 agent 的人可見",
+        "approver": "有審核資格的人可見"
+      },
+      "summary": {
+        "title": "持有這個角色的人",
+        "missingTitle": "缺少必要的功能",
+        "hiddenTitle": "看不到",
+        "scopeTitle": "管理範圍",
+        "scopeAll": "全系統",
+        "connectionTitle": "連線",
+        "connectionNote": "這個角色不會讓人能連線到主機。能否連線，由資產授權的規則決定。",
+        "unavailable": "暫時無法產生摘要",
+        "unavailableHint": "左邊的勾選不受影響，仍可儲存。",
+        "scopeNodeSelectable": "指派時選節點，只在所選節點內生效",
+        "scopeMixedGlobalOnly": "含已實作範圍過濾的功能，但另含只能全系統生效的功能，因此只能指派為全系統"
+      },
+      "previewInlineUnavailable": "暫時無法檢查需要確認的組合",
+      "comboPanelTitle": "{n} 個組合需要確認",
+      "missing": {
+        "inline": "缺少{items}：持有這個角色的人打不開{screens}。仍可儲存，系統不會自動補上。",
+        "capability": "缺少{items}的檢視：持有者看不到資產，這一項用不上。仍可儲存，系統不會自動補上。",
+        "summary": "{entry}需要{items}；目前沒有勾，持有者打不開{screens}。"
+      },
+      "capabilityTitle": "其他能力",
+      "capabilityHint": "不屬於任何頁面，勾選只加這一項",
+      "capability": {
+        "role_assign": "指派角色",
+        "access_policy_override": "單台主機的存取政策覆寫",
+        "recording_delete": "刪除錄影"
+      },
+      "capabilityDesc": {
+        "role_assign": "可以把角色分給其他使用者。",
+        "access_policy_override": "可以替個別主機調整連線前要不要申請、要不要核准。",
+        "recording_delete": "可以刪除單筆連線錄影；每次刪除都會通知安全人員。"
+      },
+      "trustHint": "持有者可以發放超級管理者、系統安全管理員與含高風險權限點的自訂角色以外的角色，請比照身分管理員挑選人選。",
+      "noPartialDelegation": "不提供「只能發放部分角色」或「只能發放部分範圍」的設定。",
+      "conflict": {
+        "title": "沒有儲存：你編輯的期間，有人修改過這個角色",
+        "body": "你的修改沒有送出，也沒有蓋掉對方的內容，目前仍留在這個畫面上。重新載入會換成對方修改後的版本；想保留你的修改，請先記下再重新載入。",
+        "reload": "重新載入最新版本",
+        "stay": "留在這裡",
+        "draftKept": "（下方仍是你尚未送出的修改）"
+      },
+      "effectiveNow": "儲存後立即生效，並記入操作日誌。",
+      "entry": {
+        "assets": "資產管理",
+        "credentials": "帳號憑證庫",
+        "change_secret": "改密計劃",
+        "authorizations": "資產授權",
+        "approver_scopes": "審核範圍",
+        "users": "使用者管理",
+        "user_groups": "使用者群組",
+        "roles": "角色管理",
+        "identity_sources": "身分來源",
+        "sessions": "連線管理",
+        "audit_logs": "操作日誌",
+        "checkpoint_verification": "檢查點驗證",
+        "alerts": "告警",
+        "compliance_map": "合規對照",
+        "access_reviews": "存取複審",
+        "security_policies": "安全政策",
+        "policy_groups": "政策組",
+        "key_management": "金鑰管理",
+        "transmission": "傳輸安全",
+        "offsite_storage": "離機儲存",
+        "syslog": "日誌轉發",
+        "notification_channels": "通知通道",
+        "system_alerts": "系統告警",
+        "alert_rules": "告警規則",
+        "schedules": "排程",
+        "rotation_schedules": "輪替排程",
+        "instance_guard": "實例保護"
+      },
+      "detail": {
+        "asset": {
+          "view": "檢視資產",
+          "create": "新增",
+          "update": "編輯內容",
+          "delete": "刪除",
+          "test": "測試連線"
+        },
+        "asset_account": {
+          "view": "檢視資產帳號",
+          "update": "編輯資產帳號"
+        },
+        "node": {
+          "manage": "管理分組"
+        },
+        "credential": {
+          "manage": "管理憑證庫",
+          "view": "檢視",
+          "create": "新增",
+          "update": "編輯",
+          "set_secret": "設定密碼或私鑰",
+          "rotate": "輪替",
+          "convert_scope": "轉換共用方式",
+          "detach": "解除綁定",
+          "delete": "刪除",
+          "bind": "綁定到資產帳號",
+          "account_rotate": "帳號改密"
+        }
+      },
+      "scopable": "可限範圍",
+      "nodeScopedNotice": "這個角色有 {n} 筆限定節點的指派，新加入的只能全系統生效的功能在那些指派上不會生效。",
+      "nodeScopedNoEffectNotice": "這個角色有 {n} 筆限定節點的指派；角色的權限不受節點限制，那些指派的範圍不會生效。"
+    },
+    "assignState": {
+      "protected": "只有超級管理者能指派",
+      "notOpen": "這個角色目前還不能指派",
+      "notDirectMappable": "這個角色只能經使用者群組取得，不能直接對應",
+      "notGroupBindable": "這個角色不能給群組",
+      "managementClass": "管理角色"
+    }
   },
   "profile": {
     "headerDesc": "帳號資訊、密碼與兩步驟驗證管理",
@@ -2638,6 +3098,7 @@
     "title": "資產授權管理",
     "headerDesc": "管理使用者對資產的存取權限",
     "batchAuthorize": "批次授權",
+    "tabAccessPolicy": "連線政策",
     "tabRecords": "授權記錄",
     "allUsers": "全部使用者",
     "filterUserGroup": "使用者群組",
@@ -2688,7 +3149,17 @@
     "accountScopeHint": "帳號以名稱比對：客體範圍內資產上同名的帳號才可連線；清單為輸入輔助，可自行輸入尚未建立的名稱。",
     "accountScopeSaved": "已更新帳號範圍",
     "accountScopeFailed": "更新帳號範圍失敗",
-    "accountScopeReserved": "{names} 為授權範圍的保留別名（以 {'@'} 開頭），不是帳號名稱；要授權全部帳號請改選「全部帳號」"
+    "accountScopeReserved": "{names} 為授權範圍的保留別名（以 {'@'} 開頭），不是帳號名稱；要授權全部帳號請改選「全部帳號」",
+    "accountScopeSelfLocked": "這筆規則的主體是你本人、你所屬的群組或你擁有的 agent。你不能在此調整帳號範圍，請由超級管理者處理；刪除仍依原權限規則。",
+    "selectorLoadFailed": "載入失敗，清單可能不完整，請重新整理再試。",
+    "actionReason": {
+      "ticket_bound": "這筆臨時授權綁定申請單，請改用「撤銷」結束；不能在此調整帳號範圍或直接刪除。",
+      "not_revocable": "這筆臨時授權已不在可撤銷的狀態（已到期、未生效或已結束）。",
+      "revoke_not_eligible": "你不在這張申請單的撤銷資格內，不能撤銷這筆臨時授權。"
+    },
+    "actionLimit": {
+      "narrow_only": "你不是這筆規則的建立者，只能縮小帳號範圍，不能擴大。"
+    }
   },
   "accessReviews": {
     "headerDesc": "週期性人員存取複審與簽核紀錄（PCI 7.2.4 管理層確認）",
@@ -2750,9 +3221,13 @@
     "removeConfirm": "確定移除 {actor} 的範圍「{target}」？此操作無法復原。",
     "removeTitle": "確認移除",
     "removeButton": "確定移除",
-    "removed": "已移除審核範圍"
+    "removed": "已移除審核範圍",
+    "scopedNotice": "你只能管理部分節點的審核範圍：這裡只列出這些節點與其下資產的範圍。",
+    "applicantManagedGlobally": "申請人側路由只能由可管理全部範圍、並具備申請人型管理權限者設定，這裡不顯示。",
+    "poolScopedNote": "可審人數只計入你可管理範圍內的審核範圍，範圍外另有的審核方不會算進來。"
   },
   "myRequests": {
+    "notApplicable": "此頁只列出你本人的申請紀錄。你的角色目前不走資產申請流程，是否能送件與連線仍以系統授權與政策判定。",
     "headerDesc": "檢視連線申請進度、撤回申請，以及目前可用的限時連線",
     "activeTicketsTitle": "目前可用的限時連線",
     "connectable": "可連線",
@@ -2798,6 +3273,7 @@
     "subjectIndividual": "個別使用者",
     "subjectGroup": "使用者群組",
     "colGroupName": "群組名稱",
+    "colDisplayName": "顯示名稱",
     "colMemberCount": "成員數",
     "searchUserPlaceholder": "搜尋使用者名稱",
     "targetIndividual": "個別資產",
@@ -2824,7 +3300,10 @@
     "prevStep": "上一步",
     "nextStep": "下一步",
     "batchDoneWithSkipped": "批次授權完成：新增 {created} 筆、跳過 {skipped} 筆（組合已存在）",
-    "batchDone": "已完成批次授權，共新增 {created} 筆授權記錄"
+    "batchDone": "已完成批次授權，共新增 {created} 筆授權記錄",
+    "selfSubjectUser": "不能授權給自己",
+    "selfSubjectAgent": "這是你擁有的 agent，不能授權給它",
+    "selfGroupNotice": "你所屬的群組不能勾選：授權規則不得包含操作者本人所屬的群組"
   },
   "authzEffective": {
     "selectUserLabel": "選擇使用者",
@@ -2867,7 +3346,8 @@
     "assignRoleConfirm": "{username} 尚未具備審核人員角色，將同時為其分配該角色並開始接收範圍內申請。是否繼續？",
     "assignRoleTitle": "分配審核人員角色",
     "roleAssignedScopeFailed": "審核人員角色已分配，但範圍建立失敗，請重試新增範圍",
-    "scopeAssigned": "已分配審核範圍"
+    "scopeAssigned": "已分配審核範圍",
+    "approverRoleRequiredHint": "只列出已具備審核人員角色的使用者。要讓其他人成為審核方，請先由可指派角色的管理者為其加上審核人員角色。"
   },
   "securityPolicies": {
     "description": "帳號認證、連線與日誌留存的安全門檻。存取管控、傳輸安全、金鑰與離機儲存的設定各有專屬管理頁。",
@@ -2879,7 +3359,9 @@
     "insecureTransportOptionHttp": "這套部署就是走 http：把本頁的「登入狀態僅在 https 連線保存」關閉再儲存，立即生效，不需要重啟。"
   },
   "accessControl": {
-    "description": "連線前是否要申請、由誰核准：全域預設＋資產覆寫、申請參數與緊急連線；政策段位每項均標示 PCI DSS 建議值"
+    "defaultRelaxAlertNotice": "這類變更會記錄並建立系統告警，送達取決於通知通道。",
+    "description": "連線前是否要申請、由誰核准：全域預設＋資產覆寫、申請參數與緊急連線；政策段位每項均標示 PCI DSS 建議值",
+    "overrideManagedElsewhere": "單台資產的連線政策由持有存取政策管理權限的人設定"
   },
   "unseal": {
     "title": "系統解封",
@@ -3051,6 +3533,7 @@
     "cleanupGuidance": "清理完成前不能解封。清理失敗時保留結果，處理原因後再重啟；不要刪除 journal。"
   },
   "keyManagement": {
+    "topologyChangeAlertNotice": "這類變更會記錄並建立系統告警，送達取決於通知通道。",
     "description": "信封加密金鑰清冊與換鑰精靈；所有輪替均為手動操作，系統不會自動換鑰",
     "rewrapPendingTitle": "KEK 重包尚未切換",
     "rewrapPendingDesc": "新 KEK 已完成重包並落庫，但服務仍以舊 KEK 運行。請將你在精靈輸入的新 KEK 存入 ENCRYPTION_KEY 環境變數後重啟服務完成切換；未切換前一切照常運作，且金鑰輪替暫時停用（切換完成後恢復）。",
@@ -3242,7 +3725,8 @@
     "sealRestoreDeployment": "恢復時，管理者到解封頁確認身分後按下「重新讀取並解封」，系統就會重讀部署設定的金鑰來源，不必手動輸入金鑰。",
     "sealRestoreDelegated": "恢復時，要有人到解封頁確認身分、核對保管處，再重新提供保管處的憑證——封存會抹掉目前這份憑證，系統無法自行取回。",
     "sealReconnect": "解封後，需要重新建立連線；中斷的連線不會自動恢復。",
-    "dekTtlLocalModeNote": "本部署的主金鑰由環境變數提供或由管理員在啟動時輸入，本來就位於本系統的記憶體中。下方的「資料金鑰的記憶體保留時間」仍然可以設定，它縮短的是資料金鑰的存放時間。"
+    "dekTtlLocalModeNote": "本部署的主金鑰由環境變數提供或由管理員在啟動時輸入，本來就位於本系統的記憶體中。下方的「資料金鑰的記憶體保留時間」仍然可以設定，它縮短的是資料金鑰的存放時間。",
+    "policyNeedsPermission": "本頁的金鑰設定（例如金鑰輪替提醒天數）屬於安全政策，需要安全政策的設定權限才能檢視與修改；目前的角色沒有這項權限。"
   },
   "changeSecretPlans": {
     "description": "資產憑證定期輪換：帳號級改密與 SSH 金鑰輪替，驗證後才提交、未驗證自動重試",
@@ -3300,6 +3784,7 @@
     "candidatesEmpty": "沒有未驗證的憑證",
     "colAttempts": "嘗試次數",
     "colNextAttempt": "下次重試",
+    "hostIdentityPending": "待確認主機身分",
     "colLastError": "最後錯誤",
     "colState": "狀態",
     "stateApplied": "已改密待驗證",
@@ -3350,6 +3835,18 @@
       "CHANGE_SECRET_RETRY_PROMOTED": "系統重試驗證成功，憑證已轉正",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "無法取用候選憑證內容；詳細訊息見伺服器日誌",
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "以候選憑證登入目標主機失敗；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_HOST_KEY_MISMATCH": "主機金鑰與記錄不符，未送出任何憑證。請確認主機後在資產設定採用新指紋或重置主機金鑰",
+      "CHANGE_SECRET_HOST_KEY_CHECK_FAILED": "無法在送出憑證前確認主機身分，已中止，目標未被觸碰。請稍後重試，持續發生請聯絡管理員",
+      "CHANGE_SECRET_AUTHZ_REVOKED": "已停止：發起者目前的權限不足，遠端未被觸碰",
+      "CHANGE_SECRET_SCOPE_BOUND_EXCEEDED": "目標超出確認範圍：這個共用憑證在你管理範圍外的影響已超出先前確認的內容，計畫已暫停，請重新確認後才會再執行",
+      "CHANGE_SECRET_AUTHZ_CONTEXT_MISSING": "已停止：此工作沒有可指認的發起者，需由具權者重新授權",
+      "CHANGE_SECRET_AUTHZ_UNAVAILABLE": "已停止：無法判定發起者的權限，依預設拒絕",
+      "CHANGE_SECRET_AUTHZ_TARGET_CHANGED": "驗證已拒絕：目標的位址、通道、帳號或版本已變動",
+      "CHANGE_SECRET_AUTHZ_CONVERGENCE_EXPIRED": "失權後的有限驗證已逾期，已保留候選待帶外處置",
+      "CHANGE_SECRET_AUTHZ_RESTORED": "還原前建立的改密工作不會在還原後自動送出，需具權者重新確認（手動重試或重新授權）",
+      "CHANGE_SECRET_HOST_IDENTITY_CHANGED": "無法確認主機身分與此工作的綁定一致，已停止；新憑證仍保留、尚未套用，待具權者確認後處置",
+      "CHANGE_SECRET_INTERRUPTED": "服務重啟時本台正在改密，遠端是否已換成新秘密未知；請補跑以新秘密驗證確認",
+      "CHANGE_SECRET_RECOVERED_CLEANUP_PENDING": "失權後的有限驗證成功並已提交，但 SSH 舊公鑰尚未清除，需具權者手動清理",
       "SHARED_CREDENTIAL_TARGET_REQUIRED": "此目標掛的是共用憑證，已略過；請改以該憑證為目標發起整組改密"
     },
     "maxAgeDays": "憑證最長使用天數覆蓋",
@@ -3359,12 +3856,110 @@
     "colChannel": "通道",
     "secretTypeWindowsHint": "Windows 通道只支援密碼；金鑰型別對 Windows 資產會記為略過",
     "recordsSummary": "共 {total} 筆：成功 {success}、失敗 {failed}、未驗證 {unverified}、略過 {skipped}",
-    "recordsNote": "訊息為系統機器碼的文案；遠端回傳的原文只在伺服器日誌。"
+    "recordsNote": "訊息為系統機器碼的文案；遠端回傳的原文只在伺服器日誌。",
+    "saveNotice": "下次執行將以你的權限重驗：儲存後，這個計畫會以你為發起者，每次執行前依你當下的權限重新檢查，權限不足時該次停止並發出告警。",
+    "reconfirmTitle": "重新確認改密範圍",
+    "reconfirmBody": "這個憑證另有 {count} 台不在你管理範圍內的主機也會一併改密。這些主機由其他管理者負責，這裡不列出。確認後計畫才會恢復執行。",
+    "reconfirmButton": "重新確認",
+    "reconfirmAck": "我已了解，這 {count} 台也會一併改密",
+    "reconfirmSubmit": "確認並儲存",
+    "reconfirmDone": "已重新確認，計畫恢復執行",
+    "reconfirmTag": "待重新確認",
+    "reauthorize": {
+      "banner": "有 {count} 個排程計畫因升級後無法確認發起者而暫停，排程時間與啟用設定都已保留。",
+      "button": "由我承接並恢復排程",
+      "confirmTitle": "重新授權排程計畫",
+      "confirm": "這 {count} 個計畫之後會以您的身分執行，每次執行前都會依您當下的權限重新檢查；若您的權限不足，該次會停止並發出告警。確定承接？",
+      "done": "已重新授權 {count} 個計畫",
+      "skipped": "{skipped} 個計畫因您的權限不足而維持暫停，需有權限的人承接"
+    }
+  },
+  "hostIdentityConfirm": {
+    "title": "確認主機身分後再驗證",
+    "target": "{asset}・帳號 {account}",
+    "intro": {
+      "notSent": "這筆新憑證送出之後，這台主機的金鑰記錄更新過（例如被重置後重新記錄），所以系統停止自動驗證。新憑證仍保留，這次沒有拿新憑證去登入變更後的主機。",
+      "verifiedNotApplied": "這次已用新憑證登入這台主機驗證過，但尚未套用。在套用之前，系統發現這台主機的金鑰記錄更新過（例如被重置後重新記錄），所以沒有套用，並停止自動驗證。新憑證仍保留。",
+      "unknown": "這筆新憑證送出之後，這台主機的金鑰記錄更新過（例如被重置後重新記錄），所以系統停止自動驗證。無法確定這次是否已用新憑證登入，新憑證仍保留。"
+    },
+    "summary": {
+      "keyLabel": "目前記錄的金鑰",
+      "relationLabel": "與送出新憑證時",
+      "relationSame": "相同",
+      "relationDifferent": "不同",
+      "relationUnavailable": "無法比對",
+      "relationUnavailableHint": "沒有送出時的紀錄",
+      "currentReset": "沒有（已重置，等待重新記錄）",
+      "deadlineLabel": "原本的期限",
+      "deadlineActive": "{time}（尚未到期）",
+      "deadlineExpired": "{time}（已過）",
+      "channelLabel": "改密通道",
+      "channelOriginalLabel": "送出時的通道",
+      "channelCurrentLabel": "目前的通道",
+      "winrmNoKey": "WinRM 沒有主機金鑰"
+    },
+    "checkHint": "請先向主機管理者核對：這台主機最近是否重置、重灌或更換過，以及「詳細資訊」中目前記錄的指紋是否屬於這台主機。",
+    "checkHintWinrm": "請先向主機管理者核對：這台主機最近是否重置、重灌或更換過，以及它的位址是否仍指向同一台主機。",
+    "details": {
+      "show": "詳細資訊（指紋、演算法、記錄版次）",
+      "hide": "收起詳細資訊",
+      "original": "送出新憑證時",
+      "current": "目前記錄",
+      "fingerprint": "指紋",
+      "algorithm": "演算法",
+      "record": "記錄版次",
+      "recordValue": "#{id}・第 {generation} 版",
+      "time": "時間",
+      "sentAt": "送出於 {time}",
+      "updatedAt": "最近更新於 {time}",
+      "copy": "複製",
+      "legacyOriginal": "升級前建立，沒有歷史身分"
+    },
+    "expiredNotice": "原期限已過（{time}）。這次確認只做一次驗證：之後系統不會恢復自動重試，期限也不會重新計算；沒有成功時，可以再確認一次。",
+    "foot": {
+      "default": "按下後，只會用這筆新憑證登入這台主機一次，確認可用就轉正；不會重新改密，原本的期限（{deadline}）也不變。沒有成功時，新憑證仍保留，可以再確認一次。這次確認會連同你的名字記入稽核日誌。",
+      "differentKey": "按下後，只會用這筆新憑證登入這台主機一次，確認可用就轉正；不會重新改密，原本的期限（{deadline}）也不變。這次確認會連同你的名字記入稽核日誌，並標示為「接受不同金鑰」。記錄變更當時，系統已建立系統告警。",
+      "expired": "按下後，只會用這筆新憑證登入這台主機一次，確認可用就轉正；不會重新改密。沒有成功時，新憑證仍保留，可以再確認一次。這次確認會連同你的名字記入稽核日誌。",
+      "winrm": "按下後，只會用這筆新憑證經 WinRM 驗證一次，確認可用就轉正；不會重新改密。沒有成功時，新憑證仍保留，可以再確認一次。這次確認會連同你的名字記入稽核日誌。"
+    },
+    "confirm": {
+      "identity": "我已透過平台以外的管道（例如直接詢問主機管理者）確認這台主機的身分",
+      "differentKey": "我了解這是另一把金鑰，仍要把新憑證送往這台主機驗證"
+    },
+    "differentKey": {
+      "title": "這台主機出示的是另一把金鑰",
+      "body": "送出新憑證之後，這台主機的記錄換成了另一把金鑰（由超級管理者採用，或重置後重新記錄）。若這台主機確實重灌或更換過，這是預期的變化；若沒有，可能有人冒充這台主機，送出驗證會把新憑證交給對方。"
+    },
+    "blocked": {
+      "resetPending": "這台主機的金鑰記錄目前處於重置狀態，正在等下一次連線重新記錄。記錄重新建立之前，沒有可以核對的主機身分，所以不能在這裡確認。",
+      "recordMissing": "這台主機目前沒有可以核對的金鑰記錄，沒有可以核對的主機身分，所以不能在這裡確認。新憑證仍保留。",
+      "transportChanged": "這筆新憑證是經 {from} 送到這台主機的，之後這台主機的改密通道改成了 {to}。WinRM 沒有主機金鑰可以核對，系統無法確認現在連到的還是送出時那台主機，所以不能在這裡確認。新憑證仍保留，尚未經 {to} 拿去登入。",
+      "contactAdmin": "請聯絡超級管理者處理這台主機的金鑰記錄。記錄重新建立後，再回來重試並確認。",
+      "transportRestore": "請把這台主機的改密通道改回 {from} 後再重試；無法改回時，請聯絡超級管理者處理。新憑證會一直保留。",
+      "newWorkCandidate": "要改以新工作改密：清除這筆候選後，以新工作重新改密。",
+      "newWorkMember": "要改以新工作改密：放棄這一輪並重新輪替（會產生新密碼）。只清除候選不會換掉密碼，重新補跑仍會被擋下。"
+    },
+    "legacy": {
+      "intro": "這筆工作在升級前送出，系統沒有送出當時的主機身分紀錄，無法判斷主機是否變更過，所以只能由你人工確認。確認後只做一次驗證：系統不會恢復自動重試，期限也不會重新計算。",
+      "introWinrm": "這筆工作在升級前送出，系統沒有送出當時的主機身分紀錄；這台主機以 WinRM 改密，也沒有主機金鑰可以核對，所以只能由你人工確認。確認後只做一次驗證：系統不會恢復自動重試，期限也不會重新計算。"
+    },
+    "button": {
+      "cancel": "取消",
+      "close": "關閉",
+      "submit": "只驗證，不重新改密"
+    },
+    "result": {
+      "verified": "驗證成功，憑證已轉正",
+      "notVerified": "這次驗證沒有成功，新憑證仍保留。系統不會自動再試，需要時可以再確認一次。",
+      "moved": "主機身分在你確認之後又變更了，這次的結果沒有套用，新憑證仍保留。請重新開啟確認，核對最新的身分。"
+    }
   },
   "changeSecretBatches": {
     "credentialName": "共用憑證名稱",
     "credentialNamePlaceholder": "例如：資料庫維運 2026-09",
     "credentialNameRequired": "請輸入共用憑證名稱",
+    "unavailableBanner": "整批沒有執行。你選的 {selected} 個帳號裡，有 {count} 個你目前無法操作，可能已移出你的管理範圍或已被刪除。所有帳號的密碼都沒有改動。",
+    "ownershipHint": "新建的共用憑證會歸屬於所選節點，只有能管理該節點的人看得到並管理它。",
     "credentialNameDefault": "{username} 批次 {date}",
     "description": "以帳號名為軸的一次性改密：選定帳號名後依處置狀態分欄，勾選目標即可整批改密。",
     "usernamePlaceholder": "選擇帳號名",
@@ -3515,7 +4110,8 @@
       "includeSymbol": "包含符號",
       "excludeAmbiguous": "排除易混淆字元",
       "submit": "送出改密",
-      "accepted": "改密已送出，進度會在詳情面板更新"
+      "accepted": "改密已送出，進度會在詳情面板更新",
+      "outOfScopeHint": "掛載的 {total} 台中有 {out} 台在你的範圍外。送出前會請你確認影響範圍。"
     },
     "detachDialog": {
       "title": "脫離共用",
@@ -3543,6 +4139,7 @@
       "abandon": "放棄本輪",
       "abandonHint": "放棄不會把已就位的主機改回舊密碼；憑證將標記為「不同步」，之後逐台補跑至全部就位。",
       "abandonHintFresh": "本輪還沒有任何主機被改動：放棄後這一輪等於沒發生過，憑證回到閒置。",
+      "abandonedUnsettledHint": "本輪已放棄，以下主機尚未就位。逐台補跑會沿用本輪的新秘密，全部就位後憑證回到閒置。",
       "abandonTitle": "確認放棄本輪",
       "abandonMessage": "將放棄這一輪改密。已就位的主機不會被改回舊密碼，憑證會標記為「不同步」，之後仍需逐台補跑至全部就位。此操作無法復原。",
       "abandonMessageFresh": "將放棄這一輪改密。本輪還沒有任何主機被改動，放棄後這一輪等於沒發生過，憑證回到閒置。此操作無法復原。",
@@ -3557,6 +4154,9 @@
       "retryDone": "已補跑",
       "paused": "暫停",
       "pollingPaused": "分頁不在前景，已暫停更新",
+      "hostIdentitySkipSummary": "依序補跑結束：{done} 台已補跑，跳過 {skipped} 台。",
+      "hostIdentitySkipStopped": "跳過 {asset}：送出後主機身分變更過，需要逐台確認，請按該台的「補跑」。",
+      "hostIdentitySkipFoundOnRetry": "跳過 {asset}：補跑送出後才發現主機身分變更過，這次沒有改密，請按該台的「補跑」確認。",
       "membersEmpty": "這一輪沒有成員",
       "versionCurrentOnly": "現行版本 v{current}"
     },
@@ -3612,6 +4212,66 @@
       "drawerHint": "{actions}只改平台登記的值，主機上的{noun}不動；共用憑證會一併套用到掛載的每一台。",
       "actionQuoted": "「{entry}」",
       "actionSeparator": "、"
+    },
+    "security": {
+      "customSecretWarning": "自訂秘密值屬於敏感操作：系統會留下紀錄並發出告警。自訂值由您保管，系統無法替您確認其強度。",
+      "detachWarning": "脫離共用並自訂新秘密，會留下紀錄並發出告警；其餘掛載不受影響。",
+      "setSecretWarning": "「宣告新秘密」只更新系統內登記的值，不會連線到目標主機修改密碼；請確認主機上的實際密碼與此值一致。此操作會留下紀錄並發出告警。"
+    },
+    "filterOwnership": "歸屬",
+    "outOfScopeChip": "＋範圍外 {count}",
+    "outOfScopeNote": "另有 {count} 台你範圍外的資產也使用這組憑證，這裡不列出。修改密碼時會請你確認。",
+    "pickerScopedNote": "只列出歸屬在你可管理節點的共用憑證。",
+    "ownership": {
+      "label": "歸屬",
+      "global": "全域",
+      "globalSub": "全公司共用",
+      "asset": "隨資產",
+      "node": "節點",
+      "nodeRef": "節點 {id}",
+      "nodePlaceholder": "選擇節點",
+      "noSelectable": "沒有你可以選的節點，請洽全系統管理者。",
+      "loadFailed": "載入節點失敗",
+      "hint": "歸屬決定誰能管理與掛載這組憑證。只能選你可管理的節點。",
+      "globalExplain": "全域：只有超級管理者與管理範圍為全系統的資產管理員能管理、掛載。",
+      "nodeExplain": "節點：該節點的資產管理員也能管理、掛載。"
+    },
+    "actionReason": {
+      "no_capability": "你的角色沒有執行這個動作的權限。",
+      "out_of_scope": "這筆憑證的歸屬不在你可管理的範圍內。"
+    },
+    "footer": {
+      "scoped": "全公司共用的憑證由全系統管理者維護，不會列在這裡",
+      "global": "歸屬「全域」的憑證只有超級管理者與管理範圍為全系統的資產管理員看得到、能掛載。"
+    },
+    "reassign": {
+      "rowAction": "改歸到節點",
+      "selected": "已選 {count} 筆",
+      "title": "把 {count} 組憑證改歸到節點",
+      "target": "改歸到",
+      "hint": "改歸後，管理這個節點的資產管理員就能管理與掛載它們。已掛載的資產不受影響，連線照常。",
+      "submit": "改歸 {count} 組",
+      "done": "已改歸 {count} 組憑證"
+    },
+    "impact": {
+      "title": "這組憑證也用在你範圍外的主機",
+      "account": "帳號",
+      "opFix": "・更正{noun}",
+      "opRotate": "・整組改密",
+      "leadFix": "儲存後，掛載這組憑證的 {total} 台都會改用新{noun}。",
+      "leadRotate": "送出後，掛載這組憑證的 {total} 台都會逐台改密。",
+      "inScope": "你的範圍內",
+      "outScope": "範圍外",
+      "countUnit": "{count} 台",
+      "outNote": "由其他管理者負責，這裡不列出",
+      "listTitle": "範圍內的 {count} 台",
+      "colAsset": "資產",
+      "colNode": "所屬節點",
+      "ackFix": "我知道範圍外的 {count} 台也會改用新{noun}",
+      "ackRotate": "我知道範圍外的 {count} 台也會一起改密",
+      "detachHint": "只想改範圍內的主機？可在資產上逐台「脫離共用」。",
+      "submitFix": "儲存並套用到 {total} 台",
+      "submitRotate": "送出改密並套用到 {total} 台"
     }
   },
   "notFound": {
@@ -3677,13 +4337,26 @@
     "tokenFailed": "無法取得連線授權",
     "noShellHint": "此容器似乎沒有可用的 shell（distroless/scratch 映像）。可改用「日誌」模式檢視輸出，或改連同一 pod 中有 shell 的容器。",
     "connectFailed": "無法建立連線，請確認資產設定與您的權限",
-    "hostKeyContactAdmin": "主機金鑰指紋與記錄不符，可能是主機重灌或遭中間人攻擊；請聯絡管理員確認後重置主機金鑰",
-    "hostKeyGoReset": "前往資產設定重置主機金鑰",
     "connectionClosed": "與伺服器的連線已關閉",
     "mssqlBatchHint": "另起一行只輸入 GO 再按 Enter，語句才會執行；只在句尾加分號不會執行，畫面只會跳到下一行。",
     "noticeWithRule": "{message}（規則：{rule}）"
   },
+  "hostKeyMismatch": {
+    "title": "主機身分與記錄不符",
+    "body": "這台主機出示的主機金鑰（host key）和平台記錄的不同，平台已替你送出登入憑證。若主機沒有重灌或更換，可能有人冒充，請立即中斷連線。此事已記錄。",
+    "goHostKey": "前往資產設定採用或重置主機金鑰",
+    "contactAdmin": "請聯絡管理員確認後採用新指紋或重置主機金鑰",
+    "dismiss": "關閉",
+    "showDetails": "詳細說明",
+    "hideDetails": "收起說明",
+    "detailHostKey": "主機金鑰是主機用來證明自己身分的金鑰，主機重灌或更換後通常會改變。",
+    "detailCredential": "密碼認證時，對方可取得你的密碼；私鑰認證只送出這次連線的簽章（與公開的公鑰），不送出私鑰。",
+    "detailAlert": "這個指紋（fingerprint）首次出現時已建立系統告警，送達與否取決於通知通道的設定與投遞結果。"
+  },
   "assetPolicyTable": {
+    "defaultBanner": "全系統預設是「{policy}」，由具系統安全設定權限的管理者設定。下面的資產另設了自己的連線政策，變更即時生效。",
+    "scopedHint": "只能選你可管理節點內的資產",
+    "colNodes": "所屬節點",
     "title": "資產政策覆寫",
     "liveEffect": "變更即時生效",
     "addOverridePlaceholder": "搜尋資產加入覆寫",
@@ -3796,6 +4469,23 @@
     "AUTH_AGENT_TOKEN_INVALID": "自動化權杖無效",
     "AUTH_AGENT_FORBIDDEN_ROUTE": "自動化主體不可使用此端點",
     "AUTH_REQUEST_ITEM_MISMATCH": "存取申請項目不符",
+    "INTERNAL_SYSTEM_ALERT_RAISE": "系統告警處理失敗，變更已取消",
+    "NOTFOUND_SYSTEM_ALERT_TYPE": "系統告警類型不存在",
+    "ROLE_DEFINITION_CONFLICT": "角色已被其他人修改，或名稱已被使用，請重新載入後再試",
+    "ROLE_DEFINITION_IN_USE": "此角色仍在使用中，請先移除指派或映射再刪除",
+    "ROLE_DEFINITION_LOCKED": "此角色為系統內建範本，不能修改、刪除或複製",
+    "AUTH_PROTECTED_ROLE_ASSIGNMENT": "這個指派涉及受保護的角色，你無法執行此操作",
+    "MAPPING_ROLE_NOT_DIRECT_MAPPABLE": "這個角色不能直接映射到外部群組，請改用「外部群組對應使用者群組」，再為使用者群組指派角色",
+    "MAPPING_SCOPE_FIELD_REJECTED": "映射規則不支援範圍或節點設定",
+    "AUTH_PROTECTED_ACCOUNT_OPERATION": "這個帳號受保護，你無法執行此操作",
+    "AUTH_ROLE_ASSIGNMENT_FORBIDDEN": "你沒有指派角色的權限",
+    "VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED": "這個入口只支援全系統的角色指派，不能指定節點範圍；要限定節點，請用整組替換指派的入口",
+    "VALIDATION_ROLE_NOT_NODE_SCOPABLE": "這個角色含只能套用到全系統的權限，不能限定節點",
+    "VALIDATION_ROLE_BINDING_NODES_EMPTY": "請至少選擇一個節點，或改為全系統",
+    "VALIDATION_ROLE_BINDING_NODES_INVALID": "選擇的節點有些已不存在，請重新選擇",
+    "VALIDATION_ROLE_NOT_GROUP_BINDABLE": "這個角色不能指派給使用者群組",
+    "ROLE_PERMISSION_DEPENDENCY_REQUIRED": "權限集合缺少必要的依賴權限",
+    "ROLE_PERMISSION_INVALID": "權限集合含不合法的項目",
     "VALIDATION_ACCOUNT_NOT_ON_ASSET": "帳號不屬於指定資產",
     "VALIDATION_AGENT_ACCOUNTS_REQUIRED": "自動化任務須指定帳號",
     "RULE_AGENT_SELF_CREATE_DISABLED": "未開放自助建立自動化帳號",
@@ -3845,7 +4535,7 @@
     "AUTH_SESSION_STATS_DENIED": "您沒有檢視此會話指標的權限",
     "AUTH_SESSION_TERMINATE_ADMIN_ONLY": "僅管理員可強制終止 Session",
     "AUTH_SOURCE_NOT_ALLOWED": "目前的來源位址不在允許範圍內，請聯絡管理員",
-    "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "標籤篩選僅限管理角色",
+    "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "你的帳號不能使用標籤篩選",
     "AUTH_TAG_GOVERNANCE_ADMIN_ONLY": "僅 admin 可執行標籤治理",
     "AUTH_TAG_LIST_PRIVILEGED_ONLY": "僅管理角色可取得標籤清單",
     "AUTH_TOKEN_INVALID": "無效或過期的 token",
@@ -3916,6 +4606,7 @@
     "CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION": "設定已被其他操作變更，請重新讀取後再試",
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "已存在相同 issuer 與 client_id 的 provider",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "此 provider 仍有使用者外部身分關聯，請改為停用",
+    "CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE": "目前沒有可確認的權限狀態差異",
     "CONFLICT_PLAN_NAME_EXISTS": "計劃名稱已存在",
     "CONFLICT_ROTATION_SCHEDULE_INFLIGHT": "該排程已有一張進行中的報告工作單",
     "CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS": "排程名稱已存在",
@@ -3924,6 +4615,7 @@
     "CONFLICT_USERNAME_EXISTS": "使用者名稱已存在",
     "CONFLICT_USER_ALREADY_EXTERNAL": "此帳號的憑證已由外部身分提供者管理，無須再次轉換",
     "CONFLICT_USER_GROUP_NAME_EXISTS": "使用者群組名稱已存在",
+    "CONFLICT_HOST_IDENTITY_MOVED": "這台主機的身分在您確認之後又變動了，或這項工作目前無法由人工確認，請重新整理後再試",
     "INSTANCE_GUARD_ACK_INCOMPLETE": "確認未完成：需同時勾選已確認另一實例已停止、重新輸入本頁顯示的確認碼，並提供管理員帳號與密碼",
     "INSTANCE_GUARD_ACK_LOCKED": "嘗試次數過多，已暫時停止受理確認，請稍後再試",
     "INSTANCE_GUARD_ACK_UNAUTHORIZED": "管理員帳號或密碼不正確，未接受此次確認",
@@ -4007,6 +4699,7 @@
     "INTERNAL_CHECKPOINT_QUERY": "查詢檢查點失敗",
     "INTERNAL_CHECKPOINT_VERIFY": "檢查點驗證失敗",
     "INTERNAL_CLIPBOARD_QUERY": "查詢剪貼簿記錄失敗",
+    "INTERNAL_PERMISSION_STATE_ACCEPT": "確認權限狀態失敗",
     "INTERNAL_TOOL_CALL_ARGUMENTS": "調閱工具呼叫參數失敗",
     "INTERNAL_COMMAND_ALERT_QUERY": "查詢告警記錄失敗",
     "INTERNAL_COMPLIANCE_SNAPSHOT": "無法取得合規判定結果",
@@ -4040,6 +4733,7 @@
     "INTERNAL_GUACD_HANDSHAKE": "連線建立失敗",
     "INTERNAL_HOST_KEY_QUERY": "查詢 host key失敗",
     "INTERNAL_HOST_KEY_RESET": "重置 host key失敗",
+    "INTERNAL_HOST_KEY_ADOPT": "採用主機金鑰指紋失敗",
     "INTERNAL_INACTIVITY_EXEMPT": "設定豁免失敗",
     "INTERNAL_K8S_COPY": "檔案傳輸失敗",
     "INTERNAL_K8S_POD_LIST": "列出 Pod 失敗",
@@ -4092,6 +4786,8 @@
     "INTERNAL_REFRESH": "重新整理失敗",
     "INTERNAL_ROLE_ADD": "追加角色失敗",
     "INTERNAL_ROLE_ASSIGN": "分配角色失敗",
+    "INTERNAL_ROLE_ASSIGNMENT_PREVIEW": "預覽角色指派的影響失敗",
+    "INTERNAL_ROLE_DEFINITION_WRITE": "儲存角色定義失敗",
     "INTERNAL_ROLE_QUERY": "查詢角色失敗",
     "INTERNAL_ROTATION_REPORT_BUILD": "產生輪替證據報告失敗",
     "INTERNAL_ROTATION_REPORT_JOB": "建立報告工作單失敗",
@@ -4162,6 +4858,7 @@
     "NOTFOUND_AUDIT_LOG": "稽核日誌不存在",
     "NOTFOUND_AUTHORIZATION": "授權不存在",
     "NOTFOUND_BATCH_GRANT_REFERENCE": "{entity}名單含不存在的 ID",
+    "NOTFOUND_BATCH_ITEMS_UNAVAILABLE": "{count} 筆項目無法操作",
     "NOTFOUND_CHANGE_SECRET_BATCH": "批次改密不存在",
     "NOTFOUND_CHANGE_SECRET_CANDIDATE": "候選憑證不存在",
     "NOTFOUND_CHANGE_SECRET_PLAN": "改密計劃不存在",
@@ -4177,6 +4874,7 @@
     "NOTFOUND_GRANT_REFERENCE": "{entity}不存在",
     "NOTFOUND_HOST_KEY": "尚無 host key 記錄（首次連線時記錄）",
     "NOTFOUND_HOST_KEY_TO_RESET": "尚無 host key 記錄",
+    "NOTFOUND_HOST_KEY_OBSERVATION": "這個指紋不在待確認清單中",
     "NOTFOUND_K8S_FILE": "容器內找不到該檔案",
     "NOTFOUND_LDAP_DIRECTORY": "LDAP 目錄設定不存在",
     "NOTFOUND_MY_CONNECTION": "連線不存在",
@@ -4208,7 +4906,7 @@
     "RULE_ACCESS_REQUEST_REQUESTER_EXEMPT": "此角色不需或不得提出連線申請",
     "RULE_ACCESS_REQUEST_SELF_APPROVAL": "不得核准或拒絕自己的申請",
     "RULE_ACCESS_REQUEST_START_IN_PAST": "預約起始時間不得早於現在",
-    "RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE": "僅管理員或原核准人可撤銷此臨時授權",
+    "RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE": "你沒有撤銷這筆臨時授權的資格",
     "RULE_ACCOUNT_DEFAULT_MISSING": "資產帳號資料異常：有帳號但無預設帳號，請指定預設帳號後再試",
     "RULE_ACCOUNT_DEFAULT_REQUIRED": "資產仍有其他帳號時不可刪除預設帳號，請先指定新的預設帳號",
     "RULE_ACCOUNT_DISABLED": "帳號已停用或鎖定",
@@ -4216,7 +4914,10 @@
     "RULE_ACCOUNT_NONE_USABLE": "資產未設定可用帳號憑證，請先新增帳號",
     "RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET": "此帳號使用共用憑證，請改由憑證庫整組寫入新秘密，或先讓這台脫離共用",
     "RULE_APPROVER_SCOPE_NOT_APPROVER_ROLE": "目標使用者不具 approver 角色",
+    "RULE_ASSET_BATCH_HAS_OUT_OF_SCOPE_NODES": "有 {count} 台資產另有節點不在你的管理範圍內，整批沒有刪除",
     "RULE_ASSET_DISABLED": "資產已停用，無法連線",
+    "RULE_ASSET_HAS_OUT_OF_SCOPE_NODES": "此資產另有 {count} 個節點不在你的管理範圍內，無法刪除或停用",
+    "RULE_ASSET_NODE_REQUIRED": "資產至少須掛在一個節點",
     "RULE_ASSET_NOT_TEXT_TERMINAL": "此資產不是文字終端類協議",
     "RULE_ASSET_TEST_AUTH_FAILED": "認證失敗，請確認資產憑證",
     "RULE_ASSET_TEST_CONNECTION_FAILED": "連線失敗，請確認目標主機與網路可達性",
@@ -4245,6 +4946,7 @@
     "RULE_CONSENT_RISKS_CHANGED": "風險項已變更，請重新確認",
     "RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING": "專用憑證恰有一個掛載，不可掛到其他資產",
     "RULE_CREDENTIAL_DETACH_FAILED": "脫離共用未完成，該掛載仍使用原共用憑證",
+    "RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED": "此憑證另有 {count} 台不在你管理範圍內的主機也會受影響，請重新確認後再送出",
     "RULE_CREDENTIAL_IN_USE": "憑證仍被資產掛載，請先卸載後再刪除",
     "RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE": "該目標目前的狀態不接受補跑",
     "RULE_CREDENTIAL_NOT_SHARED": "此操作僅適用於共用憑證",
@@ -4291,6 +4993,7 @@
     "RULE_NODE_CYCLE": "不可搬移到自身或其子孫節點",
     "RULE_NODE_DEPTH_EXCEEDED": "節點深度超過上限（10 層）",
     "RULE_NODE_NOT_EMPTY": "僅可刪除無子節點且無直掛資產的空節點",
+    "RULE_NODE_SCOPE_REFERENCED": "節點「{path}」是另外 {count} 項管理範圍的一部分，無法刪除",
     "RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE": "變更儲存類型、端點或 bucket 時必須重新輸入憑證",
     "RULE_OFFSITE_TEST_RATE_LIMITED": "連線測試過於頻繁，請稍後再試",
     "RULE_RECORDING_UNAVAILABLE": "錄影儲存異常，暫停新連線，請聯絡管理員",
@@ -4307,7 +5010,9 @@
     "RULE_SSH_AUTH_FAILED": "SSH 認證失敗，請確認資產憑證",
     "RULE_SSH_DIAL_TIMEOUT": "連線目標主機逾時",
     "RULE_SSH_ENDPOINT_MOVED": "SSH 不再經由此端點，請使用原生終端端點 GET /api/v1/ssh",
-    "RULE_SSH_HOST_KEY_CHANGED": "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯絡管理員重置 host key",
+    "RULE_SSH_HOST_KEY_CHANGED": "主機身分與記錄不符：主機金鑰（host key）和記錄不同，平台已送出登入憑證，此事已記錄。若主機沒有重灌或更換，可能有人冒充，請立即中斷，並聯絡管理員確認後採用新指紋或重置主機金鑰",
+    "RULE_SSH_HOST_KEY_CHECK_FAILED": "主機金鑰查核失敗，連線已中止；請稍後再試或聯絡管理員",
+    "RULE_SSH_HOST_KEY_MISMATCH_REFUSED": "主機身分與記錄不符：主機金鑰（host key）和記錄不同，這次連線已拒絕，未送出任何登入憑證，此事已記錄。請聯絡管理員確認主機後採用新指紋或重置主機金鑰",
     "RULE_SSH_PRIVATE_KEY_INVALID": "這個帳號設定的私鑰無法使用（格式錯誤或設有保護密碼），請聯絡管理員更換私鑰。",
     "RULE_SSH_UNREACHABLE": "無法連線到目標主機",
     "RULE_STATS_UNSUPPORTED": "目標主機不支援指標採集",
@@ -4395,6 +5100,7 @@
     "VALIDATION_CREDENTIAL_NAME_INVALID": "憑證名稱不得含換行或控制字元",
     "VALIDATION_CREDENTIAL_NAME_REQUIRED": "共用憑證必須提供名稱",
     "VALIDATION_CREDENTIAL_NAME_TOO_LONG": "憑證名稱超過長度上限（128 字元）",
+    "VALIDATION_CREDENTIAL_OWNERSHIP_INVALID": "請為共用憑證選擇歸屬：全域或一個節點",
     "VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID": "私鑰無法辨識。請貼上完整的私鑰內容，包含開頭與結尾的標示行。設有保護密碼（passphrase）的私鑰目前不支援，請先移除保護密碼。",
     "VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID": "憑證的協定族不在允許值域內",
     "VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID": "改密模式僅允許整組同一組或每台各自隨機",
@@ -4485,6 +5191,7 @@
     "VALIDATION_OIDC_SHARED_WIDEN": "此 issuer 由系統判定為共用身分域，不可標記為專用；如為企業專屬 IdP 請於部署層宣告",
     "VALIDATION_OIDC_TICKET_MISSING": "缺少登入憑證",
     "VALIDATION_PASSWORD_FIELD_MISSING": "請求參數錯誤，缺少密碼欄位",
+    "VALIDATION_PERMISSION_STATE_ACCEPT_REASON": "請填寫確認原因（1 至 500 字，不可含控制字元）",
     "VALIDATION_PLAN_BAD_CRON": "排程格式錯誤（標準 5 欄 cron）",
     "VALIDATION_PLAN_BAD_KEY_STRATEGY": "金鑰策略僅支援 append_replace 或 exclusive",
     "VALIDATION_PLAN_BAD_MAX_AGE_DAYS": "憑證最長使用天數覆蓋須為 0（沿用全域）或 1 至 3650",
@@ -4533,6 +5240,8 @@
     "VALIDATION_SYSLOG_HOST_REQUIRED": "host 不可為空",
     "VALIDATION_SYSLOG_PORT_RANGE": "port 須在 1-65535",
     "VALIDATION_SYSLOG_PROTOCOL": "protocol 須為 udp/tcp/tcp+tls",
+    "VALIDATION_SYSTEM_ALERT_LOCKED": "系統告警只能調整分級，不能停用或刪除",
+    "VALIDATION_SYSTEM_ALERT_SEVERITY": "系統告警分級必須為 high、medium 或 low",
     "VALIDATION_TAGS_TOTAL_TOO_LONG": "標籤總長度超過上限（合計至多 500 字元）",
     "VALIDATION_TAG_CONTAINS_COMMA": "標籤不得含逗號",
     "VALIDATION_TAG_EMPTY": "標籤不得為空",
@@ -4558,7 +5267,11 @@
     "VALIDATION_ALERT_OUTPUT_BLOCK": "輸出面不支援阻斷：位元組送達之後無從收回。",
     "CONFLICT_ALERT_ALREADY_REVIEWED": "送出時已有審閱結果",
     "RULE_ALERT_BATCH_SELF_TRIGGERED": "自己連線觸發的告警不納入批次，請逐筆審閱",
-    "VALIDATION_ALERT_BATCH_NOTE": "審閱理由不得超過 500 字，批次審閱另須填寫理由"
+    "VALIDATION_ALERT_BATCH_NOTE": "審閱理由不得超過 500 字，批次審閱另須填寫理由",
+    "RULE_AUTHORIZATION_SELF_SUBJECT": "不得對自己、自己所屬的群組或自己擁有的 agent 建立或調整授權規則",
+    "RULE_APPROVER_SCOPE_SUBJECT_OVERLAP": "審核方與申請人不得重疊",
+    "RULE_AGENT_OWNER_TRANSFER_SELF_GRANT": "新擁有者曾替此 agent 建立仍有效的授權、審核範圍或核准票，不得轉移",
+    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "非規則建立者只能縮小帳號範圍，不能擴大"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "此提供者設定了群組 claim 名稱，但授權範圍不含 groups。多數提供者因此不會發出群組宣告，映射規則將無人命中，已依規則取得的角色也會被撤回。",
@@ -4630,7 +5343,8 @@
     "transport_syslog_level": "syslog 傳輸強制等級",
     "transport_vnc_level": "VNC 傳輸強制等級",
     "web_idle_minutes": "Web 工作階段閒置逾時",
-    "web_max_session_hours": "Web 工作階段最長時數"
+    "web_max_session_hours": "Web 工作階段最長時數",
+    "mapping_revalidation_hours": "外部群組映射重新驗證時限"
   },
   "policyUnit": {
     "chars": "字元",
@@ -4965,7 +5679,11 @@
     "identifierCopied": "識別碼已複製",
     "copyFailed": "無法複製識別碼",
     "sourceAttrMissingHint": "此來源尚未設定群組欄位。登入時不會同步；可先建立規則，啟用前請設定群組欄位。",
-    "unknownObservationRule": "若登入時無法確認使用者所屬的外部群組，會保留其既有映射權限。",
+    "revalidation": {
+      "limited": "重新驗證時限 {limit}：持有群組映射權限的帳號，工作階段最長 {limit}。登入時讀不到群組資料，而上一次讀到已超過 {limit}（或從未讀到）時，經映射取得的角色與使用者群組會收回；之後讀到群組時再依規則重新計算。已建立的協議連線依既有撤權政策處理，不在此時限內；停用或刪除規則時，對應權限於儲存時收回。",
+      "unlimited": "重新驗證時限設為不設限：經映射取得的權限沒有時間上限。在外部來源被移出群組的人，映射權限保留到他下次登入；登入時讀不到群組資料也一律保留。已建立的協議連線依既有撤權政策處理；停用或刪除規則時，對應權限於儲存時收回。",
+      "unknown": "重新驗證時限由安全政策設定，此處無法讀取現值。設有時限時，持有群組映射權限的帳號工作階段不超過該時限；登入時讀不到群組資料，而上一次讀到已超過時限（或從未讀到）時，經映射取得的角色與使用者群組會收回。設為不設限時，映射權限保留到下次登入。已建立的協議連線依既有撤權政策處理；停用或刪除規則時，對應權限於儲存時收回。"
+    },
     "currentUsage": "資產授權 {asset_authorizations} 筆、審核方 {approver_scopes} 處、申請人範圍 {requester_scopes} 處",
     "confirmUsage": "我了解此映射可能賦予資產存取或審核資格",
     "editIdentityHint": "舊規則立即收回；新規則於下次登入生效。",
@@ -4993,7 +5711,30 @@
       "user_group_mapping_applied": "套用使用者群組映射",
       "group_mapping_rule_revoked": "收回映射規則支持",
       "group_mapping_source_revoked": "收回來源映射支持"
-    }
+    },
+    "timing": {
+      "heading": "映射的角色何時變動",
+      "manager": {
+        "lead": "管理者改規則：儲存當下收回。",
+        "detail": "管理者停用或刪除規則、停用身分來源，或修改規則的外部群組或目標時，儲存當下就收回這條規則給的權限；同一個角色若另有其他來源（直接指派、群組或其他規則），不受影響。修改後的新規則，在成員下次登入時才依目錄的群組給予。"
+      },
+      "external": {
+        "lead": "外部目錄的群組變動：此人下次登入時重新計算。"
+      }
+    },
+    "targetRoles": "角色：{roles}",
+    "targetNoRoles": "沒有角色",
+    "protectedRow": "只有超級管理者能修改",
+    "protectedOption": "只有超級管理者能設定",
+    "managementTarget": "這個群組帶有管理角色「{role}」。儲存後會通知安全人員。",
+    "managementRoleTarget": "這個角色是管理角色「{role}」。儲存後會通知安全人員。",
+    "protectedTarget": "這個群組帶有「{role}」角色。",
+    "externalDirectoryDecides": "這個外部群組的成員由外部目錄的管理者決定。在目錄裡被加入的人，下次登入就會取得「{role}」，不需要經過這裡。",
+    "footerRule": "會讓人取得「超級管理者」或「系統安全管理員」的映射，只有超級管理者能新增、修改、停用或刪除。",
+    "rolesTabHint": "這裡只能把外部群組直接對應到不需要指定範圍的內建角色。其他角色（例如自訂角色）請先給某個使用者群組，再到「群組 → 使用者群組」設定映射。",
+    "directMapHint": "沒看到想要的角色？清單外的角色（例如自訂角色）要經使用者群組取得：先把角色給群組，再改用「群組 → 使用者群組」。",
+    "groupRolesUnavailable": "暫時讀不到各群組帶有哪些角色，選項沒有預先停用；儲存時系統仍會檢查。",
+    "groupListFailed": "無法載入使用者群組清單。"
   },
   "identitySources": {
     "title": "身分來源",
@@ -5018,6 +5759,7 @@
     "lastLoginAt": "最近成功登入 {time}",
     "neverLoggedIn": "尚無成功登入",
     "lastSaved": "上次儲存 {time}",
+    "configChangeNotice": "已修改身分來源設定。儲存後會通知安全人員。",
     "ruleCount": "規則 {count} 條",
     "ruleCountUnknown": "—",
     "listNote": "規則在各來源的「外部群組映射」頁管理。外部群組變動於下次登入時生效；停用規則或來源則立即收回其映射支持。目錄型別最多一個。",
@@ -5629,6 +6371,11 @@
       "tokens": "自動化帳號憑證狀態",
       "differences": "預期存在但現況缺少的識別值：{missing}；現況多出的識別值：{extra}"
     },
+    "permissionState": {
+      "title": "權限狀態比對",
+      "unknown": "無法完成比對",
+      "unknownHint": "權限狀態的變更紀錄不完整或無法驗證，之後的直接修改目前無法被偵測。請超級管理員在失效事件中確認並重設比對基準。"
+    },
     "roleState": {
       "title": "角色指派",
       "desc": "把現在的角色指派，與最近一次存證時簽入檢查點的內容加上其後每一筆有紀錄的授予與撤銷相比對。兩者不一致，代表有角色是繞過本系統直接改資料庫掛上或拿掉的。",
@@ -5720,7 +6467,8 @@
       "extra_rows_valid_hmac": "有多出的紀錄（待人工確認）",
       "signature_invalid": "簽章無效",
       "chain_broken": "連結斷裂",
-      "seq_gap": "序號不連續"
+      "seq_gap": "序號不連續",
+      "attestation_invalid": "權限狀態證明無效"
     },
     "statusHint": {
       "purged_legal": "依保留政策清除，且清除主張本身已通過驗證——不是異常。要核對清除依據，可在「系統設定 → 安全政策」頁查該類資料的保留期限；不需另行追查。",
@@ -5730,7 +6478,8 @@
       "extra_rows_valid_hmac": "該區間出現存證當時未計入的紀錄，且每筆各自帶有有效的完整性簽章。可能是跨越存證時點才寫入的長交易，也可能是持有簽章金鑰者事後插入，須由人工研判（見下方邊界 R1）。研判線索：多出的紀錄若集中在存證時點前後、且對得上當時仍在進行的作業，較可能是遲到的紀錄；若時間相距甚遠或找不到對應的作業，應以事後插入處理並升級調查。",
       "signature_invalid": "這個檢查點自身的簽章驗不過，其中的一切主張都不可信。不要用它的結果推論該區間：改以前後仍通過驗證的檢查點界定可信範圍，確認該時段是否更換過簽章金鑰或重建過系統，並與離機備份的副本比對。",
       "chain_broken": "與前一個檢查點的連結校驗值或區間銜接對不上。斷點前後那兩個檢查點之間就是可疑時段：請確認該時段有無系統還原或資料庫回滾，並與離機備份的副本比對這段區間。",
-      "seq_gap": "序號不連續，且找不到對應的合法清除紀錄。請確認缺號的那段是否執行過保留政策的清除；找不到對應紀錄時，視同檢查點被移除，改以離機備份留存的副本核對該段。"
+      "seq_gap": "序號不連續，且找不到對應的合法清除紀錄。請確認缺號的那段是否執行過保留政策的清除；找不到對應紀錄時，視同檢查點被移除，改以離機備份留存的副本核對該段。",
+      "attestation_invalid": "這個檢查點本身驗得過，但與它一起封存的權限狀態紀錄缺漏、被改過，或簽章驗不過。它對區間的主張仍可信，失去的是它對當時權限狀態的證明。請確認這份紀錄是否被直接在資料庫清空或改寫，並與離機備份的副本比對。"
     },
     "limits": {
       "title": "本機制的保護範圍與邊界",
@@ -6023,6 +6772,10 @@
         "login": "登入",
         "logout": "登出",
         "new_source_ip": "自新的來源位址登入",
+        "host_key_mismatch": "連線時主機金鑰與記錄不符：平台已放行認證，登入憑證將送往未核對的主機（已留痕）",
+        "host_key_cred_sent": "主機金鑰不符放行後，登入憑證已實際送到該主機（含認證結果）",
+        "retention_floor_raised": "升級時把低於下限的資料保留天數抬升到下限（或讓檢查點保留跟隨抬升），附原值、新值與理由",
+        "host_key_adopt": "採用了一個觀察到的主機金鑰指紋為記錄",
         "agent_tool_call_args_viewed": "調閱了工具呼叫的機敏參數原文（已留痕）",
         "unlock": "解鎖帳號",
         "pw_noncompliant": "密碼不符政策",
@@ -6032,6 +6785,7 @@
         "agent_token_suspended": "自動化權杖已停用",
         "agent_sessions_terminated": "自動化會話終止結果",
         "agent_sessions_terminate_late": "自動化會話終止超過目標時效",
+        "permission_state_accepted": "已確認權限狀態變動",
         "suspend": "已停用",
         "file_list": "瀏覽檔案",
         "file_upload": "上傳檔案",
@@ -6049,6 +6803,10 @@
         "offsite_integrity": "離機保管：取回內容與上傳當下不符",
         "offsite_profile": "離機保管：儲存設定世代變更",
         "offsite_cred_revoke": "離機保管：撤銷世代憑證",
+        "role_definition_create": "新增角色定義",
+        "role_definition_copy": "複製角色定義",
+        "role_definition_update": "修改角色定義",
+        "role_definition_delete": "刪除角色定義",
         "migration": "升級時轉換{resource}",
         "assign": "指派{resource}"
       },
@@ -6308,6 +7066,7 @@
     }
   },
   "offsite": {
+    "changeAlertNotice": "這類變更會記錄並建立系統告警，送達取決於通知通道。",
     "headerDesc": "設定證據副本的離機儲存位置，並追蹤上傳佇列與取回狀態。",
     "loadFailedGuardTitle": "無法讀取離機儲存設定",
     "loadFailedGuardDesc": "為避免以空白表單覆寫伺服器上的設定，儲存已暫時停用。請按重新整理再試一次。",
@@ -6703,6 +7462,7 @@
     "mfa_required": "下次登入才生效，已經登入的人不受影響。",
     "web_idle_minutes": "已登入的人也立刻適用，最慢在下次換發登入權杖時被登出；設 0 表示不逾時。",
     "web_max_session_hours": "只有下次登入才套用，已經登入的人維持原本的時數；設 0 表示不限。",
+    "mapping_revalidation_hours": "持有群組映射權限的帳號，工作階段最長不超過此時數；超過此時數仍讀不到群組資料時，會收回映射來的權限。設 0 表示不設限，離職者的映射權限會保留到下次登入。",
     "refresh_cookie_secure": "下次登入或更新登入狀態時套用，換掉瀏覽器裡已存的設定。",
     "session_idle_minutes": "連線建立時決定，已建立的連線不受影響；設 0 表示不逾時。",
     "session_max_minutes": "連線建立時決定，已建立的連線不受影響；設 0 表示不限。",
@@ -7262,7 +8022,8 @@
       "valid": "有效",
       "expired": "已到期",
       "suspended": "已停用",
-      "revoked": "已撤銷"
+      "revoked": "已撤銷",
+      "restore_invalidated": "已因還原失效"
     },
     "quota": "名下 {current}／{max} 個 agent",
     "you": "您",
@@ -7439,6 +8200,7 @@
     "noEventsNext": "沒有紀錄時仍可填原因解除；解除後記得重新發一把鑰匙。",
     "tokenRevoked": "已撤銷於 {time}",
     "tokenExpired": "已到期於 {time}",
+    "tokenRestoreInvalidated": "已因還原失效（還原前簽發，請另發新的鑰匙）",
     "statTargets": "計入門檻的目標數",
     "countBoundaryShort": "只有「連向沒有授權看到的目標」這一類計入門檻，而這不是目前時間窗的自動停用計數。",
     "noPendingHint": "這個主體現在沒有待處置的自動停用。之後若被自動停用，處置表單會出現在這一頁。",
@@ -7603,5 +8365,379 @@
     "callsValue": "共 {n} 次",
     "blockedValue": "擋下 {n} 次",
     "emptyNext": "agent 連線並呼叫工具後，紀錄會出現在這裡。"
+  },
+  "sidebar": {
+    "pinned": "常用",
+    "pin": "釘選到常用",
+    "unpin": "取消釘選",
+    "pinItem": "釘選「{name}」",
+    "unpinItem": "取消釘選「{name}」"
+  },
+  "capabilities": {
+    "loadFailed": "無法載入你的權限資訊，部分功能暫時不顯示。",
+    "retry": "重試"
+  },
+  "permissions": {
+    "credential": {
+      "view": "檢視憑證",
+      "create": "建立憑證",
+      "update": "修改憑證名稱與備註",
+      "setSecret": "宣告憑證秘密",
+      "rotate": "發起憑證輪替",
+      "convertScope": "轉換憑證範圍",
+      "detach": "脫離共用憑證",
+      "delete": "刪除憑證",
+      "bind": "掛載與卸載憑證"
+    },
+    "account": {
+      "rotate": "發起帳號改密"
+    }
+  },
+  "systemAlerts": {
+    "types": {
+      "asset_address_changed": {
+        "name": "資產連線位址變更",
+        "description": "主機、埠號或協議被修改"
+      },
+      "transport_verification_relaxed": {
+        "name": "放寬傳輸驗證",
+        "description": "關閉憑證驗證、降低加密連線要求等"
+      },
+      "access_policy_relaxed": {
+        "name": "連線政策放寬",
+        "description": "連線政策由「需審核人核准」放寬"
+      },
+      "custom_secret_used": {
+        "name": "使用自訂密碼",
+        "description": "改密、脫離共用憑證或更正密碼時，由人指定新密碼"
+      },
+      "identity_source_changed": {
+        "name": "身分來源設定變更",
+        "description": "目錄（LDAP）或 OIDC 提供者的連線設定被修改"
+      },
+      "security_admin_account_operated": {
+        "name": "系統安全管理員帳號被操作",
+        "description": "他人替系統安全管理員改密、停用多重驗證或綁定外部身分"
+      },
+      "self_privilege_increased": {
+        "name": "替自己增加權限",
+        "description": "替自己加角色、擴大範圍，或把自己加入帶權限的群組"
+      },
+      "self_privilege_decreased": {
+        "name": "替自己減少權限",
+        "description": "移除自己的角色，或把自己移出群組"
+      },
+      "management_role_granted": {
+        "name": "發放管理類角色給他人",
+        "description": "把資產、授權、身分管理員等管理角色交給其他人"
+      },
+      "retention_shortened": {
+        "name": "保留天數調短",
+        "description": "操作日誌、錄影、指令流或告警記錄的保留天數被調短"
+      },
+      "offsite_or_syslog_changed": {
+        "name": "離機副本或 syslog 變更",
+        "description": "停用，或改送到其他目的地"
+      },
+      "key_topology_changed": {
+        "name": "金鑰設定變更",
+        "description": "金鑰的保管方式被修改"
+      },
+      "recording_failclose_disabled": {
+        "name": "錄影故障時改為不阻擋連線",
+        "description": "錄影儲存出問題時仍允許連線（故障仍會回報）"
+      },
+      "recording_deleted": {
+        "name": "刪除錄影",
+        "description": "有人刪除了連線錄影"
+      },
+      "mapping_revalidation_relaxed": {
+        "name": "外部映射重新驗證時限放寬",
+        "description": "外部群組映射的重新驗證時限被拉長"
+      },
+      "host_key_mismatch": {
+        "name": "主機金鑰不符",
+        "description": "連線時看到的主機金鑰與記錄的不一致"
+      },
+      "host_key_record_changed": {
+        "name": "主機金鑰記錄變更",
+        "description": "主機金鑰記錄被改採新值或被重設"
+      },
+      "notification_channel_changed": {
+        "name": "通知通道變更",
+        "description": "新增、修改、停用或刪除通知通道"
+      },
+      "concurrent_instance_detected": {
+        "name": "並行實例偵測",
+        "description": "啟動時偵測到可能有其他實例連到同一資料庫（確認覆寫啟動，或查得其他守衛版實例的連線）"
+      }
+    },
+    "groups": {
+      "addressTransport": "連線位址與傳輸安全",
+      "secret": "密碼",
+      "identityPrivilege": "身分與權限",
+      "securitySettings": "系統安全設定",
+      "notification": "通知"
+    },
+    "catalog": {
+      "title": "系統告警",
+      "intro": "這些告警由系統內建，發生時會產生並送到每一個啟用中的通知通道，不能刪除或停用。你可以調整分級，決定它們在列表與通知上的優先順序。",
+      "columnType": "告警類型",
+      "columnDefault": "預設分級",
+      "columnEffective": "分級",
+      "columnRecent": "近 30 天",
+      "recentCount": "{count} 則",
+      "adjusted": "已調整",
+      "adjust": "調整分級",
+      "total": "共 {count} 種系統告警",
+      "readonlyHint": "你可以查看這些告警，但沒有調整分級的權限。",
+      "loadFailed": "載入系統告警失敗",
+      "empty": "目前沒有系統告警類型",
+      "dialogTitle": "調整一種告警的分級",
+      "dialogLevelLabel": "分級",
+      "optionHigh": "列在最前面，通知標示為「高」（預設）",
+      "optionMedium": "通知標示為「中」",
+      "optionLow": "通知標示為「低」",
+      "dialogNote": "調整後，這類告警照樣會產生並送到每一個啟用中的通知通道，不受通道的「推送哪些告警」設定影響。這次調整會記入操作日誌。",
+      "saved": "分級已調整"
+    },
+    "detail": {
+      "title": "系統告警",
+      "happened": "發生了什麼",
+      "notice": "系統告警由系統內建，一律會產生，並送到每一個啟用中的通知通道。請確認這項操作是否經過核准。",
+      "privilegeTitle": "{actor} 的權限變化",
+      "columnBefore": "之前",
+      "columnAfter": "之後",
+      "roles": "角色",
+      "manageable": "可管理資產",
+      "connectable": "可連線主機",
+      "none": "無",
+      "count": "{count} 台",
+      "techTitle": "技術細節",
+      "typeLabel": "告警類型",
+      "typeLocked": "系統告警，不能刪除或停用",
+      "severityLabel": "分級",
+      "severityBasis": "依系統告警設定",
+      "deliveryLabel": "通知送達",
+      "auditLogLabel": "操作日誌",
+      "auditLogMissing": "找不到對應的操作日誌",
+      "auditLogLink": "在操作日誌查看",
+      "actorLabel": "操作者",
+      "targetLabel": "目標",
+      "paramsLabel": "參數",
+      "attempts": "嘗試 {count} 次",
+      "loadFailed": "載入系統告警明細失敗",
+      "occurredAt": "發生時間",
+      "sourceAddressLabel": "來源位址",
+      "deliveredAt": "送達於 {time}",
+      "nextAttemptAt": "下次嘗試 {time}"
+    },
+    "targetKinds": {
+      "asset": "資產",
+      "credential": "憑證",
+      "user": "使用者",
+      "user_group": "使用者群組",
+      "role_mapping": "角色映射",
+      "role": "角色",
+      "identity_source": "身分來源",
+      "notification_channel": "通知通道",
+      "session": "連線",
+      "system_setting": "系統設定"
+    },
+    "delivery": {
+      "pending": "等待送出",
+      "retrying": "重送中",
+      "delivered": "已送達",
+      "abandoned": "已放棄",
+      "noDestination": "沒有啟用中的通知通道，未送出"
+    }
+  },
+  "accessPolicyDowngrade": {
+    "title": "放寬連線政策？",
+    "change": "{asset} 的連線政策將由「{from}」改為「{to}」。",
+    "consequenceReason": "改後，申請不再需要人工審核，填寫事由即自動核准。",
+    "consequenceOpen": "改後，不需申請或填寫事由，只要有常設連線授權即可直接連線。",
+    "notice": "這是放寬。儲存後會記入操作日誌並建立系統安全告警；是否送達取決於通知通道設定與投遞結果。",
+    "confirm": "放寬並儲存",
+    "unknownDefault": "將變更 {asset} 的連線政策。你無法讀取全域預設，無法確認改後的段位；若改後低於目前設定，這是放寬。"
+  },
+  "dangerConfirm": {
+    "title": "儲存前請確認 {n} 個組合",
+    "titleGeneric": "儲存前請確認",
+    "notBlocking": "這些組合不會阻擋儲存；儲存後立即生效，並記入操作日誌。",
+    "notBlockingNoCombo": "沒有需要確認的組合，不會阻擋儲存；儲存後立即生效，並記入操作日誌。",
+    "notBlockingZero": "目前影響 0 人。沒有需要確認的組合，不會阻擋儲存。",
+    "back": "返回修改",
+    "proceed": "仍要儲存",
+    "affectedTotal": "共影響 {n} 人。",
+    "namesNote": "名字只列出你自己，其他持有者以人數表示。",
+    "holdersYouAndOthers": "你自己，以及另外 {n} 位持有者",
+    "holdersOthers": "另外 {n} 位持有者",
+    "holdersCount": "{n} 人",
+    "newlyAdded": "（新加入）",
+    "evaluatedPartial": "這條規則影響 {total} 人，這次只檢查了其中 {evaluated} 人（含你自己）；上面的組合人數只來自這 {evaluated} 人。",
+    "notifyUnaffectedByCap": "會不會通知安全人員，不受這個上限影響。",
+    "notify": {
+      "title": "儲存後會通知安全人員",
+      "roleDefinition": "這次修改讓角色多了管理功能。",
+      "roleDefinitionSelf": "這次修改讓角色多了管理功能。你自己也持有這個角色，對自己的權限變更，不論增加或減少都會通知。",
+      "roleDefinitionHeld": "這次修改讓「{role}」多了管理功能，持有這個角色的人會新增這些頁面：{routes}。",
+      "roleDefinitionUnheld": "目前沒有人持有「{role}」，但有使用者群組或外部群組映射規則用到它（停用的規則也算）。之後經這些設定取得角色的人，會一併拿到新增的管理功能。",
+      "directGrant": "這次指派讓對方取得管理功能（{roles}），新增頁面：{routes}。",
+      "selfChange": "這次變更的是你自己的權限。對自己的權限變更，不論增加或減少都會通知。",
+      "groupRoles": "這個群組帶有管理角色「{role}」，群組的成員都會取得它。",
+      "groupEmpty": "「{group}」目前沒有成員，但這次加入了管理角色「{role}」；之後加入這個群組的人都會取得它。",
+      "groupMembers": "這個群組帶有管理角色「{role}」，新加入的 {n} 位成員會取得它。",
+      "mappingRule": "新目標「{target}」帶有管理角色「{role}」。"
+    },
+    "mappedUnaffected": "經映射加入的成員不受這次變更影響。",
+    "oldTargetRevoked": "舊目標「{target}」的權限在儲存當下收回。",
+    "previewFailed": {
+      "title": "無法預覽這次儲存的影響",
+      "body": "暫時無法確認這次儲存會影響哪些人、會不會通知安全人員。",
+      "hint": "仍可儲存。儲存後是否通知，照常由系統判定並記入操作日誌。"
+    },
+    "comboHint": {
+      "authz_rules_with_asset_or_credential": "持有這個角色的人可以替自己開連線權限。",
+      "security_with_asset_or_authz": "同一人能變更主機，也能調整錄影與日誌的保存方式，可能先操作再清除紀錄。建議分給不同的人。",
+      "asset_management_with_connect": "同一人能改動資產設定，也能連線到這些資產。建議分給不同的人。",
+      "identity_with_security": "同一人能分派角色，也能調整錄影與日誌的保存方式。建議分給不同的人。",
+      "identity_with_business_or_connect": "同一人能替別人開權限，自己也能操作主機。"
+    }
+  },
+  "userDetail": {
+    "tabs": {
+      "basic": "基本資料",
+      "roles": "角色與範圍"
+    },
+    "header": {
+      "protectedSuper": "超級管理者",
+      "protectedSecurity": "系統安全管理員"
+    },
+    "banner": {
+      "super": "這個帳號持有超級管理者身分。標示停用的操作，只有超級管理者能執行。",
+      "security": "這個帳號持有系統安全管理員身分。修改密碼、MFA 與外部身分仍可操作，操作後會通知安全人員；停用與刪除只有超級管理者能做。"
+    },
+    "basic": {
+      "restore": "還原",
+      "saveChanges": "儲存變更"
+    },
+    "accountOps": {
+      "title": "帳號動作",
+      "sameAsList": "與列表頁「更多」選單是同一組操作",
+      "set_password": {
+        "title": "修改密碼",
+        "desc": "替這個帳號設定新的本地密碼。"
+      },
+      "disable_mfa": {
+        "title": "停用 MFA",
+        "desc": "此人已啟用兩步驟驗證；停用後，下次登入只需密碼。"
+      },
+      "unbind_identity": {
+        "title": "解除外部身分綁定",
+        "desc": "已綁定 {n} 個外部身分。"
+      },
+      "unbind_and_disable": {
+        "title": "解除綁定並停用",
+        "desc": "解除綁定，同時停用這個帳號。"
+      },
+      "bind_identity": {
+        "title": "綁定外部身分",
+        "desc": "讓此人也能用公司的外部登入方式登入這個帳號。"
+      },
+      "disable": {
+        "title": "停用帳號",
+        "desc": "停用後此人不能登入，資料保留。"
+      },
+      "enable": {
+        "title": "啟用帳號",
+        "desc": "啟用後此人可以再登入。"
+      },
+      "delete": {
+        "title": "刪除帳號",
+        "desc": "刪除後無法復原。"
+      },
+      "unlock": {
+        "desc": "連續登入失敗而暫時鎖定；解鎖不會讓已停用的帳號恢復。"
+      },
+      "status": {
+        "title": "帳號狀態"
+      },
+      "blocked": {
+        "superAccount": "只有超級管理者能對超級管理者帳號執行。",
+        "lifecycleSuper": "這個帳號持有超級管理者身分，只有超級管理者能停用、啟用或刪除。",
+        "lifecycleSecurity": "這個帳號持有系統安全管理員身分，只有超級管理者能停用、啟用或刪除。"
+      },
+      "notify": {
+        "badge": "操作後會通知安全人員",
+        "dialogTitle": "操作後會通知安全人員",
+        "dialogBody": "這個帳號持有系統安全管理員身分，{action}後會通知安全人員。是否繼續？",
+        "passwordDialog": "這個帳號持有系統安全管理員身分，修改密碼後會通知安全人員。"
+      }
+    },
+    "roles": {
+      "manualTitle": "管理者指派的角色（{n}）",
+      "mappedTitle": "來自映射的角色（{n}）",
+      "groupTitle": "來自群組（{n}）・這裡不能修改",
+      "pickRole": "選擇角色",
+      "alreadyAdded": "已加入",
+      "newlyAdded": "新加入",
+      "pinLabel": "固定為管理者指派",
+      "pinProtected": "只有超級管理者能固定這個角色",
+      "groupUnavailable": "沒有檢視使用者群組的權限，無法列出來自群組的角色。",
+      "groupUnavailableHint": "此人仍可能經群組取得角色；其他兩區照常可用。",
+      "goGroup": "到群組修改",
+      "mappedFromMapping": "來自映射"
+    },
+    "change": {
+      "title": "儲存後的變化",
+      "routesGained": "新增入口",
+      "routesLost": "失去入口",
+      "none": "無",
+      "notify": "通知",
+      "notifyValue": "儲存後會通知安全人員",
+      "connection": "可連線主機",
+      "connectionFixed": "一般管理能力不會自動帶來連線權；能連哪些主機由資產授權決定，超級管理者另依既有的保留身分",
+      "effectiveNow": "儲存後立即生效，並記入操作日誌。",
+      "unavailable": "預覽暫時無法取得"
+    },
+    "loadFailed": "無法載入這位使用者"
+  },
+  "roleNodePicker": {
+    "modeAll": "全系統",
+    "modeNodes": "指定節點",
+    "panelHint": "勾選節點；底下的子節點與日後新增的子節點都會一起納入。",
+    "searchPlaceholder": "搜尋節點",
+    "searchEmpty": "找不到符合的節點",
+    "assetCount": "{n} 台",
+    "includesChildren": "含子節點",
+    "fromGroup": "來自群組",
+    "footerUser": "管理者指派 {nodes} 個節點 {direct} 台，加上來自群組的 {extra} 台，共可管理 {total} 台",
+    "footerUserNoGroup": "管理者指派 {nodes} 個節點，共可管理 {total} 台",
+    "footerGroup": "已選 {nodes} 個節點，共 {total} 台資產",
+    "treeLoadFailed": "節點清單暫時無法載入，請稍後再試。",
+    "countsUnavailable": "台數暫時無法取得",
+    "rangeNoEffectNote": "這個角色的權限不受節點限制，範圍不會生效。",
+    "builtinGlobalOnlyNote": "內建角色只在指派到全系統時生效，限定節點後不會產生權限。",
+    "tagAssignable": "可限範圍",
+    "tagNoRange": "不需要選範圍",
+    "panelTitleUser": "{role}的管理範圍（管理者指派）",
+    "panelTitleGroup": "{role}的管理範圍",
+    "cardCount": "{n} 台，含子節點",
+    "nodeCountOnly": "限定 {n} 個節點",
+    "nodeMissing": "節點已不存在",
+    "nodeMissingNote": "有 {n} 個範圍節點已不存在，那部分不生效，也不會變成全系統。其餘節點照常。",
+    "removeMissing": "移除失效的節點",
+    "globalOnlyNote": "這個角色含只能套用到全系統的權限，那部分在這個範圍內不生效。",
+    "changeManagedAssets": "可管理資產",
+    "changeAssetsValue": "{after} 台（原本 {before} 台）",
+    "changeGroupAssetsNote": "群組的角色涵蓋的資產，會成為每一位成員的管理範圍。",
+    "mappedStillGranted": "此角色仍由外部群組給予，移除後改為全系統生效。",
+    "mappedStillGrantedGlobal": "此角色仍由外部群組給予。"
+  },
+  "manageScope": {
+    "label": "你可管理：",
+    "notAssigned": "尚未指派",
+    "more": "另 {n} 個"
   }
 }

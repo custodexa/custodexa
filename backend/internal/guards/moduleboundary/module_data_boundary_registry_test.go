@@ -11,16 +11,21 @@ package moduleboundary
 // 未登記的表被掃到即紅——新表出現時必須有人回答「它屬於哪個模組」。
 var tableOwner = map[string]string{
 	// asset
-	"assets":                   "asset",
-	"asset_groups":             "asset",
-	"asset_nodes":              "asset",
-	"asset_accounts":           "asset",
-	"asset_host_keys":          "asset",
-	"asset_account_audits":     "asset",
-	"asset_changes":            "asset",
-	"change_secret_plans":      "asset",
-	"change_secret_records":    "asset",
-	"change_secret_candidates": "asset",
+	"assets":                    "asset",
+	"asset_groups":              "asset",
+	"asset_nodes":               "asset",
+	"asset_accounts":            "asset",
+	"asset_host_keys":           "asset",
+	"asset_host_key_mismatches": "asset",
+	// 憑證主機身分的人工承接紀錄：承接的業務語義與它所驗證的工作列同屬 asset
+	"credential_host_identity_confirmations": "asset",
+	"asset_account_audits":                   "asset",
+	"asset_changes":                          "asset",
+	"change_secret_plans":                    "asset",
+	"change_secret_records":                  "asset",
+	"change_secret_candidates":               "asset",
+	// 共用憑證修改的範圍外影響確認：確認集合的語義與其所屬的憑證同屬 asset
+	"credential_impact_confirmations": "asset",
 	// 輪替證據報告的排程（rotation-evidence-report）：排程的業務語義
 	// （範圍、區間錨點、留存）與其產出的資料同屬 asset
 	"rotation_report_schedules": "asset",
@@ -32,12 +37,21 @@ var tableOwner = map[string]string{
 	// 掛載列（asset_accounts）本來就歸 asset，憑證與它是同一組語義的兩半。
 	// **登記的實質效果**：其他模組直接以 gorm 或 SQL 碰這四張表即判跨界紅，
 	// 取密一律得經 asset 的具名出口（見 asset_credential_exit_guard_test.go）
-	"credentials":                 "asset",
-	"credential_secret_versions":  "asset",
-	"credential_rotations":        "asset",
-	"credential_rotation_members": "asset",
+	"credentials":                   "asset",
+	"credential_secret_versions":    "asset",
+	"credential_rotations":          "asset",
+	"credential_job_authorizations": "asset",
+	"credential_rotation_members":   "asset",
+	// authz：權限模型三表。群組指派、節點範圍與權限版本
+	// 的不變式由授權模組定義與維護，其他模組只經 authz 的對外函式寫入
+	"authz_state":        "authz",
+	"user_group_roles":   "authz",
+	"role_binding_nodes": "authz",
+	"role_permissions":   "identity",
 	// identity
-	"agent_tokens":             "identity",
+	"agent_tokens": "identity",
+	// 使用者對版本說明的關閉狀態：只存個人偏好，由 identity 的本人服務讀寫
+	"user_release_guidance":    "identity",
 	"users":                    "identity",
 	"roles":                    "identity",
 	"user_roles":               "identity",
@@ -60,6 +74,7 @@ var tableOwner = map[string]string{
 	"group_user_group_mappings":        "identity",
 	"user_role_mapping_rule_supports":  "identity",
 	"user_group_mapping_rule_supports": "identity",
+	"user_channel_observations":        "identity",
 	// authz
 	"asset_authorizations":     "authz",
 	"access_request_items":     "authz",
@@ -75,16 +90,21 @@ var tableOwner = map[string]string{
 	"command_alerts":        "audit",
 	"alert_rules":           "audit",
 	"notification_channels": "audit",
-	"session_commands":      "audit",
-	"audit_failure_events":  "audit",
-	"daily_review_logs":     "audit",
-	"integrity_baselines":   "audit",
+	// 系統告警明細、持久投遞佇列與分級覆寫：產生、投遞與調整都在 audit
+	"system_alert_details":            "audit",
+	"system_alert_outbox":             "audit",
+	"system_alert_severity_overrides": "audit",
+	"session_commands":                "audit",
+	"audit_failure_events":            "audit",
+	"daily_review_logs":               "audit",
+	"integrity_baselines":             "audit",
 	// auditor-workbench：保留期水位（每個保留類別清到哪個時刻、是否部分清除）。
 	// 產生與消費皆在 audit 的 retention 路徑，故屬 audit；未登記所有者時，
 	// 跨模組判定對這張表整個失效——任何模組讀寫它都不會被看見
 	"audit_retention_watermarks": "audit",
 	// audit-checkpoint-chain：檢查點鏈本體屬 audit（封章／驗證／修剪皆在 audit 模組）
 	"audit_checkpoints":          "audit",
+	"permission_state_events":    "audit",
 	"agent_tool_calls":           "audit",
 	"agent_task_reports":         "audit",
 	"agent_probe_events":         "audit",
@@ -118,6 +138,8 @@ var tableOwner = map[string]string{
 	// 政策變更歷史：與 security_policies 同一交易內由 policy 模組寫入；
 	// audit 模組只經 policy 服務的唯讀方法取歷史推每日簽核的行事曆，不直接查表
 	"security_policy_history": "policy",
+	// 保留下限抬升紀錄：啟動對帳在抬升政策列的同一交易內寫入，升級說明卡經 policy 的唯讀方法讀
+	"security_policy_floor_raises": "policy",
 	// 政策組四表：組、條文、條文對設定鍵的要求、機構備註與人工確認。
 	// 業務語義（哪些設定要對照哪些條文、要求怎麼比、內建列不可經管理介面改寫）
 	// 全部由 policy 模組定義與維護，與 security_policies 是同一組語義的兩半。
@@ -249,6 +271,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 		Reason: "審核者資格判定讀角色（判準的爭點所在）。"},
 	{Module: "authz", Table: "user_roles", Kind: "read",
 		Reason: "同上的 many2many join 表。"},
+	{Module: "authz", Table: "role_permissions", Kind: "read",
+		Reason: "逐請求解析器聯集自訂角色的明確權限集合（角色定義屬 identity，集合只經此窄讀取使用）。"},
 	{Module: "authz", Table: "user_group_members", Kind: "read",
 		Reason: "群組即資格：審核者資格與授權主體展開皆以「使用者屬哪些群組」為子查詢。" +
 			"**新增登記，但不是新增的存取**——這段 SQL 原本住在 `middleware/approver_guard.go` " +
@@ -327,6 +351,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 		Reason: "同上（通知通道 url／secret 兩欄）。"},
 	{Module: "keyvault", Table: "clipboard_events", Kind: "write", Invisible: true,
 		Reason: "同上（剪貼簿留存內容欄 content_enc）。"},
+	{Module: "keyvault", Table: "system_alert_outbox", Kind: "write", Invisible: true,
+		Reason: "同上（系統告警投遞佇列的目的地快照 url_enc／secret_enc 兩欄）。"},
 	{Module: "keyvault", Table: "assets", Kind: "read", Invisible: true,
 		Reason: "AAD 殘留哨兵與重加密前的掃描讀取，來源同上。"},
 	{Module: "keyvault", Table: "credential_secret_versions", Kind: "read", Invisible: true,
@@ -342,6 +368,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 	{Module: "keyvault", Table: "notification_channels", Kind: "read", Invisible: true,
 		Reason: "同上。"},
 	{Module: "keyvault", Table: "clipboard_events", Kind: "read", Invisible: true,
+		Reason: "同上。"},
+	{Module: "keyvault", Table: "system_alert_outbox", Kind: "read", Invisible: true,
 		Reason: "同上。"},
 	// ---- session 的剪貼簿加密轉換遷移 ----
 	{Module: "session", Table: "information_schema", Kind: "read",

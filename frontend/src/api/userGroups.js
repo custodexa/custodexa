@@ -9,10 +9,24 @@ import request from './request'
  * 取得群組列表（含成員）
  * @returns {Promise} { data: [{id, name, description, users: [...]}], total }
  */
-export function getUserGroups() {
+export function getUserGroups({ quiet = false } = {}) {
   return request({
     url: '/user-groups',
     method: 'get',
+    // 呼叫端自行呈現「沒有權限」時，不再跳全域錯誤訊息
+    ...(quiet ? { skipErrorToast: true } : {}),
+  })
+}
+
+/**
+ * 讀取群組目前的角色指派（唯讀）。
+ * @returns {Promise} { data: [{role_id, role_name, scope}], total }
+ */
+export function getUserGroupRoleBindings(id, { quiet = false } = {}) {
+  return request({
+    url: `/user-groups/${id}/role-bindings`,
+    method: 'get',
+    ...(quiet ? { skipErrorToast: true } : {}),
   })
 }
 
@@ -74,5 +88,35 @@ export function getUserGroupAuthorizationCount(id) {
   return request({
     url: `/user-groups/${id}/authorization-count`,
     method: 'get',
+  })
+}
+
+/**
+ * 整組替換群組角色指派：本文為 { role_ids }（值含仍保留的受保護角色）。
+ * 只有本次改動了節點範圍的角色才帶 role_nodes（鍵為角色編號字串；null 為全系統、陣列為節點）；
+ * 沒有任何改動時整個欄位不存在。
+ * @param {number} id
+ * @param {number[]} roleIds
+ * @param {Object} [roleNodes]
+ */
+export function replaceUserGroupRoleBindings(id, roleIds, roleNodes) {
+  const data = { role_ids: roleIds }
+  if (roleNodes && Object.keys(roleNodes).length > 0) data.role_nodes = roleNodes
+  return request({
+    url: `/user-groups/${id}/role-bindings`,
+    method: 'put',
+    data,
+  })
+}
+
+/**
+ * 依設定映射進這個群組的外部群組（唯讀，只含啟用中的規則）。
+ * @returns {Promise} { data: [{rule_id, source_type, source_name, source_enabled, external_group_label}], total }
+ */
+export function getUserGroupExternalMappings(id, { quiet = true } = {}) {
+  return request({
+    url: `/user-groups/${id}/external-mappings`,
+    method: 'get',
+    ...(quiet ? { skipErrorToast: true } : {}),
   })
 }

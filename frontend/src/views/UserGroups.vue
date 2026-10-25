@@ -35,7 +35,16 @@
           prop="name"
           :label="$t('userGroups.nameColumn')"
           min-width="160"
-        />
+        >
+          <template #default="{ row }">
+            <a
+              class="group-link"
+              :href="`/user-groups/${row.id}`"
+              :data-test="`group-link-${row.id}`"
+              @click.prevent="goDetail(row.id)"
+            >{{ row.name }}</a>
+          </template>
+        </el-table-column>
         <el-table-column
           prop="description"
           :label="$t('common.description')"
@@ -80,6 +89,8 @@
               type="primary"
               size="small"
               link
+              :disabled="!!protectedRoleByGroup[row.id]"
+              :data-test="`members-${row.id}`"
               @click="openMembersDialog(row)"
             >
               <el-icon><User /></el-icon>
@@ -98,11 +109,20 @@
               type="danger"
               size="small"
               link
+              :disabled="!!protectedRoleByGroup[row.id]"
+              :data-test="`delete-${row.id}`"
               @click="handleDelete(row)"
             >
               <el-icon><Trash2 /></el-icon>
               {{ $t('common.delete') }}
             </el-button>
+            <div
+              v-if="protectedRoleByGroup[row.id]"
+              class="protected-note"
+              :data-test="`delete-blocked-${row.id}`"
+            >
+              {{ $t('userGroups.detail.members.deleteBlocked', { role: roleLabel(protectedRoleByGroup[row.id]) }) }}
+            </div>
           </template>
         </el-table-column>
         <template #empty>
@@ -206,6 +226,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, RefreshCw, SquarePen, Trash2, User } from 'lucide-vue-next'
 import {
@@ -215,14 +236,21 @@ import {
   deleteUserGroup,
   replaceUserGroupMembers,
   getUserGroupAuthorizationCount,
+  getUserGroupRoleBindings,
 } from '@/api/userGroups'
+import { listRoleDefinitions } from '@/api/roleDefinitions'
+import { roleLabel } from '@/constants/roles'
+import { protectedRoleOf } from './usergroups/groupProtection'
 import { getUsers } from '@/api/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { t } from '@/i18n'
 
+const router = useRouter()
 const loading = ref(false)
 const groupList = ref([])
+// 群組帶有受保護角色（只有超級管理者能增減）：groupId → 角色名稱
+const protectedRoleByGroup = ref({})
 const userList = ref([])
 
 // 建立/編輯
@@ -252,11 +280,35 @@ const memberSourceLabel = (group, userId) => {
   return t('identityGroupMappings.memberManual')
 }
 
+const goDetail = (id) => router?.push(`/user-groups/${id}`)
+
+// 分類取自伺服器對操作者算出的 assignment_state；讀不到時不停用，由伺服器在寫入時裁決
+const loadProtection = async (groups) => {
+  try {
+    const defs = (await listRoleDefinitions())?.data || []
+    const entries = await Promise.all(
+      groups.map(async (g) => {
+        try {
+          const b = await getUserGroupRoleBindings(g.id, { quiet: true })
+          return [g.id, protectedRoleOf(b.data || [], defs)]
+        } catch {
+          return [g.id, '']
+        }
+      })
+    )
+    protectedRoleByGroup.value = Object.fromEntries(entries.filter(([, role]) => role))
+  } catch (err) {
+    protectedRoleByGroup.value = {}
+    console.error('取得角色定義失敗:', err)
+  }
+}
+
 const fetchGroups = async () => {
   loading.value = true
   try {
     const res = await getUserGroups()
     groupList.value = res.data || []
+    loadProtection(groupList.value)
   } catch (err) {
     console.error('取得使用者群組失敗:', err)
   } finally {
@@ -387,6 +439,17 @@ onMounted(() => {
   border: 1px solid var(--ot-border-subtle);
   border-radius: var(--ot-radius-lg);
   padding: var(--ot-space-md);
+}
+
+.group-link {
+  color: var(--ot-primary);
+}
+
+.protected-note {
+  margin-top: var(--ot-space-xs);
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+  white-space: normal;
 }
 
 .member-tag {

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import router, { createAuthGuard } from '@/router'
 import { WORKBENCH_PATH, buildAddressPivotLink } from '@/components/audit/timelineQuery'
 import { resetSessionForTests, setAccessToken } from '@/utils/session'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { ADMIN_PERMISSIONS, AUDITOR_PERMISSIONS, USER_PERMISSIONS, grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 工作台路由與角色閘（auditor-workbench 6.1）。
 // 本檔不 mock vue-router——要驗的正是真實路由表與真實守衛的裁決。
@@ -15,7 +17,12 @@ describe('/audit/workbench 路由', () => {
     expect(route).toBeTruthy()
     expect(route.path).toBe('/audit/workbench')
     expect(route.meta.requiresAuth).toBe(true)
-    expect(route.meta.roles).toEqual(['admin', 'auditor'])
+    // 入口要求的每個權限點：admin 與 auditor 範本都持有、一般使用者範本不持有
+    const need = route.meta.permissionsAll
+    expect(Array.isArray(need) && need.length > 0).toBe(true)
+    expect(need.every((p) => ADMIN_PERMISSIONS.includes(p))).toBe(true)
+    expect(need.every((p) => AUDITOR_PERMISSIONS.includes(p))).toBe(true)
+    expect(need.every((p) => USER_PERMISSIONS.includes(p))).toBe(false)
   })
 })
 
@@ -38,15 +45,17 @@ describe('位址深連結的目的地', () => {
   })
 })
 
-describe('角色閘', () => {
+describe('能力閘', () => {
   beforeEach(() => {
     localStorage.clear()
     resetSessionForTests()
+    resetCapabilities()
     setAccessToken('fake-token')
   })
 
   const enter = async (roles) => {
-    localStorage.setItem('user', JSON.stringify({ username: 'u', roles }))
+    localStorage.setItem('user', JSON.stringify({ username: 'u' }))
+    grantFor(roles)
     const next = vi.fn()
     await createAuthGuard()({ path: '/audit/workbench', meta: workbenchRoute().meta }, {}, next)
     return next

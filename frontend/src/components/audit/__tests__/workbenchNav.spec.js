@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import MainLayout from '@/components/MainLayout.vue'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor, meBody } from '@/composables/__tests__/capabilityFixtures'
+import { getCurrentUser } from '@/api/auth'
 
 // 工作台的導覽位置（auditor-workbench 6.1）：審計群**首項**＋麵包屑映射。
 // 掛載成本高，故本檔只做三次掛載（順序、角色、麵包屑各一）。
@@ -32,16 +35,18 @@ const mountLayout = () =>
     global: { plugins: [ElementPlus], stubs: { 'router-view': true } },
   })
 
+// 能力來自後端 /auth/me 的 permissions，不是登入快取裡的角色：
+// 預先寫入共用能力狀態，並讓 /auth/me 回同一份回應
 const setUser = (roles) => {
-  localStorage.setItem(
-    'user',
-    JSON.stringify({ username: 'tester', roles, is_approver: false })
-  )
+  localStorage.setItem('user', JSON.stringify({ username: 'tester' }))
+  grantFor(roles)
+  getCurrentUser.mockResolvedValue(meBody(roles))
 }
 
 describe('審計群導覽', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetCapabilities()
     routePath.value = '/dashboard'
   })
 

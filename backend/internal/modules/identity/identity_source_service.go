@@ -34,6 +34,13 @@ type IdentitySourceService struct {
 	db      *gorm.DB
 	auditTx port.TxSink
 
+	// guard 共用指派關卡（映射規則寫入與釘住共用）；nil 時用相容目錄的預設關卡
+	guard *AssignmentGuard
+
+	// grader 規則寫入的授權變更分級與留痕（自我授權、管理類發放）；
+	// nil 時不分級（僅單元測試建構；組裝根啟動自檢拒絕 nil）
+	grader *GrantGrader
+
 	// discovery 供狀態彙總讀取探索文件的快取新鮮度（只讀快取、不撥號）。
 	// 未注入時探索燈號一律回 null
 	discovery *OIDCDiscoveryService

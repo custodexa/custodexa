@@ -21,6 +21,9 @@ const (
 	AccountOpUpdate     = "update"
 	AccountOpDelete     = "delete"
 	AccountOpSetDefault = "set_default"
+	// AccountOpSetSecret 操作者直接宣告新秘密（憑證庫的 SetSecret 與資產、帳號表單內嵌的同義宣告）。
+	// 審計列的動作仍是 update，operation 取此值使「宣告秘密」與一般中繼資料修改可被分辨
+	AccountOpSetSecret = "set_secret"
 	// AccountOpDiscardCandidate admin 顯式清除未驗證的候選憑證
 	// 候選是那把可能已在遠端生效的秘密的
 	// 唯一副本，清除後只能以帶外途徑救回該帳號，故必須留痕
@@ -45,6 +48,10 @@ type AssetAccountAudit struct {
 	// 正是帳號事件的影響面本身，事後推不回來
 	CredentialID    uint
 	CredentialScope string
+	// CorrelationID／SecretSource 自訂秘密事件的關聯識別與秘密來源（custom｜random）；
+	// 前者與同交易系統告警同值，後者只進審計 details。兩者都不含任何秘密內容
+	CorrelationID string
+	SecretSource  string
 }
 
 // AssetAccountAuditDetails 審計 Details 的 JSON 形狀（與 AssetChangeDetails 平行，
@@ -58,6 +65,8 @@ type AssetAccountAuditDetails struct {
 	// 本次操作所涉憑證的識別與範圍（見 AssetAccountAudit 的同名欄位）
 	CredentialID    uint   `json:"credential_id,omitempty"`
 	CredentialScope string `json:"credential_scope,omitempty"`
+	CorrelationID   string `json:"correlation_id,omitempty"`
+	SecretSource    string `json:"secret_source,omitempty"`
 }
 
 // `RecordAssetAccountChange` 與其私有的 `auditActionForAccountOp`

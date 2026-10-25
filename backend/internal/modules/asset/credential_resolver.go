@@ -446,6 +446,8 @@ func createDedicatedCredential(tx *gorm.DB, username, secretType, authMethod, pr
 		AuthMethod:     authMethod,
 		ProtocolFamily: protocolFamily,
 	}
+	// 專用憑證隨資產：與建立同一筆寫入（直填、新增帳號、脫離、拆分輪替皆經此處）
+	applyOwnership(cred, dedicatedOwnership())
 	if err := tx.Create(cred).Error; err != nil {
 		return nil, fmt.Errorf("建立專用憑證失敗: %w", err)
 	}

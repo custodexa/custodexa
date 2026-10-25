@@ -23,14 +23,17 @@
         </div>
         <div class="head-actions">
           <el-button
+            v-if="can('credential:update')"
             link
             type="primary"
+            :disabled="!!denied('edit')"
             data-test="detail-edit"
             @click="emit('edit', credential)"
           >
             {{ t('common.edit') }}
           </el-button>
           <el-button
+            v-if="can('credential:delete')"
             link
             type="danger"
             :disabled="!!deleteBlockedReason"
@@ -109,6 +112,12 @@
         <dd>{{ secretTypeLabel }}</dd>
         <dt>{{ t('credentials.detailProtocol') }}</dt>
         <dd>{{ t(`enum.credentialProtocolFamily.${credential.protocol_family}`) }}</dd>
+        <template v-if="ownershipText">
+          <dt>{{ t('credentials.ownership.label') }}</dt>
+          <dd data-test="detail-ownership">
+            {{ ownershipText }}
+          </dd>
+        </template>
         <!-- 登記值的更正入口只給共用憑證：專用憑證在資產抽屜已有「編輯憑證」 -->
         <template v-if="isShared">
           <dt>{{ t(`credentials.secretFix.rowLabel.${secretKind}`) }}</dt>
@@ -118,6 +127,7 @@
           >
             <span class="muted">{{ t('credentials.secretFix.registered') }}</span>
             <el-button
+              v-if="can('credential:set-secret')"
               link
               type="primary"
               size="small"
@@ -151,6 +161,7 @@
 
       <div class="actions">
         <el-button
+          v-if="can('credential:rotate')"
           type="primary"
           :disabled="!!rotateBlockedReason"
           data-test="action-rotate"
@@ -159,6 +170,7 @@
           {{ t('credentials.rotate') }}
         </el-button>
         <el-button
+          v-if="can('credential:bind')"
           :disabled="!!bindBlockedReason"
           data-test="action-bind"
           @click="bindVisible = true"
@@ -166,7 +178,7 @@
           {{ t('credentials.bind') }}
         </el-button>
         <el-button
-          v-if="isShared"
+          v-if="isShared && can('credential:convert-scope')"
           :disabled="!!toDedicatedBlockedReason"
           data-test="action-to-dedicated"
           @click="convertToDedicated"
@@ -176,7 +188,7 @@
         <!-- 專用轉共用是「別台也要用同一組」的唯一入口：新增資產時的說明句就指到這裡，
              沒有這顆按鈕那句話等於指向一個做不到那件事的畫面 -->
         <el-button
-          v-else
+          v-else-if="!isShared && can('credential:convert-scope')"
           :disabled="!!toSharedBlockedReason"
           data-test="action-to-shared"
           @click="openToShared"
@@ -224,11 +236,23 @@
         @unbind="unbind"
       />
 
+      <!-- 範圍外台數取自伺服器：只給台數，不列出名稱，也不說在哪個節點 -->
+      <p
+        v-if="outOfScopeAssets > 0"
+        class="out-of-scope-note"
+        data-test="detail-out-of-scope"
+      >
+        {{ t('credentials.outOfScopeNote', { count: outOfScopeAssets }) }}
+      </p>
+
       <CredentialRotateDialog
         v-model="rotateVisible"
         :credential-id="credential.id"
         :credential-name="displayName"
         :binding-count="bindings.length"
+        :out-of-scope-count="outOfScopeAssets"
+        :bindings="bindings"
+        :username="credential.username"
         @submitted="onRotationStarted"
       />
 
@@ -268,6 +292,18 @@
               data-test="to-shared-name"
             />
           </el-form-item>
+          <!-- 範圍化主體必須指定節點；候選依 credential:convert-scope 的投影由伺服器給 -->
+          <el-form-item
+            :label="t('credentials.ownership.label')"
+            data-test="to-shared-ownership"
+          >
+            <CredentialOwnershipSelect
+              v-model="toSharedOwnership"
+              purpose="credential_convert_scope"
+              :active="toSharedVisible"
+              @state="toSharedOwnershipState = $event"
+            />
+          </el-form-item>
         </el-form>
         <p
           v-if="toSharedError"
@@ -286,6 +322,7 @@
           <el-button
             type="primary"
             :loading="toSharedSubmitting"
+            :disabled="!toSharedOwnershipState.ready"
             data-test="to-shared-submit"
             @click="convertToShared"
           >
@@ -335,12 +372,15 @@ import CredentialRotateDialog from './CredentialRotateDialog.vue'
 import CredentialDetachDialog from './CredentialDetachDialog.vue'
 import CredentialBindDialog from './CredentialBindDialog.vue'
 import CredentialSecretFixDialog from './CredentialSecretFixDialog.vue'
+import CredentialOwnershipSelect from './CredentialOwnershipSelect.vue'
+import { deniedReason, outOfScopeCount } from '@/utils/credentialActions'
 import {
   deleteCredential,
   unbindCredential,
   convertCredentialScope,
 } from '@/api/credentials'
 import { confirmDestructive } from '@/utils/confirm'
+import { can } from '@/composables/useCapabilities'
 import { formatDateTime } from '@/utils/format'
 import {
   AGGREGATE_STATE_TAG_TYPE,
@@ -351,6 +391,8 @@ import {
 const props = defineProps({
   credential: { type: Object, default: null },
   aggregateState: { type: String, default: '' },
+  // 節點識別 → 完整路徑（歸屬欄顯示用；查不到退回節點編號）
+  nodePaths: { type: Object, default: () => ({}) },
 })
 
 const emit = defineEmits(['edit', 'changed', 'deleted'])
@@ -365,6 +407,8 @@ const toSharedVisible = ref(false)
 const toSharedName = ref('')
 const toSharedError = ref('')
 const toSharedSubmitting = ref(false)
+const toSharedOwnership = ref({ kind: 'global', node_id: null })
+const toSharedOwnershipState = ref({ ready: true, scoped: false })
 const secretFixVisible = ref(false)
 // 最近一次更正的結果（台數與名詞）；非空即在面板上顯示成功說明
 const secretFixResult = ref(null)
@@ -376,9 +420,24 @@ const isShared = computed(() => props.credential?.scope === 'shared')
 const rotationActive = computed(() => !!props.credential?.rotation_active)
 const createdAt = computed(() => formatDateTime(props.credential?.created_at))
 const displayName = computed(() => credentialDisplayName(props.credential))
+const outOfScopeAssets = computed(() => outOfScopeCount(props.credential))
 
+// 伺服器對範圍化檢視者標示的動作旗標：不可操作時回原因碼，畫面寫出原因（不靜默禁用）
+const denied = (key) => deniedReason(props.credential, key)
+const deniedText = (key) => (denied(key) ? t(`credentials.actionReason.${denied(key)}`) : '')
+
+const ownershipText = computed(() => {
+  const o = props.credential?.ownership
+  if (!o) return ''
+  if (o.kind === 'global') return t('credentials.ownership.global')
+  if (o.kind === 'asset') return t('credentials.ownership.asset')
+  return props.nodePaths[o.node_id] || t('credentials.ownership.nodeRef', { id: o.node_id })
+})
+
+// 進行中那一輪優先；沒有時退到「已放棄但仍有主機未收斂」的那一輪，逐台補跑的入口在它的面板上
 const activeRotationId = computed(() =>
-  props.credential?.active_rotation_id || startedRotationId.value || null)
+  props.credential?.active_rotation_id || startedRotationId.value
+  || props.credential?.unsettled_rotation_id || null)
 
 const aggregateLabel = computed(() => (props.aggregateState
   ? t(`enum.credentialAggregateState.${props.aggregateState}`)
@@ -404,34 +463,34 @@ const secretFixEntry = computed(() => t('credentials.secretFix.entry', { noun: s
 const secretFixBlockedReason = computed(() => {
   if (!isShared.value) return ''
   if (rotationActive.value) return t('credentials.blockedRotationActive')
-  return ''
+  return deniedText('set_secret')
 })
 
 const rotateBlockedReason = computed(() => {
   if (rotationActive.value) return t('credentials.blockedRotationActive')
   if (!isShared.value) return t('credentials.blockedNotShared')
   if (!bindings.value.length) return t('credentials.blockedNoBinding')
-  return ''
+  return deniedText('rotate')
 })
 
 const bindBlockedReason = computed(() => {
   if (rotationActive.value) return t('credentials.blockedRotationActive')
   if (!isShared.value) return t('credentials.blockedDedicatedScope')
-  return ''
+  return deniedText('bind')
 })
 
 const toDedicatedBlockedReason = computed(() => {
   if (!isShared.value) return ''
   if (rotationActive.value) return t('credentials.blockedRotationActive')
   if (bindings.value.length !== 1) return t('credentials.blockedToDedicatedMulti')
-  return ''
+  return deniedText('convert_scope')
 })
 
 // 轉共用與轉專用同一支端點、同一道輪替閘門（ConvertScope 內 assertNoActiveRotation）
 const toSharedBlockedReason = computed(() => {
   if (isShared.value) return ''
   if (rotationActive.value) return t('credentials.blockedRotationActive')
-  return ''
+  return deniedText('convert_scope')
 })
 
 const deleteBlockedReason = computed(() => {
@@ -440,7 +499,8 @@ const deleteBlockedReason = computed(() => {
   if (bindings.value.length) {
     return t('credentials.blockedInUse', { count: bindings.value.length })
   }
-  return ''
+  // 範圍外仍有掛載時，伺服器會拒絕刪除；同樣有台數可說，這裡不推導
+  return deniedText('delete')
 })
 
 // 同一句話不重複四遍：輪替進行中時四個動作被同一個理由擋住，寫四行只是噪音。
@@ -453,6 +513,7 @@ const blockedReasons = computed(() => {
     { key: 'to-dedicated', text: toDedicatedBlockedReason.value },
     { key: 'to-shared', text: toSharedBlockedReason.value },
     { key: 'secret-fix', text: secretFixBlockedReason.value },
+    { key: 'edit', text: deniedText('edit') },
     { key: 'delete', text: deleteBlockedReason.value },
   ].filter((r) => r.text)
   const grouped = []
@@ -568,6 +629,7 @@ async function convertToDedicated() {
 function openToShared() {
   toSharedName.value = ''
   toSharedError.value = ''
+  toSharedOwnership.value = { kind: 'global', node_id: null }
   toSharedVisible.value = true
 }
 
@@ -582,7 +644,12 @@ async function convertToShared() {
   toSharedError.value = ''
   toSharedSubmitting.value = true
   try {
-    await convertCredentialScope(props.credential.id, { scope: 'shared', name })
+    const body = { scope: 'shared', name }
+    const { kind, node_id: nodeId } = toSharedOwnership.value
+    // 範圍化主體一律明送歸屬；全域主體不選節點時維持現行「不帶歸屬即全域」
+    if (kind === 'node') body.ownership = { kind: 'node', node_id: nodeId }
+    else if (toSharedOwnershipState.value.scoped) body.ownership = { kind: 'global' }
+    await convertCredentialScope(props.credential.id, body)
     ElMessage.success(t('credentials.toSharedDone'))
     toSharedVisible.value = false
     emit('changed')

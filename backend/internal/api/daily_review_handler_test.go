@@ -43,7 +43,7 @@ func dailyReviewFullRouter(t *testing.T) (*gin.Engine, func() int64) {
 	v1.Use(func(c *gin.Context) {
 		c.Set("userID", uint(9))
 		c.Set("username", "tester")
-		c.Set("role", c.GetHeader("X-Test-Role"))
+		middleware.SetPrincipal(c, legacyPrincipal(c.GetHeader("X-Test-Role")))
 		c.Next()
 	})
 	h.registerOn(v1.Group("/daily-reviews"))

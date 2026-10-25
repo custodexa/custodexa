@@ -25,10 +25,21 @@
       <el-radio-button value="shared">
         {{ t('assets.credentialSection.modeShared') }}
       </el-radio-button>
-      <el-radio-button value="dedicated">
+      <el-radio-button
+        value="dedicated"
+        :disabled="dedicatedDisabled"
+      >
         {{ t('assets.credentialSection.modeDedicated') }}
       </el-radio-button>
     </el-radio-group>
+    <!-- 停用的原因就地寫出，不讓人按到 403 才知道 -->
+    <div
+      v-if="dedicatedDisabled && dedicatedDisabledNote"
+      class="form-tip"
+      data-test="credential-dedicated-disabled-note"
+    >
+      {{ dedicatedDisabledNote }}
+    </div>
 
     <template v-if="model.credential_mode === 'shared'">
       <el-form-item
@@ -153,6 +164,9 @@ const props = defineProps({
   showPrivileged: { type: Boolean, default: false },
   assetName: { type: String, default: '' },
   compact: { type: Boolean, default: false },
+  // 「這台專用」需寫入帳號名稱，呼叫端依欄位能力停用並附原因
+  dedicatedDisabled: { type: Boolean, default: false },
+  dedicatedDisabledNote: { type: String, default: '' },
   // 伺服端指到私鑰欄的錯誤（已譯文），顯示在該欄下方；空字串＝無錯
   privateKeyError: { type: String, default: '' },
 })

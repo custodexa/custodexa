@@ -8,6 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
@@ -57,8 +58,15 @@ func (self *agentSelfCreation) check(tx *gorm.DB) error {
 	// Serialize the count and insert on the owner row across backend instances.
 	// Re-read owner eligibility after acquiring the lock, in the creation transaction.
 	var owner model.User
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&owner, self.actor.UserID).Error; err != nil {
+	// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
+	if probe := authz.LockOrderProbeHook(); probe != nil {
+		probe(tx, authz.LockLayerUserRow, self.actor.UserID)
+	}
+	if err := tx.Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).First(&owner, self.actor.UserID).Error; err != nil {
 		return err
+	}
+	if h := loadLockOrderHook(); h != nil {
+		h("agent_self_create_owner_locked", tx, self.actor.UserID)
 	}
 	if owner.Kind != model.KindHuman || !owner.Active {
 		return ErrAgentOwnerRequired

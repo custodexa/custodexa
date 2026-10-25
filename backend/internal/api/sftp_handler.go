@@ -34,7 +34,7 @@ type SFTPHandler struct {
 	authorizationService *authz.AssetAuthorizationService
 	auditService         *audit.AuditLogService
 	// authService 角色現況重判：檔案面與三個連線強制點
-	// 共用同一事實源 CurrentConnectRole。不設此欄即等於信任 JWT 角色快照——
+	// 共用同一事實源 CurrentConnectPrincipal。不設此欄即等於信任 JWT 角色快照——
 	// 已被降權／停用的舊 admin JWT 在 token 效期內仍能以 admin 短路存取任意帳號的
 	// 檔案面。**建構期必填**（由 RegisterRoutes 的組裝端提供）
 	authService *identity.AuthService
@@ -92,7 +92,7 @@ func sftpConnectionAuthCode(err error) (int, apierror.ErrCode) {
 // RegisterRoutes 註冊檔案管理路由
 func (h *SFTPHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	files := r.Group("/assets/:id/files")
-	files.Use(middleware.AuthMiddleware(authService))
+	files.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 
 	files.GET("", h.List)
 	files.GET("/download", h.Download)
@@ -105,7 +105,7 @@ func (h *SFTPHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 	// **這是呈現用的讀取面，不是強制點**——強制在 SFTP／K8s 端點、tunnel 與 guacd
 	// 參數三處，前端隱藏按鈕不構成控制。
 	caps := r.Group("/assets/:id/transfer-capabilities")
-	caps.Use(middleware.AuthMiddleware(authService))
+	caps.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	caps.GET("", h.TransferCapabilities)
 }
 
@@ -158,18 +158,18 @@ func (h *SFTPHandler) TransferCapabilities(c *gin.Context) {
 // 需要同一組資產層判定，但**不需要**其後的 SSH 連線帳號解析（那段以
 // `model.ProtocolSSH` 判定帳號授權，對 RDP／VNC 資產不適用）。抽出而非複製——
 // 安全前置條件複製一份即是日後兩邊分岔的起點。
-func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, bool) {
+func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, *authz.Principal, bool) {
 	assetID64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil || assetID64 == 0 {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "asset"})
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 	assetID := uint(assetID64)
 
 	userID, exists := middleware.GetCurrentUserID(c)
 	if !exists {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 
 	// 角色現況重判（與 connect token 簽發／兌換三點對稱）：
@@ -177,24 +177,24 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, b
 	// 不以 DB 現查角色覆蓋，其後所有 admin 短路（授權判定、帳號範圍全量）都會憑
 	// JWT 角色快照放行——降權的前 admin 在 token 效期內仍可存取任意帳號的檔案面。
 	// 順帶完成 AUTH-1 可連線複查（停用／鎖定），與連線面同一事實源
-	role, connErr := h.authService.CurrentConnectRole(userID)
+	principal, connErr := h.authService.CurrentConnectPrincipal(userID)
 	if connErr != nil {
 		status, code := sftpConnectionAuthCode(connErr)
 		apierror.Respond(c, status, code, nil)
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 
-	ctx := sftpRoleContext(c, role)
+	ctx := sftpPrincipalContext(c, principal)
 	hasPermission, err := h.authorizationService.CheckPermission(ctx, userID, assetID, model.PermissionConnect)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalSFTPPermissionCheck, err)
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 	if !hasPermission {
 		// 未授權統一回 404「資產不存在」語義：
 		// 與 RequireAssetVisible 逐資產守門一致，不洩漏資產存在性
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 
 	// 停用資產硬擋：檔案面與 connect-token 同收口；
@@ -207,17 +207,17 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, b
 		// 404 與上方未授權同語義，不新增可區分訊號、不洩漏存在性
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
-			return 0, 0, "", false
+			return 0, 0, nil, false
 		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalSFTPAssetStatus, err)
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 	if !active {
 		apierror.Write(c, http.StatusForbidden, apierror.ErrorResponse{
 			Code: apierror.CodeAssetDisabled,
 			Meta: map[string]any{"reason": "asset_disabled"},
 		})
-		return 0, 0, "", false
+		return 0, 0, nil, false
 	}
 
 	// 存取政策閘：檔案資料面與 connect-token 共用同一閘——
@@ -225,39 +225,35 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, b
 	// admin 豁免（檔案操作本就逐筆審計），auditor 與一般 user 同攔。
 	// role 用上方 DB 現查值，不再讀 JWT 快照——否則降權的前 admin 仍能豁免政策閘
 	if h.accessPolicy != nil {
-		decision, err := h.accessPolicy.CheckConnectByAssetID(userID, role, assetID)
+		decision, err := h.accessPolicy.CheckConnectByAssetID(userID, principal.IsSuperAdmin(), assetID)
 		if err != nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalSFTPAccessPolicy, err)
-			return 0, 0, "", false
+			return 0, 0, nil, false
 		}
 		if !decision.Allowed {
 			// 政策攔截於檔案端點回 404 資產不存在語義（不洩漏存在性、不引導檔案端點做申請）：
 			// 申請入口在資產列表/連線頁，此處僅擋
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
-			return 0, 0, "", false
+			return 0, 0, nil, false
 		}
 	}
 
-	return userID, assetID, role, true
+	return userID, assetID, principal, true
 }
 
-// sftpRoleContext 把 DB 現查角色掛進 ctx（沿既有 CheckPermission 慣例）
-func sftpRoleContext(c *gin.Context, role string) context.Context {
-	ctx := c.Request.Context()
-	if role != "" {
-		ctx = context.WithValue(ctx, "role", role) //nolint:staticcheck // 沿用既有 CheckPermission 慣例
-	}
-	return ctx
+// sftpPrincipalContext 把 DB 現查主體掛進 ctx（CheckPermission 的保留身分短路由主體判定）
+func sftpPrincipalContext(c *gin.Context, p *authz.Principal) context.Context {
+	return authz.ContextWithPrincipal(c.Request.Context(), p)
 }
 
 // requireConnectPermission 資產層前置閘（requireConnectAsset）＋SSH 連線帳號解析；
 // 失敗時已寫入回應。回傳 (userID, assetID, accountID, ok)，accountID=0＝預設帳號
 func (h *SFTPHandler) requireConnectPermission(c *gin.Context) (uint, uint, uint, bool) {
-	userID, assetID, role, ok := h.requireConnectAsset(c)
+	userID, assetID, principal, ok := h.requireConnectAsset(c)
 	if !ok {
 		return 0, 0, 0, false
 	}
-	ctx := sftpRoleContext(c, role)
+	ctx := sftpPrincipalContext(c, principal)
 	var err error
 
 	// 連線帳號解析：帶 session_id＝自會話分頁進入，
@@ -398,6 +394,19 @@ func (h *SFTPHandler) auditDenied(c *gin.Context, userID, assetID uint, action m
 	})
 }
 
+// fileOpContext 檔案操作的連線脈絡：使用者、可選的會話主鍵（自會話分頁進入時的 session_id）
+// 與來源位址，供主機金鑰不符的審計與告警引用。session_id 的授權複查在 requireConnectPermission。
+func (h *SFTPHandler) fileOpContext(c *gin.Context, userID uint) session.FileOpContext {
+	username, _ := middleware.GetCurrentUsername(c)
+	op := session.FileOpContext{UserID: userID, Username: username, ClientIP: sourceip.Of(c)}
+	if raw := c.Query("session_id"); raw != "" {
+		if id, err := strconv.ParseUint(raw, 10, 32); err == nil {
+			op.SessionID = uint(id)
+		}
+	}
+	return op
+}
+
 // audit 記錄成功的檔案操作
 func (h *SFTPHandler) audit(c *gin.Context, userID, assetID uint, action model.AuditAction, remotePath string, detail string) {
 	username, _ := middleware.GetCurrentUsername(c)
@@ -428,14 +437,19 @@ func (h *SFTPHandler) List(c *gin.Context) {
 	}
 
 	remotePath := c.Query("path")
-	entries, err := h.sftpService.List(assetID, accountID, remotePath)
+	listed, err := h.sftpService.List(assetID, accountID, remotePath, h.fileOpContext(c, userID))
 	if err != nil {
 		respondSFTPError(c, err, apierror.CodeInternalSFTPListFailed)
 		return
 	}
 
 	h.audit(c, userID, assetID, model.ActionFileList, remotePath, "")
-	c.JSON(http.StatusOK, gin.H{"path": remotePath, "entries": entries})
+	resp := gin.H{"path": remotePath, "entries": listed.Entries}
+	if listed.HostKeyMismatch {
+		// 主機金鑰與記錄不符（已留痕並放行）：只在列目錄帶旗標，檔案管理據此顯示警示
+		resp["host_key_mismatch"] = true
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // Download 串流下載
@@ -449,7 +463,7 @@ func (h *SFTPHandler) Download(c *gin.Context) {
 	if !h.requireTransferAllowed(c, userID, assetID, policy.TransferActionFileDownload, remotePath) {
 		return
 	}
-	reader, size, closeFn, err := h.sftpService.Download(assetID, accountID, remotePath)
+	reader, size, closeFn, err := h.sftpService.Download(assetID, accountID, remotePath, h.fileOpContext(c, userID))
 	if err != nil {
 		respondSFTPError(c, err, apierror.CodeInternalSFTPDownloadFailed)
 		return
@@ -498,7 +512,7 @@ func (h *SFTPHandler) Upload(c *gin.Context) {
 		return
 	}
 	hasher := sha256.New()
-	written, err := h.sftpService.Upload(assetID, accountID, remotePath, io.TeeReader(src, hasher))
+	written, err := h.sftpService.Upload(assetID, accountID, remotePath, io.TeeReader(src, hasher), h.fileOpContext(c, userID))
 	if err != nil {
 		respondSFTPError(c, err, apierror.CodeInternalSFTPUploadFailed)
 		return
@@ -535,7 +549,7 @@ func (h *SFTPHandler) Mkdir(c *gin.Context) {
 		return
 	}
 
-	if err := h.sftpService.Mkdir(assetID, accountID, req.Path); err != nil {
+	if err := h.sftpService.Mkdir(assetID, accountID, req.Path, h.fileOpContext(c, userID)); err != nil {
 		respondSFTPError(c, err, apierror.CodeInternalSFTPMkdirFailed)
 		return
 	}
@@ -555,7 +569,7 @@ func (h *SFTPHandler) Delete(c *gin.Context) {
 	if !h.requireTransferAllowed(c, userID, assetID, policy.TransferActionFileDelete, remotePath) {
 		return
 	}
-	if err := h.sftpService.Delete(assetID, accountID, remotePath); err != nil {
+	if err := h.sftpService.Delete(assetID, accountID, remotePath, h.fileOpContext(c, userID)); err != nil {
 		respondSFTPError(c, err, apierror.CodeInternalSFTPDeleteFailed)
 		return
 	}
@@ -581,6 +595,9 @@ func respondSFTPError(c *gin.Context, err error, actionCode apierror.ErrCode) {
 	case errors.Is(err, asset.ErrPrivateKeyInvalid):
 		// 私鑰無法解析：設定問題（400），與終端撥號同碼；不帶 cause，解析原文只進伺服端日誌
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeSSHPrivateKeyInvalid, nil)
+	case errors.Is(err, asset.ErrHostKeyCheckFailed):
+		// 主機金鑰查核失敗（讀不到記錄或不符留痕寫不進去）：在送出憑證前中止，與終端撥號同碼
+		apierror.Respond(c, http.StatusBadGateway, apierror.CodeSSHHostKeyCheckFailed, nil)
 	case errors.Is(err, asset.ErrAssetAccountNotFound):
 		// 會話帳號已被刪除／不屬該資產（session_id 路徑的 fail-close）：
 		// 與帳號 CRUD 端點同碼同狀態，不洩漏存在性、不回泛化的 502

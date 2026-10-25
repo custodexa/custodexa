@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/modules/audit/port"
+	"gorm.io/gorm"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -350,12 +352,27 @@ func TestKEKTopologyChangeAuditAndAlertDrill(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer hook.Close()
-	if err := database.DB.AutoMigrate(&model.NotificationChannel{}); err != nil {
-		t.Fatalf("通知通道表建立失敗: %v", err)
+	// 系統告警落地與投遞需要的表（共用環境只建 schema-parity 清單）。command_alerts 以
+	// DATETIME 欄建：sqlite 的 timestamptz 宣告讀回時不轉成時間，投遞程序讀告警列會失敗
+	if err := database.DB.Exec(`CREATE TABLE IF NOT EXISTS command_alerts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER, rule_name TEXT NOT NULL,
+		session_id INTEGER, user_id INTEGER NOT NULL, asset_id INTEGER,
+		command TEXT NOT NULL, severity TEXT NOT NULL, triggered_at DATETIME NOT NULL,
+		reviewed_by INTEGER, reviewed_at DATETIME,
+		disposition TEXT NOT NULL DEFAULT 'pending', note TEXT NOT NULL DEFAULT '',
+		blocked BOOLEAN NOT NULL DEFAULT 0,
+		kind TEXT NOT NULL DEFAULT 'rule', reason_code TEXT NOT NULL DEFAULT ''
+	)`).Error; err != nil {
+		t.Fatalf("告警表建立失敗: %v", err)
+	}
+	if err := database.DB.AutoMigrate(&model.NotificationChannel{}, &model.SystemAlertDetail{},
+		&model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{}); err != nil {
+		t.Fatalf("通知通道與系統告警表建立失敗: %v", err)
 	}
 	if err := database.DB.Create(&model.NotificationChannel{
 		Name: "drill", Type: model.NotificationChannelTypeWebhook,
-		URL: hook.URL, Enabled: true, Language: model.NotificationChannelLanguageZhTW,
+		URL: hook.URL, Enabled: true, Language: model.NotificationChannelLanguageZhTW, MinSeverity: "low",
 	}).Error; err != nil {
 		t.Fatalf("通知通道建立失敗: %v", err)
 	}
@@ -396,29 +413,131 @@ func TestKEKTopologyChangeAuditAndAlertDrill(t *testing.T) {
 		t.Logf("EVIDENCE audit username=%s status=%s body=%s", row.Username, row.Status, row.RequestBody)
 	}
 
-	deadline := time.After(10 * time.Second)
+	// 告警改走系統告警持久投遞（取代舊的非持久通知事件）：等第二次變更的
+	// key_topology_changed 投遞，且期間不得收到舊的 kek_topology_changed 通知事件。
+	// 參數只有變動欄位類別，前後位址由同交易審計列回查（上面已讀到）。
+	deadline := time.After(20 * time.Second)
 	seen := 0
-	for seen < 1 {
+	for seen < 2 {
 		select {
 		case body := <-delivered:
 			var payload struct {
-				Event  string            `json:"event"`
-				Params map[string]string `json:"params"`
+				Event string `json:"event"`
+				Alert struct {
+					Type   string         `json:"type"`
+					Params map[string]any `json:"params"`
+				} `json:"alert"`
 			}
 			if err := json.Unmarshal(body, &payload); err != nil {
 				continue
 			}
-			if payload.Event != string(notifycat.EventKEKTopologyChanged) {
+			if payload.Event == string(notifycat.EventKEKTopologyChanged) {
+				t.Fatalf("仍收到舊的非持久通知事件 %s：同一次變更不得重複發送", payload.Event)
+			}
+			if payload.Alert.Type != string(port.SystemAlertKeyTopologyChanged) {
 				continue
 			}
-			t.Logf("EVIDENCE notify event=%s actor=%s before=%s after=%s",
-				payload.Event, payload.Params["actor"], payload.Params["before"], payload.Params["after"])
-			// 只認「改一次位址」那一次：前值須是舊位址、後值須是新位址。
-			if strings.Contains(payload.Params["before"], first) && strings.Contains(payload.Params["after"], second) {
-				seen++
+			for _, addr := range []string{first, second} {
+				if strings.Contains(string(body), addr) {
+					t.Fatalf("系統告警投遞內容帶了位址 %s", addr)
+				}
 			}
+			t.Logf("EVIDENCE system_alert delivered type=%s change_kind=%v", payload.Alert.Type, payload.Alert.Params["change_kind"])
+			seen++
 		case <-deadline:
-			t.Fatal("10s 內未收到 kek_topology_changed 告警")
+			t.Fatalf("20s 內只收到 %d 筆 key_topology_changed 系統告警投遞（want 2）", seen)
 		}
 	}
+
+	// 重包流程寫拓撲：走正式的 POST /api/v1/keys/rewrap（正式 handler 與 key manager，
+	// 外部 KEK 以行程內替身代替）。第一次正常同步拓撲；第二次在拓撲交易注入告警失敗——
+	// 重包本身已完成，回應須與第一次同形（不報成重包失敗），拓撲維持原值、不新增成功告警，
+	// 並留一筆記下「拓撲未同步」的失敗審計列。
+	newFake := func(keyID string) crypto.KEKProvider {
+		local, err := crypto.NewEnvKEKProvider([]byte(testOtherKEK))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &awsShapedFakeProvider{KEKProvider: local, ref: crypto.KeyRef{Provider: crypto.KeyRefProviderKMS, KeyID: keyID}}
+	}
+	rewrap := func(keyID, region string) *httptest.ResponseRecorder {
+		t.Helper()
+		fake := newFake(keyID)
+		g.deps.keyManagement.SetDelegatedProviderFactory(func(context.Context, string, string) (crypto.KEKProvider, error) {
+			return fake, nil
+		})
+		return modeRequest(t, e, "/api/v1/keys/rewrap", fmt.Sprintf(`{"mode":"kms","key_ref":%q,"region":%q}`, keyID, region), token)
+	}
+	alertCount := func() int64 {
+		var n int64
+		database.DB.Model(&model.SystemAlertDetail{}).Where("alert_type = ?", string(port.SystemAlertKeyTopologyChanged)).Count(&n)
+		return n
+	}
+	w1 := rewrap("arn:aws:kms:us-east-1:111122223333:key/drill-a", "us-east-1")
+	if w1.Code != http.StatusOK {
+		t.Fatalf("第一次重包 HTTP=%d body=%s", w1.Code, w1.Body.String())
+	}
+	var topo model.KEKTopology
+	database.DB.First(&topo)
+	if topo.Provider != keyvault.TopologyProviderAWS || topo.Region != "us-east-1" {
+		t.Fatalf("第一次重包後拓撲應同步為 aws/us-east-1，得 %s/%s", topo.Provider, topo.Region)
+	}
+	alertsBefore := alertCount()
+	// 一次只允許一個待切換的重包：先放棄第一次，再做第二次
+	if w := modeRequestMethod(t, e, "DELETE", "/api/v1/keys/rewrap", "", token); w.Code != http.StatusOK {
+		t.Fatalf("放棄待切換重包 HTTP=%d body=%s", w.Code, w.Body.String())
+	}
+	g.deps.keyManagement.SetEvidenceSinks(audit.NewTxSink(), drillFailingAlertSink{})
+	t.Cleanup(func() { g.deps.keyManagement.SetEvidenceSinks(audit.NewTxSink(), audit.NewSystemAlertSink(nil)) })
+	w2 := rewrap("arn:aws:kms:ap-northeast-1:111122223333:key/drill-b", "ap-northeast-1")
+	if w2.Code != w1.Code {
+		t.Fatalf("拓撲同步失敗不得改寫重包回應：第一次 %d、第二次 %d body=%s", w1.Code, w2.Code, w2.Body.String())
+	}
+	var b1, b2 map[string]any
+	_ = json.Unmarshal(w1.Body.Bytes(), &b1)
+	_ = json.Unmarshal(w2.Body.Bytes(), &b2)
+	for k := range b1 {
+		if _, ok := b2[k]; !ok {
+			t.Fatalf("第二次重包回應缺欄位 %s：%s", k, w2.Body.String())
+		}
+	}
+	database.DB.First(&topo)
+	if topo.Region != "us-east-1" {
+		t.Fatalf("拓撲交易失敗後應維持原值 us-east-1，得 %s", topo.Region)
+	}
+	if n := alertCount(); n != alertsBefore {
+		t.Fatalf("拓撲交易失敗後不得新增成功告警（%d→%d）", alertsBefore, n)
+	}
+	var failed []model.AuditLog
+	waitUntil := time.Now().Add(10 * time.Second)
+	for time.Now().Before(waitUntil) {
+		failed = nil
+		database.DB.Where("resource = ? AND status = ? AND request_body LIKE ?", string(model.ResourceKeyManagement),
+			string(model.StatusFailure), "%rewrap_topology_not_synced%").Find(&failed)
+		if len(failed) > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(failed) != 1 || !strings.Contains(failed[0].RequestBody, "ap-northeast-1") {
+		t.Fatalf("應有 1 筆記下企圖值與拓撲未同步的失敗審計列，得 %d", len(failed))
+	}
+	t.Logf("EVIDENCE rewrap_topology_failure HTTP=%d same_as_success=%v topology_kept=%s failure_audit=%s",
+		w2.Code, w2.Code == w1.Code, topo.Region, failed[0].RequestBody)
+}
+
+// awsShapedFakeProvider 行程內 KEK 替身，帶委託服務商形狀的金鑰引用。
+type awsShapedFakeProvider struct {
+	crypto.KEKProvider
+	ref crypto.KeyRef
+}
+
+func (p *awsShapedFakeProvider) KeyRef() crypto.KeyRef { return p.ref }
+func (p *awsShapedFakeProvider) FormatTag() string     { return crypto.WrappedFormatKMS }
+
+// drillFailingAlertSink 系統告警寫入一律失敗（注入拓撲交易的告警失敗）。
+type drillFailingAlertSink struct{}
+
+func (drillFailingAlertSink) RaiseInTx(*gorm.DB, port.SystemAlertEvent) (port.SystemAlertReceipt, error) {
+	return port.SystemAlertReceipt{}, fmt.Errorf("注入告警失敗")
 }

@@ -80,8 +80,8 @@ func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB, time.Time) {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.DailyReviewLog{}, &model.AuditLog{}, &model.SecurityPolicy{},
-		&model.SecurityPolicyHistory{}, &model.AuditRetentionWatermark{}); err != nil {
+	if err := migrateWithAuthz(db, &model.DailyReviewLog{}, &model.AuditLog{}, &model.SecurityPolicy{},
+		&model.SecurityPolicyHistory{}, &model.AuditRetentionWatermark{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// command_alerts 生產為 timestamptz，sqlite 以 datetime 等價表手建（scan 才讀得回 time.Time）
@@ -191,7 +191,10 @@ func setupSecurityPolicyRouter(t *testing.T) *gin.Engine {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.SecurityPolicyHistory{}); err != nil {
+	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.SecurityPolicyHistory{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	policySvc := policy.NewSecurityPolicyService(db)
@@ -274,6 +277,21 @@ func TestPolicyErrorKeyOnWire(t *testing.T) {
 		// 不合法的「值」本身不進 wire（只回鍵名，不回顯輸入）
 		if strings.Contains(w.Body.String(), "abc") {
 			t.Errorf("不合法的值回顯到 wire: %s", w.Body.String())
+		}
+	})
+
+	t.Run("保留天數低於下限（錄影保留 3 天）", func(t *testing.T) {
+		r := setupSecurityPolicyRouter(t)
+		w := putPolicies(t, r, map[string]string{policy.PolicyRetentionRecordingDays: "3"})
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400 (body=%s)", w.Code, w.Body.String())
+		}
+		code, params, _ := decodeEnvelope(t, w)
+		if code != "VALIDATION_POLICY_INVALID_VALUE" {
+			t.Errorf("code = %q", code)
+		}
+		if params["key"] != policy.PolicyRetentionRecordingDays {
+			t.Errorf("params[key] = %v, want %s", params["key"], policy.PolicyRetentionRecordingDays)
 		}
 	})
 }

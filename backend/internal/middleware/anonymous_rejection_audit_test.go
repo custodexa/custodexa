@@ -64,7 +64,10 @@ func installAnonAuditDB(t *testing.T) *gorm.DB {
 		t.Fatalf("取底層 sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate audit_logs: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate audit_logs: %v", err)
 	}
 	old := database.DB
@@ -752,14 +755,14 @@ func TestForbiddenKeepsNamedDeniedRow(t *testing.T) {
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", uint(9))
 		c.Set("username", "operator")
-		c.Set("role", "user")
+		SetPrincipal(c, legacyPrincipal("user"))
 		c.Next()
 	})
-	r.GET("/api/v1/access-requests/pending", RequireRole("admin"), func(c *gin.Context) {
+	r.GET("/api/v1/security-policies", EnforceRegistry(), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{})
 	})
 
-	w := anonShoot(r, http.MethodGet, "/api/v1/access-requests/pending", "", "203.0.113.30:41000", nil)
+	w := anonShoot(r, http.MethodGet, "/api/v1/security-policies", "", "203.0.113.30:41000", nil)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("狀態碼 = %d，應為 403", w.Code)
 	}

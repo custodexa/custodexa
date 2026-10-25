@@ -1,6 +1,7 @@
 package sshproxy
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"context"
 	"crypto/ed25519"
@@ -36,7 +37,10 @@ import (
 func setupGenerationTest(t *testing.T) (*Handler, *gorm.DB) {
 	t.Helper()
 	h, db, _ := setupPolicyGateTest(t)
-	if err := db.AutoMigrate(&model.OIDCProvider{}, &model.AssetHostKey{}); err != nil {
+	if err := db.AutoMigrate(&model.OIDCProvider{}, &model.AssetHostKey{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate oidc/hostkey: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate oidc/hostkey: %v", err)
 	}
 	seedGateFixture(t, db)
@@ -70,7 +74,7 @@ func issueTokenWithAuth(h *Handler, userID uint, role string, assetID uint, auth
 	r := gin.New()
 	r.POST("/connect-tokens", func(c *gin.Context) {
 		c.Set("userID", userID)
-		c.Set("role", role)
+		middleware.SetPrincipal(c, legacyPrincipal(role))
 		c.Set("authContext", authCtx)
 		h.HandleCreateConnectToken(c)
 	})

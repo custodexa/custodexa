@@ -48,6 +48,7 @@ type mappingSegmentFixture struct {
 	db       *gorm.DB
 	service  *IdentitySourceService
 	user     model.User
+	operator model.User
 	provider model.OIDCProvider
 	role     model.Role
 	group    model.UserGroup
@@ -59,12 +60,13 @@ func newMappingSegmentFixture(t *testing.T) *mappingSegmentFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	seedAuthzState(t, db)
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.LDAPDirectory{}, &model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.AuditLog{}, &model.RefreshToken{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetAuthorization{}, &model.ApproverScope{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.LDAPDirectory{}, &model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}, &model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetAuthorization{}, &model.ApproverScope{}); err != nil {
 		t.Fatal(err)
 	}
 	f := &mappingSegmentFixture{db: db, service: NewIdentitySourceService(db, audit.NewTxSink())}
@@ -80,6 +82,12 @@ func newMappingSegmentFixture(t *testing.T) *mappingSegmentFixture {
 	if err := db.Create(&f.role).Error; err != nil {
 		t.Fatal(err)
 	}
+	// 操作者與被映射的帳號分開：被映射帳號的有效角色是多處斷言的對象，不能順手持有超管
+	f.operator = model.User{Username: "operator", Password: "x", Active: true}
+	if err := db.Create(&f.operator).Error; err != nil {
+		t.Fatal(err)
+	}
+	ensureFixtureSuperAdmin(t, db, f.operator.ID)
 	f.group = model.UserGroup{Name: "operators"}
 	if err := db.Create(&f.group).Error; err != nil {
 		t.Fatal(err)
@@ -89,7 +97,7 @@ func newMappingSegmentFixture(t *testing.T) *mappingSegmentFixture {
 
 func (f *mappingSegmentFixture) roleRule(t *testing.T, value string) uint {
 	t.Helper()
-	v, err := f.service.CreateMapping(model.RoleMappingChannelKindProvider, f.provider.ID, GroupRoleMappingInput{MatchValue: value, Role: f.role.Name, RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}})
+	v, err := f.service.CreateMapping(model.RoleMappingChannelKindProvider, f.provider.ID, GroupRoleMappingInput{MatchValue: value, Role: f.role.Name, RiskAcknowledged: true, Actor: f.act()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +105,7 @@ func (f *mappingSegmentFixture) roleRule(t *testing.T, value string) uint {
 }
 func (f *mappingSegmentFixture) groupRule(t *testing.T, value string) uint {
 	t.Helper()
-	r, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, UserGroupMappingInput{MatchValue: value, UserGroupID: f.group.ID, RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}})
+	r, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, UserGroupMappingInput{MatchValue: value, UserGroupID: f.group.ID, RiskAcknowledged: true, Actor: f.act()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +122,12 @@ func (f *mappingSegmentFixture) login(t *testing.T, groups ...string) RoleMappin
 func (f *mappingSegmentFixture) count(t *testing.T, table string) int64 {
 	t.Helper()
 	var n int64
-	if err := f.db.Table(table).Count(&n).Error; err != nil {
+	q := f.db.Table(table)
+	// 操作者帳號的超管角色是夾具為通過指派關卡而放的，不屬於被測的映射效果，計數時排除
+	if table == "user_roles" || table == "user_group_members" {
+		q = q.Where("user_id <> ?", f.operator.ID)
+	}
+	if err := q.Count(&n).Error; err != nil {
 		t.Fatal(err)
 	}
 	return n
@@ -232,7 +245,7 @@ func TestRoleMappingRuleRevocationPreservesOtherSupport(t *testing.T) {
 	f.roleRule(t, "b")
 	f.login(t, "a", "b")
 	epoch := f.epoch(t)
-	if err := f.service.DeleteMapping(model.RoleMappingChannelKindProvider, f.provider.ID, a, GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}); err != nil {
+	if err := f.service.DeleteMapping(model.RoleMappingChannelKindProvider, f.provider.ID, a, f.act()); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(t, "user_role_mapping_rule_supports"); n != 1 {
@@ -252,7 +265,7 @@ func TestUserGroupMappingRuleRevocationPreservesOtherSupport(t *testing.T) {
 	f.groupRule(t, "b")
 	f.login(t, "a", "b")
 	epoch := f.epoch(t)
-	if err := f.service.DeleteUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, a, GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}); err != nil {
+	if err := f.service.DeleteUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, a, f.act()); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(t, "user_group_mapping_rule_supports"); n != 1 {
@@ -274,7 +287,7 @@ func TestUserGroupMappingManualAndOtherChannelSupport(t *testing.T) {
 	if err := f.db.Create(&second).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, second.ID, UserGroupMappingInput{MatchValue: "a", UserGroupID: f.group.ID, RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}}); err != nil {
+	if _, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, second.ID, UserGroupMappingInput{MatchValue: "a", UserGroupID: f.group.ID, RiskAcknowledged: true, Actor: f.act()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := RecomputeMappedRoles(f.db, audit.NewTxSink(), &f.user, GroupObservation{Kind: model.RoleMappingChannelKindProvider, SourceID: second.ID, State: GroupObservationKnown, Groups: []string{"a"}}); err != nil {
@@ -311,7 +324,7 @@ func TestMappingEditIdentity(t *testing.T) {
 	f := newMappingSegmentFixture(t)
 	old := f.roleRule(t, "a")
 	f.login(t, "a")
-	next, err := f.service.UpdateMapping(model.RoleMappingChannelKindProvider, f.provider.ID, old, GroupRoleMappingInput{MatchValue: "b", Role: f.role.Name, Enabled: func() *bool { v := true; return &v }(), RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}})
+	next, err := f.service.UpdateMapping(model.RoleMappingChannelKindProvider, f.provider.ID, old, GroupRoleMappingInput{MatchValue: "b", Role: f.role.Name, Enabled: func() *bool { v := true; return &v }(), RiskAcknowledged: true, Actor: f.act()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +434,7 @@ func TestSourceDisableMappingRevocationAllChannels(t *testing.T) {
 	f.roleRule(t, "a")
 	f.groupRule(t, "a")
 	f.login(t, "a")
-	providerSvc := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	providerSvc := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	providerSvc.SetMappingAuditSink(audit.NewTxSink())
 	disabled := false
 	if _, err := providerSvc.Update(f.provider.ID, &OIDCProviderRequest{Enabled: &disabled, RiskAcknowledged: true}); err != nil {
@@ -439,7 +452,7 @@ func TestSourceDisableMappingRevocationAllChannels(t *testing.T) {
 	if err := f.db.Create(&dir).Error; err != nil {
 		t.Fatal(err)
 	}
-	actor := GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}
+	actor := f.act()
 	if _, err := f.service.CreateMapping(model.RoleMappingChannelKindDirectory, dir.ID, GroupRoleMappingInput{MatchValue: "cn=a,dc=example,dc=test", Role: f.role.Name, RiskAcknowledged: true, Actor: actor}); err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +480,7 @@ func TestSourceDisableMappingRevocationAuditFailureRollsBack(t *testing.T) {
 	f.roleRule(t, "a")
 	f.groupRule(t, "a")
 	f.login(t, "a")
-	providerSvc := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	providerSvc := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	providerSvc.SetMappingAuditSink(rejectMappingAudit{})
 	disabled := false
 	if _, err := providerSvc.Update(f.provider.ID, &OIDCProviderRequest{Enabled: &disabled, RiskAcknowledged: true}); err == nil {
@@ -485,7 +498,7 @@ func TestSourceDisableMappingRevocationAuditFailureRollsBack(t *testing.T) {
 func TestMappingDeleteSourceRejectsLiveRules(t *testing.T) {
 	f := newMappingSegmentFixture(t)
 	f.groupRule(t, "a")
-	providerSvc := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	providerSvc := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	providerSvc.SetMappingAuditSink(audit.NewTxSink())
 	if err := providerSvc.Delete(f.provider.ID); !errors.Is(err, ErrOIDCProviderHasMappings) {
 		t.Fatalf("仍有群組規則卻可刪來源: %v", err)
@@ -500,14 +513,14 @@ func TestMappingDeleteHistoryAndDictionaryOrder(t *testing.T) {
 	f := newMappingSegmentFixture(t)
 	a := f.roleRule(t, "a")
 	b := f.groupRule(t, "a")
-	actor := GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}
+	actor := f.act()
 	if err := f.service.DeleteMapping(model.RoleMappingChannelKindProvider, f.provider.ID, a, actor); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.service.DeleteUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, b, actor); err != nil {
 		t.Fatal(err)
 	}
-	providerSvc := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	providerSvc := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	providerSvc.SetMappingAuditSink(audit.NewTxSink())
 	if err := providerSvc.Delete(f.provider.ID); err != nil {
 		t.Fatal(err)
@@ -528,7 +541,7 @@ func TestMappingRevocationConcurrentLogin(t *testing.T) {
 	f.login(t, "a")
 	barrier := &countingMappingAudit{ready: make(chan struct{}), release: make(chan struct{})}
 	disabled := false
-	providerSvc := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	providerSvc := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	providerSvc.SetMappingAuditSink(barrier)
 	disableDone := make(chan error, 1)
 	go func() {
@@ -570,7 +583,7 @@ func TestMappingSourceDeleteConcurrentRuleCreate(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { oidcProviderPreWriteHook = nil })
-	providerSvc := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	providerSvc := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	providerSvc.SetMappingAuditSink(audit.NewTxSink())
 	deleteDone := make(chan error, 1)
 	go func() { deleteDone <- providerSvc.Delete(f.provider.ID) }()
@@ -582,7 +595,7 @@ func TestMappingSourceDeleteConcurrentRuleCreate(t *testing.T) {
 	createDone := make(chan error, 1)
 	waitBefore := f.connectionWaitCount(t)
 	go func() {
-		_, err := f.service.CreateMapping(model.RoleMappingChannelKindProvider, f.provider.ID, GroupRoleMappingInput{MatchValue: "a", Role: f.role.Name, RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}})
+		_, err := f.service.CreateMapping(model.RoleMappingChannelKindProvider, f.provider.ID, GroupRoleMappingInput{MatchValue: "a", Role: f.role.Name, RiskAcknowledged: true, Actor: f.act()})
 		createDone <- err
 	}()
 	f.awaitConnectionWait(t, waitBefore)
@@ -632,4 +645,9 @@ func TestMappingLargeRevocationAtomicRollback(t *testing.T) {
 	if f.count(t, "user_role_mapping_rule_supports") != 0 || f.count(t, "user_role_mappings") != 0 || f.count(t, "user_roles") != 0 {
 		t.Fatal("重試後未完整撤權")
 	}
+}
+
+// act 映射規則寫入的操作者（持有內建超級管理者身分，與被映射的 f.user 分開）。
+func (f *mappingSegmentFixture) act() GroupRoleMappingActor {
+	return GroupRoleMappingActor{ID: f.operator.ID, Name: f.operator.Username}
 }

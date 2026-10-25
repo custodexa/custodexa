@@ -60,3 +60,16 @@ func registerBuiltinsLikeAssembly() {
 		RegisterLDAPSeedMigration(audit.NewTxSink())
 	})
 }
+
+// seedAuthzState 補上權限版本表與初始列（遷移在正式庫恆會建立；測試庫由各夾具自行 AutoMigrate，
+// 缺此表時所有經 authz.AdvanceVersion 的路徑會回 ErrAuthzStateMissing）。
+// 刻意不讓 AdvanceVersion 吞「表不存在」：吞掉會把測試便利變成正式環境的靜默失效。
+func seedAuthzState(tb testing.TB, db *gorm.DB) {
+	tb.Helper()
+	if err := db.AutoMigrate(&model.AuthzState{}); err != nil {
+		tb.Fatalf("migrate authz_state: %v", err)
+	}
+	if err := db.Exec("INSERT INTO authz_state (id, version) VALUES (1, 0)").Error; err != nil {
+		tb.Fatalf("seed authz_state: %v", err)
+	}
+}

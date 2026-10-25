@@ -31,7 +31,7 @@ func TestLDAPGroupOnlyRemovalIssuesCurrentEpoch(t *testing.T) {
 			service := NewIdentitySourceService(db, audit.NewTxSink())
 			if _, err := service.CreateUserGroupMapping(model.RoleMappingChannelKindDirectory, 1, UserGroupMappingInput{
 				MatchValue: roleMappingInnerGroup, UserGroupID: group.ID, RiskAcknowledged: true,
-				Actor: GroupRoleMappingActor{ID: user.ID, Name: user.Username},
+				Actor: fixtureOperator(t, db),
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -97,7 +97,7 @@ func TestOIDCGroupOnlyRemovalTicketCurrentEpoch(t *testing.T) {
 	service := NewIdentitySourceService(db, audit.NewTxSink())
 	if _, err := service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, p.ID, UserGroupMappingInput{
 		MatchValue: oidcMappingGroup, UserGroupID: group.ID, RiskAcknowledged: true,
-		Actor: GroupRoleMappingActor{ID: 1, Name: "admin"},
+		Actor: fixtureOperator(t, db),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestProviderDisableRereadsStateAfterEnableAndLogin(t *testing.T) {
 	if err := f.db.Model(&model.OIDCProvider{}).Where("id=?", f.provider.ID).Update("enabled", false).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	service := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	service.SetMappingAuditSink(audit.NewTxSink())
 	ready, release := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
@@ -233,7 +233,7 @@ func TestMappingSourceRevocationAuditIdentifiesBothSupports(t *testing.T) {
 	roleRule := f.roleRule(t, "a")
 	groupRule := f.groupRule(t, "a")
 	f.login(t, "a")
-	service := NewOIDCProviderService(f.db, nil, &OIDCEgressPolicy{}, nil, "")
+	service := newOIDCProviderServiceT(f.db, nil, &OIDCEgressPolicy{}, nil, "")
 	service.SetMappingAuditSink(audit.NewTxSink())
 	disabled := false
 	if _, err := service.Update(f.provider.ID, &OIDCProviderRequest{Enabled: &disabled, RiskAcknowledged: true}); err != nil {
@@ -275,7 +275,7 @@ func TestUserGroupMappingRuleDisableRevokesSupport(t *testing.T) {
 			}
 			before := f.epoch(t)
 			falseValue := false
-			input := UserGroupMappingInput{MatchValue: "a", UserGroupID: f.group.ID, Enabled: &falseValue, RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}}
+			input := UserGroupMappingInput{MatchValue: "a", UserGroupID: f.group.ID, Enabled: &falseValue, RiskAcknowledged: true, Actor: f.act()}
 			if _, err := f.service.UpdateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, rule, input); err != nil {
 				t.Fatal(err)
 			}
@@ -308,7 +308,7 @@ func TestUserGroupMappingRuleDisableRevokesSupport(t *testing.T) {
 	falseValue := false
 	_, err := f.service.UpdateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, rule, UserGroupMappingInput{
 		MatchValue: "a", UserGroupID: f.group.ID, Enabled: &falseValue, RiskAcknowledged: true,
-		Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username},
+		Actor: f.act(),
 	})
 	if err == nil {
 		t.Fatal("稽核失敗未回滾")

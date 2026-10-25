@@ -50,7 +50,9 @@ func (f *failingLedger) Fetch(context.Context, uint) (*offsite.FetchedObject, er
 func sessionDetailRouter(t *testing.T, sessions []model.Session, prober RecordingStateProber) (*gin.Engine, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	installEpochGateDB(t, 1)
+	db := installEpochGateDB(t, 1)
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）
+	grantLegacyRole(t, db, 1, model.RoleAuditor)
 	jwtSecret := "recording-state-secret"
 	svc := new(MockSessionService)
 	for i := range sessions {

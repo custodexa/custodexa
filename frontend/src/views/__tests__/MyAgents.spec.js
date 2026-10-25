@@ -60,3 +60,15 @@ it('polish 2：本人負責人顯示您，抽屜沿用本人語義', async () =>
   w.vm.openKeys(w.vm.agents[0]); await flushPromises()
   expect(w.getComponent(TokenDrawer).props('ownerName')).toBe('您')
 })
+describe('還原後失效的鑰匙', () => {
+  it('還原後失效的舊鑰匙不計入可用數', async () => {
+    const future = new Date(Date.now() + 86400000).toISOString()
+    api.tokens.mockResolvedValue({ data: [
+      { id: 1, name: 'old', expires_at: future, restore_invalidated: true },
+      { id: 2, name: 'new', expires_at: future },
+    ] })
+    const w = mount(MyAgents, { global }); await flushPromises()
+    await vi.waitFor(() => expect(w.get('[data-test="my-agent-usable-stat"]').text()).toContain('1'))
+    expect(w.get('[data-test="my-agent-usable-stat"]').text()).not.toContain('2')
+  })
+})

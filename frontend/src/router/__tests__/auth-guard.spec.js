@@ -2,12 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import router, { createAuthGuard } from '../index'
 import axios from 'axios'
 import { resetSessionForTests, setAccessToken } from '@/utils/session'
+import { meBody } from '@/composables/__tests__/capabilityFixtures'
 import {
   RELOGIN_INSECURE_TRANSPORT,
   consumeReloginContext,
   markRefreshSucceeded,
   resetReloginContext,
 } from '@/utils/reloginContext'
+
+// 能力由守衛透過共用能力狀態向 /auth/me 取得；本檔以 mock 控制該回應
+const getCurrentUserMock = vi.fn()
+vi.mock('@/api/auth', () => ({
+  getCurrentUser: (...args) => getCurrentUserMock(...args),
+  logout: vi.fn(),
+}))
 
 const guard = createAuthGuard()
 
@@ -20,6 +28,7 @@ describe('auth guard', () => {
     localStorage.clear()
     resetSessionForTests()
     vi.restoreAllMocks()
+    getCurrentUserMock.mockReset()
     next = vi.fn()
   })
 
@@ -59,154 +68,136 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith()
   })
 
-  it('redirects non-admin user to /dashboard on admin-only routes', async () => {
+  // 以註冊的 route meta 驅動（不是硬編路徑）：meta 取自 router.resolve，改了路由設定這裡才跟著動。
+  // 能力來自 /auth/me 的 permissions，快取裡的角色不參與裁決
+  const signInAs = (roles, flags) => {
     setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'] }))
-    await guard(
-      route('/users', { requiresAuth: true, roles: ['admin'] }),
-      route('/'),
-      next
-    )
-    expect(next).toHaveBeenCalledWith('/dashboard')
-  })
+    getCurrentUserMock.mockResolvedValue(meBody(roles, flags))
+  }
+  const enter = async (path) => {
+    const resolved = router.resolve(path)
+    await guard(route(path, resolved.meta), route('/'), next)
+  }
 
-  it('allows admin user on admin-only routes', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['admin'] }))
-    await guard(
-      route('/users', { requiresAuth: true, roles: ['admin'] }),
-      route('/'),
-      next
-    )
+  it('一般 user 直接開管理頁網址被導走，admin 放行', async () => {
+    signInAs(['user'])
+    await enter('/users')
+    expect(next).toHaveBeenCalledWith('/dashboard')
+
+    next.mockClear()
+    resetSessionForTests()
+    signInAs(['admin'])
+    await enter('/users')
     expect(next).toHaveBeenCalledWith()
   })
 
-  // 輪替證據以註冊的 route meta 驅動（不是硬編路徑）：一般 user 直打網址也進不去
-  it('一般 user 直接開輪替證據網址被導走（registered route meta）', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'] }))
-    const resolved = router.resolve('/rotation-evidence')
-    await guard(route('/rotation-evidence', resolved.meta), route('/'), next)
+  it('輪替證據：一般 user 被導走、auditor 放行（registered route meta）', async () => {
+    signInAs(['user'])
+    await enter('/rotation-evidence')
     expect(next).toHaveBeenCalledWith('/dashboard')
-  })
 
-  // 憑證庫是 admin-only：auditor 與一般 user 直打網址都要被導走，
-  // 且 meta 取自註冊的路由而非硬編，改了路由設定這裡才跟著動
-  it('auditor 直接開憑證庫網址被導走（registered route meta）', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['auditor'] }))
-    const resolved = router.resolve('/credentials')
-    await guard(route('/credentials', resolved.meta), route('/'), next)
-    expect(next).toHaveBeenCalledWith('/dashboard')
-  })
-
-  it('一般 user 直接開憑證庫網址被導走（registered route meta）', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'] }))
-    const resolved = router.resolve('/credentials')
-    await guard(route('/credentials', resolved.meta), route('/'), next)
-    expect(next).toHaveBeenCalledWith('/dashboard')
-  })
-
-  it('admin 可進憑證庫（registered route meta）', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['admin'] }))
-    const resolved = router.resolve('/credentials')
-    await guard(route('/credentials', resolved.meta), route('/'), next)
+    next.mockClear()
+    resetSessionForTests()
+    signInAs(['auditor'])
+    await enter('/rotation-evidence')
     expect(next).toHaveBeenCalledWith()
   })
 
-  it('auditor 可進輪替證據（registered route meta）', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['auditor'] }))
-    const resolved = router.resolve('/rotation-evidence')
-    await guard(route('/rotation-evidence', resolved.meta), route('/'), next)
-    expect(next).toHaveBeenCalledWith()
+  // 憑證庫是 admin-only：auditor 與一般 user 直打網址都要被導走
+  it('憑證庫：auditor 與一般 user 被導走，admin 放行（registered route meta）', async () => {
+    for (const [roles, allowed] of [[['auditor'], false], [['user'], false], [['admin'], true]]) {
+      next.mockClear()
+      resetSessionForTests()
+      signInAs(roles)
+      await enter('/credentials')
+      if (allowed) expect(next).toHaveBeenCalledWith()
+      else expect(next).toHaveBeenCalledWith('/dashboard')
+    }
   })
 
-  it('redirects to /login when token exists but user data is absent (fail-closed)', async () => {
-    // 原實作在 roles 路由上 token 在、user 缺時跳過角色檢查放行，此處釘死 fail-closed
+  it('/access-control 與 /security-policies 同一能力：非 admin 被導走', async () => {
+    signInAs(['user'])
+    await enter('/access-control')
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('已登入但 /auth/me 取不到：受限入口不放行（沒有角色回退），登入即可的入口照常', async () => {
     setAccessToken('abc')
-    await guard(
-      route('/access-control', { requiresAuth: true, roles: ['admin'] }),
-      route('/'),
-      next
-    )
+    // 舊快取說自己是 admin——能力載入失敗時這份快取不得被當成依據
+    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['admin'], is_approver: true }))
+    getCurrentUserMock.mockRejectedValue(new Error('network'))
+    await enter('/users')
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+    await enter('/dashboard')
+    expect(next).toHaveBeenLastCalledWith()
+    await enter('/my-requests')
+    expect(next).toHaveBeenLastCalledWith()
+  })
+
+  it('/auth/me 沒有 permissions 欄位（升級前的回應）：不以角色推導，受限入口不放行', async () => {
+    setAccessToken('abc')
+    getCurrentUserMock.mockResolvedValue({ id: 1, username: 'a', roles: ['admin'], is_approver: true })
+    await enter('/users')
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+    await enter('/approvals')
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+  })
+
+  it('型別錯誤的 permissions 視為無效，不放行', async () => {
+    setAccessToken('abc')
+    getCurrentUserMock.mockResolvedValue({ id: 1, permissions: 'user:manage' })
+    await enter('/users')
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+    resetSessionForTests()
+    setAccessToken('abc')
+    getCurrentUserMock.mockResolvedValue({ id: 1, permissions: [1, null] })
+    await enter('/users')
+    expect(next).toHaveBeenLastCalledWith('/dashboard')
+  })
+
+  it('沒有會話的受限入口去登入頁（fail-closed）', async () => {
+    await enter('/users')
     expect(next).toHaveBeenCalledWith('/login')
+    expect(getCurrentUserMock).not.toHaveBeenCalled()
   })
 
-  it('redirects non-admin user to /dashboard on /access-control', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'] }))
-    await guard(
-      route('/access-control', { requiresAuth: true, roles: ['admin'] }),
-      route('/'),
-      next
-    )
-    expect(next).toHaveBeenCalledWith('/dashboard')
-  })
-
-  it('allows group-only approver on approver routes via is_approver', async () => {
-    // 群組審核方：roles 不含 approver，但後端 is_approver 為真
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'g', roles: ['user'], is_approver: true }))
-    await guard(
-      route('/approvals', { requiresAuth: true, roles: ['admin', 'approver'] }),
-      route('/'),
-      next
-    )
+  it('群組審核方（roles 無 approver）以審核呈現點進審核中心；未具資格者被導走', async () => {
+    signInAs(['user'], { approver: true })
+    await enter('/approvals')
     expect(next).toHaveBeenCalledWith()
-  })
 
-  it('redirects non-approver without is_approver on approver routes', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'], is_approver: false }))
-    await guard(
-      route('/approvals', { requiresAuth: true, roles: ['admin', 'approver'] }),
-      route('/'),
-      next
-    )
+    next.mockClear()
+    resetSessionForTests()
+    signInAs(['user'], { approver: false })
+    await enter('/approvals')
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
-  // admin 對審核端點一律 403，前端資格閘卻仍留著
-  // admin 述詞——admin 進得了審核中心，四個頁籤全部 403，頁面卻渲染成「目前沒有
-  // 等候審核的申請」。有待審單時他會誤判佇列已清空。以下釘住實際註冊的路由 meta
+  // admin 對審核端點一律 403，前端資格閘不得兜底：
+  // 否則 admin 進了審核中心，四個頁籤全部 403，頁面卻渲染成「目前沒有等候審核的申請」
   it('僅具 admin 者不得進入審核中心（registered route meta）', async () => {
     const approvalsRoute = router.getRoutes().find((r) => r.name === 'Approvals')
     expect(approvalsRoute, '審核中心路由必須存在').toBeTruthy()
-    expect(approvalsRoute.meta.roles).not.toContain('admin')
+    expect(approvalsRoute.meta.permissionsAll).toEqual(['ui:approvals'])
+    expect(approvalsRoute.meta.roles).toBeUndefined()
 
-    setAccessToken('abc')
-    localStorage.setItem(
-      'user',
-      JSON.stringify({ username: 'a', roles: ['admin'], is_approver: false })
-    )
-    await guard(route('/approvals', approvalsRoute.meta), route('/'), next)
+    signInAs(['admin'], { approver: false })
+    await enter('/approvals')
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
-  it('有效審核者仍可進入審核中心（registered route meta）', async () => {
-    const approvalsRoute = router.getRoutes().find((r) => r.name === 'Approvals')
-    setAccessToken('abc')
-    localStorage.setItem(
-      'user',
-      JSON.stringify({ username: 'p', roles: ['user'], is_approver: true })
-    )
-    await guard(route('/approvals', approvalsRoute.meta), route('/'), next)
-    expect(next).toHaveBeenCalledWith()
+  it('持審核資格不繞過其他受限入口', async () => {
+    signInAs(['user'], { approver: true })
+    await enter('/users')
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
-  it('is_approver does not bypass non-approver routes (admin-only stays admin-only)', async () => {
-    // is_approver 僅對要求 approver 的路由放行，不得繞過 admin-only 頁
-    setAccessToken('abc')
-    localStorage.setItem('user', JSON.stringify({ username: 'g', roles: ['user'], is_approver: true }))
-    await guard(
-      route('/users', { requiresAuth: true, roles: ['admin'] }),
-      route('/'),
-      next
-    )
-    expect(next).toHaveBeenCalledWith('/dashboard')
+  it('同一會話的多次導覽共用一次 /auth/me', async () => {
+    signInAs(['admin'])
+    await enter('/users')
+    await enter('/roles')
+    await enter('/credentials')
+    expect(getCurrentUserMock).toHaveBeenCalledTimes(1)
   })
 
   // 封印期只有 /health、/seal/status、/seal/unseal
@@ -226,16 +217,6 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith()
   })
 
-  it('redirects to /login when stored user data is corrupted', async () => {
-    setAccessToken('abc')
-    localStorage.setItem('user', '{not-json')
-    await guard(
-      route('/users', { requiresAuth: true, roles: ['admin'] }),
-      route('/'),
-      next
-    )
-    expect(next).toHaveBeenCalledWith('/login')
-  })
   // 記憶體 token 在重新載入後是空的：守衛必須先以續期憑證換發一次，
   // 才知道使用者到底登入了沒有
   it('有登入跡象且換發成功 → 放行受保護路由', async () => {

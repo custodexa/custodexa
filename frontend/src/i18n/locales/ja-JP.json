@@ -247,6 +247,11 @@
     "cancel": "キャンセル",
     "retentionShrinkConfirm": "{keys} の保持期間が短縮されます。新しい期間を超える既存データは翌日 02:00 以降に完全に削除され、復元できません。新しい保持ポリシーを適用しますか？",
     "retentionShrinkTitle": "保持期間の短縮により旧データが削除されます",
+    "retentionFloorHint": "最小 7 日。0 を入力すると無期限に保持します",
+    "retentionFloorError": "7 日未満にはできません（0 は無期限保持）",
+    "retentionAlertNotice": "データ保持日数をいずれか短縮すると、記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります",
+    "alertOnSaveNotice": "保存すると記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
+    "failCloseOffNotice": "オフにすると記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
     "confirmApply": "適用",
     "saved": "セキュリティポリシーを保存しました",
     "restSection": "その他"
@@ -268,6 +273,14 @@
       "user": {
         "label": "一般ユーザー",
         "description": "基本ロール：許可された資産に接続できます。実際の権限は権限レベル（閲覧、接続）とアクセスポリシー（開放、理由必須、承認必須）によります。"
+      },
+      "asset_admin": {
+        "label": "資産管理者",
+        "description": "資産と資産グループなど資産関連の機能を管理します。割り当て時にノードを選ぶと、選んだノード内だけで有効になります。管理権限はプラットフォーム内の接続権限を自動的には付与しません。"
+      },
+      "authz_admin": {
+        "label": "認可管理者",
+        "description": "認可ルールと個別ホストのアクセスポリシー上書きを管理します。割り当て時にノードを選ぶと、選んだノード内だけで有効になります。管理権限はプラットフォーム内の接続権限を自動的には付与しません。"
       }
     },
     "auditAction": {
@@ -288,8 +301,13 @@
       "agent_token_suspended": "エージェントトークンを停止",
       "agent_sessions_terminated": "エージェントセッションの終了結果",
       "agent_sessions_terminate_late": "エージェントセッションの終了が目標時間を超過",
+      "permission_state_accepted": "権限状態の変更を確認済み",
       "suspend": "停止済み",
       "new_source_ip": "新しい送信元からのログイン",
+      "host_key_mismatch": "ホスト鍵の不一致",
+      "host_key_adopt": "ホスト鍵フィンガープリントの採用",
+      "host_key_cred_sent": "ホスト鍵不一致後に認証情報を送信",
+      "retention_floor_raised": "保持期間の下限引き上げ",
       "file_list": "ファイル一覧",
       "file_upload": "ファイルアップロード",
       "file_download": "ファイルダウンロード",
@@ -305,7 +323,11 @@
       "offsite_retention": "オフサイト保存期限の削除",
       "offsite_integrity": "オフサイト整合性の不一致",
       "offsite_profile": "オフサイト設定世代の変更",
-      "offsite_cred_revoke": "オフサイト資格情報の失効"
+      "offsite_cred_revoke": "オフサイト資格情報の失効",
+      "role_definition_create": "ロール定義の作成",
+      "role_definition_copy": "ロール定義の複製",
+      "role_definition_update": "ロール定義の変更",
+      "role_definition_delete": "ロール定義の削除"
     },
     "auditResource": {
       "agent_token": "エージェントトークン",
@@ -326,6 +348,7 @@
       "syslog_setting": "Syslog 設定",
       "audit_log": "監査ログ",
       "user_group": "ユーザーグループ",
+      "user_group_role": "ユーザーグループのロール割り当て",
       "command": "コマンド",
       "key_management": "鍵管理",
       "transmission": "通信セキュリティ",
@@ -341,6 +364,7 @@
       "audit_integrity": "監査完全性の検証",
       "alert_rule": "アラートルール",
       "notify_channel": "通知チャネル",
+      "system_alert_type": "システムアラート種別",
       "oidc_provider": "OIDC プロバイダー",
       "ldap_directory": "LDAP ディレクトリ",
       "asset_group": "資産グループ",
@@ -372,7 +396,8 @@
       "offsite_upload": "オフサイト保管へのアップロード",
       "role_state_integrity": "ロール割り当てと監査チェーンの整合性",
       "principal_state_integrity": "主体と資格情報の状態の整合性",
-      "dek_unwrap": "データ鍵の再取得"
+      "dek_unwrap": "データ鍵の再取得",
+      "restore_seal": "復元後の封印"
     },
     "cause": {
       "recording_probe_failed": "発行時の録画事前チェックに失敗",
@@ -386,6 +411,7 @@
       "recording_metadata_update_failed": "録画メタデータの更新に失敗",
       "recording_file_missing": "録画ファイルが存在しない（書き込み失敗または未開始）",
       "session_record_create_failed": "セッション記録の作成に失敗し、接続を拒否",
+      "host_key_mismatch_record_failed": "ホスト鍵不一致の記録に失敗し、認証情報を送る前に接続を中止",
       "audit_write_fallback_file": "監査バッチ書き込みに失敗し、ファイルへ退避",
       "audit_write_batch_dropped": "監査バッチ書き込みに失敗し、ファイル退避が無効のためバッチを破棄",
       "audit_write_sync_refused": "同期監査書き込みに失敗し、当該閲覧を拒否（内容は未交付）",
@@ -408,7 +434,9 @@
       "offsite_integrity_mismatch": "取得したオフサイトの控えがアップロード時と一致せず、引き渡しを拒否しました",
       "role_state_mismatch": "ロール割り当てが監査チェーンと一致しない（監査記録のない変更がある）",
       "principal_state_mismatch": "主体または資格情報の状態がチェックポイントチェーンと一致しない（監査記録のない変更がある）",
-      "dek_unwrap_failed": "データ鍵の再取得が連続して失敗（鍵の保管先に到達できないか拒否されており、鍵を必要とする操作は失敗します）"
+      "dek_unwrap_failed": "データ鍵の再取得が連続して失敗（鍵の保管先に到達できないか拒否されており、鍵を必要とする操作は失敗します）",
+      "restore_seal_deferred": "復元後の封印に失敗しました。サービスは通常どおり公開され、封印は再試行されます（復元後の権限状態を含むチェックポイントはまだ鎖に入っていません）",
+      "restore_seal_state_unreadable": "起動時に復元後の封印待ち状態を読み取れませんでした。サービスは通常どおり公開され、封印を試みています（封印に成功すると解決します）"
     },
     "endReason": {
       "normal": "正常終了",
@@ -644,7 +672,7 @@
       },
       "log_retention": {
         "title": "ログ保持とレビュー",
-        "hint": "監査データの保持と日次レビュー。チェックポイントチェーンの有効化以降、操作ログは「チェックポイント区間」単位で削除されます。区間内に未期限の行が 1 件でもあれば区間全体を保持するため、初回削除後も期限切れの行が少数残ることがあります（想定どおりの挙動であり不具合ではありません）。チェックポイントの保持日数は出荷時 0（無期限）で、4 つのデータ保持キーのうち最長のもの（0 は無期限）より短くすることはできません。証明は、それが証明するデータより長く残る必要があるため、違反する場合はバッチ全体が拒否されます。"
+        "hint": "監査データの保持と日次レビュー。チェックポイントチェーンの有効化以降、操作ログは「チェックポイント区間」単位で削除されます。区間内に未期限の行が 1 件でもあれば区間全体を保持するため、初回削除後も期限切れの行が少数残ることがあります（想定どおりの挙動であり不具合ではありません）。チェックポイントの保持日数は出荷時 0（無期限）で、4 つのデータ保持キーのうち最長のもの（0 は無期限）より短くすることはできません。証明は、それが証明するデータより長く残る必要があるため、違反する場合はバッチ全体が拒否されます。4 つのデータ保持日数にはいずれも最小日数があり、それより短くはできません。"
       },
       "access_policy": {
         "title": "接続ポリシー",
@@ -687,6 +715,8 @@
   },
   "dashboard": {
     "headerDesc": "{name} {subtitle}の概要",
+    "loadedOfTotal": "{total} 件中 {loaded} 件を表示",
+    "valueUnavailable": "取得できません",
     "statAssetTotal": "資産総数",
     "statConnectableAssets": "接続可能な資産",
     "statMyPendingRequests": "審査待ちのマイ申請",
@@ -718,6 +748,38 @@
     "actionAssetsDescUser": "許可された資産を閲覧して接続を開始します",
     "actionSessionsDesc": "進行中の接続の確認と録画の再生",
     "actionMyRequestsDesc": "接続申請の進捗確認と取り下げ"
+  },
+  "upgradeGuidance": {
+    "menu": "新機能のご案内",
+    "title": "このバージョンの機能とメニュー",
+    "changes": "変更内容",
+    "nextSteps": "次に行うこと",
+    "dismiss": "後で読む",
+    "reopenHint": "閉じた後もユーザーメニューの「新機能のご案内」から開けます。",
+    "basic": "利用できる機能に応じてメニューが表示されます。接続は引き続き資産へのアクセス許可で決まります。",
+    "superAdminMigration": "既存の管理者は特権管理者に移行し、従来の機能を引き続き利用できます。",
+    "roles": "ロールとユーザーグループで管理業務を割り当てられます。",
+    "assets": "資産や認証情報の管理権限だけでは接続できません。",
+    "credentialOwnership": "既存の共用認証情報の所属は「グローバル」で、接続は従来どおりです。ノードへ所属変更し、そのノードの資産管理者に管理を任せられます。",
+    "authorization": "資産へのアクセス許可によって接続先と利用できるアカウントが決まります。",
+    "audit": "アラート画面には、権限に応じてアラート記録、ルール管理、システムアラートが表示されます。",
+    "approvals": "承認センターで審査対象の申請を処理できます。",
+    "localAdmin": "ローカルでログインできる特権管理者アカウントを保持してください。",
+    "notifications": "通知チャネルはシステム設定に移動しました。通知先を確認してください。",
+    "retentionTitle": "アップグレード時に調整された保持日数",
+    "retentionItem": "{item}：{before} 日 → {after} 日",
+    "retentionHint": "4 つのデータ保持日数は最低 7 日です。0 は引き続き無期限です。以下はアップグレード時の調整記録で、現在の設定ではありません。",
+    "retentionFollow": "チェックポイントの保持期間がデータの保持期間を引き続きカバーするよう、あわせて調整しました。",
+    "uncoveredTitle": "チェックポイントの保持期間でカバーされていない項目",
+    "uncoveredItem": "{item}：{days}、チェックポイント保持：{checkpoint}",
+    "uncoveredHint": "チェックポイントの保持期間は現在これらの項目をカバーしていません。セキュリティポリシー画面で調整してください。",
+    "loadFailed": "新機能の案内を読み込めませんでした。再試行してください。",
+    "saveFailed": "閉じた状態を保存できませんでした。再試行してください。",
+    "retentionFailed": "保持日数の調整記録を読み込めませんでした。再試行してください。",
+    "goTo": "{name}へ ›",
+    "currentSetting": "現在の設定",
+    "credentialOwnershipStepTitle": "共用認証情報をノードへ所属変更",
+    "credentialOwnershipStepText": "所属が「グローバル」の認証情報を管理できるのは、スーパー管理者とシステム全体の管理者のみです。所属変更の可否はサーバーがあなたの権限で判定します。"
   },
   "dailyReview": {
     "weekdayDate": "{date}（{weekday}）",
@@ -993,6 +1055,8 @@
       "asset_deleted": "資産を削除（データ層の記録）",
       "asset_group_deleted": "資産グループ「{name}」を削除し、{revoked} 件の権限付与を取り消し",
       "audit_export_requester_revoked": "申請者が権限を失ったため、エクスポートジョブ #{job_id} を取り消し",
+      "authz_capability_denied": "権限が不足しているため、操作が拒否されました",
+      "authz_scope_denied": "対象が管理可能な範囲外のため、操作が拒否されました",
       "auto_disabled_inactive_account": "{days} 日以上ログインがないため、アカウントを自動で無効化",
       "auto_disabled_inactive_account_nodays": "一定期間ログインがないため、アカウントを自動で無効化",
       "credential_abandon": "進行中の資格情報ローテーションを中止",
@@ -1003,6 +1067,7 @@
       "credential_rebind": "資産アカウントの資格情報を切り替え",
       "credential_rotate": "資格情報をローテーション",
       "credential_scope": "資格情報の利用範囲を変更",
+      "credential_set_secret": "資格情報のシークレットを宣言",
       "credential_unbind": "資格情報を資産アカウントから解除",
       "credential_update": "資格情報を変更",
       "event": {
@@ -1018,6 +1083,7 @@
         "external_identity_unbound_and_account_disabled": "外部 ID の連携を解除し、アカウントを無効化",
         "external_user_local_login_attempt": "外部 ID のアカウントがローカルパスワードでログインを試行",
         "external_user_local_login_attempt_aggregated": "外部 ID のアカウントが {minutes} 分以内にさらに {count} 回ローカルパスワードでログインを試行",
+        "grant_change_graded": "権限変更を分類してアラートを記録",
         "group_role_mapping_create": "グループからロールへのマッピングルールを作成",
         "group_role_mapping_delete": "グループからロールへのマッピングルールを削除",
         "group_role_mapping_update": "グループからロールへのマッピングルールを変更",
@@ -1038,12 +1104,18 @@
         "oidc_flow_error": "外部ログインの処理に失敗（{reason}）",
         "oidc_identity_orphan_revoked": "外部 ID の連携先アカウント {previous_username}（ID {previous_user_id}）が削除済みのため、この連携を無効化：{provider}",
         "oidc_provider_denied": "ID プロバイダーがログインを拒否（{error}）",
+        "oidc_provider_settings_change": "IdP 設定を変更",
         "oidc_user_inactive": "外部ログインを拒否：アカウントは無効化されています：{provider}",
         "oidc_user_provisioned": "初回の外部ログインでアカウントを自動作成：{provider}",
         "oidc_username_conflict": "外部ログインのユーザー名が既存アカウントと同じため、引き継ぎませんでした：{provider}",
+        "role_binding_range_changed": "ロール割り当てのノード範囲を変更（割り当てたロールは変更なし）",
+        "role_mapping_pin": "マッピングで付与されたロールを固定（外部グループの削除では失われなくなる）",
+        "role_update_agent_restricted_detected": "ロールの変更後、自動化アカウントが制限対象の権限を含むロールを保持していることを検出",
+        "security_admin_account_operated": "セキュリティ管理者アカウントに対するID操作",
         "user_converted_to_external_only": "アカウントを外部ログイン専用に変更",
         "user_deleted": "アカウント {username} を削除（外部 ID の連携 {identities} 件を無効化）",
         "user_external_only_conversion_rejected": "外部ログイン専用への変更を拒否（{reason}）",
+        "user_group_manual_member_added": "ユーザーグループに手動でメンバーを追加",
         "user_group_manual_member_removed": "ユーザーグループから手動追加のメンバーを削除"
       },
       "generic": "{resource}の{action}",
@@ -1054,6 +1126,7 @@
       "principal_state_delete": "アカウント削除（システムの状態記録）",
       "principal_state_update": "アカウント状態の変更（システムの状態記録）",
       "retention_purge": "保持期限による削除：{days} 日を超えた{target}を {deleted} 件削除",
+      "membership_revalidation_expired": "外部ログイン時にグループ所属を確認できず、再検証の期限を過ぎたため、このソースからマッピングで付与された権限を取り消しました",
       "retention_purge_failed": "保持期限による削除に失敗：{target}",
       "role_mapping_applied": "外部ログイン時にグループマッピングでロールを調整：{added} を追加、{removed} を削除",
       "role_mapping_applied_added": "外部ログイン時にグループマッピングでロールを追加：{added}",
@@ -1062,7 +1135,16 @@
       "role_mapping_groups_unknown": "外部ログイン時にグループマッピングを未適用：グループを取得できず、既存のマッピングを維持",
       "role_mapping_source_attr_unset": "外部ログイン時にグループマッピングを未適用：ソースにグループ属性が設定されていません",
       "user_group_deleted": "ユーザーグループ「{name}」を削除し、{revoked} 件の権限付与を取り消し",
-      "user_group_mapping_applied": "外部ログイン時にグループマッピングでユーザーグループを調整"
+      "user_group_mapping_applied": "外部ログイン時にグループマッピングでユーザーグループを調整",
+      "credential_authorization_stop": "権限失効により資格情報ジョブを停止",
+      "change_secret_authorization_stop": "権限失効により資格情報ジョブを停止",
+      "credential_recovery_verify": "権限失効後の限定的な検証を完了し確定",
+      "credential_rotation_reauthorized": "権限のある担当者がローテーションを引き継いで続行",
+      "credential_rotation_interrupted": "サービス再起動で中断したローテーション対象を「変更済み・未検証」に移行",
+      "change_secret_recovery_verify": "権限失効後の限定的な検証を完了し確定",
+      "credential_host_identity_stop": "ホストの識別情報が変わったため、パスワード変更ジョブを停止しました（候補の認証情報は保持され、手動確認待ち）",
+      "change_secret_host_identity_stop": "ホストの識別情報が変わったため、パスワード変更ジョブを停止しました（候補の認証情報は保持され、手動確認待ち）",
+      "change_secret_reauthorize": "権限のある担当者が資格情報変更計画を再承認"
     },
     "roleDelta": {
       "headline": "外部ログイン時にグループマッピングでロールを調整",
@@ -1156,11 +1238,14 @@
       "rotationActiveHint": "この共用認証情報はパスワード変更中です。今回の処理が終わるまで変更、離脱、登録値の訂正はできません。",
       "addTitle": "アカウントを追加",
       "addHint": "このプロトコルで使え、かつこの資産がまだ使っていない共用認証情報のみ表示します。",
+      "addDedicatedNeedsCredentialCreate": "専用アカウントの追加ではアカウント名を設定するため、アカウント認証情報を作成する権限が必要です。共用認証情報を使うか、管理者に依頼してください。",
       "addSubmit": "追加",
       "rebindHintShared": "変更先は共用認証情報のみです。このホストは以後、新しい認証情報で接続します。元の認証情報は割り当てが 1 台減るだけで、そこに紐づく他のホストには影響しません。この操作は取り消せません。",
       "rebindHintDedicated": "変更先は共用認証情報のみです。このホストは以後、新しい認証情報で接続し、これまで使っていた専用認証情報は回収されます。この操作は取り消せません。",
       "rebindSubmit": "変更する",
-      "rebindDone": "認証情報を変更しました"
+      "rebindDone": "認証情報を変更しました",
+      "outOfScopeCredential": "範囲外の共用認証情報",
+      "outOfScopeNote": "このホストの共用認証情報は管理範囲外のため、登録値の訂正や共用からの離脱はできません。認証情報の変更とアカウントの削除は可能です。"
     },
     "headerDescAdmin": "リモートホスト、データベース、K8s 資産を管理します（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
     "headerDescUser": "あなたに許可された資産です。「接続」を押すと開始できます。管理対象の資産には接続申請を出せます",
@@ -1174,6 +1259,40 @@
     "riskCount": "リスク{n}件",
     "nodesColumn": "所属ノード",
     "ungrouped": "未分類",
+    "scopedOutOfScopeBadge": "＋{n} 範囲外",
+    "scopedOutOfScopeNodes": "範囲外のノードがほかに {n} 個あります。",
+    "scopedOutOfScopeAdminOnly": "範囲外のノードは、その範囲の管理者だけが変更できます。",
+    "scopedReasonOutOfScopeNodes": "この資産は管理範囲外の {n} 個のノードにも属しているため、削除または無効化できません。自分のノードから外すことはできます。",
+    "scopedReasonOutOfScope": "この資産は管理範囲外です。",
+    "scopedReasonNoCapability": "この操作を行う権限がありません。",
+    "tagVisibleOnlyHint": "表示できる資産で使われているタグのみ表示されます。",
+    "batchOps": {
+      "selectedCount": "{n} 台を選択中",
+      "move": "移動",
+      "addTags": "タグを追加",
+      "delete": "削除",
+      "clearSelection": "選択を解除",
+      "moveTitle": "{n} 台の資産を移動",
+      "addTagsTitle": "{n} 台の資産にタグを追加",
+      "deleteTitle": "{n} 台の資産を削除",
+      "moveTarget": "移動先ノード",
+      "moveTargetPlaceholder": "移動先のノードを選択",
+      "moveKeepsOutOfScope": "資産は選択したノードに所属します。管理範囲外のノードへの所属はそのまま残ります。",
+      "moveNoTarget": "移動先にできるノードがありません。",
+      "deleteConfirm": "選択した {n} 台の資産を削除します。一括で実行され、1 台でも削除できない場合は何も削除されません。",
+      "unavailableTitle": "一括処理は実行されませんでした",
+      "unavailableBody": "選択した資産のうち {count} 台は操作できません。どの資産も変更されていません。一覧を更新してからもう一度お試しください。",
+      "blockedBody": "{count} 台の資産が管理範囲外のノードにも属しているため、一括削除は実行されませんでした。自分のノードから外す操作に切り替えられます。",
+      "moveSuccess": "{n} 台の資産を移動しました",
+      "addTagsSuccess": "{n} 台の資産にタグを追加しました",
+      "deleteSuccess": "{n} 台の資産を削除しました",
+      "selectAllPage": "このページの資産をすべて選択",
+      "selectRow": "この資産を選択"
+    },
+    "scopedEmptyTitle": "管理できるノードがありません",
+    "scopedEmptyHint": "管理範囲に有効なノードがありません。割り当てられたノードについて管理者に確認してください。",
+    "scopedInactiveNotice": "管理ノードのうち {n} 個は存在しないため、その範囲は有効ではありません。それ以外は通常どおりです。",
+    "scopedConnectionOnlyNotice": "管理範囲に有効なノードがありません。以下には接続を許可された資産のみ表示しています。",
     "testing": "テスト中",
     "testedAt": "{time} にテスト",
     "testedAtWithLatency": "{time} にテスト（遅延{ms}ms）",
@@ -1240,10 +1359,15 @@
     "mountNodes": "ノードに配置",
     "mountNodesPlaceholder": "未分類（複数選択可）",
     "accessPolicy": "接続ポリシー",
+    "accessPolicyReadonlyHint": "ここでは参照のみです。変更にはアクセスポリシーの管理権限が必要です",
     "hostKey": "ホストキー",
-    "hostKeyMeta": "{time} に記録。指紋が一致しない場合、接続は拒否されます",
+    "hostKeyMeta": "{time} に記録。以後、異なるフィンガープリントが現れた場合、ターミナル・ファイル転送・接続テストは認証に進むことができ監査に記録され、そのフィンガープリントの初回出現時にシステムアラートを作成します。パスワード変更とローテーションは停止します",
     "resetKey": "リセット",
-    "hostKeyEmpty": "記録なし——初回接続時に自動記録して指紋を固定します",
+    "hostKeyEmpty": "記録なし——このアドレスへの初回接続時に自動記録して指紋を固定します。同じアドレスの過去の記録がある場合はそれを引き継ぎます",
+    "securityChangeNotice": "保存するとセキュリティ担当者に通知されます：接続先アドレスの変更、または通信検証の緩和を含みます（{fields}）",
+    "tagManagerSuperAdminOnly": "タグの一括名称変更・統合・削除はスーパー管理者のみ可能です。新しいタグを追加するには、資産の編集時に直接入力してください",
+    "hostKeyResetSuperAdminOnly": "ホスト鍵のリセットはスーパー管理者のみ可能です",
+    "hostKeyInherited": "このアドレスの過去の記録を引き継いでいます。この資産自身の記録は初回接続の成功後に作成されます",
     "applyReasonLabel": "接続理由（必須。承認者と監査記録に表示されます）",
     "applyDuration": "利用時間（分）",
     "applyDateStart": "開始予約時刻（空欄＝承認後すぐ利用可）",
@@ -1272,10 +1396,22 @@
     "portReachableOnly": "ポートへの到達性のみを示し、資格情報は検証していません",
     "unknownReason": "原因不明",
     "fingerprintCopied": "指紋をコピーしました",
-    "hostKeyResetConfirm": "リセット後、次回接続時に指紋を再記録します。対象ホストを本当に再インストール／交換した場合のみ実行してください。そうでない場合、中間者攻撃への防御を失います。",
+    "hostKeyResetConfirm": "リセット後、次回の接続で提示された鍵がそのまま新しい記録になります。上に確認待ちのフィンガープリントがある場合は「このフィンガープリントを採用」をお使いください。この操作は記録され、システムアラートを作成します。",
     "hostKeyResetTitle": "ホストキーのリセット",
     "hostKeyResetButton": "リセットを確定",
     "hostKeyResetDone": "リセットしました。次回接続時に再記録します",
+    "hostKeyMismatchTitle": "確認待ちのフィンガープリント（{count}）",
+    "hostKeyMismatchHint": "記録と異なり、接続時に現れたフィンガープリント（新しい順）",
+    "hostKeyMismatchRow": "初回 {first}・最終 {last}・計 {count} 回",
+    "testHostKeyMismatchLead": "ホストの身元が記録と一致しません：",
+    "testSuccessHostKeyMismatch": "このホストのホスト鍵（host key）は記録と異なり、プラットフォームはログイン認証情報をこのホストへ送信しました。ホストを再インストールまたは交換していない場合、なりすましの可能性があります。当面は使用しないでください。この件は記録されています。",
+    "testHostKeyReachabilityNote": "一覧の接続状態は到達できることだけを示し、ホストの身元が一致することは示しません。",
+    "testFailedHostKeyMismatch": "接続テストに失敗（{reason}）し、ホスト鍵が記録と一致しません。プラットフォームはこのホストに対して認証を試みたため、パスワードが送信された可能性があります。この件は記録され、このフィンガープリントの初回出現時にシステムアラートを作成済みです",
+    "hostKeyAdopt": "このフィンガープリントを採用",
+    "hostKeyAdoptConfirm": "採用すると、このフィンガープリントが記録になり、これを提示する接続は警告されなくなります。他のフィンガープリントは引き続きアラートの対象です。先にホストの管理者に、このフィンガープリントが本当にこのホストのものか確認してください。この操作は記録され、システムアラートを作成します。",
+    "hostKeyAdoptSuccess": "採用しました。このフィンガープリントを提示する接続は警告されなくなります",
+    "hostKeyAdoptSuperAdminOnly": "採用できるのはスーパー管理者のみです",
+    "hostKeyAdoptButton": "採用",
     "updated": "資産を更新しました",
     "created": "資産を追加しました",
     "createdUngrouped": "資産を追加し、未分類に配置しました",
@@ -1363,6 +1499,8 @@
       "colField": "項目",
       "colValue": "入力値",
       "colProblem": "問題",
+      "problemNodeUnavailable": "ノードが存在しないか、利用できません",
+      "problemCredentialUnavailable": "共用認証情報が存在しないか、利用できません",
       "downloadErrors": "問題一覧をダウンロード（CSV）",
       "importN": "{total} 台の資産を取り込む",
       "confirm": "{total} 台の資産を作成します（うち {pending} 台はログイン資格情報が未指定）。一括で処理され、1 台でも失敗した場合は何も作成されません。",
@@ -1449,7 +1587,8 @@
           "desc": "mysql、postgres、redis、mssql 用。disable、require、verify-ca、verify-full のいずれか。空欄はクライアント既定。verify-ca または verify-full で自己署名またはプライベート CA のサーバーは、取り込み後に編集画面で CA 証明書を貼り付けてください",
           "example": "require"
         }
-      }
+      },
+      "accessPolicyReadonly": "接続ポリシーの入力にはアクセスポリシーの管理権限が必要なため、ここでは入力できません"
     },
     "credentialPending": "資格情報未設定",
     "credentialPendingTooltip": "ログイン資格情報が未設定です。管理者に「編集 → アカウント」での設定を依頼してください。",
@@ -1569,6 +1708,7 @@
     "idLabel": "接続番号 {id}"
   },
   "myConnections": {
+    "notApplicable": "このページには自分自身の接続履歴のみが表示されます。お使いのロールでは接続申請は不要で、接続の可否はこれまでどおり権限とポリシーで判定されます。",
     "headerDesc": "自分の接続記録を確認できます",
     "connectedAt": "接続時刻",
     "duration": "継続時間",
@@ -1601,6 +1741,19 @@
     "causeColumn": "原因",
     "emptyFailuresTitle": "障害イベントはありません",
     "emptyFailuresHint": "監査メカニズムの障害（Syslog 転送の中断など）がここに記録されます",
+    "permissionAccept": {
+      "column": "権限状態の確認",
+      "button": "確認してリスクを受容",
+      "title": "権限状態の変更を確認",
+      "hint": "権限データがアプリケーションを経由せずに直接変更されたことを検出しました。確認すると、現在の実際の状態を新しい基準とし、アラートを終了して、確認者・理由・差分の概要を監査ログに記録します。ロールや認可は変更されません。",
+      "reasonLabel": "確認の理由",
+      "reasonPlaceholder": "例：運用担当者と照合済み。当日の緊急対応によるもの",
+      "submit": "確認してリスクを受容",
+      "success": "確認しました。アラートを終了し、監査記録を残しました",
+      "titleUnknown": "権限状態の比較基準をリセット",
+      "hintUnknown": "権限状態の比較を完了できません（変更記録が不完全か、検証できません）。リセットするまでは、その後の直接変更を検出できません。リセットすると、現在の実際の状態を新しい比較基準とし、アラートを終了して、確認者・理由・比較できなかった理由の概要を監査ログに記録します。破損した記録はそのまま残ります。ロールや認可は変更されません。",
+      "successUnknown": "比較基準をリセットしました。アラートを終了し、監査記録を残しました"
+    },
     "exportDialogTitle": "監査証拠パッケージのエクスポート",
     "exportDialogInfo": "証拠パッケージは ZIP 形式で、範囲内の操作ログ、コマンドストリーム、クリップボードの内容、関連する接続録画、日次レビュー記録、および manifest（エクスポート実行者、時刻、各ファイルの SHA-256 保管チェーン）を含みます。送信後はバックグラウンドで作成され、完了後にダウンロードセンターで受け取れます。少なくとも 1 つの範囲条件を指定してください。",
     "userId": "ユーザー ID",
@@ -1640,7 +1793,11 @@
     "filterKeyNotice": "セキュリティ設定「{setting}」の変更のみ表示しています",
     "filterKeyClear": "フィルタを解除",
     "reason": "理由",
-    "detailsRaw": "詳細情報"
+    "detailsRaw": "詳細情報",
+    "grantMark": {
+      "self_authorization": "自己権限付与",
+      "management_grant": "管理系の権限付与"
+    }
   },
   "commands": {
     "headerDesc": "接続をまたいでコマンドと文の記録を検索します。コマンドラインの内容はキー入力から再構成され、正確な内容は録画再生を参照します。クエリコンソールの文は送信時に記録されます。",
@@ -1683,8 +1840,9 @@
     "kindRule": "ルールによるアラート",
     "kindSensitiveReveal": "機密原文の閲覧",
     "sensitiveRevealDescription": "機密原文が閲覧されました。詳細は閲覧ごとの監査記録を確認してください。",
-    "title": "コマンドアラート",
-    "headerDesc": "危険コマンドのアラート記録とルール管理",
+    "title": "アラート",
+    "headerDesc": "危険コマンドとシステムセキュリティイベントのアラート記録",
+    "channelsHeaderDesc": "アラートはこれらのチャネルに送信されます。チャネルの追加、変更、無効化、削除は、すべてセキュリティ担当者に通知されます。",
     "tabAlerts": "アラート記録",
     "severity": "重要度",
     "reviewStatus": "レビュー状態",
@@ -1828,7 +1986,14 @@
         "notSent": "未送信",
         "unconfirmed": "確認待ち：サーバーから応答がありません"
       }
-    }
+    },
+    "kindSystemSecurity": "システムアラート",
+    "channelChangeNotice": "URL を変更すると、変更前と変更後の送信先の両方に「チャネルが変更されました」という通知が届き、セキュリティ担当者にも通知されます。",
+    "channelOldUrl": "変更前の URL",
+    "channelNewUrl": "変更後の URL",
+    "channelDeleteNotice": "削除後も、このチャネルに通知が 1 件送信され、セキュリティ担当者にも通知されます。",
+    "channelPushSystemHint": "「通知対象」は一般アラート（ルールによるアラート、コマンド監査の劣化など）のみを絞り込みます。システムアラートは有効なすべてのチャネルに必ず送信されます。",
+    "tabSystemAlerts": "システムアラート"
   },
   "transmission": {
     "headerDesc": "通信強制ポリシーとチャネル暗号化インベントリ（旧「チャネル暗号化インベントリ」ページ）：ポリシーレベルには各項目に PCI 推奨値を表示します。インベントリは全チャネルの暗号化状態と乖離を集約し、エクスポートするスナップショットにはタイムスタンプと生成者が付くため、監査用インベントリとして利用できます",
@@ -2047,6 +2212,7 @@
     "createChild": "子ノードを追加",
     "move": "移動",
     "authorizeNode": "このノードに権限付与",
+    "authorizeNodeUnavailable": "このノードは管理範囲外です。配下の位置を示すためだけに表示しており、直接権限を付与できません。",
     "sectionOther": "その他",
     "renameTitle": "ノード名の変更",
     "createChildTitle": "「{name}」の下に子ノードを追加",
@@ -2060,7 +2226,20 @@
     "updated": "ノードを更新しました",
     "moved": "ノードを移動しました",
     "deleteConfirm": "ノード「{name}」を削除しますか？子ノードも直接配置された資産もない空ノードのみ削除できます。このノードに紐づく権限付与と承認範囲は連動して取り消されます。この操作は元に戻せません。",
-    "deleted": "ノードを削除しました"
+    "deleted": "ノードを削除しました",
+    "scopeBadge": "範囲",
+    "scopeRootLocked": "このノードはあなたの管理範囲のルートです。この操作はスーパー管理者のみ実行できます",
+    "superAdminOnly": "この操作はスーパー管理者のみ実行できます",
+    "locatorAncestor": "上位パスとして表示しているだけで、このノードに対する管理権限はありません",
+    "deleteBlocked": {
+      "title": "ノードを削除できません",
+      "scopedBody": "ノード「{path}」は他の {count} 件の管理範囲の一部のため削除できません。",
+      "scopedHint": "ID 管理者またはスーパー管理者に連絡し、これらの管理範囲を調整してから削除してください。",
+      "superBody": "ノード「{path}」は {count} 件の管理範囲から参照されています。削除するには先にこれらの割り当てを調整してください。",
+      "listTitle": "このノードを参照している管理範囲",
+      "goEdit": "編集へ移動",
+      "groupMembers": "{count} 人のメンバー"
+    }
   },
   "tagManager": {
     "hint": "名前の変更はそのタグを含むすべての資産に適用されます。変更先が既に存在する場合はマージされます（自動的に重複を除去）。",
@@ -2257,6 +2436,7 @@
     "queryFailed": "メトリクスの取得に失敗しました"
   },
   "syslogCard": {
+    "changeAlertNotice": "この種の変更は記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
     "title": "syslog ログ転送",
     "hint": "監査ログを外部 SIEM へリアルタイム転送します（RFC 5424）。データベースが引き続き権威ストアです",
     "dropped": "{n}件を破棄しました（バッファオーバーフロー）",
@@ -2415,7 +2595,7 @@
     "groupSnapshotNoGroups": "そのログインではグループ値は観測されませんでした。"
   },
   "userGroups": {
-    "headerDesc": "権限付与の主体をグループ化する次元です（RBAC ロールとは無関係）：グループに権限を付与すると全メンバーに適用されます",
+    "headerDesc": "ユーザーをグループにまとめます。グループに権限を付与すると、全メンバーに付与されます。グループにはロールも付けられ、各メンバーが取得します。",
     "create": "グループを追加",
     "nameColumn": "グループ名",
     "members": "メンバー",
@@ -2435,17 +2615,297 @@
     "membersUpdated": "メンバーを更新しました（権限は即時反映）",
     "deleteConfirmWithAuth": "グループ「{name}」を削除すると、{count} 件の権限付与が連動して取り消され、メンバーはこのグループ経由で得たアクセス権を直ちに失います。この操作は元に戻せません。",
     "deleteConfirm": "グループ「{name}」を削除しますか？（このグループには現在、権限付与の記録がありません）この操作は元に戻せません。",
-    "deleted": "グループを削除し、{count} 件の権限付与を連動して取り消しました"
+    "deleted": "グループを削除し、{count} 件の権限付与を連動して取り消しました",
+    "detail": {
+      "loadFailed": "このグループを読み込めません",
+      "tabs": {
+        "members": "メンバー",
+        "roles": "ロールと範囲"
+      },
+      "memberCount": "{n} 人のメンバー",
+      "mapping": {
+        "one": "設定により、{source}のグループ「{group}」のメンバーがこのグループにマッピングされ、次回ログイン時に{source}から更新されます",
+        "many": "設定により、{items}。これらのグループのメンバーがこのグループにマッピングされ、次回ログイン時に各ソースから更新されます",
+        "manyMore": "設定により、{items}、ほか {n} グループ。これらのグループのメンバーがこのグループにマッピングされ、次回ログイン時に各ソースから更新されます",
+        "item": "{source}「{group}」",
+        "sourceDisabled": "ソース無効",
+        "popoverTitle": "設定によりこのグループにマッピングされる外部グループ（{n}）",
+        "popoverNote": "有効なルールのみ表示します。これは設定であり、すべてのメンバーがこれらのグループ由来という意味ではありません。",
+        "fallbackTitle": "一部のメンバーは外部グループマッピング由来です",
+        "fallbackBody": "一部のメンバーは外部グループマッピングで追加されました。複数のソース、既存データ、またはマッピング設定を一時的に読み取れないことが考えられます。",
+        "fallbackHint": "メンバータブの「外部グループマッピング」ラベルで該当者を確認できます。"
+      },
+      "members": {
+        "help": "「手動追加」はここで削除できます。「外部グループマッピング」は外部ディレクトリが決めるため、ここでは削除できません。",
+        "title": "メンバーの管理",
+        "colJoinedVia": "参加方法",
+        "maintainBlocked": "このグループには「{role}」ロールが付いているため、メンバーの追加と削除はスーパー管理者だけが行えます。",
+        "deleteBlocked": "このグループには「{role}」ロールが付いているため、削除はスーパー管理者だけが行えます。",
+        "allUsers": "全ユーザー",
+        "manualMembers": "手動メンバー",
+        "mappedReadonlyTitle": "マッピングで追加されたメンバー",
+        "mappedReadonlyNote": "（外部ディレクトリが決めるため、ここでは削除できません）"
+      },
+      "roles": {
+        "title": "このグループのロール（{n}）",
+        "protectedBadge": "保護",
+        "protectedCannotRemove": "このロールを削除できるのはスーパー管理者だけです。",
+        "help": "グループのロールは全メンバーに付与され、メンバーはユーザーページでそのロールを確認でき、このグループ由来と表示されます。保護されたロールはここで増減できません。その他のロールは通常どおり調整して保存できます。"
+      },
+      "impact": {
+        "title": "保存後の変化",
+        "members": "影響を受けるメンバー {n} 人",
+        "routesGained": "追加されるページ",
+        "none": "なし",
+        "comboNote": "{n} 人のメンバーに確認が必要な組み合わせが生じます。保存時に確認をお願いします。"
+      }
+    }
   },
   "roles": {
-    "headerDesc": "システムのロールと権限の説明を確認します",
+    "headerDesc": "ロールは、その人がどのページを見られ、どのデータを変更できるかを決めます。どのホストに接続できるかは、資産認可で決まります。",
     "nameColumn": "ロール名",
     "descriptionColumn": "説明",
     "permissionCardTitle": "ロール権限の説明",
     "tipTitle": "ヒント",
-    "tipBody": "現在のシステムロールは固定であり、追加や削除はできません。ユーザーのロールを変更するには「ユーザー管理」ページで操作してください。",
+    "tipBody": "組み込みロールは変更できませんが、カスタムロールのテンプレートとして使えます。ロールの追加・編集・複製・削除ができるのはスーパー管理者だけで、閲覧権限のある人は各ロールの内容を確認できます。ユーザーにロールを割り当てるには「ユーザー管理」を開いてください。",
     "emptyTitle": "ロールデータがありません",
-    "emptyHint": "システムロールがここに表示されます"
+    "emptyHint": "システムロールがここに表示されます",
+    "identityAdmin": {
+      "name": "ID管理者",
+      "description": "ユーザー、ユーザーグループ、IDソース、ロールの割り当てを管理します。セキュリティ設定や監査内容は含まれず、管理権限はプラットフォーム内の接続権限を自動的には付与しません。"
+    },
+    "securityAdmin": {
+      "name": "システムセキュリティ管理者",
+      "description": "システム全体のセキュリティポリシー、鍵、転送、オフサイト保管、通知とアラートの設定を管理します。IDやロールの管理は含まれず、管理権限はプラットフォーム内の接続権限を自動的には付与しません。"
+    },
+    "state": {
+      "hidden": "非表示",
+      "read": "参照のみ",
+      "manage": "管理",
+      "available": "利用可"
+    },
+    "summary": {
+      "manage": "管理できる",
+      "read": "参照できる",
+      "available": "利用できる",
+      "hidden": "付与されていない",
+      "global": "範囲はシステム全体",
+      "connectionSeparate": "管理権限はプラットフォーム内の接続権限を自動的には付与しません。接続は別に付与してください",
+      "assignmentTrust": "このロールはスーパー管理者、システムセキュリティ管理者、および高リスクの権限を含むカスタムロール以外のロールを他の人に割り当てられるため、広い権限委譲にあたります。ID管理者と同じ基準で人選し、信頼できる人にのみ付与してください"
+    },
+    "permissionLabel": {
+      "roleAssign": "ロールの割り当て",
+      "systemalertManage": "システムアラートの等級"
+    },
+    "dangerCombo": {
+      "authz_rules_with_asset_or_credential": "認可ルールを管理でき、資産または認証情報も管理できる",
+      "security_with_asset_or_authz": "セキュリティ設定の管理権限を持ち、資産または認可ルールも管理できる",
+      "asset_management_with_connect": "資産を管理でき、その資産へ接続もできる",
+      "identity_with_security": "IDとロール割り当てを管理でき、セキュリティ設定の管理権限も持つ",
+      "identity_with_business_or_connect": "IDとロール割り当てを管理でき、業務資産の操作または接続もできる"
+    },
+    "list": {
+      "builtinTitle": "組み込みロール（{n}）",
+      "customTitle": "カスタムロール（{n}）",
+      "colFeatures": "利用できる機能",
+      "colScope": "管理範囲",
+      "colUsers": "ユーザー",
+      "colActions": "操作",
+      "builtinLocked": "組み込み・変更不可",
+      "templateFrom": "「{name}」をテンプレートに作成",
+      "blankStart": "空白から作成",
+      "scopeGlobal": "システム全体",
+      "approverAbility": "接続申請の承認",
+      "scopeByReviewer": "承認範囲に従う",
+      "scopeNotApplicable": "対象外",
+      "actionView": "表示",
+      "actionUseAsTemplate": "テンプレートとして新規作成",
+      "actionEdit": "編集",
+      "actionCopy": "複製",
+      "actionDelete": "削除",
+      "create": "ロールを追加",
+      "viewOnlyNote": "各ロールの内容は確認できます。ロールの追加・編集・複製・削除ができるのはスーパー管理者だけです。",
+      "unavailable": "ロール情報を取得できません",
+      "deleteConfirm": "カスタムロール「{name}」を削除しますか。削除すると元に戻せません。",
+      "deleted": "ロールを削除しました",
+      "inUse": {
+        "title": "使用中のため削除できません",
+        "direct": "{n} 人に直接割り当て済み",
+        "groups": "{n} 個のユーザーグループがこのロールを持っています",
+        "mappings": "{n} 件の外部グループマッピングルールがこのロールを指しています（無効なルールも含む）",
+        "hint": {
+          "users": "先に「ユーザー管理」でこのロールを外してから、削除してください。",
+          "groups": "先に「ユーザーグループ」でこのロールを外してから、削除してください。",
+          "usersAndGroups": "先に「ユーザー管理」と「ユーザーグループ」でこのロールを外してから、削除してください。",
+          "mappings": "現在このロールを持つ人はいませんが、先に「ID ソース」の外部グループマッピングでルールを削除してから、ロールを削除してください。",
+          "mappingsToo": "あわせて「ID ソース」の外部グループマッピングで、このロールを指すルールを削除してください。"
+        },
+        "conflictTitle": "「{name}」を削除できません",
+        "conflictBody": "削除を確認する前に、誰かがこのロールを使い始めたため、削除しませんでした。",
+        "reloaded": "一覧を再読み込みしました。人数と操作は最新です。",
+        "ack": "了解"
+      },
+      "scopeAtAssignment": "割り当て時にノードを選択"
+    },
+    "create": {
+      "title": "ロールを追加：テンプレートから開始",
+      "fromTemplate": "どのテンプレートから始めるか",
+      "blank": "空白",
+      "adjustLater": "あとから項目ごとに調整できます。",
+      "name": "ロール名",
+      "description": "説明",
+      "descriptionPlaceholder": "（任意）例：データベースホストの日常運用を担当",
+      "next": "次へ：機能を調整",
+      "copyTitle": "ロールを複製",
+      "copyName": "新しいロール名",
+      "created": "ロールを追加しました",
+      "copied": "ロールを複製しました",
+      "updated": "ロールを保存しました"
+    },
+    "editor": {
+      "titleNew": "ロールを追加",
+      "titleEdit": "ロールを編集",
+      "titleView": "ロールを表示",
+      "badgeCustom": "カスタム",
+      "badgeBuiltinLocked": "組み込み・変更不可",
+      "holders": "{n} 人が使用中。保存後すぐに反映されます",
+      "systemFeatures": "システム機能",
+      "legend": "非表示＝見えない　閲覧のみ＝見るだけ　管理＝追加と変更ができる　利用可＝開いて使える",
+      "detailCount": "詳細な操作 {n}/{m}",
+      "detailNote": "接続ポリシー（接続前に申請や承認が必要かどうか）はここではなく、下の「資産認可」で設定します。",
+      "groupCount": {
+        "manage": "管理 {n}",
+        "read": "閲覧のみ {n}",
+        "available": "利用可 {n}",
+        "hidden": "非表示 {n}",
+        "allHidden": "すべて非表示（{n} 件）",
+        "autoShown": "{n} 件は自動表示"
+      },
+      "fixed": {
+        "dashboard": "ダッシュボード",
+        "workspace": "ワークスペース",
+        "profile": "プロフィール",
+        "my_connections": "マイ接続",
+        "my_requests": "マイ申請",
+        "my_agents": "マイ agent",
+        "approvals": "承認センター"
+      },
+      "fixedVisible": {
+        "everyone": "全員に表示",
+        "agentOwner": "agent を持つ人に表示",
+        "approver": "承認資格のある人に表示"
+      },
+      "summary": {
+        "title": "このロールを持つ人",
+        "missingTitle": "必要な機能が不足しています",
+        "hiddenTitle": "表示されない",
+        "scopeTitle": "管理範囲",
+        "scopeAll": "システム全体",
+        "connectionTitle": "接続",
+        "connectionNote": "このロールではホストに接続できるようになりません。接続できるかどうかは資産認可のルールで決まります。",
+        "unavailable": "概要を一時的に作成できません",
+        "unavailableHint": "左側の選択には影響せず、保存もできます。",
+        "scopeNodeSelectable": "割り当て時にノードを選択し、選んだノード内だけで有効",
+        "scopeMixedGlobalOnly": "範囲指定に対応した機能を含みますが、システム全体でのみ有効な機能も含むため、システム全体にのみ割り当てできます"
+      },
+      "previewInlineUnavailable": "確認が必要な組み合わせを一時的に確認できません",
+      "comboPanelTitle": "{n} 件の組み合わせの確認が必要です",
+      "missing": {
+        "inline": "{items}が不足：このロールを持つ人は{screens}を開けません。保存はできますが、自動では補われません。",
+        "capability": "{items}の閲覧が不足：このロールを持つ人は資産を見られないため、この項目は使えません。保存はできますが、自動では補われません。",
+        "summary": "{entry}には{items}が必要です。現在は選択されていないため、{screens}を開けません。"
+      },
+      "capabilityTitle": "その他の権限",
+      "capabilityHint": "どのページにも属さず、チェックするとその 1 項目だけが追加されます",
+      "capability": {
+        "role_assign": "ロールの割り当て",
+        "access_policy_override": "ホスト単位のアクセスポリシー上書き",
+        "recording_delete": "録画の削除"
+      },
+      "capabilityDesc": {
+        "role_assign": "ほかのユーザーにロールを割り当てられます。",
+        "access_policy_override": "接続前に申請や承認が必要かどうかを、ホストごとに調整できます。",
+        "recording_delete": "接続録画を 1 件ずつ削除できます。削除のたびにセキュリティ担当者へ通知されます。"
+      },
+      "trustHint": "持つ人は、スーパー管理者、システムセキュリティ管理者、および高リスクの権限を含むカスタムロール以外のロールを割り当てられます。ID 管理者と同じ基準で人を選んでください。",
+      "noPartialDelegation": "「一部のロールだけ割り当てられる」「一部の範囲だけ」といった設定はありません。",
+      "conflict": {
+        "title": "保存されていません：編集中に誰かがこのロールを変更しました",
+        "body": "あなたの変更は送信されておらず、相手の内容を上書きしてもいません。この画面にそのまま残っています。再読み込みすると相手が変更した版に置き換わるため、残したい内容は先に控えてください。",
+        "reload": "最新版を再読み込み",
+        "stay": "このまま残る",
+        "draftKept": "（下は、まだ送信していないあなたの変更です）"
+      },
+      "effectiveNow": "保存後すぐに反映され、操作ログに記録されます。",
+      "entry": {
+        "assets": "資産管理",
+        "credentials": "アカウント認証情報ライブラリ",
+        "change_secret": "パスワード変更計画",
+        "authorizations": "資産認可",
+        "approver_scopes": "承認範囲",
+        "users": "ユーザー管理",
+        "user_groups": "ユーザーグループ",
+        "roles": "ロール管理",
+        "identity_sources": "ID ソース",
+        "sessions": "接続管理",
+        "audit_logs": "操作ログ",
+        "checkpoint_verification": "チェックポイント検証",
+        "alerts": "アラート",
+        "compliance_map": "コンプライアンス対応表",
+        "access_reviews": "アクセスレビュー",
+        "security_policies": "セキュリティポリシー",
+        "policy_groups": "ポリシーグループ",
+        "key_management": "鍵管理",
+        "transmission": "通信セキュリティ",
+        "offsite_storage": "オフサイト保管",
+        "syslog": "ログ転送",
+        "notification_channels": "通知チャネル",
+        "system_alerts": "システムアラート",
+        "alert_rules": "アラートルール",
+        "schedules": "スケジュール",
+        "rotation_schedules": "ローテーションスケジュール",
+        "instance_guard": "インスタンス保護"
+      },
+      "detail": {
+        "asset": {
+          "view": "資産の表示",
+          "create": "追加",
+          "update": "内容の編集",
+          "delete": "削除",
+          "test": "接続テスト"
+        },
+        "asset_account": {
+          "view": "資産アカウントの表示",
+          "update": "資産アカウントの編集"
+        },
+        "node": {
+          "manage": "グループの管理"
+        },
+        "credential": {
+          "manage": "認証情報ライブラリの管理",
+          "view": "表示",
+          "create": "追加",
+          "update": "編集",
+          "set_secret": "パスワードまたは秘密鍵の設定",
+          "rotate": "ローテーション",
+          "convert_scope": "共有方法の変更",
+          "detach": "紐付け解除",
+          "delete": "削除",
+          "bind": "資産アカウントへの紐付け",
+          "account_rotate": "アカウントのパスワード変更"
+        }
+      },
+      "scopable": "範囲指定可",
+      "nodeScopedNotice": "このロールにはノードを限定した割り当てが {n} 件あります。新しく加えた、システム全体でのみ有効な機能は、それらの割り当てでは有効になりません。",
+      "nodeScopedNoEffectNotice": "このロールにはノードを限定した割り当てが {n} 件あります。ロールの権限はノードの制限を受けないため、それらの割り当ての範囲は有効になりません。"
+    },
+    "assignState": {
+      "protected": "スーパー管理者だけが割り当てられます",
+      "notOpen": "このロールは現在まだ割り当てられません",
+      "notDirectMappable": "このロールはユーザーグループ経由でのみ取得でき、直接マッピングできません",
+      "notGroupBindable": "このロールはグループに付与できません",
+      "managementClass": "管理ロール"
+    }
   },
   "profile": {
     "headerDesc": "アカウント情報、パスワード、二段階認証の管理",
@@ -2638,6 +3098,7 @@
     "title": "資産権限付与の管理",
     "headerDesc": "ユーザーの資産へのアクセス権限を管理します",
     "batchAuthorize": "一括権限付与",
+    "tabAccessPolicy": "接続ポリシー",
     "tabRecords": "権限付与の記録",
     "allUsers": "すべてのユーザー",
     "filterUserGroup": "ユーザーグループ",
@@ -2688,7 +3149,17 @@
     "accountScopeHint": "アカウントは名前で照合されます：対象範囲内の資産にある同名アカウントのみ接続できます。一覧は入力補助で、未作成の名前も入力できます。",
     "accountScopeSaved": "アカウント範囲を更新しました",
     "accountScopeFailed": "アカウント範囲の更新に失敗しました",
-    "accountScopeReserved": "{names} は範囲の予約エイリアス（{'@'} で始まる）であり、アカウント名ではありません。すべてのアカウントを許可するには「すべてのアカウント」を選択してください"
+    "accountScopeReserved": "{names} は範囲の予約エイリアス（{'@'} で始まる）であり、アカウント名ではありません。すべてのアカウントを許可するには「すべてのアカウント」を選択してください",
+    "accountScopeSelfLocked": "このルールの対象は、あなた自身、所属するグループ、または所有する agent です。ここではアカウント範囲を変更できません。スーパー管理者に依頼してください。削除には従来の権限条件が適用されます。",
+    "selectorLoadFailed": "読み込みに失敗しました。一覧が不完全な可能性があります。更新して再試行してください。",
+    "actionReason": {
+      "ticket_bound": "この一時的な権限は申請に紐づいています。「取り消し」で終了してください。ここではアカウント範囲の変更や削除はできません。",
+      "not_revocable": "この一時的な権限は取り消せる状態ではありません（期限切れ、未開始、または終了済み）。",
+      "revoke_not_eligible": "この申請の権限を取り消す資格がないため、この一時的な権限は取り消せません。"
+    },
+    "actionLimit": {
+      "narrow_only": "このルールの作成者ではないため、アカウント範囲は縮小のみ可能で、拡大はできません。"
+    }
   },
   "accessReviews": {
     "headerDesc": "定期的な人員アクセスレビューと承認記録（PCI 7.2.4 管理層による確認）",
@@ -2750,9 +3221,13 @@
     "removeConfirm": "{actor}の範囲「{target}」を削除しますか？この操作は元に戻せません。",
     "removeTitle": "削除の確認",
     "removeButton": "削除する",
-    "removed": "承認範囲を削除しました"
+    "removed": "承認範囲を削除しました",
+    "scopedNotice": "一部のノードの承認範囲のみ管理できます。このページには、それらのノードと配下の資産の範囲だけを表示しています。",
+    "applicantManagedGlobally": "申請者側ルーティングは、すべての範囲を管理でき、かつ申請者タイプの管理権限を持つユーザーのみが設定できるため、ここには表示されません。",
+    "poolScopedNote": "承認可能人数には、管理できる範囲内の承認範囲のみを数えます。範囲外で割り当てられた承認者は含まれません。"
   },
   "myRequests": {
+    "notApplicable": "このページには自分自身の申請履歴のみが表示されます。お使いのロールでは資産申請フローを使用せず、申請や接続の可否はこれまでどおり権限とポリシーで判定されます。",
     "headerDesc": "接続申請の進捗確認、申請の取り下げ、および現在利用可能な期限付き接続を表示します",
     "activeTicketsTitle": "現在利用可能な期限付き接続",
     "connectable": "接続可能",
@@ -2798,6 +3273,7 @@
     "subjectIndividual": "個別ユーザー",
     "subjectGroup": "ユーザーグループ",
     "colGroupName": "グループ名",
+    "colDisplayName": "表示名",
     "colMemberCount": "メンバー数",
     "searchUserPlaceholder": "ユーザー名を検索",
     "targetIndividual": "個別資産",
@@ -2824,7 +3300,10 @@
     "prevStep": "前へ",
     "nextStep": "次へ",
     "batchDoneWithSkipped": "一括権限付与が完了しました：{created}件を作成、{skipped}件をスキップ（既存の組み合わせ）",
-    "batchDone": "一括権限付与が完了しました。合計{created}件の権限レコードを作成しました"
+    "batchDone": "一括権限付与が完了しました。合計{created}件の権限レコードを作成しました",
+    "selfSubjectUser": "自分自身には権限を付与できません",
+    "selfSubjectAgent": "これはあなたが所有する agent のため、権限を付与できません",
+    "selfGroupNotice": "所属するグループは選択できません：権限付与ルールに操作者が所属するグループを含めることはできません"
   },
   "authzEffective": {
     "selectUserLabel": "ユーザーを選択",
@@ -2867,7 +3346,8 @@
     "assignRoleConfirm": "{username}はまだ承認者ロールを持っていません。同時にそのロールを割り当て、範囲内の申請の受信を開始します。続行しますか？",
     "assignRoleTitle": "承認者ロールの割り当て",
     "roleAssignedScopeFailed": "承認者ロールは割り当てられましたが、範囲の作成に失敗しました。範囲の追加を再試行してください",
-    "scopeAssigned": "承認範囲を割り当てました"
+    "scopeAssigned": "承認範囲を割り当てました",
+    "approverRoleRequiredHint": "承認者ロールを持つユーザーのみ表示しています。ほかのユーザーを承認者にするには、ロールを割り当てられる管理者に承認者ロールの追加を依頼してください。"
   },
   "securityPolicies": {
     "description": "ログイン認証・接続・ログ保存に関する安全基準です。アクセス管理、通信の保護、鍵、オフサイト保管の設定はそれぞれ専用ページにあります。",
@@ -2879,7 +3359,9 @@
     "insecureTransportOptionHttp": "この環境を http のまま運用する場合：本ページの「ログイン状態を https 接続でのみ保持」をオフにして保存してください。保存後すぐに反映され、再起動は不要です。"
   },
   "accessControl": {
-    "description": "接続前に申請が必要か、誰が承認するか：グローバル既定値と資産ごとの上書き、申請パラメータ、緊急接続。各ポリシー項目に PCI DSS 推奨値を表示します"
+    "defaultRelaxAlertNotice": "この種の変更は記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
+    "description": "接続前に申請が必要か、誰が承認するか：グローバル既定値と資産ごとの上書き、申請パラメータ、緊急接続。各ポリシー項目に PCI DSS 推奨値を表示します",
+    "overrideManagedElsewhere": "個別資産の接続ポリシーはアクセスポリシーの管理権限を持つ人が設定します。"
   },
   "unseal": {
     "title": "システムのアンシール",
@@ -3051,6 +3533,7 @@
     "cleanupGuidance": "クリーンアップが完了するまでアンシールできません。失敗した場合は結果を保全し、原因を解消してから再起動してください。journal は削除しないでください。"
   },
   "keyManagement": {
+    "topologyChangeAlertNotice": "この種の変更は記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
     "description": "エンベロープ暗号化鍵の一覧と再鍵ウィザード。すべての鍵の交換は手動操作で、システムが自動で交換することはありません",
     "rewrapPendingTitle": "KEK の再ラップがまだ切り替わっていません",
     "rewrapPendingDesc": "新しい KEK の再ラップが完了しデータベースに保存されましたが、サービスはまだ古い KEK で動作しています。ウィザードで入力した新しい KEK を ENCRYPTION_KEY 環境変数に保存し、サービスを再起動して切り替えを完了してください。切り替えるまではすべて通常どおり動作し、鍵の交換は一時的に無効化されます（切り替え完了後に復帰します）。",
@@ -3242,7 +3725,8 @@
     "sealRestoreDeployment": "復旧するには、管理者がアンシール画面で本人確認を行い、「読み直してアンシール」を押します。デプロイ設定の取得元を読み直すため、鍵を手入力する必要はありません。",
     "sealRestoreDelegated": "復旧するには、アンシール画面で本人確認と保管先の照合を行い、保管先の資格情報をあらためて入力する必要があります。シールすると現在の資格情報は消去され、システムが自力で取り戻すことはできません。",
     "sealReconnect": "アンシール後は接続し直す必要があります。切断された接続は自動では再開しません。",
-    "dekTtlLocalModeNote": "このデプロイではマスター鍵を環境変数で渡すか、起動時に管理者が入力しており、もともと本システムのメモリにあります。下の「データ鍵のメモリ保持時間」は設定でき、短くなるのはデータ鍵を置いておく時間です。"
+    "dekTtlLocalModeNote": "このデプロイではマスター鍵を環境変数で渡すか、起動時に管理者が入力しており、もともと本システムのメモリにあります。下の「データ鍵のメモリ保持時間」は設定でき、短くなるのはデータ鍵を置いておく時間です。",
+    "policyNeedsPermission": "このページの鍵の設定（鍵ローテーション通知日数など）はセキュリティポリシーの一部で、表示と変更にはセキュリティポリシーの設定権限が必要です。現在のロールにはこの権限がありません。"
   },
   "changeSecretPlans": {
     "description": "資産資格情報の定期ローテーション：アカウント単位のパスワード変更と SSH 鍵ローテーション。検証成功後にのみ反映し、未検証は自動再試行",
@@ -3300,6 +3784,7 @@
     "candidatesEmpty": "未検証の資格情報はありません",
     "colAttempts": "試行回数",
     "colNextAttempt": "次回再試行",
+    "hostIdentityPending": "ホストの識別情報の確認待ち",
     "colLastError": "最後のエラー",
     "colState": "状態",
     "stateApplied": "変更済み・検証待ち",
@@ -3350,6 +3835,18 @@
       "CHANGE_SECRET_RETRY_PROMOTED": "システム再試行で検証に成功し、資格情報を確定しました",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "未検証資格情報の内容を読み取れませんでした。詳細はサーバーログをご確認ください",
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "未検証資格情報での対象ホストへのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_HOST_KEY_MISMATCH": "ホスト鍵が記録と一致しないため、資格情報は送信していません。ホストを確認のうえ、資産設定で新しいフィンガープリントを採用するかホスト鍵をリセットしてください",
+      "CHANGE_SECRET_HOST_KEY_CHECK_FAILED": "認証情報を送る前にホストの識別情報を確認できなかったため中止しました。対象には変更を加えていません。しばらくしてから再試行し、続く場合は管理者に連絡してください",
+      "CHANGE_SECRET_AUTHZ_REVOKED": "停止しました：発起者の現在の権限が不足しており、リモートには触れていません",
+      "CHANGE_SECRET_SCOPE_BOUND_EXCEEDED": "確認済みの範囲を超えています：この共用認証情報の管理範囲外への影響が、以前に確認した内容を超えたため、計画を停止しました。再確認後に再開します",
+      "CHANGE_SECRET_AUTHZ_CONTEXT_MISSING": "停止しました：このジョブには特定できる発起者がなく、権限のある利用者による再承認が必要です",
+      "CHANGE_SECRET_AUTHZ_UNAVAILABLE": "停止しました：発起者の権限を判定できないため、既定で拒否しました",
+      "CHANGE_SECRET_AUTHZ_TARGET_CHANGED": "検証を拒否しました：対象のアドレス、チャネル、アカウントまたはバージョンが変更されています",
+      "CHANGE_SECRET_AUTHZ_CONVERGENCE_EXPIRED": "権限失効後の限定的な検証が期限切れです。候補を保持し、帯域外での対応を待ちます",
+      "CHANGE_SECRET_AUTHZ_RESTORED": "復元前に作成された認証情報変更ジョブは復元後に自動送信されません。権限のある担当者が再確認してください（手動再試行または再承認）",
+      "CHANGE_SECRET_HOST_IDENTITY_CHANGED": "ホストの識別情報がこのジョブに紐付けたものと一致することを確認できないため停止しました。新しい認証情報は保持されており、まだ適用されていません。権限のある担当者の確認後に対処してください",
+      "CHANGE_SECRET_INTERRUPTED": "このホストの変更中にサービスが再起動したため、新しい秘密情報が反映されたかは不明です。再実行して新しい秘密情報で検証してください",
+      "CHANGE_SECRET_RECOVERED_CLEANUP_PENDING": "権限失効後の限定的な検証に成功し確定しましたが、SSH の旧公開鍵は未削除です。権限のある担当者による手動での削除が必要です",
       "SHARED_CREDENTIAL_TARGET_REQUIRED": "この対象は共用認証情報に紐づいているためスキップしました。その認証情報を対象に一括ローテーションを開始してください"
     },
     "maxAgeDays": "認証情報の最長使用日数の上書き",
@@ -3359,12 +3856,110 @@
     "colChannel": "チャネル",
     "secretTypeWindowsHint": "Windows チャネルはパスワードのみ対応。鍵種別は Windows 資産ではスキップとして記録されます",
     "recordsSummary": "全 {total} 件：成功 {success}、失敗 {failed}、未検証 {unverified}、スキップ {skipped}",
-    "recordsNote": "メッセージはシステムコードのローカライズ文です。リモートからの原文はサーバーログにのみ残ります。"
+    "recordsNote": "メッセージはシステムコードのローカライズ文です。リモートからの原文はサーバーログにのみ残ります。",
+    "saveNotice": "次回の実行はあなたの権限で再確認されます：保存するとあなたがこの計画の発起者となり、実行のたびに現在の権限が再確認されます。権限が不足している場合、その回は停止してアラートが発行されます。",
+    "reconfirmTitle": "パスワード変更範囲の再確認",
+    "reconfirmBody": "この認証情報には、管理範囲外のホストがさらに {count} 台あり、あわせてパスワードが変更されます。それらは他の管理者の担当のため、ここには表示しません。確認後に計画が再開されます。",
+    "reconfirmButton": "再確認",
+    "reconfirmAck": "これら {count} 台も変更されることを理解しました",
+    "reconfirmSubmit": "確認して保存",
+    "reconfirmDone": "再確認しました。計画は再開されます",
+    "reconfirmTag": "再確認待ち",
+    "reauthorize": {
+      "banner": "アップグレード後に発起者を特定できなかったため、{count} 件のスケジュール計画を一時停止しています。実行時刻と有効設定はそのまま保持されています。",
+      "button": "引き継いで再開",
+      "confirmTitle": "スケジュール計画の再承認",
+      "confirm": "この {count} 件の計画は今後あなたの権限で実行され、実行のたびに現在の権限が再確認されます。権限が不足している場合、その回は停止してアラートが発行されます。引き継ぎますか？",
+      "done": "{count} 件の計画を再承認しました",
+      "skipped": "{skipped} 件の計画はあなたの権限が不足しているため一時停止のままです。権限のある方による引き継ぎが必要です"
+    }
+  },
+  "hostIdentityConfirm": {
+    "title": "ホストの識別情報を確認してから検証",
+    "target": "{asset}・アカウント {account}",
+    "intro": {
+      "notSent": "この新しい認証情報を送信したあと、このホストの鍵の記録が更新されました（例：リセット後に再記録）。そのため自動検証を停止しました。新しい認証情報は保持されています。今回は、変更後のホストにこの新しい認証情報でログインしていません。",
+      "verifiedNotApplied": "今回、この新しい認証情報でこのホストにログインして検証済みですが、まだ適用されていません。適用の前に、このホストの鍵の記録が更新されたことを検出したため、適用せず、自動検証を停止しました。新しい認証情報は保持されています。",
+      "unknown": "この新しい認証情報を送信したあと、このホストの鍵の記録が更新されました（例：リセット後に再記録）。そのため自動検証を停止しました。今回、新しい認証情報でログインしたかどうかは判別できません。新しい認証情報は保持されています。"
+    },
+    "summary": {
+      "keyLabel": "現在記録されている鍵",
+      "relationLabel": "新しい認証情報の送信時との比較",
+      "relationSame": "同じ",
+      "relationDifferent": "異なる",
+      "relationUnavailable": "比較できません",
+      "relationUnavailableHint": "送信時の記録がありません",
+      "currentReset": "なし（リセット済み、再記録待ち）",
+      "deadlineLabel": "元の期限",
+      "deadlineActive": "{time}（期限内）",
+      "deadlineExpired": "{time}（期限切れ）",
+      "channelLabel": "パスワード変更チャネル",
+      "channelOriginalLabel": "送信時のチャネル",
+      "channelCurrentLabel": "現在のチャネル",
+      "winrmNoKey": "WinRM にはホスト鍵がありません"
+    },
+    "checkHint": "先にホストの管理者へ確認してください。このホストが最近リセット、再インストール、または入れ替えられていないか、また「詳細情報」に表示された現在記録中のフィンガープリントがこのホストのものか、を確認します。",
+    "checkHintWinrm": "先にホストの管理者へ確認してください。このホストが最近リセット、再インストール、または入れ替えられていないか、また、そのアドレスが引き続き同じホストを指しているか、を確認します。",
+    "details": {
+      "show": "詳細情報（フィンガープリント、アルゴリズム、記録の版）",
+      "hide": "詳細情報を閉じる",
+      "original": "新しい認証情報の送信時",
+      "current": "現在の記録",
+      "fingerprint": "フィンガープリント",
+      "algorithm": "アルゴリズム",
+      "record": "記録の版",
+      "recordValue": "#{id}・第 {generation} 版",
+      "time": "時刻",
+      "sentAt": "送信：{time}",
+      "updatedAt": "最終更新：{time}",
+      "copy": "コピー",
+      "legacyOriginal": "アップグレード前に作成されたため、過去の識別情報がありません"
+    },
+    "expiredNotice": "元の期限（{time}）を過ぎています。今回の確認では検証を 1 回だけ行います。以降も自動再試行は再開されず、期限も再計算されません。成功しなかった場合は、もう一度確認できます。",
+    "foot": {
+      "default": "押すと、この新しい認証情報でこのホストに 1 回だけログインし、使用できれば正式な認証情報に切り替えます。パスワードの再変更は行わず、元の期限（{deadline}）も変わりません。成功しなかった場合も新しい認証情報は保持され、もう一度確認できます。この確認は、あなたの名前とともに監査ログへ記録されます。",
+      "differentKey": "押すと、この新しい認証情報でこのホストに 1 回だけログインし、使用できれば正式な認証情報に切り替えます。パスワードの再変更は行わず、元の期限（{deadline}）も変わりません。この確認は、あなたの名前とともに監査ログへ記録され、「異なる鍵を承認」と表示されます。記録が変更された時点で、システムアラートが作成されています。",
+      "expired": "押すと、この新しい認証情報でこのホストに 1 回だけログインし、使用できれば正式な認証情報に切り替えます。パスワードの再変更は行いません。成功しなかった場合も新しい認証情報は保持され、もう一度確認できます。この確認は、あなたの名前とともに監査ログへ記録されます。",
+      "winrm": "押すと、この新しい認証情報で WinRM 経由の検証を 1 回だけ行い、使用できれば正式な認証情報に切り替えます。パスワードの再変更は行いません。成功しなかった場合も新しい認証情報は保持され、もう一度確認できます。この確認は、あなたの名前とともに監査ログへ記録されます。"
+    },
+    "confirm": {
+      "identity": "プラットフォーム外の手段（例：ホストの管理者への直接の確認）で、このホストの識別情報を確認しました",
+      "differentKey": "これが別の鍵であることを理解したうえで、新しい認証情報をこのホストに送って検証します"
+    },
+    "differentKey": {
+      "title": "このホストは別の鍵を提示しています",
+      "body": "新しい認証情報を送信したあと、このホストの記録が別の鍵に置き換わりました（スーパー管理者による採用、またはリセット後の再記録）。このホストが実際に再インストールまたは入れ替えられたのであれば、想定どおりの変化です。そうでなければ、何者かがこのホストになりすましている可能性があり、検証を送信すると新しい認証情報がその相手に渡ります。"
+    },
+    "blocked": {
+      "resetPending": "このホストの鍵の記録は現在リセットされており、次回の接続での再記録を待っています。記録が再作成されるまでは照合できるホストの識別情報がないため、ここでは確認できません。",
+      "recordMissing": "このホストには、現在照合できる鍵の記録がありません。照合できるホストの識別情報がないため、ここでは確認できません。新しい認証情報は保持されています。",
+      "transportChanged": "この新しい認証情報は {from} 経由でこのホストに送信されましたが、その後このホストのパスワード変更チャネルが {to} に変更されました。WinRM にはホスト鍵がなく照合できないため、現在接続している先が送信時と同じホストかどうかを確認できず、ここでは確認できません。新しい認証情報は保持されており、{to} 経由ではまだログインしていません。",
+      "contactAdmin": "このホストの鍵の記録について、スーパー管理者に連絡してください。記録が再作成されたら、戻って再試行し、確認してください。",
+      "transportRestore": "このホストのパスワード変更チャネルを {from} に戻してから再試行してください。戻せない場合は、スーパー管理者に連絡してください。新しい認証情報は引き続き保持されます。",
+      "newWorkCandidate": "新しいジョブでパスワードを変更する場合：この候補を削除してから、新しいジョブでパスワードを変更します。",
+      "newWorkMember": "新しいジョブでパスワードを変更する場合：このローテーションを中止して、あらためてローテーションします（新しいパスワードが生成されます）。候補を削除するだけではパスワードは入れ替わらず、再実行しても引き続きブロックされます。"
+    },
+    "legacy": {
+      "intro": "このジョブはアップグレード前に送信されたもので、送信時のホストの識別情報の記録がないため、ホストが変更されたかどうかを判断できません。そのため、あなたによる手動の確認が必要です。確認後は検証を 1 回だけ行い、自動再試行は再開されず、期限も再計算されません。",
+      "introWinrm": "このジョブはアップグレード前に送信されたもので、送信時のホストの識別情報の記録がありません。また、このホストは WinRM でパスワードを変更しており、照合できるホスト鍵もないため、あなたによる手動の確認が必要です。確認後は検証を 1 回だけ行い、自動再試行は再開されず、期限も再計算されません。"
+    },
+    "button": {
+      "cancel": "キャンセル",
+      "close": "閉じる",
+      "submit": "検証のみ（パスワードは再変更しない）"
+    },
+    "result": {
+      "verified": "検証に成功し、認証情報を正式なものに切り替えました",
+      "notVerified": "今回の検証は成功しませんでした。新しい認証情報は保持されています。システムは自動では再試行しません。必要に応じて、もう一度確認してください。",
+      "moved": "確認後にホストの識別情報が再び変更されたため、今回の結果は適用されませんでした。新しい認証情報は保持されています。確認を開き直して、最新の識別情報を照合してください。"
+    }
   },
   "changeSecretBatches": {
     "credentialName": "共用認証情報の名称",
     "credentialNamePlaceholder": "例：データベース運用 2026-09",
     "credentialNameRequired": "共用認証情報の名称を入力してください",
+    "unavailableBanner": "バッチは実行されませんでした。選択した {selected} 件のアカウントのうち {count} 件は現在操作できません。管理範囲から外れたか、削除された可能性があります。どのアカウントのパスワードも変更されていません。",
+    "ownershipHint": "新しく作成される共用認証情報は選択したノードに属します。そのノードを管理できる人だけが確認・管理できます。",
     "credentialNameDefault": "{username} バッチ {date}",
     "description": "ユーザー名を軸とした単発のパスワード変更です。ユーザー名を選ぶと対象が状態別に並び、選んだ対象をまとめて変更できます。",
     "usernamePlaceholder": "ユーザー名を選択",
@@ -3515,7 +4110,8 @@
       "includeSymbol": "記号を含める",
       "excludeAmbiguous": "紛らわしい文字を除外",
       "submit": "変更を実行",
-      "accepted": "パスワード変更を開始しました。進捗は詳細パネルに表示されます"
+      "accepted": "パスワード変更を開始しました。進捗は詳細パネルに表示されます",
+      "outOfScopeHint": "割り当て済みの {total} 台のうち {out} 台は管理範囲外です。送信前に影響範囲の確認を求めます。"
     },
     "detachDialog": {
       "title": "共用から外す",
@@ -3543,6 +4139,7 @@
       "abandon": "この回を中止",
       "abandonHint": "中止しても、すでに適用済みのホストが元のパスワードに戻ることはありません。認証情報は「不整合」となり、残りは 1 台ずつ再実行が必要です。",
       "abandonHintFresh": "今回はまだどのホストも変更されていません。中止すればこの回はなかったことになり、認証情報は待機状態に戻ります。",
+      "abandonedUnsettledHint": "この回は中止されましたが、以下のホストはまだ新しい秘密情報になっていません。1 台ずつ再実行するとこの回の新しい秘密情報を使い、すべて適用されると認証情報は待機状態に戻ります。",
       "abandonTitle": "この回の中止",
       "abandonMessage": "今回のパスワード変更を中止します。すでに新しいパスワードになったホストはそのままで、認証情報は「不整合」となり、残りは 1 台ずつ再実行が必要です。この操作は取り消せません。",
       "abandonMessageFresh": "今回のパスワード変更を中止します。まだどのホストも変更されていないため、この回はなかったことになり、認証情報は待機状態に戻ります。この操作は取り消せません。",
@@ -3557,6 +4154,9 @@
       "retryDone": "再実行しました",
       "paused": "保留",
       "pollingPaused": "タブが非表示のため更新を停止しています",
+      "hostIdentitySkipSummary": "順次再実行が終了しました：{done} 台を再実行、{skipped} 台をスキップしました。",
+      "hostIdentitySkipStopped": "{asset} をスキップしました：送信後にホストの識別情報が変更されており、1 台ずつの確認が必要です。その行の「再実行」を押してください。",
+      "hostIdentitySkipFoundOnRetry": "{asset} をスキップしました：再実行で送信したあとにホストの識別情報の変更が判明したため、今回はパスワードを変更していません。その行の「再実行」を押して確認してください。",
       "membersEmpty": "この回に対象ホストはありません",
       "versionCurrentOnly": "現行 v{current}"
     },
@@ -3612,6 +4212,66 @@
       "drawerHint": "{actions}はプラットフォームに登録された値だけを変更し、ホスト上の{noun}は変わりません。共用認証情報の場合は、紐付いているすべての資産に適用されます。",
       "actionQuoted": "「{entry}」",
       "actionSeparator": "、"
+    },
+    "security": {
+      "customSecretWarning": "カスタムのシークレットを指定する操作は機微な操作です。記録が残り、アラートが発行されます。値の管理は利用者の責任となり、強度はシステムでは保証できません。",
+      "detachWarning": "共有から切り離してカスタムのシークレットを指定すると、記録が残りアラートが発行されます。他のバインドには影響しません。",
+      "setSecretWarning": "「新しいシークレットを宣言」はシステムに登録された値だけを更新します。対象ホストへ接続してパスワードを変更することはないため、ホスト上の実際のパスワードがこの値と一致していることを確認してください。この操作は記録され、アラートが発行されます。"
+    },
+    "filterOwnership": "所属",
+    "outOfScopeChip": "＋範囲外 {count}",
+    "outOfScopeNote": "範囲外の資産 {count} 台もこの認証情報を使用しています。ここには表示されません。パスワードを変更する際に確認を求めます。",
+    "pickerScopedNote": "管理できるノードに所属する共用認証情報のみ表示します。",
+    "ownership": {
+      "label": "所属",
+      "global": "グローバル",
+      "globalSub": "全社共用",
+      "asset": "資産に付随",
+      "node": "ノード",
+      "nodeRef": "ノード {id}",
+      "nodePlaceholder": "ノードを選択",
+      "noSelectable": "選択できるノードがありません。システム全体の管理者に連絡してください。",
+      "loadFailed": "ノードの読み込みに失敗しました",
+      "hint": "所属により、この認証情報を管理・割り当てできる人が決まります。管理できるノードのみ選択できます。",
+      "globalExplain": "グローバル：スーパー管理者と管理範囲がシステム全体の資産管理者のみ管理・割り当てできます。",
+      "nodeExplain": "ノード：そのノードの資産管理者も管理・割り当てできます。"
+    },
+    "actionReason": {
+      "no_capability": "ご利用のロールにはこの操作の権限がありません。",
+      "out_of_scope": "この認証情報の所属は管理範囲外です。"
+    },
+    "footer": {
+      "scoped": "全社共用の認証情報はシステム全体の管理者が管理するため、ここには表示されません",
+      "global": "所属が「グローバル」の認証情報は、スーパー管理者と管理範囲がシステム全体の資産管理者のみ表示・割り当てできます。"
+    },
+    "reassign": {
+      "rowAction": "ノードへ所属変更",
+      "selected": "{count} 件選択中",
+      "title": "{count} 件の認証情報をノードへ所属変更",
+      "target": "変更先",
+      "hint": "変更後は、このノードを管理する資産管理者が管理・割り当てできます。割り当て済みの資産には影響せず、接続も従来どおりです。",
+      "submit": "{count} 件を所属変更",
+      "done": "{count} 件の認証情報の所属を変更しました"
+    },
+    "impact": {
+      "title": "この認証情報は管理範囲外のホストでも使用されています",
+      "account": "アカウント",
+      "opFix": "・{noun}の訂正",
+      "opRotate": "・グループ一括のパスワード変更",
+      "leadFix": "保存すると、この認証情報を割り当てた {total} 台すべてが新しい{noun}を使用します。",
+      "leadRotate": "送信すると、この認証情報を割り当てた {total} 台すべてで順にパスワードを変更します。",
+      "inScope": "管理範囲内",
+      "outScope": "範囲外",
+      "countUnit": "{count} 台",
+      "outNote": "他の管理者が担当しているため、ここには表示されません",
+      "listTitle": "範囲内の {count} 台",
+      "colAsset": "資産",
+      "colNode": "所属ノード",
+      "ackFix": "範囲外の {count} 台も新しい{noun}を使用することを理解しました",
+      "ackRotate": "範囲外の {count} 台も一緒にパスワード変更されることを理解しました",
+      "detachHint": "範囲内のホストだけ変更したい場合は、資産ごとに「共用から離脱」を使用してください。",
+      "submitFix": "保存して {total} 台に適用",
+      "submitRotate": "変更を実行して {total} 台に適用"
     }
   },
   "notFound": {
@@ -3677,13 +4337,26 @@
     "tokenFailed": "接続認可を取得できませんでした",
     "noShellHint": "このコンテナには利用可能なシェルがないようです（distroless/scratch イメージ）。「ログ」モードに切り替えて出力を確認するか、同じ Pod 内のシェルを持つコンテナに接続してください。",
     "connectFailed": "接続を確立できませんでした。資産の設定と権限を確認してください",
-    "hostKeyContactAdmin": "ホストキーのフィンガープリントが記録と一致しません。ホストの再構築または中間者攻撃の可能性があります。管理者に確認とホストキーのリセットを依頼してください",
-    "hostKeyGoReset": "資産設定でホストキーをリセット",
     "connectionClosed": "サーバーとの接続が閉じられました",
     "mssqlBatchHint": "実行するには、新しい行に GO だけを入力して Enter を押してください。末尾にセミコロンを付けても実行されず、次の行に進むだけです。",
     "noticeWithRule": "{message}（ルール: {rule}）"
   },
+  "hostKeyMismatch": {
+    "title": "ホストの身元が記録と一致しません",
+    "body": "このホストが提示したホスト鍵（host key）はプラットフォームの記録と異なり、プラットフォームはすでにあなたのログイン認証情報を送信しました。ホストを再インストールまたは交換していない場合、なりすましの可能性があります。直ちに切断してください。この件は記録されています。",
+    "goHostKey": "資産設定でホスト鍵を採用またはリセット",
+    "contactAdmin": "管理者に確認を依頼し、新しいフィンガープリントを採用するかホスト鍵をリセットしてもらってください",
+    "dismiss": "閉じる",
+    "showDetails": "詳細説明",
+    "hideDetails": "説明を閉じる",
+    "detailHostKey": "ホスト鍵は、ホストが自らの身元を証明するための鍵です。ホストを再インストールまたは交換すると通常変わります。",
+    "detailCredential": "パスワード認証の場合、相手はあなたのパスワードを取得できます。秘密鍵認証では、この接続の署名（と公開鍵）だけを送り、秘密鍵は送りません。",
+    "detailAlert": "このフィンガープリント（fingerprint）の初回出現時にシステムアラートを作成済みです。配信されるかどうかは、通知チャネルの設定と配信結果によります。"
+  },
   "assetPolicyTable": {
+    "defaultBanner": "システム全体の既定値は「{policy}」で、セキュリティ設定の権限を持つ管理者が設定します。下の資産には個別の接続ポリシーが設定されており、変更はすぐに反映されます。",
+    "scopedHint": "管理できるノード内の資産のみ選択できます",
+    "colNodes": "所属ノード",
     "title": "資産ポリシーの上書き",
     "liveEffect": "変更は即時に反映されます",
     "addOverridePlaceholder": "上書きを追加する資産を検索",
@@ -3796,6 +4469,23 @@
     "AUTH_AGENT_TOKEN_INVALID": "エージェントトークンが無効です",
     "AUTH_AGENT_FORBIDDEN_ROUTE": "エージェントはこのエンドポイントを利用できません",
     "AUTH_REQUEST_ITEM_MISMATCH": "アクセス申請項目が一致しません",
+    "INTERNAL_SYSTEM_ALERT_RAISE": "システムアラートの処理に失敗したため、変更は取り消されました",
+    "NOTFOUND_SYSTEM_ALERT_TYPE": "システムアラートの種類が見つかりません",
+    "ROLE_DEFINITION_CONFLICT": "ロールが他のユーザーによって変更されたか、名前がすでに使用されています。再読み込みしてやり直してください",
+    "ROLE_DEFINITION_IN_USE": "このロールは使用中です。割り当てまたはマッピングを解除してから削除してください",
+    "ROLE_DEFINITION_LOCKED": "このロールは組み込みテンプレートのため、変更・削除・複製できません",
+    "AUTH_PROTECTED_ROLE_ASSIGNMENT": "この割り当ては保護されたロールを含むため、実行できません",
+    "MAPPING_ROLE_NOT_DIRECT_MAPPABLE": "このロールは外部グループに直接マッピングできません。外部グループをユーザーグループにマッピングし、そのユーザーグループにロールを割り当ててください",
+    "MAPPING_SCOPE_FIELD_REJECTED": "マッピングルールにはスコープやノードの設定を指定できません",
+    "AUTH_PROTECTED_ACCOUNT_OPERATION": "このアカウントは保護されています。この操作は実行できません",
+    "AUTH_ROLE_ASSIGNMENT_FORBIDDEN": "ロールを割り当てる権限がありません",
+    "VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED": "この入口ではシステム全体のロール割り当てのみ対応しており、ノード範囲は指定できません。ノードを限定するには、割り当てを一括で置き換える入口を使用してください",
+    "VALIDATION_ROLE_NOT_NODE_SCOPABLE": "このロールにはシステム全体にしか適用できない権限が含まれているため、ノードを限定できません",
+    "VALIDATION_ROLE_BINDING_NODES_EMPTY": "ノードを1つ以上選択するか、システム全体に切り替えてください",
+    "VALIDATION_ROLE_BINDING_NODES_INVALID": "選択したノードの一部が存在しません。選択し直してください",
+    "VALIDATION_ROLE_NOT_GROUP_BINDABLE": "このロールはユーザーグループに割り当てられません",
+    "ROLE_PERMISSION_DEPENDENCY_REQUIRED": "権限セットに必要な依存権限が不足しています",
+    "ROLE_PERMISSION_INVALID": "権限セットに無効な項目が含まれています",
     "VALIDATION_ACCOUNT_NOT_ON_ASSET": "アカウントは指定された資産に属していません",
     "VALIDATION_AGENT_ACCOUNTS_REQUIRED": "エージェントのタスクにはアカウントの指定が必要です",
     "RULE_AGENT_SELF_CREATE_DISABLED": "エージェントのセルフサービス作成は無効です",
@@ -3845,7 +4535,7 @@
     "AUTH_SESSION_STATS_DENIED": "このセッションのメトリクスを閲覧する権限がありません",
     "AUTH_SESSION_TERMINATE_ADMIN_ONLY": "セッションの強制終了は管理者のみ可能です",
     "AUTH_SOURCE_NOT_ALLOWED": "現在の送信元アドレスは許可範囲に含まれていません。管理者にお問い合わせください",
-    "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "タグ絞り込みは管理ロールのみ利用できます",
+    "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "お使いのアカウントではタグ絞り込みを利用できません",
     "AUTH_TAG_GOVERNANCE_ADMIN_ONLY": "タグ管理操作は admin のみ実行できます",
     "AUTH_TAG_LIST_PRIVILEGED_ONLY": "タグ一覧の取得は管理ロールのみ可能です",
     "AUTH_TOKEN_INVALID": "無効または期限切れのトークンです",
@@ -3916,6 +4606,7 @@
     "CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION": "設定が他の操作により変更されました。再読み込みしてからやり直してください",
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "同じ issuer と client_id のプロバイダーが既に存在します",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "このプロバイダーには外部 ID の関連付けが残っています。無効化してください",
+    "CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE": "確認できる権限状態の差分がありません",
     "CONFLICT_PLAN_NAME_EXISTS": "この計画名は既に存在します",
     "CONFLICT_ROTATION_SCHEDULE_INFLIGHT": "このスケジュールには進行中のレポートジョブが既にあります",
     "CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS": "スケジュール名は既に存在します",
@@ -3924,6 +4615,7 @@
     "CONFLICT_USERNAME_EXISTS": "ユーザー名は既に存在します",
     "CONFLICT_USER_ALREADY_EXTERNAL": "このアカウントの資格情報は既に外部 ID プロバイダーによって管理されているため、変換は不要です",
     "CONFLICT_USER_GROUP_NAME_EXISTS": "このユーザーグループ名はすでに存在します",
+    "CONFLICT_HOST_IDENTITY_MOVED": "確認後にこのホストの識別情報が変わったか、この作業は現在手動確認できません。再読み込みしてやり直してください",
     "INSTANCE_GUARD_ACK_INCOMPLETE": "確認が完了していません。別のインスタンスが停止していることのチェック、このページに表示された確認コードの再入力、管理者のユーザー名とパスワードのすべてが必要です。",
     "INSTANCE_GUARD_ACK_LOCKED": "試行回数が多すぎます。確認の受付を一時的に停止しました。しばらくしてから再試行してください。",
     "INSTANCE_GUARD_ACK_UNAUTHORIZED": "管理者のユーザー名またはパスワードが正しくありません。今回の確認は受け付けられませんでした。",
@@ -4007,6 +4699,7 @@
     "INTERNAL_CHECKPOINT_QUERY": "チェックポイントの取得に失敗しました",
     "INTERNAL_CHECKPOINT_VERIFY": "チェックポイントの検証に失敗しました",
     "INTERNAL_CLIPBOARD_QUERY": "クリップボード記録の取得に失敗しました",
+    "INTERNAL_PERMISSION_STATE_ACCEPT": "権限状態の確認に失敗しました",
     "INTERNAL_TOOL_CALL_ARGUMENTS": "ツール呼び出しの引数の取得に失敗しました",
     "INTERNAL_COMMAND_ALERT_QUERY": "アラート記録の取得に失敗しました",
     "INTERNAL_COMPLIANCE_SNAPSHOT": "コンプライアンス判定結果を取得できませんでした",
@@ -4040,6 +4733,7 @@
     "INTERNAL_GUACD_HANDSHAKE": "接続の確立に失敗しました",
     "INTERNAL_HOST_KEY_QUERY": "ホストキーの照会に失敗しました",
     "INTERNAL_HOST_KEY_RESET": "ホストキーのリセットに失敗しました",
+    "INTERNAL_HOST_KEY_ADOPT": "ホスト鍵フィンガープリントの採用に失敗しました",
     "INTERNAL_INACTIVITY_EXEMPT": "免除の設定に失敗しました",
     "INTERNAL_K8S_COPY": "ファイル転送に失敗しました",
     "INTERNAL_K8S_POD_LIST": "Pod の一覧取得に失敗しました",
@@ -4092,6 +4786,8 @@
     "INTERNAL_REFRESH": "更新に失敗しました",
     "INTERNAL_ROLE_ADD": "ロールの追加に失敗しました",
     "INTERNAL_ROLE_ASSIGN": "ロールの割り当てに失敗しました",
+    "INTERNAL_ROLE_ASSIGNMENT_PREVIEW": "ロール割り当ての影響のプレビューに失敗しました",
+    "INTERNAL_ROLE_DEFINITION_WRITE": "ロール定義の保存に失敗しました",
     "INTERNAL_ROLE_QUERY": "ロールの照会に失敗しました",
     "INTERNAL_ROTATION_REPORT_BUILD": "ローテーション証跡レポートの生成に失敗しました",
     "INTERNAL_ROTATION_REPORT_JOB": "レポートジョブの作成に失敗しました",
@@ -4162,6 +4858,7 @@
     "NOTFOUND_AUDIT_LOG": "監査ログが存在しません",
     "NOTFOUND_AUTHORIZATION": "権限が存在しません",
     "NOTFOUND_BATCH_GRANT_REFERENCE": "{entity}リストに存在しない ID が含まれています",
+    "NOTFOUND_BATCH_ITEMS_UNAVAILABLE": "{count} 件の項目を操作できません",
     "NOTFOUND_CHANGE_SECRET_BATCH": "一括パスワード変更が存在しません",
     "NOTFOUND_CHANGE_SECRET_CANDIDATE": "候補資格情報が存在しません",
     "NOTFOUND_CHANGE_SECRET_PLAN": "パスワード変更計画が存在しません",
@@ -4177,6 +4874,7 @@
     "NOTFOUND_GRANT_REFERENCE": "{entity}が存在しません",
     "NOTFOUND_HOST_KEY": "ホストキーの記録がまだありません（初回接続時に記録されます）",
     "NOTFOUND_HOST_KEY_TO_RESET": "ホストキーの記録がありません",
+    "NOTFOUND_HOST_KEY_OBSERVATION": "このフィンガープリントは確認待ちの一覧にありません",
     "NOTFOUND_K8S_FILE": "コンテナ内に該当ファイルが見つかりません",
     "NOTFOUND_LDAP_DIRECTORY": "LDAP ディレクトリ設定が存在しません",
     "NOTFOUND_MY_CONNECTION": "接続が存在しません",
@@ -4208,7 +4906,7 @@
     "RULE_ACCESS_REQUEST_REQUESTER_EXEMPT": "このロールは接続申請を行う必要がない、または行えません",
     "RULE_ACCESS_REQUEST_SELF_APPROVAL": "自分の申請を承認または却下することはできません",
     "RULE_ACCESS_REQUEST_START_IN_PAST": "予約開始時刻は現在より前にできません",
-    "RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE": "この一時権限を取り消せるのは管理者または元の承認者のみです",
+    "RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE": "この一時権限を取り消す資格がありません",
     "RULE_ACCOUNT_DEFAULT_MISSING": "アカウントデータが不整合です：アカウントは存在しますが既定がありません。既定アカウントを指定して再試行してください",
     "RULE_ACCOUNT_DEFAULT_REQUIRED": "資産に他のアカウントが残っている間は既定アカウントを削除できません。先に新しい既定アカウントを指定してください",
     "RULE_ACCOUNT_DISABLED": "アカウントは無効化またはロックされています",
@@ -4216,7 +4914,10 @@
     "RULE_ACCOUNT_NONE_USABLE": "この資産には利用可能なアカウント資格情報がありません。先にアカウントを追加してください",
     "RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET": "このアカウントは共有認証情報を使用しています。認証情報ライブラリから一括で新しいシークレットを設定するか、このホストを共有から切り離してください",
     "RULE_APPROVER_SCOPE_NOT_APPROVER_ROLE": "対象ユーザーは approver ロールを持っていません",
+    "RULE_ASSET_BATCH_HAS_OUT_OF_SCOPE_NODES": "{count} 台の資産が管理範囲外のノードにも属しているため、一括削除は実行されませんでした",
     "RULE_ASSET_DISABLED": "この資産は無効化されているため接続できません",
+    "RULE_ASSET_HAS_OUT_OF_SCOPE_NODES": "この資産は管理範囲外の {count} 個のノードにも属しているため、削除または無効化できません",
+    "RULE_ASSET_NODE_REQUIRED": "資産は少なくとも 1 つのノードに属している必要があります",
     "RULE_ASSET_NOT_TEXT_TERMINAL": "この資産はテキスト端末系プロトコルではありません",
     "RULE_ASSET_TEST_AUTH_FAILED": "認証に失敗しました。資産の認証情報を確認してください",
     "RULE_ASSET_TEST_CONNECTION_FAILED": "接続に失敗しました。対象ホストとネットワークの到達性を確認してください",
@@ -4245,6 +4946,7 @@
     "RULE_CONSENT_RISKS_CHANGED": "リスク項目が変更されました。再度ご確認ください",
     "RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING": "専用認証情報の割り当ては 1 件のみで、他の資産へは割り当てられません",
     "RULE_CREDENTIAL_DETACH_FAILED": "共有からの切り離しが完了しておらず、割り当ては元の共有認証情報のままです",
+    "RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED": "管理範囲外の {count} 台のホストにも影響します。内容を確認し直してから送信してください",
     "RULE_CREDENTIAL_IN_USE": "認証情報はまだ資産に割り当てられています。割り当てを解除してから削除してください",
     "RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE": "対象の現在の状態では再実行できません",
     "RULE_CREDENTIAL_NOT_SHARED": "この操作は共有認証情報にのみ適用されます",
@@ -4291,6 +4993,7 @@
     "RULE_NODE_CYCLE": "自身または配下のノードへ移動することはできません",
     "RULE_NODE_DEPTH_EXCEEDED": "ノードの階層が上限を超えています（10 階層）",
     "RULE_NODE_NOT_EMPTY": "子ノードと直下の資産がない空のノードのみ削除できます",
+    "RULE_NODE_SCOPE_REFERENCED": "ノード「{path}」は他の {count} 件の管理範囲の一部のため削除できません",
     "RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE": "ストレージ種別・エンドポイント・バケットを変更する場合は資格情報を入力し直してください",
     "RULE_OFFSITE_TEST_RATE_LIMITED": "接続テストの頻度が高すぎます。しばらくしてからやり直してください",
     "RULE_RECORDING_UNAVAILABLE": "録画ストレージに異常があるため新規接続を停止しています。管理者に連絡してください",
@@ -4307,7 +5010,9 @@
     "RULE_SSH_AUTH_FAILED": "SSH 認証に失敗しました。資産の認証情報を確認してください",
     "RULE_SSH_DIAL_TIMEOUT": "接続先ホストへの接続がタイムアウトしました",
     "RULE_SSH_ENDPOINT_MOVED": "SSH はこのエンドポイントを経由しません。ネイティブ端末エンドポイント GET /api/v1/ssh をご利用ください",
-    "RULE_SSH_HOST_KEY_CHANGED": "ホストキーが変更されたため、接続を拒否しました。ホストを再構築した場合は、管理者にホストキーのリセットを依頼してください",
+    "RULE_SSH_HOST_KEY_CHANGED": "ホストの身元が記録と一致しません。ホスト鍵（host key）が記録と異なり、プラットフォームはログイン認証情報を送信しました。この件は記録されています。ホストを再インストールまたは交換していない場合、なりすましの可能性があります。直ちに切断し、管理者に確認のうえ新しいフィンガープリントの採用またはホスト鍵のリセットを依頼してください",
+    "RULE_SSH_HOST_KEY_CHECK_FAILED": "ホスト鍵の確認に失敗したため接続を中止しました。しばらくしてから再試行するか、管理者に連絡してください",
+    "RULE_SSH_HOST_KEY_MISMATCH_REFUSED": "ホストの身元が記録と一致しません。ホスト鍵（host key）が記録と異なるため、この接続は拒否され、ログイン認証情報は送信していません。この件は記録されています。管理者にホストの確認を依頼し、新しいフィンガープリントの採用またはホスト鍵のリセットを依頼してください",
     "RULE_SSH_PRIVATE_KEY_INVALID": "このアカウントに設定された秘密鍵を使用できません（形式の誤り、または保護パスワードが設定されています）。管理者に秘密鍵の交換を依頼してください。",
     "RULE_SSH_UNREACHABLE": "接続先ホストに到達できません",
     "RULE_STATS_UNSUPPORTED": "接続先ホストはメトリクス収集に対応していません",
@@ -4395,6 +5100,7 @@
     "VALIDATION_CREDENTIAL_NAME_INVALID": "認証情報の名前に改行や制御文字を含めることはできません",
     "VALIDATION_CREDENTIAL_NAME_REQUIRED": "共有認証情報には名前が必要です",
     "VALIDATION_CREDENTIAL_NAME_TOO_LONG": "認証情報の名前が上限の 128 文字を超えています",
+    "VALIDATION_CREDENTIAL_OWNERSHIP_INVALID": "共有認証情報の所属を選択してください：グローバルまたはいずれか 1 つのノード",
     "VALIDATION_CREDENTIAL_PRIVATE_KEY_INVALID": "秘密鍵を認識できません。先頭と末尾の区切り行を含め、秘密鍵の内容をすべて貼り付けてください。保護パスワード（パスフレーズ）が設定された秘密鍵は現在サポートしていません。先にパスフレーズを解除してください。",
     "VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID": "認証情報のプロトコル系統が許可された範囲外です",
     "VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID": "パスワード変更モードは、グループ全体で同一のシークレットか、ホストごとにランダム生成のいずれかです",
@@ -4485,6 +5191,7 @@
     "VALIDATION_OIDC_SHARED_WIDEN": "この issuer はシステムが共有 ID ドメインと判定しているため、専用として指定できません。企業専用 IdP の場合はデプロイ層で専用 issuer として宣言してください",
     "VALIDATION_OIDC_TICKET_MISSING": "ログインチケットがありません",
     "VALIDATION_PASSWORD_FIELD_MISSING": "リクエストパラメータが正しくありません：パスワードフィールドがありません",
+    "VALIDATION_PERMISSION_STATE_ACCEPT_REASON": "確認の理由を入力してください（1 から 500 文字、制御文字は不可）",
     "VALIDATION_PLAN_BAD_CRON": "スケジュール形式が不正です（標準5項目のcron）",
     "VALIDATION_PLAN_BAD_KEY_STRATEGY": "鍵ストラテジは append_replace または exclusive のみ指定できます",
     "VALIDATION_PLAN_BAD_MAX_AGE_DAYS": "資格情報の最長使用日数の上書きは 0（グローバル設定を使用）または 1 から 3650 で指定してください",
@@ -4533,6 +5240,8 @@
     "VALIDATION_SYSLOG_HOST_REQUIRED": "ホストを入力してください",
     "VALIDATION_SYSLOG_PORT_RANGE": "ポートは 1〜65535 の範囲で指定してください",
     "VALIDATION_SYSLOG_PROTOCOL": "プロトコルは udp/tcp/tcp+tls のいずれかを指定してください",
+    "VALIDATION_SYSTEM_ALERT_LOCKED": "システムアラートは重要度の調整のみ可能で、無効化や削除はできません",
+    "VALIDATION_SYSTEM_ALERT_SEVERITY": "システムアラートの重要度は high、medium、low のいずれかを指定してください",
     "VALIDATION_TAGS_TOTAL_TOO_LONG": "タグの合計長が上限を超えています（合計最大 500 文字）",
     "VALIDATION_TAG_CONTAINS_COMMA": "タグにカンマを含めることはできません",
     "VALIDATION_TAG_EMPTY": "タグを空にすることはできません",
@@ -4558,7 +5267,11 @@
     "VALIDATION_ALERT_OUTPUT_BLOCK": "送信済みのバイトは取り消せないため、出力はブロックできません。",
     "CONFLICT_ALERT_ALREADY_REVIEWED": "送信時点ですでにレビュー結果があります",
     "RULE_ALERT_BATCH_SELF_TRIGGERED": "自分の接続で発生したアラートは一括処理の対象外です。1 件ずつレビューしてください",
-    "VALIDATION_ALERT_BATCH_NOTE": "レビュー理由は 500 文字以内で入力してください。一括レビューでは理由が必須です"
+    "VALIDATION_ALERT_BATCH_NOTE": "レビュー理由は 500 文字以内で入力してください。一括レビューでは理由が必須です",
+    "RULE_AUTHORIZATION_SELF_SUBJECT": "自分自身、所属するグループ、または所有する agent を対象とする権限付与ルールは作成・変更できません",
+    "RULE_APPROVER_SCOPE_SUBJECT_OVERLAP": "承認者と申請者は重複できません",
+    "RULE_AGENT_OWNER_TRANSFER_SELF_GRANT": "新しい所有者はこの agent に対して有効な権限付与、承認範囲、または有効な承認票を持っているため、移管できません",
+    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "ルール作成者以外はアカウント範囲を狭めることのみ可能で、広げることはできません"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "このプロバイダーにはグループ claim 名が設定されていますが、groups スコープが要求されていません。多くのプロバイダーはグループクレームを発行しないため、マッピング規則は誰にも一致せず、規則で付与済みのロールも取り消されます。",
@@ -4630,7 +5343,8 @@
     "transport_syslog_level": "syslog 伝送強制レベル",
     "transport_vnc_level": "VNC 伝送強制レベル",
     "web_idle_minutes": "Web セッションのアイドルタイムアウト",
-    "web_max_session_hours": "Web セッションの最大時間"
+    "web_max_session_hours": "Web セッションの最大時間",
+    "mapping_revalidation_hours": "グループマッピング再検証の時限"
   },
   "policyUnit": {
     "chars": "文字",
@@ -4965,7 +5679,11 @@
     "identifierCopied": "識別子をコピーしました",
     "copyFailed": "識別子をコピーできませんでした",
     "sourceAttrMissingHint": "このソースにはグループ項目が設定されていません。ログイン時には同期されません。規則は先に作成できますが、有効化する前にグループ項目を設定してください。",
-    "unknownObservationRule": "ログイン時にユーザーの外部グループを確認できない場合、既存のマッピング権限を維持します。",
+    "revalidation": {
+      "limited": "再検証の時限 {limit}：グループマッピング由来の権限を持つアカウントのセッションは最長 {limit} です。ログイン時にグループ情報を取得できず、前回の取得から {limit} を超えている（または一度も取得していない）場合は、マッピングで付与されたロールとユーザーグループを取り消します。次にグループ情報を取得したときに、ルールに従って改めて計算します。確立済みのプロトコル接続は既存の失効ポリシーに従い、この時限の対象外です。ルールを無効化または削除すると、対応する権限は保存時に取り消されます。",
+      "unlimited": "再検証の時限は無制限に設定されています：マッピング由来の権限に時間の上限はありません。外部のソースでグループから外された人のマッピング由来の権限は、その人の次回ログインまで残り、ログイン時にグループ情報を取得できない場合も常に維持されます。確立済みのプロトコル接続は既存の失効ポリシーに従います。ルールを無効化または削除すると、対応する権限は保存時に取り消されます。",
+      "unknown": "再検証の時限はセキュリティポリシーで設定され、ここでは現在値を読み取れません。時限が設定されている場合、グループマッピング由来の権限を持つアカウントのセッションはその時限を超えず、ログイン時にグループ情報を取得できず、前回の取得から時限を超えている（または一度も取得していない）ときは、マッピングで付与されたロールとユーザーグループを取り消します。無制限の場合、マッピング由来の権限は次回ログインまで残ります。確立済みのプロトコル接続は既存の失効ポリシーに従います。ルールを無効化または削除すると、対応する権限は保存時に取り消されます。"
+    },
     "currentUsage": "資産アクセス {asset_authorizations} 件、承認者範囲 {approver_scopes} 件、申請者範囲 {requester_scopes} 件",
     "confirmUsage": "このマッピングにより資産アクセス権や承認権限が付与される可能性を理解しました",
     "editIdentityHint": "旧ルールの権限は直ちに取り消され、新ルールは次回ログイン時に適用されます。",
@@ -4993,7 +5711,30 @@
       "user_group_mapping_applied": "ユーザーグループのマッピングを適用",
       "group_mapping_rule_revoked": "マッピング規則の根拠を取り消し",
       "group_mapping_source_revoked": "ソースのマッピング根拠を取り消し"
-    }
+    },
+    "timing": {
+      "heading": "マッピングされたロールが変わるタイミング",
+      "manager": {
+        "lead": "管理者がルールを変更：保存した時点で取り消されます。",
+        "detail": "管理者がルールを無効化・削除したとき、ID ソースを無効化したとき、またはルールの外部グループや対象を変更したときは、そのルールが与えていた権限は保存した時点で取り消されます。同じロールが別の経路（直接割り当て、グループ、ほかのルール）からも与えられている場合は影響を受けません。変更後の新しいルールは、メンバーが次にサインインしたときに、ディレクトリのグループに基づいて付与されます。"
+      },
+      "external": {
+        "lead": "外部ディレクトリ側のグループ変更：その人の次回サインイン時に再計算されます。"
+      }
+    },
+    "targetRoles": "ロール：{roles}",
+    "targetNoRoles": "ロールなし",
+    "protectedRow": "スーパー管理者のみ変更できます",
+    "protectedOption": "スーパー管理者のみ設定できます",
+    "managementTarget": "このグループには管理ロール「{role}」が含まれています。保存後、セキュリティ担当者に通知されます。",
+    "managementRoleTarget": "このロールは管理ロール「{role}」です。保存後、セキュリティ担当者に通知されます。",
+    "protectedTarget": "このグループには「{role}」ロールが含まれています。",
+    "externalDirectoryDecides": "この外部グループのメンバーは、外部ディレクトリの管理者が決めます。ディレクトリで追加された人は、次回ログイン時に「{role}」を取得し、ここを経由する必要はありません。",
+    "footerRule": "「スーパー管理者」または「システムセキュリティ管理者」を付与するマッピングは、スーパー管理者のみ追加、変更、無効化、削除できます。",
+    "rolesTabHint": "ここでは、外部グループをスコープ指定が不要な組み込みロールにのみ直接対応付けられます。その他のロール（カスタムロールなど）は、先にユーザーグループへ付与し、「グループ → ユーザーグループ」でマッピングを設定してください。",
+    "directMapHint": "目的のロールが見つかりませんか。一覧にないロール（カスタムロールなど）はユーザーグループ経由で取得します。先にグループへロールを付与し、「グループ → ユーザーグループ」を使ってください。",
+    "groupRolesUnavailable": "各グループのロールを現在読み取れないため、選択肢は事前に無効化されていません。保存時にシステムが確認します。",
+    "groupListFailed": "ユーザーグループ一覧を読み込めませんでした。"
   },
   "identitySources": {
     "title": "アイデンティティソース",
@@ -5018,6 +5759,7 @@
     "lastLoginAt": "直近の成功サインイン {time}",
     "neverLoggedIn": "成功したサインインはまだありません",
     "lastSaved": "最終保存 {time}",
+    "configChangeNotice": "ID ソースの設定が変更されています。保存するとセキュリティ担当者に通知されます。",
     "ruleCount": "規則 {count} 件",
     "ruleCountUnknown": "—",
     "listNote": "規則は各ソースの「外部グループのマッピング」ページで管理します。外部グループの変更は次回ログイン時に反映され、規則またはソースを無効化すると、そのマッピングの根拠は直ちに取り消されます。ディレクトリは 1 つまでです。",
@@ -5629,6 +6371,11 @@
       "tokens": "自動化主体の資格情報の状態",
       "differences": "現在の状態にない識別値：{missing}、現在の状態にのみ存在する識別値：{extra}"
     },
+    "permissionState": {
+      "title": "権限状態の比較",
+      "unknown": "比較を完了できません",
+      "unknownHint": "権限状態の変更記録が不完全か検証できないため、現在はその後の直接変更を検出できません。スーパー管理者が障害イベントで確認し、比較基準をリセットしてください。"
+    },
     "roleState": {
       "title": "役割の割り当て",
       "desc": "現在の役割の割り当てを、直近の保全でチェックポイントに署名された内容と、それ以降に記録された付与・剥奪のすべてと突き合わせます。食い違いは、本システムを経ずにデータベースを直接書き換えて役割が付けられた、または外されたことを意味します。",
@@ -5720,7 +6467,8 @@
       "extra_rows_valid_hmac": "余分な記録あり（人による確認が必要）",
       "signature_invalid": "署名無効",
       "chain_broken": "連鎖の断絶",
-      "seq_gap": "番号が不連続"
+      "seq_gap": "番号が不連続",
+      "attestation_invalid": "権限状態の証明が無効"
     },
     "statusHint": {
       "purged_legal": "保持ポリシーに従う削除であり、削除の主張自体も検証を通過しています。異常ではありません。削除の根拠を確かめる場合は「システム設定 → セキュリティポリシー」ページでこの種類のデータの保持期間をご確認ください。追加の調査は不要です。",
@@ -5730,7 +6478,8 @@
       "extra_rows_valid_hmac": "この区間に、保全時には数えられていなかった記録が現れ、いずれも有効な完全性署名を持っています。非常に長い処理が、その区間の保全より後に記録を書き込んだ可能性もあれば、署名鍵の保持者が後から挿入した可能性もあり、人による判断が必要です（下記の限界 R1 を参照）。判断の手がかり：余分な記録が保全時点の前後に集まり、当時進行中だった作業と対応するのであれば、遅れて届いた記録の可能性が高くなります。時点が大きく離れていたり、対応する作業が見当たらない場合は、事後の挿入として扱い、上長へ報告のうえ調査を進めてください。",
       "signature_invalid": "このチェックポイント自身の署名が検証を通らないため、そこに書かれた主張は一切信頼できません。この結果からこの区間を推論しないでください。前後にある検証を通過したチェックポイントで信頼できる範囲を画定し、その期間に署名鍵の交換やシステムの再構築がなかったかを確認したうえで、外部保管の控えと突き合わせてください。",
       "chain_broken": "直前のチェックポイントとの連結値、または区間の接続が一致しません。その 2 つのチェックポイントに挟まれた期間が疑わしい範囲です。その期間にシステムの復元やデータベースの巻き戻しがなかったかを確認し、外部保管の控えと突き合わせてください。",
-      "seq_gap": "番号が不連続で、対応する正当な削除の記録も見当たりません。欠けている範囲に保持ポリシーによる削除が実施されたかを確認してください。該当する記録がない場合は、チェックポイントが取り除かれたものとして扱い、外部保管の控えでその範囲を照合してください。"
+      "seq_gap": "番号が不連続で、対応する正当な削除の記録も見当たりません。欠けている範囲に保持ポリシーによる削除が実施されたかを確認してください。該当する記録がない場合は、チェックポイントが取り除かれたものとして扱い、外部保管の控えでその範囲を照合してください。",
+      "attestation_invalid": "このチェックポイント自体は検証を通りますが、一緒に封印された権限状態の記録が欠けている、改変されている、または署名が検証を通りません。区間についての主張は引き続き信頼できますが、当時の権限状態の証明は失われています。その記録がデータベース上で直接消去・書き換えされていないかを確認し、外部保管の控えと突き合わせてください。"
     },
     "limits": {
       "title": "本機能が守る範囲と、その限界",
@@ -6023,6 +6772,10 @@
         "login": "ログイン",
         "logout": "ログアウト",
         "new_source_ip": "新しい送信元アドレスからログイン",
+        "host_key_mismatch": "接続時にホスト鍵が記録と一致しなかった：認証を許可し、保管中のログイン認証情報は未確認のホストへ送られる（記録済み）",
+        "host_key_cred_sent": "ホスト鍵不一致を許可した後、ログイン認証情報が実際にそのホストへ送信された（認証結果を含む）",
+        "retention_floor_raised": "アップグレード時に下限未満のデータ保持日数を下限まで引き上げた（またはチェックポイント保持を追随して引き上げた）。旧値・新値・理由を含む",
+        "host_key_adopt": "観測されたホスト鍵フィンガープリントを記録として採用した",
         "agent_tool_call_args_viewed": "ツール呼び出しの機密パラメータ原文を閲覧（記録済み）",
         "unlock": "アカウントのロック解除",
         "pw_noncompliant": "パスワードがポリシー不適合",
@@ -6032,6 +6785,7 @@
         "agent_token_suspended": "エージェントトークンを停止",
         "agent_sessions_terminated": "エージェントセッションの終了結果",
         "agent_sessions_terminate_late": "エージェントセッションの終了が目標時間を超過",
+        "permission_state_accepted": "権限状態の変更を確認済み",
         "suspend": "停止済み",
         "file_list": "ファイル一覧を参照",
         "file_upload": "ファイルをアップロード",
@@ -6049,6 +6803,10 @@
         "offsite_integrity": "オフサイト保管：取得した内容がアップロード時点と不一致",
         "offsite_profile": "オフサイト保管：ストレージ設定世代の変更",
         "offsite_cred_revoke": "オフサイト保管：世代の資格情報を失効",
+        "role_definition_create": "ロール定義を作成しました",
+        "role_definition_copy": "ロール定義を複製しました",
+        "role_definition_update": "ロール定義を変更しました",
+        "role_definition_delete": "ロール定義を削除しました",
         "migration": "アップグレード時に{resource}を変換",
         "assign": "{resource}を割り当て"
       },
@@ -6308,6 +7066,7 @@
     }
   },
   "offsite": {
+    "changeAlertNotice": "この種の変更は記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
     "headerDesc": "証拠コピーのオフサイト保管先を設定し、アップロード待ち行列と取得状況を確認します。",
     "loadFailedGuardTitle": "オフサイト保管の設定を読み取れません",
     "loadFailedGuardDesc": "空のフォームでサーバー上の設定を上書きしないよう、保存を一時的に無効にしています。更新を押してからやり直してください。",
@@ -6703,6 +7462,7 @@
     "mfa_required": "次回のログインから有効になり、すでにログイン中の利用者には影響しません。",
     "web_idle_minutes": "ログイン中の利用者にも適用され、遅くとも次回のトークン更新時にログアウトされます。0 はタイムアウトなしを表します。",
     "web_max_session_hours": "次回のログインから適用され、ログイン中の利用者は元の時間のままです。0 は無制限を表します。",
+    "mapping_revalidation_hours": "グループマッピング由来の権限を持つアカウントのセッションは、この時間を超えません。グループ情報がこの時間を超えて取得できない場合は、マッピング由来の権限を取り消します。0 は無制限を表し、外部グループから外された人の権限は次回ログインまで残ります。",
     "refresh_cookie_secure": "次回のログインまたはログイン状態の更新時に適用され、ブラウザーに保存済みの設定を置き換えます。",
     "session_idle_minutes": "接続の確立時に決まり、確立済みの接続には影響しません。0 はタイムアウトなしを表します。",
     "session_max_minutes": "接続の確立時に決まり、確立済みの接続には影響しません。0 は無制限を表します。",
@@ -7262,7 +8022,8 @@
       "valid": "有効",
       "expired": "期限切れ",
       "suspended": "停止中",
-      "revoked": "取消済み"
+      "revoked": "取消済み",
+      "restore_invalidated": "復元により失効"
     },
     "quota": "所有 agent：{current}／{max}",
     "you": "あなた",
@@ -7439,6 +8200,7 @@
     "noEventsNext": "記録がなくても理由を入力すれば解除できます。解除後は新しい鍵を発行してください。",
     "tokenRevoked": "{time} に取り消し",
     "tokenExpired": "{time} に期限切れ",
+    "tokenRestoreInvalidated": "復元により失効（復元前に発行。新しいキーを発行してください）",
     "statTargets": "しきい値に数える対象数",
     "countBoundaryShort": "「許可されていない対象」への接続のみがしきい値の対象であり、これは現在の判定時間枠のカウントではありません。",
     "noPendingHint": "この主体に未対応の自動停止はありません。今後自動停止された場合は、このページに解除フォームが表示されます。",
@@ -7603,5 +8365,379 @@
     "callsValue": "計 {n} 回",
     "blockedValue": "うち {n} 回ブロック",
     "emptyNext": "エージェントが接続してツールを呼び出すと、ここに記録が表示されます。"
+  },
+  "sidebar": {
+    "pinned": "ピン留め",
+    "pin": "ピン留めする",
+    "unpin": "ピン留めを外す",
+    "pinItem": "「{name}」をピン留め",
+    "unpinItem": "「{name}」のピン留めを外す"
+  },
+  "capabilities": {
+    "loadFailed": "権限情報を読み込めなかったため、一部の機能を一時的に表示していません。",
+    "retry": "再試行"
+  },
+  "permissions": {
+    "credential": {
+      "view": "資格情報の表示",
+      "create": "資格情報の作成",
+      "update": "資格情報の名前とメモの編集",
+      "setSecret": "資格情報のシークレット宣言",
+      "rotate": "資格情報のローテーション開始",
+      "convertScope": "資格情報の範囲変換",
+      "detach": "共有資格情報からの切り離し",
+      "delete": "資格情報の削除",
+      "bind": "資格情報のバインドと解除"
+    },
+    "account": {
+      "rotate": "アカウントのパスワード変更の開始"
+    }
+  },
+  "systemAlerts": {
+    "types": {
+      "asset_address_changed": {
+        "name": "資産の接続先アドレスの変更",
+        "description": "ホスト、ポート、プロトコルが変更されました"
+      },
+      "transport_verification_relaxed": {
+        "name": "通信の検証の緩和",
+        "description": "証明書の検証の無効化、暗号化接続の要件の引き下げなど"
+      },
+      "access_policy_relaxed": {
+        "name": "接続ポリシーの緩和",
+        "description": "接続ポリシーが「承認者の承認が必要」から緩和されました"
+      },
+      "custom_secret_used": {
+        "name": "任意パスワードの使用",
+        "description": "変更、共有資格情報からの切り離し、訂正の際に、人がパスワードを指定しました"
+      },
+      "identity_source_changed": {
+        "name": "IDソースの設定変更",
+        "description": "ディレクトリ（LDAP）または OIDC プロバイダーの接続設定が変更されました"
+      },
+      "security_admin_account_operated": {
+        "name": "システムセキュリティ管理者アカウントの操作",
+        "description": "他の人がシステムセキュリティ管理者のパスワード変更、MFA の無効化、外部 ID の紐付けを行いました"
+      },
+      "self_privilege_increased": {
+        "name": "自分への権限の追加",
+        "description": "自分にロールを追加、範囲を拡大、または権限を持つグループに参加しました"
+      },
+      "self_privilege_decreased": {
+        "name": "自分の権限の削減",
+        "description": "自分のロールを外す、またはグループから抜けました"
+      },
+      "management_role_granted": {
+        "name": "管理系ロールの付与",
+        "description": "資産、認可、ID の管理者などの管理系ロールを他の人に付与しました"
+      },
+      "retention_shortened": {
+        "name": "保持日数の短縮",
+        "description": "操作ログ、録画、コマンドストリーム、アラート記録の保持日数が短縮されました"
+      },
+      "offsite_or_syslog_changed": {
+        "name": "オフサイトコピーまたは syslog の変更",
+        "description": "無効化、または別の送信先への変更"
+      },
+      "key_topology_changed": {
+        "name": "鍵設定の変更",
+        "description": "鍵の保管方法が変更されました"
+      },
+      "recording_failclose_disabled": {
+        "name": "録画障害時に接続を止めない設定",
+        "description": "録画ストレージに障害があっても接続を許可します（障害は引き続き通知されます）"
+      },
+      "recording_deleted": {
+        "name": "録画の削除",
+        "description": "接続の録画が削除されました"
+      },
+      "mapping_revalidation_relaxed": {
+        "name": "外部マッピングの再検証の緩和",
+        "description": "外部グループマッピングの再検証期限が延長されました"
+      },
+      "host_key_mismatch": {
+        "name": "ホスト鍵の不一致",
+        "description": "接続時のホスト鍵が記録と一致しません"
+      },
+      "host_key_record_changed": {
+        "name": "ホスト鍵記録の変更",
+        "description": "ホスト鍵の記録が新しい値に置き換えられ、またはリセットされました"
+      },
+      "notification_channel_changed": {
+        "name": "通知チャネルの変更",
+        "description": "通知チャネルが追加、変更、無効化、または削除されました"
+      },
+      "concurrent_instance_detected": {
+        "name": "並行インスタンスの検出",
+        "description": "起動時に、同じデータベースに対して別のインスタンスが動作している可能性を検出しました（確認による上書き起動、またはガード対応の他の接続を確認）"
+      }
+    },
+    "groups": {
+      "addressTransport": "接続先アドレスと通信のセキュリティ",
+      "secret": "パスワード",
+      "identityPrivilege": "IDと権限",
+      "securitySettings": "システムセキュリティ設定",
+      "notification": "通知"
+    },
+    "catalog": {
+      "title": "システムアラート",
+      "intro": "これらのアラートはシステムに組み込まれており、発生した場合は生成され、有効なすべての通知チャネルに送信されます。削除や無効化はできません。重要度を調整して、一覧と通知での優先順位を決められます。",
+      "columnType": "アラートの種類",
+      "columnDefault": "既定の重要度",
+      "columnEffective": "重要度",
+      "columnRecent": "過去 30 日",
+      "recentCount": "{count} 件",
+      "adjusted": "調整済み",
+      "adjust": "重要度を調整",
+      "total": "システムアラート {count} 種類",
+      "readonlyHint": "これらのアラートは閲覧できますが、重要度を調整する権限がありません。",
+      "loadFailed": "システムアラートの読み込みに失敗しました",
+      "empty": "システムアラートの種類がありません",
+      "dialogTitle": "アラートの重要度を調整",
+      "dialogLevelLabel": "重要度",
+      "optionHigh": "一覧の先頭に表示され、通知は「高」と表示されます（既定）",
+      "optionMedium": "通知は「中」と表示されます",
+      "optionLow": "通知は「低」と表示されます",
+      "dialogNote": "調整後も、この種類のアラートは生成され、チャネルの「どのアラートを送るか」の設定に関係なく、有効なすべての通知チャネルに送信されます。この調整は操作ログに記録されます。",
+      "saved": "重要度を調整しました"
+    },
+    "detail": {
+      "title": "システムアラート",
+      "happened": "何が起きたか",
+      "notice": "システムアラートは組み込みで、必ず生成され、有効なすべての通知チャネルに送信されます。この操作が承認されたものか確認してください。",
+      "privilegeTitle": "{actor} の権限の変化",
+      "columnBefore": "変更前",
+      "columnAfter": "変更後",
+      "roles": "ロール",
+      "manageable": "管理できる資産",
+      "connectable": "接続できるホスト",
+      "none": "なし",
+      "count": "{count} 台",
+      "techTitle": "技術的な詳細",
+      "typeLabel": "アラートの種類",
+      "typeLocked": "システムアラート（削除・無効化はできません）",
+      "severityLabel": "重要度",
+      "severityBasis": "システムアラートの設定による",
+      "deliveryLabel": "通知の送信",
+      "auditLogLabel": "操作ログ",
+      "auditLogMissing": "対応する操作ログが見つかりません",
+      "auditLogLink": "操作ログで確認",
+      "actorLabel": "操作者",
+      "targetLabel": "対象",
+      "paramsLabel": "パラメーター",
+      "attempts": "{count} 回試行",
+      "loadFailed": "システムアラートの詳細の読み込みに失敗しました",
+      "occurredAt": "発生日時",
+      "sourceAddressLabel": "送信元アドレス",
+      "deliveredAt": "{time} に送信済み",
+      "nextAttemptAt": "次回試行 {time}"
+    },
+    "targetKinds": {
+      "asset": "資産",
+      "credential": "認証情報",
+      "user": "ユーザー",
+      "user_group": "ユーザーグループ",
+      "role_mapping": "ロールマッピング",
+      "role": "ロール",
+      "identity_source": "ID ソース",
+      "notification_channel": "通知チャネル",
+      "session": "接続",
+      "system_setting": "システム設定"
+    },
+    "delivery": {
+      "pending": "送信待ち",
+      "retrying": "再送中",
+      "delivered": "送信済み",
+      "abandoned": "送信を断念",
+      "noDestination": "有効な通知チャネルがないため送信されていません"
+    }
+  },
+  "accessPolicyDowngrade": {
+    "title": "接続ポリシーを緩和しますか？",
+    "change": "{asset} の接続ポリシーを「{from}」から「{to}」に変更します。",
+    "consequenceReason": "変更後は、申請に手動の承認が不要になり、理由を入力すると自動で承認されます。",
+    "consequenceOpen": "変更後は、申請も理由も不要になり、常設の接続認可があれば直接接続できます。",
+    "notice": "これは緩和です。保存すると操作ログに記録され、システムセキュリティアラートが作成されます。通知の到達は通知チャネルの設定と配信結果によります。",
+    "confirm": "緩和して保存",
+    "unknownDefault": "{asset} の接続ポリシーを変更します。全体の既定値を参照できないため、変更後の段階を確認できません。現在の設定より低くなる場合は緩和です。"
+  },
+  "dangerConfirm": {
+    "title": "保存前に {n} 件の組み合わせを確認してください",
+    "titleGeneric": "保存前にご確認ください",
+    "notBlocking": "これらの組み合わせは保存を妨げません。保存後すぐに反映され、操作ログに記録されます。",
+    "notBlockingNoCombo": "確認が必要な組み合わせはなく、保存は妨げられません。保存後すぐに反映され、操作ログに記録されます。",
+    "notBlockingZero": "現在の影響は 0 人です。確認が必要な組み合わせはなく、保存は妨げられません。",
+    "back": "修正に戻る",
+    "proceed": "このまま保存",
+    "affectedTotal": "合計 {n} 人に影響します。",
+    "namesNote": "名前を表示するのはご自身だけで、ほかの保持者は人数で表します。",
+    "holdersYouAndOthers": "ご自身と、ほか {n} 人の保持者",
+    "holdersOthers": "ほか {n} 人の保持者",
+    "holdersCount": "{n} 人",
+    "newlyAdded": "（新規追加）",
+    "evaluatedPartial": "このルールは {total} 人に影響します。今回確認したのはそのうち {evaluated} 人（ご自身を含む）だけで、上の組み合わせの人数はこの {evaluated} 人のみに基づきます。",
+    "notifyUnaffectedByCap": "セキュリティ担当者に通知されるかどうかは、この上限の影響を受けません。",
+    "notify": {
+      "title": "保存後、セキュリティ担当者に通知されます",
+      "roleDefinition": "この変更で、ロールに管理機能が追加されます。",
+      "roleDefinitionSelf": "この変更で、ロールに管理機能が追加されます。あなた自身もこのロールを持っており、ご自身の権限の変更は増減を問わず通知されます。",
+      "roleDefinitionHeld": "この変更で「{role}」に管理機能が追加され、このロールを持つ人は次のページが増えます：{routes}。",
+      "roleDefinitionUnheld": "現在「{role}」を持つ人はいませんが、ユーザーグループまたは外部グループマッピングルールが使用しています（無効なルールも含む）。今後それらを通じてこのロールを得た人も、追加された管理機能を得ます。",
+      "directGrant": "この割り当てで、相手は管理機能（{roles}）を得て、次のページが増えます：{routes}。",
+      "selfChange": "今回変更されるのはご自身の権限です。ご自身の権限の変更は、増減を問わず通知されます。",
+      "groupRoles": "このグループは管理ロール「{role}」を持っており、グループのメンバー全員が取得します。",
+      "groupEmpty": "「{group}」には現在メンバーがいませんが、今回管理ロール「{role}」が追加されます。今後このグループに加わる人はこれを取得します。",
+      "groupMembers": "このグループは管理ロール「{role}」を持っており、新しく加わる {n} 人のメンバーが取得します。",
+      "mappingRule": "新しい対象「{target}」は管理ロール「{role}」を持っています。"
+    },
+    "mappedUnaffected": "マッピングで加わったメンバーは、今回の変更の影響を受けません。",
+    "oldTargetRevoked": "旧対象「{target}」の権限は、保存した時点で取り消されます。",
+    "previewFailed": {
+      "title": "今回の保存による影響をプレビューできません",
+      "body": "今回の保存が誰に影響するか、セキュリティ担当者に通知されるかどうかを、現在確認できません。",
+      "hint": "保存はできます。保存後の通知の有無は通常どおりシステムが判定し、操作ログに記録されます。"
+    },
+    "comboHint": {
+      "authz_rules_with_asset_or_credential": "このロールを持つ人は、自分自身の接続権限を開設できます。",
+      "security_with_asset_or_authz": "同じ人がホストを変更でき、録画やログの保存方法も調整できるため、操作したあとに記録を消せる可能性があります。別々の人に分けることをおすすめします。",
+      "asset_management_with_connect": "同じ人が資産設定を変更でき、その資産に接続もできます。別々の人に分けることをおすすめします。",
+      "identity_with_security": "同じ人がロールを割り当てられ、録画やログの保存方法も調整できます。別々の人に分けることをおすすめします。",
+      "identity_with_business_or_connect": "同じ人が他人に権限を付与でき、自分自身もホストを操作できます。"
+    }
+  },
+  "userDetail": {
+    "tabs": {
+      "basic": "基本情報",
+      "roles": "ロールと範囲"
+    },
+    "header": {
+      "protectedSuper": "スーパー管理者",
+      "protectedSecurity": "システムセキュリティ管理者"
+    },
+    "banner": {
+      "super": "このアカウントはスーパー管理者の身分を持っています。無効と表示された操作はスーパー管理者だけが実行できます。",
+      "security": "このアカウントはシステムセキュリティ管理者の身分を持っています。パスワード、MFA、外部ID の操作は可能で、実行後にセキュリティ担当者へ通知されます。無効化と削除はスーパー管理者だけが行えます。"
+    },
+    "basic": {
+      "restore": "元に戻す",
+      "saveChanges": "変更を保存"
+    },
+    "accountOps": {
+      "title": "アカウント操作",
+      "sameAsList": "一覧の「その他」メニューと同じ操作です",
+      "set_password": {
+        "title": "パスワード変更",
+        "desc": "このアカウントに新しいローカルパスワードを設定します。"
+      },
+      "disable_mfa": {
+        "title": "MFA を無効化",
+        "desc": "この人は二段階認証を有効にしています。無効化すると、次回のサインインはパスワードだけになります。"
+      },
+      "unbind_identity": {
+        "title": "外部IDの連携を解除",
+        "desc": "外部ID を {n} 件連携済みです。"
+      },
+      "unbind_and_disable": {
+        "title": "連携解除して無効化",
+        "desc": "連携を解除し、同時にこのアカウントを無効化します。"
+      },
+      "bind_identity": {
+        "title": "外部IDを連携",
+        "desc": "この人が会社の外部サインインでもこのアカウントにサインインできるようにします。"
+      },
+      "disable": {
+        "title": "アカウントを無効化",
+        "desc": "無効化するとサインインできなくなります。データは保持されます。"
+      },
+      "enable": {
+        "title": "アカウントを有効化",
+        "desc": "有効化すると再びサインインできます。"
+      },
+      "delete": {
+        "title": "アカウントを削除",
+        "desc": "削除は元に戻せません。"
+      },
+      "unlock": {
+        "desc": "サインインの連続失敗により一時的にロックされています。ロック解除しても無効なアカウントは有効に戻りません。"
+      },
+      "status": {
+        "title": "アカウントの状態"
+      },
+      "blocked": {
+        "superAccount": "スーパー管理者アカウントに対しては、スーパー管理者だけが実行できます。",
+        "lifecycleSuper": "このアカウントはスーパー管理者の身分を持つため、無効化・有効化・削除はスーパー管理者だけが行えます。",
+        "lifecycleSecurity": "このアカウントはシステムセキュリティ管理者の身分を持つため、無効化・有効化・削除はスーパー管理者だけが行えます。"
+      },
+      "notify": {
+        "badge": "操作後にセキュリティ担当者へ通知されます",
+        "dialogTitle": "操作後にセキュリティ担当者へ通知されます",
+        "dialogBody": "このアカウントはシステムセキュリティ管理者の身分を持っています。「{action}」の後、セキュリティ担当者へ通知されます。続行しますか。",
+        "passwordDialog": "このアカウントはシステムセキュリティ管理者の身分を持っています。パスワード変更後、セキュリティ担当者へ通知されます。"
+      }
+    },
+    "roles": {
+      "manualTitle": "管理者が割り当てたロール（{n}）",
+      "mappedTitle": "マッピング由来のロール（{n}）",
+      "groupTitle": "ユーザーグループ由来（{n}）・ここでは変更できません",
+      "pickRole": "ロールを選択",
+      "alreadyAdded": "追加済み",
+      "newlyAdded": "新規追加",
+      "pinLabel": "管理者割り当てとして固定",
+      "pinProtected": "このロールを固定できるのはスーパー管理者だけです",
+      "groupUnavailable": "ユーザーグループを表示する権限がないため、グループ由来のロールを一覧できません。",
+      "groupUnavailableHint": "この人はグループ経由でロールを持っている可能性があります。他の二つの区画は通常どおり使えます。",
+      "goGroup": "グループで変更",
+      "mappedFromMapping": "マッピング由来"
+    },
+    "change": {
+      "title": "保存後の変化",
+      "routesGained": "追加されるページ",
+      "routesLost": "失われるページ",
+      "none": "なし",
+      "notify": "通知",
+      "notifyValue": "保存後にセキュリティ担当者へ通知されます",
+      "connection": "接続できるホスト",
+      "connectionFixed": "一般的な管理能力だけでは接続権は得られません。接続できるホストは資産の認可で決まり、スーパー管理者は既存の予約済み身分に従います",
+      "effectiveNow": "保存後すぐに有効になり、操作ログに記録されます。",
+      "unavailable": "プレビューを一時的に取得できません"
+    },
+    "loadFailed": "このユーザーを読み込めませんでした"
+  },
+  "roleNodePicker": {
+    "modeAll": "システム全体",
+    "modeNodes": "ノードを指定",
+    "panelHint": "ノードを選択します。配下の子ノードと、今後追加される子ノードもまとめて含まれます。",
+    "searchPlaceholder": "ノードを検索",
+    "searchEmpty": "一致するノードが見つかりません",
+    "assetCount": "{n} 台",
+    "includesChildren": "子ノードを含む",
+    "fromGroup": "グループ経由",
+    "footerUser": "管理者による割り当て {nodes} ノード {direct} 台、グループ経由の {extra} 台を加えて、合計 {total} 台を管理できます",
+    "footerUserNoGroup": "管理者による割り当て {nodes} ノード、合計 {total} 台を管理できます",
+    "footerGroup": "{nodes} ノードを選択中、合計 {total} 台のアセット",
+    "treeLoadFailed": "ノード一覧を読み込めません。しばらくしてからもう一度お試しください。",
+    "countsUnavailable": "台数を一時的に取得できません",
+    "rangeNoEffectNote": "このロールの権限はノードで制限されないため、範囲は適用されません。",
+    "builtinGlobalOnlyNote": "組み込みロールはシステム全体に割り当てた場合のみ有効です。ノードに限定すると権限は付与されません。",
+    "tagAssignable": "範囲を限定可",
+    "tagNoRange": "範囲の選択は不要",
+    "panelTitleUser": "{role}の管理範囲（管理者が割り当て）",
+    "panelTitleGroup": "{role}の管理範囲",
+    "cardCount": "{n} 台（子ノードを含む）",
+    "nodeCountOnly": "{n} 個のノードに限定",
+    "nodeMissing": "ノードは存在しません",
+    "nodeMissingNote": "この範囲の {n} 個のノードは存在しません。その部分は適用されず、システム全体にもなりません。ほかのノードは従来どおりです。",
+    "removeMissing": "存在しないノードを削除",
+    "globalOnlyNote": "このロールにはシステム全体にしか適用できない権限が含まれます。その部分はこの範囲では適用されません。",
+    "changeManagedAssets": "管理可能な資産",
+    "changeAssetsValue": "{after} 台（変更前 {before} 台）",
+    "changeGroupAssetsNote": "グループのロールが対象とする資産は、すべてのメンバーの管理範囲になります。",
+    "mappedStillGranted": "このロールは外部グループからも付与されています。ここで削除すると、システム全体に適用されるロールに変わります。",
+    "mappedStillGrantedGlobal": "このロールは外部グループからも付与されています。"
+  },
+  "manageScope": {
+    "label": "管理できる範囲：",
+    "notAssigned": "未割り当て",
+    "more": "ほか {n} 件"
   }
 }

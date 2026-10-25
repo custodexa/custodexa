@@ -16,6 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/offsite"
@@ -204,8 +205,17 @@ func (h *RecordingHandler) IssueRecordingToken(c *gin.Context) {
 	// 脈絡於**簽發**階段取得：兌換階段只剩 grant，已無從得知經哪個 provider 認證。
 	// 使用者名稱同理——兌換端點無認證中介層，身分只能靠這份簽發時快照
 	authCtx := middleware.GetAuthContext(c)
-	token, err := h.recordingTokens.Issue(userID, uint(id), username, authCtx)
+	var facts authz.TokenFacts
+	if p := middleware.PrincipalFrom(c); p != nil {
+		facts = p.Facts
+	}
+	token, err := h.recordingTokens.Issue(userID, uint(id), username, authCtx, facts)
 	if err != nil {
+		// 鎖交易內重新判定已無錄影檢視權（路由層通過後才撤權）：與路由層同一個能力拒絕寫出
+		if d, ok := recordingIssueDenial(err); ok {
+			middleware.WriteCapabilityDenial(c, middleware.RouteCapabilityDenial(d))
+			return
+		}
 		// 世代閘拒發（帳號停用／解綁／provider 停用）是可預期的認證結果，不是故障：
 		// 回 401 讓前端導向重新登入；混進 500 會讓撤銷生效看起來像系統壞掉。
 		// ErrUserNotFound 一併歸此類——帳號已被刪除
@@ -504,43 +514,37 @@ func (h *RecordingHandler) GetRecordingStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// DeleteRecording 刪除錄製檔案
+// DeleteRecording 刪除單一會話的錄影。
+//
+// 授權由路由登錄的錄影刪除權限點把關（超級管理者照目錄全部持有）。服務層先在交易內留審計
+// 與系統告警、清空錄影欄，提交後才刪檔；留痕寫不進去時檔案不動。成功後撤銷該會話先前
+// 簽出的錄影票。前端沒有刪錄影入口，只有 API。
 func (h *RecordingHandler) DeleteRecording(c *gin.Context) {
-	// 檢查管理員權限（僅管理員可刪除錄製）
-	role, exists := c.Get("role")
-	if !exists {
-		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
-		return
-	}
-
-	roleStr, ok := role.(string)
-	if !ok || roleStr != "admin" {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeRoleRequired, map[string]any{"role": "admin"})
-		return
-	}
-
-	// 解析 Session ID
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "session"})
 		return
 	}
-
-	// 刪除錄製
-	err = h.recordingService.DeleteRecording(uint(id))
+	userID, _ := middleware.GetCurrentUserID(c)
+	username, _ := middleware.GetCurrentUsername(c)
+	err = h.recordingService.DeleteRecording(uint(id), session.RecordingDeleteActor{
+		ID: userID, Name: username, ClientIP: sourceip.Of(c),
+	})
 	if err != nil {
-		if errors.Is(err, session.ErrSessionNotFound) {
+		switch {
+		case errors.Is(err, session.ErrSessionNotFound):
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
-			return
-		}
-		if errors.Is(err, session.ErrSessionHasNoRecording) {
+		case errors.Is(err, session.ErrSessionHasNoRecording):
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionHasNoRecording, nil)
-			return
+		case errors.Is(err, session.ErrRecordingDeleteAlertRaise):
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalSystemAlertRaise, err)
+		default:
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingDelete, err)
 		}
-
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingDelete, err)
 		return
 	}
+	// 資料庫已清空，串流本來就取不到檔；撤銷讓先前簽出的票更早失效
+	h.recordingTokens.RevokeBySession(uint(id))
 
 	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）；
 	// 仍回空 JSON 物件而非空 body，維持「200 一律是 JSON」的回應形狀慣例。
@@ -553,11 +557,11 @@ func (h *RecordingHandler) RegisterRoutes(r *gin.RouterGroup, authService *ident
 	sessions := r.Group("/sessions")
 	sessions.Use(middleware.AuthMiddleware(authService))
 
-	sessions.GET("/:id/recording", middleware.RequirePermission(middleware.PermAuditView), h.GetRecordingMetadata)
-	sessions.GET("/:id/recording/download", middleware.RequirePermission(middleware.PermAuditView), h.DownloadRecording)
-	sessions.GET("/:id/recording/stream", middleware.RequirePermission(middleware.PermAuditView), h.StreamRecording)
-	sessions.POST("/:id/recording/token", middleware.RequirePermission(middleware.PermAuditView), h.IssueRecordingToken)
-	sessions.DELETE("/:id/recording", middleware.RequirePermission(middleware.PermSessionTerminate), h.DeleteRecording)
+	sessions.GET("/:id/recording", middleware.EnforceRegistry(), h.GetRecordingMetadata)
+	sessions.GET("/:id/recording/download", middleware.EnforceRegistry(), h.DownloadRecording)
+	sessions.GET("/:id/recording/stream", middleware.EnforceRegistry(), h.StreamRecording)
+	sessions.POST("/:id/recording/token", middleware.EnforceRegistry(), h.IssueRecordingToken)
+	sessions.DELETE("/:id/recording", middleware.EnforceRegistry(), h.DeleteRecording)
 
 	// 以不透明錄影 token 串流：註冊於未套 AuthMiddleware 的 v1 群組，
 	// 播放器持短時效 token 即可取流，不再把長效 JWT 放進 URL query（避免進 access log）
@@ -567,5 +571,5 @@ func (h *RecordingHandler) RegisterRoutes(r *gin.RouterGroup, authService *ident
 	recordings := r.Group("/recordings")
 	recordings.Use(middleware.AuthMiddleware(authService))
 
-	recordings.GET("/stats", middleware.RequirePermission(middleware.PermAuditView), h.GetRecordingStats)
+	recordings.GET("/stats", middleware.EnforceRegistry(), h.GetRecordingStats)
 }

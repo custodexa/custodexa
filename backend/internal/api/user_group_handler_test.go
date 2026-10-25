@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"encoding/json"
 	"github.com/custodexa/backend/internal/modules/identity"
@@ -67,7 +68,7 @@ func newUserGroupTestRouter(h *UserGroupHandler) *gin.Engine {
 	auth := func(c *gin.Context) {
 		c.Set("userID", uint(1))
 		c.Set("username", "admin")
-		c.Set("role", "admin")
+		middleware.SetPrincipal(c, legacyPrincipal("admin"))
 	}
 	r.GET("/user-groups", auth, h.List)
 	r.POST("/user-groups", auth, h.Create)

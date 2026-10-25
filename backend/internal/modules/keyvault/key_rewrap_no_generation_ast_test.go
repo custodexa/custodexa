@@ -586,6 +586,14 @@ type randomnessSourceException struct {
 // 清單同時做反向完備性檢查（登記了但現實中已不取用＝陳舊登記，會在下一個
 // 同名函式出現時無聲放行）。
 var randomnessSourceAllowlist = []randomnessSourceException{
+	{File: "internal/modules/audit/permission_events.go", Func: "NewPermissionOpID",
+		Reason: "權限狀態事件的操作識別（16 bytes hex，寫入事件列供追溯），非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/authz/restore_generation.go", Func: "NewRestoreGeneration",
+		Reason: "備份還原後的恢復世代識別（256-bit hex，存於 authz_state 並作為登入簽章鑰派生的域內 message），本身不是金鑰材料、從不安裝為 KEK。"},
+	{File: "cmd/server/restore_generation.go", Func: "restoreAwareJWTSecret",
+		Reason: "恢復世代讀取失敗時以一次性隨機值（16 bytes）代替世代派生登入簽章鑰（fail-close：所有既有 token 驗不過），只在記憶體、不持久化，非 KEK 材料。"},
+	{File: "cmd/server/instance_guard_startup_alert.go", Func: "newStartupCorrelationID",
+		Reason: "啟動時並行實例系統告警的關聯識別（16 bytes hex，寫入告警參數供追溯），非加密材料、從不安裝為 KEK。"},
 	{File: "internal/modules/identity/agent_token_service.go", Func: "GenerateAgentToken", Reason: "32 bytes 產生 agent bearer 憑證的隨機值，持久化只存 SHA-256；不參與加解密、從不安裝為 KEK。"},
 	{File: "pkg/crypto/gcpkms/provider.go", Func: "newProvider",
 		Reason: "Generates a disposable 32-byte preflight canary to verify remote encrypt/decrypt permissions and integrity; it is never installed as a KEK and both canary buffers are cleared."},
@@ -636,6 +644,27 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 	{File: "internal/dbconsole/ulid.go", Func: "next",
 		Reason: "事件 ID（ULID）的 80 位隨機尾碼，長度 10 位元組，純識別字；" +
 			"只用於審計列、轉錄與匯出 URL 的定址排序，不進 KEK/DEK/HMAC 任何金鑰路徑，非金鑰材料。"},
+	{File: "internal/modules/asset/asset_security_change.go", Func: "newAssetCorrelationID",
+		Reason: "資產模組的關聯識別（16 bytes hex：資產安全相關變更、憑證秘密宣告與脫離共用），寫入同交易的審計列與系統告警明細供互相回查；純識別字，非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/audit/notification_channel_service.go", Func: "newChannelCorrelationID",
+		Reason: "通知通道變更的關聯識別（16 bytes hex），寫入同交易的審計列與系統告警明細供互相回查；純識別字，非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/audit/system_alert_sink.go", Func: "newDeliveryKey",
+		Reason: "系統告警投遞列的投遞識別（16 bytes hex，排入佇列當下產生、同列重送不變），隨通知送給收端做去重；" +
+			"純識別字，不參與加解密、從不安裝為 KEK。"},
+	{File: "internal/api/evidence_correlation.go", Func: "newEvidenceCorrelationID",
+		Reason: "syslog 與金鑰拓撲設定變更的審計列與系統告警共用的關聯識別（12 bytes hex），非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/policy/high_risk_alert.go", Func: "newPolicyCorrelationID",
+		Reason: "安全政策高危設定變更的審計列與系統告警共用的關聯識別（12 bytes hex），非加密材料、從不安裝為 KEK。"},
+	{File: "internal/offsite/change_alert.go", Func: "newCustodyCorrelationID",
+		Reason: "離機儲存停用與改目的地的保管鏈事件與系統告警共用的關聯識別（12 bytes hex），非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/session/recording_delete.go", Func: "newRecordingDeleteCorrelationID",
+		Reason: "錄影刪除的審計列與系統告警共用的關聯識別（12 bytes hex，前綴 rec-），非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/identity/identity_source_change.go", Func: "newSourceCorrelationID",
+		Reason: "身分來源變更的關聯識別（12 bytes hex，前綴 src-），寫入審計列與系統告警明細供互相回查；純識別字，非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/identity/protected_account_ops.go", Func: "newCorrelationID",
+		Reason: "受保護帳號操作的關聯編號（16 bytes hex），串起同一操作的審計列與告警；純識別字，非加密材料、從不安裝為 KEK。"},
+	{File: "internal/modules/asset/credential_impact.go", Func: "newImpactConfirmationID",
+		Reason: "產出一次性的影響確認識別（16 bytes hex，只回給操作者的不透明識別），非金鑰材料、從不安裝為 KEK。"},
 }
 
 // TestBackendHasNoKEKMaterialGenerator 安全紅線的**模組級**機械把關：

@@ -24,7 +24,9 @@ import (
 // 紀錄前的涵蓋起點；選法與其理由見 `baselineCheckpoint`。
 //
 // 預期集合 ＝ 該檢查點的快照 ⊕ 其 `id_to` 之後所有 `user_role` 審計列
-//（assign 加入、revoke 移除）。與現況不符即為**繞過應用程式的角色變更**——
+//（assign 加入、revoke 移除、只改範圍的留痕覆寫範圍）。比對的元素是
+// （使用者, 角色, 範圍）：把一筆節點範圍的指派直接改成全域，與直接加一筆指派同樣
+// 是差集。舊檢查點的快照沒有範圍欄位，一律讀成全域（節點範圍指派在此之前不存在）。與現況不符即為**繞過應用程式的角色變更**——
 // 五條合法路徑全部同交易留痕（`model.AssignUserRole`／`RevokeUserRole`），
 // 審計寫不進去角色就掛不上，故差集非空只有一種來源：直接寫資料庫。
 //
@@ -93,9 +95,14 @@ type RoleStateReconciler struct {
 
 	// mu 保護冪等鍵；對帳頻率低（每次封章、每次驗證、每次特權登入），粗鎖足矣
 	mu sync.Mutex
-	// lastKey 最近一次已開單的 (since_seq, actual_hash)。空＝目前無未結案的不符
+	// lastKeys 舊路徑（user_roles）最近一次已開單的 (since_seq, actual_hash)。空＝目前無未結案的不符；
+	// 其他登記項與權限附證改由持久通道（資料庫中同識別的未結案列）去重
 	lastKeys     map[string]string
 	stateFailure StateFailureSink
+	// permSigner 附證驗章能力（SetPermissionAttestSigner）
+	permSigner permissionSigner
+	// permReadFailing 附證啟用前讀取失敗的單目前開著（本行程）
+	permReadFailing bool
 }
 
 // NewRoleStateReconciler 建立對帳器。failure 為 nil 時只回報不開事件
@@ -190,7 +197,7 @@ func (r *RoleStateReconciler) settle(report *RoleStateReport) {
 //     「不知道」不是「通過」，拿它當基準與拿 false 當基準是同一件事。
 //  3. 兩者皆無（升級後首個含快照的封章之前）＝ 無基準，由呼叫端判 not_covered。
 //
-// **只取載荷版本涵蓋狀態摘要的檢查點（agg_scheme v2/v3）**：v1 檢查點的簽章不涵蓋
+// **只取載荷版本涵蓋狀態摘要的檢查點（agg_scheme v2 以上）**：v1 檢查點的簽章不涵蓋
 // 快照欄，能寫資料庫的人可以事後把快照欄與 reconciled=true 補到舊檢查點上，鏈驗證照過、
 // 對帳卻拿它當基準——基準的可信度必須由簽章背書，而不是由欄位存在與否背書。
 //
@@ -200,7 +207,7 @@ func (r *RoleStateReconciler) baselineCheckpoint(ctx context.Context) (*model.Au
 	db := r.db.WithContext(ctx)
 
 	var reconciled model.AuditCheckpoint
-	switch err := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", []string{model.AggSchemeV2, model.AggSchemeV3}, true).
+	switch err := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", []string{model.AggSchemeV2, model.AggSchemeV3, model.AggSchemeV4}, true).
 		Order("seq DESC").First(&reconciled).Error; {
 	case err == nil:
 		return &reconciled, nil
@@ -213,7 +220,7 @@ func (r *RoleStateReconciler) baselineCheckpoint(ctx context.Context) (*model.Au
 	// 第一個已知不符的檢查點；其後的一切都不可信
 	var firstTainted model.AuditCheckpoint
 	taintedSeq := uint(0)
-	switch err := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", []string{model.AggSchemeV2, model.AggSchemeV3}, false).
+	switch err := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", []string{model.AggSchemeV2, model.AggSchemeV3, model.AggSchemeV4}, false).
 		Order("seq ASC").First(&firstTainted).Error; {
 	case err == nil:
 		taintedSeq = firstTainted.Seq
@@ -222,7 +229,7 @@ func (r *RoleStateReconciler) baselineCheckpoint(ctx context.Context) (*model.Au
 		return nil, fmt.Errorf("讀取最早一個對帳不符的檢查點失敗: %w", err)
 	}
 
-	q := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled IS NULL", []string{model.AggSchemeV2, model.AggSchemeV3})
+	q := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled IS NULL", []string{model.AggSchemeV2, model.AggSchemeV3, model.AggSchemeV4})
 	if taintedSeq > 0 {
 		q = q.Where("seq < ?", taintedSeq)
 	}
@@ -253,13 +260,21 @@ func (r *RoleStateReconciler) roleEventsAfter(ctx context.Context, idTo uint) ([
 
 // applyRoleEvents 把審計列依序套用到基準集合上。
 //
-// details 解不開或動作不在 {assign, revoke} 內的列**跳過並記 log**：
+// 每筆指派帶一個範圍（見 `RolePair.Range`）：assign 加入時為全域（列上帶 `range_after` 者以其為起始範圍），只改範圍的
+// `role_binding_range_changed` 列（動作 update）以其 `range_after` 覆寫該筆指派的範圍。
+// assign 對已在集合內的指派不動它的範圍（封章競態下快照可能已含後續的範圍變更，
+// 而那筆變更的審計列同樣會被重放到）；範圍變更指向集合內不存在的指派時略過。
+// 節點過多使審計列截斷（`range_after_count` 大於列出的個數）時，節點集合無從重建，
+// 記為萬用範圍，比對時只比範圍種類。
+//
+// details 解不開或動作不在 {assign, revoke, update} 內的列**跳過並記 log**：
 // 那是一筆壞掉的證據，而不是一個狀態變更；把它當成變更去猜語義，
 // 猜錯的方向是靜默地讓真的竄改看起來合法
 func applyRoleEvents(baseline []RolePair, rows []model.AuditLog) []RolePair {
-	set := make(map[RolePair]bool, len(baseline))
+	type key struct{ user, role uint64 }
+	set := make(map[key]string, len(baseline))
 	for _, p := range baseline {
-		set[p] = true
+		set[key{p.UserID, p.RoleID}] = p.Range
 	}
 	for i := range rows {
 		var d model.UserRoleAuditDetails
@@ -267,23 +282,71 @@ func applyRoleEvents(baseline []RolePair, rows []model.AuditLog) []RolePair {
 			log.Printf("[RoleState] 稽核列 id=%d 的詳情解析失敗，本列不套用: %v", rows[i].ID, err)
 			continue
 		}
-		pair := RolePair{UserID: uint64(d.UserID), RoleID: uint64(d.RoleID)}
+		k := key{uint64(d.UserID), uint64(d.RoleID)}
 		switch rows[i].Action {
 		case model.ActionAssign:
-			set[pair] = true
+			if _, ok := set[k]; !ok {
+				set[k] = ""
+				// 新建即以節點範圍持有的指派：起始範圍記在 assign 列的 range_after
+				if d.RangeAfter != nil {
+					if rg, ok := rangeFromAudit(d.RangeAfter, d.RangeAfterCount); ok {
+						set[k] = rg
+					}
+				}
+			}
 		case model.ActionRevoke:
-			delete(set, pair)
+			delete(set, k)
+		case model.ActionUpdate:
+			if d.Event != model.RoleBindingRangeChangedEvent {
+				continue // 不是範圍變更的 update：不改對帳集合
+			}
+			if _, ok := set[k]; !ok {
+				continue
+			}
+			rg, ok := rangeFromAudit(d.RangeAfter, d.RangeAfterCount)
+			if !ok {
+				log.Printf("[RoleState] 稽核列 id=%d 的 range_after 無法解讀，本列不套用", rows[i].ID)
+				continue
+			}
+			set[k] = rg
 		default:
 			log.Printf("[RoleState] 稽核列 id=%d 的動作 %q 不在角色指派的動作值域內，本列不套用",
 				rows[i].ID, rows[i].Action)
 		}
 	}
 	out := make([]RolePair, 0, len(set))
-	for p := range set {
-		out = append(out, p)
+	for k, rg := range set {
+		out = append(out, RolePair{UserID: k.user, RoleID: k.role, Range: rg})
 	}
 	sortRolePairs(out)
 	return out
+}
+
+// rangeFromAudit 把審計列的 range_after（"global" 或節點陣列）與總數換成 RolePair.Range
+func rangeFromAudit(after any, count int) (string, bool) {
+	switch v := after.(type) {
+	case string:
+		if v == "global" {
+			return "", true
+		}
+	case []any:
+		nodes := make([]uint64, 0, len(v))
+		for _, e := range v {
+			f, ok := e.(float64)
+			if !ok || f < 0 || f != float64(uint64(f)) {
+				return "", false
+			}
+			nodes = append(nodes, uint64(f))
+		}
+		if len(nodes) == 0 {
+			return "", false
+		}
+		if count > len(nodes) {
+			return RoleRangeWildcard, true
+		}
+		return NodeRange(nodes), true
+	}
+	return "", false
 }
 
 // formatRolePairs 差集的緊湊表述（落 cause_params，不出站）
@@ -293,7 +356,11 @@ func formatRolePairs(pairs []RolePair) string {
 	}
 	parts := make([]string, 0, len(pairs))
 	for _, p := range pairs {
-		parts = append(parts, strconv.FormatUint(p.UserID, 10)+"/"+strconv.FormatUint(p.RoleID, 10))
+		part := strconv.FormatUint(p.UserID, 10) + "/" + strconv.FormatUint(p.RoleID, 10)
+		if p.Range != "" { // 全域維持舊寫法 user/role；節點範圍附 @範圍
+			part += "@" + p.Range
+		}
+		parts = append(parts, part)
 	}
 	return strings.Join(parts, ",")
 }

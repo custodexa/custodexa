@@ -75,15 +75,18 @@ func setupOIDCAuditEnv(t *testing.T) *oidcAuditEnv {
 	}
 	// 單連線：:memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
 		&model.UserExternalIdentity{}, &model.OIDCFlowState{}, &model.OIDCLoginTicket{},
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
 	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
-	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("user_roles: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	if err := db.Create(&model.Role{Name: model.RoleUser, Description: "一般使用者"}).Error; err != nil {
@@ -96,7 +99,7 @@ func setupOIDCAuditEnv(t *testing.T) *oidcAuditEnv {
 	auth := identity.NewAuthService("oidc-audit-secret", 15*time.Minute)
 	auth.SetSecurityPolicies(policy.NewSecurityPolicyService(db))
 	// codec／egress 為 nil：本檔不觸及密鑰解密與出站政策（provider secret 留空）
-	providers := identity.NewOIDCProviderService(db, nil, nil, nil, "https://bastion.example.com")
+	providers := newOIDCProviderServiceT(db, nil, nil, nil, "https://bastion.example.com")
 	login := identity.NewOIDCLoginService(db, providers, nil, auth, nil)
 
 	// 同步落地（AsyncAuditEnabled=false）：非同步 sink 有 worker 與 flush 週期，

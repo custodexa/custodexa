@@ -15,7 +15,7 @@
 # not encrypted, the snapshot taken before (kept outside the file as well) and state.json as the
 # upgrade found it as one more member (CX_PB_STATE=1).
 # shellcheck source=lib/dbext.sh
-. "${BASH_SOURCE[0]%/*}/dbext.sh"
+declare -F cx_dbx_use >/dev/null || . "${BASH_SOURCE[0]%/*}/dbext.sh"
 # shellcheck source=lib/backup_manifest.sh
 . "${BASH_SOURCE[0]%/*}/backup_manifest.sh"
 # shellcheck source=lib/backup_crypt.sh

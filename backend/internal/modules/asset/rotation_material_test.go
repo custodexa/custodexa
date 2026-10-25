@@ -16,10 +16,17 @@ type materialLifecycleExecutor struct {
 	verify func(context.Context) error
 }
 
-func (e materialLifecycleExecutor) Rotate(ctx context.Context, _ rotationTarget, _, _ []byte) error {
+func (e materialLifecycleExecutor) Rotate(ctx context.Context, rt rotationTarget, _, _ []byte) error {
+	// 出示固定鑰走正式回呼：成員提交要求成員經回呼綁定過主機身分
+	if err := presentHostKeyTo(rt, defaultRecorderHostKey()); err != nil {
+		return err
+	}
 	return e.rotate(ctx)
 }
-func (e materialLifecycleExecutor) Verify(ctx context.Context, _ rotationTarget, _ []byte) error {
+func (e materialLifecycleExecutor) Verify(ctx context.Context, rt rotationTarget, _ []byte) error {
+	if err := presentHostKeyTo(rt, defaultRecorderHostKey()); err != nil {
+		return err
+	}
 	return e.verify(ctx)
 }
 
@@ -79,7 +86,7 @@ func TestRotationMemberMaterialLifecycle(t *testing.T) {
 
 func testMemberKeyRollback(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "fixture-password")
-	require.NoError(t, f.db.AutoMigrate(&model.CredentialRotation{}, &model.CredentialRotationMember{}))
+	require.NoError(t, f.db.AutoMigrate(&model.CredentialRotation{}, &model.CredentialRotationMember{}, &model.CredentialJobAuthorization{}))
 	old, oldLine := testKeyPair(t, "old-fixture")
 	original := oldLine + "\n"
 	f.server.seedAuthorizedKeys(original)
@@ -90,7 +97,7 @@ func testMemberKeyRollback(t *testing.T) {
 	var account model.AssetAccount
 	require.NoError(t, f.db.First(&account, f.accountID).Error)
 	require.NoError(t, f.db.Model(&model.Credential{}).Where("id = ?", account.CredentialID).Update("secret_type", model.ChangeSecretTypeSSHKey).Error)
-	rotations := NewCredentialRotationService(f.db, f.assets, f.candidates, f.hostKeys, f.assets.crypto, audit.NewTxSink(), &fakePermissionChecker{defaultAllow: true})
+	rotations := NewCredentialRotationService(f.db, f.assets, f.candidates, f.hostKeys, f.assets.crypto, audit.NewTxSink(), newAllowAllAuthorizer()).WithSystemAlertSink(newFakeAlertSink())
 	rot, err := rotations.Start(adminCtx(), account.CredentialID, StartRotationRequest{})
 	require.NoError(t, err)
 	trace := &materialTrace{BytesColumnCodec: f.assets.bytesCrypto}
@@ -143,13 +150,20 @@ func TestCandidatePromotionMaterialLifecycle(t *testing.T) {
 			f := setupChangeSecretFixture(t, "root", "fixture-password")
 			cand, err := f.candidates.Create(context.Background(), CandidateInput{AssetID: f.assetID, AccountID: f.accountID, AccountUsername: f.username, SecretType: model.ChangeSecretTypePassword, Password: "fixture-password"})
 			require.NoError(t, err)
+			// 轉正要求候選有主機身分綁定：以測試靶機出示的鑰經正式回呼綁定
+			cand = bindCandidateViaCallback(t, f.db, f.retry.hostKeys, cand.ID, f.server.hostKey.PublicKey())
 			trace := &materialTrace{BytesColumnCodec: f.assets.bytesCrypto}
 			f.candidates.bytesCrypto = trace
 			f.assets.bytesCrypto = trace
 			if fail {
+				// 帶授權脈絡的候選不走舊候選補記；帳號對不上改由轉正階段拒絕
+				auth := seedAuthorizationRow(t, f.db, cand.ID, 1, []string{CredCapAccountRotate})
+				require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", cand.ID).
+					Update("authorization_id", auth.ID).Error)
+				cand.AuthorizationID = &auth.ID
 				cand.AccountID += 1000
 			}
-			promoted := f.retry.RetryOne(cand)
+			promoted := f.retry.RetryOneAs(userCtx(1, "operator"), cand)
 			require.Equal(t, !fail, promoted)
 			require.Equal(t, 2, trace.calls, "verification and commit decrypt independently")
 			require.Len(t, trace.buffers, 2)

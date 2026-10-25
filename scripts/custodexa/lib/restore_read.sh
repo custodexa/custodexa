@@ -23,9 +23,13 @@ cx_rs_bad() {
   local key=$1
   shift
   CX_RS_BAD=$key
-  cx_line FAIL "$(cx_msg rs_bad)"
+  # The permission summary can refuse a backup whose file is whole: the checksums have matched by
+  # then. Those two reasons get their own heading and next step; a fresh copy would change nothing.
+  local head=rs_bad next=rs_copy_again
+  case $key in authz_version | authz_refs) head=rs_bad_whole next="rs_next_$key" ;; esac
+  cx_line FAIL "$(cx_msg "$head")"
   cx_rs_par "$(cx_msg "rs_bad_$key" "$@")"
-  cx_rs_par "$(cx_msg rs_copy_again)"
+  cx_rs_par "$(cx_msg "$next")"
   cx_rs_unchanged
   return 1
 }
@@ -254,6 +258,20 @@ cx_rs_member_check() {
   done <"$CX_RS_DIR/pass1/SHA256SUMS"
   [ "$(printf '%s\n' "${!seen[@]}" SHA256SUMS | LC_ALL=C sort)" = "$actual" ] || { cx_rs_bad sums; return 1; }
 }
+# The permission summary of the snapshot. A data set with the permission model needs every key, and
+# the references it reports must hold (a backup that only keeps a diagnosis is not a restore source,
+# nor a safety backup). A legacy set carries authz.model=legacy, or nothing at all.
+cx_rs_authz_snapshot() {
+  local f=$1 text
+  text=$(grep '^authz\.' "$f") || text=""
+  if cx_snap_migrations "$f" | grep -qxF "$CX_SNAP_AUTHZ_MIGRATION"; then
+    cx_snap_authz_valid "$text" || { cx_rs_bad authz; return 1; }
+    cx_snap_authz_known "$text" || { cx_rs_bad authz_version; return 1; }
+    [ "$(cx_snap_get "$f" authz.refs)" = ok ] || { cx_rs_bad authz_refs; return 1; }
+  else
+    case $(cx_snap_get "$f" authz.model) in '' | legacy) ;; *) cx_rs_bad authz; return 1 ;; esac
+  fi
+}
 cx_rs_cross() {
   local d=$CX_RS_DIR/pass1 mf version key digest migs n
   for mf in release tool; do
@@ -271,6 +289,7 @@ cx_rs_cross() {
   digest=$(printf '%s\n' "$migs" | sha256sum)
   [ "$n" = "$(cx_rs_get db.migrations_count)" ] && [ "${digest%% *}" = "$(cx_rs_get db.migrations_sha256)" ] || { cx_rs_bad migrations; return 1; }
   [ "$(cx_snap_get "$d/snapshot.txt" fp.kek)" = "$(cx_rs_get kek.fingerprint)" ] || { cx_rs_bad fingerprint; return 1; }
+  cx_rs_authz_snapshot "$d/snapshot.txt" || return 1
   if [ "$(cx_rs_get trigger)" = upgrade ]; then
     local -A old=()
     local -a keys=()

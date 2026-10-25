@@ -1,0 +1,248 @@
+package authz
+
+import "sort"
+
+// 角色編輯的第一層功能描述與白話摘要資料。
+//
+// 只描述後端契約：入口穩定識別、群組、各態精確權限集合與第二層細項。畫面由角色編輯頁消費。
+// 節點指派、角色預覽、權限一覽尚未上線，不出現在任何描述中。固定入口（登入即可、
+// 依本人資格呈現者，如我的連線、我的申請、我的 agent）不是可勾選項，只列在 FixedEntries。
+
+// 入口狀態名稱。
+const (
+	StateHidden    = "hidden"
+	StateRead      = "read"
+	StateManage    = "manage"
+	StateAvailable = "available"
+)
+
+// EntryState 入口的一個狀態與它的精確權限集合（含該態的依賴鍵）。
+type EntryState struct {
+	Name string
+	Keys []Permission
+}
+
+// EntryDetail 第二層細項（只有資產、資產帳號、憑證庫、節點提供）。
+type EntryDetail struct {
+	ID  string
+	Key Permission
+}
+
+// EntryDescriptor 一個側欄入口。States[0] 恆為 hidden（空集合）。
+type EntryDescriptor struct {
+	ID      string
+	Group   PermGroup
+	States  []EntryState
+	Details []EntryDetail
+}
+
+// TwoState 無管理動作的入口只有隱藏／可用兩態；沒有獨立讀取鍵的管理入口為隱藏／管理兩態。
+func (e EntryDescriptor) TwoState() bool { return len(e.States) == 2 }
+
+// CapabilityDescriptor 不屬於單一入口的獨立能力（指派角色）。
+type CapabilityDescriptor struct {
+	ID            string
+	Key           Permission
+	TrustHint     bool // 廣泛發權語義與人選信任提示
+	RequiresEntry bool
+}
+
+func st(name string, keys ...Permission) EntryState { return EntryState{Name: name, Keys: keys} }
+func hid() EntryState                               { return EntryState{Name: StateHidden} }
+
+// entryDescriptors 入口表（凍結表，以本函式與 TestRoleEditorDescriptors 為準）。
+func entryDescriptors() []EntryDescriptor {
+	return []EntryDescriptor{
+		{ID: "assets", Group: GroupAsset, States: []EntryState{hid(), st(StateRead, PermAssetView),
+			st(StateManage, PermAssetView, PermAssetCreate, PermAssetUpdate, PermAssetDelete, PermAssetTest, PermAssetGroupManage)},
+			Details: []EntryDetail{{"asset.view", PermAssetView}, {"asset.create", PermAssetCreate}, {"asset.update", PermAssetUpdate},
+				{"asset.delete", PermAssetDelete}, {"asset.test", PermAssetTest},
+				{"asset_account.view", PermAssetView}, {"asset_account.update", PermAssetUpdate},
+				{"node.manage", PermAssetGroupManage}}},
+		{ID: "credentials", Group: GroupAsset, States: []EntryState{hid(), st(StateRead, PermCredentialView, PermAssetView),
+			st(StateManage, PermCredentialManage, PermCredentialView, PermCredentialCreate, PermCredentialUpdate, PermCredentialSetSecret,
+				PermCredentialRotate, PermCredentialConvertScope, PermCredentialDetach, PermCredentialDelete, PermCredentialBind,
+				PermAccountRotate, PermAssetView)},
+			Details: []EntryDetail{{"credential.manage", PermCredentialManage}, {"credential.view", PermCredentialView},
+				{"credential.create", PermCredentialCreate}, {"credential.update", PermCredentialUpdate},
+				{"credential.set_secret", PermCredentialSetSecret}, {"credential.rotate", PermCredentialRotate},
+				{"credential.convert_scope", PermCredentialConvertScope}, {"credential.detach", PermCredentialDetach},
+				{"credential.delete", PermCredentialDelete}, {"credential.bind", PermCredentialBind},
+				{"credential.account_rotate", PermAccountRotate}}},
+		{ID: "change_secret", Group: GroupAsset, States: []EntryState{hid(), st(StateManage, PermChangeSecretManage, PermAssetView)}},
+		{ID: "authorizations", Group: GroupAuthzRule, States: []EntryState{hid(), st(StateManage, PermAuthorizationManage)}},
+		{ID: "approver_scopes", Group: GroupAuthzRule, States: []EntryState{hid(), st(StateManage, PermApproverScopeManage, PermApproverScopeApplicantManage)}},
+		{ID: "users", Group: GroupIdentity, States: []EntryState{hid(), st(StateManage, PermUserManage)}},
+		{ID: "user_groups", Group: GroupIdentity, States: []EntryState{hid(), st(StateManage, PermUserGroupManage, PermUserManage)}},
+		{ID: "roles", Group: GroupIdentity, States: []EntryState{hid(), st(StateAvailable, PermRoleView)}},
+		{ID: "identity_sources", Group: GroupIdentity, States: []EntryState{hid(), st(StateManage, PermIdentitySourceManage, PermLDAPManage, PermOIDCManage)}},
+		{ID: "sessions", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermSessionView), st(StateManage, PermSessionView, PermSessionTerminate)}},
+		{ID: "audit_logs", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView)}},
+		{ID: "checkpoint_verification", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView, PermAuditIntegrityView)}},
+		{ID: "alerts", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermAlertView), st(StateManage, PermAlertView, PermAlertManage)}},
+		{ID: "compliance_map", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermComplianceView)}},
+		{ID: "access_reviews", Group: GroupAudit, States: []EntryState{hid(), st(StateManage, PermAccessReviewManage)}},
+		{ID: "security_policies", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSecurityPolicyManage)}},
+		{ID: "policy_groups", Group: GroupSettings, States: []EntryState{hid(), st(StateRead, PermPolicyGroupView), st(StateManage, PermPolicyGroupView, PermPolicyGroupManage)}},
+		{ID: "key_management", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermKeyManage)}},
+		{ID: "transmission", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermTransmissionManage)}},
+		{ID: "offsite_storage", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermOffsiteManage)}},
+		{ID: "syslog", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSyslogManage)}},
+		{ID: "notification_channels", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermNotificationChannel)}},
+		{ID: "system_alerts", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSystemAlertManage)}},
+		{ID: "alert_rules", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermAlertRuleManage)}},
+		{ID: "schedules", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermScheduleManage)}},
+		{ID: "rotation_schedules", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermRotationSchedule)}},
+		{ID: "instance_guard", Group: GroupSettings, States: []EntryState{hid(), st(StateAvailable, PermInstanceGuardView)}},
+	}
+}
+
+// EntryDescriptors 回傳入口描述（副本，依表序）。
+func EntryDescriptors() []EntryDescriptor { return entryDescriptors() }
+
+// CapabilityDescriptors 獨立能力描述（沒有側欄入口的能力：指派角色、單台存取政策覆寫、刪除錄影）。
+func CapabilityDescriptors() []CapabilityDescriptor {
+	return []CapabilityDescriptor{
+		{ID: "role_assign", Key: PermRoleAssign, TrustHint: true},
+		{ID: "access_policy_override", Key: PermAccessPolicyManage},
+		{ID: "recording_delete", Key: PermRecordingDelete},
+	}
+}
+
+// FixedEntries 固定入口：登入即可或依本人資格呈現，不可指派為權限。
+func FixedEntries() []string {
+	return []string{"dashboard", "workspace", "profile", "my_connections", "my_requests", "my_agents", "approvals"}
+}
+
+// DeferredFeatures 尚未上線、描述中不得顯示為可用的功能。
+func DeferredFeatures() []string {
+	return []string{"role_preview", "permission_overview"}
+}
+
+// RoleSummary 結構化的白話摘要（可翻譯 token，不含自由文字）。
+type RoleSummary struct {
+	Manage              []string // 可管理的入口
+	Read                []string // 只能檢視
+	Available           []string // 可使用（兩態入口）
+	Hidden              []string // 沒有授予的入口
+	PermissionCount     int
+	CatalogCount        int
+	ScopeGlobalOnly     bool // 範圍僅全系統
+	ConnectionSeparate  bool // 管理權不自動授予平台內連線權
+	AssignmentTrustHint bool // 持有指派角色能力
+	Unattributed        []Permission
+}
+
+// SummarizeRole 由真實集合產生摘要。keys 為已儲存的權限鍵；入口取「集合完整涵蓋的最高態」。
+// 計數由目錄產生，不硬寫數量。
+func SummarizeRole(keys []Permission) RoleSummary {
+	have := map[Permission]bool{}
+	for _, k := range keys {
+		have[k] = true
+	}
+	covered := map[Permission]bool{}
+	s := RoleSummary{PermissionCount: len(have), CatalogCount: len(permissionCatalog), ScopeGlobalOnly: true, ConnectionSeparate: true, AssignmentTrustHint: have[PermRoleAssign]}
+	for _, e := range entryDescriptors() {
+		level := StateHidden
+		var levelKeys []Permission
+		for _, stt := range e.States[1:] {
+			all := true
+			for _, k := range stt.Keys {
+				if !have[k] {
+					all = false
+					break
+				}
+			}
+			if all {
+				level, levelKeys = stt.Name, stt.Keys
+			}
+		}
+		for _, k := range levelKeys {
+			covered[k] = true
+		}
+		switch level {
+		case StateManage:
+			s.Manage = append(s.Manage, e.ID)
+		case StateRead:
+			s.Read = append(s.Read, e.ID)
+		case StateAvailable:
+			s.Available = append(s.Available, e.ID)
+		default:
+			s.Hidden = append(s.Hidden, e.ID)
+		}
+	}
+	for _, c := range CapabilityDescriptors() {
+		covered[c.Key] = true
+	}
+	for k := range have {
+		if !covered[k] {
+			s.Unattributed = append(s.Unattributed, k)
+		}
+	}
+	sort.Slice(s.Unattributed, func(i, j int) bool { return s.Unattributed[i] < s.Unattributed[j] })
+	return s
+}
+
+// BlockedScreen 持有者因缺必要依賴而無法使用的畫面（入口或獨立能力的穩定 ID）與缺少的鍵。
+type BlockedScreen struct {
+	ID      string       `json:"id"`
+	Missing []Permission `json:"missing"`
+}
+
+// ownKeys 入口各態中「屬於該入口本身」的鍵：排除同態內只是別鍵依賴的鍵。
+func ownKeys(e EntryDescriptor) map[Permission]bool {
+	deps := permissionDependencies()
+	own := map[Permission]bool{}
+	for _, stt := range e.States {
+		isDep := map[Permission]bool{}
+		for _, k := range stt.Keys {
+			for _, d := range deps[k] {
+				isDep[d] = true
+			}
+		}
+		for _, k := range stt.Keys {
+			if !isDep[k] {
+				own[k] = true
+			}
+		}
+	}
+	return own
+}
+
+// BlockedScreens 由真實集合推出持有者無法使用的畫面（缺依賴允許儲存，改以明示取代拒絕）。
+// 依入口表序、再接獨立能力；同一畫面的缺少鍵合併去重排序。
+func BlockedScreens(perms []Permission) []BlockedScreen {
+	miss := map[Permission][]Permission{}
+	for _, m := range MissingDependencies(perms) {
+		miss[m.Permission] = m.Missing
+	}
+	out := []BlockedScreen{}
+	add := func(id string, own func(Permission) bool) {
+		set := map[Permission]bool{}
+		for k, ms := range miss {
+			if own(k) {
+				for _, m := range ms {
+					set[m] = true
+				}
+			}
+		}
+		if len(set) == 0 {
+			return
+		}
+		ms := make([]Permission, 0, len(set))
+		for m := range set {
+			ms = append(ms, m)
+		}
+		sort.Slice(ms, func(i, j int) bool { return ms[i] < ms[j] })
+		out = append(out, BlockedScreen{ID: id, Missing: ms})
+	}
+	for _, e := range entryDescriptors() {
+		own := ownKeys(e)
+		add(e.ID, func(k Permission) bool { return own[k] })
+	}
+	for _, c := range CapabilityDescriptors() {
+		key := c.Key
+		add(c.ID, func(k Permission) bool { return k == key })
+	}
+	return out
+}

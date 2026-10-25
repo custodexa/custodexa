@@ -12,6 +12,16 @@
       </template>
     </PageHeader>
 
+    <el-alert
+      v-if="selfServiceNotApplicable"
+      :title="$t('myConnections.notApplicable')"
+      type="info"
+      :closable="false"
+      show-icon
+      class="not-applicable-note"
+      data-test="self-service-not-applicable"
+    />
+
     <!-- 唯讀精簡列表（my-connections）：僅資產/協議/時間/時長/狀態，
          無指令檢視與錄影入口（一般 user 是被監管對象，資料面即不可得） -->
     <div class="list-panel">
@@ -108,7 +118,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -116,7 +126,11 @@ import EmptyState from '@/components/EmptyState.vue'
 import { getMyConnections, terminateMyConnection } from '@/api/myConnections'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t } from '@/i18n'
+import { useCapabilities } from '@/composables/useCapabilities'
 
+// 管理者與稽核人員也能進入本頁看本人資料；申請與連線資格不因此改變，故明說這頁對其角色的意義
+const { can, ready } = useCapabilities()
+const selfServiceNotApplicable = computed(() => ready.value && !can('ui:self-service-actions'))
 const loading = ref(false)
 const connections = ref([])
 const pagination = reactive({
@@ -184,6 +198,10 @@ onMounted(fetchConnections)
 </script>
 
 <style scoped>
+.not-applicable-note {
+  margin-bottom: var(--ot-space-lg);
+}
+
 .list-panel {
   background-color: var(--ot-bg-surface);
   border: 1px solid var(--ot-border-subtle);

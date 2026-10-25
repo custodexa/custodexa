@@ -38,8 +38,19 @@ const AggSchemeV2 = "cp-agg-v2"
 
 const AggSchemeV3 = "cp-agg-v3"
 
+// AggSchemeV4 第四版載荷：v3 全部欄位之後追加 `perm`（權限附證本體：快照摘要、事件界標、
+// 對帳結果與起點旗標，無附證時為 null）。附證因此在檢查點自己的簽章與鏈接雜湊之內，
+// 不再另有附證簽章。
+const AggSchemeV4 = "cp-agg-v4"
+
 // LatestCheckpointScheme is the current sealing version; extending payloads updates this one source.
-const LatestCheckpointScheme = AggSchemeV3
+const LatestCheckpointScheme = AggSchemeV4
+
+// CheckpointPermTracePredicate 任一權限附證欄非空的述詞（部分清空也算痕跡）。部分索引
+// idx_audit_checkpoints_perm_trace 與對帳端的 EXISTS 查詢共用此字串：述詞逐字相同，
+// PG 與 sqlite 的規劃器才會採用該索引。
+const CheckpointPermTracePredicate = "perm_state_snapshot IS NOT NULL OR perm_format IS NOT NULL OR perm_event_seq IS NOT NULL OR " +
+	"perm_event_head IS NOT NULL OR perm_reconciled IS NOT NULL OR perm_origin IS NOT NULL"
 
 // ErrCheckpointImmutable 檢查點守衛的統一錯誤（改／刪皆回此值）
 var ErrCheckpointImmutable = errors.New("audit_checkpoints 為不可變證據：不得經 ORM 刪除，且僅允許更新錨定與清除狀態欄")
@@ -136,6 +147,18 @@ type AuditCheckpoint struct {
 	// RoleStateReconciled 封章當下的對帳結果（true＝現況與預期相符）。
 	// **在簽章涵蓋內**，故不可事後更新；nil＝該次封章未做對帳
 	RoleStateReconciled *bool `json:"role_state_reconciled,omitempty"`
+
+	// Perm* 權限附證。**皆可空**：啟用之前的檢查點與第四版之前的檢查點無此組欄位。
+	// 第四版載荷的 `perm` 鍵由這組欄位重建（快照摘要由本體現算），因此附證在檢查點自己的
+	// 簽章與鏈接雜湊之內：清空、部分清空或改動任一欄都使該點自己驗不過。
+	// PermOrigin＝本點是否為可信起點（封章當下以驗過章的事實證明此前從未有附證）。
+	// 快照本體不外送；列表 API 以 `perm` 物件外送摘要、界標、對帳結果與起點旗標。
+	PermStateSnapshot *string `gorm:"type:text" json:"-"`
+	PermFormat        *int    `json:"-"`
+	PermEventSeq      *int64  `json:"-"`
+	PermEventHead     *string `gorm:"type:varchar(64)" json:"-"`
+	PermReconciled    *bool   `json:"-"`
+	PermOrigin        *bool   `json:"-"`
 
 	CreatedAt time.Time `json:"created_at"`
 }

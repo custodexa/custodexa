@@ -13,7 +13,10 @@ func TestRedeemRequestEnvelopeGraphics(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			h, db := setupGraphicsRedeemTest(t)
 			gateSeedGuacAccount(t, db, "app", true)
-			if err := db.AutoMigrate(&model.AccessRequestItem{}); err != nil {
+			if err := db.AutoMigrate(&model.AccessRequestItem{}, &model.Role{}, &model.UserGroup{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 				t.Fatal(err)
 			}
 			start := time.Now().Add(-time.Minute)

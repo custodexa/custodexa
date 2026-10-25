@@ -1,7 +1,7 @@
 # 稽核檢查點鏈：離線驗章規格與外部驗證指南
 
 > 對象：稽核單位、QSA、客戶方安全團隊——**不需要信任本系統、也不需要取得產品原始碼**的第三方。
-> 版本：canonical 編碼 v1、v2 與 v3（見下方「載荷版本」；新封檢查點為 `cp-agg-v3`，各版本的位元組一經釘定不再變更）。
+> 版本：canonical 編碼 v1、v2、v3 與 v4（見下方「載荷版本」；新封檢查點為 `cp-agg-v4`，各版本的位元組一經釘定不再變更）。
 > 本文件所載的每一條規格都經實測，證據見文末「規格的實測驗證」。
 >
 > 若您是稽核方或客戶安全團隊，需要控制項對照表或其他評鑑材料，
@@ -19,6 +19,8 @@
 - 檢查點的被簽欄位（區間、列數、聚合雜湊、鏈接雜湊、封章時間、鑰版本）自封章後未被修改。
 - 檢查點之間的鏈接未被切斷或重排（`prev_checkpoint_hash` 可逐點重算）。
 - 區間是否連續（`id_from` 是否等於前一點的 `id_to + 1`），即鏈上有無「被拿掉一段」的缺口。
+- 第四版起：每一點簽入的權限附證（權限快照摘要、事件界標、封章當下的對帳結果、起點旗標）
+  自封章後未被修改，含鏈上最新的一點。
 
 離線驗章**不能**判定的（誠實邊界，勿在對外簡報中越線宣稱）：
 
@@ -29,6 +31,10 @@
 - **不能**證明公鑰屬於誰：公鑰的真實性須以帶外方式建立（指紋當面核對、憑證、
   交付文件簽收）。本系統只保證**私鑰無任何匯出、下載或刪除路徑**。
 - `anchor_status` 為本地參考資訊，**不在簽章涵蓋範圍**，不得作為外部錨定證據。
+- **不能**判定權限快照本體未被改：列表回應只外送快照摘要，離線驗到的是「摘要未被改」；
+  本體被改而摘要未改，只有產品端現算摘要時發現（與 `role_state_hash` 同一句話）。
+- **不能**判定鏈是否被整段替換成另一份自洽的鏈或回放到更早的一致副本：簽章證明真偽，
+  不證明新鮮度。辨識這兩種情形需要離機見證（轉發出去的檢查點、離機副本）。
 
 ## 1. 取得驗證所需資料
 
@@ -89,9 +95,11 @@
 |---|---|---|
 | `cp-agg-v1` | 下表第 1–8、11–13 鍵（無 `state`、無 `role_state_reconciled`） | 角色指派納入鏈之前封的檢查點 |
 | `cp-agg-v2` | 下表全部 13 鍵 | 角色指派納入鏈之後、帳本入鏈之前的檢查點 |
-| `cp-agg-v3` | v2 全部鍵＋帳本四欄（見文末第三版） | 帳本入鏈之後的新封章 |
+| `cp-agg-v3` | v2 全部鍵＋帳本四欄（見文末第三版） | 帳本入鏈之後、權限附證入載荷之前的檢查點 |
+| `cp-agg-v4` | v3 全部鍵＋`perm` 一鍵（見文末第四版） | 權限附證入載荷之後的新封章 |
 
-三版本的操作日誌 `agg_hash` 計算方式**完全相同**（第 6 節未變）；v2 的差別只在載荷多兩個鍵。
+各版本的操作日誌 `agg_hash` 計算方式**完全相同**（第 6 節未變）；各版本的差別只在載荷多出的鍵。
+鏈上的版本序（v1 < v2 < v3 < v4）**不得遞減**：新版本的點之後出現舊版本的點即為異常。
 遇到不認識的版本值時應**停止並回報**，不可猜一組鍵去驗——猜錯的結果會是
 「簽章驗不過」，把版本不相容偽裝成竄改。
 
@@ -102,11 +110,11 @@
 | 3 | `id_to` | 非負整數 | `id_to` | 區間結束 `audit_logs.id`（含）；空區間時 `id_to = id_from - 1` |
 | 4 | `row_count` | 整數 | `row_count` | 區間內列數 |
 | 5 | `agg_hash` | 字串 | `agg_hash` | 聚合雜湊，64 字元小寫 hex（空區間為空輸入的 SHA-256：`e3b0c442…b855`） |
-| 6 | `agg_scheme` | 字串 | `agg_scheme` | 聚合／載荷版本標識，值域 `cp-agg-v1`／`cp-agg-v2`／`cp-agg-v3`；先讀本欄再決定重建哪一組欄位（見載荷版本表） |
+| 6 | `agg_scheme` | 字串 | `agg_scheme` | 聚合／載荷版本標識，值域 `cp-agg-v1`／`cp-agg-v2`／`cp-agg-v3`／`cp-agg-v4`；先讀本欄再決定重建哪一組欄位（見載荷版本表） |
 | 7 | `prev_checkpoint_hash` | 字串 | `prev_checkpoint_hash` | 前一檢查點的鏈接雜湊，64 字元小寫 hex |
 | 8 | `min_created_at_us` | 整數或 `null` | `min_created_at` | 區間內最早 `created_at`；空區間為 `null` |
-| 9 | `state` | 陣列（**僅 v2**） | `role_state_snapshot` | 隨檢查點簽入的權限狀態摘要，見下節 |
-| 10 | `role_state_reconciled` | 布林或 `null`（**僅 v2**） | `role_state_reconciled` | 封章當下的權限狀態核對結果；`null`＝該次封章未做核對 |
+| 9 | `state` | 陣列（**v2 起**） | `role_state_snapshot` | 隨檢查點簽入的權限狀態摘要，見下節 |
+| 10 | `role_state_reconciled` | 布林或 `null`（**v2 起**） | `role_state_reconciled` | 封章當下的權限狀態核對結果；`null`＝該次封章未做核對 |
 | 11 | `max_created_at_us` | 整數或 `null` | `max_created_at` | 區間內最晚 `created_at`；空區間為 `null` |
 | 12 | `sealed_at_us` | 整數 | `sealed_at` | 封章時間，**不可為 null** |
 | 13 | `signing_key_version` | 整數 | `signing_key_version` | 簽章鑰版本 |
@@ -144,7 +152,7 @@
 3. 每項編碼為無空白 JSON 陣列；空項為 `[]`。外層鍵依字典序：`{"agent_tokens":<陣列>,"user_principals":<陣列>,"user_roles":<陣列>}`。
 4. 對每個陣列原始位元組獨立套下式，再按相同鍵序組出 `state`。`TestCheckpointOfflineRebuildThreeKeys` 以手寫陣列及長度前綴重建，比對產品快照與摘要。
 
-新增鍵不改載荷版本或聚合算法：封章使用 `model.LatestCheckpointScheme`（目前 `cp-agg-v3`）；後續版本升級時沿用當時最新值。`role_state_reconciled` 為全部項的合取；有不符記 false，全數已涵蓋且相符才記 true，其餘未知／未涵蓋記 null。
+新增鍵不改載荷版本或聚合算法：封章使用 `model.LatestCheckpointScheme`（目前 `cp-agg-v4`）；後續版本升級時沿用當時最新值。`role_state_reconciled` 為全部項的合取；有不符記 false，全數已涵蓋且相符才記 true，其餘未知／未涵蓋記 null。
 
 `hash` 的計算＝對該表的本體位元組（如上例的 `[[1,1],[2,2],[10,2]]`，不含表名與外層大括號）：
 
@@ -222,6 +230,12 @@ sha256( '{"signed":' || <第 N 點的 payload 位元組，原樣內嵌> || ',"si
   會讓重簽不斷鏈，故此處刻意納入。
 - 鏈頭之外的每一點都應通過此重算；不符即為 `chain_broken`。
 
+所有載荷版本都用這一條規則，沒有任何分支。第四版的權限附證在 `signed` 之內，
+鏈接自然涵蓋它。
+
+鏈接重算只證明「第 N+1 點記的是第 N 點當時的樣子」，**不證明第 N 點的簽章有效**；
+每一點的簽章都要各自驗過（第 4 節），鏈上最新的一點沒有下一點鏈接它，只能由它自己的簽章判定。
+
 genesis（鏈頭）的 `prev_checkpoint_hash` 另有其編碼：
 `sha256('{"kind":"integrity_baseline","max_log_id":<N>,"baseline_at_us":<M>}')`。
 外部驗證者若未取得 `integrity_baselines` 記錄則無法重算——這是誠實邊界，
@@ -266,13 +280,16 @@ go run . -input checkpoints.json -pubkey 2i0fl9yPbPABeYN1gxlPCmldrxcq5jrD5lMqXuz
 # 印出重建的 payload 位元組（供他語言實作逐位元組比對）
 go run . -input checkpoints.json -pubkey <KEY> -only-seq 21 -show-payload
 
-# 反向對照：證明驗證器真的會拒絕（三種竄改，皆應 FAIL）
+# 反向對照：證明驗證器真的會拒絕（五種竄改，皆應 FAIL）
 go run . -input checkpoints.json -pubkey <KEY> -tamper payload-bit
 go run . -input checkpoints.json -pubkey <KEY> -tamper row-count
 go run . -input checkpoints.json -pubkey <KEY> -tamper signature-bit
+go run . -input checkpoints.json -pubkey <KEY> -tamper perm-origin       # 翻轉第四版附證的起點旗標
+go run . -input checkpoints.json -pubkey <KEY> -tamper scheme-downgrade  # 第四版點改標第三版並拿掉 perm
 ```
 
-離開碼：`0`＝全數通過、`1`＝有檢查點未通過、`2`＝輸入或環境錯誤。
+工具支援 v1–v4。離開碼：`0`＝全數通過、`1`＝有檢查點未通過（含「載荷無法重建」：第四版列缺
+`perm` 鍵、第三版以前的列帶 `perm` 鍵、`perm` 值域不符，含 `format` 不是已支援的快照格式）、`2`＝輸入或環境錯誤（含未知版本）。
 工具逐點輸出簽章、鏈接雜湊與區間鄰接三項結果，並在結尾重述誠實邊界。
 
 **不要只看工具的結論**：工具本身也只是一份實作。真正的獨立驗證是你依第 2–5 節
@@ -315,12 +332,18 @@ openssl pkeyutl -verify -pubin -inkey pub.pem -rawin -in payload.bin -sigfile si
   `openssl pkeyutl -verify -rawin` 完成，回報 `Signature Verified Successfully`；
   將 `row_count` 改為 7 後 OpenSSL 回報 `Signature Verification Failure`。
   此路徑全程不涉及 Go 與產品程式碼，故「外部可獨立重建位元組」不是宣稱而是已實現。
+- 第四版（文末）：產品端 `TestCheckpointOfflineRebuildV4` 以手寫字串與手算長度前綴重建載荷位元組
+  （不經產品的 payload 結構），與產品編碼逐位元組相同；鏈接雜湊同一條規則。
+  `tools/checkpoint-verify` 直接讀產品 API 的實際列表回應（一點 v3、一點 v4 無附證、兩點 v4 帶附證）：
+  簽章與鏈接全數 PASS；五種反向對照皆 FAIL；第四版列缺 `perm` 鍵、第三版列帶 `perm` 鍵、`perm.format`
+  改為未支援的 `999` 皆回報「載荷無法重建」；`perm.format` 改為已支援的 `1` 則照常重建、簽章 FAIL。工具與產品端的 v4 golden 字串逐位元組相同。
 
 ## 10. 相容性紀律
 
 canonical 編碼**一經釘定不再變更**。任何編碼演進一律以新的 `agg_scheme` 值表示，
 舊檢查點續以其原 scheme 重算驗證（`cp-agg-v1` 的位元組與本文件初版完全相同，
-角色指派納入鏈並未改動任何既有檢查點）。產品端有 golden 測試逐位元組釘住兩種編碼，
+角色指派、帳本與權限附證先後納入鏈，都沒有改動任何既有檢查點）。鏈接雜湊所有版本同一條規則，
+沒有例外。產品端有 golden 測試逐位元組釘住各版本編碼，
 本文件與該測試同源；若兩者出現分歧，以本文件所載的實測位元組為準並視為缺陷回報。
 
 
@@ -405,5 +428,63 @@ HMAC 與第二階段結果欄均不放進此聚合。
 
 `TestCheckpointOfflineRebuildV3` 依上列 literal JSON、長度前綴、完整載荷鍵序與 state 規則，
 獨立重建聚合與載荷位元組，不使用生產 payload struct 或 stateHash，逐位元組比對。
-現有 `tools/checkpoint-verify` CLI 僅接受 v1／v2；v3 依本節重建後使用 Ed25519 公鑰驗章，
-不得將舊 CLI 的未知版本拒驗解讀為竄改，也不得去除帳本欄後驗證。
+`tools/checkpoint-verify` 依本節重建 v3（四欄必須齊全，v1／v2 帶帳本欄即回報載荷無法重建）。
+不得去除帳本欄後驗證。
+
+
+## 第四版載荷與權限附證
+
+`cp-agg-v4` 在 v3 全部 17 鍵之後追加一鍵 `perm`，完整鍵序為：
+
+```text
+seq, id_from, id_to, row_count, agg_hash, agg_scheme, prev_checkpoint_hash,
+min_created_at_us, state, role_state_reconciled, max_created_at_us, sealed_at_us,
+signing_key_version, tool_call_id_from, tool_call_id_to, tool_call_row_count, tool_call_agg_hash,
+perm
+```
+
+前 17 鍵的編碼與 v3 完全相同。`perm` 的值是 `null`（該點不帶權限附證）或下列固定鍵序的物件：
+
+```text
+{"format":<int>,"model":<int>,"catalog":"<32 hex>","snapshot_digest":"<64 hex>","event_seq":<int>,"event_head":"<64 hex>","reconciled":null|true|false,"origin":true|false}
+```
+
+| 鍵 | 值域 | 說明 |
+|---|---|---|
+| `format` | 已支援的權限快照格式版本：`1` 或 `2` | 權限快照格式版本；等於快照本體最外層的 `v`。其他值（含 `0` 與更大的正整數）產品端判 `payload_invalid`，驗證器回報「載荷無法重建」，不繼續驗章 |
+| `model` | 整數 ≥ 1 | 權限模型版本 |
+| `catalog` | 32 字元小寫 hex | 內建權限目錄與範本集合的摘要 |
+| `snapshot_digest` | 64 字元小寫 hex | 權限快照本體的 `SHA-256(本體長度的 8 位元組大端無號整數 ‖ 本體位元組)`，與 `state[].hash` 同一條規則 |
+| `event_seq` | 整數 ≥ 1（int64） | 封章當下權限事件鏈頭的序號 |
+| `event_head` | 64 字元小寫 hex | 鏈頭事件的摘要 |
+| `reconciled` | `true`／`false`／`null` | 封章當下的權限對帳結果；`null`＝無法判定或尚未涵蓋 |
+| `origin` | 布林 | 本點是否為可信起點；`origin=true` 時 `event_seq` 必為 1 |
+
+整數一律十進位、無正號、無前導零、無小數與指數；實作**不得經浮點數中轉**（`event_seq` 是 int64）。
+所有字串值都是小寫 hex，JSON 跳脫規則在 `perm` 物件內永遠不會被觸發。
+
+**wire 契約**：列表回應中，第四版的列一律帶 `perm` 鍵——帶附證者為上表的八鍵物件，不帶附證者明寫
+`null`；第三版以前的列不帶 `perm` 鍵。權限快照本體不外送。驗證器解析回應取值後依上方固定鍵序重建，
+**不要求 wire 上的鍵序**；`perm` 物件內重複鍵、未知鍵、缺鍵、值域不符，以及第四版列缺 `perm` 鍵、
+第三版以前的列帶 `perm` 鍵，一律回報「載荷無法重建」（不是「簽章無效」）。**驗證器不得自行補 `null`**：
+附證欄被部分清空的第四版點，產品端判 `payload_invalid`，列表回應也不帶 `perm` 鍵，驗證器據此得到同一個結論。
+
+效果：清空、部分清空或改動任一附證值，都使**該點自己**驗不過（鏈尾那一點與其他點同等）；
+把第四版點改標成第三版，以第三版形狀重建的載荷與原簽章不符。
+
+可比對向量（v3 範例的同一組欄位，`agg_scheme` 改 `cp-agg-v4`）：
+
+```text
+{"seq":1,"id_from":1,"id_to":0,"row_count":0,"agg_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","agg_scheme":"cp-agg-v4","prev_checkpoint_hash":"anchor","min_created_at_us":null,"state":[{"table":"user_roles","hash":"04041a39e9767c77f7fc63538c94ad54c941e29bd62a274dfd5f8d26ddecbc95","count":0}],"role_state_reconciled":null,"max_created_at_us":null,"sealed_at_us":0,"signing_key_version":1,"tool_call_id_from":1,"tool_call_id_to":0,"tool_call_row_count":0,"tool_call_agg_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","perm":{"format":2,"model":1,"catalog":"cccccccccccccccccccccccccccccccc","snapshot_digest":"e9b09ee485bf6583fa9f866aae228c908aa2bd2ae1c28fb2db6abb689f48399e","event_seq":1,"event_head":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","reconciled":null,"origin":true}}
+```
+
+其 `sha256(payload) = f0d1fb8a8657cdfb5efbb581f11eac70d947db10caf45873ada9c92b8e083751`。
+同一組欄位、`perm` 為 `null`（結尾為 `…,"tool_call_agg_hash":"e3b0…b855","perm":null}`）時
+`sha256(payload) = 7c7a87fd74be1fb270465d33f1154788c341156ea2643df8d19cecd3bcbcd3c6`。
+`reconciled` 為 `false` 時寫 `"reconciled":false`；三態各自原樣寫出，不省略。
+
+第三版到第四版的交界：第一個第四版點以第 5 節的鏈接規則接在最後一個第三版點之後，帳本區間照常
+自前一點的 `tool_call_id_to + 1` 起。拒絕案例（皆為載荷無法重建）：`event_seq` 寫成 `07`、`7.0`、
+`7e0`、`-7`、超出 int64；`format` 為 `0` 或不在已支援集合（例如 `3`、`999`）；`catalog` 長度不符或含大寫；
+`origin` 為 `true` 而 `event_seq` 不是 1；`perm` 為陣列或字串。
+

@@ -44,7 +44,7 @@ func setupRetentionDB(t *testing.T) (*RetentionService, *gorm.DB, *fakeAuditLogg
 		}
 	}
 	audit := &fakeAuditLogger{}
-	svc := NewRetentionService(db, policy.NewSecurityPolicyService(db), nil, audit)
+	svc := NewRetentionService(db, newTestPolicyService(db), nil, audit)
 	return svc, db, audit
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -106,60 +105,13 @@ type TagCount struct {
 // 序為準）、附使用數、升冪排序。不建獨立 tag 表——本規模全表掃為毫秒級
 // （postgres 實測 500 列 <1ms）。
 func (s *AssetService) ListTags() ([]TagCount, error) {
-	var rawTags []string
-	if err := database.DB.Model(&model.Asset{}).
-		Where("tags IS NOT NULL AND tags <> ''").
-		Order("id ASC").
-		Pluck("tags", &rawTags).Error; err != nil {
-		return nil, fmt.Errorf("查詢標籤失敗: %w", err)
-	}
-
-	spelling := make(map[string]string) // canonical → 首見書寫形
-	counts := make(map[string]int)      // canonical → 使用資產數
-	for _, raw := range rawTags {
-		for _, tag := range normalizeTagList(raw) {
-			key := canonicalTag(tag)
-			if _, ok := spelling[key]; !ok {
-				spelling[key] = tag
-			}
-			counts[key]++
-		}
-	}
-
-	out := make([]TagCount, 0, len(spelling))
-	for key, name := range spelling {
-		out = append(out, TagCount{Name: name, Count: counts[key]})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	return listTagsOn(database.DB, nil, false)
 }
 
-// NormalizeTagsForWrite 寫入路徑正規化：正規化＋歸一至既有書寫形
-// （存「Dba」時全庫已有「DBA」→ 改存「DBA」，源頭杜絕大小寫分裂）＋文法驗證。
+// NormalizeTagsForWrite 以全表為參照的寫入正規化（系統呼叫者口徑）。
+// 請求路徑一律改用 NormalizeTagsForWriteTx，依主體建參照。
 func (s *AssetService) NormalizeTagsForWrite(raw string) (string, error) {
-	tags := normalizeTagList(raw)
-	if len(tags) == 0 {
-		return "", nil
-	}
-
-	existing, err := s.ListTags()
-	if err != nil {
-		return "", err
-	}
-	canonSpelling := make(map[string]string, len(existing))
-	for _, tc := range existing {
-		canonSpelling[canonicalTag(tc.Name)] = tc.Name
-	}
-	for i, tag := range tags {
-		if known, ok := canonSpelling[canonicalTag(tag)]; ok {
-			tags[i] = known
-		}
-	}
-
-	if err := validateTagList(tags); err != nil {
-		return "", err
-	}
-	return strings.Join(tags, ","), nil
+	return s.NormalizeTagsForWriteTx(WithSystemCaller(context.Background()), database.DB, raw)
 }
 
 // ParseTagsQuery 查詢參數解析（handler 用）：切分、trim、去空；超上限報錯。

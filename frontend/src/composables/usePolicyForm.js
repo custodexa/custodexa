@@ -6,7 +6,13 @@ import {
   previewCompliance,
   updateSecurityPolicies,
 } from '@/api/securityPolicies'
-import { policyLabel, toApiValue, toFormValue } from '@/utils/policyFormat'
+import {
+  isRetentionDataKey,
+  policyLabel,
+  retentionFloorViolated,
+  toApiValue,
+  toFormValue,
+} from '@/utils/policyFormat'
 import { currentLocale, t } from '@/i18n'
 
 // 草稿判定的去抖：每敲一下數字就打一次後端是浪費，等使用者停手再問一次即可
@@ -142,6 +148,11 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
   )
 
   const isDirty = computed(() => dirtyKeys.value.length > 0)
+
+  // 欄位當下的錯誤狀態（目前只有資料保留天數低於下限）。判定與列上的紅字同一個函式
+  const hasInvalid = computed(() =>
+    pagePolicies.value.some((p) => retentionFloorViolated(p, formValues.value[p.key]))
+  )
 
   // 有草稿時畫面上的判定改用草稿那一份，並標示為草稿
   const verdictsByKey = computed(() => draftVerdicts.value || savedVerdicts.value)
@@ -301,6 +312,7 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
   }
 
   const save = async () => {
+    if (hasInvalid.value) return
     const changed = {}
     dirtyKeys.value.forEach((key) => {
       changed[key] = toApiValue(byKey.value[key], formValues.value[key])
@@ -328,7 +340,7 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
     // 保留天數收縮屬不可逆變更：從永久（0）
     // 或較大值改為較小的有限值，超出新窗的舊審計/錄影資料將於次日 02:00
     // 排程硬刪，且刪除不可還原。逐鍵比對舊值 → 收縮者明確確認
-    const shrunk = Object.keys(changed)
+    const shrunkKeys = Object.keys(changed)
       .filter((key) => key.startsWith('retention_'))
       .filter((key) => {
         const next = parseInt(changed[key], 10)
@@ -336,7 +348,10 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
         if (isNaN(next) || next <= 0) return false // 新值 0/非法＝永久或不縮
         return prev === 0 || prev > next // 舊為永久、或視窗變短
       })
-      .map((key) => policyLabel(byKey.value[key]) || key)
+    const shrunk = shrunkKeys.map((key) => policyLabel(byKey.value[key]) || key)
+    // 系統告警句只在四個資料保留鍵有下調時出現：檢查點保留同為 retention_ 前綴，
+    // 它的縮短仍要確認，但不屬於這條告警
+    const dataShrunk = shrunkKeys.some(isRetentionDataKey)
     if (shrunk.length > 0) {
       try {
         // 列表連接隨語言（zh 頓號/en 逗號）；政策 label 為後端字串（change 3 收口）
@@ -344,8 +359,11 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
           style: 'narrow',
           type: 'conjunction',
         }).format(shrunk)
+        const shrinkMessage = t('policyForm.retentionShrinkConfirm', { keys: keyList })
         await ElMessageBox.confirm(
-          t('policyForm.retentionShrinkConfirm', { keys: keyList }),
+          dataShrunk
+            ? `${shrinkMessage}${currentLocale().startsWith('en') ? ' ' : ''}${t('policyForm.alertOnSaveNotice')}`
+            : shrinkMessage,
           t('policyForm.retentionShrinkTitle'),
           {
             confirmButtonText: t('policyForm.confirmApply'),
@@ -389,6 +407,7 @@ export function usePolicyForm(sections, { includeRest = false, beforeSave = null
     pageKeys,
     dirtyKeys,
     isDirty,
+    hasInvalid,
     previewVisible,
     previewData,
     previewLoading,

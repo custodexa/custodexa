@@ -34,6 +34,9 @@ func NewUserGroupHandler(groups UserGroupServiceInterface) *UserGroupHandler {
 }
 
 func respondUserGroupError(c *gin.Context, internalCode apierror.ErrCode, err error) {
+	if respondPrincipalError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, identity.ErrUserGroupNameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeUserGroupNameExists, nil)
@@ -126,7 +129,15 @@ func (h *UserGroupHandler) Delete(c *gin.Context) {
 	}
 	actorName, _ := middleware.GetCurrentUsername(c)
 
-	revoked, err := h.groups.Delete(id, actorID, actorName, sourceip.Of(c))
+	var revoked int64
+	var err error
+	if g, ok := h.groups.(interface {
+		DeleteBy(identity.Operator, uint) (int64, error)
+	}); ok {
+		revoked, err = g.DeleteBy(identity.Operator{UserID: actorID, Username: actorName, ClientIP: sourceip.Of(c)}, id)
+	} else {
+		revoked, err = h.groups.Delete(id, actorID, actorName, sourceip.Of(c))
+	}
 	if err != nil {
 		respondUserGroupError(c, apierror.CodeInternalUserGroupDelete, err)
 		return
@@ -154,11 +165,19 @@ func (h *UserGroupHandler) ReplaceMembers(c *gin.Context) {
 	}
 	var group *model.UserGroup
 	var err error
-	if detailed, ok := h.groups.(interface {
+	actorID, _ := middleware.GetCurrentUserID(c)
+	actorName, _ := middleware.GetCurrentUsername(c)
+	if guarded, ok := h.groups.(interface {
+		ReplaceMembersBy(identity.Operator, uint, *[]uint, *[]uint) (*model.UserGroup, error)
+	}); ok {
+		if (req.UserIDs == nil) == (req.ManualUserIDs == nil) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		group, err = guarded.ReplaceMembersBy(identity.Operator{UserID: actorID, Username: actorName, ClientIP: sourceip.Of(c)}, id, req.ManualUserIDs, req.UserIDs)
+	} else if detailed, ok := h.groups.(interface {
 		ReplaceMembersDetailed(uint, *[]uint, *[]uint, uint, string, string) (*model.UserGroup, error)
 	}); ok {
-		actorID, _ := middleware.GetCurrentUserID(c)
-		actorName, _ := middleware.GetCurrentUsername(c)
 		group, err = detailed.ReplaceMembersDetailed(id, req.ManualUserIDs, req.UserIDs, actorID, actorName, sourceip.Of(c))
 	} else if req.UserIDs != nil && req.ManualUserIDs == nil {
 		group, err = h.groups.ReplaceMembers(id, *req.UserIDs)
@@ -176,7 +195,7 @@ func (h *UserGroupHandler) ReplaceMembers(c *gin.Context) {
 // RegisterRoutes 註冊路由：群組是授權主體的管理面，全部 admin only
 func (h *UserGroupHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	groups := r.Group("/user-groups")
-	groups.Use(middleware.AuthMiddleware(authService), middleware.RequireRole("admin"))
+	groups.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	{
 		groups.GET("", h.List)
 		groups.POST("", h.Create)
@@ -184,5 +203,8 @@ func (h *UserGroupHandler) RegisterRoutes(r *gin.RouterGroup, authService *ident
 		groups.DELETE("/:id", h.Delete)
 		groups.PUT("/:id/members", h.ReplaceMembers)
 		groups.GET("/:id/authorization-count", h.AuthorizationCount)
+		groups.GET("/:id/role-bindings", h.ListRoleBindings)
+		groups.PUT("/:id/role-bindings", h.ReplaceRoleBindings)
+		groups.GET("/:id/external-mappings", h.ListExternalMappings)
 	}
 }

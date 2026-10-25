@@ -25,7 +25,7 @@ func TestAccessRequestItemErrorResponses(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := new(MockAccessRequestService)
-			svc.On("Submit", uint(5), "tester", "user", mock.Anything).Return(nil, fmt.Errorf("submit: %w", tc.err))
+			svc.On("Submit", uint(5), "tester", false, mock.Anything).Return(nil, fmt.Errorf("submit: %w", tc.err))
 			r, _ := newAccessRequestRouter(svc, nil, 5, "user", nil)
 			w := doJSON(r, "POST", "/access-requests", map[string]any{"asset_id": 3, "reason": "maintenance", "duration_minutes": 60})
 			var body map[string]any

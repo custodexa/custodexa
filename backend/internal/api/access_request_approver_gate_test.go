@@ -51,9 +51,9 @@ func setupApproverGateEnv(t *testing.T) approverGateEnv {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(
+	assert.NoError(t, migrateWithAuthz(db, 
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}))
+		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 
 	// AuthMiddleware 的憑證世代閘走 database.DB（fail-close：未注入即一律拒）
 	oldDB := database.DB

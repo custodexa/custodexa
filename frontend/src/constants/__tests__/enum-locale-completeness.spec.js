@@ -104,6 +104,13 @@ describe('枚舉三語完備性（值域 × locale）', () => {
     }
   })
 
+  it('role：身分管理員與系統安全管理員的顯示鍵三語皆有', () => {
+    for (const k of ['identityAdmin', 'securityAdmin']) {
+      expectKeyInAllLocales(`roles.${k}.name`)
+      expectKeyInAllLocales(`roles.${k}.description`)
+    }
+  })
+
   it('approverScope：四維客體與兩類審核方三語皆有 key', () => {
     for (const v of ['asset', 'asset_group', 'subject_user', 'subject_group']) {
       expectKeyInAllLocales(`enum.scopeType.${v}`)

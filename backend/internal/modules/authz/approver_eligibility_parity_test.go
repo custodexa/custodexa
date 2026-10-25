@@ -33,7 +33,9 @@ func seedApproverEligibilityFixtures(t *testing.T) approverEligibilityFixtures {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{},
+		// 撤銷資格的第三條路（授權規則管理能力）經主體解析，需群組成員、群組角色、角色權限與節點綁定表
+		&model.UserGroupMember{}, &model.UserGroupRole{}, &model.RolePermission{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色主檔：admin／approver／user 三筆

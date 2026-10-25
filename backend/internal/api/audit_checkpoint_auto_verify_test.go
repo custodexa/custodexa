@@ -27,7 +27,10 @@ func autoVerifyEngine(t *testing.T, withStatus bool) (*gin.Engine, *gorm.DB) {
 	gin.SetMode(gin.TestMode)
 	_, _, db, seal := setupCheckpointAPIEnv(t)
 
-	if err := db.AutoMigrate(&model.AuditChainVerifyState{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditChainVerifyState{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate state: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate state: %v", err)
 	}
 	signer := newFakeCheckpointSigner(t)

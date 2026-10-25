@@ -218,6 +218,30 @@ type offsiteAPIEnv struct {
 	journal   *offsiteAPIJournal
 	factory   *offsiteAPIFactory
 	describer *offsiteAPIDescriber
+	alerts    *offsiteAPIAlerts
+}
+
+// offsiteAPIAlerts 記錄停用與改目的地的告警；fail 時回錯（驗整筆回滾）。
+type offsiteAPIAlerts struct {
+	mu     sync.Mutex
+	alerts []offsite.ChangeAlert
+	fail   bool
+}
+
+func (a *offsiteAPIAlerts) RaiseOffsiteChangeInTx(_ *gorm.DB, ev offsite.ChangeAlert) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.fail {
+		return errors.New("注入告警失敗")
+	}
+	a.alerts = append(a.alerts, ev)
+	return nil
+}
+
+func (a *offsiteAPIAlerts) all() []offsite.ChangeAlert {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]offsite.ChangeAlert(nil), a.alerts...)
 }
 
 const offsiteAPIJWTSecret = "offsite-storage-test-secret"
@@ -242,8 +266,8 @@ func newOffsiteAPIEnv(t *testing.T) *offsiteAPIEnv {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(4)
-	if err := db.AutoMigrate(&model.OffsiteProfile{}, &model.OffsiteObject{},
-		&model.AuditLog{}, &model.User{}, &model.Role{}, &model.UserRole{}); err != nil {
+	if err := migrateWithAuthz(db, &model.OffsiteProfile{}, &model.OffsiteObject{},
+		&model.AuditLog{}, &model.User{}, &model.Role{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -259,6 +283,8 @@ func newOffsiteAPIEnv(t *testing.T) *offsiteAPIEnv {
 	svc.SetLedger(ledger)
 	factory := &offsiteAPIFactory{}
 	svc.SetClientFactoryForTest(factory.build)
+	alerts := &offsiteAPIAlerts{}
+	svc.SetChangeAlertRaiser(alerts)
 
 	describer := &offsiteAPIDescriber{
 		kind:  offsite.KindRecording,
@@ -280,7 +306,7 @@ func newOffsiteAPIEnv(t *testing.T) *offsiteAPIEnv {
 	return &offsiteAPIEnv{
 		r: r, mgr: crypto.NewJWTManager(offsiteAPIJWTSecret, time.Minute), db: db,
 		svc: svc, ledger: ledger, codec: codec, journal: journal,
-		factory: factory, describer: describer,
+		factory: factory, describer: describer, alerts: alerts,
 	}
 }
 
@@ -305,6 +331,8 @@ func (e *offsiteAPIEnv) adminToken(t *testing.T, userID uint) string {
 	t.Helper()
 	username := "offsiteadmin" + strconv.FormatUint(uint64(userID), 10)
 	e.seedUser(t, userID, username)
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）
+	grantLegacyRole(t, e.db, userID, model.RoleAdmin)
 	token, err := e.mgr.GenerateToken(userID, username, "admin@example.com", "admin", crypto.AuthContext{})
 	if err != nil {
 		t.Fatalf("簽發 token: %v", err)

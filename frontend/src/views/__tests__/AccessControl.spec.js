@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import AccessControl from '../AccessControl.vue'
 import { t } from '@/i18n'
+import { setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -34,11 +35,16 @@ vi.mock('@/api/securityPolicies', () => ({
   previewApplyPolicies: (...args) => previewApplyMock(...args),
 }))
 
+// 降級確認對話框的行為由 access-policy-capability-ui.spec.js 承載；本檔案例視為已確認
+vi.mock('@/utils/accessPolicyDowngradeConfirm', () => ({
+  confirmAccessPolicyDowngrade: vi.fn().mockResolvedValue('confirm'),
+}))
+
 const getAssetListMock = vi.fn()
 const updateAssetMock = vi.fn()
 
 vi.mock('@/api/assets', () => ({
-  getAssetList: (...args) => getAssetListMock(...args),
+  getAccessPolicyOverrides: (...args) => getAssetListMock(...args),
   updateAsset: (...args) => updateAssetMock(...args),
 }))
 
@@ -132,12 +138,13 @@ const applyPreviewFixture = () => ({
 })
 
 // 資產政策覆寫：高敏 SSH 已覆寫、一般 RDP 未覆寫
+// 覆寫清單查詢（overridden=true）只回已覆寫資產；候選走 overridden=false 的搜尋
+const OVERRIDDEN_ROW = { id: 1, name: '高敏SSH', protocol: 'ssh', access_policy: 'approval', node_ids: [], node_paths: [] }
+const CANDIDATE_ROW = { id: 2, name: '一般RDP', protocol: 'rdp', access_policy: null, node_ids: [], node_paths: [] }
 const assetsFixture = () => ({
-  data: [
-    { id: 1, name: '高敏SSH', protocol: 'ssh', access_policy: 'approval' },
-    { id: 2, name: '一般RDP', protocol: 'rdp', access_policy: null },
-  ],
-  total: 2,
+  data: [OVERRIDDEN_ROW],
+  total: 1,
+  meta: { global_default: 'open', scoped: false },
 })
 
 // el-select 的選中文案與選項清單走 teleported popper，happy-dom 下不渲染，
@@ -173,6 +180,8 @@ const mountPage = async () => {
 describe('AccessControl', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // 入口與覆寫表依能力：本檔案例以持設定組讀取能力與存取政策權限點的主體為準
+    setCapabilitiesForTests(['securitypolicy:manage', 'access_policy:manage'])
     getPoliciesMock.mockResolvedValue(policyFixture())
     previewComplianceMock.mockResolvedValue({ data: { draft: true, verdicts: [] } })
     previewApplyMock.mockResolvedValue({ data: applyPreviewFixture() })
@@ -227,8 +236,16 @@ describe('AccessControl', () => {
     expect(wrapper.text()).toContain('資產政策覆寫')
     expect(wrapper.text()).toContain('變更即時生效')
     const table = wrapper.findComponent({ name: 'AssetPolicyTable' })
-    // 表格僅列已覆寫資產；未覆寫者出現在「加入覆寫」選項
+    // 表格僅列已覆寫資產；未覆寫者要經遠端搜尋才出現在「加入覆寫」選項
     expect(table.text()).toContain('高敏SSH')
+    expect(table.text()).not.toContain('一般RDP')
+    expect(getAssetListMock).toHaveBeenCalledWith({ overridden: true, page: 1, page_size: 1000 })
+    getAssetListMock.mockResolvedValueOnce({ data: [CANDIDATE_ROW], total: 1, meta: { global_default: 'open', scoped: false } })
+    const picker = table.findAllComponents({ name: 'ElSelect' })[0]
+    const search = picker.vm.$attrs['remote-method'] ?? picker.vm.$attrs.remoteMethod
+    await search('RDP')
+    await flushPromises()
+    expect(getAssetListMock).toHaveBeenLastCalledWith({ overridden: false, search: 'RDP', page: 1, page_size: 50 })
     expect(table.text()).toContain('一般RDP（RDP）')
     // 清除覆寫選項帶目前全域值動態文案（全域=open）
     expect(table.text()).toContain('清除覆寫（跟隨全域，目前：不需申請）')
@@ -282,10 +299,7 @@ describe('AccessControl', () => {
   })
 
   it('shows empty-state guidance when no overrides exist', async () => {
-    getAssetListMock.mockResolvedValue({
-      data: [{ id: 2, name: '一般RDP', protocol: 'rdp', access_policy: null }],
-      total: 1,
-    })
+    getAssetListMock.mockResolvedValue({ data: [], total: 0, meta: { global_default: 'open', scoped: false } })
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('尚無政策覆寫')

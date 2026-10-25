@@ -4,9 +4,18 @@
       :title="$t('authorizations.title')"
       :description="$t('authorizations.headerDesc')"
     >
+      <template
+        v-if="authzScopeLine"
+        #meta
+      >
+        <ManageScopeLine
+          :nodes="authzScopeLine.nodes"
+          :not-assigned="authzScopeLine.notAssigned"
+        />
+      </template>
       <template #actions>
         <el-button
-          v-if="isAdmin"
+          v-if="canManageAuthorizations && activeTab !== 'policy'"
           type="primary"
           @click="handleBatchAuthorize"
         >
@@ -46,7 +55,7 @@
                 <el-option
                   v-for="user in userList"
                   :key="user.id"
-                  :label="user.username"
+                  :label="userOptionLabel(user)"
                   :value="user.id"
                 />
               </el-select>
@@ -98,18 +107,31 @@
                   </el-icon>
                 </el-tooltip>
               </template>
-              <el-tree-select
+              <el-select
                 v-model="filterForm.node_id"
-                :data="nodeTreeOptions"
-                :props="{ label: 'label', children: 'children' }"
-                node-key="id"
-                check-strictly
                 clearable
                 filterable
                 :placeholder="$t('authorizations.allNodes')"
                 style="width: 200px"
                 @change="handleSubjectFilterChange('node_id')"
-              />
+              >
+                <el-option
+                  v-for="n in nodeOptions"
+                  :key="n.id"
+                  :label="n.path"
+                  :value="n.id"
+                  :disabled="!isSelectableNode(n)"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="selectorFailed">
+              <el-text
+                type="warning"
+                size="small"
+                class="selector-failed"
+              >
+                {{ $t('authorizations.selectorLoadFailed') }}
+              </el-text>
             </el-form-item>
             <el-form-item>
               <el-button
@@ -340,47 +362,76 @@
               fixed="right"
             >
               <template #default="{ row }">
-                <!-- 帳號範圍僅 manual 列可改：ticket 列的範圍源自申請單，
-                     於此改等於繞過申請與核准（伺服端亦回 409 二道防線） -->
-                <el-button
+                <!-- 動作依伺服器回的 actions 判定（非超級管理者）；沒有 actions 時沿現行邏輯。
+                     帳號範圍僅 manual 列可改：ticket 列的範圍源自申請單，於此改等於繞過申請與核准 -->
+                <el-tooltip
                   v-if="row.source !== 'ticket'"
-                  type="primary"
-                  size="small"
-                  link
-                  @click="openAccountScope(row)"
+                  :disabled="!accountScopeView(row).note"
+                  :content="accountScopeView(row).note"
+                  placement="top"
                 >
-                  <el-icon><Key /></el-icon>
-                  {{ $t('authorizations.accountScopeAction') }}
-                </el-button>
-                <!-- ticket 列按 revocable 分流：可撤走申請單撤銷流、
+                  <span class="account-scope-wrap">
+                    <el-button
+                      type="primary"
+                      size="small"
+                      link
+                      :disabled="accountScopeView(row).disabled"
+                      @click="openAccountScope(row)"
+                    >
+                      <el-icon><Key /></el-icon>
+                      {{ $t('authorizations.accountScopeAction') }}
+                    </el-button>
+                  </span>
+                </el-tooltip>
+                <!-- ticket 列只有撤銷：可撤走申請單撤銷流，不可撤者停用並說明原因，
                      過期/未生效唯讀留存（審計證據）；manual 照常刪除 -->
-                <el-button
-                  v-if="row.source === 'ticket' && row.revocable"
-                  type="warning"
-                  size="small"
-                  link
-                  @click="handleRevoke(row)"
-                >
-                  <el-icon><CircleX /></el-icon>
-                  {{ $t('authorizations.revoke') }}
-                </el-button>
-                <el-text
-                  v-else-if="row.source === 'ticket'"
-                  size="small"
-                  type="info"
-                >
-                  {{ row.validity_state === 'scheduled' ? $t('authorizations.scheduled') : $t('authorizations.expired') }}
-                </el-text>
-                <el-button
+                <template v-if="row.source === 'ticket'">
+                  <el-tooltip
+                    v-if="revokeView(row).kind !== 'status'"
+                    :disabled="!revokeView(row).note"
+                    :content="revokeView(row).note"
+                    placement="top"
+                  >
+                    <span class="account-scope-wrap">
+                      <el-button
+                        type="warning"
+                        size="small"
+                        link
+                        :disabled="revokeView(row).kind === 'disabled'"
+                        @click="handleRevoke(row)"
+                      >
+                        <el-icon><CircleX /></el-icon>
+                        {{ $t('authorizations.revoke') }}
+                      </el-button>
+                    </span>
+                  </el-tooltip>
+                  <el-text
+                    v-else
+                    size="small"
+                    type="info"
+                  >
+                    {{ row.validity_state === 'scheduled' ? $t('authorizations.scheduled') : $t('authorizations.expired') }}
+                  </el-text>
+                </template>
+                <el-tooltip
                   v-else
-                  type="danger"
-                  size="small"
-                  link
-                  @click="handleDelete(row)"
+                  :disabled="!deleteView(row).note"
+                  :content="deleteView(row).note"
+                  placement="top"
                 >
-                  <el-icon><Trash2 /></el-icon>
-                  {{ $t('common.delete') }}
-                </el-button>
+                  <span class="account-scope-wrap">
+                    <el-button
+                      type="danger"
+                      size="small"
+                      link
+                      :disabled="deleteView(row).disabled"
+                      @click="handleDelete(row)"
+                    >
+                      <el-icon><Trash2 /></el-icon>
+                      {{ $t('common.delete') }}
+                    </el-button>
+                  </span>
+                </el-tooltip>
               </template>
             </el-table-column>
             <template #empty>
@@ -424,6 +475,17 @@
       >
         <div class="list-card">
           <AuthzEffectiveView mode="object" />
+        </div>
+      </el-tab-pane>
+      <!-- 連線政策分頁：持存取政策權限點才出現，切到才載入，內容與存取管控頁同一元件 -->
+      <el-tab-pane
+        v-if="canManageAccessPolicy"
+        :label="$t('authorizations.tabAccessPolicy')"
+        name="policy"
+        lazy
+      >
+        <div class="list-card">
+          <AssetPolicyTable ref="policyTableRef" />
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -483,6 +545,7 @@
     <AuthzAccountScopeDialog
       v-model="accountScopeVisible"
       :row="accountScopeRow"
+      :narrow-only="accountScopeNarrowOnly"
       @saved="fetchAuthorizationList"
     />
   </div>
@@ -501,21 +564,29 @@ import {
   Key,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
-import { getAuthorizations, deleteAuthorization } from '@/api/authorizations'
+import {
+  getAuthorizations,
+  deleteAuthorization,
+  getSelfSubjects,
+  getAuthorizationSubjectOptions,
+  getAuthorizationTargetOptions,
+} from '@/api/authorizations'
 import { revokeAccessRequest } from '@/api/accessRequests'
-import { getUserGroups } from '@/api/userGroups'
-import { getUsers } from '@/api/auth'
-import { getAssetList, getAssetGroups } from '@/api/assets'
 import PageHeader from '@/components/PageHeader.vue'
+import ManageScopeLine from '@/components/ManageScopeLine.vue'
+import { useManageScopeLine } from '@/composables/useManageScope'
 import EmptyState from '@/components/EmptyState.vue'
 import AuthzBatchWizard from '@/components/AuthzBatchWizard.vue'
 import AuthzEffectiveView from '@/components/AuthzEffectiveView.vue'
+import AssetPolicyTable from '@/components/AssetPolicyTable.vue'
 import AuthzAccountScopeDialog from '@/components/AuthzAccountScopeDialog.vue'
 import { isAllAccountScope } from '@/constants/assetAccounts'
 import { formatDateTime } from '@/utils/format'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
+import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
+import { actionState, isSelectableNode, loadSelector, userOptionLabel } from '@/utils/authzSelectors'
 
 // 資料狀態
 const loading = ref(false)
@@ -530,9 +601,15 @@ const pagination = reactive({
   total: 0,
 })
 const activeTab = ref('records')
+// 頁首範圍行：連線政策分頁取存取政策權限點，其餘授權規則分頁取授權規則管理權限點
+const authzScopeLine = useManageScopeLine(() => (activeTab.value === 'policy' ? 'access_policy:manage' : 'authorization:manage'))
+const policyTableRef = ref(null)
 
 // 使用者角色檢查
-const { isAdmin } = useRoles()
+// 批次授權與節點預填都是 authorization:manage 的操作（後端才是強制點）
+const canManageAuthorizations = computed(() => can('authorization:manage'))
+// 連線政策分頁只看存取政策權限點；範圍由後端依指派投影
+const canManageAccessPolicy = computed(() => can(ACCESS_POLICY_PERM))
 
 // 過濾表單（user_id / user_group_id / asset_id / node_id 至多一個；
 // 零篩選＝全量；node_id＝涵蓋盤點語義）
@@ -600,58 +677,22 @@ const fetchAuthorizationList = async () => {
   }
 }
 
-const fetchUserList = async () => {
-  try {
-    const response = await getUsers()
-    userList.value = response.data || []
-  } catch (error) {
-    console.error('取得使用者列表失敗:', error)
-  }
-}
-
-const fetchAssetList = async () => {
-  try {
-    const response = await getAssetList({ page_size: 1000 })
-    assetList.value = response.data || []
-  } catch (error) {
-    console.error('取得資產列表失敗:', error)
-  }
-}
-
-// 節點樹選項（篩選用）：平面列表組樹，
-// 與精靈 nodeTreeOptions 同型轉換
-const groupList = ref([])
-const loadGroupList = async () => {
-  try {
-    const res = await getAssetGroups()
-    groupList.value = res.data || []
-  } catch (err) {
-    console.error('載入節點清單失敗:', err)
-  }
-}
-const nodeTreeOptions = computed(() => {
-  const byId = new Map()
-  groupList.value.forEach((n) => {
-    byId.set(n.id, { id: n.id, name: n.name, label: n.name, parent_id: n.parent_id, children: [] })
-  })
-  const roots = []
-  byId.forEach((n) => {
-    if (n.parent_id && byId.has(n.parent_id)) {
-      byId.get(n.parent_id).children.push(n)
-    } else {
-      roots.push(n)
-    }
-  })
-  return roots
-})
-
-const loadUserGroupList = async () => {
-  try {
-    const res = await getUserGroups()
-    userGroupList.value = res.data || []
-  } catch (err) {
-    console.error('載入使用者群組失敗:', err)
-  }
+// 篩選下拉的四個來源分開載入（授權管理選擇器，已依伺服器端範圍投影）；
+// 任一來源失敗時其餘清單仍有值，失敗就地提示
+const selectorFailed = ref(false)
+const nodeOptions = ref([])
+const loadFilterOptions = async () => {
+  const [users, groups, assets, nodes] = await Promise.all([
+    loadSelector(getAuthorizationSubjectOptions, { kind: 'user' }),
+    loadSelector(getAuthorizationSubjectOptions, { kind: 'user_group' }),
+    loadSelector(getAuthorizationTargetOptions, { kind: 'asset' }),
+    loadSelector(getAuthorizationTargetOptions, { kind: 'node' }),
+  ])
+  userList.value = users.rows
+  userGroupList.value = groups.rows
+  assetList.value = assets.rows
+  nodeOptions.value = nodes.rows
+  selectorFailed.value = [users, groups, assets, nodes].some((r) => r.failed)
 }
 
 // 篩選/快速篩選/每頁筆數變更一律重設頁碼（否則伺服端正確回
@@ -677,6 +718,10 @@ const handleResetFilter = () => {
 }
 
 const handleRefresh = () => {
+  if (activeTab.value === 'policy') {
+    policyTableRef.value?.reload?.()
+    return
+  }
   fetchAuthorizationList()
 }
 
@@ -757,10 +802,55 @@ const handleDelete = async (row) => {
 // 帳號範圍調整
 const accountScopeVisible = ref(false)
 const accountScopeRow = ref(null)
+const accountScopeNarrowOnly = ref(false)
 
+// 列動作的畫面狀態：有伺服器回的 actions 就照它，沒有（超級管理者）沿現行邏輯
+const accountScopeView = (row) => {
+  const st = actionState(row, 'update_accounts', t)
+  if (st) return { disabled: !st.allowed, note: st.note, narrowOnly: st.limit === 'narrow_only' }
+  const self = isSelfSubjectRow(row)
+  return { disabled: self, note: self ? t('authorizations.accountScopeSelfLocked') : '', narrowOnly: false }
+}
+const deleteView = (row) => {
+  const st = actionState(row, 'delete', t)
+  if (st) return { disabled: !st.allowed, note: st.note }
+  return { disabled: false, note: '' }
+}
+// ticket 列：enabled＝可撤銷；disabled＝停用並說明；status＝唯讀狀態文字（已到期／未生效）
+const revokeView = (row) => {
+  const st = actionState(row, 'revoke', t)
+  if (st) {
+    if (st.allowed) return { kind: 'enabled', note: '' }
+    if (st.reason === 'not_revocable' && row.validity_state && row.validity_state !== 'active') {
+      return { kind: 'status', note: '' }
+    }
+    return { kind: 'disabled', note: st.note }
+  }
+  return row.revocable ? { kind: 'enabled', note: '' } : { kind: 'status', note: '' }
+}
 const openAccountScope = (row) => {
+  const view = accountScopeView(row)
+  if (view.disabled) return
   accountScopeRow.value = row
+  accountScopeNarrowOnly.value = view.narrowOnly
   accountScopeVisible.value = true
+}
+
+// 本人範圍（與後端守衛同一判定）：主體為本人、本人擁有的 agent 或本人所屬群組的列，
+// 帳號範圍動作停用；刪除與臨時授權的撤銷不變。端點失敗或超管 applies=false 時不停用
+const selfSubjects = ref(null)
+const isSelfSubjectRow = (row) => {
+  const s = selfSubjects.value
+  if (!s?.applies || !row) return false
+  if (row.user_id && (row.user_id === s.user_id || (s.agent_ids || []).includes(row.user_id))) return true
+  return Boolean(row.user_group_id && (s.user_group_ids || []).includes(row.user_group_id))
+}
+const loadSelfSubjects = async () => {
+  try {
+    selfSubjects.value = await getSelfSubjects()
+  } catch (err) {
+    selfSubjects.value = null
+  }
 }
 
 // ticket 撤銷（借道 Change 2b 申請單撤銷 API，資格/附註/斷線聯動零新語義）
@@ -803,17 +893,15 @@ const handleBatchAuthorize = () => {
 
 // 掛載時取得資料
 onMounted(() => {
+  loadSelfSubjects()
   fetchAuthorizationList()
-  fetchUserList()
-  fetchAssetList()
-  loadUserGroupList()
-  loadGroupList()
+  loadFilterOptions()
 
   // 資產/節點視角授權入口：自資產頁樹「授權此節點」
   // 跳轉預填——開精靈並經 prop 傳入節點 id，由精靈於清單落地後預勾
   //（route 可為 undefined：單測掛載無 router）
   const nodeIDRaw = route?.query?.node_id
-  if (nodeIDRaw && isAdmin.value) {
+  if (nodeIDRaw && canManageAuthorizations.value) {
     prefillNodeId.value = Number(nodeIDRaw)
     batchDialogVisible.value = true
   }
@@ -821,6 +909,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.account-scope-wrap {
+  display: inline-flex;
+  margin-right: 8px;
+}
 .node-filter-help {
   margin-left: 4px;
   color: var(--el-text-color-secondary);

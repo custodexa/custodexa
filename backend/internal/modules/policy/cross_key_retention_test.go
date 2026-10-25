@@ -251,7 +251,7 @@ func TestCrossKeyRetentionDoesNotBlockFactoryState(t *testing.T) {
 
 	// 四個資料保留鍵逐一設成任意合法值（含 0＝永久與天花板 3650）皆須 200
 	for _, key := range dataRetentionKeys {
-		for _, value := range []string{"0", "1", "365", "3650"} {
+		for _, value := range []string{"0", "7", "365", "3650"} {
 			t.Run(key+"="+value, func(t *testing.T) {
 				svc, _ := setupPolicyDB(t)
 				if _, err := svc.UpdateBatch(map[string]string{key: value}, "admin"); err != nil {

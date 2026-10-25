@@ -44,6 +44,15 @@
       </span>
     </div>
 
+    <!-- 日誌保留區塊：調短資料保留天數的後果，放在區塊頂端一眼讀到 -->
+    <p
+      v-if="section.id === 'log_retention'"
+      class="section-notice"
+      data-test="retention-alert-notice"
+    >
+      {{ $t('policyForm.retentionAlertNotice') }}
+    </p>
+
     <!-- 頁面專屬的區塊補充內容（跨欄位風險提示、專頁入口連結等） -->
     <slot
       name="section-extra"
@@ -151,6 +160,12 @@ const openDrawer = (policy) => {
 }
 
 .card-hint {
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
+.section-notice {
+  margin: 0 0 var(--ot-space-sm);
   font-size: var(--ot-font-size-sm);
   color: var(--ot-text-secondary);
 }

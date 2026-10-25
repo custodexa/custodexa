@@ -42,34 +42,53 @@
         tabindex="0"
         :aria-label="t('common.mainNav')"
       >
+        <!-- 單一 v-for 渲染「常用」標題、組標題（可收合）與項目：
+             側欄分組只改呈現，每個項目仍先經 canEnter 過濾 -->
         <template
-          v-for="group in visibleGroups"
-          :key="group.label"
+          v-for="entry in sidebarEntries"
+          :key="entry.key"
         >
           <div
+            v-if="entry.kind === 'label'"
             v-show="!isCollapsed"
             class="menu-group-label"
+            data-test="pinned-label"
           >
-            {{ group.label }}
+            {{ entry.text }}
           </div>
-          <el-menu-item
-            v-for="item in group.items"
-            :key="item.path"
-            :index="item.path"
-            :route="menuRouteFor(item)"
+          <button
+            v-else-if="entry.kind === 'toggle'"
+            v-show="!isCollapsed"
+            type="button"
+            class="menu-group-label menu-group-toggle"
+            :aria-expanded="String(!entry.collapsed)"
+            :data-test="`group-toggle-${entry.groupId}`"
+            @click="toggleGroup(entry.groupId)"
           >
-            <el-icon><component :is="item.icon" /></el-icon>
+            <el-icon class="menu-group-chevron">
+              <ChevronRight v-if="entry.collapsed" />
+              <ChevronDown v-else />
+            </el-icon>
+            {{ entry.text }}
+          </button>
+          <el-menu-item
+            v-else
+            v-show="!entry.hidden || isCollapsed"
+            :index="entry.item.path"
+            :route="menuRouteFor(entry.item)"
+          >
+            <el-icon><component :is="entry.item.icon" /></el-icon>
             <template #title>
               <span class="menu-title-with-badge">
-                {{ item.title }}
+                {{ entry.item.title }}
                 <el-badge
-                  v-if="item.badge === 'approvals' && approvalPendingCount > 0"
+                  v-if="entry.item.badge === 'approvals' && approvalPendingCount > 0"
                   :value="approvalPendingCount"
                   :max="99"
                   class="menu-badge"
                 />
                 <el-badge
-                  v-else-if="item.badge === 'dailyReviews' && canSignDailyReview && dailyReviewBadge.count.value > 0"
+                  v-else-if="entry.item.badge === 'dailyReviews' && canSignDailyReview && dailyReviewBadge.count.value > 0"
                   :value="dailyReviewBadge.count.value"
                   :max="99"
                   :title="t('dailyReview.badge.title', { n: dailyReviewBadge.count.value })"
@@ -77,11 +96,27 @@
                   data-test="daily-review-badge"
                 />
               </span>
+              <button
+                v-if="!isCollapsed"
+                type="button"
+                class="menu-pin"
+                :class="{ 'menu-pin--on': entry.pinned }"
+                :aria-pressed="String(entry.pinned)"
+                :aria-label="entry.pinned ? t('sidebar.unpinItem', { name: entry.item.title }) : t('sidebar.pinItem', { name: entry.item.title })"
+                :title="entry.pinned ? t('sidebar.unpin') : t('sidebar.pin')"
+                :data-test="`pin-${entry.item.id}`"
+                @click.stop.prevent="togglePin(entry.item.id)"
+              >
+                <el-icon>
+                  <PinOff v-if="entry.pinned" />
+                  <Pin v-else />
+                </el-icon>
+              </button>
             </template>
           </el-menu-item>
         </template>
       </el-menu>
-      <!-- 產品版本行：在選單捲動區之外，值來自下方 refreshEntryFlags 已在打的 /auth/me -->
+      <!-- 產品版本行：在選單捲動區之外，值來自能力載入已在打的 /auth/me -->
       <SidebarVersion
         :raw="productVersion"
         :collapsed="isCollapsed"
@@ -162,6 +197,9 @@
                 <el-dropdown-item command="profile">
                   {{ t('common.profile') }}
                 </el-dropdown-item>
+                <el-dropdown-item command="guidance">
+                  {{ t('upgradeGuidance.menu') }}
+                </el-dropdown-item>
                 <el-dropdown-item
                   divided
                   command="logout"
@@ -178,8 +216,28 @@
            沒有關閉鈕，狀態回到 held 且無對等連線即自然消失 -->
       <InstanceGuardBanner
         :status="instanceGuardStatus"
-        :is-admin="isAdmin"
+        :can-view-details="canViewInstanceGuard"
       />
+
+      <!-- 能力載入失敗：受限入口在取得能力前一律不放行（沒有角色回退），提供重試 -->
+      <el-alert
+        v-if="capabilitiesFailed"
+        class="capability-alert"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="t('capabilities.loadFailed')"
+        data-test="capability-load-failed"
+      >
+        <el-button
+          size="small"
+          :loading="capabilitiesRetrying"
+          data-test="capability-retry"
+          @click="retryCapabilities"
+        >
+          {{ t('capabilities.retry') }}
+        </el-button>
+      </el-alert>
 
       <el-main class="main-content">
         <router-view />
@@ -189,30 +247,35 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 // header 用到的 icon；側欄選單的宣告（含其 icon）在 ./sidebarMenu.js
 import {
   ChevronDown,
+  ChevronRight,
   CircleUserRound,
   PanelLeftOpen,
   PanelLeftClose,
+  Pin,
+  PinOff,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'
 import { getPendingAccessRequestCount } from '@/api/accessRequests'
-import { getCurrentUser } from '@/api/auth'
 import { logout } from '@/api/auth'
 import { getSealStatus } from '@/api/seal'
 import InstanceGuardBanner from './InstanceGuardBanner.vue'
 import SidebarVersion from './SidebarVersion.vue'
 import { clearSession } from '@/utils/session'
 import { detailSubject } from '@/utils/detailTitle'
-import { canEnter, entryRuleFor, entrySubject } from '@/router/entryRules'
+import { canEnter, entryRuleFor } from '@/router/entryRules'
 import { MENU_GROUPS } from './sidebarMenu'
 import { useDailyReviewBadge } from '@/composables/useDailyReviewBadge'
+import { useCapabilities } from '@/composables/useCapabilities'
+import { buildSidebarModel, useSidebarPrefs } from '@/composables/useSidebarNav'
+import { GUIDANCE_VERSION } from '@/composables/useUpgradeGuidance'
 
 const COLLAPSE_KEY = 'ot-sidebar-collapsed'
 
@@ -220,70 +283,87 @@ const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
 
+// 目前使用者能力（後端 /auth/me 的 permissions）：守衛與本版面共用同一次載入。
+// 側欄可見性、徽章輪詢、版本行都只看這份能力，不看快取裡的角色
+const caps = useCapabilities()
+const { can } = caps
+
 const rawUserName = ref('')
 const userName = computed(() => rawUserName.value || t('common.defaultUserName'))
-const isAdmin = ref(false)
-const userRoles = ref([])
 const isCollapsed = ref(localStorage.getItem(COLLAPSE_KEY) === 'true')
 
-// 有效審核資格（群組即資格）：roles 快取蓋不到
-// 「審核方群組成員」——以 /auth/me 的 is_approver 判定（後端即時計算）。
-// 初值先取登入時寫入 localStorage 的 is_approver，避免首屏閃爍；掛載後以
-// /auth/me 覆蓋（角色/群組變更即時反映）
-const effectiveApprover = ref(false)
-// 「我的 agent」入口資格的兩個成分（負責至少一個 agent／政策允許自建），
-// 與 is_approver 同一條路徑取得：登入快取先用、掛載後以 /auth/me 覆蓋並回寫
-const ownsAgents = ref(false)
-const canSelfCreateAgent = ref(false)
 // 側欄底部的產品版本（/auth/me 的 product_version 原值；顯示判定在 SidebarVersion）
-const productVersion = ref('')
-
-// 選單可見性與路由守衛**同一個判斷**（router/entryRules.js 的 canEnter）：
-// 同一份規則、同一種身分正規化，選單看得到的就是網址進得去的。
-// 規則表查不到的項目 fail-closed 不顯示
-const subject = computed(() =>
-  entrySubject({
-    roles: userRoles.value,
-    is_approver: effectiveApprover.value,
-    owns_agents: ownsAgents.value,
-    can_self_create_agent: canSelfCreateAgent.value,
-  })
-)
-const isItemVisible = (item) => {
-  const rule = entryRuleFor(item.path)
-  return Boolean(rule) && canEnter(rule, subject.value)
+const productVersion = caps.productVersion
+const capabilitiesFailed = caps.failed
+const capabilitiesRetrying = ref(false)
+const retryCapabilities = async () => {
+  capabilitiesRetrying.value = true
+  try {
+    await caps.reload()
+  } finally {
+    capabilitiesRetrying.value = false
+  }
 }
 
-// 非特權角色以 userTitle 覆寫顯示名（我的資產）；判定與自助入口同口徑（不具 admin/auditor）
-const isPrivileged = computed(
-  () => userRoles.value.includes('admin') || userRoles.value.includes('auditor')
-)
+// 選單可見性與路由守衛**同一個判斷**（router/entryRules.js 的 canEnter）：
+// 同一份規則、同一份能力，選單看得到的就是網址進得去的。
+// 規則表查不到的項目 fail-closed 不顯示
+const isItemVisible = (item) => {
+  const rule = entryRuleFor(item.path)
+  return Boolean(rule) && canEnter(rule)
+}
 
-const visibleGroups = computed(() =>
-  MENU_GROUPS
-    .map((group) => ({
-      ...group,
-      label: t(group.labelKey),
-      items: group.items.filter(isItemVisible).map((item) => ({
-        ...item,
-        title:
-          !isPrivileged.value && item.userTitleKey
-            ? t(item.userTitleKey)
-            : t(item.titleKey),
-      })),
-    }))
-    .filter((group) => group.items.length > 0)
-)
+// 全域資產檢視的呈現點：非此身分的使用者以 userTitle 覆寫顯示名（我的資產）
+const showsGlobalAssets = computed(() => can('ui:assets-global'))
 
-// 每日簽核待簽天數：只對具簽核權限（alert:manage＝admin／auditor）者輪詢與顯示。
+// 側欄分組呈現：分組收合、常用釘選、過濾後只剩一組時攤平。只改呈現，
+// 每個項目仍先經 canEnter 過濾；偏好只存同源 localStorage（每使用者、帶格式版本）
+const { prefs: sidebarPrefs, toggleGroup, expandGroup, togglePin } = useSidebarPrefs(caps.loadedUserId)
+const sidebar = computed(() => buildSidebarModel(MENU_GROUPS, isItemVisible, sidebarPrefs.value))
+const titleOf = (item) =>
+  !showsGlobalAssets.value && item.userTitleKey ? t(item.userTitleKey) : t(item.titleKey)
+
+const sidebarEntries = computed(() => {
+  const { flat, pinned, groups } = sidebar.value
+  const entries = []
+  const itemEntry = (item, isPinned, hidden) => ({
+    kind: 'item',
+    key: `${isPinned ? 'pin' : 'item'}:${item.id}`,
+    item: { ...item, title: titleOf(item) },
+    pinned: isPinned,
+    hidden,
+  })
+  if (pinned.length > 0) {
+    entries.push({ kind: 'label', key: 'label:pinned', text: t('sidebar.pinned') })
+    for (const item of pinned) entries.push(itemEntry(item, true, false))
+  }
+  for (const group of groups) {
+    if (!flat) {
+      entries.push({
+        kind: 'toggle',
+        key: `toggle:${group.id}`,
+        groupId: group.id,
+        collapsed: group.collapsed,
+        text: t(group.labelKey),
+      })
+    }
+    for (const item of group.items) entries.push(itemEntry(item, false, group.collapsed))
+  }
+  return entries
+})
+
+// 每日簽核待簽天數：只對具簽核權限（alert:manage）者輪詢與顯示。
 // 沒有權限的人每 30 秒打一次用不到的端點，只會多出審計讀取列
 const dailyReviewBadge = useDailyReviewBadge()
-const canSignDailyReview = isPrivileged
+const canSignDailyReview = computed(() => can('alert:manage'))
 // 有待簽天數時點「操作日誌」直接進每日簽核分頁；沒有時維持原路徑
 const menuRouteFor = (item) =>
   item.badge === 'dailyReviews' && canSignDailyReview.value && dailyReviewBadge.count.value > 0
     ? { path: item.path, query: { tab: 'reviews' } }
     : undefined
+
+// 單實例守衛橫幅的細節端點每次呼叫留一列審計讀取，只對有此讀取能力者取
+const canViewInstanceGuard = computed(() => can('instanceguard:view'))
 
 const sidebarWidth = computed(() =>
   isCollapsed.value
@@ -293,7 +373,7 @@ const sidebarWidth = computed(() =>
 
 // 有子路徑的功能頁（來源詳情）仍要讓所屬選單項保持選取：以完整路徑比對時，
 // 進到詳情頁會整條側欄都不亮，讀起來像離開了那個功能
-const SUBPATH_PARENTS = ['/identity-sources']
+const SUBPATH_PARENTS = ['/identity-sources', '/users', '/user-groups', '/roles']
 const menuPathOf = (path) =>
   SUBPATH_PARENTS.find((parent) => path === parent || path.startsWith(`${parent}/`)) || path
 
@@ -302,6 +382,17 @@ const activeMenu = computed(() =>
   route.path === '/users' && route.query.kind === 'agent'
     ? '/users?kind=agent'
     : menuPathOf(route.path)
+)
+
+// 目前所在的項目所屬的組若被收合，導覽到該處（或能力剛載入完成）時自動展開。
+// 只監看路徑與能力就緒，不監看側欄模型——否則使用者手動收合目前所在的組會立刻被展開
+watch(
+  [activeMenu, () => caps.ready.value],
+  ([path]) => {
+    const owner = sidebar.value.groups.find((g) => g.collapsed && g.items.some((i) => i.path === path))
+    if (owner) expandGroup(owner.id)
+  },
+  { immediate: true }
 )
 
 const pageTitleKeys = {
@@ -338,6 +429,7 @@ const pageTitleKeys = {
   '/key-management': 'menu.keyManagement',
   '/transmission-inventory': 'menu.transmissionInventory',
   '/offsite-storage': 'menu.offsiteStorage',
+  '/notification-channels': 'alerts.tabChannels',
 }
 
 // 詳情頁以路由名稱取標題（帶參數，無法放進以路徑為鍵的表），
@@ -354,6 +446,22 @@ const detailPages = {
     title: () => t('agentBreaker.title'),
     parent: { to: '/alerts', label: () => t('menu.alerts') },
   },
+  UserDetail: {
+    title: () => detailSubject.value || t('menu.users'),
+    parent: { to: '/users', label: () => t('menu.users') },
+  },
+  UserGroupDetail: {
+    title: () => detailSubject.value || t('menu.userGroups'),
+    parent: { to: '/user-groups', label: () => t('menu.userGroups') },
+  },
+  RoleNew: {
+    title: () => t('roles.editor.titleNew'),
+    parent: { to: '/roles', label: () => t('menu.roles') },
+  },
+  RoleDetail: {
+    title: () => detailSubject.value || t('menu.roles'),
+    parent: { to: '/roles', label: () => t('menu.roles') },
+  },
   SessionDetail: {
     title: () => t('sessionDetail.title'),
     parent: { to: '/sessions', label: () => t('menu.sessions') },
@@ -366,10 +474,17 @@ const currentPageTitle = computed(
     t(pageTitleKeys[activeMenu.value] || 'menu.home')
 )
 
+// 列表頁的所屬群組前綴（核可稿麵包屑「稽核 / 告警」）；群組本身沒有落點頁，不可點
+const groupLeads = {
+  '/alerts': () => t('menu.group.audit'),
+}
+
 const breadcrumbs = computed(() => {
   const parent = detailPages[route.name]?.parent
   const current = { label: currentPageTitle.value, to: '' }
-  return parent ? [{ label: parent.label(), to: parent.to }, current] : [current]
+  if (parent) return [{ label: parent.label(), to: parent.to }, current]
+  const lead = groupLeads[activeMenu.value]
+  return lead ? [{ label: lead(), to: '' }, current] : [current]
 })
 
 const toggleCollapse = () => {
@@ -381,6 +496,10 @@ const handleCommand = (command) => {
   switch (command) {
     case 'profile':
       router.push('/profile')
+      break
+    case 'guidance':
+      // 回儀表板並由說明卡消費 query 重開；不碰伺服器端的關閉狀態
+      router.push({ path: '/dashboard', query: { guidance: GUIDANCE_VERSION } })
       break
     case 'logout':
       handleLogout()
@@ -425,7 +544,7 @@ const startInstanceGuardPolling = () => {
   instanceGuardTimer = setInterval(refreshInstanceGuardStatus, INSTANCE_GUARD_POLL_MS)
 }
 
-// 審核中心待審 badge：僅 admin/approver 輪詢；
+// 審核中心待審 badge：僅具審核資格（ui:approvals）者輪詢；
 // 輪詢失敗靜默（skipErrorToast），下一輪自然重試——badge 是提示不是事實源
 const approvalPendingCount = ref(0)
 const BADGE_POLL_MS = 30000
@@ -443,93 +562,49 @@ const refreshApprovalBadge = async () => {
 
 const startApprovalBadgePolling = () => {
   // badge 端點與審核端點同一守衛，admin 打了必 403——
-  // 判定與入口可見性收斂到同一述詞，避免對後端做無謂的必敗輪詢
-  if (!effectiveApprover.value) return
+  // 判定與入口可見性收斂到同一個呈現點，避免對後端做無謂的必敗輪詢
+  if (badgeTimer) return
   refreshApprovalBadge()
   badgeTimer = setInterval(refreshApprovalBadge, BADGE_POLL_MS)
 }
 
-// 入口資格的權威判定：/auth/me 現算的 is_approver（群組即資格、admin 不兜底）
-// 與「我的 agent」兩欄（owns_agents／can_self_create_agent）。
-// 查失敗靜默——沿用 localStorage 快取值（後端守衛才是強制點）。
-// **回寫 localStorage**：路由守衛是同步讀快取的，不回寫的話
-// 「剛被指派 approver 的人」或「剛成為 agent 負責人的人」選單會亮、
-// 直接進頁卻被守衛擋掉（兩套述詞的老毛病）
-const refreshEntryFlags = async () => {
-  try {
-    const me = await getCurrentUser()
-    const info = me?.data && typeof me.data === 'object' && !Array.isArray(me.data) ? me.data : me
-    const wasApprover = effectiveApprover.value
-    effectiveApprover.value = !!(me?.is_approver ?? me?.data?.is_approver)
-    // agent 兩欄只在回應帶了才採信：缺欄（例如舊版後端）不把快取改成 false
-    const updates = { is_approver: effectiveApprover.value }
-    for (const key of ['owns_agents', 'can_self_create_agent']) {
-      if (info && typeof info[key] === 'boolean') updates[key] = info[key]
-    }
-    if ('owns_agents' in updates) ownsAgents.value = updates.owns_agents
-    if ('can_self_create_agent' in updates) canSelfCreateAgent.value = updates.can_self_create_agent
-    // 版本行與入口資格共用這一次 /auth/me，不另打請求；取不到就維持空字串（不顯示）
-    if (info && typeof info.product_version === 'string') productVersion.value = info.product_version
-    persistEntryFlags(updates)
-    if (effectiveApprover.value && !wasApprover && !badgeTimer) {
-      startApprovalBadgePolling()
-    }
-    // 資格由真轉假（撤角色／移出審核方群組）：停掉輪詢並清零。
-    // 不停的話 timer 會每 30 秒對必敗端點打一次，直到整個 layout 卸載為止。
-    if (!effectiveApprover.value && wasApprover) {
-      if (badgeTimer) {
-        clearInterval(badgeTimer)
-        badgeTimer = null
-      }
-      approvalPendingCount.value = 0
-    }
-  } catch {
-    // 靜默：入口顯示性判定失敗不打擾使用者
+// 資格由真轉假（撤角色／移出審核方群組）：停掉輪詢並清零。
+// 不停的話 timer 會每 30 秒對必敗端點打一次，直到整個 layout 卸載為止
+const stopApprovalBadgePolling = () => {
+  if (badgeTimer) {
+    clearInterval(badgeTimer)
+    badgeTimer = null
   }
+  approvalPendingCount.value = 0
 }
 
-// 把現算的入口資格寫回使用者快取，讓同步的路由守衛與選單同源。
-// 值未變時不寫、不廣播（避免無謂喚醒下游）
-const persistEntryFlags = (updates) => {
-  const user = localStorage.getItem('user')
-  if (!user) return
-  try {
-    const userData = JSON.parse(user)
-    const changed = Object.entries(updates).filter(([key, value]) => userData[key] !== value)
-    if (changed.length === 0) return
-    for (const [key, value] of changed) userData[key] = value
-    localStorage.setItem('user', JSON.stringify(userData))
-    // 同分頁的其他元件（儀表板待審卡）沒有別的管道知道資格變了：
-    // storage 事件不在同分頁觸發，故沿用自助更新那條自訂事件。
-    window.dispatchEvent(new Event('ot-user-updated'))
-  } catch {
-    // 快取毀損時不覆寫：守衛自身對毀損快取已 fail-closed 導向登入
-  }
-}
+watch(
+  () => can('ui:approvals'),
+  (eligible) => (eligible ? startApprovalBadgePolling() : stopApprovalBadgePolling()),
+  { immediate: true }
+)
+watch(
+  canSignDailyReview,
+  (eligible) => (eligible ? dailyReviewBadge.start() : dailyReviewBadge.stop()),
+  { immediate: true }
+)
 
 // 側欄自己的名字走 resolved display_name（僅自我檢視的
-// 裝飾場景；身分敏感頁面另用 username）。自 localStorage 快取讀取，隨登入/自助更新同步
+// 裝飾場景；身分敏感頁面另用 username）。自 localStorage 快取讀取，隨登入/自助更新同步。
+// 這份快取只供顯示，**不是能力的來源**
 const syncUserFromStorage = () => {
   const user = localStorage.getItem('user')
   if (!user) return
   try {
     const userData = JSON.parse(user)
     rawUserName.value = userData.display_name || userData.username || ''
-    const roles = userData.roles || []
-    userRoles.value = roles
-    isAdmin.value = roles.includes('admin')
-    // 首屏先用登入時寫入的入口資格，避免 /auth/me 回來前選單閃爍
-    const cached = entrySubject(userData)
-    effectiveApprover.value = cached.isApprover
-    ownsAgents.value = cached.ownsAgents
-    canSelfCreateAgent.value = cached.canSelfCreateAgent
   } catch (e) {
     console.error('解析使用者資料失敗:', e)
   }
 }
 
 // 審核送出後不必等下一輪輪詢：審核中心派 ot-approvals-changed，badge 立刻重算
-const onApprovalsChanged = () => { if (effectiveApprover.value) refreshApprovalBadge() }
+const onApprovalsChanged = () => { if (can('ui:approvals')) refreshApprovalBadge() }
 
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
@@ -544,9 +619,8 @@ onMounted(() => {
   // 自助更新顯示名後同分頁即時反映（storage 事件不在同分頁觸發，改用自訂事件）
   window.addEventListener('ot-user-updated', syncUserFromStorage)
   window.addEventListener('ot-approvals-changed', onApprovalsChanged)
-  startApprovalBadgePolling()
-  if (canSignDailyReview.value) dailyReviewBadge.start()
-  refreshEntryFlags()
+  // 與路由守衛共用同一次 /auth/me：守衛已載入則直接就緒，否則在這裡發起（登入即可的入口不等能力）
+  caps.load()
   startInstanceGuardPolling()
 })
 </script>
@@ -649,6 +723,58 @@ onMounted(() => {
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-secondary);
   letter-spacing: 0.5px;
+}
+
+/* 組標題兼收合控制：維持標題的外觀，但是可聚焦的按鈕（鍵盤 Enter／Space 可操作） */
+.menu-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.menu-group-toggle:hover {
+  color: var(--ot-text-primary);
+}
+
+.menu-group-toggle:focus-visible,
+.menu-pin:focus-visible {
+  outline: 2px solid var(--ot-primary);
+  outline-offset: -2px;
+  border-radius: var(--ot-radius-sm);
+}
+
+.menu-group-chevron {
+  font-size: 12px;
+}
+
+/* 釘選鈕：平常淡出，項目 hover／鍵盤聚焦或已釘選時顯現 */
+.menu-pin {
+  margin-left: auto;
+  padding: 0 var(--ot-space-xs);
+  border: 0;
+  background: transparent;
+  color: var(--ot-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  line-height: 1;
+}
+
+.sidebar-menu :deep(.el-menu-item) .menu-pin--on,
+.sidebar-menu :deep(.el-menu-item:hover) .menu-pin,
+.sidebar-menu :deep(.el-menu-item:focus-within) .menu-pin,
+.menu-pin:focus-visible {
+  opacity: 1;
+}
+
+.capability-alert {
+  margin: var(--ot-space-sm) var(--ot-space-lg) 0;
+  width: auto;
 }
 
 .menu-title-with-badge {

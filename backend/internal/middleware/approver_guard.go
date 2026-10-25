@@ -46,8 +46,7 @@ func RequireApproverRole(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if !verdict.Allowed {
-			apierror.Respond(c, http.StatusForbidden, apierror.CodeApproverRequired, nil)
-			c.Abort()
+			WriteCapabilityDenial(c, ReservedCapabilityDenial(authz.ReservedApproverEligibility))
 			return
 		}
 
@@ -60,8 +59,13 @@ func RequireApproverRole(db *gorm.DB) gin.HandlerFunc {
 //
 // **為何不與審核端點一起收斂**：撤銷是**遏制動作不是審核**，既有 spec 明定資格＝
 // admin OR 原核准人；一併收斂會使 admin 無法撤銷已核出的票證＝安全倒退。
-// 細緻資格由 service 的 `eligibleToRevoke` 裁決。
+// 細緻資格由 service 的撤銷交易逐項裁決。持授權規則管理能力的任一有效指派者也放行（粗篩，不判範圍）。
 func RequireRevokeEligibility(db *gorm.DB) gin.HandlerFunc {
+	return RequireRevokeEligibilityOn(db, authz.ProductCatalogue())
+}
+
+// RequireRevokeEligibilityOn 與 RequireRevokeEligibility 同一判準，另指定目錄（測試用）。
+func RequireRevokeEligibilityOn(db *gorm.DB, cat authz.Catalogue) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := GetCurrentUserID(c)
 		if !exists {
@@ -69,7 +73,7 @@ func RequireRevokeEligibility(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		verdict, err := authz.EvaluateRevokeRouteEligibility(db, userID)
+		verdict, err := authz.EvaluateRevokeRouteEligibilityOn(db, cat, userID)
 		if err != nil {
 			code := apierror.CodeInternalApproverQuery
 			if verdict.RoleQueryFailed {
@@ -80,8 +84,7 @@ func RequireRevokeEligibility(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if !verdict.Allowed {
-			apierror.Respond(c, http.StatusForbidden, apierror.CodeApproverRequired, nil)
-			c.Abort()
+			WriteCapabilityDenial(c, ReservedCapabilityDenial(authz.ReservedRevokeEligibility))
 			return
 		}
 

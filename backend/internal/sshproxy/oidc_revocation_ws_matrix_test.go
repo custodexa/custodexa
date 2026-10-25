@@ -44,12 +44,12 @@ func wsMatrixDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{}, &model.OIDCProvider{},
+	if err := migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.SecurityPolicy{},
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.OIDCProvider{},
 		&model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserGroup{}, &model.UserGroupMember{},
-		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -202,7 +202,7 @@ func TestProviderDisableCutsMonitorOfLocalSession(t *testing.T) {
 
 	sessions := session.NewSessionService(nil)
 	h := wsMatrixHandler(t, sessions)
-	svc := identity.NewOIDCProviderService(db, nil,
+	svc := newOIDCProviderServiceT(db, nil,
 		&identity.OIDCEgressPolicy{AllowInsecureHosts: []string{"127.0.0.1"}},
 		nil, "https://bastion.example.com")
 	// 真管道：service 停用路徑 → hub 收線 ／ → sessions 掃描
@@ -248,7 +248,7 @@ func TestProviderDisableCutsSubscriptionsAcrossRooms(t *testing.T) {
 
 	sessions := session.NewSessionService(nil)
 	h := wsMatrixHandler(t, sessions)
-	svc := identity.NewOIDCProviderService(db, nil,
+	svc := newOIDCProviderServiceT(db, nil,
 		&identity.OIDCEgressPolicy{AllowInsecureHosts: []string{"127.0.0.1"}},
 		nil, "https://bastion.example.com")
 	svc.SetSubscriptionTerminator(h.Monitor)

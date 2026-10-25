@@ -18,6 +18,10 @@ import (
 // 只有結構測會漏掉存量搬移的語義。
 
 // credentialLibraryObjects 本 change 產生的資料庫物件計數（Down／Up 的比對基準）。
+//
+// 只計本 migration 自己建立的物件：之後的增量建在同一批表上的索引（憑證歸屬的
+// idx_credentials_owner）不屬本 migration 的 Down／Up，隨表一併卸下後不由本 migration 重建，
+// 故排除在外；該索引由 baseline 的索引總數與 schema parity 守衛涵蓋。
 func credentialLibraryObjects(t *testing.T, db *gorm.DB, pgSchema string) (tables, indexes int64) {
 	t.Helper()
 	scan := func(sql string, dst *int64, args ...interface{}) {
@@ -33,7 +37,8 @@ func credentialLibraryObjects(t *testing.T, db *gorm.DB, pgSchema string) (table
 	scan(`SELECT count(*) FROM pg_indexes WHERE schemaname = ?
 	      AND (tablename IN ('credentials','credential_secret_versions',
 	                         'credential_rotations','credential_rotation_members')
-	           OR indexname = 'idx_asset_accounts_credential')`, &indexes, pgSchema)
+	           OR indexname = 'idx_asset_accounts_credential')
+	      AND indexname <> 'idx_credentials_owner'`, &indexes, pgSchema)
 	return tables, indexes
 }
 

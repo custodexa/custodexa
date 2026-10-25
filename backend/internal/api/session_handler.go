@@ -10,6 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/gin-gonic/gin"
 )
@@ -198,16 +199,14 @@ func (h *SessionHandler) Terminate(c *gin.Context) {
 		return
 	}
 
-	// 檢查管理員權限（僅管理員可強制斷線）
-	role, exists := c.Get("role")
-	if !exists {
+	// 檢查管理員權限（僅內建超管可強制斷線）
+	principal := middleware.PrincipalFrom(c)
+	if principal == nil {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
 		return
 	}
-
-	roleStr, ok := role.(string)
-	if !ok || roleStr != "admin" {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeSessionTerminateAdminOnly, nil)
+	if !principal.IsSuperAdmin() {
+		middleware.WriteCapabilityDenial(c, middleware.ReservedCapabilityDenial(authz.ReservedSuperAdmin))
 		return
 	}
 
@@ -247,11 +246,11 @@ func (h *SessionHandler) RegisterRoutes(r *gin.RouterGroup, authService *identit
 	// 敏感讀取端點無條件要求 session:view：
 	// session 列表/詳情/活動/統計含他人連線紀錄，不得因
 	// debug 旁路而對一般登入者敞開（該旁路已隨權限旗標退場）
-	sessions.GET("", middleware.RequirePermission(middleware.PermSessionView), h.List)
-	sessions.GET("/active", middleware.RequirePermission(middleware.PermSessionView), h.GetActive)
-	sessions.GET("/statistics", middleware.RequirePermission(middleware.PermSessionView), h.GetStatistics)
-	sessions.GET("/:id", middleware.RequirePermission(middleware.PermSessionView), h.Get)
+	sessions.GET("", middleware.EnforceRegistry(), h.List)
+	sessions.GET("/active", middleware.EnforceRegistry(), h.GetActive)
+	sessions.GET("/statistics", middleware.EnforceRegistry(), h.GetStatistics)
+	sessions.GET("/:id", middleware.EnforceRegistry(), h.Get)
 
 	// 寫入端點維持既有 flag 行為（Terminate 另有 handler 內 admin 檢查）
-	sessions.POST("/:id/terminate", middleware.RequirePermission(middleware.PermSessionTerminate), h.Terminate)
+	sessions.POST("/:id/terminate", middleware.EnforceRegistry(), h.Terminate)
 }

@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Assets from '../Assets.vue'
 import { createAsset, updateAsset } from '@/api/assets'
+import { setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 新增資產表單的登入憑證區塊與進階選項。
 //
@@ -35,6 +36,7 @@ vi.mock('@/api/assets', () => ({
   deleteAsset: vi.fn(),
   getAssetHostKey: vi.fn().mockRejectedValue(new Error('no key')),
   resetAssetHostKey: vi.fn(),
+  adoptAssetHostKey: vi.fn(),
   testAssetConnection: vi.fn(),
   getAssetGroups: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   getAssetNodeTree: vi.fn().mockResolvedValue({ data: [] }),
@@ -112,6 +114,7 @@ const advanced = (wrapper) => wrapper.findComponent({ name: 'AssetAdvancedFields
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  setCapabilitiesForTests(['asset:view', 'asset:create', 'credential:create'])
   getAssetListMock.mockResolvedValue({ data: [], total: 0, page: 1, page_size: 20 })
   listCredentialsMock.mockResolvedValue({
     data: [

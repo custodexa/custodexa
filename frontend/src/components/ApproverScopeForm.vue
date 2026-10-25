@@ -46,12 +46,18 @@
               :value="opt.id"
             />
           </el-select>
+          <div
+            v-if="roleHintVisible && form.actorType === 'user'"
+            class="role-hint"
+          >
+            {{ $t('approverScopeForm.approverRoleRequiredHint') }}
+          </div>
         </el-form-item>
       </template>
       <el-form-item :label="$t('approverScopeForm.scopeTypeLabel')">
         <el-radio-group v-model="form.type">
           <el-radio
-            v-for="(meta, key) in SCOPE_TYPES"
+            v-for="(meta, key) in visibleScopeTypes"
             :key="key"
             :value="key"
           >
@@ -96,8 +102,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAssetGroups, getAssetList } from '@/api/assets'
 import { getUserList, addUserRole } from '@/api/user'
 import { getUserGroups } from '@/api/userGroups'
-import { createApproverScope } from '@/api/accessRequests'
+import {
+  createApproverScope,
+  getApproverScopeApproverOptions,
+  getApproverScopeTargetOptions,
+} from '@/api/accessRequests'
 import { roleNames } from '@/composables/useRoles'
+import { canAll } from '@/composables/useCapabilities'
 import { t } from '@/i18n'
 import {
   SCOPE_TYPES,
@@ -114,6 +125,8 @@ const props = defineProps({
   // 預選客體（客體中心視角的節點列＋捷徑：類型與客體都預填，只選審核方）
   presetTargetId: { type: Number, default: null },
   showHelp: { type: Boolean, default: true },
+  // 精簡路徑（總覽頁列表帶 coverage 時傳入）：{ applicantManageable }；null＝現行路徑
+  scoped: { type: Object, default: null },
 })
 const emit = defineEmits(['created'])
 
@@ -129,6 +142,15 @@ const options = reactive({
   actor_user: [], actor_group: [],
 })
 const loaded = ref(false)
+// 精簡路徑下不具指派角色能力：只列已具審核人員角色者並顯示提示
+const roleHintVisible = ref(false)
+
+// 申請人型管理旗標為假：客體類型只有資產與節點
+const visibleScopeTypes = computed(() =>
+  props.scoped && !props.scoped.applicantManageable
+    ? { asset: SCOPE_TYPES.asset, asset_group: SCOPE_TYPES.asset_group }
+    : SCOPE_TYPES
+)
 
 const currentOptions = computed(() => options[form.type] || [])
 const currentActorOptions = computed(() =>
@@ -148,8 +170,49 @@ watch(() => props.presetType, (v) => {
   if (v) form.type = v
 })
 
+// 精簡路徑：審核方取 approver-options、客體取 target-options；不讀使用者、群組與節點列表
+const loadScopedOptions = async () => {
+  const [optionRes, assetRes, nodeRes] = await Promise.all([
+    getApproverScopeApproverOptions(),
+    getApproverScopeTargetOptions({ kind: 'asset', page: 1, page_size: 1000 }),
+    getApproverScopeTargetOptions({ kind: 'node', page: 1, page_size: 1000 }),
+  ])
+  options.asset = (assetRes.data || []).map((a) => ({ id: a.id, label: a.name }))
+  options.asset_group = (nodeRes.data || [])
+    .filter((n) => n.selectable !== false)
+    .map((n) => ({ id: n.id, label: n.path || n.name }))
+  const users = optionRes.users || []
+  const ugroups = (optionRes.groups || []).map((g) => ({ id: g.id, label: g.name }))
+  options.actor_group = ugroups
+  if (props.scoped.applicantManageable) {
+    options.subject_user = users.map((u) => ({ id: u.id, label: u.username }))
+    options.subject_group = ugroups
+  }
+  // 代配要同時能改使用者與指派角色；不具備時只列已具審核人員角色者
+  const canAssignRole = canAll(['user:manage', 'role:assign'])
+  roleHintVisible.value = !canAssignRole
+  options.actor_user = users
+    .filter((u) => u.selectable && (canAssignRole || u.is_approver))
+    .map((u) => ({
+      id: u.id,
+      label: u.is_approver ? u.username : t('approverScopeForm.actorNeedsRoleLabel', { username: u.username }),
+      needsRole: !u.is_approver,
+      username: u.username,
+      roles: u.is_approver ? ['approver'] : [],
+    }))
+}
+
 const loadOptions = async () => {
   if (loaded.value) return
+  if (props.scoped) {
+    try {
+      await loadScopedOptions()
+      loaded.value = true
+    } catch (error) {
+      console.error('載入範圍選項失敗:', error)
+    }
+    return
+  }
   try {
     const [assetRes, groupRes, userRes, ugroupRes] = await Promise.all([
       getAssetList({ page: 1, page_size: 1000 }),
@@ -260,6 +323,12 @@ const handleSubmit = async () => {
 <style scoped>
 .scope-help {
   margin-bottom: 16px;
+}
+
+.role-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ot-text-secondary, #93a4bd);
 }
 
 .scope-help-list {

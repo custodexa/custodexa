@@ -10,7 +10,7 @@
  */
 import { isDatabaseProtocol, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
 
-/** 範本與欄位說明的 13 欄（順序即範本欄序，design §2.2） */
+/** 範本與欄位說明的 13 欄（順序即範本欄序） */
 export const BULK_FIELDS = [
   'name',
   'protocol',
@@ -183,9 +183,11 @@ function portPayload(port) {
 
 /**
  * 表格列 → 端點列 JSON，連同送出前就地發現的錯誤（JSON 承載不了的輸入）
+ * @param {object} row
+ * @param {{ includeAccessPolicy?: boolean }} [opts] 無存取政策權限點時傳 false
  * @returns {{ row: object, localErrors: object[] }}
  */
-export function rowToPayload(row) {
+export function rowToPayload(row, { includeAccessPolicy = true } = {}) {
   const localErrors = []
   const port = portPayload(row.port)
   if (port.error) localErrors.push(port.error)
@@ -208,6 +210,8 @@ export function rowToPayload(row) {
     rdp_security: row.rdp_security,
     db_tls_mode: row.db_tls_mode,
   }
+  // 無存取政策權限點：送出列不帶此鍵（伺服端對帶非空值者整批拒絕）
+  if (!includeAccessPolicy) delete payload.access_policy
   if (row.node_paths.length) payload.node_paths = [...row.node_paths]
   return { row: payload, localErrors }
 }

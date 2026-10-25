@@ -78,6 +78,10 @@ func main() {
 	if err := prochardening.Harden(); err != nil {
 		log.Fatalf("process hardening failed: %v", err)
 	}
+	// 一次性子命令（管理腳本的還原與備份摘要用，restore_oneshot.go）：只連資料庫，不啟動服務。
+	if code, handled := runOneShot(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	s1 := runStage1()
 	defer database.Close()
 	defer s1.closeStartupVault()
@@ -517,6 +521,10 @@ type routeDeps struct {
 	seal           *api.SealHandler
 	auth           *api.AuthHandler
 	securityPolicy *api.SecurityPolicyHandler
+	// releaseGuidance 版本說明：本人關閉狀態與保留調整告知
+	releaseGuidance *api.ReleaseGuidanceHandler
+	// dashboardCards 儀表板逐卡資料
+	dashboardCards *api.DashboardCardHandler
 	// policyGroup 政策組管理（規範條文與安全設定的對照）：讀取 admin 與 auditor，
 	// 寫入限 admin，且是全部對照寫入的唯一入口
 	policyGroup *api.PolicyGroupHandler
@@ -538,6 +546,7 @@ type routeDeps struct {
 	auditFailure          *api.AuditFailureHandler
 	transmissionInventory *api.TransmissionInventoryHandler
 	notificationChannel   *api.NotificationChannelHandler
+	systemAlert           *api.SystemAlertHandler
 	oidc                  *api.OIDCHandler
 	ldapDirectory         *api.LDAPDirectoryHandler
 	identitySource        *api.IdentitySourceHandler
@@ -549,23 +558,26 @@ type routeDeps struct {
 	// instanceGuardHalt 守衛攔下頁的兩個未認證端點（狀態查詢與確認送出）。
 	// **恆註冊**：只在攔下模式註冊會使路由 golden、審計分類守衛與 API 索引
 	// 都看不見它們，而非攔下狀態下兩者在觸碰任何憑證之前即返回。
-	instanceGuardHalt *api.InstanceGuardHaltHandler
-	keyManagement     *api.KeyManagementHandler
-	snippet           *api.SnippetHandler
-	assetGroup        *api.AssetGroupHandler
-	userGroup         *api.UserGroupHandler
-	user              *api.UserHandler
-	role              *api.RoleHandler
-	authorization     *api.AuthorizationHandler
-	recording         *api.RecordingHandler
-	auditLog          *api.AuditLogHandler // 僅 auditLogEnabled 時註冊
-	exportSigning     *api.ExportSigningHandler
-	auditExport       *api.AuditExportHandler
-	accessReview      *api.AccessReviewHandler
-	hostKey           *api.HostKeyHandler
-	clipboard         *api.ClipboardEventHandler
-	auditTimeline     *api.AuditTimelineHandler
-	changeSecret      *api.ChangeSecretHandler
+	instanceGuardHalt     *api.InstanceGuardHaltHandler
+	keyManagement         *api.KeyManagementHandler
+	snippet               *api.SnippetHandler
+	assetGroup            *api.AssetGroupHandler
+	userGroup             *api.UserGroupHandler
+	roleAssignmentPreview *api.RoleAssignmentPreviewHandler
+	roleAssignmentOptions *api.RoleAssignmentOptionsHandler
+	roleDefinition        *api.RoleDefinitionHandler
+	user                  *api.UserHandler
+	role                  *api.RoleHandler
+	authorization         *api.AuthorizationHandler
+	recording             *api.RecordingHandler
+	auditLog              *api.AuditLogHandler // 僅 auditLogEnabled 時註冊
+	exportSigning         *api.ExportSigningHandler
+	auditExport           *api.AuditExportHandler
+	accessReview          *api.AccessReviewHandler
+	hostKey               *api.HostKeyHandler
+	clipboard             *api.ClipboardEventHandler
+	auditTimeline         *api.AuditTimelineHandler
+	changeSecret          *api.ChangeSecretHandler
 	// credential 帳號憑證庫：憑證 CRUD、掛載／卸載、範圍轉換、改密與脫離共用
 	credential *api.CredentialHandler
 	// rotationReport 資產帳號輪替證據報告：讀取面 audit:view、排程面 admin
@@ -661,6 +673,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 
 		d.auth.RegisterRoutes(v1, d.authService)
 		d.securityPolicy.RegisterRoutes(v1, d.authService)
+		d.releaseGuidance.RegisterRoutes(v1, d.authService)
+		d.dashboardCards.RegisterRoutes(v1, d.authService)
 		// 政策組與合規對照：緊鄰安全政策註冊——三者是同一件事的三個面
 		//（設定值、用來量它的對照、量出來的結果），角色邊界亦相鄰
 		//（設定寫入限 admin，對照寫入限 admin、讀取開放 auditor）
@@ -687,6 +701,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.auditFailure.RegisterRoutes(v1, d.authService)
 		d.transmissionInventory.RegisterRoutes(v1, d.authService)
 		d.notificationChannel.RegisterRoutes(v1, d.authService)
+		d.systemAlert.RegisterRoutes(v1, d.authService)
 		d.oidc.RegisterRoutes(v1, d.authService)
 		// LDAP 目錄設定：與 OIDC provider 同屬
 		// 身分管理面的 admin-only 設定；singleton 資源（無 :id、無集合式建立）
@@ -706,8 +721,11 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.snippet.RegisterRoutes(v1, d.authService)
 		d.assetGroup.RegisterRoutes(v1, d.authService)
 		d.userGroup.RegisterRoutes(v1, d.authService)
+		d.roleAssignmentPreview.RegisterRoutes(v1, d.authService)
+		d.roleAssignmentOptions.RegisterRoutes(v1, d.authService)
 		d.user.RegisterRoutes(v1, d.authService)
 		d.role.RegisterRoutes(v1, d.authService)
+		d.roleDefinition.RegisterRoutes(v1, d.authService)
 		d.authorization.RegisterRoutes(v1, d.authService)
 		d.recording.RegisterRoutes(v1, d.authService)
 
@@ -740,34 +758,34 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// SSH 會話即時監看：限 admin/auditor，唯讀。
 		// 觀看票簽發掛認證中介層，WS 端只兌換即焚的票
 		v1.POST("/sessions/:id/monitor-token",
-			middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateMonitorTicket)
+			middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleCreateMonitorTicket)
 		v1.GET("/sessions/:id/monitor", d.ssh.HandleMonitor)
 		// 查詢主控台：與 /ssh 同一種一次性票、同一張閘序表，多兩道主控台專屬閘
 		v1.GET("/db-console", d.ssh.HandleDBConsole)
 		// 查詢主控台的結果匯出（JWT middleware 認證；二進位下載走不了 WS 訊息）
 		v1.GET("/db-console/sessions/:id/results/:event_id/export",
-			middleware.AuthMiddleware(d.authService), d.ssh.HandleDBConsoleExport)
+			middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleDBConsoleExport)
 		// session-stats: SSH 會話即時指標（JWT middleware 認證）
-		v1.GET("/ssh/sessions/:id/stats", middleware.AuthMiddleware(d.authService), d.ssh.HandleStats)
+		v1.GET("/ssh/sessions/:id/stats", middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleStats)
 		// session-share: 會話分享（建立/撤銷需登入；加入走一次性觀看票）
-		v1.POST("/sessions/:id/share", middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateShare)
-		v1.DELETE("/sessions/:id/share", middleware.AuthMiddleware(d.authService), d.ssh.HandleRevokeShare)
+		v1.POST("/sessions/:id/share", middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleCreateShare)
+		v1.DELETE("/sessions/:id/share", middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleRevokeShare)
 		// 分享碼走請求本體：本端點掛審計中介層，而中介層以原始路徑留痕，
 		// 碼放在路徑上會逐字落進長期保存的審計表
 		v1.POST("/sessions/share/token",
-			middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateShareTicket)
+			middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleCreateShareTicket)
 		v1.GET("/sessions/share/:code/ws", d.ssh.HandleShareJoin)
 		// connect-token: 一次性連線 token（P2，取代 WS query JWT）
-		v1.POST("/connect-tokens", middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateConnectToken)
+		v1.POST("/connect-tokens", middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleCreateConnectToken)
 
 		d.accessRequest.RegisterRoutes(v1, d.authService)
 
 		// 連線同意閘
-		v1.POST("/transmission-consents", middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateTransmissionConsent)
+		v1.POST("/transmission-consents", middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.ssh.HandleCreateTransmissionConsent)
 
 		// SSH 資產檔案管理：資產收口 + 全操作審計
 		d.sftp.RegisterRoutes(v1, d.authService)
-		v1.POST("/mcp", middleware.AuthMiddleware(d.authService), d.mcp.Handle)
+		v1.POST("/mcp", middleware.AuthMiddleware(d.authService), middleware.EnforceRegistry(), d.mcp.Handle)
 	}
 }
 

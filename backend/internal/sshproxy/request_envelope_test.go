@@ -19,7 +19,10 @@ import (
 
 func seedEnvelope(t *testing.T, db *gorm.DB, scope model.AccountScope) (model.AccessRequest, model.AccessRequestItem) {
 	t.Helper()
-	if err := db.AutoMigrate(&model.AccessRequestItem{}); err != nil {
+	if err := db.AutoMigrate(&model.AccessRequestItem{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().Add(-time.Minute)

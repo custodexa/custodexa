@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/authz"
 	"gorm.io/gorm"
 )
 
@@ -57,10 +58,19 @@ func GrantMappedRole(tx *gorm.DB, userID, roleID uint, channel string,
 			model.RoleSourceMapped, model.RoleOriginMapping); err != nil {
 			return false, err
 		}
+		// 權限版本：授權集合多了一列（與寫入同交易、置於寫入之後）
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	if source == model.RoleSourceManual {
 		if err := model.SetUserRoleSource(tx, userID, roleID, model.RoleSourceBoth); err != nil {
+			return false, err
+		}
+		// 手動列併入映射成分：來源改變，後續撤權判定依它，故推進；
+		// 單純更新映射事實的命中時間（每次登入都會發生）不推進
+		if err := authz.AdvanceVersion(tx); err != nil {
 			return false, err
 		}
 	}
@@ -115,6 +125,11 @@ func RevokeMappedRolesForChannel(tx *gorm.DB, userID uint, channel string,
 	if len(stale) == 0 {
 		return nil, nil
 	}
+	// 權限版本：本通道有映射事實被移除即推進（撤權相關；過度推進無害、漏推進即撤權不生效）。
+	// 與刪除同交易，且置於刪除之後、角色列收回之前——任一步失敗整筆回滾，版本隨之不動。
+	if err := authz.AdvanceVersion(tx); err != nil {
+		return nil, err
+	}
 
 	for _, roleID := range stale {
 		stillMapped, err := roleStillMappedByAnyChannel(tx, userID, roleID)
@@ -143,6 +158,10 @@ func RevokeMappedRolesForChannel(tx *gorm.DB, userID uint, channel string,
 			}
 		}
 	}
+	// 版本推進在角色列收回之前（見上）；收回本身補記進權限狀態事件鏈，不再推進
+	if err := authz.SettlePermissionChange(tx); err != nil {
+		return nil, err
+	}
 	return revoked, nil
 }
 
@@ -157,6 +176,10 @@ func RevokeMappedRolesForChannel(tx *gorm.DB, userID uint, channel string,
 // **origin 不做成參數**：AST 守衛以「第四個引數是不是具名常數」辨識寫入呼叫點，
 // 把來源改成變數會讓這條路徑靜默脫離登記表的射程。這個函式的來源本來就恆為
 // 管理面，寫死即可。
+//
+// 節點範圍：呼叫端 SHALL 在對象的使用者鎖內呼叫，且對象有任何節點範圍指派時已先取得
+// 拓撲序列化鎖（目前唯一的呼叫端 assignRoles 以 user_roles 的範圍種類判定）。本函式
+// 自己不取鎖，清節點列與並存降級時的改回全域都在該鎖之下。
 func RemoveManualRole(tx *gorm.DB, userID, roleID uint) (removed bool, err error) {
 	source, exists, err := model.UserRoleSourceOf(tx, userID, roleID)
 	if err != nil {
@@ -165,14 +188,33 @@ func RemoveManualRole(tx *gorm.DB, userID, roleID uint) (removed bool, err error
 	if !exists {
 		return false, nil
 	}
+	scoped, err := userRoleIsNodeScoped(tx, userID, roleID)
+	if err != nil {
+		return false, err
+	}
 	switch source {
 	case model.RoleSourceManual:
 		if err := model.RevokeUserRole(tx, userID, roleID, model.RoleOriginAPI); err != nil {
 			return false, err
 		}
+		if scoped {
+			if err := authz.ClearBindingNodes(tx, model.BindingSubjectUser, userID, roleID); err != nil {
+				return false, err
+			}
+		}
+		if err := authz.AdvanceVersion(tx); err != nil {
+			return false, err
+		}
 		return true, nil
 	case model.RoleSourceBoth:
 		if err := model.SetUserRoleSource(tx, userID, roleID, model.RoleSourceMapped); err != nil {
+			return false, err
+		}
+		// 映射不帶範圍：管理者那份的節點範圍隨之失效，改回全域（版本在下方推進）
+		if err := resetNodeScopeOnDemotion(tx, userID, roleID); err != nil {
+			return false, err
+		}
+		if err := authz.AdvanceVersion(tx); err != nil {
 			return false, err
 		}
 	}
@@ -189,18 +231,31 @@ func RemoveManualRole(tx *gorm.DB, userID, roleID uint) (removed bool, err error
 //
 // origin 不做成參數，理由同 RemoveManualRole。
 func AddManualRole(tx *gorm.DB, userID, roleID uint) (granted bool, err error) {
+	return AddManualRoleInRange(tx, userID, roleID, nil)
+}
+
+// AddManualRoleInRange 同 AddManualRole；新建的指派將以 nodes 為節點範圍持有時由此帶入，
+// 使 assign 審計列記下起始範圍（範圍本身由呼叫端寫入）。既有的列不受 nodes 影響。
+func AddManualRoleInRange(tx *gorm.DB, userID, roleID uint, nodes []uint) (granted bool, err error) {
 	source, exists, err := model.UserRoleSourceOf(tx, userID, roleID)
 	if err != nil {
 		return false, err
 	}
 	if !exists {
-		if err := model.AssignUserRole(tx, userID, roleID, model.RoleOriginAPI); err != nil {
+		if err := model.AssignUserRoleInRange(tx, userID, roleID, model.RoleOriginAPI, nodes); err != nil {
+			return false, err
+		}
+		if err := authz.AdvanceVersion(tx); err != nil {
 			return false, err
 		}
 		return true, nil
 	}
 	if source == model.RoleSourceMapped {
 		if err := model.SetUserRoleSource(tx, userID, roleID, model.RoleSourceBoth); err != nil {
+			return false, err
+		}
+		// 釘住（經此處）：來源改變，後續撤權判定依它，故推進
+		if err := authz.AdvanceVersion(tx); err != nil {
 			return false, err
 		}
 	}

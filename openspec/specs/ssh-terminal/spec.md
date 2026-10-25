@@ -77,13 +77,19 @@ SSH 終端於行動環境（粗指標裝置或窄視窗）SHALL 顯示快捷鍵�
 - **THEN** 快捷鍵列不渲染
 
 ### Requirement: WS 撥號失敗原因透傳
-`GET /api/v1/ssh` 於 WebSocket 升級前的終端連線建立失敗（SSH 撥號、k8s exec 建立、database CLI 啟動）時，後端 SHALL 嘗試升級 WebSocket 並以 `type:"error"` 訊息送出失敗原因後關閉連線；SSH 撥號失敗 SHALL 依既有分類（host key 變更／私鑰無法解析／認證失敗／逾時／不可達）附機器可讀 `code` 欄（登記於 `internal/apierror` registry，命名空間 `RULE_SSH_*`），`data` 欄 SHALL 為 zh fallback 文案。WebSocket 升級失敗時 SHALL 退回既有 HTTP JSON 錯誤回應。前端 SHALL 以 code 查當前語言譯文顯示（`apiError.*` 三層降級），SHALL NOT 一律顯示籠統的連線失敗文案。
+`GET /api/v1/ssh` 於 WebSocket 升級前的終端連線建立失敗（SSH 撥號、k8s exec 建立、database CLI 啟動）時，後端 SHALL 嘗試升級 WebSocket 並以 `type:"error"` 訊息送出失敗原因後關閉連線；SSH 撥號失敗 SHALL 依既有分類（主機金鑰查核失敗／主機金鑰不符被拒／私鑰無法解析／認證失敗／逾時／不可達）附機器可讀 `code` 欄（登記於 `internal/apierror` registry，命名空間 `RULE_SSH_*`），`data` 欄 SHALL 為 zh fallback 文案。WebSocket 升級失敗時 SHALL 退回既有 HTTP JSON 錯誤回應。前端 SHALL 以 code 查當前語言譯文顯示（`apiError.*` 三層降級），SHALL NOT 一律顯示籠統的連線失敗文案。
 
 「私鑰無法解析」指就位版本含私鑰，但系統無法將其解析為可用的簽章金鑰（格式錯誤、內容不完整、受 passphrase 保護等），此時尚未向目標主機出示任何認證。此情形 SHALL 回 `RULE_SSH_PRIVATE_KEY_INVALID`，SHALL NOT 歸為不可達（`RULE_SSH_UNREACHABLE`），亦 SHALL NOT 歸為認證失敗（`RULE_SSH_AUTH_FAILED`，該碼專指目標主機拒絕了所出示的認證）。判定所用的解析函式 SHALL 與憑證寫入時的私鑰驗證為同一個。此分類的 `data` 欄 SHALL 為 `RULE_SSH_PRIVATE_KEY_INVALID` 於 registry 登記的 zh fallback 文案全文，SHALL NOT 取自錯誤訊息。所有對外輸出（含 WS 錯誤幀的 `data` 與 HTTP 錯誤回應）SHALL NOT 含解析函式的原始錯誤文字或私鑰內容；原始錯誤 SHALL 只寫入伺服端日誌，私鑰內容 SHALL NOT 寫入任何日誌。
 
+「主機金鑰查核失敗」指撥號時無法讀取主機金鑰記錄，或主機金鑰不符時審計、觀察紀錄或告警無法寫入；此時尚未向目標主機出示任何認證。此情形 SHALL 回 `RULE_SSH_HOST_KEY_CHECK_FAILED`，SHALL NOT 歸為不可達。「主機金鑰不符被拒」指主機金鑰與記錄不符且該連線不放行（自動化代理經代理通道開的終端）；此時尚未向目標主機出示任何認證。此情形 SHALL 回 `RULE_SSH_HOST_KEY_MISMATCH_REFUSED`，`data` 欄 SHALL 為該碼於 registry 登記的 zh fallback 文案全文，文案 SHALL 說明未送出任何登入憑證，SHALL NOT 沿用陳述憑證已送出的 `RULE_SSH_HOST_KEY_CHANGED`。人類終端遇主機金鑰與記錄不符 SHALL NOT 歸為撥號失敗：連線照常建立，後端 SHALL 在送出 `type:"connected"` 之後，以 `type:"notice"`、`code:"RULE_SSH_HOST_KEY_CHANGED"` 送達不符警示。
+
 #### Scenario: host key 變更經 WS 送達
-- **WHEN** 資產 host key 與記錄不符導致 SSH 撥號被拒，且客戶端為瀏覽器 WebSocket
-- **THEN** WS 升級成功並收到 `{type:"error", code:"RULE_SSH_HOST_KEY_CHANGED", data:<zh 文案>}` 後連線關閉；前端錯誤狀態顯示當前語言的「主機金鑰已變更」譯文
+- **WHEN** 資產 host key 與記錄不符，且客戶端為瀏覽器 WebSocket
+- **THEN** WS 依序收到 `{type:"connected"}` 與 `{type:"notice", code:"RULE_SSH_HOST_KEY_CHANGED", data:<zh 文案>}`，連線不關閉、不收到 `type:"error"`；前端顯示當前語言的「主機金鑰與記錄不符」警示
+
+#### Scenario: 代理終端遇不符以拒絕碼送達
+- **WHEN** 自動化代理經代理通道開啟終端，資產 host key 與記錄不符
+- **THEN** 建線失敗的機器可讀 code 為 `RULE_SSH_HOST_KEY_MISMATCH_REFUSED`（代理通道的工具結果帶出此 code），該碼的 zh fallback 與三語譯文說明未送出任何登入憑證、不含已送出登入憑證的說法；目標主機未收到任何認證嘗試
 
 #### Scenario: 認證失敗分類送達
 - **WHEN** 資產憑證錯誤導致 SSH 撥號認證失敗
@@ -108,6 +114,10 @@ SSH 終端於行動環境（粗指標裝置或窄視窗）SHALL 顯示快捷鍵�
 #### Scenario: 新 code 三語完備
 - **WHEN** apierror bijection 完備性測試於開發版 compose backend 容器執行
 - **THEN** `RULE_SSH_*` 各 code 於 zh-TW/en-US/ja-JP 的 `apiError.*` 皆有非空譯文，缺一即測試失敗
+
+#### Scenario: 主機金鑰查核失敗經 WS 送達
+- **WHEN** 主機金鑰不符且不符審計無法寫入，客戶端為瀏覽器 WebSocket
+- **THEN** WS 收到 `{type:"error", code:"RULE_SSH_HOST_KEY_CHECK_FAILED", data:<該碼的 zh fallback>}` 後連線關閉，目標主機未收到任何認證嘗試；前端顯示當前語言的「主機金鑰查核失敗」譯文，而非「無法連線到目標主機」，也不出現重置入口
 
 ### Requirement: WebSocket 錯誤幀機器碼必填
 終端 WebSocket 的錯誤幀 SHALL 一律攜帶機器可讀 `code`：編碼函式 `EncodeErrorMessage(code, zhFallback)` 的 `code` 參數 SHALL 為必填的 `ErrCode` 型別（非字串），空 code 分支 SHALL 自程式碼刪除，使「送出無碼錯誤幀」在編譯期不可能。`data` 欄 SHALL 保留 zh fallback 文案供舊前端與譯文缺鍵時使用。

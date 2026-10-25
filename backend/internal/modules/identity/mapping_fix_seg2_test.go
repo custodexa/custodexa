@@ -19,7 +19,7 @@ func TestFixSeg2UsageAcknowledgementDoesNotAcknowledgeMissingSourceAttribute(t *
 	if err := f.db.Create(&model.AssetAuthorization{UserGroupID: &f.group.ID, AssetID: &assetID, Permission: "view", Source: "manual"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	input := UserGroupMappingInput{MatchValue: "ops", UserGroupID: f.group.ID, Actor: GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}}
+	input := UserGroupMappingInput{MatchValue: "ops", UserGroupID: f.group.ID, Actor: f.act()}
 	_, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, input)
 	var usage *UserGroupMappingUsageAckError
 	if !errors.As(err, &usage) || usage.AssetAuthorizations != 1 {
@@ -103,7 +103,7 @@ func TestFixSeg2RevocationPreviewExcludesManualSupport(t *testing.T) {
 
 func TestFixSeg2UserGroupRuleAuditActionAndExternalCode(t *testing.T) {
 	f := newMappingSegmentFixture(t)
-	actor := GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}
+	actor := f.act()
 	input := UserGroupMappingInput{MatchValue: "ops", UserGroupID: f.group.ID, RiskAcknowledged: true, Actor: actor}
 	row, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, input)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestFixSeg2UserGroupRuleAuditActionAndExternalCode(t *testing.T) {
 
 func TestFixSeg2UserGroupRuleAuditFailureRollsBackCRUD(t *testing.T) {
 	f := newMappingSegmentFixture(t)
-	actor := GroupRoleMappingActor{ID: f.user.ID, Name: f.user.Username}
+	actor := f.act()
 	f.service = NewIdentitySourceService(f.db, rejectMappingAudit{})
 	input := UserGroupMappingInput{MatchValue: "a", UserGroupID: f.group.ID, Actor: actor}
 	if _, err := f.service.CreateUserGroupMapping(model.RoleMappingChannelKindProvider, f.provider.ID, input); err == nil || f.count(t, "group_user_group_mappings") != 0 {

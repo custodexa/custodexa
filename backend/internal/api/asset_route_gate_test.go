@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/k8sproxy"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -28,9 +29,25 @@ func (m *MockHostKeyService) Get(assetID uint) (*model.AssetHostKey, error) {
 	return args.Get(0).(*model.AssetHostKey), args.Error(1)
 }
 
-func (m *MockHostKeyService) Reset(assetID uint) (bool, error) {
-	args := m.Called(assetID)
+func (m *MockHostKeyService) Observations(assetID uint, limit int) ([]model.AssetHostKeyMismatch, error) {
+	args := m.Called(assetID, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.AssetHostKeyMismatch), args.Error(1)
+}
+
+func (m *MockHostKeyService) Reset(assetID uint, actor asset.HostKeyActor) (bool, error) {
+	args := m.Called(assetID, actor)
 	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockHostKeyService) Adopt(assetID uint, fingerprint string, actor asset.HostKeyActor) (*model.AssetHostKey, error) {
+	args := m.Called(assetID, fingerprint, actor)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.AssetHostKey), args.Error(1)
 }
 
 // setupAssetGateEnv 經完整 RegisterRoutes（真 AuthMiddleware＋真 JWT）建立測試環境，
@@ -41,8 +58,12 @@ func setupAssetGateEnv(t *testing.T, allow bool) (*gin.Engine, *crypto.JWTManage
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的 1／7 兩個 ID 須存在
-	installEpochGateDB(t, 1, 7)
+	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的 ID 須存在
+	// 角色以資料庫為準（AuthMiddleware 不信任 token 的 role claim）：
+	// 1＝admin、2＝auditor、7＝無指派（一般使用者）
+	db := installEpochGateDB(t, 1, 7, 2)
+	grantLegacyRole(t, db, 1, model.RoleAdmin)
+	grantLegacyRole(t, db, 2, model.RoleAuditor)
 
 	jwtSecret := "asset-gate-test-secret"
 	authService := identity.NewAuthService(jwtSecret, time.Minute)
@@ -57,6 +78,7 @@ func setupAssetGateEnv(t *testing.T, allow bool) (*gin.Engine, *crypto.JWTManage
 
 	hostKeyMock := new(MockHostKeyService)
 	hostKeyMock.On("Get", mock.Anything).Return(&model.AssetHostKey{AssetID: 1}, nil).Maybe()
+	hostKeyMock.On("Observations", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	r := gin.New()
 	group := r.Group("/api/v1")
@@ -110,7 +132,8 @@ func TestAssetReadGate_AdminAuditorBypass(t *testing.T) {
 	for _, role := range []string{"admin", "auditor"} {
 		r, mgr, authzMock := setupAssetGateEnv(t, false)
 
-		token, err := mgr.GenerateToken(1, role, role+"@example.com", role, crypto.AuthContext{})
+		uid := map[string]uint{"admin": 1, "auditor": 2}[role]
+		token, err := mgr.GenerateToken(uid, role, role+"@example.com", role, crypto.AuthContext{})
 		assert.NoError(t, err)
 
 		for _, path := range perAssetReadPaths {

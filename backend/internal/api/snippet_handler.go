@@ -112,7 +112,7 @@ func (h *SnippetHandler) Delete(c *gin.Context) {
 // RegisterRoutes 註冊片段路由（登入即可，user-scoped 無需角色）
 func (h *SnippetHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	snippets := r.Group("/snippets")
-	snippets.Use(middleware.AuthMiddleware(authService))
+	snippets.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	{
 		snippets.GET("", h.List)
 		snippets.POST("", h.Create)

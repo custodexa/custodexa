@@ -19,42 +19,38 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 
 const batchCreateAuthorizationsMock = vi.fn()
 
+const subjectOptionsMock = vi.fn()
+const targetOptionsMock = vi.fn()
+
+// 選項由授權選擇器供應（欄位同伺服器回應契約）
 vi.mock('@/api/authorizations', () => ({
   batchCreateAuthorizations: (...a) => batchCreateAuthorizationsMock(...a),
+  getAuthorizationSubjectOptions: (...a) => subjectOptionsMock(...a),
+  getAuthorizationTargetOptions: (...a) => targetOptionsMock(...a),
 }))
 
-vi.mock('@/api/assets', () => ({
-  getAssetGroups: vi.fn().mockResolvedValue({ data: [{ id: 4, name: 'prod-ag', path: 'prod-ag' }] }),
-  getAssetList: vi.fn().mockResolvedValue({
-    data: [{ id: 1, name: 'srv', host: 'h', port: 22, protocol: 'mysql' }],
-    total: 1,
-  }),
-  getAssetTags: vi.fn().mockResolvedValue({
-    data: [
-      { name: '生產', count: 2 },
-      { name: '資料庫', count: 1 },
-    ],
-  }),
-}))
-
-vi.mock('@/api/auth', () => ({
-  getUsers: vi.fn().mockResolvedValue({
-    data: [
-      {
-        id: 2,
-        username: 'alice',
-        email: 'a@t.local',
-        active: true,
-        roles: [{ id: 2, name: 'user', description: '一般使用者' }],
-      },
-      { id: 3, username: 'bob', email: 'b@t.local', active: false, roles: [] },
-    ],
-  }),
-}))
-
-vi.mock('@/api/userGroups', () => ({
-  getUserGroups: vi.fn().mockResolvedValue({ data: [{ id: 5, name: 'ops', users: [] }] }),
-}))
+subjectOptionsMock.mockImplementation(({ kind }) =>
+  Promise.resolve(
+    kind === 'user'
+      ? {
+          total: 2,
+          data: [
+            { id: 2, username: 'alice', display_name: 'Alice', kind: 'human', active: true, roles: ['user'] },
+            { id: 3, username: 'bob', display_name: 'bob', kind: 'human', active: false, roles: [] },
+          ],
+        }
+      : { total: 1, data: [{ id: 5, name: 'ops', description: '', member_count: 0 }] }
+  )
+)
+targetOptionsMock.mockImplementation(({ kind }) =>
+  Promise.resolve(
+    kind === 'asset'
+      ? { total: 1, data: [{ id: 1, name: 'srv', host: 'h', protocol: 'mysql', nodes: [] }] }
+      : kind === 'node'
+        ? { total: 1, data: [{ id: 4, name: 'prod-ag', path: 'prod-ag', selectable: true }] }
+        : { total: 2, data: [{ name: '生產', count: 2 }, { name: '資料庫', count: 1 }] }
+  )
+)
 
 const mountWizard = (props = {}) =>
   mount(AuthzBatchWizard, {
@@ -67,7 +63,7 @@ describe('AuthzBatchWizard 批次授權精靈', () => {
     vi.clearAllMocks()
   })
 
-  it('第一步角色欄取 role.name、狀態欄讀 active（修錯：原噴 JSON/全員停用）', async () => {
+  it('第一步角色欄取選擇器的角色名稱、狀態欄讀 active（修錯：原噴 JSON/全員停用）', async () => {
     const wrapper = mountWizard()
     await flushPromises()
 
@@ -163,7 +159,7 @@ describe('AuthzBatchWizard 挑選輔助', () => {
   })
 
   it('節點/標籤/搜尋以伺服端參數重抓（含子樹預設）', async () => {
-    const { getAssetList } = await import('@/api/assets')
+    const getAssetList = targetOptionsMock
     const wrapper = mountWizard()
     await flushPromises()
     getAssetList.mockClear()
@@ -173,6 +169,7 @@ describe('AuthzBatchWizard 挑選輔助', () => {
     await wrapper.vm.reloadAssetList()
 
     expect(getAssetList).toHaveBeenCalledWith({
+      kind: 'asset',
       page_size: 1000,
       node_id: 4,
       tags: '生產,資料庫',
@@ -180,7 +177,7 @@ describe('AuthzBatchWizard 挑選輔助', () => {
   })
 
   it('total 超過已載入數顯示誠實截斷警示', async () => {
-    const { getAssetList } = await import('@/api/assets')
+    const getAssetList = targetOptionsMock
     const wrapper = mountWizard()
     await flushPromises()
 
@@ -196,7 +193,7 @@ describe('AuthzBatchWizard 挑選輔助', () => {
   })
 
   it('latest-request-wins：舊回應晚到不得覆蓋新結果', async () => {
-    const { getAssetList } = await import('@/api/assets')
+    const getAssetList = targetOptionsMock
     const wrapper = mountWizard()
     await flushPromises()
 

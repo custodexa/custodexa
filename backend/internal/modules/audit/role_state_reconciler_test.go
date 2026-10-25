@@ -86,6 +86,62 @@ func (f *roleFixture) legalRevoke(t *testing.T, userID, roleID uint) {
 	}
 }
 
+// legalSetRange 走產品的範圍寫入面：範圍種類與節點列同交易改寫，並留一筆範圍變更審計
+// （nodes 為空＝改回全域；before 為變更前的節點集合）
+func (f *roleFixture) legalSetRange(t *testing.T, userID, roleID uint, before, after []uint) {
+	t.Helper()
+	if err := f.db.AutoMigrate(&model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate role_binding_nodes: %v", err)
+	}
+	if err := f.db.Transaction(func(tx *gorm.DB) error {
+		kind := model.ScopeKindGlobal
+		if len(after) > 0 {
+			kind = model.ScopeKindNodes
+		}
+		if err := model.SetUserRoleScope(tx, userID, roleID, kind); err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM role_binding_nodes WHERE subject_kind = 'user' AND subject_id = ? AND role_id = ?",
+			userID, roleID).Error; err != nil {
+			return err
+		}
+		for _, n := range after {
+			if err := tx.Create(&model.RoleBindingNode{SubjectKind: model.BindingSubjectUser,
+				SubjectID: userID, RoleID: roleID, NodeID: n}).Error; err != nil {
+				return err
+			}
+		}
+		return model.RecordUserRoleRangeChange(tx, userID, roleID, model.RoleOriginAPI, before, after)
+	}); err != nil {
+		t.Fatalf("合法範圍變更: %v", err)
+	}
+}
+
+// legalAssignInRange 新建一筆帶節點範圍的指派：assign 審計列記下起始範圍，範圍種類與節點列同交易寫入
+func (f *roleFixture) legalAssignInRange(t *testing.T, userID, roleID uint, nodes []uint) {
+	t.Helper()
+	if err := f.db.AutoMigrate(&model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate role_binding_nodes: %v", err)
+	}
+	if err := f.db.Transaction(func(tx *gorm.DB) error {
+		if err := model.AssignUserRoleInRange(tx, userID, roleID, model.RoleOriginAPI, nodes); err != nil {
+			return err
+		}
+		if err := model.SetUserRoleScope(tx, userID, roleID, model.ScopeKindNodes); err != nil {
+			return err
+		}
+		for _, n := range nodes {
+			if err := tx.Create(&model.RoleBindingNode{SubjectKind: model.BindingSubjectUser,
+				SubjectID: userID, RoleID: roleID, NodeID: n}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("合法帶範圍指派: %v", err)
+	}
+}
+
 func (f *roleFixture) reconcile(t *testing.T) *RoleStateReport {
 	t.Helper()
 	report, err := f.rec.Reconcile(context.Background())
@@ -131,6 +187,41 @@ func TestRoleStateReconcileDetectsDirectGrant(t *testing.T) {
 	if got := f.failure.reports[0]["extra"]; got != "7/1" {
 		t.Errorf("事件 extra 參數 = %q, want \"7/1\"", got)
 	}
+
+	// 範圍：直寫把節點範圍改成全域（或擴大節點集合）與直寫加一筆指派同樣是差集
+	t.Run("direct_write_widens_range", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, stmt             string
+			wantMissing, wantExtra string
+		}{
+			{"node_to_global", "UPDATE user_roles SET scope_kind = 'global' WHERE user_id = 1 AND role_id = 1", "[5]", ""},
+			{"node_set_widened", "INSERT INTO role_binding_nodes (subject_kind, subject_id, role_id, node_id) VALUES ('user', 1, 1, 6)", "[5]", "[5,6]"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				f := setupRoleFixture(t)
+				f.legalAssign(t, 1, 1)
+				f.legalSetRange(t, 1, 1, nil, []uint{5})
+				f.sealWithRoles(t)
+				if got := f.reconcile(t); got.State != RoleStateMatch {
+					t.Fatalf("竄改前狀態 = %s, want match（missing=%v extra=%v）", got.State, got.Missing, got.Extra)
+				}
+				f.mustExec(t, tc.stmt)
+				report := f.reconcile(t)
+				if report.State != RoleStateMismatch {
+					t.Fatalf("狀態 = %s, want mismatch", report.State)
+				}
+				if len(report.Missing) != 1 || report.Missing[0] != (RolePair{UserID: 1, RoleID: 1, Range: tc.wantMissing}) {
+					t.Errorf("缺少集合 = %v, want 範圍 %q", report.Missing, tc.wantMissing)
+				}
+				if len(report.Extra) != 1 || report.Extra[0] != (RolePair{UserID: 1, RoleID: 1, Range: tc.wantExtra}) {
+					t.Errorf("多出集合 = %v, want 範圍 %q", report.Extra, tc.wantExtra)
+				}
+				if len(f.failure.causes) != 1 {
+					t.Fatalf("失效事件筆數 = %d, want 1", len(f.failure.causes))
+				}
+			})
+		}
+	})
 }
 
 // TestRoleStateReconcileDetectsDirectRevoke 直寫移除被指出
@@ -179,6 +270,89 @@ func TestRoleStateReconcileLegalChangesDoNotAlert(t *testing.T) {
 	if len(f.failure.causes) != 0 {
 		t.Fatalf("合法變更開了失效事件 %v：假警報會讓真警報失去意義", f.failure.causes)
 	}
+
+	// 範圍：經產品路徑改範圍（含新建角色帶範圍、改回全域、節點過多使審計列截斷）一律相符
+	t.Run("audited_range_changes_match", func(t *testing.T) {
+		f := setupRoleFixture(t)
+		f.legalAssign(t, 1, 1)
+		f.legalAssign(t, 2, 1)
+		f.sealWithRoles(t)
+
+		f.legalAssignInRange(t, 3, 1, []uint{9})                // 新建的角色帶節點範圍：起始範圍記在 assign 列
+		f.legalSetRange(t, 1, 1, nil, []uint{2, 3})             // 全域改節點
+		f.legalSetRange(t, 1, 1, []uint{2, 3}, []uint{3, 4, 8}) // 節點改節點
+		f.legalSetRange(t, 2, 1, nil, []uint{5})
+		f.legalSetRange(t, 2, 1, []uint{5}, nil) // 節點改回全域
+		if got := f.reconcile(t); got.State != RoleStateMatch {
+			t.Fatalf("狀態 = %s, want match（missing=%v extra=%v）", got.State, got.Missing, got.Extra)
+		}
+		if len(f.failure.causes) != 0 {
+			t.Fatalf("合法範圍變更開了失效事件 %v", f.failure.causes)
+		}
+		// 審計列之後的直寫仍被指出
+		f.mustExec(t, "UPDATE user_roles SET scope_kind = 'global' WHERE user_id = 3 AND role_id = 1")
+		if got := f.reconcile(t); got.State != RoleStateMismatch {
+			t.Fatalf("審計列之後直寫改全域：狀態 = %s, want mismatch", got.State)
+		}
+	})
+
+	// 節點多到審計列截斷（至多列出 RangeAuditMaxNodes 個）：集合無從重建，只比範圍種類
+	t.Run("truncated_range_event_compares_kind", func(t *testing.T) {
+		f := setupRoleFixture(t)
+		f.legalAssign(t, 1, 1)
+		f.sealWithRoles(t)
+		many := make([]uint, 0, model.RangeAuditMaxNodes+20)
+		for i := uint(1); i <= model.RangeAuditMaxNodes+20; i++ {
+			many = append(many, i)
+		}
+		f.legalSetRange(t, 1, 1, nil, many)
+		if got := f.reconcile(t); got.State != RoleStateMatch {
+			t.Fatalf("截斷的合法變更：狀態 = %s, want match（missing=%v extra=%v）", got.State, got.Missing, got.Extra)
+		}
+		f.mustExec(t, "UPDATE user_roles SET scope_kind = 'global' WHERE user_id = 1 AND role_id = 1")
+		if got := f.reconcile(t); got.State != RoleStateMismatch {
+			t.Fatalf("截斷後直寫改全域：狀態 = %s, want mismatch", got.State)
+		}
+	})
+
+	// 舊格式檢查點（快照元素只有兩欄、沒有範圍）一律讀成全域
+	t.Run("legacy_snapshot_without_range_reads_global", func(t *testing.T) {
+		pairs, err := DecodeRolePairs([]byte(`[[1,1],[2,3]]`))
+		if err != nil {
+			t.Fatalf("解析舊格式: %v", err)
+		}
+		for _, p := range pairs {
+			if p.Range != "" {
+				t.Fatalf("舊格式元素 %v 的範圍 = %q, want 全域（空）", p, p.Range)
+			}
+		}
+		f := setupRoleFixture(t)
+		f.legalAssign(t, 1, 1)
+		f.sealWithRoles(t)
+		var snap string
+		if err := f.db.Raw("SELECT role_state_snapshot FROM audit_checkpoints ORDER BY seq DESC LIMIT 1").Scan(&snap).Error; err != nil {
+			t.Fatalf("讀快照欄: %v", err)
+		}
+		tables, err := DecodeStateSnapshotColumn(snap)
+		if err != nil {
+			t.Fatalf("解快照欄: %v", err)
+		}
+		if got := string(tables[StateTableUserRoles]); got != `[[1,1]]` {
+			t.Fatalf("全域指派的快照本體 = %s, want [[1,1]]（與加入範圍欄位之前逐位元組相同）", got)
+		}
+		if got := f.reconcile(t); got.State != RoleStateMatch {
+			t.Fatalf("舊格式基準對全域現況：狀態 = %s, want match", got.State)
+		}
+		// 現況在舊檢查點之後被直寫成節點範圍：舊檢查點讀成全域，所以是差集
+		if err := f.db.AutoMigrate(&model.RoleBindingNode{}); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		f.mustExec(t, "UPDATE user_roles SET scope_kind = 'nodes' WHERE user_id = 1 AND role_id = 1")
+		f.mustExec(t, "INSERT INTO role_binding_nodes (subject_kind, subject_id, role_id, node_id) VALUES ('user', 1, 1, 4)")
+		if got := f.reconcile(t); got.State != RoleStateMismatch {
+			t.Fatalf("舊格式基準對節點範圍現況：狀態 = %s, want mismatch", got.State)
+		}
+	})
 }
 
 // TestRoleStateReconcileIdempotentEvent 同一不符只開一筆

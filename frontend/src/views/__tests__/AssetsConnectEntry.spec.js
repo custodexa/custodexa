@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import Assets from '../Assets.vue'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 自 Assets.spec.js 拆出：該檔已 32 案、掛載成本高，
 // 每案 mount 完整頁面時整檔逼近逾時臨界（既有已知體質）。本檔獨立承載
@@ -47,6 +49,7 @@ vi.mock('@/api/assets', () => ({
   deleteAsset: vi.fn(),
   getAssetHostKey: vi.fn(),
   resetAssetHostKey: vi.fn(),
+  adoptAssetHostKey: vi.fn(),
   testAssetConnection: (...args) => testAssetConnectionMock(...args),
   getAssetGroups: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   createAssetGroup: vi.fn(),
@@ -66,8 +69,22 @@ vi.mock('@/api/accessRequests', () => ({
   breakGlassConnect: vi.fn(),
 }))
 
+// 未在此檔驗證的取數：一律以拒絕取代真實請求（行為同既有「取不到」），避免有服務時
+// 收到 401 觸發續期失敗、清掉會話與能力快照，讓結果隨執行環境改變
+const { rejectAll } = vi.hoisted(() => ({
+  rejectAll: async (importOriginal) => {
+    const actual = await importOriginal()
+    return Object.fromEntries(
+      Object.entries(actual).map(([k, v]) => [k, typeof v === 'function' ? vi.fn(() => Promise.reject(new Error('not mocked'))) : v]),
+    )
+  },
+}))
+vi.mock('@/api/assetAccounts', rejectAll)
+vi.mock('@/api/credentials', rejectAll)
+
 const setUserRoles = (roles) => {
   localStorage.setItem('user', JSON.stringify({ id: 7, username: 'tester', roles }))
+  grantFor(roles)
 }
 
 const mountView = () =>
@@ -80,6 +97,7 @@ describe('Assets 入口成因與延遲呈現', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     getAssetTagsMock.mockResolvedValue({ data: [] })
   })
 
@@ -300,6 +318,7 @@ describe('Assets 連測逐列中態', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     getAssetTagsMock.mockResolvedValue({ data: [] })
   })
 
@@ -383,6 +402,7 @@ describe('Assets 申請深連結 ?apply=', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     for (const k of Object.keys(routeQuery)) delete routeQuery[k]
     setUserRoles(['user'])
     getAssetTagsMock.mockResolvedValue({ data: [] })
@@ -461,5 +481,30 @@ describe('Assets 申請深連結 ?apply=', () => {
     expect(wrapper.vm.form.id).toBe(32)
     expect(wrapper.vm.applyVisible).toBe(false)
     expect(lastReplaceQuery()).not.toHaveProperty('edit')
+  })
+})
+
+// 連線入口的能力來源：停用／待配憑證先於超管豁免；
+// 管理或檢視能力不等於 connect，列資料決定其餘情形
+describe('Assets 連線入口的能力判準', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    resetCapabilities()
+    getAssetTagsMock.mockResolvedValue({ data: [] })
+  })
+
+  it.each([
+    ['超管（ui:connect-bypass）', ['admin'], { permission: 'view' }, true],
+    ['超管遇停用資產仍不可連', ['admin'], { active: false, permission: 'connect' }, false],
+    ['超管遇待配憑證資產仍不可連', ['admin'], { credential_pending: true, permission: 'connect' }, false],
+    ['稽核者僅檢視授權不可連（有管理／檢視能力也不豁免）', ['auditor'], { permission: 'view' }, false],
+    ['稽核者列資料為 connectable 時可連', ['auditor'], { access_state: 'connectable' }, true],
+    ['一般使用者沿列資料 access_state', ['user'], { access_state: 'approval_required' }, false],
+  ])('%s', async (_name, roles, asset, expected) => {
+    setUserRoles(roles)
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.canConnect({ active: true, ...asset })).toBe(expected)
   })
 })

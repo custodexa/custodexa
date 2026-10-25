@@ -34,9 +34,9 @@ func (h *AuditLogHandler) RegisterRoutes(
 	auditLogs := router.Group("/audit-logs")
 	auditLogs.Use(middleware.AuthMiddleware(authService))
 
-	auditLogs.GET("", middleware.RequirePermission(middleware.PermAuditView), h.List)
-	auditLogs.GET("/:id", middleware.RequirePermission(middleware.PermAuditView), h.Get)
-	auditLogs.GET("/resource/:resource/:id", middleware.RequirePermission(middleware.PermAuditView), h.GetByResourceID)
+	auditLogs.GET("", middleware.EnforceRegistry(), h.List)
+	auditLogs.GET("/:id", middleware.EnforceRegistry(), h.Get)
+	auditLogs.GET("/resource/:resource/:id", middleware.EnforceRegistry(), h.GetByResourceID)
 }
 
 // List 查詢審計日誌列表

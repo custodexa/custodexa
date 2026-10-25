@@ -31,7 +31,15 @@ func (r *ChangeSecretRunner) jobFromBatch(batch *model.ChangeSecretBatch,
 	assetIDs []uint) (rotationJob, error) {
 
 	job := rotationJob{
-		batchID:    batch.ID,
+		batchID:       batch.ID,
+		initiatorID:   batch.RequestedBy,
+		initiatorName: batch.RequestedByName,
+		authorizationID: func() uint {
+			if batch.AuthorizationID != nil {
+				return *batch.AuthorizationID
+			}
+			return 0
+		}(),
 		source:     batchSource(batch),
 		scope:      model.AccountScope{batch.Username},
 		secretType: model.ChangeSecretTypePassword,
@@ -92,7 +100,25 @@ func (r *ChangeSecretRunner) createBatchSharedCredential(batch *model.ChangeSecr
 		ProtocolFamily: r.batchProtocolFamily(assetIDs),
 	}
 	var version *model.CredentialSecretVersion
+	var owner CredentialOwnership
 	err = r.db.Transaction(func(tx *gorm.DB) error {
+		// 歸屬寫入與節點刪除同一序列化點：拓撲序列化鎖是第一個動作，其後 Begin（不取鎖）
+		if lerr := r.assetService.lockTopologyTx(tx); lerr != nil {
+			return lerr
+		}
+		if berr := r.assetService.beginTopologyChangeTx(tx); berr != nil {
+			return berr
+		}
+		// 以建立批次時持久化的歸屬，由發起者在交易內重解的範圍再驗一次：建立後被移出範圍的
+		// 節點不再可用（批次在動任何遠端之前失敗）
+		ctx := contextWithInitiator(context.Background(), batch.RequestedBy, batch.RequestedByName)
+		o, oerr := resolveSharedOwnershipTx(ctx, tx, r.ownership, batch.RequestedBy, CredCapCreate,
+			persistedBatchOwnership(batch))
+		if oerr != nil {
+			return oerr
+		}
+		owner = o
+		applyOwnership(cred, owner)
 		if serr := assertSharedNameFree(tx, name, 0); serr != nil {
 			return serr
 		}
@@ -108,12 +134,16 @@ func (r *ChangeSecretRunner) createBatchSharedCredential(batch *model.ChangeSecr
 			return serr
 		}
 		version = v
-		return writeCredentialAudit(r.candidates.auditTx, tx, credentialAudit{
+		if aerr := writeCredentialAudit(r.candidates.auditTx, tx, credentialAudit{
 			CredentialID: cred.ID,
 			Operation:    model.AccountOpCreate,
 			Scope:        cred.Scope,
 			Fields:       []string{"password"},
-		}, batch.RequestedBy, batch.RequestedByName)
+			Ownership:    ownershipAudit(owner),
+		}, batch.RequestedBy, batch.RequestedByName); aerr != nil {
+			return aerr
+		}
+		return r.assetService.advanceTopologyVersionTx(tx)
 	})
 	if err != nil {
 		return nil, nil, err
@@ -276,12 +306,24 @@ func (r *ChangeSecretRunner) splitOneCredential(job rotationJob, credentialID ui
 	for i := range bindings {
 		accountIDs = append(accountIDs, bindings[i].ID)
 	}
-	ctx := context.Background()
-	rot, err := r.rotations.StartSplitFor(ctx, credentialID, accountIDs,
-		StartRotationRequest{Policy: job.policy})
+	// 拆分延續批次的授權與資產上界：起始交易與每次派送前，對選定成員所在的資產重驗批次要求的能力
+	//（帳號改密與拆分所需的憑證改密、脫離）；只以來源憑證歸屬判定會讓移出範圍的資產照樣被改
+	caps, reason := r.batchRunCapabilities(job)
+	if reason != "" {
+		r.stopJob(job, reason)
+		return r.skipRecords(job, bindings, reason)
+	}
+	caps = unionCapabilities(caps, splitGateWhole().caps)
+	ctx := contextWithInitiator(context.Background(), job.initiatorID, job.initiatorName)
+	rot, err := r.rotations.startSplitForBatch(ctx, credentialID, accountIDs,
+		StartRotationRequest{Policy: job.policy}, &splitAssetBound{caps: caps})
 	if err != nil {
 		log.Printf("[ChangeSecret] 拆分輪替啟動失敗 batch=%d credential=%d err=%v",
 			job.batchID, credentialID, err)
+		if stop, ok := batchStopReason(err); ok {
+			r.stopJob(job, stop)
+			return r.skipRecords(job, bindings, stop)
+		}
 		return r.skipRecords(job, bindings, splitStartReason(err))
 	}
 	records, err := r.rotations.RunFor(ctx, rot.ID, RotationRecordOrigin{BatchID: job.batchID})
@@ -356,4 +398,19 @@ func settleBatchSharedCredential(db *gorm.DB, credentialID uint) {
 	if err != nil {
 		log.Printf("[ChangeSecret] 批次共用憑證收尾失敗 credential=%d err=%v", credentialID, err)
 	}
+}
+
+// persistedBatchOwnership 批次列上持久化的新共用憑證歸屬；未寫入（空種類）回 nil，交判定器依主體決定。
+func persistedBatchOwnership(batch *model.ChangeSecretBatch) *CredentialOwnershipInput {
+	switch batch.SharedCredentialOwnerKind {
+	case model.CredentialOwnerGlobal:
+		return &CredentialOwnershipInput{Kind: model.CredentialOwnerGlobal}
+	case model.CredentialOwnerNode:
+		if batch.SharedCredentialOwnerNodeID == nil {
+			return &CredentialOwnershipInput{Kind: model.CredentialOwnerNode}
+		}
+		id := *batch.SharedCredentialOwnerNodeID
+		return &CredentialOwnershipInput{Kind: model.CredentialOwnerNode, NodeID: &id}
+	}
+	return nil
 }

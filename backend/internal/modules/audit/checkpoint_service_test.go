@@ -1217,3 +1217,27 @@ func TestCheckpointThresholdsFollowPolicy(t *testing.T) {
 		}
 	}
 }
+
+// SetAfterSealHook：每次封章成功才回呼（還原後待封狀態靠它在例行封章成功時清除）。
+func TestCheckpointOnSealedHook(t *testing.T) {
+	db := setupCheckpointDB(t)
+	svc, _ := newCheckpointService(t, db, nil, nil)
+	if err := svc.EnsureGenesis(); err != nil {
+		t.Fatalf("EnsureGenesis: %v", err)
+	}
+	n := 0
+	svc.SetAfterSealHook(func() { n++ })
+	if _, err := svc.SealNow(); err != nil {
+		t.Fatalf("SealNow: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("封章成功應回呼一次，得 %d", n)
+	}
+	svc.SetAfterSealHook(nil)
+	if _, err := svc.SealNow(); err != nil {
+		t.Fatalf("SealNow: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("清除回呼後不應再回呼，得 %d", n)
+	}
+}

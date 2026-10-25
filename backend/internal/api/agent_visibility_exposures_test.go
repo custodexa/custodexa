@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,10 @@ func (s exposurePageAuthorization) RecordAgentVisibilityExposures(ctx context.Co
 
 func TestAgentVisibilityExposureReturnedPageOnly(t *testing.T) {
 	db, _, _, agent := principalAPIEnv(t)
-	if err := db.AutoMigrate(&model.AgentVisibilityExposure{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentVisibilityExposure{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatal(err)
 	}
 	mockAuth := new(MockAssetAuthorizationService)
@@ -31,7 +35,7 @@ func TestAgentVisibilityExposureReturnedPageOnly(t *testing.T) {
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		c.Set("userID", agent.ID)
-		c.Set("role", model.RoleUser)
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleUser))
 		c.Set("principal_kind", model.KindAgent)
 	})
 	r.GET("/assets", h.List)

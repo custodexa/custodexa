@@ -123,9 +123,9 @@
               <el-button @click="handleReset">
                 {{ $t('common.reset') }}
               </el-button>
-              <!-- 完整性驗證入口（PCI 10.3.4）：後端 admin only，前端同步隱藏 -->
+              <!-- 完整性驗證入口（PCI 10.3.4）：依 audit:integrity_view 能力顯示 -->
               <el-button
-                v-if="isAdmin"
+                v-if="canVerifyIntegrity"
                 @click="openIntegrityDialog"
               >
                 {{ $t('auditLogs.integrityVerify') }}
@@ -295,7 +295,7 @@
         <DailyReviewWorkspace
           ref="workspaceRef"
           :can-sign="canSign"
-          :is-admin="isAdmin"
+          :can-open-policies="canOpenPolicies"
           :open-date="reviewDate"
         />
       </el-tab-pane>
@@ -373,6 +373,25 @@
               show-overflow-tooltip
             />
 
+            <!-- 權限狀態「無來源變動」的接受風險確認：僅超管、僅進行中的該項告警（含比對無法完成時的重設基準） -->
+            <el-table-column
+              v-if="canAcceptPermissionState"
+              :label="$t('auditLogs.permissionAccept.column')"
+              width="150"
+            >
+              <template #default="{ row }">
+                <el-button
+                  v-if="isOpenPermissionStateAlert(row)"
+                  size="small"
+                  type="warning"
+                  data-test="permission-accept-open"
+                  @click="openPermissionAccept(row)"
+                >
+                  {{ $t('auditLogs.permissionAccept.button') }}
+                </el-button>
+              </template>
+            </el-table-column>
+
             <template #empty>
               <EmptyState
                 :title="$t('auditLogs.emptyFailuresTitle')"
@@ -395,6 +414,50 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 權限狀態確認對話框：填原因、確認後以目前狀態為新基準並審計留痕；比對無法完成時文案改為重設基準 -->
+    <el-dialog
+      v-model="permissionAcceptVisible"
+      :title="permissionAcceptRebase ? $t('auditLogs.permissionAccept.titleUnknown') : $t('auditLogs.permissionAccept.title')"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        {{ permissionAcceptRebase ? $t('auditLogs.permissionAccept.hintUnknown') : $t('auditLogs.permissionAccept.hint') }}
+      </el-alert>
+      <el-form label-position="top">
+        <el-form-item :label="$t('auditLogs.permissionAccept.reasonLabel')">
+          <el-input
+            v-model="permissionAcceptReason"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            :placeholder="$t('auditLogs.permissionAccept.reasonPlaceholder')"
+            data-test="permission-accept-reason"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="permissionAcceptVisible = false">
+          {{ $t('common.cancel') }}
+        </el-button>
+        <el-button
+          type="warning"
+          :loading="permissionAccepting"
+          :disabled="!permissionAcceptReason.trim()"
+          data-test="permission-accept-submit"
+          @click="submitPermissionAccept"
+        >
+          {{ $t('auditLogs.permissionAccept.submit') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- 詳情對話框 -->
     <!-- 稽核證據匯出對話框（audit-workflows）：送出非同步打包，產物在下載中心取件 -->
@@ -724,7 +787,7 @@ import { ElMessage } from 'element-plus'
 import { Download, RefreshCw } from 'lucide-vue-next'
 import { getAuditLogs } from '@/api/audit'
 import { buildBundleScope, submitEvidenceBundle } from '@/components/audit/evidenceBundleSubmit'
-import { getAuditFailures } from '@/api/auditFailures'
+import { acceptPermissionState, getAuditFailures } from '@/api/auditFailures'
 import { verifyAuditIntegrity } from '@/api/auditIntegrity'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -741,7 +804,7 @@ import {
   auditMechanismLabel,
   auditCauseLabel,
 } from '@/constants/audit-enums'
-import { useRoles } from '@/composables/useRoles'
+import { can } from '@/composables/useCapabilities'
 import { settingLabel } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
 
@@ -750,7 +813,14 @@ const router = useRouter()
 const activeTab = ref('logs')
 
 // 完整性驗證僅 admin（後端 admin only）；簽核權限 alert:manage＝admin／auditor
-const { isAdmin, isPrivileged: canSign } = useRoles()
+// 操作者能力（後端 /auth/me 的 permissions）：完整性驗證路由要 audit:integrity_view，
+// 每日簽核寫入要 alert:manage，政策頁連結要 securitypolicy:manage
+const canVerifyIntegrity = computed(() => can('audit:integrity_view'))
+const canSign = computed(() => can('alert:manage'))
+const canOpenPolicies = computed(() => can('securitypolicy:manage'))
+// 權限狀態確認入口只給保留的超管身分（後端拒絕形狀同其他超管專屬路由）；超管身分沒有可指派的權限點，
+// 訊號是伺服器產生的 ui:super-admin（定義即 IsSuperAdmin，與連線豁免分開）。只決定顯示，強制點在後端。
+const canAcceptPermissionState = computed(() => can('ui:super-admin'))
 // 分頁標籤的待簽天數：與側欄同一份數字（側欄負責輪詢）
 const reviewBadge = useDailyReviewBadge()
 const workspaceRef = ref(null)
@@ -953,6 +1023,44 @@ const fetchFailures = async () => {
     console.error('查詢失效事件失敗:', error)
   } finally {
     failuresLoading.value = false
+  }
+}
+
+// —— 權限狀態「無來源變動」確認（僅超管）——
+const permissionAcceptVisible = ref(false)
+// 比對無法完成（事件紀錄不完整或無法驗證）的告警：同一入口，確認的意義是重設比對基準
+const permissionAcceptRebase = ref(false)
+const permissionAcceptReason = ref('')
+const permissionAccepting = ref(false)
+
+// 進行中的權限狀態完整性告警（機制＋項名；已結束的不再提供確認）
+const isOpenPermissionStateAlert = (row) =>
+  !row.ended_at &&
+  row.mechanism === 'principal_state_integrity' &&
+  row.cause_params?.table === 'permission_state'
+
+const openPermissionAccept = (row) => {
+  permissionAcceptRebase.value = row?.cause_params?.actual_hash === 'unknown'
+  permissionAcceptReason.value = ''
+  permissionAcceptVisible.value = true
+}
+
+const submitPermissionAccept = async () => {
+  const reason = permissionAcceptReason.value.trim()
+  if (!reason) return
+  permissionAccepting.value = true
+  try {
+    await acceptPermissionState({ reason })
+    ElMessage.success(
+      t(permissionAcceptRebase.value ? 'auditLogs.permissionAccept.successUnknown' : 'auditLogs.permissionAccept.success'),
+    )
+    permissionAcceptVisible.value = false
+    await fetchFailures()
+  } catch (error) {
+    // 錯誤訊息由 request 攔截器依錯誤碼顯示；此處只記錄
+    console.error('確認權限狀態失敗:', error)
+  } finally {
+    permissionAccepting.value = false
   }
 }
 

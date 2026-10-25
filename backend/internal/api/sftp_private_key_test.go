@@ -42,8 +42,8 @@ func setupSFTPPrivateKeyEnv(t *testing.T, privateKey string) (*session.SFTPServi
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{},
-		&model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetHostKey{}, &model.AuditLog{}); err != nil {
+	if err := migrateWithAuthz(db, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{},
+		&model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetHostKey{}, &model.AuditLog{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -60,6 +60,7 @@ func setupSFTPPrivateKeyEnv(t *testing.T, privateKey string) (*session.SFTPServi
 
 	codec := aesColumnCodec(t, make([]byte, 32))
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
+	assetSvc.SetTopologyPermissionPort(noopTopologyPort{})
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
@@ -111,7 +112,7 @@ func TestSFTPUnparsablePrivateKeyReturnsDedicatedCode(t *testing.T) {
 	for name, key := range cases {
 		t.Run(name, func(t *testing.T) {
 			svc, assetID := setupSFTPPrivateKeyEnv(t, key)
-			_, listErr := svc.List(assetID, 0, "/tmp")
+			_, listErr := svc.List(assetID, 0, "/tmp", session.FileOpContext{UserID: 1, Username: "sftp-test"})
 			if listErr == nil {
 				t.Fatal("壞私鑰不得列目錄成功")
 			}

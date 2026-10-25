@@ -19,7 +19,7 @@ func TestMSSQLAssetSupportsMultipleAccounts(t *testing.T) {
 	db := setupCredentialDB(t)
 	assets, accounts, creds := newCredentialServices(t)
 
-	a, err := assets.Create(context.Background(), &CreateAssetRequest{
+	a, err := assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
 		Name: "mssql-multi", Protocol: model.ProtocolMSSQL, Host: "10.8.0.1", Port: 1433,
 		Username: "sa", Password: "sa-pw", CreatedBy: 1, CreatedByName: "admin",
 	})
@@ -29,7 +29,7 @@ func TestMSSQLAssetSupportsMultipleAccounts(t *testing.T) {
 	require.NoError(t, db.Where("asset_id = ?", a.ID).First(&defaultAccount).Error)
 
 	// 第二個帳號：這台專用的另一組憑證
-	second, err := accounts.Create(adminCtx(), a.ID, &CreateAssetAccountRequest{
+	second, err := accounts.Create(WithSystemCaller(adminCtx()), a.ID, &CreateAssetAccountRequest{
 		Username: "app_reader", Password: "reader-pw",
 	})
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestMSSQLAssetSupportsMultipleAccounts(t *testing.T) {
 		ProtocolFamily: model.ProtocolFamilyDatabase,
 	})
 	require.NoError(t, err)
-	third, err := accounts.Create(adminCtx(), a.ID, &CreateAssetAccountRequest{
+	third, err := accounts.Create(WithSystemCaller(adminCtx()), a.ID, &CreateAssetAccountRequest{
 		CredentialID: shared.ID,
 	})
 	require.NoError(t, err)

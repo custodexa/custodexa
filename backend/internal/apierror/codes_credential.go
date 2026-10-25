@@ -36,6 +36,9 @@ var (
 	CodeCredentialScopeInvalid      = register("VALIDATION_CREDENTIAL_SCOPE_INVALID", Descriptor{ZhFallback: "憑證範圍僅允許專用或共用"})
 	CodeCredentialSecretTypeInvalid = register("VALIDATION_CREDENTIAL_SECRET_TYPE_INVALID", Descriptor{ZhFallback: "秘密型別僅允許密碼或 SSH 金鑰"})
 	CodeCredentialSecretRequired    = register("VALIDATION_CREDENTIAL_SECRET_REQUIRED", Descriptor{ZhFallback: "建立共用憑證必須提供密碼或私鑰"})
+	// 管理歸屬不合法：值域外、節點歸屬缺節點、全域帶節點、對專用憑證指定歸屬，
+	// 或只經節點範圍持有建立能力者未指定歸屬（沒有可用的預設）
+	CodeCredentialOwnershipInvalid = register("VALIDATION_CREDENTIAL_OWNERSHIP_INVALID", Descriptor{ZhFallback: "請為共用憑證選擇歸屬：全域或一個節點"})
 	// 共用憑證的登入帳號名不可改：改名等於讓每一台掛載的登入身分同時變動，
 	// 而遠端主機上的帳號並不會跟著改
 	CodeCredentialUsernameImmutable = register("VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE", Descriptor{ZhFallback: "共用憑證的登入帳號名建立後不可修改，請另建憑證並重新掛載"})
@@ -83,6 +86,11 @@ var (
 var (
 	// 仍有掛載時拒絕刪除。受影響的資產名單另走回應 body，不進錯誤 params
 	CodeCredentialInUse = register("RULE_CREDENTIAL_IN_USE", Descriptor{ZhFallback: "憑證仍被資產掛載，請先卸載後再刪除"})
+	// 修改共用憑證會影響操作者範圍外的資產，須先取得影響確認；count 為當下範圍外台數
+	CodeCredentialImpactConfirmationRequired = register("RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED", Descriptor{
+		ZhFallback: "此憑證另有 {count} 台不在你管理範圍內的主機也會受影響，請重新確認後再送出",
+		Params:     []ParamSpec{{Key: "count", Kind: ParamInt}},
+	})
 	// 仍有未決候選秘密：那台機器現在吃哪一組秘密尚未確定，刪掉憑證即失去追回的依據
 	CodeCredentialPendingCandidate = register("RULE_CREDENTIAL_PENDING_CANDIDATE", Descriptor{ZhFallback: "憑證仍有未決的候選秘密，請先收斂後再刪除"})
 	CodeCredentialRotationActive   = register("RULE_CREDENTIAL_ROTATION_ACTIVE", Descriptor{ZhFallback: "憑證的改密進行中，暫不接受此操作"})

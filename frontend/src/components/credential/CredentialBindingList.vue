@@ -17,6 +17,14 @@
       {{ t('credentials.blockedRotationActive') }}
     </p>
 
+    <p
+      v-for="code in deniedCodes"
+      :key="code"
+      class="list-reason"
+      :data-test="`bindings-denied-${code}`"
+    >
+      {{ t(`credentials.actionReason.${code}`) }}
+    </p>
     <EmptyState
       v-if="!bindings.length"
       :title="t('credentials.bindingsEmptyTitle')"
@@ -67,19 +75,20 @@
           </el-tag>
           <div class="row-actions">
             <el-button
-              v-if="showDetach"
+              v-if="showDetach && can('credential:detach')"
               link
               type="warning"
-              :disabled="rotationActive"
+              :disabled="rotationActive || !!deniedReason(binding, 'detach')"
               :data-test="`binding-detach-${binding.account_id}`"
               @click="emit('detach', binding)"
             >
               {{ t('credentials.detach') }}
             </el-button>
             <el-button
+              v-if="can('credential:bind')"
               link
               type="danger"
-              :disabled="rotationActive"
+              :disabled="rotationActive || !!deniedReason(binding, 'unbind')"
               :data-test="`binding-unbind-${binding.account_id}`"
               @click="emit('unbind', binding)"
             >
@@ -106,6 +115,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EmptyState from '@/components/EmptyState.vue'
+import { can } from '@/composables/useCapabilities'
+import { deniedReason } from '@/utils/credentialActions'
 
 const props = defineProps({
   bindings: { type: Array, default: () => [] },
@@ -120,6 +131,18 @@ const { t } = useI18n()
 
 // 專用憑證本來就只屬於那一台，沒有「脫離」可言：不是被擋住，是不存在這個動作
 const showDetach = computed(() => props.scope === 'shared')
+
+// 伺服器對範圍化檢視者逐列標示的動作旗標：不可操作的原因寫在清單標頭下方，每種只寫一次
+const deniedCodes = computed(() => {
+  const codes = new Set()
+  for (const binding of props.bindings) {
+    for (const key of ['detach', 'unbind']) {
+      const code = deniedReason(binding, key)
+      if (code) codes.add(code)
+    }
+  }
+  return [...codes]
+})
 
 function versionText(binding) {
   if (!binding.effective_version_no) return t('credentials.bindingNoVersion')

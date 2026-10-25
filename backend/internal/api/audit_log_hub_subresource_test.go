@@ -43,7 +43,10 @@ func installAuditHubDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.Role{}, &model.UserGroup{}); err != nil {
+		t.Fatalf("migrate audit_logs: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
 		t.Fatalf("migrate audit_logs: %v", err)
 	}
 	old := database.DB

@@ -151,7 +151,7 @@ describe('DailyReviewWorkspace', () => {
     getDailyReviewStatusMock.mockResolvedValue({ data: status({ enabled: false }) })
     getDailyReviewsMock.mockResolvedValue({ data: { items: [signedRow()], total: 1 } })
 
-    const wrapper = mountWorkspace({ isAdmin: true })
+    const wrapper = mountWorkspace({ canOpenPolicies: true })
     await flushPromises()
 
     expect(wrapper.find('[data-test="dr-disabled"]').text()).toContain('每日審閱簽核尚未開啟')

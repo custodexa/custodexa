@@ -175,6 +175,38 @@
       </section>
 
       <!--
+        權限狀態比對只在「無法完成」時出現：相符與不符另有各自的呈現與失效事件，
+        但比對停擺時之後的直接修改都無從判定，三列相符不能替它背書，故明列並連到失效事件
+      -->
+      <section
+        v-if="permissionStateUnknown"
+        data-test="state-permission"
+      >
+        <el-descriptions
+          :column="1"
+          border
+        >
+          <el-descriptions-item :label="$t('checkpointVerification.permissionState.title')">
+            <el-tag
+              type="danger"
+              data-test="permission-state-status"
+            >
+              {{ $t('checkpointVerification.permissionState.unknown') }}
+            </el-tag>
+            <span class="muted">{{ $t('checkpointVerification.permissionState.unknownHint') }}</span>
+            <el-link
+              v-if="chain?.permission_state?.last_event"
+              type="primary"
+              data-test="permission-state-event"
+              @click="goToFailureEvents"
+            >
+              {{ $t('checkpointVerification.roleState.eventLink', { id: chain.permission_state.last_event.id }) }}
+            </el-link>
+          </el-descriptions-item>
+        </el-descriptions>
+      </section>
+
+      <!--
         差集兩張表分開列：「有紀錄卻不在現況」與「在現況卻沒有紀錄」是兩種
         不同的事件（前者是被拿掉的權限，後者是憑空多出來的權限），合成一張
         表加一個方向欄，讀的人得多做一次翻譯才知道自己在看什麼
@@ -675,7 +707,7 @@ import {
 const PROTECTION_CODES = ['P1', 'P2', 'P3', 'P4', 'P5']
 const LIMIT_CODES = ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6']
 
-// 九態的視覺分級。**purged_legal 不得為錯誤色**：它是系統依保留政策的
+// 十態的視覺分級。**purged_legal 不得為錯誤色**：它是系統依保留政策的
 // 合法清除，染紅等於天天對自己發假警報，真的竄改反而淹沒在噪音裡
 const STATUS_TAG = {
   passed: 'success',
@@ -687,6 +719,7 @@ const STATUS_TAG = {
   signature_invalid: 'danger',
   chain_broken: 'danger',
   seq_gap: 'danger',
+  attestation_invalid: 'danger',
 }
 
 const chain = ref(null)
@@ -748,6 +781,8 @@ const principalStateLabel = (value) => {
   return t(`checkpointVerification.roleState.${value.state}`, { seq: value.since_seq ?? '-' })
 }
 const roleStateMismatch = computed(() => roleState.value?.state === 'mismatch')
+// 後端只在權限狀態比對無法完成時附帶 permission_state
+const permissionStateUnknown = computed(() => chain.value?.permission_state?.state === 'unknown')
 
 // 不符為錯誤色、未涵蓋與取不到為中性色。**未涵蓋不是警告**：升級後尚未封出
 // 第一個檢查點是正常的過渡狀態，染黃等於對自己發假警報

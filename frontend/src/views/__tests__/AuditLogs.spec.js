@@ -3,6 +3,11 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import ElementPlus, { ElMessage, ElNotification } from 'element-plus'
 import AuditLogs from '../AuditLogs.vue'
+import zhTW from '@/i18n/locales/zh-TW.json'
+import enUS from '@/i18n/locales/en-US.json'
+import jaJP from '@/i18n/locales/ja-JP.json'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
+import { grantFor, permissionsFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 本檔每測掛整頁且從不卸載，殘留元件在 document 上累積，單測耗時隨進度單調
 // 上升——全量並行時末幾格逼近 vitest 20s 上限而間歇轉紅（單跑穩綠）。
@@ -41,6 +46,7 @@ const getDailyReviewPendingCountMock = vi.fn()
 const getDailyReviewDayMock = vi.fn()
 const getDailyReviewStatsMock = vi.fn()
 const getAuditFailuresMock = vi.fn()
+const acceptPermissionStateMock = vi.fn()
 const verifyAuditIntegrityMock = vi.fn()
 
 vi.mock('@/api/audit', () => ({
@@ -63,6 +69,7 @@ vi.mock('@/api/dailyReviews', () => ({
 
 vi.mock('@/api/auditFailures', () => ({
   getAuditFailures: (...args) => getAuditFailuresMock(...args),
+  acceptPermissionState: (...args) => acceptPermissionStateMock(...args),
 }))
 
 vi.mock('@/api/auditIntegrity', () => ({
@@ -99,6 +106,7 @@ const sampleFailures = [
 
 const setUserRoles = (roles) => {
   localStorage.setItem('user', JSON.stringify({ username: 'tester', roles }))
+  grantFor(roles)
 }
 
 const mountAuditLogs = () =>
@@ -112,6 +120,7 @@ describe('AuditLogs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetCapabilities()
     routeState.query = {}
     getAuditLogsMock.mockResolvedValue({ data: [], total: 0 })
     getDailyReviewsMock.mockResolvedValue({ data: { items: [], total: 0 } })
@@ -333,8 +342,96 @@ describe('AuditLogs', () => {
     expect(wrapper.find('.el-tag--success').exists()).toBe(true)
   })
 
-  it('hides integrity verify button for non-admin users', async () => {
+  it('offers the permission-state confirmation to admins only, on an open alert of that item only', async () => {
+    const alert = (over) => ({
+      id: 7, mechanism: 'principal_state_integrity', started_at: '2026-10-16T01:00:00Z', ended_at: null,
+      cause_code: 'principal_state_mismatch', cause: '', details: '',
+      cause_params: { table: 'permission_state' }, ...over,
+    })
+    getAuditFailuresMock.mockResolvedValue({
+      data: { items: [alert({}), alert({ id: 8, cause_params: { table: 'principals' } }), alert({ id: 9, ended_at: '2026-10-16T02:00:00Z' })], total: 3 },
+    })
+    acceptPermissionStateMock.mockResolvedValue({ data: { op_id: 'x', event_seq: 3 } })
+
+    // 稽核員：沒有確認欄
     setUserRoles(['auditor'])
+    const auditorView = mountAuditLogs()
+    await flushPromises()
+    auditorView.vm.activeTab = 'failures'
+    auditorView.vm.handleTabChange('failures')
+    await flushPromises()
+    expect(auditorView.find('[data-test="permission-accept-open"]').exists()).toBe(false)
+
+    // 超管：只有進行中的權限狀態告警那一列有鈕
+    setUserRoles(['admin'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.activeTab = 'failures'
+    wrapper.vm.handleTabChange('failures')
+    await flushPromises()
+    const openButtons = wrapper.findAll('[data-test="permission-accept-open"]')
+    expect(openButtons).toHaveLength(1)
+
+    // 原因為空不可送出；填原因後送出，帶原因呼叫 API 並重新載入列表
+    wrapper.vm.openPermissionAccept()
+    wrapper.vm.permissionAcceptReason = '   '
+    await wrapper.vm.submitPermissionAccept()
+    expect(acceptPermissionStateMock).not.toHaveBeenCalled()
+    wrapper.vm.permissionAcceptReason = '  已與維運人員核對  '
+    await wrapper.vm.submitPermissionAccept()
+    expect(acceptPermissionStateMock).toHaveBeenCalledWith({ reason: '已與維運人員核對' })
+    expect(wrapper.vm.permissionAcceptVisible).toBe(false)
+    expect(getAuditFailuresMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+
+    // 比對無法完成的告警：同一入口，對話框改說「重設比對基準」
+    wrapper.vm.openPermissionAccept(alert({ cause_params: { table: 'permission_state', actual_hash: 'unknown' } }))
+    await flushPromises()
+    expect(wrapper.vm.permissionAcceptRebase).toBe(true)
+    for (const locale of [zhTW, enUS, jaJP]) {
+      for (const key of ['titleUnknown', 'hintUnknown', 'successUnknown']) {
+        expect(locale.auditLogs.permissionAccept[key]).toBeTruthy()
+      }
+    }
+    wrapper.vm.openPermissionAccept(alert({}))
+    expect(wrapper.vm.permissionAcceptRebase).toBe(false)
+  })
+
+  it('ties the permission-state confirmation to the super-admin point, not to the connect bypass', async () => {
+    getAuditFailuresMock.mockResolvedValue({
+      data: {
+        items: [{
+          id: 7, mechanism: 'principal_state_integrity', started_at: '2026-10-16T01:00:00Z', ended_at: null,
+          cause_code: 'principal_state_mismatch', cause: '', details: '', cause_params: { table: 'permission_state' },
+        }],
+        total: 1,
+      },
+    })
+    const openButtonsWith = async (perms) => {
+      resetCapabilities()
+      setCapabilitiesForTests(perms)
+      const view = mountAuditLogs()
+      await flushPromises()
+      view.vm.activeTab = 'failures'
+      view.vm.handleTabChange('failures')
+      await flushPromises()
+      return view.findAll('[data-test="permission-accept-open"]').length
+    }
+    const admin = permissionsFor(['admin'])
+
+    // 超管的完整投影：看得到
+    expect(await openButtonsWith(admin)).toBe(1)
+    // 連線豁免規則調整（拿掉 ui:connect-bypass）不影響超管
+    expect(await openButtonsWith(admin.filter((p) => p !== 'ui:connect-bypass'))).toBe(1)
+    // 只有連線豁免、沒有超管身分點：看不到
+    expect(await openButtonsWith(admin.filter((p) => p !== 'ui:super-admin'))).toBe(0)
+    // 勾滿可指派權限的非超管：看不到
+    expect(await openButtonsWith(admin.filter((p) => !p.startsWith('ui:')))).toBe(0)
+  })
+
+  it('hides integrity verify button for non-admin users', async () => {
+    // 按鈕依 audit:integrity_view 顯示；一般使用者範本不持有。auditor 範本持有該鍵
+    //（後端 /audit-integrity/verify 本就放行），其顯示與否待裁決
+    setUserRoles(['user'])
 
     const wrapper = mountAuditLogs()
     await flushPromises()

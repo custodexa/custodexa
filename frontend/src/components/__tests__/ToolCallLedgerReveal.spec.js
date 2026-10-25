@@ -3,6 +3,8 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import ToolCallLedgerTable from '../agent/ToolCallLedgerTable.vue'
 import { t } from '@/i18n'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 const reveal = vi.hoisted(() => vi.fn())
 vi.mock('@/api/agentTasks', () => ({ getAgentToolCallArguments: reveal }))
@@ -23,9 +25,14 @@ const button = (name) => document.querySelector(`[data-test="${name}"]`)
 
 beforeEach(() => {
   reveal.mockReset()
-  localStorage.setItem('user', JSON.stringify({ roles: ['auditor'] }))
+  resetCapabilities()
+  localStorage.setItem('user', JSON.stringify({ username: 'tester' }))
+  grantFor(['auditor'])
 })
-afterEach(() => localStorage.clear())
+afterEach(() => {
+  localStorage.clear()
+  resetCapabilities()
+})
 
 describe('ToolCallLedgerTable sensitive arguments', () => {
   it('marks an old row as not retained and offers no reveal action', () => {

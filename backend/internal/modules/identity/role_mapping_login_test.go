@@ -236,14 +236,15 @@ func setupRoleMappingEnvRecording(t *testing.T) (
 	if err != nil {
 		t.Fatalf("gorm: %v", err)
 	}
+	seedAuthzState(t, db)
 	// **UserRole 必須排在 User 與 Role 之後**：GORM 對關聯表的處理會蓋掉排在
 	// 它之前的關聯 model 宣告，放錯位置建出的關聯表會少一欄，而編譯與 vet
 	// 都看不出來
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{},
-		&model.RefreshToken{}, &model.AuditLog{}, &model.SecurityPolicy{},
+		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{}, &model.GroupRoleMapping{}, &model.UserRoleMapping{},
 		&model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
-		&model.UserGroupMappingRuleSupport{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserGroup{}, &model.UserGroupMember{},
 		&model.LDAPDirectory{}, &model.OIDCProvider{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -274,7 +275,7 @@ func setupRoleMappingEnvRecording(t *testing.T) (
 // 唯一替身掉的是認證器工廠——真認證器會去撥網路。
 func roleMappingDirectoryResolver(t *testing.T, db *gorm.DB, username string) LDAPLoginResolver {
 	t.Helper()
-	dirSvc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
+	dirSvc := newLDAPDirectoryServiceT(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())
 	dirSvc.SetTransmissionPolicy(ldapAllowAllGate{})
 	enc, err := dirSvc.encryptBindPassword(context.Background(), "s3cret-bind")
 	if err != nil {
@@ -590,11 +591,12 @@ func TestLDAPLoginRecomputesMappedRoles(t *testing.T) {
 			t.Fatal(err)
 		}
 		disabled := false
+		ensureFixtureSuperAdmin(t, db, user.ID)
 		admin := NewIdentitySourceService(db, audit.NewTxSink())
 		if _, err := admin.CreateMapping(model.RoleMappingChannelKindDirectory, dir.ID,
 			GroupRoleMappingInput{
 				MatchValue: roleMappingInnerGroup, Role: model.RoleAuditor, Enabled: &disabled,
-				RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: 1, Name: "admin"},
+				RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: user.ID, Name: "admin"},
 			}); err != nil {
 			t.Fatalf("經管理面建規則: %v", err)
 		}

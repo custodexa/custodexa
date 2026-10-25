@@ -37,16 +37,16 @@ var gateUnsealOutlets = map[string]bool{
 
 // gateJudgmentCalls 連線閘序的判定類方法：它們的呼叫位置即閘的位置
 var gateJudgmentCalls = map[string]bool{
-	"CurrentConnectRole":                 true,
-	"CurrentConnectRoleAndSourcePolicy":  true,
-	"SourceOutcome":                      true,
-	"VerifyCredentialGenerationByUserID": true,
-	"VerifyAccountBinding":               true,
-	"AuthorizeConnectAccount":            true,
-	"CheckPermission":                    true,
-	"CheckConnect":                       true,
-	"ProbeWritable":                      true,
-	"ResolveAccountIdentity":             true,
+	"CurrentConnectPrincipal":                true,
+	"CurrentConnectPrincipalAndSourcePolicy": true,
+	"SourceOutcome":                          true,
+	"VerifyCredentialGenerationByUserID":     true,
+	"VerifyAccountBinding":                   true,
+	"AuthorizeConnectAccount":                true,
+	"CheckPermission":                        true,
+	"CheckConnect":                           true,
+	"ProbeWritable":                          true,
+	"ResolveAccountIdentity":                 true,
 }
 
 // gateUnsealAllowlist 解封出口的具名例外（鍵＝`相對路徑#所在函式`，值＝理由）。
@@ -68,11 +68,15 @@ var gateUnsealAllowlist = map[string]string{
 		"該路徑的授權由呼叫端 handler 完成",
 	"internal/modules/asset/asset_service.go#GetWithCredentialsDefault": "asset 模組內部委派" +
 		"（預設帳號捷徑，解封出口自身的實作側，非新的解封面）",
-	"internal/modules/asset/change_secret_runner.go#runTarget": "改密 runner 的目標帳號憑證解封" +
+	"internal/modules/asset/change_secret_runner.go#runTargetSteps": "改密 runner 的目標帳號憑證解封" +
 		"（走帶 accountID 的 GetWithCredentialsForAccount，因改密是帳號級的操作）。" +
+		"位置在 runTarget 取得帳號鎖並重驗發起者當下能力與目標範圍之後、" +
+		"經 runTargetLocked 進入的步驟函式內（change_secret_runner.go:775）；" +
+		"派送前各點另以 recheck 重驗，撤權或移出範圍時不送出任何秘密。" +
 		"**不屬那三處兩階段化的連線入口**：" +
 		"它不是使用者發起的連線兌換，而是系統排程對目標機的維運操作，沒有前端、沒有 " +
-		"connect-token、沒有兩階段授權面可夾；其授權面是「整組端點 admin only」。" +
+		"connect-token、沒有兩階段授權面可夾；其授權面是發起者的改密能力與目標範圍，" +
+		"每台目標的遠端 I/O 之前以當下資料重驗。" +
 		"解封出的明文只用於本行程內的 SSH 客戶端，不進任何子程序的 argv 或環境。",
 }
 
@@ -86,6 +90,9 @@ var gateJudgmentAllowlist = map[string]string{
 		"由閘序以 Gate.Eval 委派；checkPermission 亦以它實作，兩條路徑不可能分化",
 	"internal/sshproxy/connect_issue_service.go#IssueConnectGrant": "HTTP 與行程內共用簽發側兩階段之間的『帳號身分解析』步驟" +
 		"（ResolveAccountIdentity，只解析 username 不解封憑證），位置等同兌換側的解封點",
+	"internal/sshproxy/dataplane_authorizer.go#AuthorizeDataPlane": "K8s 容器檔案上傳／下載的資料面裁決重用簽發側兩階段，" +
+		"兩階段之間同樣只做『帳號身分解析』（ResolveAccountIdentity，只解析預設帳號 username、不解封憑證），" +
+		"與 IssueConnectGrant 同一位置；前後兩階段仍由閘序宣告執行，本處不另寫判定",
 }
 
 // gateAssertAllowlistFullyUsed 反向完備性：白名單的每一條都必須在現實中被用到。

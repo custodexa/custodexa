@@ -5,6 +5,8 @@ import AgentTasks from '../AgentTasks.vue'
 import i18n from '@/i18n'
 import router, { createAuthGuard } from '@/router'
 import { setAccessToken, resetSessionForTests } from '@/utils/session'
+import { resetCapabilities } from '@/composables/useCapabilities'
+import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 const api = vi.hoisted(() => ({ list: vi.fn(), route: { query: {} }, replace: vi.fn() }))
 vi.mock('@/api/agentTasks', () => ({ getAgentTasks: api.list }))
 vi.mock('vue-router', async original => ({ ...(await original()), useRoute: () => api.route, useRouter: () => ({ replace: api.replace }) }))
@@ -25,10 +27,10 @@ describe('任務列表', () => {
     expect(w.get('a').attributes('href')).toBe('/audit/agent-tasks/23')
   })
   it('無 audit:view 時導覽不顯示入口且直達被守衛擋下', async () => {
-    setAccessToken('fixture'); localStorage.setItem('user', JSON.stringify({ roles: ['user'] }))
+    setAccessToken('fixture'); localStorage.setItem('user', JSON.stringify({ username: 'u' })); grantFor(['user'])
     const next = vi.fn(); await createAuthGuard()(router.resolve('/audit/agent-tasks'), {}, next); expect(next).toHaveBeenCalledWith('/dashboard')
     next.mockClear(); await createAuthGuard()(router.resolve('/audit/agent-tasks/23'), {}, next); expect(next).toHaveBeenCalledWith('/dashboard')
-    resetSessionForTests(); localStorage.clear()
+    resetSessionForTests(); resetCapabilities(); localStorage.clear()
   })
   it.each(['zh-TW', 'en-US', 'ja-JP'])('任務列表三語 DOM 無裸 key：%s', async locale => { i18n.global.locale.value = locale; const w = await open(); expect(w.find('[data-test="task-filters"]').exists()).toBe(true); expect(w.text()).not.toMatch(/agentTasks\.|agentPrincipals\.|multiRequest\./) })
 })
