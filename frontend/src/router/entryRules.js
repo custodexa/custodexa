@@ -37,7 +37,8 @@ export const ENTRY_RULES = Object.freeze({
   '/sessions': needs('session:view'),
   '/audit/workbench': needs('audit:view'),
   '/audit/agent-tasks': needs('audit:view'),
-  '/rotation-evidence': needs('audit:view'),
+  // 輪替證據：報告需稽核檢視；排程管理只需 rotation_schedule:manage，頁內依能力分兩種呈現
+  '/rotation-evidence': needsAny('audit:view', 'rotation_schedule:manage'),
   '/audit/exports': needs('audit:view'),
   '/audit-logs': needs('audit:view'),
   '/commands': needs('audit:view'),
@@ -61,7 +62,8 @@ export const ENTRY_RULES = Object.freeze({
   '/approver-scopes': needs('approverscope:manage'),
   '/identity-sources': needs('identity_source:manage'),
   '/security-policies': needs('securitypolicy:manage'),
-  '/policy-groups': needs('policygroup:manage'),
+  // 政策組：檢視即可進；寫入動作在頁內依 policygroup:manage 呈現，伺服器逐項裁決
+  '/policy-groups': needs('policygroup:view'),
   '/access-control': needs('securitypolicy:manage'),
   '/key-management': needs('key:manage'),
   '/transmission-inventory': needs('transmission:manage'),

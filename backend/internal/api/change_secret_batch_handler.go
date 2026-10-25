@@ -82,7 +82,12 @@ func (h *ChangeSecretHandler) BatchTargets(c *gin.Context) {
 		respondBatchError(c, apierror.CodeInternalChangeSecretBatchQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": targets, "total": len(targets), "as_of": asOf})
+	out, err := h.projectBatchTargets(accountContext(c), targets, asOf)
+	if err != nil {
+		respondBatchError(c, apierror.CodeInternalChangeSecretBatchQuery, err)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // CreateBatch 建立並非同步執行批次（202；結果經單一批次端點查詢）。
@@ -141,7 +146,15 @@ func (h *ChangeSecretHandler) GetBatch(c *gin.Context) {
 	if records == nil {
 		records = []model.ChangeSecretRecord{}
 	}
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"batch": newBatchDTO(batch), "records": records}})
+	batchDTO := newBatchDTO(batch)
+	out, err := h.projectRecords(accountContext(c), records, func(rows []changeSecretRecordDTO) any {
+		return gin.H{"data": gin.H{"batch": batchDTO, "records": rows}}
+	})
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretRecordQuery, err)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // respondBatchError 映射 service 錯誤：輸入問題 400、不存在 404，其餘走呼叫端指定的 internalCode

@@ -15,6 +15,7 @@ type RoleSummaryView struct {
 	Manage              []string `json:"manage"`
 	Read                []string `json:"read"`
 	Available           []string `json:"available"`
+	Partial             []string `json:"partial"`
 	Hidden              []string `json:"hidden"`
 	PermissionCount     int      `json:"permission_count"`
 	CatalogCount        int      `json:"catalog_count"`
@@ -50,7 +51,7 @@ func NewRoleSummaryViewFor(builtinKey string, keys []string) RoleSummaryView {
 		un[i] = string(k)
 	}
 	return RoleSummaryView{
-		Manage: nonNil(s.Manage), Read: nonNil(s.Read), Available: nonNil(s.Available), Hidden: nonNil(s.Hidden),
+		Manage: nonNil(s.Manage), Read: nonNil(s.Read), Available: nonNil(s.Available), Partial: nonNil(s.Partial), Hidden: nonNil(s.Hidden),
 		PermissionCount: s.PermissionCount, CatalogCount: s.CatalogCount, ScopeGlobalOnly: s.ScopeGlobalOnly && !nodeSel && !mixed,
 		ConnectionSeparate: s.ConnectionSeparate, AssignmentTrustHint: s.AssignmentTrustHint, Unattributed: un,
 		ScopeNodeSelectable: nodeSel, ScopeMixedGlobalOnly: mixed,

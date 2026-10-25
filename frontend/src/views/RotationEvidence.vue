@@ -4,7 +4,10 @@
       :title="$t('menu.rotationEvidence')"
       :description="$t('rotationEvidence.headerDesc')"
     >
-      <template #actions>
+      <template
+        v-if="canReadReport"
+        #actions
+      >
         <el-button
           :loading="loading"
           data-test="rotation-refresh"
@@ -22,347 +25,358 @@
       </template>
     </PageHeader>
 
+    <!-- 只持排程管理能力（沒有稽核檢視）：報告內容與下載需要稽核檢視權限，
+         這一頁只留排程區，並說明為什麼 -->
+    <ReadonlyNote
+      v-if="!canReadReport"
+      data-test="rotation-schedule-only-note"
+    >
+      {{ $t('rotationEvidence.scheduleOnlyNote') }}
+    </ReadonlyNote>
+
     <!-- 兩欄：主區是可核對的列（摘要、篩選、帳號表、區間記錄）；
          右欄是「這份報告本身」的狀態——合規率、口徑、排程與最近產出。
          稽核到場開這一頁，看到的就是報告的畫面版 -->
     <div class="layout">
       <div class="main-col">
-        <!-- 母體與截止時點必須先講：讀者看到的每個數字都以這兩件事為前提 -->
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
-          data-test="rotation-basis"
-          :title="basisText"
-        />
-        <el-alert
-          v-if="meta.global_max_age_days === 0"
-          type="warning"
-          :closable="false"
-          show-icon
-          data-test="rotation-no-global-policy"
-          :title="$t('rotationEvidence.globalUnsetNote')"
-        />
-        <el-alert
-          v-if="truncation.rows_truncated"
-          type="warning"
-          :closable="false"
-          show-icon
-          data-test="rotation-truncated"
-          :title="$t('rotationEvidence.rowsTruncated', { cap: truncation.rows_cap })"
-        />
-        <el-alert
-          v-if="loadFailed"
-          type="error"
-          :closable="false"
-          show-icon
-          data-test="rotation-load-failed"
-          :title="$t('rotationEvidence.loadFailed')"
-        />
-
-        <el-card v-loading="loading">
-          <!-- 摘要數字列：六桶依判定順序排列，兩種合規率並列。
-               分母為零時顯示「不適用」而非 0%——0% 會被讀成「一個都不合規」 -->
-          <div class="summary-row">
-            <div
-              v-for="bucket in ROTATION_BUCKETS"
-              :key="bucket"
-              class="summary-cell"
-              :class="{ 'summary-cell-active': bucketFilter === bucket }"
-              :data-test="`rotation-summary-${bucket}`"
-              role="button"
-              tabindex="0"
-              @click="toggleBucket(bucket)"
-              @keydown.enter.space.prevent="toggleBucket(bucket)"
-            >
-              <div class="summary-value">
-                {{ bucketCount(bucket) }}
-              </div>
-              <div class="summary-label">
-                {{ $t(`rotationEvidence.bucket.${bucket}`) }}
-              </div>
-            </div>
-          </div>
-
-          <div class="filter-row">
-            <el-radio-group
-              v-model="bucketFilter"
-              data-test="rotation-bucket-filter"
-            >
-              <el-radio-button value="">
-                {{ $t('rotationEvidence.filterAll', { count: rows.length }) }}
-              </el-radio-button>
-              <el-radio-button
-                v-for="bucket in ROTATION_BUCKETS"
-                :key="bucket"
-                :value="bucket"
-              >
-                {{ $t(`rotationEvidence.bucket.${bucket}`) }}
-              </el-radio-button>
-            </el-radio-group>
-          </div>
-
-          <el-empty
-            v-if="!filteredRows.length && !loading"
-            data-test="rotation-empty"
-            :description="$t('rotationEvidence.empty')"
-          />
-          <el-table
-            v-else
-            :data="filteredRows"
-            style="width: 100%"
-            stripe
-            row-key="account_id"
-          >
-            <!-- 欄寬在兩欄版面內收斂：右欄佔去 300px 後，舊的欄寬會讓這張表橫捲，
-                 而捲出去的第一欄正好是狀態 -->
-            <el-table-column
-              :label="$t('rotationEvidence.column.asset')"
-              min-width="150"
-            >
-              <template #default="{ row }">
-                <div :data-test="`rotation-asset-${row.account_id}`">
-                  {{ row.asset_name }}
-                </div>
-                <div class="sub">
-                  {{ row.asset_address }} · {{ row.protocol }}
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              :label="$t('rotationEvidence.column.account')"
-              min-width="150"
-            >
-              <template #default="{ row }">
-                <div :data-test="`rotation-account-${row.account_id}`">
-                  {{ row.username }}
-                  <span class="sub">（{{ credentialTypeText(row.credential_type) }}）</span>
-                </div>
-                <!-- 憑證名與共用標記同一個來源（憑證本身）：稽核據此核對
-                     「這台跟哪些主機用的是同一組秘密」 -->
-                <div
-                  v-if="row.credential_name"
-                  class="sub"
-                  :data-test="`rotation-credential-${row.account_id}`"
-                >
-                  {{ row.credential_name }}
-                  <span v-if="row.effective_version_no">· {{ $t('credentials.versionNo', { no: row.effective_version_no }) }}</span>
-                </div>
-                <div class="tag-row">
-                  <el-tag
-                    v-if="row.privileged"
-                    size="small"
-                    type="danger"
-                    effect="plain"
-                    :data-test="`rotation-privileged-${row.account_id}`"
-                  >
-                    {{ $t('rotationEvidence.tag.privileged') }}
-                  </el-tag>
-                  <!-- 共用憑證：只反映系統知道的事（複製建號歸組、改密成功脫組），
-                       人工改過的憑證不在其中。這一點寫進 tooltip，免得被讀成保證 -->
-                  <el-tooltip
-                    v-if="row.shared_credential"
-                    placement="top"
-                    :content="$t('rotationEvidence.tag.sharedHint')"
-                  >
-                    <el-tag
-                      size="small"
-                      type="warning"
-                      effect="plain"
-                      :data-test="`rotation-shared-${row.account_id}`"
-                    >
-                      {{ $t('rotationEvidence.tag.shared') }}
-                    </el-tag>
-                  </el-tooltip>
-                  <el-tag
-                    v-if="row.multi_plan"
-                    size="small"
-                    type="info"
-                    effect="plain"
-                    :data-test="`rotation-multiplan-${row.account_id}`"
-                  >
-                    {{ $t('rotationEvidence.tag.multiPlan') }}
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              :label="$t('rotationEvidence.column.policy')"
-              min-width="110"
-            >
-              <template #default="{ row }">
-                <div :data-test="`rotation-maxage-${row.account_id}`">
-                  {{ maxAgeText(row) }}
-                </div>
-                <div class="sub">
-                  {{ planText(row) }}
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              :label="$t('rotationEvidence.column.lastSuccess')"
-              min-width="155"
-            >
-              <template #default="{ row }">
-                <div :data-test="`rotation-last-${row.account_id}`">
-                  {{ row.last_success_at ? formatDateTime(row.last_success_at) : $t('rotationEvidence.noRecordValue') }}
-                </div>
-                <div class="sub">
-                  {{ remainingText(row.remaining_days_a) }}
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              :label="$t('rotationEvidence.column.nextSchedule')"
-              min-width="155"
-            >
-              <template #default="{ row }">
-                <div :data-test="`rotation-next-${row.account_id}`">
-                  {{ row.next_schedule_at ? formatDateTime(row.next_schedule_at) : $t('rotationEvidence.noSchedule') }}
-                </div>
-                <div class="sub">
-                  {{ remainingText(row.remaining_days_b) }}
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              :label="$t('rotationEvidence.column.bucket')"
-              width="90"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  :type="BUCKET_TAG_TYPE[row.bucket] || 'info'"
-                  effect="plain"
-                  :data-test="`rotation-bucket-${row.account_id}`"
-                >
-                  {{ bucketLabel(row.bucket) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-
-        <!-- 區間記錄明細：資料集端點不回明細（那是另一支端點的分頁查詢），
-             故本區塊自成一次查詢。失敗的那幾筆是稽核最想看的東西 -->
-        <el-card
-          v-loading="recordsLoading"
-          data-test="rotation-records-card"
-        >
-          <template #header>
-            <span class="card-title">{{ $t('rotationEvidence.recordsTitle') }}</span>
-            <span class="sub card-sub">{{ periodText }}</span>
-          </template>
+        <template v-if="canReadReport">
+          <!-- 母體與截止時點必須先講：讀者看到的每個數字都以這兩件事為前提 -->
           <el-alert
-            v-if="recordsTruncated"
+            type="info"
+            :closable="false"
+            show-icon
+            data-test="rotation-basis"
+            :title="basisText"
+          />
+          <el-alert
+            v-if="meta.global_max_age_days === 0"
             type="warning"
             :closable="false"
             show-icon
-            data-test="rotation-records-truncated"
-            :title="$t('rotationEvidence.recordsTruncated')"
+            data-test="rotation-no-global-policy"
+            :title="$t('rotationEvidence.globalUnsetNote')"
           />
-          <el-empty
-            v-if="!records.length && !recordsLoading"
-            data-test="rotation-records-empty"
-            :description="$t('rotationEvidence.recordsEmpty')"
+          <el-alert
+            v-if="truncation.rows_truncated"
+            type="warning"
+            :closable="false"
+            show-icon
+            data-test="rotation-truncated"
+            :title="$t('rotationEvidence.rowsTruncated', { cap: truncation.rows_cap })"
           />
-          <el-table
-            v-else
-            :data="records"
-            style="width: 100%"
-            stripe
-            row-key="record_id"
-          >
-            <el-table-column
-              :label="$t('rotationEvidence.column.executedAt')"
-              width="180"
-            >
-              <template #default="{ row }">
-                {{ formatDateTime(row.executed_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('rotationEvidence.column.source')"
-              min-width="150"
-            >
-              <template #default="{ row }">
-                {{ recordSourceText(row) }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('rotationEvidence.column.target')"
-              min-width="180"
-            >
-              <template #default="{ row }">
-                {{ row.asset_name }} / {{ row.account_username }}
-                <el-tag
-                  v-if="row.account_deleted"
-                  size="small"
-                  type="info"
-                  effect="plain"
-                >
-                  {{ $t('rotationEvidence.accountDeleted') }}
-                </el-tag>
-                <!-- 執行當下的憑證與目標版本快照：掛載事後被改綁也不會被覆寫，
-                     稽核問的是「當時動的是哪一組秘密」 -->
-                <div
-                  v-if="row.credential_name"
-                  class="sub"
-                  :data-test="`rotation-record-credential-${row.record_id}`"
-                >
-                  {{ row.credential_name }}
-                  <span v-if="row.version_no">· {{ $t('rotationEvidence.credentialVersion', { no: row.version_no }) }}</span>
+          <el-alert
+            v-if="loadFailed"
+            type="error"
+            :closable="false"
+            show-icon
+            data-test="rotation-load-failed"
+            :title="$t('rotationEvidence.loadFailed')"
+          />
+
+          <el-card v-loading="loading">
+            <!-- 摘要數字列：六桶依判定順序排列，兩種合規率並列。
+               分母為零時顯示「不適用」而非 0%——0% 會被讀成「一個都不合規」 -->
+            <div class="summary-row">
+              <div
+                v-for="bucket in ROTATION_BUCKETS"
+                :key="bucket"
+                class="summary-cell"
+                :class="{ 'summary-cell-active': bucketFilter === bucket }"
+                :data-test="`rotation-summary-${bucket}`"
+                role="button"
+                tabindex="0"
+                @click="toggleBucket(bucket)"
+                @keydown.enter.space.prevent="toggleBucket(bucket)"
+              >
+                <div class="summary-value">
+                  {{ bucketCount(bucket) }}
                 </div>
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('rotationEvidence.column.result')"
-              width="120"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  :type="recordTagType(row.status)"
-                  effect="plain"
-                  :data-test="`rotation-record-status-${row.record_id}`"
+                <div class="summary-label">
+                  {{ $t(`rotationEvidence.bucket.${bucket}`) }}
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-row">
+              <el-radio-group
+                v-model="bucketFilter"
+                data-test="rotation-bucket-filter"
+              >
+                <el-radio-button value="">
+                  {{ $t('rotationEvidence.filterAll', { count: rows.length }) }}
+                </el-radio-button>
+                <el-radio-button
+                  v-for="bucket in ROTATION_BUCKETS"
+                  :key="bucket"
+                  :value="bucket"
                 >
-                  {{ recordStatusText(row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('rotationEvidence.column.reason')"
-              min-width="220"
-            >
-              <template #default="{ row }">
-                {{ reasonText(row.reason_code) }}
-              </template>
-            </el-table-column>
-          </el-table>
-          <div
-            v-if="recordsTotal > 0"
-            class="pagination"
-          >
-            <el-pagination
-              v-model:current-page="recordsPage"
-              v-model:page-size="recordsPageSize"
-              :page-sizes="[20, 50, 100]"
-              :total="recordsTotal"
-              layout="total, sizes, prev, pager, next"
-              @size-change="loadRecords()"
-              @current-change="loadRecords()"
+                  {{ $t(`rotationEvidence.bucket.${bucket}`) }}
+                </el-radio-button>
+              </el-radio-group>
+            </div>
+
+            <el-empty
+              v-if="!filteredRows.length && !loading"
+              data-test="rotation-empty"
+              :description="$t('rotationEvidence.empty')"
             />
-          </div>
-        </el-card>
+            <el-table
+              v-else
+              :data="filteredRows"
+              style="width: 100%"
+              stripe
+              row-key="account_id"
+            >
+              <!-- 欄寬在兩欄版面內收斂：右欄佔去 300px 後，舊的欄寬會讓這張表橫捲，
+                 而捲出去的第一欄正好是狀態 -->
+              <el-table-column
+                :label="$t('rotationEvidence.column.asset')"
+                min-width="150"
+              >
+                <template #default="{ row }">
+                  <div :data-test="`rotation-asset-${row.account_id}`">
+                    {{ row.asset_name }}
+                  </div>
+                  <div class="sub">
+                    {{ row.asset_address }} · {{ row.protocol }}
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column
+                :label="$t('rotationEvidence.column.account')"
+                min-width="150"
+              >
+                <template #default="{ row }">
+                  <div :data-test="`rotation-account-${row.account_id}`">
+                    {{ row.username }}
+                    <span class="sub">（{{ credentialTypeText(row.credential_type) }}）</span>
+                  </div>
+                  <!-- 憑證名與共用標記同一個來源（憑證本身）：稽核據此核對
+                     「這台跟哪些主機用的是同一組秘密」 -->
+                  <div
+                    v-if="row.credential_name"
+                    class="sub"
+                    :data-test="`rotation-credential-${row.account_id}`"
+                  >
+                    {{ row.credential_name }}
+                    <span v-if="row.effective_version_no">· {{ $t('credentials.versionNo', { no: row.effective_version_no }) }}</span>
+                  </div>
+                  <div class="tag-row">
+                    <el-tag
+                      v-if="row.privileged"
+                      size="small"
+                      type="danger"
+                      effect="plain"
+                      :data-test="`rotation-privileged-${row.account_id}`"
+                    >
+                      {{ $t('rotationEvidence.tag.privileged') }}
+                    </el-tag>
+                    <!-- 共用憑證：只反映系統知道的事（複製建號歸組、改密成功脫組），
+                       人工改過的憑證不在其中。這一點寫進 tooltip，免得被讀成保證 -->
+                    <el-tooltip
+                      v-if="row.shared_credential"
+                      placement="top"
+                      :content="$t('rotationEvidence.tag.sharedHint')"
+                    >
+                      <el-tag
+                        size="small"
+                        type="warning"
+                        effect="plain"
+                        :data-test="`rotation-shared-${row.account_id}`"
+                      >
+                        {{ $t('rotationEvidence.tag.shared') }}
+                      </el-tag>
+                    </el-tooltip>
+                    <el-tag
+                      v-if="row.multi_plan"
+                      size="small"
+                      type="info"
+                      effect="plain"
+                      :data-test="`rotation-multiplan-${row.account_id}`"
+                    >
+                      {{ $t('rotationEvidence.tag.multiPlan') }}
+                    </el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column
+                :label="$t('rotationEvidence.column.policy')"
+                min-width="110"
+              >
+                <template #default="{ row }">
+                  <div :data-test="`rotation-maxage-${row.account_id}`">
+                    {{ maxAgeText(row) }}
+                  </div>
+                  <div class="sub">
+                    {{ planText(row) }}
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column
+                :label="$t('rotationEvidence.column.lastSuccess')"
+                min-width="155"
+              >
+                <template #default="{ row }">
+                  <div :data-test="`rotation-last-${row.account_id}`">
+                    {{ row.last_success_at ? formatDateTime(row.last_success_at) : $t('rotationEvidence.noRecordValue') }}
+                  </div>
+                  <div class="sub">
+                    {{ remainingText(row.remaining_days_a) }}
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column
+                :label="$t('rotationEvidence.column.nextSchedule')"
+                min-width="155"
+              >
+                <template #default="{ row }">
+                  <div :data-test="`rotation-next-${row.account_id}`">
+                    {{ row.next_schedule_at ? formatDateTime(row.next_schedule_at) : $t('rotationEvidence.noSchedule') }}
+                  </div>
+                  <div class="sub">
+                    {{ remainingText(row.remaining_days_b) }}
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column
+                :label="$t('rotationEvidence.column.bucket')"
+                width="90"
+              >
+                <template #default="{ row }">
+                  <el-tag
+                    :type="BUCKET_TAG_TYPE[row.bucket] || 'info'"
+                    effect="plain"
+                    :data-test="`rotation-bucket-${row.account_id}`"
+                  >
+                    {{ bucketLabel(row.bucket) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+
+          <!-- 區間記錄明細：資料集端點不回明細（那是另一支端點的分頁查詢），
+             故本區塊自成一次查詢。失敗的那幾筆是稽核最想看的東西 -->
+          <el-card
+            v-loading="recordsLoading"
+            data-test="rotation-records-card"
+          >
+            <template #header>
+              <span class="card-title">{{ $t('rotationEvidence.recordsTitle') }}</span>
+              <span class="sub card-sub">{{ periodText }}</span>
+            </template>
+            <el-alert
+              v-if="recordsTruncated"
+              type="warning"
+              :closable="false"
+              show-icon
+              data-test="rotation-records-truncated"
+              :title="$t('rotationEvidence.recordsTruncated')"
+            />
+            <el-empty
+              v-if="!records.length && !recordsLoading"
+              data-test="rotation-records-empty"
+              :description="$t('rotationEvidence.recordsEmpty')"
+            />
+            <el-table
+              v-else
+              :data="records"
+              style="width: 100%"
+              stripe
+              row-key="record_id"
+            >
+              <el-table-column
+                :label="$t('rotationEvidence.column.executedAt')"
+                width="180"
+              >
+                <template #default="{ row }">
+                  {{ formatDateTime(row.executed_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                :label="$t('rotationEvidence.column.source')"
+                min-width="150"
+              >
+                <template #default="{ row }">
+                  {{ recordSourceText(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                :label="$t('rotationEvidence.column.target')"
+                min-width="180"
+              >
+                <template #default="{ row }">
+                  {{ row.asset_name }} / {{ row.account_username }}
+                  <el-tag
+                    v-if="row.account_deleted"
+                    size="small"
+                    type="info"
+                    effect="plain"
+                  >
+                    {{ $t('rotationEvidence.accountDeleted') }}
+                  </el-tag>
+                  <!-- 執行當下的憑證與目標版本快照：掛載事後被改綁也不會被覆寫，
+                     稽核問的是「當時動的是哪一組秘密」 -->
+                  <div
+                    v-if="row.credential_name"
+                    class="sub"
+                    :data-test="`rotation-record-credential-${row.record_id}`"
+                  >
+                    {{ row.credential_name }}
+                    <span v-if="row.version_no">· {{ $t('rotationEvidence.credentialVersion', { no: row.version_no }) }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column
+                :label="$t('rotationEvidence.column.result')"
+                width="120"
+              >
+                <template #default="{ row }">
+                  <el-tag
+                    :type="recordTagType(row.status)"
+                    effect="plain"
+                    :data-test="`rotation-record-status-${row.record_id}`"
+                  >
+                    {{ recordStatusText(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column
+                :label="$t('rotationEvidence.column.reason')"
+                min-width="220"
+              >
+                <template #default="{ row }">
+                  {{ reasonText(row.reason_code) }}
+                </template>
+              </el-table-column>
+            </el-table>
+            <div
+              v-if="recordsTotal > 0"
+              class="pagination"
+            >
+              <el-pagination
+                v-model:current-page="recordsPage"
+                v-model:page-size="recordsPageSize"
+                :page-sizes="[20, 50, 100]"
+                :total="recordsTotal"
+                layout="total, sizes, prev, pager, next"
+                @size-change="loadRecords()"
+                @current-change="loadRecords()"
+              />
+            </div>
+          </el-card>
+        </template>
 
         <!-- 排程管理：admin 專屬區，由右欄的「管理」展開。**不另立側欄項目**
              ——排程是這份報告的產出設定，離開這一頁看它就沒有上下文；
              預設收起則是因為到場的稽核要看的是帳號列，不是產出設定 -->
         <el-card
-          v-if="canManageSchedules && schedulesExpanded"
+          v-if="canManageSchedules && (schedulesExpanded || !canReadReport)"
           data-test="rotation-schedules"
         >
           <template #header>
@@ -496,7 +510,10 @@
       <!-- 右欄：報告本身的狀態。排程與最近產出放在這裡——它們回答的是
            「這份報告怎麼來、上一份在哪」，屬於報告的後設資訊，
            不該與帳號列爭主區的位置 -->
-      <aside class="side-col">
+      <aside
+        v-if="canReadReport"
+        class="side-col"
+      >
         <el-card
           class="side-card"
           data-test="rotation-aside"
@@ -900,6 +917,7 @@ import { ElMessage } from 'element-plus'
 import { CircleHelp, FileClock } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ReadonlyNote from '@/components/ReadonlyNote.vue'
 import ScheduleFrequencyPicker from '@/components/ScheduleFrequencyPicker.vue'
 import { CUSTOM_MODE, describeSchedule, formatRunTime, parseCron } from '@/utils/cron-shape'
 import { getScheduleNextRuns } from '@/api/schedules'
@@ -941,6 +959,9 @@ import { formatDateTime } from '@/utils/format'
 const { t, te } = useI18n()
 const router = useRouter()
 // 排程管理（rotation_schedule:manage）與計劃清單（changesecret:manage）各依自己的後端能力
+// 報告資料（報告、記錄、最近產出）都要稽核檢視權限；排程管理只要排程能力。
+// 三個讀取函式本身以它守衛，掛載、重新整理、分頁與立即執行後的重讀都不會打出 403
+const canReadReport = computed(() => can('audit:view'))
 const canManageSchedules = computed(() => can('rotation_schedule:manage'))
 const canListPlans = computed(() => can('changesecret:manage'))
 
@@ -1151,6 +1172,7 @@ const reasonText = (code) => {
 }
 
 const loadReport = async () => {
+  if (!canReadReport.value) return
   loading.value = true
   try {
     const res = await getRotationReport({})
@@ -1170,6 +1192,7 @@ const loadReport = async () => {
 }
 
 const loadRecords = async () => {
+  if (!canReadReport.value) return
   const period = recordsPeriod.value
   if (!period) return
   recordsLoading.value = true
@@ -1210,6 +1233,7 @@ const canDownloadReport = (job) =>
   (!job.expires_at || new Date(job.expires_at).getTime() > Date.now())
 
 const loadRecentReports = async () => {
+  if (!canReadReport.value) return
   try {
     const res = await listAuditExportJobs({
       kind: 'rotation_report',
@@ -1441,6 +1465,11 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: var(--ot-space-md);
+}
+
+/* 本頁容器自帶 md 的 flex gap，說明句緊貼副標要再多收回一個 gap */
+.rotation-evidence > .readonly-note {
+  margin: calc(6px - var(--ot-space-lg) - var(--ot-space-md)) 0 0;
 }
 
 .layout {

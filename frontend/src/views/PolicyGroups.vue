@@ -16,6 +16,7 @@
           {{ $t('common.refresh') }}
         </el-button>
         <el-button
+          v-if="canManage"
           type="primary"
           class="create-group"
           @click="openCreate"
@@ -24,6 +25,13 @@
         </el-button>
       </template>
     </PageHeader>
+
+    <ReadonlyNote
+      v-if="!canManage"
+      data-test="policy-groups-readonly-note"
+    >
+      {{ $t('policyGroups.readOnlyNote') }}
+    </ReadonlyNote>
 
     <div
       v-if="groups.length === 0"
@@ -66,11 +74,20 @@
           @keydown.stop
         >
           <el-switch
+            v-if="canManage"
             :model-value="group.enabled"
             :active-text="$t('policyGroups.enabledLabel')"
             @change="(value) => toggleEnabled(group, value)"
           />
-          <template v-if="group.source === 'custom'">
+          <el-tag
+            v-else
+            size="small"
+            :type="group.enabled ? 'success' : 'info'"
+            class="group-status"
+          >
+            {{ group.enabled ? $t('policyGroups.statusEnabled') : $t('policyGroups.statusDisabled') }}
+          </el-tag>
+          <template v-if="canManage && group.source === 'custom'">
             <el-button
               text
               class="group-rename"
@@ -100,7 +117,7 @@
           {{ $t('policyGroups.clausesTitle', { name: activeGroup.name }) }}
         </span>
         <el-button
-          v-if="isCustomGroup"
+          v-if="canManage && isCustomGroup"
           class="add-clause"
           @click="openClause(null)"
         >
@@ -109,7 +126,7 @@
       </div>
 
       <p class="panel-hint">
-        {{ isCustomGroup ? $t('policyGroups.customHint') : $t('policyGroups.builtinHint') }}
+        {{ panelHint }}
       </p>
 
       <el-table
@@ -189,6 +206,7 @@
         </el-table-column>
 
         <el-table-column
+          v-if="canManage"
           :label="$t('policyGroups.colActions')"
           width="230"
         >
@@ -381,14 +399,17 @@ import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ReadonlyNote from '@/components/ReadonlyNote.vue'
 import ClauseDialog from '@/components/ClauseDialog.vue'
-import { getComplianceSnapshot } from '@/api/compliance'
+import { can } from '@/composables/useCapabilities'
 import { getSecurityPolicies } from '@/api/securityPolicies'
 import {
   confirmClause,
   createPolicyGroup,
   deletePolicyClause,
   deletePolicyGroup,
+  getPolicyGroup,
+  getPolicyGroups,
   renamePolicyGroup,
   setPolicyGroupEnabled,
   upsertClauseAnnotation,
@@ -403,8 +424,10 @@ import { clauseTitle, expectationText, settingLabel } from '@/utils/policyClause
 // 內建組的條文不開放編輯：它隨產品版本 upsert，改了下次升級就被蓋回去，而機構
 // 會以為自己改過。機構要的差異寫成自建組的條文——那才是會被判定看見的東西。
 //
-// 讀取走判定結果那一支：它一次回組、全部條文與掛在條文上的備註，卡片上的條文數
-// 與下方的條文表因此來自同一個時點；分兩支讀會讓兩處在有人同時寫入時對不起來。
+// 讀取走政策組自己的端點（組清單，再逐組取條文與備註），只需要政策組檢視權限；
+// 判定結果那一支要合規檢視權限，只持政策組檢視的人讀不到。代價是卡片上的條文數與
+// 條文表不再保證同一時點，但每次寫入後都會整頁重讀，寫入者又只有政策組管理者，接受。
+// 寫入動作依 policygroup:manage 呈現，唯讀持有者只看得到內容與生效狀態。
 
 const LOCALE_OPTIONS = ['zh-TW', 'en-US', 'ja-JP']
 
@@ -435,7 +458,14 @@ const activeGroup = computed(
   () => groups.value.find((g) => g.code === activeCode.value) || {}
 )
 
+const canManage = computed(() => can('policygroup:manage'))
+
 const isCustomGroup = computed(() => activeGroup.value.source === 'custom')
+
+const panelHint = computed(() => {
+  if (isCustomGroup.value) return t('policyGroups.customHint')
+  return canManage.value ? t('policyGroups.builtinHint') : t('policyGroups.builtinHintReadOnly')
+})
 
 const activeClauses = computed(() =>
   clauses.value.filter((c) => c.group_code === activeCode.value)
@@ -487,9 +517,11 @@ const canConfirm = (clause) => (clause.controls || []).some((c) => c.reference_o
 const load = async () => {
   loading.value = true
   try {
-    const res = await getComplianceSnapshot()
-    groups.value = res.groups || []
-    clauses.value = res.clauses || []
+    const listRes = await getPolicyGroups()
+    const list = listRes?.data || []
+    const details = await Promise.all(list.map((g) => getPolicyGroup(g.code)))
+    groups.value = list
+    clauses.value = details.flatMap((d) => d?.data?.clauses || [])
     if (!groups.value.some((g) => g.code === activeCode.value)) {
       activeCode.value = groups.value[0]?.code || ''
     }
@@ -500,7 +532,9 @@ const load = async () => {
   }
 }
 
+// 設定清單只給要求值的單位與條文表單的鍵清單用，且要安全政策管理權限；沒有就不請求
 const loadPolicies = async () => {
+  if (!can('securitypolicy:manage')) return
   try {
     const res = await getSecurityPolicies()
     policies.value = res.data || []

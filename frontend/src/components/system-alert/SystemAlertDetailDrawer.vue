@@ -50,7 +50,36 @@
           />
         </section>
 
-        <!-- 權限變化：只對兩個自我授權類型與管理類發放類型呈現前後差異 -->
+        <!-- 管理類發放：受領對象、新增的角色與範圍（不是操作者自己的權限變化） -->
+        <section
+          v-if="grant"
+          data-test="sa-grant"
+        >
+          <h4>{{ $t('systemAlerts.detail.grantTitle') }}</h4>
+          <dl class="sa-dl">
+            <dt>{{ $t('systemAlerts.detail.recipientLabel') }}</dt>
+            <dd data-test="sa-grant-recipient">
+              {{ grant.recipient }}
+            </dd>
+            <dt>{{ $t('systemAlerts.detail.grantedRoles') }}</dt>
+            <dd data-test="sa-grant-roles">
+              {{ grant.roles }}
+            </dd>
+            <template v-if="grant.scopes.length">
+              <dt>{{ $t('systemAlerts.detail.scopeLabel') }}</dt>
+              <dd data-test="sa-grant-scope">
+                <div
+                  v-for="line in grant.scopes"
+                  :key="line"
+                >
+                  {{ line }}
+                </div>
+              </dd>
+            </template>
+          </dl>
+        </section>
+
+        <!-- 自我授權兩型：操作者自己的前後差異 -->
         <section
           v-if="privilege"
           data-test="sa-privilege"
@@ -168,6 +197,7 @@
 import { ref, computed, watch } from 'vue'
 import { getSystemAlertDetail } from '@/api/systemAlerts'
 import { formatDateTime } from '@/utils/format'
+import { roleLabel } from '@/constants/roles'
 import { t } from '@/i18n'
 
 const props = defineProps({
@@ -180,7 +210,7 @@ const TAG_TYPES = { high: 'danger', medium: 'warning', low: 'info' }
 const LEVELS = ['high', 'medium', 'low']
 const DELIVERY_STATES = ['pending', 'retrying', 'delivered', 'abandoned']
 // 權限變化區塊只對這三類呈現
-const PRIVILEGE_TYPES = ['self_privilege_increased', 'self_privilege_decreased', 'management_role_granted']
+const PRIVILEGE_TYPES = ['self_privilege_increased', 'self_privilege_decreased']
 
 const detail = ref(null)
 const loading = ref(false)
@@ -191,12 +221,24 @@ const typeDescription = computed(() => (detail.value ? t(`systemAlerts.types.${d
 const levelLabel = (level) => (LEVELS.includes(level) ? t(`enum.alertLevel.${level}`) : level)
 const deliveryLabel = (state) => (DELIVERY_STATES.includes(state) ? t(`systemAlerts.delivery.${state}`) : state)
 
+// 使用者與群組目標的名稱：管理類發放取受領對象，自我授權的目標就是操作者本人；其餘型別不知道名稱
+const targetName = (d) => {
+  if (!['user', 'user_group'].includes(d.target_kind)) return ''
+  if (d.alert_type === 'management_role_granted') return d.params?.recipient || ''
+  if (d.target_kind === 'user' && PRIVILEGE_TYPES.includes(d.alert_type)) return d.actor || ''
+  return ''
+}
+
 // 目標：種類以文字呈現，識別附在後面；未知種類原樣顯示
 const TARGET_KINDS = ['asset', 'credential', 'user', 'user_group', 'role_mapping', 'role', 'identity_source', 'notification_channel', 'session', 'system_setting']
 const targetText = computed(() => {
   const d = detail.value
   if (!d || !d.target_kind) return t('systemAlerts.detail.none')
   const kind = TARGET_KINDS.includes(d.target_kind) ? t(`systemAlerts.targetKinds.${d.target_kind}`) : d.target_kind
+  const named = targetName(d)
+  if (named && d.target_id && d.target_id !== '0') {
+    return t('systemAlerts.detail.targetNamed', { name: named, kind, id: d.target_id })
+  }
   return d.target_id && d.target_id !== '0' ? `${kind} #${d.target_id}` : kind
 })
 
@@ -219,7 +261,12 @@ const deliveryTime = (d) => {
   return ''
 }
 
-const listText = (csv) => (csv ? csv.split(',').join('、') : t('systemAlerts.detail.none'))
+const roleListText = (csv) =>
+  csv
+    .split(',')
+    .map((name) => roleLabel(name.trim()))
+    .join(t('common.listSeparator'))
+const listText = (csv) => (csv ? roleListText(csv) : t('systemAlerts.detail.none'))
 const countText = (n) => (n === undefined || n === '' ? '' : t('systemAlerts.detail.count', { count: n }))
 
 const privilege = computed(() => {
@@ -228,14 +275,42 @@ const privilege = computed(() => {
   const p = d.params || {}
   const pair = (before, after) =>
     p[before] === undefined && p[after] === undefined ? null : [countText(p[before]), countText(p[after])]
-  if (d.alert_type === 'management_role_granted') {
-    return { rolesBefore: t('systemAlerts.detail.none'), rolesAfter: p.role_name || '', manageable: null, connectable: null }
-  }
   return {
     rolesBefore: listText(p.roles_before),
     rolesAfter: listText(p.roles_after),
     manageable: pair('manageable_before', 'manageable_after'),
     connectable: pair('connectable_before', 'connectable_after'),
+  }
+})
+
+// 範圍行：全系統、節點路徑清單加總數；已刪除的節點只顯示編號。舊告警沒有節點資訊時不猜，整列不顯示
+const grantScopes = (d) => {
+  const p = d.params || {}
+  const lines = []
+  const summary = String(p.scope_summary || '').split(',')
+  if (summary.includes('global')) lines.push(t('systemAlerts.detail.scopeGlobal'))
+  const nodes = Array.isArray(d.scope_nodes) ? d.scope_nodes : []
+  if (nodes.length) {
+    const names = nodes.map((n) => n.path || t('systemAlerts.detail.scopeNodeDeleted', { id: n.id }))
+    lines.push(
+      t('systemAlerts.detail.scopeNodes', {
+        nodes: names.join(t('common.listSeparator')),
+        count: p.scope_node_count || nodes.length,
+      }),
+    )
+  }
+  return lines
+}
+
+const grant = computed(() => {
+  const d = detail.value
+  if (!d || d.alert_type !== 'management_role_granted') return null
+  const p = d.params || {}
+  const name = p.recipient || ''
+  return {
+    recipient: d.target_kind === 'user_group' ? t('systemAlerts.detail.recipientGroup', { name }) : name,
+    roles: p.role_name ? roleListText(p.role_name) : t('systemAlerts.detail.none'),
+    scopes: grantScopes(d),
   }
 })
 

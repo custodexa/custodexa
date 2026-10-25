@@ -50,10 +50,9 @@ func NewAuthorizationWriteScope(e *ScopeEvaluator) *AuthorizationWriteScope {
 	return &AuthorizationWriteScope{e: e}
 }
 
-// NewAuthorizationScopeEvaluator 組裝期用：產品目錄加拓撲讀取器，並登記授權規則面與審核範圍面的目標。
+// NewAuthorizationScopeEvaluator 組裝期用：產品目錄加拓撲讀取器，並登記產品所有後段目標種類（ProductScopeResolvers）。
 func NewAuthorizationScopeEvaluator(cat Catalogue, topo ScopeTopology) *ScopeEvaluator {
-	extra := append(AuthorizationScopeResolvers(), ApproverScopeScopeResolvers()...)
-	return NewScopeEvaluator(cat, topo, extra...)
+	return NewScopeEvaluator(cat, topo, ProductScopeResolvers()...)
 }
 
 // lockForAuthorizationWrite 取主體 users 列鎖（升冪）後取拓撲序列化鎖。

@@ -112,9 +112,19 @@ Item-count cards SHALL use their corresponding authorized lists' full filtered t
 ### Requirement: Workspace entry in sidebar
 The sidebar 總覽 group SHALL contain a 工作區 entry that navigates to the workspace in the same tab; the workspace itself SHALL remain a pure connection surface with no additional navigation, badges, or self-service features.
 
+The workspace asset list SHALL contain only assets that are visible to the user through connection visibility: authorization rules and approval visibility, each row carrying its authorization level and connection entry state. Assets that are visible only through management scope SHALL NOT appear in the workspace, because managing a node does not grant connection through the platform. Subjects holding the global asset presentation capability keep their existing workspace list. When a connection ticket is refused because the asset does not exist or is not connectable for the user, the workspace SHALL say that the asset cannot be found or the user has no connection permission for it, without distinguishing the two cases, and SHALL NOT state only that the asset does not exist.
+
 #### Scenario: Workspace round trip
 - **WHEN** a user clicks the 工作區 sidebar entry and then the workspace back control
 - **THEN** the user lands in the workspace and returns to the management console, with the workspace UI unchanged apart from pre-existing behavior
+
+#### Scenario: Management-only assets are not listed
+- **WHEN** a subject manages node A through a node-scoped assignment, has an authorization rule for asset X outside A and no rule for asset Y inside A, and opens the workspace
+- **THEN** the workspace lists X with its connection entry state and does not list Y, while the asset page still lists both X and Y
+
+#### Scenario: Refused ticket does not claim the asset is gone
+- **WHEN** a user opens a workspace session for an asset that the user can no longer connect to and ticket issuance returns not found
+- **THEN** the session shows that the asset cannot be found or the user has no connection permission for it
 
 ### Requirement: Checkpoint verification entry in audit group
 
@@ -167,7 +177,9 @@ The workbench route SHALL accept its full investigation state (pivot, subject, t
 
 ### Requirement: Rotation evidence navigation entry
 
-The sidebar 審計 group SHALL contain a rotation evidence entry that navigates to the rotation evidence page. The entry SHALL require the server-provided rotation evidence read capability, shared by the sidebar and route guard. Existing admin and auditor subjects retain access and general users retain their rejection. Schedule management SHALL remain inside that page and require its own management capability, which preserves the existing admin-only behavior; it SHALL NOT become a separate sidebar entry.
+The sidebar 審計 group SHALL contain a rotation evidence entry that navigates to the rotation evidence page. The entry SHALL be reachable by holders of either the server-provided rotation evidence read capability or the report schedule management capability, with the same rule shared by the sidebar and route guard. Existing admin and auditor subjects retain access and general users retain their rejection. Schedule management SHALL remain inside that page and require its own management capability, which preserves the existing admin-only behavior; it SHALL NOT become a separate sidebar entry.
+
+A holder of the schedule management capability without the rotation evidence read capability SHALL see the page with only the schedule section, expanded, and a note that report content and downloads require audit read permission. The page SHALL NOT request the report dataset, record or recent-report endpoints for such a holder at any point, including on load, on refresh, on record paging and after the holder runs or edits a schedule, and SHALL NOT show report refresh or generation actions. Running a schedule SHALL keep its own permission and SHALL still reload the schedule list. Granting this entry SHALL NOT add audit read capability to any built-in template.
 
 The entry label SHALL be localized in zh-TW, en-US and ja-JP, and the breadcrumb mapping table SHALL be updated for the new path. Adding this entry SHALL NOT change any existing route path, label or group membership; the download center entry keeps its path and label while gaining a second tab.
 
@@ -185,6 +197,14 @@ The entry label SHALL be localized in zh-TW, en-US and ja-JP, and the breadcrumb
 
 - **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
 - **THEN** all pre-existing entries keep their group, label and path; only the rotation evidence entry is added
+
+#### Scenario: Schedule manager without audit read
+- **WHEN** a system security administrator, whose template holds schedule management but not audit read, opens the rotation evidence entry
+- **THEN** the entry is visible and the guard allows it; the page shows the expanded schedule section and the audit-permission note, and no request is sent to the report dataset, record or recent-report endpoints
+
+#### Scenario: Running a schedule does not reload reports without audit read
+- **WHEN** the same administrator runs a schedule immediately from the schedule section
+- **THEN** the run request and a schedule list reload are sent, and no request is sent to the report dataset, record or recent-report endpoints; a holder of audit read still sees the recent reports refresh after the run
 
 ### Requirement: Credential library navigation entry
 
@@ -359,3 +379,51 @@ Every signed-in user SHALL have a localized「新版說明」action in the user 
 #### Scenario: General user's menu
 - **WHEN** a general user opens the user menu and reopens guidance
 - **THEN** the action is available and the guidance includes no management sections or unauthorized links
+
+### Requirement: 無資產檢視權限者的資產與工作區畫面
+
+資產頁與工作區的入口 SHALL 維持登入即可。主體不持資產檢視權限點時，兩頁 SHALL NOT 呼叫資產列表端點，SHALL 改顯示說明：角色沒有資產檢視權限、因此不會列出資產，需要經平台連線時聯絡管理員加上一般使用者角色。兩頁 SHALL NOT 把這種情況呈現為「沒有可用的主機」的空態或「列表更新失敗」。資產頁在此狀態下 SHALL NOT 顯示描述可用資產的頁首副標與重新整理動作。儀表板的「開啟工作區」與資產快速操作 SHALL 只在主體持有資產檢視權限點時呈現。
+
+#### Scenario: 授權管理員開啟我的資產
+
+- **WHEN** 只持授權管理員範本、沒有資產檢視權限點的使用者開啟我的資產頁
+- **THEN** 頁面顯示角色沒有資產檢視權限的說明，主控台與網路紀錄沒有資產列表請求與 403
+
+#### Scenario: 授權管理員開啟工作區
+
+- **WHEN** 同一位使用者開啟工作區
+- **THEN** 側欄顯示同一則說明，不出現列表更新失敗或權限不足的提示
+
+#### Scenario: 儀表板快速操作依能力呈現
+
+- **WHEN** 同一位使用者開啟儀表板
+- **THEN** 快速操作沒有「開啟工作區」與「我的資產」；持資產檢視權限點的使用者兩張都看得到
+
+### Requirement: 政策組唯讀入口
+
+政策組頁的入口 SHALL 要求政策組檢視權限點，側欄與路由守衛共用同一規則。頁面讀取政策組與條文 SHALL 只依賴政策組檢視權限點可讀的資料來源，SHALL NOT 要求合規檢視或其他權限點；只為寫入表單服務的輔助資料（例如設定清單）SHALL 只在主體持有其所需權限點時讀取，未持有時不發請求，頁面照常呈現政策組與條文。持檢視、不持政策組管理權限點者 SHALL 能進入並檢視政策組與條文，頁面 SHALL 以一行說明標示唯讀，SHALL NOT 呈現新增、更名、生效切換、刪除、條文編輯、備註與確認等寫入動作；頁面 SHALL 以唯讀標示呈現每個政策組是否生效，頁面說明 SHALL NOT 提及唯讀者無法執行的動作。寫入端點的權限不變。只持政策組管理、不持檢視者 SHALL 被擋在入口外，角色編輯 SHALL 以既有缺依賴提示指出缺少檢視權限點。
+
+#### Scenario: 稽核員檢視政策組
+
+- **WHEN** 稽核員開啟政策組頁
+- **THEN** 頁面列出政策組與條文並標示唯讀，沒有任何寫入按鈕；每個組顯示生效中或未生效的唯讀標示，內建組的說明不提加備註或人工確認
+
+#### Scenario: 只持政策組檢視的自訂角色看得到內容
+
+- **WHEN** 只持政策組檢視權限點、沒有合規檢視與安全政策管理權限點的自訂角色使用者開啟政策組頁
+- **THEN** 頁面列出政策組與條文並標示唯讀；網路紀錄沒有合規判定結果與安全設定清單的請求，也沒有權限不足的提示
+
+#### Scenario: 沒有合規檢視的管理者讀得到政策組
+
+- **WHEN** 持政策組檢視與管理、沒有合規檢視權限點的系統安全管理員開啟政策組頁
+- **THEN** 頁面列出政策組與條文，寫入動作齊全，沒有合規判定結果的請求
+
+#### Scenario: 管理者照常寫入
+
+- **WHEN** 持政策組檢視與管理權限點的使用者開啟政策組頁
+- **THEN** 寫入動作與修改前相同
+
+#### Scenario: 只持管理權限點者進不去
+
+- **WHEN** 只持政策組管理權限點的使用者直接輸入政策組頁網址
+- **THEN** 路由守衛導回儀表板，側欄沒有此入口

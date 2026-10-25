@@ -33,6 +33,14 @@ vi.mock('@/api/assets', () => ({
   moveAssetGroup: vi.fn(),
   deleteAssetGroup: vi.fn(),
 }))
+// 元件會打的其餘取數也一律以替身回應：真實請求收到 401 會觸發續期失敗、清掉能力快照，
+// 且回應晚到時落在後續案例，讓該案剛寫入的能力被清空（結果隨執行環境的時序改變）
+vi.mock('@/api/authorizations', () => ({
+  getAuthorizationTargetOptions: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+}))
+vi.mock('@/api/dashboard', () => ({
+  getDashboardCard: vi.fn().mockResolvedValue({ data: { value: 0 } }),
+}))
 class MutationObserverStub {
   observe() {}
   disconnect() {}

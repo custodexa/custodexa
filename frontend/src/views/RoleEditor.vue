@@ -149,6 +149,14 @@
               <span class="entry-title">
                 <span class="entry-name">{{ entryLabel(e.id) }}</span>
                 <el-tag
+                  v-if="stateOf(e) === 'partial'"
+                  size="small"
+                  type="warning"
+                  :data-test="`partial-tag-${e.id}`"
+                >
+                  {{ $t('roles.summary.partial') }}
+                </el-tag>
+                <el-tag
                   v-if="e.scopable === true"
                   size="small"
                   type="success"
@@ -177,6 +185,20 @@
               </div>
             </div>
             <p
+              v-if="stateOf(e) === 'partial'"
+              class="muted entry-note"
+              :data-test="`entry-partial-hint-${e.id}`"
+            >
+              {{ $t('roles.editor.partialHint') }}
+            </p>
+            <p
+              v-if="entryNoteFor(e.id)"
+              class="muted entry-note"
+              :data-test="`entry-note-${e.id}`"
+            >
+              {{ entryNoteFor(e.id) }}
+            </p>
+            <p
               v-for="b in blockedFor(e.id)"
               :key="b.id"
               class="warn"
@@ -194,7 +216,7 @@
                 :data-test="`detail-toggle-${e.id}`"
                 @click="toggleDetail(e.id)"
               >
-                {{ $t('roles.editor.detailCount', { n: detailOn(e), m: e.details.length }) }}
+                {{ $t('roles.editor.detailCount', detailCounts(e)) }}
               </button>
               <div
                 v-if="openDetails[e.id]"
@@ -213,6 +235,11 @@
                     @change="toggleKey(d.key)"
                   >
                   {{ detailLabel(d.id) }}
+                  <span
+                    v-if="sharedWithLabel(e, d)"
+                    class="muted detail-shared"
+                    :data-test="`detail-shared-${d.id}`"
+                  >{{ sharedWithLabel(e, d) }}</span>
                   <el-tag
                     v-if="d.scopable === true"
                     size="small"
@@ -431,6 +458,7 @@ import { t, te } from '@/i18n'
 import { roleLabel } from '@/constants/roles'
 import { useAssignmentPreview } from '@/composables/useAssignmentPreview'
 import { collectNewCombos, needsDangerConfirm } from '@/utils/dangerCombo'
+import { entryStateOf, applyEntryState, distinctDetailCount, sharedKeyDetailOf } from '@/views/role-editor/entryState'
 import {
   listRoleDefinitions,
   getRoleDescriptors,
@@ -507,6 +535,8 @@ const groups = computed(() => {
 })
 
 const entryLabel = (id) => (te(`roles.editor.entry.${id}`) ? t(`roles.editor.entry.${id}`) : id)
+// 入口列下方的補充說明（有該鍵才顯示）：告警與存取複審會一併加上稽核檢視權限
+const entryNoteFor = (id) => (te(`roles.editor.entryNote.${id}`) ? t(`roles.editor.entryNote.${id}`) : '')
 const detailLabel = (id) => (te(`roles.editor.detail.${id}`) ? t(`roles.editor.detail.${id}`) : id)
 const fixedLabel = (id) => (te(`roles.editor.fixed.${id}`) ? t(`roles.editor.fixed.${id}`) : id)
 const fixedVisible = (id) => {
@@ -515,21 +545,15 @@ const fixedVisible = (id) => {
   return t('roles.editor.fixedVisible.everyone')
 }
 
-// 入口目前的態：集合完整涵蓋的最高態
-const stateOf = (e) => {
-  let cur = e.states[0].name
-  for (const s of e.states.slice(1)) {
-    if (s.keys.length && s.keys.every((k) => perms.value.has(k))) cur = s.name
-  }
-  return cur
-}
+// 入口目前的態：集合完整涵蓋的最高態；持有寫入鍵卻未涵蓋管理態為部分管理（伺服器給的 write_keys）
+const stateOf = (e) => entryStateOf(e, perms.value)
 
 const groupCountText = (grp) => {
-  const n = { manage: 0, read: 0, available: 0, hidden: 0 }
+  const n = { manage: 0, partial: 0, read: 0, available: 0, hidden: 0 }
   for (const e of grp.entries) n[stateOf(e)] += 1
   if (n.hidden === grp.entries.length) return t('roles.editor.groupCount.allHidden', { n: n.hidden })
   const parts = []
-  for (const k of ['manage', 'read', 'available', 'hidden']) {
+  for (const k of ['manage', 'partial', 'read', 'available', 'hidden']) {
     if (n[k]) parts.push(t(`roles.editor.groupCount.${k}`, { n: n[k] }))
   }
   return parts.join('　')
@@ -540,18 +564,7 @@ const setPerms = (next) => {
 }
 const setState = (e, name) => {
   if (readonly.value) return
-  const protect = new Set(capabilities.value.map((c) => c.key))
-  for (const o of entries.value) {
-    if (o.id === e.id) continue
-    const cur = o.states.find((s) => s.name === stateOf(o))
-    cur.keys.forEach((k) => protect.add(k))
-  }
-  const next = new Set(perms.value)
-  for (const s of e.states) {
-    for (const k of s.keys) if (!protect.has(k)) next.delete(k)
-  }
-  e.states.find((s) => s.name === name).keys.forEach((k) => next.add(k))
-  setPerms(next)
+  setPerms(applyEntryState(entries.value, perms.value, e, name, capabilities.value.map((c) => c.key)))
 }
 const toggleKey = (key) => {
   if (readonly.value) return
@@ -563,7 +576,11 @@ const toggleKey = (key) => {
 const toggleDetail = (id) => {
   openDetails.value = { ...openDetails.value, [id]: !openDetails.value[id] }
 }
-const detailOn = (e) => e.details.filter((d) => perms.value.has(d.key)).length
+const detailCounts = (e) => distinctDetailCount(e, perms.value)
+const sharedWithLabel = (e, d) => {
+  const other = sharedKeyDetailOf(e, d)
+  return other ? t('roles.editor.detailSharedKey', { other: detailLabel(other.id) }) : ''
+}
 
 const permsArray = () => [...perms.value].sort()
 
@@ -627,7 +644,7 @@ const nodeScopedNotice = computed(() => {
 const summaryLines = computed(() => {
   const s = summary.value || {}
   const lines = []
-  for (const kind of ['manage', 'read', 'available']) {
+  for (const kind of ['manage', 'partial', 'read', 'available']) {
     const ids = s[kind] || []
     if (ids.length) lines.push({ kind, label: `${t(`roles.summary.${kind}`)}：`, text: ids.map(entryLabel).join('、') })
   }
@@ -918,6 +935,10 @@ onBeforeUnmount(clearDetailSubject)
 }
 .detail-item {
   font-size: var(--ot-font-size-sm);
+}
+.detail-shared {
+  display: block;
+  margin-top: 0;
 }
 .muted {
   color: var(--ot-text-secondary);

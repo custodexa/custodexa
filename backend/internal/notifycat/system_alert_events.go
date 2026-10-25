@@ -105,6 +105,8 @@ func systemAlertEventSpecs() map[Event]EventSpec {
 			{Name: "recipient", Kind: KindOpaque, Required: true},
 			{Name: "role_name", Kind: KindOpaque, Required: true},
 			{Name: "scope_summary", Kind: KindOpaque},
+			{Name: "scope_node_ids", Kind: KindOpaque},
+			{Name: "scope_node_count", Kind: KindInt},
 		}},
 		EventSystemAlertRetentionShortened: {Params: []ParamSpec{
 			{Name: "actor", Kind: KindOpaque, Required: true},

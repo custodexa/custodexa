@@ -4,7 +4,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import Assets from '../Assets.vue'
 import { getAssetGroups, createAsset, testAssetConnection } from '@/api/assets'
-import { resetCapabilities } from '@/composables/useCapabilities'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // happy-dom 的 MutationObserver 與 el-table key-render-helper 不相容，
@@ -166,6 +166,45 @@ const mountView = (extraStubs = {}) =>
       stubs: { ...tableStubs, ...extraStubs },
     },
   })
+
+describe('Assets 沒有資產檢視權限', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    resetCapabilities()
+    getAssetListMock.mockResolvedValue(sampleAssets)
+  })
+
+  it('不發任何列表請求（含掛載後的篩選處理），只顯示說明，沒有副標與重新整理', async () => {
+    setCapabilitiesForTests(['authorization:manage'])
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.handleFilter()
+    wrapper.vm.handlePageChange()
+    await wrapper.vm.fetchAssetList()
+    await flushPromises()
+
+    expect(getAssetListMock).not.toHaveBeenCalled()
+    const text = wrapper.text()
+    expect(text).toContain('你的角色沒有資產檢視權限')
+    expect(text).toContain('一般使用者')
+    expect(text).not.toContain('目前沒有你可以使用的主機')
+    expect(text).not.toContain('你可以使用或管理的資產')
+    expect(wrapper.find('.filter-bar').exists()).toBe(false)
+    expect(wrapper.find('.tree-table-layout').exists()).toBe(false)
+    expect(text).not.toContain('重新整理')
+  })
+
+  it('持 asset:view 時行為不變', async () => {
+    setCapabilitiesForTests(['asset:view'])
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(getAssetListMock).toHaveBeenCalled()
+    expect(wrapper.find('.filter-bar').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('你的角色沒有資產檢視權限')
+  })
+})
 
 describe('Assets 授權狀態欄按角色顯示', () => {
   beforeEach(() => {

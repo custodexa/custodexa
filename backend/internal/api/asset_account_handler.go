@@ -232,66 +232,22 @@ func (h *AssetAccountHandler) List(c *gin.Context) {
 	// 憑證身分只給具憑證檢視能力者：本端點同時服務管理視圖（帳號表格）與連線
 	// 選帳號，而後者只需要挑一個名字。回精簡版而非「回完整版但前端不顯示」——
 	// 出站了就是出站了，畫面不顯示不改變回應內容
-	rows, slimOnly, err := h.projectCredentialScope(c, filtered)
+	out, err := h.accountProjector().rows(c, filtered)
 	if err != nil {
 		respondAccountError(c, apierror.CodeInternalAssetAccountList, err)
 		return
 	}
-	if slimOnly {
-		slim := make([]*asset.AssetAccountSlimDTO, 0, len(filtered))
-		for _, a := range filtered {
-			slim = append(slim, asset.SlimAssetAccountDTO(a))
-		}
-		c.JSON(http.StatusOK, gin.H{"data": slim, "total": len(slim)})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": rows, "total": len(rows)})
+	respondScoped(c, http.StatusOK, out)
 }
 
-// projectCredentialScope 依投影決定形狀：精簡時回 slimOnly；範圍化檢視者引用範圍外（含全域）憑證的帳號列
-// 收窄為不帶憑證識別、名稱與台數的形狀並標記 credential_out_of_scope；範圍內與非範圍化檢視者照現行輸出。
-// 投影來源未注入時（測試替身）才退回以請求主體判定可見性、且不收窄。
-func (h *AssetAccountHandler) projectCredentialScope(c *gin.Context, accounts []*asset.AssetAccountDTO) ([]any, bool, error) {
-	rows := make([]any, 0, len(accounts))
-	if h.credScope == nil {
-		if !credentialFieldsVisible(c) {
-			return nil, true, nil
-		}
-		for _, a := range accounts {
-			rows = append(rows, a)
-		}
-		return rows, false, nil
-	}
-	ids := make([]uint, 0, len(accounts))
-	for _, a := range accounts {
-		if a.CredentialID != 0 {
-			ids = append(ids, a.CredentialID)
-		}
-	}
-	shape, inView, err := h.credScope.AccountCredentialProjection(accountAuthzContext(c), ids)
-	if err != nil {
-		return nil, false, err
-	}
-	if shape == authz.AccountCredentialSlim {
-		return nil, true, nil
-	}
-	scoped := shape == authz.AccountCredentialScoped
-	for _, a := range accounts {
-		if scoped && !inView[a.CredentialID] {
-			row := asset.OutOfScopeAssetAccountDTO(a)
-			if h.rowActions != nil {
-				actions, aerr := accountRowActions(h.rowActions.AccountRowChecks(accountContext(c), a.AssetID, a.ID, a.CredentialID))
-				if aerr != nil {
-					return nil, false, aerr
-				}
-				row.Actions = actions
-			}
-			rows = append(rows, row)
-			continue
-		}
-		rows = append(rows, a)
-	}
-	return rows, false, nil
+// accountProjector 帳號列投影器：與憑證 handler 的 bind、rebind 共用同一個判定。
+func (h *AssetAccountHandler) accountProjector() *accountRowProjector {
+	return &accountRowProjector{credScope: h.credScope, rowActions: h.rowActions}
+}
+
+// AccountRowProjectorWired 帳號列投影來源已注入（組裝自檢用）。
+func (h *AssetAccountHandler) AccountRowProjectorWired() bool {
+	return h != nil && h.credScope != nil
 }
 
 // accountRowActions 把各動作的判定結果轉成列級旗標：通過＝可操作；能力拒絕＝no_capability；
@@ -376,7 +332,12 @@ func (h *AssetAccountHandler) Create(c *gin.Context) {
 		respondAccountError(c, apierror.CodeInternalAssetAccountCreate, err)
 		return
 	}
-	c.JSON(http.StatusCreated, account)
+	out, perr := h.accountProjector().one(c, account)
+	if perr != nil {
+		respondAccountError(c, apierror.CodeInternalAssetAccountCreate, perr)
+		return
+	}
+	respondScoped(c, http.StatusCreated, out)
 }
 
 // Update 更新帳號（username／憑證／標記／備註；default 切換走 set-default）
@@ -395,7 +356,12 @@ func (h *AssetAccountHandler) Update(c *gin.Context) {
 		respondAccountError(c, apierror.CodeInternalAssetAccountUpdate, err)
 		return
 	}
-	c.JSON(http.StatusOK, account)
+	out, perr := h.accountProjector().one(c, account)
+	if perr != nil {
+		respondAccountError(c, apierror.CodeInternalAssetAccountUpdate, perr)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // Delete 刪除帳號（禁刪最後一個預設帳號）
@@ -422,7 +388,12 @@ func (h *AssetAccountHandler) SetDefault(c *gin.Context) {
 		respondAccountError(c, apierror.CodeInternalAssetAccountSetDefault, err)
 		return
 	}
-	c.JSON(http.StatusOK, account)
+	out, perr := h.accountProjector().one(c, account)
+	if perr != nil {
+		respondAccountError(c, apierror.CodeInternalAssetAccountSetDefault, perr)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // RegisterRoutes 註冊資產帳號路由。

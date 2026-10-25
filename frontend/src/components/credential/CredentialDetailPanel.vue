@@ -677,6 +677,11 @@ defineExpose({
   overflow-y: auto;
 }
 
+/* 面板整體捲動：子區塊不隨容器高度壓縮，否則掛載清單會疊到下方說明 */
+.detail-panel > * {
+  flex-shrink: 0;
+}
+
 .panel-head {
   display: flex;
   align-items: flex-start;

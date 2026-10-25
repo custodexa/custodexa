@@ -7,6 +7,15 @@ import { resolveApiError } from './error'
 import { riskLabel } from '@/utils/transportDisplay'
 
 /**
+ * 連線簽發失敗的文案：資產不存在或不可連時後端回同形 404（不洩漏存在性），
+ * 連線流程改用「找不到或沒有連線權限」的說法；其餘交通用的錯誤碼對照。
+ */
+export function resolveConnectError(data, status, fallback) {
+  if (status === 404 && data?.code === 'NOTFOUND_ASSET') return t('connect.assetUnavailable')
+  return resolveApiError(data, status, fallback)
+}
+
+/**
  * 換取一次性連線 token（connect-token）：授權檢查在簽發時完成。
  * options.accountId為所選資產帳號——**憑證選擇器而非
  * 授權快照**，簽發與兌換兩點都以 DB 現查驗客體綁定與帳號授權；省略＝預設帳號。
@@ -116,7 +125,7 @@ export async function createConnectTokenWithConsent(assetId, accountId = null) {
 
     if (resp?.status !== 428) {
       // 非同意語義的失敗：skipErrorToast 關掉了全域 toast，此處補回同等呈現
-      ElMessage.error(resolveApiError(resp?.data, resp?.status, t('connect.tokenFailed')))
+      ElMessage.error(resolveConnectError(resp?.data, resp?.status, t('connect.tokenFailed')))
       throw error
     }
     const risks = Array.isArray(resp.data?.risks) ? resp.data.risks : []

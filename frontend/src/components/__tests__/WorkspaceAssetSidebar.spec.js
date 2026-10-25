@@ -353,7 +353,9 @@ describe('WorkspaceAssetSidebar 列表全量載入', () => {
     await flushPromises()
     expect(getAssetList).toHaveBeenCalledTimes(3)
     expect(getAssetList.mock.calls.map((c) => c[0])).toEqual([
-      { page: 1, page_size: 100 }, { page: 2, page_size: 100 }, { page: 3, page_size: 100 },
+      { page: 1, page_size: 100, authorized_only: true },
+      { page: 2, page_size: 100, authorized_only: true },
+      { page: 3, page_size: 100, authorized_only: true },
     ])
     expect(wrapper.vm.assets).toHaveLength(250)
     expect(wrapper.findAll('.asset-item')).toHaveLength(250)

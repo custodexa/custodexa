@@ -14,7 +14,7 @@
  * `command-degrade.spec.js` 直讀後端原始碼雙向比對，任一方向缺漏即紅燈。
  * 未知碼仍有 default 分支（`reasonUnknown`），不致白屏或顯示裸碼。
  */
-import { t } from '@/i18n'
+import { t, te } from '@/i18n'
 
 // Degrade*：該輪沒有可信文字（`degraded=true`）
 export const DEGRADE_REASON_VALUES = [
@@ -107,6 +107,11 @@ const alertKindText = (row) => {
   if (isNewSourceIPAlert(row)) return t('alerts.kindNewSourceIP')
   if (isAgentBreakerAlert(row)) return t('alerts.kindAgentBreaker')
   if (row?.kind === 'sensitive_reveal') return t('alerts.kindSensitiveReveal')
+  // 系統告警的 rule_name 是型別鍵：顯示型別名稱，型別不認得時退回「系統告警」，不露鍵名
+  if (row?.kind === 'system_security') {
+    const key = `systemAlerts.types.${row.reason_code}.name`
+    return te(key) ? t(key) : t('systemAlerts.detail.title')
+  }
   return ''
 }
 

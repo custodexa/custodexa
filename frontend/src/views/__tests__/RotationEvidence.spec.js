@@ -3,7 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import RotationEvidence from '../RotationEvidence.vue'
 import { ROTATION_BUCKETS, BUCKET_SUMMARY_FIELD } from '@/constants/rotationEvidence'
-import { resetCapabilities } from '@/composables/useCapabilities'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 輪替證據頁。
@@ -536,5 +536,67 @@ describe('憑證來源與版本快照', () => {
     expect(cell.exists()).toBe(true)
     expect(cell.text()).toContain('正式區 root')
     expect(cell.text()).toContain('v5')
+  })
+})
+
+describe('只持排程管理能力（沒有稽核檢視）', () => {
+  const SCHEDULE = {
+    id: 1, name: '月報', cron: '0 1 1 * *', enabled: true, scope_kind: 'all', scope_id: 0,
+    retention_days: 400, language: 'zh-TW', period_anchor: '2026-09-01T00:00:00Z',
+  }
+  const scheduleOnly = () => setCapabilitiesForTests(['rotation_schedule:manage'])
+  const reportCalls = () => reportMock.mock.calls.length + recordsMock.mock.calls.length + listJobsMock.mock.calls.length
+
+  it('掛載後不打任何報告端點，排程卡預設展開、有說明句、沒有產出與重新整理鈕', async () => {
+    scheduleOnly()
+    listSchedulesMock.mockResolvedValue({ data: [SCHEDULE] })
+    const wrapper = await mountPage()
+
+    expect(reportCalls()).toBe(0)
+    expect(listSchedulesMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="rotation-schedules"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="rotation-schedule-only-note"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="rotation-generate"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="rotation-refresh"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="rotation-aside"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="rotation-basis"]').exists()).toBe(false)
+  })
+
+  it('立即執行後只重讀排程，三個報告端點仍為零次', async () => {
+    scheduleOnly()
+    listSchedulesMock.mockResolvedValue({ data: [SCHEDULE] })
+    runScheduleMock.mockResolvedValue({ data: {} })
+    const wrapper = await mountPage()
+    const before = listSchedulesMock.mock.calls.length
+
+    await wrapper.find('[data-test="rotation-schedule-run-1"]').trigger('click')
+    await flushPromises()
+
+    expect(runScheduleMock).toHaveBeenCalledTimes(1)
+    expect(listSchedulesMock.mock.calls.length).toBe(before + 1)
+    expect(reportCalls()).toBe(0)
+  })
+
+  it('同時持稽核檢視：立即執行後仍刷新最近產出', async () => {
+    setCapabilitiesForTests(['audit:view', 'rotation_schedule:manage'])
+    listSchedulesMock.mockResolvedValue({ data: [SCHEDULE] })
+    runScheduleMock.mockResolvedValue({ data: {} })
+    const wrapper = await mountPage()
+    await wrapper.find('[data-test="rotation-schedule-manage"]').trigger('click')
+    const before = listJobsMock.mock.calls.length
+
+    await wrapper.find('[data-test="rotation-schedule-run-1"]').trigger('click')
+    await flushPromises()
+
+    expect(listJobsMock.mock.calls.length).toBe(before + 1)
+  })
+
+  it('只持稽核檢視：不打排程端點，也沒有說明句', async () => {
+    setCapabilitiesForTests(['audit:view'])
+    const wrapper = await mountPage()
+
+    expect(listSchedulesMock).not.toHaveBeenCalled()
+    expect(reportMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="rotation-schedule-only-note"]').exists()).toBe(false)
   })
 })

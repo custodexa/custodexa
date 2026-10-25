@@ -45,9 +45,11 @@ func newPsEnv(t *testing.T) *psEnv {
 	runner := asset.NewChangeSecretRunner(e.db, nil, nil, nil, nil)
 	p.remoteCalls = asset.CountRemoteCallsForTest(runner)
 	p.h = api.NewChangeSecretHandler(p.svc, runner, nil, nil, nil, nil)
+	p.h.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 	p.legacy = api.NewChangeSecretHandler(asset.NewChangeSecretPlanService(e.db).WithAuthorizer(e.mgmt).
 		WithAuditSink(audit.NewTxSink()), runner,
 		nil, nil, nil, nil)
+	p.legacy.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 	p.planCred = p.credential("bs-plan-cred", "bs-in")
 	e.account(e.assets["bs-in-1"], "pc", p.planCred)
 	e.account(e.assets["bs-in-1"], "pc2", p.planCred)

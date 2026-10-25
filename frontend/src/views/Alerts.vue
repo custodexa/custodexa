@@ -785,6 +785,7 @@ import {
   isNewSourceIPAlert,
   isAgentBreakerAlert,
   commandAlertReasonLabel,
+  alertRuleText,
 } from '@/constants/command-degrade'
 import { buildAddressPivotLink, localDayRange } from '@/components/audit/timelineQuery'
 
@@ -943,15 +944,7 @@ const alertBatchLimitText = computed(() =>
   alertSelection.atLimit.value || alertSelection.truncated.value
     ? t('alerts.batch.limitHint', { limit: alertSelection.limit })
     : '')
-// 規則名稱欄的同一套散文：非規則類告警的 rule_name 是機器碼，不直接顯示
-const alertRuleText = (row) => {
-  if (isDegradedAlert(row)) return t('alerts.kindAuditDegraded')
-  if (isNewSourceIPAlert(row)) return t('alerts.kindNewSourceIP')
-  if (isAgentBreakerAlert(row)) return t('alerts.kindAgentBreaker')
-  if (row.kind === 'sensitive_reveal') return t('alerts.kindSensitiveReveal')
-  if (isSystemAlert(row)) return systemAlertName(row)
-  return row.rule_name
-}
+// 規則名稱欄的同一套散文改用共用函式（constants/command-degrade）：非規則類告警的 rule_name 是機器碼，不直接顯示
 const alertBatchLabel = (row) => `${alertRuleText(row)} · ${formatDateTime(row.triggered_at)}`
 const handleAlertBatchFinished = () => {
   alertSelection.clear()

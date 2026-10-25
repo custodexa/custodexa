@@ -117,6 +117,34 @@ func TestScopedAssetListProjection(t *testing.T) {
 		assert.Equal(t, int64(saManagedCount(l)), saPreviewCount(t, e, u))
 	})
 
+	t.Run("authorized_only_returns_connection_rows_only", func(t *testing.T) {
+		e := newSAEnv(t)
+		saTree(e)
+		u := e.user("zz-sa-conn-only")
+		e.grantNodes(u, e.role(authz.PermAssetView), "zz-sa-a")
+		x := e.asset("zz-sa-x", "zz-sa-b")
+		y := e.asset("zz-sa-y", "zz-sa-a1")
+		e.connGrant(u, x)
+		union := e.list(u, "")
+		require.True(t, union.ids()[y], "不帶參數時聯集含只經管理可視的列")
+		l := e.list(u, "authorized_only=true")
+		assert.Equal(t, map[uint]bool{x: true}, l.ids())
+		assert.NotContains(t, l.raw, "zz-sa-y")
+		assert.NotContains(t, l.raw, fmt.Sprintf(`"id":%d,`, y))
+		assert.Equal(t, int64(1), l.Total)
+		_, hasPerm := l.row(x)["permission"]
+		assert.True(t, hasPerm, "連線可視列保留連線欄")
+		assert.Equal(t, union.row(x), l.row(x), "同一台資產帶與不帶參數逐欄相同（含 actions）")
+		assert.NotNil(t, l.ManagementScope, "management_scope 照附")
+
+		m := e.user("zz-sa-mgmt-only-subject")
+		e.grantNodes(m, e.role(authz.PermAssetView), "zz-sa-a")
+		ml := e.list(m, "authorized_only=true")
+		assert.Empty(t, ml.Data)
+		assert.Equal(t, int64(0), ml.Total)
+		assert.NotContains(t, ml.raw, "zz-sa-y")
+	})
+
 	t.Run("search_and_total_before_paging", func(t *testing.T) {
 		e := newSAEnv(t)
 		saTree(e)
@@ -392,6 +420,18 @@ func TestScopedAssetOutOfScopeAttribution(t *testing.T) {
 		var d map[string]any
 		require.NoError(t, json.Unmarshal([]byte(raw), &d))
 		checkMasked(t, e, d, raw)
+	})
+
+	t.Run("authorized_only_keeps_mask", func(t *testing.T) {
+		e, u, p, _ := setup(t)
+		e.connGrant(u, p)
+		e.asset("zz-sa-mgmt-only", "zz-sa-a1")
+		l := e.list(u, "authorized_only=true")
+		checkMasked(t, e, l.row(p), l.raw)
+		assert.NotContains(t, l.raw, "zz-sa-mgmt-only")
+		far := e.list(u, fmt.Sprintf("authorized_only=true&node_id=%d", e.nodes["zz-sa-far-1"]))
+		assert.Nil(t, far.row(p), "以範圍外節點篩選不命中被遮蔽的列")
+		assert.NotContains(t, far.raw, "zz-sa-far")
 	})
 
 	t.Run("connection_grant_still_masked", func(t *testing.T) {

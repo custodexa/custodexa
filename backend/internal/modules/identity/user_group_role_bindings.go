@@ -303,7 +303,7 @@ func (s *UserGroupService) writeGroupRoleAuditDetails(tx *gorm.DB, op Operator, 
 	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{
 		Action: string(action), Resource: string(model.ResourceUserGroupRole), ResourceID: &gid,
 		Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: op.UserID, Username: op.Username},
-		Request: gatewayapi.RequestMeta{ClientIP: op.ClientIP}, Details: details,
+		Request: op.RequestMeta(), Details: details,
 	}); err != nil {
 		return fmt.Errorf("稽核留痕失敗: %w", err)
 	}

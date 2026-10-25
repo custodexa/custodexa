@@ -117,13 +117,13 @@ var auditReasonEvents = []auditReasonEvent{
 	{Event: "group_user_group_mapping_create"},
 	{Event: "group_user_group_mapping_update"},
 	{Event: "group_user_group_mapping_delete"},
-	{Event: "role_binding_range_changed"},
+	{Event: model.RoleBindingRangeChangedEvent, Params: roleBindingRangeChangedParams},
 	{Event: "role_mapping_pin"},
 	{Event: "oidc_provider_settings_change"},
 	{Event: "user_group_manual_member_added"},
 	{Event: "user_group_manual_member_removed"},
 	// 授權變更分級與系統安全管理員帳號身分操作（服務審計 details 事件）
-	{Event: "grant_change_graded"},
+	{Event: "grant_change_graded", Params: grantChangeGradedParams},
 	{Event: "security_admin_account_operated"},
 	// 角色修改或 agent 角色寫入提交後，重查發現 agent 持有含受限權限點的角色
 	{Event: "role_update_agent_restricted_detected"},
@@ -172,7 +172,7 @@ func reasonContains(values []string, v string) bool {
 
 var principalStateActions = []string{string(model.ActionCreate), string(model.ActionUpdate), string(model.ActionDelete)}
 
-var auditReasonShapes = []auditReasonShape{
+var auditReasonShapes = append(roleAssignmentShapes(), []auditReasonShape{
 	{Codes: reasonPrefixed("principal_state_", principalStateActions),
 		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
 			ok := d.str("state_table") == StateTablePrincipals && reasonContains(principalStateActions, in.Action)
@@ -257,4 +257,4 @@ var auditReasonShapes = []auditReasonShape{
 				strings.TrimSpace(in.Details) == "" && in.Path == "" && in.ErrorMsg == ""
 			return "asset_deleted", nil, ok
 		}},
-}
+}...)

@@ -96,6 +96,13 @@
         data-test="version-summary"
       >{{ versionSummary }}</span>
     </div>
+    <p
+      v-if="outOfScopeCount > 0"
+      class="hint"
+      data-test="rotation-out-of-scope-members"
+    >
+      {{ t('credentials.rotation.outOfScopeMembers', { count: outOfScopeCount }) }}
+    </p>
 
     <div
       v-if="members.length"
@@ -153,7 +160,7 @@
       </div>
     </div>
     <p
-      v-else
+      v-else-if="outOfScopeCount === 0"
       class="hint"
       data-test="members-empty"
     >
@@ -370,13 +377,24 @@ const canRetry = (member) => isRetryable(member)
 const rotationTouched = computed(() =>
   members.value.some((member) => member.state !== 'queued'))
 
-const abandonHint = computed(() => (rotationTouched.value
-  ? t('credentials.rotation.abandonHint')
-  : t('credentials.rotation.abandonHintFresh')))
+// 範圍化檢視者只看得到範圍內成員。可見成員全在排隊時，範圍外成員可能已被改動，
+// 不能斷言「還沒有任何主機被改動」，改用不臆測的部分措辭
+const outOfScopeCount = computed(() => Number(rotation.value?.out_of_scope_asset_count) || 0)
+const hasUnseenMembers = computed(() => outOfScopeCount.value > 0)
 
-const abandonMessage = computed(() => (rotationTouched.value
-  ? t('credentials.rotation.abandonMessage')
-  : t('credentials.rotation.abandonMessageFresh')))
+const abandonHint = computed(() => {
+  if (rotationTouched.value) return t('credentials.rotation.abandonHint')
+  return hasUnseenMembers.value
+    ? t('credentials.rotation.abandonHintPartial')
+    : t('credentials.rotation.abandonHintFresh')
+})
+
+const abandonMessage = computed(() => {
+  if (rotationTouched.value) return t('credentials.rotation.abandonMessage')
+  return hasUnseenMembers.value
+    ? t('credentials.rotation.abandonMessagePartial')
+    : t('credentials.rotation.abandonMessageFresh')
+})
 
 const assetLabel = (member) =>
   member.asset_name || t('common.assetRef', { id: member.asset_id })

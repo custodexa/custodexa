@@ -182,7 +182,7 @@ func (t *grantTracker) writeMarkedAudit(tx *gorm.DB, resource string, id uint, m
 	if err := port.WriteInTx(t.g.auditTx, tx, port.AuditEvent{
 		Action: string(model.ActionUpdate), Resource: resource, ResourceID: &rid,
 		Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: t.op.UserID, Username: t.op.Username},
-		Request: gatewayapi.RequestMeta{ClientIP: t.op.ClientIP}, Details: details,
+		Request: t.op.RequestMeta(), Details: details,
 	}); err != nil {
 		return fmt.Errorf("稽核留痕失敗: %w", err)
 	}

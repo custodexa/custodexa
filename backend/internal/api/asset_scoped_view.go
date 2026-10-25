@@ -168,6 +168,16 @@ func scopedVisibleUnion(ctx context.Context, auth AssetAuthorizationServiceInter
 	return connMap, mgmt, union, nil
 }
 
+// connectionVisibleIDs 連線可視集合的資產 ID（升冪，恆非 nil：空集合即無資產）。
+func connectionVisibleIDs(connMap map[uint]*authz.AuthorizedAssetDTO) []uint {
+	ids := make([]uint, 0, len(connMap))
+	for id := range connMap {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
 // scopedNodeFilter 節點篩選的來源矩陣：只經連線可視的列以完整歸屬比對（現行語義）；
 // 經管理可視的列只以範圍內歸屬比對，篩選節點在範圍外時不命中；未分組篩選對經管理可視的列不命中。
 func (h *AssetHandler) scopedNodeFilter(ids []uint, mgmt map[uint]bool, v *authz.AssetScopeView,
@@ -222,6 +232,8 @@ type scopedListQuery struct {
 	ungrouped         bool
 	credentialPending bool
 	tags              []string
+	// connectionOnly 為真時候選集只取連線可視；管理可視照算，只用來決定每列怎麼揭露（遮罩、旗標不變）。
+	connectionOnly bool
 }
 
 // scopedList 非檢視捷徑的範圍化檢視者的資產列表。
@@ -236,6 +248,9 @@ func (h *AssetHandler) scopedList(c *gin.Context, v *authz.AssetScopeView, q sco
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizedAssetQuery, err)
 		return
+	}
+	if q.connectionOnly {
+		union = connectionVisibleIDs(connMap)
 	}
 	if q.nodeID != nil || q.ungrouped {
 		if union, err = h.scopedNodeFilter(union, mgmt, v, q.nodeID, q.includeSubtree, q.ungrouped); err != nil {

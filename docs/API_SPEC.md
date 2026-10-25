@@ -1,6 +1,8 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-25（說明修正：「有界重新驗證」補上讀不到群組時保留支持的上界及其適用前提，在 T 大於 0 且後續登入都經同一來源時，約為最近一次讀到之後一個時限加一個工作階段壽命；輪替成員補跑的點擊者承接改述為依憑證歸屬判定其當下能力。行為與路由未變）
+> 最後更新：2026-10-26（角色引用計數排除已刪除帳號：角色定義的 `references.direct`、`node_scoped_binding_count` 與刪除檢查的 409 `ROLE_DEFINITION_IN_USE` 只計未刪除帳號的直接指派，停用中的帳號計入。路由未變）
+> 前次更新：2026-10-26（共用憑證相關回應的範圍化輸出：改密進度與其補跑、放棄、脫離回應，對範圍化檢視者只列範圍內成員並恆附 `out_of_scope_asset_count`；帳號列的五個寫入回應與列表同形；批次改密目標、批次詳情與計畫執行記錄對範圍外憑證收窄；改密候選的 `plan_id` 對不可見計畫為 0。路由未變）
+> 前次更新：2026-10-25（說明修正：「有界重新驗證」補上讀不到群組時保留支持的上界及其適用前提，在 T 大於 0 且後續登入都經同一來源時，約為最近一次讀到之後一個時限加一個工作階段壽命；輪替成員補跑的點擊者承接改述為依憑證歸屬判定其當下能力。行為與路由未變）
 > 前次更新：2026-10-25（角色範圍化範本與範圍摘要：`GET`／`PATCH /auth/me` 的 `scope_summary` 的 `binding_scope` 值域為 `global`／`nodes`，節點條目附 `nodes: [{id, path}]`；角色定義列表、單筆與草稿摘要新增 `scopable`、`node_range_no_effect`，單筆另有 `node_scoped_binding_count`，編輯描述的入口、細項與獨立能力新增 `scopable`；`PUT /role-definitions/:id` 新增 agent 持有者的 403；內建角色新增資產管理員與授權管理員。路由未變）
 > 前次更新：2026-10-25（角色指派的節點選擇：新增 `GET /role-assignment-options`，供指派畫面讀取節點清單與各角色能否限定節點；`POST /role-assignment-previews` 新增選用欄位 `include_managed_asset_counts`，要求時多回可管理資產台數；管理介面的使用者與使用者群組「角色與範圍」分頁可以選擇節點。路由新增一條）
 > 前次更新：2026-10-25（角色指派可限定節點：`PUT /users/:id/roles` 與 `PUT /user-groups/:id/role-bindings` 新增選用欄位 `role_nodes`，成功回應在有不會生效的節點範圍時多附 `node_range_no_effect`；新增 `GET /users/:id/role-bindings`，`GET /user-groups/:id/role-bindings` 的節點範圍列多附 `node_ids`；新增錯誤碼 `VALIDATION_ROLE_NOT_NODE_SCOPABLE`、`VALIDATION_ROLE_BINDING_NODES_EMPTY`、`VALIDATION_ROLE_BINDING_NODES_INVALID`，`VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED` 的適用入口收斂為不收範圍的入口（外部群組映射沿用 `MAPPING_SCOPE_FIELD_REJECTED`）；新增審計 details 事件 `role_binding_range_changed`；路由新增一條）
@@ -633,7 +635,7 @@ body 沒有 `params`，沒有任何 Meta 欄，`error` 與 `code` 都不透露�
 
 **最小揭露例外**：回應中可提及管理範圍外資訊的情形由封閉登錄列出，恰為四條：共用憑證影響範圍外資產的匿名台數、多歸屬資產「另有 N 個範圍外節點」的匿名計數、全域唯一名稱衝突的同形錯誤、節點因被管理範圍引用而無法刪除的告知（只給引用筆數）。計數類例外只輸出整數，欄名由登錄固定（`out_of_scope_asset_count`、`out_of_scope_node_count`、`count`），值只經登錄的輸出函式產生。登錄以外的範圍外欄位由守衛測試攔下。現行輸出這三類計數的端點：
 
-- `out_of_scope_asset_count`（只對範圍化檢視者出現）：`GET /credentials` 的列與 `GET /credentials/:id`、`DELETE /credentials/:id` 的 409 `RULE_CREDENTIAL_IN_USE`、`POST /credentials/:id/impact-confirmations` 的成功回應；`POST /credentials/:id/secret` 與 `POST /credentials/:id/rotations` 未帶有效確認時的 409 `RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED` 以 `params.count` 輸出同一類台數。
+- `out_of_scope_asset_count`（只對範圍化檢視者出現）：`GET /credentials` 的列與 `GET /credentials/:id`、`DELETE /credentials/:id` 的 409 `RULE_CREDENTIAL_IN_USE`、`POST /credentials/:id/impact-confirmations` 的成功回應；`POST /credentials/:id/secret` 與 `POST /credentials/:id/rotations` 未帶有效確認時的 409 `RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED` 以 `params.count` 輸出同一類台數。另有五個輪替端點的 `RotationDTO` 回應（`POST /credentials/:id/rotations`、`GET /credentials/:id/rotations/:rid`、`POST /credentials/:id/rotations/:rid/members/:mid/retry`、`POST /credentials/:id/rotations/:rid/abandon`、`POST /credentials/:id/bindings/:accountId/detach`）對範圍化檢視者恆帶此欄，值為本輪被省略成員的去重資產台數，0 也帶；全量檢視者的回應不帶。
 - `out_of_scope_node_count`（只對範圍化檢視者出現）：`GET /assets` 的列與 `GET /assets/:id`（另含列級旗標 `actions.disable.count`、`actions.delete.count`）、`POST /assets` 與 `PUT /assets/:id` 的成功回應（與詳情同形；只經節點範圍持有 `access_policy:manage` 的主體送只含 `access_policy` 的更新時，改為覆寫清單的同一列，以該權限點的範圍計數）、`GET /credentials/:id` 的掛載列、`GET /assets/access-policy-overrides` 的列（此端點只對經節點範圍持有 `access_policy:manage` 的檢視者帶這個鍵，以該權限點的範圍計數，見「單台連線政策覆寫清單」）；資產寫入因資產另有範圍外歸屬而被拒的 409 `RULE_ASSET_HAS_OUT_OF_SCOPE_NODES` 以 `params.count` 輸出同一類計數。
 - `count`（節點被管理範圍引用）：`DELETE /asset-groups/:id` 的 409 `RULE_NODE_SCOPE_REFERENCED`。
 
@@ -1985,7 +1987,7 @@ GET /api/v1/assets
 
 **權限**: `asset:view`
 
-**可視範圍**: 非 admin/auditor 一律由伺服端收斂為該使用者的授權資產集合——個人授權與所屬使用者群組授權的聯集（各自含直授與資產分組授權，四路徑）、僅計入時效窗內授權，`authorized_only` 參數被忽略；admin/auditor 見全量且參數仍可自查。授權分支的每筆 Asset 額外帶 `permission` 欄位（該資產最高授權等級 `view`/`connect` 兩階取高，已移除 `manage`）；管理角色回應不帶該欄。approver 的審核範圍另構成第三個可視來源（範圍內資產可見、不可連）。
+**可視範圍**: 非 admin/auditor 一律由伺服端收斂為該使用者的授權資產集合——個人授權與所屬使用者群組授權的聯集（各自含直授與資產分組授權，四路徑）、僅計入時效窗內授權，一般使用者的 `authorized_only` 參數被忽略；admin/auditor 見全量且參數仍可自查；持有節點範圍管理指派的範圍化主體預設見管理可視與連線可視的聯集，帶 `authorized_only=true` 時只回連線可視的資產（同一台資產的列內容與不帶參數時逐欄相同，範圍外歸屬仍只顯示計數）。授權分支的每筆 Asset 額外帶 `permission` 欄位（該資產最高授權等級 `view`/`connect` 兩階取高，已移除 `manage`）；管理角色回應不帶該欄。approver 的審核範圍另構成第三個可視來源（範圍內資產可見、不可連）。
 
 **連線入口三態**: 非 admin/auditor 的授權分支每筆 Asset 由伺服端統一標註 `access_state`（`connectable`＝可直接連線／`reason_required`＝填理由即連／`approval_required`＝需核准／`pending`＝已有在途申請，另帶 `pending_request_id`），持有效臨時授權時帶 `ticket_date_expired`；破窗可用時另帶 `break_glass_available`（伺服端事實源，omitempty）。前端按鈕狀態零推導，一律以此欄為準；點擊後仍以連線簽發點的政策閘回應為最終裁決（按鈕過時會被 403 自癒）。
 
@@ -1995,7 +1997,7 @@ GET /api/v1/assets
 | `search` | string | 名稱/主機搜尋 |
 | `protocol` | string | 協議過濾 |
 | `active` | bool | 啟用狀態 |
-| `authorized_only` | bool | 僅顯示已授權資產（僅 admin/auditor 有效；非特權角色恆強制授權範圍） |
+| `authorized_only` | bool | 僅顯示已授權資產。admin/auditor 可自查；範圍化主體帶此參數時只回連線可視（不帶時為管理可視與連線可視的聯集）；一般使用者恆強制授權範圍，參數不改變結果 |
 | `node_id` | int | 節點過濾（僅列掛該節點的資產；兩分支皆生效） |
 | `include_subtree` | bool | 含子樹（預設 true；顯式 `false` 僅直掛） |
 | `ungrouped` | bool | 僅列未掛載任何節點的資產 |
@@ -2490,7 +2492,7 @@ POST   /api/v1/assets/:id/accounts/:accountId/set-default  （asset:update）
 `has_private_key` 布林。列表為 `{"data":[...],"total":N}`，排序 `is_default DESC, username ASC, id ASC`；
 建立回 201，更新與 set-default 回 200。
 
-**引用範圍外憑證的帳號列**（僅限列表端點、僅限範圍化檢視者）：帳號列所引用的憑證不在其可見集合內（含歸屬全域者）時，該列收窄為不帶 `credential_id`、`credential_name` 與 `binding_count` 的形狀，並帶 `"credential_out_of_scope": true`；其餘欄位（`id`、`asset_id`、`username`、`is_default`、`privileged`、`auth_method`、`note`、`has_password`、`has_private_key`、`shared_credential`、`credential_scope`、`effective_version_no`、時間戳）照舊。該列另帶 `actions`，鍵為 `rebind`（更換憑證）、`remove`（移除帳號）、`secret_fix`（更正登記值）、`detach`（脫離共用），值 `{"allowed": bool, "reason"?: string}`，`reason` 為 `no_capability` 或 `out_of_scope`。每個旗標與對應寫入端點使用同一個判定函式：更換憑證與移除照所屬資產的能力與範圍，更正與脫離需該憑證歸屬在主體範圍內，範圍外憑證不可執行。範圍內憑證的帳號列與非範圍化檢視者的列不變、不帶 `actions`。旗標只決定畫面，每個寫入端點照常自行裁決。
+**引用範圍外憑證的帳號列**（列表端點與五個寫入端點，僅限範圍化檢視者；寫入端點為 `POST /assets/:id/accounts`、`PUT /assets/:id/accounts/:accountId`、`POST /assets/:id/accounts/:accountId/set-default`、`POST /credentials/:id/bindings`、`PUT /assets/:id/accounts/:accountId/credential`，成功回應與列表同一份判定、同形）：帳號列所引用的憑證不在其可見集合內（含歸屬全域者）時，該列收窄為不帶 `credential_id`、`credential_name` 與 `binding_count` 的形狀，並帶 `"credential_out_of_scope": true`；其餘欄位（`id`、`asset_id`、`username`、`is_default`、`privileged`、`auth_method`、`note`、`has_password`、`has_private_key`、`shared_credential`、`credential_scope`、`effective_version_no`、時間戳）照舊。該列另帶 `actions`，鍵為 `rebind`（更換憑證）、`remove`（移除帳號）、`secret_fix`（更正登記值）、`detach`（脫離共用），值 `{"allowed": bool, "reason"?: string}`，`reason` 為 `no_capability` 或 `out_of_scope`。每個旗標與對應寫入端點使用同一個判定函式：更換憑證與移除照所屬資產的能力與範圍，更正與脫離需該憑證歸屬在主體範圍內，範圍外憑證不可執行。範圍內憑證的帳號列與非範圍化檢視者的列不變、不帶 `actions`。旗標只決定畫面，每個寫入端點照常自行裁決。
 
 **列表的帳號範圍過濾**: 依請求者有效授權帳號集合逐筆過濾——範圍外的帳號**直接不出現**
 （不回 403，不成為帳號探測器）；admin 全量，auditor 於非 connect 權限時全量。
@@ -2688,14 +2690,14 @@ GET  /api/v1/assets/:id/k8s/download    （已認證；資料面裁決；query: 
 | POST | `/api/v1/credentials/:id/secret` | 直接寫入新密文（不動遠端） | 200 ＋ `CredentialDTO` |
 | POST | `/api/v1/credentials/ownership` | 批次改歸共用憑證的管理歸屬（整批原子） | 200 `{changed}` |
 | POST | `/api/v1/credentials/:id/impact-confirmations` | 修改共用憑證前取得範圍外影響確認 | 200 `{required, confirmation_id?, in_scope_count, out_of_scope_asset_count?}` |
-| POST | `/api/v1/credentials/:id/bindings` | 掛到一台資產 | 201 ＋ `AssetAccountDTO`（完整版） |
+| POST | `/api/v1/credentials/:id/bindings` | 掛到一台資產 | 201 ＋ 與帳號列表同形的帳號列 |
 | DELETE | `/api/v1/credentials/:id/bindings/:accountId` | 卸載（不動遠端） | 204 |
 | POST | `/api/v1/credentials/:id/bindings/:accountId/detach` | 單台脫離共用（**同步**，會動遠端） | 200 `{data: RotationDTO}` |
 | POST | `/api/v1/credentials/:id/rotations` | 發起改密（整組或拆分，**非同步**） | 202 `{data: RotationDTO}` |
 | GET | `/api/v1/credentials/:id/rotations/:rid` | 改密進度（聚合態＋逐台成員） | 200 `{data: RotationDTO}` |
 | POST | `/api/v1/credentials/:id/rotations/:rid/members/:mid/retry` | 逐台補跑（**同步**） | 200 `{data: RotationDTO}` |
 | POST | `/api/v1/credentials/:id/rotations/:rid/abandon` | 放棄本輪（不回滾遠端） | 200 `{data: RotationDTO}` |
-| PUT | `/api/v1/assets/:id/accounts/:accountId/credential` | 更換此掛載使用的憑證 | 200 ＋ `AssetAccountDTO`（完整版） |
+| PUT | `/api/v1/assets/:id/accounts/:accountId/credential` | 更換此掛載使用的憑證 | 200 ＋ 與帳號列表同形的帳號列 |
 
 最後一支掛在資產帳號路徑下：它改的是**那一台**的登入身分，路徑上的主體是資產。
 單台脫離共用只有 `/bindings/:accountId/detach` 這一支端點，資產編輯與憑證庫兩個介面入口都打它。
@@ -2933,9 +2935,12 @@ SSH 金鑰）是兩件事。值域 `sql`｜`domain`，未帶＝`sql`；**1.0 只
     "candidate_kept": true,                     // 只在 unsettled 那一輪、該掛載的候選仍在時出現
     "host_identity": { … },                     // 只在逐台補跑的回應、且只在被補跑的那一台出現，見「主機身分停止時的人工承接」
     "reason": "…（機器碼，只在帶確認的補跑因授權目標已改變而未執行時出現）"
-  }]
+  }],
+  "out_of_scope_asset_count": 3                 // 只對範圍化檢視者出現，恆帶（0 也帶）；全量檢視者不帶
 }
 ```
+
+**範圍化檢視者的成員清單**：`members` 只列所屬資產在其憑證檢視範圍內的成員，範圍外成員整列省略，`out_of_scope_asset_count` 為被省略成員的去重資產台數，只有整數，不含範圍外資產的識別、名稱或帳號名。`unsettled`、`candidate_kept` 與 `host_identity`、`reason` 都只就列出的成員計算與附帶。輪替本身的推進與補跑、放棄的作用集合不受此影響，仍是全部成員。檢視範圍以產生回應當下的授權狀態判定；判定失敗時回該端點既有的內部錯誤，不出站任何成員。輪替快照可能與當下掛載不同，所以此台數不保證等於憑證詳情的 `out_of_scope_asset_count`。
 
 **成員狀態七值**：`queued`（已排入本輪）／`changing`（正在對遠端下達）／`changed_unverified`
 （遠端已下達但尚未以新值驗證成功，含遠端狀態不可知）／`applied`（已驗證並就位，本輪終態）／
@@ -3528,7 +3533,7 @@ POST /api/v1/command-alerts/:id/review
 |---|---|---|---|
 | GET | `/system-alert-types` | `systemalert:manage` | 依登錄順序回 `{types: [{key, group, default_severity, effective_severity, adjusted, recent_30d?}]}`；呼叫者另有 `audit:view` 時才帶 `recent_30d`（近 30 天該類型筆數） |
 | PUT | `/system-alert-types/:key` | `systemalert:manage` | 只接受 `{"severity": "high" \| "medium" \| "low"}`，回 `{key, severity_before, severity_after}` |
-| GET | `/command-alerts/:id/system-detail` | `audit:view` | 一筆系統告警的明細：類型、分組、產生當下的分級、操作者、目標、宣告參數、`correlation_id` 對應的操作日誌 `audit_log_id`（找不到為 null）與該筆的來源位址 `client_ip`（找不到為空字串）、各目的地的 `deliveries[]{dest_type, dest_name, state, attempts, delivered_at?, next_attempt_at}` |
+| GET | `/command-alerts/:id/system-detail` | `audit:view` | 一筆系統告警的明細：類型、分組、產生當下的分級、操作者、目標、宣告參數、`correlation_id` 對應的操作日誌 `audit_log_id`（找不到為 null）與該筆的來源位址 `client_ip`（找不到為空字串）、各目的地的 `deliveries[]{dest_type, dest_name, state, attempts, delivered_at?, next_attempt_at}`；`management_role_granted` 另帶 `scope_nodes[]{id, path}`（發放含節點範圍時的節點清單，節點已刪除時 `path` 為空字串），其宣告參數新增 `scope_node_ids`（升冪逗號接）與 `scope_node_count`（不重複節點數，清單被截短時仍為實際數量） |
 
 - `PUT` 嚴格解碼：主體帶 `severity` 以外的任何欄位（含啟停或刪除意圖）回 400 `VALIDATION_SYSTEM_ALERT_LOCKED`；
   值不在三值內回 400 `VALIDATION_SYSTEM_ALERT_SEVERITY`；未登錄的鍵回 404 `NOTFOUND_SYSTEM_ALERT_TYPE`。
@@ -4454,17 +4459,17 @@ GET /api/v1/roles
 | PUT | `/role-definitions/:id` | 修改名稱、說明與權限 → 200 |
 | DELETE | `/role-definitions/:id?expected_version=N` | 刪除自訂角色 → 204 |
 
-**列表每列**：`id`、`name`、`description`、`builtin_key`、`locked`、`definition_version`、`template_role_id`、`summary`，以及列表專有的投影欄 `assignment_state`（`open`／`not_open`／`protected`）、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`（`direct`、`group_bindings`、`mapping_rules` 三個計數），以及節點限定的兩個布林 `scopable`、`node_range_no_effect`（見下「節點限定欄位」）。`summary` 含 `manage`、`read`、`available`、`hidden`（權限鍵分組）、`permission_count`、`catalog_count`、`scope_global_only`、`connection_separate`、`assignment_trust_hint`、`unattributed`。兩個鎖定範本與自訂角色都會出現在列表中。`assignment_state` 依目前操作者計算：超級管理者看到的每個角色都是 `open`；其他操作者看到保護角色（超級管理者、系統安全管理員，以及含高風險權限點的自訂角色，見「角色指派的保護與開放邊界」）為 `protected`，其餘為 `open`。`not_open` 表示角色不在可指派的目標集合內，本版的目標集合涵蓋全部角色，因此不會出現。`open` 只表示不受保護角色與目標集合限制，操作者能否指派仍由指派入口依指派能力與 agent 規則裁決。測試：`TestRoleAssignmentProjection`、`TestRoleDefinitionRoutes`。
+**列表每列**：`id`、`name`、`description`、`builtin_key`、`locked`、`definition_version`、`template_role_id`、`summary`，以及列表專有的投影欄 `assignment_state`（`open`／`not_open`／`protected`）、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`（`direct`、`group_bindings`、`mapping_rules` 三個計數；`direct` 只計未刪除帳號的直接指派，停用中的帳號計入），以及節點限定的兩個布林 `scopable`、`node_range_no_effect`（見下「節點限定欄位」）。`summary` 含 `manage`、`partial`、`read`、`available`、`hidden`（權限鍵分組；`partial` 是持有入口的寫入鍵、卻未涵蓋管理態全部鍵的入口，不再列入 `read`）、`permission_count`、`catalog_count`、`scope_global_only`、`connection_separate`、`assignment_trust_hint`、`unattributed`（不屬任何入口或獨立能力的權限鍵；部分管理入口已持有的鍵不再列入）。兩個鎖定範本與自訂角色都會出現在列表中。`assignment_state` 依目前操作者計算：超級管理者看到的每個角色都是 `open`；其他操作者看到保護角色（超級管理者、系統安全管理員，以及含高風險權限點的自訂角色，見「角色指派的保護與開放邊界」）為 `protected`，其餘為 `open`。`not_open` 表示角色不在可指派的目標集合內，本版的目標集合涵蓋全部角色，因此不會出現。`open` 只表示不受保護角色與目標集合限制，操作者能否指派仍由指派入口依指派能力與 agent 規則裁決。測試：`TestRoleAssignmentProjection`、`TestRoleDefinitionRoutes`。
 
 **單筆**：同列表欄位去掉投影欄（`assignment_state`、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`），加 `permissions`、`missing_dependencies`、`blocked_screens`，以及 `scopable`、`node_range_no_effect`、`node_scoped_binding_count`。新增、複製、修改的成功回應同為單筆形狀，三個欄位一併帶出。
 
 **節點限定欄位**（只增加讀取欄位，路由與寫入 body 不變）：
 - `scopable`（布林）：角色可否在指派時限定節點，若且唯若角色的權限集合不含任何只能全系統生效的權限點。內建一般使用者與審核者為 `true`（可寫入節點範圍，但見下一欄）；超級管理者、稽核員、身分管理員與系統安全管理員含只能全系統生效的點，為 `false`；資產管理員與授權管理員為 `true`。與 `GET /role-assignment-options` 的 `node_assignable_role_ids` 同義。
 - `node_range_no_effect`（布林）：限定節點後範圍是否不會產生權限。內建一般使用者與審核者為 `true`：內建一般使用者與審核者只在全系統指派時生效，限定節點後不產生權限，系統照常儲存並提示；權限集合為空的自訂角色也為 `true`；含任一只能全系統生效或尚未實作節點限定的權限點時，`scopable` 與本欄皆為 `false`，指定節點的寫入會被拒絕。資產管理員與授權管理員為 `false`。注意這個鍵與 `PUT /users/:id/roles`、`PUT /user-groups/:id/role-bindings` 寫入回應的 `node_range_no_effect` 同名不同型（那裡是 `[{role, reason}]` 陣列），不可共用解析。
-- `node_scoped_binding_count`（整數，**只在單筆讀取與寫入成功回應**，列表不帶）：目前以節點範圍持有此角色的指派筆數，直接指派與使用者群組指派合計。
+- `node_scoped_binding_count`（整數，**只在單筆讀取與寫入成功回應**，列表不帶）：目前以節點範圍持有此角色的指派筆數，直接指派與使用者群組指派合計；直接指派只計未刪除帳號，停用中的帳號計入。
 - 列表與單筆依角色本身（內建識別加權限集合）判定；草稿摘要與編輯描述沒有內建識別，以「自訂角色加該集合」判定。
 
-**描述**（`GET /role-definitions/descriptors`）三組：`entries`（每項 `id`、`group`、`states[{name, keys}]`、`details[{id, key, scopable}]`、`scopable`）、`capabilities`（每項 `id`、`key`、`trust_hint`、`requires_entry`、`scopable`；目前三項：`role_assign`、`access_policy_override`、`recording_delete`，只有 `role_assign` 的 `trust_hint` 為真）、`fixed_entries`（固定入口，7 項）。`scopable` 是新增的布林：細項與獨立能力各對應一個權限點，該點在節點範圍指派下會依節點生效即為真；入口以其最後一態（管理或可用態，含依賴鍵）的完整權限集合判定，該集合在節點範圍指派下會依節點生效才為真，含任一只能全系統生效的鍵（例如依賴鍵中的使用者管理）或沒有任何會依節點生效的鍵時為假。
+**描述**（`GET /role-definitions/descriptors`）三組：`entries`（每項 `id`、`group`、`states[{name, keys}]`、`write_keys`、`details[{id, key, scopable}]`、`scopable`；`write_keys` 是依歸屬入口規則算出的寫入鍵：管理態中歸屬於該入口、且不在該入口唯讀態的鍵，前端據此判定部分管理）、`capabilities`（每項 `id`、`key`、`trust_hint`、`requires_entry`、`scopable`；目前三項：`role_assign`、`access_policy_override`、`recording_delete`，只有 `role_assign` 的 `trust_hint` 為真）、`fixed_entries`（固定入口，7 項）。`scopable` 是新增的布林：細項與獨立能力各對應一個權限點，該點在節點範圍指派下會依節點生效即為真；入口以其最後一態（管理或可用態，含依賴鍵）的完整權限集合判定，該集合在節點範圍指派下會依節點生效才為真，含任一只能全系統生效的鍵（例如依賴鍵中的使用者管理）或沒有任何會依節點生效的鍵時為假。
 
 **摘要試算**（`POST /role-definitions/summary`）：body 只收 `{"permissions": [...]}`，嚴格解碼；回 `{summary, missing_dependencies, blocked_screens, scopable, node_range_no_effect}`，後兩個布林是新增的草稿判定（不套用內建識別，把草稿當自訂角色）。含不合法的權限鍵回 400 `ROLE_PERMISSION_INVALID`。
 
@@ -4480,7 +4485,7 @@ GET /api/v1/roles
 | 403 | `AUTH_PERMISSION_DENIED` | 僅 `PUT /role-definitions/:id`：修改後的權限集合含自動化主體（agent）不得持有的管理、稽核或審核類權限點，而已有 agent 經直接指派或經使用者群組持有該角色。與指派 agent 時的角色拒絕同碼同形（body 只有 `error` 與 `code`，不帶 agent 清單或權限點），角色內容、版本與指派不變 |
 | 404 | 角色不存在 | 目標角色不存在 |
 | 409 | `ROLE_DEFINITION_LOCKED` | 內建角色與鎖定範本不可修改、刪除 |
-| 409 | `ROLE_DEFINITION_IN_USE` | 刪除時仍有直接指派、群組指派或有效的外部群組映射 |
+| 409 | `ROLE_DEFINITION_IN_USE` | 刪除時仍有未刪除帳號的直接指派（停用中的帳號計入）、群組指派或有效的外部群組映射 |
 | 409 | `ROLE_DEFINITION_CONFLICT` | 期望版本已過期，或名稱已被使用 |
 | 500 | `INTERNAL_ROLE_DEFINITION_WRITE` | 內部失敗；原因只進伺服器日誌，回應不帶角色名或權限名 |
 
@@ -5290,7 +5295,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 
 ### `POST /role-assignment-previews`
 
-唯讀試算，不寫業務資料、不推進權限版本（請求本身的操作紀錄仍依既有審計設定與機制處理）。需指派角色能力，並須具備被預覽的那種寫入所需能力（角色定義修改的預覽限超級管理者）。
+唯讀試算，不寫業務資料、不推進權限版本。請求本身在操作日誌記為讀取（資源為角色），成功與驗證失敗相同；`POST /assets/import/preview` 與 `POST /oidc-providers/discovery-preview` 同為唯讀試算，也記為讀取。需指派角色能力，並須具備被預覽的那種寫入所需能力（角色定義修改的預覽限超級管理者）。
 
 body：`{"kind": "direct_roles" | "group_roles" | "group_members" | "role_definition", ...}`，各種類欄位為 `user_id`、`group_id`、`role_ids`、`member_ids`、`manual_member_ids`、`role_id`、`permissions`。`direct_roles` 與 `group_roles` 另接受選用欄位 `role_nodes`，值的語義同寫入，但鍵一律為角色 ID 的十進位字串（使用者入口實際寫入的鍵為角色名），以送出的範圍試算；預覽仍是唯讀。`group_members` 的 `manual_member_ids` 與 `member_ids` 二擇一，兩者同送回 400，其求值與寫入共用同一份手動成員求值。新種類 `mapping_rule_change` 試算一條外部群組映射規則的新增、修改、刪除，欄位為 `rule_type`、`source_type`、`source_id`、`rule_id`、`match_value`、`role_id`、`group_id`、`enabled`、`delete`，嚴格解碼，需身分來源管理能力；受影響者為授出側命中與收回側支持的聯集，操作者本人優先求值，逐人求值上限 200，總數取全部；此種類的回應不帶 `subject_ids` 輸入。
 
@@ -5696,6 +5701,7 @@ GET /api/v1/audit-logs
 | `status` | string | success/failure/denied |
 | `client_ip` | string | 客戶端 IP |
 | `key` | string | 只看某一個安全政策設定鍵的變更列（例：`password_min_length`）；與 `resource` 併用為 AND |
+| `request_id` | string | 精確比對請求識別碼（至多 100 字元），取回同一次請求寫下的全部列；與其他條件併用為 AND |
 | `start_time`, `end_time` | RFC3339 | 時間範圍（含頭尾） |
 | `end_before` | RFC3339／RFC3339Nano | 排他的尾端（`created_at < end_before`），用於以所屬日的 `window_start`／`window_end` 查一整天；與 `end_time` 並存時兩條件都套用 |
 | `page`, `page_size` | int | 分頁 |
@@ -5709,6 +5715,8 @@ client_ip, status_code, duration_ms, request_body, error_msg, details, request_i
 另加 `reason_code`、`reason_params`（列表與單筆詳情皆有；語意與省略規則同每日審閱單日明細的 Event，
 見〈每日審閱簽核〉）。這兩欄是回應時計算的分類，不是審計列本身的欄位，不進完整性驗證碼，證據包的
 `audit_logs.json` 也不含；資源歷史（`/audit-logs/resource/...`）的 `logs` 不帶這兩欄。
+
+角色指派類列的原因碼：`user_role_assign`（全系統指派）、`user_role_assign_nodes`（限節點指派，另帶 `nodes`、`nodes_count`）、`user_role_revoke`、`user_group_role_assign`、`user_group_role_revoke`，參數為 `role`、`target`、`origin`（群組兩碼不帶 `origin`）；只改範圍的事件列（`event.role_binding_range_changed`）帶 `target_kind`、`before`、`after` 與對應的 `_count`；授權分級列（`event.grant_change_graded`）只陳述已建立的告警，參數為 `marks`。參數中的角色、對象與節點在讀取時才換成現名（`#<id>` 為尚存物件的佔位，換算後為名稱或節點路徑）；對象已刪除時回退顯示編號，不報錯，不改寫已存的審計列。操作者在這些列上為實際操作者，不再是空白。
 
 ### 詳情 / 資源歷史
 
@@ -6491,6 +6499,10 @@ POST /api/v1/access-reviews
 
 憑證輪替有全系統來源的發起者儲存憑證目標計畫時不需確認、不寫掛載上界，執行時涵蓋當下全部掛載，與先前相同。
 
+**執行記錄的憑證欄位**：計畫的執行記錄（`GET /change-secret-plans/:id/records`）與批次詳情的 `records` 同一形狀。範圍化檢視者看到的記錄，若該筆記錄自身保存的憑證不在其憑證檢視範圍內，則不帶 `credential_id`、`credential_name`、`target_version_id`，並帶 `"credential_out_of_scope": true`；憑證在範圍內、未解析到憑證的記錄與全量檢視者的記錄不變。次數、狀態、錯誤碼等其餘欄位照舊。
+
+**計畫的憑證與資產欄位**：計畫列表與建立、更新的回應（`GET`／`POST /change-secret-plans`、`PUT /change-secret-plans/:id`）對範圍化檢視者依其憑證檢視範圍輸出。目標憑證不在範圍內時，`target_credential_id` 為 `null` 並帶 `"credential_out_of_scope": true`；`asset_ids` 只保留範圍內的資產，被省略的台數放在 `out_of_scope_asset_count`（沒有省略時不帶此欄）。全量檢視者的回應不變。
+
 **執行記錄欄位**: `{id, plan_id, asset_id, account_id, account_username, credential_id,
 credential_name, target_version_id, secret_type, status, error, executed_at}`；
 `status`:
@@ -6555,7 +6567,7 @@ Windows 兩通道的共同契約：
 **未驗證憑證（候選）**：新秘密於動遠端**之前**即加密落庫，驗證成功才成為該掛載就位的密文版本
 並立即刪除候選。候選內容**不出現於任何 API 回應、UI、日誌或稽核欄位**，只供系統重試登入。清單欄位為
 `{id, asset_id, account_id, account_username, plan_id, secret_type, applied, abandoned,
-attempt_count, last_attempt_at, next_attempt_at, last_error, created_at}`。
+attempt_count, last_attempt_at, next_attempt_at, last_error, created_at}`。範圍化檢視者看到的候選，其 `plan_id` 對自己不可見的計畫輸出為 0，候選本身照列、可處置。
 
 系統以指數退避重試（上限 1 小時、總期限 24 小時），逾期標 `abandoned` 並告警；**已放棄的候選不會被
 系統自動刪除**——它是那把可能已在遠端生效的秘密的唯一副本。`DELETE` 為持有 `changesecret:manage` 者的顯式逃生口，
@@ -6577,7 +6589,7 @@ attempt_count, last_attempt_at, next_attempt_at, last_error, created_at}`。
 | GET | `/change-secret-batches/targets?username=` | 該帳號名的全部目標 → `{data: [目標], total, as_of}` |
 | POST | `/change-secret-batches` | 建立並非同步執行 → 202 `{data: 批次}` |
 | GET | `/change-secret-batches` | 最近批次（新到舊，最多 50 筆）→ `{data, total}` |
-| GET | `/change-secret-batches/:id` | 單一批次含逐目標記錄 → `{data: {batch, records}}` |
+| GET | `/change-secret-batches/:id` | 單一批次含逐目標記錄 → `{data: {batch, records}}`（記錄的憑證欄位對範圍化檢視者的收窄同「執行記錄的憑證欄位」） |
 
 **目標**：集合＝掛在**未刪除資產**上、名為該帳號名的未刪除帳號，不探勘目標機。每個目標是輪替證據報告
 資料集的同一列（狀態桶、剩餘天數、共用憑證與特權標記等欄位同 `GET /rotation-report`），外加兩欄：
@@ -6586,6 +6598,8 @@ attempt_count, last_attempt_at, next_attempt_at, last_error, created_at}`。
 `CHANGE_SECRET_NO_CREDENTIAL`、`CHANGE_SECRET_NO_PASSWORD_CREDENTIAL`、`CHANGE_SECRET_CANDIDATE_PENDING`、
 `CHANGE_SECRET_ASSET_LOOKUP_FAILED`）。
 不可改密的目標仍列出，由前端停用勾選。
+
+範圍化檢視者的目標列，若所掛憑證不在其憑證檢視範圍內，該列不帶 `credential_name`，並帶 `"credential_out_of_scope": true`；憑證在範圍內的列與全量檢視者的列不變。
 
 **請求**（`POST`）:
 ```json

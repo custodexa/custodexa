@@ -95,6 +95,84 @@ describe('reasonLines', () => {
   })
 })
 
+describe('角色指派類原因句', () => {
+  afterEach(() => {
+    setLanguage('zh-TW')
+  })
+
+  const assignNodes = {
+    reason_code: 'user_role_assign_nodes',
+    reason_params: { role: 'asset_admin', target: 'ops-lee', origin: 'api', nodes: 'SIT / ELK', nodes_count: '1' },
+  }
+
+  it.each([
+    ['zh-TW', '把角色「資產管理員」指派給 ops-lee，限定節點：SIT / ELK（共 1 個節點）（管理介面操作）'],
+    ['en-US', 'Assigned role "Asset administrator" to ops-lee, limited to nodes: SIT / ELK (1 nodes) (admin console)'],
+    ['ja-JP', 'ロール「資産管理者」を ops-lee に割り当て、ノードを限定：SIT / ELK（計 1 ノード）（管理画面での操作）'],
+  ])('限節點指派：內建角色鍵翻成該語系名稱（%s）', (lang, expected) => {
+    setLanguage(lang)
+    const text = reasonText(assignNodes)
+    expectReadable(text)
+    expect(text).not.toContain('asset_admin')
+    expect(text).not.toContain('{')
+    expect(text).toBe(expected)
+  })
+
+  it('全系統指派、移除與來路都翻成文字', () => {
+    expect(reasonText({ reason_code: 'user_role_assign', reason_params: { role: 'auditor', target: 'ops-lee', origin: 'oidc' } }))
+      .toBe('把角色「稽核人員」指派給 ops-lee（OIDC 首次登入）')
+    expect(reasonText({ reason_code: 'user_role_revoke', reason_params: { role: 'auditor', target: 'ops-lee', origin: 'mapping' } }))
+      .toBe('移除 ops-lee 的角色「稽核人員」（外部群組映射）')
+  })
+
+  it('身分管理員等不在 enum.role 的內建角色也有名稱', () => {
+    const text = reasonText({ reason_code: 'user_role_revoke', reason_params: { role: 'identity_admin', target: 'ops-lee', origin: 'api' } })
+    expect(text).toContain('身分管理員')
+    expect(text).not.toContain('identity_admin')
+  })
+
+  it('自訂角色顯示其名稱；已刪除而查不到的角色顯示 #編號', () => {
+    expect(reasonText({ reason_code: 'user_role_revoke', reason_params: { role: 'ELK 唯讀', target: 'ops-lee', origin: 'api' } }))
+      .toContain('「ELK 唯讀」')
+    expect(reasonText({ reason_code: 'user_role_revoke', reason_params: { role: '#42', target: '#9', origin: 'api' } }))
+      .toBe('移除 #9 的角色「#42」（管理介面操作）')
+  })
+
+  it('群組列：對象顯示為「使用者群組 {名}」', () => {
+    expect(reasonText({
+      reason_code: 'user_group_role_assign',
+      reason_params: { role: 'auditor', target: 'prod-assets' },
+    })).toBe('把角色「稽核人員」指派給使用者群組 prod-assets')
+  })
+
+  it('只改範圍：前後範圍，global 顯示全系統，截斷時總數用實際數量', () => {
+    const base = { reason_code: 'event.role_binding_range_changed' }
+    expect(reasonText({ ...base, reason_params: {
+      role: 'asset_admin', target: 'ops-lee', target_kind: 'user', before: 'UAT', before_count: '1', after: 'SIT / ELK', after_count: '1' } }))
+      .toBe('把 ops-lee 的角色「資產管理員」範圍由UAT（共 1 個節點）改為SIT / ELK（共 1 個節點）')
+    expect(reasonText({ ...base, reason_params: {
+      role: 'asset_admin', target: 'ops-lee', target_kind: 'user', before: 'UAT', before_count: '1', after: 'global', after_count: '0' } }))
+      .toBe('把 ops-lee 的角色「資產管理員」範圍由UAT（共 1 個節點）改為全系統')
+    const many = Array.from({ length: 100 }, (_, i) => `#${i + 1}`).join(',')
+    const text = reasonText({ ...base, reason_params: {
+      role: 'auditor', target: 'prod-assets', target_kind: 'user_group', before: 'global', after: many, after_count: '150' } })
+    expect(text).toContain('範圍由全系統改為')
+    expect(text).toContain('（共 150 個節點）')
+    expect(text).toContain('使用者群組 prod-assets')
+    expect(text).not.toContain('{')
+  })
+
+  it('授權分級列：標記逐項翻譯，且不聲稱已通知', () => {
+    expect(reasonText({ reason_code: 'event.grant_change_graded', reason_params: { marks: 'management_grant' } }))
+      .toBe('這次授權變更已建立系統告警：管理類發放')
+    expect(reasonText({ reason_code: 'event.grant_change_graded', reason_params: { marks: 'self_authorization,management_grant' } }))
+      .toBe('這次授權變更已建立系統告警：自我授權、管理類發放')
+    setLanguage('en-US')
+    expect(reasonText({ reason_code: 'event.grant_change_graded', reason_params: { marks: 'management_grant' } }))
+      .toBe('This authorization change raised a system alert: Management grant')
+  })
+})
+
 describe('logDetailBlocks', () => {
   it('有 changes：只列變更，不列原因與原始內容', () => {
     const blocks = logDetailBlocks({ details: JSON.stringify({ changes: [{ field: 'name', old: 'a', new: 'b' }] }) })

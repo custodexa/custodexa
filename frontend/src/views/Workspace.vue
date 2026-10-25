@@ -154,7 +154,7 @@
             v-if="!tabs.length"
             class="tabs-empty"
           >
-            <el-empty :description="$t('workspace.emptyTabs')" />
+            <el-empty :description="canViewAssets ? $t('workspace.emptyTabs') : $t('workspace.emptyTabsNoAssetView')" />
           </div>
         </div>
       </div>
@@ -211,11 +211,16 @@ import WorkspaceTabTools from '@/components/workspace/WorkspaceTabTools.vue'
 import WorkspaceTabMenu from '@/components/workspace/WorkspaceTabMenu.vue'
 import { readStorage, writeStorage } from '@/components/workspace/storage'
 import { getAsset } from '@/api/assets'
+import { can, useCapabilities } from '@/composables/useCapabilities'
 import { listAssetAccounts } from '@/api/assetAccounts'
 import { moveItem } from '@/utils/move-item'
 import { isTextTerminal, protocolIconKind, protocolFullName } from '@/utils/protocol'
 import { closeOthers, closeLeft, closeRight, closeAll } from '@/utils/tab-close'
 import { confirmDestructive } from '@/utils/confirm'
+
+// 沒有資產檢視權限時側欄不列資產，右側主區的空態文案跟著改
+const { ready: capsReady } = useCapabilities()
+const canViewAssets = computed(() => can('asset:view') || !capsReady.value)
 
 const SIDEBAR_COLLAPSED_KEY = 'workspace-sidebar-collapsed'
 

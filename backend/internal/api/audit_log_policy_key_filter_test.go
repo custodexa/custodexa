@@ -65,7 +65,7 @@ type auditListResponse struct {
 func callAuditLogList(t *testing.T, query string) (int, auditListResponse) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h := NewAuditLogHandler(audit.NewAuditLogService(&config.FeatureFlags{}))
+	h := NewAuditLogHandler(audit.NewAuditLogService(&config.FeatureFlags{}), nil)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs"+query, nil)

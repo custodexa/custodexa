@@ -18,7 +18,6 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
-	"github.com/custodexa/backend/internal/sourceip"
 )
 
 // 版本說明的三條讀寫面：
@@ -125,8 +124,7 @@ func (h *ReleaseGuidanceHandler) PutState(c *gin.Context) {
 		return
 	}
 
-	username, _ := middleware.GetCurrentUsername(c)
-	op := identity.Operator{UserID: userID, Username: username, ClientIP: sourceip.Of(c)}
+	op := operatorFromRequest(c)
 	if err := h.state.Dismiss(op, version); err != nil {
 		switch {
 		case errors.Is(err, identity.ErrUnknownGuidanceVersion):

@@ -150,6 +150,19 @@
           </el-button>
         </div>
 
+        <div
+          v-if="requestId"
+          class="applied-filter"
+        >
+          <el-tag
+            closable
+            data-test="request-chip"
+            @close="clearRequestFilter"
+          >
+            {{ requestFilterChipText(requestId) }}
+          </el-tag>
+        </div>
+
         <!-- 資料表格 -->
         <div class="list-card">
           <el-table
@@ -177,7 +190,7 @@
             <el-table-column
               prop="action"
               :label="$t('auditLogs.action')"
-              width="100"
+              width="190"
             >
               <template #default="{ row }">
                 <el-tag
@@ -185,6 +198,16 @@
                   size="small"
                 >
                   {{ translateAction(row.action) }}
+                </el-tag>
+                <el-tag
+                  v-for="tag in grantMarkTags(row)"
+                  :key="tag.mark"
+                  :type="tag.type"
+                  size="small"
+                  class="grant-mark"
+                  data-test="grant-mark"
+                >
+                  {{ tag.label }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -594,6 +617,14 @@
           :span="2"
         >
           <code class="inline-code">{{ selectedLog.request_id }}</code>
+          <el-button
+            link
+            type="primary"
+            data-test="same-request"
+            @click="filterBySameRequest(selectedLog.request_id)"
+          >
+            {{ $t('auditLogs.sameRequest') }}
+          </el-button>
         </el-descriptions-item>
 
         <el-descriptions-item
@@ -795,6 +826,8 @@ import DailyReviewWorkspace from '@/components/daily-review/DailyReviewWorkspace
 import { useDailyReviewBadge } from '@/composables/useDailyReviewBadge'
 import { formatDateTime } from '@/utils/format'
 import { logDetailBlocks, reasonText } from '@/components/daily-review/auditReason'
+import { grantMarkTags } from '@/components/audit/grantMarks'
+import { requestFilterChipText, requestIdFromQuery, withRequestId } from '@/components/audit/requestFilter'
 import {
   AUDIT_ACTIONS,
   AUDIT_RESOURCES,
@@ -836,6 +869,8 @@ const detailsVisible = ref(false)
 const selectedLog = ref(null)
 const detailBlocks = computed(() => logDetailBlocks(selectedLog.value))
 const timeRange = ref([])
+// 同一請求篩選（?request_id= 或詳情裡的連結帶入）
+const requestId = ref('')
 
 const filters = ref({
   action: null,
@@ -866,6 +901,7 @@ const fetchLogs = async () => {
     if (filters.value.resource) params.resource = filters.value.resource
     if (filters.value.status) params.status = filters.value.status
     if (filters.value.key) params.key = filters.value.key
+    withRequestId(params, requestId.value)
 
     // 時間範圍。帶入排他尾端時送 end_before、不送 end_time：每日區間是半開區間，
     // 含尾端會把恰在下一日起點的事件也列進來
@@ -901,6 +937,18 @@ const handleReset = () => {
   }
   timeRange.value = []
   endBefore.value = null
+  requestId.value = ''
+  handleSearch()
+}
+
+// 同一請求：詳情裡的連結收斂列表，標籤可關閉
+const filterBySameRequest = (id) => {
+  requestId.value = id
+  detailsVisible.value = false
+  handleSearch()
+}
+const clearRequestFilter = () => {
+  requestId.value = ''
   handleSearch()
 }
 
@@ -1147,6 +1195,8 @@ const applyQuery = (query = {}) => {
   ) {
     filters.value.key = query.key
   }
+  const queryRequestId = requestIdFromQuery(query)
+  if (queryRequestId) requestId.value = queryRequestId
   // 時間篩選只在操作日誌分頁有效；帶了就整組取代舊的時間篩選
   if (activeTab.value === 'logs' && isRFC3339(query.start_time)) {
     if (isRFC3339(query.end_before)) {
@@ -1193,6 +1243,10 @@ watch(() => route?.query, (query) => applyQuery(query || {}), { immediate: true 
   border: 1px solid var(--ot-border-subtle);
   border-radius: var(--ot-radius-lg);
   font-size: var(--ot-font-size-sm);
+}
+
+.grant-mark {
+  margin-left: var(--ot-space-xs);
 }
 
 .list-card {

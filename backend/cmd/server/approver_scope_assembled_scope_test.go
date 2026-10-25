@@ -285,4 +285,33 @@ func TestApproverScopeAssembledScope(t *testing.T) {
 		}
 		assert.True(t, rowExists(row))
 	})
+
+	// 節點型列的刪除：範圍內成功；範圍外與不存在同形，且審計原因為 out_of_scope，不得是解析器缺失。
+	t.Run("node_scoped_deletes_node_row", func(t *testing.T) {
+		sitNode := e.nodes["zz-asm-sit"]
+		sitRow := model.ApproverScope{ApproverID: &ap, AssetGroupID: &sitNode, GrantedBy: e.super}
+		require.NoError(t, e.db.Create(&sitRow).Error)
+		const missingPath = "/api/v1/approver-scopes/999932"
+		outPath := fmt.Sprintf("/api/v1/approver-scopes/%d", sitRow.ID)
+
+		outCode, outRaw := e.send(nodeBoth, "DELETE", outPath, "")
+		missCode, missRaw := e.send(nodeBoth, "DELETE", missingPath, "")
+		assert.Equal(t, http.StatusNotFound, outCode, outRaw)
+		assert.Equal(t, missCode, outCode)
+		assert.Equal(t, missRaw, outRaw, "範圍外節點型列與不存在逐位元相同")
+		assert.True(t, rowExists(sitRow.ID), "範圍外的列不得被刪")
+		for _, path := range []string{outPath, missingPath} {
+			var rows []model.AuditLog
+			require.NoError(t, e.db.Where("method = ? AND path = ?", "DELETE", path).Find(&rows).Error)
+			require.NotEmpty(t, rows, path)
+			for _, r := range rows {
+				assert.Contains(t, r.Details, `"scope_reason":"out_of_scope"`, path)
+				assert.NotContains(t, r.Details, "resolver_missing", path)
+			}
+		}
+
+		code, raw := e.send(nodeBoth, "DELETE", fmt.Sprintf("/api/v1/approver-scopes/%d", nodeRow.ID), "")
+		assert.Equal(t, http.StatusOK, code, raw)
+		assert.False(t, rowExists(nodeRow.ID), "範圍內節點型列應被刪除")
+	})
 }

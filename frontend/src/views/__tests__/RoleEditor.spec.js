@@ -132,11 +132,11 @@ describe('RoleEditor', () => {
 
   it('資產可展開細分動作並顯示「n／m」', async () => {
     const w = await mountEditor()
-    expect(w.get('[data-test="detail-toggle-assets"]').text()).toBe(t('roles.editor.detailCount', { n: 0, m: 8 }))
+    expect(w.get('[data-test="detail-toggle-assets"]').text()).toBe(t('roles.editor.detailCount', { n: 0, m: 6 }))
     expect(w.find('[data-test="detail-asset.view"]').exists()).toBe(false)
     await w.get('[data-test="detail-toggle-assets"]').trigger('click')
     await w.get('[data-test="detail-asset.create"]').setValue(true)
-    expect(w.get('[data-test="detail-toggle-assets"]').text()).toBe(t('roles.editor.detailCount', { n: 1, m: 8 }))
+    expect(w.get('[data-test="detail-toggle-assets"]').text()).toBe(t('roles.editor.detailCount', { n: 1, m: 6 }))
   })
 
   it('三個獨立能力各一個勾選；只有 trust_hint 為真者出現人選信任提示', async () => {
@@ -189,6 +189,37 @@ describe('RoleEditor', () => {
     await flushPromises()
     expect(calls('PUT', '/role-definitions/10')[0].data.permissions).toEqual(['role:assign', 'user:manage'])
     expect(w.get('[data-test="capability-role_assign"]').element.checked).toBe(true)
+  })
+
+  it('告警與存取複審：選了唯讀或管理會一併帶上稽核檢視，操作日誌同時可使用，說明句存在', async () => {
+    const w = await mountEditor()
+    expect(w.get('[data-test="entry-note-alerts"]').text()).toContain(t('roles.editor.entry.audit_logs'))
+    expect(w.get('[data-test="entry-note-alerts"]').text()).toBe(t('roles.editor.entryNote.alerts'))
+    expect(w.get('[data-test="entry-note-access_reviews"]').text()).toBe(t('roles.editor.entryNote.access_reviews'))
+    expect(w.get('[data-test="entry-audit_logs-hidden"]').attributes('aria-pressed')).toBe('true')
+
+    await w.get('[data-test="entry-alerts-read"]').trigger('click')
+    expect(w.get('[data-test="entry-audit_logs-available"]').attributes('aria-pressed')).toBe('true')
+
+    // 告警仍是唯讀時，操作日誌拔不掉稽核檢視（告警還要用它）
+    await w.get('[data-test="entry-audit_logs-hidden"]').trigger('click')
+    expect(w.get('[data-test="entry-audit_logs-available"]').attributes('aria-pressed')).toBe('true')
+
+    // 告警改為隱藏：操作日誌仍可使用，稽核檢視因此保留
+    await w.get('[data-test="entry-alerts-hidden"]').trigger('click')
+    expect(w.get('[data-test="entry-audit_logs-available"]').attributes('aria-pressed')).toBe('true')
+    await w.get('[data-test="entry-access_reviews-manage"]').trigger('click')
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    const perms = calls('PUT', '/role-definitions/10')[0].data.permissions
+    expect(perms).not.toContain('alert:view')
+    expect(perms).toContain('accessreview:manage')
+    expect(perms).toContain('audit:view')
+
+    // 兩邊都不再需要時，操作日誌改為隱藏即可拿掉稽核檢視
+    await w.get('[data-test="entry-access_reviews-hidden"]').trigger('click')
+    await w.get('[data-test="entry-audit_logs-hidden"]').trigger('click')
+    expect(w.get('[data-test="entry-audit_logs-hidden"]').attributes('aria-pressed')).toBe('true')
   })
 
   it('右欄摘要有「看不到」一段列出隱藏入口', async () => {
@@ -430,5 +461,51 @@ describe('RoleEditor', () => {
         }
       }
     })
+  })
+})
+
+describe('RoleEditor 部分管理', () => {
+  const partialSetup = () => {
+    setup({
+      detail: detail({ permissions: ['asset:view', 'asset:update'] }),
+      summary: { summary: { manage: [], partial: ['assets'], read: [], available: [], hidden: [] }, missing_dependencies: [], blocked_screens: [] },
+    })
+  }
+  beforeEach(() => {
+    h.request.mockReset()
+    partialSetup()
+  })
+
+  it('只勾檢視與編輯內容：資產顯示部分管理、分組計數、三個態按鈕都不選取', async () => {
+    const w = await mountEditor()
+    expect(w.get('[data-test="partial-tag-assets"]').text()).toBe(t('roles.summary.partial'))
+    expect(w.get('[data-test="entry-partial-hint-assets"]').text()).toBe(t('roles.editor.partialHint'))
+    for (const s of ['hidden', 'read', 'manage']) {
+      expect(w.get(`[data-test="entry-assets-${s}"]`).attributes('aria-pressed')).toBe('false')
+    }
+    expect(w.text()).toContain(t('roles.editor.groupCount.partial', { n: 1 }))
+  })
+
+  it('細分動作計數為 2／6，帳號細項各有連動說明；點管理後入口為管理態、計數 6／6', async () => {
+    const w = await mountEditor()
+    expect(w.get('[data-test="detail-toggle-assets"]').text()).toBe(t('roles.editor.detailCount', { n: 2, m: 6 }))
+    await w.get('[data-test="detail-toggle-assets"]').trigger('click')
+    expect(w.get('[data-test="detail-shared-asset_account.view"]').text()).toBe(
+      t('roles.editor.detailSharedKey', { other: t('roles.editor.detail.asset.view') }))
+    expect(w.get('[data-test="detail-shared-asset_account.update"]').text()).toBe(
+      t('roles.editor.detailSharedKey', { other: t('roles.editor.detail.asset.update') }))
+    expect(w.find('[data-test="detail-shared-asset.view"]').exists()).toBe(false)
+    await w.get('[data-test="entry-assets-manage"]').trigger('click')
+    expect(w.get('[data-test="entry-assets-manage"]').attributes('aria-pressed')).toBe('true')
+    expect(w.find('[data-test="partial-tag-assets"]').exists()).toBe(false)
+    expect(w.get('[data-test="detail-toggle-assets"]').text()).toBe(t('roles.editor.detailCount', { n: 6, m: 6 }))
+  })
+
+  it('資產為部分管理時切換憑證庫的態：沒有錯誤，資產仍顯示部分管理', async () => {
+    const w = await mountEditor()
+    for (const s of ['hidden', 'read', 'manage']) {
+      await w.get(`[data-test="entry-credentials-${s}"]`).trigger('click')
+      expect(w.find('[data-test="partial-tag-assets"]').exists()).toBe(true)
+    }
   })
 })

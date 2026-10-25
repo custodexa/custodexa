@@ -112,7 +112,7 @@ func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB, time.Time) {
 	now := time.Date(2026, 10, 11, 9, 0, 0, 0, taipei)
 	svc := audit.NewDailyReviewService(db, policy.NewSecurityPolicyService(db), nil)
 	svc.SetClock(func() time.Time { return now })
-	handler := NewDailyReviewHandler(svc)
+	handler := NewDailyReviewHandler(svc, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

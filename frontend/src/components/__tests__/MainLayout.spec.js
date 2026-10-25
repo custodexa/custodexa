@@ -202,9 +202,10 @@ describe('MainLayout sidebar', () => {
     const text = wrapper.text()
     expect(text).toContain('操作日誌')
     expect(text).toContain('告警')
-    // auditor 仍非 admin，不得見身分與系統設定兩組
+    // auditor 仍非 admin，不得見身分與權限組；系統設定組只因政策組的唯讀入口出現，其餘設定入口不可見
     expect(text).not.toContain('身分與權限')
-    expect(text).not.toContain('系統設定')
+    expect(text).toContain('政策組')
+    expect(text).not.toContain('金鑰管理')
   })
 
   // 輪替證據：admin 與 auditor 可見，一般 user 連入口都不該有
@@ -661,14 +662,14 @@ describe('MainLayout 政策組與合規對照的選單入口', () => {
     expect(indexes).toContain('/policy-groups')
   })
 
-  it('auditor 看得到合規對照，看不到政策組（寫入面不對稽核角色開）', async () => {
+  it('auditor 看得到合規對照與政策組（政策組只有唯讀入口，寫入動作在頁內依管理權限呈現）', async () => {
     setUser(['auditor'])
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
 
     const text = wrapper.text()
     expect(text).toContain('合規對照')
-    expect(text).not.toContain('政策組')
+    expect(text).toContain('政策組')
   })
 
   it('一般使用者兩個入口都看不到', async () => {

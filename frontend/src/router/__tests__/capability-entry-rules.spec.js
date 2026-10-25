@@ -152,3 +152,19 @@ describe('守衛與兩個衍生點', () => {
     }
   })
 })
+
+describe('政策組與輪替證據的入口規則', () => {
+  it('政策組：只持檢視可進，只持管理不可進', () => {
+    const rule = entryMeta('/policy-groups')
+    expect(canEnter(rule, holds('policygroup:view'))).toBe(true)
+    expect(canEnter(rule, holds('policygroup:manage'))).toBe(false)
+  })
+
+  it('輪替證據：只持排程管理可進、只持稽核檢視可進、兩者皆無被擋', () => {
+    const rule = entryMeta('/rotation-evidence')
+    const anyOf = (...perms) => (needed) => needed.some((p) => perms.includes(p))
+    expect(canEnter(rule, anyOf('rotation_schedule:manage'))).toBe(true)
+    expect(canEnter(rule, anyOf('audit:view'))).toBe(true)
+    expect(canEnter(rule, anyOf('session:view'))).toBe(false)
+  })
+})

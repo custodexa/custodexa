@@ -1,8 +1,11 @@
 <template>
-  <div class="empty-state">
+  <div
+    class="empty-state"
+    :class="{ 'is-compact': compact }"
+  >
     <el-icon
       class="empty-icon"
-      :size="40"
+      :size="iconSize"
     >
       <component :is="icon" />
     </el-icon>
@@ -41,6 +44,15 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  iconSize: {
+    type: Number,
+    default: 40,
+  },
+  // 窄欄用：內距縮小
+  compact: {
+    type: Boolean,
+    default: false,
+  },
   icon: {
     type: [Object, Function],
     default: () => FolderOpen,
@@ -58,6 +70,10 @@ const displayTitle = computed(() => props.title || t('common.emptyDefault'))
   justify-content: center;
   padding: var(--ot-space-xl) var(--ot-space-lg);
   text-align: center;
+}
+
+.empty-state.is-compact {
+  padding: var(--ot-space-lg) var(--ot-space-md);
 }
 
 .empty-icon {

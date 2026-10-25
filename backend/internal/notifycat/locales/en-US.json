@@ -148,7 +148,7 @@
   "management_role_granted": {
     "default": {
       "title": "Management role granted",
-      "text": "{actor} granted the management role {role_name} to {recipient} ({path})[; scope: {scope_summary}] (severity: {severity})."
+      "text": "{actor} granted the management role {role_name} to {recipient} ({path})[; scope: {scope_summary}][ (nodes {scope_node_ids}, {scope_node_count} in total)] (severity: {severity})."
     }
   },
   "retention_shortened": {

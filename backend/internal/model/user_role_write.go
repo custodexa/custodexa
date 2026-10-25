@@ -200,7 +200,13 @@ func recordUserRoleChange(tx *gorm.DB, action AuditAction, userID, roleID uint, 
 		d.Event, d.RangeBefore, d.RangeAfter = RoleBindingRangeChangedEvent, bv, av
 		d.RangeBeforeCount, d.RangeAfterCount = bc, ac
 	}
-	operatorID, operator := getUserFromContext(tx.Statement.Context)
+	// 帶請求脈絡時，操作者與請求識別六欄都取自該次請求；沒有時退回 context 的操作者
+	// （登入供應、外部群組映射重算等無人操作的路徑維持 system）
+	req, hasReq := AuditRequestFrom(tx.Statement.Context)
+	operatorID, operator := req.UserID, req.Username
+	if !hasReq {
+		operatorID, operator = getUserFromContext(tx.Statement.Context)
+	}
 	details, err := json.Marshal(d)
 	if err != nil {
 		return fmt.Errorf("序列化角色指派稽核詳情失敗: %w", err)
@@ -214,6 +220,9 @@ func recordUserRoleChange(tx *gorm.DB, action AuditAction, userID, roleID uint, 
 		UserID:     operatorID,
 		Username:   operator,
 		Details:    string(details),
+	}
+	if hasReq {
+		row.ClientIP, row.Method, row.Path, row.RequestID = req.ClientIP, req.Method, req.Path, req.RequestID
 	}
 	if err := tx.Create(&row).Error; err != nil {
 		return fmt.Errorf("角色指派留痕失敗: %w", err)

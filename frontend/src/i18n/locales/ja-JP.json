@@ -238,7 +238,8 @@
     "approvalPendingMessage": "申請（番号 #{id}）は審査待ちです。承認後に接続できます。進捗は「マイ申請」でご確認ください。",
     "approvalNeededMessage": "このホストへの接続には申請と承認者の承認が必要です。「資産管理」でこのホストの「接続申請」を押してください。",
     "approvalTitle": "承認が必要です",
-    "tokenFailed": "接続認可の取得に失敗しました"
+    "tokenFailed": "接続認可の取得に失敗しました",
+    "assetUnavailable": "この資産が見つからないか、接続する権限がありません"
   },
   "policyForm": {
     "lockoutDisableConfirm": "ロック回数を 0 にするとアカウントロックが無効になり、総当たり攻撃への防御は監査アラートのみになります。無効にしますか？",
@@ -257,6 +258,18 @@
     "restSection": "その他"
   },
   "enum": {
+    "grantMark": {
+      "self_authorization": "自己への権限付与",
+      "management_grant": "管理系ロールの付与"
+    },
+    "roleAssignOrigin": {
+      "api": "管理画面での操作",
+      "register": "アカウント作成時",
+      "oidc": "OIDC の初回サインイン",
+      "ldap": "ディレクトリアカウントの初回サインイン",
+      "mapping": "外部グループのマッピング",
+      "system": "システム"
+    },
     "role": {
       "admin": {
         "label": "管理者",
@@ -684,7 +697,7 @@
       },
       "request_params": {
         "title": "接続申請パラメータ",
-        "hint": "申請時間の上限と審査待ちタイムアウト。最少承認人数は内部統制の強化オプション（二人レビュー慣行）：2 以上に設定すると、申請は異なる承認者が閾値まで順に承認して初めて有効になります。閾値がある資産の承認可能人数を超える場合、管理者の補完または期限切れ待ちとなります"
+        "hint": "申請時間の上限と審査待ちタイムアウト。最少承認人数は内部統制の強化オプション（二人レビュー慣行）：2 以上に設定すると、申請は異なる承認者が閾値まで順に承認して初めて有効になります。閾値がある資産の承認可能人数を超える場合、申請は期限切れになるまで審査待ちのままです。承認範囲を追加するか、承認者を割り当ててください"
       },
       "break_glass": {
         "title": "緊急接続と取り消し",
@@ -718,7 +731,6 @@
     "loadedOfTotal": "{total} 件中 {loaded} 件を表示",
     "valueUnavailable": "取得できません",
     "statAssetTotal": "資産総数",
-    "statConnectableAssets": "接続可能な資産",
     "statMyPendingRequests": "審査待ちのマイ申請",
     "statTodaySessions": "本日の接続",
     "statTotalSessions": "接続履歴の総数",
@@ -745,7 +757,7 @@
     "actionWorkspace": "ワークスペースを開く",
     "actionWorkspaceDesc": "マルチタブの接続ワークスペースに入ります",
     "actionAssetsDescAdmin": "SSH / RDP 資産を管理して接続を開始します",
-    "actionAssetsDescUser": "許可された資産を閲覧して接続を開始します",
+    "actionAssetsDescUser": "利用または管理できる資産を確認します",
     "actionSessionsDesc": "進行中の接続の確認と録画の再生",
     "actionMyRequestsDesc": "接続申請の進捗確認と取り下げ"
   },
@@ -1083,7 +1095,7 @@
         "external_identity_unbound_and_account_disabled": "外部 ID の連携を解除し、アカウントを無効化",
         "external_user_local_login_attempt": "外部 ID のアカウントがローカルパスワードでログインを試行",
         "external_user_local_login_attempt_aggregated": "外部 ID のアカウントが {minutes} 分以内にさらに {count} 回ローカルパスワードでログインを試行",
-        "grant_change_graded": "権限変更を分類してアラートを記録",
+        "grant_change_graded": "この権限変更でシステムアラートを作成しました：{marks}",
         "group_role_mapping_create": "グループからロールへのマッピングルールを作成",
         "group_role_mapping_delete": "グループからロールへのマッピングルールを削除",
         "group_role_mapping_update": "グループからロールへのマッピングルールを変更",
@@ -1108,7 +1120,7 @@
         "oidc_user_inactive": "外部ログインを拒否：アカウントは無効化されています：{provider}",
         "oidc_user_provisioned": "初回の外部ログインでアカウントを自動作成：{provider}",
         "oidc_username_conflict": "外部ログインのユーザー名が既存アカウントと同じため、引き継ぎませんでした：{provider}",
-        "role_binding_range_changed": "ロール割り当てのノード範囲を変更（割り当てたロールは変更なし）",
+        "role_binding_range_changed": "{target} のロール「{role}」の範囲を {before} から {after} に変更",
         "role_mapping_pin": "マッピングで付与されたロールを固定（外部グループの削除では失われなくなる）",
         "role_update_agent_restricted_detected": "ロールの変更後、自動化アカウントが制限対象の権限を含むロールを保持していることを検出",
         "security_admin_account_operated": "セキュリティ管理者アカウントに対するID操作",
@@ -1135,6 +1147,11 @@
       "role_mapping_groups_unknown": "外部ログイン時にグループマッピングを未適用：グループを取得できず、既存のマッピングを維持",
       "role_mapping_source_attr_unset": "外部ログイン時にグループマッピングを未適用：ソースにグループ属性が設定されていません",
       "user_group_deleted": "ユーザーグループ「{name}」を削除し、{revoked} 件の権限付与を取り消し",
+      "user_group_role_assign": "ロール「{role}」をユーザーグループ {target} に割り当て",
+      "user_group_role_revoke": "ユーザーグループ {target} からロール「{role}」を削除",
+      "user_role_assign": "ロール「{role}」を {target} に割り当て（{origin}）",
+      "user_role_assign_nodes": "ロール「{role}」を {target} に割り当て、ノードを限定：{nodes}（{origin}）",
+      "user_role_revoke": "{target} からロール「{role}」を削除（{origin}）",
       "user_group_mapping_applied": "外部ログイン時にグループマッピングでユーザーグループを調整",
       "credential_authorization_stop": "権限失効により資格情報ジョブを停止",
       "change_secret_authorization_stop": "権限失効により資格情報ジョブを停止",
@@ -1157,6 +1174,11 @@
       "command_alerts": "アラート記録",
       "recordings": "セッション録画",
       "session_commands": "コマンド履歴"
+    },
+    "reasonGroupTarget": "ユーザーグループ {name}",
+    "reasonRange": {
+      "global": "システム全体",
+      "nodes": "{nodes}（計 {count} ノード）"
     }
   },
   "accountSelector": {
@@ -1248,7 +1270,7 @@
       "outOfScopeNote": "このホストの共用認証情報は管理範囲外のため、登録値の訂正や共用からの離脱はできません。認証情報の変更とアカウントの削除は可能です。"
     },
     "headerDescAdmin": "リモートホスト、データベース、K8s 資産を管理します（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
-    "headerDescUser": "あなたに許可された資産です。「接続」を押すと開始できます。管理対象の資産には接続申請を出せます",
+    "headerDescUser": "利用または管理できる資産です。接続できる資産には「接続」が表示され、承認が必要な資産には接続申請を出せます",
     "tagManager": "タグ管理",
     "create": "資産を追加",
     "searchPlaceholder": "名前またはホストアドレス",
@@ -1596,7 +1618,9 @@
     "filterCredentialPending": "資格情報未設定のみ",
     "applyLinkPending": "「{name}」の接続申請は審査中です。再度申請する必要はありません。",
     "applyLinkConnectable": "「{name}」はすでに接続できます。申請は不要です。",
-    "applyLinkUnavailable": "「{name}」はここから接続を申請できません。"
+    "applyLinkUnavailable": "「{name}」はここから接続を申請できません。",
+    "noAssetViewTitle": "あなたのロールには資産の閲覧権限がありません",
+    "noAssetViewHint": "ここには資産が表示されません。プラットフォーム経由で接続する必要がある場合は、管理者に「{role}」ロールの追加を依頼してください。"
   },
   "sessions": {
     "headerDesc": "アクティブな接続の監視と履歴の確認。AI エージェントは人に代わって操作する自動化プログラムです。",
@@ -1793,11 +1817,9 @@
     "filterKeyNotice": "セキュリティ設定「{setting}」の変更のみ表示しています",
     "filterKeyClear": "フィルタを解除",
     "reason": "理由",
-    "detailsRaw": "詳細情報",
-    "grantMark": {
-      "self_authorization": "自己権限付与",
-      "management_grant": "管理系の権限付与"
-    }
+    "sameRequest": "同じリクエストの記録をすべて表示",
+    "requestFilterChip": "同じリクエスト：{id}",
+    "detailsRaw": "詳細情報"
   },
   "commands": {
     "headerDesc": "接続をまたいでコマンドと文の記録を検索します。コマンドラインの内容はキー入力から再構成され、正確な内容は録画再生を参照します。クエリコンソールの文は送信時に記録されます。",
@@ -2092,7 +2114,8 @@
     "explainApprovalBody": "接続する前に資産ページで申請してください。承認者が承認すると、ここから接続できます。",
     "goApply": "資産ページで申請する",
     "explainClose": "説明を閉じる",
-    "tabTitleConsole": "{label}（クエリコンソール）"
+    "tabTitleConsole": "{label}（クエリコンソール）",
+    "emptyTabsNoAssetView": "開いている接続はありません"
   },
   "dbConsole": {
     "connecting": "接続しています...",
@@ -2688,6 +2711,7 @@
       "manage": "管理できる",
       "read": "参照できる",
       "available": "利用できる",
+      "partial": "一部管理できる",
       "hidden": "付与されていない",
       "global": "範囲はシステム全体",
       "connectionSeparate": "管理権限はプラットフォーム内の接続権限を自動的には付与しません。接続は別に付与してください",
@@ -2773,10 +2797,13 @@
       "legend": "非表示＝見えない　閲覧のみ＝見るだけ　管理＝追加と変更ができる　利用可＝開いて使える",
       "detailCount": "詳細な操作 {n}/{m}",
       "detailNote": "接続ポリシー（接続前に申請や承認が必要かどうか）はここではなく、下の「資産認可」で設定します。",
+      "partialHint": "一部の管理操作が選択されています。詳細な操作を開くと確認できます。「管理」を選ぶとすべて選択されます。",
+      "detailSharedKey": "「{other}」と同じ権限のため、一緒に選択されます",
       "groupCount": {
         "manage": "管理 {n}",
         "read": "閲覧のみ {n}",
         "available": "利用可 {n}",
+        "partial": "一部管理 {n}",
         "hidden": "非表示 {n}",
         "allHidden": "すべて非表示（{n} 件）",
         "autoShown": "{n} 件は自動表示"
@@ -2897,7 +2924,11 @@
       },
       "scopable": "範囲指定可",
       "nodeScopedNotice": "このロールにはノードを限定した割り当てが {n} 件あります。新しく加えた、システム全体でのみ有効な機能は、それらの割り当てでは有効になりません。",
-      "nodeScopedNoEffectNotice": "このロールにはノードを限定した割り当てが {n} 件あります。ロールの権限はノードの制限を受けないため、それらの割り当ての範囲は有効になりません。"
+      "nodeScopedNoEffectNotice": "このロールにはノードを限定した割り当てが {n} 件あります。ロールの権限はノードの制限を受けないため、それらの割り当ての範囲は有効になりません。",
+      "entryNote": {
+        "alerts": "アラート記録は「操作ログ」と同じ監査データを参照するため、「閲覧」または「管理」を選ぶと監査閲覧権限も追加されます。",
+        "access_reviews": "レビュー一覧は監査データを参照するため、「管理」を選ぶと監査閲覧権限も追加されます。"
+      }
     },
     "assignState": {
       "protected": "スーパー管理者だけが割り当てられます",
@@ -2953,7 +2984,7 @@
     "semantics1": "承認側は個人またはユーザーグループを指定できます：グループのメンバーは自動的に承認資格を持ちます（加入で有効、脱退で失効）。個人の場合は承認者ロールが必要です。",
     "semantics2": "ノード範囲はサブツリー全体を含みます：そのノード配下に追加された新しい資産も自動的に対象になります。",
     "semantics3": "申請者／申請者グループ範囲：その申請者（またはグループメンバー）の申請は資産を問わず承認側の審査待ちに入り、メンバーの変動は即時に反映されます。",
-    "semantics4": "承認資格＝いずれかの範囲に一致すれば承認可能（管理者は常に承認でき、最少承認人数の補完も可能）。申請者は自分の申請を承認できません。",
+    "semantics4": "承認資格＝いずれかの範囲に一致すれば承認可能。どの範囲にも一致しない申請は承認できる人がいないため、範囲を追加してください。管理系ロールだけでは承認資格になりません。申請者は自分の申請を承認できません。",
     "semantics5": "資産／ノード範囲では、承認側は資産一覧で範囲内の資産を閲覧できます（閲覧のみ、接続権なし）。申請者側の範囲は資産の閲覧権を一切付与しません。"
   },
   "format": {
@@ -3860,6 +3891,8 @@
     "saveNotice": "次回の実行はあなたの権限で再確認されます：保存するとあなたがこの計画の発起者となり、実行のたびに現在の権限が再確認されます。権限が不足している場合、その回は停止してアラートが発行されます。",
     "reconfirmTitle": "パスワード変更範囲の再確認",
     "reconfirmBody": "この認証情報には、管理範囲外のホストがさらに {count} 台あり、あわせてパスワードが変更されます。それらは他の管理者の担当のため、ここには表示しません。確認後に計画が再開されます。",
+    "scopedReadOnly": "一部範囲外",
+    "scopedMaskedNote": "この計画の対象に管理範囲外の認証情報または資産が含まれます。ここでは表示、実行、記録の確認のみ可能です。変更はその範囲の管理者が行ってください。",
     "reconfirmButton": "再確認",
     "reconfirmAck": "これら {count} 台も変更されることを理解しました",
     "reconfirmSubmit": "確認して保存",
@@ -4139,10 +4172,12 @@
       "abandon": "この回を中止",
       "abandonHint": "中止しても、すでに適用済みのホストが元のパスワードに戻ることはありません。認証情報は「不整合」となり、残りは 1 台ずつ再実行が必要です。",
       "abandonHintFresh": "今回はまだどのホストも変更されていません。中止すればこの回はなかったことになり、認証情報は待機状態に戻ります。",
+      "abandonHintPartial": "中止しても、すでに適用済みのホストが元のパスワードに戻ることはありません。この回で変更済みのホストがあれば、認証情報は「不整合」となり、残りは 1 台ずつ再実行が必要です。範囲外のホストの状態はここには表示されません。",
       "abandonedUnsettledHint": "この回は中止されましたが、以下のホストはまだ新しい秘密情報になっていません。1 台ずつ再実行するとこの回の新しい秘密情報を使い、すべて適用されると認証情報は待機状態に戻ります。",
       "abandonTitle": "この回の中止",
       "abandonMessage": "今回のパスワード変更を中止します。すでに新しいパスワードになったホストはそのままで、認証情報は「不整合」となり、残りは 1 台ずつ再実行が必要です。この操作は取り消せません。",
       "abandonMessageFresh": "今回のパスワード変更を中止します。まだどのホストも変更されていないため、この回はなかったことになり、認証情報は待機状態に戻ります。この操作は取り消せません。",
+      "abandonMessagePartial": "今回のパスワード変更を中止します。すでに新しいパスワードになったホストはそのままです。この回で変更済みのホストがあれば、認証情報は「不整合」となり、残りは 1 台ずつ再実行が必要です。この操作は取り消せません。",
       "abandonConfirm": "中止する",
       "abandonDone": "この回を中止しました",
       "membersTitle": "対象ホスト（{count}）",
@@ -4158,6 +4193,7 @@
       "hostIdentitySkipStopped": "{asset} をスキップしました：送信後にホストの識別情報が変更されており、1 台ずつの確認が必要です。その行の「再実行」を押してください。",
       "hostIdentitySkipFoundOnRetry": "{asset} をスキップしました：再実行で送信したあとにホストの識別情報の変更が判明したため、今回はパスワードを変更していません。その行の「再実行」を押して確認してください。",
       "membersEmpty": "この回に対象ホストはありません",
+      "outOfScopeMembers": "範囲外の資産 {count} 台もこの回の対象です。その進捗はここには表示されません。",
       "versionCurrentOnly": "現行 v{current}"
     },
     "assetRemoved": "（資産は削除済み）",
@@ -7063,7 +7099,8 @@
       "recentTitle": "最近の生成",
       "recentEmpty": "生成済みのレポートはまだありません。",
       "recentAll": "ダウンロードセンターですべて表示"
-    }
+    },
+    "scheduleOnlyNote": "このレポートの自動生成スケジュールを管理できます。レポートの内容とダウンロードには監査閲覧権限が必要です。"
   },
   "offsite": {
     "changeAlertNotice": "この種の変更は記録され、システムアラートが作成されます。届くかどうかは通知チャネルによります。",
@@ -7926,7 +7963,11 @@
     "saved": "保存しました",
     "deleted": "削除しました",
     "requiredCode": "コードを入力してください",
-    "requiredName": "名称を入力してください"
+    "requiredName": "名称を入力してください",
+    "readOnlyNote": "ポリシーグループと条文を閲覧できます。追加・変更・確認にはポリシーグループ管理権限が必要です。",
+    "builtinHintReadOnly": "製品標準グループの条文は製品のバージョンとともに更新され、内容は編集できません。",
+    "statusEnabled": "有効",
+    "statusDisabled": "無効"
   },
   "clauseDialog": {
     "createTitle": "条文を追加",
@@ -8530,7 +8571,16 @@
       "occurredAt": "発生日時",
       "sourceAddressLabel": "送信元アドレス",
       "deliveredAt": "{time} に送信済み",
-      "nextAttemptAt": "次回試行 {time}"
+      "nextAttemptAt": "次回試行 {time}",
+      "grantTitle": "付与内容",
+      "recipientLabel": "付与先",
+      "recipientGroup": "ユーザーグループ {name}",
+      "grantedRoles": "付与されたロール",
+      "scopeLabel": "範囲",
+      "scopeGlobal": "システム全体",
+      "scopeNodes": "{nodes}（計 {count} ノード）",
+      "scopeNodeDeleted": "ノード #{id}（削除済み）",
+      "targetNamed": "{name}（{kind} #{id}）"
     },
     "targetKinds": {
       "asset": "資産",

@@ -30,6 +30,7 @@ func (e *scEnv) scAccountRouter(uid uint) *gin.Engine {
 		WithManagementAuthorizer(e.adapter).WithSystemAlertSink(noopAlertSink{}).
 		WithAccountWriteScope(authz.NewAssetWriteScope(e.eval))
 	h := api.NewAssetAccountHandler(svc, e.authzSvc)
+	h.SetAccountCredentialScope(authz.NewCredentialScopeReader(e.eval, e.db))
 	r.POST("/api/v1/assets/:id/accounts", middleware.EnforceRegistry(), h.Create)
 	return r
 }

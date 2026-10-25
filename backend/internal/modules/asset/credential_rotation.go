@@ -135,6 +135,9 @@ type CredentialRotationService struct {
 	// scope 範圍化檢視者的投影來源（影響確認的範圍外集合）；未注入＝不要求確認
 	scope CredentialScopeSource
 
+	// output 憑證輸出的可見判定來源；未注入時 MembersInView 回錯誤
+	output CredentialOutputScopeSource
+
 	// stopNotify 授權停止的推送（組裝根注入）；nil＝只寫日誌與審計
 	stopNotify func(rule, message string)
 

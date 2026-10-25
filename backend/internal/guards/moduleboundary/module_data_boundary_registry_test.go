@@ -197,6 +197,8 @@ var nonTableModelStructs = map[string]bool{
 	"user_role_audit_details":        true, // UserRoleAuditDetails：角色指派審計 Details 的 JSON 形狀
 	"access_request_executors":       true, // AccessRequestExecutor：申請單執行者的唯讀投影，不是表
 	"access_request_decision_bounds": true, // AccessRequestDecisionBounds：審核可決範圍值物件，不是表
+	"audit_requests":                 true, // AuditRequest：請求脈絡值物件（放在交易 context），不是表
+	"audit_request_keys":             true, // auditRequestKey：context 鍵型別，不是表
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。

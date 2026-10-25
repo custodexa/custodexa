@@ -207,6 +207,7 @@ func (e *scEnv) scRouter(uid uint) *gin.Engine {
 		c.Next()
 	})
 	h := api.NewCredentialHandler(e.creds, scRotations{}, scStatus{})
+	h.SetAccountRowProjector(authz.NewCredentialScopeReader(e.eval, e.db), nil)
 	g := r.Group("/api/v1/credentials")
 	reg := middleware.EnforceRegistry()
 	g.GET("", reg, h.List)

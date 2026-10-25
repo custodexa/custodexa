@@ -139,4 +139,101 @@ describe('系統告警明細抽屜', () => {
     expect(notice).not.toContain('通知安全人員')
     expect(document.body.textContent).toContain(notice)
   })
+  describe('管理類發放與自我授權的呈現', () => {
+    const grantDetail = (over = {}) => ({
+      alert_id: 167,
+      alert_type: 'management_role_granted',
+      group: 'identity_privilege',
+      severity: 'medium',
+      triggered_at: '2026-10-25T08:00:00Z',
+      actor: 'ops-ida',
+      target_kind: 'user',
+      target_id: '192',
+      client_ip: '203.0.113.7',
+      params: { path: 'replace', recipient: 'ops-lee', role_name: 'asset_admin', scope_summary: 'global' },
+      correlation_id: 'c0ffee00c0ffee00c0ffee00c0ffee00',
+      audit_log_id: 902,
+      deliveries: [],
+      ...over,
+    })
+    const grantText = () => q('[data-test="sa-grant"]').textContent.replace(/\s+/g, ' ')
+
+    it('受領人、中文角色名與範圍；不套用操作者自己的前後對照', async () => {
+      getDetailMock.mockResolvedValue(grantDetail())
+      mountDrawer()
+      await flushPromises()
+
+      const text = grantText()
+      expect(text).toContain('發放內容')
+      expect(text).toContain('ops-lee')
+      expect(text).toContain('資產管理員')
+      expect(text).toContain('全系統')
+      expect(text).not.toContain('asset_admin')
+      expect(text).not.toContain('之前')
+      expect(q('[data-test="sa-privilege"]')).toBeNull()
+      expect(document.body.textContent).not.toContain('ops-ida 的權限變化')
+      expect(document.body.textContent).not.toContain('之前')
+    })
+
+    it('節點範圍：列出路徑、總數；已刪除的節點只顯示編號', async () => {
+      getDetailMock.mockResolvedValue(
+        grantDetail({
+          params: { path: 'replace', recipient: 'ops-lee', role_name: 'asset_admin', scope_summary: 'nodes',
+            scope_node_ids: '158,167', scope_node_count: '2' },
+          scope_nodes: [{ id: 158, path: 'SIT / ELK' }, { id: 167, path: '' }],
+        })
+      )
+      mountDrawer()
+      await flushPromises()
+
+      const scope = q('[data-test="sa-grant-scope"]').textContent.replace(/\s+/g, ' ')
+      expect(scope).toContain('SIT / ELK')
+      expect(scope).toContain('節點 #167（已刪除）')
+      expect(scope).toContain('共 2 個節點')
+      expect(scope).not.toContain('全系統')
+    })
+
+    it('舊告警沒有節點資訊且不是全域時不顯示範圍列', async () => {
+      getDetailMock.mockResolvedValue(
+        grantDetail({ params: { path: 'replace', recipient: 'ops-lee', role_name: 'asset_admin', scope_summary: 'nodes' } })
+      )
+      mountDrawer()
+      await flushPromises()
+      expect(q('[data-test="sa-grant-scope"]')).toBeNull()
+    })
+
+    it('群組目標：受領對象為「使用者群組 {名}」，技術細節目標顯示名稱', async () => {
+      getDetailMock.mockResolvedValue(
+        grantDetail({ target_kind: 'user_group', target_id: '7', params: { path: 'group_roles', recipient: 'prod-assets', role_name: 'asset_admin' } })
+      )
+      mountDrawer()
+      await flushPromises()
+      expect(q('[data-test="sa-grant-recipient"]').textContent.trim()).toBe('使用者群組 prod-assets')
+      expect(q('[data-test="sa-target"]').textContent.trim()).toBe('prod-assets（使用者群組 #7）')
+    })
+
+    it('自我授權：角色清單逐一顯示中文名稱', async () => {
+      getDetailMock.mockResolvedValue({
+        alert_id: 168, alert_type: 'self_privilege_increased', group: 'identity_privilege', severity: 'high',
+        triggered_at: '2026-10-25T08:00:00Z', actor: 'ops-ida', target_kind: 'user', target_id: '19',
+        params: { path: 'replace', roles_before: 'identity_admin', roles_after: 'auditor,identity_admin' },
+        deliveries: [],
+      })
+      mountDrawer()
+      await flushPromises()
+
+      const roles = q('[data-test="sa-priv-roles"]').textContent.replace(/\s+/g, ' ')
+      expect(roles).toContain('身分管理員')
+      expect(roles).toContain('稽核人員、身分管理員')
+      expect(roles).not.toContain('identity_admin')
+      expect(q('[data-test="sa-privilege"]').textContent).toContain('ops-ida 的權限變化')
+    })
+
+    it('技術細節的目標顯示「名稱（使用者 #id）」；名稱不可得時維持種類加編號', async () => {
+      getDetailMock.mockResolvedValue(grantDetail())
+      mountDrawer()
+      await flushPromises()
+      expect(q('[data-test="sa-target"]').textContent.trim()).toBe('ops-lee（使用者 #192）')
+    })
+  })
 })

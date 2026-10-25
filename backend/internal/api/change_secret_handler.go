@@ -34,6 +34,8 @@ type ChangeSecretHandler struct {
 	takeover *asset.HostIdentityTakeoverService
 	// confirmer 帶確認的重試所呼叫的動作；由 SetHostIdentityTakeover 設為 takeover
 	confirmer hostIdentityConfirmer
+	// output 改密輸出（目標、紀錄）的憑證可見判定；未注入時相關出口回內部錯誤
+	output asset.CredentialOutputScopeSource
 }
 
 // SetHostIdentityTakeover 注入人工承接服務。
@@ -99,11 +101,12 @@ func (h *ChangeSecretHandler) ListCandidates(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretCandidateQuery, err)
 		return
 	}
-	out := make([]changeSecretCandidateDTO, 0, len(items))
-	for i := range items {
-		out = append(out, newCandidateDTO(&items[i]))
+	out, err := h.projectCandidates(accountContext(c), viewer, items)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretCandidateQuery, err)
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": out, "total": len(out)})
+	respondScoped(c, http.StatusOK, out)
 }
 
 // RetryCandidate 對單筆候選立即觸發一次重試（同步執行，回傳結果供 UI 立即反映）。
@@ -260,7 +263,12 @@ func (h *ChangeSecretHandler) List(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretPlanQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": plans, "total": len(plans)})
+	out, err := h.projectPlanList(accountContext(c), plans)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretPlanQuery, err)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // Create 建立計劃
@@ -276,7 +284,12 @@ func (h *ChangeSecretHandler) Create(c *gin.Context) {
 		return
 	}
 	h.reload()
-	c.JSON(http.StatusCreated, plan)
+	out, err := h.projectPlan(accountContext(c), plan)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretPlanCreate, err)
+		return
+	}
+	respondScoped(c, http.StatusCreated, out)
 }
 
 // Update 更新計劃
@@ -297,7 +310,12 @@ func (h *ChangeSecretHandler) Update(c *gin.Context) {
 		return
 	}
 	h.reload()
-	c.JSON(http.StatusOK, plan)
+	out, err := h.projectPlan(accountContext(c), plan)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretPlanUpdate, err)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // Delete 刪除計劃
@@ -366,7 +384,14 @@ func (h *ChangeSecretHandler) Records(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretRecordQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": records, "total": len(records)})
+	out, err := h.projectRecords(accountContext(c), records, func(rows []changeSecretRecordDTO) any {
+		return gin.H{"data": rows, "total": len(rows)}
+	})
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChangeSecretRecordQuery, err)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // RegisterRoutes 註冊路由（憑證生命週期屬高權限操作，整組 admin only）

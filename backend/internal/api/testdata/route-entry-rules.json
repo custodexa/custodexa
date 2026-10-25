@@ -181,7 +181,7 @@
     "path": "/policy-groups",
     "kind": "all",
     "permissions": [
-      "policygroup:manage"
+      "policygroup:view"
     ]
   },
   {
@@ -198,9 +198,10 @@
   },
   {
     "path": "/rotation-evidence",
-    "kind": "all",
+    "kind": "any",
     "permissions": [
-      "audit:view"
+      "audit:view",
+      "rotation_schedule:manage"
     ]
   },
   {

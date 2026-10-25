@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -32,6 +33,26 @@ import (
 // 寫出點：資產建立、共用憑證建立、批次改密轉共用憑證、改密計畫建立、改密報告排程建立
 // （皆為無參數 409，本文只有 code、error）；資產匯入的預檢列錯誤（400，逐列錯誤在 meta）
 // 與交易內重驗的列錯誤（409，逐列錯誤在 meta）。
+
+// conflictFullOutputScope 改密計畫建立的輸出判定替身：本測試只比衝突回應的形狀，
+// 成功建立的夾具回應不是被測對象，一律視為可見全部內容。
+type conflictFullOutputScope struct{}
+
+type conflictFullScope struct{}
+
+func (conflictFullScope) Full() bool { return true }
+
+func (conflictFullScope) AssetsInView(ids []uint) (map[uint]bool, error) {
+	return map[uint]bool{}, nil
+}
+
+func (conflictFullScope) CredentialsInView(ids []uint) (map[uint]bool, error) {
+	return map[uint]bool{}, nil
+}
+
+func (conflictFullOutputScope) CredentialOutputScope(context.Context) (asset.CredentialOutputScope, error) {
+	return conflictFullScope{}, nil
+}
 
 // conflictTakenName 每案衝突對象與請求共用的名稱。
 const conflictTakenName = "taken-name"
@@ -110,6 +131,7 @@ func (e *conflictEnv) router(p *authz.Principal) *gin.Engine {
 	assets := api.NewAssetHandler(e.assets, nil, nil)
 	creds := api.NewCredentialHandler(e.creds, nil, nil)
 	secrets := api.NewChangeSecretHandler(e.plans, nil, nil, nil, e.batches, nil)
+	secrets.SetCredentialOutputScope(conflictFullOutputScope{})
 	reports := api.NewRotationReportHandler(nil, e.schedules, nil)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {

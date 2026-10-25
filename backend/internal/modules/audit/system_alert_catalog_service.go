@@ -159,6 +159,12 @@ type SystemAlertDeliveryView struct {
 	NextAttemptAt time.Time
 }
 
+// SystemAlertScopeNode 管理類發放的節點範圍中的一個節點；節點已刪除時 Path 為空。
+type SystemAlertScopeNode struct {
+	ID   uint   `json:"id"`
+	Path string `json:"path"`
+}
+
 // SystemAlertDetailView 一筆系統告警的結構化明細。
 type SystemAlertDetailView struct {
 	AlertID       uint
@@ -176,6 +182,9 @@ type SystemAlertDetailView struct {
 	// ClientIP 來源位址，取自同交易審計列（告警明細不另存一份）；找不到對應審計列時為空。
 	ClientIP   string
 	Deliveries []SystemAlertDeliveryView
+	// ScopeNodes 管理類發放的節點範圍（由接入層依參數 scope_node_ids 換算路徑後填入）；
+	// 沒有節點範圍時為空。
+	ScopeNodes []SystemAlertScopeNode
 }
 
 // Detail 回傳系統告警明細；告警不存在或不是系統告警回 ErrAlertNotFound。

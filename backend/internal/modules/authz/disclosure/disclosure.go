@@ -150,7 +150,7 @@ func Entries() []Entry {
 			Exception: "共用憑證影響範圍外資產的匿名台數",
 			Fields:    []string{FieldOutOfScopeAssetCount, FieldCount},
 			RuleCodes: []string{ruleCredentialImpactConfirmationRequired},
-			Wiring: "共用憑證的影響範圍回應（列表、詳情、影響確認）、刪除被引用阻擋的回應欄、" +
+			Wiring: "共用憑證的影響範圍回應（列表、詳情、影響確認）、輪替成員清單、改密計畫的列表與建立／更新回應、刪除被引用阻擋的回應欄、" +
 				"宣告新秘密與遠端輪替要求先確認的規則碼 params",
 		},
 		{

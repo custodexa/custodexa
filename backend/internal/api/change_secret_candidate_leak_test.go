@@ -163,8 +163,12 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 	rotations := asset.NewCredentialRotationService(db, assetSvc, candidates, hostKeys,
 		codec, audit.NewTxSink(), allowAllCredentialManagement{}).WithSystemAlertSink(recordingSystemAlerts{})
 
+	candidates.WithScope(unlimitedChangeSecretScope{})
 	handler := NewChangeSecretHandler(planSvc, runner, candidates, retry, batches, nil)
-	return handler, NewCredentialHandler(creds, rotations, reports), db, &stored
+	handler.SetCredentialOutputScope(fullOutputScope{})
+	credHandler := NewCredentialHandler(creds, rotations, reports)
+	credHandler.SetRotationMemberProjection(allMembersProjection{rotations})
+	return handler, credHandler, db, &stored
 }
 
 // candidateRouter 掛上改密的全部讀取與反射端點（計劃側、候選側、批次側），

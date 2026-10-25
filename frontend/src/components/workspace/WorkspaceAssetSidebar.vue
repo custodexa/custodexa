@@ -4,7 +4,10 @@
     class="workspace-sidebar"
     :style="{ width: sidebarWidth + 'px' }"
   >
-    <div class="sidebar-search">
+    <div
+      v-if="canViewAssets"
+      class="sidebar-search"
+    >
       <el-input
         v-model="assetFilter"
         size="small"
@@ -33,7 +36,7 @@
       </el-tooltip>
     </div>
     <div
-      v-for="notice in listNotices"
+      v-for="notice in (canViewAssets ? listNotices : [])"
       :key="notice"
       class="asset-list-notice"
       role="status"
@@ -41,7 +44,23 @@
     >
       {{ notice }}
     </div>
-    <div class="asset-list">
+    <div
+      v-if="showNoAssetView"
+      class="no-asset-view"
+      role="status"
+      data-test="no-asset-view"
+    >
+      <EmptyState
+        compact
+        :icon-size="56"
+        :title="$t('assets.noAssetViewTitle')"
+        :hint="$t('assets.noAssetViewHint', { role: $t('enum.role.user.label') })"
+      />
+    </div>
+    <div
+      v-else-if="canViewAssets"
+      class="asset-list"
+    >
       <template
         v-for="row in sidebarRows"
         :key="row.rowKey"
@@ -137,7 +156,8 @@ import { t } from '@/i18n'
 import { getAssetList } from '@/api/assets'
 import { assetEntryState, BLOCKED_ENTRY_STATES } from '@/utils/asset-access'
 import { buildAssetTree, flattenTree, flatRows, rootKeys } from '@/utils/asset-tree'
-import { can } from '@/composables/useCapabilities'
+import { can, loadCapabilities, useCapabilities } from '@/composables/useCapabilities'
+import EmptyState from '@/components/EmptyState.vue'
 import WorkspaceAssetRow from './WorkspaceAssetRow.vue'
 import WorkspaceAccessExplain from './WorkspaceAccessExplain.vue'
 import { readStorage, writeStorage } from './storage'
@@ -354,6 +374,15 @@ const listIncomplete = ref(false)
 const refreshFailed = ref(false)
 let loadSeq = 0
 
+// 資產列表端點要 asset:view；沒有就不請求，改顯示說明
+const canViewAssets = computed(() => can('asset:view'))
+// 能力尚未載入（整頁重新整理）時不判定「沒有權限」；載入完成且有權限時補讀列表
+const { ready: capsReady } = useCapabilities()
+const showNoAssetView = computed(() => capsReady.value && !canViewAssets.value)
+watch(canViewAssets, (allowed) => {
+  if (allowed) loadAssets()
+})
+
 const listNotices = computed(() => [
   ...(refreshFailed.value ? [t('workspace.refreshFailed')] : []),
   ...(listIncomplete.value ? [t('workspace.listIncomplete')] : []),
@@ -363,7 +392,10 @@ async function fetchAllAssets() {
   const byId = new Map()
   let fetched = 0
   for (let page = 1; page <= MAX_ASSET_PAGES; page++) {
-    const resp = await getAssetList({ page, page_size: ASSET_PAGE_SIZE })
+    const params = { page, page_size: ASSET_PAGE_SIZE }
+    // 工作區是純連線面：沒有全域資產呈現的主體只取連線可視的資產
+    if (!can('ui:assets-global')) params.authorized_only = true
+    const resp = await getAssetList(params)
     const data = Array.isArray(resp?.data) ? resp.data : []
     // 翻頁期間有新增時同一筆可能跨頁重複：以 id 去重
     for (const a of data) if (!byId.has(a.id)) byId.set(a.id, a)
@@ -377,6 +409,7 @@ async function fetchAllAssets() {
 
 // 只替換列表資料：分頁持有的是開籤當下的資產複本，重抓不會重建任何分頁
 async function loadAssets() {
+  if (!canViewAssets.value) return
   const seq = ++loadSeq
   loadingAssets.value = true
   try {
@@ -396,6 +429,8 @@ async function loadAssets() {
 }
 
 onMounted(() => {
+  // 工作區在 MainLayout 之外，整頁重新整理時沒有人替它載入能力
+  void loadCapabilities()
   document.addEventListener('click', onDocumentClick)
   document.addEventListener('keydown', onDocumentKeydown)
 })
@@ -524,6 +559,13 @@ defineExpose({ loadAssets, activate, closeExplain, entryState, assets })
   flex-shrink: 0;
   font-weight: 400;
   color: var(--ot-text-disabled);
+}
+
+.no-asset-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .asset-empty {

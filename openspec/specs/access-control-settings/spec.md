@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: 存取管控設定頁
-系統 SHALL 提供「存取管控」設定頁（`/access-control`；導覽入口與路由守衛 SHALL 採與安全政策頁入口相同的設定組讀取能力判定，持有者如超級管理者與系統安全管理員），承載存取域全部政策鍵：全域預設段位 `access_policy_default`、申請參數（`access_request_max_duration_minutes`／`access_request_pending_timeout_hours`／`access_request_min_approvals`）、破窗與撤銷（`break_glass_enabled`／`break_glass_duration_minutes`／`break_glass_review_timeout_hours`／`access_revoke_disconnect`）、**資料傳輸管控（`clipboard_send_enabled`／`clipboard_recv_enabled`／`file_upload_enabled`／`file_download_enabled`／`file_delete_enabled`）**。政策鍵編輯 SHALL 沿安全政策既有機制（dirty-keys 儲存列、批次原子、PCI 建議標示、非法值拒絕、變更入審計）。`access_request_min_approvals` SHALL 標示為內控強化選項（雙人覆核慣例）、SHALL NOT 標示或聲稱為 PCI 要求（無 PCI 建議值），其 hint SHALL 明示涵蓋不足風險（門檻高於某資產的可核人數時申請須由 admin 補位或等待逾時）。**資料傳輸五鍵同樣無 PCI 建議值**，SHALL 標示其法源為電子支付機構相關基準、SHALL NOT 標示為 PCI 要求。頁面 SHALL 顯示本頁鍵子集的 PCI 偏離摘要並提供「套用本頁建議值」（**該套用 SHALL NOT 影響無 PCI 建議值的鍵，含資料傳輸五鍵**）。全域預設段位旁 SHALL 明示適用範圍語義（僅適用於未個別設定政策的資產）。
+系統 SHALL 提供「存取管控」設定頁（`/access-control`；導覽入口與路由守衛 SHALL 採與安全政策頁入口相同的設定組讀取能力判定，持有者如超級管理者與系統安全管理員），承載存取域全部政策鍵：全域預設段位 `access_policy_default`、申請參數（`access_request_max_duration_minutes`／`access_request_pending_timeout_hours`／`access_request_min_approvals`）、破窗與撤銷（`break_glass_enabled`／`break_glass_duration_minutes`／`break_glass_review_timeout_hours`／`access_revoke_disconnect`）、**資料傳輸管控（`clipboard_send_enabled`／`clipboard_recv_enabled`／`file_upload_enabled`／`file_download_enabled`／`file_delete_enabled`）**。政策鍵編輯 SHALL 沿安全政策既有機制（dirty-keys 儲存列、批次原子、PCI 建議標示、非法值拒絕、變更入審計）。`access_request_min_approvals` SHALL 標示為內控強化選項（雙人覆核慣例）、SHALL NOT 標示或聲稱為 PCI 要求（無 PCI 建議值），其 hint SHALL 明示涵蓋不足風險：門檻高於某資產的可核人數時，申請會停在待審直到逾時作廢，解法是補建審核範圍或指派審核人員；hint SHALL NOT 聲稱超級管理者或任何管理角色可以補位、兜底或代為核准（管理角色本身不構成審核資格，見 access-request 規格）。**資料傳輸五鍵同樣無 PCI 建議值**，SHALL 標示其法源為電子支付機構相關基準、SHALL NOT 標示為 PCI 要求。頁面 SHALL 顯示本頁鍵子集的 PCI 偏離摘要並提供「套用本頁建議值」（**該套用 SHALL NOT 影響無 PCI 建議值的鍵，含資料傳輸五鍵**）。全域預設段位旁 SHALL 明示適用範圍語義（僅適用於未個別設定政策的資產）。
 
 本頁承載的存取域政策鍵 SHALL 依設定組能力編輯：可否編輯與儲存，SHALL 與安全政策頁對同一設定組的判定相同，不另設判準。持存取政策權限點而不持設定組讀取能力者 SHALL NOT 因此取得本頁入口。其單台覆寫的畫面設定路徑是資產編輯表單與資產授權管理頁的「連線政策」分頁（見「組政策設定入口唯一」），開啟前者需同時持資產編輯權限，進入後者需持授權規則權限點；兩者皆不具、只持存取政策權限點者在畫面上沒有設定路徑，只能經資產更新 API 送出只含 `access_policy` 的更新。
 
@@ -40,6 +40,10 @@
 #### Scenario: 超級管理者畫面不變
 - **WHEN** admin 開啟導覽與存取管控頁
 - **THEN** 「存取管控」入口、政策鍵區塊與資產政策覆寫表格的呈現與可做的操作皆與本變更前相同
+
+#### Scenario: 最少核准人數說明不提管理角色補位
+- **WHEN** 持設定組讀取能力者在存取管控頁閱讀最少核准人數的說明，畫面語言分別為繁體中文、英文與日文
+- **THEN** 說明寫明門檻高於可核人數時申請會停在待審直到逾時作廢，並指向補建審核範圍或指派審核人員；三語文字都不出現管理員可補位、兜底或代為核准的說法
 
 ### Requirement: 資料傳輸管控區塊
 

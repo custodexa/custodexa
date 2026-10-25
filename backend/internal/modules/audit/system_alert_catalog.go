@@ -169,6 +169,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "recipient", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "role_name", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "scope_summary", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "scope_node_ids", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "scope_node_count", Kind: SystemAlertParamInt, Required: false},
 			},
 		},
 		{

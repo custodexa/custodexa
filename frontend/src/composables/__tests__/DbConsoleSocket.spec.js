@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const tokenMock = vi.fn().mockResolvedValue({ connect_token: 'ct-console' })
-vi.mock('@/api/connect', () => ({
+vi.mock('@/api/connect', async (importOriginal) => ({
+  ...(await importOriginal()),
   createConnectTokenWithConsent: (...args) => tokenMock(...args),
 }))
 

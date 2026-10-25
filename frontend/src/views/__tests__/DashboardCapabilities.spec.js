@@ -572,4 +572,20 @@ describe('DashboardCapabilities', () => {
     )
     vi.unstubAllGlobals()
   })
+
+  it('快速操作的「開啟工作區」「我的資產」只在持 asset:view 時出現；整區沒有卡時連標題一起不顯示', async () => {
+    grant(['authorization:manage'])
+    let wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('開啟工作區')
+    expect(wrapper.find('.quick-actions').exists()).toBe(false)
+
+    resetCapabilities()
+    grant(['asset:view'])
+    wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.find('.quick-actions').exists()).toBe(true)
+    expect(wrapper.findAll('.action-card').length).toBeGreaterThanOrEqual(2)
+    expect(wrapper.text()).toContain('我的資產')
+  })
 })

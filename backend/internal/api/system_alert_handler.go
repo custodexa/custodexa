@@ -31,11 +31,24 @@ type SystemAlertHandler struct {
 	service SystemAlertServiceInterface
 	// canAuditView 判定呼叫者是否具稽核檢視（決定目錄是否附近 30 天筆數）。
 	canAuditView func(c *gin.Context) bool
+	// namer 節點範圍的路徑換算（與操作日誌同一個換算器）；nil 時路徑為空
+	namer *AuditReasonNamer
 }
 
-// NewSystemAlertHandler 建立 handler。
-func NewSystemAlertHandler(service SystemAlertServiceInterface) *SystemAlertHandler {
-	return &SystemAlertHandler{service: service, canAuditView: principalHasAuditView}
+// scopeNodeIDs 解析告警參數 scope_node_ids（逗號接的節點編號）；無法解析的項略過
+func scopeNodeIDs(raw string) []uint {
+	var ids []uint
+	for _, part := range splitIDList(raw) {
+		if n, err := strconv.ParseUint(part, 10, 32); err == nil {
+			ids = append(ids, uint(n))
+		}
+	}
+	return ids
+}
+
+// NewSystemAlertHandler 建立 handler；namer 為節點路徑的名稱換算器（可為 nil）。
+func NewSystemAlertHandler(service SystemAlertServiceInterface, namer *AuditReasonNamer) *SystemAlertHandler {
+	return &SystemAlertHandler{service: service, canAuditView: principalHasAuditView, namer: namer}
 }
 
 func principalHasAuditView(c *gin.Context) bool {
@@ -145,13 +158,19 @@ func (h *SystemAlertHandler) SystemDetail(c *gin.Context) {
 			Attempts: d.Attempts, DeliveredAt: d.DeliveredAt, NextAttemptAt: d.NextAttemptAt,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{
+	body := gin.H{
 		"alert_id": v.AlertID, "alert_type": v.AlertType, "group": string(v.Group),
 		"severity": v.Severity, "triggered_at": v.TriggeredAt, "actor": v.ActorName,
 		"target_kind": v.TargetKind, "target_id": v.TargetID, "params": v.Params,
 		"correlation_id": v.CorrelationID, "audit_log_id": v.AuditLogID, "client_ip": v.ClientIP,
 		"deliveries": deliveries,
-	})
+	}
+	// 節點範圍：只在參數帶 scope_node_ids 時出現；已刪除的節點 path 為空
+	if ids := scopeNodeIDs(v.Params["scope_node_ids"]); len(ids) > 0 {
+		v.ScopeNodes = h.namer.ScopeNodes(ids)
+		body["scope_nodes"] = v.ScopeNodes
+	}
+	c.JSON(http.StatusOK, body)
 }
 
 // RegisterRoutes 註冊目錄與明細路由。權限只由路由登錄表裁決（EnforceRegistry）。

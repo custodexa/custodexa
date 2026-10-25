@@ -51,7 +51,9 @@ func permissionDependencies() map[Permission][]Permission {
 		PermUserGroupManage:              {PermUserManage},
 		PermRoleAssign:                   {PermRoleView, PermUserManage},
 		PermSessionTerminate:             {PermSessionView},
-		PermAlertManage:                  {PermAlertView},
+		PermAlertView:                    {PermAuditView},
+		PermAlertManage:                  {PermAlertView, PermAuditView},
+		PermAccessReviewManage:           {PermAuditView},
 		PermAuditIntegrityView:           {PermAuditView},
 		PermPolicyGroupManage:            {PermPolicyGroupView},
 	}

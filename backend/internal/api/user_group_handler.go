@@ -134,7 +134,7 @@ func (h *UserGroupHandler) Delete(c *gin.Context) {
 	if g, ok := h.groups.(interface {
 		DeleteBy(identity.Operator, uint) (int64, error)
 	}); ok {
-		revoked, err = g.DeleteBy(identity.Operator{UserID: actorID, Username: actorName, ClientIP: sourceip.Of(c)}, id)
+		revoked, err = g.DeleteBy(operatorFromRequest(c), id)
 	} else {
 		revoked, err = h.groups.Delete(id, actorID, actorName, sourceip.Of(c))
 	}
@@ -174,7 +174,7 @@ func (h *UserGroupHandler) ReplaceMembers(c *gin.Context) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 			return
 		}
-		group, err = guarded.ReplaceMembersBy(identity.Operator{UserID: actorID, Username: actorName, ClientIP: sourceip.Of(c)}, id, req.ManualUserIDs, req.UserIDs)
+		group, err = guarded.ReplaceMembersBy(operatorFromRequest(c), id, req.ManualUserIDs, req.UserIDs)
 	} else if detailed, ok := h.groups.(interface {
 		ReplaceMembersDetailed(uint, *[]uint, *[]uint, uint, string, string) (*model.UserGroup, error)
 	}); ok {

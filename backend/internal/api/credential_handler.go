@@ -92,6 +92,10 @@ type CredentialHandler struct {
 	takeover *asset.HostIdentityTakeoverService
 	// confirmer 帶確認的補跑所呼叫的動作；由 SetHostIdentityTakeover 設為 takeover
 	confirmer hostIdentityConfirmer
+	// rotationProjection 輪替成員的可見投影；顯式注入，缺席時五個輪替出口回錯誤，不退回全部成員
+	rotationProjection RotationMemberProjection
+	// accountRows 掛載與更換憑證回應的帳號列投影器；缺席時（且欄位能力成立）回錯誤
+	accountRows *accountRowProjector
 }
 
 // SetHostIdentityTakeover 注入人工承接服務。
@@ -658,7 +662,7 @@ func (h *CredentialHandler) Bind(c *gin.Context) {
 		respondCredentialError(c, apierror.CodeInternalCredentialBind, err)
 		return
 	}
-	c.JSON(http.StatusCreated, dto)
+	h.respondAccountRow(c, http.StatusCreated, dto, apierror.CodeInternalCredentialBind)
 }
 
 // Unbind 卸載（只移除掛載列，不更動目標主機上的秘密）。
@@ -697,12 +701,18 @@ func (h *CredentialHandler) Detach(c *gin.Context) {
 		return
 	}
 	setAuditAssetIDValue(c, h.bindingAssetID(id, accountID))
-	rot, err := h.rotations.Detach(credentialContext(c), id, accountID, req)
+	ctx := credentialContext(c)
+	rot, err := h.rotations.Detach(ctx, id, accountID, req)
 	if err != nil {
 		respondCredentialError(c, apierror.CodeInternalCredentialDetach, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": h.rotationView(rot)})
+	out, perr := h.projectRotation(ctx, rot, rotationSupplement{})
+	if perr != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialDetach, perr)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // ConvertScope 轉專用／轉共用（不動任何密文版本與遠端主機）。
@@ -817,7 +827,12 @@ func (h *CredentialHandler) StartRotation(c *gin.Context) {
 		return
 	}
 	h.runRotationAsync(rot.ID)
-	c.JSON(http.StatusAccepted, gin.H{"data": h.rotationView(rot)})
+	out, perr := h.projectRotation(ctx, rot, rotationSupplement{})
+	if perr != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationStart, perr)
+		return
+	}
+	respondScoped(c, http.StatusAccepted, out)
 }
 
 // GetRotation 改密進度（聚合態＋成員逐列）。
@@ -840,7 +855,12 @@ func (h *CredentialHandler) GetRotation(c *gin.Context) {
 		respondCredentialError(c, apierror.CodeInternalCredentialRotationGet, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": h.rotationView(rot)})
+	out, perr := h.projectRotation(credentialContext(c), rot, rotationSupplement{})
+	if perr != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationGet, perr)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // RetryMember 逐台補跑。**同步**：只動一台，操作者要當下的結果。
@@ -904,14 +924,13 @@ func (h *CredentialHandler) RetryMember(c *gin.Context) {
 		respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, err)
 		return
 	}
-	view := h.rotationView(rot)
-	for i := range view.Members {
-		if view.Members[i].ID == mid {
-			view.Members[i].HostIdentity = hostIdentity
-			view.Members[i].Reason = reason
-		}
+	out, perr := h.projectRotation(credentialContext(c), rot,
+		rotationSupplement{MemberID: mid, HostIdentity: hostIdentity, Reason: reason})
+	if perr != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationRetry, perr)
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": view})
+	respondScoped(c, http.StatusOK, out)
 }
 
 // confirmMember 帶確認的補跑：先確認成員屬於該輪替（不存在與不屬於同一回應），再交給承接服務。
@@ -970,7 +989,12 @@ func (h *CredentialHandler) AbandonRotation(c *gin.Context) {
 		respondCredentialError(c, apierror.CodeInternalCredentialRotationAbandon, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": h.rotationView(rot)})
+	out, perr := h.projectRotation(credentialContext(c), rot, rotationSupplement{})
+	if perr != nil {
+		respondCredentialError(c, apierror.CodeInternalCredentialRotationAbandon, perr)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
 }
 
 // RebindAccount 更換此掛載使用的憑證（PUT /assets/:id/accounts/:accountId/credential）。
@@ -995,43 +1019,10 @@ func (h *CredentialHandler) RebindAccount(c *gin.Context) {
 		respondCredentialError(c, apierror.CodeInternalCredentialRebind, err)
 		return
 	}
-	c.JSON(http.StatusOK, dto)
+	h.respondAccountRow(c, http.StatusOK, dto, apierror.CodeInternalCredentialRebind)
 }
 
 // --- 內部 ---
-
-// rotationView 組出輪替的對外形狀（成員與聚合態取不到時不因此把回應翻成失敗：
-// 那是進度的補充資訊，缺它仍答得出「這一輪是哪一輪、現在什麼狀態」）。
-func (h *CredentialHandler) rotationView(rot *model.CredentialRotation) credentialRotationDTO {
-	members, err := h.rotations.Members(rot.ID)
-	if err != nil {
-		log.Printf("[Credential] 查詢輪替成員失敗: rotation=%d err=%v", rot.ID, err)
-		members = nil
-	}
-	aggregate, err := h.rotations.AggregateState(rot.CredentialID)
-	if err != nil {
-		log.Printf("[Credential] 查詢聚合態失敗: credential=%d err=%v", rot.CredentialID, err)
-		aggregate = ""
-	}
-	out := newRotationDTO(rot, members, aggregate)
-	if rot.Status == model.CredentialRotationAbandoned {
-		unsettled, uerr := h.rotations.UnsettledRotationID(rot.CredentialID)
-		if uerr != nil {
-			log.Printf("[Credential] 查詢未收束輪替失敗: credential=%d err=%v", rot.CredentialID, uerr)
-		}
-		out.Unsettled = uerr == nil && unsettled == rot.ID
-		if out.Unsettled {
-			kept, kerr := h.rotations.CandidateKeptMembers(rot.ID)
-			if kerr != nil {
-				log.Printf("[Credential] 查詢成員候選失敗: rotation=%d err=%v", rot.ID, kerr)
-			}
-			for i := range out.Members {
-				out.Members[i].CandidateKept = kept[out.Members[i].ID]
-			}
-		}
-	}
-	return out
-}
 
 // bindingAssetID 取掛載列所屬的資產識別，供審計主體鍵注入。
 //

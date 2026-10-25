@@ -75,7 +75,7 @@ func (s *UserService) pinMappedRole(op *Operator, userID uint, roleName string) 
 	var sets RoleSets
 	// 判定與升格同交易、同鎖：鎖外預讀會讓一次併發的登入重算把來源改掉，
 	// 而本次仍以舊來源決定放行與否
-	if err := WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
+	if err := WithUserCredentialLock(s.dbFor(op), userID, func(tx *gorm.DB) error {
 		if err := authz.BeginPermissionChange(tx); err != nil {
 			return err
 		}
@@ -143,7 +143,7 @@ func (s *UserService) auditPin(tx *gorm.DB, op Operator, userID uint, roleName s
 		ResourceID: &id,
 		Status:     string(model.StatusSuccess),
 		Actor:      gatewayapi.Actor{UserID: op.UserID, Username: op.Username},
-		Request:    gatewayapi.RequestMeta{ClientIP: op.ClientIP},
+		Request:    op.RequestMeta(),
 		Details:    string(payload),
 	}); err != nil {
 		return fmt.Errorf("寫入釘住稽核失敗: %w", err)

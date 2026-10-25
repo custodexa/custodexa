@@ -211,6 +211,28 @@ describe('Dashboard', () => {
     for (const line of lines) expect(line.endsWith('：')).toBe(false)
   })
 
+  // 擋：系統告警的 rule_name 是型別鍵，首頁卡片原樣印出 self_privilege_increased 這類鍵名
+  it('首頁告警行：系統告警顯示型別名稱，不露型別鍵', async () => {
+    setUserRoles(['admin'])
+    searchAlertsMock.mockResolvedValue({
+      data: [
+        { id: 5, kind: 'system_security', rule_name: 'self_privilege_increased', reason_code: 'self_privilege_increased', command: '', severity: 'high', username: 'u5', triggered_at: '2026-10-07T01:00:00Z' },
+        { id: 6, kind: 'system_security', rule_name: 'brand_new_type', reason_code: 'brand_new_type', command: '', severity: 'low', username: 'u6', triggered_at: '2026-10-07T01:00:00Z' },
+      ],
+      total: 2,
+    })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    const lines = wrapper.findAll('.activity-main').map((n) => n.text())
+    expect(lines).toContain('替自己增加權限')
+    expect(lines).toContain('系統告警')
+    const text = wrapper.text()
+    expect(text).not.toContain('self_privilege_increased')
+    expect(text).not.toContain('brand_new_type')
+  })
+
   it('今日告警取不到時顯示「未取得」，不冒充 0', async () => {
     setUserRoles(['admin'])
     setCards({ 'today-alerts': new Error('network down') })
@@ -457,7 +479,7 @@ describe('Dashboard', () => {
     const text = wrapper.text()
     expect(text).toContain('我的申請待審')
     expect(wrapper.find('[data-card="my-pending-requests"] .stat-value').text()).toBe('2')
-    expect(text).toContain('可連資產')
+    expect(text).toContain('我的資產')
     expect(cardCalls()).not.toContain('pending-approvals')
     await wrapper.find('[data-card="my-pending-requests"]').trigger('click')
     expect(routerPushMock).toHaveBeenCalledWith({ path: '/my-requests', query: { status: 'pending' } })

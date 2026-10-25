@@ -2,6 +2,71 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.18.1 — scoped responses, clearer audit records and fixes after 1.18.0 (2026-10-26)
+
+No schema change. A 1.18.0 package deployment upgrades with `custodexa.sh upgrade 1.18.1` and
+runs no migration. A 1.14.x to 1.17.x deployment can upgrade straight to 1.18.1; that upgrade
+runs the 1.18.0 migrations, so follow "What you need to do" in the 1.18.0 notes below and
+[Upgrading to 1.18.0][1180-sop] in the upgrade SOP before you start.
+
+### What you need to do
+
+- Take a new backup after the upgrade and check that its snapshot reports `authz.refs=ok` and
+  `usable=true` before relying on it. Deleted accounts with node-scoped role assignments no
+  longer make the permission check fail. If other permission checks fail, correct what they
+  report and back up again. Backups taken before the upgrade keep the result recorded when they
+  were taken, and `restore` goes by that record ([details][1181-br-backups]).
+- Review custom roles that cannot open Alerts or Access Reviews and add the audit read
+  permission where needed.
+
+### Security
+
+- Shared credential rotation responses list only hosts within your credential viewing scope and
+  show the remaining hosts as a count.
+- Account creation, editing, binding and rebinding responses, credential-change batch targets
+  and records, and plan responses hide the names and IDs of credentials outside that scope.
+  Plan responses also show hosts outside that scope only as a count. Pending credential-change
+  candidates hide references to plans you cannot view.
+- Users with full credential visibility keep the credential details in these responses.
+- Credential detail requests are refused when the viewer's scope cannot be determined.
+- On the plans page, plans you can view have no editing controls when their targets extend
+  beyond your credential viewing scope. You can run them if you have the required rotation
+  permissions; an administrator with the viewing and management permissions for those targets
+  edits them.
+
+### Fixes
+
+- Operation log rows written when an administrator assigns, removes or rescopes a role show who
+  did it, the source address, method and path. Rows from the same request share a request ID,
+  and the log list can show all rows of one request. Role assignment rows say which role went
+  to whom, from where and over which nodes, with names instead of IDs.
+- The operation log list marks self-authorization and management grants with a label.
+- The system alert detail for a management grant names the recipient, the roles added and the
+  node scope. The dashboard and the alerts page show system alert types by name.
+- Role assignment preview, asset import preview and identity provider discovery are recorded as
+  reads.
+- The role list and role editor show an entry as partially managed when a role holds some, but
+  not all, of its management permissions.
+- The approver scope page and the minimum approvals setting no longer say that administrators
+  can always approve. A request that no approver scope covers waits until it expires.
+- A custom role can be deleted once only deleted accounts hold it.
+- Users who manage approver scopes on some nodes can delete the approver scopes on those nodes.
+- Selecting alerts or access reviews in the role editor includes the audit read permission they
+  need, and the editor points out missing dependencies.
+- The policy groups page opens read only for auditors and allows changes for users with policy
+  group management permission. The rotation evidence page opens for users who only manage its
+  schedules and shows just the schedules.
+- For users with node-scoped administration, the workspace sidebar leaves out assets visible
+  only through their management scope.
+- The Assets page and the workspace explain when your role lacks asset viewing permission, and
+  the dashboard hides the related asset and workspace cards. Labels for users without
+  system-wide access read correctly for every such user.
+- The credential detail panel scrolls as a whole, so the bound asset list no longer overlaps
+  the note below it.
+- Front-end build dependencies are updated to their fixed releases.
+
+[1181-br-backups]: docs/ops/backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments
+
 ## 1.18.0 — roles built from permissions, and administration limited to nodes (2026-10-25)
 
 Schema changes. Upgrading runs eighteen migrations. They build the new permission model, record

@@ -238,7 +238,8 @@
     "approvalPendingMessage": "Your request (#{id}) is awaiting review; you can connect once it is approved. Check its progress under My Requests.",
     "approvalNeededMessage": "This host requires a request approved by a reviewer before connecting. Go to Assets and click Request Access on this host.",
     "approvalTitle": "Approval Required",
-    "tokenFailed": "Failed to obtain connection authorization"
+    "tokenFailed": "Failed to obtain connection authorization",
+    "assetUnavailable": "This asset cannot be found, or you do not have permission to connect to it"
   },
   "policyForm": {
     "lockoutDisableConfirm": "Setting lockout attempts to 0 disables account lockout; brute-force protection falls back to audit alerts only. Disable it?",
@@ -257,6 +258,18 @@
     "restSection": "Others"
   },
   "enum": {
+    "grantMark": {
+      "self_authorization": "Self-authorization",
+      "management_grant": "Management grant"
+    },
+    "roleAssignOrigin": {
+      "api": "admin console",
+      "register": "at account creation",
+      "oidc": "first OIDC sign-in",
+      "ldap": "first directory sign-in",
+      "mapping": "external group mapping",
+      "system": "system"
+    },
     "role": {
       "admin": {
         "label": "Administrator",
@@ -684,7 +697,7 @@
       },
       "request_params": {
         "title": "Access Request Parameters",
-        "hint": "Request duration cap and pending timeout. Minimum approvals is an internal-control hardening option (dual-review convention): at 2 or more, a request only takes effect after distinct approvers approve it up to the threshold; if the threshold exceeds an asset's available approvers, the request needs admin backfill or times out"
+        "hint": "Request duration cap and pending timeout. Minimum approvals is an internal-control hardening option (dual-review convention): at 2 or more, a request only takes effect after distinct approvers approve it up to the threshold; if the threshold exceeds an asset's available approvers, the request stays pending until it times out; add an approver scope or assign approvers"
       },
       "break_glass": {
         "title": "Break-Glass and Revocation",
@@ -718,7 +731,6 @@
     "loadedOfTotal": "{loaded} loaded, {total} total",
     "valueUnavailable": "Unavailable",
     "statAssetTotal": "Total Assets",
-    "statConnectableAssets": "Connectable Assets",
     "statMyPendingRequests": "My Pending Requests",
     "statTodaySessions": "Today's Sessions",
     "statTotalSessions": "Total Session History",
@@ -745,7 +757,7 @@
     "actionWorkspace": "Open Workspace",
     "actionWorkspaceDesc": "Enter the multi-tab session workspace",
     "actionAssetsDescAdmin": "Manage SSH / RDP assets and start sessions",
-    "actionAssetsDescUser": "Browse authorized assets and start sessions",
+    "actionAssetsDescUser": "View the assets you can use or manage",
     "actionSessionsDesc": "View active sessions and play back recordings",
     "actionMyRequestsDesc": "Track access request progress and withdraw requests"
   },
@@ -1083,7 +1095,7 @@
         "external_identity_unbound_and_account_disabled": "External identity unlinked and account disabled",
         "external_user_local_login_attempt": "Externally managed account tried to sign in with a local password",
         "external_user_local_login_attempt_aggregated": "Externally managed account tried {count} more local password sign-ins within {minutes} minutes",
-        "grant_change_graded": "Authorization change graded and alerted",
+        "grant_change_graded": "This authorization change raised a system alert: {marks}",
         "group_role_mapping_create": "Group-to-role mapping rule created",
         "group_role_mapping_delete": "Group-to-role mapping rule deleted",
         "group_role_mapping_update": "Group-to-role mapping rule updated",
@@ -1108,7 +1120,7 @@
         "oidc_user_inactive": "External sign-in denied: the account is disabled: {provider}",
         "oidc_user_provisioned": "Account created automatically on first external sign-in: {provider}",
         "oidc_username_conflict": "External sign-in username matches an existing account; not linked: {provider}",
-        "role_binding_range_changed": "Changed the node scope of a role assignment (the assigned role is unchanged)",
+        "role_binding_range_changed": "Changed the scope of role \"{role}\" for {target} from {before} to {after}",
         "role_mapping_pin": "Pinned a role granted by group mapping (it no longer disappears when the external group is removed)",
         "role_update_agent_restricted_detected": "After a role change, an automation account was found holding a role that includes restricted permissions",
         "security_admin_account_operated": "Identity operation on a security administrator account",
@@ -1135,6 +1147,11 @@
       "role_mapping_groups_unknown": "Group mapping skipped at external sign-in: groups could not be read, existing mappings kept",
       "role_mapping_source_attr_unset": "Group mapping skipped at external sign-in: the source has no group attribute configured",
       "user_group_deleted": "User group \"{name}\" deleted; {revoked} authorizations revoked with it",
+      "user_group_role_assign": "Assigned role \"{role}\" to user group {target}",
+      "user_group_role_revoke": "Removed role \"{role}\" from user group {target}",
+      "user_role_assign": "Assigned role \"{role}\" to {target} ({origin})",
+      "user_role_assign_nodes": "Assigned role \"{role}\" to {target}, limited to nodes: {nodes} ({origin})",
+      "user_role_revoke": "Removed role \"{role}\" from {target} ({origin})",
       "user_group_mapping_applied": "User groups adjusted by group mapping at external sign-in",
       "credential_authorization_stop": "Credential job stopped: authorization no longer valid",
       "change_secret_authorization_stop": "Credential job stopped: authorization no longer valid",
@@ -1157,6 +1174,11 @@
       "command_alerts": "alert record",
       "recordings": "session recording",
       "session_commands": "command stream"
+    },
+    "reasonGroupTarget": "user group {name}",
+    "reasonRange": {
+      "global": "system-wide",
+      "nodes": "{nodes} ({count} nodes)"
     }
   },
   "accountSelector": {
@@ -1248,7 +1270,7 @@
       "outOfScopeNote": "The shared credential on this host is outside your scope: you cannot correct its stored value or leave shared, but you can still change the credential or remove the account."
     },
     "headerDescAdmin": "Manage remote hosts, databases, and K8s assets (SSH, RDP, VNC, MySQL, PostgreSQL, Redis, K8s)",
-    "headerDescUser": "Assets authorized to you — click Connect to start; restricted assets accept access requests",
+    "headerDescUser": "Assets you can use or manage. Assets you can connect to show Connect; assets that need approval accept access requests",
     "tagManager": "Tag Management",
     "create": "New Asset",
     "searchPlaceholder": "Name or host address",
@@ -1596,7 +1618,9 @@
     "filterCredentialPending": "Only assets needing a credential",
     "applyLinkPending": "An access request for \"{name}\" is already under review. There is no need to submit another one.",
     "applyLinkConnectable": "\"{name}\" is already available to connect. No request is needed.",
-    "applyLinkUnavailable": "Access to \"{name}\" cannot be requested from here."
+    "applyLinkUnavailable": "Access to \"{name}\" cannot be requested from here.",
+    "noAssetViewTitle": "Your roles do not include asset view permission",
+    "noAssetViewHint": "No assets are listed here. If you need to connect through the platform, ask an administrator to add the {role} role to your account."
   },
   "sessions": {
     "headerDesc": "Monitor active sessions and review history. An AI agent is an automated program acting for a person.",
@@ -1793,11 +1817,9 @@
     "filterKeyNotice": "Showing only changes to the security setting \"{setting}\"",
     "filterKeyClear": "Clear filter",
     "reason": "Reason",
-    "detailsRaw": "Details",
-    "grantMark": {
-      "self_authorization": "Self-authorization",
-      "management_grant": "Management-level grant"
-    }
+    "sameRequest": "View all records from this request",
+    "requestFilterChip": "Same request: {id}",
+    "detailsRaw": "Details"
   },
   "commands": {
     "headerDesc": "Search command and statement records across connections. Command-line entries are reconstructed from keystrokes and recordings are authoritative; query console statements are recorded when submitted.",
@@ -2092,7 +2114,8 @@
     "explainApprovalBody": "Submit an access request on the assets page first. You can connect from here after a reviewer approves it.",
     "goApply": "Request access on assets page",
     "explainClose": "Close",
-    "tabTitleConsole": "{label} (query console)"
+    "tabTitleConsole": "{label} (query console)",
+    "emptyTabsNoAssetView": "No connection is open"
   },
   "dbConsole": {
     "connecting": "Connecting...",
@@ -2688,6 +2711,7 @@
       "manage": "Can manage",
       "read": "Can view",
       "available": "Can use",
+      "partial": "Partially manage",
       "hidden": "Not granted",
       "global": "Scope is system-wide",
       "connectionSeparate": "Management rights do not grant in-platform connection rights; connection must be granted separately",
@@ -2773,10 +2797,13 @@
       "legend": "Hidden = not visible. Read-only = can look but not change. Manage = can add and edit. Available = can open and use.",
       "detailCount": "Fine-grained actions {n}/{m}",
       "detailNote": "Connection policy (whether a request or approval is needed before connecting) is not set here; it belongs to Asset Authorizations below.",
+      "partialHint": "Some management actions are selected; expand the fine-grained actions to see them. Choose Manage to select all.",
+      "detailSharedKey": "Same permission as \"{other}\"; they are selected together",
       "groupCount": {
         "manage": "{n} manage",
         "read": "{n} read-only",
         "available": "{n} available",
+        "partial": "{n} partial",
         "hidden": "{n} hidden",
         "allHidden": "All hidden ({n} items)",
         "autoShown": "{n} shown automatically"
@@ -2897,7 +2924,11 @@
       },
       "scopable": "Can be scoped",
       "nodeScopedNotice": "This role has {n} assignments limited to nodes. Newly added features that can only apply system-wide will not take effect on those assignments.",
-      "nodeScopedNoEffectNotice": "This role has {n} assignments limited to nodes. The role's permissions are not restricted by nodes, so the scope on those assignments has no effect."
+      "nodeScopedNoEffectNotice": "This role has {n} assignments limited to nodes. The role's permissions are not restricted by nodes, so the scope on those assignments has no effect.",
+      "entryNote": {
+        "alerts": "Alert records come from the same audit data as Audit logs, so choosing Read or Manage also adds the audit view permission.",
+        "access_reviews": "Review lists come from audit data, so choosing Manage also adds the audit view permission."
+      }
     },
     "assignState": {
       "protected": "Only a super administrator can assign this",
@@ -2953,7 +2984,7 @@
     "semantics1": "The approving party can be an individual or a user group: group members automatically qualify (joining grants, leaving revokes), while individuals need the approver role.",
     "semantics2": "A node scope covers its entire subtree: new assets placed under the node are automatically included.",
     "semantics3": "Requester / requester-group scopes: requests from that requester (or group members) enter the approver's queue regardless of asset, and membership changes take effect immediately.",
-    "semantics4": "Approval eligibility = matching any one scope (administrators can always approve as a backstop and can backfill to reach the minimum approvals); requesters may not approve their own requests.",
+    "semantics4": "Approval eligibility = matching any one scope. A request that matches no scope has no eligible approver until a scope is added. Management roles alone do not make someone an approver; requesters may not approve their own requests.",
     "semantics5": "Asset / node scopes also make in-scope assets visible to the approver in the asset list (visibility only, no connection rights); requester-side scopes grant no asset visibility."
   },
   "format": {
@@ -3860,6 +3891,8 @@
     "saveNotice": "Re-checked with your permissions on the next run: once saved, you become this plan's initiator, and before every run your current permissions are checked again; if they are insufficient the run stops and an alert is raised.",
     "reconfirmTitle": "Reconfirm password change scope",
     "reconfirmBody": "This credential also covers {count} hosts outside your management scope, and they will be changed as well. Other administrators are responsible for them, so they are not listed here. The plan resumes only after you confirm.",
+    "scopedReadOnly": "Partly out of scope",
+    "scopedMaskedNote": "This plan targets credentials or assets outside your scope. You can view it, run it and read its records here; changes must be made by an administrator of that scope.",
     "reconfirmButton": "Reconfirm",
     "reconfirmAck": "I understand that these {count} hosts will be changed too",
     "reconfirmSubmit": "Confirm and save",
@@ -4139,10 +4172,12 @@
       "abandon": "Abandon this round",
       "abandonHint": "Abandoning does not put the old password back on hosts that already took the new one. The credential is marked out of sync and each remaining host has to be retried.",
       "abandonHintFresh": "No host has been touched in this round yet: abandoning drops the round entirely and the credential returns to idle.",
+      "abandonHintPartial": "Abandoning does not put the old password back on hosts that already took the new one. If any host in this round has been changed, the credential is marked out of sync and each remaining host has to be retried. Hosts outside your scope are not shown here.",
       "abandonedUnsettledHint": "This round was abandoned and the hosts below are not on the new secret yet. Retrying a host uses this round's new secret; once every host is on it, the credential returns to idle.",
       "abandonTitle": "Abandon this round",
       "abandonMessage": "This abandons the current rotation. Hosts that already took the new password keep it, the credential is marked out of sync, and each remaining host still has to be retried. This cannot be undone.",
       "abandonMessageFresh": "This abandons the current rotation. No host has been touched yet, so the round is dropped entirely and the credential returns to idle. This cannot be undone.",
+      "abandonMessagePartial": "This abandons the current rotation. Hosts that already took the new password keep it. If any host in this round has been changed, the credential is marked out of sync and each remaining host still has to be retried. This cannot be undone.",
       "abandonConfirm": "Abandon",
       "abandonDone": "Round abandoned",
       "membersTitle": "Hosts ({count})",
@@ -4158,6 +4193,7 @@
       "hostIdentitySkipStopped": "Skipped {asset}: its host identity changed after the credential was sent and must be confirmed one host at a time. Press \"Retry\" on that row.",
       "hostIdentitySkipFoundOnRetry": "Skipped {asset}: the host identity was found to have changed only after the retry sent the credential, and the password was not changed this time. Press \"Retry\" on that row to confirm.",
       "membersEmpty": "This round has no hosts",
+      "outOfScopeMembers": "{count} more host(s) outside your scope are also in this round. Their progress is not shown here.",
       "versionCurrentOnly": "Current v{current}"
     },
     "assetRemoved": "(asset removed)",
@@ -7063,7 +7099,8 @@
       "recentTitle": "Recent output",
       "recentEmpty": "No reports have been produced yet.",
       "recentAll": "View all in Downloads"
-    }
+    },
+    "scheduleOnlyNote": "You can manage the automatic schedules for this report. Viewing and downloading report content requires the audit view permission."
   },
   "offsite": {
     "changeAlertNotice": "Changes like this are recorded and raise a system alert; delivery depends on the notification channel.",
@@ -7926,7 +7963,11 @@
     "saved": "Saved",
     "deleted": "Deleted",
     "requiredCode": "Please enter a code",
-    "requiredName": "Please enter a name"
+    "requiredName": "Please enter a name",
+    "readOnlyNote": "You can view policy groups and clauses. Adding, editing and confirming require the policy group management permission.",
+    "builtinHintReadOnly": "Clauses in a built-in group ship with the product, and their content cannot be edited.",
+    "statusEnabled": "In effect",
+    "statusDisabled": "Not in effect"
   },
   "clauseDialog": {
     "createTitle": "New clause",
@@ -8530,7 +8571,16 @@
       "occurredAt": "Occurred at",
       "sourceAddressLabel": "Source address",
       "deliveredAt": "delivered {time}",
-      "nextAttemptAt": "next attempt {time}"
+      "nextAttemptAt": "next attempt {time}",
+      "grantTitle": "What was granted",
+      "recipientLabel": "Recipient",
+      "recipientGroup": "User group {name}",
+      "grantedRoles": "Roles granted",
+      "scopeLabel": "Scope",
+      "scopeGlobal": "System-wide",
+      "scopeNodes": "{nodes} ({count} nodes)",
+      "scopeNodeDeleted": "Node #{id} (deleted)",
+      "targetNamed": "{name} ({kind} #{id})"
     },
     "targetKinds": {
       "asset": "Asset",

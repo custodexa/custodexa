@@ -31,14 +31,14 @@ type writeWatch struct {
 var watchedTables = []string{"group_role_mappings", "group_user_group_mappings", "user_role_mapping_rule_supports",
 	"user_group_mapping_rule_supports", "user_roles", "user_group_members", "authz_state", "audit_logs"}
 
-// isPreviewTrace 預覽路由自己的 HTTP 請求留痕（create／role，批次寫入）；服務層的授權變更審計不屬於它。
+// isPreviewTrace 預覽路由自己的 HTTP 請求留痕（read／role，批次寫入）；服務層的授權變更審計不屬於它。
 func isPreviewTrace(dest any) bool {
 	rows, ok := dest.([]*model.AuditLog)
 	if !ok || len(rows) == 0 {
 		return false
 	}
 	for _, r := range rows {
-		if r.Action != model.ActionCreate || r.Resource != model.ResourceRole || !strings.HasSuffix(r.Path, "/role-assignment-previews") {
+		if r.Action != model.ActionRead || r.Resource != model.ResourceRole || !strings.HasSuffix(r.Path, "/role-assignment-previews") {
 			return false
 		}
 	}

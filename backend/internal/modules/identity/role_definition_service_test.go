@@ -140,6 +140,27 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		// 名稱釋出：可重新使用
 		e.create(t, "viewer2", "asset:view")
 	})
+	t.Run("只剩已刪帳號的直接指派時可刪除，停用帳號仍擋", func(t *testing.T) {
+		e := newRoleDefEnv(t)
+		gone := e.create(t, "only-deleted", "asset:view")
+		kept := e.create(t, "only-disabled", "asset:view")
+		uDeleted := e.mkUser(t, "will-be-deleted")
+		uDisabled := e.mkUser(t, "disabled-holder")
+		for _, p := range []struct{ user, role uint }{{uDeleted, gone.ID}, {uDisabled, kept.ID}} {
+			require.NoError(t, e.db.Create(&model.UserRole{UserID: p.user, RoleID: p.role, Source: model.RoleSourceManual, ScopeKind: model.ScopeKindGlobal}).Error)
+		}
+		require.NoError(t, e.db.Delete(&model.User{}, uDeleted).Error)
+		require.NoError(t, e.db.Model(&model.User{}).Where("id = ?", uDisabled).Update("active", false).Error)
+		var rowsBefore int64
+		require.NoError(t, e.db.Model(&model.UserRole{}).Where("user_id = ?", uDeleted).Count(&rowsBefore).Error)
+		require.EqualValues(t, 1, rowsBefore)
+
+		require.NoError(t, e.svc.Delete(ctx, e.admin, gone.ID, 1))
+		var rowsAfter int64
+		require.NoError(t, e.db.Model(&model.UserRole{}).Where("user_id = ?", uDeleted).Count(&rowsAfter).Error)
+		assert.Equal(t, rowsBefore, rowsAfter, "角色刪除不動已刪帳號的指派列")
+		assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, kept.ID, 1), ErrRoleDefinitionInUse, "停用中的帳號仍算引用")
+	})
 	t.Run("非超管含全可指派能力者四種寫入都拒絕且內容不變", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		target := e.create(t, "t", "asset:view")

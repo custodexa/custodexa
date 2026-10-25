@@ -51,6 +51,8 @@ type AuditLogFilter struct {
 	Resource *model.AuditResource
 	Status   *model.AuditStatus
 	ClientIP *string
+	// RequestID 精確比對 request_id：同一次 HTTP 請求寫下的各列共用它。空字串視為未設。
+	RequestID *string
 	// PolicyKey 安全政策的設定鍵：只收該鍵的變更列。
 	//
 	// 變更列沒有專屬欄位存這個鍵，它記在訊息欄的 `policy=<鍵>` 前綴裡
@@ -635,6 +637,9 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	}
 	if filter.ClientIP != nil {
 		query = query.Where("client_ip = ?", *filter.ClientIP)
+	}
+	if filter.RequestID != nil && *filter.RequestID != "" {
+		query = query.Where("request_id = ?", *filter.RequestID)
 	}
 	if filter.PolicyKey != nil && *filter.PolicyKey != "" {
 		marker := policyKeyMarkerPrefix + *filter.PolicyKey

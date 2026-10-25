@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus, { ElMessage } from 'element-plus'
+import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import i18n from '@/i18n'
 import HostIdentityConfirmDialog from '@/components/HostIdentityConfirmDialog.vue'
 import CredentialRotationProgress from '@/components/credential/CredentialRotationProgress.vue'
@@ -686,5 +686,93 @@ describe('主機身分變更的成員', () => {
     await flushPromises()
     expect(retryMock).toHaveBeenCalledTimes(1)
     expect(retryMock.mock.calls[0][2]).toBe(42)
+  })
+})
+
+// 範圍化檢視者：回應只列範圍內成員，另給範圍外台數
+describe('範圍外成員的說明與放棄措辭', () => {
+  const queued = (id, accountId, name) =>
+    memberFixture({ id, account_id: accountId, asset_name: name, state: 'queued' })
+  const scoped = (members, count = 3) => rotationFixture({
+    aggregate_state: 'changing',
+    members,
+    out_of_scope_asset_count: count,
+  })
+  const outOfScope = (w) => w.find('[data-test="rotation-out-of-scope-members"]')
+
+  it('R1 範圍內有已就位與改密中成員：說明行含台數，統計與成員數只算可見的 2 台，放棄提示照舊', async () => {
+    getMock.mockResolvedValue({
+      data: scoped([
+        memberFixture({ id: 41, account_id: 1, asset_name: 'web-01', state: 'applied' }),
+        memberFixture({ id: 42, account_id: 2, asset_name: 'web-02', state: 'changing' }),
+      ]),
+    })
+    const w = await mountProgress()
+
+    expect(outOfScope(w).exists()).toBe(true)
+    expect(outOfScope(w).text()).toContain('3')
+    expect(outOfScope(w).text()).toContain('範圍外')
+    expect(w.text()).toContain('成員（2）')
+    expect(w.find('[data-test="members-empty"]').exists()).toBe(false)
+    const hint = w.find('[data-test="abandon-hint"]').text()
+    expect(hint).toBe(i18n.global.t('credentials.rotation.abandonHint'))
+    expect(hint).not.toBe(i18n.global.t('credentials.rotation.abandonHintPartial'))
+  })
+
+  it('R2 可見成員全在排隊且有範圍外成員：提示改用部分措辭，不斷言尚未改動', async () => {
+    getMock.mockResolvedValue({ data: scoped([queued(41, 1, 'web-01'), queued(42, 2, 'web-02')]) })
+    const w = await mountProgress()
+
+    const hint = w.find('[data-test="abandon-hint"]').text()
+    expect(hint).toBe(i18n.global.t('credentials.rotation.abandonHintPartial'))
+    expect(hint).not.toContain('等於沒發生過')
+    expect(outOfScope(w).exists()).toBe(true)
+  })
+
+  it('R3 同樣狀態下按放棄本輪：確認內文用部分措辭', async () => {
+    getMock.mockResolvedValue({ data: scoped([queued(41, 1, 'web-01'), queued(42, 2, 'web-02')]) })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    const w = await mountProgress()
+
+    await w.find('[data-test="abandon-rotation"]').trigger('click')
+    await flushPromises()
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(confirm.mock.calls[0][0]).toBe(i18n.global.t('credentials.rotation.abandonMessagePartial'))
+    expect(confirm.mock.calls[0][0]).not.toContain('等於沒發生過')
+    confirm.mockRestore()
+  })
+
+  it('R4 範圍內成員為零而範圍外有成員：不顯示「沒有成員」，只有說明行與部分措辭', async () => {
+    getMock.mockResolvedValue({ data: scoped([], 5) })
+    const w = await mountProgress()
+
+    expect(w.find('[data-test="members-empty"]').exists()).toBe(false)
+    expect(outOfScope(w).exists()).toBe(true)
+    expect(outOfScope(w).text()).toContain('5')
+    expect(w.find('[data-test="abandon-hint"]').text())
+      .toBe(i18n.global.t('credentials.rotation.abandonHintPartial'))
+  })
+
+  it('R5 全域檢視者（回應無此欄）：畫面與現行相同', async () => {
+    getMock.mockResolvedValue({
+      data: rotationFixture({
+        aggregate_state: 'changing',
+        members: [queued(41, 1, 'web-01'), queued(42, 2, 'web-02')],
+      }),
+    })
+    const w = await mountProgress()
+
+    expect(outOfScope(w).exists()).toBe(false)
+    expect(w.find('[data-test="abandon-hint"]').text())
+      .toBe(i18n.global.t('credentials.rotation.abandonHintFresh'))
+  })
+
+  it('無成員且無範圍外計數時，仍顯示「沒有成員」', async () => {
+    getMock.mockResolvedValue({ data: rotationFixture({ members: [] }) })
+    const w = await mountProgress()
+
+    expect(w.find('[data-test="members-empty"]').exists()).toBe(true)
+    expect(outOfScope(w).exists()).toBe(false)
   })
 })

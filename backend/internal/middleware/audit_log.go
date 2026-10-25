@@ -352,6 +352,11 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 		// 安全政策的套用預覽與草稿回饋同屬唯讀試算（寫入走 PUT 批次更新），
 		// 記成 create 會讓例行的表單試算與真正的政策變更同形，並灌大每日簽核的高危操作數
 		action = model.ActionRead
+	} else if path == "/api/v1/role-assignment-previews" || path == "/api/v1/assets/import/preview" || path == "/api/v1/oidc-providers/discovery-preview" {
+		// 角色指派試算、資產匯入預檢、身分提供者探索預覽都是唯讀試算（不寫任何狀態），
+		// 依動詞推導會被記成建立，與真正的新增同形並灌大每日簽核的高危操作數；
+		// 仍留讀取列，所有存取皆留痕的原則不變
+		action = model.ActionRead
 	}
 
 	// 提取 resource_id（從 path params）

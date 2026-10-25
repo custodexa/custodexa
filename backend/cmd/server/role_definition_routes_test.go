@@ -268,6 +268,32 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 		}
 		assert.Equal(t, authz.FixedEntries(), fixed)
 	})
+	t.Run("編輯描述每個入口帶 write_keys，列表與單筆的 summary 帶 partial", func(t *testing.T) {
+		c, out := get("IDA", "/api/v1/role-definitions/descriptors")
+		require.Equal(t, http.StatusOK, c, "%v", out)
+		entries, _ := out["entries"].([]any)
+		for i, w := range authz.EntryDescriptors() {
+			e := entries[i].(map[string]any)
+			raw, ok := e["write_keys"].([]any)
+			require.True(t, ok, "%s 缺 write_keys", w.ID)
+			var got []string
+			for _, k := range raw {
+				got = append(got, k.(string))
+			}
+			want := []string{}
+			for _, k := range authz.EntryWriteKeys(w) {
+				want = append(want, string(k))
+			}
+			assert.Equal(t, want, append([]string{}, got...), w.ID)
+		}
+		cl, list := get("S01", "/api/v1/role-definitions")
+		require.Equal(t, http.StatusOK, cl)
+		for id, row := range rows(list) {
+			sum, _ := row["summary"].(map[string]any)
+			_, has := sum["partial"].([]any)
+			assert.True(t, has, "角色 %d 的 summary 缺 partial 陣列", id)
+		}
+	})
 
 	t.Run("單筆：權限鍵、版本、摘要與缺依賴；查無回 404、非數字 ID 回 400", func(t *testing.T) {
 		c, one := get("IDA", fmt.Sprintf("/api/v1/role-definitions/%d", custom.ID))

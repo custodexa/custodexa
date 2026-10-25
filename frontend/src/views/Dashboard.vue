@@ -243,12 +243,16 @@
       :can-open-policies="can('securitypolicy:manage')"
     />
 
-    <div class="quick-actions">
+    <div
+      v-if="hasQuickActions"
+      class="quick-actions"
+    >
       <h2 class="section-title">
         {{ $t('dashboard.quickActions') }}
       </h2>
       <div class="action-grid">
         <div
+          v-if="canViewAssets"
           class="action-card"
           role="button"
           tabindex="0"
@@ -268,6 +272,7 @@
           </div>
         </div>
         <div
+          v-if="canViewAssets"
           class="action-card"
           role="button"
           tabindex="0"
@@ -422,6 +427,15 @@ const canAuditRead = computed(() => can('audit:view'))
 
 // 落點是否可進入：與側欄、路由守衛共用同一個入口規則
 const enterable = (path) => canEnter(entryMeta(path))
+// 工作區與我的資產兩張快速操作卡的資料都來自需要 asset:view 的列表
+const canViewAssets = computed(() => can('asset:view'))
+const hasQuickActions = computed(
+  () =>
+    canViewAssets.value ||
+    enterable('/sessions') ||
+    (selfService.value && (enterable('/my-connections') || enterable('/my-requests'))) ||
+    enterable('/audit-logs')
+)
 
 const GREEN = 'rgba(78, 196, 122, 0.15)'
 const AMBER = 'rgba(217, 169, 62, 0.15)'
@@ -435,7 +449,7 @@ const CARD_DEFS = [
   {
     key: 'assets', row: 'stat', path: '/assets', icon: Server, color: 'var(--ot-primary)', bg: 'var(--ot-primary-dim)',
     visible: () => can('asset:view'),
-    label: () => (showsGlobal.value ? t('dashboard.statAssetTotal') : t('dashboard.statConnectableAssets')),
+    label: () => (showsGlobal.value ? t('dashboard.statAssetTotal') : t('menu.myAssets')),
   },
   {
     key: 'my-connections', row: 'stat', path: '/my-connections', icon: Cable, color: 'var(--ot-success)', bg: GREEN,

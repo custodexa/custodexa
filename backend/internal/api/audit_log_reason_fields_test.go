@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestAuditLogListAndGetCarryReason(t *testing.T) {
 	}
 
 	gin.SetMode(gin.TestMode)
-	h := NewAuditLogHandler(audit.NewAuditLogService(&config.FeatureFlags{}))
+	h := NewAuditLogHandler(audit.NewAuditLogService(&config.FeatureFlags{}), nil)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?sort_by=created_at&sort_order=asc", nil)
@@ -92,4 +93,60 @@ func TestAuditLogListAndGetCarryReason(t *testing.T) {
 	if one["id"] != float64(retention.ID) || one["details"] == nil || one["reason_code"] != "retention_purge" {
 		t.Errorf("單筆 id=%v details=%v reason_code=%v", one["id"], one["details"], one["reason_code"])
 	}
+
+	t.Run("request_id_filter", func(t *testing.T) {
+		rows := []*model.AuditLog{
+			{CreatedAt: base.Add(2 * time.Minute), UserID: 5, Username: "ops-lee", Action: model.ActionAssign,
+				Resource: model.ResourceUserRole, Status: model.StatusSuccess, RequestID: "req-filter-a"},
+			{CreatedAt: base.Add(3 * time.Minute), UserID: 5, Username: "ops-lee", Action: model.ActionUpdate,
+				Resource: model.ResourceUser, Status: model.StatusSuccess, RequestID: "req-filter-a"},
+			{CreatedAt: base.Add(4 * time.Minute), UserID: 5, Username: "ops-lee", Action: model.ActionUpdate,
+				Resource: model.ResourceUser, Status: model.StatusSuccess, RequestID: "req-filter-b"},
+		}
+		for _, r := range rows {
+			if err := db.Create(r).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+		query := func(q string) (int, struct {
+			Data  []map[string]any `json:"data"`
+			Total int64            `json:"total"`
+		}) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs"+q, nil)
+			h.List(c)
+			var out struct {
+				Data  []map[string]any `json:"data"`
+				Total int64            `json:"total"`
+			}
+			_ = json.Unmarshal(rec.Body.Bytes(), &out)
+			return rec.Code, out
+		}
+		if code, out := query("?request_id=req-filter-a"); code != http.StatusOK || out.Total != 2 {
+			t.Fatalf("req-filter-a: code=%d total=%d, want 200/2", code, out.Total)
+		} else {
+			for _, row := range out.Data {
+				if row["request_id"] != "req-filter-a" {
+					t.Errorf("混入其他請求的列: %v", row["request_id"])
+				}
+			}
+		}
+		if code, out := query("?request_id=req-filter-b"); code != http.StatusOK || out.Total != 1 {
+			t.Fatalf("req-filter-b: code=%d total=%d, want 200/1", code, out.Total)
+		}
+		if code, out := query("?request_id=req-filter"); code != http.StatusOK || out.Total != 0 {
+			t.Fatalf("前綴不得命中（精確比對）: code=%d total=%d", code, out.Total)
+		}
+		if _, out := query(""); out.Total != 5 {
+			t.Fatalf("不帶參數應回全部 5 列，得到 %d", out.Total)
+		}
+		if _, out := query("?request_id="); out.Total != 5 {
+			t.Fatalf("空字串應忽略，得到 %d", out.Total)
+		}
+		long := strings.Repeat("x", 101)
+		if code, _ := query("?request_id=" + long); code != http.StatusBadRequest {
+			t.Fatalf("超過 100 字元應回 400，得到 %d", code)
+		}
+	})
 }

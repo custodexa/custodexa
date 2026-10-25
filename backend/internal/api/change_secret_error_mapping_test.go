@@ -77,6 +77,7 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 	batches := asset.NewChangeSecretBatchService(db, reports).WithManagementAuthorizer(allowAllCredentialManagement{}).
 		WithOwnershipScope(globalOwnershipScopeForTest{})
 
+	candidates.WithScope(unlimitedChangeSecretScope{})
 	f := &planErrorFixture{
 		db:             db,
 		sharedCredName: "共用維運帳號",
@@ -84,6 +85,7 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 			batches, nil),
 	}
 
+	f.handler.SetCredentialOutputScope(fullOutputScope{})
 	for _, spec := range []struct {
 		name, host string
 		into       *uint

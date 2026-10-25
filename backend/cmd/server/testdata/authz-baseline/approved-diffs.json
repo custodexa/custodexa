@@ -7283,7 +7283,7 @@
               "name": "user",
               "node_range_no_effect": true,
               "references": {
-                "direct": 9,
+                "direct": 8,
                 "group_bindings": 0,
                 "mapping_rules": 0
               },
@@ -7608,7 +7608,7 @@
           "total": 6
         }
       },
-      "reason": "Candidate: exact new body of this scenario after the scoped templates change."
+      "reason": "Candidate: exact new body of this scenario after the scoped templates change. Direct references no longer count assignments held by deleted accounts."
     },
     {
       "id": "CAND-B02",
@@ -8098,14 +8098,16 @@
                 },
                 {
                   "keys": [
-                    "alert:view"
+                    "alert:view",
+                    "audit:view"
                   ],
                   "name": "read"
                 },
                 {
                   "keys": [
                     "alert:view",
-                    "alert:manage"
+                    "alert:manage",
+                    "audit:view"
                   ],
                   "name": "manage"
                 }
@@ -8141,7 +8143,8 @@
                 },
                 {
                   "keys": [
-                    "accessreview:manage"
+                    "accessreview:manage",
+                    "audit:view"
                   ],
                   "name": "manage"
                 }
@@ -8382,7 +8385,7 @@
           ]
         }
       },
-      "reason": "Candidate: exact new body of this scenario after the scoped templates change."
+      "reason": "Candidate: exact new body of this scenario after the scoped templates change. The alerts and access reviews entries declare the audit read dependency in their read and manage states."
     },
     {
       "id": "CAND-B04",
@@ -8759,7 +8762,7 @@
               "name": "user",
               "node_range_no_effect": true,
               "references": {
-                "direct": 9,
+                "direct": 8,
                 "group_bindings": 0,
                 "mapping_rules": 0
               },
@@ -9084,7 +9087,7 @@
           "total": 6
         }
       },
-      "reason": "Candidate: exact new body of this scenario after the scoped templates change."
+      "reason": "Candidate: exact new body of this scenario after the scoped templates change. Direct references no longer count assignments held by deleted accounts."
     },
     {
       "id": "CAND-B10",
@@ -9574,14 +9577,16 @@
                 },
                 {
                   "keys": [
-                    "alert:view"
+                    "alert:view",
+                    "audit:view"
                   ],
                   "name": "read"
                 },
                 {
                   "keys": [
                     "alert:view",
-                    "alert:manage"
+                    "alert:manage",
+                    "audit:view"
                   ],
                   "name": "manage"
                 }
@@ -9617,7 +9622,8 @@
                 },
                 {
                   "keys": [
-                    "accessreview:manage"
+                    "accessreview:manage",
+                    "audit:view"
                   ],
                   "name": "manage"
                 }
@@ -9858,7 +9864,7 @@
           ]
         }
       },
-      "reason": "Candidate: exact new body of this scenario after the scoped templates change."
+      "reason": "Candidate: exact new body of this scenario after the scoped templates change. The alerts and access reviews entries declare the audit read dependency in their read and manage states."
     },
     {
       "id": "CAND-B12",
@@ -10235,7 +10241,7 @@
               "name": "user",
               "node_range_no_effect": true,
               "references": {
-                "direct": 9,
+                "direct": 8,
                 "group_bindings": 0,
                 "mapping_rules": 0
               },
@@ -10560,7 +10566,7 @@
           "total": 6
         }
       },
-      "reason": "Candidate: exact new body of this scenario after the scoped templates change."
+      "reason": "Candidate: exact new body of this scenario after the scoped templates change. Direct references no longer count assignments held by deleted accounts."
     },
     {
       "id": "CAND-B18",
@@ -11050,14 +11056,16 @@
                 },
                 {
                   "keys": [
-                    "alert:view"
+                    "alert:view",
+                    "audit:view"
                   ],
                   "name": "read"
                 },
                 {
                   "keys": [
                     "alert:view",
-                    "alert:manage"
+                    "alert:manage",
+                    "audit:view"
                   ],
                   "name": "manage"
                 }
@@ -11093,7 +11101,8 @@
                 },
                 {
                   "keys": [
-                    "accessreview:manage"
+                    "accessreview:manage",
+                    "audit:view"
                   ],
                   "name": "manage"
                 }
@@ -11334,7 +11343,7 @@
           ]
         }
       },
-      "reason": "Candidate: exact new body of this scenario after the scoped templates change."
+      "reason": "Candidate: exact new body of this scenario after the scoped templates change. The alerts and access reviews entries declare the audit read dependency in their read and manage states."
     },
     {
       "id": "CAND-B20",
@@ -13820,6 +13829,5062 @@
       },
       "require_all_keys": true,
       "reason": "Rebinding an account to another shared credential records the identifier of the credential it replaces in the details of its existing audit record; no record is added and every other key is unchanged."
+    },
+    {
+      "id": "AD-37a",
+      "status": "active",
+      "selector": {
+        "group": "E",
+        "subjects": ["S03", "S07"],
+        "keys": ["/policy-groups"],
+        "fields": ["menu_visible", "guard_result"]
+      },
+      "expect": { "menu_visible": true, "guard_result": "allow" },
+      "reason": "The policy groups page becomes enterable with the read permission alone; write actions on the page still require the management permission."
+    },
+    {
+      "id": "AD-38d-02",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/audit-logs",
+          "R/S03/GET /api/v1/audit-logs",
+          "R/S06/GET /api/v1/audit-logs",
+          "R/S07/GET /api/v1/audit-logs",
+          "R/S13/GET /api/v1/audit-logs"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body_edit": {
+          "item_edits": [
+            {
+              "path": "data",
+              "match": {
+                "id": 122,
+                "action": "assign",
+                "resource": "user_role"
+              },
+              "count": 1,
+              "changed": {
+                "reason_code": {
+                  "from": "generic",
+                  "to": "user_role_assign"
+                },
+                "reason_params": {
+                  "from": {
+                    "action": "assign",
+                    "resource": "user_role"
+                  },
+                  "to": {
+                    "origin": "mapping",
+                    "role": "admin",
+                    "target": "baseline-s13"
+                  }
+                }
+              }
+            },
+            {
+              "path": "data",
+              "match": {
+                "id": 116,
+                "action": "create",
+                "resource": "credential"
+              },
+              "count": 1,
+              "changed": {
+                "details": {
+                  "from": "json:{\"credential_id\":15,\"fields\":[\"password\"],\"operation\":\"create\",\"resource\":\"credential\",\"scope\":\"shared\"}",
+                  "to": "json:{\"credential_id\":15,\"fields\":[\"password\"],\"operation\":\"create\",\"ownership\":{\"kind\":\"global\"},\"resource\":\"credential\",\"scope\":\"shared\"}"
+                }
+              }
+            },
+            {
+              "path": "data",
+              "match": {
+                "id": 105,
+                "action": "offsite_profile",
+                "resource": "session"
+              },
+              "count": 1,
+              "changed": {
+                "username": {
+                  "from": "system",
+                  "to": "baseline-s01"
+                },
+                "user_id": {
+                  "from": 0,
+                  "to": 2
+                },
+                "client_ip": {
+                  "from": "",
+                  "to": "192.0.2.1"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "reason": "The audit log list gives each role assignment record a specific reason code with the role, the target and the origin as parameters, in place of the generic code with the action and resource. The earlier approved edits to other rows of the same list (operator of the off-site settings row, ownership in the shared credential creation details) are stated again so that this entry can be judged alone."
+    },
+    {
+      "id": "AD-38a-01",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "I/S01/batch-assign-roles"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/16/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":17}",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/17/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 17,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/16/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 126,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/17/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": 17,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38b-01",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "I/S01/import-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-02",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "I/S02/import-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 3,
+            "username": "baseline-s02"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-03",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "I/S03/import-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 4,
+            "username": "baseline-s03"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-04",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-05",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "execute",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"oidc_discovery_preview\",\"failure\":\"fetch_failed\",\"issuer\":\"http://127.0.0.1:46111\",\"outcome\":\"failed\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 502,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-06",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-02",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/users"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"register\",\"resource\":\"user_role\",\"role_id\":2,\"user_id\":19}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 19,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"kind\":\"human\",\"owner_user_id\":null,\"state_table\":\"user_principals\",\"user_id\":19}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "user",
+            "resource_id": 19,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 0,
+            "username": "system"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users",
+            "request_body": "json:{\"email\":\"baseline-new-user@example.com\",\"full_name\":\"Baseline New User\",\"password\":\"***MASKED***\",\"roles\":[\"user\"],\"username\":\"baseline-new-user\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 201,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-03",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/users/:id/roles/:role"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.target}/roles/auditor",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.target}/roles/auditor",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.target}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-04",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/users/:id/roles/pin"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "json:{\"role\":\"admin\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"correlation_id\":\"\\u003cnonce\\u003e\",\"event\":\"grant_change_graded\",\"grant_marks\":[\"management_grant\"],\"path\":\"pin\"}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"role_mapping_pin\",\"role\":\"admin\",\"source_after\":\"both\",\"source_before\":\"mapped\",\"user_id\":13}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Rows added or removed by earlier approved changes of the same request are stated in full so that this entry can be judged alone; every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-05",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/PUT /api/v1/user-groups/:id/role-bindings"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"role_id\":2,\"user_group_id\":1}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/user-groups/{userGroup.1}/role-bindings",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_group_role",
+            "resource_id": 1,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/user-groups/{userGroup.1}/role-bindings",
+            "request_body": "json:{\"role_ids\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user_group",
+            "resource_id": "{userGroup.1}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-06",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/PUT /api/v1/users/:id/roles"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/{user.target}/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/{user.target}/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.target}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38b-07",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S02/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 3,
+            "username": "baseline-s02"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-08",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S02/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 3,
+            "username": "baseline-s02"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-09",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S02/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 3,
+            "username": "baseline-s02"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-10",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S03/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 4,
+            "username": "baseline-s03"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-11",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S03/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 4,
+            "username": "baseline-s03"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-12",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S03/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 4,
+            "username": "baseline-s03"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-13",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S04/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 5,
+            "username": "baseline-s04"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-14",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S04/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 5,
+            "username": "baseline-s04"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-15",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S04/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 5,
+            "username": "baseline-s04"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-16",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S05/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 6,
+            "username": "baseline-s05"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-17",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S05/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 6,
+            "username": "baseline-s05"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-18",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S05/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 6,
+            "username": "baseline-s05"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-19",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-20",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "execute",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"oidc_discovery_preview\",\"failure\":\"fetch_failed\",\"issuer\":\"http://127.0.0.1:46111\",\"outcome\":\"failed\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 502,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-21",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-07",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/POST /api/v1/users"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"register\",\"resource\":\"user_role\",\"role_id\":2,\"user_id\":19}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 19,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"kind\":\"human\",\"owner_user_id\":null,\"state_table\":\"user_principals\",\"user_id\":19}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "user",
+            "resource_id": 19,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 0,
+            "username": "system"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users",
+            "request_body": "json:{\"email\":\"baseline-new-user@example.com\",\"full_name\":\"Baseline New User\",\"password\":\"***MASKED***\",\"roles\":[\"user\"],\"username\":\"baseline-new-user\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 201,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-08",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/POST /api/v1/users/:id/roles/:role"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.target}/roles/auditor",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.target}/roles/auditor",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.target}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-09",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/POST /api/v1/users/:id/roles/pin"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "json:{\"role\":\"admin\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"correlation_id\":\"\\u003cnonce\\u003e\",\"event\":\"grant_change_graded\",\"grant_marks\":[\"management_grant\"],\"path\":\"pin\"}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"role_mapping_pin\",\"role\":\"admin\",\"source_after\":\"both\",\"source_before\":\"mapped\",\"user_id\":13}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Rows added or removed by earlier approved changes of the same request are stated in full so that this entry can be judged alone; every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-10",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/PUT /api/v1/user-groups/:id/role-bindings"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"role_id\":2,\"user_group_id\":1}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/user-groups/{userGroup.1}/role-bindings",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_group_role",
+            "resource_id": 1,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/user-groups/{userGroup.1}/role-bindings",
+            "request_body": "json:{\"role_ids\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user_group",
+            "resource_id": "{userGroup.1}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-11",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S06/PUT /api/v1/users/:id/roles"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/{user.target}/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/{user.target}/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.target}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38b-22",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S07/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 8,
+            "username": "baseline-s07"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-23",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S07/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 8,
+            "username": "baseline-s07"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-24",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S07/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 8,
+            "username": "baseline-s07"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-25",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S08/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 9,
+            "username": "baseline-s08"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-26",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S08/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 9,
+            "username": "baseline-s08"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-27",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S08/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 9,
+            "username": "baseline-s08"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-28",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S09/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 10,
+            "username": "baseline-s09"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-29",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S09/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 10,
+            "username": "baseline-s09"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-30",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S09/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 10,
+            "username": "baseline-s09"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-31",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S10/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 11,
+            "username": "baseline-s10"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-32",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S10/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 11,
+            "username": "baseline-s10"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-33",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S10/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 11,
+            "username": "baseline-s10"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-34",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S12/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 15,
+            "username": "baseline-s12"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-35",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S12/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 15,
+            "username": "baseline-s12"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-36",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S12/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 15,
+            "username": "baseline-s12"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-37",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-38",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "execute",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"oidc_discovery_preview\",\"failure\":\"fetch_failed\",\"issuer\":\"http://127.0.0.1:46111\",\"outcome\":\"failed\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 502,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-39",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-12",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/POST /api/v1/users"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"register\",\"resource\":\"user_role\",\"role_id\":2,\"user_id\":19}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 19,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"kind\":\"human\",\"owner_user_id\":null,\"state_table\":\"user_principals\",\"user_id\":19}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "user",
+            "resource_id": 19,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 0,
+            "username": "system"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users",
+            "request_body": "json:{\"email\":\"baseline-new-user@example.com\",\"full_name\":\"Baseline New User\",\"password\":\"***MASKED***\",\"roles\":[\"user\"],\"username\":\"baseline-new-user\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 201,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-13",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/POST /api/v1/users/:id/roles/:role"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.target}/roles/auditor",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.target}/roles/auditor",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.target}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-14",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/POST /api/v1/users/:id/roles/pin"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "json:{\"role\":\"admin\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"correlation_id\":\"\\u003cnonce\\u003e\",\"event\":\"grant_change_graded\",\"grant_marks\":[\"self_authorization\"],\"path\":\"pin\"}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"role_mapping_pin\",\"role\":\"admin\",\"source_after\":\"both\",\"source_before\":\"mapped\",\"user_id\":13}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/users/{user.S13}/roles/pin",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.S13}",
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Rows added or removed by earlier approved changes of the same request are stated in full so that this entry can be judged alone; every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-15",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/PUT /api/v1/user-groups/:id/role-bindings"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"role_id\":2,\"user_group_id\":1}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/user-groups/{userGroup.1}/role-bindings",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_group_role",
+            "resource_id": 1,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/user-groups/{userGroup.1}/role-bindings",
+            "request_body": "json:{\"role_ids\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user_group",
+            "resource_id": "{userGroup.1}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38a-16",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S13/PUT /api/v1/users/:id/roles"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":16}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/{user.target}/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 16,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/{user.target}/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": "{user.target}",
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 13,
+            "username": "baseline-s13"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38b-40",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S14/POST /api/v1/assets/import/preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"asset:create\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/assets/import/preview",
+            "request_body": "json:{\"rows\":\"***MASKED***\",\"source\":\"form\"}",
+            "request_id": "<nonce>",
+            "resource": "asset",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 14,
+            "username": "baseline-s14"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-41",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S14/POST /api/v1/oidc-providers/discovery-preview"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"oidc:manage\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/oidc-providers/discovery-preview",
+            "request_body": "json:{\"issuer\":\"http://127.0.0.1:46111\"}",
+            "request_id": "<nonce>",
+            "resource": "oidc_provider",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 14,
+            "username": "baseline-s14"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38b-42",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S14/POST /api/v1/role-assignment-previews"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"basis\":\"all_of\",\"denial\":\"capability\",\"required\":\"role:assign\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/role-assignment-previews",
+            "request_body": "json:{\"kind\":\"***MASKED***\",\"role_ids\":\"***MASKED***\",\"user_id\":16}",
+            "request_id": "<nonce>",
+            "resource": "role",
+            "resource_id": null,
+            "status": "denied",
+            "status_code": 403,
+            "updated_at": "<time>",
+            "user_id": 14,
+            "username": "baseline-s14"
+          }
+        ]
+      },
+      "reason": "A request that only computes a preview and changes nothing is now recorded as a read instead of a create. Where the request is refused for lacking a capability, the record also carries the denial kind, the basis of the decision and the required capability in its details, as before. Every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-17",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "T/T01"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "login",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"event\":\"auth_rejected\",\"reason\":\"AUTH_TOKEN_INVALID\"}",
+            "error_msg": "",
+            "id": 126,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "GET",
+            "path": "/api/v1/audit-logs",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "auth",
+            "resource_id": null,
+            "status": "failure",
+            "status_code": 401,
+            "updated_at": "<time>",
+            "user_id": 0,
+            "username": ""
+          },
+          {
+            "action": "read",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"query\":\"page=1\\u0026page_size=1\"}",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "GET",
+            "path": "/api/v1/audit-logs",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "audit_log",
+            "resource_id": null,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 8,
+            "username": "baseline-s07"
+          },
+          {
+            "action": "revoke",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":8}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/8/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 8,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/8/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": 8,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Row content, row count and every other column are unchanged."
+    },
+    {
+      "id": "AD-38d-01",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "T/T01"
+        ],
+        "fields": [
+          "steps"
+        ]
+      },
+      "expect": {
+        "steps": [
+          {
+            "body": {
+              "data": [
+                {
+                  "action": "assign",
+                  "client_ip": "",
+                  "created_at": "<time>",
+                  "details": "json:{\"origin\":\"mapping\",\"resource\":\"user_role\",\"role_id\":1,\"user_id\":13}",
+                  "id": 122,
+                  "method": "",
+                  "path": "",
+                  "reason_code": "user_role_assign",
+                  "reason_params": {
+                    "origin": "mapping",
+                    "role": "admin",
+                    "target": "baseline-s13"
+                  },
+                  "resource": "user_role",
+                  "resource_id": 13,
+                  "status": "success",
+                  "user_id": 0,
+                  "username": "system"
+                }
+              ],
+              "page": 1,
+              "page_size": 1,
+              "total": 122
+            },
+            "name": "before",
+            "status": 200
+          },
+          {
+            "body": {
+              "disclosures": null,
+              "role_sets": {
+                "manual": [
+                  "user"
+                ],
+                "mapped": []
+              }
+            },
+            "name": "remove-auditor",
+            "status": 200
+          },
+          {
+            "error": {
+              "code": "AUTH_TOKEN_INVALID",
+              "keys": [
+                "code",
+                "error"
+              ],
+              "message": "無效或過期的 token"
+            },
+            "name": "after",
+            "status": 401
+          }
+        ]
+      },
+      "reason": "The audit log list gives each role assignment record a specific reason code with the role, the target and the origin as parameters, in place of the generic code with the action and resource. The earlier approved edits to other rows of the same list (operator of the off-site settings row, ownership in the shared credential creation details) are stated again so that this entry can be judged alone."
+    },
+    {
+      "id": "AD-38a-18",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "T/T07"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "revoke",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":1,\"user_id\":7}",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/7/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 7,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"batch_id\":0,\"initiator_id\":7,\"operation\":\"authorization_stop\",\"plan_id\":2,\"reason\":\"CHANGE_SECRET_AUTHZ_REVOKED\",\"resource\":\"change_secret_plan\"}",
+            "error_msg": "",
+            "id": 127,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "",
+            "path": "",
+            "request_body": "",
+            "request_id": "",
+            "resource": "change_secret_plan",
+            "resource_id": 2,
+            "status": "denied",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/change-secret-plans/2",
+            "request_body": "json:{\"accounts\":[\"Administrator\"],\"asset_ids\":[9],\"cron\":\"0 3 * * *\",\"enabled\":true,\"name\":\"baseline-flow-t07\"}",
+            "request_id": "<nonce>",
+            "resource": "change_secret_plan",
+            "resource_id": 2,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 7,
+            "username": "baseline-s06"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 126,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/7/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": 7,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Rows added or removed by earlier approved changes of the same request are stated in full so that this entry can be judged alone; every other column is unchanged."
+    },
+    {
+      "id": "AD-38a-19",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "T/T09"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit": [
+          {
+            "action": "assign",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":2,\"user_id\":4}",
+            "error_msg": "",
+            "id": 125,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/4/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 4,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "create",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 123,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "POST",
+            "path": "/api/v1/sessions/1/recording/token",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "recording",
+            "resource_id": 1,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 4,
+            "username": "baseline-s03"
+          },
+          {
+            "action": "revoke",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "json:{\"origin\":\"api\",\"resource\":\"user_role\",\"role_id\":3,\"user_id\":4}",
+            "error_msg": "",
+            "id": 124,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/4/roles",
+            "request_body": "",
+            "request_id": "<nonce>",
+            "resource": "user_role",
+            "resource_id": 4,
+            "status": "success",
+            "status_code": 0,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          },
+          {
+            "action": "update",
+            "asset_id": null,
+            "client_ip": "192.0.2.1",
+            "created_at": "<time>",
+            "deleted_at": null,
+            "details": "",
+            "error_msg": "",
+            "id": 126,
+            "idempotency_uuid": null,
+            "integrity_hmac": "<digest>",
+            "key_version": 1,
+            "method": "PUT",
+            "path": "/api/v1/users/4/roles",
+            "request_body": "json:{\"manual_roles\":\"***MASKED***\"}",
+            "request_id": "<nonce>",
+            "resource": "user",
+            "resource_id": 4,
+            "status": "success",
+            "status_code": 200,
+            "updated_at": "<time>",
+            "user_id": 2,
+            "username": "baseline-s01"
+          }
+        ]
+      },
+      "reason": "The audit records that the service layer writes while handling a request now carry the operator, the client address, the request method and path and the request identifier of that request, instead of the system account and empty request fields. Rows added or removed by earlier approved changes of the same request are stated in full so that this entry can be judged alone; every other column is unchanged."
+    },
+    {
+      "id": "AD-38c-01",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/role-definitions",
+          "R/S06/GET /api/v1/role-definitions",
+          "R/S13/GET /api/v1/role-definitions"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "can_define": true,
+          "data": [
+            {
+              "assignment_state": "open",
+              "builtin_key": "super_admin",
+              "definition_version": 0,
+              "description": "系統管理員，擁有所有權限",
+              "direct_mappable": true,
+              "group_bindable": true,
+              "id": 1,
+              "locked": true,
+              "management_class": true,
+              "name": "admin",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 4,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": false,
+              "summary": {
+                "assignment_trust_hint": true,
+                "available": [
+                  "roles",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "compliance_map",
+                  "instance_guard"
+                ],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [],
+                "manage": [
+                  "assets",
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "identity_sources",
+                  "sessions",
+                  "alerts",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules"
+                ],
+                "partial": [],
+                "permission_count": 52,
+                "read": [],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": [
+                  "hostkey:reset"
+                ]
+              },
+              "template_role_id": null,
+              "user_count": 4
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "user",
+              "definition_version": 0,
+              "description": "一般使用者，可以連線到已授權的資產",
+              "direct_mappable": true,
+              "group_bindable": true,
+              "id": 2,
+              "locked": true,
+              "management_class": false,
+              "name": "user",
+              "node_range_no_effect": true,
+              "references": {
+                "direct": 8,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [],
+                "partial": [],
+                "permission_count": 1,
+                "read": [
+                  "assets"
+                ],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 8
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "auditor",
+              "definition_version": 0,
+              "description": "稽核人員，可以檢視所有稽核日誌和連線記錄",
+              "direct_mappable": true,
+              "group_bindable": true,
+              "id": 3,
+              "locked": true,
+              "management_class": false,
+              "name": "auditor",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 2,
+                "group_bindings": 0,
+                "mapping_rules": 1
+              },
+              "scopable": false,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "compliance_map"
+                ],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "access_reviews",
+                  "security_policies",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [
+                  "alerts"
+                ],
+                "partial": [],
+                "permission_count": 8,
+                "read": [
+                  "assets",
+                  "sessions",
+                  "policy_groups"
+                ],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 2
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "approver",
+              "definition_version": 0,
+              "description": "審核人員，可核准/拒絕審核範圍內的連線申請",
+              "direct_mappable": true,
+              "group_bindable": false,
+              "id": 4,
+              "locked": true,
+              "management_class": false,
+              "name": "approver",
+              "node_range_no_effect": true,
+              "references": {
+                "direct": 3,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "assets",
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [],
+                "partial": [],
+                "permission_count": 0,
+                "read": [],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 3
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "asset_admin",
+              "definition_version": 1,
+              "description": "資產管理員（鎖定範本）",
+              "direct_mappable": false,
+              "group_bindable": true,
+              "id": 5,
+              "locked": true,
+              "management_class": true,
+              "name": "asset_admin",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 0,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [
+                  "assets",
+                  "change_secret"
+                ],
+                "partial": [
+                  "credentials"
+                ],
+                "permission_count": 17,
+                "read": [],
+                "scope_global_only": false,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": true,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 0
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "authz_admin",
+              "definition_version": 1,
+              "description": "授權管理員（鎖定範本）",
+              "direct_mappable": false,
+              "group_bindable": true,
+              "id": 6,
+              "locked": true,
+              "management_class": true,
+              "name": "authz_admin",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 0,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "assets",
+                  "credentials",
+                  "change_secret",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [
+                  "authorizations"
+                ],
+                "partial": [
+                  "approver_scopes"
+                ],
+                "permission_count": 3,
+                "read": [],
+                "scope_global_only": false,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": true,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 0
+            }
+          ],
+          "total": 6
+        }
+      },
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+    },
+    {
+      "id": "AD-38c-02",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/role-definitions/:id",
+          "R/S06/GET /api/v1/role-definitions/:id",
+          "R/S13/GET /api/v1/role-definitions/:id"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "builtin_key": "auditor",
+          "definition_version": 0,
+          "description": "稽核人員，可以檢視所有稽核日誌和連線記錄",
+          "id": 3,
+          "locked": true,
+          "missing_dependencies": [],
+          "name": "auditor",
+          "node_range_no_effect": false,
+          "node_scoped_binding_count": 0,
+          "permissions": [
+            "asset:view",
+            "session:view",
+            "audit:view",
+            "alert:view",
+            "alert:manage",
+            "audit:integrity_view",
+            "compliance:view",
+            "policygroup:view"
+          ],
+          "scopable": false,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [
+              "audit_logs",
+              "checkpoint_verification",
+              "compliance_map"
+            ],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "access_reviews",
+              "security_policies",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [
+              "alerts"
+            ],
+            "partial": [],
+            "permission_count": 8,
+            "read": [
+              "assets",
+              "sessions",
+              "policy_groups"
+            ],
+            "scope_global_only": true,
+            "scope_mixed_global_only": false,
+            "scope_node_selectable": false,
+            "unattributed": []
+          },
+          "template_role_id": null
+        }
+      },
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+    },
+    {
+      "id": "AD-38c-03",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/role-definitions/descriptors",
+          "R/S06/GET /api/v1/role-definitions/descriptors",
+          "R/S13/GET /api/v1/role-definitions/descriptors"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "capabilities": [
+            {
+              "id": "role_assign",
+              "key": "role:assign",
+              "requires_entry": false,
+              "scopable": false,
+              "trust_hint": true
+            },
+            {
+              "id": "access_policy_override",
+              "key": "access_policy:manage",
+              "requires_entry": false,
+              "scopable": true,
+              "trust_hint": false
+            },
+            {
+              "id": "recording_delete",
+              "key": "recording:delete",
+              "requires_entry": false,
+              "scopable": false,
+              "trust_hint": false
+            }
+          ],
+          "entries": [
+            {
+              "details": [
+                {
+                  "id": "asset.view",
+                  "key": "asset:view",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.create",
+                  "key": "asset:create",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.update",
+                  "key": "asset:update",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.delete",
+                  "key": "asset:delete",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.test",
+                  "key": "asset:test",
+                  "scopable": true
+                },
+                {
+                  "id": "asset_account.view",
+                  "key": "asset:view",
+                  "scopable": true
+                },
+                {
+                  "id": "asset_account.update",
+                  "key": "asset:update",
+                  "scopable": true
+                },
+                {
+                  "id": "node.manage",
+                  "key": "assetgroup:manage",
+                  "scopable": true
+                }
+              ],
+              "group": "asset",
+              "id": "assets",
+              "scopable": true,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "asset:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "asset:view",
+                    "asset:create",
+                    "asset:update",
+                    "asset:delete",
+                    "asset:test",
+                    "assetgroup:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "asset:create",
+                "asset:delete",
+                "asset:test",
+                "asset:update",
+                "assetgroup:manage"
+              ]
+            },
+            {
+              "details": [
+                {
+                  "id": "credential.manage",
+                  "key": "credential:manage",
+                  "scopable": false
+                },
+                {
+                  "id": "credential.view",
+                  "key": "credential:view",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.create",
+                  "key": "credential:create",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.update",
+                  "key": "credential:update",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.set_secret",
+                  "key": "credential:set-secret",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.rotate",
+                  "key": "credential:rotate",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.convert_scope",
+                  "key": "credential:convert-scope",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.detach",
+                  "key": "credential:detach",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.delete",
+                  "key": "credential:delete",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.bind",
+                  "key": "credential:bind",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.account_rotate",
+                  "key": "account:rotate",
+                  "scopable": true
+                }
+              ],
+              "group": "asset",
+              "id": "credentials",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "credential:view",
+                    "asset:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "credential:manage",
+                    "credential:view",
+                    "credential:create",
+                    "credential:update",
+                    "credential:set-secret",
+                    "credential:rotate",
+                    "credential:convert-scope",
+                    "credential:detach",
+                    "credential:delete",
+                    "credential:bind",
+                    "account:rotate",
+                    "asset:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "account:rotate",
+                "credential:bind",
+                "credential:convert-scope",
+                "credential:create",
+                "credential:delete",
+                "credential:detach",
+                "credential:manage",
+                "credential:rotate",
+                "credential:set-secret",
+                "credential:update"
+              ]
+            },
+            {
+              "details": [],
+              "group": "asset",
+              "id": "change_secret",
+              "scopable": true,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "changesecret:manage",
+                    "asset:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "changesecret:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "authorization",
+              "id": "authorizations",
+              "scopable": true,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "authorization:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "authorization:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "authorization",
+              "id": "approver_scopes",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "approverscope:manage",
+                    "approverscope:manage_applicant"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "approverscope:manage",
+                "approverscope:manage_applicant"
+              ]
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "users",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "user:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "user:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "user_groups",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "usergroup:manage",
+                    "user:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "usergroup:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "roles",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "role:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "identity_sources",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "identity_source:manage",
+                    "ldap:manage",
+                    "oidc:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "identity_source:manage",
+                "ldap:manage",
+                "oidc:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "sessions",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "session:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "session:view",
+                    "session:terminate"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "session:terminate"
+              ]
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "audit_logs",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "audit:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "checkpoint_verification",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "audit:view",
+                    "audit:integrity_view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "alerts",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "alert:view",
+                    "audit:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "alert:view",
+                    "alert:manage",
+                    "audit:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "alert:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "compliance_map",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "compliance:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "access_reviews",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "accessreview:manage",
+                    "audit:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "accessreview:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "security_policies",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "securitypolicy:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "securitypolicy:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "policy_groups",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "policygroup:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "policygroup:view",
+                    "policygroup:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "policygroup:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "key_management",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "key:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "key:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "transmission",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "transmission:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "transmission:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "offsite_storage",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "offsite:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "offsite:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "syslog",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "syslog:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "syslog:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "notification_channels",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "notification_channel:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "notification_channel:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "system_alerts",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "systemalert:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "systemalert:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "alert_rules",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "alertrule:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "alertrule:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "schedules",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "schedule:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "schedule:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "rotation_schedules",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "rotation_schedule:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "rotation_schedule:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "instance_guard",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "instanceguard:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            }
+          ],
+          "fixed_entries": [
+            "dashboard",
+            "workspace",
+            "profile",
+            "my_connections",
+            "my_requests",
+            "my_agents",
+            "approvals"
+          ]
+        }
+      },
+      "reason": "The capability descriptors gain, for each entry, the list of write capabilities it contains, so that the role editor can tell a partly covered group from a fully covered one; no existing key changes value."
+    },
+    {
+      "id": "AD-38c-04",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/role-definitions",
+          "R/S06/POST /api/v1/role-definitions",
+          "R/S13/POST /api/v1/role-definitions"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "builtin_key": null,
+          "definition_version": 1,
+          "description": "created by baseline",
+          "id": 7,
+          "locked": false,
+          "missing_dependencies": [],
+          "name": "baseline-custom-role",
+          "node_range_no_effect": false,
+          "node_scoped_binding_count": 0,
+          "permissions": [
+            "asset:view"
+          ],
+          "scopable": true,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "sessions",
+              "audit_logs",
+              "checkpoint_verification",
+              "alerts",
+              "compliance_map",
+              "access_reviews",
+              "security_policies",
+              "policy_groups",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [],
+            "partial": [],
+            "permission_count": 1,
+            "read": [
+              "assets"
+            ],
+            "scope_global_only": false,
+            "scope_mixed_global_only": false,
+            "scope_node_selectable": true,
+            "unattributed": []
+          },
+          "template_role_id": null
+        }
+      },
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+    },
+    {
+      "id": "AD-38c-05",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/role-definitions/:id/copy",
+          "R/S06/POST /api/v1/role-definitions/:id/copy",
+          "R/S13/POST /api/v1/role-definitions/:id/copy"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "builtin_key": null,
+          "definition_version": 1,
+          "description": "copied by baseline",
+          "id": 7,
+          "locked": false,
+          "missing_dependencies": [],
+          "name": "baseline-copied-role",
+          "node_range_no_effect": false,
+          "node_scoped_binding_count": 0,
+          "permissions": [
+            "alert:manage",
+            "alert:view",
+            "asset:view",
+            "audit:integrity_view",
+            "audit:view",
+            "compliance:view",
+            "policygroup:view",
+            "session:view"
+          ],
+          "scopable": false,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [
+              "audit_logs",
+              "checkpoint_verification",
+              "compliance_map"
+            ],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "access_reviews",
+              "security_policies",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [
+              "alerts"
+            ],
+            "partial": [],
+            "permission_count": 8,
+            "read": [
+              "assets",
+              "sessions",
+              "policy_groups"
+            ],
+            "scope_global_only": false,
+            "scope_mixed_global_only": true,
+            "scope_node_selectable": false,
+            "unattributed": []
+          },
+          "template_role_id": 3
+        }
+      },
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+    },
+    {
+      "id": "AD-38c-06",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/role-definitions/summary",
+          "R/S06/POST /api/v1/role-definitions/summary",
+          "R/S13/POST /api/v1/role-definitions/summary"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "missing_dependencies": [],
+          "node_range_no_effect": false,
+          "scopable": true,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "sessions",
+              "audit_logs",
+              "checkpoint_verification",
+              "alerts",
+              "compliance_map",
+              "access_reviews",
+              "security_policies",
+              "policy_groups",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [],
+            "partial": [],
+            "permission_count": 1,
+            "read": [
+              "assets"
+            ],
+            "scope_global_only": false,
+            "scope_mixed_global_only": false,
+            "scope_node_selectable": true,
+            "unattributed": []
+          }
+        }
+      },
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
     }
   ]
 }

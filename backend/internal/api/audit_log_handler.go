@@ -17,12 +17,15 @@ import (
 // AuditLogHandler 審計日誌 API Handler
 type AuditLogHandler struct {
 	auditService *audit.AuditLogService
+	// namer 原因參數的讀取期換名（角色、對象、節點）；nil 時維持識別碼
+	namer *AuditReasonNamer
 }
 
-// NewAuditLogHandler 創建審計日誌 Handler
-func NewAuditLogHandler(auditService *audit.AuditLogService) *AuditLogHandler {
+// NewAuditLogHandler 創建審計日誌 Handler；namer 為原因參數的名稱換算器（可為 nil）
+func NewAuditLogHandler(auditService *audit.AuditLogService, namer *AuditReasonNamer) *AuditLogHandler {
 	return &AuditLogHandler{
 		auditService: auditService,
+		namer:        namer,
 	}
 }
 
@@ -38,6 +41,9 @@ func (h *AuditLogHandler) RegisterRoutes(
 	auditLogs.GET("/:id", middleware.EnforceRegistry(), h.Get)
 	auditLogs.GET("/resource/:resource/:id", middleware.EnforceRegistry(), h.GetByResourceID)
 }
+
+// auditRequestIDMaxLen request_id 查詢參數的長度上限（對應 audit_logs.request_id 的欄位寬度）。
+const auditRequestIDMaxLen = 100
 
 // List 查詢審計日誌列表
 func (h *AuditLogHandler) List(c *gin.Context) {
@@ -68,6 +74,16 @@ func (h *AuditLogHandler) List(c *gin.Context) {
 
 	if clientIP := c.Query("client_ip"); clientIP != "" {
 		filter.ClientIP = &clientIP
+	}
+
+	// request_id：同一次請求寫下的全部列（精確比對；空字串忽略）。
+	// 欄位長度上限 100，超過的值不可能命中，直接回參數錯誤而不是靜默回空
+	if requestID := c.Query("request_id"); requestID != "" {
+		if len(requestID) > auditRequestIDMaxLen {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		filter.RequestID = &requestID
 	}
 
 	// key：只看某一個安全政策設定鍵的變更。稽核人員由設定名追到它的變更記錄時，
@@ -119,6 +135,7 @@ func (h *AuditLogHandler) List(c *gin.Context) {
 		return
 	}
 
+	h.namer.RenameViews(result.Data)
 	c.JSON(http.StatusOK, result)
 }
 
@@ -137,7 +154,9 @@ func (h *AuditLogHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, audit.NewAuditLogView(auditLog))
+	view := audit.NewAuditLogView(auditLog)
+	h.namer.RenameViews([]audit.AuditLogView{view})
+	c.JSON(http.StatusOK, view)
 }
 
 // GetByResourceID 查詢特定資源的審計歷史

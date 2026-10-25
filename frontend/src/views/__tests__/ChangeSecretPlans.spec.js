@@ -658,3 +658,37 @@ describe('候選清單的主機身分確認', () => {
     expect(w.vm.isHostIdentityStopped(candidateFixture({ last_error: 'CHANGE_SECRET_VERIFY_FAILED' }))).toBe(false)
   })
 })
+
+describe('範圍外目標被遮蔽的計劃', () => {
+  it('資產有被省略時顯示範圍外計數，並以唯讀取代編輯', async () => {
+    listPlansMock.mockResolvedValue({
+      data: [planFixture({ id: 5, asset_ids: '[1]', out_of_scope_asset_count: 2 })],
+    })
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-test="plan-assets-out-5"]').text()).toContain('2')
+    expect(wrapper.find('[data-test="plan-scoped-readonly-5"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain(i18n.global.t('common.edit'))
+  })
+
+  it('憑證被遮蔽（識別為 null）時整頁正常渲染且不可編輯', async () => {
+    listPlansMock.mockResolvedValue({
+      data: [
+        planFixture({
+          id: 6,
+          target_kind: 'credential',
+          target_credential_id: null,
+          credential_out_of_scope: true,
+        }),
+      ],
+    })
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-test="plan-scoped-readonly-6"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="plan-assets-out-6"]').exists()).toBe(false)
+  })
+
+  it('未遮蔽的計劃仍可編輯，不顯示唯讀標記', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-test="plan-scoped-readonly-1"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain(i18n.global.t('common.edit'))
+  })
+})

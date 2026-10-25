@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,7 +35,7 @@ func dailyReviewFullRouter(t *testing.T) (*gin.Engine, func() int64) {
 	}
 	svc := audit.NewDailyReviewService(db, policy.NewSecurityPolicyService(db), nil)
 	svc.SetClock(func() time.Time { return now })
-	h := NewDailyReviewHandler(svc)
+	h := NewDailyReviewHandler(svc, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -161,5 +162,57 @@ func TestDailyReviewDayFarFutureOnWire(t *testing.T) {
 	}
 	if code, _, _ := decodeEnvelope(t, w); code != "RULE_DAILY_REVIEW_DAY_NOT_ENDED" {
 		t.Fatalf("code = %s", code)
+	}
+}
+
+// TestDailyReviewDayRenamesRoleAssignmentReasons 擋：每日簽核單日明細的事件列沒有經名稱換算器，
+// 角色指派類原因參數以識別碼呈現。夾具列用刪除動作進入高危範圍（正式資料中這類列不在範圍內，
+// 這裡驗的是明細回應與換算器的接線）。
+func TestDailyReviewDayRenamesRoleAssignmentReasons(t *testing.T) {
+	_, db, now := setupDailyReviewRouter(t)
+	taipei, _ := time.LoadLocation("Asia/Taipei")
+	row := model.AuditLog{
+		CreatedAt: time.Date(2026, 10, 10, 3, 0, 0, 0, taipei), UserID: 9, Username: "tester",
+		Action: model.ActionDelete, Resource: model.ResourceUserRole, Status: model.StatusSuccess,
+		Details: `{"resource":"user_role","user_id":9,"role_id":3,"origin":"api","event":"role_binding_range_changed",` +
+			`"range_before":[167],"range_after":"global","range_before_count":1,"range_after_count":0}`,
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := audit.NewDailyReviewService(db, policy.NewSecurityPolicyService(db), nil)
+	svc.SetClock(func() time.Time { return now })
+	f := &fakeReasonNames{users: map[uint64]string{9: "ops-lee"}, roles: map[uint64]string{3: "asset_admin"}}
+	n, _ := newFakeNamer(f, map[uint]string{167: "SIT / ELK"})
+	h := NewDailyReviewHandler(svc, n)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/daily-reviews/days/:date", h.Day)
+	w := doJSON(r, "GET", "/daily-reviews/days/2026-10-10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("= %d (%s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Data struct {
+			HighRiskOps struct {
+				Items []struct {
+					ReasonCode   string            `json:"reason_code"`
+					ReasonParams map[string]string `json:"reason_params"`
+				} `json:"items"`
+			} `json:"high_risk_ops"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	items := body.Data.HighRiskOps.Items
+	if len(items) != 1 {
+		t.Fatalf("高危明細 %d 筆, want 1: %s", len(items), w.Body.String())
+	}
+	p := items[0].ReasonParams
+	if items[0].ReasonCode != "event.role_binding_range_changed" || p["role"] != "asset_admin" ||
+		p["target"] != "ops-lee" || p["before"] != "SIT / ELK" || p["after"] != "global" {
+		t.Errorf("明細未換名: %s %v", items[0].ReasonCode, p)
 	}
 }

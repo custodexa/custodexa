@@ -1,0 +1,28 @@
+{
+  "approver_scopes": [
+    "approverscope:manage",
+    "approverscope:manage_applicant"
+  ],
+  "assets": [
+    "asset:create",
+    "asset:delete",
+    "asset:test",
+    "asset:update",
+    "assetgroup:manage"
+  ],
+  "credentials": [
+    "account:rotate",
+    "credential:bind",
+    "credential:convert-scope",
+    "credential:create",
+    "credential:delete",
+    "credential:detach",
+    "credential:manage",
+    "credential:rotate",
+    "credential:set-secret",
+    "credential:update"
+  ],
+  "user_groups": [
+    "usergroup:manage"
+  ]
+}

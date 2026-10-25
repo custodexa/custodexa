@@ -8,7 +8,7 @@
 // 帳號綁定封在票內，前端自始至終不經手憑證。
 
 import { ref, shallowRef, computed, toValue } from 'vue'
-import { createConnectTokenWithConsent } from '@/api/connect'
+import { createConnectTokenWithConsent, resolveConnectError } from '@/api/connect'
 import { dbConsoleSocketUrl, allowsExport } from '@/api/dbConsole'
 import { resolveApiError } from '@/api/error'
 import { t } from '@/i18n'
@@ -109,7 +109,7 @@ export function useDbConsoleSocket(options = {}) {
     } catch (err) {
       status.value = DB_CONSOLE_STATUS.ERROR
       errorCode.value = err?.response?.data?.code || ''
-      statusDetail.value = resolveApiError(
+      statusDetail.value = resolveConnectError(
         err?.response?.data,
         err?.response?.status,
         t('dbConsole.tokenFailed')

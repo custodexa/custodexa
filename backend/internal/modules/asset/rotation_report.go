@@ -171,6 +171,8 @@ type AccountRow struct {
 	// CredentialName 共用＝憑證名稱；專用＝「資產名 / 帳號名」計算顯示名。
 	// 稽核據此核對共用關係，故隨報告出站；憑證識別與密文欄位一律不出站
 	CredentialName string `json:"credential_name"`
+	// CredentialID 該掛載引用的憑證識別。僅供輸出投影判定可見性，不出站
+	CredentialID uint `json:"-"`
 	// EffectiveVersionNo 該台當下用以連線的密文版本序號；0＝尚未取得任何密文
 	EffectiveVersionNo int `json:"effective_version_no"`
 

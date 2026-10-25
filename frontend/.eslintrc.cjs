@@ -1,7 +1,7 @@
 /* eslint-env node */
 module.exports = {
   root: true,
-  extends: ['plugin:vue/vue3-recommended', 'eslint:recommended'],
+  extends: ['plugin:vue/recommended', 'eslint:recommended'],
   env: {
     browser: true,
     node: true,

@@ -238,7 +238,8 @@
     "approvalPendingMessage": "你的申請（單號 #{id}）還在等候審核，核准後才能連線。進度可到「我的申請」檢視。",
     "approvalNeededMessage": "這台主機需要申請、經審核人核准後才能連線。請回「資產管理」對這台主機按「申請連線」。",
     "approvalTitle": "需要申請核准",
-    "tokenFailed": "取得連線授權失敗"
+    "tokenFailed": "取得連線授權失敗",
+    "assetUnavailable": "找不到這台資產，或你沒有它的連線權限"
   },
   "policyForm": {
     "lockoutDisableConfirm": "鎖定次數設為 0 將停用帳號鎖定，暴力破解防護僅剩稽核告警。確定要停用？",
@@ -257,6 +258,18 @@
     "restSection": "其他"
   },
   "enum": {
+    "grantMark": {
+      "self_authorization": "自我授權",
+      "management_grant": "管理類發放"
+    },
+    "roleAssignOrigin": {
+      "api": "管理介面操作",
+      "register": "建立帳號時",
+      "oidc": "OIDC 首次登入",
+      "ldap": "目錄帳號首次登入",
+      "mapping": "外部群組映射",
+      "system": "系統"
+    },
     "role": {
       "admin": {
         "label": "管理員",
@@ -684,7 +697,7 @@
       },
       "request_params": {
         "title": "連線申請參數",
-        "hint": "申請時長上限與待審逾時。最少核准人數為內控強化選項（雙人覆核慣例）：設 2 以上時，申請須由不同審核人員逐一核准達門檻才生效；門檻高於某資產的可核人數時，申請須由管理員補位或等待逾時"
+        "hint": "申請時長上限與待審逾時。最少核准人數為內控強化選項（雙人覆核慣例）：設 2 以上時，申請須由不同審核人員逐一核准達門檻才生效；門檻高於某資產的可核人數時，申請會停在待審直到逾時作廢；請補建審核範圍或指派審核人員"
       },
       "break_glass": {
         "title": "緊急連線與撤銷",
@@ -718,7 +731,6 @@
     "loadedOfTotal": "已載入 {loaded} 筆，共 {total} 筆",
     "valueUnavailable": "未取得",
     "statAssetTotal": "資產總數",
-    "statConnectableAssets": "可連資產",
     "statMyPendingRequests": "我的申請待審",
     "statTodaySessions": "今日連線",
     "statTotalSessions": "歷史連線總數",
@@ -745,7 +757,7 @@
     "actionWorkspace": "開啟工作區",
     "actionWorkspaceDesc": "進入多分頁連線工作區",
     "actionAssetsDescAdmin": "管理 SSH / RDP 資產並發起連線",
-    "actionAssetsDescUser": "瀏覽已授權的資產並發起連線",
+    "actionAssetsDescUser": "查看你可以使用或管理的資產",
     "actionSessionsDesc": "檢視進行中連線與歷史錄影回放",
     "actionMyRequestsDesc": "追蹤連線申請進度與撤回"
   },
@@ -1083,7 +1095,7 @@
         "external_identity_unbound_and_account_disabled": "解除外部身分綁定並停用帳號",
         "external_user_local_login_attempt": "外部身分帳號嘗試以本機密碼登入",
         "external_user_local_login_attempt_aggregated": "外部身分帳號 {minutes} 分鐘內又嘗試以本機密碼登入 {count} 次",
-        "grant_change_graded": "授權變更命中告警分級",
+        "grant_change_graded": "這次授權變更已建立系統告警：{marks}",
         "group_role_mapping_create": "新增群組對角色的映射規則",
         "group_role_mapping_delete": "刪除群組對角色的映射規則",
         "group_role_mapping_update": "修改群組對角色的映射規則",
@@ -1108,7 +1120,7 @@
         "oidc_user_inactive": "經 {provider} 登入被拒：帳號已停用",
         "oidc_user_provisioned": "首次外部登入，自動建立帳號：{provider}",
         "oidc_username_conflict": "外部登入的帳號名與既有帳號相同，未接管：{provider}",
-        "role_binding_range_changed": "調整角色指派的節點範圍（指派的角色不變）",
+        "role_binding_range_changed": "把 {target} 的角色「{role}」範圍由{before}改為{after}",
         "role_mapping_pin": "釘住映射賦予的角色（不再隨外部群組移除而消失）",
         "role_update_agent_restricted_detected": "角色修改後，偵測到自動化帳號持有含受限權限點的角色",
         "security_admin_account_operated": "對系統安全管理員帳號執行身分操作",
@@ -1135,6 +1147,11 @@
       "role_mapping_groups_unknown": "外部登入時未套用群組映射：這次讀不到群組資料，保留原有映射",
       "role_mapping_source_attr_unset": "外部登入時未套用群組映射：來源沒有設定群組屬性",
       "user_group_deleted": "刪除使用者群組「{name}」，連帶撤銷 {revoked} 筆授權",
+      "user_group_role_assign": "把角色「{role}」指派給使用者群組 {target}",
+      "user_group_role_revoke": "移除使用者群組 {target} 的角色「{role}」",
+      "user_role_assign": "把角色「{role}」指派給 {target}（{origin}）",
+      "user_role_assign_nodes": "把角色「{role}」指派給 {target}，限定節點：{nodes}（{origin}）",
+      "user_role_revoke": "移除 {target} 的角色「{role}」（{origin}）",
       "user_group_mapping_applied": "外部登入時依群組映射調整使用者群組",
       "credential_authorization_stop": "改密工作因授權失效停止",
       "change_secret_authorization_stop": "改密工作因授權失效停止",
@@ -1157,6 +1174,11 @@
       "command_alerts": "告警記錄",
       "recordings": "會話錄影",
       "session_commands": "指令流"
+    },
+    "reasonGroupTarget": "使用者群組 {name}",
+    "reasonRange": {
+      "global": "全系統",
+      "nodes": "{nodes}（共 {count} 個節點）"
     }
   },
   "accountSelector": {
@@ -1248,7 +1270,7 @@
       "outOfScopeNote": "這台用的共用憑證不在你的管理範圍內：不能更正登記值或脫離共用，仍可更換憑證或移除。"
     },
     "headerDescAdmin": "管理遠端主機、資料庫與 K8s 資產（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
-    "headerDescUser": "已授權給你的資產，點「連線」即可開始；受管制的資產可提出連線申請",
+    "headerDescUser": "你可以使用或管理的資產。能連線的資產會顯示「連線」；需要審核的資產可以提出申請",
     "tagManager": "標籤管理",
     "create": "新增資產",
     "searchPlaceholder": "名稱或主機位址",
@@ -1596,7 +1618,9 @@
     "filterCredentialPending": "只看待配憑證",
     "applyLinkPending": "「{name}」的連線申請正在審核中，不需要再送一次。",
     "applyLinkConnectable": "「{name}」目前已可連線，不需要申請。",
-    "applyLinkUnavailable": "「{name}」目前無法從這裡申請連線。"
+    "applyLinkUnavailable": "「{name}」目前無法從這裡申請連線。",
+    "noAssetViewTitle": "你的角色沒有資產檢視權限",
+    "noAssetViewHint": "這裡不會列出資產。需要經平台連線時，請聯絡管理員為你加上「{role}」角色。"
   },
   "sessions": {
     "headerDesc": "監控活動連線與檢視歷史記錄。AI agent 指代人操作的自動化程式。",
@@ -1793,11 +1817,9 @@
     "filterKeyNotice": "只看安全政策「{setting}」的變更",
     "filterKeyClear": "清除篩選",
     "reason": "原因",
-    "detailsRaw": "詳細資訊",
-    "grantMark": {
-      "self_authorization": "自我授權",
-      "management_grant": "管理類授權"
-    }
+    "sameRequest": "查看同一請求的全部紀錄",
+    "requestFilterChip": "同一請求：{id}",
+    "detailsRaw": "詳細資訊"
   },
   "commands": {
     "headerDesc": "跨連線搜尋指令與語句記錄。命令列的內容重組自按鍵流，以錄影回放為準；查詢主控台的語句於送出時登記。",
@@ -2092,7 +2114,8 @@
     "explainApprovalBody": "連線前要先到資產頁提出申請，審核人核准後才能從這裡連線。",
     "goApply": "前往資產頁申請",
     "explainClose": "關閉說明",
-    "tabTitleConsole": "{label}（查詢主控台）"
+    "tabTitleConsole": "{label}（查詢主控台）",
+    "emptyTabsNoAssetView": "尚未開啟任何連線"
   },
   "dbConsole": {
     "connecting": "正在建立連線...",
@@ -2688,6 +2711,7 @@
       "manage": "可管理",
       "read": "可檢視",
       "available": "可使用",
+      "partial": "部分管理",
       "hidden": "未授予",
       "global": "範圍為全系統",
       "connectionSeparate": "管理權不自動帶來平台內連線權，連線需另外授予",
@@ -2773,10 +2797,13 @@
       "legend": "隱藏＝看不到　唯讀＝只能看　管理＝可以新增與修改　可用＝可以打開使用",
       "detailCount": "細分動作 {n}／{m}",
       "detailNote": "連線政策（連線前要不要申請、要不要核准）不在這裡，屬於下方的「資產授權」。",
+      "partialHint": "已勾選部分管理動作，展開細分動作可查看；選「管理」會勾選全部",
+      "detailSharedKey": "與「{other}」是同一個權限，會一起勾選",
       "groupCount": {
         "manage": "{n} 管理",
         "read": "{n} 唯讀",
         "available": "{n} 可用",
+        "partial": "{n} 部分管理",
         "hidden": "{n} 隱藏",
         "allHidden": "全部隱藏（{n} 項）",
         "autoShown": "{n} 項自動顯示"
@@ -2897,7 +2924,11 @@
       },
       "scopable": "可限範圍",
       "nodeScopedNotice": "這個角色有 {n} 筆限定節點的指派，新加入的只能全系統生效的功能在那些指派上不會生效。",
-      "nodeScopedNoEffectNotice": "這個角色有 {n} 筆限定節點的指派；角色的權限不受節點限制，那些指派的範圍不會生效。"
+      "nodeScopedNoEffectNotice": "這個角色有 {n} 筆限定節點的指派；角色的權限不受節點限制，那些指派的範圍不會生效。",
+      "entryNote": {
+        "alerts": "告警記錄與「操作日誌」讀的是同一份稽核資料，選唯讀或管理時會一併加上稽核檢視權限。",
+        "access_reviews": "複審清單讀的是稽核資料，選管理時會一併加上稽核檢視權限。"
+      }
     },
     "assignState": {
       "protected": "只有超級管理者能指派",
@@ -2953,7 +2984,7 @@
     "semantics1": "審核方可為個人或使用者群組：群組成員自動具審核資格（入組即可審、離組即失效），個人則須具審核人員角色。",
     "semantics2": "節點範圍含整棵子樹：新資產掛入該節點下即被涵蓋。",
     "semantics3": "申請人／申請人群組範圍：該申請人（或群組成員）的申請不論資產都會進入審核方的待審，成員異動即時反映。",
-    "semantics4": "核准資格＝任一範圍命中即可核（管理員恆可核作兜底、可補位湊足最少核准人數）；申請人不得核准自己的申請。",
+    "semantics4": "核准資格＝任一範圍命中即可核；沒有任何範圍命中的申請無人可核，要補建範圍。管理角色本身不構成核准資格；申請人不得核准自己的申請。",
     "semantics5": "資產／節點範圍會讓審核方在資產列表看見範圍內資產（僅可視，不含連線權）；申請人側範圍不帶任何資產可視。"
   },
   "format": {
@@ -3860,6 +3891,8 @@
     "saveNotice": "下次執行將以你的權限重驗：儲存後，這個計畫會以你為發起者，每次執行前依你當下的權限重新檢查，權限不足時該次停止並發出告警。",
     "reconfirmTitle": "重新確認改密範圍",
     "reconfirmBody": "這個憑證另有 {count} 台不在你管理範圍內的主機也會一併改密。這些主機由其他管理者負責，這裡不列出。確認後計畫才會恢復執行。",
+    "scopedReadOnly": "部分範圍外",
+    "scopedMaskedNote": "此計劃的目標含你管理範圍外的憑證或資產，這裡只能檢視、執行與查看記錄；要修改請由該範圍的管理者處理。",
     "reconfirmButton": "重新確認",
     "reconfirmAck": "我已了解，這 {count} 台也會一併改密",
     "reconfirmSubmit": "確認並儲存",
@@ -4139,10 +4172,12 @@
       "abandon": "放棄本輪",
       "abandonHint": "放棄不會把已就位的主機改回舊密碼；憑證將標記為「不同步」，之後逐台補跑至全部就位。",
       "abandonHintFresh": "本輪還沒有任何主機被改動：放棄後這一輪等於沒發生過，憑證回到閒置。",
+      "abandonHintPartial": "放棄不會把已就位的主機改回舊密碼。本輪若已有主機被改動，憑證會標記為「不同步」，之後逐台補跑至全部就位；範圍外主機的狀態不在這裡顯示。",
       "abandonedUnsettledHint": "本輪已放棄，以下主機尚未就位。逐台補跑會沿用本輪的新秘密，全部就位後憑證回到閒置。",
       "abandonTitle": "確認放棄本輪",
       "abandonMessage": "將放棄這一輪改密。已就位的主機不會被改回舊密碼，憑證會標記為「不同步」，之後仍需逐台補跑至全部就位。此操作無法復原。",
       "abandonMessageFresh": "將放棄這一輪改密。本輪還沒有任何主機被改動，放棄後這一輪等於沒發生過，憑證回到閒置。此操作無法復原。",
+      "abandonMessagePartial": "將放棄這一輪改密。已就位的主機不會被改回舊密碼；本輪若已有主機被改動，憑證會標記為「不同步」，之後仍需逐台補跑至全部就位。此操作無法復原。",
       "abandonConfirm": "確定放棄",
       "abandonDone": "已放棄本輪",
       "membersTitle": "成員（{count}）",
@@ -4158,6 +4193,7 @@
       "hostIdentitySkipStopped": "跳過 {asset}：送出後主機身分變更過，需要逐台確認，請按該台的「補跑」。",
       "hostIdentitySkipFoundOnRetry": "跳過 {asset}：補跑送出後才發現主機身分變更過，這次沒有改密，請按該台的「補跑」確認。",
       "membersEmpty": "這一輪沒有成員",
+      "outOfScopeMembers": "另有 {count} 台你範圍外的資產也在這一輪中，這裡不列出它們的進度。",
       "versionCurrentOnly": "現行版本 v{current}"
     },
     "assetRemoved": "（資產已移除）",
@@ -7063,7 +7099,8 @@
       "recentTitle": "最近產出",
       "recentEmpty": "尚無已產出的報告。",
       "recentAll": "到下載中心查看全部"
-    }
+    },
+    "scheduleOnlyNote": "你可以管理這份報告的自動產出排程；報告內容與下載需要稽核檢視權限。"
   },
   "offsite": {
     "changeAlertNotice": "這類變更會記錄並建立系統告警，送達取決於通知通道。",
@@ -7926,7 +7963,11 @@
     "saved": "已儲存",
     "deleted": "已刪除",
     "requiredCode": "請填代號",
-    "requiredName": "請填名稱"
+    "requiredName": "請填名稱",
+    "readOnlyNote": "你可以檢視政策組與條文；新增、修改與確認需要政策組管理權限。",
+    "builtinHintReadOnly": "內建組的條文隨產品版本維護，內容不能修改。",
+    "statusEnabled": "生效中",
+    "statusDisabled": "未生效"
   },
   "clauseDialog": {
     "createTitle": "新增條文",
@@ -8530,7 +8571,16 @@
       "occurredAt": "發生時間",
       "sourceAddressLabel": "來源位址",
       "deliveredAt": "送達於 {time}",
-      "nextAttemptAt": "下次嘗試 {time}"
+      "nextAttemptAt": "下次嘗試 {time}",
+      "grantTitle": "發放內容",
+      "recipientLabel": "受領對象",
+      "recipientGroup": "使用者群組 {name}",
+      "grantedRoles": "新增的角色",
+      "scopeLabel": "範圍",
+      "scopeGlobal": "全系統",
+      "scopeNodes": "{nodes}（共 {count} 個節點）",
+      "scopeNodeDeleted": "節點 #{id}（已刪除）",
+      "targetNamed": "{name}（{kind} #{id}）"
     },
     "targetKinds": {
       "asset": "資產",

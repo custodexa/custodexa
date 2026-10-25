@@ -8,7 +8,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { listAssetAccounts } from '@/api/assetAccounts'
 import { createConnectToken, createConnectTokenWithConsent } from '@/api/connect'
-import { resetCapabilities } from '@/composables/useCapabilities'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
@@ -991,5 +991,60 @@ describe('Workspace 新增文案三語齊備', () => {
         expect(value, `${locale} 缺 ${key}`).toBeTruthy()
       }
     }
+  })
+})
+
+describe('Workspace 資產列表的可視範圍與檢視權限', () => {
+  beforeEach(() => {
+    resetSidebarEnv()
+  })
+
+  it('沒有全域資產呈現時每頁請求都帶 authorized_only', async () => {
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+    mountWorkspace()
+    await flushPromises()
+
+    expect(getAssetList).toHaveBeenCalled()
+    for (const [params] of getAssetList.mock.calls) expect(params.authorized_only).toBe(true)
+  })
+
+  it('有全域資產呈現時不帶 authorized_only', async () => {
+    setCapabilitiesForTests(['asset:view', 'ui:assets-global'])
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+    mountWorkspace()
+    await flushPromises()
+
+    expect(getAssetList).toHaveBeenCalled()
+    for (const [params] of getAssetList.mock.calls) expect(params.authorized_only).toBeUndefined()
+  })
+
+  it('沒有 asset:view：掛載與重新載入都不請求列表，顯示說明而非更新失敗', async () => {
+    setCapabilitiesForTests(['authorization:manage'])
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await wrapper.findComponent(WorkspaceAssetSidebar).vm.loadAssets()
+    await flushPromises()
+
+    expect(getAssetList).not.toHaveBeenCalled()
+    const text = wrapper.text()
+    expect(text).toContain('你的角色沒有資產檢視權限')
+    expect(text).toContain('尚未開啟任何連線')
+    expect(text).not.toContain('列表更新失敗')
+    expect(wrapper.find('[data-test="refresh-assets"]').exists()).toBe(false)
+  })
+
+  it('整頁重新整理：能力晚於掛載到達時，不先說沒有權限，到達後補讀列表', async () => {
+    resetCapabilities()
+    withAssets([{ id: 1, name: 'ssh-a', protocol: 'ssh', active: true }])
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    expect(getAssetList).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('你的角色沒有資產檢視權限')
+
+    setCapabilitiesForTests(['asset:view'])
+    await flushPromises()
+    expect(getAssetList).toHaveBeenCalledTimes(1)
+    expect(sidebarAssets(wrapper).map((a) => a.name)).toEqual(['ssh-a'])
   })
 })

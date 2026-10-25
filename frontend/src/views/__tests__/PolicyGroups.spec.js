@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessageBox } from 'element-plus'
 import PolicyGroups from '../PolicyGroups.vue'
+import { setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 政策組管理頁：政策組**所有寫入的唯一入口**。
 //
@@ -22,6 +23,8 @@ vi.stubGlobal('MutationObserver', ObserverStub)
 vi.stubGlobal('ResizeObserver', ObserverStub)
 
 const getComplianceSnapshotMock = vi.fn()
+const getPolicyGroupsMock = vi.fn()
+const getPolicyGroupMock = vi.fn()
 const getSecurityPoliciesMock = vi.fn()
 const setEnabledMock = vi.fn()
 const createGroupMock = vi.fn()
@@ -41,6 +44,8 @@ vi.mock('@/api/securityPolicies', () => ({
 }))
 
 vi.mock('@/api/policyGroups', () => ({
+  getPolicyGroups: (...a) => getPolicyGroupsMock(...a),
+  getPolicyGroup: (...a) => getPolicyGroupMock(...a),
   setPolicyGroupEnabled: (...a) => setEnabledMock(...a),
   createPolicyGroup: (...a) => createGroupMock(...a),
   renamePolicyGroup: (...a) => renameGroupMock(...a),
@@ -139,12 +144,7 @@ const CLAUSES = [
   },
 ]
 
-const snapshotResponse = () => ({
-  data: { built_at: '2026-09-09T11:15:03Z', verdicts: [], groups: [], key_count: 55 },
-  groups: GROUPS,
-  summaries: [],
-  clauses: CLAUSES,
-})
+const MANAGER_CAPS = ['policygroup:view', 'policygroup:manage', 'securitypolicy:manage']
 
 const mountPage = async () => {
   const wrapper = mount(PolicyGroups, {
@@ -162,7 +162,15 @@ const selectGroup = async (wrapper, code) => {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.setItem('user', JSON.stringify({ id: 1, username: 'admin', roles: ['admin'] }))
-  getComplianceSnapshotMock.mockResolvedValue(snapshotResponse())
+  // 合規快照端點要合規檢視權限：本頁不得依賴它，一律模擬 403
+  getComplianceSnapshotMock.mockRejectedValue(new Error('403'))
+  getPolicyGroupsMock.mockResolvedValue({ data: GROUPS })
+  getPolicyGroupMock.mockImplementation((code) =>
+    Promise.resolve({
+      data: { group: GROUPS.find((g) => g.code === code), clauses: CLAUSES.filter((c) => c.group_code === code) },
+    })
+  )
+  setCapabilitiesForTests(MANAGER_CAPS)
   getSecurityPoliciesMock.mockResolvedValue({
     data: [{ key: 'password_min_length', label: '密碼最小長度', type: 'int' }],
   })
@@ -231,12 +239,12 @@ describe('PolicyGroups 組卡', () => {
 
   it('點重新整理會重新載入政策組與條文', async () => {
     const wrapper = await mountPage()
-    expect(getComplianceSnapshotMock).toHaveBeenCalledTimes(1)
+    expect(getPolicyGroupsMock).toHaveBeenCalledTimes(1)
 
     await wrapper.find('[data-test="policy-groups-refresh"]').trigger('click')
     await flushPromises()
 
-    expect(getComplianceSnapshotMock).toHaveBeenCalledTimes(2)
+    expect(getPolicyGroupsMock).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -349,5 +357,68 @@ describe('PolicyGroups 備註與人工確認', () => {
       '8.3.9',
       '已於年度風險分析中決定'
     )
+  })
+})
+
+describe('PolicyGroups 資料來源與唯讀呈現', () => {
+  const WRITE_SELECTORS = [
+    '.create-group', '.group-rename', '.group-delete', '.add-clause',
+    '.clause-note', '.clause-confirm', '.clause-edit', '.clause-delete',
+  ]
+
+  it('只持政策組檢視：只讀政策組端點，不碰合規快照與設定清單', async () => {
+    setCapabilitiesForTests(['policygroup:view'])
+    const wrapper = await mountPage()
+
+    expect(getPolicyGroupsMock).toHaveBeenCalledTimes(1)
+    expect(getPolicyGroupMock).toHaveBeenCalledTimes(GROUPS.length)
+    expect(getComplianceSnapshotMock).not.toHaveBeenCalled()
+    expect(getSecurityPoliciesMock).not.toHaveBeenCalled()
+    expect(wrapper.findAll('.group-card').length).toBe(2)
+    expect(wrapper.text()).toContain('密碼複雜度')
+  })
+
+  it('系統安全管理員組合（無合規檢視）讀得到組與條文，並讀設定清單', async () => {
+    const wrapper = await mountPage()
+
+    expect(getComplianceSnapshotMock).not.toHaveBeenCalled()
+    expect(getSecurityPoliciesMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('.group-card').length).toBe(2)
+    expect(wrapper.text()).toContain('密碼複雜度')
+  })
+
+  it('寫入成功後重讀仍走政策組端點', async () => {
+    const wrapper = await mountPage()
+    await wrapper.vm.toggleEnabled(GROUPS[0], false)
+    await flushPromises()
+
+    expect(getPolicyGroupsMock).toHaveBeenCalledTimes(2)
+    expect(getComplianceSnapshotMock).not.toHaveBeenCalled()
+  })
+
+  it('只持檢視：寫入動作不在 DOM，顯示唯讀說明、唯讀版內建說明與狀態標籤', async () => {
+    setCapabilitiesForTests(['policygroup:view'])
+    const wrapper = await mountPage()
+    await selectGroup(wrapper, 'pci_dss_4_0_1')
+
+    for (const sel of WRITE_SELECTORS) expect(wrapper.find(sel).exists(), sel).toBe(false)
+    expect(wrapper.find('.el-switch').exists()).toBe(false)
+    expect(wrapper.find('[data-test="policy-groups-readonly-note"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('內容不能修改')
+    expect(wrapper.text()).not.toContain('可以加備註或做人工確認')
+    expect(wrapper.findAll('.group-status').length).toBe(2)
+    expect(wrapper.text()).toContain('生效中')
+  })
+
+  it('持檢視與管理：按鈕與開關齊全，沒有唯讀說明與狀態標籤', async () => {
+    const wrapper = await mountPage()
+    await selectGroup(wrapper, 'pci_dss_4_0_1')
+
+    expect(wrapper.find('.create-group').exists()).toBe(true)
+    expect(wrapper.find('.el-switch').exists()).toBe(true)
+    expect(wrapper.find('.clause-note').exists()).toBe(true)
+    expect(wrapper.find('[data-test="policy-groups-readonly-note"]').exists()).toBe(false)
+    expect(wrapper.findAll('.group-status').length).toBe(0)
+    expect(wrapper.text()).toContain('可以加備註或做人工確認')
   })
 })

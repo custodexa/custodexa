@@ -21,6 +21,8 @@ import {
   isDegradedAlert,
   isDegradedRow,
   isQualifiedRow,
+  alertLineText,
+  alertRuleText,
 } from '../command-degrade'
 import zhTW from '@/i18n/locales/zh-TW.json'
 import enUS from '@/i18n/locales/en-US.json'
@@ -214,5 +216,27 @@ describe('查譯與旗標', () => {
     // 存量資料沒有這兩欄，兩者皆為否
     expect(isDegradedRow({ command: 'ls' })).toBe(false)
     expect(isQualifiedRow({ command: 'ls' })).toBe(false)
+  })
+})
+
+describe('系統告警的型別名稱', () => {
+  const row = (reason) => ({ kind: 'system_security', rule_name: reason, reason_code: reason, command: '' })
+
+  it('已知型別：行文字與規則欄都回型別名稱，不含底線鍵名', () => {
+    expect(alertLineText(row('self_privilege_increased'))).toBe('替自己增加權限')
+    expect(alertRuleText(row('self_privilege_increased'))).toBe('替自己增加權限')
+    expect(alertLineText(row('management_role_granted'))).toBe('發放管理類角色給他人')
+  })
+
+  it('未知型別退回「系統告警」，不露鍵名', () => {
+    for (const fn of [alertLineText, alertRuleText]) {
+      const text = fn(row('brand_new_type'))
+      expect(text).toBe('系統告警')
+      expect(text).not.toContain('brand_new_type')
+    }
+  })
+
+  it('規則類告警不受影響', () => {
+    expect(alertLineText({ kind: 'rule', rule_name: '危險刪除', command: 'rm -rf /' })).toBe('危險刪除：rm -rf /')
   })
 })

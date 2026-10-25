@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -59,6 +60,28 @@ func (s *CredentialService) scopeView(ctx context.Context) (CredentialScopeView,
 		return nil, nil
 	}
 	return s.scope.CredentialScopeView(ctx)
+}
+
+// requireFullWhenUnscoped 詳情與刪除路徑的 fail closed 防線：scopeView 回 nil 時，只有正面判定為全量檢視者
+// 才可輸出完整內容。授權通過之後、算檢視之前主體可能被撤掉最後一筆節點指派，此時 nil 不代表「不收窄」，
+// 回完整掛載清單會帶出原本看不到的範圍外資訊。範圍來源同時提供輸出判定時才驗；未提供者（未組裝的單元夾具）
+// 維持原行為。
+func (s *CredentialService) requireFullWhenUnscoped(ctx context.Context, view CredentialScopeView) error {
+	if view != nil || s.scope == nil {
+		return nil
+	}
+	src, ok := s.scope.(CredentialOutputScopeSource)
+	if !ok {
+		return nil
+	}
+	out, err := src.CredentialOutputScope(ctx)
+	if err != nil {
+		return err
+	}
+	if out == nil || !out.Full() {
+		return fmt.Errorf("%w: 檢視範圍已變更，無法輸出完整內容", ErrCredentialAuthzUnavailable)
+	}
+	return nil
 }
 
 // CredentialOwnershipDTO 回應中的管理歸屬。

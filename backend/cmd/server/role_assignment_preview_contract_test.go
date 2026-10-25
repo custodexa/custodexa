@@ -124,7 +124,7 @@ func strs(v any) []string {
 }
 
 // preview 以超管呼叫預覽路由，並斷言它沒有改動任何授權資料：指派、成員、權限版本、授權變更服務審計與
-// 系統告警都不增；預覽路由既有的 HTTP 請求留痕（create／role）照舊恰增一列。
+// 系統告警都不增；預覽路由既有的 HTTP 請求留痕（read／role）照舊恰增一列。
 func (w *contractWorld) preview(body map[string]any) map[string]any {
 	return w.previewAs("S01", body)
 }
@@ -150,7 +150,7 @@ func (w *contractWorld) previewAs(subj string, body map[string]any) map[string]a
 	assert.Equal(w.t, before.auditAll+1, after.auditAll, "預覽路由既有的請求留痕恰增一列")
 	var last model.AuditLog
 	require.NoError(w.t, w.env.db.Order("id DESC").First(&last).Error)
-	assert.Equal(w.t, model.ActionCreate, last.Action)
+	assert.Equal(w.t, model.ActionRead, last.Action)
 	assert.Equal(w.t, model.ResourceRole, last.Resource)
 	w.assertNoAssetsRoute(out)
 	return out

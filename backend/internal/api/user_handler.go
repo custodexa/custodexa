@@ -88,16 +88,30 @@ func markProtectedAccountRefusal(c *gin.Context, err error, event string) {
 	}
 }
 
-func operatorOf(c *gin.Context) identity.Operator {
+// operatorFromRequest 由目前請求組出帶操作者的服務入口所需的操作者：身分、來源 IP，
+// 以及這次請求的方法、路徑與 request_id（同一次請求寫下的各筆審計列靠它串起來）。
+func operatorFromRequest(c *gin.Context) identity.Operator {
 	a := identityActor(c)
-	return identity.Operator{UserID: a.UserID, Username: a.Username, ClientIP: a.ClientIP}
+	op := identity.Operator{UserID: a.UserID, Username: a.Username, ClientIP: a.ClientIP}
+	if c.Request != nil {
+		op.Method = c.Request.Method
+		if c.Request.URL != nil {
+			op.Path = c.Request.URL.Path
+		}
+	}
+	if v, ok := c.Get("request_id"); ok {
+		if id, ok := v.(string); ok {
+			op.RequestID = id
+		}
+	}
+	return op
 }
 
 // scope 為請求帶了範圍或節點欄位：帶操作者入口交給關卡裁決；沒有關卡入口的服務一律在此拒絕，
 // 不讓節點請求以全域寫入。
 func (h *UserHandler) createUser(c *gin.Context, req *identity.CreateUserRequest, scope bool) (*model.User, error) {
 	if g, ok := h.userService.(guardedUserWrites); ok {
-		return g.CreateBy(operatorOf(c), req, identity.DirectAssignOptions{ScopeRequested: scope})
+		return g.CreateBy(operatorFromRequest(c), req, identity.DirectAssignOptions{ScopeRequested: scope})
 	}
 	if scope {
 		return nil, identity.ErrRoleBindingScopeUnsupported
@@ -107,7 +121,7 @@ func (h *UserHandler) createUser(c *gin.Context, req *identity.CreateUserRequest
 
 func (h *UserHandler) addRole(c *gin.Context, userID uint, roleName string, scope bool) error {
 	if g, ok := h.userService.(guardedUserWrites); ok {
-		return g.AddRoleBy(operatorOf(c), userID, roleName, identity.DirectAssignOptions{ScopeRequested: scope})
+		return g.AddRoleBy(operatorFromRequest(c), userID, roleName, identity.DirectAssignOptions{ScopeRequested: scope})
 	}
 	if scope {
 		return identity.ErrRoleBindingScopeUnsupported
@@ -117,7 +131,7 @@ func (h *UserHandler) addRole(c *gin.Context, userID uint, roleName string, scop
 
 func (h *UserHandler) assignRoles(c *gin.Context, userID uint, roleNames []string, scope bool, nodes map[string]identity.RoleNodesValue) (*identity.RoleAssignResult, error) {
 	if g, ok := h.userService.(guardedUserWrites); ok {
-		return g.AssignRolesBy(operatorOf(c), userID, roleNames, identity.DirectAssignOptions{ScopeRequested: scope, RoleNodes: nodes})
+		return g.AssignRolesBy(operatorFromRequest(c), userID, roleNames, identity.DirectAssignOptions{ScopeRequested: scope, RoleNodes: nodes})
 	}
 	if scope || len(nodes) > 0 {
 		return nil, identity.ErrRoleBindingScopeUnsupported
@@ -385,7 +399,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	// 調用服務
 	var summary identity.DeletedUserSummary
 	if g, ok := h.userService.(guardedAccountLifecycle); ok {
-		summary, err = g.DeleteWithSummaryBy(operatorOf(c), uint(id))
+		summary, err = g.DeleteWithSummaryBy(operatorFromRequest(c), uint(id))
 	} else {
 		summary, err = h.userService.DeleteWithSummary(uint(id))
 	}
@@ -543,7 +557,7 @@ func (h *UserHandler) PinRole(c *gin.Context) {
 	}
 	var sets *identity.RoleSets
 	if g, ok := h.userService.(guardedPin); ok {
-		sets, err = g.PinMappedRoleBy(operatorOf(c), uint(id), req.Role)
+		sets, err = g.PinMappedRoleBy(operatorFromRequest(c), uint(id), req.Role)
 	} else {
 		sets, err = h.userService.PinMappedRole(uint(id), req.Role)
 	}
@@ -625,7 +639,7 @@ func (h *UserHandler) UpdateStatus(c *gin.Context) {
 
 	// 調用服務
 	if g, ok := h.userService.(guardedAccountLifecycle); ok {
-		err = g.UpdateStatusBy(operatorOf(c), uint(id), *req.Active)
+		err = g.UpdateStatusBy(operatorFromRequest(c), uint(id), *req.Active)
 	} else {
 		err = h.userService.UpdateStatus(uint(id), *req.Active)
 	}
@@ -688,7 +702,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 
 	// 調用服務
 	if g, ok := h.userService.(guardedAccountOps); ok {
-		err = g.ChangePasswordBy(operatorOf(c), uint(id), req.Password)
+		err = g.ChangePasswordBy(operatorFromRequest(c), uint(id), req.Password)
 	} else {
 		err = h.userService.ChangePassword(uint(id), req.Password)
 	}
@@ -932,7 +946,7 @@ func (h *UserHandler) BindExternalIdentity(c *gin.Context) {
 
 	var dto *identity.ExternalIdentityDTO
 	if g, ok := h.userService.(guardedAccountOps); ok {
-		dto, err = g.BindExternalIdentityBy(operatorOf(c), uint(id), req.ProviderID, req.Subject)
+		dto, err = g.BindExternalIdentityBy(operatorFromRequest(c), uint(id), req.ProviderID, req.Subject)
 	} else {
 		dto, err = h.userService.BindExternalIdentity(uint(id), req.ProviderID, req.Subject, identityActor(c))
 	}
@@ -951,7 +965,7 @@ func (h *UserHandler) UnbindExternalIdentity(c *gin.Context) {
 	}
 	var err error
 	if g, ok := h.userService.(guardedAccountOps); ok {
-		err = g.UnbindExternalIdentityBy(operatorOf(c), userID, identityID)
+		err = g.UnbindExternalIdentityBy(operatorFromRequest(c), userID, identityID)
 	} else {
 		err = h.userService.UnbindExternalIdentity(userID, identityID, identityActor(c))
 	}
@@ -970,7 +984,7 @@ func (h *UserHandler) UnbindExternalIdentityAndDisable(c *gin.Context) {
 	}
 	var err error
 	if g, ok := h.userService.(guardedAccountOps); ok {
-		err = g.UnbindExternalIdentityAndDisableBy(operatorOf(c), userID, identityID)
+		err = g.UnbindExternalIdentityAndDisableBy(operatorFromRequest(c), userID, identityID)
 	} else {
 		err = h.userService.UnbindExternalIdentityAndDisable(userID, identityID, identityActor(c))
 	}

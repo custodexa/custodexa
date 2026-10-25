@@ -275,6 +275,15 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | `licenses/GPL-3.0.txt` | 第 3 節映像內的 GPL-3.0-or-later 元件 | `https://www.gnu.org/licenses/gpl-3.0.txt` | `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986` |
 | `licenses/LGPL-2.1.txt` | 第 3 節映像內的 LGPL-2.0-or-later／LGPL-2.1-or-later 元件 | Debian 12 `/usr/share/common-licenses/LGPL-2.1`（FSF 原文） | `dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551` |
 | `licenses/LGPL-3.0.txt` | 第 3 節映像內的 LGPL-3.0-or-later 元件 | Debian 12 `/usr/share/common-licenses/LGPL-3`（FSF 原文） | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` |
+| `licenses/OFL-1.1.txt` | 隨後端程式編入的 Noto Sans CJK TC 字型（OFL-1.1） | `backend/assets/fonts/OFL.txt`（字型專案隨附的 OFL 1.1 正文） | `6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2` |
+
+隨產品散布的字型檔不在第 1 節的掃描範圍內，另列如下：
+
+| 元件 | 授權 | 來源 | 授權正文位置 |
+|---|---|---|---|
+| Noto Sans CJK TC（`backend/assets/fonts/NotoSansCJKtc-Regular.ttf`） | OFL-1.1 | `https://github.com/notofonts/noto-cjk` | `licenses/OFL-1.1.txt` |
+
+字型以 `go:embed` 編入後端程式，OFL 要求授權正文隨字型一併散布，故 OFL 正文以 `licenses/OFL-1.1.txt` 隨映像散布。
 
 `AGPL-3.0-only` 的正文即本專案自身的 [LICENSE](LICENSE)，不另置副本。
 

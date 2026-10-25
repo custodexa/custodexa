@@ -229,7 +229,7 @@ const loadOptions = async () => {
     const ugroups = (ugroupRes.data || []).map((g) => ({ id: g.id, label: g.name }))
     options.subject_group = ugroups
     options.actor_group = ugroups
-    // 審核方個人：排除 admin（恆可核，配範圍無意義）與 auditor（稽核與審批職能衝突）；
+    // 審核方個人：排除 admin 與 auditor：超級管理者本身不構成審核資格，稽核與審批職能衝突；
     // 未具 approver 角色者標註代配（一站式）
     options.actor_user = users
       .filter((u) => {

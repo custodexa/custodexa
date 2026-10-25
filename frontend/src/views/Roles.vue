@@ -392,7 +392,7 @@ const entryLabel = (id) => (te(`roles.editor.entry.${id}`) ? t(`roles.editor.ent
 const summaryLines = (row) => {
   const s = row.summary || {}
   const lines = []
-  for (const kind of ['manage', 'read', 'available']) {
+  for (const kind of ['manage', 'partial', 'read', 'available']) {
     const ids = s[kind] || []
     if (ids.length) {
       lines.push({ kind, label: `${t(`roles.summary.${kind}`)}：`, text: ids.map(entryLabel).join('、') })

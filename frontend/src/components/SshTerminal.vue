@@ -142,7 +142,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { LoaderCircle } from 'lucide-vue-next'
-import { createConnectTokenWithConsent } from '@/api/connect'
+import { createConnectTokenWithConsent, resolveConnectError } from '@/api/connect'
 import '@xterm/xterm/css/xterm.css'
 import { xtermTheme } from '@/styles/terminal-theme'
 import { t } from '@/i18n'
@@ -346,7 +346,7 @@ async function connect() {
   } catch (err) {
     console.error('[SshTerminal] 取得連線 token 失敗:', err)
     status.value = 'error'
-    statusDetail.value = resolveApiError(
+    statusDetail.value = resolveConnectError(
       err.response?.data,
       err.response?.status,
       t('sshTerminal.tokenFailed')

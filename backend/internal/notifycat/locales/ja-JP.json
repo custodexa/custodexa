@@ -148,7 +148,7 @@
   "management_role_granted": {
     "default": {
       "title": "管理系ロールが付与されました",
-      "text": "{actor} が管理系ロール {role_name} を {recipient} に付与しました（{path}）[；範囲：{scope_summary}]（レベル：{severity}）。"
+      "text": "{actor} が管理系ロール {role_name} を {recipient} に付与しました（{path}）[；範囲：{scope_summary}][（ノード {scope_node_ids}、計 {scope_node_count} 件）]（レベル：{severity}）。"
     }
   },
   "retention_shortened": {

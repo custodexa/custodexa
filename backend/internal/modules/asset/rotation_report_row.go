@@ -83,6 +83,7 @@ func (b *RotationReportBuilder) buildRow(acc *model.AssetAccount, asset *model.A
 		// 共用標記取自憑證範圍：共用關係的真相在憑證本身，不由任何隱性群組識別推導
 		SharedCredential:   snap.Shared,
 		CredentialName:     snap.Name,
+		CredentialID:       snap.CredentialID,
 		EffectiveVersionNo: snap.EffectiveVersionNo,
 		LastRecordStatus:   lastRecord[acc.ID],
 		CandidateState:     CandidateNone,

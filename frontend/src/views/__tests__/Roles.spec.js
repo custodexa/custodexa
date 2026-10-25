@@ -88,6 +88,14 @@ describe('Roles 角色列表', () => {
     expect(w.get('[data-test="roles-section-builtin"]').text()).not.toContain('ops-custom')
   })
 
+  it('摘要出現「部分管理：資產管理」，且排在可檢視之前', async () => {
+    const w = await load(fixture(true, { manage: [], partial: ['assets'], read: ['sessions'], available: [], hidden: [] }))
+    const text = w.get('[data-test="role-summary-10"]').text()
+    const partialLine = `${t('roles.summary.partial')}：${t('roles.editor.entry.assets')}`
+    expect(text).toContain(partialLine)
+    expect(text.indexOf(partialLine)).toBeLessThan(text.indexOf(`${t('roles.summary.read')}：`))
+  })
+
   it('可用的功能欄由 summary 產生：改 summary 即改變顯示，改角色名不改變', async () => {
     const w1 = await load(fixture())
     const base = w1.get('[data-test="role-summary-10"]').text()

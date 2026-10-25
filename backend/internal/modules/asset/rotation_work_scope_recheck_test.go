@@ -58,9 +58,12 @@ func TestRotationWorkScopeRecheck(t *testing.T) {
 		require.NoError(t, err)
 		cands.WithScope(e.scope)
 		h := api.NewChangeSecretHandler(nil, nil, cands, nil, e.svc, nil)
+		h.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 		legacyCands, err := asset.NewChangeSecretCandidateService(e.db, rwNoCodec{}, nil, nil)
 		require.NoError(t, err)
+		legacyCands.WithScope(e.scope)
 		legacy := api.NewChangeSecretHandler(nil, nil, legacyCands, nil, e.svc, nil)
+		legacy.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 
 		mk := func(key string) model.ChangeSecretCandidate {
 			c := model.ChangeSecretCandidate{AccountID: e.acc[key+"/postgres"], AssetID: e.assets[key],
@@ -131,9 +134,12 @@ func TestRotationWorkScopeRecheck(t *testing.T) {
 		require.NoError(t, err)
 		cands.WithScope(e.scope)
 		h := api.NewChangeSecretHandler(nil, nil, cands, nil, e.svc, nil)
+		h.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 		legacyCands, err := asset.NewChangeSecretCandidateService(e.db, rwNoCodec{}, nil, audit.NewTxSink())
 		require.NoError(t, err)
+		legacyCands.WithScope(e.scope)
 		legacy := api.NewChangeSecretHandler(nil, nil, legacyCands, nil, e.svc, nil)
+		legacy.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 
 		mk := func(key string) model.ChangeSecretCandidate {
 			c := model.ChangeSecretCandidate{AccountID: e.acc[key+"/postgres"], AssetID: e.assets[key],
@@ -211,6 +217,7 @@ func TestRotationWorkScopeRecheck(t *testing.T) {
 		require.NoError(t, err)
 		cands.WithScope(e.scope)
 		h := api.NewChangeSecretHandler(nil, nil, cands, nil, e.svc, nil)
+		h.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 		probe := e.account(e.assets["bs-out-1"], "emptyprobe", 0)
 		out := model.ChangeSecretCandidate{AccountID: probe, AssetID: e.assets["bs-out-1"], AccountUsername: "emptyprobe",
 			SecretType: model.ChangeSecretTypePassword, AttemptCount: 1, NextAttemptAt: time.Now().Add(time.Hour)}

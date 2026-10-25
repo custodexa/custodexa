@@ -60,6 +60,7 @@ func (e *saEnv) accountRouter(uid uint, scoped bool) *gin.Engine {
 		WithManagementAuthorizer(fieldCapManagementAuthorizer{env: e.fieldCapEnv}).WithSystemAlertSink(noopAlertSink{}).
 		WithAccountWriteScope(authz.NewAssetWriteScope(e.eval))
 	h := api.NewAssetAccountHandler(svc, e.authzSvc)
+	h.SetAccountCredentialScope(authz.NewCredentialScopeReader(e.eval, e.db))
 	var visible gin.HandlerFunc = middleware.RequireAssetVisible(e.authzSvc)
 	if scoped {
 		src := authz.NewAssetScopeReader(e.eval, e.db)

@@ -51,3 +51,20 @@ func (s *UserService) RoleAssignmentRoleNames(ids []uint64) (map[uint64]string, 
 	}
 	return out, nil
 }
+
+// RoleAssignmentGroupNames 依識別批次取使用者群組名（同上，含軟刪）
+func (s *UserGroupService) RoleAssignmentGroupNames(ids []uint64) (map[uint64]string, error) {
+	out := make(map[uint64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []model.UserGroup
+	if err := s.db.Unscoped().Select("id", "name").
+		Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		out[uint64(rows[i].ID)] = rows[i].Name
+	}
+	return out, nil
+}

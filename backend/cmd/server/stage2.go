@@ -989,7 +989,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		database.DB, assetService, changeSecretCandidates, hostKeyService,
 		keyManager, auditTxSink, credentialManagement).WithSystemAlertSink(systemAlertSink).
 		WithStopNotifier(changeSecretStopNotify).
-		WithScopeSource(authz.NewCredentialScopeReader(scopeEvaluator, database.DB))
+		WithScopeSource(authz.NewCredentialScopeReader(scopeEvaluator, database.DB)).
+		WithOutputScope(authz.NewCredentialScopeReader(scopeEvaluator, database.DB))
 	// 服務重啟時停在「改密中」的輪替成員：轉為已送出未驗證（遠端結果未知的保守狀態，
 	// 候選保留；之後背景依候選退避與人工補跑都只以新秘密驗證、不下達），轉換與審計同交易、
 	// 每台告警一次。
@@ -2043,7 +2044,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	commandAlertHandler := api.NewCommandAlertHandler(audit.NewCommandAlertService(database.DB))
 	commandAlertHandler.SetAuditService(s.auditService) // 審閱處置留痕（audit-workflows）
 
-	dailyReviewHandler := api.NewDailyReviewHandler(s.dailyReviewService)
+	// 角色指派類審計列的原因參數讀取期換名（操作日誌、每日簽核與系統告警詳情共用同一個換算器）
+	auditReasonNamer := api.NewAuditReasonNamer(s.userService, s.userGroupService)
+	dailyReviewHandler := api.NewDailyReviewHandler(s.dailyReviewService, auditReasonNamer)
 	auditFailureHandler := api.NewAuditFailureHandler(s.auditFailureService)
 	auditFailureHandler.SetPermissionAccept(s.permissionAcceptService)
 
@@ -2054,7 +2057,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	)
 	notificationChannelHandler := api.NewNotificationChannelHandler(s.notificationChannelService)
 	// 系統告警目錄與明細（分級權限點／稽核檢視）；分級調整與審計同交易。
-	systemAlertHandler := api.NewSystemAlertHandler(audit.NewSystemAlertCatalogService(database.DB, s.auditTxSink))
+	systemAlertHandler := api.NewSystemAlertHandler(audit.NewSystemAlertCatalogService(database.DB, s.auditTxSink), auditReasonNamer)
 
 	// LDAP 目錄設定（admin-only singleton 資源）。
 	// 服務層已於段 2 建構並注入 codec 與傳輸政策閘，handler 只是轉接層
@@ -2137,7 +2140,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	s.oidcProviderService.SetRecordingTokenRevoker(recordingHandler.TokenManager())
 	// 審計日誌查詢 handler：建構恆執行，實際是否註冊由 registerRoutes
 	// 依 auditLogEnabled 旗標決定（關閉時整組 3 條 /audit-logs 不存在）
-	auditLogHandler := api.NewAuditLogHandler(s.auditService)
+	auditLogHandler := api.NewAuditLogHandler(s.auditService, auditReasonNamer)
 	if cfg.Features.AuditLogEnabled {
 		log.Println("稽核日誌查詢 API 已註冊")
 	}
@@ -2165,6 +2168,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	changeSecretHandler := api.NewChangeSecretHandler(s.changeSecretPlanService, s.changeSecretRunner,
 		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretBatches, s.changeSecretScheduler)
 	changeSecretHandler.SetHostIdentityTakeover(s.hostIdentityTakeover)
+	changeSecretHandler.SetCredentialOutputScope(authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB))
 
 	// 帳號憑證庫（路由層認憑證語義能力任一，服務層逐項裁決）：服務層於段 2 建構並注入 authz 與
 	// codec，handler 只是轉接層。輪替狀態的判定沿用報告建構者——列表左欄與證據
@@ -2172,6 +2176,14 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	credentialHandler := api.NewCredentialHandler(s.credentialService, s.credentialRotations,
 		s.rotationReportBuilder)
 	credentialHandler.SetHostIdentityTakeover(s.hostIdentityTakeover)
+	// 輪替成員與掛載回應的集中投影：顯式注入，缺任一項即拒絕啟動（見下方自檢）
+	credentialHandler.SetRotationMemberProjection(s.credentialRotations)
+	credentialHandler.SetAccountRowProjector(
+		authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB),
+		asset.NewAccountRowActionJudge(s.credentialService, assetAccountService))
+	if err := collectScopedOutputWiring(assetAccountHandler, credentialHandler, changeSecretHandler).require(); err != nil {
+		return routeDeps{}, err
+	}
 
 	rotationReportHandler := api.NewRotationReportHandler(s.rotationReportBuilder,
 		s.rotationReportSchedules, s.auditService)
@@ -2270,14 +2282,12 @@ func (g *appGraph) MaterialGate() *seal.MaterialGate {
 	return g.keyManager.MaterialGate()
 }
 
-// newScopeEvaluator 以正式目錄與 asset 端拓撲唯讀介面組裝範圍判定器，並登記授權規則面、憑證與改密候選的目標種類。
+// newScopeEvaluator 以正式目錄與 asset 端拓撲唯讀介面組裝範圍判定器，並登記產品所有後段目標種類。
 func newScopeEvaluator() *authz.ScopeEvaluator {
 	return newScopeEvaluatorOn(asset.NewScopeTopologyReader())
 }
 
 // newScopeEvaluatorOn 同 newScopeEvaluator，但使用呼叫端給的拓撲讀取器（讓組裝根的其他消費者共用同一個實例）。
 func newScopeEvaluatorOn(topo *asset.ScopeTopologyReader) *authz.ScopeEvaluator {
-	return authz.NewScopeEvaluator(authz.ProductCatalogue(), topo,
-		append(authz.AuthorizationScopeResolvers(), authz.CredentialScopeResolver(),
-			authz.ChangeSecretCandidateScopeResolver())...)
+	return authz.NewScopeEvaluator(authz.ProductCatalogue(), topo, authz.ProductScopeResolvers()...)
 }

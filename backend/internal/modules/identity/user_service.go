@@ -138,6 +138,15 @@ type UserService struct {
 // SetGrantGrader 注入授權變更的分級與留痕。
 func (s *UserService) SetGrantGrader(g *GrantGrader) { s.grader = g }
 
+// dbFor 帶操作者的入口開交易用的連線：交易的 context 帶上該次請求的脈絡，
+// 資料層寫角色指派審計列時才指認得出操作者。沒有操作者（登入供應、映射重算等）維持原連線。
+func (s *UserService) dbFor(op *Operator) *gorm.DB {
+	if op == nil {
+		return s.db
+	}
+	return s.db.WithContext(op.AuditContext())
+}
+
 // SetAssignmentGuard 注入共用指派關卡（與群組服務、日後的映射與釘住路徑共用同一個）。
 func (s *UserService) SetAssignmentGuard(g *AssignmentGuard) { s.guard = g }
 
@@ -544,7 +553,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	}
 
 	// 開始事務
-	tx := s.db.Begin()
+	tx := s.dbFor(req.operator).Begin()
 	if tx.Error != nil {
 		return nil, fmt.Errorf("開始交易失敗: %w", tx.Error)
 	}
@@ -892,7 +901,7 @@ func (s *UserService) deleteWithSummary(op *Operator, id uint) (DeletedUserSumma
 	// 原本此路徑**連 refresh 與協議會話都不動**，是三條生命週期路徑中缺口最大的一條
 	// ——帳號已不存在，其持有者卻仍有活著的 shell、活著的監看訂閱，以及可再撐一個
 	// TTL 的 access token。取鎖順序 system → user
-	if err := WithLocalAdminInvariant(s.db, id, func(tx *gorm.DB) error {
+	if err := WithLocalAdminInvariant(s.dbFor(op), id, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, id, func(tx *gorm.DB) error {
 			if err := s.gateLifecycle(tx, op, id, AccountOpDelete); err != nil {
 				return err
@@ -1009,7 +1018,7 @@ func (s *UserService) addRole(op *Operator, userID uint, roleName string, scopeR
 	// （固定之後不再隨群組異動消失）。副作用要寫進文件——一站式代配審核範圍時
 	// 若順帶追加角色，會把該映射列釘成管理者指派。純追加不縮減有效集，
 	// 故本端點一如既往不推進憑證世代。
-	if err := WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
+	if err := WithUserCredentialLock(s.dbFor(op), userID, func(tx *gorm.DB) error {
 		var tr *grantTracker
 		if op != nil {
 			old, err := manualRoleIDs(tx, userID)
@@ -1418,14 +1427,18 @@ func (s *UserService) assignRoles(op *Operator, userID uint, roleNames []string,
 		if err := applyRolesInner(tx); err != nil {
 			return err
 		}
-		return tr.finishDirect(tx, userID)
+		if err := tr.finishDirect(tx, userID); err != nil {
+			return err
+		}
+		// 新建角色的節點範圍在推進版本之後才寫入，交易收尾補記進事件鏈
+		return authz.SettlePermissionChange(tx)
 	}
 	var assignErr error
 	if keepsAdmin {
-		assignErr = WithUserCredentialLock(s.db, userID, applyRoles)
+		assignErr = WithUserCredentialLock(s.dbFor(op), userID, applyRoles)
 	} else {
 		// 取鎖順序 system → user，與停用路徑同形
-		assignErr = WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
+		assignErr = WithLocalAdminInvariant(s.dbFor(op), userID, func(tx *gorm.DB) error {
 			return withUserCredentialLockTx(tx, userID, applyRoles)
 		})
 	}

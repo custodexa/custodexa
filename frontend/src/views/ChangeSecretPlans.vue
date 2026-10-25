@@ -70,6 +70,14 @@
         >
           <template #default="{ row }">
             {{ parseAssetIds(row.asset_ids).length }}
+            <el-tag
+              v-if="row.out_of_scope_asset_count > 0"
+              size="small"
+              type="info"
+              :data-test="`plan-assets-out-${row.id}`"
+            >
+              {{ $t('credentials.outOfScopeChip', { count: row.out_of_scope_asset_count }) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column
@@ -148,7 +156,7 @@
               {{ $t('changeSecretPlans.records') }}
             </el-button>
             <el-button
-              v-if="needsReconfirmation(row)"
+              v-if="needsReconfirmation(row) && !isScopeMasked(row)"
               size="small"
               type="warning"
               link
@@ -158,6 +166,7 @@
               {{ $t('changeSecretPlans.reconfirmButton') }}
             </el-button>
             <el-button
+              v-if="!isScopeMasked(row)"
               size="small"
               type="primary"
               link
@@ -165,6 +174,19 @@
             >
               {{ $t('common.edit') }}
             </el-button>
+            <el-tooltip
+              v-else
+              :content="$t('changeSecretPlans.scopedMaskedNote')"
+              placement="top"
+            >
+              <el-tag
+                size="small"
+                type="info"
+                :data-test="`plan-scoped-readonly-${row.id}`"
+              >
+                {{ $t('changeSecretPlans.scopedReadOnly') }}
+              </el-tag>
+            </el-tooltip>
             <el-button
               size="small"
               type="danger"
@@ -1123,6 +1145,9 @@ async function afterSaved() {
 
 // 立即執行需要對應的語義能力：帳號目標看帳號改密、憑證目標看憑證輪替。
 // 這裡只決定要不要顯示按鈕，強制點在後端（執行前逐次重驗）
+// 計畫含檢視範圍外的目標憑證或資產時，伺服器已遮蔽這些識別；以遮蔽後的內容儲存會改掉計畫，故只允許檢視。
+const isScopeMasked = (row) => !!row.credential_out_of_scope || row.out_of_scope_asset_count > 0
+
 function canRun(row) {
   return can(row.target_kind === 'credential' ? 'credential:rotate' : 'account:rotate')
 }

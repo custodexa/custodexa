@@ -441,11 +441,13 @@ func (h *AssetHandler) List(c *gin.Context) {
 		credentialPending = raw == "true"
 	}
 
-	// 範圍化檢視者（非檢視捷徑）：管理可視 ∪ 連線可視，篩選在聯集內、分頁之前
+	// 範圍化檢視者（非檢視捷徑）：管理可視 ∪ 連線可視，篩選在聯集內、分頁之前；
+	// 明示 authorized_only=true 時候選集縮為連線可視，其餘（遮罩、旗標、摘要）沿用
 	if scopedNonPrivileged {
 		h.scopedList(c, scopeView, scopedListQuery{
 			page: page, pageSize: pageSize, nodeID: nodeID, includeSubtree: includeSubtree,
 			ungrouped: ungrouped, credentialPending: credentialPending, tags: tagFilters,
+			connectionOnly: c.Query("authorized_only") == "true",
 		})
 		return
 	}

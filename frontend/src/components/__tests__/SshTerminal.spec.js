@@ -51,7 +51,8 @@ vi.mock('@xterm/addon-web-links', () => ({
 }))
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
-vi.mock('@/api/connect', () => ({
+vi.mock('@/api/connect', async (importOriginal) => ({
+  ...(await importOriginal()),
   createConnectTokenWithConsent: vi
     .fn()
     .mockResolvedValue({ connect_token: 'ct-test', expires_in: 60 }),

@@ -119,6 +119,7 @@ func TestCredentialReadOnlySubject(t *testing.T) {
 		WithManagementAuthorizer(resolverCredentialAuthorizer{db: f.db}).WithSystemAlertSink(recordingSystemAlerts{})
 	handler := NewCredentialHandler(creds, f.rotations,
 		asset.NewRotationReportBuilder(f.db, asset.NewChangeSecretPlanService(f.db), func() int { return 0 }))
+	handler.SetRotationMemberProjection(allMembersProjection{f.rotations})
 
 	// 審計中介層是讀取留痕的來源，必須在鏈上；同步落庫才讀得到
 	auditSvc := audit.NewAuditLogService(&config.FeatureFlags{

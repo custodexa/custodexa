@@ -56,11 +56,12 @@ type entryDetailView struct {
 }
 
 type entryDescriptorView struct {
-	ID       string            `json:"id"`
-	Group    string            `json:"group"`
-	States   []entryStateView  `json:"states"`
-	Details  []entryDetailView `json:"details"`
-	Scopable bool              `json:"scopable"`
+	ID        string            `json:"id"`
+	Group     string            `json:"group"`
+	States    []entryStateView  `json:"states"`
+	WriteKeys []string          `json:"write_keys"`
+	Details   []entryDetailView `json:"details"`
+	Scopable  bool              `json:"scopable"`
 }
 
 type capabilityDescriptorView struct {
@@ -86,7 +87,7 @@ func (h *RoleDefinitionHandler) Descriptors(c *gin.Context) {
 	for i, e := range entries {
 		v := entryDescriptorView{ID: e.ID, Group: string(e.Group),
 			States: make([]entryStateView, len(e.States)), Details: make([]entryDetailView, len(e.Details)),
-			Scopable: authz.EntryNodeScopable(e)}
+			WriteKeys: permKeys(authz.EntryWriteKeys(e)), Scopable: authz.EntryNodeScopable(e)}
 		for j, s := range e.States {
 			v.States[j] = entryStateView{Name: s.Name, Keys: permKeys(s.Keys)}
 		}

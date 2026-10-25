@@ -3,7 +3,7 @@
     <!-- 分角色文案：一般 user 的職能是連線不是管理 -->
     <PageHeader
       :title="showsGlobalAssets ? $t('menu.assets') : $t('menu.myAssets')"
-      :description="showsGlobalAssets ? $t('assets.headerDescAdmin') : $t('assets.headerDescUser')"
+      :description="headerDescription"
     >
       <template
         v-if="assetScopeLine"
@@ -15,7 +15,10 @@
         />
       </template>
       <template #actions>
-        <el-button @click="fetchAssetList">
+        <el-button
+          v-if="canViewAssets"
+          @click="fetchAssetList"
+        >
           <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
@@ -58,13 +61,16 @@
     </section>
 
     <ScopedAssetsNotices
-      v-if="scopedViewer"
+      v-if="canViewAssets && scopedViewer"
       :scope="managementScope"
       :total="pagination.total"
     />
 
     <!-- 搜尋與過濾 -->
-    <div class="filter-bar">
+    <div
+      v-if="canViewAssets"
+      class="filter-bar"
+    >
       <el-form
         :inline="true"
         :model="filterForm"
@@ -202,7 +208,10 @@
     </div>
 
     <!-- 左樹右表：樹＝瀏覽＋授權分配主軸 -->
-    <div class="tree-table-layout">
+    <div
+      v-if="canViewAssets"
+      class="tree-table-layout"
+    >
       <AssetNodeTree
         ref="nodeTreeRef"
         @select="handleNodeSelect"
@@ -680,6 +689,18 @@
       </div>
     </div>
 
+    <!-- 沒有資產檢視權限：不請求列表，說明原因與補救方式 -->
+    <div
+      v-if="showNoAssetView"
+      class="panel"
+      data-test="assets-no-view"
+    >
+      <EmptyState
+        :title="$t('assets.noAssetViewTitle')"
+        :hint="$t('assets.noAssetViewHint', { role: $t('enum.role.user.label') })"
+      />
+    </div>
+
     <!-- 新增資產：一份表單只問一次登入憑證，其餘設定收在進階選項 -->
     <el-dialog
       v-model="dialogVisible"
@@ -988,7 +1009,7 @@ import { confirmDestructive } from '@/utils/confirm'
 import { securityChangeFields, pickSecurityBaseline } from '@/utils/assetSecurityChange'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'
-import { can } from '@/composables/useCapabilities'
+import { can, useCapabilities } from '@/composables/useCapabilities'
 import { t } from '@/i18n'
 import PageHeader from '@/components/PageHeader.vue'
 import ManageScopeLine from '@/components/ManageScopeLine.vue'
@@ -1112,6 +1133,7 @@ const latencyText = (ms) => {
 }
 
 const loadTagOptions = async () => {
+  if (!canViewAssets.value) return
   // 字典由伺服器依主體投影：全域檢視者取全庫，範圍化檢視者只取看得到的資產上的標籤
   if (!showsGlobalAssets.value && !scopedViewer.value) return
   try {
@@ -1200,6 +1222,21 @@ const handleAuthorizeNode = (node) => {
 // - 連線豁免＝ui:connect-bypass（保留的超管身分），不由管理能力推得；
 // - 各管理動作依各自的後端能力顯示。
 const showsGlobalAssets = computed(() => can('ui:assets-global'))
+// 資產列表端點要 asset:view；沒有它就不請求（含篩選、重新整理等所有呼叫點），改顯示說明
+const canViewAssets = computed(() => can('asset:view'))
+// 能力尚未載入（整頁重新整理）時不判定「沒有權限」，等載入完成再決定要讀列表還是顯示說明
+const { ready: capsReady } = useCapabilities()
+const showNoAssetView = computed(() => capsReady.value && !canViewAssets.value)
+watch(canViewAssets, (allowed) => {
+  if (!allowed) return
+  fetchAssetList()
+  loadGroups()
+  loadTagOptions()
+})
+const headerDescription = computed(() => {
+  if (!canViewAssets.value) return ''
+  return showsGlobalAssets.value ? t('assets.headerDescAdmin') : t('assets.headerDescUser')
+})
 const canCreateAsset = computed(() => can('asset:create'))
 const canUpdateAsset = computed(() => can('asset:update'))
 const canTestAsset = computed(() => can('asset:test'))
@@ -1476,6 +1513,7 @@ const onBatchDone = () => {
 
 // 取得資產列表
 const fetchAssetList = async () => {
+  if (!canViewAssets.value) return
   loading.value = true
   // 換頁、改篩選、重新整理都以新的一頁為準，選取不跨頁保留
   selectedIds.value = []
@@ -1672,6 +1710,7 @@ const handleCreate = () => {
 const nodeFlatList = ref([])
 
 async function loadGroups() {
+  if (!canViewAssets.value) return
   try {
     const res = await getAssetGroups()
     nodeFlatList.value = res.data || []

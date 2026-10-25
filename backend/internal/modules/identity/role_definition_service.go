@@ -244,10 +244,11 @@ func toDefinitionWithCount(tx *gorm.DB, r *model.Role) (*RoleDefinition, error) 
 	return d, nil
 }
 
-// nodeScopedBindingCount 角色目前的節點範圍指派筆數：直接指派列加使用者群組指派列。
+// nodeScopedBindingCount 角色目前的節點範圍指派筆數：未刪除帳號的直接指派列加使用者群組指派列。
 func nodeScopedBindingCount(tx *gorm.DB, roleID uint) (int64, error) {
 	var direct int64
-	if err := tx.Raw("SELECT COUNT(*) FROM user_roles WHERE role_id = ? AND scope_kind = ?", roleID, model.ScopeKindNodes).Scan(&direct).Error; err != nil {
+	if err := tx.Raw(`SELECT COUNT(*) FROM user_roles JOIN users ON users.id = user_roles.user_id AND users.deleted_at IS NULL
+ WHERE user_roles.role_id = ? AND user_roles.scope_kind = ?`, roleID, model.ScopeKindNodes).Scan(&direct).Error; err != nil {
 		return 0, fmt.Errorf("讀取節點範圍指派數失敗: %w", err)
 	}
 	group, err := authz.CountNodeScopedGroupRoleBindings(tx, roleID)

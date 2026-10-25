@@ -17,11 +17,13 @@ import (
 // DailyReviewHandler 每日審閱簽核 API（PCI 10.4.1）
 type DailyReviewHandler struct {
 	reviewService *audit.DailyReviewService
+	// namer 事件列原因參數的讀取期換名；nil 時維持識別碼
+	namer *AuditReasonNamer
 }
 
-// NewDailyReviewHandler 建立每日審閱 handler
-func NewDailyReviewHandler(reviewService *audit.DailyReviewService) *DailyReviewHandler {
-	return &DailyReviewHandler{reviewService: reviewService}
+// NewDailyReviewHandler 建立每日審閱 handler；namer 為原因參數的名稱換算器（可為 nil）
+func NewDailyReviewHandler(reviewService *audit.DailyReviewService, namer *AuditReasonNamer) *DailyReviewHandler {
+	return &DailyReviewHandler{reviewService: reviewService, namer: namer}
 }
 
 // Status 卡片摘要：啟用狀態、業務時區分界、昨日、待簽與逾期日數、近 30 天統計
@@ -77,6 +79,8 @@ func (h *DailyReviewHandler) Day(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalDailyReviewDayQuery, err)
 		return
 	}
+	h.namer.RenameEventItems(detail.LoginFailures.Items)
+	h.namer.RenameEventItems(detail.HighRiskOps.Items)
 	c.JSON(http.StatusOK, gin.H{"data": detail})
 }
 

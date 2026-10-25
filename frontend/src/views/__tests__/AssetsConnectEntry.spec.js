@@ -81,6 +81,9 @@ const { rejectAll } = vi.hoisted(() => ({
 }))
 vi.mock('@/api/assetAccounts', rejectAll)
 vi.mock('@/api/credentials', rejectAll)
+// 節點樹載入授權選擇器（target-options）亦同：真實請求的 401 會晚到落在後續案例，
+// 清掉該案剛寫入的能力，使其畫面退成無能力狀態（整檔跑才紅、單跑穩綠）
+vi.mock('@/api/authorizations', rejectAll)
 
 const setUserRoles = (roles) => {
   localStorage.setItem('user', JSON.stringify({ id: 7, username: 'tester', roles }))

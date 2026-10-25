@@ -8,10 +8,8 @@ import (
 	"strconv"
 
 	"github.com/custodexa/backend/internal/apierror"
-	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
-	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -111,9 +109,7 @@ func (h *UserGroupHandler) ReplaceRoleBindings(c *gin.Context) {
 		}
 		req.RoleNodes[uint(rid)] = v
 	}
-	actorID, _ := middleware.GetCurrentUserID(c)
-	actorName, _ := middleware.GetCurrentUsername(c)
-	rows, err := svc.ReplaceRoleBindings(identity.Operator{UserID: actorID, Username: actorName, ClientIP: sourceip.Of(c)}, id, req)
+	rows, err := svc.ReplaceRoleBindings(operatorFromRequest(c), id, req)
 	if err != nil {
 		respondRoleBindingError(c, apierror.CodeInternalUserGroupUpdate, err)
 		return

@@ -36,6 +36,7 @@ func newProjectionEnv(t *testing.T, catalog AssignableCatalog) *projectionEnv {
 	e.roles["legacy-extra"] = legacy.ID
 	e.roles["custom-view"] = e.create(t, "custom-view", "asset:view").ID
 	e.roles["custom-mgmt"] = e.create(t, "custom-mgmt", "asset:view", "asset:update").ID
+	e.roles["custom-highrisk"] = e.create(t, "custom-highrisk", "recording:delete").ID
 	return &projectionEnv{guardEnv: e, groups: groups, src: src, ida: e.mkUser(t, "ida", "identity_admin")}
 }
 
@@ -99,6 +100,13 @@ func TestRoleAssignmentProjection(t *testing.T) {
 		}
 		for _, n := range []string{"admin", "auditor", "user", "approver", "legacy-extra"} {
 			assert.Equal(t, AssignmentStateOpen, set.ByRole[e.roles[n]].AssignmentState, n)
+		}
+		// 自訂角色含任一高風險點（此處為刪除錄影）時，對非超管受保護，超管不受保護；
+		// 兩種目錄下都成立，且與指派關卡的拒絕原因一致（上面的逐角色比對已涵蓋）
+		for _, cat := range catalogs {
+			assert.Equal(t, AssignmentStateProtected, e.project(t, cat.c, e.ida).ByRole[e.roles["custom-highrisk"]].AssignmentState, cat.name+" 非超管")
+			assert.NotEqual(t, AssignmentStateProtected, e.project(t, cat.c, e.admin).ByRole[e.roles["custom-highrisk"]].AssignmentState, cat.name+" 超管")
+			assert.Equal(t, AssignmentStateOpen, e.project(t, FullCatalog(), e.ida).ByRole[e.roles["custom-view"]].AssignmentState, "只含資產檢視的自訂角色可指派")
 		}
 		// 非超管在兩種目錄下，超管與系統安全管理員都是 protected
 		for _, cat := range catalogs {
@@ -187,7 +195,7 @@ func TestRoleAssignmentProjection(t *testing.T) {
 		verBefore := e.version(t)
 		set := e.project(t, FullCatalog(), e.admin)
 		assert.EqualValues(t, 6, set.ByRole[cv].UserCount, "u1 u2 u3 u4 u5 u7；u7 經直接、映射、群組三來源只計一次")
-		assert.Equal(t, RoleReferenceCounts{Direct: 6, GroupBindings: 1}, set.ByRole[cv].References)
+		assert.Equal(t, RoleReferenceCounts{Direct: 5, GroupBindings: 1}, set.ByRole[cv].References, "已刪除帳號 u6 的直接指派列保留但不計入引用")
 		assert.EqualValues(t, 0, set.ByRole[cm].UserCount, "已刪群組不產生指派")
 		assert.EqualValues(t, 0, set.ByRole[other].UserCount)
 		assert.Equal(t, RoleReferenceCounts{GroupBindings: 1, MappingRules: 1}, set.ByRole[other].References)

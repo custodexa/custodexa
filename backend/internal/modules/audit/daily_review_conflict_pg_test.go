@@ -79,7 +79,7 @@ func TestDailyReviewSignConflictReturnsRecord(t *testing.T) {
 	now := time.Date(2026, 10, 11, 9, 0, 0, 0, taipei)
 	svc := audit.NewDailyReviewService(db, policy.NewSecurityPolicyService(db), nil)
 	svc.SetClock(func() time.Time { return now })
-	handler := api.NewDailyReviewHandler(svc)
+	handler := api.NewDailyReviewHandler(svc, nil)
 
 	// barrier：兩個交易都通過「查無」後才一起寫入
 	var arrived sync.WaitGroup

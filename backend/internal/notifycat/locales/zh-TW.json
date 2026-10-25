@@ -148,7 +148,7 @@
   "management_role_granted": {
     "default": {
       "title": "管理類角色已發放",
-      "text": "{actor} 將管理類角色 {role_name} 發放給 {recipient}（{path}）[；範圍：{scope_summary}]（分級：{severity}）。"
+      "text": "{actor} 將管理類角色 {role_name} 發放給 {recipient}（{path}）[；範圍：{scope_summary}][（節點 {scope_node_ids}，共 {scope_node_count} 個）]（分級：{severity}）。"
     }
   },
   "retention_shortened": {

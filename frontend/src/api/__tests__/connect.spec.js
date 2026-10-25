@@ -23,7 +23,9 @@ import {
   createConnectToken,
   createConnectTokenWithConsent,
   createTransmissionConsent,
+  resolveConnectError,
 } from '../connect'
+import { resolveApiError } from '../error'
 
 const gate428 = (risks) => {
   const err = new Error('precondition required')
@@ -105,6 +107,12 @@ describe('createConnectTokenWithConsent', () => {
       'en-US': ['Asset not found', 'Session not found', 'Access request not found'],
       'ja-JP': ['アセットが存在しません', 'セッションが存在しません', '申請が存在しません'],
     }
+    // 連線流程的簽發 404 改用「找不到或沒有連線權限」的說法，其他頁仍是各自的存在性訊息
+    const connectMessages = {
+      'zh-TW': '找不到這台資產，或你沒有它的連線權限',
+      'en-US': 'This asset cannot be found, or you do not have permission to connect to it',
+      'ja-JP': 'この資産が見つからないか、接続する権限がありません',
+    }
     const risks = [{ key: 'vnc_unencrypted', label: 'VNC' }]
     try {
       for (const [locale, messages] of Object.entries(translations)) {
@@ -144,7 +152,7 @@ describe('createConnectTokenWithConsent', () => {
           expect(promptMock).toHaveBeenCalledTimes(mode === 'reason' ? 1 : 0)
           expect(alertMock).toHaveBeenCalledTimes(mode === 'approval' ? 1 : 0)
           expect(confirmMock).toHaveBeenCalledTimes(mode.startsWith('consent') ? 1 : 0)
-          if (mode === 'missing') expect(messageErrorMock).toHaveBeenCalledExactlyOnceWith(messages[0])
+          if (mode === 'missing') expect(messageErrorMock).toHaveBeenCalledExactlyOnceWith(connectMessages[locale])
           else expect(messageErrorMock).not.toHaveBeenCalled()
         }
         // The real interceptor presents consent/share/report errors and keeps login state.
@@ -209,5 +217,21 @@ describe('createTransmissionConsent', () => {
       method: 'post',
       data: { asset_id: 5, risk_keys: ['rdp_ignore_cert'] },
     })
+  })
+})
+
+describe('resolveConnectError', () => {
+  it('404 NOTFOUND_ASSET 用連線專用文案，其餘交通用對照', () => {
+    const localeBefore = i18n.global.locale.value
+    i18n.global.locale.value = 'zh-TW'
+    try {
+      expect(resolveConnectError({ code: 'NOTFOUND_ASSET' }, 404, 'x')).toBe('找不到這台資產，或你沒有它的連線權限')
+      expect(resolveConnectError({ code: 'NOTFOUND_ASSET' }, 403, 'x')).toBe(resolveApiError({ code: 'NOTFOUND_ASSET' }, 403, 'x'))
+      expect(resolveConnectError({ code: 'AUTH_PERMISSION_DENIED' }, 403, 'x')).toBe(
+        resolveApiError({ code: 'AUTH_PERMISSION_DENIED' }, 403, 'x')
+      )
+    } finally {
+      i18n.global.locale.value = localeBefore
+    }
   })
 })

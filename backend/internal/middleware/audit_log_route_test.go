@@ -580,3 +580,66 @@ func TestSecurityPolicyPreviewAuditedAsRead(t *testing.T) {
 		}
 	}
 }
+
+// TestPreviewEndpointsAuditedAsRead 擋：角色指派試算、資產匯入預檢、身分提供者探索預覽
+// 是唯讀試算，成功與驗證失敗都記為讀取；真正的建立仍記為 create
+func TestPreviewEndpointsAuditedAsRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := installClipboardAuditDB(t)
+
+	svc := audit.NewAuditLogService(&config.FeatureFlags{
+		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
+	})
+	r := gin.New()
+	r.Use(AuditLogMiddleware(svc))
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", uint(9))
+		c.Set("username", "admin")
+		c.Next()
+	})
+	respond := func(c *gin.Context) {
+		if c.Query("bad") != "" {
+			c.JSON(400, gin.H{})
+			return
+		}
+		c.JSON(200, gin.H{})
+	}
+	r.POST("/api/v1/role-assignment-previews", respond)
+	r.POST("/api/v1/assets/import/preview", respond)
+	r.POST("/api/v1/oidc-providers/discovery-preview", respond)
+	r.POST("/api/v1/assets", respond)
+
+	cases := []struct {
+		path     string
+		bad      bool
+		code     int
+		want     model.AuditAction
+		resource model.AuditResource
+	}{
+		{"/api/v1/role-assignment-previews", false, 200, model.ActionRead, model.ResourceRole},
+		{"/api/v1/role-assignment-previews", true, 400, model.ActionRead, model.ResourceRole},
+		{"/api/v1/assets/import/preview", false, 200, model.ActionRead, model.ResourceAsset},
+		{"/api/v1/assets/import/preview", true, 400, model.ActionRead, model.ResourceAsset},
+		{"/api/v1/oidc-providers/discovery-preview", false, 200, model.ActionRead, model.ResourceOIDCProvider},
+		{"/api/v1/oidc-providers/discovery-preview", true, 400, model.ActionRead, model.ResourceOIDCProvider},
+		{"/api/v1/assets", false, 200, model.ActionCreate, model.ResourceAsset},
+	}
+	for _, tc := range cases {
+		reqURL := tc.path
+		if tc.bad {
+			reqURL += "?bad=1"
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("POST", reqURL, nil))
+		if w.Code != tc.code {
+			t.Fatalf("POST %s 回 %d, want %d", reqURL, w.Code, tc.code)
+		}
+		row := latestAuditRow(t, db)
+		if row.Path != tc.path {
+			t.Fatalf("讀回的不是本次請求的列（path=%s，期望 %s）", row.Path, tc.path)
+		}
+		if row.Action != tc.want || row.Resource != tc.resource {
+			t.Errorf("POST %s（%d）記成 %s／%s, want %s／%s", tc.path, tc.code, row.Action, row.Resource, tc.want, tc.resource)
+		}
+	}
+}

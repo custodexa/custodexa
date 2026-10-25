@@ -14,6 +14,9 @@ import (
 // 一律列為 finding 阻止放行；不刪壞列、不把 nodes 改成 global、不把 mapped 改成 manual、
 // 不補 user、不建帳號。最後本地超管的計數由呼叫端注入（identity 擁有該查詢與鎖，
 // authz 不得 import identity），使用與日常不變式相同的那一個函式。
+//
+// 例外：已刪除帳號保留、沒有範圍節點的節點範圍指派不算 empty_user_nodes。該帳號無法登入，
+// 指派不生效，其範圍節點在帳號刪除時已清除；列保留是為了讓權限變動的審計鏈完整。
 
 // RestoreFinding 一筆阻止放行的發現。
 type RestoreFinding struct {
@@ -84,7 +87,8 @@ func restoreRefChecks() []RefCheck {
     OR (b.subject_kind = 'user_group' AND NOT EXISTS (SELECT 1 FROM user_group_roles g WHERE g.user_group_id = b.subject_id AND g.role_id = b.role_id AND g.scope_kind = 'nodes'))`)
 		}},
 		{"empty_user_nodes", func(tx *gorm.DB) *gorm.DB {
-			return tx.Raw(`SELECT ur.user_id || ':' || ur.role_id FROM user_roles ur WHERE ur.scope_kind = 'nodes'
+			return tx.Raw(`SELECT ur.user_id || ':' || ur.role_id FROM user_roles ur JOIN users u ON u.id = ur.user_id AND u.deleted_at IS NULL
+ WHERE ur.scope_kind = 'nodes'
  AND NOT EXISTS (SELECT 1 FROM role_binding_nodes b WHERE b.subject_kind = 'user' AND b.subject_id = ur.user_id AND b.role_id = ur.role_id)`)
 		}},
 		{"empty_group_nodes", func(tx *gorm.DB) *gorm.DB {

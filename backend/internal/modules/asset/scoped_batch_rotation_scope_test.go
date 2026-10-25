@@ -87,8 +87,10 @@ func newBsEnv(t *testing.T) *bsEnv {
 		WithScope(e.scope).
 		WithOwnershipScope(ownership)
 	e.h = api.NewChangeSecretHandler(nil, nil, nil, nil, e.svc, nil)
+	e.h.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 	e.legacy = api.NewChangeSecretHandler(nil, nil, nil, nil,
 		asset.NewChangeSecretBatchService(db, reports).WithManagementAuthorizer(mgmt).WithOwnershipScope(ownership), nil)
+	e.legacy.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 
 	e.users["super"] = e.user("bs-super")
 	adminRole := model.Role{Name: model.RoleAdmin}
@@ -333,6 +335,7 @@ func TestScopedBatchRotationScope(t *testing.T) {
 		remoteCalls := asset.CountRemoteCallsForTest(runner)
 		h0 := e.h
 		e.h = api.NewChangeSecretHandler(nil, runner, nil, nil, e.svc, nil)
+		e.h.SetCredentialOutputScope(authz.NewCredentialScopeReader(e.eval, e.db))
 		defer func() { e.h = h0 }()
 		var keys []string
 		for i := 1; i <= 24; i++ {

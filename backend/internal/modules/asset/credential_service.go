@@ -639,6 +639,9 @@ func (s *CredentialService) Get(ctx context.Context, id uint) (*CredentialDetail
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireFullWhenUnscoped(ctx, view); err != nil {
+		return nil, err
+	}
 	if view != nil {
 		// 掛載清單只列範圍內資產；範圍外只給台數與旗標
 		if err := s.decorateScoped(database.DB, view, []model.Credential{*cred}, []*CredentialDTO{base}); err != nil {
@@ -927,6 +930,9 @@ func (s *CredentialService) Delete(ctx context.Context, id uint) error {
 	userID, operator := model.UserFromContext(ctx)
 	view, err := s.scopeView(ctx)
 	if err != nil {
+		return err
+	}
+	if err := s.requireFullWhenUnscoped(ctx, view); err != nil {
 		return err
 	}
 	// 仍有掛載時交易內只記下名單，範圍內外的區分在交易結束後做：檢視範圍的查詢走讀取連線，

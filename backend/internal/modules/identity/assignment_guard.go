@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -10,6 +11,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/authz"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
 // 共用指派關卡。
@@ -112,6 +114,23 @@ type Operator struct {
 	UserID   uint
 	Username string
 	ClientIP string
+	// Method、Path、RequestID 是該次 HTTP 請求的識別；非請求來源的操作者留空。
+	Method    string
+	Path      string
+	RequestID string
+}
+
+// RequestMeta 服務層審計列的請求欄位（操作者所屬的那次請求）。
+func (o Operator) RequestMeta() gatewayapi.RequestMeta {
+	return gatewayapi.RequestMeta{ClientIP: o.ClientIP, Method: o.Method, Path: o.Path, RequestID: o.RequestID}
+}
+
+// AuditContext 回傳帶有請求脈絡的 context，供資料層在交易內寫審計列時指認操作者。
+func (o Operator) AuditContext() context.Context {
+	return model.WithAuditRequest(context.Background(), model.AuditRequest{
+		UserID: o.UserID, Username: o.Username, ClientIP: o.ClientIP,
+		Method: o.Method, Path: o.Path, RequestID: o.RequestID,
+	})
 }
 
 // AssignableCatalog 可被這些入口指派的角色目錄。

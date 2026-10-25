@@ -82,6 +82,25 @@ func TestPermissionRestoreIntegrity(t *testing.T) {
 		require.EqualValues(t, 3, n)
 	})
 
+	t.Run("已刪除帳號保留的無範圍節點指派不算發現", func(t *testing.T) {
+		db := newRestoreDB(t)
+		seedValid(t, db)
+		gone := mkAdmin(t, db, "deleted-holder", nil)
+		require.NoError(t, db.Create(&model.UserRole{UserID: gone, RoleID: 2, Source: "manual", ScopeKind: "nodes"}).Error)
+		require.NoError(t, db.Delete(&model.User{}, gone).Error)
+		rep := check(t, db)
+		require.True(t, rep.OK(), "%v", rep.Findings)
+	})
+
+	t.Run("停用但未刪除帳號的無範圍節點指派仍是發現", func(t *testing.T) {
+		db := newRestoreDB(t)
+		seedValid(t, db)
+		off := mkAdmin(t, db, "disabled-holder", nil)
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", off).Update("active", false).Error)
+		require.NoError(t, db.Create(&model.UserRole{UserID: off, RoleID: 2, Source: "manual", ScopeKind: "nodes"}).Error)
+		require.Contains(t, codes(check(t, db)), "empty_user_nodes")
+	})
+
 	bad := map[string]struct{ stmt, code string }{
 		"懸空 role":           {`INSERT INTO user_roles (user_id, role_id, source, scope_kind) VALUES (1, 99, 'manual', 'global')`, "dangling_user_role_role"},
 		"懸空 user":           {`INSERT INTO user_roles (user_id, role_id, source, scope_kind) VALUES (99, 3, 'manual', 'global')`, "dangling_user_role_user"},

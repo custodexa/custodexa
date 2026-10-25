@@ -50,10 +50,12 @@ type RoleReferenceCounts struct {
 // Total 三種來源合計；大於 0 時角色不可刪除。
 func (c RoleReferenceCounts) Total() int64 { return c.Direct + c.GroupBindings + c.MappingRules }
 
-// roleReferenceCounts 角色的引用計數：直接指派列、使用者群組指派列、未刪除的映射規則（含已停用）。
+// roleReferenceCounts 角色的引用計數：未刪除帳號的直接指派列（停用中照計；已刪除帳號的列保留但不計）、
+// 使用者群組指派列、未刪除的映射規則（含已停用）。
 func roleReferenceCounts(tx *gorm.DB, roleID uint) (RoleReferenceCounts, error) {
 	var c RoleReferenceCounts
-	if err := tx.Raw("SELECT COUNT(*) FROM user_roles WHERE role_id = ?", roleID).Scan(&c.Direct).Error; err != nil {
+	if err := tx.Raw(`SELECT COUNT(*) FROM user_roles JOIN users ON users.id = user_roles.user_id AND users.deleted_at IS NULL
+ WHERE user_roles.role_id = ?`, roleID).Scan(&c.Direct).Error; err != nil {
 		return c, fmt.Errorf("檢查角色引用失敗: %w", err)
 	}
 	n, err := authz.CountUserGroupRoleBindings(tx, roleID)

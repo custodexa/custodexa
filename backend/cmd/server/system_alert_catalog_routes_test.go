@@ -104,7 +104,7 @@ func runSystemAlertCatalogRouteCases(t *testing.T) {
 	newEnv := func(t *testing.T) (*gorm.DB, *recordingAuditTx, *api.SystemAlertHandler) {
 		db := newSystemAlertRouteDB(t)
 		tx := &recordingAuditTx{}
-		return db, tx, api.NewSystemAlertHandler(audit.NewSystemAlertCatalogService(db, tx))
+		return db, tx, api.NewSystemAlertHandler(audit.NewSystemAlertCatalogService(db, tx), nil)
 	}
 	superAdmin := principalWith(model.BuiltinSuperAdmin, model.RoleAdmin)
 	securityAdmin := principalWith(model.BuiltinSecurityAdmin, "系統安全管理員")

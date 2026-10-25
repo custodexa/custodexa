@@ -11,7 +11,13 @@ import (
 var _ authz.ScopeTopology = (*asset.ScopeTopologyReader)(nil)
 
 func TestNewScopeEvaluatorAssembled(t *testing.T) {
-	if newScopeEvaluator() == nil {
+	e := newScopeEvaluator()
+	if e == nil {
 		t.Fatal("newScopeEvaluator returned nil")
+	}
+	for _, k := range authz.ProductScopeTargetKinds() {
+		if !e.HasResolver(k) {
+			t.Errorf("newScopeEvaluator lacks a resolver for target kind %q", k)
+		}
 	}
 }

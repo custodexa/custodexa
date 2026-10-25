@@ -665,6 +665,81 @@ describe('AuditLogs', () => {
     }
   )
 
+  describe('授權分級標記與同一請求篩選', () => {
+    const markedRows = [
+      {
+        id: 21, user_id: 5, username: 'ops-lee', action: 'update', resource: 'user', status: 'success',
+        created_at: '2026-10-07T01:00:00Z', client_ip: '10.0.0.5', path: '/api/v1/users/9/roles',
+        request_id: 'abcdef12-3456-7890-abcd-ef1234567890',
+        details: '{"event":"grant_change_graded","grant_marks":["management_grant"]}',
+        reason_code: 'event.grant_change_graded', reason_params: { marks: 'management_grant' },
+      },
+      {
+        id: 22, user_id: 5, username: 'ops-lee', action: 'update', resource: 'user', status: 'success',
+        created_at: '2026-10-07T01:00:01Z', client_ip: '10.0.0.5', path: '/api/v1/users/5/roles',
+        request_id: 'ffffffff-0000-0000-0000-000000000000',
+        details: '{"event":"grant_change_graded","grant_marks":["self_authorization"]}',
+      },
+      {
+        id: 23, user_id: 5, username: 'ops-lee', action: 'read', resource: 'asset', status: 'success',
+        created_at: '2026-10-07T01:00:02Z', client_ip: '10.0.0.5', path: '/api/v1/assets', details: '',
+      },
+    ]
+
+    it('帶授權分級標記的列顯示標籤，沒有標記的列沒有標籤', async () => {
+      setUserRoles(['auditor'])
+      getAuditLogsMock.mockResolvedValue({ data: markedRows, total: 3 })
+      const wrapper = mountAuditLogs()
+      await flushPromises()
+
+      const rows = wrapper.findAll('.el-table__body tbody tr')
+      expect(rows).toHaveLength(3)
+      expect(rows[0].findAll('[data-test="grant-mark"]').map((n) => n.text())).toEqual(['管理類發放'])
+      expect(rows[1].findAll('[data-test="grant-mark"]').map((n) => n.text())).toEqual(['自我授權'])
+      expect(rows[2].findAll('[data-test="grant-mark"]')).toHaveLength(0)
+    })
+
+    it('詳情的連結以 request_id 篩選，關閉標籤後不再帶參數', async () => {
+      setUserRoles(['auditor'])
+      getAuditLogsMock.mockResolvedValue({ data: markedRows, total: 3 })
+      const wrapper = mountAuditLogs()
+      await flushPromises()
+      expect(getAuditLogsMock.mock.calls[0][0]).not.toHaveProperty('request_id')
+
+      wrapper.vm.showDetails(markedRows[0])
+      await flushPromises()
+      getAuditLogsMock.mockClear()
+      await wrapper.find('[data-test="same-request"]').trigger('click')
+      await flushPromises()
+
+      expect(getAuditLogsMock).toHaveBeenCalledWith({
+        page: 1, page_size: 20, request_id: 'abcdef12-3456-7890-abcd-ef1234567890',
+      })
+      const chip = wrapper.find('[data-test="request-chip"]')
+      expect(chip.text()).toBe('同一請求：abcdef12')
+
+      getAuditLogsMock.mockClear()
+      await chip.find('.el-tag__close').trigger('click')
+      await flushPromises()
+      expect(getAuditLogsMock).toHaveBeenCalledWith({ page: 1, page_size: 20 })
+      expect(wrapper.find('[data-test="request-chip"]').exists()).toBe(false)
+    })
+
+    it('帶 ?request_id= 進頁時第一次請求即帶參數；過長的值忽略', async () => {
+      setUserRoles(['auditor'])
+      routeState.query = { request_id: 'abc' }
+      mountAuditLogs()
+      await flushPromises()
+      expect(getAuditLogsMock.mock.calls[0][0]).toEqual({ page: 1, page_size: 20, request_id: 'abc' })
+
+      getAuditLogsMock.mockClear()
+      routeState.query = { request_id: 'x'.repeat(101) }
+      mountAuditLogs()
+      await flushPromises()
+      expect(getAuditLogsMock.mock.calls[0][0]).not.toHaveProperty('request_id')
+    })
+  })
+
   // 證據包只走非同步 job：同步端點對證據包回 400，對話框要送 job 並導引到下載中心
   describe('匯出稽核證據包', () => {
     const RANGE = ['2026-10-01T00:00:00+08:00', '2026-10-08T00:00:00+08:00']
