@@ -2,6 +2,7 @@ package api
 
 import (
 	"log"
+	"math"
 	"strconv"
 	"strings"
 
@@ -174,8 +175,9 @@ func (n *AuditReasonNamer) rename(refs []auditReasonRef) {
 			}
 			parts := splitIDList(v)
 			for i, part := range parts {
-				if id, ok := parseIDRef(part); ok {
-					if path, found := paths[uint(id)]; found && path != "" {
+				if id, ok := parseIDRef(part); ok && id <= math.MaxUint32 {
+					nodeID := uint(id)
+					if path, found := paths[nodeID]; found && path != "" {
 						parts[i] = path
 					}
 				}

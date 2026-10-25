@@ -29,7 +29,7 @@ export const roleListText = (value) =>
     .split(',')
     .map((name) => name.trim())
     .filter(Boolean)
-    .map(roleLabel)
+    .map((name) => roleLabel(name))
     .join(t('common.listSeparator'))
 
 const splitList = (value) =>
