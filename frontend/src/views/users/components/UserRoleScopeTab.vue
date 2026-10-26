@@ -217,6 +217,7 @@
               class="more-panel"
               :data-test="`more-panel-${name}`"
               @click.stop
+              @keydown.stop
             >
               <p class="more-note">
                 {{ $t(classOf(name) === 'builtin_global_only' ? 'roleNodePicker.builtinGlobalOnlyNote' : 'roleNodePicker.rangeNoEffectNote') }}

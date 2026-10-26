@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 // jsdom 類環境不做版面計算，這裡斷言關鍵樣式規則存在；實際寬螢幕 1440 與 900px 斷點由截圖確認。
 const src = readFileSync(resolve(__dirname, '../../components/PolicyKeySections.vue'), 'utf8')
 const rule = (selector) => {
-  const m = new RegExp(`${selector.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`).exec(src.split('<style')[1])
+  const m = new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(src.split('<style')[1])
   return m ? m[1] : ''
 }
 
