@@ -76,7 +76,7 @@ func TestNoConditionalPermissionRegistration(t *testing.T) {
 				scanned++
 				where := filepath.Base(path)
 
-				// ① 簽名不得帶權限旗標參數
+				// (1) 簽名不得帶權限旗標參數
 				for _, p := range fn.Type.Params.List {
 					ident, ok := p.Type.(*ast.Ident)
 					if !ok || ident.Name != "bool" {
@@ -90,7 +90,7 @@ func TestNoConditionalPermissionRegistration(t *testing.T) {
 					}
 				}
 
-				// ② 函式體內不得以權限旗標分歧
+				// (2) 函式體內不得以權限旗標分歧
 				ast.Inspect(fn.Body, func(inner ast.Node) bool {
 					ifStmt, ok := inner.(*ast.IfStmt)
 					if !ok {

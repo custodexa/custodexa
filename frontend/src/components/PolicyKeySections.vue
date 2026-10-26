@@ -5,6 +5,7 @@
     v-for="section in sections"
     :key="section.title"
     class="policy-card"
+    :data-section-id="section.id"
   >
     <div class="card-header">
       <span class="card-title">{{ section.title }}</span>
@@ -146,8 +147,9 @@ const openDrawer = (policy) => {
 
 .card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--ot-space-sm);
+  gap: var(--ot-space-xs) var(--ot-space-sm);
   margin-bottom: var(--ot-space-sm);
   padding-bottom: var(--ot-space-sm);
   border-bottom: 1px solid var(--ot-border-subtle);
@@ -157,9 +159,13 @@ const openDrawer = (policy) => {
   font-size: var(--ot-font-size-md);
   font-weight: 600;
   color: var(--ot-text-primary);
+  white-space: nowrap;
 }
 
+/* 描述特長時在標題旁放不下就整段換到下一行，不擠壓標題與偏離數 */
 .card-hint {
+  flex: 1 1 16rem;
+  min-width: 0;
   font-size: var(--ot-font-size-sm);
   color: var(--ot-text-secondary);
 }
@@ -175,6 +181,8 @@ const openDrawer = (policy) => {
   align-items: center;
   gap: var(--ot-space-xs);
   margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--ot-font-size-sm);
 }
 

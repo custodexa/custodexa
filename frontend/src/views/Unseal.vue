@@ -294,7 +294,7 @@
               'is-active': index === activeStep,
             }"
           >
-            <span class="step-rail-num">{{ index < activeStep ? '✓' : index + 1 }}</span>
+            <span class="step-rail-num">{{ index < activeStep ? '✓' : `${index + 1}.` }}</span>
             <span class="step-rail-label">{{ $t(STEP_LABEL_KEYS[key]) }}</span>
           </li>
         </ol>
@@ -1652,32 +1652,23 @@ defineExpose({
 }
 
 .step-rail-num {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid var(--el-border-color);
-  font-size: var(--ot-font-size-xs);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-width: 18px;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .step-rail-item.is-active {
-  color: var(--el-text-color-primary);
+  color: var(--ot-primary);
   font-weight: 600;
 }
 
-.step-rail-item.is-active .step-rail-num {
-  border-color: var(--ot-primary);
-  background: var(--ot-primary);
-  color: #fff;
+.step-rail-item.is-done {
+  color: var(--el-text-color-secondary);
 }
 
 .step-rail-item.is-done .step-rail-num {
-  border-color: var(--el-color-success);
-  background: var(--el-color-success);
-  color: #fff;
+  color: var(--el-color-success);
+  font-weight: 600;
 }
 
 .step-actions {

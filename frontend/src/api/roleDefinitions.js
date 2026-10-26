@@ -6,7 +6,7 @@ import request from './request'
  */
 
 /** 角色列表：{ data: [...], total, can_define } */
-export const listRoleDefinitions = () => request({ url: '/role-definitions', method: 'get' })
+export const listRoleDefinitions = (config = {}) => request({ url: '/role-definitions', method: 'get', ...config })
 
 /** 編輯描述：{ entries, capabilities, fixed_entries } */
 export const getRoleDescriptors = () => request({ url: '/role-definitions/descriptors', method: 'get' })

@@ -222,6 +222,65 @@ describe('RoleEditor', () => {
     expect(w.get('[data-test="entry-audit_logs-hidden"]').attributes('aria-pressed')).toBe('true')
   })
 
+  it('沒有自己頁面的三列各有位置標籤與說明，其他列沒有；排程時刻預覽只有隱藏與可用', async () => {
+    const w = await mountEditor()
+    const label = (id) => t(`roles.editor.entry.${id}`)
+    const sep = t('common.listSeparator')
+    const expected = {
+      syslog: ['embedded', t('roles.editor.placementNote.embedded', { host: label('security_policies') })],
+      schedules: ['helper', t('roles.editor.placementNote.helper', { entries: [label('change_secret'), label('rotation_schedules')].join(sep) })],
+      instance_guard: ['banner', t('roles.editor.placementNote.banner')],
+    }
+    for (const [id, [kind, note]] of Object.entries(expected)) {
+      expect(w.get(`[data-test="placement-tag-${id}"]`).text()).toBe(t(`roles.editor.placementTag.${kind}`))
+      expect(w.get(`[data-test="placement-note-${id}"]`).text()).toBe(note)
+    }
+    for (const id of ['assets', 'users', 'roles', 'audit_logs', 'alerts', 'access_reviews']) {
+      expect(w.find(`[data-test="placement-tag-${id}"]`).exists()).toBe(false)
+      expect(w.find(`[data-test="placement-note-${id}"]`).exists()).toBe(false)
+    }
+    const names = w.findAll('[data-test^="entry-schedules-"]').map((b) => b.attributes('data-test').slice('entry-schedules-'.length))
+    expect(names).toEqual(['hidden', 'available'])
+    expect(label('schedules')).toBe(t('roles.editor.entry.schedules'))
+  })
+
+  it('操作日誌一列列出同一權限另外開啟的稽核頁', async () => {
+    const w = await mountEditor()
+    expect(w.get('[data-test="entry-note-audit_logs"]').text()).toBe(t('roles.editor.entryNote.audit_logs'))
+  })
+
+  it('只持稽核檢視時告警與存取複審標示隨附可檢視，隱藏來源入口後標籤消失且送出的集合不含稽核檢視', async () => {
+    setup({ detail: detail({ permissions: ['audit:view', 'user:manage'] }) })
+    const w = await mountEditor()
+    const via = t('roles.editor.entry.audit_logs')
+    for (const id of ['alerts', 'access_reviews']) {
+      expect(w.get(`[data-test="read-via-tag-${id}"]`).text()).toBe(t('roles.editor.readViaTag', { via }))
+      expect(w.get(`[data-test="read-via-note-${id}"]`).text()).toBe(t('roles.editor.readViaNote', { via }))
+    }
+    expect(w.get('[data-test="entry-alerts-read"]').attributes('aria-pressed')).toBe('true')
+
+    // 按告警的「隱藏」不會讓它消失：稽核檢視由操作日誌保留，標籤與說明仍在
+    await w.get('[data-test="entry-alerts-hidden"]').trigger('click')
+    expect(w.find('[data-test="read-via-tag-alerts"]').exists()).toBe(true)
+    expect(w.get('[data-test="entry-audit_logs-available"]').attributes('aria-pressed')).toBe('true')
+
+    // 操作日誌改為隱藏：兩列的標籤都消失，送出的集合不含稽核檢視
+    await w.get('[data-test="entry-audit_logs-hidden"]').trigger('click')
+    expect(w.find('[data-test="read-via-tag-alerts"]').exists()).toBe(false)
+    expect(w.find('[data-test="read-via-tag-access_reviews"]').exists()).toBe(false)
+    expect(w.find('[data-test="read-via-note-alerts"]').exists()).toBe(false)
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    expect(calls('PUT', '/role-definitions/10')[0].data.permissions).toEqual(['user:manage'])
+  })
+
+  it('真正持有告警唯讀鍵時不標示隨附可檢視', async () => {
+    setup({ detail: detail({ permissions: ['audit:view', 'alert:view', 'user:manage'] }) })
+    const w = await mountEditor()
+    expect(w.find('[data-test="read-via-tag-alerts"]').exists()).toBe(false)
+    expect(w.find('[data-test="read-via-tag-access_reviews"]').exists()).toBe(true)
+  })
+
   it('右欄摘要有「看不到」一段列出隱藏入口', async () => {
     setup({ summary: { summary: { manage: ['users'], read: [], available: [], hidden: ['alerts'] }, missing_dependencies: [], blocked_screens: [] } })
     const w = await mountEditor()

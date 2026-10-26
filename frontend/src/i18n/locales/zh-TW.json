@@ -2618,6 +2618,8 @@
     "groupSnapshotNoGroups": "該次登入未觀測到任何群組值。"
   },
   "userGroups": {
+    "roleScopeColumn": "角色與管理範圍",
+    "setRoles": "設定角色",
     "headerDesc": "把使用者分成一組；對群組授權，就是對全體成員授權。群組也可以帶角色，每位成員都會取得。",
     "create": "新增群組",
     "nameColumn": "群組名稱",
@@ -2889,7 +2891,7 @@
         "notification_channels": "通知通道",
         "system_alerts": "系統告警",
         "alert_rules": "告警規則",
-        "schedules": "排程",
+        "schedules": "排程時刻預覽",
         "rotation_schedules": "輪替排程",
         "instance_guard": "實例保護"
       },
@@ -2927,8 +2929,21 @@
       "nodeScopedNoEffectNotice": "這個角色有 {n} 筆限定節點的指派；角色的權限不受節點限制，那些指派的範圍不會生效。",
       "entryNote": {
         "alerts": "告警記錄與「操作日誌」讀的是同一份稽核資料，選唯讀或管理時會一併加上稽核檢視權限。",
-        "access_reviews": "複審清單讀的是稽核資料，選管理時會一併加上稽核檢視權限。"
-      }
+        "access_reviews": "複審清單讀的是稽核資料，選管理時會一併加上稽核檢視權限。",
+        "audit_logs": "同一個稽核檢視權限也開啟調查工作台、指令稽核、下載中心、AI agent 任務與輪替證據的報告。"
+      },
+      "placementTag": {
+        "embedded": "設定卡",
+        "helper": "輔助功能",
+        "banner": "橫幅"
+      },
+      "placementNote": {
+        "embedded": "設定卡位於{host}頁內，要能進該頁才看得到。",
+        "helper": "沒有自己的頁面，在{entries}的排程欄位顯示下次執行時刻。",
+        "banner": "沒有自己的頁面。單實例守衛的橫幅出現在頁首時所有人都看得到，持有者另可在橫幅上展開細節。"
+      },
+      "readViaTag": "隨{via}可檢視",
+      "readViaNote": "持有{via}就看得到這裡的內容。要讓它沒有授予，需把{via}也設為隱藏。"
     },
     "assignState": {
       "protected": "只有超級管理者能指派",
@@ -3297,6 +3312,7 @@
     "createdGoToList": "在下方「我的申請」清單查看"
   },
   "authzWizard": {
+    "prefillGroupUnavailable": "帶入的使用者群組不在你可以授權的主體內（例如你本人所屬的群組），請另選主體。",
     "stepSubject": "選擇主體",
     "stepAsset": "選擇資產",
     "stepPermission": "選擇權限",
@@ -3380,7 +3396,13 @@
     "scopeAssigned": "已分配審核範圍",
     "approverRoleRequiredHint": "只列出已具備審核人員角色的使用者。要讓其他人成為審核方，請先由可指派角色的管理者為其加上審核人員角色。"
   },
+  "roleScope": {
+    "bannerTitle": "這裡設定的是管理範圍。",
+    "bannerBody": "角色的管理範圍決定成員能在哪些節點上做管理工作。",
+    "goAuthorizations": "前往資產授權"
+  },
   "securityPolicies": {
+    "sectionNavLabel": "安全政策分區",
     "description": "帳號認證、連線與日誌留存的安全門檻。存取管控、傳輸安全、金鑰與離機儲存的設定各有專屬管理頁。",
     "sessionCapRiskAlert": "已設定協議連線閒置逾時，但「協議連線最長時長」為 0（不封頂）。監看類長連線（tail -f、top、日誌串流）因伺服器持續輸出不受閒置逾時中斷，建議設定最長時長作絕對上限。",
     "webSessionCapRiskAlert": "「Web 工作階段最長時數」為 0，表示網頁工作階段沒有時間上界。若使用者角色由外部身分來源（目錄或 OIDC 提供者）的群組成員資格決定，在來源側移除成員資格後，要等到該使用者下次登入才會生效；倚賴來源側撤權時不得設為 0。",
@@ -4708,6 +4730,7 @@
     "INTERNAL_AUTHORIZATION_BATCH_GRANT": "批次授權失敗",
     "INTERNAL_AUTHORIZATION_CREATE": "建立授權失敗",
     "INTERNAL_AUTHORIZATION_EFFECTIVE": "查詢有效權限失敗",
+    "INTERNAL_PERMISSION_OVERVIEW": "查詢權限一覽失敗",
     "INTERNAL_AUTHORIZATION_QUERY": "查詢授權失敗",
     "INTERNAL_AUTHORIZATION_REVOKE": "撤銷授權失敗",
     "INTERNAL_AUTHORIZATION_UPDATE": "更新授權失敗",
@@ -5678,6 +5701,25 @@
     "noMatchConsequence": "搜尋起點與 filter 目前找不到任何使用者：維持此設定並啟用後，所有目錄使用者都會登入失敗。請確認搜尋起點（base DN）涵蓋使用者所在分支，且 filter 的屬性名與目錄一致。"
   },
   "identityGroupMappings": {
+    "targetRoleScope": "{role}・管理範圍 {scope}",
+    "targetScopeMore": "等 {n} 個",
+    "optionScopeNodes": "{n} 個節點",
+    "optionCreateGroup": "到「使用者群組」新增群組",
+    "targetSummaryTitle": "經這條規則加入「{group}」的人會取得",
+    "targetSummaryNoAuthz": "這個群組目前沒有資產授權。",
+    "targetSummaryAuthzCount": "這個群組目前有 {n} 筆資產授權。",
+    "targetSummaryAuthzLoading": "正在讀取這個群組的資產授權筆數。",
+    "targetSummaryAuthzUnavailable": "暫時無法取得這個群組的資產授權筆數。",
+    "currentUsageUnavailable": "暫時無法取得目前用途",
+    "goGroupRoles": "查看或修改群組的角色與範圍",
+    "rolesTabHintTitle": "這裡只能對應不需要指定範圍的內建角色",
+    "rolesTabHintStep1": "到「使用者群組」開啟或新增群組",
+    "rolesTabHintStep2": "在「角色與範圍」分頁分配角色，選全系統或指定節點",
+    "rolesTabHintStep3": "回本頁「群組 → 使用者群組」新增規則，目標選該群組",
+    "rolesTabHintConnection": "要讓這些人也能連線到主機，另到「資產授權」把主機授權給該群組。",
+    "directMapHintTitle": "找不到{roles}或自訂角色？",
+    "goUserGroups": "前往使用者群組",
+    "switchToGroupTab": "改到「群組 → 使用者群組」",
     "title": "外部群組映射",
     "subtitle": "依已驗證的身分來源群組同步系統角色與使用者群組。",
     "backToSource": "返回來源設定",
@@ -5767,8 +5809,8 @@
     "protectedTarget": "這個群組帶有「{role}」角色。",
     "externalDirectoryDecides": "這個外部群組的成員由外部目錄的管理者決定。在目錄裡被加入的人，下次登入就會取得「{role}」，不需要經過這裡。",
     "footerRule": "會讓人取得「超級管理者」或「系統安全管理員」的映射，只有超級管理者能新增、修改、停用或刪除。",
-    "rolesTabHint": "這裡只能把外部群組直接對應到不需要指定範圍的內建角色。其他角色（例如自訂角色）請先給某個使用者群組，再到「群組 → 使用者群組」設定映射。",
-    "directMapHint": "沒看到想要的角色？清單外的角色（例如自訂角色）要經使用者群組取得：先把角色給群組，再改用「群組 → 使用者群組」。",
+    "rolesTabHint": "{roles}與自訂角色可以限定管理範圍，要經使用者群組取得：",
+    "directMapHint": "這些角色可以限定管理範圍，不能直接對應。先把角色連同範圍給一個使用者群組，再用「群組 → 使用者群組」對應。",
     "groupRolesUnavailable": "暫時讀不到各群組帶有哪些角色，選項沒有預先停用；儲存時系統仍會檢查。",
     "groupListFailed": "無法載入使用者群組清單。"
   },
@@ -8580,7 +8622,8 @@
       "scopeGlobal": "全系統",
       "scopeNodes": "{nodes}（共 {count} 個節點）",
       "scopeNodeDeleted": "節點 #{id}（已刪除）",
-      "targetNamed": "{name}（{kind} #{id}）"
+      "targetNamed": "{name}（{kind} #{id}）",
+      "viewPermissionOverview": "查看 {name} 的權限一覽"
     },
     "targetKinds": {
       "asset": "資產",
@@ -8658,7 +8701,8 @@
   "userDetail": {
     "tabs": {
       "basic": "基本資料",
-      "roles": "角色與範圍"
+      "roles": "角色與範圍",
+      "permissions": "權限一覽"
     },
     "header": {
       "protectedSuper": "超級管理者",
@@ -8748,12 +8792,129 @@
       "notifyValue": "儲存後會通知安全人員",
       "connection": "可連線主機",
       "connectionFixed": "一般管理能力不會自動帶來連線權；能連哪些主機由資產授權決定，超級管理者另依既有的保留身分",
+      "connectionUnchanged": "不變",
       "effectiveNow": "儲存後立即生效，並記入操作日誌。",
       "unavailable": "預覽暫時無法取得"
     },
     "loadFailed": "無法載入這位使用者"
   },
+  "permissionOverview": {
+    "switchUser": "切換使用者",
+    "loadFailed": "權限一覽暫時無法載入，請稍後再試。",
+    "separationNote": "管理權不自動授予連線權：能管理一台主機，不代表能連線到它。",
+    "manage": {
+      "title": "能管理什麼",
+      "subtitle": "由角色決定"
+    },
+    "connect": {
+      "title": "能連線到哪裡",
+      "subtitle": "由資產授權決定",
+      "assetCount": "{n} 台",
+      "via": {
+        "self": "本人授權",
+        "group": "經由群組「{group}」"
+      },
+      "validity": {
+        "permanent": "常設",
+        "until": "到期：{date}",
+        "from": "{date} 起",
+        "range": "{start} 至 {end}"
+      },
+      "policy": {
+        "mixed": "連線政策依資產而異",
+        "reason": "連線需填寫事由",
+        "approval": "連線需經核准"
+      },
+      "level": {
+        "connect": "連線",
+        "view": "檢視"
+      },
+      "account": {
+        "all": "全部帳號",
+        "named": "帳號：{accounts}"
+      },
+      "alsoManage": "也能管理",
+      "alsoManagePartial": "其中 {n} 台也能管理",
+      "addressNotice": "{name} 對這些主機既能管理也能連線。修改它們的位址時，會通知安全人員。",
+      "manageOnly": "{path}（{n} 台）：{name} 能管理，但沒有資產授權可以連線。",
+      "outOfScope": "另有 {n} 台你看不到的資產",
+      "unavailable": "你沒有檢視資產授權的權限，無法顯示這一欄",
+      "undisclosed": "你看不到的授權記錄，涵蓋你範圍內的 {n} 台資產",
+      "approverScope": "審核範圍涵蓋 {n} 台資產（只能檢視）",
+      "empty": "在你看得到的範圍內，目前沒有任何資產授權，所以沒有可以連線的主機。能連線到哪些主機，由資產授權決定。"
+    },
+    "probe": {
+      "title": "查一台資產",
+      "placeholder": "輸入資產名稱",
+      "manageYes": "能管理",
+      "manageNo": "不能管理",
+      "connectYes": "能連線",
+      "connectNo": "不能連線",
+      "connectUnavailable": "無法顯示能否連線",
+      "notFound": "查無此資產",
+      "batchLink": "前往資產授權",
+      "manageBy": "依「{role}」，範圍：{scope}",
+      "manageNoReason": "沒有任何角色讓他管理這台資產。",
+      "connectBy": "{target}（{via}，{validity}）",
+      "connectNoReason": "沒有可連線的資產授權。"
+    },
+    "card": {
+      "scopeLabel": "範圍",
+      "global": "全系統",
+      "notApplicable": "不適用",
+      "assetCount": "共 {n} 台資產",
+      "inactiveNodes": "有 {n} 個範圍節點已不存在，那部分不生效，也不會變成全系統",
+      "noEntries": "目前沒有可管理或可使用的入口"
+    },
+    "why": {
+      "toggle": "為什麼"
+    },
+    "detail": {
+      "toggle": "細分動作",
+      "empty": "這個來源目前沒有生效的細分動作"
+    },
+    "source": {
+      "direct": "管理者指派",
+      "group": "來自群組「{group}」",
+      "groupMapped": "（成員來自外部群組映射）",
+      "mapped": "外部群組映射：{source}「{group}」",
+      "mappedNoRule": "外部群組映射（對應的規則已不存在）",
+      "compatDefault": "沒有指派角色，套用一般使用者的預設",
+      "agentFixed": "AI agent 的權限固定"
+    },
+    "ineffective": {
+      "title": "未生效",
+      "reason": {
+        "nodes_all_deleted": "指派的範圍節點都已刪除，這筆指派不生效，也不會變成全系統。",
+        "permission_not_node_scopable": "有些功能只能在全系統範圍生效，限定節點後這部分不會產生權限。",
+        "builtin_requires_global": "這個內建角色只認全系統的指派，限定節點後不會產生權限。",
+        "unknown": "這部分的指派目前沒有生效。"
+      }
+    },
+    "identity": {
+      "superAdmin": "擁有全部功能，範圍是全系統",
+      "superAdminConnect": "不需要資產授權就能連線所有主機",
+      "auditor": "持有稽核人員身分",
+      "auditorConnect": "可以檢視全部資產，連線看資產授權",
+      "approver": "審核資格依審核範圍決定",
+      "approverLink": "前往審核範圍",
+      "compatDefault": "一般使用者（沒有指派角色時的預設）",
+      "agent": "AI agent 的權限固定，不受角色影響"
+    }
+  },
   "roleNodePicker": {
+    "tagScopable": "可限管理範圍",
+    "roleColumn": "角色",
+    "scopeColumn": "管理範圍",
+    "scopeAllNote": "所有節點，含日後新增的節點",
+    "globalOnlyRowNote": "這個角色只能用在全系統，不需要選範圍",
+    "notApplicableNote": "以全系統指派；這個內建角色沒有可限定節點的管理能力，不需要管理範圍",
+    "stillLimitNodes": "仍要限定節點",
+    "setRange": "設定範圍",
+    "collapseRange": "收合範圍設定",
+    "unsaved": "尚未儲存",
+    "moreActions": "更多",
+    "filterPlaceholder": "搜尋角色名稱",
     "modeAll": "全系統",
     "modeNodes": "指定節點",
     "panelHint": "勾選節點；底下的子節點與日後新增的子節點都會一起納入。",
@@ -8781,6 +8942,7 @@
     "globalOnlyNote": "這個角色含只能套用到全系統的權限，那部分在這個範圍內不生效。",
     "changeManagedAssets": "可管理資產",
     "changeAssetsValue": "{after} 台（原本 {before} 台）",
+    "changeAssetsAll": "全部資產",
     "changeGroupAssetsNote": "群組的角色涵蓋的資產，會成為每一位成員的管理範圍。",
     "mappedStillGranted": "此角色仍由外部群組給予，移除後改為全系統生效。",
     "mappedStillGrantedGlobal": "此角色仍由外部群組給予。"
@@ -8789,5 +8951,81 @@
     "label": "你可管理：",
     "notAssigned": "尚未指派",
     "more": "另 {n} 個"
+  },
+  "groupSetup": {
+    "title": "建立群組並設定角色與範圍",
+    "stepName1": "群組",
+    "stepName2": "角色與管理範圍",
+    "stepName3": "外部群組與確認",
+    "step1Intro": "這會建立一個新的使用者群組。群組決定成員帶什麼角色；外部目錄的群組只決定誰是成員。",
+    "groupName": "群組名稱",
+    "groupDesc": "描述",
+    "newGroup": "新群組",
+    "nameLocked": "群組已建立，要改名請到使用者群組頁。",
+    "carriedHint": "從剛才的規則帶過來，第 3 步可修改。",
+    "step2Title": "「{group}」的角色",
+    "step2Same": "與群組頁「角色與範圍」是同一套選擇：分配角色、設定範圍的方式完全相同，存好後也在那裡修改。",
+    "step2NeedRole": "至少選一個角色才能繼續。",
+    "step3Lead": "按「建立並儲存」後依序完成三件事：",
+    "task1": "建立使用者群組「{group}」",
+    "task2": "指派角色與管理範圍：{roles}",
+    "task3": "新增規則：{source}「{external}」→「{group}」",
+    "ruleNoScope": "規則本身不帶範圍；成員取得的範圍來自群組的角色。",
+    "afterTitle": "儲存後的變化",
+    "afterMembers": "新群組目前沒有成員；目錄中「{external}」的成員下次登入時加入群組，取得{roles}。",
+    "thisExternalGroup": "這個外部群組",
+    "noteSharedReadonly": "這個顯示名稱由使用該外部群組的規則共用，請在映射頁的「修改備註」修改。",
+    "carriedNoteIgnored": "帶入的顯示名稱「{note}」未套用，因為這個外部群組已有共用的顯示名稱。",
+    "prev": "上一步",
+    "next": "下一步",
+    "create": "建立並儲存",
+    "finish": "完成",
+    "recheck": "重新核對",
+    "backToRoles": "回第 2 步修改",
+    "retry": {
+      "group": "重試建立群組",
+      "roles": "重試指派角色",
+      "rule": "重試新增規則"
+    },
+    "running": "處理中，請稍候。",
+    "runningTitle": "處理中",
+    "partialTitle": "尚未全部完成",
+    "unconfirmedTitle": "有一步的結果未確認",
+    "doneTitle": "已完成",
+    "state": {
+      "done": "已完成",
+      "rejected": "被拒絕",
+      "notWritten": "未完成",
+      "unconfirmed": "結果未確認",
+      "differs": "與送出的不同",
+      "checking": "核對中",
+      "notRun": "未執行"
+    },
+    "failureGeneric": "暫時無法完成，請稍後重試。",
+    "notWritten": {
+      "1": "群組沒有建立。",
+      "2": "角色指派沒有寫入。",
+      "3": "規則沒有建立。"
+    },
+    "unconfirmedSameName": "可能已建立同名群組，請到使用者群組頁確認。",
+    "unconfirmedRead": {
+      "1": "無法確認群組是否已建立，請重新核對。",
+      "2": "無法確認角色指派是否已寫入，請重新核對。",
+      "3": "無法確認規則是否已建立，請重新核對。"
+    },
+    "differs": "群組目前的角色指派為：{list}，與本次送出的不同。回第 2 步會以這份指派為基底。",
+    "keepNoteNone": "目前沒有任何步驟寫入。修正後重試即可，不會重複建立群組。",
+    "keepNote": "已完成的步驟會保留，不會自動撤回。修正後重試未完成的步驟即可，不會重複建立群組。",
+    "noImpact": "群組目前沒有成員，不會影響任何人。",
+    "nextOptionalTitle": "下一步（選做）：這些人也要能連線到主機嗎？",
+    "nextOptionalBody": "到「資產授權」用批次授權，主體選這個群組、目標選節點、權限選連線。",
+    "goAuthorizations": "前往資產授權（已帶入這個群組）",
+    "noAuthzNote": "要讓他們能連線，請有資產授權權限的人把主機授權給這個群組。",
+    "openGroupRoles": "開啟群組的角色與範圍",
+    "entry": {
+      "hint": "也可以在這裡一次建立群組、設定角色與範圍，並建立對應規則。",
+      "button": "建立群組並設定角色與範圍",
+      "option": "建立新群組並設定角色與範圍"
+    }
   }
 }

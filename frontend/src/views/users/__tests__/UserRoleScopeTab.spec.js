@@ -95,11 +95,13 @@ describe('UserRoleScopeTab：管理者指派', () => {
     expect(opts.asset_admin).toMatchObject({ disabled: true, reason: t('roles.assignState.notOpen') })
     expect(opts.cred_admin).toMatchObject({ disabled: false, reason: '' })
     expect(opts.auditor).toMatchObject({ disabled: true, reason: t('userDetail.roles.alreadyAdded') })
-    const dom = w.findAll('.el-select-dropdown__item')
-    const sec = dom.find((i) => i.text().includes(t('roles.assignState.protected')))
-    const open = dom.find((i) => i.text().includes('cred_admin'))
-    expect(sec.classes()).toContain('is-disabled')
-    expect(open.classes()).not.toContain('is-disabled')
+    // 選單改掛頁面層：選項在 document.body 之下、不在分頁根元素之內
+    const dom = [...document.body.querySelectorAll('.el-select-dropdown__item')]
+    const sec = dom.find((i) => i.textContent.includes(t('roles.assignState.protected')))
+    const open = dom.find((i) => i.textContent.includes('cred_admin'))
+    expect(w.element.contains(sec)).toBe(false)
+    expect(sec.classList.contains('is-disabled')).toBe(true)
+    expect(open.classList.contains('is-disabled')).toBe(false)
   })
 
   it('移除一個管理者指派角色後送出：本文鍵集合恰為 ["manual_roles"]，值只含剩餘者', async () => {

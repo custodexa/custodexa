@@ -20,6 +20,7 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 const batchCreateAuthorizationsMock = vi.fn()
 
 const subjectOptionsMock = vi.fn()
+const selfSubjectsMock = vi.fn(() => Promise.reject(new Error('unavailable')))
 const targetOptionsMock = vi.fn()
 
 // 選項由授權選擇器供應（欄位同伺服器回應契約）
@@ -27,6 +28,7 @@ vi.mock('@/api/authorizations', () => ({
   batchCreateAuthorizations: (...a) => batchCreateAuthorizationsMock(...a),
   getAuthorizationSubjectOptions: (...a) => subjectOptionsMock(...a),
   getAuthorizationTargetOptions: (...a) => targetOptionsMock(...a),
+  getSelfSubjects: (...a) => selfSubjectsMock(...a),
 }))
 
 subjectOptionsMock.mockImplementation(({ kind }) =>
@@ -134,6 +136,42 @@ describe('AuthzBatchWizard 批次授權精靈', () => {
 
     expect(wrapper.vm.targetMode).toBe('groups')
     expect(wrapper.vm.selectedGroups.map((g) => g.id)).toContain(4)
+  })
+
+  it('?user_group_id 預填：主體切到使用者群組並選定該群組，停在第一步，不動節點預填', async () => {
+    const wrapper = mountWizard({ prefillUserGroupId: 5 })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.vm.subjectMode).toBe('userGroups')
+    expect(wrapper.vm.selectedUserGroups.map((g) => g.id)).toEqual([5])
+    expect(wrapper.vm.currentStep).toBe(0)
+    expect(wrapper.find('[data-test="prefill-group-unavailable"]').exists()).toBe(false)
+    expect(wrapper.vm.targetMode).toBe('assets')
+  })
+
+  it('預填的群組不在主體選項內：不預選並顯示說明', async () => {
+    const wrapper = mountWizard({ prefillUserGroupId: 99 })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.vm.selectedUserGroups).toEqual([])
+    expect(wrapper.get('[data-test="prefill-group-unavailable"]').text()).toContain(
+      '帶入的使用者群組不在你可以授權的主體內'
+    )
+  })
+
+  it('預填的群組是本人所屬群組且限制適用：不預選並顯示說明', async () => {
+    selfSubjectsMock.mockImplementationOnce(() =>
+      Promise.resolve({ applies: true, user_id: 2, agent_ids: [], user_group_ids: [5] })
+    )
+    const wrapper = mountWizard({ prefillUserGroupId: 5 })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.vm.subjectMode).toBe('userGroups')
+    expect(wrapper.vm.selectedUserGroups).toEqual([])
+    expect(wrapper.find('[data-test="prefill-group-unavailable"]').exists()).toBe(true)
   })
 
   it('協議 tag 對 DB/K8s 類協議不產生空 type（修 invalid prop 警告）', async () => {

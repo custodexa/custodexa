@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   adminDisableMFA: vi.fn(),
   confirm: vi.fn(),
   me: vi.fn(),
+  overview: vi.fn(),
 }))
 
 vi.mock('vue-router', async (orig) => ({
@@ -53,6 +54,12 @@ vi.mock('@/api/user', () => ({
   unbindExternalIdentity: vi.fn(),
   unbindExternalIdentityAndDisable: vi.fn(),
 }))
+vi.mock('@/api/permissionOverview', () => ({
+  getPermissionOverview: (...a) => h.overview(...a),
+  probePermissionAsset: vi.fn(),
+  PROBE_NOT_FOUND: 'NOTFOUND_ASSET',
+}))
+vi.mock('@/api/roleDefinitions', () => ({ listRoleDefinitions: vi.fn().mockResolvedValue({ data: [] }) }))
 vi.mock('@/api/assets', () => ({
   getAssetList: vi.fn().mockResolvedValue({ data: [] }),
   getAssetGroups: vi.fn().mockResolvedValue({ data: [] }),
@@ -73,7 +80,12 @@ const t = (k, p) => i18n.global.t(k, p)
 const RolesTabStub = { name: 'UserRoleScopeTab', template: '<div data-test="roles-tab-stub" />' }
 const global = {
   plugins: [ElementPlus],
-  stubs: { 'el-dialog': ElDialogStub, UserRoleScopeTab: RolesTabStub },
+  stubs: {
+    'el-dialog': ElDialogStub,
+    UserRoleScopeTab: RolesTabStub,
+    RouterLink: { template: '<a><slot /></a>' },
+    'router-link': { template: '<a><slot /></a>' },
+  },
 }
 
 const ALL = (v) => ({
@@ -112,10 +124,11 @@ beforeEach(() => {
 })
 
 describe('使用者詳情頁：分頁與入口', () => {
-  it('只有基本資料與角色與範圍兩個分頁；預設在基本資料', async () => {
+  it('依序是基本資料、角色與範圍、權限一覽三個分頁；預設在基本資料', async () => {
     const w = await mountDetail(base(), ALL('allowed'))
     const items = w.findAll('.el-tabs__item').map((i) => i.text())
-    expect(items).toEqual([t('userDetail.tabs.basic'), t('userDetail.tabs.roles')])
+    expect(items).toEqual([t('userDetail.tabs.basic'), t('userDetail.tabs.roles'), t('userDetail.tabs.permissions')])
+    expect(h.overview).not.toHaveBeenCalled()
     expect(w.find('.el-tabs__item.is-active').text()).toBe(t('userDetail.tabs.basic'))
   })
 
@@ -123,6 +136,37 @@ describe('使用者詳情頁：分頁與入口', () => {
     const w = await mountDetail(base(), ALL('allowed'), { tab: 'roles' })
     expect(w.find('.el-tabs__item.is-active').text()).toBe(t('userDetail.tabs.roles'))
     expect(w.find('[data-test="roles-tab-stub"]').exists()).toBe(true)
+  })
+
+  it('?tab=permissions 直達第三分頁並呼叫一次權限一覽端點', async () => {
+    h.overview.mockResolvedValue({
+      user_id: 9, username: 'target',
+      management: { identity: {}, sources: [], bindings: [], permissions: [], ineffective_sources: [] },
+      connection: { available: false },
+    })
+    const w = await mountDetail(base(), ALL('allowed'), { tab: 'permissions' })
+    expect(w.find('.el-tabs__item.is-active').text()).toBe(t('userDetail.tabs.permissions'))
+    expect(w.find('[data-test="permission-overview-tab"]').exists()).toBe(true)
+    expect(h.overview).toHaveBeenCalledTimes(1)
+    expect(h.overview).toHaveBeenCalledWith(9)
+  })
+
+  it('權限一覽右上的使用者切換：導到新使用者的權限一覽；其他分頁沒有切換', async () => {
+    h.overview.mockResolvedValue({
+      user_id: 9, username: 'target',
+      management: { identity: {}, sources: [], bindings: [], permissions: [], ineffective_sources: [] },
+      connection: { available: false },
+    })
+    const w = await mountDetail(base(), ALL('allowed'), { tab: 'permissions' })
+    const sw = w.findComponent({ name: 'PermissionOverviewUserSwitch' })
+    expect(sw.exists()).toBe(true)
+    sw.vm.$emit('switch', 12)
+    expect(h.push).toHaveBeenCalledWith({ path: '/users/12', query: { tab: 'permissions' } })
+    sw.vm.$emit('switch', 9)
+    expect(h.push).toHaveBeenCalledTimes(1)
+
+    const other = await mountDetail(base(), ALL('allowed'), { tab: 'roles' })
+    expect(other.findComponent({ name: 'PermissionOverviewUserSwitch' }).exists()).toBe(false)
   })
 
   it('沒有 user:manage 時路由守衛拒絕，且詳情路由沿用使用者列表的入口規則', async () => {

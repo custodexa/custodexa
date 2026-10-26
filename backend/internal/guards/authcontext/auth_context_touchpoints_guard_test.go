@@ -219,6 +219,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// 讀取面之一。漏掛（或漏登記後被人取下）＝稽核資料以匿名身分全站可讀，且該路徑簽發／
 	// 使用的憑證對 provider 停用與使用者憑證世代免疫。此處另以 RequirePermission 無條件疊加。
 	{symbol: "AuthMiddleware", file: "internal/api/audit_timeline_handler.go", fn: "AuditTimelineHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/permission_overview_handler.go", fn: "PermissionOverviewHandler.RegisterRoutes", count: 1, source: "使用者權限一覽兩支唯讀端點（總覽與單一資產明細）共用一個路由群組，進相同的現查認證閘，權限另由路由登錄表裁決"},
 	{symbol: "AuthMiddleware", file: "internal/api/auth_handler.go", fn: "AuthHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/authorization_handler.go", fn: "AuthorizationHandler.RegisterRoutes", count: 1},
 	// 計劃、候選、批次三個路由群組各掛一次（批次改密隨帳號批次改密加入）

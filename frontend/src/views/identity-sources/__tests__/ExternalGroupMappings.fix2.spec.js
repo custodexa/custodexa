@@ -3,6 +3,7 @@ import { flushPromises, mount, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import i18n from '@/i18n'
 import ExternalGroupMappings from '../ExternalGroupMappings.vue'
+import { roleLabel } from '@/constants/roles'
 
 enableAutoUnmount(afterEach)
 
@@ -35,14 +36,19 @@ const defs = vi.hoisted(() => ({
   preview: vi.fn(),
   bindings: vi.fn(),
   groups: vi.fn(),
+  options: vi.fn(),
 }))
 vi.mock('@/api/roleDefinitions', () => ({
   listRoleDefinitions: (...a) => defs.list(...a),
   previewRoleAssignment: (...a) => defs.preview(...a),
+  getRoleAssignmentOptions: (...a) => defs.options(...a),
 }))
 const policyApi = vi.hoisted(() => ({ getSecurityPolicies: vi.fn(), can: vi.fn(() => true) }))
 vi.mock('@/api/securityPolicies', () => ({ getSecurityPolicies: (...a) => policyApi.getSecurityPolicies(...a) }))
-vi.mock('@/composables/useCapabilities', () => ({ can: (...a) => policyApi.can(...a) }))
+vi.mock('@/composables/useCapabilities', () => ({
+  can: (...a) => policyApi.can(...a),
+  canAll: (perms) => Array.isArray(perms) && perms.length > 0 && perms.every((p) => policyApi.can(p)),
+}))
 const revalidationPolicy = (value) => ({ data: [{ key: 'mapping_revalidation_hours', value, unit: '小時', unit_key: 'hours' }] })
 vi.mock('@/api/userGroups', () => ({
   getUserGroups: (...a) => defs.groups(...a),
@@ -71,6 +77,7 @@ describe('ExternalGroupMappings fix2 interactions', () => {
     defs.preview.mockResolvedValue(NO_COMBO)
     defs.groups.mockResolvedValue({ data: [{ id: 3, name: 'operators' }] })
     defs.bindings.mockResolvedValue({ data: [] })
+    defs.options.mockResolvedValue({ nodes: [], node_assignable_role_ids: [], node_range_no_effect_role_ids: [], node_range_no_effect_reasons: {} })
     api.getRoles.mockResolvedValue({ data: [{ id: 9, match_value: 'CN=Ops,OU=Long,DC=example,DC=test', role: 'user', enabled: true, affected_user_count: 1 }] })
     api.getGroupRules.mockResolvedValue({ data: [] })
     routeState.params = { type: 'oidc', id: '7' }
@@ -516,14 +523,69 @@ describe('ExternalGroupMappings 指派呈現與儲存前預覽', () => {
     expect(document.body.textContent + wrapper.text()).toContain(t('roles.assignState.notOpen'))
   })
 
-  it('角色分頁目標選單只含可直接映射的角色，並提示改用使用者群組', async () => {
+  it('角色分頁目標選單只含可直接映射的角色，選項之後有固定說明', async () => {
     const wrapper = await open()
     wrapper.vm.openCreate()
     await flushPromises()
+    // 選項集合等於 direct_mappable 為真的角色：不含資產管理員、授權管理員、自訂角色
     expect(wrapper.vm.directRoles.map(r => r.name)).toEqual(['user', 'auditor', 'security_admin', 'asset_manager', 'identity_admin'])
     expect(wrapper.vm.directRoles.map(r => r.name)).not.toContain('custom_ops')
-    expect(q(wrapper, '[data-test="mapping-direct-hint"]').textContent.trim()).toBe(t('identityGroupMappings.directMapHint'))
-    expect(wrapper.get('[data-test="mapping-roles-tab-hint"]').text()).toBe(t('identityGroupMappings.rolesTabHint'))
+    const footer = q(wrapper, '[data-test="mapping-direct-hint"]')
+    expect(footer.textContent).toContain(t('identityGroupMappings.directMapHint'))
+    expect(footer.textContent).toContain(t('identityGroupMappings.directMapHintTitle', { roles: `${roleLabel('asset_admin')}、${roleLabel('authz_admin')}` }))
+    // 說明在最後一個選項之後
+    const options = Array.from(document.body.querySelectorAll('.el-select-dropdown__item'))
+    expect(options.length).toBeGreaterThan(0)
+    expect(options.every(o => Boolean(o.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true)
+  })
+
+  it.each(['zh-TW', 'en-US', 'ja-JP'])('角色分頁說明區三步以 1. 2. 3. 起首並點名兩個角色與連線另需資產授權：%s', async (locale) => {
+    const previous = i18n.global.locale.value
+    try {
+      i18n.global.locale.value = locale
+      const wrapper = await open()
+      const hint = wrapper.get('[data-test="mapping-roles-tab-hint"]')
+      expect(hint.text()).toContain(roleLabel('asset_admin'))
+      expect(hint.text()).toContain(roleLabel('authz_admin'))
+      expect(hint.text()).toContain(t('userGroups.detail.tabs.roles'))
+      expect(hint.text()).toContain(t('identityGroupMappings.rolesTabHintConnection'))
+      for (const n of [1, 2, 3]) {
+        expect(hint.get(`[data-test="mapping-roles-hint-step-${n}"]`).text().startsWith(`${n}.`)).toBe(true)
+      }
+    } finally {
+      i18n.global.locale.value = previous
+    }
+  })
+
+  it('角色分頁說明區的前往使用者群組連結只在能進該頁時出現', async () => {
+    const withLink = await open()
+    expect(withLink.find('[data-test="mapping-roles-hint-go-groups"]').exists()).toBe(true)
+    policyApi.can.mockImplementation(perm => perm !== 'usergroup:manage')
+    const withoutLink = await open()
+    expect(withoutLink.find('[data-test="mapping-roles-hint-go-groups"]').exists()).toBe(false)
+    expect(withoutLink.find('[data-test="mapping-roles-tab-hint"]').exists()).toBe(true)
+    // 角色規則對話框的選單底部說明同樣依能進入與否呈現連結
+    withoutLink.vm.openCreate()
+    await flushPromises()
+    expect(q(withoutLink, '[data-test="mapping-direct-go-groups"]')).toBeNull()
+  })
+
+  it('點「改到群組 → 使用者群組」：分頁切到 userGroups，新增規則對話框開啟並沿用外部群組與備註，不送請求', async () => {
+    const wrapper = await open()
+    wrapper.vm.openCreate()
+    wrapper.vm.draft.match_value = 'CN=Ops'
+    wrapper.vm.draft.note = '維運'
+    await flushPromises()
+    const writesBefore = [api.createRole, api.createGroup, api.updateRole, api.updateGroup].map(f => f.mock.calls.length)
+    q(wrapper, '[data-test="mapping-switch-to-groups"]').click()
+    await flushPromises()
+    expect(wrapper.vm.tab).toBe('userGroups')
+    expect(wrapper.vm.dialogOpen).toBe(true)
+    expect(wrapper.vm.editing).toBeNull()
+    expect(wrapper.vm.draft.match_value).toBe('CN=Ops')
+    expect(wrapper.vm.draft.note).toBe('維運')
+    expect(wrapper.vm.draft.user_group_id).toBeNull()
+    expect([api.createRole, api.createGroup, api.updateRole, api.updateGroup].map(f => f.mock.calls.length)).toEqual(writesBefore)
   })
 
   it('選到管理類目標：出現通知提示與外部目錄提示；一般目標不出現', async () => {

@@ -221,7 +221,7 @@ describe('告警頁的系統告警', () => {
     expect(wrapper.vm.kindOptions.some((o) => o.value === 'system_security' && o.label === t('alerts.kindSystemSecurity'))).toBe(true)
   })
 
-  it('權限類型的明細顯示前後角色與數量、各目的地狀態與操作日誌連結，不出現「權限一覽」按鈕', async () => {
+  it('權限類型的明細顯示前後角色與數量、各目的地狀態與操作日誌連結；沒有 user:manage 時不出現「權限一覽」按鈕', async () => {
     getDetailMock.mockResolvedValue(privilegeDetail)
     const wrapper = mountAlerts()
     await flushPromises()
@@ -243,7 +243,23 @@ describe('告警頁的系統告警', () => {
     expect(deliveries).toContain(t('systemAlerts.delivery.delivered'))
     expect(deliveries).toContain(t('systemAlerts.delivery.retrying'))
     expect(q('[data-test="sa-audit-log"]').textContent).toContain('#871')
+    // 本檢視者只有 audit:view 與 alert:manage，進不了使用者管理：不呈現前往權限一覽的按鈕
     expect(text).not.toContain('權限一覽')
+    expect(q('[data-test="sa-view-permission-overview"]')).toBeNull()
+  })
+
+  it('同一則權限類型明細，檢視者具 user:manage 時出現「查看 {name} 的權限一覽」並指向該使用者的權限一覽分頁', async () => {
+    setCapabilitiesForTests(['audit:view', 'alert:manage', 'user:manage'])
+    getDetailMock.mockResolvedValue(privilegeDetail)
+    const wrapper = mountAlerts()
+    await flushPromises()
+    await wrapper.get('[data-test="alert-system-detail"]').trigger('click')
+    await flushPromises()
+
+    const link = q('[data-test="sa-view-permission-overview"]')
+    expect(link).not.toBeNull()
+    expect(link.textContent.trim()).toBe(t('systemAlerts.detail.viewPermissionOverview', { name: '張家豪' }))
+    expect(link.textContent).toContain('查看 張家豪 的權限一覽')
   })
 
   it('非權限類型不顯示權限變化區塊', async () => {

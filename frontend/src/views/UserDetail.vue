@@ -14,6 +14,10 @@
     <template v-else-if="user">
       <PageHeader :title="user.username">
         <template #actions>
+          <PermissionOverviewUserSwitch
+            v-if="tab === 'permissions'"
+            @switch="switchUser"
+          />
           <el-tag
             v-if="holder === 'super'"
             type="danger"
@@ -74,6 +78,13 @@
             @changed="load"
           />
         </el-tab-pane>
+        <el-tab-pane
+          :label="$t('userDetail.tabs.permissions')"
+          name="permissions"
+          lazy
+        >
+          <UserPermissionOverviewTab :user-id="user.id" />
+        </el-tab-pane>
       </el-tabs>
       <UserAccountDialogs
         ref="dialogsRef"
@@ -94,11 +105,13 @@ import UserAccountForm from './users/components/UserAccountForm.vue'
 import UserAccountActions from './users/components/UserAccountActions.vue'
 import UserAccountDialogs from './users/components/UserAccountDialogs.vue'
 import UserRoleScopeTab from './users/components/UserRoleScopeTab.vue'
+import UserPermissionOverviewTab from './users/components/UserPermissionOverviewTab.vue'
+import PermissionOverviewUserSwitch from './users/components/PermissionOverviewUserSwitch.vue'
 import { protectedIdentity } from './users/accountActionStates'
 
 /**
- * 使用者詳情頁：基本資料（共用列表頁的編輯表單與帳號動作，另疊加伺服器下發的保護分類）
- * 與角色與範圍兩個分頁。進入資格與使用者列表相同，由路由的入口規則把關。
+ * 使用者詳情頁：基本資料（共用列表頁的編輯表單與帳號動作，另疊加伺服器下發的保護分類）、
+ * 角色與範圍、權限一覽三個分頁。進入資格與使用者列表相同，由路由的入口規則把關。
  */
 const route = useRoute()
 const router = useRouter()
@@ -111,7 +124,8 @@ const loadFailed = ref(false)
 const dialogsRef = ref(null)
 
 const userId = computed(() => Number(route.params.id))
-const tab = computed(() => (route.query.tab === 'roles' ? 'roles' : 'basic'))
+const TABS = ['basic', 'roles', 'permissions']
+const tab = computed(() => (TABS.includes(route.query.tab) ? route.query.tab : 'basic'))
 const holder = computed(() => protectedIdentity(accountOps.value))
 
 const parseSnapshotGroups = (raw) => {
@@ -158,6 +172,11 @@ const refreshUser = async (id) => {
 
 const changeTab = (name) => {
   router?.replace({ query: { ...route.query, tab: name } })
+}
+// 權限一覽右上的使用者切換：換成新使用者的網址，仍停在權限一覽
+const switchUser = (id) => {
+  if (!id || id === user.value?.id) return
+  router?.push({ path: `/users/${id}`, query: { tab: 'permissions' } })
 }
 const openPassword = (row) => dialogsRef.value?.openPassword(row)
 const openIdentities = (row) => dialogsRef.value?.openIdentities(row)

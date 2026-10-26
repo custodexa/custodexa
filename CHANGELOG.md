@@ -2,6 +2,127 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.19.0 — a permission overview for each user, and group setup from the mapping page (2026-10-26)
+
+No schema change. A 1.18.x package deployment upgrades with `custodexa.sh upgrade 1.19.0` and
+runs no migration. A 1.17.x deployment can upgrade straight to 1.19.0; that upgrade runs the
+1.18.0 migrations, so follow "What you need to do" in the 1.18.0 notes below and
+[Upgrading to 1.18.0][1180-sop] in the upgrade SOP before you start.
+
+### What you need to do
+
+- Take a new backup after the upgrade and check that its snapshot reports `authz.refs=ok` and
+  `usable=true` before relying on it.
+- If upgrading from 1.17.x or 1.18.0, review custom roles that cannot open Alerts or Access
+  Reviews and add the audit read permission where needed.
+
+### New capabilities
+
+#### Permission overview
+
+- The user detail page has a Permission overview tab, open to users with `user:manage`. It
+  shows what the user can manage, decided by roles, next to where they can connect, decided by
+  asset authorizations.
+- What they can manage lists each role with its scope, the asset count of a node scope and the
+  entries the role gives under Can manage, Partially manage, Can view and Can use. Why shows
+  where each role comes from: Assigned by an administrator, a user group, noting when the
+  user's membership comes from an external group mapping, or an external group mapping with
+  its identity source and group. Assignments whose scope nodes have all been deleted appear
+  under Not in effect.
+- Super administrators, auditors, approvers, accounts without a role and AI agents each get a
+  sentence that explains how their permissions are set.
+- Where they can connect lists asset authorizations with their target, asset count, how they
+  are granted, validity and level. Connection details are limited to your
+  `authorization:manage` scope. For authorization records you cannot see, the tab shows
+  permission levels and counts of assets within that scope. For users other than super
+  administrators, connectable assets outside your scope appear only as a count; super
+  administrators instead get a summary explaining their access to every host. Without
+  `authorization:manage`, connection details and counts are not shown. An otherwise empty
+  connection column explains that there are no asset authorizations within the scope you can
+  see.
+- Items whose hosts the user can also manage are marked, with a note that changing their
+  addresses notifies the security team. Nodes the user can manage but has no asset
+  authorization to connect to are listed separately.
+- Check one asset, shown to users with `asset:view`, takes an asset from your asset list and
+  answers whether the user can manage it, through which role and scope, and whether they can
+  connect, through which authorization. For assets outside your `authorization:manage` scope
+  it does not show whether they can connect.
+- In a system alert's detail, self-authorization alerts and management grant alerts whose
+  recipient is a user have a button that opens that user's Permission overview tab. Only users
+  who can open Users see it.
+
+#### Creating a group from the mapping page
+
+- On External group mappings, users with `usergroup:manage`, `role:assign` and
+  `identity_source:manage` can open Create a group with roles and scope from the Group → Role
+  tab hint, or from the target menus when adding a role rule or user group rule. The external
+  group and display name already entered in the dialog are carried over.
+- The drawer has three steps: Group, Roles and management scope, and External group and
+  confirmation. Started from the Group → Role tab, step 2 begins with Asset administrator
+  selected, which you can clear.
+- Create and save creates the user group, assigns its roles and scope, then adds the rule, each
+  only after the one before it succeeds, with the same previews and confirmations as the User
+  Groups and mapping pages. The rule itself carries no scope.
+- The drawer distinguishes completed writes, rejected writes and unconfirmed results, and reads
+  back unconfirmed results before deciding how to continue. A rejected group creation returns
+  to step 1; other rejected writes stay in the results. Completed steps are kept, retries run
+  only the unfinished steps, and nothing already written is undone. If a result remains
+  uncertain, the drawer offers another check or directs you to User Groups.
+
+#### Roles and management scope on groups, accounts and mappings
+
+- The User Groups list has a Roles and management scope column, and a group's name opens its
+  Roles and scope tab. Groups without roles have a Set roles link.
+- On the Roles and scope tabs of groups and accounts, the role menu can be searched, splits
+  built-in and custom roles, and tags roles whose node scope takes effect with Scope can be
+  limited. The group tab shows each role's management scope without selecting it first and
+  offers Set scope.
+- The group and account role tabs explain management scope and link to Asset Authorization
+  where permitted. Links from a group, a mapping's group summary or the completed group setup
+  open batch authorization with that group preselected when eligible, with an explanation if
+  it cannot be selected.
+- In the Group → User group tab of External group mappings, the target column shows the
+  management scope of roles whose node scope takes effect: system-wide, or node paths with the
+  first three listed and the rest counted. Deleted nodes are marked without their names, and
+  users who cannot assign roles see the number of nodes instead of paths.
+- In the rule dialogs, the target group menu lists each group's roles and management scope and
+  ends with Add a group in User Groups. After you choose a group, the dialog shows what people
+  added by the rule get and how many asset authorizations the group has.
+- The Group → Role tab explains in numbered steps how to give Asset administrator,
+  Authorization administrator and custom roles through a user group, and the role menu in its
+  rule dialog ends with the same pointer.
+
+#### Security Policies
+
+- Security Policies has keyboard-accessible section navigation that tracks scrolling and moves
+  above the settings on narrow screens.
+
+#### API
+
+- New read-only endpoints `GET /api/v1/users/:id/permission-overview` and
+  `GET /api/v1/users/:id/permission-overview/assets/:asset_id` require `user:manage` held
+  system-wide and reject AI agent tokens. The [API reference][1190-api] documents their
+  visibility rules and the role descriptor fields added in this release.
+
+### Fixes
+
+- The role menu on the Roles and scope tabs of groups and accounts opens in full instead of
+  being cut off by the tab, so roles lower in an empty group's menu can be reached.
+- On those tabs, the built-in User role held system-wide is no longer tagged as scopable and
+  shows Not applicable as its management scope. Limit nodes anyway sits under More and explains
+  first that the scope will not take effect.
+- Keyboard focus follows step changes in group setup and moves into the node selector when it
+  opens.
+- Role summaries now show Alerts and Access reviews as viewable when access comes through Audit
+  logs, and the role editor identifies that source. It also explains where Log forwarding,
+  Schedule preview and Instance guard appear. Schedule preview, formerly Schedules, offers
+  Hidden and Available.
+- Step numbers now use plain numbering instead of circles on the Features and navigation in
+  this release card, on the page titled The system has not started and the Unseal the System page, and
+  in Batch Authorize, Bulk add assets and Key Management.
+
+[1190-api]: docs/API_SPEC.md
+
 ## 1.18.1 — scoped responses, clearer audit records and fixes after 1.18.0 (2026-10-26)
 
 No schema change. A 1.18.0 package deployment upgrades with `custodexa.sh upgrade 1.18.1` and

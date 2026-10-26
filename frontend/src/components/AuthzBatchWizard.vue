@@ -51,6 +51,7 @@
 
         <el-table
           v-if="subjectMode === 'userGroups'"
+          ref="userGroupTableRef"
           :data="userGroupList"
           height="350"
           @selection-change="handleUserGroupSelectionChange"
@@ -79,6 +80,15 @@
             min-width="180"
           />
         </el-table>
+        <el-alert
+          v-if="prefillGroupUnavailable"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="self-group-notice"
+          data-test="prefill-group-unavailable"
+          :title="$t('authzWizard.prefillGroupUnavailable')"
+        />
         <!-- 本人所屬群組不可勾選（S9-b）：原因在分頁底部一次說明 -->
         <el-alert
           v-if="subjectMode === 'userGroups' && selfLimitApplies"
@@ -486,6 +496,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   // 資產頁「授權此節點」?node_id 深連結預填：開啟時切節點模式並預勾該節點
   prefillNodeId: { type: Number, default: null },
+  // 群組角色頁、映射頁的「前往資產授權」?user_group_id 預填：開啟時主體切到使用者群組並選定該群組
+  prefillUserGroupId: { type: Number, default: null },
 })
 const emit = defineEmits(['update:modelValue', 'completed'])
 
@@ -526,6 +538,8 @@ const groupList = ref([])
 const selectorFailed = ref(false)
 const batchError = ref('')
 const prefillUnavailable = ref(false)
+const prefillGroupUnavailable = ref(false)
+const userGroupTableRef = ref(null)
 
 // 挑選輔助：伺服端過濾狀態
 const assetNodeFilter = ref(null)
@@ -701,9 +715,22 @@ watch(
         nodeCheckTreeRef.value.setCheckedKeys([props.prefillNodeId])
       }
     }
+    if (props.prefillUserGroupId) await applyGroupPrefill()
   },
   { immediate: true }
 )
+
+// 群組預填以主體選項為準：不在選項內或不可選（本人所屬群組）不預選，並就地說明
+async function applyGroupPrefill() {
+  subjectMode.value = 'userGroups'
+  await nextTick()
+  const row = userGroupList.value.find((g) => g.id === props.prefillUserGroupId)
+  const ok = Boolean(row) && groupSelectable(row)
+  prefillGroupUnavailable.value = !ok
+  if (!ok) return
+  selectedUserGroups.value = [row]
+  userGroupTableRef.value?.toggleRowSelection?.(row, true)
+}
 
 const handlePreviousStep = () => {
   if (currentStep.value > 0) {
@@ -765,6 +792,7 @@ const handleBatchSubmit = async () => {
 function resetState() {
   batchError.value = ''
   prefillUnavailable.value = false
+  prefillGroupUnavailable.value = false
   currentStep.value = 0
   selectedUsers.value = []
   selectedUserGroups.value = []

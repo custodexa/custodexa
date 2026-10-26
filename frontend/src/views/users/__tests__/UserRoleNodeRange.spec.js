@@ -20,11 +20,11 @@ const t = (k, p) => i18n.global.t(k, p)
 const err = (status, code) => ({ response: { status, data: { error: { code } } } })
 
 const defs = [
-  { id: 1, name: 'auditor', assignment_state: 'open', management_class: false },
-  { id: 2, name: 'approver', assignment_state: 'open', management_class: false },
-  { id: 3, name: 'asset_admin', assignment_state: 'open', management_class: true },
-  { id: 4, name: 'user', assignment_state: 'open', management_class: false },
-  { id: 5, name: 'duty_contact', assignment_state: 'open', management_class: false },
+  { id: 1, name: 'auditor', builtin_key: 'auditor', scopable: false, node_range_no_effect: false, assignment_state: 'open', management_class: false },
+  { id: 2, name: 'approver', builtin_key: 'approver', scopable: false, node_range_no_effect: false, assignment_state: 'open', management_class: false },
+  { id: 3, name: 'asset_admin', builtin_key: 'asset_admin', scopable: true, node_range_no_effect: false, assignment_state: 'open', management_class: true },
+  { id: 4, name: 'user', builtin_key: 'user', scopable: true, node_range_no_effect: true, assignment_state: 'open', management_class: false },
+  { id: 5, name: 'duty_contact', builtin_key: '', scopable: true, node_range_no_effect: true, assignment_state: 'open', management_class: false },
 ]
 const NODES = [
   { id: 11, name: '甲節點', parent_id: null, depth: 1, path: '甲節點', subtree_asset_count: 12 },
@@ -80,9 +80,16 @@ const mountTab = async (props = {}) => {
   return w
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+// 範圍不會生效的角色以全系統持有時點卡片不開節點選擇，改經「更多」的「仍要限定節點」
 const open = async (w, role) => {
   await w.get(`[data-test="manual-role-${role}"]`).trigger('click')
   await flushPromises()
+  const more = w.find(`[data-test="more-${role}"]`)
+  if (more.exists() && !w.find('[data-test="range-panel"]').exists()) {
+    await more.trigger('click')
+    await w.get(`[data-test="still-limit-${role}"]`).trigger('click')
+    await flushPromises()
+  }
 }
 const setMode = async (w, mode) => {
   await w.get(`[data-test="rnp-mode-${mode}"] input`).setValue(true)
@@ -114,17 +121,33 @@ describe('使用者角色與範圍：節點範圍', () => {
     asAssigner()
     const w = await mountTab({ roleSets: { manual: ['asset_admin', 'user', 'auditor'], mapped: [] } })
     expect(w.get('[data-test="tag-assignable-asset_admin"]').text()).toBe(t('roleNodePicker.tagAssignable'))
-    expect(w.get('[data-test="tag-assignable-user"]').exists()).toBe(true)
     expect(w.get('[data-test="tag-no-range-auditor"]').text()).toBe(t('roleNodePicker.tagNoRange'))
     await open(w, 'auditor')
     expect(w.find('[data-test="range-panel"]').exists()).toBe(false)
     expect(w.find('[data-test="rnp-tree"]').exists()).toBe(false)
-    // 內建角色在清單內：可切到指定節點並開出樹，指定節點時只出現內建角色說明
-    await open(w, 'user')
+    // 一般使用者（內建只在全系統生效）：不適用、無可限範圍標籤、點卡片不開節點選擇；
+    // 「更多」內先說明不會生效再給「仍要限定節點」，選它後可切到指定節點並照常送出
+    const userCard = w.get('[data-test="manual-role-user"]').text()
+    expect(userCard).toContain(t('roles.list.scopeNotApplicable'))
+    expect(userCard).toContain('以全系統指派')
+    expect(w.find('[data-test="tag-assignable-user"]').exists()).toBe(false)
+    await w.get('[data-test="manual-role-user"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="range-panel"]').exists()).toBe(false)
+    expect(w.find('[data-test="rnp-tree"]').exists()).toBe(false)
+    await w.get('[data-test="more-user"]').trigger('click')
+    const more = w.get('[data-test="more-panel-user"]').element.textContent
+    expect(more.indexOf(t('roleNodePicker.builtinGlobalOnlyNote'))).toBeGreaterThanOrEqual(0)
+    expect(more.indexOf(t('roleNodePicker.builtinGlobalOnlyNote'))).toBeLessThan(more.indexOf(t('roleNodePicker.stillLimitNodes')))
+    await w.get('[data-test="still-limit-user"]').trigger('click')
+    await flushPromises()
     await setMode(w, 'nodes')
     expect(w.find('[data-test="rnp-tree"]').exists()).toBe(true)
     expect(w.text()).toContain(t('roleNodePicker.builtinGlobalOnlyNote'))
     expect(w.text()).not.toContain(t('roleNodePicker.rangeNoEffectNote'))
+    await pickNode(w, 11)
+    await save(w)
+    expect(lastPut().role_nodes).toEqual({ user: [11] })
   })
 
   it('讀取端點以 node_ids 欄位存在判定節點範圍，不以陣列長度', async () => {
@@ -412,10 +435,10 @@ describe('使用者角色與範圍：節點範圍', () => {
     expect(w.get('[data-test="roles-save"]').attributes('disabled')).toBeUndefined()
     await save(w)
     expect(lastPut().role_nodes).toEqual({ duty_contact: [11] })
-    // 切回全系統後提示消失
+    // 切回全系統後卡片層提示消失，改在範圍欄說明全系統持有時範圍不會生效
     await setMode(w, 'all')
     expect(w.find('[data-test="card-no-effect-duty_contact"]').exists()).toBe(false)
-    expect(w.text()).not.toContain(t('roleNodePicker.rangeNoEffectNote'))
+    expect(w.get('[data-test="range-no-effect-duty_contact"]').text()).toBe(t('roleNodePicker.rangeNoEffectNote'))
   })
 
   it('範圍不會生效的原因為內建角色只在全系統生效時，提示改為內建角色說明，操作與送出不變', async () => {
@@ -519,5 +542,183 @@ describe('使用者角色與範圍：節點範圍', () => {
     const row = w.get('[data-test="group-range-count-5-asset_admin"]').text()
     expect(row).toContain(t('roleNodePicker.nodeCountOnly', { n: 2 }))
     expect(w.get('[data-test="group-block"]').text()).not.toContain('甲節點')
+  })
+})
+
+describe('使用者角色與範圍：分配角色選單與管理範圍說明（3.8、3.10）', () => {
+  const bigDefs = () => {
+    const d = [
+      ...defs,
+      { id: 6, name: 'authz_admin', builtin_key: 'authz_admin', scopable: true, node_range_no_effect: false },
+      { id: 7, name: 'bx7', builtin_key: 'bx7', scopable: false, node_range_no_effect: false },
+      { id: 8, name: 'bx8', builtin_key: 'bx8', scopable: false, node_range_no_effect: false },
+    ].map((x) => ({ assignment_state: 'open', management_class: false, ...x }))
+    // 內建 8 個（1、2、3、4、6、7、8 加 5 改成內建不成立）：5 為自訂，再補 15 個自訂
+    for (let i = 9; i <= 23; i++) {
+      d.push({ id: i, name: i === 9 ? '資產盤點助理' : `自訂角色${i}`, builtin_key: '', scopable: i === 9, node_range_no_effect: false, assignment_state: 'open', management_class: false })
+    }
+    return d
+  }
+  const mountBig = async (props = {}) => {
+    setup({
+      options: {
+        nodes: NODES,
+        node_assignable_role_ids: [3, 4, 5, 6, 9],
+        node_range_no_effect_role_ids: [4, 5],
+        node_range_no_effect_reasons: { 4: 'builtin_global_only', 5: 'no_scoped_permission' },
+      },
+    })
+    const base = h.request.getMockImplementation()
+    const big = bigDefs()
+    h.request.mockImplementation(async (c) =>
+      `${c.method.toUpperCase()} ${c.url}` === 'GET /role-definitions' ? { data: big, total: big.length, can_define: false } : base(c)
+    )
+    asAssigner()
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const w = mount(UserRoleScopeTab, {
+      attachTo: el,
+      props: { userId: 9, username: 'target', roleSets: { manual: [], mapped: [] }, ...props },
+      global: { plugins: [ElementPlus], stubs: { ElDialog: ElDialogStub } },
+    })
+    await flushPromises()
+    return w
+  }
+  const bodyOptions = () => [...document.body.querySelectorAll('[data-test^="role-option-"]')]
+
+  it('選單掛在頁面層、可篩選、分內建與自訂兩組並標可限管理範圍', async () => {
+    const w = await mountBig()
+    await w.get('[data-test="role-pick"] .el-select__wrapper').trigger('click')
+    await flushPromises()
+    const root = w.get('[data-test="role-scope-tab"]').element
+    const opts = bodyOptions()
+    expect(opts.length).toBe(23)
+    expect(opts.every((o) => !root.contains(o) && document.body.contains(o))).toBe(true)
+    expect(document.body.querySelector('[data-test="role-option-asset_admin"]')).not.toBeNull()
+    const titles = [...document.body.querySelectorAll('.el-select-group__title')].map((e) => e.textContent.trim())
+    expect(titles).toEqual([t('roles.list.builtinTitle', { n: 7 }), t('roles.list.customTitle', { n: 16 })])
+    const tagged = (n) => document.body.querySelector(`[data-test="option-scopable-${n}"]`) !== null
+    expect(tagged('asset_admin')).toBe(true)
+    expect(tagged('authz_admin')).toBe(true)
+    expect(tagged('資產盤點助理')).toBe(true)
+    expect(tagged('user')).toBe(false)
+    expect(tagged('auditor')).toBe(false)
+    expect(tagged('duty_contact')).toBe(false)
+    await w.get('[data-test="role-pick"] input').setValue('資產')
+    await flushPromises()
+    const shown = bodyOptions().filter((o) => !o.closest('[style*="display: none"]')).map((o) => o.textContent)
+    expect(shown.length).toBeGreaterThan(0)
+    expect(shown.length).toBeLessThan(23)
+    expect(shown.every((x) => x.includes('資產'))).toBe(true)
+    w.unmount()
+  })
+
+  it('在更多內按仍要限定節點後，焦點移到展開的範圍面板，不掉到頁面最外層', async () => {
+    const w = await mountBig({ roleSets: { manual: ['user'], mapped: [] } })
+    await w.get('[data-test="manual-role-user"]').trigger('click')
+    await flushPromises()
+    await w.get('[data-test="more-user"]').trigger('click')
+    w.get('[data-test="still-limit-user"]').element.focus()
+    await w.get('[data-test="still-limit-user"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(w.get('[data-test="range-panel"]').element)
+  })
+
+  it('頂部說明含管理範圍說明與連線句，連結不帶主體，只在能進資產授權頁時出現', async () => {
+    const w = await mountBig()
+    const txt = w.get('[data-test="scope-banner"]').text()
+    expect(txt).toContain(t('roleScope.bannerTitle'))
+    expect(txt).toContain(t('roleScope.bannerBody'))
+    expect(txt).toContain(t('userDetail.change.connectionFixed'))
+    expect(w.find('[data-test="banner-go-authorizations"]').exists()).toBe(false)
+    w.unmount()
+    applyCurrentUser({ id: 1, permissions: ['user:manage', 'role:assign', 'authorization:manage'] })
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const w2 = mount(UserRoleScopeTab, {
+      attachTo: el,
+      props: { userId: 9, username: 'target', roleSets: { manual: [], mapped: [] } },
+      global: { plugins: [ElementPlus], stubs: { ElDialog: ElDialogStub } },
+    })
+    await flushPromises()
+    const links = w2.findAll('[data-test="banner-go-authorizations"]')
+    expect(links).toHaveLength(1)
+    expect(links[0].attributes('href')).toBe('/authorizations')
+    w2.unmount()
+  })
+})
+
+
+describe('儲存後的變化與選單篩選（使用者）', () => {
+  const titles = () => [...document.body.querySelectorAll('.el-select-group__title')].map((e) => e.textContent.trim())
+  const mountAttached = async () => {
+    asAssigner()
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const w = mount(UserRoleScopeTab, {
+      attachTo: el,
+      props: { userId: 9, username: 'target', roleSets: { manual: ['auditor'], mapped: [] } },
+      global: { plugins: [ElementPlus], stubs: { ElDialog: ElDialogStub } },
+    })
+    await flushPromises()
+    return w
+  }
+
+  it('可連線主機列寫「不變」，不帶台數，並保留既有說明句', async () => {
+    asAssigner()
+    const w = await mountTab()
+    await w.vm.addPicked('asset_admin')
+    await wait(500)
+    await flushPromises()
+    expect(w.get('[data-test="change-connection-value"]').text()).toBe(t('userDetail.change.connectionUnchanged'))
+    expect(t('userDetail.change.connectionUnchanged')).toBe('不變')
+    expect(w.get('[data-test="change-connection-value"]').text()).not.toMatch(/\d/)
+    expect(w.get('[data-test="change-connection"]').text()).toBe(t('userDetail.change.connectionFixed'))
+  })
+
+  it('全系統持有可限範圍角色時寫「全部資產」不寫 0 台；改成節點範圍後回到台數', async () => {
+    setup({ preview: { ...basePreview, managed_assets: { before: 0, after: 0 }, role_assets: [] } })
+    asAssigner()
+    const w = await mountTab()
+    await w.vm.addPicked('asset_admin')
+    await wait(500)
+    await flushPromises()
+    const row = w.get('[data-test="change-managed-assets"]')
+    expect(w.get('[data-test="change-managed-assets-all"]').text()).toBe(t('roleNodePicker.changeAssetsAll'))
+    expect(row.text()).toContain('全部資產')
+    expect(row.text()).not.toContain('0 台')
+    await open(w, 'asset_admin')
+    await setMode(w, 'nodes')
+    await pickNode(w, 11)
+    await wait(500)
+    await flushPromises()
+    expect(w.find('[data-test="change-managed-assets-all"]').exists()).toBe(false)
+    expect(w.get('[data-test="change-managed-assets"]').text()).toContain(t('roleNodePicker.changeAssetsValue', { after: 0, before: 0 }))
+  })
+
+  it('判定看範圍分類而非角色名稱（範圍不會生效的一般使用者全系統不寫全部資產）', async () => {
+    setup({ preview: { ...basePreview, managed_assets: { before: 0, after: 0 }, role_assets: [] } })
+    asAssigner()
+    const w = await mountTab()
+    await w.vm.addPicked('user')
+    await wait(500)
+    await flushPromises()
+    expect(w.find('[data-test="change-managed-assets-all"]').exists()).toBe(false)
+    expect(w.get('[data-test="change-managed-assets"]').text()).toContain(t('roleNodePicker.changeAssetsValue', { after: 0, before: 0 }))
+  })
+
+  it('篩選時內建與自訂兩組的組標數字隨結果更新，清除篩選後還原', async () => {
+    const w = await mountAttached()
+    await w.get('[data-test="role-pick"] .el-select__wrapper').trigger('click')
+    await flushPromises()
+    expect(titles()).toEqual([t('roles.list.builtinTitle', { n: 4 }), t('roles.list.customTitle', { n: 1 })])
+    await w.get('[data-test="role-pick"] input').setValue('資產')
+    await flushPromises()
+    expect(titles()).toEqual([t('roles.list.builtinTitle', { n: 1 })])
+    expect(document.body.querySelectorAll('[data-test^="role-option-"]')).toHaveLength(1)
+    await w.get('[data-test="role-pick"] input').setValue('')
+    await flushPromises()
+    expect(titles()).toEqual([t('roles.list.builtinTitle', { n: 4 }), t('roles.list.customTitle', { n: 1 })])
+    w.unmount()
   })
 })

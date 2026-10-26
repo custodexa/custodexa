@@ -62,6 +62,11 @@ type entryDescriptorView struct {
 	WriteKeys []string          `json:"write_keys"`
 	Details   []entryDetailView `json:"details"`
 	Scopable  bool              `json:"scopable"`
+	// Placement 入口出現的位置（page／embedded／helper／banner）；PlacementEntries 為所在頁面或使用它的入口；
+	// ReadVia 為隨附檢視的來源入口（沒有時為空字串）。
+	Placement        string   `json:"placement"`
+	PlacementEntries []string `json:"placement_entries"`
+	ReadVia          string   `json:"read_via"`
 }
 
 type capabilityDescriptorView struct {
@@ -87,7 +92,8 @@ func (h *RoleDefinitionHandler) Descriptors(c *gin.Context) {
 	for i, e := range entries {
 		v := entryDescriptorView{ID: e.ID, Group: string(e.Group),
 			States: make([]entryStateView, len(e.States)), Details: make([]entryDetailView, len(e.Details)),
-			WriteKeys: permKeys(authz.EntryWriteKeys(e)), Scopable: authz.EntryNodeScopable(e)}
+			WriteKeys: permKeys(authz.EntryWriteKeys(e)), Scopable: authz.EntryNodeScopable(e),
+			Placement: e.PlacementKind(), PlacementEntries: append([]string{}, e.PlacementEntries...), ReadVia: e.ReadVia}
 		for j, s := range e.States {
 			v.States[j] = entryStateView{Name: s.Name, Keys: permKeys(s.Keys)}
 		}

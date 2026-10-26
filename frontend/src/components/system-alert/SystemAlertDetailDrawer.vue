@@ -119,6 +119,19 @@
           </table>
         </section>
 
+        <!-- 前往被授權對象的權限一覽：只給能進使用者詳情頁者，目標必須是使用者 -->
+        <section
+          v-if="overviewLink"
+          data-test="sa-overview"
+        >
+          <router-link
+            :to="overviewLink.to"
+            data-test="sa-view-permission-overview"
+          >
+            {{ overviewLink.text }}
+          </router-link>
+        </section>
+
         <section data-test="sa-tech">
           <h4>{{ $t('systemAlerts.detail.techTitle') }}</h4>
           <dl class="sa-dl">
@@ -198,6 +211,7 @@ import { ref, computed, watch } from 'vue'
 import { getSystemAlertDetail } from '@/api/systemAlerts'
 import { formatDateTime } from '@/utils/format'
 import { roleLabel } from '@/constants/roles'
+import { canEnter, ENTRY_RULES } from '@/router/entryRules'
 import { t } from '@/i18n'
 
 const props = defineProps({
@@ -320,6 +334,22 @@ const auditLogLink = computed(() => {
   if (!Number.isFinite(at)) return null
   const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
   return { path: '/audit-logs', query: { tab: 'logs', start_time: iso(at - 60000), end_before: iso(at + 60000) } }
+})
+
+// 「查看 {name} 的權限一覽」：兩個自我授權型取 targetName（操作者本人），
+// 對他人發放管理類只在目標是使用者時取受領對象；目標為群組、映射規則、角色者與其他類型都不呈現。
+// 對象識別一律取明細的 target_kind／target_id，不從文字反推；檢視者需能進使用者管理。
+const OVERVIEW_TYPES = [...PRIVILEGE_TYPES, 'management_role_granted']
+const overviewLink = computed(() => {
+  const d = detail.value
+  if (!d || !OVERVIEW_TYPES.includes(d.alert_type) || d.target_kind !== 'user') return null
+  if (!/^[1-9][0-9]*$/.test(String(d.target_id ?? ''))) return null
+  if (!canEnter(ENTRY_RULES['/users'])) return null
+  const name = targetName(d)
+  return {
+    to: { path: `/users/${d.target_id}`, query: { tab: 'permissions' } },
+    text: t('systemAlerts.detail.viewPermissionOverview', { name }),
+  }
 })
 
 const load = async () => {

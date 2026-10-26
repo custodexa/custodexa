@@ -40,43 +40,53 @@
       @save="save"
     />
 
-    <PolicyKeySections
-      :sections="visibleSections"
-      :form-values="formValues"
-      :verdicts-by-key="verdictsByKey"
-      :group-names="groupNames"
-      :draft="isDraftVerdicts"
-      :draft-status="draftStatus"
-      @update:value="(key, value) => (formValues[key] = value)"
-    >
-      <template #section-extra="{ section }">
-        <!-- 網頁會話絕對壽命設 0：會話沒有時間上界。角色由外部身分來源的群組
-             成員資格決定時，來源側撤權要等到下次登入才生效，0 值等於把那個
-             時效拉到無限長。語氣是警語不是阻擋——單機或不接外部來源的部署
-             設 0 沒有這個問題，決定權在部署者 -->
-        <el-alert
-          v-if="section.keys?.includes('web_max_session_hours') && webSessionCapRisk"
-          class="section-risk"
-          type="warning"
-          :closable="false"
-          show-icon
+    <!-- 兩欄：左欄分區導覽（只吃 visibleSections，與卡片同源），右欄分區卡片與 syslog 轉發卡 -->
+    <div class="policy-layout">
+      <div class="policy-nav-col">
+        <PolicySectionNav :sections="visibleSections" />
+      </div>
+      <div class="policy-main">
+        <PolicyKeySections
+          :sections="visibleSections"
+          :form-values="formValues"
+          :verdicts-by-key="verdictsByKey"
+          :group-names="groupNames"
+          :draft="isDraftVerdicts"
+          :draft-status="draftStatus"
+          @update:value="(key, value) => (formValues[key] = value)"
         >
-          {{ $t('securityPolicies.webSessionCapRiskAlert') }}
-        </el-alert>
-        <!-- 跨欄位風險（TIMEOUT-1 方案 B）：設了協議閒置逾時但未設最長時長封頂時，
-             tail -f/top 等監看類長連線因伺服器持續輸出而不受閒置逾時治理，須以
-             最長時長作絕對上限中斷 -->
-        <el-alert
-          v-if="section.keys?.includes('session_max_minutes') && sessionCapRisk"
-          class="section-risk"
-          type="warning"
-          :closable="false"
-          show-icon
-        >
-          {{ $t('securityPolicies.sessionCapRiskAlert') }}
-        </el-alert>
-      </template>
-    </PolicyKeySections>
+          <template #section-extra="{ section }">
+            <!-- 網頁會話絕對壽命設 0：會話沒有時間上界。角色由外部身分來源的群組
+                 成員資格決定時，來源側撤權要等到下次登入才生效，0 值等於把那個
+                 時效拉到無限長。語氣是警語不是阻擋——單機或不接外部來源的部署
+                 設 0 沒有這個問題，決定權在部署者 -->
+            <el-alert
+              v-if="section.keys?.includes('web_max_session_hours') && webSessionCapRisk"
+              class="section-risk"
+              type="warning"
+              :closable="false"
+              show-icon
+            >
+              {{ $t('securityPolicies.webSessionCapRiskAlert') }}
+            </el-alert>
+            <!-- 跨欄位風險（TIMEOUT-1 方案 B）：設了協議閒置逾時但未設最長時長封頂時，
+                 tail -f/top 等監看類長連線因伺服器持續輸出而不受閒置逾時治理，須以
+                 最長時長作絕對上限中斷 -->
+            <el-alert
+              v-if="section.keys?.includes('session_max_minutes') && sessionCapRisk"
+              class="section-risk"
+              type="warning"
+              :closable="false"
+              show-icon
+            >
+              {{ $t('securityPolicies.sessionCapRiskAlert') }}
+            </el-alert>
+          </template>
+        </PolicyKeySections>
+
+        <SyslogForwardCard />
+      </div>
+    </div>
 
     <ApplyPreviewDialog
       v-model="previewVisible"
@@ -88,8 +98,6 @@
       @confirm="acceptPreview"
     />
 
-    <SyslogForwardCard />
-
     <DailyReviewTimezoneConfirm ref="timezoneConfirmRef" />
   </div>
 </template>
@@ -99,6 +107,7 @@ import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import PolicyGroupStrip from '@/components/PolicyGroupStrip.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'
+import PolicySectionNav from '@/components/PolicySectionNav.vue'
 import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import SyslogForwardCard from '@/components/SyslogForwardCard.vue'
 import DailyReviewTimezoneConfirm from '@/components/daily-review/DailyReviewTimezoneConfirm.vue'
@@ -199,6 +208,29 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.policy-layout {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: var(--ot-space-md);
+  align-items: start;
+}
+
+.policy-main,
+.policy-nav-col {
+  min-width: 0;
+}
+
+.policy-nav-col {
+  align-self: stretch;
+}
+
+/* 窄畫面：單欄，導覽（DOM 上在前）排在分區之上 */
+@media (max-width: 900px) {
+  .policy-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .insecure-transport-alert {
   margin-bottom: var(--ot-space-md);
 }

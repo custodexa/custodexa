@@ -35,7 +35,7 @@ type Kind uint8
 
 // 四條例外。零值刻意不用，避免未初始化的 Kind 被誤認為某條例外。
 const (
-	// OutOfScopeAssetCount 共用憑證影響範圍外資產的匿名台數。
+	// OutOfScopeAssetCount 範圍外資產的匿名台數：共用憑證影響範圍外的資產，以及使用者權限一覽連線區段中檢視者可視範圍外的資產。兩個呈現點共用欄名與 Count。
 	OutOfScopeAssetCount Kind = iota + 1
 	// OutOfScopeNodeCount 多歸屬資產「另有 N 個範圍外節點」的匿名計數
 	// （單位：該操作權限點範圍外的歸屬節點數）。
@@ -147,11 +147,11 @@ func Entries() []Entry {
 		{
 			Kind:      OutOfScopeAssetCount,
 			Name:      "OutOfScopeAssetCount",
-			Exception: "共用憑證影響範圍外資產的匿名台數",
+			Exception: "範圍外資產的匿名台數（共用憑證影響範圍外資產的匿名台數；使用者權限一覽連線區段中檢視者可視範圍外的資產台數）",
 			Fields:    []string{FieldOutOfScopeAssetCount, FieldCount},
 			RuleCodes: []string{ruleCredentialImpactConfirmationRequired},
 			Wiring: "共用憑證的影響範圍回應（列表、詳情、影響確認）、輪替成員清單、改密計畫的列表與建立／更新回應、刪除被引用阻擋的回應欄、" +
-				"宣告新秘密與遠端輪替要求先確認的規則碼 params",
+				"宣告新秘密與遠端輪替要求先確認的規則碼 params、使用者權限一覽連線區段的範圍外資產台數欄",
 		},
 		{
 			Kind:      OutOfScopeNodeCount,

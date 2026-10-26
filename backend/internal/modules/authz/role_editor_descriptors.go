@@ -28,12 +28,36 @@ type EntryDetail struct {
 	Key Permission
 }
 
+// 入口出現的位置。零值讀作頁面，取值一律經 PlacementKind。
+const (
+	PlacementPage     = "page"     // 有自己的頁面
+	PlacementEmbedded = "embedded" // 另一入口頁面內的設定卡
+	PlacementHelper   = "helper"   // 嵌在其他入口表單內的輔助能力
+	PlacementBanner   = "banner"   // 只出現在全域橫幅
+)
+
 // EntryDescriptor 一個側欄入口。States[0] 恆為 hidden（空集合）。
+//
+// Placement、PlacementEntries、ReadVia 只是描述，不改變任何態的權限集合、依賴或授權判定。
 type EntryDescriptor struct {
 	ID      string
 	Group   PermGroup
 	States  []EntryState
 	Details []EntryDetail
+	// Placement 入口出現的位置；零值讀作頁面。
+	Placement string
+	// PlacementEntries embedded 為所在頁面的入口（恰一個）；helper 為使用它的入口（至少一個）；其餘為空。
+	PlacementEntries []string
+	// ReadVia 隨附檢視的來源入口：持有來源入口即看得到本入口的頁面內容。沒有為空字串。
+	ReadVia string
+}
+
+// PlacementKind 入口位置的明確值（零值讀作頁面）。
+func (e EntryDescriptor) PlacementKind() string {
+	if e.Placement == "" {
+		return PlacementPage
+	}
+	return e.Placement
 }
 
 // TwoState 無管理動作的入口只有隱藏／可用兩態；沒有獨立讀取鍵的管理入口為隱藏／管理兩態。
@@ -79,21 +103,26 @@ func entryDescriptors() []EntryDescriptor {
 		{ID: "sessions", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermSessionView), st(StateManage, PermSessionView, PermSessionTerminate)}},
 		{ID: "audit_logs", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView)}},
 		{ID: "checkpoint_verification", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView, PermAuditIntegrityView)}},
-		{ID: "alerts", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermAlertView, PermAuditView), st(StateManage, PermAlertView, PermAlertManage, PermAuditView)}},
+		{ID: "alerts", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermAlertView, PermAuditView), st(StateManage, PermAlertView, PermAlertManage, PermAuditView)},
+			ReadVia: "audit_logs"},
 		{ID: "compliance_map", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermComplianceView)}},
-		{ID: "access_reviews", Group: GroupAudit, States: []EntryState{hid(), st(StateManage, PermAccessReviewManage, PermAuditView)}},
+		{ID: "access_reviews", Group: GroupAudit, States: []EntryState{hid(), st(StateManage, PermAccessReviewManage, PermAuditView)},
+			ReadVia: "audit_logs"},
 		{ID: "security_policies", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSecurityPolicyManage)}},
 		{ID: "policy_groups", Group: GroupSettings, States: []EntryState{hid(), st(StateRead, PermPolicyGroupView), st(StateManage, PermPolicyGroupView, PermPolicyGroupManage)}},
 		{ID: "key_management", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermKeyManage)}},
 		{ID: "transmission", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermTransmissionManage)}},
 		{ID: "offsite_storage", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermOffsiteManage)}},
-		{ID: "syslog", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSyslogManage)}},
+		{ID: "syslog", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSyslogManage)},
+			Placement: PlacementEmbedded, PlacementEntries: []string{"security_policies"}},
 		{ID: "notification_channels", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermNotificationChannel)}},
 		{ID: "system_alerts", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermSystemAlertManage)}},
 		{ID: "alert_rules", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermAlertRuleManage)}},
-		{ID: "schedules", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermScheduleManage)}},
+		{ID: "schedules", Group: GroupSettings, States: []EntryState{hid(), st(StateAvailable, PermScheduleManage)},
+			Placement: PlacementHelper, PlacementEntries: []string{"change_secret", "rotation_schedules"}},
 		{ID: "rotation_schedules", Group: GroupSettings, States: []EntryState{hid(), st(StateManage, PermRotationSchedule)}},
-		{ID: "instance_guard", Group: GroupSettings, States: []EntryState{hid(), st(StateAvailable, PermInstanceGuardView)}},
+		{ID: "instance_guard", Group: GroupSettings, States: []EntryState{hid(), st(StateAvailable, PermInstanceGuardView)},
+			Placement: PlacementBanner},
 	}
 }
 
@@ -136,6 +165,8 @@ type RoleSummary struct {
 
 // SummarizeRole 由真實集合產生摘要。keys 為已儲存的權限鍵；入口取「集合完整涵蓋的最高態」，
 // 未涵蓋管理態全部鍵、卻持有該入口任一寫入鍵者歸為部分管理（不稱為只能檢視）。
+// 判定分兩輪：第一輪逐入口歸類；第二輪處理隨附檢視，帶 ReadVia 的入口若第一輪沒有授予、
+// 而來源入口第一輪不是沒有授予，改歸可檢視（只是呈現，不補不移除任何鍵）。
 // 計數由目錄產生，不硬寫數量。
 func SummarizeRole(keys []Permission) RoleSummary {
 	have := map[Permission]bool{}
@@ -144,7 +175,9 @@ func SummarizeRole(keys []Permission) RoleSummary {
 	}
 	covered := map[Permission]bool{}
 	s := RoleSummary{PermissionCount: len(have), CatalogCount: len(permissionCatalog), ScopeGlobalOnly: true, ConnectionSeparate: true, AssignmentTrustHint: have[PermRoleAssign]}
-	for _, e := range entryDescriptors() {
+	entries := entryDescriptors()
+	levels := make(map[string]string, len(entries))
+	for _, e := range entries {
 		level := StateHidden
 		var levelKeys []Permission
 		for _, stt := range e.States[1:] {
@@ -172,7 +205,20 @@ func SummarizeRole(keys []Permission) RoleSummary {
 				}
 			}
 		}
-		switch level {
+		levels[e.ID] = level
+	}
+	// 第二輪：隨附檢視。來源入口的鍵已由來源入口歸屬，covered 不變。
+	first := make(map[string]string, len(levels))
+	for id, l := range levels {
+		first[id] = l
+	}
+	for _, e := range entries {
+		if e.ReadVia != "" && first[e.ID] == StateHidden && first[e.ReadVia] != StateHidden {
+			levels[e.ID] = StateRead
+		}
+	}
+	for _, e := range entries {
+		switch levels[e.ID] {
 		case statePartial:
 			s.Partial = append(s.Partial, e.ID)
 		case StateManage:

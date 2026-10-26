@@ -1,13 +1,13 @@
 {
  "commit": "daca3314",
  "captured_at": "2026-10-15",
- "routes": 340,
- "routes_sha256": "fa826f0c4cb4de747698b0e43a22ba7bcc1584987e422e656e4f6945c76b6af4",
+ "routes": 342,
+ "routes_sha256": "39f13f044b826ae187ab35fafafefa85b1dc08492c35cbaf61fc826f16d73f14",
  "entry_rules": 35,
  "groups": {
   "B": 82,
   "I": 27,
-  "R": 5100,
+  "R": 5130,
   "T": 9
  },
  "schema": {
@@ -1080,6 +1080,7 @@
   "2026-10-18 R: Add host key adopt route (recapture at commit unknown)",
   "2026-10-19 R: Add role definition routes and the group external mapping source route (recapture at commit unknown)",
   "2026-10-19 R: Add release guidance, retention adjustment notice and dashboard card routes (recapture at commit unknown)",
-  "2026-10-25 R: Add records for the batch asset move, tag and delete routes, credential ownership and impact confirmation routes, authorization and approver scope option routes, the access policy override list, and the user role binding and role assignment option routes (recapture at commit unknown)"
+  "2026-10-25 R: Add records for the batch asset move, tag and delete routes, credential ownership and impact confirmation routes, authorization and approver scope option routes, the access policy override list, and the user role binding and role assignment option routes (recapture at commit unknown)",
+  "2026-10-26 R: Add the user permission overview and per-asset probe routes (recapture at commit unknown)"
  ]
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Authorizations from '../Authorizations.vue'
+import { applyCurrentUser, resetCapabilities } from '@/composables/useCapabilities'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -34,6 +35,11 @@ vi.mock('@/api/authorizations', () => ({
   getEffectiveUsers: vi.fn().mockResolvedValue({ users: [] }),
   getAuthorizationSubjectOptions: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   getAuthorizationTargetOptions: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+}))
+
+const routeState = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: routeState.query }),
 }))
 
 vi.mock('@/api/accessRequests', () => ({
@@ -324,5 +330,49 @@ describe('Authorizations 節點涵蓋盤點篩選', () => {
     await flushPromises()
 
     expect(wrapper.vm.filterForm.node_id).toBe('')
+  })
+})
+
+describe('Authorizations ?user_group_id 預先帶入群組', () => {
+  const wizardProps = (w) => w.findComponent({ name: 'AuthzBatchWizard' })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    setAdmin()
+    getAuthorizationsMock.mockResolvedValue({ data: [], total: 0 })
+    routeState.query = {}
+  })
+  afterEach(() => {
+    routeState.query = {}
+    resetCapabilities()
+  })
+
+  it('有 authorization:manage 時開精靈並帶入群組 5', async () => {
+    applyCurrentUser({ id: 1, permissions: ['authorization:manage'] })
+    routeState.query = { user_group_id: '5' }
+    const w = mountView()
+    await flushPromises()
+    const wiz = wizardProps(w)
+    expect(wiz.props('modelValue')).toBe(true)
+    expect(wiz.props('prefillUserGroupId')).toBe(5)
+  })
+
+  it('沒有 authorization:manage 時精靈不開', async () => {
+    applyCurrentUser({ id: 1, permissions: [] })
+    routeState.query = { user_group_id: '5' }
+    const w = mountView()
+    await flushPromises()
+    expect(wizardProps(w).props('modelValue')).toBe(false)
+    expect(wizardProps(w).props('prefillUserGroupId')).toBe(null)
+  })
+
+  it.each(['abc', '0', '-3', '2.5', ''])('值為 %s（非正整數）時忽略', async (v) => {
+    applyCurrentUser({ id: 1, permissions: ['authorization:manage'] })
+    routeState.query = { user_group_id: v }
+    const w = mountView()
+    await flushPromises()
+    expect(wizardProps(w).props('modelValue')).toBe(false)
+    expect(wizardProps(w).props('prefillUserGroupId')).toBe(null)
   })
 })

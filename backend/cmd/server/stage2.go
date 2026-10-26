@@ -2123,7 +2123,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	userHandler.SetAccountOpsProjector(s.roleProjector)
 
 	roleHandler := api.NewRoleHandler(s.userService)
-	authorizationHandler := api.NewAuthorizationHandler(s.authorizationService, authz.NewEffectiveAccessResolver(database.DB).WithScope(s.scopeEvaluator))
+	effectiveResolver := authz.NewEffectiveAccessResolver(database.DB).WithScope(s.scopeEvaluator)
+	authorizationHandler := api.NewAuthorizationHandler(s.authorizationService, effectiveResolver)
+	// 使用者權限一覽：唯讀；映射規則由身分模組的唯讀查詢提供，連線政策段位由政策服務批次解析
+	permissionOverview := api.NewPermissionOverviewHandler(authz.NewPermissionOverviewService(database.DB, s.scopeEvaluator,
+		effectiveResolver, s.authorizationService, identity.NewPermissionOverviewMappings(), s.accessPolicyService))
 	// 本人範圍唯讀端點與授權規則守衛同一判定函式；未注入時端點 fail-close
 	authorizationHandler.SetSelfSubjectsReader(authz.SelfGrantGuard{})
 	// 服務層已在組裝期確認注入範圍判定（RequireWriteScope），寫入端點的能力與範圍交由交易內裁決
@@ -2249,6 +2253,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		userGroup:             userGroupHandler,
 		roleAssignmentPreview: api.NewRoleAssignmentPreviewHandler(authz.NewCapabilityPreviewerWithMappings(database.DB, identity.RoleMappingRuleCount).WithGroupMemberPlanner(identity.PlanManualMembers).WithMappingRulePlanner(identity.PlanMappingRuleChange).WithScopeEvaluator(s.scopeEvaluator)),
 		roleAssignmentOptions: api.NewRoleAssignmentOptionsHandler(assetGroupService, identity.NewRoleNodeScopabilityReader(database.DB)),
+		permissionOverview:    permissionOverview,
 		roleDefinition:        api.NewRoleDefinitionHandler(s.roleDefinitionReader, s.roleDefinitionService),
 		user:                  userHandler,
 		role:                  roleHandler,

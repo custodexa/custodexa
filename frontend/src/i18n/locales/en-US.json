@@ -2618,6 +2618,8 @@
     "groupSnapshotNoGroups": "No group value was observed at that sign-in."
   },
   "userGroups": {
+    "roleScopeColumn": "Roles and management scope",
+    "setRoles": "Set roles",
     "headerDesc": "Group users together; authorizing a group authorizes all of its members. A group can also carry roles, which every member receives.",
     "create": "New Group",
     "nameColumn": "Group Name",
@@ -2889,7 +2891,7 @@
         "notification_channels": "Notification channels",
         "system_alerts": "System alerts",
         "alert_rules": "Alert rules",
-        "schedules": "Schedules",
+        "schedules": "Schedule preview",
         "rotation_schedules": "Rotation schedules",
         "instance_guard": "Instance guard"
       },
@@ -2927,8 +2929,21 @@
       "nodeScopedNoEffectNotice": "This role has {n} assignments limited to nodes. The role's permissions are not restricted by nodes, so the scope on those assignments has no effect.",
       "entryNote": {
         "alerts": "Alert records come from the same audit data as Audit logs, so choosing Read or Manage also adds the audit view permission.",
-        "access_reviews": "Review lists come from audit data, so choosing Manage also adds the audit view permission."
-      }
+        "access_reviews": "Review lists come from audit data, so choosing Manage also adds the audit view permission.",
+        "audit_logs": "The same audit view permission also opens Investigation Workbench, Command Audit, Downloads, AI agent tasks and the Rotation Evidence report."
+      },
+      "placementTag": {
+        "embedded": "Settings card",
+        "helper": "Helper",
+        "banner": "Banner"
+      },
+      "placementNote": {
+        "embedded": "This settings card is on the {host} page and is visible only to people who can open that page.",
+        "helper": "Has no page of its own. It shows the next run times in the schedule fields of {entries}.",
+        "banner": "Has no page of its own. Everyone sees the single-instance guard banner when it appears at the top; holders can also expand its details."
+      },
+      "readViaTag": "Viewable via {via}",
+      "readViaNote": "Anyone with {via} can see this content. To remove it, also set {via} to Hidden."
     },
     "assignState": {
       "protected": "Only a super administrator can assign this",
@@ -3297,6 +3312,7 @@
     "createdGoToList": "View it in the My Requests list below"
   },
   "authzWizard": {
+    "prefillGroupUnavailable": "The user group passed in is not among the subjects you can authorize (for example, a group you belong to). Please choose another subject.",
     "stepSubject": "Select Subject",
     "stepAsset": "Select Asset",
     "stepPermission": "Select Permission",
@@ -3380,7 +3396,13 @@
     "scopeAssigned": "Approver scope assigned",
     "approverRoleRequiredHint": "Only users who already have the Approver role are listed. To make someone else an approver, ask an administrator who can assign roles to add the Approver role first."
   },
+  "roleScope": {
+    "bannerTitle": "This sets the management scope.",
+    "bannerBody": "The management scope of a role decides on which nodes its members can do management work.",
+    "goAuthorizations": "Go to Asset Authorization"
+  },
   "securityPolicies": {
+    "sectionNavLabel": "Security policy sections",
     "description": "Security thresholds for sign-in, sessions and log retention. Access control, transport security, keys and offsite storage each have their own page.",
     "sessionCapRiskAlert": "A protocol idle timeout is set, but \"Protocol max session length\" is 0 (no cap). Monitoring-type long connections (tail -f, top, log streaming) keep receiving server output and are not interrupted by the idle timeout; setting a max session length as an absolute cap is recommended.",
     "webSessionCapRiskAlert": "\"Web session max hours\" is 0, which means web sessions have no upper time bound. When user roles come from group membership in an external identity source (a directory or an OIDC provider), removing membership there takes effect only at that user's next login. Do not set this to 0 when you rely on revocation from the source side.",
@@ -4708,6 +4730,7 @@
     "INTERNAL_AUTHORIZATION_BATCH_GRANT": "Batch authorization failed",
     "INTERNAL_AUTHORIZATION_CREATE": "Failed to create authorization",
     "INTERNAL_AUTHORIZATION_EFFECTIVE": "Failed to query effective permissions",
+    "INTERNAL_PERMISSION_OVERVIEW": "Failed to query the permission overview",
     "INTERNAL_AUTHORIZATION_QUERY": "Failed to query authorizations",
     "INTERNAL_AUTHORIZATION_REVOKE": "Failed to revoke authorization",
     "INTERNAL_AUTHORIZATION_UPDATE": "Failed to update authorization",
@@ -5678,6 +5701,25 @@
     "noMatchConsequence": "The search base and filter currently find no users at all: if these settings are enabled as they are, every directory user will fail to sign in. Check that the search base (base DN) covers the branch the users live in and that the filter uses the attribute names the directory actually has."
   },
   "identityGroupMappings": {
+    "targetRoleScope": "{role} · Management scope: {scope}",
+    "targetScopeMore": "and {n} more",
+    "optionScopeNodes": "{n} nodes",
+    "optionCreateGroup": "Add a group in User Groups",
+    "targetSummaryTitle": "People added to \"{group}\" by this rule get",
+    "targetSummaryNoAuthz": "This group currently has no asset authorizations.",
+    "targetSummaryAuthzCount": "This group currently has {n} asset authorizations.",
+    "targetSummaryAuthzLoading": "Reading the asset authorization count of this group.",
+    "targetSummaryAuthzUnavailable": "The asset authorization count of this group is temporarily unavailable.",
+    "currentUsageUnavailable": "Current usage is temporarily unavailable.",
+    "goGroupRoles": "View or edit the roles and scope of the group",
+    "rolesTabHintTitle": "Only built-in roles that need no scope can be mapped here",
+    "rolesTabHintStep1": "Open or add a group in \"User Groups\"",
+    "rolesTabHintStep2": "On the \"Roles and scope\" tab, assign the role and choose the whole system or specific nodes",
+    "rolesTabHintStep3": "Back on this page, add a rule under \"Groups → User groups\" and pick that group as the target",
+    "rolesTabHintConnection": "To let these people connect to hosts, also authorize the hosts to the group under \"Asset Authorization\".",
+    "directMapHintTitle": "Cannot find {roles} or a custom role?",
+    "goUserGroups": "Go to User Groups",
+    "switchToGroupTab": "Switch to \"Groups → User groups\"",
     "title": "External group mappings",
     "subtitle": "Sync system roles and user groups from verified identity source groups.",
     "backToSource": "Back to source settings",
@@ -5767,8 +5809,8 @@
     "protectedTarget": "This group carries the \"{role}\" role.",
     "externalDirectoryDecides": "Members of this external group are decided by the directory administrators. Anyone added in the directory receives \"{role}\" at their next sign-in, without going through this page.",
     "footerRule": "Only a super administrator can add, change, disable or delete a mapping that grants the Super Administrator or System Security Administrator role.",
-    "rolesTabHint": "Here an external group can only be mapped directly to a built-in role that needs no scope. For other roles (for example custom roles), give the role to a user group first, then set up the mapping under \"Groups → User groups\".",
-    "directMapHint": "Do not see the role you want? Roles outside this list (for example custom roles) are obtained through a user group: give the role to the group first, then use \"Groups → User groups\".",
+    "rolesTabHint": "{roles} and custom roles can limit their management scope, so they are obtained through a user group:",
+    "directMapHint": "These roles can limit their management scope and cannot be mapped directly. Give the role with its scope to a user group first, then map that group under \"Groups → User groups\".",
     "groupRolesUnavailable": "The roles each group carries cannot be read right now, so no option is disabled in advance; the system still checks when you save.",
     "groupListFailed": "The user group list could not be loaded."
   },
@@ -8580,7 +8622,8 @@
       "scopeGlobal": "System-wide",
       "scopeNodes": "{nodes} ({count} nodes)",
       "scopeNodeDeleted": "Node #{id} (deleted)",
-      "targetNamed": "{name} ({kind} #{id})"
+      "targetNamed": "{name} ({kind} #{id})",
+      "viewPermissionOverview": "View {name}'s permission overview"
     },
     "targetKinds": {
       "asset": "Asset",
@@ -8658,7 +8701,8 @@
   "userDetail": {
     "tabs": {
       "basic": "Basic info",
-      "roles": "Roles and scope"
+      "roles": "Roles and scope",
+      "permissions": "Permission overview"
     },
     "header": {
       "protectedSuper": "Super administrator",
@@ -8748,12 +8792,129 @@
       "notifyValue": "Security staff will be notified after saving",
       "connection": "Hosts that can be connected",
       "connectionFixed": "General management abilities do not bring connection rights by themselves; which hosts can be connected is decided by asset authorization, and super administrators follow their existing reserved identity",
+      "connectionUnchanged": "Unchanged",
       "effectiveNow": "Takes effect immediately after saving and is recorded in the operation log.",
       "unavailable": "Preview is temporarily unavailable"
     },
     "loadFailed": "Could not load this user"
   },
+  "permissionOverview": {
+    "switchUser": "Switch user",
+    "loadFailed": "The permission overview is temporarily unavailable. Please try again later.",
+    "separationNote": "Management rights do not grant connection rights: being able to manage a host does not mean being able to connect to it.",
+    "manage": {
+      "title": "What they can manage",
+      "subtitle": "Decided by roles"
+    },
+    "connect": {
+      "title": "Where they can connect",
+      "subtitle": "Decided by asset authorizations",
+      "assetCount": "{n} assets",
+      "via": {
+        "self": "Granted to the user",
+        "group": "Through group \"{group}\""
+      },
+      "validity": {
+        "permanent": "No expiry",
+        "until": "Expires: {date}",
+        "from": "From {date}",
+        "range": "{start} to {end}"
+      },
+      "policy": {
+        "mixed": "Connection policy varies by asset",
+        "reason": "A reason is required to connect",
+        "approval": "Approval is required to connect"
+      },
+      "level": {
+        "connect": "Connect",
+        "view": "View"
+      },
+      "account": {
+        "all": "All accounts",
+        "named": "Accounts: {accounts}"
+      },
+      "alsoManage": "Can also manage",
+      "alsoManagePartial": "{n} of them can also be managed",
+      "addressNotice": "{name} can both manage and connect to these hosts. Changing their addresses notifies the security team.",
+      "manageOnly": "{path} ({n} assets): {name} can manage them, but no asset authorization lets them connect.",
+      "outOfScope": "{n} more assets that you cannot see",
+      "unavailable": "You do not have permission to view asset authorizations, so this column cannot be shown",
+      "undisclosed": "Authorization records you cannot see, covering {n} assets within your scope",
+      "approverScope": "Approver scope covers {n} assets (view only)",
+      "empty": "Within the scope you can see, there are no asset authorizations, so no hosts can be connected to. Which hosts can be connected to is decided by asset authorizations."
+    },
+    "probe": {
+      "title": "Check one asset",
+      "placeholder": "Enter an asset name",
+      "manageYes": "Can manage",
+      "manageNo": "Cannot manage",
+      "connectYes": "Can connect",
+      "connectNo": "Cannot connect",
+      "connectUnavailable": "Whether they can connect cannot be shown",
+      "notFound": "Asset not found",
+      "batchLink": "Go to asset authorizations",
+      "manageBy": "Through \"{role}\", scope: {scope}",
+      "manageNoReason": "No role lets them manage this asset.",
+      "connectBy": "{target} ({via}, {validity})",
+      "connectNoReason": "No asset authorization lets them connect."
+    },
+    "card": {
+      "scopeLabel": "Scope",
+      "global": "System-wide",
+      "notApplicable": "Not applicable",
+      "assetCount": "{n} assets in total",
+      "inactiveNodes": "{n} scope nodes no longer exist. That part has no effect and does not become system-wide",
+      "noEntries": "No entries to manage or use at the moment"
+    },
+    "why": {
+      "toggle": "Why"
+    },
+    "detail": {
+      "toggle": "Detailed actions",
+      "empty": "This source has no detailed actions in effect right now"
+    },
+    "source": {
+      "direct": "Assigned by an administrator",
+      "group": "From group \"{group}\"",
+      "groupMapped": " (membership comes from an external group mapping)",
+      "mapped": "External group mapping: {source} \"{group}\"",
+      "mappedNoRule": "External group mapping (the rule no longer exists)",
+      "compatDefault": "No role is assigned, so the default for ordinary users applies",
+      "agentFixed": "Fixed permissions for an AI agent"
+    },
+    "ineffective": {
+      "title": "Not in effect",
+      "reason": {
+        "nodes_all_deleted": "All nodes in the assigned scope have been deleted. This assignment has no effect and does not become system-wide.",
+        "permission_not_node_scopable": "Some functions only work system-wide, so that part grants nothing once the scope is limited to nodes.",
+        "builtin_requires_global": "This built-in role only takes effect when assigned system-wide, so a node scope grants nothing.",
+        "unknown": "This part of the assignment is not in effect."
+      }
+    },
+    "identity": {
+      "superAdmin": "Has every function, with system-wide scope",
+      "superAdminConnect": "Can connect to every host without an asset authorization",
+      "auditor": "Holds the auditor identity",
+      "auditorConnect": "Can view every asset; connecting follows asset authorizations",
+      "approver": "Approval eligibility follows the approver scope",
+      "approverLink": "Go to approver scopes",
+      "compatDefault": "Ordinary user (the default when no role is assigned)",
+      "agent": "An AI agent has fixed permissions that roles do not change"
+    }
+  },
   "roleNodePicker": {
+    "tagScopable": "Scope can be limited",
+    "roleColumn": "Role",
+    "scopeColumn": "Management scope",
+    "scopeAllNote": "All nodes, including nodes added later",
+    "globalOnlyRowNote": "This role works on the whole system only and needs no scope",
+    "notApplicableNote": "Assigned to the whole system; this built-in role has no node-limited management ability and needs no management scope",
+    "stillLimitNodes": "Limit nodes anyway",
+    "setRange": "Set scope",
+    "collapseRange": "Collapse scope settings",
+    "unsaved": "Not saved yet",
+    "moreActions": "More",
+    "filterPlaceholder": "Search role names",
     "modeAll": "Whole system",
     "modeNodes": "Specific nodes",
     "panelHint": "Select nodes; their child nodes, including ones added later, are included automatically.",
@@ -8781,6 +8942,7 @@
     "globalOnlyNote": "This role includes permissions that can only apply system-wide. That part has no effect within this range.",
     "changeManagedAssets": "Manageable assets",
     "changeAssetsValue": "{after} (was {before})",
+    "changeAssetsAll": "All assets",
     "changeGroupAssetsNote": "Assets covered by the group's roles become part of every member's management range.",
     "mappedStillGranted": "An external group still grants this role. Removing it here makes the role apply system-wide.",
     "mappedStillGrantedGlobal": "An external group still grants this role."
@@ -8789,5 +8951,81 @@
     "label": "You can manage: ",
     "notAssigned": "Not assigned yet",
     "more": "{n} more"
+  },
+  "groupSetup": {
+    "title": "Create a group with roles and scope",
+    "stepName1": "Group",
+    "stepName2": "Roles and management scope",
+    "stepName3": "External group and confirmation",
+    "step1Intro": "This creates a new user group. The group decides which roles its members get; the group in the external directory only decides who the members are.",
+    "groupName": "Group name",
+    "groupDesc": "Description",
+    "newGroup": "New group",
+    "nameLocked": "The group has been created. To rename it, go to User Groups.",
+    "carriedHint": "Carried over from the rule you were editing; you can change it in step 3.",
+    "step2Title": "Roles of \"{group}\"",
+    "step2Same": "This is the same selection as the Roles and Scope tab of a group: roles are assigned and scope is set the same way, and you change them there after saving.",
+    "step2NeedRole": "Select at least one role to continue.",
+    "step3Lead": "After you press \"Create and save\", three things are done in order:",
+    "task1": "Create the user group \"{group}\"",
+    "task2": "Assign roles and management scope: {roles}",
+    "task3": "Add a rule: {source} \"{external}\" → \"{group}\"",
+    "ruleNoScope": "The rule itself carries no scope; the scope members get comes from the roles of the group.",
+    "afterTitle": "What changes after saving",
+    "afterMembers": "The new group has no members yet; members of \"{external}\" in the directory join the group at their next sign-in and receive {roles}.",
+    "thisExternalGroup": "this external group",
+    "noteSharedReadonly": "This display name is shared by every rule that uses the external group. Change it with \"Edit note\" on the mapping page.",
+    "carriedNoteIgnored": "The display name \"{note}\" you carried over was not applied, because this external group already has a shared display name.",
+    "prev": "Back",
+    "next": "Next",
+    "create": "Create and save",
+    "finish": "Done",
+    "recheck": "Check again",
+    "backToRoles": "Back to step 2 to edit",
+    "retry": {
+      "group": "Retry creating the group",
+      "roles": "Retry assigning roles",
+      "rule": "Retry adding the rule"
+    },
+    "running": "Working, please wait.",
+    "runningTitle": "Working",
+    "partialTitle": "Not everything is done yet",
+    "unconfirmedTitle": "One step could not be confirmed",
+    "doneTitle": "Done",
+    "state": {
+      "done": "Done",
+      "rejected": "Rejected",
+      "notWritten": "Not done",
+      "unconfirmed": "Result not confirmed",
+      "differs": "Differs from what was sent",
+      "checking": "Checking",
+      "notRun": "Not run"
+    },
+    "failureGeneric": "This could not be completed right now. Please try again later.",
+    "notWritten": {
+      "1": "The group was not created.",
+      "2": "The role assignment was not written.",
+      "3": "The rule was not created."
+    },
+    "unconfirmedSameName": "A group with this name may already have been created. Check it on the User Groups page.",
+    "unconfirmedRead": {
+      "1": "Could not confirm whether the group was created. Check again.",
+      "2": "Could not confirm whether the role assignment was written. Check again.",
+      "3": "Could not confirm whether the rule was created. Check again."
+    },
+    "differs": "The group currently has these role assignments: {list}, which differ from what was sent. Going back to step 2 starts from this assignment.",
+    "keepNoteNone": "Nothing has been written yet. Fix the problem and retry; the group will not be created twice.",
+    "keepNote": "Completed steps are kept and are not undone automatically. Fix the problem and retry the unfinished step; the group will not be created twice.",
+    "noImpact": "The group has no members yet, so nobody is affected.",
+    "nextOptionalTitle": "Next (optional): should these people also connect to hosts?",
+    "nextOptionalBody": "Use batch authorization in Asset Authorization: choose this group as the subject, nodes as the target, and Connect as the permission.",
+    "goAuthorizations": "Go to Asset Authorization (this group preselected)",
+    "noAuthzNote": "To let them connect, ask someone with asset authorization rights to authorize hosts to this group.",
+    "openGroupRoles": "Open the roles and scope of the group",
+    "entry": {
+      "hint": "You can also create a group here, set its roles and scope, and add the matching rule in one go.",
+      "button": "Create a group with roles and scope",
+      "option": "Create a new group with roles and scope"
+    }
   }
 }

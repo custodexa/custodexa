@@ -212,7 +212,7 @@
 
         <div class="step">
           <div class="step-head">
-            <span class="step-num">1</span>
+            <span class="step-num">1.</span>
             <span class="step-label">{{ $t('instanceGuard.halt.step1') }}</span>
           </div>
           <el-checkbox
@@ -225,7 +225,7 @@
 
         <div class="step">
           <div class="step-head">
-            <span class="step-num">2</span>
+            <span class="step-num">2.</span>
             <span
               id="halt-code-label"
               class="step-label"
@@ -250,7 +250,7 @@
           aria-labelledby="halt-admin-label"
         >
           <div class="step-head">
-            <span class="step-num">3</span>
+            <span class="step-num">3.</span>
             <span
               id="halt-admin-label"
               class="step-label"
@@ -801,16 +801,11 @@ defineExpose({
 }
 
 .step-num {
-  width: 22px;
-  height: 22px;
   flex-shrink: 0;
-  border-radius: 50%;
-  border: 1px solid var(--ot-primary);
+  min-width: 20px;
   color: var(--ot-primary);
-  font-size: var(--ot-font-size-xs);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .step-label {

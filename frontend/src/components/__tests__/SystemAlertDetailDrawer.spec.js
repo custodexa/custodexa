@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus'
 import SystemAlertDetailDrawer from '@/components/system-alert/SystemAlertDetailDrawer.vue'
 import { t } from '@/i18n'
 import { formatDateTime } from '@/utils/format'
+import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 
 // 系統告警明細抽屜：目標、宣告參數、來源位址與各目的地的投遞時間。
 enableAutoUnmount(afterEach)
@@ -234,6 +235,77 @@ describe('系統告警明細抽屜', () => {
       mountDrawer()
       await flushPromises()
       expect(q('[data-test="sa-target"]').textContent.trim()).toBe('ops-lee（使用者 #192）')
+    })
+  })
+  describe('前往權限一覽的按鈕', () => {
+    const overviewDetail = (over = {}) => ({
+      alert_id: 170,
+      alert_type: 'self_privilege_increased',
+      group: 'identity_privilege',
+      severity: 'high',
+      triggered_at: '2026-10-25T08:00:00Z',
+      actor: 'ops-ida',
+      target_kind: 'user',
+      target_id: '19',
+      params: { path: 'replace', roles_before: 'identity_admin', roles_after: 'auditor,identity_admin' },
+      deliveries: [],
+      ...over,
+    })
+    const grant = (over = {}) =>
+      overviewDetail({
+        alert_type: 'management_role_granted',
+        target_kind: 'user',
+        target_id: '192',
+        params: { path: 'replace', recipient: 'ops-lee', role_name: 'asset_admin', scope_summary: 'global' },
+        ...over,
+      })
+    const button = () => q('[data-test="sa-view-permission-overview"]')
+    const show = async (detail, caps) => {
+      resetCapabilities()
+      setCapabilitiesForTests(caps)
+      getDetailMock.mockResolvedValue(detail)
+      const w = mountDrawer()
+      await flushPromises()
+      return w
+    }
+
+    // 此前的相反斷言（任何情形都不出現權限一覽入口）改為：只有能進使用者管理者看得到，
+    // 因為按鈕通向的詳情頁只開放給具使用者檢視能力者，沒有能力的人也沒有替代的明細內檢視。
+    it.each([
+      ['self_privilege_increased', overviewDetail(), '19', 'ops-ida'],
+      ['self_privilege_decreased', overviewDetail({ alert_type: 'self_privilege_decreased' }), '19', 'ops-ida'],
+      ['management_role_granted（目標為使用者）', grant(), '192', 'ops-lee'],
+    ])('%s：具 user:manage 時出現按鈕並導到該使用者的權限一覽分頁', async (_label, detail, id, name) => {
+      const w = await show(detail, ['audit:view', 'user:manage'])
+      expect(button()).not.toBeNull()
+      expect(button().textContent.trim()).toBe(t('systemAlerts.detail.viewPermissionOverview', { name }))
+      const link = w.findAllComponents(RouterLinkStub).find((c) => c.attributes('data-test') === 'sa-view-permission-overview')
+      expect(link.props('to')).toEqual({ path: `/users/${id}`, query: { tab: 'permissions' } })
+    })
+
+    it.each([
+      ['self_privilege_increased', overviewDetail()],
+      ['self_privilege_decreased', overviewDetail({ alert_type: 'self_privilege_decreased' })],
+      ['management_role_granted', grant()],
+    ])('%s：可 audit:view 但沒有 user:manage 時不出現按鈕', async (_label, detail) => {
+      await show(detail, ['audit:view'])
+      expect(button()).toBeNull()
+      expect(document.body.textContent).not.toContain(t('systemAlerts.detail.viewPermissionOverview', { name: '' }).trim())
+    })
+
+    it.each(['user_group', 'role_mapping', 'role'])('management_role_granted 目標為 %s 時不出現按鈕', async (kind) => {
+      await show(grant({ target_kind: kind, target_id: '7' }), ['audit:view', 'user:manage'])
+      expect(button()).toBeNull()
+    })
+
+    it('非權限類型（資產連線位址變更）不出現按鈕', async () => {
+      await show(overviewDetail({ alert_type: 'asset_address_changed', params: { changed_fields: 'host' } }), ['audit:view', 'user:manage'])
+      expect(button()).toBeNull()
+    })
+
+    it('目標識別不是有效使用者識別時不出現按鈕', async () => {
+      await show(overviewDetail({ target_id: '0' }), ['audit:view', 'user:manage'])
+      expect(button()).toBeNull()
     })
   })
 })

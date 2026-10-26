@@ -2618,6 +2618,8 @@
     "groupSnapshotNoGroups": "そのログインではグループ値は観測されませんでした。"
   },
   "userGroups": {
+    "roleScopeColumn": "ロールと管理範囲",
+    "setRoles": "ロールを設定",
     "headerDesc": "ユーザーをグループにまとめます。グループに権限を付与すると、全メンバーに付与されます。グループにはロールも付けられ、各メンバーが取得します。",
     "create": "グループを追加",
     "nameColumn": "グループ名",
@@ -2889,7 +2891,7 @@
         "notification_channels": "通知チャネル",
         "system_alerts": "システムアラート",
         "alert_rules": "アラートルール",
-        "schedules": "スケジュール",
+        "schedules": "スケジュール時刻プレビュー",
         "rotation_schedules": "ローテーションスケジュール",
         "instance_guard": "インスタンス保護"
       },
@@ -2927,8 +2929,21 @@
       "nodeScopedNoEffectNotice": "このロールにはノードを限定した割り当てが {n} 件あります。ロールの権限はノードの制限を受けないため、それらの割り当ての範囲は有効になりません。",
       "entryNote": {
         "alerts": "アラート記録は「操作ログ」と同じ監査データを参照するため、「閲覧」または「管理」を選ぶと監査閲覧権限も追加されます。",
-        "access_reviews": "レビュー一覧は監査データを参照するため、「管理」を選ぶと監査閲覧権限も追加されます。"
-      }
+        "access_reviews": "レビュー一覧は監査データを参照するため、「管理」を選ぶと監査閲覧権限も追加されます。",
+        "audit_logs": "同じ監査閲覧権限で、監査調査ビュー、コマンド監査、ダウンロードセンター、AI エージェントのタスク、ローテーション証跡のレポートも開けます。"
+      },
+      "placementTag": {
+        "embedded": "設定カード",
+        "helper": "補助機能",
+        "banner": "バナー"
+      },
+      "placementNote": {
+        "embedded": "この設定カードは{host}ページ内にあり、そのページを開ける人にだけ表示されます。",
+        "helper": "専用のページはなく、{entries}のスケジュール欄に次回実行時刻を表示します。",
+        "banner": "専用のページはありません。単一インスタンスガードのバナーが上部に表示されると全員に見え、保持者はバナーから詳細も開けます。"
+      },
+      "readViaTag": "{via}により参照可",
+      "readViaNote": "{via}を持つ人はこの内容を参照できます。付与しない状態にするには{via}も非表示にしてください。"
     },
     "assignState": {
       "protected": "スーパー管理者だけが割り当てられます",
@@ -3297,6 +3312,7 @@
     "createdGoToList": "下の「自分の申請」一覧で確認"
   },
   "authzWizard": {
+    "prefillGroupUnavailable": "指定されたユーザーグループは、認可できる対象に含まれていません（たとえばご自身が所属するグループ）。別の対象を選んでください。",
     "stepSubject": "主体を選択",
     "stepAsset": "資産を選択",
     "stepPermission": "権限を選択",
@@ -3380,7 +3396,13 @@
     "scopeAssigned": "承認範囲を割り当てました",
     "approverRoleRequiredHint": "承認者ロールを持つユーザーのみ表示しています。ほかのユーザーを承認者にするには、ロールを割り当てられる管理者に承認者ロールの追加を依頼してください。"
   },
+  "roleScope": {
+    "bannerTitle": "ここで設定するのは管理範囲です。",
+    "bannerBody": "ロールの管理範囲は、メンバーがどのノードで管理作業を行えるかを決めます。",
+    "goAuthorizations": "資産権限へ"
+  },
   "securityPolicies": {
+    "sectionNavLabel": "セキュリティポリシーの区分",
     "description": "ログイン認証・接続・ログ保存に関する安全基準です。アクセス管理、通信の保護、鍵、オフサイト保管の設定はそれぞれ専用ページにあります。",
     "sessionCapRiskAlert": "プロトコル接続のアイドルタイムアウトは設定されていますが、「プロトコル接続の最大時間」が 0（上限なし）です。監視系の長時間接続（tail -f、top、ログストリーム）はサーバーが出力を送り続けるためアイドルタイムアウトで切断されません。絶対的な上限として最大時間の設定を推奨します。",
     "webSessionCapRiskAlert": "「Web セッションの最大時間」が 0 のため、Web セッションに時間の上限がありません。外部のアイデンティティソース（ディレクトリまたは OIDC プロバイダー）のグループ所属によってユーザーのロールを決めている場合、ソース側で所属を解除しても、そのユーザーが次回ログインするまで反映されません。ソース側での権限剥奪に依拠する運用では 0 に設定しないでください。",
@@ -4708,6 +4730,7 @@
     "INTERNAL_AUTHORIZATION_BATCH_GRANT": "一括権限付与に失敗しました",
     "INTERNAL_AUTHORIZATION_CREATE": "権限の作成に失敗しました",
     "INTERNAL_AUTHORIZATION_EFFECTIVE": "有効な権限の照会に失敗しました",
+    "INTERNAL_PERMISSION_OVERVIEW": "権限一覧の照会に失敗しました",
     "INTERNAL_AUTHORIZATION_QUERY": "権限の照会に失敗しました",
     "INTERNAL_AUTHORIZATION_REVOKE": "権限の取消に失敗しました",
     "INTERNAL_AUTHORIZATION_UPDATE": "権限の更新に失敗しました",
@@ -5678,6 +5701,25 @@
     "noMatchConsequence": "現在の検索起点とフィルターではユーザーが 1 件も見つかりません：この設定のまま有効にすると、ディレクトリのユーザーは全員ログインに失敗します。検索起点（base DN）がユーザーの存在する枝を含んでいるか、フィルターの属性名がディレクトリの実際の項目と一致しているか確認してください。"
   },
   "identityGroupMappings": {
+    "targetRoleScope": "{role}・管理範囲 {scope}",
+    "targetScopeMore": "ほか {n} 件",
+    "optionScopeNodes": "{n} 個のノード",
+    "optionCreateGroup": "「ユーザーグループ」でグループを追加",
+    "targetSummaryTitle": "このルールで「{group}」に加わる人が得るもの",
+    "targetSummaryNoAuthz": "このグループには現在、資産の認可がありません。",
+    "targetSummaryAuthzCount": "このグループには現在、資産の認可が {n} 件あります。",
+    "targetSummaryAuthzLoading": "このグループの資産認可の件数を読み込み中です。",
+    "targetSummaryAuthzUnavailable": "このグループの資産認可の件数を一時的に取得できません。",
+    "currentUsageUnavailable": "現在の用途を一時的に取得できません",
+    "goGroupRoles": "グループのロールと範囲を確認・変更",
+    "rolesTabHintTitle": "ここでは、範囲指定が不要な組み込みロールだけを対応付けできます",
+    "rolesTabHintStep1": "「ユーザーグループ」でグループを開くか追加する",
+    "rolesTabHintStep2": "「ロールと範囲」タブでロールを割り当て、システム全体または特定のノードを選ぶ",
+    "rolesTabHintStep3": "このページの「グループ → ユーザーグループ」でルールを追加し、対象にそのグループを選ぶ",
+    "rolesTabHintConnection": "これらの人がホストに接続できるようにするには、「資産権限」でホストをそのグループに認可してください。",
+    "directMapHintTitle": "{roles}やカスタムロールが見つかりませんか。",
+    "goUserGroups": "ユーザーグループへ",
+    "switchToGroupTab": "「グループ → ユーザーグループ」に切り替える",
     "title": "外部グループのマッピング",
     "subtitle": "検証済みの認証ソースのグループからシステムロールとユーザーグループを同期します。",
     "backToSource": "ソース設定に戻る",
@@ -5767,8 +5809,8 @@
     "protectedTarget": "このグループには「{role}」ロールが含まれています。",
     "externalDirectoryDecides": "この外部グループのメンバーは、外部ディレクトリの管理者が決めます。ディレクトリで追加された人は、次回ログイン時に「{role}」を取得し、ここを経由する必要はありません。",
     "footerRule": "「スーパー管理者」または「システムセキュリティ管理者」を付与するマッピングは、スーパー管理者のみ追加、変更、無効化、削除できます。",
-    "rolesTabHint": "ここでは、外部グループをスコープ指定が不要な組み込みロールにのみ直接対応付けられます。その他のロール（カスタムロールなど）は、先にユーザーグループへ付与し、「グループ → ユーザーグループ」でマッピングを設定してください。",
-    "directMapHint": "目的のロールが見つかりませんか。一覧にないロール（カスタムロールなど）はユーザーグループ経由で取得します。先にグループへロールを付与し、「グループ → ユーザーグループ」を使ってください。",
+    "rolesTabHint": "{roles}とカスタムロールは管理範囲を限定できるため、ユーザーグループ経由で取得します:",
+    "directMapHint": "これらのロールは管理範囲を限定できるため、直接は対応付けできません。先にロールを範囲ごとユーザーグループへ付与し、「グループ → ユーザーグループ」で対応付けてください。",
     "groupRolesUnavailable": "各グループのロールを現在読み取れないため、選択肢は事前に無効化されていません。保存時にシステムが確認します。",
     "groupListFailed": "ユーザーグループ一覧を読み込めませんでした。"
   },
@@ -8580,7 +8622,8 @@
       "scopeGlobal": "システム全体",
       "scopeNodes": "{nodes}（計 {count} ノード）",
       "scopeNodeDeleted": "ノード #{id}（削除済み）",
-      "targetNamed": "{name}（{kind} #{id}）"
+      "targetNamed": "{name}（{kind} #{id}）",
+      "viewPermissionOverview": "{name} の権限一覧を見る"
     },
     "targetKinds": {
       "asset": "資産",
@@ -8658,7 +8701,8 @@
   "userDetail": {
     "tabs": {
       "basic": "基本情報",
-      "roles": "ロールと範囲"
+      "roles": "ロールと範囲",
+      "permissions": "権限一覧"
     },
     "header": {
       "protectedSuper": "スーパー管理者",
@@ -8748,12 +8792,129 @@
       "notifyValue": "保存後にセキュリティ担当者へ通知されます",
       "connection": "接続できるホスト",
       "connectionFixed": "一般的な管理能力だけでは接続権は得られません。接続できるホストは資産の認可で決まり、スーパー管理者は既存の予約済み身分に従います",
+      "connectionUnchanged": "変更なし",
       "effectiveNow": "保存後すぐに有効になり、操作ログに記録されます。",
       "unavailable": "プレビューを一時的に取得できません"
     },
     "loadFailed": "このユーザーを読み込めませんでした"
   },
+  "permissionOverview": {
+    "switchUser": "ユーザーを切り替え",
+    "loadFailed": "権限一覧を一時的に読み込めません。しばらくしてからもう一度お試しください。",
+    "separationNote": "管理権限は接続権限を自動的には付与しません。ホストを管理できても、そのホストに接続できるとは限りません。",
+    "manage": {
+      "title": "管理できるもの",
+      "subtitle": "ロールで決まります"
+    },
+    "connect": {
+      "title": "接続できる先",
+      "subtitle": "資産の認可で決まります",
+      "assetCount": "{n} 台",
+      "via": {
+        "self": "本人への認可",
+        "group": "グループ「{group}」経由"
+      },
+      "validity": {
+        "permanent": "期限なし",
+        "until": "期限：{date}",
+        "from": "{date} から",
+        "range": "{start} から {end} まで"
+      },
+      "policy": {
+        "mixed": "接続ポリシーは資産ごとに異なります",
+        "reason": "接続には理由の入力が必要です",
+        "approval": "接続には承認が必要です"
+      },
+      "level": {
+        "connect": "接続",
+        "view": "参照"
+      },
+      "account": {
+        "all": "すべてのアカウント",
+        "named": "アカウント：{accounts}"
+      },
+      "alsoManage": "管理もできる",
+      "alsoManagePartial": "うち {n} 台は管理もできる",
+      "addressNotice": "{name} はこれらのホストを管理でき、接続もできます。アドレスを変更すると、セキュリティ担当者に通知されます。",
+      "manageOnly": "{path}（{n} 台）：{name} は管理できますが、接続できる資産の認可がありません。",
+      "outOfScope": "ほかに、あなたからは見えない資産が {n} 台あります",
+      "unavailable": "資産の認可を参照する権限がないため、この列は表示できません",
+      "undisclosed": "あなたからは見えない認可記録で、あなたの範囲内の {n} 台に及びます",
+      "approverScope": "承認範囲は {n} 台の資産に及びます（参照のみ）",
+      "empty": "表示できる範囲には資産認可がないため、接続できるホストはありません。接続できるホストは資産認可によって決まります。"
+    },
+    "probe": {
+      "title": "資産を1台調べる",
+      "placeholder": "資産名を入力",
+      "manageYes": "管理できる",
+      "manageNo": "管理できない",
+      "connectYes": "接続できる",
+      "connectNo": "接続できない",
+      "connectUnavailable": "接続できるかどうかは表示できません",
+      "notFound": "該当する資産がありません",
+      "batchLink": "資産認可へ移動",
+      "manageBy": "「{role}」による、範囲：{scope}",
+      "manageNoReason": "この資産を管理できるロールはありません。",
+      "connectBy": "{target}（{via}、{validity}）",
+      "connectNoReason": "接続できる資産の認可はありません。"
+    },
+    "card": {
+      "scopeLabel": "範囲",
+      "global": "システム全体",
+      "notApplicable": "対象外",
+      "assetCount": "資産は合計 {n} 台",
+      "inactiveNodes": "範囲のノード {n} 件は既に存在しません。その部分は有効にならず、システム全体にもなりません",
+      "noEntries": "現在、管理または利用できる入口はありません"
+    },
+    "why": {
+      "toggle": "理由"
+    },
+    "detail": {
+      "toggle": "細かい操作",
+      "empty": "この付与元には、現在有効な細かい操作がありません"
+    },
+    "source": {
+      "direct": "管理者による割り当て",
+      "group": "グループ「{group}」から",
+      "groupMapped": "（メンバーは外部グループのマッピングによる）",
+      "mapped": "外部グループのマッピング：{source}「{group}」",
+      "mappedNoRule": "外部グループのマッピング（対応するルールは既に存在しません）",
+      "compatDefault": "ロールが割り当てられていないため、一般ユーザーの既定が適用されます",
+      "agentFixed": "AI エージェントの固定権限"
+    },
+    "ineffective": {
+      "title": "有効になっていないもの",
+      "reason": {
+        "nodes_all_deleted": "割り当てた範囲のノードがすべて削除されています。この割り当ては有効にならず、システム全体にもなりません。",
+        "permission_not_node_scopable": "システム全体でのみ働く機能があるため、ノードに限定するとその部分の権限は生じません。",
+        "builtin_requires_global": "この組み込みロールはシステム全体への割り当てでのみ有効で、ノード範囲では権限を生じません。",
+        "unknown": "この部分の割り当ては現在有効になっていません。"
+      }
+    },
+    "identity": {
+      "superAdmin": "すべての機能を持ち、範囲はシステム全体です",
+      "superAdminConnect": "資産の認可がなくても、すべてのホストに接続できます",
+      "auditor": "監査担当者の身分を持っています",
+      "auditorConnect": "すべての資産を参照でき、接続は資産の認可に従います",
+      "approver": "承認の資格は承認範囲で決まります",
+      "approverLink": "承認範囲へ移動",
+      "compatDefault": "一般ユーザー（ロールが割り当てられていないときの既定）",
+      "agent": "AI エージェントの権限は固定で、ロールの影響を受けません"
+    }
+  },
   "roleNodePicker": {
+    "tagScopable": "管理範囲を限定可",
+    "roleColumn": "ロール",
+    "scopeColumn": "管理範囲",
+    "scopeAllNote": "すべてのノード（今後追加されるノードを含む）",
+    "globalOnlyRowNote": "このロールはシステム全体でのみ使用し、範囲の選択は不要です",
+    "notApplicableNote": "システム全体に割り当てます。この組み込みロールにはノード単位で限定できる管理能力がなく、管理範囲は不要です",
+    "stillLimitNodes": "それでもノードを限定する",
+    "setRange": "範囲を設定",
+    "collapseRange": "範囲設定を閉じる",
+    "unsaved": "未保存",
+    "moreActions": "その他",
+    "filterPlaceholder": "ロール名を検索",
     "modeAll": "システム全体",
     "modeNodes": "ノードを指定",
     "panelHint": "ノードを選択します。配下の子ノードと、今後追加される子ノードもまとめて含まれます。",
@@ -8781,6 +8942,7 @@
     "globalOnlyNote": "このロールにはシステム全体にしか適用できない権限が含まれます。その部分はこの範囲では適用されません。",
     "changeManagedAssets": "管理可能な資産",
     "changeAssetsValue": "{after} 台（変更前 {before} 台）",
+    "changeAssetsAll": "すべての資産",
     "changeGroupAssetsNote": "グループのロールが対象とする資産は、すべてのメンバーの管理範囲になります。",
     "mappedStillGranted": "このロールは外部グループからも付与されています。ここで削除すると、システム全体に適用されるロールに変わります。",
     "mappedStillGrantedGlobal": "このロールは外部グループからも付与されています。"
@@ -8789,5 +8951,81 @@
     "label": "管理できる範囲：",
     "notAssigned": "未割り当て",
     "more": "ほか {n} 件"
+  },
+  "groupSetup": {
+    "title": "グループの作成とロール・範囲の設定",
+    "stepName1": "グループ",
+    "stepName2": "ロールと管理範囲",
+    "stepName3": "外部グループと確認",
+    "step1Intro": "新しいユーザーグループを作成します。グループはメンバーが持つロールを決め、外部ディレクトリのグループは誰がメンバーかだけを決めます。",
+    "groupName": "グループ名",
+    "groupDesc": "説明",
+    "newGroup": "新しいグループ",
+    "nameLocked": "グループは作成済みです。名前を変更するにはユーザーグループ画面で行ってください。",
+    "carriedHint": "先ほどのルールから引き継ぎました。手順 3 で変更できます。",
+    "step2Title": "「{group}」のロール",
+    "step2Same": "グループ画面の「ロールと範囲」と同じ選択です。ロールの割り当てと範囲の設定方法は同じで、保存後の変更もそこで行います。",
+    "step2NeedRole": "続けるには、ロールを 1 つ以上選択してください。",
+    "step3Lead": "「作成して保存」を押すと、次の 3 つを順に実行します。",
+    "task1": "ユーザーグループ「{group}」を作成",
+    "task2": "ロールと管理範囲を割り当て：{roles}",
+    "task3": "ルールを追加：{source}「{external}」→「{group}」",
+    "ruleNoScope": "ルール自体は範囲を持ちません。メンバーが得る範囲はグループのロールから決まります。",
+    "afterTitle": "保存後の変化",
+    "afterMembers": "新しいグループには現在メンバーがいません。ディレクトリ内の「{external}」のメンバーは次回ログイン時にグループへ加わり、{roles}を得ます。",
+    "thisExternalGroup": "この外部グループ",
+    "noteSharedReadonly": "この表示名は、この外部グループを使うすべてのルールで共有されます。変更はマッピング画面の「備考を編集」で行ってください。",
+    "carriedNoteIgnored": "引き継いだ表示名「{note}」は適用されません。この外部グループには共有の表示名がすでにあります。",
+    "prev": "戻る",
+    "next": "次へ",
+    "create": "作成して保存",
+    "finish": "完了",
+    "recheck": "再確認",
+    "backToRoles": "手順 2 に戻って修正",
+    "retry": {
+      "group": "グループの作成をやり直す",
+      "roles": "ロールの割り当てをやり直す",
+      "rule": "ルールの追加をやり直す"
+    },
+    "running": "処理中です。しばらくお待ちください。",
+    "runningTitle": "処理中",
+    "partialTitle": "まだすべては完了していません",
+    "unconfirmedTitle": "結果を確認できない手順があります",
+    "doneTitle": "完了しました",
+    "state": {
+      "done": "完了",
+      "rejected": "拒否",
+      "notWritten": "未完了",
+      "unconfirmed": "結果未確認",
+      "differs": "送信内容と異なる",
+      "checking": "確認中",
+      "notRun": "未実行"
+    },
+    "failureGeneric": "現在完了できません。しばらくしてからやり直してください。",
+    "notWritten": {
+      "1": "グループは作成されていません。",
+      "2": "ロールの割り当ては書き込まれていません。",
+      "3": "ルールは作成されていません。"
+    },
+    "unconfirmedSameName": "同名のグループがすでに作成されている可能性があります。ユーザーグループ画面で確認してください。",
+    "unconfirmedRead": {
+      "1": "グループが作成されたか確認できません。再確認してください。",
+      "2": "ロールの割り当てが書き込まれたか確認できません。再確認してください。",
+      "3": "ルールが作成されたか確認できません。再確認してください。"
+    },
+    "differs": "グループの現在のロール割り当て：{list}。今回送信した内容と異なります。手順 2 に戻ると、この割り当てを基準にします。",
+    "keepNoteNone": "まだ何も書き込まれていません。問題を直してやり直してください。グループが重複して作成されることはありません。",
+    "keepNote": "完了した手順は保持され、自動では取り消されません。問題を直して未完了の手順をやり直してください。グループが重複して作成されることはありません。",
+    "noImpact": "グループにはまだメンバーがいないため、誰にも影響しません。",
+    "nextOptionalTitle": "次の手順（任意）：この人たちもホストへ接続できるようにしますか。",
+    "nextOptionalBody": "「資産認可」の一括認可で、対象にこのグループ、ノードを指定し、権限は接続を選んでください。",
+    "goAuthorizations": "資産認可へ移動（このグループを指定済み）",
+    "noAuthzNote": "接続できるようにするには、資産認可の権限を持つ人に、このグループへホストを認可してもらってください。",
+    "openGroupRoles": "グループのロールと範囲を開く",
+    "entry": {
+      "hint": "ここでグループの作成、ロールと範囲の設定、対応するルールの追加をまとめて行うこともできます。",
+      "button": "グループを作成してロールと範囲を設定",
+      "option": "新しいグループを作成してロールと範囲を設定"
+    }
   }
 }

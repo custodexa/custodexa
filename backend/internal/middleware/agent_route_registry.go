@@ -196,6 +196,10 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/authorizations/effective-users":
 		return false, true
+	case "GET /api/v1/users/:id/permission-overview":
+		return false, true
+	case "GET /api/v1/users/:id/permission-overview/assets/:asset_id":
+		return false, true
 	case "GET /api/v1/authorizations/subject-options":
 		return false, true
 	case "GET /api/v1/authorizations/target-options":

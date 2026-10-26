@@ -3599,6 +3599,27 @@
    "subject_hint": "S01",
    "body_mode": "full",
    "note": "Read-only; lists every undeleted node with subtree asset counts and the role scopability classes."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/permission-overview",
+   "params": {
+    "id": "{user.S02}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only permission overview of a fixture user; writes nothing."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/permission-overview/assets/:asset_id",
+   "params": {
+    "id": "{user.S02}",
+    "asset_id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only probe of one asset for a fixture user; writes nothing."
   }
  ]
 }

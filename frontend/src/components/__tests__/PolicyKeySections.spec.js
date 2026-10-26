@@ -166,3 +166,17 @@ describe('PolicyKeySections — 第一層與抽屜', () => {
     expect(wrapper.find('.footer-slot').exists()).toBe(true)
   })
 })
+
+describe('PolicyKeySections — 分區錨點', () => {
+  it('渲染三個分區時每張卡片的 data-section-id 依序等於傳入分區的 id', () => {
+    const wrapper = mountSections({
+      sections: [
+        { id: 'password', title: '密碼政策', hint: '', policies: [PASSWORD] },
+        { id: 'log_retention', title: '日誌保留與審閱', hint: '', policies: [HISTORY] },
+        { id: 'rest', title: '其他', hint: '', policies: [] },
+      ],
+    })
+    const ids = wrapper.findAll('.policy-card').map((el) => el.attributes('data-section-id'))
+    expect(ids).toEqual(['password', 'log_retention', 'rest'])
+  })
+})

@@ -17409,6 +17409,7 @@
                   "audit_logs",
                   "checkpoint_verification",
                   "compliance_map",
+                  "schedules",
                   "instance_guard"
                 ],
                 "catalog_count": 52,
@@ -17435,7 +17436,6 @@
                   "notification_channels",
                   "system_alerts",
                   "alert_rules",
-                  "schedules",
                   "rotation_schedules"
                 ],
                 "partial": [],
@@ -17552,7 +17552,6 @@
                   "user_groups",
                   "roles",
                   "identity_sources",
-                  "access_reviews",
                   "security_policies",
                   "key_management",
                   "transmission",
@@ -17573,6 +17572,7 @@
                 "read": [
                   "assets",
                   "sessions",
+                  "access_reviews",
                   "policy_groups"
                 ],
                 "scope_global_only": true,
@@ -17783,7 +17783,7 @@
           "total": 6
         }
       },
-      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed. Roles that hold the audit view permission now list access reviews under read, and the super admin role lists schedules under available because schedules have only hidden and available states."
     },
     {
       "id": "AD-38c-02",
@@ -17839,7 +17839,6 @@
               "user_groups",
               "roles",
               "identity_sources",
-              "access_reviews",
               "security_policies",
               "key_management",
               "transmission",
@@ -17860,6 +17859,7 @@
             "read": [
               "assets",
               "sessions",
+              "access_reviews",
               "policy_groups"
             ],
             "scope_global_only": true,
@@ -17870,7 +17870,7 @@
           "template_role_id": null
         }
       },
-      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed. A role that holds the audit view permission now lists access reviews under read."
     },
     {
       "id": "AD-38c-03",
@@ -17956,6 +17956,9 @@
               ],
               "group": "asset",
               "id": "assets",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": true,
               "states": [
                 {
@@ -18048,6 +18051,9 @@
               ],
               "group": "asset",
               "id": "credentials",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18096,6 +18102,9 @@
               "details": [],
               "group": "asset",
               "id": "change_secret",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": true,
               "states": [
                 {
@@ -18118,6 +18127,9 @@
               "details": [],
               "group": "authorization",
               "id": "authorizations",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": true,
               "states": [
                 {
@@ -18139,6 +18151,9 @@
               "details": [],
               "group": "authorization",
               "id": "approver_scopes",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18162,6 +18177,9 @@
               "details": [],
               "group": "identity",
               "id": "users",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18183,6 +18201,9 @@
               "details": [],
               "group": "identity",
               "id": "user_groups",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18205,6 +18226,9 @@
               "details": [],
               "group": "identity",
               "id": "roles",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18224,6 +18248,9 @@
               "details": [],
               "group": "identity",
               "id": "identity_sources",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18249,6 +18276,9 @@
               "details": [],
               "group": "audit",
               "id": "sessions",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18277,6 +18307,9 @@
               "details": [],
               "group": "audit",
               "id": "audit_logs",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18296,6 +18329,9 @@
               "details": [],
               "group": "audit",
               "id": "checkpoint_verification",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18316,6 +18352,9 @@
               "details": [],
               "group": "audit",
               "id": "alerts",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "audit_logs",
               "scopable": false,
               "states": [
                 {
@@ -18346,6 +18385,9 @@
               "details": [],
               "group": "audit",
               "id": "compliance_map",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18365,6 +18407,9 @@
               "details": [],
               "group": "audit",
               "id": "access_reviews",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "audit_logs",
               "scopable": false,
               "states": [
                 {
@@ -18387,6 +18432,9 @@
               "details": [],
               "group": "settings",
               "id": "security_policies",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18408,6 +18456,9 @@
               "details": [],
               "group": "settings",
               "id": "policy_groups",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18436,6 +18487,9 @@
               "details": [],
               "group": "settings",
               "id": "key_management",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18457,6 +18511,9 @@
               "details": [],
               "group": "settings",
               "id": "transmission",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18478,6 +18535,9 @@
               "details": [],
               "group": "settings",
               "id": "offsite_storage",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18499,6 +18559,11 @@
               "details": [],
               "group": "settings",
               "id": "syslog",
+              "placement": "embedded",
+              "placement_entries": [
+                "security_policies"
+              ],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18520,6 +18585,9 @@
               "details": [],
               "group": "settings",
               "id": "notification_channels",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18541,6 +18609,9 @@
               "details": [],
               "group": "settings",
               "id": "system_alerts",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18562,6 +18633,9 @@
               "details": [],
               "group": "settings",
               "id": "alert_rules",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18583,6 +18657,12 @@
               "details": [],
               "group": "settings",
               "id": "schedules",
+              "placement": "helper",
+              "placement_entries": [
+                "change_secret",
+                "rotation_schedules"
+              ],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18593,17 +18673,18 @@
                   "keys": [
                     "schedule:manage"
                   ],
-                  "name": "manage"
+                  "name": "available"
                 }
               ],
-              "write_keys": [
-                "schedule:manage"
-              ]
+              "write_keys": []
             },
             {
               "details": [],
               "group": "settings",
               "id": "rotation_schedules",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18625,6 +18706,9 @@
               "details": [],
               "group": "settings",
               "id": "instance_guard",
+              "placement": "banner",
+              "placement_entries": [],
+              "read_via": "",
               "scopable": false,
               "states": [
                 {
@@ -18652,7 +18736,7 @@
           ]
         }
       },
-      "reason": "The capability descriptors gain, for each entry, the list of write capabilities it contains, so that the role editor can tell a partly covered group from a fully covered one; no existing key changes value."
+      "reason": "The capability descriptors gain, for each entry, the list of write capabilities it contains, so that the role editor can tell a partly covered group from a fully covered one; no existing key changes value. Each entry also gains its placement, the entries that host or use it, and the entry it can be read through. The schedules entry now has only hidden and available states and no write capabilities."
     },
     {
       "id": "AD-38c-04",
@@ -18786,7 +18870,6 @@
               "user_groups",
               "roles",
               "identity_sources",
-              "access_reviews",
               "security_policies",
               "key_management",
               "transmission",
@@ -18807,6 +18890,7 @@
             "read": [
               "assets",
               "sessions",
+              "access_reviews",
               "policy_groups"
             ],
             "scope_global_only": false,
@@ -18817,7 +18901,7 @@
           "template_role_id": 3
         }
       },
-      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+      "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed. A copied role that holds the audit view permission now lists access reviews under read."
     },
     {
       "id": "AD-38c-06",

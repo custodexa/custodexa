@@ -33,13 +33,14 @@ type regEntry struct {
 
 // roleNameRefs 規則 1 的登記檔案（相對 backend/ 的路徑）。
 var roleNameRefs = map[string]regEntry{
-	"internal/model/role.go":                              {"data", "角色名稱常數定義與保留名稱對內建範本識別的對照（寫入時套用，與遷移標記規則相同）"},
-	"internal/database/seed.go":                           {"data", "內建角色與初始管理員的種子"},
-	"internal/database/authz_model_report.go":             {"data", "權限模型遷移：四個內建名稱對內建範本識別的標記與遷移報告"},
-	"internal/modules/authz/builtin_templates.go":         {"data", "舊相容設定檔：舊主角色字串值域與內建範本的對應"},
-	"internal/modules/authz/effective_access_resolver.go": {"data", "有效權限試算回應欄位的值域（admin／auditor 字串），判定依 builtin_key"},
-	"internal/modules/identity/auth_service.go":           {"exception", "primaryRoleOf 折疊 JWT role claim（claim 形狀不變）；登入時是否對帳與 MFA 僅管理者政策依舊主角色"},
-	"internal/modules/identity/oidc_login_service.go":     {"data", "新帳號預設角色（一般使用者）的種子查詢"},
+	"internal/model/role.go":                                   {"data", "角色名稱常數定義與保留名稱對內建範本識別的對照（寫入時套用，與遷移標記規則相同）"},
+	"internal/database/seed.go":                                {"data", "內建角色與初始管理員的種子"},
+	"internal/database/authz_model_report.go":                  {"data", "權限模型遷移：四個內建名稱對內建範本識別的標記與遷移報告"},
+	"internal/modules/authz/builtin_templates.go":              {"data", "舊相容設定檔：舊主角色字串值域與內建範本的對應"},
+	"internal/modules/authz/effective_access_resolver.go":      {"data", "有效權限試算回應欄位的值域（admin／auditor 字串），判定依 builtin_key"},
+	"internal/modules/authz/permission_overview_connection.go": {"data", "權限一覽回應的角色隱含摘要鍵（admin／auditor 字串），只作回應呈現鍵，不作判權；判定依主體的 IsSuperAdmin／IsAuditor"},
+	"internal/modules/identity/auth_service.go":                {"exception", "primaryRoleOf 折疊 JWT role claim（claim 形狀不變）；登入時是否對帳與 MFA 僅管理者政策依舊主角色"},
+	"internal/modules/identity/oidc_login_service.go":          {"data", "新帳號預設角色（一般使用者）的種子查詢"},
 }
 
 // legacyRoleReads 規則 2 的登記檔案。

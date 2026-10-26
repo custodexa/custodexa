@@ -565,6 +565,7 @@ type routeDeps struct {
 	userGroup             *api.UserGroupHandler
 	roleAssignmentPreview *api.RoleAssignmentPreviewHandler
 	roleAssignmentOptions *api.RoleAssignmentOptionsHandler
+	permissionOverview    *api.PermissionOverviewHandler
 	roleDefinition        *api.RoleDefinitionHandler
 	user                  *api.UserHandler
 	role                  *api.RoleHandler
@@ -723,6 +724,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.userGroup.RegisterRoutes(v1, d.authService)
 		d.roleAssignmentPreview.RegisterRoutes(v1, d.authService)
 		d.roleAssignmentOptions.RegisterRoutes(v1, d.authService)
+		d.permissionOverview.RegisterRoutes(v1, d.authService)
 		d.user.RegisterRoutes(v1, d.authService)
 		d.role.RegisterRoutes(v1, d.authService)
 		d.roleDefinition.RegisterRoutes(v1, d.authService)

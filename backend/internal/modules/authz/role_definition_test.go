@@ -180,7 +180,7 @@ func TestRoleEditorDescriptors(t *testing.T) {
 				assert.Equal(t, []string{StateHidden, StateRead, StateManage}, names, e.ID)
 			}
 		}
-		for _, id := range []string{"roles", "audit_logs", "compliance_map", "instance_guard", "checkpoint_verification"} {
+		for _, id := range []string{"roles", "audit_logs", "compliance_map", "instance_guard", "checkpoint_verification", "schedules"} {
 			for _, e := range entries {
 				if e.ID == id {
 					assert.Equal(t, StateAvailable, e.States[1].Name, id)

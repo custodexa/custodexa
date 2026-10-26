@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-26（角色引用計數排除已刪除帳號：角色定義的 `references.direct`、`node_scoped_binding_count` 與刪除檢查的 409 `ROLE_DEFINITION_IN_USE` 只計未刪除帳號的直接指派，停用中的帳號計入。路由未變）
+> 最後更新：2026-10-26（新增使用者權限一覽兩條唯讀路由：`GET /users/:id/permission-overview` 與 `GET /users/:id/permission-overview/assets/:asset_id`，需 `user:manage`；新增錯誤碼 `INTERNAL_PERMISSION_OVERVIEW`；回應欄位與兩種可視界線見「使用者權限一覽」）
+> 前次更新：2026-10-26（角色引用計數排除已刪除帳號：角色定義的 `references.direct`、`node_scoped_binding_count` 與刪除檢查的 409 `ROLE_DEFINITION_IN_USE` 只計未刪除帳號的直接指派，停用中的帳號計入。路由未變）
 > 前次更新：2026-10-26（共用憑證相關回應的範圍化輸出：改密進度與其補跑、放棄、脫離回應，對範圍化檢視者只列範圍內成員並恆附 `out_of_scope_asset_count`；帳號列的五個寫入回應與列表同形；批次改密目標、批次詳情與計畫執行記錄對範圍外憑證收窄；改密候選的 `plan_id` 對不可見計畫為 0。路由未變）
 > 前次更新：2026-10-25（說明修正：「有界重新驗證」補上讀不到群組時保留支持的上界及其適用前提，在 T 大於 0 且後續登入都經同一來源時，約為最近一次讀到之後一個時限加一個工作階段壽命；輪替成員補跑的點擊者承接改述為依憑證歸屬判定其當下能力。行為與路由未變）
 > 前次更新：2026-10-25（角色範圍化範本與範圍摘要：`GET`／`PATCH /auth/me` 的 `scope_summary` 的 `binding_scope` 值域為 `global`／`nodes`，節點條目附 `nodes: [{id, path}]`；角色定義列表、單筆與草稿摘要新增 `scopable`、`node_range_no_effect`，單筆另有 `node_scoped_binding_count`，編輯描述的入口、細項與獨立能力新增 `scopable`；`PUT /role-definitions/:id` 新增 agent 持有者的 403；內建角色新增資產管理員與授權管理員。路由未變）
@@ -476,6 +477,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | PUT | `/api/v1/users/:id/inactivity-exempt` | always |
 | POST | `/api/v1/users/:id/mfa/disable` | always |
 | PUT | `/api/v1/users/:id/password` | always |
+| GET | `/api/v1/users/:id/permission-overview` | always |
+| GET | `/api/v1/users/:id/permission-overview/assets/:asset_id` | always |
 | GET | `/api/v1/users/:id/role-bindings` | always |
 | PUT | `/api/v1/users/:id/roles` | always |
 | POST | `/api/v1/users/:id/roles/:role` | always |
@@ -4319,6 +4322,34 @@ agent 以 `Authorization: Bearer cxa_…` 認證，每次現查憑證、主體�
 「不得自一以上降為零」的不變式同一定義）：只由映射賦予的管理員角色會隨群組異動在下一次
 登入消失，撐不住遇 KEK 重啟時的解封能力。
 
+### 使用者權限一覽（需 `user:manage`，唯讀）
+
+```
+GET /api/v1/users/:id/permission-overview                     一位使用者的有效權限、範圍、來源與可連線的資產
+GET /api/v1/users/:id/permission-overview/assets/:asset_id    查一台資產：這位使用者能否管理、能否連線
+```
+
+兩條路由都只需要 `user:manage`（僅限全系統指派，節點範圍的指派不取得讀取權）。具資產管理、授權管理、稽核或告警讀取能力但沒有 `user:manage` 者，一律得到既有的單一 403 形狀；agent token 一律被拒。端點不接受任何查詢參數，帶了也不改變裁決或內容。端點本身只讀：不寫表、不推進權限版本、不另寫審計列或事件（請求層對已認證請求的操作留痕照常）。回應的所有集合、範圍與台數都由伺服器算好，畫面只呈現，不在前端推算；回應不含憑證識別，也不含指派者、指派日期或「已固定」標示。
+
+**單一使用者**（`permission-overview`）：頂層欄位為 `user_id`、`username`、`management`、`connection`。`out_of_scope_asset_count` 是 `connection` 內的條件性欄位，不在頂層。
+
+- `management.identity`：`super_admin`、`auditor`、`approver`、`agent`、`compat_default` 五個布林；取自該使用者已解析的主體，經使用者群組或外部群組映射取得身分者同樣成立。`compat_default` 為真表示沒有任何指派、套用一般使用者的預設。
+- `management.sources[]`：列出來源（不含範圍節點已全部刪除的指派），來源是否實際授予某個權限以 `effective_permissions` 為準，該陣列可為 `[]`，例如限定節點的內建一般使用者角色仍列為來源，並以 `ineffective` 說明權限不生效的原因。鍵為 `source_ref`、`kind`、`role`、`scope`、`effective_permissions`、`ineffective`。`kind` 只有 `direct`（管理者指派）、`mapped`（外部群組映射賦予）、`group`（經使用者群組）、`compat_default`、`agent_fixed` 五種。手動指派產生 `direct`，映射賦予產生 `mapped`，兩者並存產生各一個來源，範圍與有效權限相同。`direct` 來源只有上述六個鍵，不帶其他欄位。`mapped` 另帶 `mapping_rules[]`（`rule_id`、`source_name`、`external_group`，規則已刪除時可為空陣列），`group` 另帶 `group`（`id`、`name`、`member_source` 為 `manual`、`mapped` 或 `both`、`mapping_rules[]`）。`role` 為 `{id, name, builtin_key}`：`id` 為整數，`name` 為字串，`builtin_key` 為內建角色鍵字串或 `null`，自訂角色的 `builtin_key` 固定為 `null`，該鍵不省略；`compat_default` 與 `agent_fixed` 沒有角色，整個 `role` 為 `null`。其他位置（`bindings[]`、單台資產的 `grants[]`）的角色物件沿用相同欄位型別。`scope` 為 `{kind, nodes[], inactive_node_count}`：`kind` 是 `global` 或 `nodes`，`nodes[]` 只列仍存在的節點（`id`、由根起以 ` / ` 連接的 `path`），已刪除的節點只計入 `inactive_node_count`。`effective_permissions` 是此來源在自身範圍下實際生效的權限鍵。`ineffective[]` 列此來源中不生效的權限鍵與 `reason`：`permission_not_node_scopable`（該權限點只能在全系統生效，節點範圍對它不生效）或 `builtin_requires_global`（內建身分範本只認全系統指派）。
+- `management.ineffective_sources[]`：整筆不生效的來源，欄位同 `sources[]` 加 `reason`，目前只有 `nodes_all_deleted`（指派的範圍節點已全部刪除；不會被當成全系統）。這些來源不出現在 `sources[]`。
+- `management.bindings[]`：依角色分組的呈現摘要，同一角色經多個來源取得時合為一筆。鍵為 `role`（沒有角色的合成來源為 `null`）、`source_refs[]`、`entries`（`manage`、`partial`、`read`、`available` 四個入口穩定識別陣列，取自角色編輯器的入口摘要）與 `manageable_asset_count`（節點範圍時為範圍內管理可視資產的去重台數；全系統為 `null`）。
+- `management.permissions[]`：每個有效權限點一筆，`permission`、`scopes`（同 `scope` 形狀，節點為各來源的聯集）與 `source_refs[]`（至少一筆，且所指來源的 `effective_permissions` 含此鍵）。
+
+`connection` 的可視界線是檢視者自己的 `authorization:manage` 範圍：
+- `available`：檢視者不具 `authorization:manage` 時為 `false`，整個物件只有這一個鍵，沒有 `items`、`manage_only` 與台數。
+- `role_override`：該使用者是有效超級管理者時為 `admin`（可連線所有主機），持內建稽核身分時為 `auditor`（可檢視全部資產，連線看授權），否則不帶；由該使用者的主體判定，經群組或映射取得者同樣適用。
+- `items[]`：`kind` 為 `authorization`、`undisclosed_authorization` 或 `approver_scope`；共同鍵為 `permission`（`connect` 或 `view`）、`visible_asset_count`（檢視者可視的資產數）與 `managed_asset_count`（其中該使用者持有資產管理寫入權且範圍放行的台數）。`authorization` 項另帶 `authorization_id`、`target`（`type` 為 `asset` 或 `node`，`name`）、`via`（`type` 為 `self` 或 `group`，群組附 `group_name`）、`account_scope`（帳號名稱陣列，`null` 為全部帳號）、`validity`（`date_start`、`date_expired`，兩者皆 `null` 為常設）與 `access_policy`（項內可視資產的有效連線政策全部相同時為該值，否則為 `mixed`）。授權記錄不在檢視者的授權列表可視範圍時，其涵蓋的可視資產併入 `undisclosed_authorization` 項，只給 `kind`、`permission` 與兩個台數，不含授權記錄識別、帳號範圍、時效、經由、目標或政策；審核範圍隱含的檢視權限以只有同樣四個鍵的 `approver_scope` 項呈現。
+- `manage_only[]`：該使用者能管理但沒有連線授權的範圍節點，`node_path` 與 `asset_count`；每列各自計算節點子樹，父子節點同時列出時不跨列去重；只列檢視者 `authorization:manage` 範圍內的節點與資產。
+- `connection.out_of_scope_asset_count`：該使用者可連線、但在檢視者 `authorization:manage` 範圍之外的資產去重台數，值為非負整數，只給台數，不含名稱或識別。欄名由最小揭露登錄固定。檢視者不限範圍、連線區段不可用，或該使用者是有效超級管理者時省略此欄；其餘情況即使台數為 0 也帶此欄。
+
+**查一台資產**（`permission-overview/assets/:asset_id`）：回應為 `user_id`、`asset_id`、`manage`、`connect`。`manage.allowed` 表示該使用者對這台資產持有資產管理寫入權且範圍放行，`manage.grants[]` 列放行的指派（`role`、`scope`）。`connect.available` 在檢視者不具 `authorization:manage`、或這台資產不在其 `authorization:manage` 範圍內時為 `false`，此時 `connect` 只有這一個鍵；為 `true` 時另帶布林 `allowed` 與命中這台資產的 `items[]`（形狀同上，遮蔽規則相同，沒有項目時為 `[]`）。`role_override` 僅在該使用者是有效超級管理者（`admin`）或持內建稽核身分（`auditor`）時出現，其餘情況省略。資產必須在檢視者的資產頁可視集合內；看不到的資產與不存在的資產回同一個 404 `NOTFOUND_ASSET`，狀態碼與本文逐位元組相同。
+
+**錯誤**：id 或 asset_id 不是正整數回 400 `VALIDATION_INVALID_ID`；使用者不存在回 404 `AUTH_USER_NOT_FOUND`；服務未接線或解析失敗回 500 `INTERNAL_PERMISSION_OVERVIEW`，不回空集合，本文不帶內部錯誤字串。
+
 ### 允許來源網段（`allowed_cidrs`）
 
 限制某個帳號**可以從哪些來源位址使用系統**。清單為空＝不限來源。
@@ -4459,7 +4490,7 @@ GET /api/v1/roles
 | PUT | `/role-definitions/:id` | 修改名稱、說明與權限 → 200 |
 | DELETE | `/role-definitions/:id?expected_version=N` | 刪除自訂角色 → 204 |
 
-**列表每列**：`id`、`name`、`description`、`builtin_key`、`locked`、`definition_version`、`template_role_id`、`summary`，以及列表專有的投影欄 `assignment_state`（`open`／`not_open`／`protected`）、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`（`direct`、`group_bindings`、`mapping_rules` 三個計數；`direct` 只計未刪除帳號的直接指派，停用中的帳號計入），以及節點限定的兩個布林 `scopable`、`node_range_no_effect`（見下「節點限定欄位」）。`summary` 含 `manage`、`partial`、`read`、`available`、`hidden`（權限鍵分組；`partial` 是持有入口的寫入鍵、卻未涵蓋管理態全部鍵的入口，不再列入 `read`）、`permission_count`、`catalog_count`、`scope_global_only`、`connection_separate`、`assignment_trust_hint`、`unattributed`（不屬任何入口或獨立能力的權限鍵；部分管理入口已持有的鍵不再列入）。兩個鎖定範本與自訂角色都會出現在列表中。`assignment_state` 依目前操作者計算：超級管理者看到的每個角色都是 `open`；其他操作者看到保護角色（超級管理者、系統安全管理員，以及含高風險權限點的自訂角色，見「角色指派的保護與開放邊界」）為 `protected`，其餘為 `open`。`not_open` 表示角色不在可指派的目標集合內，本版的目標集合涵蓋全部角色，因此不會出現。`open` 只表示不受保護角色與目標集合限制，操作者能否指派仍由指派入口依指派能力與 agent 規則裁決。測試：`TestRoleAssignmentProjection`、`TestRoleDefinitionRoutes`。
+**列表每列**：`id`、`name`、`description`、`builtin_key`、`locked`、`definition_version`、`template_role_id`、`summary`，以及列表專有的投影欄 `assignment_state`（`open`／`not_open`／`protected`）、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`（`direct`、`group_bindings`、`mapping_rules` 三個計數；`direct` 只計未刪除帳號的直接指派，停用中的帳號計入），以及節點限定的兩個布林 `scopable`、`node_range_no_effect`（見下「節點限定欄位」）。`summary` 含 `manage`、`partial`、`read`、`available`、`hidden`（權限鍵分組；`partial` 是持有入口的寫入鍵、卻未涵蓋管理態全部鍵的入口，不再列入 `read`）、`permission_count`、`catalog_count`、`scope_global_only`、`connection_separate`、`assignment_trust_hint`、`unattributed`（不屬任何入口或獨立能力的權限鍵；部分管理入口已持有的鍵不再列入）。帶 `read_via` 的入口（見下「描述」），在來源入口不是沒有授予、而該入口依各態判定為沒有授予時，列入 `read`。兩個鎖定範本與自訂角色都會出現在列表中。`assignment_state` 依目前操作者計算：超級管理者看到的每個角色都是 `open`；其他操作者看到保護角色（超級管理者、系統安全管理員，以及含高風險權限點的自訂角色，見「角色指派的保護與開放邊界」）為 `protected`，其餘為 `open`。`not_open` 表示角色不在可指派的目標集合內，本版的目標集合涵蓋全部角色，因此不會出現。`open` 只表示不受保護角色與目標集合限制，操作者能否指派仍由指派入口依指派能力與 agent 規則裁決。測試：`TestRoleAssignmentProjection`、`TestRoleDefinitionRoutes`。
 
 **單筆**：同列表欄位去掉投影欄（`assignment_state`、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`），加 `permissions`、`missing_dependencies`、`blocked_screens`，以及 `scopable`、`node_range_no_effect`、`node_scoped_binding_count`。新增、複製、修改的成功回應同為單筆形狀，三個欄位一併帶出。
 
@@ -4469,7 +4500,7 @@ GET /api/v1/roles
 - `node_scoped_binding_count`（整數，**只在單筆讀取與寫入成功回應**，列表不帶）：目前以節點範圍持有此角色的指派筆數，直接指派與使用者群組指派合計；直接指派只計未刪除帳號，停用中的帳號計入。
 - 列表與單筆依角色本身（內建識別加權限集合）判定；草稿摘要與編輯描述沒有內建識別，以「自訂角色加該集合」判定。
 
-**描述**（`GET /role-definitions/descriptors`）三組：`entries`（每項 `id`、`group`、`states[{name, keys}]`、`write_keys`、`details[{id, key, scopable}]`、`scopable`；`write_keys` 是依歸屬入口規則算出的寫入鍵：管理態中歸屬於該入口、且不在該入口唯讀態的鍵，前端據此判定部分管理）、`capabilities`（每項 `id`、`key`、`trust_hint`、`requires_entry`、`scopable`；目前三項：`role_assign`、`access_policy_override`、`recording_delete`，只有 `role_assign` 的 `trust_hint` 為真）、`fixed_entries`（固定入口，7 項）。`scopable` 是新增的布林：細項與獨立能力各對應一個權限點，該點在節點範圍指派下會依節點生效即為真；入口以其最後一態（管理或可用態，含依賴鍵）的完整權限集合判定，該集合在節點範圍指派下會依節點生效才為真，含任一只能全系統生效的鍵（例如依賴鍵中的使用者管理）或沒有任何會依節點生效的鍵時為假。
+**描述**（`GET /role-definitions/descriptors`）三組：`entries`（每項 `id`、`group`、`states[{name, keys}]`、`write_keys`、`details[{id, key, scopable}]`、`scopable`、`placement`、`placement_entries`、`read_via`；`write_keys` 是依歸屬入口規則算出的寫入鍵：管理態中歸屬於該入口、且不在該入口唯讀態的鍵，前端據此判定部分管理；`placement` 是入口出現的位置，恆為 `page`（有自己的頁面）、`embedded`（另一入口頁面內的設定卡）、`helper`（嵌在其他入口表單內的輔助能力）、`banner`（只出現在全域橫幅）四值之一；`placement_entries` 恆為陣列，`embedded` 時為所在頁面的入口，`helper` 時為使用它的入口，其餘為空；`read_via` 是隨附檢視的來源入口，持有來源入口就看得到本入口的頁面內容，沒有時為空字串，目前告警與存取複審的來源是 `audit_logs`；以上三欄只是描述，不改變任何態的權限集合、依賴或授權判定）、`capabilities`（每項 `id`、`key`、`trust_hint`、`requires_entry`、`scopable`；目前三項：`role_assign`、`access_policy_override`、`recording_delete`，只有 `role_assign` 的 `trust_hint` 為真）、`fixed_entries`（固定入口，7 項）。`scopable` 是新增的布林：細項與獨立能力各對應一個權限點，該點在節點範圍指派下會依節點生效即為真；入口以其最後一態（管理或可用態，含依賴鍵）的完整權限集合判定，該集合在節點範圍指派下會依節點生效才為真，含任一只能全系統生效的鍵（例如依賴鍵中的使用者管理）或沒有任何會依節點生效的鍵時為假。
 
 **摘要試算**（`POST /role-definitions/summary`）：body 只收 `{"permissions": [...]}`，嚴格解碼；回 `{summary, missing_dependencies, blocked_screens, scopable, node_range_no_effect}`，後兩個布林是新增的草稿判定（不套用內建識別，把草稿當自訂角色）。含不合法的權限鍵回 400 `ROLE_PERMISSION_INVALID`。
 

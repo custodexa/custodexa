@@ -63,12 +63,15 @@ const (
 type wantDisclosureEntry struct {
 	fields []string
 	codes  []string
+	// phrases 例外說明必含的片語（nil 不核對）。
+	phrases []string
 }
 
 var wantDisclosureEntries = map[string]wantDisclosureEntry{
 	"OutOfScopeAssetCount": {
-		fields: []string{"out_of_scope_asset_count", "count"},
-		codes:  []string{"RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED"},
+		fields:  []string{"out_of_scope_asset_count", "count"},
+		codes:   []string{"RULE_CREDENTIAL_IMPACT_CONFIRMATION_REQUIRED"},
+		phrases: []string{"共用憑證影響範圍外資產的匿名台數", "權限一覽連線區段"},
 	},
 	"OutOfScopeNodeCount": {
 		fields: []string{"out_of_scope_node_count", "count"},
@@ -358,6 +361,11 @@ func discCheckRegistryContent(t *testing.T, regFiles []*parsedFile) {
 		}
 		if strings.TrimSpace(e.Exception) == "" || strings.TrimSpace(e.Wiring) == "" {
 			t.Errorf("%s 缺例外說明或輸出點位置", e.Name)
+		}
+		for _, p := range want.phrases {
+			if !strings.Contains(e.Exception, p) {
+				t.Errorf("%s 的例外說明缺片語 %q", e.Name, p)
+			}
 		}
 		for _, f := range e.Fields {
 			fieldSet[f] = true

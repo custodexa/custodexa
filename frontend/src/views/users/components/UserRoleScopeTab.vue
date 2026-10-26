@@ -1,8 +1,27 @@
 <template>
   <div
+    ref="rootEl"
     class="role-scope-tab"
     data-test="role-scope-tab"
   >
+    <div
+      class="scope-banner"
+      data-test="scope-banner"
+    >
+      <div class="banner-text">
+        <strong>{{ $t('roleScope.bannerTitle') }}</strong>
+        {{ $t('roleScope.bannerBody') }}
+        {{ $t('userDetail.change.connectionFixed') }}
+      </div>
+      <a
+        v-if="canGoAuthorizations"
+        href="/authorizations"
+        target="_blank"
+        rel="noopener"
+        class="banner-link"
+        data-test="banner-go-authorizations"
+      >{{ $t('roleScope.goAuthorizations') }}</a>
+    </div>
     <!-- 區一：管理者指派的角色 -->
     <section
       class="block"
@@ -22,34 +41,55 @@
       <el-select
         v-model="pick"
         class="role-pick"
-        :placeholder="$t('userDetail.roles.pickRole')"
-        :teleported="false"
+        :placeholder="pickOpen ? $t('roleNodePicker.filterPlaceholder') : $t('userDetail.roles.pickRole')"
+        filterable
+        :filter-method="(q) => (pickQuery = q)"
         data-test="role-pick"
+        @visible-change="onPickVisible"
         @change="addPicked"
       >
-        <el-option
-          v-for="opt in roleOptions"
-          :key="opt.name"
-          :value="opt.name"
-          :label="roleLabel(opt.name)"
-          :disabled="opt.disabled"
-          :data-test="`role-option-${opt.name}`"
+        <template
+          v-for="grp in optionGroups"
+          :key="grp.key"
         >
-          <span>{{ roleLabel(opt.name) }}</span>
-          <span
-            v-if="opt.reason"
-            class="option-note"
-          >{{ opt.reason }}</span>
-        </el-option>
+          <el-option-group
+            v-if="grp.items.length"
+            :label="grp.label"
+          >
+            <el-option
+              v-for="opt in grp.items"
+              :key="opt.name"
+              :value="opt.name"
+              :label="roleLabel(opt.name)"
+              :disabled="opt.disabled"
+              :data-test="`role-option-${opt.name}`"
+            >
+              <span class="option-line">
+                <span>{{ roleLabel(opt.name) }}</span>
+                <span
+                  v-if="opt.reason"
+                  class="option-note"
+                >{{ opt.reason }}</span>
+                <el-tag
+                  v-if="opt.scopable"
+                  class="option-scopable"
+                  size="small"
+                  effect="plain"
+                  :data-test="`option-scopable-${opt.name}`"
+                >{{ $t('roleNodePicker.tagScopable') }}</el-tag>
+              </span>
+            </el-option>
+          </el-option-group>
+        </template>
       </el-select>
       <ul class="role-cards">
         <li
           v-for="name in selected"
           :key="name"
           class="role-card"
-          :class="{ 'is-openable': isAssignable(name), 'is-active': activeRole === name }"
+          :class="{ 'is-openable': canOpen(name), 'is-active': activeRole === name }"
           :data-test="`manual-role-${name}`"
-          :tabindex="isAssignable(name) ? 0 : undefined"
+          :tabindex="canOpen(name) ? 0 : undefined"
           @click="openPanel(name)"
           @keydown.enter.space.self.prevent="openPanel(name)"
         >
@@ -69,7 +109,7 @@
           </el-tag>
           <template v-if="canAssign && optionsReady">
             <el-tag
-              v-if="isAssignable(name)"
+              v-if="isAssignable(name) && !isNoEffect(name)"
               size="small"
               effect="plain"
               :data-test="`tag-assignable-${name}`"
@@ -77,7 +117,7 @@
               {{ $t('roleNodePicker.tagAssignable') }}
             </el-tag>
             <el-tag
-              v-else
+              v-else-if="!isAssignable(name)"
               size="small"
               effect="plain"
               type="info"
@@ -85,11 +125,24 @@
             >
               {{ $t('roleNodePicker.tagNoRange') }}
             </el-tag>
-            <span
-              v-if="draftOf(name).mode === 'all'"
-              class="option-note"
-              :data-test="`range-all-${name}`"
-            >{{ $t('roleNodePicker.modeAll') }}</span>
+            <template v-if="draftOf(name).mode === 'all' && classOf(name) === 'builtin_global_only'">
+              <strong
+                class="not-applicable"
+                :data-test="`scope-not-applicable-${name}`"
+              >{{ $t('roles.list.scopeNotApplicable') }}</strong>
+              <span class="option-note">{{ $t('roleNodePicker.notApplicableNote') }}</span>
+            </template>
+            <template v-else-if="draftOf(name).mode === 'all'">
+              <span
+                class="option-note"
+                :data-test="`range-all-${name}`"
+              >{{ $t('roleNodePicker.modeAll') }}</span>
+              <span
+                v-if="classOf(name) === 'no_scoped_permission'"
+                class="option-note"
+                :data-test="`range-no-effect-${name}`"
+              >{{ $t('roleNodePicker.rangeNoEffectNote') }}</span>
+            </template>
             <div
               v-else
               class="range-paths"
@@ -150,6 +203,32 @@
                 {{ $t('roleNodePicker.modeAll') }}
               </el-button>
             </template>
+            <el-button
+              v-if="canMore(name)"
+              size="small"
+              :aria-label="$t('roleNodePicker.moreActions')"
+              :data-test="`more-${name}`"
+              @click.stop="moreOpen = moreOpen === name ? '' : name"
+            >
+              …
+            </el-button>
+            <div
+              v-if="moreOpen === name"
+              class="more-panel"
+              :data-test="`more-panel-${name}`"
+              @click.stop
+            >
+              <p class="more-note">
+                {{ $t(classOf(name) === 'builtin_global_only' ? 'roleNodePicker.builtinGlobalOnlyNote' : 'roleNodePicker.rangeNoEffectNote') }}
+              </p>
+              <el-button
+                size="small"
+                :data-test="`still-limit-${name}`"
+                @click.stop="stillLimit(name)"
+              >
+                {{ $t('roleNodePicker.stillLimitNodes') }}
+              </el-button>
+            </div>
           </template>
           <span
             v-else-if="!canAssign && origNodeCount(name) != null"
@@ -170,6 +249,7 @@
       <section
         v-if="activeRole && isAssignable(activeRole)"
         class="range-panel"
+        tabindex="-1"
         data-test="range-panel"
       >
         <h4>{{ $t('roleNodePicker.panelTitleUser', { role: roleLabel(activeRole) }) }}</h4>
@@ -241,12 +321,22 @@
         data-test="change-managed-assets"
       >
         <span class="change-label">{{ $t('roleNodePicker.changeManagedAssets') }}</span>
-        <span>{{ $t('roleNodePicker.changeAssetsValue', { after: managedAssets.after, before: managedAssets.before }) }}</span>
+        <span
+          v-if="holdsAllScope"
+          data-test="change-managed-assets-all"
+        >{{ $t('roleNodePicker.changeAssetsAll') }}</span>
+        <span v-else>{{ $t('roleNodePicker.changeAssetsValue', { after: managedAssets.after, before: managedAssets.before }) }}</span>
       </div>
       <div class="change-row">
         <span class="change-label">{{ $t('userDetail.change.connection') }}</span>
-        <span data-test="change-connection">{{ $t('userDetail.change.connectionFixed') }}</span>
+        <span data-test="change-connection-value">{{ $t('userDetail.change.connectionUnchanged') }}</span>
       </div>
+      <p
+        class="hint"
+        data-test="change-connection"
+      >
+        {{ $t('userDetail.change.connectionFixed') }}
+      </p>
       <p class="hint">
         {{ $t('userDetail.change.effectiveNow') }}
       </p>
@@ -446,7 +536,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { t, te } from '@/i18n'
@@ -469,6 +559,8 @@ import DangerComboConfirm from '@/components/DangerComboConfirm.vue'
 import MappingTimingNotice from '@/components/MappingTimingNotice.vue'
 import RoleNodePicker from '@/components/RoleNodePicker.vue'
 import { can } from '@/composables/useCapabilities'
+import { canEnter, entryRuleFor } from '@/router/entryRules'
+import { classifyRole, isNoEffectClass, SCOPE_CLASS, filterByQuery, splitBuiltinCustom } from '@/utils/roleScopePresentation'
 
 /**
  * 使用者詳情的「角色與範圍」分頁：管理者指派、來自映射、來自群組三區。
@@ -494,6 +586,12 @@ const initial = ref([...(props.roleSets.manual || [])])
 const selected = ref([...(props.roleSets.manual || [])])
 const mapped = ref([...(props.roleSets.mapped || [])])
 const pick = ref('')
+const pickOpen = ref(false)
+const pickQuery = ref('')
+const onPickVisible = (v) => {
+  pickOpen.value = v
+  if (!v) pickQuery.value = ''
+}
 const saving = ref(false)
 const pinning = ref('')
 const assignError = ref('')
@@ -525,9 +623,21 @@ const roleOptions = computed(() =>
       disabled = true
       reason = t('userDetail.roles.alreadyAdded')
     }
-    return { name: d.name, disabled, reason, state: d.assignment_state }
+    const scopable =
+      canAssign.value && classifyRole(d, options.value.reasons[String(d.id)]) === SCOPE_CLASS.EFFECTIVE
+    return { name: d.name, builtin_key: d.builtin_key, disabled, reason, state: d.assignment_state, scopable }
   })
 )
+// 分配角色選單：內建／自訂兩組，組內保留伺服器順序
+const optionGroups = computed(() => {
+  const { builtin, custom } = splitBuiltinCustom(
+    filterByQuery(roleOptions.value, pickQuery.value, (o) => roleLabel(o.name))
+  )
+  return [
+    { key: 'builtin', label: t('roles.list.builtinTitle', { n: builtin.length }), items: builtin },
+    { key: 'custom', label: t('roles.list.customTitle', { n: custom.length }), items: custom },
+  ]
+})
 
 const rolesDirty = computed(() => {
   const a = [...selected.value].sort()
@@ -601,9 +711,25 @@ const nodePath = (id) => nodeById(id)?.path || nodeById(id)?.name || ''
 const setDraft = (name, v) => {
   ranges.value = { ...ranges.value, [name]: { mode: v.mode, nodeIds: [...v.nodeIds] } }
 }
+// 範圍不會生效的角色以全系統持有時，點卡片不開節點選擇；「仍要限定節點」收進「更多」
+const classOf = (name) =>
+  classifyRole(definitions.value.find((d) => d.name === name), noEffectReasonOf(name))
+const isNoEffect = (name) => isNoEffectClass(classOf(name))
+const canOpen = (name) => isAssignable(name) && (!isNoEffect(name) || draftOf(name).mode === 'nodes')
+const canMore = (name) => canOpen(name) === false && isAssignable(name) && isNoEffect(name)
+const moreOpen = ref('')
 const openPanel = (name) => {
-  if (isAssignable(name)) activeRole.value = name
+  if (canOpen(name)) activeRole.value = name
 }
+const rootEl = ref(null)
+const stillLimit = async (name) => {
+  moreOpen.value = ''
+  activeRole.value = name
+  // 觸發的按鈕隨「更多」面板移除，焦點移到展開的範圍面板
+  await nextTick()
+  rootEl.value?.querySelector('.range-panel')?.focus({ preventScroll: true })
+}
+const canGoAuthorizations = computed(() => canEnter(entryRuleFor('/authorizations')))
 
 // 同一角色經使用者群組取得的節點（來自群組標記）
 const groupNodeIdsOf = (name) => {
@@ -650,6 +776,7 @@ const addPicked = (name) => {
 const removeRole = (name) => {
   selected.value = selected.value.filter((n) => n !== name)
   if (activeRole.value === name) activeRole.value = ''
+  if (moreOpen.value === name) moreOpen.value = ''
 }
 
 // —— 預覽（建議性）——
@@ -689,6 +816,10 @@ const countsOf = (name) => {
   return r ? { direct: r.direct, from_groups_extra: r.from_groups_extra, total: r.total } : null
 }
 const managedAssets = computed(() => preview.result.value?.managed_assets || null)
+// 以全系統持有可限範圍角色：預覽台數不計全域指派，直接寫「全部資產」，以範圍判定、不看角色名稱
+const holdsAllScope = computed(() =>
+  selected.value.some((n) => classOf(n) === SCOPE_CLASS.EFFECTIVE && draftOf(n).mode === 'all')
+)
 
 // 頁面入口以導覽列的名稱呈現；對不上的原樣顯示
 const ROUTE_TITLES = (() => {
@@ -910,6 +1041,46 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.scope-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--ot-space-md);
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-md);
+  background: var(--ot-bg-hover);
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+.banner-link {
+  white-space: nowrap;
+  color: var(--ot-primary);
+}
+.more-panel {
+  flex-basis: 100%;
+  padding: var(--ot-space-xs) var(--ot-space-sm);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-md);
+}
+.more-note {
+  margin: 0 0 var(--ot-space-xs);
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+}
+.option-line {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.option-scopable {
+  margin-left: auto;
+}
+@media (max-width: 900px) {
+  .scope-banner {
+    flex-direction: column;
+  }
+}
 .role-scope-tab {
   display: flex;
   flex-direction: column;

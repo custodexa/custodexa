@@ -203,6 +203,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		userGroup:             &api.UserGroupHandler{},
 		roleAssignmentPreview: &api.RoleAssignmentPreviewHandler{},
 		roleAssignmentOptions: &api.RoleAssignmentOptionsHandler{},
+		permissionOverview:    &api.PermissionOverviewHandler{},
 		roleDefinition:        &api.RoleDefinitionHandler{},
 		user:                  &api.UserHandler{},
 		role:                  &api.RoleHandler{},

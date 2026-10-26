@@ -250,6 +250,43 @@ describe('SecurityPolicies 日誌保留與審閱區塊', () => {
     expect(ElMessageBox.confirm).not.toHaveBeenCalled()
     expect(updatePoliciesMock).toHaveBeenCalledWith({ retention_audit_log_days: '0' })
   })
+
+  // 經分區導覽前往日誌保留分區後調短，不可逆確認仍然觸發；取消不送、確認才送
+  const shrinkViaNav = async () => {
+    getPoliciesMock.mockResolvedValue(
+      policyFixture({
+        data: [retentionInt('retention_audit_log_days', '操作日誌保留天數', '365')],
+      })
+    )
+    updatePoliciesMock.mockResolvedValue(policyFixture())
+    const wrapper = await mountPage()
+    await wrapper.find('[data-test="section-nav-log_retention"]').trigger('click')
+    await wrapper.find('input').setValue('180')
+    const saveBtn = wrapper.findAll('button').find((b) => b.text() === '儲存')
+    await saveBtn.trigger('click')
+    await flushPromises()
+  }
+
+  it('經分區導覽前往後把操作日誌保留由 365 調為 180：先確認，取消時不送更新', async () => {
+    ElMessageBox.confirm.mockRejectedValue('cancel')
+    await shrinkViaNav()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('保留期限縮短'),
+      expect.any(Object)
+    )
+    expect(updatePoliciesMock).toHaveBeenCalledTimes(0)
+  })
+
+  it('經分區導覽前往後把操作日誌保留由 365 調為 180：確認後才送出更新', async () => {
+    await shrinkViaNav()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(updatePoliciesMock).toHaveBeenCalledTimes(1)
+    expect(updatePoliciesMock).toHaveBeenCalledWith({ retention_audit_log_days: '180' })
+  })
 })
 
 describe('SecurityPolicies syslog 轉發設定卡', () => {

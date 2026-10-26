@@ -883,6 +883,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/users/:id/permission-overview",
+      "handler": "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/:id/permission-overview/assets/:asset_id",
+      "handler": "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).GetAsset-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/users/:id/role-bindings",
       "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).ListRoleBindings-fm"
     },
@@ -5012,6 +5022,36 @@
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func5",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*UserHandler).ListExternalIdentities-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/:id/permission-overview",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/:id/permission-overview/assets/:asset_id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*PermissionOverviewHandler).GetAsset-fm"
       ]
     },
     {

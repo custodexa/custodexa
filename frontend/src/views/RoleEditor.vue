@@ -157,6 +157,22 @@
                   {{ $t('roles.summary.partial') }}
                 </el-tag>
                 <el-tag
+                  v-if="placementKind(e) !== 'page'"
+                  size="small"
+                  type="info"
+                  :data-test="`placement-tag-${e.id}`"
+                >
+                  {{ $t(`roles.editor.placementTag.${placementKind(e)}`) }}
+                </el-tag>
+                <el-tag
+                  v-if="readViaOn(e)"
+                  size="small"
+                  type="info"
+                  :data-test="`read-via-tag-${e.id}`"
+                >
+                  {{ $t('roles.editor.readViaTag', { via: entryLabel(e.read_via) }) }}
+                </el-tag>
+                <el-tag
                   v-if="e.scopable === true"
                   size="small"
                   type="success"
@@ -190,6 +206,20 @@
               :data-test="`entry-partial-hint-${e.id}`"
             >
               {{ $t('roles.editor.partialHint') }}
+            </p>
+            <p
+              v-if="placementKind(e) !== 'page'"
+              class="muted entry-note"
+              :data-test="`placement-note-${e.id}`"
+            >
+              {{ placementNoteOf(e) }}
+            </p>
+            <p
+              v-if="readViaOn(e)"
+              class="muted entry-note"
+              :data-test="`read-via-note-${e.id}`"
+            >
+              {{ $t('roles.editor.readViaNote', { via: entryLabel(e.read_via) }) }}
             </p>
             <p
               v-if="entryNoteFor(e.id)"
@@ -458,7 +488,7 @@ import { t, te } from '@/i18n'
 import { roleLabel } from '@/constants/roles'
 import { useAssignmentPreview } from '@/composables/useAssignmentPreview'
 import { collectNewCombos, needsDangerConfirm } from '@/utils/dangerCombo'
-import { entryStateOf, applyEntryState, distinctDetailCount, sharedKeyDetailOf } from '@/views/role-editor/entryState'
+import { entryStateOf, readViaActive, applyEntryState, distinctDetailCount, sharedKeyDetailOf } from '@/views/role-editor/entryState'
 import {
   listRoleDefinitions,
   getRoleDescriptors,
@@ -546,7 +576,19 @@ const fixedVisible = (id) => {
 }
 
 // 入口目前的態：集合完整涵蓋的最高態；持有寫入鍵卻未涵蓋管理態為部分管理（伺服器給的 write_keys）
-const stateOf = (e) => entryStateOf(e, perms.value)
+// 隨附檢視（read_via）的入口在來源入口可見時歸為唯讀，這只是呈現，不是可選的態
+const stateOf = (e) => entryStateOf(e, perms.value, entries.value)
+const readViaOn = (e) => readViaActive(e, perms.value, entries.value)
+
+// 入口所在位置取編輯描述的 placement，不依入口名稱自行推算
+const placementKind = (e) => e.placement || 'page'
+const placementNoteOf = (e) => {
+  const kind = placementKind(e)
+  const names = (e.placement_entries || []).map(entryLabel).join(t('common.listSeparator'))
+  if (kind === 'embedded') return t('roles.editor.placementNote.embedded', { host: names })
+  if (kind === 'helper') return t('roles.editor.placementNote.helper', { entries: names })
+  return t(`roles.editor.placementNote.${kind}`)
+}
 
 const groupCountText = (grp) => {
   const n = { manage: 0, partial: 0, read: 0, available: 0, hidden: 0 }

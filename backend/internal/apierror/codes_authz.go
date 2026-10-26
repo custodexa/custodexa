@@ -145,6 +145,8 @@ var (
 	CodeInternalAuthorizationQuery = register("INTERNAL_AUTHORIZATION_QUERY", Descriptor{ZhFallback: "查詢授權失敗"})
 	// CodeInternalAuthorizationEffective 供 EffectiveAssets 與 EffectiveUsers 共用
 	CodeInternalAuthorizationEffective = register("INTERNAL_AUTHORIZATION_EFFECTIVE", Descriptor{ZhFallback: "查詢有效權限失敗"})
+	// CodeInternalPermissionOverview 供使用者權限一覽與查一台資產共用
+	CodeInternalPermissionOverview = register("INTERNAL_PERMISSION_OVERVIEW", Descriptor{ZhFallback: "查詢權限一覽失敗"})
 )
 
 // --- user_group_handler.go ---

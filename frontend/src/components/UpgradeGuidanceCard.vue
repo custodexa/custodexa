@@ -528,19 +528,13 @@ onMounted(() => {
 
 .ug-step-no {
   flex: none;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--ot-border);
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--ot-font-size-xs, 12px);
+  min-width: 20px;
   color: var(--ot-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .ug-step-no::before {
-  content: counter(ug-step);
+  content: counter(ug-step) ".";
 }
 
 .ug-step-text {

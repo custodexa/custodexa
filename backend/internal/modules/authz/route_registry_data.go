@@ -326,6 +326,8 @@ func routeRegistryEntries() []RouteEntry {
 		{Method: "POST", Path: "/api/v1/users/:id/agent-tokens", Base: BaseAuthenticated},
 		{Method: "DELETE", Path: "/api/v1/users/:id/agent-tokens/:tokenId", Base: BaseAuthenticated},
 		{Method: "GET", Path: "/api/v1/users/:id/external-identities", Base: BasePerm, Perm: PermUserManage},
+		{Method: "GET", Path: "/api/v1/users/:id/permission-overview", Base: BasePerm, Perm: PermUserManage},
+		{Method: "GET", Path: "/api/v1/users/:id/permission-overview/assets/:asset_id", Base: BasePerm, Perm: PermUserManage},
 		{Method: "POST", Path: "/api/v1/users/:id/external-identities", Base: BasePerm, Perm: PermUserManage},
 		{Method: "DELETE", Path: "/api/v1/users/:id/external-identities/:identityId", Base: BasePerm, Perm: PermUserManage},
 		{Method: "POST", Path: "/api/v1/users/:id/external-identities/:identityId/unbind-and-disable", Base: BasePerm, Perm: PermUserManage},

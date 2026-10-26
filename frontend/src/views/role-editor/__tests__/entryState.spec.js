@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import writeKeys from './fixtures/write-keys.json'
-import { entryStateOf, protectedKeysOf, distinctDetailCount, sharedKeyDetailOf, applyEntryState } from '../entryState'
+import { entryStateOf, protectedKeysOf, distinctDetailCount, sharedKeyDetailOf, applyEntryState, readViaActive } from '../entryState'
 
 // 入口的各態集合照後端描述表；write_keys 取自後端實際輸出（fixtures/write-keys.json）
 const st = (name, ...keys) => ({ name, keys })
@@ -125,5 +125,63 @@ describe('applyEntryState 與部分管理入口', () => {
     const none = applyEntryState(entries, partialAssets, by('assets'), 'hidden', [])
     expect(none.has('asset:update')).toBe(false)
     expect(entryStateOf(by('assets'), none)).toBe('hidden')
+  })
+})
+
+describe('隨附檢視（read_via）', () => {
+  const auditLogs = { id: 'audit_logs', states: [hidden, st('available', 'audit:view')], details: [], write_keys: [] }
+  const alerts = {
+    id: 'alerts',
+    states: [hidden, st('read', 'alert:view', 'audit:view'), st('manage', 'alert:view', 'alert:manage', 'audit:view')],
+    details: [],
+    write_keys: ['alert:manage'],
+    read_via: 'audit_logs',
+  }
+  const accessReviews = {
+    id: 'access_reviews',
+    states: [hidden, st('manage', 'accessreview:manage', 'audit:view')],
+    details: [],
+    write_keys: ['accessreview:manage'],
+    read_via: 'audit_logs',
+  }
+  const rv = [auditLogs, alerts, accessReviews]
+  const sOf = (e, keys) => entryStateOf(e, new Set(keys), rv)
+
+  it('只持 audit:view：告警與存取複審判為唯讀，不要求保留任何鍵', () => {
+    const p = new Set(['audit:view'])
+    expect(sOf(alerts, ['audit:view'])).toBe('read')
+    expect(sOf(accessReviews, ['audit:view'])).toBe('read')
+    expect(readViaActive(alerts, p, rv)).toBe(true)
+    expect(protectedKeysOf(alerts, p, rv)).toEqual([])
+    expect(protectedKeysOf(accessReviews, p, rv)).toEqual([])
+    expect(sOf(auditLogs, ['audit:view'])).toBe('available')
+  })
+  it('沒有傳入完整入口清單時不判定隨附檢視', () => {
+    expect(entryStateOf(alerts, new Set(['audit:view']))).toBe('hidden')
+  })
+  it('audit:view 加 alert:manage：告警為部分管理，不是隨附唯讀', () => {
+    expect(sOf(alerts, ['audit:view', 'alert:manage'])).toBe('partial')
+    expect(readViaActive(alerts, new Set(['audit:view', 'alert:manage']), rv)).toBe(false)
+  })
+  it('真正的告警唯讀（alert:view 加 audit:view）仍保護兩鍵', () => {
+    const p = new Set(['alert:view', 'audit:view'])
+    expect(sOf(alerts, ['alert:view', 'audit:view'])).toBe('read')
+    expect(readViaActive(alerts, p, rv)).toBe(false)
+    expect(protectedKeysOf(alerts, p, rv).sort()).toEqual(['alert:view', 'audit:view'])
+  })
+  it('來源入口沒有授予時不隨附：只持 alert:view 的告警為隱藏', () => {
+    expect(sOf(alerts, ['alert:view'])).toBe('hidden')
+    expect(sOf(accessReviews, [])).toBe('hidden')
+  })
+  it('把 audit_logs 切到隱藏後集合不含 audit:view，兩列回到隱藏', () => {
+    const p = applyEntryState(rv, new Set(['audit:view']), auditLogs, 'hidden', [])
+    expect(p.has('audit:view')).toBe(false)
+    expect(sOf(alerts, [...p])).toBe('hidden')
+    expect(sOf(accessReviews, [...p])).toBe('hidden')
+  })
+  it('只持 audit:view 時切換告警為隱藏：稽核檢視保留', () => {
+    const p = applyEntryState(rv, new Set(['audit:view']), alerts, 'hidden', [])
+    expect(p.has('audit:view')).toBe(true)
+    expect(sOf(alerts, [...p])).toBe('read')
   })
 })

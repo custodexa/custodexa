@@ -144,12 +144,12 @@ func TestDeleteAsset_AuthorizationsStopMatchingPermissionQueries(t *testing.T) {
 
 	require.NoError(t, svc.Delete(asset.WithSystemCaller(context.Background()), a.ID))
 
-	// ① 權限檢查不再命中（缺陷本體）
+	// (1) 權限檢查不再命中（缺陷本體）
 	ok, err = repo.CheckPermission(userID, a.ID, []model.PermissionType{model.PermissionConnect})
 	require.NoError(t, err)
 	require.False(t, ok, "已刪資產的授權不得再於權限檢查中命中")
 
-	// ② 姊妹查詢一併失效——**實測而非推論**。軟刪作用於記錄本身，
+	// (2) 姊妹查詢一併失效——**實測而非推論**。軟刪作用於記錄本身，
 	//    故同語義查詢自動繼承；若 GORM 對某查詢未套用軟刪範圍即為缺陷，
 	//    而那正是「只改 CheckPermission 會留下的旁路」
 	sources, err := repo.ResolveConnectSources(userID, a.ID, time.Now())
@@ -162,7 +162,7 @@ func TestDeleteAsset_AuthorizationsStopMatchingPermissionQueries(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, scopes, "AccountScopesFor 不得命中已刪資產的授權")
 
-	// ③ 記錄仍在（稽核軌跡保留，非實體移除）
+	// (3) 記錄仍在（稽核軌跡保留，非實體移除）
 	var count int64
 	require.NoError(t, db.Unscoped().Model(&model.AssetAuthorization{}).
 		Where("asset_id = ?", a.ID).Count(&count).Error)

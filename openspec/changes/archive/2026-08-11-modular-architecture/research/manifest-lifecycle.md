@@ -960,6 +960,17 @@ H-43 已移除，永久保留歷史 ID：原為 `cmd/server/main.go:sealHandler.
 | H-394 | 改密計畫的範圍判定：asset 定義的 `ChangeSecretScopePort`（拓撲鎖、讀取範圍、憑證可見性）與 `CredentialScopeSource`（影響確認切分），由 authz 的 `ChangeSecretScope` 與 `CredentialScopeReader` 實作（計畫列表、修改、刪除、執行、記錄與一鍵重新授權的可見性投影；建立與修改交易內的範圍收斂、影響確認與掛載上界） | `changeSecretPlanService.WithScope(changeSecretScope, authz.NewCredentialScopeReader(scopeEvaluator, database.DB))`（`stage2.go:1207`） | asset ← authz | `changeSecretPlanService` 建構、`changeSecretScope` 建立 | 首個改密計畫讀取或儲存請求 | 未注入時計畫維持全系統口徑（不收斂、不寫掛載上界）；只經節點範圍持有能力的主體在執行時重驗被拒，不因缺注入而放寬執行 | 早於 `scopeEvaluator` 組裝＝判定器為 nil，讀取與儲存回內部錯誤（不放行） | `TestScopedRotationPlanScope` |
 | H-395 | 單台存取政策覆寫清單的範圍投影：asset 定義的 `AccessPolicyOverrideScopePort`（`AccessPolicyProjection`，回 `Scoped`／`ApplyAssets`／`SplitNodes`），由 authz 的 `AccessPolicyOverrideScope` 實作（只依存取政策權限點的有效指派；請求連線上重解主體） | `assetService.SetAccessPolicyOverrideScopePort(authz.NewAccessPolicyOverrideScope(scopeEvaluator))`（`stage2.go:541`） | asset ← authz | `assetService` 建構、`scopeEvaluator` 組裝 | 首個覆寫清單請求 | 未注入時覆寫清單回內部錯誤（`ErrAccessPolicyOverrideScopeMissing`，fail-close，不列出任何資產） | 早於 `scopeEvaluator` 組裝＝判定器為 nil，投影回內部錯誤（不放行） | `TestAccessPolicyOverrideListProjection` |
 
+### 10.5 使用者權限一覽解釋服務的組裝（1.19.0）
+
+下列各項都在 `buildRouteDeps` 的同一段內以建構子參數交入（不是 setter），故不產生 `hook:` 或 `inject:` 錨點，也沒有包級可變狀態，不產生 `var:` 列。本節列組裝次序與缺依賴時的行為，第 2 欄不是受管前綴，守衛不解析。解釋服務只讀，不寫表、不推進權限版本、不寫審計列或事件（請求層的全操作留痕照常）。
+
+| 項 | 組裝位置 | 必須在誰之後 | 缺失或次序反了的失敗形態 | 釘住的測試 |
+|---|---|---|---|---|
+| 解釋服務與 handler | `api.NewPermissionOverviewHandler(authz.NewPermissionOverviewService(database.DB, s.scopeEvaluator, effectiveResolver, s.authorizationService, identity.NewPermissionOverviewMappings(), s.accessPolicyService))`（`stage2.go:2129`，`buildRouteDeps` 內）；封印段以零值 handler 佔位（`sealgate.go:206`，路由永不被執行） | 範圍判定器（`s.scopeEvaluator`）、有效權限解析器（`effectiveResolver`）、授權規則服務（`s.authorizationService`）與存取政策服務（`s.accessPolicyService`）的建構 | 任一依賴為 nil，服務的 `ready()` 為假，兩條路由回 500 `INTERNAL_PERMISSION_OVERVIEW`（fail-close，不回空集合冒充「沒有權限」）；handler 本身為 nil 或其讀取來源為 nil 同此行為，回應本文不帶內部錯誤字串。早於 `s.scopeEvaluator` 組裝＝判定器為 nil，同樣回內部錯誤，不放行 | `TestPermissionOverviewAccess`（`使用者不存在、路徑參數不合法與解析失敗的錯誤碼`，含 handler 缺依賴與解析失敗兩種內部錯誤） |
+| 映射唯讀查詢 | `identity.NewPermissionOverviewMappings()`（上列運算式內，只讀 `group_role_mappings` 與身分來源名稱，無狀態） | 資料庫初始化 | 查詢失敗回內部錯誤，不以「沒有映射規則」代替；規則已刪或支持表無列時來源仍在，規則欄為空陣列 | `TestPermissionOverviewSources` |
+| 連線政策段位解析 | 同上以 `s.accessPolicyService` 交入（`OverviewPolicyResolver`，批次解析項內可視資產的有效段位） | 存取政策服務建構 | 缺失＝服務 `ready()` 為假，整條路由回內部錯誤；不以「全部開放」代替 | `TestPermissionOverviewConnectionProjection` |
+| 路由登錄 | `d.permissionOverview.RegisterRoutes(v1, d.authService)`（`main.go:727`） | `registerRoutes` 取得 handler | 兩條路由為使用者檢視能力、agent 一律拒絕；handler 未掛上＝兩條路由不存在（404），不放寬任何既有端點 | `TestPermissionOverviewAccess`（路由登錄與 agent 拒絕子案例） |
+
 ## 輸出旁路的會話層生命週期（output-sensitive-data-rules，AP-94）
 
 `internal/sshproxy/sensitive_tap.go:newSensitiveTap` 在會話開始時取得規則快照，並以既有

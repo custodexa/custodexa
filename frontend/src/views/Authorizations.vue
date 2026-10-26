@@ -494,6 +494,7 @@
     <AuthzBatchWizard
       v-model="batchDialogVisible"
       :prefill-node-id="prefillNodeId"
+      :prefill-user-group-id="prefillUserGroupId"
       @completed="fetchAuthorizationList"
     />
 
@@ -885,9 +886,11 @@ const submitRevoke = async () => {
 const route = useRoute()
 const batchDialogVisible = ref(false)
 const prefillNodeId = ref(null)
+const prefillUserGroupId = ref(null)
 
 const handleBatchAuthorize = () => {
   prefillNodeId.value = null
+  prefillUserGroupId.value = null
   batchDialogVisible.value = true
 }
 
@@ -903,6 +906,12 @@ onMounted(() => {
   const nodeIDRaw = route?.query?.node_id
   if (nodeIDRaw && canManageAuthorizations.value) {
     prefillNodeId.value = Number(nodeIDRaw)
+    batchDialogVisible.value = true
+  }
+  // 群組角色頁、映射頁的「前往資產授權」：?user_group_id 為正整數時預先帶入該群組
+  const groupIDRaw = Number(route?.query?.user_group_id)
+  if (Number.isInteger(groupIDRaw) && groupIDRaw > 0 && canManageAuthorizations.value) {
+    prefillUserGroupId.value = groupIDRaw
     batchDialogVisible.value = true
   }
 })

@@ -164,8 +164,8 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 	{"GET", "/api/v1/sessions/:id/monitor"}:     exemptHandlerSelfAuth,
 	{"GET", "/api/v1/sessions/share/:code/ws"}:  exemptHandlerSelfAuth,
 	// `/api/v1/ssh` **不能移出豁免**：連線票證於 handler 內自解析，
-	// 路由刻意不掛 AuthMiddleware，故 ④ 的反向核對（豁免者鏈中不得含認證中介層）
-	// 正是它成立的條件；移出反而會撞上 ③ 的 default-deny。
+	// 路由刻意不掛 AuthMiddleware，故 (4) 的反向核對（豁免者鏈中不得含認證中介層）
+	// 正是它成立的條件；移出反而會撞上 (3) 的 default-deny。
 	// 留痕已由 handler 自寫（AP-69 `proxy.AuditConnectDenied`，
 	// 與 `/connect` 共用同一寫入點）：缺票／偽票／過期票／閘序拒絕四路皆寫列，
 	// 行為由 `internal/sshproxy/ssh_redeem_deny_audit_test.go` 承擔。
@@ -506,7 +506,7 @@ func TestCoverageExemptEntriesAreWellFormed(t *testing.T) {
 func TestRejectionAuditCoverage(t *testing.T) {
 	sweep := runCoverageSweep(t)
 
-	// ① 覆蓋本體：受判定路由的每一發拒絕都必須留下列。
+	// (1) 覆蓋本體：受判定路由的每一發拒絕都必須留下列。
 	//    **儀表剛立時預期為紅**——這就是要記錄下來的基準。
 	t.Run("每條受保護路由的拒絕必留痕", func(t *testing.T) {
 		var gapRoutes []routeCoverage
@@ -541,7 +541,7 @@ func TestRejectionAuditCoverage(t *testing.T) {
 			len(gapRoutes), rejectionAuditGapBaseline, shown, len(gapRoutes), msg)
 	})
 
-	// ② 儀表：缺口數不得增加。這條若轉紅，代表補洞倒退或新端點帶進新缺口。
+	// (2) 儀表：缺口數不得增加。這條若轉紅，代表補洞倒退或新端點帶進新缺口。
 	t.Run("缺口數不得超過基準", func(t *testing.T) {
 		n := 0
 		for _, rc := range sweep {
@@ -556,8 +556,8 @@ func TestRejectionAuditCoverage(t *testing.T) {
 		}
 	})
 
-	// ③ default-deny：不掛認證中介層又沒登記豁免的路由，一律紅。
-	//    新增端點必然命中此條（要嘛掛認證 ⇒ 受 ① 判定，要嘛沒掛 ⇒ 必須具名登記）。
+	// (3) default-deny：不掛認證中介層又沒登記豁免的路由，一律紅。
+	//    新增端點必然命中此條（要嘛掛認證 ⇒ 受 (1) 判定，要嘛沒掛 ⇒ 必須具名登記）。
 	t.Run("不受判定的路由必須顯式登記豁免", func(t *testing.T) {
 		for _, rc := range sweep {
 			if rc.hasAuthMW || rc.exempt {
@@ -570,7 +570,7 @@ func TestRejectionAuditCoverage(t *testing.T) {
 		}
 	})
 
-	// ④ 豁免的反向核對：豁免表無法被拿來替「真的會拒絕的路由」消音。
+	// (4) 豁免的反向核對：豁免表無法被拿來替「真的會拒絕的路由」消音。
 	t.Run("豁免登記與中介層鏈一致", func(t *testing.T) {
 		seen := map[[2]string]bool{}
 		for _, rc := range sweep {
@@ -598,7 +598,7 @@ func TestRejectionAuditCoverage(t *testing.T) {
 		}
 	})
 
-	// ⑤ 兩種壞憑證的 abort 分支現況（0.3 的機械註記）。
+	// (5) 兩種壞憑證的 abort 分支現況（0.3 的機械註記）。
 	t.Run("壞憑證兩形態的 abort 分支", func(t *testing.T) {
 		var probe *routeCoverage
 		for i := range sweep {

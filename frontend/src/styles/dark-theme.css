@@ -238,3 +238,18 @@ html.dark .el-badge__content.is-fixed {
   --el-tag-text-color: var(--ot-text-secondary);
   --el-tag-hover-color: var(--ot-border);
 }
+
+/* Step indicators: plain "1." numbering without a circular frame; state is still
+   told apart by the inherited colors (process / success / error / wait). */
+.el-step__icon.is-text {
+  width: auto;
+  min-width: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--el-bg-color);
+}
+
+.el-step__icon-inner:not(.is-status)::after {
+  content: '.';
+}

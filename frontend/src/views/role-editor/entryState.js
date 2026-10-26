@@ -5,8 +5,8 @@
 
 export const PARTIAL = 'partial'
 
-// perms 為 Set<string>。
-export function entryStateOf(entry, perms) {
+// 依各態（含部分管理）判定的態，不看隨附檢視。perms 為 Set<string>。
+function ownStateOf(entry, perms) {
   let cur = entry.states[0].name
   for (const s of entry.states.slice(1)) {
     if (s.keys.length && s.keys.every((k) => perms.has(k))) cur = s.name
@@ -15,10 +15,27 @@ export function entryStateOf(entry, perms) {
   return cur
 }
 
+// 隨附檢視：入口帶來源入口（read_via），本身依各態判定為隱藏，而來源入口不是隱藏時為真。
+// 這只是呈現：不成為可選的態，不補也不移除任何鍵。entries 為完整入口清單，缺省時不判定。
+export function readViaActive(entry, perms, entries) {
+  if (!entry.read_via || !entries) return false
+  const src = entries.find((o) => o.id === entry.read_via)
+  if (!src) return false
+  const hidden = entry.states[0].name
+  return ownStateOf(entry, perms) === hidden && ownStateOf(src, perms) !== src.states[0].name
+}
+
+export function entryStateOf(entry, perms, entries) {
+  if (readViaActive(entry, perms, entries)) return 'read'
+  return ownStateOf(entry, perms)
+}
+
 // 切換其他入口時要保留的鍵。完整態：該態的集合；部分管理：各態鍵的聯集與已持有者的交集
 // （它實際持有的唯讀鍵、寫入鍵與借用的依賴鍵）。
-export function protectedKeysOf(entry, perms) {
-  const name = entryStateOf(entry, perms)
+// 隨附可檢視的入口不要求保留任何鍵（來源入口的鍵由來源入口保護）。
+export function protectedKeysOf(entry, perms, entries) {
+  if (readViaActive(entry, perms, entries)) return []
+  const name = ownStateOf(entry, perms)
   if (name === PARTIAL) {
     const held = new Set()
     for (const s of entry.states) for (const k of s.keys) if (perms.has(k)) held.add(k)
@@ -52,7 +69,7 @@ export function applyEntryState(entries, perms, e, name, capabilityKeys) {
   const protect = new Set(capabilityKeys)
   for (const o of entries) {
     if (o.id === e.id) continue
-    protectedKeysOf(o, perms).forEach((k) => protect.add(k))
+    protectedKeysOf(o, perms, entries).forEach((k) => protect.add(k))
   }
   const next = new Set(perms)
   for (const s of e.states) {

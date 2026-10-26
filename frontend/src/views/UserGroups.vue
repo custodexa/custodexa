@@ -39,10 +39,19 @@
           <template #default="{ row }">
             <a
               class="group-link"
-              :href="`/user-groups/${row.id}`"
+              :href="rolesTabHref(row.id)"
               :data-test="`group-link-${row.id}`"
               @click.prevent="goDetail(row.id)"
             >{{ row.name }}</a>
+            <el-tag
+              v-if="protectedRoleByGroup[row.id]"
+              size="small"
+              type="warning"
+              class="protected-tag"
+              :data-test="`protected-badge-${row.id}`"
+            >
+              {{ $t('userGroups.detail.roles.protectedBadge') }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column
@@ -52,6 +61,49 @@
         >
           <template #default="{ row }">
             {{ row.description || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          :label="$t('userGroups.roleScopeColumn')"
+          min-width="260"
+        >
+          <template #default="{ row }">
+            <div
+              class="role-scope-cell"
+              :data-test="`group-roles-${row.id}`"
+            >
+              <template v-if="roleLinesOf(row.id)">
+                <template v-if="roleLinesOf(row.id).length">
+                  <span
+                    v-for="line in roleLinesOf(row.id)"
+                    :key="line.key"
+                    class="role-scope-item"
+                  >
+                    <el-tag
+                      size="small"
+                      :type="roleTagType(line.name)"
+                    >{{ line.label }}</el-tag>
+                    <span
+                      v-if="line.scope"
+                      class="role-scope-text"
+                    >{{ line.scope }}</span>
+                  </span>
+                </template>
+                <template v-else>
+                  <span class="member-empty">{{ $t('identityGroupMappings.targetNoRoles') }}</span>
+                  <a
+                    class="group-link"
+                    :href="rolesTabHref(row.id)"
+                    :data-test="`set-roles-${row.id}`"
+                    @click.prevent="goDetail(row.id)"
+                  >{{ $t('userGroups.setRoles') }}</a>
+                </template>
+              </template>
+              <span
+                v-else
+                class="member-empty"
+              >-</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column
@@ -238,8 +290,10 @@ import {
   getUserGroupAuthorizationCount,
   getUserGroupRoleBindings,
 } from '@/api/userGroups'
-import { listRoleDefinitions } from '@/api/roleDefinitions'
-import { roleLabel } from '@/constants/roles'
+import { listRoleDefinitions, getRoleAssignmentOptions } from '@/api/roleDefinitions'
+import { roleLabel, roleTagType } from '@/constants/roles'
+import { can } from '@/composables/useCapabilities'
+import { describeAssignment, fromGroupBinding } from '@/utils/roleScopePresentation'
 import { protectedRoleOf } from './usergroups/groupProtection'
 import { getUsers } from '@/api/auth'
 import PageHeader from '@/components/PageHeader.vue'
@@ -251,6 +305,13 @@ const loading = ref(false)
 const groupList = ref([])
 // 群組帶有受保護角色（只有超級管理者能增減）：groupId → 角色名稱
 const protectedRoleByGroup = ref({})
+// 角色與管理範圍欄：群組角色指派（列表本來就逐群組讀來判斷受保護群組）、角色定義、
+// 指派用節點清單（只對能指派角色者讀取；讀不到時退回節點數）
+const bindingsByGroup = ref({})
+const roleDefs = ref([])
+const roleDefsReady = ref(false)
+const assignNodes = ref(null)
+const assignReasons = ref({})
 const userList = ref([])
 
 // 建立/編輯
@@ -280,27 +341,79 @@ const memberSourceLabel = (group, userId) => {
   return t('identityGroupMappings.memberManual')
 }
 
-const goDetail = (id) => router?.push(`/user-groups/${id}`)
+const rolesTabHref = (id) => `/user-groups/${id}?tab=roles`
+const goDetail = (id) => router?.push(rolesTabHref(id))
+
+// 一個群組的角色行：可限定節點且範圍會生效的角色寫出管理範圍，其他角色只列名稱
+const roleLinesOf = (groupId) => {
+  const list = bindingsByGroup.value[groupId]
+  if (!list) return null
+  const ctx = { nodes: assignNodes.value, canReadPaths: can('role:assign') }
+  return list.map((b) => {
+    const described = describeAssignment(
+      fromGroupBinding(b),
+      roleDefs.value.find((d) => d.id === b.role_id),
+      assignReasons.value[String(b.role_id)],
+      ctx
+    )
+    return {
+      key: b.role_id,
+      name: b.role_name,
+      label: roleLabel(b.role_name),
+      scope: roleDefsReady.value && described.showScope ? described.scope.text : '',
+    }
+  })
+}
 
 // 分類取自伺服器對操作者算出的 assignment_state；讀不到時不停用，由伺服器在寫入時裁決
-const loadProtection = async (groups) => {
+const loadAssignOptions = async () => {
+  if (!can('role:assign')) {
+    assignNodes.value = null
+    assignReasons.value = {}
+    return
+  }
   try {
-    const defs = (await listRoleDefinitions())?.data || []
+    const res = await getRoleAssignmentOptions()
+    assignNodes.value = Array.isArray(res?.nodes) ? res.nodes : null
+    assignReasons.value = res?.node_range_no_effect_reasons || {}
+  } catch (err) {
+    assignNodes.value = null
+    assignReasons.value = {}
+    console.error('取得指派用節點清單失敗:', err)
+  }
+}
+
+const loadProtection = async (groups) => {
+  const optionsDone = loadAssignOptions()
+  // 角色定義需要 role:view，讀不到時仍讀角色指派並列出角色名稱（不分類、不寫範圍）
+  let defs = []
+  try {
+    defs = (await listRoleDefinitions())?.data || []
+    roleDefsReady.value = true
+  } catch (err) {
+    roleDefsReady.value = false
+    console.error('取得角色定義失敗:', err)
+  }
+  roleDefs.value = defs
+  try {
     const entries = await Promise.all(
       groups.map(async (g) => {
         try {
           const b = await getUserGroupRoleBindings(g.id, { quiet: true })
-          return [g.id, protectedRoleOf(b.data || [], defs)]
+          return [g.id, protectedRoleOf(b.data || [], defs), b.data || []]
         } catch {
-          return [g.id, '']
+          return [g.id, '', null]
         }
       })
     )
-    protectedRoleByGroup.value = Object.fromEntries(entries.filter(([, role]) => role))
+    protectedRoleByGroup.value = Object.fromEntries(entries.filter(([, role]) => role).map(([id, role]) => [id, role]))
+    bindingsByGroup.value = Object.fromEntries(entries.filter(([, , list]) => list).map(([id, , list]) => [id, list]))
   } catch (err) {
     protectedRoleByGroup.value = {}
-    console.error('取得角色定義失敗:', err)
+    bindingsByGroup.value = {}
+    console.error('取得角色指派失敗:', err)
   }
+  await optionsDone
 }
 
 const fetchGroups = async () => {
@@ -443,6 +556,29 @@ onMounted(() => {
 
 .group-link {
   color: var(--ot-primary);
+}
+
+.protected-tag {
+  margin-left: var(--ot-space-xs);
+}
+
+.role-scope-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ot-space-xs) var(--ot-space-md);
+}
+
+.role-scope-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
+}
+
+.role-scope-text {
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-xs);
+  overflow-wrap: anywhere;
 }
 
 .protected-note {

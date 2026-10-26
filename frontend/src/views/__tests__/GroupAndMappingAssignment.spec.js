@@ -352,7 +352,7 @@ describe('群組列表', () => {
     expect(w.get('[data-test="delete-2"]').attributes('disabled')).toBeUndefined()
     expect(w.find('[data-test="delete-blocked-2"]').exists()).toBe(false)
     await w.get('[data-test="group-link-1"]').trigger('click')
-    expect(h.push).toHaveBeenCalledWith('/user-groups/1')
+    expect(h.push).toHaveBeenCalledWith('/user-groups/1?tab=roles')
   })
 })
 

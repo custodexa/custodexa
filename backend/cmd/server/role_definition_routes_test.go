@@ -268,7 +268,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 		}
 		assert.Equal(t, authz.FixedEntries(), fixed)
 	})
-	t.Run("編輯描述每個入口帶 write_keys，列表與單筆的 summary 帶 partial", func(t *testing.T) {
+	t.Run("編輯描述每個入口帶 write_keys、位置與隨附檢視來源，列表與單筆的 summary 帶 partial", func(t *testing.T) {
 		c, out := get("IDA", "/api/v1/role-definitions/descriptors")
 		require.Equal(t, http.StatusOK, c, "%v", out)
 		entries, _ := out["entries"].([]any)
@@ -285,7 +285,51 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 				want = append(want, string(k))
 			}
 			assert.Equal(t, want, append([]string{}, got...), w.ID)
+
+			placement, ok := e["placement"].(string)
+			require.True(t, ok, "%s 缺 placement", w.ID)
+			assert.Contains(t, []string{"page", "embedded", "helper", "banner"}, placement, w.ID)
+			assert.Equal(t, w.PlacementKind(), placement, w.ID)
+			pe, ok := e["placement_entries"].([]any)
+			require.True(t, ok, "%s 的 placement_entries 必須是陣列（非 null）", w.ID)
+			gotPE := []string{}
+			for _, x := range pe {
+				gotPE = append(gotPE, x.(string))
+			}
+			wantPE := append([]string{}, w.PlacementEntries...)
+			assert.Equal(t, wantPE, gotPE, w.ID)
+			readVia, ok := e["read_via"].(string)
+			require.True(t, ok, "%s 的 read_via 必須是字串", w.ID)
+			assert.Equal(t, w.ReadVia, readVia, w.ID)
 		}
+		// 位置與隨附來源：五個非一般列的值固定。
+		type pv struct {
+			placement string
+			entries   []string
+			readVia   string
+		}
+		wantRows := map[string]pv{
+			"syslog":         {"embedded", []string{"security_policies"}, ""},
+			"schedules":      {"helper", []string{"change_secret", "rotation_schedules"}, ""},
+			"instance_guard": {"banner", []string{}, ""},
+			"alerts":         {"page", []string{}, "audit_logs"},
+			"access_reviews": {"page", []string{}, "audit_logs"},
+		}
+		for _, raw := range entries {
+			e := raw.(map[string]any)
+			id := e["id"].(string)
+			want, special := wantRows[id]
+			if !special {
+				want = pv{"page", []string{}, ""}
+			}
+			gotPE := []string{}
+			for _, x := range e["placement_entries"].([]any) {
+				gotPE = append(gotPE, x.(string))
+			}
+			assert.Equal(t, want, pv{e["placement"].(string), gotPE, e["read_via"].(string)}, id)
+			delete(wantRows, id)
+		}
+		assert.Empty(t, wantRows, "五個入口都應出現在編輯描述中")
 		cl, list := get("S01", "/api/v1/role-definitions")
 		require.Equal(t, http.StatusOK, cl)
 		for id, row := range rows(list) {

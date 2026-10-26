@@ -209,9 +209,9 @@ describe('Unseal 既有部署三步', () => {
   it('三步的步驟列為驗證身分、核對保管處、提供憑證', async () => {
     const wrapper = await mountPage()
     expect(wrapper.findAll('.step-rail-item').map((i) => i.text())).toEqual([
-      '1驗證身分',
-      '2核對保管處',
-      '3提供憑證',
+      '1.驗證身分',
+      '2.核對保管處',
+      '3.提供憑證',
     ])
   })
 
@@ -557,10 +557,10 @@ describe('Unseal 全新安裝四步', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.findAll('.step-rail-item').map((i) => i.text())).toEqual([
-      '1初始管理者驗證',
-      '2設定保管處',
-      '3提供憑證',
-      '4建立金鑰並啟用',
+      '1.初始管理者驗證',
+      '2.設定保管處',
+      '3.提供憑證',
+      '4.建立金鑰並啟用',
     ])
     expect(wrapper.find('.create-admin-section').exists()).toBe(true)
     expect(findButton(wrapper, '驗證身分')).toBeUndefined()
