@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Sessions from '../Sessions.vue'
 import { t } from '@/i18n'
+import { resetCapabilities, setCapabilitiesForTests, loadCapabilities, useCapabilities } from '@/composables/useCapabilities'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -34,6 +35,12 @@ vi.mock('@/api/sessions', () => ({
   getSessionList: (...a) => getSessionListMock(...a),
   getActiveSessions: (...a) => getActiveSessionsMock(...a),
   terminateSession: (...a) => terminateSessionMock(...a),
+}))
+
+const getCurrentUserMock = vi.fn()
+vi.mock('@/api/auth', async (importActual) => ({
+  ...(await importActual()),
+  getCurrentUser: (...a) => getCurrentUserMock(...a),
 }))
 
 const row = (over) => ({
@@ -268,5 +275,82 @@ describe('Sessions 儀表板落點條件', () => {
     const params = getSessionListMock.mock.calls.at(-1)[0]
     expect(params.start_time).toBeUndefined()
     expect(params.end_time).toBeUndefined()
+  })
+})
+
+describe('Sessions 強制終止按鈕', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSessionListMock.mockResolvedValue({ data: [], total: 0 })
+    getActiveSessionsMock.mockResolvedValue([row({ id: 5, status: 'active', protocol: 'ssh' })])
+  })
+  afterEach(() => resetCapabilities())
+
+  const terminateButtons = (wrapper) => wrapper.findAll('button').filter((b) => b.text() === t('sessions.terminate'))
+
+  it('有 ui:super-admin 才顯示終止鈕', async () => {
+    setCapabilitiesForTests(['session:view', 'ui:super-admin'])
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    expect(terminateButtons(wrapper)).toHaveLength(1)
+  })
+
+  it('沒有 ui:super-admin 不顯示終止鈕（即使持有 session:view）', async () => {
+    setCapabilitiesForTests(['session:view'])
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    expect(terminateButtons(wrapper)).toHaveLength(0)
+  })
+})
+
+describe('Sessions 監看入口', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSessionListMock.mockResolvedValue({ data: [], total: 0 })
+  })
+  afterEach(() => resetCapabilities())
+
+  const monitorButtons = (wrapper) => wrapper.findAll('button').filter((b) => b.text() === t('sessions.monitor'))
+  const mountWith = async (rows) => {
+    getActiveSessionsMock.mockResolvedValue(rows)
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    return wrapper
+  }
+  const sshRow = () => row({ id: 5, status: 'active', protocol: 'ssh' })
+
+  it('持有 ui:session-monitor 且為文字終端 → 顯示監看鈕', async () => {
+    setCapabilitiesForTests(['session:view', 'ui:session-monitor'])
+    expect(monitorButtons(await mountWith([sshRow()]))).toHaveLength(1)
+  })
+
+  it('只持 session:view、沒有 ui:session-monitor → 不顯示監看鈕', async () => {
+    setCapabilitiesForTests(['session:view'])
+    expect(monitorButtons(await mountWith([sshRow()]))).toHaveLength(0)
+  })
+
+  it('持有 ui:session-monitor 但為圖形桌面 → 不顯示監看鈕', async () => {
+    setCapabilitiesForTests(['session:view', 'ui:session-monitor'])
+    expect(monitorButtons(await mountWith([row({ id: 6, status: 'active', protocol: 'rdp' })]))).toHaveLength(0)
+  })
+
+  it('首次載入能力失敗 → 狀態為 error，文字終端列不顯示監看鈕', async () => {
+    resetCapabilities()
+    getCurrentUserMock.mockRejectedValue(new Error('network'))
+    await loadCapabilities()
+    expect(useCapabilities().status.value).toBe('error')
+    expect(monitorButtons(await mountWith([sshRow()]))).toHaveLength(0)
+  })
+
+  it('後續刷新失敗 → 沿用已成功的快照，文字終端列仍顯示監看鈕', async () => {
+    resetCapabilities()
+    getCurrentUserMock
+      .mockResolvedValueOnce({ id: 1, permissions: ['session:view', 'ui:session-monitor'] })
+      .mockRejectedValueOnce(new Error('network'))
+    await loadCapabilities()
+    await loadCapabilities({ force: true })
+    expect(getCurrentUserMock).toHaveBeenCalledTimes(2)
+    expect(useCapabilities().status.value).toBe('ready')
+    expect(monitorButtons(await mountWith([sshRow()]))).toHaveLength(1)
   })
 })

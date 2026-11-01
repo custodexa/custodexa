@@ -212,6 +212,9 @@
         </div>
       </el-header>
 
+      <!-- 以此角色預覽的常駐橫幅：在其他全域橫幅之上 -->
+      <RolePreviewBanner />
+
       <!-- 單實例守衛常駐橫幅（single-instance-guard）：全頁寬、位於 header 與內容之間；
            沒有關閉鈕，狀態回到 held 且無對等連線即自然消失 -->
       <InstanceGuardBanner
@@ -267,6 +270,8 @@ import { getPendingAccessRequestCount } from '@/api/accessRequests'
 import { logout } from '@/api/auth'
 import { getSealStatus } from '@/api/seal'
 import InstanceGuardBanner from './InstanceGuardBanner.vue'
+import RolePreviewBanner from './RolePreviewBanner.vue'
+import { cancelPreview } from '@/composables/useRolePreview'
 import SidebarVersion from './SidebarVersion.vue'
 import { clearSession } from '@/utils/session'
 import { detailSubject } from '@/utils/detailTitle'
@@ -511,6 +516,8 @@ const handleCommand = (command) => {
 // 憑證由瀏覽器以 httpOnly cookie 自動附帶，前端不經手；
 // 撤銷失敗不阻擋登出——本地清除後攻擊面只剩 ≤15 分的殘餘 access
 const handleLogout = async () => {
+  // 預覽中先清覆蓋再登出，登出請求才不會被預覽攔截擋下
+  cancelPreview()
   try {
     await logout()
   } catch (error) {

@@ -6,6 +6,7 @@
     <!-- 三顆按鈕不帶圖示：圖示在 en 下把本欄推到 280+，直接吃掉表格預算，
          而「編輯／外部身分」在文字之外沒有額外辨識價值 -->
     <el-button
+      v-preview-write
       type="primary"
       size="small"
       link
@@ -150,6 +151,7 @@
           </div>
         </div>
         <el-button
+          v-preview-write
           :type="key === 'delete' || key === 'disable' ? 'danger' : 'default'"
           size="small"
           :disabled="states[key].disabled || busy"
@@ -177,6 +179,7 @@ import {
   disableAccountMfa,
   deleteAccount,
 } from '../accountActionHandlers'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 帳號動作。列表頁（layout="list"）與詳情頁基本資料分頁（layout="panel"）共用：

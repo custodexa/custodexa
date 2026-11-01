@@ -708,6 +708,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/role-definitions/:id/preview-capabilities",
+      "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).PreviewCapabilities-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/role-definitions/descriptors",
       "handler": "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Descriptors-fm"
     },
@@ -4314,6 +4319,21 @@
         "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-definitions/:id/preview-capabilities",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*RoleDefinitionHandler).PreviewCapabilities-fm"
       ]
     },
     {

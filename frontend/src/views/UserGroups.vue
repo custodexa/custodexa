@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write:create
           type="primary"
           @click="openCreateDialog"
         >
@@ -138,6 +139,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-preview-write
               type="primary"
               size="small"
               link
@@ -149,6 +151,7 @@
               {{ $t('userGroups.members') }}
             </el-button>
             <el-button
+              v-preview-write
               type="primary"
               size="small"
               link
@@ -158,6 +161,7 @@
               {{ $t('common.edit') }}
             </el-button>
             <el-button
+              v-preview-write
               type="danger"
               size="small"
               link
@@ -227,6 +231,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           @click="submitForm"
@@ -265,6 +270,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           @click="submitMembers"
@@ -299,6 +305,7 @@ import { getUsers } from '@/api/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { t } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const router = useRouter()
 const loading = ref(false)

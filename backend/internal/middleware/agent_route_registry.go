@@ -303,6 +303,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/role-definitions/:id":
 		return false, true
+	case "GET /api/v1/role-definitions/:id/preview-capabilities":
+		return false, true
 	case "GET /api/v1/role-definitions/descriptors":
 		return false, true
 	case "GET /api/v1/roles":

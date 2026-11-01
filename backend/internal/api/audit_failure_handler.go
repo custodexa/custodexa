@@ -115,8 +115,8 @@ func (h *AuditFailureHandler) AcceptPermissionState(c *gin.Context) {
 // RequirePermissionAcceptSuperAdmin 匯出供路由測試掛同一道守衛（正式路由仍掛未匯出的同名守衛，路由表不變）。
 func RequirePermissionAcceptSuperAdmin(c *gin.Context) { requirePermissionAcceptSuperAdmin(c) }
 
-// requirePermissionAcceptSuperAdmin 確認端點的保留資格守衛：登錄項為 BaseAuthenticated，
-// 超管身分屬保留能力（不是權限點），由此判定；非超管回能力拒絕單一形狀（依據為保留條件），服務不被呼叫。
+// requirePermissionAcceptSuperAdmin 確認端點的保留資格守衛：路由登錄（BaseSuperAdmin）先拒非超管，此處為第二道；
+// 超管身分屬保留能力（不是權限點）；非超管回能力拒絕單一形狀（依據為保留條件），服務不被呼叫。
 func requirePermissionAcceptSuperAdmin(c *gin.Context) {
 	if p := middleware.PrincipalFrom(c); p == nil || !p.IsSuperAdmin() {
 		middleware.WriteCapabilityDenial(c, middleware.ReservedCapabilityDenial(authz.ReservedSuperAdmin))

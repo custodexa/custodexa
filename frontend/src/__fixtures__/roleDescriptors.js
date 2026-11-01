@@ -83,9 +83,9 @@ export const descriptorsFixture = {
     {
       id: 'sessions',
       group: 'audit',
-      states: [hidden, st('read', 'session:view'), st('manage', 'session:view', 'session:terminate')],
+      states: [hidden, st('available', 'session:view')],
       details: [],
-      write_keys: ['session:terminate'],
+      write_keys: [],
       placement: 'page',
       placement_entries: [],
       read_via: '',

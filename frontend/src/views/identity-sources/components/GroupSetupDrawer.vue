@@ -301,6 +301,7 @@
             </el-button>
             <el-button
               v-else
+              v-preview-write
               type="primary"
               :disabled="!canSubmit"
               data-test="setup-submit"
@@ -343,6 +344,7 @@
             </el-button>
             <el-button
               v-else-if="!running && retryKind"
+              v-preview-write
               type="primary"
               data-test="setup-retry"
               @click="retry"
@@ -393,6 +395,7 @@ import DangerComboConfirm from '@/components/DangerComboConfirm.vue'
 import GroupRoleEditor from '@/views/usergroups/components/GroupRoleEditor.vue'
 import GroupSetupResult from './GroupSetupResult.vue'
 import { newRunState, useGroupSetupSubmit } from '../useGroupSetupSubmit'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 映射頁的「建立群組並設定角色與範圍」抽屜：1. 群組、2. 角色與管理範圍、3. 外部群組與確認。

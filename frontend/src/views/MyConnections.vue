@@ -84,6 +84,7 @@
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'active'"
+              v-preview-write
               link
               type="danger"
               size="small"
@@ -127,6 +128,7 @@ import { getMyConnections, terminateMyConnection } from '@/api/myConnections'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t } from '@/i18n'
 import { useCapabilities } from '@/composables/useCapabilities'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 管理者與稽核人員也能進入本頁看本人資料；申請與連線資格不因此改變，故明說這頁對其角色的意義
 const { can, ready } = useCapabilities()

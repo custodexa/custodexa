@@ -146,6 +146,9 @@ func TestAuthzRegistryCoversRouteInventory(t *testing.T) {
 				switch e.Base {
 				case authz.BasePublic, authz.BaseManual:
 					assert.Equal(t, 0, executors, "%s 組態 %s：公開／手動認證入口的鏈上不得有執行點", c.mode, e.Key())
+				case authz.BaseSuperAdmin:
+					assert.Equal(t, 1, executors, "%s 組態 %s：超管保留路由的鏈上登錄執行點應恰為 1；鏈=%v", c.mode, e.Key(), chain)
+					assert.Empty(t, e.Perm, "%s 組態 %s：超管保留路由不帶權限點", c.mode, e.Key())
 				default:
 					assert.Equal(t, 1, executors, "%s 組態 %s：鏈上登錄執行點應恰為 1，實際 %d；鏈=%v", c.mode, e.Key(), executors, chain)
 				}
@@ -170,6 +173,15 @@ func TestAuthzRegistryCoversRouteInventory(t *testing.T) {
 					assert.Equal(t, authz.DenialAnyOf, d.Basis, e.Key())
 					assert.Equal(t, append([]authz.Permission{e.Perm}, e.AnyOf...), d.Required, e.Key())
 				}
+			case authz.BaseSuperAdmin:
+				assert.Empty(t, e.Perm, e.Key())
+				assert.Empty(t, e.AnyOf, e.Key())
+				assert.Empty(t, e.Fields, e.Key())
+				assert.False(t, e.DataPlane, e.Key())
+				d := authz.DecideEntry(e, none)
+				assert.False(t, d.Allowed || d.Unauthenticated, "%s：非超管應被拒", e.Key())
+				assert.Equal(t, authz.DenialReserved, d.Basis, e.Key())
+				assert.Equal(t, authz.ReservedSuperAdmin, d.Reserved, e.Key())
 			default:
 				assert.Empty(t, e.Perm, e.Key())
 			}

@@ -18969,6 +18969,1910 @@
         }
       },
       "reason": "Role summaries gain a list of capability groups the role covers only in part. A role that holds only part of a group now lists that group there instead of under read, hidden or unattributed."
+    },
+    {
+      "id": "AD-39a-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S07",
+          "S13"
+        ],
+        "keys": [
+          "GET /api/v1/audit-export/jobs/:id/download"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "error_msg": "download_denied job=1 reason=not_found_or_not_requester",
+                "status_code": 200
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "read",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": "",
+                "error_msg": "download_denied job=1 reason=not_found_or_not_requester",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "GET",
+                "path": "/api/v1/audit-export/jobs/{exportJob.doneS03}/download",
+                "request_body": "",
+                "request_id": "",
+                "resource": "audit_export",
+                "resource_id": null,
+                "status": "denied",
+                "status_code": 403,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit row written by the endpoint itself now records the status code actually returned (403) instead of 200, because it is written after the response. Every other column is unchanged."
+    },
+    {
+      "id": "AD-39a-02",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S03",
+          "S06",
+          "S07",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/audit-export/jobs"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "error_msg": "job=2 created=true filter{end_time=<time> start_time=<time> user_id=3}",
+                "status_code": 200
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "create",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": "",
+                "error_msg": "job=2 created=true filter{end_time=<time> start_time=<time> user_id=3}",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "POST",
+                "path": "/api/v1/audit-export/jobs",
+                "request_body": "",
+                "request_id": "",
+                "resource": "audit_export",
+                "resource_id": 2,
+                "status": "success",
+                "status_code": 202,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit row written by the endpoint itself now records the status code actually returned (202) instead of 200, because it is written after the response. Every other column is unchanged."
+    },
+    {
+      "id": "AD-39a-03",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S03",
+          "S06",
+          "S07",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/compliance/report-jobs"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "error_msg": "compliance_report.job_created job=2 group=baseline-custom lang=en-US retention_days=30",
+                "status_code": 200
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "create",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": "",
+                "error_msg": "compliance_report.job_created job=2 group=baseline-custom lang=en-US retention_days=30",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "POST",
+                "path": "/api/v1/compliance/report-jobs",
+                "request_body": "",
+                "request_id": "",
+                "resource": "compliance_map",
+                "resource_id": 2,
+                "status": "success",
+                "status_code": 202,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit row written by the endpoint itself now records the status code actually returned (202) instead of 200, because it is written after the response. Every other column is unchanged."
+    },
+    {
+      "id": "AD-39a-04",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S03",
+          "S06",
+          "S07",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/rotation-report/jobs"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "error_msg": "rotation_report.job_created job=2 scope=all/0 period=<time>..<time> lang=en-US",
+                "status_code": 200
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "create",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": "",
+                "error_msg": "rotation_report.job_created job=2 scope=all/0 period=<time>..<time> lang=en-US",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "POST",
+                "path": "/api/v1/rotation-report/jobs",
+                "request_body": "",
+                "request_id": "",
+                "resource": "rotation_report",
+                "resource_id": 2,
+                "status": "success",
+                "status_code": 202,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit row written by the endpoint itself now records the status code actually returned (202) instead of 200, because it is written after the response. Every other column is unchanged."
+    },
+    {
+      "id": "AD-39a-05",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/rotation-report/schedules"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "error_msg": "rotation_report.schedule_created id=2 name=baseline-schedule-new cron=0 3 * * * scope=all/0 retention=30 lang=en-US",
+                "status_code": 200
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "create",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": "",
+                "error_msg": "rotation_report.schedule_created id=2 name=baseline-schedule-new cron=0 3 * * * scope=all/0 retention=30 lang=en-US",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "POST",
+                "path": "/api/v1/rotation-report/schedules",
+                "request_body": "",
+                "request_id": "",
+                "resource": "rotation_report",
+                "resource_id": 2,
+                "status": "success",
+                "status_code": 201,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit row written by the endpoint itself now records the status code actually returned (201) instead of 200, because it is written after the response. Every other column is unchanged."
+    },
+    {
+      "id": "AD-39a-06",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/rotation-report/schedules/:id/run"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "error_msg": "rotation_report.job_created job=2 schedule=1 manual_run",
+                "status_code": 200
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "create",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": "",
+                "error_msg": "rotation_report.job_created job=2 schedule=1 manual_run",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "POST",
+                "path": "/api/v1/rotation-report/schedules/{rotationReportSchedule.1}/run",
+                "request_body": "",
+                "request_id": "",
+                "resource": "rotation_report",
+                "resource_id": 2,
+                "status": "success",
+                "status_code": 202,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit row written by the endpoint itself now records the status code actually returned (202) instead of 200, because it is written after the response. Every other column is unchanged."
+    },
+    {
+      "id": "AD-39b-01",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/role-definitions",
+          "R/S06/GET /api/v1/role-definitions",
+          "R/S13/GET /api/v1/role-definitions"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "can_define": true,
+          "data": [
+            {
+              "assignment_state": "open",
+              "builtin_key": "super_admin",
+              "definition_version": 0,
+              "description": "系統管理員，擁有所有權限",
+              "direct_mappable": true,
+              "group_bindable": true,
+              "id": 1,
+              "locked": true,
+              "management_class": true,
+              "name": "admin",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 4,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": false,
+              "summary": {
+                "assignment_trust_hint": true,
+                "available": [
+                  "roles",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "compliance_map",
+                  "schedules",
+                  "instance_guard"
+                ],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [],
+                "manage": [
+                  "assets",
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "identity_sources",
+                  "alerts",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "rotation_schedules"
+                ],
+                "partial": [],
+                "permission_count": 52,
+                "read": [],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": [
+                  "hostkey:reset",
+                  "session:terminate"
+                ]
+              },
+              "template_role_id": null,
+              "user_count": 4
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "user",
+              "definition_version": 0,
+              "description": "一般使用者，可以連線到已授權的資產",
+              "direct_mappable": true,
+              "group_bindable": true,
+              "id": 2,
+              "locked": true,
+              "management_class": false,
+              "name": "user",
+              "node_range_no_effect": true,
+              "references": {
+                "direct": 8,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [],
+                "partial": [],
+                "permission_count": 1,
+                "read": [
+                  "assets"
+                ],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 8
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "auditor",
+              "definition_version": 0,
+              "description": "稽核人員，可以檢視所有稽核日誌和連線記錄",
+              "direct_mappable": true,
+              "group_bindable": true,
+              "id": 3,
+              "locked": true,
+              "management_class": false,
+              "name": "auditor",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 2,
+                "group_bindings": 0,
+                "mapping_rules": 1
+              },
+              "scopable": false,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "compliance_map"
+                ],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "security_policies",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [
+                  "alerts"
+                ],
+                "partial": [],
+                "permission_count": 8,
+                "read": [
+                  "assets",
+                  "access_reviews",
+                  "policy_groups"
+                ],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 2
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "approver",
+              "definition_version": 0,
+              "description": "審核人員，可核准/拒絕審核範圍內的連線申請",
+              "direct_mappable": true,
+              "group_bindable": false,
+              "id": 4,
+              "locked": true,
+              "management_class": false,
+              "name": "approver",
+              "node_range_no_effect": true,
+              "references": {
+                "direct": 3,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "assets",
+                  "credentials",
+                  "change_secret",
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [],
+                "partial": [],
+                "permission_count": 0,
+                "read": [],
+                "scope_global_only": true,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": false,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 3
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "asset_admin",
+              "definition_version": 1,
+              "description": "資產管理員（鎖定範本）",
+              "direct_mappable": false,
+              "group_bindable": true,
+              "id": 5,
+              "locked": true,
+              "management_class": true,
+              "name": "asset_admin",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 0,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "authorizations",
+                  "approver_scopes",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [
+                  "assets",
+                  "change_secret"
+                ],
+                "partial": [
+                  "credentials"
+                ],
+                "permission_count": 17,
+                "read": [],
+                "scope_global_only": false,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": true,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 0
+            },
+            {
+              "assignment_state": "open",
+              "builtin_key": "authz_admin",
+              "definition_version": 1,
+              "description": "授權管理員（鎖定範本）",
+              "direct_mappable": false,
+              "group_bindable": true,
+              "id": 6,
+              "locked": true,
+              "management_class": true,
+              "name": "authz_admin",
+              "node_range_no_effect": false,
+              "references": {
+                "direct": 0,
+                "group_bindings": 0,
+                "mapping_rules": 0
+              },
+              "scopable": true,
+              "summary": {
+                "assignment_trust_hint": false,
+                "available": [],
+                "catalog_count": 52,
+                "connection_separate": true,
+                "hidden": [
+                  "assets",
+                  "credentials",
+                  "change_secret",
+                  "users",
+                  "user_groups",
+                  "roles",
+                  "identity_sources",
+                  "sessions",
+                  "audit_logs",
+                  "checkpoint_verification",
+                  "alerts",
+                  "compliance_map",
+                  "access_reviews",
+                  "security_policies",
+                  "policy_groups",
+                  "key_management",
+                  "transmission",
+                  "offsite_storage",
+                  "syslog",
+                  "notification_channels",
+                  "system_alerts",
+                  "alert_rules",
+                  "schedules",
+                  "rotation_schedules",
+                  "instance_guard"
+                ],
+                "manage": [
+                  "authorizations"
+                ],
+                "partial": [
+                  "approver_scopes"
+                ],
+                "permission_count": 3,
+                "read": [],
+                "scope_global_only": false,
+                "scope_mixed_global_only": false,
+                "scope_node_selectable": true,
+                "unattributed": []
+              },
+              "template_role_id": null,
+              "user_count": 0
+            }
+          ],
+          "total": 6
+        }
+      },
+      "reason": "Session force-termination is no longer assignable to custom roles, so the sessions entry has only hidden and available states. Roles holding session view now list sessions under available instead of read; the super admin role no longer lists sessions under manage and lists session termination among unattributed keys."
+    },
+    {
+      "id": "AD-39b-02",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/role-definitions/:id",
+          "R/S06/GET /api/v1/role-definitions/:id",
+          "R/S13/GET /api/v1/role-definitions/:id"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "builtin_key": "auditor",
+          "definition_version": 0,
+          "description": "稽核人員，可以檢視所有稽核日誌和連線記錄",
+          "id": 3,
+          "locked": true,
+          "missing_dependencies": [],
+          "name": "auditor",
+          "node_range_no_effect": false,
+          "node_scoped_binding_count": 0,
+          "permissions": [
+            "asset:view",
+            "session:view",
+            "audit:view",
+            "alert:view",
+            "alert:manage",
+            "audit:integrity_view",
+            "compliance:view",
+            "policygroup:view"
+          ],
+          "retired_permissions": [],
+          "scopable": false,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [
+              "sessions",
+              "audit_logs",
+              "checkpoint_verification",
+              "compliance_map"
+            ],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "security_policies",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [
+              "alerts"
+            ],
+            "partial": [],
+            "permission_count": 8,
+            "read": [
+              "assets",
+              "access_reviews",
+              "policy_groups"
+            ],
+            "scope_global_only": true,
+            "scope_mixed_global_only": false,
+            "scope_node_selectable": false,
+            "unattributed": []
+          },
+          "template_role_id": null
+        }
+      },
+      "reason": "The role detail gains a retired permissions list, empty for built-in roles. Session force-termination is no longer assignable, so a role holding session view lists sessions under available instead of read."
+    },
+    {
+      "id": "AD-39b-03",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/GET /api/v1/role-definitions/descriptors",
+          "R/S06/GET /api/v1/role-definitions/descriptors",
+          "R/S13/GET /api/v1/role-definitions/descriptors"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "capabilities": [
+            {
+              "id": "role_assign",
+              "key": "role:assign",
+              "requires_entry": false,
+              "scopable": false,
+              "trust_hint": true
+            },
+            {
+              "id": "access_policy_override",
+              "key": "access_policy:manage",
+              "requires_entry": false,
+              "scopable": true,
+              "trust_hint": false
+            },
+            {
+              "id": "recording_delete",
+              "key": "recording:delete",
+              "requires_entry": false,
+              "scopable": false,
+              "trust_hint": false
+            }
+          ],
+          "entries": [
+            {
+              "details": [
+                {
+                  "id": "asset.view",
+                  "key": "asset:view",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.create",
+                  "key": "asset:create",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.update",
+                  "key": "asset:update",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.delete",
+                  "key": "asset:delete",
+                  "scopable": true
+                },
+                {
+                  "id": "asset.test",
+                  "key": "asset:test",
+                  "scopable": true
+                },
+                {
+                  "id": "asset_account.view",
+                  "key": "asset:view",
+                  "scopable": true
+                },
+                {
+                  "id": "asset_account.update",
+                  "key": "asset:update",
+                  "scopable": true
+                },
+                {
+                  "id": "node.manage",
+                  "key": "assetgroup:manage",
+                  "scopable": true
+                }
+              ],
+              "group": "asset",
+              "id": "assets",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": true,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "asset:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "asset:view",
+                    "asset:create",
+                    "asset:update",
+                    "asset:delete",
+                    "asset:test",
+                    "assetgroup:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "asset:create",
+                "asset:delete",
+                "asset:test",
+                "asset:update",
+                "assetgroup:manage"
+              ]
+            },
+            {
+              "details": [
+                {
+                  "id": "credential.manage",
+                  "key": "credential:manage",
+                  "scopable": false
+                },
+                {
+                  "id": "credential.view",
+                  "key": "credential:view",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.create",
+                  "key": "credential:create",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.update",
+                  "key": "credential:update",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.set_secret",
+                  "key": "credential:set-secret",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.rotate",
+                  "key": "credential:rotate",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.convert_scope",
+                  "key": "credential:convert-scope",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.detach",
+                  "key": "credential:detach",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.delete",
+                  "key": "credential:delete",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.bind",
+                  "key": "credential:bind",
+                  "scopable": true
+                },
+                {
+                  "id": "credential.account_rotate",
+                  "key": "account:rotate",
+                  "scopable": true
+                }
+              ],
+              "group": "asset",
+              "id": "credentials",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "credential:view",
+                    "asset:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "credential:manage",
+                    "credential:view",
+                    "credential:create",
+                    "credential:update",
+                    "credential:set-secret",
+                    "credential:rotate",
+                    "credential:convert-scope",
+                    "credential:detach",
+                    "credential:delete",
+                    "credential:bind",
+                    "account:rotate",
+                    "asset:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "account:rotate",
+                "credential:bind",
+                "credential:convert-scope",
+                "credential:create",
+                "credential:delete",
+                "credential:detach",
+                "credential:manage",
+                "credential:rotate",
+                "credential:set-secret",
+                "credential:update"
+              ]
+            },
+            {
+              "details": [],
+              "group": "asset",
+              "id": "change_secret",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": true,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "changesecret:manage",
+                    "asset:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "changesecret:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "authorization",
+              "id": "authorizations",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": true,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "authorization:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "authorization:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "authorization",
+              "id": "approver_scopes",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "approverscope:manage",
+                    "approverscope:manage_applicant"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "approverscope:manage",
+                "approverscope:manage_applicant"
+              ]
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "users",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "user:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "user:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "user_groups",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "usergroup:manage",
+                    "user:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "usergroup:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "roles",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "role:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "identity",
+              "id": "identity_sources",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "identity_source:manage",
+                    "ldap:manage",
+                    "oidc:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "identity_source:manage",
+                "ldap:manage",
+                "oidc:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "sessions",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "session:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "audit_logs",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "audit:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "checkpoint_verification",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "audit:view",
+                    "audit:integrity_view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "alerts",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "audit_logs",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "alert:view",
+                    "audit:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "alert:view",
+                    "alert:manage",
+                    "audit:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "alert:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "compliance_map",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "compliance:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "audit",
+              "id": "access_reviews",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "audit_logs",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "accessreview:manage",
+                    "audit:view"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "accessreview:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "security_policies",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "securitypolicy:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "securitypolicy:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "policy_groups",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "policygroup:view"
+                  ],
+                  "name": "read"
+                },
+                {
+                  "keys": [
+                    "policygroup:view",
+                    "policygroup:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "policygroup:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "key_management",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "key:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "key:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "transmission",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "transmission:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "transmission:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "offsite_storage",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "offsite:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "offsite:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "syslog",
+              "placement": "embedded",
+              "placement_entries": [
+                "security_policies"
+              ],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "syslog:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "syslog:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "notification_channels",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "notification_channel:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "notification_channel:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "system_alerts",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "systemalert:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "systemalert:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "alert_rules",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "alertrule:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "alertrule:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "schedules",
+              "placement": "helper",
+              "placement_entries": [
+                "change_secret",
+                "rotation_schedules"
+              ],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "schedule:manage"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "rotation_schedules",
+              "placement": "page",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "rotation_schedule:manage"
+                  ],
+                  "name": "manage"
+                }
+              ],
+              "write_keys": [
+                "rotation_schedule:manage"
+              ]
+            },
+            {
+              "details": [],
+              "group": "settings",
+              "id": "instance_guard",
+              "placement": "banner",
+              "placement_entries": [],
+              "read_via": "",
+              "scopable": false,
+              "states": [
+                {
+                  "keys": [],
+                  "name": "hidden"
+                },
+                {
+                  "keys": [
+                    "instanceguard:view"
+                  ],
+                  "name": "available"
+                }
+              ],
+              "write_keys": []
+            }
+          ],
+          "fixed_entries": [
+            "dashboard",
+            "workspace",
+            "profile",
+            "my_connections",
+            "my_requests",
+            "my_agents",
+            "approvals"
+          ]
+        }
+      },
+      "reason": "Session force-termination is no longer assignable to custom roles: the sessions entry drops its manage state, its view state is named available instead of read, and its write keys are empty. No other entry changes."
+    },
+    {
+      "id": "AD-39b-04",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/role-definitions",
+          "R/S06/POST /api/v1/role-definitions",
+          "R/S13/POST /api/v1/role-definitions"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "builtin_key": null,
+          "definition_version": 1,
+          "description": "created by baseline",
+          "id": 7,
+          "locked": false,
+          "missing_dependencies": [],
+          "name": "baseline-custom-role",
+          "node_range_no_effect": false,
+          "node_scoped_binding_count": 0,
+          "permissions": [
+            "asset:view"
+          ],
+          "retired_permissions": [],
+          "scopable": true,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "sessions",
+              "audit_logs",
+              "checkpoint_verification",
+              "alerts",
+              "compliance_map",
+              "access_reviews",
+              "security_policies",
+              "policy_groups",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [],
+            "partial": [],
+            "permission_count": 1,
+            "read": [
+              "assets"
+            ],
+            "scope_global_only": false,
+            "scope_mixed_global_only": false,
+            "scope_node_selectable": true,
+            "unattributed": []
+          },
+          "template_role_id": null
+        }
+      },
+      "reason": "The role detail returned on create gains a retired permissions list, empty for a newly created role. All other fields are unchanged."
+    },
+    {
+      "id": "AD-39b-05",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "R/S01/POST /api/v1/role-definitions/:id/copy",
+          "R/S06/POST /api/v1/role-definitions/:id/copy",
+          "R/S13/POST /api/v1/role-definitions/:id/copy"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "blocked_screens": [],
+          "builtin_key": null,
+          "definition_version": 1,
+          "description": "copied by baseline",
+          "id": 7,
+          "locked": false,
+          "missing_dependencies": [],
+          "name": "baseline-copied-role",
+          "node_range_no_effect": false,
+          "node_scoped_binding_count": 0,
+          "permissions": [
+            "alert:manage",
+            "alert:view",
+            "asset:view",
+            "audit:integrity_view",
+            "audit:view",
+            "compliance:view",
+            "policygroup:view",
+            "session:view"
+          ],
+          "retired_permissions": [],
+          "scopable": false,
+          "summary": {
+            "assignment_trust_hint": false,
+            "available": [
+              "sessions",
+              "audit_logs",
+              "checkpoint_verification",
+              "compliance_map"
+            ],
+            "catalog_count": 52,
+            "connection_separate": true,
+            "hidden": [
+              "credentials",
+              "change_secret",
+              "authorizations",
+              "approver_scopes",
+              "users",
+              "user_groups",
+              "roles",
+              "identity_sources",
+              "security_policies",
+              "key_management",
+              "transmission",
+              "offsite_storage",
+              "syslog",
+              "notification_channels",
+              "system_alerts",
+              "alert_rules",
+              "schedules",
+              "rotation_schedules",
+              "instance_guard"
+            ],
+            "manage": [
+              "alerts"
+            ],
+            "partial": [],
+            "permission_count": 8,
+            "read": [
+              "assets",
+              "access_reviews",
+              "policy_groups"
+            ],
+            "scope_global_only": false,
+            "scope_mixed_global_only": true,
+            "scope_node_selectable": false,
+            "unattributed": []
+          },
+          "template_role_id": 3
+        }
+      },
+      "reason": "The role detail returned on copy gains a retired permissions list, empty here. Session force-termination is no longer assignable, so a role holding session view lists sessions under available instead of read."
     }
   ]
 }

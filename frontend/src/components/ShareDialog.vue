@@ -44,6 +44,7 @@
     <template #footer>
       <el-button
         v-if="share"
+        v-preview-write:ticket
         type="danger"
         :loading="busy"
         @click="revoke"
@@ -52,6 +53,7 @@
       </el-button>
       <el-button
         v-else
+        v-preview-write:ticket
         type="primary"
         :loading="busy"
         :disabled="!sessionId"
@@ -68,6 +70,7 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createSessionShare, revokeSessionShare } from '@/api/sessions'
 import { t, currentLocale } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },

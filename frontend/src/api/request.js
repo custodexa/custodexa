@@ -5,6 +5,7 @@ import { resolveApiError } from './error'
 import { redactAxiosError } from './redact'
 import { SEAL_GATE_CODE, UNSEAL_PATH, markSealed } from '@/utils/sealPhase'
 import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
+import { shouldBlockInPreview } from '@/utils/previewOverlay'
 import {
   clearSession,
   getAccessToken,
@@ -17,9 +18,38 @@ const request = axios.create({
   timeout: 10000,
 })
 
+// 以此角色預覽：寫入類請求不送出。拒絕是前端專用的（不是伺服器錯誤碼），
+// 由回應攔截器的錯誤分支辨識並只顯示一次說明；攔截器不加任何標頭或參數。
+const PREVIEW_BLOCKED = 'PREVIEW_BLOCKED'
+let previewNotice = null
+
+/** 測試用：清除「預覽拒絕訊息仍在畫面上」的記錄。 */
+export function resetPreviewNoticeForTests() {
+  previewNotice = null
+}
+
+const showPreviewBlocked = () => {
+  if (previewNotice) return
+  previewNotice = ElMessage.error({
+    message: t('rolePreview.blocked'),
+    onClose: () => {
+      previewNotice = null
+    },
+  })
+  // ElMessage 回傳的實例即使被測試替身換成別的值，也只要求「仍在畫面上時不重複」
+  if (!previewNotice) previewNotice = true
+}
+
 // 請求攔截器
 request.interceptors.request.use(
   (config) => {
+    if (shouldBlockInPreview(config)) {
+      const blocked = new Error('preview: write request not sent')
+      blocked.code = PREVIEW_BLOCKED
+      blocked.isPreviewBlocked = true
+      blocked.config = config
+      return Promise.reject(blocked)
+    }
     // 自記憶體持有者取得 token；呼叫端已顯式帶 Authorization 時不覆蓋
     //（強制改密流程以 change_token 呼叫，此時尚無正式 token）
     const token = getAccessToken()
@@ -93,6 +123,11 @@ request.interceptors.response.use(
     return response.data
   },
   async (error) => {
+    // 預覽拒絕：請求沒有送出，不是伺服器錯誤——只顯示一次預覽說明，不疊「請求失敗」
+    if (error?.isPreviewBlocked) {
+      showPreviewBlocked()
+      return Promise.reject(error)
+    }
     // 全域唯一的 API 錯誤日誌出口——**絕不印 error 本體**：
     // AxiosError 的 config.data 是原始請求本文，帳號 CRUD 帶明文密碼／私鑰，
     // config.headers 帶有效 Authorization，寫進 console 即 DevTools 可見外洩

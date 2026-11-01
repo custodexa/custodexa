@@ -226,6 +226,8 @@ cp .env.example .env
 #   （ENCRYPTION_KEY が必要なのは KEK_PROVIDER=env のときだけ。出荷時の既定は ui＝鍵をディスクに置かない。テンプレートの KEK 節を参照）
 # 開発に参加する場合：COMPOSE_FILE=docker-compose.dev.yml のコメントを外し、KEK_PROVIDER=env と
 #   ENCRYPTION_KEY の設定を推奨——ホットリロードは再ビルドのたびにプロセスを再起動するため、ui のままでは毎回アンシールを求められます
+#   （開発用スタックには VAULT_DEV_ROOT_TOKEN_ID、つまりテスト用 Vault の初期化トークンも必要です。quickstart.sh が自動で設定します。
+#   .env を手作業で用意する場合は、使い捨てのテスト用の値を自分で設定してください）
 ```
 
 > **初期管理者パスワード（`ADMIN_INITIAL_PASSWORD`）**：出荷時の既定パスワードはありません。新規（空の DB）へのデプロイでは
@@ -1087,6 +1089,16 @@ macOS の Docker volume は fsnotify が不安定で、Vite がファイルの�
 ```bash
 docker compose up -d --force-recreate frontend
 ```
+
+
+### macOS：postgres が `wrong ownership` で起動しない（Docker Desktop のファイル共有）
+症状：postgres のログに `data directory ... has wrong ownership` と出力され、このデータディレクトリは一度も正常に起動したことがない。データベースのフォルダーは bind mount（`${DATA_PATH:-./data}/postgres`）です。macOS では、Docker Desktop が使うファイル共有の実装に左右されることがあります。
+
+1. Docker Desktop の設定（Docker メニューから Settings）の General タブで、"Choose file sharing implementation for your containers" を VirtioFS にします。適用して Docker Desktop を再起動します。
+2. 中途半端に初期化されたデータフォルダーを空にするのは、次の 2 つが両方成り立つときだけです。このデータフォルダーが一度も正常に起動したことがなく、かつ残す必要のあるデータが入っていないこと。出どころや中身が分からない場合は空にせず、先にバックアップを取るか相談してください。
+3. 両方の条件を満たす場合は、まず実際のパスを確認します。`.env` の `DATA_PATH` の下にある `postgres` フォルダーです（`DATA_PATH` が未設定なら `./data/postgres`）。そのフォルダーを削除し、`docker compose up -d` をやり直します。
+
+開発用スタックでは、Docker が単一ファイルのマウントを準備する途中で、初回起動が `outside of rootfs` で失敗することもあります。`docker compose up -d` をもう一度実行してください。`scripts/quickstart.sh --up` は、これらのマウント先を事前に作成します。
 
 ### バックエンドの変更が反映されていないように見える（Air のホットリロードが古いバイナリで動作）
 複数ファイルを行き来して編集している途中の壊れた状態では、Air のビルドが失敗し、古いバイナリで動作し続けます。変更後は：

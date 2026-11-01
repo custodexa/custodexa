@@ -87,7 +87,13 @@ func ValidateRoleDefinitionState(s RoleDefinitionState) error {
 		if r.DefinitionVersion < 1 {
 			return fmt.Errorf("自訂角色 %d 的定義版本無效: %d", r.RoleID, r.DefinitionVersion)
 		}
-		if _, err := NormalizeRolePermissions(r.Keys); err != nil {
+		live := make([]string, 0, len(r.Keys))
+		for _, k := range r.Keys {
+			if !IsRetiredAssignable(Permission(k)) {
+				live = append(live, k)
+			}
+		}
+		if _, err := NormalizeRolePermissions(live); err != nil {
 			return fmt.Errorf("自訂角色 %d: %w", r.RoleID, err)
 		}
 		if r.TemplateRoleID != nil && !known[*r.TemplateRoleID] && !seen[*r.TemplateRoleID] {

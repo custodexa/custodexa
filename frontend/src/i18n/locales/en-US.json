@@ -1271,6 +1271,7 @@
     },
     "headerDescAdmin": "Manage remote hosts, databases, and K8s assets (SSH, RDP, VNC, MySQL, PostgreSQL, Redis, K8s)",
     "headerDescUser": "Assets you can use or manage. Assets you can connect to show Connect; assets that need approval accept access requests",
+    "headerDescUserPreview": "Assets you can use or manage. Assets that need approval accept access requests",
     "tagManager": "Tag Management",
     "create": "New Asset",
     "searchPlaceholder": "Name or host address",
@@ -2254,6 +2255,49 @@
     "scopeRootLocked": "This is the root of your management scope. Only a super administrator can do this",
     "superAdminOnly": "Only a super administrator can do this",
     "locatorAncestor": "Shown only as part of the path. You have no management permission on this node",
+    "drag": {
+      "rootHint": "Move to the root level: use \"⋯\" → \"Move\"",
+      "canDropTitle": "You can drop here",
+      "canDropBody": "Release to move under \"{target}\". You will be asked to confirm first.",
+      "cannotDropTitle": "You can't drop here",
+      "reasonSelf": "A node can't be moved under itself.",
+      "reasonDepth": "\"{target}\" is already at level 10, the deepest level. No nodes can go under it.",
+      "reasonSameName": "\"{name}\" already exists here. Rename one of them, then move it.",
+      "reasonNoPermission": "You don't have permission to add nodes under this node.",
+      "reasonNoPermissionScope": "You can move to nodes under \"{scope}\".",
+      "alreadyHereTitle": "Already here",
+      "alreadyHereBody": "It is already under this node. Dropping it here changes nothing.",
+      "handleTitle": "Drag to move",
+      "handleBody": "Hold this row and drag it onto another node to move it.",
+      "handleBodyScoped": "Hold this row and drag it onto another node under \"{scope}\".",
+      "cannotDragTitle": "This node can't be moved",
+      "lockBar": "Moving. Dragging is disabled until it finishes."
+    },
+    "moveConfirm": {
+      "title": "Confirm node move",
+      "node": "Node",
+      "from": "Currently under",
+      "to": "Move to",
+      "carry": "Its child nodes and {count} will move with it.",
+      "carryCount": "{n} assets",
+      "authz": "Authorizations set on the old parent no longer cover them; those on the new parent start to.",
+      "scope": "Management scope follows the new location: managers of the old parent can no longer manage them, and managers of the new parent can.",
+      "direct": "Authorizations set directly on this node are not affected.",
+      "ok": "Move",
+      "moving": "Moving…",
+      "rejectTitle": "Move node",
+      "rejectHead": "Not moved",
+      "rejectDepth": "The node plus the levels under it would go past the 10-level limit.",
+      "rejectDepthNext": "Try a shallower node instead.",
+      "rejectSameName": "\"{target}\" already has a node with the same name.",
+      "rejectSameNameNext": "Rename one of them, then move it.",
+      "rejectGone": "The target node no longer exists. It may have just been deleted by someone else.",
+      "rejectGoneNext": "The tree will reload after you press \"Got it\".",
+      "gotIt": "Got it",
+      "unknownHead": "Couldn't confirm whether it was moved"
+    },
+    "movedTag": "Moved",
+    "moveAlreadyHere": "It is already under \"{target}\". Choose another location.",
     "deleteBlocked": {
       "title": "Cannot Delete Node",
       "scopedBody": "Node \"{path}\" is part of {count} other management scope(s) and cannot be deleted.",
@@ -2795,6 +2839,7 @@
       "badgeCustom": "Custom",
       "badgeBuiltinLocked": "Built-in, cannot be changed",
       "holders": "{n} people use it; changes take effect right after saving",
+      "retiredKeyNotice": "This role includes the \"force disconnect\" ability, which is no longer available to custom roles. Holders could never use it, and it is removed when you save.",
       "systemFeatures": "System features",
       "legend": "Hidden = not visible. Read-only = can look but not change. Manage = can add and edit. Available = can open and use.",
       "detailCount": "Fine-grained actions {n}/{m}",
@@ -9026,6 +9071,44 @@
       "hint": "You can also create a group here, set its roles and scope, and add the matching rule in one go.",
       "button": "Create a group with roles and scope",
       "option": "Create a new group with roles and scope"
+    }
+  },
+  "rolePreview": {
+    "button": "Preview as this role",
+    "banner": {
+      "title": "Previewing as role \"{name}\"",
+      "viewOnly": "View only. Changes are disabled.",
+      "dataCeiling": "Data shown is limited to what you can see yourself",
+      "exit": "Exit preview"
+    },
+    "range": {
+      "label": "Preview range",
+      "all": "All nodes",
+      "optionsNote": "Only nodes you can see are listed",
+      "note": "Filters the screen only. The role is unchanged."
+    },
+    "disabledCreate": "You can't add items in preview. People with this role can.",
+    "disabledAction": "You can't do this in preview. People with this role can.",
+    "disabledDrag": {
+      "title": "This node can't be moved",
+      "body": "You can't move nodes in preview. People with this role can."
+    },
+    "disabledTicket": "You can't connect or play recordings in preview. People with this role can.",
+    "disabledNested": "You can't preview another role while previewing. Exit the preview first.",
+    "exited": "Preview closed. Back to \"{name}\"",
+    "blocked": "Changes are disabled in preview. People with this role can make them.",
+    "readOnlyNote": "This role can only view. Add, edit, and delete are hidden.",
+    "connectNote": "Connect buttons depend on each person, so preview doesn't show them.",
+    "selfCannotSee": {
+      "title": "You can't see this data yourself",
+      "body": "Preview shows only data you can see. You don't have permission to view assets, so none are listed. People with this role will see the assets in their own scope when they sign in."
+    },
+    "superAdmin": "The super administrator has every feature across the whole system, so there is nothing to preview.",
+    "unsaved": {
+      "title": "You have unsaved changes",
+      "body": "Opening the preview discards the unsaved changes on this page. The preview shows the saved role.",
+      "discard": "Discard changes and preview",
+      "back": "Back to editing"
     }
   }
 }

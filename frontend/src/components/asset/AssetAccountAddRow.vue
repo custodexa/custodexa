@@ -56,6 +56,7 @@
       </el-alert>
       <div class="inline-actions">
         <el-button
+          v-preview-write:create
           type="primary"
           size="small"
           :loading="submitting"
@@ -86,6 +87,7 @@ import { getEffectiveUsers } from '@/api/authorizations'
 import { effectiveAccessNote } from '@/utils/keyDisplay'
 import { isDatabaseProtocol } from '@/utils/protocol'
 import AssetCredentialSection from '@/components/asset/AssetCredentialSection.vue'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   assetId: { type: [Number, String], default: null },

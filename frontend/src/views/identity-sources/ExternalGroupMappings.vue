@@ -58,6 +58,7 @@
         <span class="hint-actions">
           <el-button
             v-if="groupSetupAvailable"
+            v-preview-write
             size="small"
             link
             type="primary"
@@ -143,6 +144,7 @@
         {{ $t('common.refresh') }}
       </el-button>
       <el-button
+        v-preview-write:create
         type="primary"
         @click="openCreate"
       >
@@ -190,6 +192,7 @@
             {{ expandedValues.has(row.id) ? $t('identityGroupMappings.collapseIdentifier') : $t('identityGroupMappings.expandIdentifier') }}
           </el-button>
           <el-button
+            v-preview-write
             size="small"
             link
             @click="openNote(row)"
@@ -256,6 +259,7 @@
       >
         <template #default="{ row }">
           <el-button
+            v-preview-write
             size="small"
             link
             :disabled="isLocked(row)"
@@ -265,6 +269,7 @@
             {{ $t('common.edit') }}
           </el-button>
           <el-button
+            v-preview-write
             size="small"
             link
             :disabled="isLocked(row)"
@@ -274,6 +279,7 @@
             {{ row.enabled ? $t('identityGroupMappings.disable') : $t('identityGroupMappings.enable') }}
           </el-button>
           <el-button
+            v-preview-write
             size="small"
             type="danger"
             link
@@ -561,6 +567,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="busy"
           :disabled="!canSave"
@@ -610,6 +617,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="busy"
           @click="saveNote"
@@ -641,6 +649,7 @@ import { can, canAll } from '@/composables/useCapabilities'
 import GroupSetupDrawer from './components/GroupSetupDrawer.vue'
 import { canEnter, entryRuleFor } from '@/router/entryRules'
 import { describeAssignment, fromGroupBinding, roleScopeLine } from '@/utils/roleScopePresentation'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const route = useRoute()
 const sourceType = computed(() => String(route.params.type || ''))

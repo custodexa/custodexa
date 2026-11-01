@@ -164,7 +164,12 @@ func saveAuthzMigrationReport(db *gorm.DB, rep AuthzMigrationReport) error {
 	}
 	if res.RowsAffected > 0 {
 		log.Printf("%s%s", authzLogPrefix, string(b))
-		announceAuthzWarning(rep)
+		// 遷移當下的使用者列數（預設 scope，不含軟刪除）：零列即全新庫，供警示判準使用。
+		var userRows int64
+		if err := db.Model(&model.User{}).Count(&userRows).Error; err != nil {
+			return fmt.Errorf("計算遷移當下的使用者數失敗: %w", err)
+		}
+		announceAuthzWarning(rep, userRows)
 	}
 	return nil
 }

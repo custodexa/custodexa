@@ -241,6 +241,8 @@ cp .env.example .env
 #   (ENCRYPTION_KEY is only for KEK_PROVIDER=env; the shipped default is ui, meaning the key never lands on disk -- see the KEK section of the template)
 # Development: uncomment COMPOSE_FILE=docker-compose.dev.yml, and set KEK_PROVIDER=env with
 #   an ENCRYPTION_KEY -- hot reload restarts the process on every rebuild, and ui asks you to unseal each time
+#   (the dev stack also needs VAULT_DEV_ROOT_TOKEN_ID, the test Vault's initialization token: quickstart.sh fills it in;
+#   if you prepare .env by hand, set it to any throwaway test value)
 ```
 
 > **Initial administrator password (`ADMIN_INITIAL_PASSWORD`)**: there is no factory default.
@@ -1242,6 +1244,16 @@ Use this instead:
 ```bash
 docker compose up -d --force-recreate frontend
 ```
+
+
+### macOS: postgres refuses to start with `wrong ownership` (Docker Desktop file sharing)
+Symptom: the postgres log shows `data directory ... has wrong ownership`, and this data directory has never started successfully. The database folder is a bind mount (`${DATA_PATH:-./data}/postgres`). On macOS this has been seen to depend on the Docker Desktop file sharing implementation.
+
+1. Open the Docker Desktop settings (the Docker menu, then Settings), General tab, and set "Choose file sharing implementation for your containers" to VirtioFS. Apply the change and restart Docker Desktop.
+2. Clear the half-initialized data folder only when both of these hold: this data folder has never started successfully, and it holds no data you need. If you are not sure where the folder came from or what is in it, do not clear it; back it up or ask for help first.
+3. If both conditions hold, first confirm the actual path: it is the `postgres` folder under the `DATA_PATH` set in `.env` (`./data/postgres` when `DATA_PATH` is not set). Then remove that folder and start again with `docker compose up -d`.
+
+On the development stack, the first start can also fail with `outside of rootfs` while Docker sets up a single-file mount. Run `docker compose up -d` again; `scripts/quickstart.sh --up` creates those mount points beforehand.
 
 ### A backend change seems to have no effect (Air hot reload is running the old binary)
 A half-finished state in the middle of editing several files makes the Air build fail while the old

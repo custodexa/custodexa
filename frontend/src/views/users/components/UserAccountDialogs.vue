@@ -48,6 +48,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           @click="handlePasswordSubmit"
@@ -151,6 +152,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           @click="handlePasswordSubmit"
@@ -215,6 +217,7 @@ import { ElMessage } from 'element-plus'
 import { changePassword } from '@/api/user'
 import UserExternalIdentities from '@/components/UserExternalIdentities.vue'
 import { t } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 帳號動作的對話框與抽屜（修改密碼、外部身分管理）。

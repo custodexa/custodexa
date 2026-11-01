@@ -6,7 +6,7 @@
       :description="headerDescription"
     >
       <template
-        v-if="assetScopeLine"
+        v-if="assetScopeLine && !previewActive"
         #meta
       >
         <ManageScopeLine
@@ -25,6 +25,7 @@
         <!-- 標籤治理單獨入口：全面改名/合併/刪除 -->
         <el-button
           v-if="canUpdateAsset"
+          v-preview-write
           data-test="tag-manager-entry"
           :disabled="!isSuperAdmin"
           :title="isSuperAdmin ? '' : $t('assets.tagManagerSuperAdminOnly')"
@@ -35,6 +36,7 @@
         </el-button>
         <el-button
           v-if="canCreateAsset"
+          v-preview-write:create
           data-test="bulk-entry"
           @click="bulkVisible = true"
         >
@@ -43,6 +45,7 @@
         </el-button>
         <el-button
           v-if="canCreateAsset"
+          v-preview-write:create
           type="primary"
           @click="handleCreate"
         >
@@ -212,11 +215,54 @@
       v-if="canViewAssets"
       class="tree-table-layout"
     >
-      <AssetNodeTree
-        ref="nodeTreeRef"
-        @select="handleNodeSelect"
-        @authorize="handleAuthorizeNode"
-      />
+      <div
+        class="tree-column"
+        @mouseover="onTreeRowHover"
+        @mouseleave="onTreeRowLeave"
+      >
+        <!-- 預覽範圍：只篩選畫面，與節點樹同處一個區塊 -->
+        <div
+          v-if="previewActive"
+          class="preview-range-bar"
+          data-test="preview-range-bar"
+        >
+          <span class="preview-range-label">{{ $t('rolePreview.range.label') }}</span>
+          <el-select
+            :model-value="previewRange"
+            size="small"
+            clearable
+            fit-input-width
+            popper-class="preview-range-popper"
+            :placeholder="$t('rolePreview.range.all')"
+            data-test="preview-range-select"
+            @change="onPreviewRangeChange"
+          >
+            <el-option
+              v-for="n in nodeFlatList"
+              :key="n.id"
+              :label="n.path || n.name"
+              :title="n.path || n.name"
+              :value="n.id"
+            />
+            <template #footer>
+              <span
+                class="preview-range-options-note"
+                data-test="preview-range-options-note"
+              >{{ $t('rolePreview.range.optionsNote') }}</span>
+            </template>
+          </el-select>
+          <span
+            class="preview-range-note"
+            data-test="preview-range-note"
+          >{{ $t('rolePreview.range.note') }}</span>
+        </div>
+        <AssetNodeTree
+          ref="nodeTreeRef"
+          :node-drag-disabled="previewActive"
+          @select="handleNodeSelect"
+          @authorize="handleAuthorizeNode"
+        />
+      </div>
 
       <!-- 資產列表 -->
       <div class="list-panel">
@@ -262,9 +308,10 @@
           >
             <template #header>
               <el-checkbox
+                v-preview-write
                 :model-value="pageAllSelected"
                 :indeterminate="pageSomeSelected"
-                :disabled="!selectableRows.length"
+                :disabled="previewActive || !selectableRows.length"
                 :aria-label="$t('assets.batchOps.selectAllPage')"
                 data-test="select-page"
                 @change="togglePage"
@@ -272,8 +319,9 @@
             </template>
             <template #default="{ row }">
               <el-checkbox
+                v-preview-write
                 :model-value="isSelected(row)"
-                :disabled="!rowSelectable(row)"
+                :disabled="previewActive || !rowSelectable(row)"
                 :aria-label="$t('assets.batchOps.selectRow')"
                 data-test="row-select"
                 @change="(v) => toggleRow(row, v)"
@@ -470,7 +518,7 @@
                停用態優先呈現：一般 user 無狀態欄，
                停用資產不得顯示可連假象 -->
           <el-table-column
-            v-if="!showsGlobalAssets"
+            v-if="!showsGlobalAssets && !previewActive"
             :label="$t('assets.permissionColumn')"
             width="120"
           >
@@ -516,79 +564,82 @@
             fixed="right"
           >
             <template #default="{ row }">
-              <!-- 連線入口三態：狀態由伺服端
+              <template v-if="!previewActive">
+                <!-- 連線入口三態：狀態由伺服端
                  access_state 單一事實源；按鈕僅是提示，點擊後仍以政策閘回應為準 -->
-              <!-- 待配憑證：沒有任何掛載，執行期必被零帳號閘拒絕——
+                <!-- 待配憑證：沒有任何掛載，執行期必被零帳號閘拒絕——
                  對所有角色（含 admin 的角色短路）停用連線與申請入口。
                  成因優先序：停用 > 待配憑證 > 權限 -->
-              <!-- 只經管理可視的列沒有連線欄位，也就沒有連線入口 -->
-              <span
-                v-if="isManagedOnly(row)"
-                data-test="no-connect-entry"
-              />
-              <el-tooltip
-                v-else-if="isCredentialPending(row)"
-                :content="credentialPendingTooltip"
-                placement="top"
-              >
-                <span data-test="connect-credential-pending">
-                  <el-button
-                    type="primary"
-                    size="small"
-                    link
-                    disabled
-                  >
-                    <el-icon><Cable /></el-icon>
-                    {{ $t('common.connect') }}
-                  </el-button>
-                </span>
-              </el-tooltip>
-              <el-button
-                v-else-if="isPendingRequest(row)"
-                type="warning"
-                size="small"
-                link
-                @click="showPendingInfo(row)"
-              >
-                <el-icon><Clock /></el-icon>
-                {{ $t('assets.pendingBadge') }}
-              </el-button>
-              <el-tooltip
-                v-else-if="needsRequest(row)"
-                :content="$t('assets.needsRequestTooltip')"
-                placement="top"
-              >
+                <!-- 只經管理可視的列沒有連線欄位，也就沒有連線入口 -->
+                <span
+                  v-if="isManagedOnly(row)"
+                  data-test="no-connect-entry"
+                />
+                <el-tooltip
+                  v-else-if="isCredentialPending(row)"
+                  :content="credentialPendingTooltip"
+                  placement="top"
+                >
+                  <span data-test="connect-credential-pending">
+                    <el-button
+                      type="primary"
+                      size="small"
+                      link
+                      disabled
+                    >
+                      <el-icon><Cable /></el-icon>
+                      {{ $t('common.connect') }}
+                    </el-button>
+                  </span>
+                </el-tooltip>
                 <el-button
-                  type="primary"
+                  v-else-if="isPendingRequest(row)"
+                  type="warning"
                   size="small"
                   link
-                  @click="openApplyDialog(row)"
+                  @click="showPendingInfo(row)"
                 >
-                  <el-icon><Pencil /></el-icon>
-                  {{ $t('assets.applyConnect') }}
+                  <el-icon><Clock /></el-icon>
+                  {{ $t('assets.pendingBadge') }}
                 </el-button>
-              </el-tooltip>
-              <!-- 入口不可用時須標示真實成因：
-                 停用是資產態非權限態，對所有角色（含 admin）皆不可連，先於
-                 權限判定，否則停用資產會被說成「權限不足」與同列授權狀態欄矛盾 -->
-              <el-tooltip
-                v-else
-                :content="connectTooltipContent(row)"
-                placement="top"
-              >
-                <span>
+                <el-tooltip
+                  v-else-if="needsRequest(row)"
+                  :content="$t('assets.needsRequestTooltip')"
+                  placement="top"
+                >
                   <el-button
+                    v-preview-write
                     type="primary"
                     size="small"
                     link
-                    :disabled="!canConnect(row)"
-                    @click="handleConnect(row)"
+                    @click="openApplyDialog(row)"
                   >
-                    <el-icon><Cable /></el-icon>
-                    {{ $t('common.connect') }}
+                    <el-icon><Pencil /></el-icon>
+                    {{ $t('assets.applyConnect') }}
                   </el-button>
-                </span>
-              </el-tooltip>
+                </el-tooltip>
+                <!-- 入口不可用時須標示真實成因：
+                 停用是資產態非權限態，對所有角色（含 admin）皆不可連，先於
+                 權限判定，否則停用資產會被說成「權限不足」與同列授權狀態欄矛盾 -->
+                <el-tooltip
+                  v-else
+                  :content="connectTooltipContent(row)"
+                  placement="top"
+                >
+                  <span>
+                    <el-button
+                      type="primary"
+                      size="small"
+                      link
+                      :disabled="!canConnect(row)"
+                      @click="handleConnect(row)"
+                    >
+                      <el-icon><Cable /></el-icon>
+                      {{ $t('common.connect') }}
+                    </el-button>
+                  </span>
+                </el-tooltip>
+              </template>
               <!-- 帶 actions 的列只看伺服器旗標（不回退全域能力），並就地說明原因 -->
               <el-tooltip
                 v-if="canUpdateAsset || hasActions(row)"
@@ -598,6 +649,7 @@
               >
                 <span data-test="edit-wrap">
                   <el-button
+                    v-preview-write
                     type="primary"
                     size="small"
                     link
@@ -616,6 +668,8 @@
                 @command="(cmd) => handleRowCommand(cmd, row)"
               >
                 <el-button
+                  v-preview-write
+                  data-test="row-more"
                   size="small"
                   link
                 >
@@ -686,7 +740,26 @@
             @current-change="handlePageChange"
           />
         </div>
+        <p
+          v-if="previewActive"
+          class="preview-total-note"
+          data-test="preview-asset-total"
+        >
+          {{ $t('rolePreview.connectNote') }}
+        </p>
       </div>
+    </div>
+
+    <!-- 預覽：角色有資產檢視、操作者本人沒有。不請求資產列表，如實說明 -->
+    <div
+      v-if="selfCannotSee"
+      class="panel"
+      data-test="assets-self-cannot-see"
+    >
+      <EmptyState
+        :title="$t('rolePreview.selfCannotSee.title')"
+        :hint="$t('rolePreview.selfCannotSee.body')"
+      />
     </div>
 
     <!-- 沒有資產檢視權限：不請求列表，說明原因與補救方式 -->
@@ -872,6 +945,7 @@
       >
         <el-divider>{{ $t('common.or') }}</el-divider>
         <el-button
+          v-preview-write
           type="danger"
           plain
           size="small"
@@ -1009,7 +1083,10 @@ import { confirmDestructive } from '@/utils/confirm'
 import { securityChangeFields, pickSecurityBaseline } from '@/utils/assetSecurityChange'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'
-import { can, useCapabilities } from '@/composables/useCapabilities'
+import { can, canSelf, useCapabilities } from '@/composables/useCapabilities'
+import { useRolePreview } from '@/composables/useRolePreview'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import { showHintCard, hideHintCard } from '@/utils/previewHintCard'
 import { t } from '@/i18n'
 import PageHeader from '@/components/PageHeader.vue'
 import ManageScopeLine from '@/components/ManageScopeLine.vue'
@@ -1196,6 +1273,37 @@ const nodeTreeRef = ref(null)
 const selectedNode = ref(null)
 const includeSubtree = ref(true)
 
+// 預覽範圍＝既有節點篩選的另一個入口：選了與在左樹點選該節點完全相同（同一個 select 處理），
+// 範圍只存前端，不送給伺服器、不改變預覽權限集合
+const findNodeById = (id) => nodeFlatList.value.find((n) => n.id === id) || null
+// 由根到父的祖先 id 序列，供節點樹逐層展開到該節點
+const ancestorChain = (node) => {
+  const chain = []
+  const seen = new Set()
+  let cur = node
+  while (cur && cur.parent_id && !seen.has(cur.parent_id)) {
+    seen.add(cur.parent_id)
+    chain.unshift(cur.parent_id)
+    cur = findNodeById(cur.parent_id)
+  }
+  return chain
+}
+const onPreviewRangeChange = (id) => {
+  const node = id === undefined || id === null || id === '' ? null : findNodeById(id)
+  setPreviewRange(node ? node.id : null)
+  nodeTreeRef.value?.highlight?.(node, node ? ancestorChain(node) : [])
+  handleNodeSelect(node)
+}
+// 帶著預覽範圍進入本頁（先前在別頁設過）：節點清單到齊後套用一次
+function applyPreviewRange() {
+  if (!previewActive.value || previewRange.value === null) return
+  const node = findNodeById(previewRange.value)
+  if (!node) return
+  nodeTreeRef.value?.highlight?.(node, ancestorChain(node))
+  selectedNode.value = node
+  fetchAssetList()
+}
+
 const handleNodeSelect = (node) => {
   selectedNode.value = node
   pagination.page = 1
@@ -1223,10 +1331,29 @@ const handleAuthorizeNode = (node) => {
 // - 各管理動作依各自的後端能力顯示。
 const showsGlobalAssets = computed(() => can('ui:assets-global'))
 // 資產列表端點要 asset:view；沒有它就不請求（含篩選、重新整理等所有呼叫點），改顯示說明
-const canViewAssets = computed(() => can('asset:view'))
+// 以此角色預覽：角色有資產檢視而操作者本人沒有時，資料以本人為上限——不請求列表，改顯示說明
+const { active: previewActive, range: previewRange, setRange: setPreviewRange } = useRolePreview()
+// 預覽中節點樹不能拖曳：游標停在節點列上時，在該列正下方顯示說明卡
+const NODE_DRAG_CARD = 'node-drag-disabled'
+const onTreeRowHover = (event) => {
+  if (!previewActive.value) return
+  const row = event.target?.closest?.('.tree-node-row')
+  if (!row) return hideHintCard(NODE_DRAG_CARD)
+  showHintCard(
+    row,
+    { title: t('rolePreview.disabledDrag.title'), body: t('rolePreview.disabledDrag.body') },
+    NODE_DRAG_CARD
+  )
+}
+const onTreeRowLeave = () => hideHintCard(NODE_DRAG_CARD)
+watch(previewActive, (on) => {
+  if (!on) hideHintCard(NODE_DRAG_CARD)
+})
+const selfCannotSee = computed(() => previewActive.value && can('asset:view') && !canSelf('asset:view'))
+const canViewAssets = computed(() => can('asset:view') && !selfCannotSee.value)
 // 能力尚未載入（整頁重新整理）時不判定「沒有權限」，等載入完成再決定要讀列表還是顯示說明
 const { ready: capsReady } = useCapabilities()
-const showNoAssetView = computed(() => capsReady.value && !canViewAssets.value)
+const showNoAssetView = computed(() => capsReady.value && !can('asset:view'))
 watch(canViewAssets, (allowed) => {
   if (!allowed) return
   fetchAssetList()
@@ -1235,7 +1362,9 @@ watch(canViewAssets, (allowed) => {
 })
 const headerDescription = computed(() => {
   if (!canViewAssets.value) return ''
-  return showsGlobalAssets.value ? t('assets.headerDescAdmin') : t('assets.headerDescUser')
+  return showsGlobalAssets.value
+    ? t('assets.headerDescAdmin')
+    : t(previewActive.value ? 'assets.headerDescUserPreview' : 'assets.headerDescUser')
 })
 const canCreateAsset = computed(() => can('asset:create'))
 const canUpdateAsset = computed(() => can('asset:update'))
@@ -1714,6 +1843,7 @@ async function loadGroups() {
   try {
     const res = await getAssetGroups()
     nodeFlatList.value = res.data || []
+    applyPreviewRange()
   } catch (err) {
     console.error('載入節點失敗:', err)
   }
@@ -2437,6 +2567,48 @@ async function findListedRow(detail) {
   border-radius: var(--ot-radius-lg);
 }
 
+.tree-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-xs);
+  flex-shrink: 0;
+}
+
+.preview-range-bar {
+  /* width:0 + min-width:100%：寬度跟著節點樹欄，不反過來撐開節點樹欄壓到分隔線 */
+  box-sizing: border-box;
+  width: 0;
+  min-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ot-space-xs);
+  padding: var(--ot-space-xs) var(--ot-space-sm);
+  background-color: var(--ot-primary-dim);
+  border-radius: var(--ot-radius-lg);
+  font-size: var(--ot-font-size-sm);
+}
+
+.preview-range-bar :deep(.el-select) {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.preview-range-label {
+  font-weight: 600;
+}
+
+.preview-range-note,
+.preview-range-options-note,
+.preview-total-note {
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
+}
+
+.preview-total-note {
+  margin: var(--ot-space-xs) 0 0;
+}
+
 .tree-table-layout {
   display: flex;
   gap: var(--ot-space-md);
@@ -2639,5 +2811,17 @@ async function findListedRow(detail) {
 /* 下拉選單 teleport 至 body，scoped 樣式打不到，須全域 */
 .el-dropdown-menu__item.dropdown-danger {
   color: var(--el-color-danger);
+}
+</style>
+
+<style>
+/* 預覽範圍下拉：寬度跟著選擇器、不超出視窗；長路徑以省略號收尾 */
+.preview-range-popper {
+  max-width: calc(100vw - 16px);
+}
+.preview-range-popper .el-select-dropdown__item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

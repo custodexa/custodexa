@@ -158,3 +158,118 @@ run_quickstart() { (cd / && bash "$QS/scripts/quickstart.sh" >"$BATS_TEST_TMPDIR
   [ "$(val "$f" KEK_PROVIDER)" = kms ] || { cat "$f"; return 1; }
   [ "$(head -n 1 "$f")" = KEK_PROVIDER=env ]
 }
+
+# Development stack: the compose file refuses to start without the test Vault's initialization token.
+dev_form() { sed -i 's/^# *COMPOSE_FILE=docker-compose.dev.yml$/COMPOSE_FILE=docker-compose.dev.yml/' "$QS/.env"; }
+plain_form() { sed -i 's/^COMPOSE_FILE=docker-compose.dev.yml$/# COMPOSE_FILE=docker-compose.dev.yml/' "$QS/.env"; }
+qs_val() { awk -F= '/^VAULT_DEV_ROOT_TOKEN_ID=/ {sub(/^[^=]*=/, ""); print; exit}' "$QS/.env"; }
+
+@test "Vault dev token: generated in the dev form only, never printed, kept on re-run and on switching back" {
+  cp "$QS/.env.example" "$QS/.env"
+  dev_form
+  run_quickstart || { cat "$BATS_TEST_TMPDIR/qs.out"; return 1; }
+  local t
+  t=$(qs_val)
+  [[ $t =~ ^[A-Za-z0-9]{32}$ ]] || { echo "token: '$t'"; return 1; }
+  ! grep -qF "$t" "$BATS_TEST_TMPDIR/qs.out"
+  # (b) second run: unchanged
+  run_quickstart
+  [ "$(qs_val)" = "$t" ]
+  # (c) a value the operator chose is kept as is
+  sed -i 's/^VAULT_DEV_ROOT_TOKEN_ID=.*/VAULT_DEV_ROOT_TOKEN_ID=operator-vault-token/' "$QS/.env"
+  run_quickstart
+  [ "$(qs_val)" = operator-vault-token ]
+  # (e) back to the production form: the line stays byte for byte, and the key is not mentioned
+  plain_form
+  run_quickstart
+  grep -qx 'VAULT_DEV_ROOT_TOKEN_ID=operator-vault-token' "$QS/.env"
+  ! grep -q VAULT_DEV_ROOT_TOKEN_ID "$BATS_TEST_TMPDIR/qs.out"
+  # (d) a fresh .env in the production form gets no active line for the key
+  rm -f "$QS/.env"
+  run_quickstart
+  ! grep -q '^VAULT_DEV_ROOT_TOKEN_ID=' "$QS/.env"
+}
+
+# The three single-file mount paths of the dev stack, relative to the source tree.
+placeholder_paths() {
+  PH_FILES=(backend/config/testdata/.env.example backend/cmd/server/testdata/release/VERSION backend/cmd/server/testdata/release/CHANGELOG.md)
+}
+# Fake docker for the --up runs: `compose up` fails unless the three mount points already exist.
+placeholder_hook() {
+  use_fake_docker
+  cat >"$FAKE_DOCKER_REPLAY/hook" <<HOOK
+#!/usr/bin/env bash
+case " \$* " in
+  *" compose "*" up "*)
+    for f in ${PH_FILES[*]}; do [ -e "$QS/\$f" ] || { echo "missing mount point \$f" >&2; exit 1; }; done
+    exit 0 ;;
+  *" exec "*" wget "*) exit 0 ;;
+esac
+exit 99
+HOOK
+  chmod +x "$FAKE_DOCKER_REPLAY/hook"
+}
+run_quickstart_up() { (cd / && bash "$QS/scripts/quickstart.sh" --up >"$BATS_TEST_TMPDIR/qs.out" 2>&1); }
+
+@test "placeholder files for single-file mounts exist before compose up, and an existing one is untouched" {
+  placeholder_paths
+  placeholder_hook
+  cp "$QS/.env.example" "$QS/.env"
+  dev_form
+  local f
+  for f in "${PH_FILES[@]}"; do [ ! -e "$QS/$f" ] || return 1; done
+  mkdir -p "$QS/$(dirname "${PH_FILES[1]}")"
+  printf 'keep me\n' >"$QS/${PH_FILES[1]}"
+  run_quickstart_up || { cat "$BATS_TEST_TMPDIR/qs.out"; return 1; }
+  grep -q 'compose up' "$FAKE_DOCKER_LOG"
+  for f in "${PH_FILES[@]}"; do [ -e "$QS/$f" ] || { echo "missing $f"; return 1; }; done
+  [ "$(cat "$QS/${PH_FILES[1]}")" = "keep me" ]
+}
+
+@test "placeholder files are not created without --up, nor in the production form with --up (not created)" {
+  placeholder_paths
+  placeholder_hook
+  local f
+  # Dev form, no --up.
+  cp "$QS/.env.example" "$QS/.env"
+  dev_form
+  for f in "${PH_FILES[@]}"; do [ ! -e "$QS/$f" ] || return 1; done
+  [ ! -e "$QS/backend/cmd/server/testdata/release" ]
+  run_quickstart || { cat "$BATS_TEST_TMPDIR/qs.out"; return 1; }
+  for f in "${PH_FILES[@]}"; do [ ! -e "$QS/$f" ] || { echo "created without --up: $f"; return 1; }; done
+  [ ! -e "$QS/backend/cmd/server/testdata/release" ]
+  # Production form, with --up: the script must really reach `compose up`.
+  rm -f "$QS/.env"
+  : >"$FAKE_DOCKER_LOG"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$FAKE_DOCKER_REPLAY/hook"
+  run_quickstart_up || { cat "$BATS_TEST_TMPDIR/qs.out"; return 1; }
+  grep -q 'compose up' "$FAKE_DOCKER_LOG"
+  for f in "${PH_FILES[@]}"; do [ ! -e "$QS/$f" ] || { echo "created in production form: $f"; return 1; }; done
+  [ ! -e "$QS/backend/cmd/server/testdata/release" ]
+}
+
+# The health wait is longer in the dev form (first start compiles the backend in the container).
+health_timeout_in_message() {
+  use_fake_docker
+  mkdir -p "$BATS_TEST_TMPDIR/nosleep"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$BATS_TEST_TMPDIR/nosleep/sleep"
+  chmod +x "$BATS_TEST_TMPDIR/nosleep/sleep"
+  # Every call succeeds except the health probe.
+  printf '#!/usr/bin/env bash\ncase " $* " in *" wget "*) exit 1 ;; esac\nexit 0\n' >"$FAKE_DOCKER_REPLAY/hook"
+  chmod +x "$FAKE_DOCKER_REPLAY/hook"
+  run env PATH="$BATS_TEST_TMPDIR/nosleep:$PATH" bash -c "cd / && bash '$QS/scripts/quickstart.sh' --up"
+  [ "$status" -eq 1 ]
+}
+
+@test "health wait: 1800 seconds in the dev form with a progress line, 120 seconds in the production form" {
+  cp "$QS/.env.example" "$QS/.env"
+  dev_form
+  health_timeout_in_message
+  [[ $output == *"did not report healthy within 1800s"* ]] || { echo "$output" | tail -n 5; return 1; }
+  [[ $output == *"10 to 15 minutes"* ]]
+  [[ $output == *"still waiting... 60s elapsed"* ]]
+  plain_form
+  health_timeout_in_message
+  [[ $output == *"did not report healthy within 120s"* ]] || { echo "$output" | tail -n 5; return 1; }
+  [[ $output != *"10 to 15 minutes"* ]]
+}

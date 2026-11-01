@@ -107,6 +107,14 @@ html.dark .el-button--danger:not(.is-plain):not(.is-text):not(.is-link):not(.is-
   color: var(--ot-text-on-fill-disabled);
 }
 
+/* Role preview: a button disabled by v-preview-write keeps Element Plus's disabled
+   class, and on top of that is dimmed so a filled primary button no longer reads as
+   usable. The attribute exists only while previewing, so normal rendering is untouched. */
+.el-button[data-preview-disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Table: keep header distinguishable on dark surfaces */
 html.dark .el-table {
   --el-table-header-bg-color: var(--ot-bg-elevated);

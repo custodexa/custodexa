@@ -5,7 +5,7 @@ import "sort"
 // 角色編輯的第一層功能描述與白話摘要資料。
 //
 // 只描述後端契約：入口穩定識別、群組、各態精確權限集合與第二層細項。畫面由角色編輯頁消費。
-// 節點指派、角色預覽、權限一覽尚未上線，不出現在任何描述中。固定入口（登入即可、
+// 節點指派、權限一覽尚未上線，不出現在任何描述中。固定入口（登入即可、
 // 依本人資格呈現者，如我的連線、我的申請、我的 agent）不是可勾選項，只列在 FixedEntries。
 
 // 入口狀態名稱。
@@ -100,7 +100,7 @@ func entryDescriptors() []EntryDescriptor {
 		{ID: "user_groups", Group: GroupIdentity, States: []EntryState{hid(), st(StateManage, PermUserGroupManage, PermUserManage)}},
 		{ID: "roles", Group: GroupIdentity, States: []EntryState{hid(), st(StateAvailable, PermRoleView)}},
 		{ID: "identity_sources", Group: GroupIdentity, States: []EntryState{hid(), st(StateManage, PermIdentitySourceManage, PermLDAPManage, PermOIDCManage)}},
-		{ID: "sessions", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermSessionView), st(StateManage, PermSessionView, PermSessionTerminate)}},
+		{ID: "sessions", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermSessionView)}},
 		{ID: "audit_logs", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView)}},
 		{ID: "checkpoint_verification", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView, PermAuditIntegrityView)}},
 		{ID: "alerts", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermAlertView, PermAuditView), st(StateManage, PermAlertView, PermAlertManage, PermAuditView)},
@@ -145,7 +145,7 @@ func FixedEntries() []string {
 
 // DeferredFeatures 尚未上線、描述中不得顯示為可用的功能。
 func DeferredFeatures() []string {
-	return []string{"role_preview", "permission_overview"}
+	return []string{"permission_overview"}
 }
 
 // RoleSummary 結構化的白話摘要（可翻譯 token，不含自由文字）。

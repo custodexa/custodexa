@@ -97,11 +97,11 @@ func TestCurrentUserCapabilityProjection(t *testing.T) {
 	t.Run("連線豁免只來自保留的超管身分", func(t *testing.T) {
 		admin := NewPrincipal(8, human, []Assignment{asg(model.BuiltinSuperAdmin, g)})
 		adminProj := ProjectCapabilities(admin, ProjectionInputs{})
-		assert.Equal(t, []string{UIAssetsGlobal, UIConnectBypass, UISuperAdmin}, derivedOf(adminProj.Permissions))
+		assert.Equal(t, []string{UIAssetsGlobal, UIConnectBypass, UISessionMonitor, UISuperAdmin}, derivedOf(adminProj.Permissions))
 
 		auditor := NewPrincipal(9, human, []Assignment{asg(model.BuiltinAuditor, g)})
-		assert.Equal(t, []string{UIAssetsGlobal}, derivedOf(ProjectCapabilities(auditor, ProjectionInputs{}).Permissions),
-			"稽核員有全域檢視呈現但無連線豁免")
+		assert.Equal(t, []string{UIAssetsGlobal, UISessionMonitor}, derivedOf(ProjectCapabilities(auditor, ProjectionInputs{}).Permissions),
+			"稽核員有全域檢視呈現與監看資格但無連線豁免")
 
 		// 勾滿目錄全部權限點的非內建角色：不是超管、不是稽核，也不得獲得任何衍生點
 		custom := NewPrincipal(10, human, []Assignment{{RoleName: "ops", Via: ViaDirect, Scope: g}})
@@ -112,6 +112,7 @@ func TestCurrentUserCapabilityProjection(t *testing.T) {
 		assert.NotContains(t, got, UIConnectBypass)
 		assert.NotContains(t, got, UISuperAdmin)
 		assert.NotContains(t, got, UIAssetsGlobal)
+		assert.NotContains(t, got, UISessionMonitor, "勾滿目錄的自訂角色沒有監看資格")
 
 		user := NewPrincipal(11, human, []Assignment{asg(model.BuiltinUser, g)})
 		assert.Equal(t, []string{UISelfServiceActions}, derivedOf(ProjectCapabilities(user, ProjectionInputs{}).Permissions))
@@ -120,12 +121,39 @@ func TestCurrentUserCapabilityProjection(t *testing.T) {
 		assert.NotContains(t, adminProj.Permissions, UISelfServiceActions, "超管不顯示申請操作")
 	})
 
+	t.Run("監看呈現點與監看票簽發的角色資格判定同源", func(t *testing.T) {
+		custom := func(id uint, perms ...Permission) *Principal {
+			p := NewPrincipal(id, human, []Assignment{{RoleName: "ops", Via: ViaDirect, Scope: g, Permissions: perms, Custom: true}})
+			return p
+		}
+		full := CatalogKeys()
+		subjects := map[string]*Principal{
+			"超管":       NewPrincipal(20, human, []Assignment{asg(model.BuiltinSuperAdmin, g)}),
+			"稽核員":      NewPrincipal(21, human, []Assignment{asg(model.BuiltinAuditor, g)}),
+			"一般使用者":    NewPrincipal(22, human, []Assignment{asg(model.BuiltinUser, g)}),
+			"零角色":      NewPrincipal(23, human, nil),
+			"持會話檢視的自訂": custom(24, PermSessionView),
+			"勾滿目錄的自訂":  custom(25, full...),
+			"節點範圍超管":   NewPrincipal(26, human, []Assignment{asg(model.BuiltinSuperAdmin, n, 5)}),
+			"agent":    NewPrincipal(27, TokenFacts{SubjectKind: model.KindAgent}, nil),
+		}
+		for name, p := range subjects {
+			got := ProjectCapabilities(p, ProjectionInputs{}).Permissions
+			assert.Equal(t, p.ViewShortcut(), contains(got, UISessionMonitor), name+"：投影含監看點 ⇔ ViewShortcut()")
+		}
+		assert.True(t, subjects["超管"].ViewShortcut())
+		assert.True(t, subjects["稽核員"].ViewShortcut())
+		assert.False(t, subjects["持會話檢視的自訂"].ViewShortcut())
+		assert.False(t, subjects["勾滿目錄的自訂"].ViewShortcut())
+	})
+
 	t.Run("不生效的節點指派不被投影成全域", func(t *testing.T) {
 		p := NewPrincipal(13, human, []Assignment{asg(model.BuiltinSuperAdmin, n, 5, 6)})
 		proj := ProjectCapabilities(p, ProjectionInputs{})
 		assert.Empty(t, proj.ScopeSummary)
 		assert.NotContains(t, proj.Permissions, UIConnectBypass, "節點範圍的超管指派不是保留身分")
 		assert.NotContains(t, proj.Permissions, UISuperAdmin, "節點範圍的超管指派不是保留身分")
+		assert.NotContains(t, proj.Permissions, UISessionMonitor, "節點範圍的超管指派沒有監看資格")
 		assert.NotContains(t, proj.Permissions, string(PermUserManage))
 		// 對照：同一主體另有全域一般使用者指派時，只取得該指派的能力
 		mixed := NewPrincipal(14, human, []Assignment{asg(model.BuiltinSuperAdmin, n, 5), asg(model.BuiltinUser, g)})
@@ -175,4 +203,13 @@ func TestCurrentUserCapabilityProjection(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, first, ProjectCapabilities(p3, ProjectionInputs{}), "撤除後回到原集合，不殘留前次結果")
 	})
+}
+
+func contains(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }

@@ -1,0 +1,66 @@
+/* 節點樹拖曳相關的列樣式（掛在 .asset-node-tree 底下） */
+.asset-node-tree .drag-handle {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0;
+  color: var(--ot-text-secondary);
+  cursor: grab;
+  visibility: hidden;
+}
+
+.asset-node-tree .drag-handle-slot {
+  display: inline-block;
+  width: 12px;
+  margin-right: 0;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.asset-node-tree .drag-handle {
+  flex-shrink: 0;
+}
+
+.asset-node-tree .tree-node-row:hover .drag-handle {
+  visibility: visible;
+}
+
+.asset-node-tree .tree-node-row.is-drag-source {
+  outline: 1px dashed var(--el-color-primary);
+  outline-offset: -1px;
+}
+
+.asset-node-tree .tree-node-row.is-drop-no {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.asset-node-tree .tree-node-row.is-flash {
+  border-radius: 4px;
+  background: var(--el-color-primary-light-8);
+}
+
+.asset-node-tree .moved-tag {
+  margin-left: 2px;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--el-color-success);
+}
+
+.asset-node-tree .move-already-here {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ot-text-secondary);
+}
+
+.asset-node-tree .el-tree-node.is-drop-inner > .el-tree-node__content {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
+  background: var(--el-color-primary-light-9);
+}
+
+/* 深層列的空間很緊：展開圖示的左右內距收小，讓列名與「⋯」都放得下 */
+.asset-node-tree .el-tree-node__expand-icon {
+  padding: 6px 4px;
+}

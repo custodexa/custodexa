@@ -94,6 +94,7 @@
                 </td>
                 <td v-if="canAdjust">
                   <el-button
+                    v-preview-write
                     link
                     type="primary"
                     :data-test="`catalog-adjust-${row.key}`"
@@ -163,6 +164,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="saving"
           data-test="catalog-save"
@@ -183,6 +185,7 @@ import { getSystemAlertTypes, updateSystemAlertSeverity } from '@/api/systemAler
 import { can } from '@/composables/useCapabilities'
 import { resolveApiError } from '@/api/error'
 import { t } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const LEVELS = ['high', 'medium', 'low']
 const TAG_TYPES = { high: 'danger', medium: 'warning', low: 'info' }

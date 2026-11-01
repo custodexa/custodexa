@@ -67,6 +67,7 @@
           </h3>
           <el-button
             v-if="hostKey"
+            v-preview-write
             size="small"
             type="danger"
             link
@@ -148,6 +149,7 @@
               <span class="host-key-algo">{{ row.algorithm }}</span>
               <code class="host-key-fp">{{ row.fingerprint }}</code>
               <el-button
+                v-preview-write
                 size="small"
                 type="warning"
                 link
@@ -191,6 +193,7 @@
         {{ t('common.cancel') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="submitting"
         data-test="drawer-save"
@@ -213,6 +216,7 @@ import { actionDenial, denialText } from '@/utils/scopedAssets'
 import AssetBasicFields from '@/components/asset/AssetBasicFields.vue'
 import AssetAccountRows from '@/components/asset/AssetAccountRows.vue'
 import AssetAdvancedFields from '@/components/asset/AssetAdvancedFields.vue'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const form = defineModel('form', { type: Object, required: true })
 

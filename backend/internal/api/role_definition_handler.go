@@ -24,8 +24,9 @@ type RoleDefinitionReader interface {
 // 讀取不改任何資料、不推進版本；寫入方法（見 role_definition_write_handler.go）只轉呼叫
 // 角色定義服務，是否為超級管理者由服務在交易內裁決。
 type RoleDefinitionHandler struct {
-	reader RoleDefinitionReader
-	writer RoleDefinitionWriter
+	reader    RoleDefinitionReader
+	writer    RoleDefinitionWriter
+	previewer RolePreviewFunc
 }
 
 // NewRoleDefinitionHandler 建立 handler。writer 為 nil 時寫入方法一律以內部錯誤拒絕（fail-close）。
@@ -153,14 +154,15 @@ func (h *RoleDefinitionHandler) DraftSummary(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
-// RegisterRoutes 註冊四條讀取與四條寫入路由。讀取權限由路由登錄表裁決；寫入以登入身分放行，
-// 是否為超級管理者由服務在交易內裁決。
+// RegisterRoutes 註冊五條讀取與四條寫入路由。讀取權限與寫入的超管限定都由路由登錄表先裁決；
+// 服務在交易內另行重驗操作者，為第二道。
 func (h *RoleDefinitionHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/role-definitions")
 	g.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	g.GET("", h.List)
 	g.GET("/descriptors", h.Descriptors)
 	g.GET("/:id", h.Get)
+	g.GET("/:id/preview-capabilities", h.PreviewCapabilities)
 	g.POST("/summary", h.DraftSummary)
 	g.POST("", h.Create)
 	g.POST("/:id/copy", h.Copy)

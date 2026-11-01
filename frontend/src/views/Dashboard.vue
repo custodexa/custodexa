@@ -12,7 +12,7 @@
       </template>
     </PageHeader>
 
-    <UpgradeGuidanceCard />
+    <UpgradeGuidanceCard v-if="!previewActive" />
 
     <el-row :gutter="16">
       <el-col
@@ -45,12 +45,19 @@
           <div class="stat-text">
             <div
               class="stat-value"
-              :class="{ 'stat-value-unavailable': card.status === 'error' }"
+              :class="{ 'stat-value-unavailable': card.status === 'error' || card.selfHidden }"
             >
               {{ card.text }}
             </div>
             <div class="stat-label">
               {{ card.label }}
+            </div>
+            <div
+              v-if="card.selfHidden"
+              class="stat-note"
+              data-test="stat-self-hidden"
+            >
+              {{ $t('rolePreview.selfCannotSee.title') }}
             </div>
           </div>
         </div>
@@ -90,12 +97,19 @@
           <div class="stat-text">
             <div
               class="stat-value"
-              :class="{ 'stat-value-unavailable': card.status === 'error' }"
+              :class="{ 'stat-value-unavailable': card.status === 'error' || card.selfHidden }"
             >
               {{ card.text }}
             </div>
             <div class="stat-label">
               {{ card.label }}
+            </div>
+            <div
+              v-if="card.selfHidden"
+              class="stat-note"
+              data-test="stat-self-hidden"
+            >
+              {{ $t('rolePreview.selfCannotSee.title') }}
             </div>
           </div>
         </div>
@@ -109,7 +123,7 @@
       class="activity-row"
     >
       <el-col
-        v-if="canSeeSessions"
+        v-if="panelSessions"
         :md="activityColSpan"
       >
         <div
@@ -188,7 +202,7 @@
         </div>
       </el-col>
       <el-col
-        v-if="canAuditRead"
+        v-if="panelAudit"
         :md="activityColSpan"
       >
         <div
@@ -238,7 +252,7 @@
     <!-- 每日安全審閱卡（PCI 10.4.1）：只提醒與提供入口，簽核在操作日誌頁的抽屜完成。
          只對 admin／auditor 取數與顯示（狀態端點掛 audit:view） -->
     <DailyReviewCard
-      v-if="canAuditRead && reviewStatus"
+      v-if="panelAudit && reviewStatus"
       :status="reviewStatus"
       :can-open-policies="can('securitypolicy:manage')"
     />
@@ -399,6 +413,7 @@ import { BRAND } from '@/brand'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatRelativeTime, formatBytes } from '@/utils/format'
 import { useCapabilities } from '@/composables/useCapabilities'
+import { useRolePreview } from '@/composables/useRolePreview'
 import { getDashboardCard } from '@/api/dashboard'
 import { getActiveSessions } from '@/api/sessions'
 import { getMyConnections } from '@/api/myConnections'
@@ -416,7 +431,8 @@ import { t } from '@/i18n'
 // - 每張卡、每個面板各依自己的必要能力出現與取數，缺能力時不發請求；
 // - 審核資格以 ui:approvals 為準，admin 不兜底。
 const caps = useCapabilities()
-const { can } = caps
+const { active: previewActive } = useRolePreview()
+const { can, canSelf } = caps
 const showsGlobal = computed(() => can('ui:assets-global'))
 const selfService = computed(() => can('ui:self-service-actions'))
 // 我的連線、我的申請待審：已登入者看自己的資料（authenticated owner/self），
@@ -424,6 +440,10 @@ const selfService = computed(() => can('ui:self-service-actions'))
 const showsMine = computed(() => canEnter(entryMeta('/my-connections')) && canEnter(entryMeta('/my-requests')))
 const canSeeSessions = computed(() => can('session:view'))
 const canAuditRead = computed(() => can('audit:view'))
+// 預覽中資料以本人看得到的為上限：預覽角色有、本人沒有的權限，不發請求，卡片如實說明
+const selfBlocked = (perm) => !!perm && previewActive.value && !canSelf(perm)
+const panelSessions = computed(() => canSeeSessions.value && !selfBlocked('session:view'))
+const panelAudit = computed(() => canAuditRead.value && !selfBlocked('audit:view'))
 
 // 落點是否可進入：與側欄、路由守衛共用同一個入口規則
 const enterable = (path) => canEnter(entryMeta(path))
@@ -447,7 +467,7 @@ const TEAL = 'rgba(127, 214, 214, 0.15)'
 // extraQuery 是落點頁籤等與條件無關的導覽參數，與 filters 分開。
 const CARD_DEFS = [
   {
-    key: 'assets', row: 'stat', path: '/assets', icon: Server, color: 'var(--ot-primary)', bg: 'var(--ot-primary-dim)',
+    key: 'assets', selfPerm: 'asset:view', row: 'stat', path: '/assets', icon: Server, color: 'var(--ot-primary)', bg: 'var(--ot-primary-dim)',
     visible: () => can('asset:view'),
     label: () => (showsGlobal.value ? t('dashboard.statAssetTotal') : t('menu.myAssets')),
   },
@@ -462,47 +482,47 @@ const CARD_DEFS = [
     label: () => t('dashboard.statMyPendingRequests'),
   },
   {
-    key: 'active-sessions', row: 'stat', path: '/sessions', extraQuery: { tab: 'active' }, icon: Cable, color: 'var(--ot-success)', bg: GREEN,
+    key: 'active-sessions', selfPerm: 'session:view', row: 'stat', path: '/sessions', extraQuery: { tab: 'active' }, icon: Cable, color: 'var(--ot-success)', bg: GREEN,
     visible: () => canSeeSessions.value,
     label: () => t('sessions.tabActive'),
   },
   {
-    key: 'today-sessions', row: 'stat', path: '/sessions', extraQuery: { tab: 'history' }, icon: Timer, color: 'var(--ot-warning)', bg: AMBER,
+    key: 'today-sessions', selfPerm: 'session:view', row: 'stat', path: '/sessions', extraQuery: { tab: 'history' }, icon: Timer, color: 'var(--ot-warning)', bg: AMBER,
     visible: () => canSeeSessions.value,
     label: () => t('dashboard.statTodaySessions'),
   },
   {
-    key: 'total-sessions', row: 'stat', path: '/sessions', extraQuery: { tab: 'history' }, icon: FileText, color: 'var(--ot-info)', bg: GREY,
+    key: 'total-sessions', selfPerm: 'session:view', row: 'stat', path: '/sessions', extraQuery: { tab: 'history' }, icon: FileText, color: 'var(--ot-info)', bg: GREY,
     visible: () => canSeeSessions.value,
     label: () => t('dashboard.statTotalSessions'),
   },
   {
-    key: 'today-alerts', row: 'stat', path: '/alerts', icon: Bell, color: 'var(--ot-danger)', bg: RED,
+    key: 'today-alerts', selfPerm: 'audit:view', row: 'stat', path: '/alerts', icon: Bell, color: 'var(--ot-danger)', bg: RED,
     visible: () => canAuditRead.value,
     label: () => t('dashboard.statTodayAlerts'),
   },
   // 錄影佔用：磁碟實際大小（錄影目錄檔案加總），不是可用空間或使用率
   //（系統不掌握磁碟總容量，沒有分母就沒有百分比）。無 path：不存在「錄影儲存」頁，也不輪詢
   {
-    key: 'recording-storage', row: 'stat', path: null, icon: FolderOpen, color: 'var(--ot-info)', bg: GREY,
+    key: 'recording-storage', selfPerm: 'audit:view', row: 'stat', path: null, icon: FolderOpen, color: 'var(--ot-info)', bg: GREY,
     visible: () => canAuditRead.value,
     label: () => t('dashboard.statRecordingStorage'),
     format: (d) => formatBytes(d.value ?? 0),
   },
   {
-    key: 'unreviewed-alerts', row: 'backlog', path: '/alerts', icon: Bell, color: 'var(--ot-danger)', bg: RED,
+    key: 'unreviewed-alerts', selfPerm: 'audit:view', row: 'backlog', path: '/alerts', icon: Bell, color: 'var(--ot-danger)', bg: RED,
     visible: () => canAuditRead.value,
     label: () => t('common.unreviewedAlerts'),
   },
   {
-    key: 'recording-failures', row: 'backlog', path: '/sessions', extraQuery: { tab: 'active' }, icon: Video,
+    key: 'recording-failures', selfPerm: 'session:view', row: 'backlog', path: '/sessions', extraQuery: { tab: 'active' }, icon: Video,
     visible: () => canSeeSessions.value,
     label: () => t('dashboard.backlogRecordingFailures'),
     color: (d) => (d && d.value > 0 ? 'var(--ot-danger)' : 'var(--ot-info)'),
     bg: (d) => (d && d.value > 0 ? RED : TEAL),
   },
   {
-    key: 'last-access-review', row: 'backlog', path: '/access-reviews', icon: ClipboardCheck,
+    key: 'last-access-review', selfPerm: 'audit:view', row: 'backlog', path: '/access-reviews', icon: ClipboardCheck,
     visible: () => canAuditRead.value,
     label: (d) => (d?.overdue ? t('dashboard.backlogLastReviewOverdue') : t('dashboard.backlogLastReview')),
     color: (d) => (d?.overdue ? 'var(--ot-danger)' : 'var(--ot-info)'),
@@ -547,7 +567,7 @@ const cardState = reactive(
 const loadCard = (def) =>
   runSlot(
     `card:${def.key}`,
-    def.visible(),
+    def.visible() && !selfBlocked(def.selfPerm),
     () => getDashboardCard(def.key),
     () => {
       // 重新取數時保留舊值直到新值回來，只切換載入中
@@ -573,16 +593,19 @@ const cardViews = computed(() =>
     const st = cardState[d.key]
     const data = st.data
     let text = '-'
-    if (st.status === 'error') text = t('dashboard.valueUnavailable')
+    const selfHidden = selfBlocked(d.selfPerm)
+    if (selfHidden) text = '-'
+    else if (st.status === 'error') text = t('dashboard.valueUnavailable')
     else if (data) text = d.format ? d.format(data) : (data.value ?? '-')
     const target =
-      d.path && data && canEnter(entryMeta(d.path))
+      d.path && data && !selfHidden && canEnter(entryMeta(d.path))
         ? { path: d.path, query: { ...(data.filters || {}), ...(d.extraQuery || {}) } }
         : null
     return {
       key: d.key,
       row: d.row,
-      status: st.status,
+      status: selfHidden ? 'idle' : st.status,
+      selfHidden,
       text,
       label: d.label(data),
       icon: d.icon,
@@ -603,7 +626,7 @@ const myRecentConnections = ref([])
 const loadActiveSessions = () =>
   runSlot(
     'panel:active-sessions',
-    canSeeSessions.value,
+    panelSessions.value,
     () => getActiveSessions(),
     () => {},
     (sessions) => {
@@ -633,7 +656,7 @@ const loadMyConnections = () =>
 const loadRecentAlerts = () =>
   runSlot(
     'panel:recent-alerts',
-    canAuditRead.value,
+    panelAudit.value,
     () => searchAlerts({ page: 1, page_size: 5 }),
     () => {},
     (res) => {
@@ -646,7 +669,7 @@ const loadRecentAlerts = () =>
   )
 
 const activityPanelCount = computed(
-  () => [canSeeSessions.value, showsMine.value, canAuditRead.value].filter(Boolean).length
+  () => [panelSessions.value, showsMine.value, panelAudit.value].filter(Boolean).length
 )
 const activityColSpan = computed(() => (activityPanelCount.value >= 3 ? 8 : 12))
 
@@ -657,7 +680,7 @@ const reviewStatus = ref(null)
 const loadReviewStatus = () =>
   runSlot(
     'panel:daily-review',
-    canAuditRead.value,
+    panelAudit.value,
     () => getDailyReviewStatus(),
     () => {},
     (res) => {
@@ -683,7 +706,7 @@ const handleRefresh = () => {
 // 能力由後端 /auth/me 取得，可能在掛載之後才就緒（登入即可的入口不等能力）：
 // 就緒當下才取數；能力內容或使用者改變時整批重算（失去能力的卡清空，新取得的補取數）
 watch(
-  () => `${caps.ready.value}|${caps.loadedUserId.value}|${caps.permissions.value.join(',')}`,
+  () => `${caps.ready.value}|${caps.loadedUserId.value}|${caps.permissions.value.join(',')}|${previewActive.value}`,
   () => {
     // 能力不可用（登出、換帳號、載入中）時 visible 皆為否：全部清空並使在途回應作廢
     handleRefresh()
@@ -729,6 +752,12 @@ onMounted(() => {
   font-size: var(--ot-font-size-md);
   color: var(--ot-text-secondary);
   font-weight: 500;
+}
+
+.stat-note {
+  font-size: var(--ot-font-size-xs, 12px);
+  color: var(--ot-text-secondary);
+  margin-top: 2px;
 }
 
 .stat-label {

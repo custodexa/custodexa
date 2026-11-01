@@ -3356,6 +3356,15 @@
    "body_mode": "full"
   },
   {
+   "method": "GET",
+   "path": "/api/v1/role-definitions/:id/preview-capabilities",
+   "params": {
+    "id": "{role.auditor}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
    "method": "POST",
    "path": "/api/v1/role-definitions/summary",
    "body": {

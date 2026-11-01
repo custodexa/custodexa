@@ -1,8 +1,23 @@
 <template>
   <!-- 資產節點樹：左樹導覽＋節點 CRUD＋授權入口。
        惰性載入（點展開才拉子層）；「全部資產」與「未分組」為虛擬項不入庫 -->
-  <div class="asset-node-tree">
-    <div class="tree-header">
+  <div
+    ref="rootRef"
+    class="asset-node-tree"
+    @dragover.capture="drag.onContainerDragOver"
+  >
+    <NodeTreeDragOverlays
+      :hint="drag.dragging.value && dragGateOn"
+      :tip="dragGateOn ? drag.tip.value : null"
+      :row-tip="drag.rowTip.value"
+      :locked="flow.confirm.value.visible && flow.confirm.value.phase === 'moving'"
+      :lock-height="lockHeight"
+      :cover-height="coverHeight"
+    />
+    <div
+      ref="headerRef"
+      class="tree-header"
+    >
       <span
         class="tree-title all-assets"
         :class="{ active: selectedKey === null }"
@@ -16,6 +31,7 @@
       >{{ counts.all }}</span></span>
       <el-button
         v-if="showCreateRoot"
+        v-preview-write:create
         link
         type="primary"
         size="small"
@@ -28,34 +44,65 @@
     </div>
 
     <el-tree
+      ref="treeRef"
       :key="treeKey"
       lazy
       :load="loadChildren"
       :props="treeProps"
       node-key="id"
       highlight-current
+      :indent="12"
       :expand-on-click-node="false"
+      :draggable="dragGateOn"
+      :allow-drag="allowDrag"
+      :allow-drop="allowDrop"
       @node-click="selectNode"
+      @node-drag-start="drag.onDragStart"
+      @node-drag-over="drag.onDragOver"
+      @node-drag-leave="drag.onDragLeave"
+      @node-drag-end="drag.stopDrag"
+      @node-drop="flow.onDrop"
     >
-      <template #default="{ data }">
+      <template #default="{ node, data }">
         <div
           class="tree-node-row"
-          :class="{ 'is-locator': data.locator_only === true }"
-          :title="data.locator_only === true ? $t('nodeTree.locatorAncestor') : undefined"
+          :class="drag.rowClass(data, flashId)"
+          @mouseenter="drag.onRowEnter($event, node, data)"
+          @mouseleave="drag.onRowLeave"
         >
+          <span
+            v-if="canDragNode(data, dragCtx).ok"
+            class="drag-handle"
+            aria-hidden="true"
+            @mouseenter="drag.onHandleEnter($event, node, data)"
+            @mouseleave="drag.onRowLeave"
+          ><GripVertical :size="12" /></span>
+          <span
+            v-else
+            class="drag-handle-slot"
+            aria-hidden="true"
+          />
           <span class="node-label">
             {{ data.name }}
             <span
               v-if="data.scope_root === true"
               class="scope-badge"
             >{{ $t('nodeTree.scopeBadge') }}</span>
-            <span class="node-count">{{ data.subtree_asset_count }}</span>
+            <span
+              v-if="movedTagId !== data.id"
+              class="node-count"
+            >{{ data.subtree_asset_count }}</span>
           </span>
+          <span
+            v-if="movedTagId === data.id"
+            class="moved-tag"
+          >{{ $t('nodeTree.movedTag') }}</span>
           <el-dropdown
             v-if="showMenu(data)"
             trigger="click"
             class="node-menu"
             @command="(cmd) => handleMenu(cmd, data)"
+            @visible-change="drag.onMenuVisible"
           >
             <el-icon
               class="node-menu-trigger"
@@ -65,14 +112,14 @@
             </el-icon>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item
+                <PreviewDropdownItem
                   v-if="itemState(data, 'create-child').visible"
                   command="create-child"
                   :disabled="itemState(data, 'create-child').disabled"
                 >
                   {{ $t('nodeTree.createChild') }}
-                </el-dropdown-item>
-                <el-dropdown-item
+                </PreviewDropdownItem>
+                <PreviewDropdownItem
                   v-if="itemState(data, 'rename').visible"
                   command="rename"
                   :disabled="itemState(data, 'rename').disabled"
@@ -82,8 +129,8 @@
                     v-if="itemState(data, 'rename').reason"
                     class="item-reason"
                   >{{ $t(itemState(data, 'rename').reason) }}</span>
-                </el-dropdown-item>
-                <el-dropdown-item
+                </PreviewDropdownItem>
+                <PreviewDropdownItem
                   v-if="itemState(data, 'move').visible"
                   command="move"
                   :disabled="itemState(data, 'move').disabled"
@@ -93,7 +140,7 @@
                     v-if="itemState(data, 'move').reason"
                     class="item-reason"
                   >{{ $t(itemState(data, 'move').reason) }}</span>
-                </el-dropdown-item>
+                </PreviewDropdownItem>
                 <el-dropdown-item
                   v-if="canAuthorizeNodes"
                   command="authorize"
@@ -105,7 +152,7 @@
                     class="item-reason"
                   >{{ $t('nodeTree.authorizeNodeUnavailable') }}</span>
                 </el-dropdown-item>
-                <el-dropdown-item
+                <PreviewDropdownItem
                   v-if="itemState(data, 'delete').visible"
                   command="delete"
                   :disabled="itemState(data, 'delete').disabled"
@@ -116,7 +163,7 @@
                     v-if="itemState(data, 'delete').reason"
                     class="item-reason"
                   >{{ $t(itemState(data, 'delete').reason) }}</span>
-                </el-dropdown-item>
+                </PreviewDropdownItem>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -206,6 +253,12 @@
             :placeholder="$t('nodeTree.movePlaceholder')"
             style="width: 100%"
           />
+          <div
+            v-if="moveSameParent"
+            class="move-already-here"
+          >
+            {{ $t('nodeTree.moveAlreadyHere', { target: moveParentPath }) }}
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -215,13 +268,29 @@
         <el-button
           type="primary"
           :loading="saving"
-          :disabled="!allowRootMove && !moveParentId"
+          :disabled="(!allowRootMove && !moveParentId) || moveSameParent"
           @click="submitMove"
         >
           {{ $t('common.confirm') }}
         </el-button>
       </template>
     </el-dialog>
+
+    <NodeMoveConfirmDialog
+      :visible="flow.confirm.value.visible"
+      :phase="flow.confirm.value.phase"
+      :node-name="flow.confirm.value.name"
+      :from-path="flow.confirm.value.fromPath"
+      :to-path="flow.confirm.value.toPath"
+      :count="flow.confirm.value.count"
+      :anchor="flow.confirm.value.anchor"
+      :reject-head="flow.confirm.value.head"
+      :reject-reason="flow.confirm.value.reason"
+      :reject-next="flow.confirm.value.next"
+      @confirm="flow.onConfirm"
+      @cancel="flow.onCancel"
+      @ack="flow.onAck"
+    />
 
     <NodeDeleteBlockedDialog
       v-model="blockedVisible"
@@ -233,18 +302,30 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import PreviewDropdownItem from '@/components/PreviewDropdownItem.vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Ellipsis } from 'lucide-vue-next'
+import { Plus, Ellipsis, GripVertical } from 'lucide-vue-next'
+import '@/components/node-tree-drag.css'
 import { t } from '@/i18n'
 import { can } from '@/composables/useCapabilities'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 import {
   hasRowFlags,
   hasAnyAction,
   scopedActionStates,
-  filterMoveCandidates,
 } from '@/composables/useNodeTreeScope'
+import {
+  buildMoveOptions,
+  canDragNode,
+  dropVerdict,
+} from '@/composables/useNodeTreeDrag'
+import { useNodeTreeMove, useFlash } from '@/composables/useNodeTreeMove'
+import { useNodeTreeDragUi } from '@/composables/useNodeTreeDragUi'
+import { useNodeTreeMoveFlow } from '@/composables/useNodeTreeMoveFlow'
 import NodeDeleteBlockedDialog from '@/components/NodeDeleteBlockedDialog.vue'
+import NodeMoveConfirmDialog from '@/components/NodeMoveConfirmDialog.vue'
+import NodeTreeDragOverlays from '@/components/NodeTreeDragOverlays.vue'
 import { getAuthorizationTargetOptions } from '@/api/authorizations'
 import { isSelectableNode, loadSelector } from '@/utils/authzSelectors'
 import {
@@ -253,9 +334,13 @@ import {
   getAssetGroups,
   createAssetGroup,
   updateAssetGroup,
-  moveAssetGroup,
   deleteAssetGroup,
 } from '@/api/assets'
+
+const props = defineProps({
+  // 承載頁停用節點拖拉（例如角色預覽中）；「⋯」選單與搬移對話框不受影響
+  nodeDragDisabled: { type: Boolean, default: false },
+})
 
 // 節點操作依各自的後端能力顯示（不以單一「可管理」包住全部動作）：
 // 新增／改名／移動／刪除節點＝assetgroup:manage；跳去授權頁＝authorization:manage
@@ -305,18 +390,42 @@ const treeProps = {
   isLeaf: (data) => !data.has_children,
 }
 
-const loadChildren = async (node, resolve) => {
+const treeRef = ref(null)
+const rootRef = ref(null)
+const lockHeight = ref(0)
+const headerRef = ref(null)
+// 標題列（含下方間距）的高度：樹頂提示與鎖定條要完整蓋住它
+const coverHeight = ref(0)
+const measureCover = () => {
+  const el = headerRef.value
+  if (el) coverHeight.value = el.offsetHeight + (parseFloat(getComputedStyle(el).marginBottom) || 0)
+}
+let rootWaiter = null
+let moveApi = null
+
+// 子層載入失敗時呼叫元件庫的 reject：節點保持未載入、可再展開重試；根層沒有箭頭可重試，沿用空子層
+const loadChildren = async (node, resolve, reject) => {
+  const isRoot = node.level === 0
   try {
-    const parentId = node.level === 0 ? null : node.data.id
-    const res = await getAssetNodeTree(parentId)
+    const parentId = isRoot ? null : node.data.id
+    const quiet = !isRoot && moveApi?.isAwaited(node.data.id)
+    const res = quiet ? await getAssetNodeTree(parentId, { skipErrorToast: true }) : await getAssetNodeTree(parentId)
     // 根層回應的頂層欄位（can_create_root）要留下，不能只取 res.data
-    if (node.level === 0) {
+    if (isRoot) {
       rootCanCreate.value = typeof res.can_create_root === 'boolean' ? res.can_create_root : null
     }
     resolve(res.data || [])
+    if (!isRoot) moveApi?.settleLoad(node.data.id, true)
   } catch (error) {
     console.error('載入節點樹失敗:', error)
-    resolve([])
+    if (isRoot || typeof reject !== 'function') resolve([])
+    else reject()
+    if (!isRoot) moveApi?.settleLoad(node.data.id, false)
+  } finally {
+    if (isRoot && rootWaiter) {
+      rootWaiter()
+      rootWaiter = null
+    }
   }
 }
 
@@ -348,7 +457,88 @@ const reloadTree = () => {
   loadCounts()
   loadAuthorizableNodes()
 }
-defineExpose({ reloadTree })
+// 整樹重載並等根層載入結束（定位用）
+const reloadTreeAndWait = () => {
+  const done = new Promise((resolve) => {
+    rootWaiter = resolve
+  })
+  reloadTree()
+  return done
+}
+// 外部（預覽範圍選擇器）選定節點時只同步左樹的選中樣式，不再發出 select
+// 外部指定選取（預覽範圍）：標亮節點，並依 chain（由根到父的 id）逐層展開到它
+const highlight = async (data, chain = []) => {
+  const none = data === null || data === undefined
+  selectedKey.value = none ? null : data === 'ungrouped' ? 'ungrouped' : data.id
+  const tree = treeRef.value
+  if (!tree) return
+  if (none || data === 'ungrouped') {
+    tree.setCurrentKey(null)
+    return
+  }
+  try {
+    for (const cid of chain) await move.ensureExpanded(cid)
+  } catch {
+    // 祖先載入失敗：仍標亮能找到的部分
+  }
+  if (selectedKey.value !== data.id || !tree.getNode(data.id)) return
+  tree.setCurrentKey(data.id)
+  await nextTick()
+  rootRef.value?.querySelector?.('.el-tree-node.is-current')?.scrollIntoView?.({ block: 'nearest' })
+}
+
+defineExpose({ reloadTree, highlight })
+
+const { flashId, movedTagId, flash } = useFlash(rootRef)
+
+// 拖曳：能不能拖／放、列呈現、放下後的流程
+const dragGateOn = computed(() => !props.nodeDragDisabled && canManageNodes.value)
+const dragCtx = computed(() => ({
+  dragGateOn: dragGateOn.value,
+  canManageNodes: canManageNodes.value,
+  busy: busy.value,
+}))
+const allowDrag = (n) => canDragNode(n.data, dragCtx.value).ok
+const allowDrop = (d, n, type) => type === 'inner' && dropVerdict(d, n, dragCtx.value).ok
+const move = useNodeTreeMove({ treeRef, selectedKey, emit, flash, loadCounts, loadAuthorizableNodes })
+moveApi = move
+const drag = useNodeTreeDragUi({
+  treeRef,
+  rootRef,
+  selectedKey,
+  ctx: dragCtx,
+  ensureExpanded: move.ensureExpanded,
+})
+const flow = useNodeTreeMoveFlow({
+  treeRef,
+  rootRef,
+  selectedKey,
+  dragInfo: drag.dragInfo,
+  move,
+  flash,
+  selectAll: () => selectAll(),
+  reloadTreeAndWait,
+})
+const busy = computed(() => flow.busy.value)
+watch(
+  () => flow.confirm.value.phase === 'moving',
+  (on) => {
+    if (on) lockHeight.value = rootRef.value?.clientHeight || 0
+  }
+)
+watch(() => [drag.dragging.value, flow.confirm.value.phase === 'moving'], ([a, b]) => {
+  if (a || b) measureCover()
+})
+// 停用拖曳：確認中比照取消；已送出者照常完成回應
+watch(
+  () => props.nodeDragDisabled,
+  (off) => {
+    if (!off) return
+    drag.stopDrag()
+    flow.onCancel()
+  }
+)
+
 
 const selectAll = () => {
   selectedKey.value = null
@@ -425,76 +615,44 @@ const submitEdit = async () => {
   }
 }
 
-// 搬移：目標樹選項用平面列表組裝，排除自身與整個子樹（子孫是必定
-// 失敗的環路目標，不該出現在選項；後端環路檢查仍為硬擋兜底）
+// 搬移對話框：目標樹選項用平面列表組裝，排除自身與整個子樹（後端環路檢查仍為硬擋兜底）
 const moveVisible = ref(false)
 const moveTarget = ref(null)
 const moveParentId = ref(null)
 const moveOptions = ref([])
+const moveFlat = ref([])
 
-const buildMoveOptions = (all, excludeId) => {
-  // 結構性走訪（避環路用）以完整平面列表進行；候選再依旗標收斂，不以祖先推算授權
-  const flat = all
-  // 先收集 excludeId 的全部子孫
-  const childrenOf = new Map()
-  flat.forEach((n) => {
-    if (n.parent_id != null) {
-      if (!childrenOf.has(n.parent_id)) childrenOf.set(n.parent_id, [])
-      childrenOf.get(n.parent_id).push(n.id)
-    }
-  })
-  const excluded = new Set([excludeId])
-  const queue = [excludeId]
-  while (queue.length) {
-    const cur = queue.shift()
-    for (const child of childrenOf.get(cur) || []) {
-      if (!excluded.has(child)) {
-        excluded.add(child)
-        queue.push(child)
-      }
-    }
-  }
-
-  const byId = new Map()
-  filterMoveCandidates(flat).forEach((n) => {
-    if (!excluded.has(n.id)) byId.set(n.id, { id: n.id, name: n.path || n.name, parent_id: n.parent_id, children: [] })
-  })
-  const roots = []
-  byId.forEach((n) => {
-    if (n.parent_id && byId.has(n.parent_id)) {
-      byId.get(n.parent_id).children.push(n)
-    } else {
-      roots.push(n)
-    }
-  })
-  return roots
-}
+// 選的目的與目前父節點相同：不送出，改顯示提示
+const moveSameParent = computed(
+  () => !!moveTarget.value && (moveParentId.value || null) === (moveTarget.value.parent_id || null)
+)
+const moveParentPath = computed(() => {
+  const pid = moveTarget.value?.parent_id
+  const row = pid ? moveFlat.value.find((n) => n.id === pid) : null
+  return row ? row.path || row.name : t('nodeTree.allAssets')
+})
 
 const openMove = async (node) => {
   moveTarget.value = node
   moveParentId.value = node.parent_id || null
   try {
     const res = await getAssetGroups()
-    moveOptions.value = buildMoveOptions(res.data || [], node.id)
+    moveFlat.value = res.data || []
+    moveOptions.value = buildMoveOptions(moveFlat.value, node.id)
     moveVisible.value = true
   } catch (error) {
     console.error('載入節點失敗:', error)
   }
 }
 
+// 對話框送出：成功與拖曳共用同一套樹更新
 const submitMove = async () => {
   saving.value = true
   try {
-    await moveAssetGroup(moveTarget.value.id, moveParentId.value || null)
-    ElMessage.success(t('nodeTree.moved'))
-    moveVisible.value = false
-    // 搬移的是目前選中節點時，路徑已變——回「全部資產」避免過期過濾語境
-    if (selectedKey.value === moveTarget.value.id) {
-      selectAll()
-    }
-    reloadTree()
+    const ok = await flow.submitDialogMove(moveTarget.value.id, moveParentId.value || null, moveFlat.value)
+    if (ok) moveVisible.value = false
   } catch (error) {
-    console.error('搬移失敗:', error)
+    console.error('搬移後核對失敗:', error)
   } finally {
     saving.value = false
   }
@@ -560,107 +718,4 @@ const handleMenu = (cmd, data) => {
 }
 </script>
 
-<style scoped>
-.asset-node-tree {
-  width: 240px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--ot-border-subtle);
-  padding-right: var(--ot-space-sm);
-  overflow-y: auto;
-}
-
-.tree-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--ot-space-xs);
-}
-
-.all-assets {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--ot-text-primary);
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-
-.all-assets.active,
-.ungrouped-item.active {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-}
-
-.tree-node-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: 1;
-  min-width: 0;
-  padding-right: 4px;
-}
-
-.node-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tree-node-row.is-locator .node-label {
-  color: var(--ot-text-secondary);
-  font-style: italic;
-}
-
-.scope-badge {
-  margin-left: 4px;
-  padding: 0 4px;
-  border-radius: 3px;
-  font-size: 11px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
-
-.item-reason {
-  display: block;
-  font-size: 11px;
-  color: var(--ot-text-secondary);
-}
-
-.node-count {
-  color: var(--ot-text-secondary);
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.node-menu-trigger {
-  visibility: hidden;
-  cursor: pointer;
-  color: var(--ot-text-secondary);
-}
-
-.tree-node-row:hover .node-menu-trigger {
-  visibility: visible;
-}
-
-.tree-section {
-  margin-top: var(--ot-space-sm);
-  padding-top: var(--ot-space-xs);
-  border-top: 1px solid var(--ot-border-subtle);
-}
-
-.tree-section-title {
-  font-size: 12px;
-  color: var(--ot-text-secondary);
-  padding: 2px 8px;
-}
-
-.ungrouped-item {
-  cursor: pointer;
-  padding: 6px 8px;
-  color: var(--ot-text-primary);
-  border-radius: 4px;
-}
-
-.ungrouped-item:hover {
-  background: var(--el-fill-color-light);
-}
-</style>
+<style scoped src="./asset-node-tree.css"></style>

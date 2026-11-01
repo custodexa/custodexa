@@ -11,6 +11,112 @@
       :description="headerDesc"
     >
       <template #actions>
+        <span
+          ref="previewWrapRef"
+          class="preview-as-wrap"
+          data-test="preview-as-wrap"
+          @mouseenter="nestedTipHover = true"
+          @mouseleave="nestedTipHover = false"
+          @focusin="nestedTipHover = true"
+          @focusout="nestedTipHover = false"
+        >
+          <el-button
+            v-if="!isNew"
+            :disabled="previewActive"
+            :aria-describedby="previewActive ? 'preview-as-nested-tip' : undefined"
+            data-test="preview-as-button"
+            @click="onPreviewClick"
+          >
+            <Eye
+              class="preview-as-icon"
+              :size="14"
+              aria-hidden="true"
+            />
+            {{ $t('rolePreview.button') }}
+          </el-button>
+          <div
+            v-if="previewActive && nestedTipHover"
+            id="preview-as-nested-tip"
+            v-clamp-viewport
+            class="preview-as-card"
+            role="tooltip"
+            data-test="preview-as-nested-tip"
+          >
+            {{ $t('rolePreview.disabledNested') }}
+          </div>
+          <div
+            v-if="superAdminOpen"
+            v-clamp-viewport
+            class="preview-as-card"
+            role="dialog"
+            :aria-label="$t('rolePreview.button')"
+            data-test="preview-as-superadmin-popover"
+            @keydown.esc="superAdminOpen = false"
+          >
+            <p class="preview-as-text">
+              {{ $t('rolePreview.superAdmin') }}
+            </p>
+            <div class="preview-as-actions">
+              <el-button
+                type="primary"
+                size="small"
+                data-test="preview-as-superadmin-ok"
+                @click="superAdminOpen = false"
+              >
+                {{ $t('common.confirm') }}
+              </el-button>
+            </div>
+          </div>
+          <div
+            v-if="unsavedOpen"
+            v-clamp-viewport
+            class="preview-as-card"
+            role="dialog"
+            :aria-label="$t('rolePreview.unsaved.title')"
+            data-test="preview-as-unsaved-popover"
+            @keydown.esc.stop="closeUnsaved"
+          >
+            <p class="preview-as-title">
+              {{ $t('rolePreview.unsaved.title') }}
+            </p>
+            <p class="preview-as-text">
+              {{ $t('rolePreview.unsaved.body') }}
+            </p>
+            <div class="preview-as-actions">
+              <el-button
+                type="danger"
+                plain
+                size="small"
+                data-test="preview-as-unsaved-discard"
+                @click="startPreview"
+              >
+                <Trash2
+                  class="preview-as-icon"
+                  :size="14"
+                  aria-hidden="true"
+                />
+                {{ $t('rolePreview.unsaved.discard') }}
+              </el-button>
+              <el-button
+                type="primary"
+                size="small"
+                data-test="preview-as-unsaved-back"
+                @click="closeUnsaved"
+              >
+                {{ $t('rolePreview.unsaved.back') }}
+              </el-button>
+            </div>
+          </div>
+          <div
+            v-if="exitedTip"
+            v-clamp-viewport
+            class="preview-as-card preview-as-exited"
+            role="status"
+            data-test="preview-as-exited-tip"
+          >
+            {{ exitedTip }}
+          </div>
+        </span>
         <el-button
           data-test="editor-cancel"
           @click="goList"
@@ -19,6 +125,7 @@
         </el-button>
         <el-button
           v-if="!readonly"
+          v-preview-write
           type="primary"
           :disabled="!canSave"
           :loading="saving"
@@ -118,6 +225,14 @@
       :closable="false"
       :title="nodeScopedNotice.text"
       :data-test="nodeScopedNotice.test"
+    />
+
+    <el-alert
+      v-if="hasRetiredKeys"
+      type="info"
+      :closable="false"
+      :title="$t('roles.editor.retiredKeyNotice')"
+      data-test="editor-retired-notice"
     />
 
     <div class="editor-grid">
@@ -478,7 +593,8 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Eye, Trash2 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -487,6 +603,16 @@ import DangerComboConfirm from '@/components/DangerComboConfirm.vue'
 import { t, te } from '@/i18n'
 import { roleLabel } from '@/constants/roles'
 import { useAssignmentPreview } from '@/composables/useAssignmentPreview'
+import {
+  applyPreviewResponse,
+  beginPreviewRequest,
+  exitedNotice,
+  invalidatePreviewRequests,
+  isPreviewRequestCurrent,
+} from '@/composables/useRolePreview'
+import { previewOverlay } from '@/utils/previewOverlay'
+import { vClampViewport } from '@/directives/clampViewport'
+import { resolveApiError } from '@/api/error'
 import { collectNewCombos, needsDangerConfirm } from '@/utils/dangerCombo'
 import { entryStateOf, readViaActive, applyEntryState, distinctDetailCount, sharedKeyDetailOf } from '@/views/role-editor/entryState'
 import {
@@ -498,7 +624,9 @@ import {
   updateRoleDefinition,
   roleErrorCode,
   ROLE_ERROR_CONFLICT,
+  getRolePreviewCapabilities,
 } from '@/api/roleDefinitions'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const route = useRoute()
 const router = useRouter()
@@ -522,6 +650,9 @@ const conflictStay = ref(false)
 const openDetails = ref({})
 
 const locked = computed(() => !isNew.value && detail.value?.locked === true)
+const hasRetiredKeys = computed(
+  () => !isNew.value && Array.isArray(detail.value?.retired_permissions) && detail.value.retired_permissions.length > 0,
+)
 const readonly = computed(() => locked.value || !canDefine.value)
 const canSave = computed(() => !readonly.value && !conflict.value && !saving.value && draftName.value.trim() !== '' && loadedReady.value)
 
@@ -634,7 +765,18 @@ const draftNoEffect = ref(null)
 const summaryFailed = ref(false)
 const blocked = ref([])
 let summarySeq = 0
+// 鎖定的內建角色不可編輯、不需試算：直接用單筆讀取回應帶的摘要欄位
+const applyStoredSummary = () => {
+  const d = detail.value || {}
+  summary.value = d.summary || null
+  blocked.value = d.blocked_screens || []
+  summaryFailed.value = false
+}
 const refreshSummary = async () => {
+  if (locked.value) {
+    applyStoredSummary()
+    return
+  }
   const mine = ++summarySeq
   try {
     const res = await summarizeRoleDraft(permsArray())
@@ -812,6 +954,92 @@ const confirmSave = async () => {
 
 const goList = () => router.push('/roles')
 
+// 以此角色預覽：按下一次呼叫一次端點；回應是否生效由 applyPreviewResponse 決定
+// （登出、換帳號、離開此畫面、再次按下之後，舊回應丟棄，不導航也不出現說明）
+const previewActive = computed(() => previewOverlay.value !== null)
+const nestedTipHover = ref(false)
+const superAdminOpen = ref(false)
+const unsavedOpen = ref(false)
+const previewWrapRef = ref(null)
+const exitedTip = ref('')
+let exitedTimer = null
+
+const isDirty = computed(() => {
+  if (isNew.value || !detail.value || !loadedReady.value) return false
+  if (draftName.value !== (detail.value.name || '')) return true
+  if (draftDescription.value !== (detail.value.description || '')) return true
+  const saved = new Set(detail.value.permissions || [])
+  if (saved.size !== perms.value.size) return true
+  for (const p of perms.value) if (!saved.has(p)) return true
+  return false
+})
+
+// 未儲存彈出框：開啟時焦點進「返回編輯」；Esc 與「返回編輯」都關閉並把焦點還給按鈕
+const focusInWrap = (selector) => previewWrapRef.value?.querySelector(selector)?.focus?.()
+watch(unsavedOpen, async (open) => {
+  if (!open) return
+  await nextTick()
+  focusInWrap('[data-test="preview-as-unsaved-back"]')
+})
+const closeUnsaved = () => {
+  unsavedOpen.value = false
+  nextTick(() => focusInWrap('[data-test="preview-as-button"]'))
+}
+
+const closePreviewPopovers = () => {
+  superAdminOpen.value = false
+  unsavedOpen.value = false
+}
+
+const startPreview = async () => {
+  closePreviewPopovers()
+  const token = beginPreviewRequest()
+  let res
+  try {
+    res = await getRolePreviewCapabilities(roleId.value, { skipErrorToast: true })
+  } catch (error) {
+    if (isPreviewRequestCurrent(token)) {
+      ElMessage.error(resolveApiError(error?.response?.data, error?.response?.status))
+    }
+    return
+  }
+  const applied = applyPreviewResponse(token, res)
+  if (applied === false) return
+  if (!applied.entered) {
+    superAdminOpen.value = true
+    return
+  }
+  router.push('/dashboard')
+}
+
+const onPreviewClick = () => {
+  if (previewActive.value || isNew.value) return
+  closePreviewPopovers()
+  if (isDirty.value) {
+    unsavedOpen.value = true
+    return
+  }
+  startPreview()
+}
+
+const showExitedTip = () => {
+  const notice = exitedNotice.value
+  if (!notice || notice.roleId !== roleId.value) return
+  exitedTip.value = t('rolePreview.exited', { name: notice.roleName })
+  exitedNotice.value = null
+  clearTimeout(exitedTimer)
+  exitedTimer = setTimeout(() => {
+    exitedTip.value = ''
+  }, 3000)
+}
+
+// 同一個元件實例改開另一個角色時，前一個角色發出的預覽請求一併作廢
+watch(roleId, () => {
+  invalidatePreviewRequests()
+  closePreviewPopovers()
+  exitedTip.value = ''
+})
+
 // 載入
 const applyDetail = (d, { keepName = false } = {}) => {
   perms.value = new Set(d.permissions || [])
@@ -862,11 +1090,54 @@ const loadAll = async () => {
 }
 const reloadLatest = () => loadAll()
 
-onMounted(loadAll)
-onBeforeUnmount(clearDetailSubject)
+onMounted(() => {
+  showExitedTip()
+  loadAll()
+})
+onBeforeUnmount(() => {
+  clearDetailSubject()
+  invalidatePreviewRequests()
+  clearTimeout(exitedTimer)
+})
 </script>
 
 <style scoped>
+.preview-as-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.preview-as-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 320px;
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  background-color: var(--ot-bg-surface);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-lg);
+  box-shadow: var(--ot-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.12));
+  font-size: var(--ot-font-size-sm);
+  line-height: 1.6;
+  color: var(--ot-text-primary);
+}
+.preview-as-icon {
+  margin-right: 6px;
+}
+.preview-as-title {
+  margin: 0 0 var(--ot-space-xs);
+  font-weight: 600;
+}
+.preview-as-text {
+  margin: 0;
+}
+.preview-as-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ot-space-sm);
+  margin-top: var(--ot-space-sm);
+}
 .crumbs {
   margin-bottom: var(--ot-space-sm);
   font-size: var(--ot-font-size-sm);

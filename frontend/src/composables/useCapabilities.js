@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { getCurrentUser } from '@/api/auth'
 import { onSessionEnded } from '@/utils/session'
+import { previewOverlay, clearPreviewOverlay } from '@/utils/previewOverlay'
 
 // 與 Array.prototype.sort 預設相同的 UTF-16 碼元序，明示寫出
 const byCodeUnit = (a, b) => {
@@ -31,9 +32,29 @@ const loadedUserId = ref(null)
 let generation = 0
 let inflight = null
 
-/** 目前使用者是否持有該權限點（完整鍵比對）。 */
+/**
+ * 目前使用者是否持有該權限點（完整鍵比對）。
+ * 以此角色預覽期間只對預覽覆蓋的權限集合判斷（守衛、側欄與各頁呈現因此一次跟隨）；
+ * 本人集合 `permissionSet` 不被覆蓋、不被併入，離開預覽即回到本人。
+ */
 export function can(perm) {
+  if (typeof perm !== 'string' || perm === '') return false
+  const overlay = previewOverlay.value
+  if (overlay) return overlay.permissions.has(perm)
+  return permissionSet.value instanceof Set && permissionSet.value.has(perm)
+}
+
+/**
+ * 操作者本人是否持有該權限點，不受預覽覆蓋影響。
+ * 只供預覽中「這裡的資料你本人看不到」說明與對應的請求閘使用（資產頁、工作區、儀表板），其他頁不得引用。
+ */
+export function canSelf(perm) {
   return typeof perm === 'string' && perm !== '' && permissionSet.value instanceof Set && permissionSet.value.has(perm)
+}
+
+/** 目前會話世代；預覽請求綁定它，登出或換帳號後遞增。 */
+export function getCapabilityGeneration() {
+  return generation
 }
 
 /** 全部都持有才為真；空清單視為無需求的呼叫錯誤，一律為否（fail-closed）。 */
@@ -101,6 +122,7 @@ export function loadCapabilities({ force = false } = {}) {
 /** 清空能力並使在途回應作廢（登出、切換帳號、續期終敗）。 */
 export function resetCapabilities() {
   generation += 1
+  clearPreviewOverlay()
   inflight = null
   permissionSet.value = null
   scopeSummary.value = []
@@ -125,6 +147,7 @@ export function useCapabilities() {
   return {
     can,
     canAll,
+    canSelf,
     status,
     ready: computed(() => status.value === 'ready'),
     failed: computed(() => status.value === 'error'),

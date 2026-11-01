@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write:create
           type="primary"
           @click="handleCreate"
         >
@@ -165,6 +166,7 @@
                   <el-space :size="6">
                     <el-switch
                       v-model="row.inactivity_exempt"
+                      v-preview-write
                       :loading="row._exemptLoading"
                       :aria-label="$t('users.toggleExemptAria', { name: row.username })"
                       @change="handleExemptChange(row)"
@@ -345,6 +347,7 @@
             >
               <el-switch
                 v-model="row.active"
+                v-preview-write
                 :loading="row._statusLoading"
                 :aria-label="$t('users.toggleActiveAria', { name: row.username })"
                 @change="handleStatusChange(row)"
@@ -435,6 +438,7 @@
           >
             <template #action>
               <el-button
+                v-preview-write:create
                 type="primary"
                 size="small"
                 @click="handleCreate"
@@ -519,6 +523,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-preview-write
               type="danger"
               size="small"
               link
@@ -600,6 +605,7 @@ import {
   getApproverScopes,
   deleteApproverScope,
 } from '@/api/accessRequests'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 元件層日誌一律走白名單摘要：本頁的請求本文含明文密碼
 // 與 Email，把 AxiosError 原樣寫進 console 等同於在 DevTools 與集中日誌外洩

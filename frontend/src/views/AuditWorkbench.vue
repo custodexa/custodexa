@@ -37,6 +37,7 @@
              藏進對話框內的 radio 等於要使用者先按了才知道有另一種。
              兩顆開同一個對話框、各自預選對應包型，radio 仍可切 -->
         <el-button
+          v-preview-write
           type="primary"
           plain
           :disabled="!canExport"
@@ -48,6 +49,7 @@
           {{ $t('auditorWorkbench.export.buttonReport') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           plain
           :disabled="!canExport"
@@ -374,6 +376,7 @@ import {
   sameQuery,
   shortcutRange,
 } from '@/components/audit/timelineQuery'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 稽核調查工作台（auditor-workbench）。
 //

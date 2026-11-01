@@ -6,6 +6,7 @@
     <div class="list-card">
       <div class="toolbar">
         <el-button
+          v-preview-write:create
           type="primary"
           @click="openChannelDialog()"
         >
@@ -87,6 +88,7 @@
         >
           <template #default="{ row }">
             <el-switch
+              v-preview-write
               :model-value="row.enabled"
               :aria-label="$t('alerts.channelEnabledToggle', { name: row.name })"
               @change="(val) => handleChannelToggle(row, val)"
@@ -100,6 +102,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-preview-write
               size="small"
               link
               type="primary"
@@ -108,6 +111,7 @@
               {{ $t('alerts.testSend') }}
             </el-button>
             <el-button
+              v-preview-write
               size="small"
               link
               type="primary"
@@ -116,6 +120,7 @@
               {{ $t('common.edit') }}
             </el-button>
             <el-button
+              v-preview-write
               size="small"
               link
               type="danger"
@@ -328,6 +333,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="channelSaving"
           @click="handleSaveChannel"
@@ -360,6 +366,7 @@ import {
   CHANNEL_MIN_SEVERITY_VALUES,
   CHANNEL_MIN_SEVERITY_DEFAULT,
 } from '@/constants/notification-channels'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 通道推送門檻：缺值（後端尚未回此欄）視同預設「全部告警」；未知值原樣顯示
 const channelMinSeverityLabel = (level) => {

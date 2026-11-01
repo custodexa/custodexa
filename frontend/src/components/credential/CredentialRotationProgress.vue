@@ -54,6 +54,7 @@
     <div class="progress-actions">
       <el-button
         v-if="canRotate && retryableMembers.length"
+        v-preview-write
         type="primary"
         :loading="retrying"
         data-test="retry-failed"
@@ -63,6 +64,7 @@
       </el-button>
       <el-button
         v-if="canRotate && isRunning"
+        v-preview-write
         type="danger"
         plain
         :loading="abandoning"
@@ -140,6 +142,7 @@
           <span class="member-action">
             <el-button
               v-if="canRotate && canRetry(member)"
+              v-preview-write
               link
               type="primary"
               :data-test="`member-retry-${member.id}`"
@@ -228,6 +231,7 @@ import {
   RUNNING_RUNNABLE_MEMBER_STATES,
   unsettledMemberRetryable,
 } from '@/constants/credentials'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const POLL_INTERVAL_MS = 5000
 

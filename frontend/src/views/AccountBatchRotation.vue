@@ -12,6 +12,7 @@
           {{ $t('common.refresh') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :disabled="!selectedCount"
           data-test="open-batch"
@@ -178,6 +179,7 @@
               <span class="spacer" />
               <el-button
                 v-if="eligible(row)"
+                v-preview-write
                 link
                 size="small"
                 type="warning"
@@ -484,6 +486,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           :disabled="!selectedCount || missingCredentialName || missingOwnership"
@@ -513,6 +516,7 @@ import {
   getChangeSecretBatches,
   getChangeSecretBatch,
 } from '@/api/changeSecretBatches'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 以帳號名為軸的處置看板：選帳號名 → 看見持有它的全部資產依狀態分欄 →
 // 勾選目標整批改密。狀態桶與標記取自輪替證據的同一份資料集，

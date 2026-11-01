@@ -124,6 +124,7 @@
             {{ t('agentPrincipals.inactiveHelp') }}
           </p>
           <el-button
+            v-preview-write:create
             type="primary"
             :disabled="cannotIssue || loading || listFailed"
             :loading="busy"
@@ -177,6 +178,7 @@
           </dl>
           <el-button
             v-if="!token.revoked_at && revokeId !== token.id"
+            v-preview-write
             :disabled="busy"
             type="danger"
             plain
@@ -204,6 +206,7 @@
               >
                 {{ t('common.cancel') }}
               </el-button><el-button
+                v-preview-write
                 type="danger"
                 :loading="busy"
                 data-test="revoke-confirm-submit"
@@ -235,6 +238,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import StatBlock from '@/components/StatBlock.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import PrincipalBadge from './PrincipalBadge.vue'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 // focusIssue：由「發新的」這類直達入口開啟時，游標直接落在發證表單的名稱欄，
 // 開抽屜與開始填表算同一步
 const props = defineProps({ modelValue: Boolean, principal: { type: Object, default: () => ({}) }, ownerName: { type: String, default: '' }, focusIssue: Boolean })

@@ -48,7 +48,7 @@ func roleDefinitionRefChecks() []authz.RefCheck {
 	reserved := []string{}
 	for _, k := range authz.CatalogKeys() {
 		keys = append(keys, string(k))
-		if !authz.IsAssignable(k) {
+		if !authz.IsAssignable(k) && !authz.IsRetiredAssignable(k) {
 			reserved = append(reserved, string(k))
 		}
 	}

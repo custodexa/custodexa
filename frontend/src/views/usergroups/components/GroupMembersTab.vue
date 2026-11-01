@@ -71,6 +71,7 @@
         </div>
         <div class="actions">
           <el-button
+            v-preview-write
             type="primary"
             :disabled="!dirty"
             :loading="saving"
@@ -107,6 +108,7 @@ import { roleLabel } from '@/constants/roles'
 import { apiErrorSummary } from '@/api/redact'
 import DangerComboConfirm from '@/components/DangerComboConfirm.vue'
 import { managementRoleNames } from '../groupProtection'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 群組詳情的成員分頁：成員與加入方式、穿梭框維護（只改手動成員）、儲存前預覽與確認。

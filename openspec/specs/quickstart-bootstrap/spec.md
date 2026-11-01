@@ -18,6 +18,9 @@ deployment-configuration）的消費者：生成值必須通過既有 fail-close
 （`openssl rand -hex 32`）、`JWT_SECRET` ≥ 32 bytes、`ADMIN_INITIAL_PASSWORD` 為
 ≥ 12 字元英數且同時含字母與數字、無前後空白、非 denylist 值。
 `.env` 不存在時 SHALL 先自 `.env.example` 建立；範本也不存在時 SHALL 以明確錯誤失敗。
+開發版形態（`.env` 的 `COMPOSE_FILE` 為 `docker-compose.dev.yml`）另 SHALL 檢查開發用 Vault 測試靶機的
+初始化 token `VAULT_DEV_ROOT_TOKEN_ID`：值為空即以 CSPRNG 生成 32 字元英數值並回報已生成，SHALL NOT 回顯該值；
+已有值 SHALL 原樣沿用。非開發版形態 SHALL NOT 新增、生成或改寫這個鍵：原先沒有此鍵（或只有註解行）時維持沒有未註解的行，使兩種部署方式在正式形態產生的鍵集合一致；原先已有未註解的值時（例如由開發版切回正式形態）SHALL 原樣保留，SHALL NOT 刪除或註解掉。
 
 #### Scenario: 全新環境一鍵補齊
 - **WHEN** 目錄內無 `.env`，執行 `bash scripts/quickstart.sh`
@@ -27,6 +30,19 @@ deployment-configuration）的消費者：生成值必須通過既有 fail-close
 #### Scenario: 使用者已設定的值不被覆蓋
 - **WHEN** `.env` 內 `ADMIN_INITIAL_PASSWORD` 已是非範本值，執行腳本
 - **THEN** 該值原樣保留，回報「已設定，未動」
+
+#### Scenario: 開發版補上 Vault 初始化 token
+- **WHEN** `.env` 已取消 `COMPOSE_FILE=docker-compose.dev.yml` 註解且 `VAULT_DEV_ROOT_TOKEN_ID` 為空，執行腳本
+- **THEN** `.env` 出現未註解的 `VAULT_DEV_ROOT_TOKEN_ID=` 行，值為 32 字元英數；輸出回報已生成但不含該值；
+  再執行一次，該值不變
+
+#### Scenario: 正式形態不寫 Vault 初始化 token
+- **WHEN** `.env` 未啟用 `COMPOSE_FILE`，且原先沒有未註解的 `VAULT_DEV_ROOT_TOKEN_ID=` 行，執行腳本
+- **THEN** `.env` 沒有未註解的 `VAULT_DEV_ROOT_TOKEN_ID=` 行
+
+#### Scenario: 切回正式形態保留既有 Vault 初始化 token
+- **WHEN** `.env` 原先在開發版形態下已有 `VAULT_DEV_ROOT_TOKEN_ID` 的值，之後把 `COMPOSE_FILE` 改回註解，再執行腳本
+- **THEN** 該行與其值原樣保留，輸出不提及這個鍵
 
 ### Requirement: 冪等性
 腳本重複執行 SHALL 不改變任何已合格的 `.env` 內容——第二次執行後檔案位元組不變。
@@ -137,3 +153,29 @@ SHALL 對執行中的堆疊立即生效，不需重啟任何服務；映像未�
 #### Scenario: 正式部署尋找升級入口
 - **WHEN** 維運從 README 或 QUICKSTART 查詢 Linux 正式部署的升級方式
 - **THEN** 文件指向 `custodexa.sh upgrade` 及升級操作程序，不以 `quickstart.sh` 或 git pull 作為正式升級步驟
+
+### Requirement: 開發版單檔掛載占位
+開發版堆疊把數個單一檔案以唯讀方式掛進後端原始碼目錄底下；主機端的掛載點不存在時，首次啟動可能失敗。
+`--up` 模式在開發版形態下 SHALL 於啟動容器之前，確保這些單檔掛載在主機端的掛載點存在：
+目錄不存在即建立，檔案不存在即建立空檔；已存在的檔案 SHALL NOT 改變其內容。
+不帶 `--up` 執行時 SHALL NOT 建立這些檔案或目錄（該模式不啟動容器）；非開發版形態不論是否帶 `--up` 都 SHALL NOT 建立。
+
+#### Scenario: 開發版從零啟動一次成功
+- **WHEN** 開發版形態、主機端沒有任何單檔掛載占位檔，執行 `bash scripts/quickstart.sh --up`
+- **THEN** 啟動容器之前，每個單檔掛載的主機端路徑都已存在，腳本不需重跑
+
+#### Scenario: 既有占位檔不被改動
+- **WHEN** 開發版形態、占位檔已存在且有內容，執行 `bash scripts/quickstart.sh --up`
+- **THEN** 該檔內容前後相同
+
+#### Scenario: 不啟動容器或非開發版形態不建占位檔
+- **WHEN** 開發版形態不帶 `--up` 執行腳本，以及正式形態帶 `--up` 執行腳本，執行前主機端都沒有占位檔
+- **THEN** 兩次執行後，每個單檔掛載的主機端路徑仍不存在
+
+### Requirement: 開發版首次啟動的健康等待
+開發版形態首次啟動時，後端容器要先下載模組並編譯，耗時遠超正式形態。
+`--up` 模式在開發版形態下 SHALL 將後端健康等待上限設為 1800 秒，並說明首次啟動可能需要 10 到 15 分鐘；等待期間 SHALL 每 60 秒輸出一行已等待時間。正式形態的等待上限維持 120 秒。
+
+#### Scenario: 開發形態首次啟動等待較長並顯示進度
+- **WHEN** 開發版形態執行 `bash scripts/quickstart.sh --up`，後端遲遲未回應健康檢查
+- **THEN** 腳本印出首次啟動需 10 到 15 分鐘的說明，每 60 秒印一行已等待時間，逾時訊息中的上限為 1800 秒；正式形態同樣情況的逾時上限為 120 秒

@@ -49,27 +49,31 @@
 
     <div class="strip-actions">
       <el-dropdown
-        :disabled="loading || saving"
+        :disabled="loading || saving || previewActive"
         @command="$emit('apply', $event)"
       >
-        <el-button :disabled="loading || saving">
+        <el-button
+          v-preview-write
+          data-test="policy-apply"
+          :disabled="loading || saving"
+        >
           {{ $t('policyStrip.apply') }}
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item
+            <PreviewDropdownItem
               v-for="group in groups"
               :key="group.code"
               :command="{ mode: 'group', groupCode: group.code }"
             >
               {{ $t('policyStrip.applyGroup', { group: group.name || group.code }) }}
-            </el-dropdown-item>
-            <el-dropdown-item
+            </PreviewDropdownItem>
+            <PreviewDropdownItem
               divided
               :command="{ mode: 'strictest' }"
             >
               {{ $t('policyStrip.applyStrictest') }}
-            </el-dropdown-item>
+            </PreviewDropdownItem>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -80,6 +84,7 @@
         {{ $t('policyStrip.revert') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :disabled="!isDirty || saveBlocked"
         :loading="saving"
@@ -92,6 +97,9 @@
 </template>
 
 <script setup>
+import PreviewDropdownItem from '@/components/PreviewDropdownItem.vue'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import { previewActive } from '@/utils/previewOverlay'
 defineProps({
   loading: { type: Boolean, default: false },
   saving: { type: Boolean, default: false },

@@ -10,6 +10,7 @@
       <template #actions>
         <el-button
           v-if="canDisable"
+          v-preview-write
           type="danger"
           plain
           :loading="disabling"
@@ -363,6 +364,7 @@
 
     <div class="action-bar">
       <el-button
+        v-preview-write
         :loading="testing"
         data-test="offsite-test"
         @click="handleTest"
@@ -370,6 +372,7 @@
         {{ $t('offsite.test') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="saving"
         :disabled="loadFailed || loading"
@@ -490,6 +493,7 @@
           <span class="card-title">{{ $t('offsite.queueTitle') }}</span>
           <el-button
             v-if="!disabled"
+            v-preview-write
             type="primary"
             link
             :loading="retryingAll"
@@ -630,6 +634,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-preview-write
               type="primary"
               link
               size="small"
@@ -756,6 +761,7 @@
           <template #default="{ row }">
             <el-button
               v-if="row.credential_mode === 'stored'"
+              v-preview-write
               type="danger"
               link
               size="small"
@@ -830,6 +836,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="confirming"
           data-test="offsite-switch-confirm"
@@ -885,6 +892,7 @@ import {
   saveOffsiteSettings,
   testOffsiteConnection,
 } from '@/api/offsiteStorage'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 元件層日誌只留白名單欄位：本頁請求本文帶儲存端憑證
 const logFailure = (event, error) => console.error(...apiErrorSummary(event, error))

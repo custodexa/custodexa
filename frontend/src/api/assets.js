@@ -256,17 +256,17 @@ export function adoptAssetHostKey(id, fingerprint) {
  * credential_update、credential_convert_scope），範圍化檢視者才會多附 selectable；
  * 不帶參數時請求與回應不變。
  */
-export function getAssetGroups(params) {
-  const config = { url: '/asset-groups', method: 'get' }
+export function getAssetGroups(params, requestConfig) {
+  const config = { url: '/asset-groups', method: 'get', ...requestConfig }
   if (params) config.params = params
   return request(config)
 }
 
 /** 節點樹惰性載入（parent_id 空＝根層；含直掛/含子樹計數與 has_children） */
-export function getAssetNodeTree(parentId) {
+export function getAssetNodeTree(parentId, requestConfig) {
   const params = {}
   if (parentId != null) params.parent_id = parentId
-  return request({ url: '/asset-groups/tree', method: 'get', params })
+  return request({ url: '/asset-groups/tree', method: 'get', params, ...requestConfig })
 }
 
 /** 建立節點（admin；parent_id 空＝根節點，深度上限 10、同層同名 409） */
@@ -279,9 +279,14 @@ export function updateAssetGroup(id, data) {
   return request({ url: `/asset-groups/${id}`, method: 'put', data })
 }
 
-/** 搬移節點（admin；parent_id null＝搬到根層；環路/深度/同名由後端驗證） */
-export function moveAssetGroup(id, parentId) {
-  return request({ url: `/asset-groups/${id}/move`, method: 'put', data: { parent_id: parentId } })
+/** 搬移節點（admin；parent_id null＝搬到根層；環路/深度/同名由後端驗證；requestConfig 選用，例如 skipErrorToast） */
+export function moveAssetGroup(id, parentId, requestConfig) {
+  return request({
+    url: `/asset-groups/${id}/move`,
+    method: 'put',
+    data: { parent_id: parentId },
+    ...requestConfig,
+  })
 }
 
 /** 刪除節點（admin；僅空節點可刪，節點授權與審核範圍連動撤銷） */

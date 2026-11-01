@@ -7,42 +7,11 @@ import (
 	"testing"
 )
 
-// entryPages 有自己頁面的入口對應的頁面路徑（描述表位置為頁面的入口，一個不多、一個不少）。
-// 沒有自己頁面的入口（設定卡、輔助能力、橫幅）不得出現在這裡，它們的位置由描述表的位置欄位表達。
-func entryPages() map[string]string {
-	return map[string]string{
-		"assets":                  "/assets",
-		"credentials":             "/credentials",
-		"change_secret":           "/change-secret-plans",
-		"authorizations":          "/authorizations",
-		"approver_scopes":         "/approver-scopes",
-		"users":                   "/users",
-		"user_groups":             "/user-groups",
-		"roles":                   "/roles",
-		"identity_sources":        "/identity-sources",
-		"sessions":                "/sessions",
-		"audit_logs":              "/audit-logs",
-		"checkpoint_verification": "/checkpoint-verification",
-		"alerts":                  "/alerts",
-		"compliance_map":          "/compliance-map",
-		"access_reviews":          "/access-reviews",
-		"security_policies":       "/security-policies",
-		"policy_groups":           "/policy-groups",
-		"key_management":          "/key-management",
-		"transmission":            "/transmission-inventory",
-		"offsite_storage":         "/offsite-storage",
-		"notification_channels":   "/notification-channels",
-		"system_alerts":           "/alerts",
-		"alert_rules":             "/alerts",
-		"rotation_schedules":      "/rotation-evidence",
-	}
-}
-
 // 描述表每個入口的每個非隱藏狀態，所持的鍵集合都必須進得了對應頁面：
 // 描述表、依賴表、頁面入口規則三者不一致時，編輯器會讓人選了卻用不了。
 // 位置不是頁面的入口（設定卡、輔助能力、橫幅）不得被當作有自己的頁面，並須標示所在或使用它的入口。
 func TestEntryDescriptorStatesReachTheirPage(t *testing.T) {
-	pages := entryPages()
+	pages := EntryPagePaths()
 	rules := map[string]RouteEntryRule{}
 	for _, r := range RouteEntryRules() {
 		rules[r.Path] = r
@@ -180,7 +149,7 @@ func TestEntrySummaryCoversReachablePages(t *testing.T) {
 		"/access-control":        "security_policies",
 		"/change-secret-batches": "change_secret",
 	}
-	pages := entryPages()
+	pages := EntryPagePaths()
 	rules := map[string]RouteEntryRule{}
 	for _, r := range RouteEntryRules() {
 		rules[r.Path] = r

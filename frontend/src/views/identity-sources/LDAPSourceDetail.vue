@@ -266,6 +266,7 @@
             </div>
           </div>
           <el-button
+            v-preview-write
             type="danger"
             plain
             :loading="deleting"
@@ -361,6 +362,7 @@ import {
   deleteLDAPDirectory,
   testLDAPDirectory,
 } from '@/api/ldapDirectory'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const TEST_STAGES = ['dial', 'bind', 'search']
 const STAGE_STATE_KEYS = { ok: 'stagePassed', fail: 'stageFailed', skipped: 'stageNotRun' }

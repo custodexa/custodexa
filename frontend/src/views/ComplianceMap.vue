@@ -19,6 +19,7 @@
         </el-button>
         <!-- 報告是產物而非寫入：稽核角色與管理者都能發起，產出後的清單也是同一份 -->
         <el-button
+          v-preview-write
           type="primary"
           data-test="compliance-generate-report"
           @click="openReport"
@@ -450,6 +451,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="reportSubmitting"
           :disabled="!canSubmitReport"
@@ -487,6 +489,7 @@ import {
   resultTagType,
   settingLabel,
 } from '@/utils/policyClauseText'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 合規對照頁：**唯讀**。
 //

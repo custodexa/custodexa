@@ -2174,6 +2174,10 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	changeSecretHandler.SetHostIdentityTakeover(s.hostIdentityTakeover)
 	changeSecretHandler.SetCredentialOutputScope(authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB))
 
+	// 角色定義的讀取端點，含角色預覽的權限集合（純計算，不讀寫資料表）
+	roleDefinitionHandler := api.NewRoleDefinitionHandler(s.roleDefinitionReader, s.roleDefinitionService)
+	roleDefinitionHandler.SetRolePreviewer(api.DefaultRolePreviewFunc())
+
 	// 帳號憑證庫（路由層認憑證語義能力任一，服務層逐項裁決）：服務層於段 2 建構並注入 authz 與
 	// codec，handler 只是轉接層。輪替狀態的判定沿用報告建構者——列表左欄與證據
 	// 報告若各有一套嚴重度口徑，同一組秘密會在兩個畫面上顯示成兩種合規狀態
@@ -2254,7 +2258,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		roleAssignmentPreview: api.NewRoleAssignmentPreviewHandler(authz.NewCapabilityPreviewerWithMappings(database.DB, identity.RoleMappingRuleCount).WithGroupMemberPlanner(identity.PlanManualMembers).WithMappingRulePlanner(identity.PlanMappingRuleChange).WithScopeEvaluator(s.scopeEvaluator)),
 		roleAssignmentOptions: api.NewRoleAssignmentOptionsHandler(assetGroupService, identity.NewRoleNodeScopabilityReader(database.DB)),
 		permissionOverview:    permissionOverview,
-		roleDefinition:        api.NewRoleDefinitionHandler(s.roleDefinitionReader, s.roleDefinitionService),
+		roleDefinition:        roleDefinitionHandler,
 		user:                  userHandler,
 		role:                  roleHandler,
 		authorization:         authorizationHandler,

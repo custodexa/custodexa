@@ -38,6 +38,7 @@
         {{ validation }}
       </p>
       <el-button
+        v-preview-write
         type="primary"
         :loading="busy"
         :disabled="!reason.trim() || busy"
@@ -55,6 +56,7 @@ import { t } from '@/i18n'
 import { can } from '@/composables/useCapabilities'
 import { releaseAgentBreaker } from '@/api/agents'
 import { resolveApiError } from '@/api/error'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 const props = defineProps({ principal: { type: Object, required: true }, actor: { type: Object, required: true } })
 const emit = defineEmits(['released'])
 const reason = ref(''), error = ref(''), validation = ref(''), busy = ref(false), done = ref(false)

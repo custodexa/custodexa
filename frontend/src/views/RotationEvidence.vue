@@ -16,6 +16,7 @@
           {{ $t('common.refresh') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           data-test="rotation-generate"
           @click="openGenerate"
@@ -382,6 +383,7 @@
           <template #header>
             <span class="card-title">{{ $t('rotationEvidence.schedulesTitle') }}</span>
             <el-button
+              v-preview-write:create
               type="primary"
               link
               data-test="rotation-schedule-create"
@@ -479,6 +481,7 @@
             >
               <template #default="{ row }">
                 <el-button
+                  v-preview-write
                   link
                   type="primary"
                   :data-test="`rotation-schedule-run-${row.id}`"
@@ -487,6 +490,7 @@
                   {{ $t('rotationEvidence.scheduleRun') }}
                 </el-button>
                 <el-button
+                  v-preview-write
                   link
                   :data-test="`rotation-schedule-edit-${row.id}`"
                   @click="openScheduleEdit(row)"
@@ -494,6 +498,7 @@
                   {{ $t('common.edit') }}
                 </el-button>
                 <el-button
+                  v-preview-write
                   link
                   type="danger"
                   :data-test="`rotation-schedule-delete-${row.id}`"
@@ -791,6 +796,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="generating"
           :disabled="!canGenerate"
@@ -896,6 +902,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="scheduleSaving"
           :disabled="!scheduleForm.name || !scheduleForm.cron || !scheduleValid"
@@ -947,6 +954,7 @@ import { can } from '@/composables/useCapabilities'
 import { confirmDestructive } from '@/utils/confirm'
 import { downloadBlob } from '@/utils/download'
 import { formatDateTime } from '@/utils/format'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 輪替證據頁。
 //

@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write
           :loading="exporting"
           @click="handleExport"
         >
@@ -209,6 +210,7 @@ import {
   inventoryPreflight,
   inventoryDetail,
 } from '@/utils/transportDisplay'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 傳輸政策鍵（域收編）：與下方清冊同頁，儲存後清冊重載同步政策等級欄
 const {

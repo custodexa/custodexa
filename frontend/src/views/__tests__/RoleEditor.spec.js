@@ -6,6 +6,9 @@ import { ElDialogStub } from '@/__fixtures__/dialogStub'
 import { descriptorsFixture } from '@/__fixtures__/roleDescriptors'
 import { previewDisabledMapping } from '@/__fixtures__/rolePreviews'
 import i18n from '@/i18n'
+import { cancelPreview, exitedNotice } from '@/composables/useRolePreview'
+import { getPreviewOverlay, isPreviewActive } from '@/utils/previewOverlay'
+import { resetCapabilities } from '@/composables/useCapabilities'
 
 enableAutoUnmount(afterEach)
 
@@ -74,7 +77,7 @@ const setup = (over = {}) => {
     if (key === 'GET /role-definitions') return { data: cfg.rows, total: cfg.rows.length, can_define: cfg.canDefine }
     if (key.startsWith('GET /role-definitions/')) {
       const id = Number(c.url.split('/').pop())
-      return id === 4 ? detail({ id: 4, name: 'identity_admin', builtin_key: 'identity_admin', locked: true, permissions: ['user:manage', 'role:view'] }) : cfg.detail
+      return id === 4 ? detail({ id: 4, name: 'identity_admin', builtin_key: 'identity_admin', locked: true, permissions: ['user:manage', 'role:view'], ...cfg.lockedOver }) : cfg.detail
     }
     if (key === 'POST /role-definitions/summary') return cfg.summary
     if (key === 'POST /role-assignment-previews') {
@@ -107,6 +110,19 @@ describe('RoleEditor', () => {
     h.push.mockReset()
     h.replace.mockReset()
     setup()
+  })
+
+  it('角色含已收回的鍵時顯示一行說明', async () => {
+    setup({ detail: detail({ retired_permissions: ['session:terminate'] }) })
+    const w = await mountEditor()
+    expect(w.find('[data-test="editor-retired-notice"]').exists()).toBe(true)
+    expect(w.find('[data-test="editor-retired-notice"]').text()).toContain(t('roles.editor.retiredKeyNotice'))
+  })
+
+  it('角色沒有已收回的鍵時不顯示說明', async () => {
+    setup({ detail: detail({ retired_permissions: [] }) })
+    const w = await mountEditor()
+    expect(w.find('[data-test="editor-retired-notice"]').exists()).toBe(false)
   })
 
   it('各入口的選項數與名稱與描述一致，沒有描述以外的唯讀選項', async () => {
@@ -298,6 +314,26 @@ describe('RoleEditor', () => {
     expect(body).toContain(t('roles.editor.capability.recording_delete'))
   })
 
+  it('鎖定的內建角色不發草稿摘要，摘要卡內容來自單筆讀取', async () => {
+    setup({ lockedOver: { summary: { manage: ['alerts'], read: [], available: [], hidden: [] } } })
+    // 先讓前面測試遺留的防抖計時器放完，再清掉呼叫紀錄
+    await new Promise((r) => setTimeout(r, 400))
+    h.request.mockClear()
+    const w = await mountEditor({ id: '4' })
+    await new Promise((r) => setTimeout(r, 400))
+    expect(calls('POST', '/role-definitions/summary')).toHaveLength(0)
+    expect(w.find('[data-test="summary-unavailable"]').exists()).toBe(false)
+    expect(w.get('[data-test="summary-body"]').text()).toContain(t('roles.editor.entry.alerts'))
+  })
+
+  it('自訂角色照舊發草稿摘要，不出現暫時無法產生摘要', async () => {
+    setup()
+    const w = await mountEditor()
+    expect(calls('POST', '/role-definitions/summary').length).toBeGreaterThan(0)
+    expect(w.find('[data-test="summary-unavailable"]').exists()).toBe(false)
+    expect(w.text()).not.toContain(t('roles.editor.summary.unavailable'))
+  })
+
   it('摘要文字來自 POST /role-definitions/summary', async () => {
     setup({ summary: { summary: { manage: ['alerts'], read: [], available: [], hidden: [] }, missing_dependencies: [], blocked_screens: [] } })
     const w = await mountEditor()
@@ -404,10 +440,14 @@ describe('RoleEditor', () => {
     expect(calls('POST', '/role-assignment-previews')).toHaveLength(0)
   })
 
-  it('畫面上沒有節點選擇或「以此角色預覽」', async () => {
+  it('畫面上沒有節點選擇；「以此角色預覽」只在已儲存角色出現，新增頁沒有', async () => {
     const w = await mountEditor()
-    expect(w.findAll('[data-test*="node"], [data-test*="preview-as"], [data-test*="permission-overview"]')).toHaveLength(0)
-    expect(w.text()).not.toContain('以此角色預覽')
+    expect(w.findAll('[data-test*="node"], [data-test*="permission-overview"]')).toHaveLength(0)
+    expect(w.find('[data-test="preview-as-button"]').exists()).toBe(true)
+    expect(w.text()).toContain('以此角色預覽')
+    const created = await mountEditor({}, { name: 'x' })
+    expect(created.find('[data-test="preview-as-button"]').exists()).toBe(false)
+    expect(created.text()).not.toContain('以此角色預覽')
   })
 
   describe('可限範圍標示與節點範圍指派提示', () => {
@@ -503,12 +543,12 @@ describe('RoleEditor', () => {
       expect(calls('PUT', '/role-definitions/10')).toHaveLength(1)
     })
 
-    it('沒有節點範圍指派時不顯示任何提示；畫面沒有節點選擇與預覽入口', async () => {
+    it('沒有節點範圍指派時不顯示任何提示；畫面沒有節點選擇', async () => {
       setup({ detail: detail({ scopable: false, node_scoped_binding_count: 0 }), summary: sum({ scopable: false, node_range_no_effect: false }) })
       const w = await mountEditor()
       expect(w.find('[data-test="scope-notice-reject"]').exists()).toBe(false)
       expect(w.find('[data-test="scope-notice-no-effect"]').exists()).toBe(false)
-      expect(w.findAll('[data-test*="node"], [data-test*="preview-as"]')).toHaveLength(0)
+      expect(w.findAll('[data-test*="node"]')).toHaveLength(0)
     })
 
     it('人選信任提示與摘要發權句三語都寫明含高風險權限點的自訂角色只限超級管理者指派', async () => {
@@ -565,6 +605,169 @@ describe('RoleEditor 部分管理', () => {
     for (const s of ['hidden', 'read', 'manage']) {
       await w.get(`[data-test="entry-credentials-${s}"]`).trigger('click')
       expect(w.find('[data-test="partial-tag-assets"]').exists()).toBe(true)
+    }
+  })
+})
+
+describe('RoleEditor 以此角色預覽', () => {
+  const PREVIEW_URL = '/role-definitions/10/preview-capabilities'
+  const okBody = (over = {}) => ({
+    role: { id: 10, name: 'ops-custom' },
+    previewable: true,
+    permissions: ['user:manage'],
+    entry_states: [{ entry: 'users', path: '/users', state: 'manage' }],
+    ...over,
+  })
+  let pending
+
+  // 預覽端點由測試控制何時回應；其餘請求沿用 setup 的實作
+  const setupPreview = (handler) => {
+    setup()
+    const base = h.request.getMockImplementation()
+    pending = []
+    h.request.mockImplementation(async (c) => {
+      if (c.url === PREVIEW_URL) {
+        if (handler) return handler(c)
+        return new Promise((resolve, reject) => pending.push({ resolve, reject }))
+      }
+      return base(c)
+    })
+  }
+
+  beforeEach(() => {
+    h.request.mockReset()
+    h.push.mockReset()
+    resetCapabilities()
+    cancelPreview()
+    exitedNotice.value = null
+  })
+  afterEach(() => {
+    cancelPreview()
+  })
+
+  it('按下呼叫一次端點；previewable=true 設覆蓋並導到 /dashboard', async () => {
+    setupPreview(async () => okBody())
+    const w = await mountEditor()
+    await w.get('[data-test="preview-as-button"]').trigger('click')
+    await flushPromises()
+    expect(calls('GET', PREVIEW_URL)).toHaveLength(1)
+    expect(getPreviewOverlay().roleId).toBe(10)
+    expect(getPreviewOverlay().roleName).toBe('ops-custom')
+    expect(h.push).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('previewable=false：按鈕正下方出現超管說明彈出框，按「確定」關閉並留在原頁，未設覆蓋', async () => {
+    setupPreview(async () => okBody({ previewable: false, reason: 'reserved_super_admin', permissions: [], entry_states: [] }))
+    const w = await mountEditor()
+    await w.get('[data-test="preview-as-button"]').trigger('click')
+    await flushPromises()
+    const pop = w.get('[data-test="preview-as-superadmin-popover"]')
+    expect(pop.element.parentElement).toBe(w.get('[data-test="preview-as-wrap"]').element)
+    expect(pop.text()).toContain('超級管理者擁有全部功能，範圍是全系統，不提供預覽。')
+    expect(isPreviewActive()).toBe(false)
+    expect(h.push).not.toHaveBeenCalled()
+    await w.get('[data-test="preview-as-superadmin-ok"]').trigger('click')
+    expect(w.find('[data-test="preview-as-superadmin-popover"]').exists()).toBe(false)
+    expect(h.push).not.toHaveBeenCalled()
+  })
+
+  it('端點失敗時未設覆蓋、不導航', async () => {
+    setupPreview(async () => {
+      throw Object.assign(new Error('boom'), { response: { status: 500, data: {} } })
+    })
+    const w = await mountEditor()
+    await w.get('[data-test="preview-as-button"]').trigger('click')
+    await flushPromises()
+    expect(isPreviewActive()).toBe(false)
+    expect(h.push).not.toHaveBeenCalled()
+  })
+
+  it('覆蓋存在時按鈕停用，滑過顯示不能再預覽的說明，點擊不呼叫端點也不出現彈出框', async () => {
+    setupPreview(async () => okBody())
+    const first = await mountEditor()
+    await first.get('[data-test="preview-as-button"]').trigger('click')
+    await flushPromises()
+    first.unmount()
+    h.request.mockClear()
+
+    const w = await mountEditor()
+    const btn = w.get('[data-test="preview-as-button"]')
+    expect(btn.attributes('disabled')).toBeDefined()
+    await w.get('[data-test="preview-as-wrap"]').trigger('mouseenter')
+    expect(w.get('[data-test="preview-as-nested-tip"]').text()).toBe('預覽中不能再預覽其他角色。請先離開預覽。')
+    await btn.trigger('click')
+    await flushPromises()
+    expect(calls('GET', PREVIEW_URL)).toHaveLength(0)
+    expect(w.find('[data-test="preview-as-superadmin-popover"]').exists()).toBe(false)
+    expect(w.find('[data-test="preview-as-unsaved-popover"]').exists()).toBe(false)
+  })
+
+  it('回應抵達前卸載元件：舊回應抵達後不導航、不設覆蓋', async () => {
+    setupPreview()
+    const w = await mountEditor()
+    await w.get('[data-test="preview-as-button"]').trigger('click')
+    expect(pending).toHaveLength(1)
+    w.unmount()
+    pending[0].resolve(okBody())
+    await flushPromises()
+    expect(isPreviewActive()).toBe(false)
+    expect(h.push).not.toHaveBeenCalled()
+  })
+
+  it('再次按下：先發的回應後到時被丟棄，只有最後一次導航一次', async () => {
+    setupPreview()
+    const w = await mountEditor()
+    const btn = w.get('[data-test="preview-as-button"]')
+    await btn.trigger('click')
+    await btn.trigger('click')
+    expect(pending).toHaveLength(2)
+    pending[1].resolve(okBody({ role: { id: 10, name: 'second' } }))
+    await flushPromises()
+    pending[0].resolve(okBody({ role: { id: 10, name: 'first' }, previewable: false }))
+    await flushPromises()
+    expect(getPreviewOverlay().roleName).toBe('second')
+    expect(h.push).toHaveBeenCalledTimes(1)
+    expect(w.find('[data-test="preview-as-superadmin-popover"]').exists()).toBe(false)
+  })
+
+  it('草稿已修改：先在按鈕正下方出彈出框；返回編輯不呼叫端點且草稿不變，放棄修改並預覽才呼叫，該鈕不是 primary', async () => {
+    setupPreview(async () => okBody())
+    const w = await mountEditor()
+    await w.get('input[data-test="editor-name"]').setValue('changed-name')
+    await w.get('[data-test="preview-as-button"]').trigger('click')
+    const pop = w.get('[data-test="preview-as-unsaved-popover"]')
+    expect(pop.element.parentElement).toBe(w.get('[data-test="preview-as-wrap"]').element)
+    expect(pop.text()).toContain('還有未儲存的修改')
+    expect(pop.text()).toContain('進入預覽會放棄這頁未儲存的修改。預覽呈現的是已儲存的角色內容。')
+    expect(calls('GET', PREVIEW_URL)).toHaveLength(0)
+    const discard = w.get('[data-test="preview-as-unsaved-discard"]')
+    expect(discard.classes()).not.toContain('el-button--primary')
+    expect(discard.text()).toBe('放棄修改並預覽')
+    const back = w.get('[data-test="preview-as-unsaved-back"]')
+    expect(back.classes()).toContain('el-button--primary')
+    await back.trigger('click')
+    expect(w.find('[data-test="preview-as-unsaved-popover"]').exists()).toBe(false)
+    expect(calls('GET', PREVIEW_URL)).toHaveLength(0)
+    expect(w.get('input[data-test="editor-name"]').element.value).toBe('changed-name')
+
+    await w.get('[data-test="preview-as-button"]').trigger('click')
+    await w.get('[data-test="preview-as-unsaved-discard"]').trigger('click')
+    await flushPromises()
+    expect(calls('GET', PREVIEW_URL)).toHaveLength(1)
+    expect(h.push).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('離開預覽回到角色編輯頁時，按鈕下方顯示已離開預覽並約 3 秒後消失', async () => {
+    vi.useFakeTimers()
+    try {
+      setupPreview(async () => okBody())
+      exitedNotice.value = { roleId: 10, roleName: 'ops-custom' }
+      const w = await mountEditor()
+      expect(w.get('[data-test="preview-as-exited-tip"]').text()).toBe('已離開預覽，回到「ops-custom」')
+      await vi.advanceTimersByTimeAsync(3100)
+      expect(w.find('[data-test="preview-as-exited-tip"]').exists()).toBe(false)
+    } finally {
+      vi.useRealTimers()
     }
   })
 })

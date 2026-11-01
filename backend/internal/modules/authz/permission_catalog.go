@@ -246,9 +246,18 @@ func ValidateCatalog(defs []PermissionDef) error { return validateCatalog(defs) 
 //
 // 主機金鑰重置雖在目錄內（既有範本的能力投影不變），卻是超管保留操作：只由內建超管身分執行，
 // 不可由自訂角色持有——角色定義拒絕此鍵，既存自訂角色集合內的此鍵也不生效。
+// 會話強制終止同屬此類：終止 handler 只放行超管，自訂角色持有它從未生效。
 // 用函式而不是包級表，避免多一個需要登記時序的全域變數。
 func IsAssignable(key Permission) bool {
-	return key != PermHostKeyReset
+	return key != PermHostKeyReset && key != PermSessionTerminate
+}
+
+// IsRetiredAssignable 曾可指派給自訂角色、現已收回的鍵（同時 !IsAssignable）。
+//
+// 升級前已存入自訂角色的此類鍵不當成無效鍵：恢復核對與狀態驗證容許它，
+// 讀取與複製時不帶出，下次儲存該角色時移除。從未可指派的保留鍵（主機金鑰重置）不屬此類。
+func IsRetiredAssignable(key Permission) bool {
+	return key == PermSessionTerminate
 }
 
 // Catalog 回傳目錄的副本（依鍵排序）。

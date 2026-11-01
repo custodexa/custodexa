@@ -24,6 +24,7 @@
         <div class="head-actions">
           <el-button
             v-if="can('credential:update')"
+            v-preview-write
             link
             type="primary"
             :disabled="!!denied('edit')"
@@ -34,6 +35,7 @@
           </el-button>
           <el-button
             v-if="can('credential:delete')"
+            v-preview-write
             link
             type="danger"
             :disabled="!!deleteBlockedReason"
@@ -128,6 +130,7 @@
             <span class="muted">{{ t('credentials.secretFix.registered') }}</span>
             <el-button
               v-if="can('credential:set-secret')"
+              v-preview-write
               link
               type="primary"
               size="small"
@@ -162,6 +165,7 @@
       <div class="actions">
         <el-button
           v-if="can('credential:rotate')"
+          v-preview-write
           type="primary"
           :disabled="!!rotateBlockedReason"
           data-test="action-rotate"
@@ -171,6 +175,7 @@
         </el-button>
         <el-button
           v-if="can('credential:bind')"
+          v-preview-write
           :disabled="!!bindBlockedReason"
           data-test="action-bind"
           @click="bindVisible = true"
@@ -179,6 +184,7 @@
         </el-button>
         <el-button
           v-if="isShared && can('credential:convert-scope')"
+          v-preview-write
           :disabled="!!toDedicatedBlockedReason"
           data-test="action-to-dedicated"
           @click="convertToDedicated"
@@ -189,6 +195,7 @@
              沒有這顆按鈕那句話等於指向一個做不到那件事的畫面 -->
         <el-button
           v-else-if="!isShared && can('credential:convert-scope')"
+          v-preview-write
           :disabled="!!toSharedBlockedReason"
           data-test="action-to-shared"
           @click="openToShared"
@@ -320,6 +327,7 @@
             {{ t('common.cancel') }}
           </el-button>
           <el-button
+            v-preview-write
             type="primary"
             :loading="toSharedSubmitting"
             :disabled="!toSharedOwnershipState.ready"
@@ -387,6 +395,7 @@ import {
   credentialDisplayName,
   credentialSecretKind,
 } from '@/constants/credentials'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   credential: { type: Object, default: null },

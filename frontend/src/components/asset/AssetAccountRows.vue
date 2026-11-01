@@ -17,6 +17,7 @@
       <div class="section-actions">
         <span class="hint">{{ t('assets.editDrawer.accountsHint') }}</span>
         <el-button
+          v-preview-write:create
           type="primary"
           size="small"
           :disabled="addDisabled"
@@ -159,6 +160,7 @@
             >{{ t('credentials.bindingDefault') }}</span>
             <el-button
               v-else
+              v-preview-write
               link
               size="small"
               :data-test="`account-set-default-${row.id}`"
@@ -168,6 +170,7 @@
             </el-button>
             <el-button
               v-if="!row.shared_credential"
+              v-preview-write
               link
               size="small"
               type="primary"
@@ -179,6 +182,7 @@
             <!-- 共用憑證的登記值打錯時的更正：只改平台登記值、不碰主機，整組一併套用 -->
             <el-button
               v-else
+              v-preview-write
               link
               size="small"
               type="primary"
@@ -191,6 +195,7 @@
             <!-- 專用列也能換憑證：把這台改掛到一筆共用憑證上是「這組秘密要跟別台一起管」
                  的唯一入口，只對共用列開放等於逼人先刪掉帳號再重加 -->
             <el-button
+              v-preview-write
               link
               size="small"
               type="primary"
@@ -202,6 +207,7 @@
             </el-button>
             <el-button
               v-if="row.shared_credential"
+              v-preview-write
               link
               size="small"
               type="warning"
@@ -212,6 +218,7 @@
               {{ t('assets.editDrawer.detach') }}
             </el-button>
             <el-button
+              v-preview-write
               link
               size="small"
               type="danger"
@@ -269,6 +276,7 @@
             </div>
             <div class="inline-actions">
               <el-button
+                v-preview-write
                 type="primary"
                 size="small"
                 :loading="submitting"
@@ -311,6 +319,7 @@
               <el-switch v-model="secretForm.privileged" />
               <span class="hint">{{ t('assetAccounts.colPrivileged') }}</span>
               <el-button
+                v-preview-write
                 type="primary"
                 size="small"
                 :loading="submitting"
@@ -409,6 +418,7 @@ import CredentialDetachDialog from '@/components/credential/CredentialDetachDial
 import CredentialSecretFixDialog from '@/components/credential/CredentialSecretFixDialog.vue'
 import { credentialSecretKind } from '@/constants/credentials'
 import { deniedReason } from '@/utils/credentialActions'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   assetId: { type: [Number, String], default: null },

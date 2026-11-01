@@ -1,6 +1,7 @@
 package authz
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -28,6 +29,9 @@ const (
 	// BaseManual 手動認證入口（WebSocket／代理）：無 AuthMiddleware，由 handler 自行認證，
 	// 以現查主體加資產授權判定；登錄只標記。
 	BaseManual BaseKind = "manual"
+	// BaseSuperAdmin 只限內建超管保留身分：保留身分不是權限點，登錄項不得帶 Perm、AnyOf、Fields 或 DataPlane。
+	// 服務層與處理鏈上的超管重驗保留為第二道。
+	BaseSuperAdmin BaseKind = "superadmin"
 )
 
 // DenialBasis 能力拒絕的依據種類。只進審計細節，不進回應：回應對所有能力拒絕同形，
@@ -104,6 +108,9 @@ func buildRouteRegistry() map[string]RouteEntry {
 		if _, dup := m[e.Key()]; dup {
 			panic("authz: 路由登錄鍵重複: " + e.Key())
 		}
+		if err := checkSuperAdminEntry(e); err != nil {
+			panic("authz: " + err.Error())
+		}
 		if e.Base == BasePerm {
 			if _, ok := LookupPermission(e.Perm); !ok {
 				panic("authz: 路由登錄引用目錄外的權限點: " + e.Key() + " " + string(e.Perm))
@@ -127,6 +134,18 @@ func buildRouteRegistry() map[string]RouteEntry {
 		m[e.Key()] = e
 	}
 	return m
+}
+
+// checkSuperAdminEntry 超管保留種類的登錄項不得帶權限點、並列進入能力、欄位條件或資料面標記；
+// 其他種類不受約束。錯誤訊息指出 (方法, 路由樣板)。
+func checkSuperAdminEntry(e RouteEntry) error {
+	if e.Base != BaseSuperAdmin {
+		return nil
+	}
+	if e.Perm != "" || len(e.AnyOf) > 0 || len(e.Fields) > 0 || e.DataPlane {
+		return fmt.Errorf("超管保留種類的路由登錄不得帶權限點、並列能力、欄位條件或資料面標記: %s %s", e.Method, e.Path)
+	}
+	return nil
 }
 
 // LookupRoute 查登錄項；查不到即未登錄（呼叫端一律拒絕）。
@@ -165,6 +184,8 @@ type Decision struct {
 	// Required 拒絕依據所列的權限點鍵：all_of 為登錄項的 Perm；any_of 為 Perm 與 AnyOf，
 	// 依登錄順序、持其一即可；unregistered 為空。每次判定新建，不與登錄表共用底層陣列。
 	Required []Permission
+	// Reserved 拒絕依據為 reserved 時的保留條件受控值（Reserved* 常數）；其他依據為空。
+	Reserved string
 }
 
 // DecideRoute 登錄執行中介層呼叫的判定函式。手動認證入口（連線兌換、WebSocket）不經過它，
@@ -188,6 +209,14 @@ func DecideEntry(e RouteEntry, p *Principal) Decision {
 			return Decision{Unauthenticated: true}
 		}
 		return Decision{Allowed: true}
+	case BaseSuperAdmin:
+		if p == nil {
+			return Decision{Unauthenticated: true}
+		}
+		if p.IsSuperAdmin() {
+			return Decision{Allowed: true}
+		}
+		return Decision{Basis: DenialReserved, Reserved: ReservedSuperAdmin}
 	case BasePerm:
 		if p == nil {
 			return Decision{Unauthenticated: true}

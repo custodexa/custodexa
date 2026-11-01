@@ -45,7 +45,20 @@
       {{ notice }}
     </div>
     <div
-      v-if="showNoAssetView"
+      v-if="selfCannotSee"
+      class="no-asset-view"
+      role="status"
+      data-test="assets-self-cannot-see"
+    >
+      <EmptyState
+        compact
+        :icon-size="56"
+        :title="$t('rolePreview.selfCannotSee.title')"
+        :hint="$t('rolePreview.selfCannotSee.body')"
+      />
+    </div>
+    <div
+      v-else-if="showNoAssetView"
       class="no-asset-view"
       role="status"
       data-test="no-asset-view"
@@ -91,6 +104,7 @@
         </div>
         <WorkspaceAssetRow
           v-else
+          v-preview-write:ticket
           :asset="row.asset"
           :row-key="row.rowKey"
           :depth="row.depth"
@@ -98,7 +112,7 @@
           :state="entryState(row.asset)"
           :gated="isBlocked(row.asset)"
           :selected="isSelectedAsset(row.asset)"
-          :tip-disabled="!!explain"
+          :tip-disabled="!!explain || previewActive"
           :search-term="assetFilter.trim()"
           :name-ref="nameRef(row.rowKey)"
           @activate="(asset, e) => activate(asset, 'terminal', e)"
@@ -156,12 +170,14 @@ import { t } from '@/i18n'
 import { getAssetList } from '@/api/assets'
 import { assetEntryState, BLOCKED_ENTRY_STATES } from '@/utils/asset-access'
 import { buildAssetTree, flattenTree, flatRows, rootKeys } from '@/utils/asset-tree'
-import { can, loadCapabilities, useCapabilities } from '@/composables/useCapabilities'
+import { can, canSelf, loadCapabilities, useCapabilities } from '@/composables/useCapabilities'
+import { useRolePreview } from '@/composables/useRolePreview'
 import EmptyState from '@/components/EmptyState.vue'
 import WorkspaceAssetRow from './WorkspaceAssetRow.vue'
 import WorkspaceAccessExplain from './WorkspaceAccessExplain.vue'
 import { readStorage, writeStorage } from './storage'
 import { useAssetNameFit } from './useAssetNameFit'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   // 目前啟用分頁的資產 id（選中列）
@@ -375,10 +391,13 @@ const refreshFailed = ref(false)
 let loadSeq = 0
 
 // 資產列表端點要 asset:view；沒有就不請求，改顯示說明
-const canViewAssets = computed(() => can('asset:view'))
+// 以此角色預覽：角色有資產檢視而操作者本人沒有時，資料以本人為上限——不請求列表，改顯示說明
+const { active: previewActive } = useRolePreview()
+const selfCannotSee = computed(() => previewActive.value && can('asset:view') && !canSelf('asset:view'))
+const canViewAssets = computed(() => can('asset:view') && !selfCannotSee.value)
 // 能力尚未載入（整頁重新整理）時不判定「沒有權限」；載入完成且有權限時補讀列表
 const { ready: capsReady } = useCapabilities()
-const showNoAssetView = computed(() => capsReady.value && !canViewAssets.value)
+const showNoAssetView = computed(() => capsReady.value && !can('asset:view'))
 watch(canViewAssets, (allowed) => {
   if (allowed) loadAssets()
 })

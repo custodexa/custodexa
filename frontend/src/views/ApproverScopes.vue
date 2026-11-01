@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write:create
           type="primary"
           :icon="Plus"
           @click="openAdd()"
@@ -90,6 +91,7 @@
                 <el-tag
                   v-for="scope in row.scopes"
                   :key="scope.id"
+                  v-preview-write
                   :type="ACTOR_TYPES[actorType(scope)].tagType"
                   size="small"
                   closable
@@ -135,6 +137,7 @@
               <template #default="{ row }">
                 <el-button
                   v-if="!row.locator"
+                  v-preview-write:create
                   link
                   type="primary"
                   size="small"
@@ -180,6 +183,7 @@
                 <el-tag
                   v-for="scope in row.scopes"
                   :key="scope.id"
+                  v-preview-write
                   :type="ACTOR_TYPES[actorType(scope)].tagType"
                   size="small"
                   closable
@@ -243,6 +247,7 @@
             >
               <template #default="{ row }">
                 <el-tag
+                  v-preview-write
                   :type="ACTOR_TYPES[actorType(row)].tagType"
                   size="small"
                   closable
@@ -315,6 +320,7 @@
                 <el-tag
                   v-for="scope in row.byType[key]"
                   :key="scope.id"
+                  v-preview-write
                   :type="meta.tagType"
                   size="small"
                   closable
@@ -324,6 +330,7 @@
                   {{ scopeTargetLabel(scope, groupPaths) }}
                 </el-tag>
                 <el-button
+                  v-preview-write:create
                   link
                   type="primary"
                   size="small"
@@ -403,6 +410,7 @@ import {
   scopedUsers,
   scopedNodeRows,
 } from '@/utils/approver-scope-scoped'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const activeView = ref('objects')
 const loading = ref(false)

@@ -90,11 +90,18 @@ func TestAssetReservedRouteRegistration(t *testing.T) {
 	t.Run("登錄項：三端點不再以可指派的權限點授權，主機金鑰重置鍵不可指派", func(t *testing.T) {
 		for _, k := range []struct{ method, path string }{
 			{"POST", "/api/v1/assets/tags/rename"}, {"POST", "/api/v1/assets/tags/delete"},
-			{"DELETE", "/api/v1/assets/:id/host-key"}, {"POST", "/api/v1/assets/:id/host-key/adopt"},
 		} {
 			e, ok := authz.LookupRoute(k.method, k.path)
 			if !ok || e.Base != authz.BaseAuthenticated {
-				t.Errorf("%s %s 應登錄為登入即可（保留資格由守衛判定）: %+v ok=%v", k.method, k.path, e, ok)
+				t.Errorf("%s %s 應登錄為登入即可（兩種拒絕依據由處理器區分）: %+v ok=%v", k.method, k.path, e, ok)
+			}
+		}
+		for _, k := range []struct{ method, path string }{
+			{"DELETE", "/api/v1/assets/:id/host-key"}, {"POST", "/api/v1/assets/:id/host-key/adopt"},
+		} {
+			e, ok := authz.LookupRoute(k.method, k.path)
+			if !ok || e.Base != authz.BaseSuperAdmin {
+				t.Errorf("%s %s 應登錄為超管保留: %+v ok=%v", k.method, k.path, e, ok)
 			}
 		}
 		if authz.IsAssignable(authz.PermHostKeyReset) {

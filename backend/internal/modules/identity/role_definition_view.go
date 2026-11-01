@@ -80,14 +80,16 @@ type RoleDefinitionList struct {
 
 // RoleDefinitionDetail 單筆回應：權限鍵、版本、範本來源、摘要與缺依賴。
 type RoleDefinitionDetail struct {
-	ID                  uint                      `json:"id"`
-	Name                string                    `json:"name"`
-	Description         string                    `json:"description"`
-	BuiltinKey          *string                   `json:"builtin_key"`
-	Locked              bool                      `json:"locked"`
-	DefinitionVersion   int64                     `json:"definition_version"`
-	TemplateRoleID      *uint                     `json:"template_role_id"`
-	Permissions         []string                  `json:"permissions"`
+	ID                uint     `json:"id"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	BuiltinKey        *string  `json:"builtin_key"`
+	Locked            bool     `json:"locked"`
+	DefinitionVersion int64    `json:"definition_version"`
+	TemplateRoleID    *uint    `json:"template_role_id"`
+	Permissions       []string `json:"permissions"`
+	// RetiredPermissions 自訂角色內已收回、不再生效的鍵；恆存在，沒有時為空陣列。
+	RetiredPermissions  []string                  `json:"retired_permissions"`
 	Summary             RoleSummaryView           `json:"summary"`
 	MissingDependencies []authz.MissingDependency `json:"missing_dependencies"`
 	BlockedScreens      []authz.BlockedScreen     `json:"blocked_screens"`
@@ -187,7 +189,7 @@ func NewRoleDefinitionDetail(d *RoleDefinition) *RoleDefinitionDetail {
 	return &RoleDefinitionDetail{
 		ID: d.ID, Name: d.Name, Description: d.Description, BuiltinKey: builtinKeyPtr(d), Locked: d.Locked,
 		DefinitionVersion: d.DefinitionVersion, TemplateRoleID: d.TemplateRoleID,
-		Permissions: nonNil(d.Permissions), Summary: NewRoleSummaryViewFor(d.BuiltinKey, d.Permissions),
+		Permissions: nonNil(d.Permissions), RetiredPermissions: nonNil(d.RetiredPermissions), Summary: NewRoleSummaryViewFor(d.BuiltinKey, d.Permissions),
 		MissingDependencies: nonNilDeps(d.MissingDependencies), BlockedScreens: nonNilScreens(d.BlockedScreens),
 		Scopable: d.Scopable, NodeRangeNoEffect: d.NodeRangeNoEffect, NodeScopedBindingCount: d.NodeScopedBindingCount,
 	}

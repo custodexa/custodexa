@@ -43,9 +43,11 @@ cx_secret_add() {
 }
 
 # cx_secrets_from_env <file>: collect the values to mask from an .env file: every value except those
-# of the keys listed in CX_ENV_SHOWN. Parsed, never sourced.
+# of the keys listed in CX_ENV_SHOWN. Parsed, never sourced. When a key appears on several lines the
+# last one is its value, as compose reads it; a value that line replaced is not collected.
 cx_secrets_from_env() {
   local line key val
+  local -A last=()
   [ -f "$1" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line#export }
@@ -55,8 +57,11 @@ cx_secrets_from_env() {
     if [[ $val =~ ^\"(.*)\"$ || $val =~ ^\'(.*)\'$ ]]; then
       val=${BASH_REMATCH[1]}
     fi
-    cx_env_value_shown "$key" || cx_secret_add "$key" "$val"
+    last[$key]=$val
   done <"$1"
+  for key in "${!last[@]}"; do
+    cx_env_value_shown "$key" || cx_secret_add "$key" "${last[$key]}"
+  done
   return 0
 }
 

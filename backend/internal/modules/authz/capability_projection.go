@@ -31,11 +31,14 @@ const (
 	// UISuperAdmin 保留的內建超級管理者身分本身（與 IsSuperAdmin 同源）。供只限超管的畫面元素
 	// 使用，與連線豁免分開：豁免規則日後調整不影響這類元素。
 	UISuperAdmin = "ui:super-admin"
+	// UISessionMonitor 可取得即時監看票的角色資格（內建超管或稽核員），與監看票簽發的判定
+	// 同一個函式（Principal.ViewShortcut）。只決定監看入口是否顯示，強制點在簽發端。
+	UISessionMonitor = "ui:session-monitor"
 )
 
 // UIPresentationPoints 全部呈現點（排序副本）。
 func UIPresentationPoints() []string {
-	out := []string{UIApprovals, UIMyAgents, UIAssetsGlobal, UISelfServiceActions, UIConnectBypass, UISuperAdmin}
+	out := []string{UIApprovals, UIMyAgents, UIAssetsGlobal, UISelfServiceActions, UIConnectBypass, UISuperAdmin, UISessionMonitor}
 	sort.Strings(out)
 	return out
 }
@@ -104,6 +107,9 @@ func ProjectCapabilitiesWithNodePaths(p *Principal, in ProjectionInputs, paths m
 	}
 	if p.IsSuperAdmin() {
 		derived = append(derived, UIConnectBypass, UISuperAdmin)
+	}
+	if p.ViewShortcut() {
+		derived = append(derived, UISessionMonitor)
 	}
 	out.Permissions = append(out.Permissions, derived...)
 	sort.Strings(out.Permissions)

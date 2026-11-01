@@ -24,9 +24,24 @@
         >
           {{ enabled ? $t('common.enabled') : $t('common.disabled') }}
         </el-tag>
+        <el-tag
+          v-if="previewReadOnly"
+          size="small"
+          type="info"
+          data-test="preview-readonly-tag"
+        >
+          {{ $t('roles.state.read') }}
+        </el-tag>
       </div>
       <div class="source-detail__sub">
         {{ subtitle }}
+      </div>
+      <div
+        v-if="previewReadOnly"
+        class="source-detail__sub"
+        data-test="preview-readonly-note"
+      >
+        {{ $t('rolePreview.readOnlyNote') }}
       </div>
     </div>
 
@@ -46,6 +61,7 @@
       <div class="source-detail__actions-left">
         <template v-if="enabled">
           <el-button
+            v-preview-write
             type="primary"
             :loading="saving"
             :disabled="!canSave"
@@ -54,6 +70,7 @@
             {{ $t('common.save') }}
           </el-button>
           <el-button
+            v-preview-write
             :disabled="saving || !canSave"
             @click="$emit('save', false)"
           >
@@ -62,6 +79,7 @@
         </template>
         <template v-else>
           <el-button
+            v-preview-write
             type="primary"
             :loading="saving"
             :disabled="!canSave"
@@ -70,6 +88,7 @@
             {{ $t('identitySources.saveAndEnable') }}
           </el-button>
           <el-button
+            v-preview-write
             :disabled="saving || !canSave"
             @click="$emit('save', false)"
           >
@@ -87,6 +106,7 @@
           class="source-detail__meta"
         >{{ lastSaved }}</span>
         <el-button
+          v-preview-write
           :loading="testing"
           @click="$emit('test')"
         >
@@ -98,6 +118,10 @@
 </template>
 
 <script setup>
+import { computed, getCurrentInstance } from 'vue'
+import { previewPageState } from '@/composables/useRolePreview'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+
 defineProps({
   title: { type: String, default: '' },
   typeLabel: { type: String, required: true },
@@ -110,6 +134,10 @@ defineProps({
   canSave: { type: Boolean, default: true },
   lastSaved: { type: String, default: '' },
 })
+
+// 以此角色預覽且目前頁為唯讀：標題旁標示並說明（本頁不用 PageHeader，做法同它）
+const route = getCurrentInstance()?.appContext.config.globalProperties.$route
+const previewReadOnly = computed(() => previewPageState(route?.path) === 'read')
 
 defineEmits(['save', 'test'])
 </script>

@@ -213,12 +213,14 @@ func TestForbiddenSingleShape(t *testing.T) {
 
 	var (
 		total, publicN, manualN, authedN, dataPlaneN, fieldN int
-		permAllOf, permAnyOf                                 int
+		permAllOf, permAnyOf, superN                         int
 		userDenied, userAllowed, noneDenied                  int
 		anyOnlyUserDenied                                    int
 		fieldProbed                                          []string
 	)
 	var sample string // 同一份本文的位元組基準，供未登錄路由與各案例逐位元比對
+	var superRaws []string
+	superAdmin := principalOf(model.BuiltinSuperAdmin, "")
 
 	entries := authz.RegistryEntries()
 	require.Greater(t, len(entries), 200, "登錄表不得為空殼")
@@ -260,6 +262,22 @@ func TestForbiddenSingleShape(t *testing.T) {
 				assertShape(t, "user", e, pr, authz.DenialAllOf)
 				fieldProbed = append(fieldProbed, key)
 			}
+		case authz.BaseSuperAdmin:
+			superN++
+			assert.Empty(t, e.Perm, key)
+			assert.Empty(t, e.AnyOf, key)
+			assert.Empty(t, e.Fields, key)
+			assert.False(t, e.DataPlane, key)
+			for name, p := range map[string]*authz.Principal{"user": user, "none": none} {
+				pr := probeGate(e.Method, e.Path, p)
+				require.False(t, pr.reached, "%s %s：非超管不得通過超管保留路由的登錄閘", name, key)
+				assertShape(t, name, e, pr, authz.DenialReserved)
+				assert.Equal(t, []string{authz.ReservedSuperAdmin}, pr.denial.Required, "%s %s：依據所列鍵", name, key)
+				superRaws = append(superRaws, pr.raw)
+			}
+			prS := probeGate(e.Method, e.Path, superAdmin)
+			assert.True(t, prS.reached, "%s：超管必放行", key)
+			assert.False(t, prS.hasDeny, key)
 		case authz.BasePerm:
 			if len(e.AnyOf) == 0 {
 				permAllOf++
@@ -297,7 +315,11 @@ func TestForbiddenSingleShape(t *testing.T) {
 
 	// 探針表的每一項都必須真的是登錄表上的欄位條件路由（不得留下打不到的殼）。
 	assert.Equal(t, len(fieldGateProbes), len(fieldProbed), "探針表與列舉出的欄位條件路由須一一對應：%v", fieldProbed)
-	assert.Equal(t, total, publicN+manualN+authedN+dataPlaneN+permAllOf+permAnyOf, "每條路由都要歸入一類，沒有靜默跳過")
+	assert.Equal(t, 7, superN, "超管保留路由恰為七條")
+	for _, raw := range superRaws {
+		assert.JSONEq(t, sample, raw, "超管保留路由的拒絕本文須與一般能力拒絕完全相同")
+	}
+	assert.Equal(t, total, publicN+manualN+authedN+dataPlaneN+permAllOf+permAnyOf+superN, "每條路由都要歸入一類，沒有靜默跳過")
 	assert.Greater(t, userDenied, 0)
 	assert.Greater(t, anyOnlyUserDenied, 0, "至少一條只有 AnyOf 可進入的路由被一般使用者實際打到拒絕")
 	require.NotEmpty(t, sample)
@@ -363,6 +385,12 @@ func TestForbiddenSingleShape(t *testing.T) {
 			r.POST("/api/v1/sessions/:id/terminate", middleware.EnforceRegistry(), h.Terminate)
 		})
 
+		sessionHandlerOnly := static(func(r gin.IRoutes) {
+			h := api.NewSessionHandler(nil)
+			r.POST("/api/v1/sessions/:id/terminate", h.Terminate)
+		})
+		assert.False(t, terminator.Has(authz.PermSessionTerminate), "自訂角色持有已收回的終止鍵不生效")
+
 		reservedSet := map[string]bool{
 			authz.ReservedSuperAdmin: true, authz.ReservedSuperAdminOrAuditor: true,
 			authz.ReservedApproverEligibility: true, authz.ReservedRevokeEligibility: true,
@@ -385,7 +413,8 @@ func TestForbiddenSingleShape(t *testing.T) {
 			{"失效事件確認：稽核員", "POST", "/api/v1/audit-failures/permission-state/accept", `{"reason":"r"}`, auditor, auditFailureRoutes, authz.DenialReserved, []string{authz.ReservedSuperAdmin}},
 			{"失效事件確認：一般使用者", "POST", "/api/v1/audit-failures/permission-state/accept", `{"reason":"r"}`, user, auditFailureRoutes, authz.DenialReserved, []string{authz.ReservedSuperAdmin}},
 			{"授權帳號範圍：持授權管理能力但現查非超管", "PUT", "/api/v1/authorizations/1/accounts", `{"accounts":["@ALL"]}`, authzManager, authorizationRoutes, authz.DenialReserved, []string{authz.ReservedSuperAdmin}},
-			{"會話強制終止：持終止能力的非超管", "POST", "/api/v1/sessions/1/terminate", "", terminator, sessionRoutes, authz.DenialReserved, []string{authz.ReservedSuperAdmin}},
+			{"會話強制終止：持已收回終止鍵的自訂角色在路由層被拒", "POST", "/api/v1/sessions/1/terminate", "", terminator, sessionRoutes, authz.DenialAllOf, []string{string(authz.PermSessionTerminate)}},
+			{"會話強制終止：不經登錄閘時 handler 自身仍只放行超管", "POST", "/api/v1/sessions/1/terminate", "", terminator, sessionHandlerOnly, authz.DenialReserved, []string{authz.ReservedSuperAdmin}},
 			{"資產更新欄位閘：兩個權限點都沒有＋不存在 ID（只送 access_policy）", "PUT", "/api/v1/assets/99999", `{"access_policy":"approval"}`, viewOnly, assetRoutes, authz.DenialAllOf, []string{upd}},
 			{"資產更新欄位閘：兩個權限點都沒有＋不存在 ID（其他欄位）", "PUT", "/api/v1/assets/99999", `{"description":"x"}`, viewOnly, assetRoutes, authz.DenialAllOf, []string{upd}},
 			{"資產更新欄位閘：兩個權限點都沒有＋不存在 ID（空本文）", "PUT", "/api/v1/assets/99999", "", viewOnly, assetRoutes, authz.DenialAllOf, []string{upd}},

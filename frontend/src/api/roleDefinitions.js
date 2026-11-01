@@ -14,6 +14,13 @@ export const getRoleDescriptors = () => request({ url: '/role-definitions/descri
 /** 單筆角色（含權限鍵、版本、摘要、缺依賴） */
 export const getRoleDefinition = (id) => request({ url: `/role-definitions/${id}`, method: 'get' })
 
+/**
+ * 以此角色預覽用的權限集合與頁面狀態（唯讀）。
+ * 回應：{ role: {id, name}, previewable, reason?, permissions, entry_states }
+ */
+export const getRolePreviewCapabilities = (id, config = {}) =>
+  request({ url: `/role-definitions/${id}/preview-capabilities`, method: 'get', ...config })
+
 /** 草稿摘要（不寫入）：本文恰為 { permissions } */
 export const summarizeRoleDraft = (permissions) =>
   request({ url: '/role-definitions/summary', method: 'post', data: { permissions }, skipErrorToast: true })

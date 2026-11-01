@@ -1,6 +1,9 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-26（新增使用者權限一覽兩條唯讀路由：`GET /users/:id/permission-overview` 與 `GET /users/:id/permission-overview/assets/:asset_id`，需 `user:manage`；新增錯誤碼 `INTERNAL_PERMISSION_OVERVIEW`；回應欄位與兩種可視界線見「使用者權限一覽」）
+> 最後更新：2026-11-01（角色預覽：新增 `GET /role-definitions/:id/preview-capabilities`，需 `role:view`，回應只讀的角色預覽權限集合與頁面狀態（`role`、`previewable`、`reason`、`permissions`、`entry_states`），內建超級管理者角色不可預覽；端點不寫資料、不簽發任何憑證或票證；未新增錯誤碼、審計動作與資料表。路由新增一條）
+> 前次更新：2026-11-01（授權閘的描述對齊實作：角色定義的四條寫入、主機金鑰的重置與採用、權限狀態確認接受共七條路由，路由層即只放行內建超級管理者，非超級管理者在讀取請求本文前就得到 403 `AUTH_PERMISSION_DENIED`，原有的服務層與鏈上重驗保留；`session:terminate` 不再可指派給自訂角色，終止仍只有超級管理者可執行；`GET /role-definitions/:id` 新增 `retired_permissions`。路由未變）
+> 前次更新：2026-10-31（`GET`／`PATCH /auth/me` 的能力投影新增呈現點 `ui:session-monitor`：內建超級管理者或稽核員，與監看票簽發的角色資格判定同源，只供會話頁監看入口呈現。路由未變）
+> 前次更新：2026-10-26（新增使用者權限一覽兩條唯讀路由：`GET /users/:id/permission-overview` 與 `GET /users/:id/permission-overview/assets/:asset_id`，需 `user:manage`；新增錯誤碼 `INTERNAL_PERMISSION_OVERVIEW`；回應欄位與兩種可視界線見「使用者權限一覽」）
 > 前次更新：2026-10-26（角色引用計數排除已刪除帳號：角色定義的 `references.direct`、`node_scoped_binding_count` 與刪除檢查的 409 `ROLE_DEFINITION_IN_USE` 只計未刪除帳號的直接指派，停用中的帳號計入。路由未變）
 > 前次更新：2026-10-26（共用憑證相關回應的範圍化輸出：改密進度與其補跑、放棄、脫離回應，對範圍化檢視者只列範圍內成員並恆附 `out_of_scope_asset_count`；帳號列的五個寫入回應與列表同形；批次改密目標、批次詳情與計畫執行記錄對範圍外憑證收窄；改密候選的 `plan_id` 對不可見計畫為 0。路由未變）
 > 前次更新：2026-10-25（說明修正：「有界重新驗證」補上讀不到群組時保留支持的上界及其適用前提，在 T 大於 0 且後續登入都經同一來源時，約為最近一次讀到之後一個時限加一個工作階段壽命；輪替成員補跑的點擊者承接改述為依憑證歸屬判定其當下能力。行為與路由未變）
@@ -94,7 +97,7 @@
 | Host Key | 2 | `/api/v1/assets/:id/host-key` | TOFU host key 檢視/重置 |
 | 檔案管理（SFTP） | 5 | `/api/v1/assets/:id/files` | SSH 資產檔案列表/上下傳/建目錄/刪除 |
 | 資產節點 | 6 | `/api/v1/asset-groups` | 節點樹 CRUD＋樹導覽＋搬移 |
-| Session | 5 | `/api/v1/sessions` | 列表/詳情/活動/統計/終止（讀取需 `session:view`，終止需 `session:terminate`） |
+| Session | 5 | `/api/v1/sessions` | 列表/詳情/活動/統計/終止（讀取需 `session:view`；終止只限超級管理者，`session:terminate` 不可指派給自訂角色） |
 | 自助連線 | 2 | `/api/v1/my/connections`（列表＋`:id/terminate` 自助終止） | 一般 user 自己的連線精簡紀錄與自助終止（僅需登入） |
 | 指令稽核 | 2 | `/api/v1/sessions`, `/api/v1/commands` | 單會話指令流、跨會話搜尋 |
 | 剪貼簿稽核 | 2 | `/api/v1/sessions/:id/clipboard-events` | RDP/VNC 剪貼簿留存事實列表＋單筆內容解密調閱（逐筆留痕） |
@@ -107,7 +110,7 @@
 | 離機儲存 | 11 | `/api/v1/offsite-storage` | 設定（讀/寫/世代切換確認/停止離機/歷史世代/撤銷憑證）＋狀態、失敗清單、測試連線、批次與單筆重試（全數 `offsite:manage`；憑證 write-only） |
 | 用戶 | 13 | `/api/v1/users` | CRUD + 角色（替換管理者指派集／冪等追加／釘住）/狀態/密碼 + 解鎖/閒置停用豁免 + 本地管理員計數 + 允許來源網段判定 |
 | 角色 | 1 | `/api/v1/roles` | 角色列表 |
-| 角色定義 | 8 | `/api/v1/role-definitions` | 角色定義列表／單筆／描述／摘要試算（讀取需 `role:view`）與自訂角色的新增、複製、修改、刪除（寫入由服務層限超級管理者） |
+| 角色定義 | 9 | `/api/v1/role-definitions` | 角色定義列表／單筆／描述／摘要試算／預覽權限集合（讀取需 `role:view`）與自訂角色的新增、複製、修改、刪除（寫入在路由層即只放行超級管理者，服務層另行重驗） |
 | 使用者群組 | 9 | `/api/v1/user-groups` | 群組 CRUD＋成員維護＋角色指派讀取與整組替換＋外部群組映射唯讀摘要（授權主體） |
 | 角色指派預覽 | 1 | `/api/v1/role-assignment-previews` | 變更前試算有效能力的增減與危險組合（唯讀） |
 | 授權 | 7 | `/api/v1/authorizations` | 資產/節點授權（主體 user/群組二擇一）＋多主體批量＋有效權限雙視角＋帳號範圍更新 |
@@ -124,7 +127,7 @@
 | 改密 | 15 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates`、`/api/v1/change-secret-batches` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除；以帳號為主軸的批次改密 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
-**總計**: 241 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
+**總計**: 242 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
 「語義端點」；下方索引則是 gin 實際註冊的路由條目數，同一路徑的不同方法各計一條，
 故兩者不相等屬正常。**以索引為準**。
 
@@ -396,6 +399,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/role-definitions/:id` | always |
 | PUT | `/api/v1/role-definitions/:id` | always |
 | POST | `/api/v1/role-definitions/:id/copy` | always |
+| GET | `/api/v1/role-definitions/:id/preview-capabilities` | always |
 | GET | `/api/v1/role-definitions/descriptors` | always |
 | POST | `/api/v1/role-definitions/summary` | always |
 | GET | `/api/v1/roles` | always |
@@ -606,7 +610,7 @@ refresh cookie，重新載入即無從恢復，使用者每次重新載入都要
 {"error": "權限不足", "code": "AUTH_PERMISSION_DENIED"}
 ```
 
-body 沒有 `params`，沒有任何 Meta 欄，`error` 與 `code` 都不透露所需的權限點、角色、內建身分，或主體自身的角色。服務層判出的能力拒絕包含：資產與帳號的欄位級能力、標籤清單與標籤治理、會話強制終止、角色指派與角色定義寫入、主機金鑰重置、權限狀態確認接受、授權帳號範圍調整、連線申請的審核與撤銷資格、監看票、儀表板逐卡能力與待審卡的審核資格、主機身分確認的改密能力。這些拒絕與路由閘的拒絕逐位元相同。
+body 沒有 `params`，沒有任何 Meta 欄，`error` 與 `code` 都不透露所需的權限點、角色、內建身分，或主體自身的角色。服務層判出的能力拒絕包含：資產與帳號的欄位級能力、標籤清單與標籤治理、會話強制終止、角色指派、授權帳號範圍調整、連線申請的審核與撤銷資格、監看票、儀表板逐卡能力與待審卡的審核資格、主機身分確認的改密能力。這些拒絕與路由閘的拒絕逐位元相同。角色定義的四條寫入、主機金鑰的重置與採用、權限狀態確認接受，由路由登錄先限定只有內建超級管理者，非超級管理者在處理請求本文之前即得到同一個 403；其後的服務層或鏈上重驗仍保留，作用於路由放行之後（例如操作者在請求之間被降權、停用）。
 
 能力拒絕先於目標存在性與範圍判定，此順序適用於路由層、handler 開頭與保留身分的判定：沒有該能力的主體，對存在與不存在的識別碼得到同一個 403，而不是一個 403、一個 404。例外是在載入目標之後才判的服務層能力，例如資產與帳號的欄位級能力（見 `PUT /assets/:id` 一節）與角色指派（使用者的直接指派，以及使用者群組的角色、成員異動與刪除）；這些情形下目標不存在時回 404。資產的 `access_policy` 欄位不屬此例外，它在 handler 開頭即判，依上述順序。所需的權限點，或保留身分與資格條件的種類，只進審計列的 `details`（見 `docs/DB_SCHEMA.md` 的 `audit_logs` 一節），不在回應中。
 
@@ -1145,8 +1149,9 @@ agent 主體，已刪除者不計）與 `can_self_create_agent`（安全政策 `
   也不是任何 API 的授權依據：`ui:approvals`（既有 `is_approver`）、`ui:my-agents`（`owns_agents` 或
   `can_self_create_agent`）、`ui:assets-global`（全域資產檢視的呈現）、`ui:self-service-actions`
   （申請／待申請操作的呈現）、`ui:connect-bypass`（保留的內建超級管理者身分，僅用於前端連線豁免呈現）、
-  `ui:super-admin`（同一保留身分，供只限超級管理者的畫面元素使用，與連線豁免分開）。
-  持有全部可指派權限不等於持有 `ui:connect-bypass`、`ui:super-admin` 或 `ui:approvals`。
+  `ui:super-admin`（同一保留身分，供只限超級管理者的畫面元素使用，與連線豁免分開）、
+  `ui:session-monitor`（內建超級管理者或稽核員，與監看票簽發的角色資格判定同源，只供會話頁監看入口呈現）。
+  持有全部可指派權限不等於持有 `ui:connect-bypass`、`ui:super-admin`、`ui:session-monitor` 或 `ui:approvals`。
 - `scope_summary`：每個有效、可指派的權限點一筆 `{permission, binding_scope}`，按 `permission` 排序；`ui:` 點不列入。
   `binding_scope` 為 `"global"` 或 `"nodes"`：只要有一筆全系統生效的指派含此權限點並使其生效，就是 `"global"`
   （直接指派與經使用者群組的指派都算；沒有指派的主體與 agent 的固定範本視為全系統），此時只回這一筆、不帶 `nodes`，
@@ -3104,8 +3109,8 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 | 方法 | 路徑 | 說明 | 權限 |
 |---|---|---|---|
 | GET | `/assets/:id/host-key` | 檢視指紋記錄：`{id, asset_id, algorithm, fingerprint, created_at, updated_at}`（`fingerprint` 為 `SHA256:xxx`，公鑰本體不外露）；本資產尚無自身記錄但同位址有記錄時回沿用記錄 `{asset_id, algorithm, fingerprint, inherited: true}`，`asset_id` 為被查資產，不含 `id` 與任何時間戳；無記錄（或已標記待重置）回 404「尚無 host key 記錄」。資產有待確認的不符指紋時多回 `mismatches: [{algorithm, fingerprint, first_seen_at, last_seen_at, seen_count}]`（最近出現者在前，最多 5 筆，不含公鑰）；沒有觀察紀錄時不帶此欄 | 登入＋逐資產可視守門（非 admin/auditor 未授權回 404「資產不存在」，無條件生效） |
-| POST | `/assets/:id/host-key/adopt` | 採用已觀察的指紋：請求 `{"fingerprint": "SHA256:..."}`，只接受該資產 `mismatches` 中存在的指紋。同一交易以該觀察的演算法、指紋、公鑰與撥號位址寫入自身記錄（取代原記錄並清除重置待記錄狀態）、清除該資產全部觀察紀錄、寫 `host_key_adopt` 審計、產生 `host_key_record_changed` 告警；任一步失敗整筆回滾回 500 `INTERNAL_HOST_KEY_ADOPT`。指紋不在觀察中回 404 `NOTFOUND_HOST_KEY_OBSERVATION`，記錄不變；缺指紋回 400。成功回 200 與新的檢視內容（與 GET 自身記錄同形，無 `mismatches`） | 超級管理員保留（不可指派給自訂角色） |
-| DELETE | `/assets/:id/host-key` | 重置（主機重灌場景）：標記本資產「重置待記錄」，下次連線直接記錄當次指紋並清除觀察紀錄；只有沿用記錄（無自身記錄）時同樣可重置；不刪任何記錄列。生效的重置同交易產生 `host_key_record_changed` 告警（告警寫不進去即不生效）。本資產自身與同位址皆無記錄，或本資產已標記待重置（重複重置）時，回 404 無可重置，不發告警。有待確認指紋時建議改用採用 | 超級管理員保留（不可指派給自訂角色） |
+| POST | `/assets/:id/host-key/adopt` | 採用已觀察的指紋：請求 `{"fingerprint": "SHA256:..."}`，只接受該資產 `mismatches` 中存在的指紋。同一交易以該觀察的演算法、指紋、公鑰與撥號位址寫入自身記錄（取代原記錄並清除重置待記錄狀態）、清除該資產全部觀察紀錄、寫 `host_key_adopt` 審計、產生 `host_key_record_changed` 告警；任一步失敗整筆回滾回 500 `INTERNAL_HOST_KEY_ADOPT`。指紋不在觀察中回 404 `NOTFOUND_HOST_KEY_OBSERVATION`，記錄不變；缺指紋回 400。成功回 200 與新的檢視內容（與 GET 自身記錄同形，無 `mismatches`） | 超級管理員保留（不可指派給自訂角色）；路由層即只放行超級管理者，非超管在讀取請求本文前回 403 `AUTH_PERMISSION_DENIED`（單一形狀），鏈上另有同判定的第二道 |
+| DELETE | `/assets/:id/host-key` | 重置（主機重灌場景）：標記本資產「重置待記錄」，下次連線直接記錄當次指紋並清除觀察紀錄；只有沿用記錄（無自身記錄）時同樣可重置；不刪任何記錄列。生效的重置同交易產生 `host_key_record_changed` 告警（告警寫不進去即不生效）。本資產自身與同位址皆無記錄，或本資產已標記待重置（重複重置）時，回 404 無可重置，不發告警。有待確認指紋時建議改用採用 | 超級管理員保留（不可指派給自訂角色）；路由層即只放行超級管理者，非超管回 403 `AUTH_PERMISSION_DENIED`（單一形狀），鏈上另有同判定的第二道 |
 
 ---
 
@@ -3142,7 +3147,7 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 | GET | `/asset-groups/tree` | 樹導覽（惰性）：`?parent_id=` 空＝根層 → `{data: [{id,name,description,parent_id,path,asset_count,subtree_asset_count,has_children}]}`；非 admin/auditor 依可視節點鏈收斂（授權資產掛載節點＋全部祖先，無關子樹不洩漏；範圍化檢視者的節點與計數依連線可視與管理可視的聯集，見〈範圍化檢視者的回應〉）。範圍化檢視者的每個節點另附列級旗標，根層請求（無 `parent_id`）頂層另附 `can_create_root`，見〈範圍化檢視者的回應〉 | 登入 |
 | POST | `/asset-groups` | 建立節點，body: `{name, description, parent_id}`（parent_id 空＝根節點；深度上限 10、同層同名 409） → 201。節點範圍持有者：父節點在範圍外或不存在 404、根層建立 403（見〈節點寫入的範圍判定〉） | `assetgroup:manage` |
 | PUT | `/asset-groups/:id` | 更新名稱/描述（位置不動；同層同名 409）。節點範圍持有者：目標在範圍外 404、目標是自己的範圍根 403 | `assetgroup:manage` |
-| PUT | `/asset-groups/:id/move` | 搬移，body: `{parent_id}`（null＝搬到根層）；環路（搬到自身/子孫）400、搬移後子樹深度超限 400、目標層同名 409。節點範圍持有者：來源或目的在範圍外 404；來源非嚴格子孫、搬到根層、被搬子樹含任何指派的範圍節點 403 | `assetgroup:manage` |
+| PUT | `/asset-groups/:id/move` | 搬移，body: `{parent_id}`（null＝搬到根層）；環路（搬到自身/子孫）400、搬移後子樹深度超限 400、目標層同名 409。目的父節點與現行相同時回 200，不寫入、不寫節點審計（授權判定照常）。節點範圍持有者：來源或目的在範圍外 404；來源非嚴格子孫、搬到根層、被搬子樹含任何指派的範圍節點 403 | `assetgroup:manage` |
 | DELETE | `/asset-groups/:id` | 刪除（僅「無子節點且無直掛資產」的空節點可刪，否則 400；掛該節點的授權與 approver 審核範圍連動軟刪＋稽核）。節點被任何角色指派用作範圍節點時 409 `RULE_NODE_SCOPE_REFERENCED`（含超級管理者）；節點範圍持有者：目標在範圍外 404、目標是自己的範圍根 403 | `assetgroup:manage` |
 
 > 授權客體 `asset_group_id` 語義＝「節點＋全部後代節點的資產」（含子樹，隨掛隨涵蓋）；
@@ -3162,7 +3167,7 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 
 - 範圍外、已刪除與從未存在的節點，回應皆為既有的 404（`NOTFOUND_ASSET_NODE`，無 `params`），三者同形。
 - 限超級管理者的 403 為能力拒絕的單一形狀（見「統一回應格式」）。全域持有者在根層建立或搬到根層時不受此限。
-- 範圍內的更新只改描述時，審計紀錄 details 為 `asset_node_describe`（`old`、`new`）；只改名為 `asset_node_rename`；兩者都改則一筆含兩鍵；皆未改不寫。搬移的審計紀錄 details 另附 `topology_coverage`：因搬移新增或失去涵蓋的資產、連線授權、審核範圍與管理範圍，只含識別碼與等級／角色識別碼，每份清單最多 100 筆並附 `total` 與 `truncated`；經節點範圍指派授權的搬移另附 `cross_assignment`（布林值）。這些只出現在審計紀錄，不在回應中。
+- 範圍內的更新只改描述時，審計紀錄 details 為 `asset_node_describe`（`old`、`new`）；只改名為 `asset_node_rename`；兩者都改則一筆含兩鍵；皆未改不寫。搬移的目的父節點與現行相同時，授權判定通過後回 200，不寫節點審計，也不推進拓撲版本。搬移的審計紀錄 details 另附 `topology_coverage`：因搬移新增或失去涵蓋的資產、連線授權、審核範圍與管理範圍，只含識別碼與等級／角色識別碼，每份清單最多 100 筆並附 `total` 與 `truncated`；經節點範圍指派授權的搬移另附 `cross_assignment`（布林值）。這些只出現在審計紀錄，不在回應中。
 
 ### 刪除被管理範圍引用的節點
 
@@ -3203,7 +3208,7 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 
 ## Session API
 
-> 需要登入；權限 `session:view`；終止為 `session:terminate`，且 handler 內另限超級管理者。
+> 需要登入；權限 `session:view`；終止只限超級管理者（`session:terminate` 屬超級管理者保留，不可指派給自訂角色），handler 內另有同判定的第二道。
 > 一般 user 檢視自己的連線紀錄請改用 [自助連線 API](#自助連線-apimy-connections)（`GET /my/connections`）。
 > session:view 讀取端點（列表/詳情/活動/統計/per-session 指令）無條件守門。
 
@@ -3292,7 +3297,7 @@ POST /api/v1/sessions/:id/terminate  → {}
 - 列表的 `has_recording` 依持久化欄位，不逐列檢查檔案；列表顯示有錄影而詳情顯示讀不到時，以詳情為準。
 - 事件報告 ZIP 的 `sessions.csv` 也有一欄 `recording_state`，但值域是 `available`／`purged`／`none`，依持久化欄位與保留期清理水位推算，不檢查檔案；兩者同名不同義，不可互相代換。
 
-終止需 `session:terminate`，且僅超級管理者可執行（否則 403）；已關閉的 session 回 400。
+終止只有超級管理者可執行：路由登錄仍以 `session:terminate` 把關，該權限點不可指派給自訂角色，非超級管理者一律得到 403 `AUTH_PERMISSION_DENIED`（單一形狀）；已關閉的 session 回 400。
 
 ---
 
@@ -3347,7 +3352,7 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
 | 他人的或不存在的 id | 404 `{"error":"連線不存在"}`（無可區分，不洩漏存在性） |
 | 自己的非 active 連線 | 400 `{"error":"連線已結束"}` |
 
-> admin/auditor 的全域強制終止仍走 `POST /sessions/:id/terminate`（需 `session:terminate`，且僅超級管理者可執行，`end_reason=admin_terminate`），與自助端點分離。
+> admin/auditor 的全域強制終止仍走 `POST /sessions/:id/terminate`（只限超級管理者，`end_reason=admin_terminate`），與自助端點分離。
 
 ---
 
@@ -4475,9 +4480,9 @@ GET /api/v1/roles
 
 ## 角色定義 API
 
-八條路由，路徑前綴 `/api/v1/role-definitions`。與上節的 `GET /roles`（相容目錄）並行，後者不變。
+九條路由，路徑前綴 `/api/v1/role-definitions`。與上節的 `GET /roles`（相容目錄）並行，後者不變。
 
-**權限**：四條讀取路由（列表、單筆、描述、摘要試算）需 `role:view`。四條寫入路由（新增、複製、修改、刪除）在路由層只要求已認證，**超級管理者限制只在服務交易內重驗**，沒有路由層的角色閘；非超級管理者呼叫寫入回 403 `AUTH_PERMISSION_DENIED`。
+**權限**：五條讀取路由（列表、單筆、描述、摘要試算、預覽權限集合）需 `role:view`。四條寫入路由（新增、複製、修改、刪除）在路由層即只放行內建超級管理者，非超級管理者在讀取請求本文與解析識別碼之前就回 403 `AUTH_PERMISSION_DENIED`（單一形狀；本文畸形、識別碼不合法或目標不存在，非超管一律是這個 403，不是 400 或 404）。服務交易內另對操作者重驗一次（存在、啟用、人類主體、全域生效的超級管理者），處理路由放行後操作者被降權或停用的時間窗。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
@@ -4485,6 +4490,7 @@ GET /api/v1/roles
 | GET | `/role-definitions/:id` | 單筆 |
 | GET | `/role-definitions/descriptors` | 編輯器用的描述資料（三組） |
 | POST | `/role-definitions/summary` | 以一組權限鍵試算摘要，不寫資料 |
+| GET | `/role-definitions/:id/preview-capabilities` | 預覽：只持這個角色的人登入後的權限集合與頁面狀態，不寫資料 |
 | POST | `/role-definitions` | 新增自訂角色 → 201 |
 | POST | `/role-definitions/:id/copy` | 複製為新的自訂角色 → 201 |
 | PUT | `/role-definitions/:id` | 修改名稱、說明與權限 → 200 |
@@ -4492,17 +4498,39 @@ GET /api/v1/roles
 
 **列表每列**：`id`、`name`、`description`、`builtin_key`、`locked`、`definition_version`、`template_role_id`、`summary`，以及列表專有的投影欄 `assignment_state`（`open`／`not_open`／`protected`）、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`（`direct`、`group_bindings`、`mapping_rules` 三個計數；`direct` 只計未刪除帳號的直接指派，停用中的帳號計入），以及節點限定的兩個布林 `scopable`、`node_range_no_effect`（見下「節點限定欄位」）。`summary` 含 `manage`、`partial`、`read`、`available`、`hidden`（權限鍵分組；`partial` 是持有入口的寫入鍵、卻未涵蓋管理態全部鍵的入口，不再列入 `read`）、`permission_count`、`catalog_count`、`scope_global_only`、`connection_separate`、`assignment_trust_hint`、`unattributed`（不屬任何入口或獨立能力的權限鍵；部分管理入口已持有的鍵不再列入）。帶 `read_via` 的入口（見下「描述」），在來源入口不是沒有授予、而該入口依各態判定為沒有授予時，列入 `read`。兩個鎖定範本與自訂角色都會出現在列表中。`assignment_state` 依目前操作者計算：超級管理者看到的每個角色都是 `open`；其他操作者看到保護角色（超級管理者、系統安全管理員，以及含高風險權限點的自訂角色，見「角色指派的保護與開放邊界」）為 `protected`，其餘為 `open`。`not_open` 表示角色不在可指派的目標集合內，本版的目標集合涵蓋全部角色，因此不會出現。`open` 只表示不受保護角色與目標集合限制，操作者能否指派仍由指派入口依指派能力與 agent 規則裁決。測試：`TestRoleAssignmentProjection`、`TestRoleDefinitionRoutes`。
 
-**單筆**：同列表欄位去掉投影欄（`assignment_state`、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`），加 `permissions`、`missing_dependencies`、`blocked_screens`，以及 `scopable`、`node_range_no_effect`、`node_scoped_binding_count`。新增、複製、修改的成功回應同為單筆形狀，三個欄位一併帶出。
+**單筆**：同列表欄位去掉投影欄（`assignment_state`、`management_class`、`direct_mappable`、`group_bindable`、`user_count`、`references`），加 `permissions`、`retired_permissions`、`missing_dependencies`、`blocked_screens`，以及 `scopable`、`node_range_no_effect`、`node_scoped_binding_count`。新增、複製、修改的成功回應同為單筆形狀，三個欄位一併帶出。
 
 **節點限定欄位**（只增加讀取欄位，路由與寫入 body 不變）：
 - `scopable`（布林）：角色可否在指派時限定節點，若且唯若角色的權限集合不含任何只能全系統生效的權限點。內建一般使用者與審核者為 `true`（可寫入節點範圍，但見下一欄）；超級管理者、稽核員、身分管理員與系統安全管理員含只能全系統生效的點，為 `false`；資產管理員與授權管理員為 `true`。與 `GET /role-assignment-options` 的 `node_assignable_role_ids` 同義。
 - `node_range_no_effect`（布林）：限定節點後範圍是否不會產生權限。內建一般使用者與審核者為 `true`：內建一般使用者與審核者只在全系統指派時生效，限定節點後不產生權限，系統照常儲存並提示；權限集合為空的自訂角色也為 `true`；含任一只能全系統生效或尚未實作節點限定的權限點時，`scopable` 與本欄皆為 `false`，指定節點的寫入會被拒絕。資產管理員與授權管理員為 `false`。注意這個鍵與 `PUT /users/:id/roles`、`PUT /user-groups/:id/role-bindings` 寫入回應的 `node_range_no_effect` 同名不同型（那裡是 `[{role, reason}]` 陣列），不可共用解析。
 - `node_scoped_binding_count`（整數，**只在單筆讀取與寫入成功回應**，列表不帶）：目前以節點範圍持有此角色的指派筆數，直接指派與使用者群組指派合計；直接指派只計未刪除帳號，停用中的帳號計入。
+- `retired_permissions`（字串陣列，單筆讀取與寫入成功回應恆存在，沒有時為空陣列）：自訂角色資料內已收回、不再生效的權限鍵。目前只有 `session:terminate`：該權限點屬超級管理者保留，不可指派給自訂角色，升級前已存入自訂角色的此鍵不生效，也不出現在 `permissions`、摘要與缺少依賴的計算內；新增與修改帶此鍵回 400 `ROLE_PERMISSION_INVALID`；複製時不帶入新角色；該角色下次儲存後此鍵被移除。內建角色恆為空陣列（內建超級管理者的 `permissions` 仍含 `session:terminate`）。列表不帶此欄。
 - 列表與單筆依角色本身（內建識別加權限集合）判定；草稿摘要與編輯描述沒有內建識別，以「自訂角色加該集合」判定。
 
 **描述**（`GET /role-definitions/descriptors`）三組：`entries`（每項 `id`、`group`、`states[{name, keys}]`、`write_keys`、`details[{id, key, scopable}]`、`scopable`、`placement`、`placement_entries`、`read_via`；`write_keys` 是依歸屬入口規則算出的寫入鍵：管理態中歸屬於該入口、且不在該入口唯讀態的鍵，前端據此判定部分管理；`placement` 是入口出現的位置，恆為 `page`（有自己的頁面）、`embedded`（另一入口頁面內的設定卡）、`helper`（嵌在其他入口表單內的輔助能力）、`banner`（只出現在全域橫幅）四值之一；`placement_entries` 恆為陣列，`embedded` 時為所在頁面的入口，`helper` 時為使用它的入口，其餘為空；`read_via` 是隨附檢視的來源入口，持有來源入口就看得到本入口的頁面內容，沒有時為空字串，目前告警與存取複審的來源是 `audit_logs`；以上三欄只是描述，不改變任何態的權限集合、依賴或授權判定）、`capabilities`（每項 `id`、`key`、`trust_hint`、`requires_entry`、`scopable`；目前三項：`role_assign`、`access_policy_override`、`recording_delete`，只有 `role_assign` 的 `trust_hint` 為真）、`fixed_entries`（固定入口，7 項）。`scopable` 是新增的布林：細項與獨立能力各對應一個權限點，該點在節點範圍指派下會依節點生效即為真；入口以其最後一態（管理或可用態，含依賴鍵）的完整權限集合判定，該集合在節點範圍指派下會依節點生效才為真，含任一只能全系統生效的鍵（例如依賴鍵中的使用者管理）或沒有任何會依節點生效的鍵時為假。
 
 **摘要試算**（`POST /role-definitions/summary`）：body 只收 `{"permissions": [...]}`，嚴格解碼；回 `{summary, missing_dependencies, blocked_screens, scopable, node_range_no_effect}`，後兩個布林是新增的草稿判定（不套用內建識別，把草稿當自訂角色）。含不合法的權限鍵回 400 `ROLE_PERMISSION_INVALID`。
+
+**預覽權限集合**（`GET /role-definitions/:id/preview-capabilities`）：回答「只持這個角色一筆全域指派、沒有任何個人資格的人，登入後拿到什麼」，供管理介面的「以此角色預覽」使用。只收 `role:view`，與單筆讀取同一個能力；只持角色指派能力而不持角色檢視能力者、沒有任何角色者得到 403 `AUTH_PERMISSION_DENIED`（單一形狀）；這條路由不在 agent 路由允許清單，自動化主體（agent）的憑證得到 403 `AUTH_AGENT_FORBIDDEN_ROUTE`。角色不存在或已刪除回與單筆讀取相同的 404 `VALIDATION_ROLE_NOT_FOUND`；路徑參數不是正整數回 400 `VALIDATION_INVALID_ID`；伺服器端沒有組出預覽計算，或計算失敗，回 500 `INTERNAL_ROLE_QUERY`（回應不帶內部錯誤字串，也不以空集合冒充結果）。沒有新增錯誤碼。
+
+成功回 200：
+
+```json
+{"role": {"id": 7, "name": "…"}, "previewable": true,
+ "permissions": ["…"], "entry_states": [{"entry": "assets", "path": "/assets", "state": "manage"}]}
+```
+
+- `role`：`id` 與 `name`。
+- `previewable`（布林）：內建超級管理者角色為 `false`，其餘內建角色與自訂角色為 `true`。判定依保留身分，不比對角色名稱。
+- `reason`（字串）：只在 `previewable` 為 `false` 時出現，值為 `reserved_super_admin`；可預覽時整個欄位省略。
+- `permissions`（字串陣列，恆存在）：與同一個人的 `GET /auth/me` 的 `permissions` 同形、同排序。個人資格不納入，所以 `ui:approvals`、`ui:my-agents` 不會出現；`ui:connect-bypass`、`ui:super-admin` 只屬超級管理者，因此也不出現。
+- `entry_states`（陣列，恆存在，依 `path` 升冪）：每項 `{entry, path, state}`，`path` 是前端頁面路徑，`entry` 是決定該頁狀態的入口 ID（跟隨入口的頁面填被跟隨的入口，固定頁填固定入口 ID），`state` 為 `manage`、`read`、`available` 三值之一。狀態取編輯畫面白話摘要的同一個判定，不另算一套；摘要中的部分管理（持有入口的寫入鍵、但未涵蓋管理態全部鍵）歸為 `manage`。入口出現在多個條目的路徑（例如 `/alerts`）取最高狀態，`manage` 高於 `read` 高於 `available`；沒有自己權限入口的頁面跟隨開啟它的入口（四個稽核頁跟隨稽核紀錄、改密批次頁跟隨改密、存取控制頁跟隨安全政策）；登入即可見的固定頁（儀表板、工作區、我的連線、我的申請、個人資料）恆為 `available`；入口判定可進入、但白話摘要認不得這個授予的頁面也是 `available`，不標示唯讀。預覽中不能進入的路徑不列，依個人資格出現的審核中心與我的 agent 恆不列。
+- `previewable` 為 `false` 時狀態仍是 200，`permissions` 與 `entry_states` 為空陣列。
+- 回應不含範圍摘要，也不含任何節點、資產、使用者或憑證資料；預覽集合不代入任何節點範圍。
+
+這條路由只讀：處理本身不寫任何業務資料表、不推進權限版本、不簽發 token 或票證、不建立會話。呼叫端的身分與權限不因預覽改變：同一個 token 在呼叫前後讀到的內容相同，直接呼叫本人無權的寫入路由仍以本人身分被拒。伺服器端沒有任何以「預覽」為條件的授權分支，預覽只是這條讀取路由的回應。端點不另寫事件或專屬審計動作；請求本身與其他讀取一樣，由通用的操作日誌記為角色資源的讀取（被拒的請求同樣記一筆）。
+
+預覽中，管理介面只在前端把這份集合套到畫面呈現：寫入類按鈕停用，需要簽發票證的動作（連線、播放錄影、監看、分享）直接停用。畫面上的資料仍以呼叫者本人看得到的為上限，這個集合不授予呼叫者任何能力。
 
 **寫入 body**（皆嚴格解碼，多餘鍵回 400 `VALIDATION_BAD_PARAMS`）：新增 `{name, description, permissions, template_role_id}`；複製 `{name, description}`；修改 `{name, description, permissions, expected_version}`，其中 `permissions` 與 `expected_version` 必帶；刪除不收本文，`expected_version` 以查詢參數帶入且必須是唯一的查詢參數。新增、複製、修改的成功回應為單筆形狀。
 
@@ -5175,7 +5203,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/audit-failures` | 失效事件列表（`page`/`page_size`）→ `{data: {items: [{mechanism, started_at, ended_at, cause, cause_code, cause_params, details}], total}}`；`ended_at` null=進行中 |
-| POST | `/audit-failures/permission-state/accept` | 僅超級管理者（非超管 403 `AUTH_PERMISSION_DENIED`，單一形狀）。body `{reason}`（1 至 500 字、不可含控制字元）。對帳判定權限狀態不符（含被偵測到的無來源變動）時確認並接受風險：同一交易寫入 `accept` 事件（以目前狀態為新基準）與審計列（`permission_state_accepted`，記確認人、原因、差集摘要），不改任何角色或授權；對帳無法判定（變更紀錄缺漏、驗證不過或沒有可用基準）時同一入口改為重設比對基準，事件帶重設標記，審計列另記 `mode=rebase`、`state` 與無法判定的原因摘要，被破壞的紀錄原樣保留。重設時另記 `after_cp_seq`（重設寫入當下鏈上最新的檢查點序號，用以判定重設與附證的先後），差集改以最後一個可信參考點對目前狀態計算，有參考點時審計列與回應另帶 `reference_event_seq`／`reference_cp_seq`；重設提交後立即重跑對帳，未以這次重設起算時不回成功。成功回 `{data: {op_id, event_seq, missing_count, extra_count, missing?, extra?, reference_event_seq?, reference_cp_seq?}}`（`missing`／`extra` 最多 20 筆），告警結案。原因不合 400 `VALIDATION_PERMISSION_STATE_ACCEPT_REASON`；相符或尚未涵蓋（沒有可確認的差異）409 `CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE`；失敗 500 `INTERNAL_PERMISSION_STATE_ACCEPT`（取不到完整性密鑰時交易已回滾；重設已提交卻未被對帳採用時同樣回此碼，已寫入的事件與審計列保留） |
+| POST | `/audit-failures/permission-state/accept` | 僅超級管理者（路由層即只放行超管，非超管在讀取請求本文前回 403 `AUTH_PERMISSION_DENIED`，單一形狀；鏈上另有同判定的第二道）。body `{reason}`（1 至 500 字、不可含控制字元）。對帳判定權限狀態不符（含被偵測到的無來源變動）時確認並接受風險：同一交易寫入 `accept` 事件（以目前狀態為新基準）與審計列（`permission_state_accepted`，記確認人、原因、差集摘要），不改任何角色或授權；對帳無法判定（變更紀錄缺漏、驗證不過或沒有可用基準）時同一入口改為重設比對基準，事件帶重設標記，審計列另記 `mode=rebase`、`state` 與無法判定的原因摘要，被破壞的紀錄原樣保留。重設時另記 `after_cp_seq`（重設寫入當下鏈上最新的檢查點序號，用以判定重設與附證的先後），差集改以最後一個可信參考點對目前狀態計算，有參考點時審計列與回應另帶 `reference_event_seq`／`reference_cp_seq`；重設提交後立即重跑對帳，未以這次重設起算時不回成功。成功回 `{data: {op_id, event_seq, missing_count, extra_count, missing?, extra?, reference_event_seq?, reference_cp_seq?}}`（`missing`／`extra` 最多 20 筆），告警結案。原因不合 400 `VALIDATION_PERMISSION_STATE_ACCEPT_REASON`；相符或尚未涵蓋（沒有可確認的差異）409 `CONFLICT_PERMISSION_STATE_NOT_ACCEPTABLE`；失敗 500 `INTERNAL_PERMISSION_STATE_ACCEPT`（取不到完整性密鑰時交易已回滾；重設已提交卻未被對帳採用時同樣回此碼，已寫入的事件與審計列保留） |
 
 機制：`audit_write`（稽核批量寫庫失敗降級 fallback 檔）、`syslog_forward`（斷線/緩衝溢出）、
 `recording_probe`/`recording_text`/`recording_graphics`（錄影三路）、`session_record`、`kek_retirement`。

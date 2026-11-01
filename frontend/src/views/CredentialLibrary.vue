@@ -23,6 +23,7 @@
         </el-button>
         <el-button
           v-if="can('credential:create')"
+          v-preview-write:create
           type="primary"
           data-test="create-credential"
           @click="openCreate"
@@ -169,6 +170,7 @@
     >
       <span data-test="batch-count">{{ t('credentials.reassign.selected', { count: selectedRows.length }) }}</span>
       <el-button
+        v-preview-write
         type="primary"
         size="small"
         data-test="batch-reassign"
@@ -261,6 +263,7 @@ import {
   CREDENTIAL_OWNERSHIP_VALUES,
   credentialDisplayName,
 } from '@/constants/credentials'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const { t } = useI18n()
 // 頁首範圍行：憑證檢視權限點在能力狀態的節點範圍

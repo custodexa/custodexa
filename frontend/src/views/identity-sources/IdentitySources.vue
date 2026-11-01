@@ -173,6 +173,7 @@
               {{ $t('identityGroupMappings.openPage') }}
             </el-button>
             <el-button
+              v-preview-write
               type="danger"
               size="small"
               link
@@ -237,6 +238,7 @@ import { getIdentitySources, isNotImplemented } from '@/api/identitySources'
 import { getOIDCProviders, deleteOIDCProvider } from '@/api/oidc'
 import { getLDAPDirectory, deleteLDAPDirectory } from '@/api/ldapDirectory'
 import { getLocalAdminCount } from '@/api/user'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const router = useRouter()
 

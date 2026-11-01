@@ -170,6 +170,7 @@
         <template #default="{ row }">
           <el-button
             v-if="row.scope === 'shared'"
+            v-preview-write
             link
             type="primary"
             size="small"
@@ -222,6 +223,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { credentialDisplayName } from '@/constants/credentials'
 import { outOfScopeCount } from '@/utils/credentialActions'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   credentials: { type: Array, default: () => [] },

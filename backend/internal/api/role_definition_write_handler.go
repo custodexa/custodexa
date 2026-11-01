@@ -75,7 +75,7 @@ type roleUpdateBody struct {
 func respondRoleDefinitionWriteError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, identity.ErrRoleDefinitionForbidden):
-		// 角色定義寫入限超管（服務層 requireSuperAdmin：操作者不存在、停用、agent、非超管同一哨兵）
+		// 路由登錄先拒非超管；此處為第二道（服務層 requireSuperAdmin：操作者不存在、停用、agent、非超管同一哨兵）
 		middleware.WriteCapabilityDenial(c, middleware.ReservedCapabilityDenial(authz.ReservedSuperAdmin))
 	case errors.Is(err, identity.ErrRoleDefinitionNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeRoleNotFound, nil)

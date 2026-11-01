@@ -118,9 +118,9 @@ func (h *AuditExportHandler) CreateJob(c *gin.Context) {
 	job, created, err := h.jobs.CreateJob(currentRequester(c), currentRequesterName(c), filter)
 	if err != nil {
 		if errors.Is(err, audit.ErrExportJobLimitExceeded) {
+			apierror.Respond(c, http.StatusConflict, apierror.CodeExportJobLimit, nil)
 			h.auditJob(c, model.ActionCreate, model.StatusDenied, nil,
 				"job_limit_exceeded "+exportFilterAuditSnapshot(filter))
-			apierror.Respond(c, http.StatusConflict, apierror.CodeExportJobLimit, nil)
 			return
 		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalExportJob, err)
@@ -129,9 +129,8 @@ func (h *AuditExportHandler) CreateJob(c *gin.Context) {
 
 	// 發起入審計：申請者（審計列本體）＋完整篩選條件快照（spec 硬要求）
 	msg := fmt.Sprintf("job=%d created=%t %s", job.ID, created, exportFilterAuditSnapshot(filter))
-	h.auditJob(c, model.ActionCreate, model.StatusSuccess, &job.ID, msg)
-
 	c.JSON(http.StatusAccepted, gin.H{"data": exportJobView(job, h.offsiteSHA256(job)), "deduplicated": !created})
+	h.auditJob(c, model.ActionCreate, model.StatusSuccess, &job.ID, msg)
 }
 
 // ListJobs 下載中心的清單（GET /audit-export/jobs，分頁、id 降冪穩定排序）。
@@ -189,9 +188,9 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 	if getErr != nil {
 		if errors.Is(getErr, audit.ErrExportJobNotFound) {
 			// 不存在或非申請者本人：對外同一 403；真實原因只進審計
+			apierror.Respond(c, http.StatusForbidden, apierror.CodeExportJobRequesterOnly, nil)
 			h.auditJob(c, model.ActionRead, model.StatusDenied, nil,
 				fmt.Sprintf("download_denied job=%d reason=not_found_or_not_requester", jobID))
-			apierror.Respond(c, http.StatusForbidden, apierror.CodeExportJobRequesterOnly, nil)
 			return
 		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalExportJob, getErr)
@@ -202,9 +201,9 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 	now := time.Now()
 	if job.Status != model.ExportJobDone || job.ArtifactPath == "" ||
 		(job.ExpiresAt != nil && !job.ExpiresAt.After(now)) {
+		apierror.Respond(c, http.StatusGone, apierror.CodeExportArtifactUnavailable, nil)
 		h.auditJob(c, model.ActionRead, model.StatusDenied, &job.ID,
 			"download_denied reason=artifact_unavailable status="+job.Status)
-		apierror.Respond(c, http.StatusGone, apierror.CodeExportArtifactUnavailable, nil)
 		return
 	}
 
@@ -212,18 +211,18 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 	if offsiteErr != nil {
 		if code := offsiteFailureCode(offsiteErr); code != "" {
 			// 離機副本被判不可信／取不到：**零位元組交付**＋機器碼
+			apierror.Respond(c, http.StatusConflict, code, nil)
 			h.auditJob(c, model.ActionRead, model.StatusFailure, &job.ID,
 				"download_failed reason=offsite_unavailable code="+string(code))
-			apierror.Respond(c, http.StatusConflict, code, nil)
 			return
 		}
 		reason := "artifact_unreadable"
 		if errors.Is(offsiteErr, errExportArtifactMissing) {
 			reason = "artifact_missing"
 		}
+		apierror.Respond(c, http.StatusGone, apierror.CodeExportArtifactUnavailable, nil)
 		h.auditJob(c, model.ActionRead, model.StatusFailure, &job.ID,
 			"download_failed reason="+reason)
-		apierror.Respond(c, http.StatusGone, apierror.CodeExportArtifactUnavailable, nil)
 		return
 	}
 
@@ -297,7 +296,8 @@ func (h *AuditExportHandler) resolveArtifact(c *gin.Context, job *model.AuditExp
 }
 
 // auditJob job 端點的審計出口（發起／下載／拒絕共用同一字面量——
-// 各寫一份就會各自演化欄位集；沿 AP-69/AP-71 的單一字面量紀律）
+// 各寫一份就會各自演化欄位集；沿 AP-69/AP-71 的單一字面量紀律）。
+// 須在回應寫出之後呼叫：status_code 取自已寫出的回應，之前呼叫只會得到預設的 200。
 func (h *AuditExportHandler) auditJob(c *gin.Context, action model.AuditAction,
 	status model.AuditStatus, jobID *uint, msg string) {
 	if h.auditService == nil {

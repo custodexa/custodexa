@@ -82,6 +82,7 @@
         </el-select>
       </el-form-item>
       <el-button
+        v-preview-write
         type="primary"
         :loading="submitting"
         :disabled="!canSubmit"
@@ -116,6 +117,7 @@ import {
   SCOPE_SEMANTICS_LINES,
   buildGroupPaths,
 } from '@/utils/approver-scope'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   // 預選審核方（列內/格內捷徑）：{ type: 'user'|'group', id }；null＝表單內選擇

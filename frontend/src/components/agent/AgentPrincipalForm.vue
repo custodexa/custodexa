@@ -52,6 +52,7 @@
       >
         {{ t('common.cancel') }}
       </el-button><el-button
+        v-preview-write:create
         type="primary"
         :loading="busy"
         data-test="agent-submit"
@@ -68,6 +69,7 @@ import { t } from '@/i18n'
 import { getUserList } from '@/api/user'
 import { createAgentPrincipal } from '@/api/agents'
 import { resolveApiError } from '@/api/error'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 const emit = defineEmits(['created', 'cancel'])
 const username = ref('')
 const ownerId = ref(null)

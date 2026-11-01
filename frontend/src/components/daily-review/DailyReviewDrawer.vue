@@ -288,6 +288,7 @@
             class="dr-drawer__hint"
           >{{ $t('dailyReview.drawer.onTimeHint') }}</span>
           <el-button
+            v-preview-write
             type="primary"
             :loading="submitting"
             :disabled="signDisabled"
@@ -333,6 +334,7 @@ import {
   timeInZone,
   windowText,
 } from './dailyReviewFormat'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const TEXT_MAX = 500
 

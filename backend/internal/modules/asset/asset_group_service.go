@@ -529,6 +529,12 @@ func (s *AssetGroupService) Move(ctx context.Context, id uint, newParentID *uint
 		}
 		oldParent := group.ParentID
 
+		// 目的父節點與現行相同：授權判定已通過，沒有任何變動可寫，直接結束
+		// （不更新、不推進拓撲版本、不寫節點審計；環路、深度、同名在原地時不可能成立）
+		if sameParent(oldParent, newParentID) {
+			return nil
+		}
+
 		targetDepth := 0
 		if newParentID != nil {
 			descendant, err := isDescendantTx(tx, id, *newParentID)

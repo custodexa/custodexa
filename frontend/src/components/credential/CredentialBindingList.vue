@@ -76,6 +76,7 @@
           <div class="row-actions">
             <el-button
               v-if="showDetach && can('credential:detach')"
+              v-preview-write
               link
               type="warning"
               :disabled="rotationActive || !!deniedReason(binding, 'detach')"
@@ -86,6 +87,7 @@
             </el-button>
             <el-button
               v-if="can('credential:bind')"
+              v-preview-write
               link
               type="danger"
               :disabled="rotationActive || !!deniedReason(binding, 'unbind')"
@@ -117,6 +119,7 @@ import { useI18n } from 'vue-i18n'
 import EmptyState from '@/components/EmptyState.vue'
 import { can } from '@/composables/useCapabilities'
 import { deniedReason } from '@/utils/credentialActions'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   bindings: { type: Array, default: () => [] },

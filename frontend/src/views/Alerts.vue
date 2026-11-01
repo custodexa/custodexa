@@ -111,6 +111,7 @@
             @clear="alertSelection.clear()"
           >
             <el-button
+              v-preview-write
               type="primary"
               data-test="batch-open"
               @click="alertBatchDialogRef?.open()"
@@ -341,6 +342,7 @@
                 </el-button>
                 <el-button
                   v-if="canReview"
+                  v-preview-write
                   link
                   type="warning"
                   @click="openReviewDialog(row)"
@@ -381,6 +383,7 @@
         <div class="list-card">
           <div class="toolbar">
             <el-button
+              v-preview-write:create
               type="primary"
               @click="openCreateDialog"
             >
@@ -459,6 +462,7 @@
             >
               <template #default="{ row }">
                 <el-switch
+                  v-preview-write
                   :model-value="row.enabled"
                   @change="(value) => handleToggleEnabled(row, value)"
                 />
@@ -472,6 +476,7 @@
             >
               <template #default="{ row }">
                 <el-button
+                  v-preview-write
                   link
                   type="primary"
                   @click="openEditDialog(row)"
@@ -479,6 +484,7 @@
                   {{ $t('common.edit') }}
                 </el-button>
                 <el-button
+                  v-preview-write
                   link
                   type="danger"
                   @click="handleDeleteRule(row)"
@@ -577,6 +583,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="reviewSubmitting"
           @click="submitReview"
@@ -744,6 +751,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="saving"
           @click="handleSaveRule"
@@ -788,6 +796,7 @@ import {
   alertRuleText,
 } from '@/constants/command-degrade'
 import { buildAddressPivotLink, localDayRange } from '@/components/audit/timelineQuery'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const router = useRouter()
 

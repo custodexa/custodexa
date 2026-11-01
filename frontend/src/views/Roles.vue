@@ -13,6 +13,7 @@
         </el-button>
         <el-button
           v-if="canDefine"
+          v-preview-write:create
           type="primary"
           data-test="roles-create"
           @click="openCreate()"
@@ -133,6 +134,7 @@
               </el-button>
               <el-button
                 v-if="row.builtin_key && canDefine && row.builtin_key !== SUPER_KEY"
+                v-preview-write:create
                 link
                 type="primary"
                 :data-test="`role-template-${row.id}`"
@@ -150,6 +152,7 @@
                   {{ $t('roles.list.actionEdit') }}
                 </el-button>
                 <el-button
+                  v-preview-write
                   link
                   type="primary"
                   :data-test="`role-copy-${row.id}`"
@@ -158,6 +161,7 @@
                   {{ $t('roles.list.actionCopy') }}
                 </el-button>
                 <el-button
+                  v-preview-write
                   link
                   type="danger"
                   :disabled="inUse(row)"
@@ -253,6 +257,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write:create
           type="primary"
           :disabled="!createDraft.name.trim()"
           data-test="role-create-next"
@@ -285,6 +290,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :disabled="!copyName.trim() || copying"
           data-test="role-copy-submit"
@@ -336,6 +342,7 @@ import {
   roleErrorCode,
   ROLE_ERROR_IN_USE,
 } from '@/api/roleDefinitions'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const SUPER_KEY = 'super_admin'
 const router = useRouter()

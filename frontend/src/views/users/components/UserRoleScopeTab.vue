@@ -267,6 +267,7 @@
       </section>
       <div class="actions">
         <el-button
+          v-preview-write
           type="primary"
           :disabled="!dirty"
           :loading="saving"
@@ -365,6 +366,7 @@
           class="mapped-row"
         >
           <el-checkbox
+            v-preview-write
             :model-value="manualSet.has(name)"
             :disabled="manualSet.has(name) || pinning === name || stateOf(name) === 'protected'"
             :data-test="`pin-${name}`"
@@ -562,6 +564,7 @@ import RoleNodePicker from '@/components/RoleNodePicker.vue'
 import { can } from '@/composables/useCapabilities'
 import { canEnter, entryRuleFor } from '@/router/entryRules'
 import { classifyRole, isNoEffectClass, SCOPE_CLASS, filterByQuery, splitBuiltinCustom } from '@/utils/roleScopePresentation'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 使用者詳情的「角色與範圍」分頁：管理者指派、來自映射、來自群組三區。

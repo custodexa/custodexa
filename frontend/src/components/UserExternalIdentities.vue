@@ -195,6 +195,7 @@
       >
         <template #default="{ row }">
           <el-button
+            v-preview-write
             type="danger"
             size="small"
             link
@@ -228,9 +229,11 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <!-- 選單內僅此一項，不加 divided（會在選單頂端留一條懸空分隔線） -->
-                <el-dropdown-item command="unbindAndDisable">
+                <PreviewDropdownItem
+                  command="unbindAndDisable"
+                >
                   <span class="danger-item">{{ $t('externalIdentities.unbindAndDisable') }}</span>
-                </el-dropdown-item>
+                </PreviewDropdownItem>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -303,6 +306,7 @@
         </el-form-item>
         <el-form-item label=" ">
           <el-button
+            v-preview-write
             type="primary"
             :loading="isAction('bind')"
             :disabled="bindDisabled"
@@ -362,6 +366,7 @@
       </el-tag>
       <template v-else>
         <el-button
+          v-preview-write
           type="warning"
           :loading="isAction('externalOnly')"
           :disabled="externalOnlyDisabled"
@@ -381,6 +386,7 @@
 </template>
 
 <script setup>
+import PreviewDropdownItem from '@/components/PreviewDropdownItem.vue'
 /**
  * 使用者的外部身分管理（spec user-account-administration）。
  *
@@ -411,6 +417,7 @@ import {
   convertUserToExternalOnly,
 } from '@/api/user'
 import { getOIDCProviders } from '@/api/oidc'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   user: {

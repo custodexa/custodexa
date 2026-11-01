@@ -178,17 +178,17 @@ func (h *RotationReportHandler) CreateJob(c *gin.Context) {
 	name := currentRequesterName(c)
 	job, err := h.schedules.CreateManualJob(filter, name, currentRequester(c))
 	if err != nil {
+		h.respondReportError(c, apierror.CodeInternalRotationReportJob, err)
 		h.auditReport(c, model.ActionCreate, model.StatusDenied, nil,
 			"rotation_report.job_created denied scope="+req.ScopeKind)
-		h.respondReportError(c, apierror.CodeInternalRotationReportJob, err)
 		return
 	}
+	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"id": job.ID, "status": job.Status}})
 	h.auditReport(c, model.ActionCreate, model.StatusSuccess, &job.ID,
 		fmt.Sprintf("rotation_report.job_created job=%d scope=%s/%d period=%s..%s lang=%s",
 			job.ID, filter.ScopeKind, filter.ScopeID,
 			filter.PeriodStart.Format(time.RFC3339), filter.PeriodEnd.Format(time.RFC3339),
 			filter.Language))
-	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"id": job.ID, "status": job.Status}})
 }
 
 // ListSchedules 排程列表（GET /rotation-report/schedules）。
@@ -211,15 +211,15 @@ func (h *RotationReportHandler) CreateSchedule(c *gin.Context) {
 	}
 	row, err := h.schedules.Create(&req)
 	if err != nil {
+		h.respondReportError(c, apierror.CodeInternalRotationScheduleCreate, err)
 		h.auditReport(c, model.ActionCreate, model.StatusDenied, nil,
 			"rotation_report.schedule_created denied name="+req.Name)
-		h.respondReportError(c, apierror.CodeInternalRotationScheduleCreate, err)
 		return
 	}
+	c.JSON(http.StatusCreated, gin.H{"data": row})
 	h.auditReport(c, model.ActionCreate, model.StatusSuccess, &row.ID,
 		fmt.Sprintf("rotation_report.schedule_created id=%d name=%s cron=%s scope=%s/%d retention=%d lang=%s",
 			row.ID, row.Name, row.Cron, row.ScopeKind, row.ScopeID, row.RetentionDays, row.Language))
-	c.JSON(http.StatusCreated, gin.H{"data": row})
 }
 
 // UpdateSchedule 修改排程（PUT /rotation-report/schedules/:id）。
@@ -235,15 +235,15 @@ func (h *RotationReportHandler) UpdateSchedule(c *gin.Context) {
 	}
 	row, err := h.schedules.Update(id, &req)
 	if err != nil {
+		h.respondReportError(c, apierror.CodeInternalRotationScheduleUpdate, err)
 		h.auditReport(c, model.ActionUpdate, model.StatusDenied, &id,
 			"rotation_report.schedule_updated denied name="+req.Name)
-		h.respondReportError(c, apierror.CodeInternalRotationScheduleUpdate, err)
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"data": row})
 	h.auditReport(c, model.ActionUpdate, model.StatusSuccess, &row.ID,
 		fmt.Sprintf("rotation_report.schedule_updated id=%d name=%s cron=%s scope=%s/%d retention=%d lang=%s",
 			row.ID, row.Name, row.Cron, row.ScopeKind, row.ScopeID, row.RetentionDays, row.Language))
-	c.JSON(http.StatusOK, gin.H{"data": row})
 }
 
 // DeleteSchedule 刪除排程（DELETE /rotation-report/schedules/:id）。
@@ -253,14 +253,14 @@ func (h *RotationReportHandler) DeleteSchedule(c *gin.Context) {
 		return
 	}
 	if err := h.schedules.Delete(id); err != nil {
+		h.respondReportError(c, apierror.CodeInternalRotationScheduleDelete, err)
 		h.auditReport(c, model.ActionDelete, model.StatusDenied, &id,
 			"rotation_report.schedule_deleted denied")
-		h.respondReportError(c, apierror.CodeInternalRotationScheduleDelete, err)
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{})
 	h.auditReport(c, model.ActionDelete, model.StatusSuccess, &id,
 		fmt.Sprintf("rotation_report.schedule_deleted id=%d", id))
-	c.JSON(http.StatusOK, gin.H{})
 }
 
 // RunSchedule 立即依排程規則產一份（POST /rotation-report/schedules/:id/run）。
@@ -272,14 +272,14 @@ func (h *RotationReportHandler) RunSchedule(c *gin.Context) {
 	}
 	job, err := h.schedules.Trigger(id, time.Now())
 	if err != nil {
+		h.respondReportError(c, apierror.CodeInternalRotationReportJob, err)
 		h.auditReport(c, model.ActionCreate, model.StatusDenied, &id,
 			"rotation_report.job_created denied schedule_run")
-		h.respondReportError(c, apierror.CodeInternalRotationReportJob, err)
 		return
 	}
+	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"id": job.ID, "status": job.Status}})
 	h.auditReport(c, model.ActionCreate, model.StatusSuccess, &job.ID,
 		fmt.Sprintf("rotation_report.job_created job=%d schedule=%d manual_run", job.ID, id))
-	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"id": job.ID, "status": job.Status}})
 }
 
 // periodFromQuery 記錄區間（兩個參數都必要——一個沒有起訖的「區間」是全庫掃描）。
@@ -362,6 +362,8 @@ func (h *RotationReportHandler) respondReportError(c *gin.Context, internalCode 
 
 // auditReport 報告端點的審計出口（手動產出、排程建立／修改／刪除、立即產出
 // 共用同一個字面量——拆成多份就會有多處各自演化的欄位集）。
+//
+// 須在回應寫出之後呼叫：status_code 取自已寫出的回應，之前呼叫只會得到預設的 200。
 func (h *RotationReportHandler) auditReport(c *gin.Context, action model.AuditAction,
 	status model.AuditStatus, resourceID *uint, msg string) {
 	if h.auditService == nil {

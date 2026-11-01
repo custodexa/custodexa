@@ -102,6 +102,7 @@
         </div>
         <div class="display-name-actions">
           <el-button
+            v-preview-write
             type="primary"
             :loading="displayNameSaving"
             @click="handleSaveDisplayName"
@@ -109,6 +110,7 @@
             {{ $t('common.save') }}
           </el-button>
           <el-button
+            v-preview-write
             :disabled="displayNameSaving || (!displayNameInput && !account.local_display_name)"
             @click="handleClearDisplayName"
           >
@@ -182,6 +184,7 @@
             show-icon
           />
           <el-button
+            v-preview-write
             type="primary"
             :loading="pwdChanging"
             @click="handleChangePassword"
@@ -221,6 +224,7 @@
             </el-form-item>
           </el-form>
           <el-button
+            v-preview-write
             type="danger"
             :loading="disabling"
             :disabled="!disablePassword"
@@ -240,6 +244,7 @@
 
           <el-button
             v-if="!mfaSetup"
+            v-preview-write
             type="primary"
             :loading="setupLoading"
             class="mfa-generate-btn"
@@ -301,6 +306,7 @@
               </el-form-item>
             </el-form>
             <el-button
+              v-preview-write
               type="primary"
               :loading="enabling"
               :disabled="enableCode.length !== 6"
@@ -333,6 +339,7 @@ import {
   changePassword,
   updateProfileDisplayName,
 } from '@/api/auth'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const MFA_CODE_LENGTH = 6
 const DISPLAY_NAME_MAX = 100

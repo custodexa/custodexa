@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write
           type="danger"
           :loading="sealing"
           :disabled="loading || sealing || inventory.seal_state !== 'unsealed' || kekGuideMode === 'unknown'"
@@ -35,6 +36,7 @@
         {{ rewrapPendingDescText }}
       </p>
       <el-button
+        v-preview-write
         type="danger"
         text
         :loading="abandoning"
@@ -90,6 +92,7 @@
           <span>{{ $t('keyManagement.topoTitle') }}</span>
           <el-button
             v-if="!topologyEditing && !topologyReadonly"
+            v-preview-write
             text
             type="primary"
             class="topo-edit-btn"
@@ -177,6 +180,7 @@
             {{ $t('common.cancel') }}
           </el-button>
           <el-button
+            v-preview-write
             type="primary"
             :loading="topologySaving"
             :disabled="topologySaveDisabled"
@@ -342,6 +346,7 @@
       </el-table>
       <div class="card-actions">
         <el-button
+          v-preview-write
           type="primary"
           :loading="rotating === 'data'"
           :disabled="rotateDisabled('data')"
@@ -350,6 +355,7 @@
           {{ $t('keyManagement.rotateData') }}
         </el-button>
         <el-button
+          v-preview-write
           :loading="rotating === 'audit_integrity'"
           :disabled="rotateDisabled('audit_integrity')"
           @click="confirmRotate('audit_integrity')"
@@ -357,6 +363,7 @@
           {{ $t('keyManagement.rotateAudit') }}
         </el-button>
         <el-button
+          v-preview-write
           :disabled="inventory.rewrap_pending || !!rotating"
           @click="openRewrapWizard"
         >
@@ -371,6 +378,7 @@
         >
           <span class="cleanup-btn-wrap">
             <el-button
+              v-preview-write
               type="danger"
               plain
               :loading="cleaning"
@@ -953,6 +961,7 @@
         </el-button>
         <el-button
           v-if="rewrapStep === rewrapResultStep - 1"
+          v-preview-write
           type="primary"
           :loading="rewrapping"
           :disabled="rewrapSubmitDisabled"
@@ -1009,6 +1018,7 @@ import {
 } from '@/utils/kek'
 import KEKGenerateCommands from '@/components/KEKGenerateCommands.vue'
 import { t } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 金鑰政策鍵（域收編）：儲存後重載清冊，超齡提醒 banner 即時反映新提醒天數
 const {

@@ -92,6 +92,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           data-test="batch-submit"
           :disabled="!canSubmit"
@@ -126,6 +127,7 @@ import { t } from '@/i18n'
 import { reviewAlert, searchAlerts } from '@/api/alerts'
 import { useBatchReview, BATCH_STATE } from '@/composables/useBatchReview'
 import BatchProgressList from './BatchProgressList.vue'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const NOTE_MAX = 500
 

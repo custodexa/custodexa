@@ -2,6 +2,127 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.20.0 — preview a role's screens, and move nodes by dragging (2026-11-01)
+
+No schema change. A 1.18.x or 1.19.x package deployment upgrades with
+`custodexa.sh upgrade 1.20.0` and runs no migration. A 1.17.x deployment can upgrade straight
+to 1.20.0; that upgrade runs the 1.18.0 migrations, so follow "What you need to do" in the
+1.18.0 notes below and [Upgrading to 1.18.0][1180-sop] in the upgrade SOP before you start.
+
+### What you need to do
+
+- Existing role assignments, their scopes and what each role can do stay the same after the
+  upgrade.
+- Scripts or integrations that call the seven routes listed under API must use a super
+  administrator account. These calls already required one. On the four role definition write
+  routes, people signed in with other accounts are now refused before the request body is read
+  and receive 403 `AUTH_PERMISSION_DENIED`, also for a malformed body or an invalid ID, which
+  used to return 400.
+- Scripts that create or edit custom roles must leave out `session:terminate`. A request that
+  includes it is refused with 400 `ROLE_PERMISSION_INVALID`.
+
+### Permission changes
+
+- Custom roles can no longer be given the right to terminate sessions. The role editor's
+  Sessions entry offers Hidden and Available.
+- When a custom role saved before this release holds that right, its editor shows a line
+  saying the right is removed when the role is next saved, and copies of the role leave it
+  out. Backups and restores accept such roles.
+- On Sessions, Terminate appears only for super administrators. Monitor appears only for
+  super administrators and auditors, the accounts that can open a monitoring session.
+
+### New capabilities
+
+#### Preview as this role
+
+- A saved role's edit and view pages have Preview as this role. It shows the sidebar, entries
+  and page actions of someone who holds only this role, assigned system-wide, without creating
+  a test account or assignment. The preview starts on that person's dashboard and always uses
+  the saved role: with unsaved changes, the button first offers Back to editing or Discard
+  changes and preview.
+- A banner at the top names the role, says changes are disabled and that the data shown is
+  limited to what you can see yourself. Exit preview returns to the role's edit page.
+  Refreshing the page or typing an address also ends the preview, and a new tab opens without
+  it.
+- Write actions the role would have are shown but disabled, with an explanation. Pages the role
+  can only view are marked Read only and leave out add, edit and delete. Connecting, playing
+  recordings, monitoring and sharing are disabled, and the asset list leaves out connect
+  buttons because they depend on each person. Requests that change data are not sent, and
+  pages load data with your own account.
+- When the role can view assets and you cannot, Assets and the workspace say that you cannot
+  see this data yourself. Preview range, above the node tree on Assets, limits the screen to
+  some of the nodes you can see. It does not change the role.
+- The Super Administrator role cannot be previewed, and the button explains why.
+
+#### Moving nodes by dragging
+
+- On Assets, a node in the node tree can be dragged onto another node to become its child.
+  Nodes you can move with ⋯ → Move can be dragged; accounts that can only view assets cannot
+  drag.
+- While you drag, the target says whether the node can go there. It explains on the spot when
+  the target is below the dragged node, is at the tenth level, is outside the nodes you can
+  manage, is already the node's parent, or has loaded children that include a node with the
+  same name. Collapsed nodes expand when you hold the pointer over them, the tree scrolls
+  at its edges, and the top of the tree points to ⋯ → Move for moving a node to the top level.
+- Dropping opens a confirmation next to the target with the current and new paths, the child
+  nodes and asset count that move along, and how authorization coverage and management scope
+  change. Some refusals come only after you confirm, such as a branch that would go past ten
+  levels or a same-named node under a target whose children are not loaded yet. The
+  confirmation then shows Not moved, the reason and what to do next.
+- After a move, from dragging or from ⋯ → Move, the tree keeps the other expanded nodes, opens
+  the path to the new place and highlights the node there. The selection follows only when the
+  moved node is the selected node or contains it.
+
+### Fixes
+
+- A new installation no longer records a permission model upgrade warning stating that later
+  backups cannot be restored. Deployments first installed with 1.18.0 to 1.19.x keep that
+  record from installation; whether a backup can be restored is shown by the `authz.refs` line
+  of its `snapshot.txt` and by the checks of `restore`.
+- Operation log rows for compliance report, rotation report and evidence package export job
+  requests record the status code that was returned, so refused requests no longer show 200.
+  Existing log rows are not changed.
+- When `.env` sets the same key on more than one line, the management script now ignores the
+  values that later lines replace, as Docker Compose does. Such a value could make a backup
+  fail with `manifest: tool.dump_image cannot be stored`.
+- In the ⋯ → Move dialog, target nodes are listed in the same order as the node tree, and the
+  confirm button is disabled while the current parent is selected.
+- The built-in Super Administrator role's page shows its summary again instead of "The summary
+  is temporarily unavailable", which it had shown since 1.19.0.
+
+### Running from source
+
+- `scripts/quickstart.sh` generates the Vault token that the development compose file requires.
+  With `--up`, it creates the placeholder files for the development backend's single-file
+  mounts before starting, and waits up to 30 minutes for the first start of the development
+  stack, printing the elapsed time every minute.
+- [QUICKSTART][1200-qs] has a macOS troubleshooting section for PostgreSQL reporting
+  `wrong ownership` under Docker Desktop's gRPC FUSE file sharing. CONTRIBUTING starts from a
+  missing `.env` and enables the development compose file before `quickstart.sh --up`.
+
+### API
+
+- New read-only endpoint `GET /api/v1/role-definitions/:id/preview-capabilities` requires
+  `role:view` and rejects AI agent tokens. It returns the permissions a holder of only that
+  role would get, in the same form as `permissions` in `/auth/me`, with the state of each page.
+  Apart from the usual operation log entry, it writes nothing.
+- `POST /api/v1/role-definitions`, `POST /api/v1/role-definitions/:id/copy`,
+  `PUT /api/v1/role-definitions/:id`, `DELETE /api/v1/role-definitions/:id`,
+  `DELETE /api/v1/assets/:id/host-key`, `POST /api/v1/assets/:id/host-key/adopt` and
+  `POST /api/v1/audit-failures/permission-state/accept` are declared super administrator only
+  in the route registry and checked there before the handler runs.
+- A role definition's single read and its create, copy and edit responses add
+  `retired_permissions`, always present and empty when the role holds no retired permission.
+  `/auth/me` no longer lists `session:terminate` for custom roles and adds `ui:session-monitor`
+  for super administrators and auditors.
+- `PUT /api/v1/asset-groups/:id/move` with the current parent passes the usual authorization
+  checks, then returns 200 without changing the node or writing a node move audit entry. The
+  request itself is still in the operation log. The [API reference][1200-api] documents
+  these changes.
+
+[1200-qs]: docs/QUICKSTART.md
+[1200-api]: docs/API_SPEC.md
+
 ## 1.19.0 — a permission overview for each user, and group setup from the mapping page (2026-10-26)
 
 No schema change. A 1.18.x package deployment upgrades with `custodexa.sh upgrade 1.19.0` and

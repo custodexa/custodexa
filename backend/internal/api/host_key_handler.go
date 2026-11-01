@@ -168,7 +168,7 @@ func (h *HostKeyHandler) Adopt(c *gin.Context) {
 }
 
 // RequireHostKeyResetSuperAdmin 重置與採用端點（匯出供路由測試掛同一條守衛鏈）的保留資格守衛：
-// 登錄項為 BaseAuthenticated，超管身分屬保留能力（不是可指派的權限），由此判定；
+// 路由登錄（BaseSuperAdmin）先拒非超管，此處為第二道；超管身分屬保留能力（不是可指派的權限）。
 // 非超管回能力拒絕單一形狀（依據為保留條件），服務不被呼叫。
 func RequireHostKeyResetSuperAdmin(c *gin.Context) {
 	if p := middleware.PrincipalFrom(c); p == nil || !p.IsSuperAdmin() {

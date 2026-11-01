@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write:create
           type="primary"
           @click="openCreate"
         >
@@ -26,6 +27,7 @@
       data-test="paused-plans-banner"
     >
       <el-button
+        v-preview-write
         type="warning"
         size="small"
         :loading="reauthorizing"
@@ -141,6 +143,7 @@
           <template #default="{ row }">
             <el-button
               v-if="canRun(row)"
+              v-preview-write
               size="small"
               type="warning"
               link
@@ -157,6 +160,7 @@
             </el-button>
             <el-button
               v-if="needsReconfirmation(row) && !isScopeMasked(row)"
+              v-preview-write
               size="small"
               type="warning"
               link
@@ -167,6 +171,7 @@
             </el-button>
             <el-button
               v-if="!isScopeMasked(row)"
+              v-preview-write
               size="small"
               type="primary"
               link
@@ -188,6 +193,7 @@
               </el-tag>
             </el-tooltip>
             <el-button
+              v-preview-write
               size="small"
               type="danger"
               link
@@ -311,6 +317,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-preview-write
               size="small"
               type="primary"
               link
@@ -319,6 +326,7 @@
               {{ $t('changeSecretPlans.retryNow') }}
             </el-button>
             <el-button
+              v-preview-write
               size="small"
               type="danger"
               link
@@ -536,6 +544,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="saving"
           :disabled="!form.name || !form.asset_ids.length || !scheduleValid"
@@ -574,6 +583,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="reconfirmWorking"
           :disabled="!reconfirmAck"
@@ -717,6 +727,7 @@ import {
   discardChangeSecretCandidate,
   reauthorizeChangeSecretPlans,
 } from '@/api/changeSecret'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const plans = ref([])
 

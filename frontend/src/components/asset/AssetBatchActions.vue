@@ -40,6 +40,7 @@
         data-test="batch-count"
       >{{ $t('assets.batchOps.selectedCount', { n: selected.length }) }}</span>
       <el-button
+        v-preview-write
         size="small"
         data-test="batch-move"
         :disabled="!canEdit"
@@ -48,6 +49,7 @@
         {{ $t('assets.batchOps.move') }}
       </el-button>
       <el-button
+        v-preview-write
         size="small"
         data-test="batch-tags"
         :disabled="!canEdit"
@@ -56,6 +58,7 @@
         {{ $t('assets.batchOps.addTags') }}
       </el-button>
       <el-button
+        v-preview-write
         size="small"
         type="danger"
         plain
@@ -121,6 +124,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           :disabled="moveNoTarget || !moveTarget"
@@ -181,6 +185,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="submitting"
           :disabled="!tagList.length"
@@ -201,6 +206,7 @@ import { getAssetGroups, batchMoveAssets, batchAddAssetTags, batchDeleteAssets }
 import { buildNodeOptions, selectableIdSet } from '@/utils/scopedAssets'
 import { confirmDestructive } from '@/utils/confirm'
 import { t } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 批次動作的對話框與結果呈現。可勾選與否、可選的目的節點一律取自伺服器標示，
 // 這裡不以節點樹或權限集合計算範圍；提交時伺服器仍自行裁決。

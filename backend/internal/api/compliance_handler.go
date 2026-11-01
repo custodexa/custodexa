@@ -129,8 +129,8 @@ type createReportJobRequest struct {
 func (h *ComplianceHandler) CreateReportJob(c *gin.Context) {
 	var req createReportJobRequest
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Group) == "" {
-		h.auditReport(c, model.StatusDenied, nil, "compliance_report.job_created denied reason=bad_params")
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		h.auditReport(c, model.StatusDenied, nil, "compliance_report.job_created denied reason=bad_params")
 		return
 	}
 	filter := policy.ComplianceReportJobFilter{
@@ -147,24 +147,24 @@ func (h *ComplianceHandler) CreateReportJob(c *gin.Context) {
 			"compliance_report.job_created denied reason=%s group=%s", reason, filter.Group))
 	}
 	if err := filter.ValidateRetention(); err != nil {
-		denied("bad_retention")
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeReportBadRetention, nil)
+		denied("bad_retention")
 		return
 	}
 	if !model.ValidNotificationChannelLanguage(filter.Language) {
-		denied("bad_language")
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeReportBadLanguage, nil)
+		denied("bad_language")
 		return
 	}
 	group, err := h.groups.GetGroup(filter.Group)
 	if err != nil {
-		denied("group_lookup")
 		respondPolicyGroupError(c, err, apierror.CodeInternalPolicyGroupRead)
+		denied("group_lookup")
 		return
 	}
 	if !group.Enabled {
-		denied("group_inactive")
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		denied("group_inactive")
 		return
 	}
 	filter.GroupName = group.Name
@@ -175,18 +175,18 @@ func (h *ComplianceHandler) CreateReportJob(c *gin.Context) {
 	}
 	job, err := h.createReportJob(filter, currentRequester(c))
 	if err != nil {
-		denied("job_rejected")
 		if errors.Is(err, audit.ErrExportJobLimitExceeded) {
 			apierror.Respond(c, http.StatusConflict, apierror.CodeExportJobLimit, nil)
-			return
+		} else {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalComplianceSnapshot, err)
 		}
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalComplianceSnapshot, err)
+		denied("job_rejected")
 		return
 	}
+	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"id": job.ID, "status": job.Status}})
 	h.auditReport(c, model.StatusSuccess, &job.ID, fmt.Sprintf(
 		"compliance_report.job_created job=%d group=%s lang=%s retention_days=%d",
 		job.ID, filter.Group, filter.Language, filter.RetentionDays))
-	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"id": job.ID, "status": job.Status}})
 }
 
 // createReportJob 受理：預定到期＝發起時刻加保留天數（worker 打包完成時自實際
@@ -208,6 +208,7 @@ func (h *ComplianceHandler) createReportJob(filter policy.ComplianceReportJobFil
 }
 
 // auditReport 產出報告的審計出口（成功與被拒共用同一個字面量）。
+// 須在回應寫出之後呼叫：status_code 取自已寫出的回應，之前呼叫只會得到預設的 200。
 func (h *ComplianceHandler) auditReport(c *gin.Context, status model.AuditStatus,
 	resourceID *uint, msg string) {
 	if h.auditService == nil {

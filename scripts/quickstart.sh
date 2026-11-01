@@ -18,6 +18,7 @@ cd "$(dirname "$0")/.."
 ENV_FILE=.env
 TEMPLATE=.env.example
 HEALTH_TIMEOUT=120
+DEV_HEALTH_TIMEOUT=1800
 
 say()  { printf '%s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -258,6 +259,20 @@ else
   esac
 fi
 
+# ---------- VAULT_DEV_ROOT_TOKEN_ID (development stack only) ----------
+# The development compose file refuses to start unless the test Vault's initialization token is
+# set, and it checks that even when another service is the one being started. The value is a
+# throwaway for the bundled test target, so it is generated here but never printed. Other forms
+# neither need it nor get it written; a value already present there is left alone.
+if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+  if [ -z "$(current VAULT_DEV_ROOT_TOKEN_ID)" ]; then
+    set_kv VAULT_DEV_ROOT_TOKEN_ID "$(gen_alnum 32)"
+    report VAULT_DEV_ROOT_TOKEN_ID "generated (development stack only)"
+  else
+    report VAULT_DEV_ROOT_TOKEN_ID "already set, left as is"
+  fi
+fi
+
 chmod 600 "${ENV_FILE}" 2>/dev/null || true
 
 # ---------- login target ----------
@@ -428,21 +443,44 @@ if [ "${RUN_UP}" = 1 ]; then
     perms=$(prepare_recordings_dir) || fail "could not prepare ${data_path}/recordings (the docker error is shown above)"
     report "recordings directory" "${data_path}/recordings is ${perms} (uid:gid mode)"
   fi
+  if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+    # The development stack mounts single files under the backend source directory. When the
+    # host-side path is missing, Docker has to create it while setting up the mount, which can
+    # fail on the first start. Create the paths first; an existing file is left untouched.
+    mkdir -p backend/config/testdata backend/cmd/server/testdata/release
+    for placeholder in backend/config/testdata/.env.example \
+      backend/cmd/server/testdata/release/VERSION \
+      backend/cmd/server/testdata/release/CHANGELOG.md; do
+      [ -e "${placeholder}" ] || : >"${placeholder}"
+    done
+  fi
   docker compose up -d
   say ""
-  say "[4/${TOTAL}] Waiting for the backend to become healthy (up to ${HEALTH_TIMEOUT}s)"
+  health_timeout=${HEALTH_TIMEOUT}
+  if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+    # The first start of the development stack downloads Go modules and compiles the backend
+    # inside the container (about 13-14 minutes measured), so it needs a much longer wait.
+    health_timeout=${DEV_HEALTH_TIMEOUT}
+  fi
+  say "[4/${TOTAL}] Waiting for the backend to become healthy (up to ${health_timeout}s)"
+  if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+    say "The first start of the development stack downloads modules and compiles the backend inside the container,"
+    say "which can take 10 to 15 minutes. Later starts are much faster."
+  fi
   waited=0
   until docker compose exec -T backend wget -qO- http://localhost:8080/health >/dev/null 2>&1; do
     waited=$((waited + 3))
-    if [ "${waited}" -ge "${HEALTH_TIMEOUT}" ]; then
+    if [ "${waited}" -ge "${health_timeout}" ]; then
       say ""
-      say "The backend did not report healthy within ${HEALTH_TIMEOUT}s."
+      say "The backend did not report healthy within ${health_timeout}s."
       say "Inspect the logs: docker compose logs backend"
       say "(a refused start always states which variable was rejected and why)"
       exit 1
     fi
     sleep 3
-    printf '.'
+    if [ $((waited % 60)) -eq 0 ]; then
+      say "  still waiting... ${waited}s elapsed"
+    fi
   done
   say ""
   say "Backend is healthy."

@@ -10,6 +10,7 @@
           {{ $t('common.refresh') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           @click="openExportDialog"
         >
@@ -405,6 +406,7 @@
               <template #default="{ row }">
                 <el-button
                   v-if="isOpenPermissionStateAlert(row)"
+                  v-preview-write
                   size="small"
                   type="warning"
                   data-test="permission-accept-open"
@@ -471,6 +473,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="warning"
           :loading="permissionAccepting"
           :disabled="!permissionAcceptReason.trim()"
@@ -538,6 +541,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="exporting"
           @click="submitExport"
@@ -840,6 +844,7 @@ import {
 import { can } from '@/composables/useCapabilities'
 import { settingLabel } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const route = useRoute()
 const router = useRouter()

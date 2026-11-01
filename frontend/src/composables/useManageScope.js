@@ -1,4 +1,5 @@
 import { computed, unref } from 'vue'
+import { previewOverlay } from '@/utils/previewOverlay'
 import { useCapabilities } from '@/composables/useCapabilities'
 
 /**
@@ -38,5 +39,6 @@ export function lineFromManagementScope(ms) {
 /** perm 可為字串、ref 或 getter（資產授權管理頁依分頁切換）。 */
 export function useManageScopeLine(perm) {
   const { scopeSummary } = useCapabilities()
-  return computed(() => lineFromScopeSummary(scopeSummary.value, typeof perm === 'function' ? perm() : unref(perm)))
+  // 以此角色預覽：頁首範圍行描述操作者本人的管理範圍，預覽中不顯示，離開後依原資料恢復
+  return computed(() => previewOverlay.value ? null : lineFromScopeSummary(scopeSummary.value, typeof perm === 'function' ? perm() : unref(perm)))
 }

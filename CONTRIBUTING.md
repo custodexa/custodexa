@@ -18,7 +18,10 @@ contribution in; for environment setup, see [`docs/QUICKSTART.md`](docs/QUICKSTA
 ## Development environment and tests
 
 ```bash
-bash scripts/quickstart.sh --up                # bring up the full stack
+[ -f .env ] || cp .env.example .env            # create .env from the template if it does not exist yet
+# Uncomment COMPOSE_FILE=docker-compose.dev.yml in .env, or --up starts the production form instead:
+sed -i.bak 's/^# *COMPOSE_FILE=docker-compose.dev.yml$/COMPOSE_FILE=docker-compose.dev.yml/' .env && rm .env.bak
+bash scripts/quickstart.sh --up                # bring up the full stack; the first start of the dev stack takes about 10 to 15 minutes
 docker compose exec backend go test ./...      # backend tests
 docker compose exec frontend npm run test      # frontend tests
 ```

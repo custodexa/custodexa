@@ -1271,6 +1271,7 @@
     },
     "headerDescAdmin": "管理遠端主機、資料庫與 K8s 資產（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
     "headerDescUser": "你可以使用或管理的資產。能連線的資產會顯示「連線」；需要審核的資產可以提出申請",
+    "headerDescUserPreview": "你可以使用或管理的資產。需要審核的資產可以提出申請",
     "tagManager": "標籤管理",
     "create": "新增資產",
     "searchPlaceholder": "名稱或主機位址",
@@ -2254,6 +2255,49 @@
     "scopeRootLocked": "這是你的管理範圍的根節點，只有超級管理者能執行此動作",
     "superAdminOnly": "只有超級管理者能執行此動作",
     "locatorAncestor": "僅作為上層路徑顯示，你在此節點沒有管理權限",
+    "drag": {
+      "rootHint": "搬到最上層：用「⋯」→「搬移」",
+      "canDropTitle": "可以放在這裡",
+      "canDropBody": "放開後搬到「{target}」底下，會先請你確認。",
+      "cannotDropTitle": "不能放在這裡",
+      "reasonSelf": "節點不能搬進自己底下。",
+      "reasonDepth": "「{target}」已是第 10 層，是最深的一層，底下不能再放節點。",
+      "reasonSameName": "這裡已經有「{name}」。請先改名其中一個再搬。",
+      "reasonNoPermission": "你沒有在這個節點底下新增節點的權限。",
+      "reasonNoPermissionScope": "可以搬到「{scope}」底下的節點。",
+      "alreadyHereTitle": "已經在這裡",
+      "alreadyHereBody": "它本來就在這個節點底下，放開不會有變動。",
+      "handleTitle": "可以拖曳",
+      "handleBody": "按住這一列，拖到其他節點上就能搬過去。",
+      "handleBodyScoped": "按住這一列，拖到「{scope}」底下的其他節點上。",
+      "cannotDragTitle": "這個節點不能搬",
+      "lockBar": "正在搬移，完成前不能拖曳"
+    },
+    "moveConfirm": {
+      "title": "確認搬移節點",
+      "node": "節點",
+      "from": "目前在",
+      "to": "搬到",
+      "carry": "這個節點底下的子節點和 {count} 會一起搬過去。",
+      "carryCount": "{n} 台資產",
+      "authz": "原本上層設的授權不再涵蓋它們，新上層設的授權開始涵蓋。",
+      "scope": "管理範圍也跟著新位置改變：負責原本上層的管理者不能再管理它們，負責新上層的管理者可以管理。",
+      "direct": "直接設在這個節點上的授權不受影響。",
+      "ok": "確定搬移",
+      "moving": "搬移中…",
+      "rejectTitle": "搬移節點",
+      "rejectHead": "沒有搬移",
+      "rejectDepth": "它自己加上底下的層級，搬過去會超過 10 層的上限。",
+      "rejectDepthNext": "可以改放到較淺的節點。",
+      "rejectSameName": "「{target}」底下已經有同名的節點。",
+      "rejectSameNameNext": "請先改名其中一個再搬。",
+      "rejectGone": "目標節點已經不在了，可能剛被別人刪除。",
+      "rejectGoneNext": "按「知道了」後會重新載入樹。",
+      "gotIt": "知道了",
+      "unknownHead": "無法確認是否已搬移"
+    },
+    "movedTag": "已搬移",
+    "moveAlreadyHere": "它已經在「{target}」底下，請選擇其他位置。",
     "deleteBlocked": {
       "title": "無法刪除節點",
       "scopedBody": "節點「{path}」是另外 {count} 項管理範圍的一部分，無法刪除。",
@@ -2795,6 +2839,7 @@
       "badgeCustom": "自訂",
       "badgeBuiltinLocked": "內建・不能修改",
       "holders": "{n} 人使用中，儲存後立即生效",
+      "retiredKeyNotice": "此角色含已不再開放給自訂角色的「強制斷線」能力，持有者原本就無法使用；儲存後會移除。",
       "systemFeatures": "系統功能",
       "legend": "隱藏＝看不到　唯讀＝只能看　管理＝可以新增與修改　可用＝可以打開使用",
       "detailCount": "細分動作 {n}／{m}",
@@ -9026,6 +9071,44 @@
       "hint": "也可以在這裡一次建立群組、設定角色與範圍，並建立對應規則。",
       "button": "建立群組並設定角色與範圍",
       "option": "建立新群組並設定角色與範圍"
+    }
+  },
+  "rolePreview": {
+    "button": "以此角色預覽",
+    "banner": {
+      "title": "正在以角色「{name}」預覽",
+      "viewOnly": "只能看，不能修改",
+      "dataCeiling": "畫面上的資料以你自己看得到的為上限",
+      "exit": "離開預覽"
+    },
+    "range": {
+      "label": "預覽範圍",
+      "all": "全部節點",
+      "optionsNote": "只列出你自己看得到的節點",
+      "note": "只篩選畫面，不改變角色"
+    },
+    "disabledCreate": "預覽中不能新增。持有這個角色的人可以使用。",
+    "disabledAction": "預覽中不能執行這個操作。持有這個角色的人可以使用。",
+    "disabledDrag": {
+      "title": "這個節點不能搬",
+      "body": "預覽中不能搬移節點。持有這個角色的人可以使用。"
+    },
+    "disabledTicket": "預覽中不能連線或播放錄影。持有這個角色的人可以使用。",
+    "disabledNested": "預覽中不能再預覽其他角色。請先離開預覽。",
+    "exited": "已離開預覽，回到「{name}」",
+    "blocked": "預覽中不能修改。持有這個角色的人可以使用。",
+    "readOnlyNote": "這個角色只能檢視，看不到新增、編輯與刪除。",
+    "connectNote": "連線按鈕因人而異，預覽中不顯示。",
+    "selfCannotSee": {
+      "title": "這裡的資料你本人看不到",
+      "body": "預覽畫面的資料以你看得到的為上限，你沒有資產檢視權限，所以這裡沒有列出資產。持有這個角色的人登入後，會看到自己範圍內的資產。"
+    },
+    "superAdmin": "超級管理者擁有全部功能，範圍是全系統，不提供預覽。",
+    "unsaved": {
+      "title": "還有未儲存的修改",
+      "body": "進入預覽會放棄這頁未儲存的修改。預覽呈現的是已儲存的角色內容。",
+      "discard": "放棄修改並預覽",
+      "back": "返回編輯"
     }
   }
 }

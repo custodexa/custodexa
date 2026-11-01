@@ -219,12 +219,14 @@ func TestCurrentUserLegacyFields(t *testing.T) {
 		body := decodeMap(t, w.Body.Bytes())
 		assert.ElementsMatch(t, []any{"asset:view", "ui:self-service-actions"}, body["permissions"].([]any))
 		assert.NotContains(t, body["permissions"], "user:manage")
+		assert.NotContains(t, body["permissions"], "ui:session-monitor", "只持資產檢視者沒有監看資格")
 
 		w = env.do(http.MethodGet, "", adminTok)
 		adminPerms := decodeMap(t, w.Body.Bytes())["permissions"].([]any)
 		assert.Contains(t, adminPerms, "user:manage")
 		assert.Contains(t, adminPerms, "ui:connect-bypass")
 		assert.Contains(t, adminPerms, "ui:super-admin")
+		assert.Contains(t, adminPerms, "ui:session-monitor", "超管可取得監看票")
 		assert.NotContains(t, adminPerms, "ui:approvals", "admin 不因管理者身分取得審核點")
 	})
 

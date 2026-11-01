@@ -468,6 +468,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"POST", "/api/v1/role-assignment-previews"}:                                     {classResource, model.ResourceRole, "命中分類器段 `role-assignment-previews`；唯讀試算，記為讀取；無 `:id`、不寫資料"},
 	{"GET", "/api/v1/role-definitions"}:                                              {classResource, model.ResourceRole, "命中分類器段 `role-definitions`；無 `:id`，列表唯讀"},
 	{"GET", "/api/v1/role-definitions/:id"}:                                          {classResource, model.ResourceRole, "命中分類器段 `role-definitions`；`:id` 指向角色列，唯讀單筆"},
+	{"GET", "/api/v1/role-definitions/:id/preview-capabilities"}:                     {classResource, model.ResourceRole, "命中分類器段 `role-definitions`；`:id` 指向被預覽的角色列，唯讀、不寫資料"},
 	{"GET", "/api/v1/role-definitions/descriptors"}:                                  {classResource, model.ResourceRole, "命中分類器段 `role-definitions`；靜態描述，唯讀、無 `:id`"},
 	{"POST", "/api/v1/role-definitions/summary"}:                                     {classResource, model.ResourceRole, "命中分類器段 `role-definitions`；以草稿集合試算摘要，唯讀、不寫資料、無 `:id`"},
 	{"POST", "/api/v1/role-definitions"}:                                             {classResource, model.ResourceRole, "命中分類器段 `role-definitions`；新增自訂角色，無 `:id`"},

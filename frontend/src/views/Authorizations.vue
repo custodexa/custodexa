@@ -16,6 +16,7 @@
       <template #actions>
         <el-button
           v-if="canManageAuthorizations && activeTab !== 'policy'"
+          v-preview-write:create
           type="primary"
           @click="handleBatchAuthorize"
         >
@@ -372,6 +373,7 @@
                 >
                   <span class="account-scope-wrap">
                     <el-button
+                      v-preview-write
                       type="primary"
                       size="small"
                       link
@@ -394,6 +396,7 @@
                   >
                     <span class="account-scope-wrap">
                       <el-button
+                        v-preview-write
                         type="warning"
                         size="small"
                         link
@@ -421,6 +424,7 @@
                 >
                   <span class="account-scope-wrap">
                     <el-button
+                      v-preview-write
                       type="danger"
                       size="small"
                       link
@@ -532,6 +536,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="warning"
           :loading="revokeSubmitting"
           :disabled="!revokeNote.trim()"
@@ -584,10 +589,12 @@ import AuthzAccountScopeDialog from '@/components/AuthzAccountScopeDialog.vue'
 import { isAllAccountScope } from '@/constants/assetAccounts'
 import { formatDateTime } from '@/utils/format'
 import { can } from '@/composables/useCapabilities'
+import { previewOverlay } from '@/utils/previewOverlay'
 import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 import { actionState, isSelectableNode, loadSelector, userOptionLabel } from '@/utils/authzSelectors'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 資料狀態
 const loading = ref(false)
@@ -618,7 +625,8 @@ const filterForm = reactive({
   user_id: '',
   user_group_id: '',
   asset_id: '',
-  node_id: '',
+  // 以此角色預覽時，預覽範圍就是這個節點篩選的預設值（只篩選畫面，請求與自己選取該節點相同）
+  node_id: previewOverlay.value?.range ?? '',
 })
 
 // 快速篩選 chip → 伺服端 validity/source 參數

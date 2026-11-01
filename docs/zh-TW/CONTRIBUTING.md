@@ -16,7 +16,10 @@
 ## 開發環境與測試
 
 ```bash
-bash scripts/quickstart.sh --up                # 起整套環境
+[ -f .env ] || cp .env.example .env            # .env 不存在時，自範本建立
+# 在 .env 取消 COMPOSE_FILE=docker-compose.dev.yml 的註解，否則 --up 起的是正式版：
+sed -i.bak 's/^# *COMPOSE_FILE=docker-compose.dev.yml$/COMPOSE_FILE=docker-compose.dev.yml/' .env && rm .env.bak
+bash scripts/quickstart.sh --up                # 起整套環境；第一次啟動開發形態約需 10 到 15 分鐘
 docker compose exec backend go test ./...      # 後端測試
 docker compose exec frontend npm run test      # 前端測試
 ```

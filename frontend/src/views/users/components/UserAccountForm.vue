@@ -281,6 +281,7 @@
         {{ $t('userDetail.basic.restore') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="submitting"
         data-test="user-form-save"
@@ -301,6 +302,7 @@
         {{ $t('common.cancel') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="submitting"
         data-test="user-dialog-submit"
@@ -330,6 +332,7 @@ import {
 } from '@/utils/sourcePolicy'
 import InlineShell from './InlineShell'
 import { effectiveUnrestrictedText } from '../sourcePolicyText'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 帳號編輯表單。列表頁以對話框承載（建立與編輯），詳情頁以內嵌方式承載（只編輯）。

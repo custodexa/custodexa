@@ -156,7 +156,7 @@ func TestRoleDefinitionExposureBoundary(t *testing.T) {
 		assert.EqualValues(t, 5, total)
 	})
 
-	t.Run("角色定義路由恰為宣告的四讀四寫八條，/roles 仍只有 GET", func(t *testing.T) {
+	t.Run("角色定義路由恰為宣告的五讀四寫九條，/roles 仍只有 GET", func(t *testing.T) {
 		// 逐條列名的固定期望集合，不依實際註冊數推得。
 		// 每個可達組態（模式與審計開關的四格）都套同一組期望
 		configs := []struct {
@@ -205,11 +205,12 @@ func TestRoleDefinitionExposureBoundary(t *testing.T) {
 	})
 }
 
-// expectedRoleDefinitionRoutes 角色定義路由的固定期望集合（四讀四寫）。
+// expectedRoleDefinitionRoutes 角色定義路由的固定期望集合（五讀四寫）。
 var expectedRoleDefinitionRoutes = []string{
 	"GET /api/v1/role-definitions",
 	"GET /api/v1/role-definitions/descriptors",
 	"GET /api/v1/role-definitions/:id",
+	"GET /api/v1/role-definitions/:id/preview-capabilities",
 	"POST /api/v1/role-definitions/summary",
 	"POST /api/v1/role-definitions",
 	"POST /api/v1/role-definitions/:id/copy",

@@ -36,6 +36,7 @@
       />
       <div class="actions">
         <el-button
+          v-preview-write
           type="primary"
           :disabled="!dirty"
           :loading="saving"
@@ -144,6 +145,7 @@ import GroupRoleEditor from './GroupRoleEditor.vue'
 import { can } from '@/composables/useCapabilities'
 import { canEnter, entryRuleFor } from '@/router/entryRules'
 import { managementRoleNames } from '../groupProtection'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 /**
  * 群組詳情的「角色與範圍」分頁：群組角色卡（角色與範圍的選擇由 GroupRoleEditor 承載）、

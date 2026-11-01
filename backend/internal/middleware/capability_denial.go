@@ -64,6 +64,9 @@ func AllOfCapabilityDenial(perms ...authz.Permission) CapabilityDenial {
 // RouteCapabilityDenial 把路由判定的拒絕依據轉成能力拒絕依據（登錄閘、預設拒絕，
 // 以及 handler 以同一登錄項重新判定被拒時共用）。
 func RouteCapabilityDenial(d authz.Decision) CapabilityDenial {
+	if d.Basis == authz.DenialReserved {
+		return ReservedCapabilityDenial(d.Reserved)
+	}
 	req := make([]string, len(d.Required))
 	for i, p := range d.Required {
 		req[i] = string(p)

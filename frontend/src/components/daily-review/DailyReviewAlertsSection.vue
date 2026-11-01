@@ -66,6 +66,7 @@
         @clear="selection.clear()"
       >
         <el-button
+          v-preview-write
           type="primary"
           data-test="dr-alerts-batch-open"
           @click="batchDialogRef?.open()"
@@ -94,6 +95,7 @@
           <span class="dr-alerts__rule">{{ ruleText(row) }}</span>
           <el-button
             v-if="canSign && isSelf(row)"
+            v-preview-write
             link
             type="primary"
             size="small"
@@ -164,6 +166,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="singleSubmitting"
           data-test="dr-alert-single-submit"
@@ -188,6 +191,7 @@ import BatchCheckbox from '@/components/batch-review/BatchCheckbox.vue'
 import AlertBatchReviewDialog from '@/components/batch-review/AlertBatchReviewDialog.vue'
 import { alertRuleText } from '@/constants/command-degrade'
 import { timeInZone } from './dailyReviewFormat'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const props = defineProps({
   // 該日全部未審閱告警

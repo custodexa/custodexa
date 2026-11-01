@@ -7,6 +7,7 @@
       <template #actions>
         <el-button
           v-if="canInitReview"
+          v-preview-write:create
           type="primary"
           @click="openReviewDialog"
         >
@@ -261,6 +262,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           :loading="reviewSubmitting"
           @click="submitReview"
@@ -288,6 +290,7 @@ import { formatDateTime } from '@/utils/format'
 import { can } from '@/composables/useCapabilities'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 存取複審獨立頁（自授權頁遷出，
 // 職能歸審計區；admin＋auditor 可見、簽核限 admin——auditor 隱藏發起按鈕，

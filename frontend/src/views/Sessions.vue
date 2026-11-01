@@ -214,7 +214,8 @@
                   </el-tag>
                 </el-tooltip>
                 <el-button
-                  v-if="isTextTerminal(row.protocol)"
+                  v-if="isTextTerminal(row.protocol) && canMonitor"
+                  v-preview-write:ticket
                   type="primary"
                   size="small"
                   link
@@ -224,6 +225,8 @@
                   {{ $t('sessions.monitor') }}
                 </el-button>
                 <el-button
+                  v-if="isSuperAdmin"
+                  v-preview-write
                   type="danger"
                   size="small"
                   link
@@ -619,8 +622,9 @@
 
 <script setup>
 import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { can } from '@/composables/useCapabilities'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   RefreshCw,
@@ -643,6 +647,7 @@ import { getEndReasonText } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t } from '@/i18n'
 import { auditCauseLabel } from '@/constants/audit-enums'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 代表人只有 agent 會有；後端未投影名稱時退回「—」而不是裸 id
 const onBehalfText = (row) => {
@@ -653,6 +658,11 @@ const onBehalfText = (row) => {
 
 
 const router = useRouter()
+
+// 強制終止只有內建超管能執行（後端強制），非超管不顯示按鈕；沿用資產頁的超管呈現點
+const isSuperAdmin = computed(() => can('ui:super-admin'))
+// 監看入口只給可取得監看票的角色資格（超管、稽核員）；只決定顯示，准入由簽發端點現時判定
+const canMonitor = computed(() => can('ui:session-monitor'))
 
 // Tab 狀態
 const activeTab = ref('active')

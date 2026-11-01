@@ -1,0 +1,113 @@
+.asset-node-tree {
+  position: relative;
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ot-border-subtle);
+  padding-right: var(--ot-space-sm);
+  overflow-y: auto;
+}
+
+.tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ot-space-xs);
+}
+
+.all-assets {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ot-text-primary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.all-assets.active,
+.ungrouped-item.active {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 1;
+  /* 元件庫每層子節點容器會裁掉溢出，列必須能收縮：
+     列名讓出空間，選單與標籤永遠完整可見 */
+  min-width: 0;
+  padding-right: 0;
+}
+
+.tree-node-row .node-menu {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.node-label {
+  flex: 0 1 auto;
+  /* 列名至少保留約三個字寬，再被擠才以省略號結尾 */
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-node-row.is-locator .node-label {
+  color: var(--ot-text-secondary);
+  font-style: italic;
+}
+
+.scope-badge {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.item-reason {
+  display: block;
+  font-size: 11px;
+  color: var(--ot-text-secondary);
+}
+
+.node-count {
+  color: var(--ot-text-secondary);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.node-menu-trigger {
+  visibility: hidden;
+  cursor: pointer;
+  color: var(--ot-text-secondary);
+}
+
+.tree-node-row:hover .node-menu-trigger {
+  visibility: visible;
+}
+
+.tree-section {
+  margin-top: var(--ot-space-sm);
+  padding-top: var(--ot-space-xs);
+  border-top: 1px solid var(--ot-border-subtle);
+}
+
+.tree-section-title {
+  font-size: 12px;
+  color: var(--ot-text-secondary);
+  padding: 2px 8px;
+}
+
+.ungrouped-item {
+  cursor: pointer;
+  padding: 6px 8px;
+  color: var(--ot-text-primary);
+  border-radius: 4px;
+}
+
+.ungrouped-item:hover {
+  background: var(--el-fill-color-light);
+}

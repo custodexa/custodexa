@@ -9,6 +9,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -430,5 +431,109 @@ func TestAssetGroupDeleteFailsClosedWhenRevokeFails(t *testing.T) {
 		if groups != 1 {
 			t.Fatalf("未注入撤銷面時節點竟被刪除（剩 %d 筆，應為 1）", groups)
 		}
+	})
+}
+
+// errMoveOutOfScope 範圍判定替身回的拒絕值（原樣經交易回滾交回呼叫方）。
+var errMoveOutOfScope = errors.New("test: node out of scope")
+
+// scopedMoveOnly 只放行 allowed 內節點的搬移判定替身；其餘節點一律回 errMoveOutOfScope。
+type scopedMoveOnly struct{ allowed map[uint]bool }
+
+func (scopedMoveOnly) AuthorizeNodeCreate(context.Context, *gorm.DB, *uint) error { return nil }
+func (scopedMoveOnly) AuthorizeNodeEdit(context.Context, *gorm.DB, uint) error    { return nil }
+func (s scopedMoveOnly) AuthorizeNodeMove(_ context.Context, _ *gorm.DB, nodeID uint, _ *uint) (NodeMoveScope, error) {
+	if !s.allowed[nodeID] {
+		return NodeMoveScope{}, errMoveOutOfScope
+	}
+	return NodeMoveScope{ViaNodeScope: true}, nil
+}
+
+// TestAssetGroupMoveSameParentNoWrite 目的父節點與現行相同：授權判定照常，之後不寫節點、
+// 不推進拓撲版本、不寫節點審計，回成功與節點現況；改變父節點的對照組照常寫入。
+func TestAssetGroupMoveSameParentNoWrite(t *testing.T) {
+	db := setupGroupOnlyDB(t)
+	require.NoError(t, db.Exec("CREATE TABLE authz_state (id integer primary key, version integer not null)").Error)
+	require.NoError(t, db.Exec("INSERT INTO authz_state (id, version) VALUES (1, 0)").Error)
+	require.NoError(t, db.AutoMigrate(&model.RoleBindingNode{}, &model.PermissionStateEvent{}))
+	port := newRecordingTopologyPort(db)
+	svc := NewAssetGroupService(db, audit.NewTxSink(), &cascadingGroupRevoker{})
+	svc.SetTopologyPermissionPort(port)
+	wireNodeTestPorts(svc)
+	ctx := context.Background()
+
+	mk := func(name string, parent *uint) *model.AssetGroup {
+		t.Helper()
+		g, err := svc.Create(ctx, &AssetGroupRequest{Name: name, ParentID: parent}, 1, "admin", "127.0.0.1")
+		require.NoError(t, err)
+		return g
+	}
+	root := mk("root", nil)
+	inner := mk("inner", &root.ID)
+	other := mk("other", nil)
+
+	version := func() int64 {
+		var v int64
+		require.NoError(t, db.Raw("SELECT version FROM authz_state WHERE id = 1").Scan(&v).Error)
+		return v
+	}
+	moveAudits := func() int64 {
+		var n int64
+		require.NoError(t, db.Model(&model.AuditLog{}).Where("details LIKE ?", "%asset_node_move%").Count(&n).Error)
+		return n
+	}
+	load := func(id uint) model.AssetGroup {
+		var g model.AssetGroup
+		require.NoError(t, db.First(&g, id).Error)
+		return g
+	}
+
+	t.Run("子層節點原地搬移", func(t *testing.T) {
+		v0, a0, before := version(), moveAudits(), load(inner.ID)
+		got, err := svc.Move(ctx, inner.ID, &root.ID, 1, "admin", "127.0.0.1")
+		require.NoError(t, err)
+		require.NotNil(t, got.ParentID)
+		require.Equal(t, root.ID, *got.ParentID)
+		require.Equal(t, v0, version(), "原地搬移不得推進拓撲版本")
+		require.Equal(t, a0, moveAudits(), "原地搬移不得寫節點審計")
+		after := load(inner.ID)
+		require.True(t, before.UpdatedAt.Equal(after.UpdatedAt), "原地搬移不得更新 updated_at")
+	})
+
+	t.Run("根層節點以 nil 原地搬移", func(t *testing.T) {
+		v0, a0, before := version(), moveAudits(), load(root.ID)
+		got, err := svc.Move(ctx, root.ID, nil, 1, "admin", "127.0.0.1")
+		require.NoError(t, err)
+		require.Nil(t, got.ParentID)
+		require.Equal(t, v0, version())
+		require.Equal(t, a0, moveAudits())
+		require.True(t, before.UpdatedAt.Equal(load(root.ID).UpdatedAt))
+	})
+
+	t.Run("對照組改變父節點照常寫入", func(t *testing.T) {
+		v0, a0 := version(), moveAudits()
+		got, err := svc.Move(ctx, other.ID, &root.ID, 1, "admin", "127.0.0.1")
+		require.NoError(t, err)
+		require.NotNil(t, got.ParentID)
+		require.Equal(t, v0+1, version(), "改變父節點應推進拓撲版本")
+		require.Equal(t, a0+1, moveAudits(), "改變父節點應寫一筆節點審計")
+	})
+
+	t.Run("範圍外原地搬移與一般搬移同樣被拒", func(t *testing.T) {
+		svc.SetNodeWriteScopePort(scopedMoveOnly{allowed: map[uint]bool{inner.ID: true}})
+		defer wireNodeTestPorts(svc)
+		v0, a0, before := version(), moveAudits(), load(root.ID)
+
+		_, errRegular := svc.Move(ctx, root.ID, &other.ID, 1, "admin", "127.0.0.1")
+		require.ErrorIs(t, errRegular, errMoveOutOfScope)
+		_, errSame := svc.Move(ctx, root.ID, nil, 1, "admin", "127.0.0.1")
+		require.ErrorIs(t, errSame, errMoveOutOfScope, "範圍外的原地搬移必須先被授權判定擋下")
+		require.Equal(t, errRegular, errSame)
+
+		after := load(root.ID)
+		require.Nil(t, after.ParentID)
+		require.True(t, before.UpdatedAt.Equal(after.UpdatedAt))
+		require.Equal(t, v0, version())
+		require.Equal(t, a0, moveAudits())
 	})
 }

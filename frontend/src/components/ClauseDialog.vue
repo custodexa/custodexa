@@ -148,6 +148,7 @@
         {{ $t('common.cancel') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="saving"
         @click="submit"
@@ -166,6 +167,7 @@ import { previewCompliance } from '@/api/securityPolicies'
 import { resolveApiError } from '@/api/error'
 import { displayPolicyValue, resultLabel, settingLabel } from '@/utils/policyClauseText'
 import { enumLabel } from '@/utils/policyFormat'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 條文的新增與編輯。
 //

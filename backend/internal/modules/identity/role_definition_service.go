@@ -85,7 +85,9 @@ type RoleDefinition struct {
 	Locked            bool
 	DefinitionVersion int64
 	Permissions       []string
-	TemplateRoleID    *uint
+	// RetiredPermissions 自訂角色資料列內已收回的鍵（不在 Permissions 內、不生效）；恆非 nil。
+	RetiredPermissions []string
+	TemplateRoleID     *uint
 	// MissingDependencies／BlockedScreens：集合缺必要依賴時明示缺漏與持有者無法使用的畫面
 	// （允許儲存、不補授；皆齊備時為空切片）。
 	MissingDependencies []authz.MissingDependency
@@ -180,13 +182,33 @@ func permissionsOf(tx *gorm.DB, r *model.Role) ([]string, error) {
 	return keys, nil
 }
 
+// splitRetired 把自訂角色資料列內已收回的鍵分出來：前者為實際生效的集合，後者為已收回的鍵。
+func splitRetired(keys []string) (live, retired []string) {
+	live, retired = []string{}, []string{}
+	for _, k := range keys {
+		if authz.IsRetiredAssignable(authz.Permission(k)) {
+			retired = append(retired, k)
+		} else {
+			live = append(live, k)
+		}
+	}
+	return live, retired
+}
+
+// isCustomRole 取 role_permissions 為集合來源的角色（非內建、非存量）。
+func isCustomRole(r *model.Role) bool { return r.BuiltinKey == nil && r.DefinitionVersion > 0 }
+
 func toDefinition(tx *gorm.DB, r *model.Role) (*RoleDefinition, error) {
 	perms, err := permissionsOf(tx, r)
 	if err != nil {
 		return nil, err
 	}
+	retired := []string{}
+	if isCustomRole(r) {
+		perms, retired = splitRetired(perms)
+	}
 	d := &RoleDefinition{ID: r.ID, Name: r.Name, Description: r.Description, DefinitionVersion: r.DefinitionVersion,
-		Permissions: perms, TemplateRoleID: r.TemplateRoleID, Locked: r.BuiltinKey != nil || r.DefinitionVersion == 0}
+		Permissions: perms, RetiredPermissions: retired, TemplateRoleID: r.TemplateRoleID, Locked: r.BuiltinKey != nil || r.DefinitionVersion == 0}
 	ps := make([]authz.Permission, len(perms))
 	for i, k := range perms {
 		ps[i] = authz.Permission(k)
@@ -310,6 +332,9 @@ func (s *RoleDefinitionService) Copy(ctx context.Context, actorID, sourceRoleID 
 		perms, err := permissionsOf(tx, &src)
 		if err != nil {
 			return nil, err
+		}
+		if isCustomRole(&src) {
+			perms, _ = splitRetired(perms)
 		}
 		sid := src.ID
 		return s.insertRole(tx, RoleInput{Name: name, Description: description, Permissions: perms}, &sid)

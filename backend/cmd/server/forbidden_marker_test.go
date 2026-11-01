@@ -352,13 +352,17 @@ type markerRoleCase struct {
 	run  func() shapeProbe
 }
 
-// markerRoleCases 角色定義四種寫入：以正式服務在交易內重驗操作者（不存在、停用、agent、非超管
-// 同一哨兵），另以替身驗包裝後的哨兵。
+// markerRoleCases 角色定義四種寫入：注入的主體為超管（通過路由層），資料庫中的操作者為不存在、
+// 停用、agent 或非超管，證明路由放行後服務層在交易內重驗仍以同一哨兵拒絕；另以替身驗包裝後的哨兵。
 func markerRoleCases(t *testing.T) []markerRoleCase {
 	env := newOwnerTransferEnv(t)
 	inactive := model.User{Username: "gone", Active: true, Kind: model.KindHuman}
 	require.NoError(t, env.db.Create(&inactive).Error)
 	require.NoError(t, env.db.Model(&model.User{}).Where("id = ?", inactive.ID).Update("active", false).Error)
+	// 停用者仍持有超管指派：只有「停用」這一項能把它擋下
+	var adminRole model.Role
+	require.NoError(t, env.db.Where("name = ?", model.RoleAdmin).First(&adminRole).Error)
+	require.NoError(t, env.db.Create(&model.UserRole{UserID: inactive.ID, RoleID: adminRole.ID, ScopeKind: model.ScopeKindGlobal}).Error)
 	svc := identity.NewRoleDefinitionService(env.db, audit.NewTxSink(), nil, nil)
 	wrapped := failingRoleWriter{err: fmt.Errorf("寫入角色失敗: %w", identity.ErrRoleDefinitionForbidden)}
 
@@ -382,11 +386,11 @@ func markerRoleCases(t *testing.T) []markerRoleCase {
 		for _, a := range actors {
 			a := a
 			out = append(out, markerRoleCase{name: v.label + "：" + a.label, run: func() shapeProbe {
-				return markerServe(principalOf(model.BuiltinUser, ""), a.id, v.method, v.path, v.body, mountRoles(svc))
+				return markerServe(principalOf(model.BuiltinSuperAdmin, ""), a.id, v.method, v.path, v.body, mountRoles(svc))
 			}})
 		}
 		out = append(out, markerRoleCase{name: v.label + "：包裝後的哨兵", run: func() shapeProbe {
-			return markerServe(principalOf(model.BuiltinUser, ""), otUserU, v.method, v.path, v.body, mountRoles(wrapped))
+			return markerServe(principalOf(model.BuiltinSuperAdmin, ""), otUserU, v.method, v.path, v.body, mountRoles(wrapped))
 		}})
 	}
 	return out

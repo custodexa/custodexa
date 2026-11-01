@@ -6,6 +6,7 @@
     <PageHeader
       :title="$t('menu.policyGroups')"
       :description="$t('policyGroups.headerDesc')"
+      :own-readonly-note="!canManage"
     >
       <template #actions>
         <el-button
@@ -17,6 +18,7 @@
         </el-button>
         <el-button
           v-if="canManage"
+          v-preview-write:create
           type="primary"
           class="create-group"
           @click="openCreate"
@@ -75,6 +77,7 @@
         >
           <el-switch
             v-if="canManage"
+            v-preview-write
             :model-value="group.enabled"
             :active-text="$t('policyGroups.enabledLabel')"
             @change="(value) => toggleEnabled(group, value)"
@@ -89,6 +92,7 @@
           </el-tag>
           <template v-if="canManage && group.source === 'custom'">
             <el-button
+              v-preview-write
               text
               class="group-rename"
               @click="openRename(group)"
@@ -96,6 +100,7 @@
               {{ $t('policyGroups.rename') }}
             </el-button>
             <el-button
+              v-preview-write
               text
               type="danger"
               class="group-delete"
@@ -118,6 +123,7 @@
         </span>
         <el-button
           v-if="canManage && isCustomGroup"
+          v-preview-write:create
           class="add-clause"
           @click="openClause(null)"
         >
@@ -212,6 +218,7 @@
         >
           <template #default="{ row }">
             <el-button
+              v-preview-write
               text
               class="clause-note"
               @click="openNote(row)"
@@ -220,6 +227,7 @@
             </el-button>
             <el-button
               v-if="canConfirm(row)"
+              v-preview-write
               text
               class="clause-confirm"
               @click="openConfirm(row)"
@@ -228,6 +236,7 @@
             </el-button>
             <el-button
               v-if="isCustomGroup"
+              v-preview-write
               text
               class="clause-edit"
               @click="openClause(row)"
@@ -236,6 +245,7 @@
             </el-button>
             <el-button
               v-if="isCustomGroup"
+              v-preview-write
               text
               type="danger"
               class="clause-delete"
@@ -282,6 +292,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           @click="saveNote"
         >
@@ -321,6 +332,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           @click="saveConfirm"
         >
@@ -383,6 +395,7 @@
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
+          v-preview-write
           type="primary"
           @click="saveCreate"
         >
@@ -418,6 +431,7 @@ import { resolveApiError } from '@/api/error'
 import { confirmDestructive } from '@/utils/confirm'
 import { formatDateTime } from '@/utils/format'
 import { clauseTitle, expectationText, settingLabel } from '@/utils/policyClauseText'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 政策組管理頁：政策組、條文、備註與人工確認的**唯一寫入入口**。
 //

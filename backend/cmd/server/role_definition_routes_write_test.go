@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -64,12 +65,12 @@ func runRoleDefinitionWriteRouteCases(t *testing.T, env *baselineEnv) {
 	codeOf := func(out map[string]any) string { s, _ := out["code"].(string); return s }
 	path := func(id uint) string { return fmt.Sprintf("/api/v1/role-definitions/%d", id) }
 
-	t.Run("四條寫入路由在登錄表（登入即可）、agent 登錄（預設拒絕）與路由清冊都有", func(t *testing.T) {
+	t.Run("四條寫入路由在登錄表（超管保留）、agent 登錄（預設拒絕）與路由清冊都有", func(t *testing.T) {
 		routes, _ := buildRouter(t, "release", true)
 		for _, r := range roleDefinitionWriteRoutes {
 			e, ok := authz.LookupRoute(r[0], r[1])
 			require.True(t, ok, "%s %s 未登錄", r[0], r[1])
-			assert.Equal(t, authz.BaseAuthenticated, e.Base)
+			assert.Equal(t, authz.BaseSuperAdmin, e.Base)
 			allowed, registered := middleware.AgentRouteDecision(r[0], r[1])
 			assert.True(t, registered, "%s %s 未在 agent 路由登錄", r[0], r[1])
 			assert.False(t, allowed, "%s %s 不得開放給 agent", r[0], r[1])
@@ -119,6 +120,33 @@ func runRoleDefinitionWriteRouteCases(t *testing.T, env *baselineEnv) {
 					assert.NotContains(t, string(b), leak, "%s %s：拒絕回應不得含角色名或權限名", sub, tc.name)
 				}
 				assert.Equal(t, before, snap(target), "%s %s：被拒的寫入不改任何資料", sub, tc.name)
+			}
+		}
+	})
+
+	t.Run("非超管送畸形本文：路由層先回 403 單一形狀，服務未被呼叫", func(t *testing.T) {
+		legacy := legacyPermissionDeniedBody(t)
+		var allPerms []authz.Permission
+		for _, k := range authz.AssignableKeys() {
+			allPerms = append(allPerms, k)
+		}
+		for _, who := range []struct {
+			name string
+			p    *authz.Principal
+		}{{"一般使用者", principalOf(model.BuiltinUser, "")}, {"持全部可指派權限的自訂角色", customPrincipal(allPerms...)}} {
+			for _, v := range []struct{ name, method, path, body string }{
+				{"新增", "POST", "/api/v1/role-definitions", `{not json`},
+				{"複製", "POST", "/api/v1/role-definitions/1/copy", `{"name":`},
+				{"修改", "PUT", "/api/v1/role-definitions/abc", `[1,2`},
+				{"刪除", "DELETE", "/api/v1/role-definitions/abc?x=1", `{"junk":true}`},
+			} {
+				w := &countingRoleWriter{}
+				pr := serviceProbe(who.p, v.method, v.path, v.body, mountRoles(w))
+				assert.Equal(t, http.StatusForbidden, pr.code, "%s %s", who.name, v.name)
+				assert.Equal(t, legacy, pr.raw, "%s %s：本文須為單一能力拒絕形狀", who.name, v.name)
+				assert.Equal(t, 0, w.calls, "%s %s：服務不得被呼叫", who.name, v.name)
+				require.True(t, pr.hasDeny)
+				assert.Equal(t, authz.DenialReserved, pr.denial.Basis)
 			}
 		}
 	})
@@ -313,4 +341,27 @@ func runRoleDefinitionWriteRouteCases(t *testing.T, env *baselineEnv) {
 			assert.Equal(t, model.RoleSourceManual, f.roleSource(target, r.ID))
 		})
 	})
+}
+
+// countingRoleWriter 記錄被呼叫次數的角色定義寫入替身。
+type countingRoleWriter struct{ calls int }
+
+func (w *countingRoleWriter) Create(context.Context, uint, identity.RoleInput) (*identity.RoleDefinition, error) {
+	w.calls++
+	return nil, nil
+}
+
+func (w *countingRoleWriter) Copy(context.Context, uint, uint, string, string) (*identity.RoleDefinition, error) {
+	w.calls++
+	return nil, nil
+}
+
+func (w *countingRoleWriter) Update(context.Context, uint, uint, int64, identity.RoleInput) (*identity.RoleDefinition, error) {
+	w.calls++
+	return nil, nil
+}
+
+func (w *countingRoleWriter) Delete(context.Context, uint, uint, int64) error {
+	w.calls++
+	return nil
 }

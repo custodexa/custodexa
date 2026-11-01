@@ -208,6 +208,7 @@
                 </el-button>
                 <el-button
                   v-else-if="row.status === 'failed'"
+                  v-preview-write
                   link
                   :loading="busyId === row.id"
                   :disabled="!row.filter"
@@ -496,6 +497,7 @@ import { OFFSITE_EXPORT_ROW_STATUSES } from '@/constants/offsite'
 import { LOCALE_LABELS } from '@/i18n'
 import { formatBytes, formatDateTime, formatUptimeSeconds } from '@/utils/format'
 import { downloadBlob } from '@/utils/download'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 下載中心。
 //

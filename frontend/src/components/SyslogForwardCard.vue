@@ -106,6 +106,7 @@
 
     <div class="syslog-actions">
       <el-button
+        v-preview-write
         :loading="syslogTesting"
         :disabled="syslogSaving"
         @click="handleTestSyslog"
@@ -113,6 +114,7 @@
         {{ $t('syslogCard.sendTest') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="syslogSaving"
         :disabled="syslogTesting"
@@ -136,6 +138,7 @@ import {
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 import { riskLabel } from '@/utils/transportDisplay'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const syslogLoading = ref(false)
 const syslogSaving = ref(false)

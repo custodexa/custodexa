@@ -19,7 +19,10 @@ Custodexa へのコントリビューションをありがとうございます�
 ## 開発環境とテスト
 
 ```bash
-bash scripts/quickstart.sh --up                # スタック全体を起動
+[ -f .env ] || cp .env.example .env            # .env がまだ無ければテンプレートから作成
+# .env の COMPOSE_FILE=docker-compose.dev.yml のコメントを外す（外さないと --up は本番用の構成を起動します）:
+sed -i.bak 's/^# *COMPOSE_FILE=docker-compose.dev.yml$/COMPOSE_FILE=docker-compose.dev.yml/' .env && rm .env.bak
+bash scripts/quickstart.sh --up                # スタック全体を起動（開発構成の初回起動は約 10〜15 分かかります）
 docker compose exec backend go test ./...      # バックエンドのテスト
 docker compose exec frontend npm run test      # フロントエンドのテスト
 ```

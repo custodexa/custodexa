@@ -212,6 +212,8 @@ cp .env.example .env
 #   （ENCRYPTION_KEY 僅 KEK_PROVIDER=env 需要；出貨預設 ui＝金鑰不落地，見範本 KEK 段）
 # 參與開發：取消 COMPOSE_FILE=docker-compose.dev.yml 的註解，並建議改 KEK_PROVIDER=env＋
 #   填 ENCRYPTION_KEY——熱重載每次重編譯即重啟行程，ui 模式會每次要求重新解封
+#   （開發版另需 VAULT_DEV_ROOT_TOKEN_ID，即測試用 Vault 的初始化 token：quickstart.sh 會代填；
+#   手動準備 .env 時請自行填一個測試用的值）
 ```
 
 > **初始管理員密碼（`ADMIN_INITIAL_PASSWORD`）**：沒有出廠預設密碼。全新（空 DB）部署都要自己設一個
@@ -1053,6 +1055,16 @@ macOS Docker volume 的 fsnotify 不可靠，Vite 可能沒偵測到檔案變更
 ```bash
 docker compose up -d --force-recreate frontend
 ```
+
+
+### macOS：postgres 因 `wrong ownership` 起不來（Docker Desktop 檔案共享）
+症狀：postgres 日誌出現 `data directory ... has wrong ownership`，且這個資料目錄從未成功啟動過。資料庫目錄是 bind mount（`${DATA_PATH:-./data}/postgres`）。在 macOS 上，這可能與 Docker Desktop 選用的檔案共享實作有關。
+
+1. 開啟 Docker Desktop 設定（Docker 選單，再選 Settings），General 分頁，把 "Choose file sharing implementation for your containers" 改為 VirtioFS。套用後重啟 Docker Desktop。
+2. 只有在兩個條件同時成立時，才清空這個半初始化的資料目錄：這個資料目錄從未成功啟動過，而且目錄內沒有需要保留的資料。若不確定目錄的來源或內容，不要清空；先備份或另尋協助。
+3. 兩個條件都成立時，先確認實際路徑：它是 `.env` 內 `DATA_PATH` 底下的 `postgres` 目錄（未設定 `DATA_PATH` 時為 `./data/postgres`）。刪除該目錄後，重新執行 `docker compose up -d`。
+
+開發版首次啟動時，Docker 在建立單檔掛載的過程中也可能報 `outside of rootfs`。重跑 `docker compose up -d` 即可；`scripts/quickstart.sh --up` 會事先建立這些掛載點。
 
 ### 後端改動疑似沒生效（Air 熱重載跑舊二進位）
 多檔交叉編輯的中途破碎狀態會讓 Air build 失敗並繼續跑舊二進位。改完後：

@@ -165,6 +165,7 @@
         {{ $t('auditorWorkbench.export.cancel') }}
       </el-button>
       <el-button
+        v-preview-write
         type="primary"
         :loading="submitting"
         data-test="export-confirm"
@@ -189,6 +190,7 @@ import {
 import { typeLabel } from './timelineSummary'
 import { formatDateTime } from '@/utils/format'
 import { downloadBlob, timestampSuffix } from '@/utils/download'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 // 工作台的匯出出口（兩種包型）。
 //

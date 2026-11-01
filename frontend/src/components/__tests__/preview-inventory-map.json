@@ -1,0 +1,1955 @@
+[
+ {
+  "batch": "3.8",
+  "rows": [
+   46,
+   47
+  ],
+  "file": "views/Assets.vue",
+  "match": "data-test=\"tag-manager-entry\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   32,
+   33
+  ],
+  "file": "views/Assets.vue",
+  "match": "data-test=\"bulk-entry\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   31
+  ],
+  "file": "views/Assets.vue",
+  "match": "@click=\"handleCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   31,
+   37
+  ],
+  "file": "views/Assets.vue",
+  "match": "data-test=\"row-edit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   38,
+   39
+  ],
+  "file": "views/Assets.vue",
+  "match": "data-test=\"row-more\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   2
+  ],
+  "file": "views/Assets.vue",
+  "match": "@click=\"openApplyDialog\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   8
+  ],
+  "file": "views/Assets.vue",
+  "match": "@click=\"openBreakGlassDialog\\(applyTarget\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   34,
+   35,
+   36
+  ],
+  "file": "views/Assets.vue",
+  "match": "data-test=\"select-page\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   34,
+   35,
+   36
+  ],
+  "file": "views/Assets.vue",
+  "match": "data-test=\"row-select\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   42,
+   43
+  ],
+  "file": "components/AssetNodeTree.vue",
+  "match": "command=\"create-child\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   43
+  ],
+  "file": "components/AssetNodeTree.vue",
+  "match": "command=\"rename\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   44
+  ],
+  "file": "components/AssetNodeTree.vue",
+  "match": "command=\"move\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   45
+  ],
+  "file": "components/AssetNodeTree.vue",
+  "match": "command=\"delete\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   42
+  ],
+  "file": "components/AssetNodeTree.vue",
+  "match": "@click=\"openCreate\\(null\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   34
+  ],
+  "file": "components/asset/AssetBatchActions.vue",
+  "match": "@click=\"openMove\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   35
+  ],
+  "file": "components/asset/AssetBatchActions.vue",
+  "match": "@click=\"openTags\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   36
+  ],
+  "file": "components/asset/AssetBatchActions.vue",
+  "match": "@click=\"onDelete\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   34
+  ],
+  "file": "components/asset/AssetBatchActions.vue",
+  "match": "@click=\"submitMove\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   35
+  ],
+  "file": "components/asset/AssetBatchActions.vue",
+  "match": "@click=\"submitTags\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   26
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"openAdd\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   26
+  ],
+  "file": "components/asset/AssetAccountAddRow.vue",
+  "match": "@click=\"submit\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   29
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"handleSetDefault\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   27
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"openEditSecret\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   27
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"openSecretFix\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   86
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"openRebind\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   80
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"openDetach\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   28
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"handleRemove\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   86
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"submitRebind\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   27
+  ],
+  "file": "components/asset/AssetAccountRows.vue",
+  "match": "@click=\"submitSecret\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   40
+  ],
+  "file": "components/asset/AssetEditDrawerContent.vue",
+  "match": "@click=\"resetKey\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   41
+  ],
+  "file": "components/asset/AssetEditDrawerContent.vue",
+  "match": "@click=\"adoptKey\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   31,
+   37
+  ],
+  "file": "components/asset/AssetEditDrawerContent.vue",
+  "match": "@click=\"emit\\('submit'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   59
+  ],
+  "file": "views/Profile.vue",
+  "match": "@click=\"handleSaveDisplayName\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   59
+  ],
+  "file": "views/Profile.vue",
+  "match": "@click=\"handleClearDisplayName\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   56
+  ],
+  "file": "views/Profile.vue",
+  "match": "@click=\"handleChangePassword\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   55
+  ],
+  "file": "views/Profile.vue",
+  "match": "@click=\"handleDisableMFA\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   53
+  ],
+  "file": "views/Profile.vue",
+  "match": "@click=\"handleGenerateMFASetup\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   54
+  ],
+  "file": "views/Profile.vue",
+  "match": "@click=\"handleEnableMFA\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   2
+  ],
+  "file": "views/MyRequests.vue",
+  "match": "@click=\"createVisible = true\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   3
+  ],
+  "file": "views/MyRequests.vue",
+  "match": "@click=\"handleCancel\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   62
+  ],
+  "file": "views/Authorizations.vue",
+  "match": "@click=\"handleBatchAuthorize\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   63
+  ],
+  "file": "views/Authorizations.vue",
+  "match": "@click=\"openAccountScope\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   9
+  ],
+  "file": "views/Authorizations.vue",
+  "match": "@click=\"handleRevoke\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   61
+  ],
+  "file": "views/Authorizations.vue",
+  "match": "@click=\"handleDelete\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   9
+  ],
+  "file": "views/Authorizations.vue",
+  "match": "@click=\"submitRevoke\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   64,
+   65
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"openCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   68
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"reauthorizePaused\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   67
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"triggerRun\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   64,
+   65
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"startReconfirm\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   65
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"openEdit\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   66
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"removePlan\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   69
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"retryCandidate\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   70
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"discardCandidate\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   64,
+   65
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   64,
+   65
+  ],
+  "file": "views/ChangeSecretPlans.vue",
+  "match": "@click=\"submitReconfirm\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   71
+  ],
+  "file": "views/AccountBatchRotation.vue",
+  "match": "@click=\"openBatch\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   71
+  ],
+  "file": "views/AccountBatchRotation.vue",
+  "match": "@click=\"openSingle\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   71
+  ],
+  "file": "views/AccountBatchRotation.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   75
+  ],
+  "file": "views/CredentialLibrary.vue",
+  "match": "@click=\"openCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   88
+  ],
+  "file": "views/CredentialLibrary.vue",
+  "match": "@click=\"openReassign\\(selectedRows\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   88
+  ],
+  "file": "components/credential/CredentialTable.vue",
+  "match": "@click.stop=\"emit\\('reassign', row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   76
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"emit\\('edit', credential\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   77
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"removeCredential\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   82
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"secretFixVisible = true\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   83
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"rotateVisible = true\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   78
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"bindVisible = true\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   81
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"convertToDedicated\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   81
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"openToShared\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   81
+  ],
+  "file": "components/credential/CredentialDetailPanel.vue",
+  "match": "@click=\"convertToShared\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   80
+  ],
+  "file": "components/credential/CredentialBindingList.vue",
+  "match": "@click=\"emit\\('detach', binding\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   79
+  ],
+  "file": "components/credential/CredentialBindingList.vue",
+  "match": "@click=\"emit\\('unbind', binding\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   84
+  ],
+  "file": "components/credential/CredentialRotationProgress.vue",
+  "match": "@click=\"retryFailed\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   84
+  ],
+  "file": "components/credential/CredentialRotationProgress.vue",
+  "match": "@click=\"retryMember\\(member\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   85
+  ],
+  "file": "components/credential/CredentialRotationProgress.vue",
+  "match": "@click=\"abandon\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   110
+  ],
+  "file": "views/MyConnections.vue",
+  "match": "@click=\"handleTerminate\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   150
+  ],
+  "file": "views/Sessions.vue",
+  "match": "@click=\"handleTerminate\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   154,
+   155
+  ],
+  "file": "views/Sessions.vue",
+  "match": "@click=\"handleMonitor\\(row\\)\"",
+  "kind": "ticket"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   152,
+   153
+  ],
+  "file": "components/ShareDialog.vue",
+  "match": "@click=\"revoke\"",
+  "kind": "ticket"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   152,
+   153
+  ],
+  "file": "components/ShareDialog.vue",
+  "match": "@click=\"create\"",
+  "kind": "ticket"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   113
+  ],
+  "file": "views/SessionDetail.vue",
+  "match": "@click=\"handleOffsiteRetry\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.8",
+  "rows": [
+   73,
+   74
+  ],
+  "file": "components/workspace/WorkspaceAssetSidebar.vue",
+  "match": "@activate=\"\\(asset, e\\)",
+  "kind": "ticket"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   1
+  ],
+  "file": "views/AccessReviews.vue",
+  "match": "@click=\"openReviewDialog\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   1
+  ],
+  "file": "views/AccessReviews.vue",
+  "match": "@click=\"submitReview\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"alertBatchDialogRef\\?\\.open\\(\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"openReviewDialog\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"submitReview\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "components/batch-review/AlertBatchReviewDialog.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "components/daily-review/DailyReviewAlertsSection.vue",
+  "match": "@click=\"batchDialogRef\\?\\.open\\(\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "components/daily-review/DailyReviewAlertsSection.vue",
+  "match": "@click=\"openSingle\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   18
+  ],
+  "file": "components/daily-review/DailyReviewAlertsSection.vue",
+  "match": "@click=\"submitSingle\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   19,
+   20
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"openCreateDialog\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   20
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@change=\"\\(value\\) => handleToggleEnabled\\(row, value\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   20
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"openEditDialog\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   19,
+   20
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"handleSaveRule\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   21
+  ],
+  "file": "views/Alerts.vue",
+  "match": "@click=\"handleDeleteRule\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   48
+  ],
+  "file": "views/AuditWorkbench.vue",
+  "match": "@click=\"openExport\\('event_report'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   48
+  ],
+  "file": "views/AuditWorkbench.vue",
+  "match": "@click=\"openExport\\('evidence_bundle'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   48
+  ],
+  "file": "views/AuditLogs.vue",
+  "match": "@click=\"openExportDialog\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   48
+  ],
+  "file": "views/AuditLogs.vue",
+  "match": "@click=\"submitExport\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   48
+  ],
+  "file": "views/AuditExports.vue",
+  "match": "@click=\"retry\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   48
+  ],
+  "file": "components/audit/ExportReportDialog.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   49
+  ],
+  "file": "views/AuditLogs.vue",
+  "match": "@click=\"openPermissionAccept\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   49
+  ],
+  "file": "views/AuditLogs.vue",
+  "match": "@click=\"submitPermissionAccept\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   72
+  ],
+  "file": "views/ComplianceMap.vue",
+  "match": "@click=\"openReport\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   72
+  ],
+  "file": "views/ComplianceMap.vue",
+  "match": "@click=\"submitReport\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   89
+  ],
+  "file": "components/daily-review/DailyReviewDrawer.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   138
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"openGenerate\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   138
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"submitGenerate\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   139,
+   140
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"openScheduleCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   140
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"openScheduleEdit\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   139,
+   140
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"submitSchedule\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   141
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"removeSchedule\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   142
+  ],
+  "file": "views/RotationEvidence.vue",
+  "match": "@click=\"runSchedule\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   161
+  ],
+  "file": "components/system-alert/SystemAlertCatalog.vue",
+  "match": "@click=\"openAdjust\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.9",
+  "rows": [
+   161
+  ],
+  "file": "components/system-alert/SystemAlertCatalog.vue",
+  "match": "@click=\"save\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   6
+  ],
+  "file": "views/ApproverScopes.vue",
+  "match": "@click=\"openAdd\\(\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   6
+  ],
+  "file": "views/ApproverScopes.vue",
+  "match": "@click=\"openAdd\\(null, 'asset_group', row.id\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   6
+  ],
+  "file": "views/ApproverScopes.vue",
+  "match": "@click=\"openAdd\\(\\{ type: row.type, id: row.id \\}, key\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   7
+  ],
+  "file": "views/ApproverScopes.vue",
+  "match": "@close=\"handleRemove\\(",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   7
+  ],
+  "file": "views/Users.vue",
+  "match": "@click=\"handleRemoveScope\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   6,
+   168
+  ],
+  "file": "components/ApproverScopeForm.vue",
+  "match": "@click=\"handleSubmit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   13
+  ],
+  "file": "components/agent/AgentPrincipalForm.vue",
+  "match": "@click=\"submit\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   15
+  ],
+  "file": "components/agent/TokenDrawer.vue",
+  "match": "@click=\"issue\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   16
+  ],
+  "file": "components/agent/TokenDrawer.vue",
+  "match": "@click=\"revokeId = token.id; revokeNote = \\x27\\x27\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   16
+  ],
+  "file": "components/agent/TokenDrawer.vue",
+  "match": "@click=\"revoke\\(token\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   17
+  ],
+  "file": "components/agent/BreakerReleaseForm.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   22,
+   23
+  ],
+  "file": "components/alerts/NotificationChannelPanel.vue",
+  "match": "@click=\"openChannelDialog\\(\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   22,
+   23
+  ],
+  "file": "components/alerts/NotificationChannelPanel.vue",
+  "match": "@click=\"openChannelDialog\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   23
+  ],
+  "file": "components/alerts/NotificationChannelPanel.vue",
+  "match": "@change=\"\\(val\\) => handleChannelToggle\\(row, val\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   25
+  ],
+  "file": "components/alerts/NotificationChannelPanel.vue",
+  "match": "@click=\"handleTestChannel\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   24
+  ],
+  "file": "components/alerts/NotificationChannelPanel.vue",
+  "match": "@click=\"handleDeleteChannel\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   22,
+   23
+  ],
+  "file": "components/alerts/NotificationChannelPanel.vue",
+  "match": "@click=\"handleSaveChannel\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   93,
+   94,
+   96,
+   97
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"openCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   94,
+   97
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"openEdit\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   94,
+   97
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"toggle\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   95,
+   98
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"remove\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   93,
+   94,
+   96,
+   97,
+   99
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"save\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   99
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"openNote\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   99
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"saveNote\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   96,
+   179,
+   183
+  ],
+  "file": "views/identity-sources/ExternalGroupMappings.vue",
+  "match": "@click=\"openGroupSetup\\('rolesTabHint'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   96,
+   179,
+   183
+  ],
+  "file": "views/identity-sources/components/GroupSetupDrawer.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   96,
+   179,
+   183
+  ],
+  "file": "views/identity-sources/components/GroupSetupDrawer.vue",
+  "match": "@click=\"retry\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   102
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"startTopologyEdit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   102
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"saveTopology\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   103
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"confirmRotate\\('data'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   103
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"confirmRotate\\('audit_integrity'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   104
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"openRewrapWizard\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   104
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"executeRewrap\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   105
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"handleAbandonRewrap\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   106
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"handleCleanupRetired\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   146
+  ],
+  "file": "views/KeyManagement.vue",
+  "match": "@click=\"handleSeal\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   107,
+   108,
+   119,
+   120
+  ],
+  "file": "views/identity-sources/components/SourceDetailLayout.vue",
+  "match": "@click=\"\\$emit\\('save', true\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   107,
+   108,
+   119,
+   120
+  ],
+  "file": "views/identity-sources/components/SourceDetailLayout.vue",
+  "match": "@click=\"\\$emit\\('save', false\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   109
+  ],
+  "file": "views/identity-sources/components/SourceDetailLayout.vue",
+  "match": "@click=\"\\$emit\\('test'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   108
+  ],
+  "file": "views/identity-sources/LDAPSourceDetail.vue",
+  "match": "@click=\"handleDelete\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   108,
+   121
+  ],
+  "file": "views/identity-sources/IdentitySources.vue",
+  "match": "@click=\"handleDelete\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   111
+  ],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleTest\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   114
+  ],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleSave\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   112
+  ],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleRetryFailed\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleRetryObject\\(row.object_id\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   115
+  ],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleConfirmSwitch\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   116
+  ],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleDisable\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   117
+  ],
+  "file": "views/OffsiteStorage.vue",
+  "match": "@click=\"handleRevoke\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   122,
+   123
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"openCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   124
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@change=\"\\(value\\) => toggleEnabled\\(group, value\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   123
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"openRename\\(group\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   125
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"removeGroup\\(group\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   126,
+   127
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"openClause\\(null\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   128
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"openNote\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   129
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"openConfirm\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   126
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"openClause\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   127
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"removeClause\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   128
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"saveNote\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   129
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"saveConfirm\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   122,
+   123
+  ],
+  "file": "views/PolicyGroups.vue",
+  "match": "@click=\"saveCreate\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   126
+  ],
+  "file": "components/ClauseDialog.vue",
+  "match": "@click=\"submit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   132,
+   134
+  ],
+  "file": "views/RoleEditor.vue",
+  "match": "@click=\"save\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   133
+  ],
+  "file": "views/Roles.vue",
+  "match": "@click=\"openCopy\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   133
+  ],
+  "file": "views/Roles.vue",
+  "match": "@click=\"submitCopy\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   135
+  ],
+  "file": "views/Roles.vue",
+  "match": "@click=\"removeRole\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   132
+  ],
+  "file": "views/Roles.vue",
+  "match": "@click=\"openCreate\\(\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   132
+  ],
+  "file": "views/Roles.vue",
+  "match": "@click=\"openCreate\\(row\\)\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   132
+  ],
+  "file": "views/Roles.vue",
+  "match": "@click=\"createNext\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   137
+  ],
+  "file": "views/users/components/UserRoleScopeTab.vue",
+  "match": "@click=\"save\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   167
+  ],
+  "file": "views/users/components/UserRoleScopeTab.vue",
+  "match": "@change=\"pinRole\\(name\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   147,
+   159
+  ],
+  "file": "components/PolicyGroupStrip.vue",
+  "match": "@click=\"\\$emit\\('save'\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   159
+  ],
+  "file": "components/SyslogForwardCard.vue",
+  "match": "@click=\"handleSaveSyslog\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   160
+  ],
+  "file": "components/SyslogForwardCard.vue",
+  "match": "@click=\"handleTestSyslog\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   162
+  ],
+  "file": "views/TransmissionInventory.vue",
+  "match": "@click=\"handleExport\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   163,
+   164
+  ],
+  "file": "views/Users.vue",
+  "match": "@click=\"handleCreate\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   164
+  ],
+  "file": "views/users/components/UserAccountActions.vue",
+  "match": "@click=\"\\$emit\\('edit', row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   165,
+   169,
+   171,
+   172
+  ],
+  "file": "views/users/components/UserAccountActions.vue",
+  "match": "@click=\"runOp\\(key\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   163,
+   164
+  ],
+  "file": "views/users/components/UserAccountForm.vue",
+  "match": "@click=\"handleSubmit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   170
+  ],
+  "file": "views/users/components/UserAccountDialogs.vue",
+  "match": "@click=\"handlePasswordSubmit\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   165,
+   169
+  ],
+  "file": "views/Users.vue",
+  "match": "@change=\"handleStatusChange\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   173
+  ],
+  "file": "views/Users.vue",
+  "match": "@change=\"handleExemptChange\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   174
+  ],
+  "file": "components/UserExternalIdentities.vue",
+  "match": "@click=\"handleBind\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   175
+  ],
+  "file": "components/UserExternalIdentities.vue",
+  "match": "@click=\"handleUnbind\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   176
+  ],
+  "file": "components/UserExternalIdentities.vue",
+  "match": "command=\"unbindAndDisable\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   177
+  ],
+  "file": "components/UserExternalIdentities.vue",
+  "match": "@click=\"handleExternalOnly\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   179,
+   180
+  ],
+  "file": "views/UserGroups.vue",
+  "match": "@click=\"openCreateDialog\"",
+  "kind": "create"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   180
+  ],
+  "file": "views/UserGroups.vue",
+  "match": "@click=\"openEditDialog\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   179,
+   180
+  ],
+  "file": "views/UserGroups.vue",
+  "match": "@click=\"submitForm\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   181
+  ],
+  "file": "views/UserGroups.vue",
+  "match": "@click=\"handleDelete\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   182
+  ],
+  "file": "views/UserGroups.vue",
+  "match": "@click=\"openMembersDialog\\(row\\)\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   182
+  ],
+  "file": "views/UserGroups.vue",
+  "match": "@click=\"submitMembers\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   182
+  ],
+  "file": "views/usergroups/components/GroupMembersTab.vue",
+  "match": "@click=\"save\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [
+   183
+  ],
+  "file": "views/usergroups/components/GroupRolesTab.vue",
+  "match": "@click=\"save\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [],
+  "file": "components/PolicyGroupStrip.vue",
+  "match": "data-test=\"policy-apply\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [],
+  "file": "components/PolicyGroupStrip.vue",
+  "match": ":command=\"\\{ mode: 'group', groupCode: group.code \\}\"",
+  "kind": "plain"
+ },
+ {
+  "batch": "3.10",
+  "rows": [],
+  "file": "components/PolicyGroupStrip.vue",
+  "match": ":command=\"\\{ mode: 'strictest' \\}\"",
+  "kind": "plain"
+ }
+]

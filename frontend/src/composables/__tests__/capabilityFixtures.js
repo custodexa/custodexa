@@ -42,6 +42,7 @@ export function permissionsFor(roles = ['user'], { approver, owns = false, creat
   if (legacy !== 'admin' && legacy !== 'auditor') out.add('ui:self-service-actions')
   if (legacy === 'admin') out.add('ui:connect-bypass')
   if (legacy === 'admin') out.add('ui:super-admin')
+  if (legacy === 'admin' || legacy === 'auditor') out.add('ui:session-monitor')
   return [...out].sort()
 }
 

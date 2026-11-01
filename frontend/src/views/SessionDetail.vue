@@ -178,6 +178,7 @@
                  以本機檔重傳，本機無檔時做不到，故停用並說明 -->
             <el-button
               v-if="offsiteRetryable"
+              v-preview-write
               type="primary"
               link
               size="small"
@@ -278,6 +279,12 @@
               v-if="recordingBlocked"
               :state="recordingBlocked"
               :session-id="session.id"
+            />
+            <!-- 以角色預覽時不簽發錄影票證，播放區改為停用說明 -->
+            <EmptyState
+              v-else-if="previewActive && session.has_recording"
+              data-test="preview-recording-disabled"
+              :title="$t('rolePreview.disabledTicket')"
             />
             <!-- 文字終端錄製回放（SSH 與資料庫 CLI，asciicast 格式） -->
             <div
@@ -790,6 +797,8 @@ import {
 import { isKnownOffsiteStatus, offsiteStatusTagType } from '@/constants/offsite'
 import { getOffsiteSettings, retryOffsiteObject } from '@/api/offsiteStorage'
 import { can } from '@/composables/useCapabilities'
+import { useRolePreview } from '@/composables/useRolePreview'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const route = useRoute()
 const router = useRouter()
@@ -1324,10 +1333,12 @@ const seekToCommand = (row) => {
 // 錄影串流 URL（asciinema/SSH）：改用一次性、不透明的錄影 token，
 // URL 不再含長效登入 JWT（JWT 會被 gin access log 完整記下）。
 // asciinema 播放器只能吃 URL、無法加 header，故走短時效 token 而非 Bearer。
+const { active: previewActive } = useRolePreview()
 const recordingUrl = ref('')
 
 async function loadRecordingUrl() {
   recordingUrl.value = ''
+  if (previewActive.value) return
   if (!session.value || !session.value.has_recording || recordingBlocked.value) {
     return
   }

@@ -6,6 +6,7 @@
     >
       <template #actions>
         <el-button
+          v-preview-write:create
           type="primary"
           @click="createVisible = true"
         >
@@ -239,6 +240,7 @@
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'pending'"
+              v-preview-write
               link
               type="danger"
               size="small"
@@ -278,6 +280,7 @@ import {
   getMyActiveTickets,
   cancelAccessRequest,
 } from '@/api/accessRequests'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const createVisible = ref(false)
 // 整份回傳而不只是編號：橫幅要講的是「現在是什麼狀態」，那只有回傳的 status

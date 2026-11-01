@@ -1,5 +1,5 @@
 {
- "manifest_sha256": "29688331fb0c5ddf8a13dc52e21fe0e8bb11598eaf91b1adccbe291ca1763320",
+ "manifest_sha256": "6133515d7ef814834354f2cfeb49a4312b9ded15bf2e2fefe835e289cd0be066",
  "program_version": "dev",
  "subjects": {
   "S00": {
@@ -75,6 +75,7 @@
      "transmission:manage",
      "ui:assets-global",
      "ui:connect-bypass",
+     "ui:session-monitor",
      "ui:super-admin",
      "user:manage",
      "usergroup:manage"
@@ -357,7 +358,8 @@
      "compliance:view",
      "policygroup:view",
      "session:view",
-     "ui:assets-global"
+     "ui:assets-global",
+     "ui:session-monitor"
     ],
     "product_version": "dev",
     "provisioning_origin": "local",
@@ -536,6 +538,7 @@
      "ui:approvals",
      "ui:assets-global",
      "ui:connect-bypass",
+     "ui:session-monitor",
      "ui:super-admin",
      "user:manage",
      "usergroup:manage"
@@ -784,7 +787,8 @@
      "compliance:view",
      "policygroup:view",
      "session:view",
-     "ui:assets-global"
+     "ui:assets-global",
+     "ui:session-monitor"
     ],
     "product_version": "dev",
     "provisioning_origin": "local",
@@ -1013,6 +1017,7 @@
      "transmission:manage",
      "ui:assets-global",
      "ui:connect-bypass",
+     "ui:session-monitor",
      "ui:super-admin",
      "user:manage",
      "usergroup:manage"
