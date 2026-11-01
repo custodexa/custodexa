@@ -269,15 +269,21 @@ describe('預覽範圍與個人呈現（資產管理頁）', () => {
     const rowEl = document.createElement('div')
     rowEl.className = 'tree-node-row'
     w.get('.tree-column').element.appendChild(rowEl)
-    const row = { element: rowEl, trigger: (ev) => rowEl.dispatchEvent(new MouseEvent(ev, { bubbles: true })) }
+    const row = { element: rowEl, trigger: (ev) => rowEl.dispatchEvent(new Event(ev, { bubbles: true })) }
     row.element.getBoundingClientRect = () => ({ left: 10, right: 210, top: 50, bottom: 74, width: 200, height: 24 })
-    await row.trigger('mouseover')
+    await row.trigger('pointerover')
     const card = document.querySelector('[data-test="preview-hint-card"]')
     expect(card.hidden).toBe(false)
     expect(card.textContent).toContain('這個節點不能搬')
     expect(card.textContent).toContain('預覽中不能搬移節點。持有這個角色的人可以使用。')
     expect(card.style.top).toBe('80px')
-    await w.get('.tree-column').trigger('mouseleave')
+    await w.get('.tree-column').trigger('pointerleave')
+    expect(card.hidden).toBe(true)
+    // 鍵盤焦點移到節點列上時同樣出現說明卡，焦點離開時收起
+    await row.trigger('focusin')
+    expect(card.hidden).toBe(false)
+    expect(card.textContent).toContain('這個節點不能搬')
+    await row.trigger('focusout')
     expect(card.hidden).toBe(true)
     exitPreview()
     await flushPromises()

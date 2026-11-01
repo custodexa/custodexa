@@ -217,8 +217,10 @@
     >
       <div
         class="tree-column"
-        @mouseover="onTreeRowHover"
-        @mouseleave="onTreeRowLeave"
+        @pointerover="onTreeRowHover"
+        @pointerleave="onTreeRowLeave"
+        @focusin="onTreeRowHover"
+        @focusout="onTreeRowLeave"
       >
         <!-- 預覽範圍：只篩選畫面，與節點樹同處一個區塊 -->
         <div
