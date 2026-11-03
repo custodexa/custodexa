@@ -149,10 +149,10 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | npm | @floating-ui/core | 1.7.3 | MIT |
 | npm | @floating-ui/dom | 1.7.4 | MIT |
 | npm | @floating-ui/utils | 0.2.10 | MIT |
-| npm | @intlify/core-base | 11.4.2 | MIT |
-| npm | @intlify/devtools-types | 11.4.2 | MIT |
-| npm | @intlify/message-compiler | 11.4.2 | MIT |
-| npm | @intlify/shared | 11.4.2 | MIT |
+| npm | @intlify/core-base | 11.4.18 | MIT |
+| npm | @intlify/devtools-types | 11.4.18 | MIT |
+| npm | @intlify/message-compiler | 11.4.18 | MIT |
+| npm | @intlify/shared | 11.4.18 | MIT |
 | npm | @jridgewell/sourcemap-codec | 1.5.5 | MIT |
 | npm | @solid-primitives/refs | 1.1.2 | MIT |
 | npm | @solid-primitives/transition-group | 1.1.2 | MIT |
@@ -206,7 +206,7 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | npm | escape-html | 1.0.3 | MIT |
 | npm | estree-walker | 2.0.2 | MIT |
 | npm | find-up | 4.1.0 | MIT |
-| npm | follow-redirects | 1.15.11 | MIT |
+| npm | follow-redirects | 1.16.2 | MIT |
 | npm | form-data | 4.0.4 | MIT |
 | npm | function-bind | 1.1.2 | MIT |
 | npm | get-caller-file | 2.0.5 | ISC |
@@ -252,7 +252,7 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | npm | strip-ansi | 6.0.1 | MIT |
 | npm | vue | 3.5.22 | MIT |
 | npm | vue-demi | 0.14.10 | MIT |
-| npm | vue-i18n | 11.4.2 | MIT |
+| npm | vue-i18n | 11.4.18 | MIT |
 | npm | vue-router | 4.5.1 | MIT |
 | npm | which-module | 2.0.1 | ISC |
 | npm | wrap-ansi | 6.2.0 | MIT |
