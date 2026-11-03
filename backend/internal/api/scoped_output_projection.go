@@ -211,3 +211,44 @@ func (h *CredentialHandler) respondAccountRow(c *gin.Context, status int, dto *a
 	}
 	respondScoped(c, status, out)
 }
+
+// credentialRow 單一帳號列依形狀轉成對外型別（執行身分讀取的 credential 欄用）：
+// 與帳號列表、寫入回應同一個判定，範圍外共用憑證只帶共用與範圍外標記。
+func (p *accountRowProjector) credentialRow(c *gin.Context, a *asset.AssetAccountDTO) (any, error) {
+	shape, inView, err := p.shape(c, []*asset.AssetAccountDTO{a})
+	if err != nil {
+		return nil, err
+	}
+	return p.row(c, shape, inView, a)
+}
+
+// executorBody 執行身分讀取與設定的回應本文：服務層 DTO 的欄位平鋪，加 credential（帳號列投影）。
+type executorBody struct {
+	*asset.AssetExecutorDTO
+	Credential any `json:"credential,omitempty"`
+}
+
+// SetAccountRowProjector 以與帳號 handler 相同的憑證投影來源建立帳號列投影器（組裝時）。
+// 不注入動作判定：執行身分的更換與清除走專屬端點，帳號列的 rebind／remove 旗標對它沒有意義，
+// 範圍外列因此不帶 actions。
+func (h *AssetExecutorHandler) SetAccountRowProjector(scope AccountCredentialScope) {
+	h.accountRows = &accountRowProjector{credScope: scope}
+}
+
+// AccountRowProjectorWired 帳號列投影器已注入且憑證投影來源存在（組裝自檢用）。
+func (h *AssetExecutorHandler) AccountRowProjectorWired() bool {
+	return h != nil && h.accountRows != nil && h.accountRows.credScope != nil
+}
+
+// projectExecutor 組出執行身分的對外回應：credential 一律由帳號列投影器產生，不經手寫分支。
+func (h *AssetExecutorHandler) projectExecutor(c *gin.Context, dto *asset.AssetExecutorDTO) (scopedOutput, error) {
+	body := executorBody{AssetExecutorDTO: dto}
+	if dto.Row != nil {
+		cred, err := h.accountRows.credentialRow(c, dto.Row)
+		if err != nil {
+			return scopedOutput{}, err
+		}
+		body.Credential = cred
+	}
+	return scopedOutput{body: body}, nil
+}

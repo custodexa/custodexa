@@ -49,6 +49,11 @@ type CredentialDTO struct {
 	// 被擋住的動作，而看不出還差哪幾台。
 	ActiveRotationID uint `json:"active_rotation_id"`
 
+	// Purpose 該憑證未刪除掛載的用途（login｜executor）。用途一致規則保證同一憑證的掛載用途相同，
+	// 所以是單值；沒有任何未刪除掛載時不出現。用途是憑證屬性，與掛載是否在檢視範圍內無關，
+	// 範圍化檢視者也不因它多得到任何範圍外資產的識別或台數
+	Purpose string `json:"purpose,omitempty"`
+
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 
@@ -66,6 +71,8 @@ type CredentialBindingDTO struct {
 	AssetID   uint   `json:"asset_id"`
 	AssetName string `json:"asset_name"`
 	Username  string `json:"username"`
+	// Purpose 掛載用途：login（人員登入帳號）或 executor（堡壘機專用帳號）
+	Purpose   string `json:"purpose"`
 	IsDefault bool   `json:"is_default"`
 	// Privileged 逐掛載獨立：同一組秘密在不同主機上的特權性可以不同
 	Privileged bool   `json:"privileged"`
@@ -97,7 +104,40 @@ type CredentialDetailDTO struct {
 
 // credentialDTO 由 model 轉出對外表示（密文只轉成布林）。
 func (s *CredentialService) credentialDTO(db *gorm.DB, cred *model.Credential) (*CredentialDTO, error) {
-	return credentialDTOFrom(db, cred)
+	dto, err := credentialDTOFrom(db, cred)
+	if err != nil {
+		return nil, err
+	}
+	purposes, err := credentialPurposes(db, []uint{cred.ID})
+	if err != nil {
+		return nil, err
+	}
+	dto.Purpose = purposes[cred.ID]
+	return dto, nil
+}
+
+// credentialPurposes 一批憑證各自的掛載用途（一次查詢）。沒有未刪除掛載的憑證不在結果內。
+// 用途一致規則保證同一憑證的未刪除掛載用途相同，取任一列即可（MIN 只為讓結果確定）。
+func credentialPurposes(db *gorm.DB, credentialIDs []uint) (map[uint]string, error) {
+	out := map[uint]string{}
+	if len(credentialIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		CredentialID uint
+		Purpose      string
+	}
+	var rows []row
+	if err := db.Model(&model.AssetAccount{}).
+		Select("credential_id, MIN(purpose) AS purpose").
+		Where("credential_id IN ?", credentialIDs).
+		Group("credential_id").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("查詢憑證掛載用途失敗: %w", err)
+	}
+	for _, r := range rows {
+		out[r.CredentialID] = r.Purpose
+	}
+	return out, nil
 }
 
 // credentialDTOFrom 憑證投影。專用憑證的顯示名為「資產名 / 帳號名」計算值。
@@ -189,6 +229,7 @@ func credentialBindingDTOs(db *gorm.DB, cred *model.Credential) ([]*CredentialBi
 			AccountID:  b.ID,
 			AssetID:    b.AssetID,
 			Username:   cred.Username,
+			Purpose:    b.Purpose,
 			IsDefault:  b.IsDefault,
 			Privileged: b.Privileged,
 			Note:       b.Note,

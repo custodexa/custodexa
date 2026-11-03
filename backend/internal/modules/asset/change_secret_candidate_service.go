@@ -434,6 +434,9 @@ func rebindBindingToCredential(tx *gorm.DB, account *model.AssetAccount,
 	if err := assertNoActiveRotation(oldCred); err != nil {
 		return err
 	}
+	if err := assertCredentialPurpose(tx, target.ID, account.Purpose); err != nil {
+		return err
+	}
 	res := tx.Model(&model.AssetAccount{}).
 		Where("id = ? AND credential_id = ? AND username = ?",
 			account.ID, oldCred.ID, cand.AccountUsername).

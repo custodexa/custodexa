@@ -28,6 +28,16 @@ var (
 	// CodeValidationRoleNotGroupBindable 審核者身分不經使用者群組取得。
 	CodeValidationRoleNotGroupBindable = register("VALIDATION_ROLE_NOT_GROUP_BINDABLE",
 		Descriptor{ZhFallback: "這個角色不能指派給使用者群組"})
+	// CodeValidationRoleSetApproverOnly 建立帳號、整組替換或追加的結果使帳號只有審核者角色（無法使用資產與連線）。
+	CodeValidationRoleSetApproverOnly = register("VALIDATION_ROLE_SET_APPROVER_ONLY",
+		Descriptor{ZhFallback: "尚未儲存：這組角色會讓帳號只能審核、無法使用資產與連線，請一併加上全系統的基本使用角色"})
+	// CodeValidationUserGroupApproverOnlyMembers 群組寫入使原本不是此狀態的成員變成只有審核者角色。
+	// 受影響成員的帳號（id、username）由 details.affected_users 帶出，不在訊息內。
+	CodeValidationUserGroupApproverOnlyMembers = register("VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS",
+		Descriptor{
+			ZhFallback: "無法完成：這次變更會讓 {count} 位成員只能審核、無法使用資產與連線",
+			Params:     []ParamSpec{{Key: "count", Kind: ParamInt}},
+		})
 )
 
 // CodeInternalRoleAssignmentPreview 預覽角色指派影響時的內部錯誤。

@@ -539,6 +539,49 @@ describe('憑證來源與版本快照', () => {
   })
 })
 
+describe('記錄明細的代改原因', () => {
+  it('列上沒有專用帳號名時用不帶名稱的文案，有名稱時帶入，名稱處不留白', async () => {
+    const rec = (id, code, over = {}) => ({
+      record_id: id, executed_at: '2026-11-03T02:00:00Z', plan_name: '每月改密', batch_id: 0,
+      asset_name: 'web-01', account_username: 'app', account_deleted: false,
+      secret_type: 'password', status: 'failed', reason_code: code, ...over,
+    })
+    recordsMock.mockResolvedValue({
+      data: [
+        rec(701, 'CHANGE_SECRET_EXECUTOR_LOGIN_FAILED'),
+        rec(702, 'CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED', { executor_username: 'cx-exec' }),
+      ],
+      total: 2, page: 1, page_size: 20, truncated: false,
+    })
+    setRoles(['auditor'])
+    const text = (await mountPage()).find('[data-test="rotation-records-card"]').text()
+
+    expect(text).toContain('堡壘機專用帳號無法登入目標主機')
+    expect(text).toContain('堡壘機專用帳號 cx-exec 沒有替其他帳號改密的權限')
+    expect(text).not.toMatch(/專用帳號\s{2,}/)
+  })
+})
+
+describe('記錄明細的未加密連線標示', () => {
+  it('兩筆紀錄一有傳輸風險一無：恰一個標示，貼在該筆結果旁', async () => {
+    const rec = (id, risk) => ({
+      record_id: id, executed_at: '2026-11-02T02:00:14Z', plan_name: '每月改密', batch_id: 0,
+      asset_name: 'orders-db', account_username: 'app_user', account_deleted: false,
+      secret_type: 'password', status: 'success', reason_code: '', transport_risk: risk,
+    })
+    recordsMock.mockResolvedValue({
+      data: [rec(601, 'db_rotation_unencrypted'), rec(602, '')],
+      total: 2, page: 1, page_size: 20, truncated: false,
+    })
+    setRoles(['auditor'])
+    const wrapper = await mountPage()
+
+    expect(wrapper.findAll('[data-test="transport-risk-mark"]')).toHaveLength(1)
+    const cell = wrapper.find('[data-test="rotation-record-status-601"]').element.parentElement
+    expect(cell.querySelector('[data-test="transport-risk-mark"]')).not.toBeNull()
+  })
+})
+
 describe('只持排程管理能力（沒有稽核檢視）', () => {
   const SCHEDULE = {
     id: 1, name: '月報', cron: '0 1 1 * *', enabled: true, scope_kind: 'all', scope_id: 0,

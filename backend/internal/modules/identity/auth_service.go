@@ -304,6 +304,9 @@ type UserInfo struct {
 	// 值與 GET /my/agents 的自建狀態同源（MyAgentCreationStatus）；查失敗兩欄皆 false
 	OwnsAgents         bool `json:"owns_agents"`
 	CanSelfCreateAgent bool `json:"can_self_create_agent"`
+	// IsHistoryAuditor：審核歷史唯讀端點以稽核身分放行的同一個判定（不序列化）。
+	// 只供目前使用者回應的能力投影產生審核歷史呈現點，回應本文不因此多鍵。
+	IsHistoryAuditor bool `json:"-"`
 	// SourceIP 本人這次請求的來源位址，**僅由 `GET /auth/me` 填寫、僅供顯示**
 	// （允許網段表單的「你目前的來源」）。不參與任何判定——落入與否一律問
 	// 判定端點，前端自算必與強制點分歧。
@@ -1132,6 +1135,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 		isApprover = false
 	}
 	ownsAgents, canSelfCreate := agentEntryFlags(database.DB, user.ID)
+	isHistoryAuditor := historyAuditorFlag(database.DB, user.ID)
 
 	userInfo := &UserInfo{
 		ID:                 user.ID,
@@ -1149,6 +1153,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 		IsApprover:         isApprover,
 		OwnsAgents:         ownsAgents,
 		CanSelfCreateAgent: canSelfCreate,
+		IsHistoryAuditor:   isHistoryAuditor,
 		ProductVersion:     s.productVersion,
 	}
 
@@ -1325,6 +1330,7 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 		isApprover = false
 	}
 	ownsAgents, canSelfCreate := agentEntryFlags(database.DB, user.ID)
+	isHistoryAuditor := historyAuditorFlag(database.DB, user.ID)
 
 	return &UserInfo{
 		ID:                 user.ID,
@@ -1342,6 +1348,7 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 		IsApprover:         isApprover,
 		OwnsAgents:         ownsAgents,
 		CanSelfCreateAgent: canSelfCreate,
+		IsHistoryAuditor:   isHistoryAuditor,
 		ProductVersion:     s.productVersion,
 	}, nil
 }

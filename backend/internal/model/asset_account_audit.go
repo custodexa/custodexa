@@ -28,6 +28,11 @@ const (
 	// 候選是那把可能已在遠端生效的秘密的
 	// 唯一副本，清除後只能以帶外途徑救回該帳號，故必須留痕
 	AccountOpDiscardCandidate = "discard_candidate"
+	// 堡壘機專用帳號（執行身分）的生命週期：設定、更換、清除、公鑰匯出
+	AccountOpExecutorSet             = "executor_set"
+	AccountOpExecutorReplace         = "executor_replace"
+	AccountOpExecutorClear           = "executor_clear"
+	AccountOpExecutorPublicKeyExport = "executor_public_key_export"
 )
 
 // AssetAccountAudit 一次帳號操作的可稽核事實
@@ -52,6 +57,12 @@ type AssetAccountAudit struct {
 	// 前者與同交易系統告警同值，後者只進審計 details。兩者都不含任何秘密內容
 	CorrelationID string
 	SecretSource  string
+	// ExecutorSource／HostCount／PreviousAccountID／PreviousCredentialID 執行身分事件專用：
+	// 設定來源（generate｜inline｜shared｜convert）、共用來源確認的總台數、更換前的掛載與憑證識別
+	ExecutorSource       string
+	HostCount            int
+	PreviousAccountID    uint
+	PreviousCredentialID uint
 }
 
 // AssetAccountAuditDetails 審計 Details 的 JSON 形狀（與 AssetChangeDetails 平行，
@@ -67,6 +78,11 @@ type AssetAccountAuditDetails struct {
 	CredentialScope string `json:"credential_scope,omitempty"`
 	CorrelationID   string `json:"correlation_id,omitempty"`
 	SecretSource    string `json:"secret_source,omitempty"`
+	// 執行身分事件專用（見 AssetAccountAudit 的同名欄位）；不含任何秘密或公鑰內容
+	Source               string `json:"source,omitempty"`
+	HostCount            int    `json:"host_count,omitempty"`
+	PreviousAccountID    uint   `json:"previous_account_id,omitempty"`
+	PreviousCredentialID uint   `json:"previous_credential_id,omitempty"`
 }
 
 // `RecordAssetAccountChange` 與其私有的 `auditActionForAccountOp`

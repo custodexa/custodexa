@@ -2,7 +2,8 @@
   <div class="approvals">
     <PageHeader
       :title="$t('menu.approvals')"
-      :description="$t('approvals.headerDesc')"
+      :description="historyOnly ? $t('approvals.historyOnlyNote') : $t('approvals.headerDesc')"
+      :tag="historyOnly ? $t('approvals.readOnlyTag') : ''"
     >
       <template #actions>
         <el-button @click="fetchCurrentTab">
@@ -33,6 +34,7 @@
     >
       <!-- 待審 -->
       <el-tab-pane
+        v-if="!historyOnly"
         :label="pendingLabel"
         name="pending"
       >
@@ -418,6 +420,7 @@
 
       <!-- 有效限時連線 -->
       <el-tab-pane
+        v-if="!historyOnly"
         :label="$t('approvals.tabTickets')"
         name="tickets"
       >
@@ -493,6 +496,7 @@
 
       <!-- 待補審：破窗連線事後補審 -->
       <el-tab-pane
+        v-if="!historyOnly"
         :label="pendingReviewLabel"
         name="reviews"
       >
@@ -618,6 +622,7 @@
 
       <!-- SQL 核准預留頁籤位（與現有核准共用同一收件匣，本版未開放） -->
       <el-tab-pane
+        v-if="!historyOnly"
         :label="$t('approvals.tabSql')"
         name="sql"
         disabled
@@ -865,6 +870,7 @@
 <script setup>
 import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
 import { ref, computed, nextTick, onMounted } from 'vue'
+import { useCapabilities } from '@/composables/useCapabilities'
 import { RefreshCw, Lock, Info } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -892,7 +898,10 @@ import {
   getPendingAccessRequestCount,
 } from '@/api/accessRequests'
 
-const activeTab = ref('pending')
+// 只持審核歷史讀取資格（稽核人員）：只有歷史分頁、唯讀，不讀待審、清冊、待補審與待審數
+const { can } = useCapabilities()
+const historyOnly = computed(() => !can('ui:approvals') && can('ui:approval-history'))
+const activeTab = ref(historyOnly.value ? 'history' : 'pending')
 const loading = ref(false)
 const deciding = ref(false)
 
@@ -1076,6 +1085,10 @@ const fetchReviews = async () => {
 }
 
 const fetchCurrentTab = () => {
+  if (historyOnly.value) {
+    fetchHistory()
+    return
+  }
   if (activeTab.value === 'pending') fetchPending()
   else if (activeTab.value === 'history') fetchHistory()
   else if (activeTab.value === 'tickets') fetchTickets()
@@ -1267,6 +1280,10 @@ onMounted(async () => {
     activeTab.value = 'history'
     await fetchHistory()
     await revealHighlight()
+    return
+  }
+  if (historyOnly.value) {
+    fetchHistory()
     return
   }
   fetchPending()

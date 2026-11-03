@@ -25,6 +25,8 @@ const BACKEND_POLICY_KEYS = [
   'force_change_on_reset',
   // 資產帳號憑證最長使用天數（輪替證據報告的全域適用天數）
   'asset_secret_max_age_days',
+  // 主機帳號盤點的特權群組清單
+  'host_privileged_groups_posix',
   'mfa_required',
   'web_idle_minutes',
   'web_max_session_hours',

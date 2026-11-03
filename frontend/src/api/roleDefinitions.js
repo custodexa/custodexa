@@ -84,6 +84,7 @@ const ASSIGN_INLINE_CODES = new Set([
   'VALIDATION_ROLE_BINDING_NODES_EMPTY',
   'VALIDATION_ROLE_BINDING_NODES_INVALID',
   'VALIDATION_ROLE_NOT_NODE_SCOPABLE',
+  'VALIDATION_ROLE_SET_APPROVER_ONLY',
 ])
 export const assignManualRoles = (userId, manualRoles, roleNodes) => {
   const data = { manual_roles: manualRoles }

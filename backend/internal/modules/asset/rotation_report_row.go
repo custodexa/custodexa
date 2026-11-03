@@ -53,8 +53,12 @@ func newPlanCoverage(plans []model.ChangeSecretPlan, asOf time.Time) *planCovera
 	return out
 }
 
-// covers 該計劃是否涵蓋此帳號。
+// covers 該計劃是否涵蓋此帳號。以帳號為目標的計劃執行時不展開執行身分，
+// 報告也不把它算成涵蓋執行身分（否則會主張一個實際不會發生的改密）。
 func (c *coveringPlan) covers(acc *model.AssetAccount) bool {
+	if acc.IsExecutor() {
+		return false
+	}
 	if !c.assets[acc.AssetID] {
 		return false
 	}

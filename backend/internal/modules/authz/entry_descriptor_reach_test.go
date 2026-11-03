@@ -138,7 +138,8 @@ func minimalEntrySets(r RouteEntryRule) [][]Permission {
 func TestEntrySummaryCoversReachablePages(t *testing.T) {
 	// 允許表：合理的沒有授予。
 	allowed := map[string]string{
-		"rotation_schedules|audit:view": "只開報告，排程區另需排程管理",
+		"rotation_schedules|audit:view":           "只開報告，排程區另需排程管理",
+		"host_account_inventory|ui:assets-global": "全域資產視角是由角色內容推導的呈現點，不是角色可勾選的權限；只讀不含盤點權限點",
 	}
 	// 沒有描述入口的受限頁，由哪個入口涵蓋。清單變動時同步編輯畫面的 roles.editor.entryNote.audit_logs。
 	coveredBy := map[string]string{

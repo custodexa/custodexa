@@ -276,7 +276,8 @@ func TestAuthzRegistryCoversRouteInventory(t *testing.T) {
 			authz.PermCredentialSetSecret: true, authz.PermCredentialRotate: true, authz.PermCredentialConvertScope: true,
 			authz.PermCredentialDetach: true, authz.PermCredentialDelete: true, authz.PermCredentialBind: true,
 			authz.PermAuthorizationManage: true, authz.PermApproverScopeManage: true, authz.PermAssetCreate: true,
-			authz.PermChangeSecretManage: true, authz.PermAccountRotate: true, authz.PermAccessPolicyManage: true}
+			authz.PermChangeSecretManage: true, authz.PermAccountRotate: true, authz.PermAccessPolicyManage: true,
+			authz.PermAssetExecutorManage: true, authz.PermAccountDiscover: true}
 		got := map[authz.Permission]bool{}
 		for _, d := range authz.Catalog() {
 			if d.Scope == authz.ScopeEnforced {

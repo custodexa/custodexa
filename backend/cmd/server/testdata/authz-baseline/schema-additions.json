@@ -120,6 +120,44 @@
       "columns": {
         "change_secret_batches": ["shared_credential_owner_kind", "shared_credential_owner_node_id"]
       }
+    },
+    {
+      "migration": "20261102_db_account_rotation",
+      "tables": [],
+      "columns": {
+        "change_secret_records": ["transport_risk"]
+      }
+    },
+    {
+      "migration": "20261102_host_account_inventory",
+      "tables": ["host_account_findings", "host_account_scans"],
+      "columns": {}
+    },
+    {
+      "migration": "20261102_asset_account_purpose",
+      "tables": [],
+      "columns": {
+        "asset_accounts": ["purpose"]
+      }
+    },
+    {
+      "migration": "20261103_asset_account_executor_source",
+      "tables": [],
+      "columns": {
+        "asset_accounts": ["executor_source"]
+      }
+    },
+    {
+      "migration": "20261103_change_secret_execution_method",
+      "tables": [],
+      "columns": {
+        "change_secret_records": ["execution_method", "executor_account_id", "executor_username", "executor_credential_id"]
+      }
+    },
+    {
+      "migration": "20261103_executor_login_checks",
+      "tables": ["executor_login_checks"],
+      "columns": {}
     }
   ]
 }

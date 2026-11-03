@@ -173,6 +173,16 @@ func shapeRoleNames(t *testing.T) []string {
 	return out
 }
 
+// shapeTargetDeclared 路由是否宣告逐目標範圍判定（能力放行後還要判定路徑上的目標）。
+func shapeTargetDeclared(method, path string) bool {
+	for _, d := range authz.RouteScopeDeclarations() {
+		if d.Method == method && d.Path == path && d.Kind == authz.ScopeDeclTarget {
+			return true
+		}
+	}
+	return false
+}
+
 func TestForbiddenSingleShape(t *testing.T) {
 	roleNames := shapeRoleNames(t)
 	require.GreaterOrEqual(t, len(roleNames), 9, "三語譯名集合不得為空殼")
@@ -289,7 +299,11 @@ func TestForbiddenSingleShape(t *testing.T) {
 				wantBasis = authz.DenialAnyOf
 			}
 			prU := probeGate(e.Method, e.Path, user)
-			if prU.reached {
+			if !prU.reached && !prU.hasDeny && shapeTargetDeclared(e.Method, e.Path) {
+				// 能力已放行、停在逐目標範圍判定（本探針不帶判定器）；範圍層的拒絕形狀由各路由的範圍測試覆蓋
+				userAllowed++
+				assert.Equal(t, http.StatusInternalServerError, prU.code, key)
+			} else if prU.reached {
 				userAllowed++
 				assert.Equal(t, http.StatusOK, prU.code, key)
 			} else {

@@ -13,6 +13,14 @@
       >
         {{ t('credentials.rotateDialog.summary', { count: totalCount }) }}
       </p>
+      <ExecutorNoticeBox
+        v-if="executorCount > 0"
+        tone="warning"
+        :title="t('credentials.rotateDialog.executorTitle', { count: executorCount })"
+        data-test="rotate-executor-hint"
+      >
+        <p>{{ t('credentials.rotateDialog.executorBody', { count: executorCount }) }}</p>
+      </ExecutorNoticeBox>
       <!-- 範圍外台數取自伺服器：送出前先讓人知道這一次會碰到不在自己範圍內的主機 -->
       <el-alert
         v-if="outOfScopeCount > 0"
@@ -142,6 +150,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { startCredentialRotation } from '@/api/credentials'
 import CredentialImpactDialog from './CredentialImpactDialog.vue'
+import ExecutorNoticeBox from '@/components/asset/ExecutorNoticeBox.vue'
 import { skipImpactConflictToast, useCredentialImpactFlow } from '@/composables/useCredentialImpactFlow'
 import {
   PASSWORD_LENGTH_MIN,
@@ -160,6 +169,8 @@ const props = defineProps({
   // 範圍內掛載列，確認對話框據此列出清單
   bindings: { type: Array, default: () => [] },
   username: { type: String, default: '' },
+  // 這組秘密作為堡壘機專用帳號的主機台數（0＝不是專用帳號）
+  executorCount: { type: Number, default: 0 },
 })
 
 const emit = defineEmits(['update:modelValue', 'submitted'])

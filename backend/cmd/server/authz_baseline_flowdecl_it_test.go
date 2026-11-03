@@ -254,7 +254,7 @@ func tScenarios() []flowScenario {
 			plan := f.get("plan")
 			f.call("schedule", "S06", http.MethodPut, fmt.Sprintf("/api/v1/change-secret-plans/%d", plan),
 				map[string]any{"name": "baseline-flow-t07", "asset_ids": []any{"{asset.winrm}"}, "accounts": []string{"Administrator"}, "cron": "0 3 * * *", "enabled": true})
-			f.call("remove-admin", "S01", http.MethodPut, userPath(f, "S06")+"/roles", map[string]any{"manual_roles": []string{"approver"}})
+			f.call("remove-admin", "S01", http.MethodPut, userPath(f, "S06")+"/roles", map[string]any{"manual_roles": []string{"approver", "user"}})
 			c, _ := f.changeSecretCron()
 			for _, en := range c.Entries() {
 				en.Job.Run()

@@ -1219,7 +1219,8 @@ func MaskSensitiveFields(endpoint string, data map[string]interface{}) map[strin
 func endpointAuditFieldSet(endpoint string) map[string]bool {
 	switch endpoint {
 	case "POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release",
-		"POST /api/v1/audit-failures/permission-state/accept":
+		"POST /api/v1/audit-failures/permission-state/accept",
+		"POST /api/v1/assets/:id/account-inventory/findings/:findingId/ignore":
 		return map[string]bool{"reason": true}
 	case "POST /api/v1/access-requests/:id/revoke":
 		return map[string]bool{"note": true}
@@ -1292,6 +1293,7 @@ func AuditMaskEndpoints() []string {
 	return []string{
 		"POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release",
 		"POST /api/v1/audit-failures/permission-state/accept",
+		"POST /api/v1/assets/:id/account-inventory/findings/:findingId/ignore",
 		"POST /api/v1/access-requests/:id/revoke",
 		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
 		"POST /api/v1/command-alerts/:id/review",

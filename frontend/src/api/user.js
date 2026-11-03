@@ -1,4 +1,5 @@
 import request from './request'
+import { isRoleSetApproverOnly } from './approverOnly'
 
 /**
  * 取得用戶列表
@@ -32,6 +33,8 @@ export function createUser(data) {
     url: '/users',
     method: 'post',
     data,
+    // 只有審核者角色的拒絕由表單就近說明
+    skipErrorToast: isRoleSetApproverOnly,
   })
 }
 
@@ -117,12 +120,15 @@ export function pinUserRole(id, role) {
  * 冪等追加單一角色（不覆蓋既有角色集，避免快照過期的 lost-update）
  * @param {number} id - 用戶 ID
  * @param {string} role - 角色名稱
+ * @param {Object} [options]
+ * @param {boolean|Function} [options.skipErrorToast] - 呼叫端就近呈現的錯誤不另外 toast
  * @returns {Promise}
  */
-export function addUserRole(id, role) {
+export function addUserRole(id, role, { skipErrorToast } = {}) {
   return request({
     url: `/users/${id}/roles/${role}`,
     method: 'post',
+    ...(skipErrorToast ? { skipErrorToast } : {}),
   })
 }
 

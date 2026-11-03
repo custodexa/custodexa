@@ -179,12 +179,16 @@ func TestResolveTargetsSkipsByChannel(t *testing.T) {
 		Name: "ssh-opted-out", Protocol: model.ProtocolSSH, Host: "10.9.9.12", Port: 22,
 		Username: "root", Password: "p", RotationChannel: model.RotationChannelNone,
 	})
+	redisID := f.addRotationAsset(t, &CreateAssetRequest{
+		Name: "redis-plain", Protocol: model.ProtocolRedis, Host: "10.9.9.14", Port: 6379,
+		Username: "default", Password: "p",
+	})
 
 	f.runner.executors = func(string) rotationExecutor { return &fakeExecutor{} }
 
-	plan := f.planForAssets(t, []uint{noChannelID, dbID, sshNoneID}, nil)
+	plan := f.planForAssets(t, []uint{noChannelID, dbID, sshNoneID, redisID}, nil)
 	records := f.runner.RunPlan(plan)
-	require.Len(t, records, 3)
+	require.Len(t, records, 4)
 
 	noChannel := recordByAsset(records, noChannelID)
 	require.NotNil(t, noChannel)
@@ -195,8 +199,14 @@ func TestResolveTargetsSkipsByChannel(t *testing.T) {
 	dbRec := recordByAsset(records, dbID)
 	require.NotNil(t, dbRec)
 	assert.Equal(t, model.ChangeSecretSkipped, dbRec.Status)
-	assert.Equal(t, model.ChangeSecretReasonProtocolUnsupported, dbRec.Error,
-		"沒有作業系統帳號可換的協定維持既有原因碼")
+	assert.Equal(t, model.ChangeSecretReasonChannelNotConfigured, dbRec.Error,
+		"未設定通道的 mysql 資產：改得了密，缺的是設定")
+
+	redisRec := recordByAsset(records, redisID)
+	require.NotNil(t, redisRec)
+	assert.Equal(t, model.ChangeSecretSkipped, redisRec.Status)
+	assert.Equal(t, model.ChangeSecretReasonProtocolUnsupported, redisRec.Error,
+		"沒有帳號改密語句的協定維持既有原因碼")
 
 	optedOut := recordByAsset(records, sshNoneID)
 	require.NotNil(t, optedOut)
@@ -230,6 +240,70 @@ func TestResolveTargetsSkipsWindowsKeyRotation(t *testing.T) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	assert.Empty(t, fake.rotateCalls, "跳過的資產不得觸碰執行器")
+}
+
+// TestResolveTargetsSkipsKeyRotationByChannel 金鑰型秘密只有 posix_ssh 能輪替：
+// db_native 與 windows_ssh 都誠實跳過、不觸碰執行器。
+func TestResolveTargetsSkipsKeyRotationByChannel(t *testing.T) {
+	f := setupChangeSecretFixture(t, "root", "oldpass123")
+
+	dbID := f.addRotationAsset(t, &CreateAssetRequest{
+		Name: "mysql-key", Protocol: model.ProtocolMySQL, Host: "10.9.9.15", Port: 3306,
+		Username: "app", Password: "p", RotationChannel: model.RotationChannelDBNative,
+	})
+	winSSHID := f.addRotationAsset(t, &CreateAssetRequest{
+		Name: "winssh-key", Protocol: model.ProtocolRDP, Host: "10.9.9.16", Port: 3389,
+		Username: "Administrator", Password: "p", RotationChannel: model.RotationChannelWindowsSSH,
+	})
+
+	fake := &fakeExecutor{}
+	f.runner.executors = func(string) rotationExecutor { return fake }
+
+	plan := f.planForAssets(t, []uint{dbID, winSSHID}, func(p *model.ChangeSecretPlan) {
+		p.SecretType = model.ChangeSecretTypeSSHKey
+	})
+	records := f.runner.RunPlan(plan)
+	require.Len(t, records, 2)
+	for _, id := range []uint{dbID, winSSHID} {
+		rec := recordByAsset(records, id)
+		require.NotNil(t, rec)
+		assert.Equal(t, model.ChangeSecretSkipped, rec.Status)
+		assert.Equal(t, model.ChangeSecretReasonSecretTypeUnsupported, rec.Error)
+	}
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	assert.Empty(t, fake.rotateCalls, "跳過的資產不得觸碰執行器")
+}
+
+// TestCredentialRotationSkipsDBNativeKeyMember 共用憑證成員路徑同一規則：db_native 資產上的金鑰型
+// 憑證記「秘密型別不支援」，不觸碰執行器。
+func TestCredentialRotationSkipsDBNativeKeyMember(t *testing.T) {
+	f := setupRotationFixture(t)
+	oldPrivate, _, err := GenerateSSHKeyPair("seed-key")
+	require.NoError(t, err)
+	cred, err := f.creds.Create(adminCtx(), &CreateCredentialRequest{
+		Name: "資料庫金鑰", Username: "app", ProtocolFamily: model.ProtocolFamilyDatabase,
+		SecretType: model.ChangeSecretTypeSSHKey, PrivateKey: oldPrivate,
+	})
+	require.NoError(t, err)
+	asset, err := f.assets.Create(WithSystemCaller(context.Background()), &CreateAssetRequest{
+		Name: "mysql-db-native", Protocol: model.ProtocolMySQL, Host: "10.11.9.1", Port: 3306,
+		Username: "seed", Password: "seed-pw", CreatedBy: 1, RotationChannel: model.RotationChannelDBNative,
+	})
+	require.NoError(t, err)
+	binding, err := f.creds.Bind(adminCtx(), cred.ID, &BindCredentialRequest{AssetID: asset.ID})
+	require.NoError(t, err)
+
+	rot, err := f.rotations.Start(adminCtx(), cred.ID, StartRotationRequest{})
+	require.NoError(t, err)
+	_ = f.rotations.Run(adminCtx(), rot.ID)
+
+	var rec model.ChangeSecretRecord
+	require.NoError(t, f.db.Where("account_id = ?", binding.ID).Order("id desc").First(&rec).Error)
+	assert.Equal(t, model.ChangeSecretReasonSecretTypeUnsupported, rec.Error)
+	_, rotateCalls, _ := f.remote.snapshot()
+	assert.Zero(t, rotateCalls["10.11.9.1"], "跳過的成員不得觸碰執行器")
 }
 
 // TestNotWiredExecutorIsCleanFailure 選路落到沒有執行器的分支：記為 failed、

@@ -46,14 +46,41 @@
       />
       <!-- 帳號管理不在範圍內：整塊唯讀（inert 擋互動與焦點），不另寫第二套判斷 -->
       <AssetAccountRows
+        ref="accountRowsRef"
         :inert="accountsDenied || undefined"
         :class="{ 'accounts-locked': accountsDenied }"
         :asset-id="form.id"
         :asset-name="form.name"
         :protocol="form.protocol"
         :windows-openssh="form.rotation_channel === 'windows_ssh'"
+        :prefill="accountPrefill"
         @changed="emit('changed')"
+        @back-to-inventory="emit('back-to-inventory')"
       />
+
+      <!-- 堡壘機專用帳號：動作按下即生效，與下方「儲存」無關，不碰 form。
+           login-status 插槽放測試登入狀態行，setup-help-read-rule 放讀取 sudo 規則的說明 -->
+      <AssetExecutorSection
+        v-if="form.id && executorAsset && executorAsset.id === form.id"
+        :asset-id="form.id"
+        :asset-name="executorAsset.name"
+        :protocol="executorAsset.protocol"
+        :windows-family="executorAsset.windowsFamily"
+        :host-key-recorded="hostKey !== null"
+        :open-key="executorAsset.openKey || 0"
+        @changed="onExecutorChanged"
+      >
+        <!-- 測試登入是即時動作：不改 form、不 emit changed；完成後只重讀主機金鑰（第一次登入會記下指紋） -->
+        <template #login-status="slot">
+          <ExecutorLoginCheck
+            v-bind="slot"
+            @done="refreshHostKey"
+          />
+        </template>
+        <template #setup-help-read-rule>
+          <ExecutorReadRuleHelp />
+        </template>
+      </AssetExecutorSection>
 
       <!-- 主機金鑰：TOFU 指紋檢視與重置，僅 SSH 資產。
            class 是終端拒線引導的落點（?edit=<id> 深連結捲到這裡），勿更名 -->
@@ -216,6 +243,9 @@ import { actionDenial, denialText } from '@/utils/scopedAssets'
 import AssetBasicFields from '@/components/asset/AssetBasicFields.vue'
 import AssetAccountRows from '@/components/asset/AssetAccountRows.vue'
 import AssetAdvancedFields from '@/components/asset/AssetAdvancedFields.vue'
+import AssetExecutorSection from '@/components/asset/AssetExecutorSection.vue'
+import ExecutorLoginCheck from '@/components/asset/ExecutorLoginCheck.vue'
+import ExecutorReadRuleHelp from '@/components/asset/ExecutorReadRuleHelp.vue'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const form = defineModel('form', { type: Object, required: true })
@@ -229,6 +259,10 @@ const props = defineProps({
   nodeOptions: { type: Array, default: () => [] },
   tagNames: { type: Array, default: () => [] },
   inheritPolicyLabel: { type: String, default: '' },
+  // 開啟抽屜當下的資產快照（專用帳號區塊用它判斷協定與 Windows 族，不讀編輯中的 form）
+  executorAsset: { type: Object, default: null },
+  // 主機帳號盤點帶入的新增帳號預填（資產頁傳入）
+  accountPrefill: { type: Object, default: null },
 })
 
 const emit = defineEmits([
@@ -241,6 +275,7 @@ const emit = defineEmits([
   'tag-visible-change',
   'rotation-channel-change',
   'winrm-scheme-change',
+  'back-to-inventory',
 ])
 
 const { t } = useI18n()
@@ -252,6 +287,13 @@ const accountsDenied = computed(() => !!accountsDenial.value)
 const accountsDeniedText = computed(() => denialText(t, accountsDenial.value))
 
 const formRef = ref(null)
+const accountRowsRef = ref(null)
+
+// 專用帳號區塊動作成功：帳號表同步重讀（轉換會讓帳號從帳號表消失），再往上轉給資產頁
+function onExecutorChanged() {
+  accountRowsRef.value?.reload?.()
+  emit('changed')
+}
 const advancedRef = ref(null)
 const hostKey = ref(null)
 // 待確認的指紋（檢視回應的 mismatches；無觀察紀錄時後端不帶此欄）
@@ -267,6 +309,18 @@ async function loadHostKey() {
     hostKeyMismatches.value = Array.isArray(view?.mismatches) ? view.mismatches : []
   } catch {
     // 404＝尚無記錄，顯示空態即可
+  }
+}
+
+// 測試登入後靜默重讀主機金鑰（不先清空，避免區塊閃一下空態）；讀不到就保持原樣
+async function refreshHostKey() {
+  if (!form.value.id || form.value.protocol !== 'ssh') return
+  try {
+    const view = await getAssetHostKey(form.value.id)
+    hostKey.value = view
+    hostKeyMismatches.value = Array.isArray(view?.mismatches) ? view.mismatches : []
+  } catch {
+    // 讀不到時保持目前畫面
   }
 }
 

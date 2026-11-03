@@ -33,7 +33,7 @@ export const ENTRY_RULES = Object.freeze({
   '/my-connections': SIGNED_IN,
   '/my-requests': SIGNED_IN,
   '/my-agents': needs('ui:my-agents'),
-  '/approvals': needs('ui:approvals'),
+  '/approvals': needsAny('ui:approvals', 'ui:approval-history'),
   '/sessions': needs('session:view'),
   '/audit/workbench': needs('audit:view'),
   '/audit/agent-tasks': needs('audit:view'),
@@ -67,6 +67,8 @@ export const ENTRY_RULES = Object.freeze({
   '/access-control': needs('securitypolicy:manage'),
   '/key-management': needs('key:manage'),
   '/transmission-inventory': needs('transmission:manage'),
+  // 主機帳號盤點：持盤點權限點或全域資產視角（超管、稽核）才有事可做；讀取跟資產檢視權，入口不收回
+  '/account-inventory': needsAny('account:discover', 'ui:assets-global'),
   '/offsite-storage': needs('offsite:manage'),
   // 通知通道：系統設定下的獨立頁，只看通道管理能力，不另要求告警檢視
   '/notification-channels': needs('notification_channel:manage'),

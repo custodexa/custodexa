@@ -90,6 +90,18 @@
       >
         {{ $t('approverScopeForm.submit') }}
       </el-button>
+      <ApproverOnlyPrompt
+        v-if="blockedActor"
+        :copy="APPROVER_ONLY_COPY"
+        data-test="scope-form-approver-only"
+      >
+        <a
+          :href="`/users/${blockedActor.id}?tab=roles`"
+          target="_blank"
+          rel="noopener"
+          data-test="scope-form-go-roles"
+        >{{ $t('users.approverOnlyPrompt.goRoleTab', { username: blockedActor.username }) }}</a>
+      </ApproverOnlyPrompt>
     </el-form>
   </div>
 </template>
@@ -98,7 +110,7 @@
 // 審核範圍新增表單：矩陣頁與 Users 對話框
 // 共用同一組件避免雙入口漂移；審核方（個人代配角色/群組零代配）與客體四維、
 // 語義說明走 utils/approver-scope 事實源
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, h } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAssetGroups, getAssetList } from '@/api/assets'
 import { getUserList, addUserRole } from '@/api/user'
@@ -118,6 +130,9 @@ import {
   buildGroupPaths,
 } from '@/utils/approver-scope'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import ApproverOnlyPrompt from './ApproverOnlyPrompt.vue'
+import { isRoleSetApproverOnly } from '@/api/approverOnly'
+import { GENERAL_USER_ROLE } from '@/composables/useApproverOnlyPrompt'
 
 const props = defineProps({
   // 預選審核方（列內/格內捷徑）：{ type: 'user'|'group', id }；null＝表單內選擇
@@ -139,6 +154,10 @@ const form = reactive({
   targetId: props.presetTargetId,
 })
 const submitting = ref(false)
+// 代配第二步被判定為只有審核者角色（一般使用者限定在節點）：表單下方說明並指向角色分頁
+const blockedActor = ref(null)
+const APPROVER_ONLY_COPY = { title: 'users.approverOnlyPrompt.title', body: 'users.approverOnlyPrompt.body' }
+watch(() => [form.actorId, form.actorType], () => (blockedActor.value = null))
 const options = reactive({
   asset: [], asset_group: [], subject_user: [], subject_group: [],
   actor_user: [], actor_group: [],
@@ -274,7 +293,11 @@ const handleSubmit = async () => {
     if (opt?.needsRole) {
       try {
         await ElMessageBox.confirm(
-          t('approverScopeForm.assignRoleConfirm', { username: opt.username }),
+          h('div', [
+            h('p', t('approverScopeForm.assignRoleConfirm', { username: opt.username })),
+            h('p', { class: 'assign-user-note' }, t('approverScopeForm.assignRoleUserNote')),
+            h('p', t('approverScopeForm.assignRoleQuestion')),
+          ]),
           t('approverScopeForm.assignRoleTitle'),
           { confirmButtonText: t('approverScopeForm.continue'), cancelButtonText: t('common.cancel'), type: 'warning' }
         )
@@ -286,17 +309,22 @@ const handleSubmit = async () => {
   }
 
   submitting.value = true
+  blockedActor.value = null
   try {
     if (assignRoleFirst) {
       try {
-        // 冪等追加端點：不整包覆蓋角色集，
-        // 避免載入後他處改過角色時以過期快照蓋回
-        await addUserRole(assignRoleFirst.id, 'approver')
+        // 冪等追加端點：不整包覆蓋角色集，避免載入後他處改過角色時以過期快照蓋回。
+        // 先加一般使用者再加審核人員：零指派帳號只加審核人員會被判定為只能審核；
+        // 已有一般使用者者第一步不變。一般使用者限定在節點時第一步不改範圍，第二步被擋
+        const opts = { skipErrorToast: isRoleSetApproverOnly }
+        await addUserRole(assignRoleFirst.id, GENERAL_USER_ROLE, opts)
+        await addUserRole(assignRoleFirst.id, 'approver', opts)
         assignRoleFirst.needsRole = false
         assignRoleFirst.roles = [...assignRoleFirst.roles, 'approver']
         assignRoleFirst.label = assignRoleFirst.username
       } catch (error) {
-        console.error('分配審核人員角色失敗:', error)
+        if (isRoleSetApproverOnly(error)) blockedActor.value = { id: assignRoleFirst.id, username: assignRoleFirst.username }
+        else console.error('分配審核人員角色失敗:', error)
         return
       }
     }
@@ -331,6 +359,13 @@ const handleSubmit = async () => {
   margin-top: 4px;
   font-size: 12px;
   color: var(--ot-text-secondary, #93a4bd);
+}
+
+:global(.assign-user-note) {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--ot-bg-hover);
 }
 
 .scope-help-list {

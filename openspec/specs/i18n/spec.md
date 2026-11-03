@@ -269,9 +269,8 @@ Localizing these display strings SHALL NOT change any persistence or audit JSON 
 
 ### Requirement: 解封頁文案的操作者可讀性與其守衛
 
-服務前頁面（解封頁、單實例守衛攔下頁、守衛橫幅）的對外文案（`unseal.*`、`instanceGuard.*` 與同頁渲染的
-`apiError.SEAL_*`、`apiError.INSTANCE_GUARD_*`）SHALL 以**疲勞狀態下的維運人員**為讀者撰寫。該讀者具備維運領域知識
-（環境變數、重啟服務、十六進位、base64），但工作記憶已耗盡且會跳著看畫面——這些頁被讀到的時點，正是服務中斷處理中。
+服務前頁面（解封頁、單實例守衛攔下頁、守衛橫幅）的對外文案（`unseal.*`、`instanceGuard.*` 與同頁渲染的`apiError.SEAL_*`、`apiError.INSTANCE_GUARD_*`）SHALL 以**疲勞狀態下的維運人員**為讀者撰寫。
+該讀者具備維運領域知識（環境變數、重啟服務、十六進位、base64），但工作記憶已耗盡且會跳著看畫面——這些頁被讀到的時點，正是服務中斷處理中。
 判準為讀者能回答一個問題：**我下一步要做什麼**。
 
 五條規範：

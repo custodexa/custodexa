@@ -102,10 +102,12 @@ func NewChangeSecretBatchService(db *gorm.DB, reports *RotationReportBuilder) *C
 	return &ChangeSecretBatchService{db: db, reports: reports}
 }
 
-// liveAccounts 掛在未刪除資產上的未刪除帳號（母體定義與輪替證據報告相同）
+// liveAccounts 掛在未刪除資產上的未刪除登入帳號（母體定義與輪替證據報告相同，但批次不把
+// 執行身分當目標：它只經憑證庫的整組輪替或以其憑證為目標的計劃改變秘密）
 func (s *ChangeSecretBatchService) liveAccounts() *gorm.DB {
 	return s.db.Model(&model.AssetAccount{}).
-		Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL")
+		Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL").
+		Where("asset_accounts.purpose = ?", model.AccountPurposeLogin)
 }
 
 // Usernames 登記於系統的帳號名清單（附資產數，依帳號名排序）；不經檢視者投影，見 UsernamesFor
@@ -159,8 +161,15 @@ func (s *ChangeSecretBatchService) targetsIn(username string, assetFilter []uint
 	if err != nil {
 		return nil, err
 	}
+	executors, err := s.executorAccountIDs(rows)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]BatchTarget, 0, len(rows))
 	for i := range rows {
+		if executors[rows[i].AccountID] {
+			continue
+		}
 		asset := assets[rows[i].AssetID]
 		t := BatchTarget{AccountRow: rows[i]}
 		if asset != nil {
@@ -168,6 +177,29 @@ func (s *ChangeSecretBatchService) targetsIn(username string, assetFilter []uint
 		}
 		t.IneligibleReason = ineligibleReason(asset, &rows[i])
 		out = append(out, t)
+	}
+	return out, nil
+}
+
+// executorAccountIDs 報告母體含執行身分（合規率要看得到它），批次目標則排除：
+// 在批次自己的目標清單上濾掉，不改報告的母體定義。
+func (s *ChangeSecretBatchService) executorAccountIDs(rows []AccountRow) (map[uint]bool, error) {
+	out := map[uint]bool{}
+	if len(rows) == 0 {
+		return out, nil
+	}
+	ids := make([]uint, 0, len(rows))
+	for i := range rows {
+		ids = append(ids, rows[i].AccountID)
+	}
+	var hits []uint
+	if err := s.db.Model(&model.AssetAccount{}).
+		Where("id IN ? AND purpose = ?", ids, model.AccountPurposeExecutor).
+		Pluck("id", &hits).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range hits {
+		out[id] = true
 	}
 	return out, nil
 }
@@ -401,7 +433,8 @@ func (s *ChangeSecretBatchService) resolveTargets(ctx context.Context, tx *gorm.
 	}
 	live := func() *gorm.DB {
 		q := tx.Model(&model.AssetAccount{}).
-			Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL")
+			Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL").
+			Where("asset_accounts.purpose = ?", model.AccountPurposeLogin)
 		if scope.Limited {
 			q = q.Where("asset_accounts.asset_id IN (?)", scope.AssetIDs)
 		}

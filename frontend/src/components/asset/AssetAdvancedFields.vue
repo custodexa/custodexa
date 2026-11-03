@@ -171,11 +171,19 @@
       </el-form-item>
       <el-form-item
         v-if="isDatabaseProtocol(form.protocol)"
+        ref="tlsItemRef"
         :label="t('assets.tlsMode')"
+        :class="{ 'tls-item--highlight': tlsHighlight }"
+        data-test="db-tls-mode-item"
       >
+        <!-- empty-values 排除 ''：預設檔位 value 為空字串（後端 TLSModeDefault），
+             不排除會顯示 placeholder，與改密通道警示引用的檔位名對不上 -->
         <el-select
+          ref="tlsSelectRef"
           v-model="form.db_tls_mode"
+          :empty-values="[null, undefined]"
           class="full"
+          data-test="db-tls-mode"
         >
           <el-option
             :label="t('assets.tlsDefault')"
@@ -212,6 +220,13 @@
           :placeholder="form.protocol === 'mssql' ? t('assets.mssqlCaCertHint') : t('assets.dbCaPlaceholder')"
         />
       </el-form-item>
+      <!-- 資料庫帳號自行改密：緊接在 TLS 模式之後，讓造成風險的欄位與風險提示在同一視線區 -->
+      <DbRotationChannelField
+        v-if="isDBRotationProtocol"
+        v-model:form="form"
+        @rotation-channel-change="emit('rotation-channel-change')"
+        @go-tls="goToTlsMode"
+      />
       <!-- 查詢主控台的執行目標限制。射程只到主控台，命令列會話不受影響——
            helper 必須把這件事寫出來，否則管理者會以為填了就等於資料庫級存取控制 -->
       <el-form-item
@@ -468,10 +483,12 @@ import { can } from '@/composables/useCapabilities'
 import { ACCESS_POLICY_PERM } from '@/utils/accessPolicyTier'
 import { isDatabaseProtocol, isDBConsoleProtocol } from '@/utils/protocol'
 import { actionDenial, denialText } from '@/utils/scopedAssets'
+import DbRotationChannelField from './DbRotationChannelField.vue'
 import {
   WINRM_SCHEME_VALUES,
   WINRM_TLS_MODE_VALUES,
   WINRM_DEFAULT_PORTS,
+  DB_ROTATION_PROTOCOLS,
 } from '@/constants/rotationChannel'
 
 const form = defineModel('form', { type: Object, required: true })
@@ -508,6 +525,27 @@ const activeDeniedText = computed(() => denialText(t, activeDenial.value))
 
 const activeNames = ref([])
 const serverError = ref(false)
+
+// 資料庫帳號自行改密的欄位只對三種 SQL 方言出現
+const isDBRotationProtocol = computed(() => DB_ROTATION_PROTOCOLS.includes(form.value.protocol))
+const tlsItemRef = ref(null)
+const tlsSelectRef = ref(null)
+const tlsHighlight = ref(false)
+let tlsHighlightTimer = null
+
+// 只移焦點與短暫外框強調，不改 TLS 模式：目標端未開 TLS 時改成加密會連不上，由管理者判斷
+function goToTlsMode() {
+  const el = tlsItemRef.value?.$el
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+  tlsSelectRef.value?.focus()
+  tlsHighlight.value = true
+  clearTimeout(tlsHighlightTimer)
+  tlsHighlightTimer = setTimeout(() => {
+    tlsHighlight.value = false
+  }, 1500)
+}
 
 // 「已經有值」的判準逐欄列出而非比對整份表單：出廠值本身也是值，
 // 拿「與初始狀態不同」當判準會在編輯既有資產時恆為真，收合就永遠不會發生
@@ -614,5 +652,10 @@ defineExpose({ activeNames, expand, markServerError, clearServerError, hasValue,
 
 .form-tip--danger {
   color: var(--el-color-danger);
+}
+
+.tls-item--highlight :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 2px var(--ot-primary);
+  transition: box-shadow 0.2s;
 }
 </style>

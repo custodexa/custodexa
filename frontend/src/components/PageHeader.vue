@@ -12,6 +12,15 @@
         >
           {{ $t('roles.state.read') }}
         </el-tag>
+        <el-tag
+          v-else-if="tag"
+          size="small"
+          type="info"
+          class="preview-readonly-tag"
+          data-test="page-header-tag"
+        >
+          {{ tag }}
+        </el-tag>
       </h1>
       <p
         v-if="description"
@@ -49,6 +58,11 @@ defineProps({
     required: true,
   },
   description: {
+    type: String,
+    default: '',
+  },
+  // 標題旁的狀態標籤（例如唯讀）；預覽中的唯讀標籤優先
+  tag: {
     type: String,
     default: '',
   },

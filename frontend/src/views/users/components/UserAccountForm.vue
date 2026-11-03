@@ -243,6 +243,13 @@
               {{ roleLabel(role.name) }}
             </el-checkbox>
           </el-checkbox-group>
+          <ApproverOnlyPrompt
+            v-if="createPrompt.visible.value"
+            :copy="createPrompt.copy.value"
+            :loading="submitting"
+            data-test="create-approver-only"
+            @fix="form.roles = withGeneralUser(form.roles); handleSubmit()"
+          />
         </el-form-item>
       </el-form>
     </template>
@@ -303,7 +310,7 @@
       </el-button>
       <el-button
         v-preview-write
-        type="primary"
+        :type="createPrompt.visible.value ? 'default' : 'primary'"
         :loading="submitting"
         data-test="user-dialog-submit"
         @mousedown.prevent
@@ -333,6 +340,8 @@ import {
 import InlineShell from './InlineShell'
 import { effectiveUnrestrictedText } from '../sourcePolicyText'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import ApproverOnlyPrompt from '@/components/ApproverOnlyPrompt.vue'
+import { useApproverOnlyPrompt, withGeneralUser } from '@/composables/useApproverOnlyPrompt'
 
 /**
  * 帳號編輯表單。列表頁以對話框承載（建立與編輯），詳情頁以內嵌方式承載（只編輯）。
@@ -594,6 +603,8 @@ const formRules = computed(() => ({
   ],
 }))
 
+// 建立時只勾審核人員被擋：角色欄下方說明；勾選一變動就收起，修正鈕勾上一般使用者直接送出
+const createPrompt = useApproverOnlyPrompt({ sources: [() => [...form.roles]] })
 
 // 重置表單
 const resetForm = () => {
@@ -696,6 +707,7 @@ const handleSubmit = async () => {
       // 驗證錯誤，不需要處理
       return
     }
+    if (!isEdit.value && createPrompt.capture(error, 'create')) return
     logFailure('user_submit_failed', error)
   } finally {
     submitting.value = false

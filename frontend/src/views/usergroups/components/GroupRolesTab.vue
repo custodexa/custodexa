@@ -37,7 +37,7 @@
       <div class="actions">
         <el-button
           v-preview-write
-          type="primary"
+          :type="guard.blocked.value ? 'default' : 'primary'"
           :disabled="!dirty"
           :loading="saving"
           data-test="roles-save"
@@ -46,6 +46,15 @@
           {{ $t('common.save') }}
         </el-button>
       </div>
+      <GroupApproverOnlyNotice
+        v-if="guard.blocked.value"
+        :detail="guard.blocked.value"
+        action="save"
+        :can-revert="userNarrowed"
+        :busy="saving || guard.retrying.value"
+        @retry="retrySave"
+        @revert="revertUserScope"
+      />
     </section>
 
     <section
@@ -146,6 +155,9 @@ import { can } from '@/composables/useCapabilities'
 import { canEnter, entryRuleFor } from '@/router/entryRules'
 import { managementRoleNames } from '../groupProtection'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import GroupApproverOnlyNotice from '@/components/GroupApproverOnlyNotice.vue'
+import { useGroupApproverOnlyRetry } from '@/composables/useGroupApproverOnlyRetry'
+import { GENERAL_USER_ROLE } from '@/composables/useApproverOnlyPrompt'
 
 /**
  * 群組詳情的「角色與範圍」分頁：群組角色卡（角色與範圍的選擇由 GroupRoleEditor 承載）、
@@ -243,13 +255,36 @@ const notifyMessage = computed(() => {
   return ''
 })
 
+// 會讓成員只剩審核者角色時保留本次本文，「重新檢查並儲存」原樣重送；草稿一變動回到一般儲存
+const guard = useGroupApproverOnlyRetry()
+watch(() => JSON.stringify(draft.value), () => guard.clear())
+const onSaved = () => {
+  ElMessage.success(t('users.rolesAssigned'))
+  preview.cancel()
+  emit('changed')
+}
+// 內建一般使用者原為全系統、本次草稿改成限定節點：可「改回全系統」（只改草稿、不送出）
+const generalUserId = computed(() => props.definitions.find((d) => d.builtin_key === GENERAL_USER_ROLE)?.id)
+const userNarrowed = computed(() => {
+  const id = generalUserId.value
+  const orig = props.bindings.find((b) => b.role_id === id)
+  return id != null && !!orig && orig.scope !== 'nodes' && Array.isArray(draft.value.roleNodes[String(id)])
+})
+const revertUserScope = () => editor.value?.setDraft(generalUserId.value, { mode: 'all', nodeIds: [] })
+const retrySave = async () => {
+  try {
+    if ((await guard.retry())?.ok) onSaved()
+  } catch (error) {
+    console.error(...apiErrorSummary('user_group_roles_failed', error))
+  }
+}
+
 const persist = async () => {
   saving.value = true
   try {
-    await replaceUserGroupRoleBindings(props.group.id, [...draft.value.roleIds], { ...draft.value.roleNodes })
-    ElMessage.success(t('users.rolesAssigned'))
-    preview.cancel()
-    emit('changed')
+    const roleIds = [...draft.value.roleIds]
+    const roleNodes = { ...draft.value.roleNodes }
+    if ((await guard.run(() => replaceUserGroupRoleBindings(props.group.id, roleIds, roleNodes))).ok) onSaved()
   } catch (error) {
     console.error(...apiErrorSummary('user_group_roles_failed', error))
   } finally {

@@ -118,7 +118,7 @@ func (g *immediateVerifyGuard) prepare(asset *model.Asset) (ssh.HostKeyCallback,
 		}
 		return nil, g.stopPrecheck(detail)
 	}
-	if in.Job.Transport == model.HostKeyTransportWinRM {
+	if model.HostKeyTransportIsKeyless(in.Job.Transport) {
 		return nil, nil
 	}
 	return g.countPasses(g.svcPinned(in.Job.Pin)), nil

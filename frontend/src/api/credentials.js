@@ -33,10 +33,11 @@ export function listCredentials(params) {
 /**
  * 憑證詳情（含掛載清單與逐台就位版本）。
  * @param {number|string} id - 憑證 ID
+ * @param {Object} [config] - 額外的 request 設定（例：{ skipErrorToast: fn }）；不傳時行為不變
  * @returns {Promise} { data: CredentialDetailDTO, aggregate_state?: string }
  */
-export function getCredential(id) {
-  return request({ url: `/credentials/${id}`, method: 'get' })
+export function getCredential(id, config = {}) {
+  return request({ url: `/credentials/${id}`, method: 'get', ...config })
 }
 
 /**

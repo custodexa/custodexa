@@ -10,7 +10,10 @@ vi.mock('element-plus', () => ({
 
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
-import request from '../request'
+import request, { resetRefreshUnavailableNoticeForTests } from '../request'
+import { resolveApiError } from '../error'
+import { t } from '@/i18n'
+import * as sessionModule from '@/utils/session'
 import { SEAL_PHASE_SEALED, getSealPhase, resetSealPhase } from '@/utils/sealPhase'
 import {
   RELOGIN_INSECURE_TRANSPORT,
@@ -615,5 +618,96 @@ describe('刷新終敗的登入頁脈絡（決策 3 觸發矩陣）', () => {
 
     expect(postSpy).not.toHaveBeenCalled()
     expect(consumeReloginContext()).toBe('')
+  })
+})
+
+// 換發失敗不是認證結論時（5xx、408、429）：登入仍在，不清不導，提示一次
+describe('response interceptor - 換發暫時失敗不清會話', () => {
+  const originalAdapter = request.defaults.adapter
+
+  // 原請求的 401 本文刻意與換發回應不同：提示必須取自換發回應
+  const make401 = (url = '/users') => ({
+    response: {
+      status: 401,
+      data: { error: '原請求的未授權訊息', code: 'AUTH_TOKEN_INVALID' },
+    },
+    config: { url, headers: { Authorization: 'Bearer stale-jwt' } },
+  })
+
+  const refreshFailure = (status, data) => ({ response: { status, data } })
+
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    resetSealPhase()
+    window.sessionStorage.clear()
+    resetRefreshUnavailableNoticeForTests?.()
+    vi.clearAllMocks()
+    window.location.href = 'http://localhost:3000/dashboard'
+    request.defaults.adapter = vi.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }))
+  })
+
+  afterEach(() => {
+    request.defaults.adapter = originalAdapter
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['502（代理錯誤頁，本文不可解析）', 502, null],
+    ['500（INTERNAL_REFRESH）', 500, { code: 'INTERNAL_REFRESH' }],
+  ])('換發回 %s：不清會話、不導向、提示登入仍保留、不記成因', async (_name, status, data) => {
+    setAccessToken('stale-jwt')
+    localStorage.setItem('user', '{"username":"admin"}')
+    const clearSpy = vi.spyOn(sessionModule, 'clearSession')
+    vi.spyOn(axios, 'post').mockRejectedValue(refreshFailure(status, data))
+
+    await expect(responseHandler.rejected(make401())).rejects.toBeTruthy()
+
+    expect(clearSpy).not.toHaveBeenCalled()
+    expect(localStorage.getItem('user')).not.toBeNull()
+    expect(window.location.href).toBe('http://localhost:3000/dashboard')
+    expect(consumeReloginContext()).toBe('')
+    expect(ElMessage.error).toHaveBeenCalledTimes(1)
+    const shown = ElMessage.error.mock.calls[0][0]
+    const text = typeof shown === 'string' ? shown : shown?.message
+    expect(text).toBe(t('api.refreshUnavailable'))
+    expect(text).not.toBe(
+      resolveApiError({ error: '原請求的未授權訊息', code: 'AUTH_TOKEN_INVALID' }, 401)
+    )
+  })
+
+  it('提示仍在畫面上時再次換發失敗，不重複出現', async () => {
+    setAccessToken('stale-jwt')
+    localStorage.setItem('user', '{"username":"admin"}')
+    vi.spyOn(axios, 'post').mockRejectedValue(refreshFailure(502, null))
+
+    await expect(responseHandler.rejected(make401('/users'))).rejects.toBeTruthy()
+    await expect(responseHandler.rejected(make401('/assets'))).rejects.toBeTruthy()
+
+    expect(ElMessage.error).toHaveBeenCalledTimes(1)
+  })
+
+  it('換發回封印閘 503：導向解封頁、會話不清、提示封印狀態', async () => {
+    setAccessToken('stale-jwt')
+    localStorage.setItem('user', '{"username":"admin"}')
+    const sealed = { code: 'SEAL_SERVICE_SEALED' }
+    vi.spyOn(axios, 'post').mockRejectedValue(refreshFailure(503, sealed))
+
+    await expect(responseHandler.rejected(make401())).rejects.toBeTruthy()
+
+    expect(getSealPhase()).toBe(SEAL_PHASE_SEALED)
+    expect(window.location.pathname).toBe('/unseal')
+    expect(localStorage.getItem('user')).not.toBeNull()
+    expect(consumeReloginContext()).toBe('')
+    expect(ElMessage.error).toHaveBeenCalledTimes(1)
+    const shown = ElMessage.error.mock.calls[0][0]
+    const text = typeof shown === 'string' ? shown : shown?.message
+    expect(text).toBe(resolveApiError(sealed, 503))
   })
 })

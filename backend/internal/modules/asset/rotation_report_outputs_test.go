@@ -120,11 +120,23 @@ func TestRotationReportOutputsSameSource(t *testing.T) {
 	require.NoError(t, WriteRecordsCSV(&recBuf, rep))
 	recRows := readCSV(t, recBuf.Bytes())
 	require.Greater(t, len(recRows), 1, "區間內應有記錄")
+	// 以欄名定位（記錄檔末尾另有傳輸欄，不能以最後一欄當原因碼）
+	reasonCol, resultCol := -1, -1
+	for i, h := range recRows[0] {
+		switch h {
+		case ph("col_reason_code"):
+			reasonCol = i
+		case ph("col_result"):
+			resultCol = i
+		}
+	}
+	require.NotEqual(t, -1, reasonCol, "記錄檔缺原因碼欄")
+	require.NotEqual(t, -1, resultCol, "記錄檔缺結果欄")
 	found := false
 	for _, r := range recRows[1:] {
-		if r[len(r)-1] == "remote_exit_nonzero" {
+		if r[reasonCol] == "remote_exit_nonzero" {
 			found = true
-			assert.Equal(t, ph("status_failed"), r[len(r)-2])
+			assert.Equal(t, ph("status_failed"), r[resultCol])
 		}
 	}
 	assert.True(t, found, "失敗記錄的原因碼未出現在記錄檔")

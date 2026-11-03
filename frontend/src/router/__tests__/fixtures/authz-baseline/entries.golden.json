@@ -1,8 +1,9 @@
 {
- "count": 525,
+ "count": 540,
  "recaptures": [
   "2026-10-15: initial capture",
-  "2026-10-19: append entries /notification-channels (notification channel entry)"
+  "2026-10-19: append entries /notification-channels (notification channel entry)",
+  "2026-11-02: append entries /account-inventory (host account inventory global page entry)"
  ],
  "records": [
   {
@@ -19,6 +20,12 @@
   },
   {
    "subject": "S00",
+   "path": "/account-inventory",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
    "path": "/alerts",
    "menu_visible": null,
    "guard_result": "/login"
@@ -229,6 +236,12 @@
   },
   {
    "subject": "S01",
+   "path": "/account-inventory",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
    "path": "/alerts",
    "menu_visible": true,
    "guard_result": "allow"
@@ -434,6 +447,12 @@
   {
    "subject": "S02",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },
@@ -644,6 +663,12 @@
   {
    "subject": "S03",
    "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
+   "path": "/account-inventory",
    "menu_visible": true,
    "guard_result": "allow"
   },
@@ -854,6 +879,12 @@
   {
    "subject": "S04",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },
@@ -1064,6 +1095,12 @@
   {
    "subject": "S05",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },
@@ -1274,6 +1311,12 @@
   {
    "subject": "S06",
    "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
+   "path": "/account-inventory",
    "menu_visible": true,
    "guard_result": "allow"
   },
@@ -1484,6 +1527,12 @@
   {
    "subject": "S07",
    "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
+   "path": "/account-inventory",
    "menu_visible": true,
    "guard_result": "allow"
   },
@@ -1694,6 +1743,12 @@
   {
    "subject": "S08",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },
@@ -1904,6 +1959,12 @@
   {
    "subject": "S09",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },
@@ -2114,6 +2175,12 @@
   {
    "subject": "S10",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },
@@ -2324,6 +2391,12 @@
   {
    "subject": "S11",
    "path": "/access-reviews",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
+   "path": "/account-inventory",
    "menu_visible": null,
    "guard_result": "/login"
   },
@@ -2534,6 +2607,12 @@
   {
    "subject": "S12",
    "path": "/access-reviews",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
+   "path": "/account-inventory",
    "menu_visible": null,
    "guard_result": "/login"
   },
@@ -2744,6 +2823,12 @@
   {
    "subject": "S13",
    "path": "/access-reviews",
+   "menu_visible": true,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
+   "path": "/account-inventory",
    "menu_visible": true,
    "guard_result": "allow"
   },
@@ -2954,6 +3039,12 @@
   {
    "subject": "S14",
    "path": "/access-reviews",
+   "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/account-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
   },

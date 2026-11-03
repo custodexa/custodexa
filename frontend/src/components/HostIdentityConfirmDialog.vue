@@ -121,13 +121,13 @@
             data-test="hic-current-reset"
           >{{ $t('hostIdentityConfirm.summary.currentReset') }}</span>
         </div>
-        <template v-else-if="isWinrm">
+        <template v-else-if="isKeyless">
           <div class="hic-row">
             <span class="hic-label">{{ $t('hostIdentityConfirm.summary.channelLabel') }}</span>
             <span
               class="hic-value"
-              data-test="hic-channel-winrm"
-            >{{ transportLabel('winrm') }}</span>
+              data-test="hic-channel-keyless"
+            >{{ transportLabel(current.transport) }}</span>
           </div>
           <div class="hic-row hic-row-border">
             <span class="hic-label">{{ $t('hostIdentityConfirm.summary.keyLabel') }}</span>
@@ -136,7 +136,7 @@
               <span
                 class="hic-tag hic-tag-muted"
                 data-test="hic-winrm-no-key"
-              >{{ $t('hostIdentityConfirm.summary.winrmNoKey') }}</span>
+              >{{ $t(isWinrm ? 'hostIdentityConfirm.summary.winrmNoKey' : 'hostIdentityConfirm.summary.dbNoKey') }}</span>
             </span>
           </div>
         </template>
@@ -210,7 +210,7 @@
       </p>
 
       <div
-        v-if="isBlocked || !isWinrm"
+        v-if="isBlocked || !isKeyless"
         class="hic-details"
       >
         <button
@@ -358,14 +358,16 @@ const { t } = useI18n()
 const original = computed(() => props.identity?.original ?? null)
 const current = computed(() => props.identity?.current ?? {})
 const isWinrm = computed(() => current.value.transport === 'winrm')
+// 沒有主機金鑰可核對的傳輸：WinRM 與資料庫連線
+const isKeyless = computed(() => isWinrm.value || current.value.transport === 'db')
 const expired = computed(() => props.identity?.expired === true)
 const isBlocked = computed(() => props.identity?.confirmable === false)
 
-// 同鑰／不同鑰只看指紋；WinRM 沒有金鑰可比，不會落到不同鑰
+// 同鑰／不同鑰只看指紋；WinRM 與資料庫連線沒有金鑰可比，不會落到不同鑰
 const isDifferentKey = computed(
   () =>
     !isBlocked.value &&
-    !isWinrm.value &&
+    !isKeyless.value &&
     !!original.value &&
     original.value.fingerprint !== current.value.fingerprint
 )
@@ -384,7 +386,13 @@ const blockedKind = computed(() => {
   if (status === 'transport_changed') return 'transportChanged'
   return 'recordMissing'
 })
-const transportLabel = (value) => (value === 'winrm' ? 'WinRM' : value === 'ssh' ? 'SSH' : '—')
+// WinRM、SSH 是專有名詞不譯；資料庫連線依介面語言
+const transportLabel = (value) => {
+  if (value === 'winrm') return 'WinRM'
+  if (value === 'ssh') return 'SSH'
+  if (value === 'db') return t('hostIdentityConfirm.transport.db')
+  return '—'
+}
 const blockedBody = computed(() => {
   if (blockedKind.value === 'transportChanged') {
     return t('hostIdentityConfirm.blocked.transportChanged', {
@@ -466,7 +474,7 @@ function submit() {
   if (!canSubmit.value) return
   const cur = current.value
   const payload = { transport: cur.transport }
-  if (!isWinrm.value) {
+  if (!isKeyless.value) {
     payload.record_id = cur.record_id
     payload.algorithm = cur.algorithm
     payload.fingerprint = cur.fingerprint

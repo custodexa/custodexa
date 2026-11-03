@@ -10,7 +10,7 @@ import "sort"
 
 var scopedTemplateAssetAdmin = []Permission{
 	PermAssetView, PermAssetCreate, PermAssetUpdate, PermAssetDelete, PermAssetTest,
-	PermAssetGroupManage, PermChangeSecretManage, PermAccountRotate,
+	PermAssetGroupManage, PermChangeSecretManage, PermAccountRotate, PermAccountDiscover,
 	PermCredentialView, PermCredentialCreate, PermCredentialUpdate, PermCredentialSetSecret,
 	PermCredentialRotate, PermCredentialConvertScope, PermCredentialDetach,
 	PermCredentialDelete, PermCredentialBind,

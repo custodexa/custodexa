@@ -49,7 +49,7 @@ func RouteEntryRules() []RouteEntryRule {
 		entrySignedIn("/my-connections"),
 		entrySignedIn("/my-requests"),
 		entryAll("/my-agents", "ui:my-agents"),
-		entryAll("/approvals", "ui:approvals"),
+		entryAny("/approvals", "ui:approvals", "ui:approval-history"),
 		entryAll("/sessions", "session:view"),
 		entryAll("/audit/workbench", "audit:view"),
 		entryAll("/audit/agent-tasks", "audit:view"),
@@ -78,6 +78,7 @@ func RouteEntryRules() []RouteEntryRule {
 		entryAll("/access-control", "securitypolicy:manage"),
 		entryAll("/key-management", "key:manage"),
 		entryAll("/transmission-inventory", "transmission:manage"),
+		entryAny("/account-inventory", "account:discover", "ui:assets-global"),
 		entryAll("/offsite-storage", "offsite:manage"),
 		entryAll("/notification-channels", "notification_channel:manage"),
 	}

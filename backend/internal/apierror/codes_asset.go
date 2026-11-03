@@ -39,7 +39,7 @@ var (
 	// 改密通道側車（windows-account-rotation）。兩碼分開：通道值本身不合
 	// （值域外、與協定不相容）是選錯了通道，附屬欄位不合是同一個通道沒設完整——
 	// 前者要改選單，後者要補欄位，指引不同
-	CodeInvalidRotationChannel = register("VALIDATION_ASSET_ROTATION_CHANNEL", Descriptor{ZhFallback: "rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh 或 none；posix_ssh 限 ssh 協議，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協議"})
+	CodeInvalidRotationChannel = register("VALIDATION_ASSET_ROTATION_CHANNEL", Descriptor{ZhFallback: "rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh、db_native 或 none；posix_ssh 限 ssh 協議，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協議，db_native 限 mysql、postgres 或 mssql 協議"})
 	// 附屬欄位的五種違規共用一碼（連線方式缺、TLS 模式缺、CA 憑證無法解析、
 	// http 之下設了 TLS 模式、埠逾值域）：它們都是「這組通道設定不完整或不合格式」
 	CodeInvalidRotationChannelParams = register("VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS", Descriptor{ZhFallback: "改密通道設定不完整或不合格式：windows_winrm 須指定連線方式（http／https），https 須指定憑證驗證模式（system／ca／insecure），ca 模式須提供可解析的 CA 憑證（PEM），埠須為 0（取預設）或 1 至 65535"})

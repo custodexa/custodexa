@@ -134,7 +134,8 @@
     "complianceMap": "Compliance map",
     "policyGroups": "Policy groups",
     "myAgents": "My agents",
-    "agentPrincipals": "AI agent subjects"
+    "agentPrincipals": "AI agent subjects",
+    "hostAccountInventory": "Host account inventory"
   },
   "login": {
     "bannerRegionLabel": "Login notice",
@@ -219,7 +220,8 @@
     "requestFailed": "Request failed",
     "requestFailedStatus": "Request failed ({status})",
     "sessionExpired": "Session expired. Please sign in again",
-    "networkError": "Network error. Please check your connection"
+    "networkError": "Network error. Please check your connection",
+    "refreshUnavailable": "The server couldn't renew your sign-in right now. You're still signed in; please try again shortly."
   },
   "connect": {
     "risksIntro": "This connection's transport channels carry the following risks:",
@@ -318,6 +320,12 @@
       "suspend": "Suspended",
       "new_source_ip": "Sign In From New Source",
       "host_key_mismatch": "Host Key Mismatch",
+      "inventory_scan": "Start Host Account Inventory",
+      "inventory_scan_done": "Host Account Inventory Finished",
+      "executor_login_check": "Test dedicated bastion account sign-in",
+      "executor_login_check_done": "Dedicated bastion account test sign-in finished",
+      "inventory_ignore": "Ignore Host Account Finding",
+      "inventory_reopen": "Reopen Host Account Finding",
       "host_key_adopt": "Adopt Host Key Fingerprint",
       "host_key_cred_sent": "Credentials Sent After Host Key Mismatch",
       "retention_floor_raised": "Retention Floor Raised",
@@ -491,7 +499,8 @@
       "syslog": "syslog",
       "notify": "Notification",
       "nginx": "nginx / HTTPS",
-      "winrm": "WinRM rotation"
+      "winrm": "WinRM rotation",
+      "db_rotation": "Database rotation"
     },
     "scopeType": {
       "asset": "Asset",
@@ -577,7 +586,8 @@
       "posix_ssh": "POSIX SSH",
       "windows_winrm": "WinRM",
       "windows_ssh": "SSH → PowerShell",
-      "none": "Not set"
+      "none": "Not set",
+      "db_native": "Database account self-rotation"
     },
     "winrmScheme": {
       "http": "HTTP",
@@ -674,6 +684,10 @@
       "asset_secret": {
         "title": "Asset account credentials",
         "hint": "How often credentials on managed hosts should be rotated; does not affect platform user passwords"
+      },
+      "host_inventory": {
+        "title": "Host account inventory",
+        "hint": "Which groups make an account privileged when inventorying accounts on managed hosts. Does not affect platform user permissions."
       },
       "mfa": {
         "title": "MFA",
@@ -1062,6 +1076,10 @@
       "asset_account_create": "Asset account {account} added",
       "asset_account_delete": "Asset account {account} deleted",
       "asset_account_discard_candidate": "Unverified candidate credential discarded for asset account {account}",
+      "asset_account_executor_clear": "Bastion service account {account} cleared",
+      "asset_account_executor_public_key_export": "Public key of bastion service account {account} exported",
+      "asset_account_executor_replace": "Bastion service account replaced with {account}",
+      "asset_account_executor_set": "Bastion service account {account} set",
       "asset_account_set_default": "Asset account {account} set as default",
       "asset_account_update": "Asset account {account} updated",
       "asset_deleted": "Asset deleted (data layer record)",
@@ -1463,7 +1481,7 @@
     "allowedDatabasesClearTitle": "Switching protocol clears the allowed list",
     "allowedDatabasesClearConfirm": "This asset has {n} allowed database(s). Switching to another protocol clears the list, and switching back does not restore it.",
     "allowedDatabasesClearOk": "Clear and save",
-    "rotationChannel": "Rotation channel",
+    "rotationChannel": "Password rotation channel",
     "rotationChannelHint": "Channel used by rotation plans to change Windows local account passwords. Unset = this asset does not take part in rotation.",
     "rotationChannelNone": "Not set (excluded from rotation)",
     "rotationChannelWinrm": "WinRM (NTLM, message-level encryption)",
@@ -1621,7 +1639,22 @@
     "applyLinkConnectable": "\"{name}\" is already available to connect. No request is needed.",
     "applyLinkUnavailable": "Access to \"{name}\" cannot be requested from here.",
     "noAssetViewTitle": "Your roles do not include asset view permission",
-    "noAssetViewHint": "No assets are listed here. If you need to connect through the platform, ask an administrator to add the {role} role to your account."
+    "noAssetViewHint": "No assets are listed here. If you need to connect through the platform, ask an administrator to add the {role} role to your account.",
+    "dbRotation": {
+      "optionNone": "Not set (not rotated)",
+      "optionDbNative": "Database account changes its own password",
+      "hint": "Once selected, rotation plans change the password of accounts on this database: the system signs in with the account's current password, then changes it to a new one.",
+      "unencryptedTitle": "Passwords are sent over an unencrypted connection during rotation",
+      "unencryptedBody": "This database's TLS mode is \"{mode}\", so the connection is not encrypted. During rotation, the current and new passwords may cross the network in clear text. The asset list and every rotation record will show this.",
+      "goToTls": "Go to TLS mode",
+      "encrypted": "Rotation uses an encrypted connection (TLS mode: {mode}).",
+      "limitsTitle": "Limits of this method",
+      "limit1": "Only the password changes. No account is created and no permissions are adjusted.",
+      "limit2": "In MySQL, if the same account name has several source-host entries, only one of them is changed.",
+      "limit3": "PostgreSQL accounts whose current password contains characters such as Chinese or full-width symbols cannot be rotated this way.",
+      "limit4": "MariaDB and older database versions are not supported; rotation is skipped with a reason.",
+      "limit5": "Rotation does not end sessions this account already has open."
+    }
   },
   "sessions": {
     "headerDesc": "Monitor active sessions and review history. An AI agent is an automated program acting for a person.",
@@ -2375,7 +2408,8 @@
     "dek_cache_ttl_seconds": "Data such as asset passwords and recorded session content is encrypted before it is stored, and a data key is needed to unlock it. That key is unwrapped by the master key and then held in memory, and this setting decides how long it stays there. Empty: it stays until the system is sealed or restarted, which is the factory default and how the system behaves today. 0: it is not held at all, but fetched from the key custodian each time it is needed and wiped immediately afterwards. A number of seconds: it is wiped that many seconds after it was unwrapped and fetched again on the next use, and repeated use within the period does not extend it. Setting 0 or a number of seconds puts the key custodian on the everyday path: while the custodian is unreachable, anything that needs the key fetched again fails, including retrieving an asset account password when a connection is established and writing recorded content during a session already in progress. Each fetch costs one round trip to the custodian, and the delay depends on the deployment, so measure it in your own environment before choosing a number. If the master key comes from an environment variable or is entered by an administrator at startup, that master key already sits in this system's memory, and what this setting shortens is only how long the data key is kept. The setting covers the data key alone: the key used for audit records is unaffected, so records can still be written while the custodian is unreachable, and during an operation memory still holds keys and unencrypted data.",
     "k8s_list_timeout_seconds": "When picking a container, this is how long to wait for the cluster's list of running items. Time out and you get an error. Higher: busy or distant clusters get more time, but a real outage takes longer to surface. Lower: outages surface faster, but healthy clusters may be misjudged. Floor is 3s — a single query can spend a second or two just setting up the encrypted connection; below that even healthy clusters all become unreachable while still listed among your assets.",
     "login_banner_body": "Shown as plain text: HTML and links are not rendered; line breaks are kept. Leave the text empty and no notice appears; the heading never shows on its own. Anyone can read it before signing in, so keep internal information out of it.",
-    "asset_secret_max_age_days": "Global maximum age used by the rotation evidence report; each rotation plan may override it. 0 means unset, and the report lists such accounts as having no policy."
+    "asset_secret_max_age_days": "Global maximum age used by the rotation evidence report; each rotation plan may override it. 0 means unset, and the report lists such accounts as having no policy.",
+    "host_privileged_groups_posix": "Comma-separated group names, up to 32. Accounts in these groups (including as primary group) are treated as privileged during inventory. Leave empty to not use groups."
   },
   "fileManager": {
     "mkdir": "New Directory",
@@ -2659,7 +2693,27 @@
     "groupSnapshotEmpty": "No observation yet. This account has not signed in through an external identity source.",
     "groupSnapshotChannel": "Observed via: {channel}",
     "groupSnapshotAt": "Observed at: {time}",
-    "groupSnapshotNoGroups": "No group value was observed at that sign-in."
+    "groupSnapshotNoGroups": "No group value was observed at that sign-in.",
+    "approverOnlyTag": "Approve only, no access",
+    "approverOnlyHint": "This account has only the Approver role, so it can approve but cannot use assets or connect. To fix it, add system-wide User on the Roles & Scope tab. Click this tag to go there.",
+    "approverOnlyBanner": {
+      "body": "This account has only the Approver role and currently cannot use assets or connect. Add system-wide User to restore access.",
+      "addButton": "Add User",
+      "dirtyNote": "There are unsaved changes below. Save or discard them first.",
+      "done": "System-wide User has been added. This account can now use assets and connect."
+    },
+    "approverOnlyPrompt": {
+      "title": "Not saved: keeping only Approver would leave this account unable to use assets or connect.",
+      "body": "An account with only the Approver role can handle approvals but cannot see assets or connect. Such accounts usually also get the User role.",
+      "fix": "Also add User and save",
+      "nodeTitle": "Not saved: this account can still only approve and cannot use assets or connect.",
+      "nodeBody": "When the User role is limited to some nodes it grants nothing, so this account can still only approve. To use assets, User must apply system-wide.",
+      "nodeFix": "Change User to system-wide and save",
+      "createTitle": "An account with only Approver cannot use assets or connect.",
+      "createBody": "This account can only handle approvals and cannot see assets or connect. Usually the User role is given as well.",
+      "createFix": "Also select User and create",
+      "goRoleTab": "Go to Roles & Scope for {username}"
+    }
   },
   "userGroups": {
     "roleScopeColumn": "Roles and management scope",
@@ -2728,6 +2782,21 @@
         "none": "None",
         "comboNote": "{n} members will end up with a combination that needs confirmation; you will be asked to confirm when saving."
       }
+    },
+    "approverOnly": {
+      "reasonSave": "Cannot save: this change would leave {count} member(s) with only the Approver role, so these members could not use assets or connect.",
+      "reasonRemove": "Cannot remove: {count} member(s) would be left with only the Approver role and these members could not use assets or connect.",
+      "reasonDelete": "Cannot delete: {count} member(s) would be left with only the Approver role and these members could not use assets or connect.",
+      "howToSave": "These members were given Approver directly and get User only from this group. In a new tab, add system-wide User for these members, then come back and select Check again and save.",
+      "howToDelete": "In a new tab, add system-wide User for these members, then come back and select Check again and delete.",
+      "revertNote": "Or select Change back to system-wide to undo this scope change.",
+      "affected": "Affected members:",
+      "more": "and {n} others",
+      "linkTitle": "Open Roles & Scope (new tab)",
+      "listNote": "Selecting a name opens that account's Roles & Scope in a new tab. Changes on this page are kept.",
+      "retrySave": "Check again and save",
+      "retryDelete": "Check again and delete",
+      "revert": "Change back to system-wide"
     }
   },
   "roles": {
@@ -2765,7 +2834,8 @@
     },
     "permissionLabel": {
       "roleAssign": "Assign roles",
-      "systemalertManage": "System alert grading"
+      "systemalertManage": "System alert grading",
+      "assetExecutorManage": "Manage bastion service account"
     },
     "dangerCombo": {
       "authz_rules_with_asset_or_credential": "Can manage authorization rules and also manage assets or credentials",
@@ -2914,6 +2984,7 @@
       "entry": {
         "assets": "Assets",
         "credentials": "Credential vault",
+        "host_account_inventory": "Host account inventory",
         "change_secret": "Password change plans",
         "authorizations": "Asset authorizations",
         "approver_scopes": "Approver scopes",
@@ -2938,7 +3009,8 @@
         "alert_rules": "Alert rules",
         "schedules": "Schedule preview",
         "rotation_schedules": "Rotation schedules",
-        "instance_guard": "Instance guard"
+        "instance_guard": "Instance guard",
+        "asset_executor": "Bastion service account"
       },
       "detail": {
         "asset": {
@@ -2973,9 +3045,11 @@
       "nodeScopedNotice": "This role has {n} assignments limited to nodes. Newly added features that can only apply system-wide will not take effect on those assignments.",
       "nodeScopedNoEffectNotice": "This role has {n} assignments limited to nodes. The role's permissions are not restricted by nodes, so the scope on those assignments has no effect.",
       "entryNote": {
+        "host_account_inventory": "Holding this permission lets the platform sign in to the target host with the asset's default account credential and read its account list (a host without a recorded host key is trusted on first use and the key is recorded). Previously this required the connection test permission. When the host has a bastion service account, the platform signs in with that account instead.",
         "alerts": "Alert records come from the same audit data as Audit logs, so choosing Read or Manage also adds the audit view permission.",
         "access_reviews": "Review lists come from audit data, so choosing Manage also adds the audit view permission.",
-        "audit_logs": "The same audit view permission also opens Investigation Workbench, Command Audit, Downloads, AI agent tasks and the Rotation Evidence report."
+        "audit_logs": "The same audit view permission also opens Investigation Workbench, Command Audit, Downloads, AI agent tasks and the Rotation Evidence report.",
+        "asset_executor": "The settings card is inside the asset edit screen. Holders can set, replace and clear the account the platform uses for itself, and get its public key. This account cannot be used to connect."
       },
       "placementTag": {
         "embedded": "Settings card",
@@ -3056,6 +3130,8 @@
   },
   "approvals": {
     "headerDesc": "Handle connection requests: once approved, the requester gets a time-limited connection that expires automatically.",
+    "readOnlyTag": "Read-only",
+    "historyOnlyNote": "Review the outcome of every connection request. You can view them only; you cannot approve, reject, or revoke.",
     "pendingTab": "Pending",
     "pendingTabCount": "Pending ({n})",
     "colRequester": "Requester",
@@ -3435,11 +3511,13 @@
     "submit": "Add",
     "continue": "Continue",
     "actorNeedsRoleLabel": "{username} (Approver role will be added)",
-    "assignRoleConfirm": "{username} does not yet have the Approver role. This will also assign that role and start routing in-scope requests to them. Continue?",
+    "assignRoleConfirm": "{username} does not yet have the Approver role. This will also assign that role and start routing in-scope requests to this account.",
     "assignRoleTitle": "Assign Approver Role",
     "roleAssignedScopeFailed": "The Approver role was assigned, but creating the scope failed. Please retry adding the scope",
     "scopeAssigned": "Approver scope assigned",
-    "approverRoleRequiredHint": "Only users who already have the Approver role are listed. To make someone else an approver, ask an administrator who can assign roles to add the Approver role first."
+    "approverRoleRequiredHint": "Only users who already have the Approver role are listed. To make someone else an approver, ask an administrator who can assign roles to add the Approver role first.",
+    "assignRoleUserNote": "If this account does not have the User role yet, User will be added too so this account can still use assets.",
+    "assignRoleQuestion": "Continue?"
   },
   "roleScope": {
     "bannerTitle": "This sets the management scope.",
@@ -3900,8 +3978,9 @@
       "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "Assets with this protocol cannot be rotated; skipped this run",
       "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED": "Failed to load the asset accounts",
       "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE": "The asset has no account matching the account scope",
-      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "The asset has no rotation channel configured; skipped",
+      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "The asset has no rotation channel configured; skipped (choose one under \"Password rotation channel\" in the asset settings)",
       "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED": "This rotation channel does not support the secret type of the plan; skipped",
+      "CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED": "The target database version or product does not support this rotation method; no change was sent.",
       "CHANGE_SECRET_CANDIDATE_QUERY_FAILED": "Failed to query pending credentials",
       "CHANGE_SECRET_CANDIDATE_PENDING": "The account has an unverified pending credential; waiting for the system retry to finish",
       "CHANGE_SECRET_CANDIDATE_PERSIST_FAILED": "Failed to persist the pending credential",
@@ -3914,16 +3993,21 @@
       "CHANGE_SECRET_INVALID_ACCOUNT_NAME": "The account name contains illegal characters; no command was sent to the remote host",
       "CHANGE_SECRET_INVALID_NEW_SECRET": "The generated password contains illegal characters; no command was sent to the remote host",
       "CHANGE_SECRET_ACCOUNT_NAME_INVALID": "The account name does not meet the character set or length limit of the target system; no command was sent to the remote host",
-      "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "Failed to log in to the target host with the current credential; see the server log for the detailed remote message",
-      "CHANGE_SECRET_REMOTE_REJECTED": "The remote host rejected the rotation command; the host credential is unchanged. See the server log for the detailed remote message",
+      "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "Signing in to the target with the current credential failed; see the server log for the remote message.",
+      "CHANGE_SECRET_REMOTE_REJECTED": "The target rejected the change; the credential on the target is unchanged. See the server log for the detailed remote message",
+      "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED": "The bastion service account {executor} could not sign in to the target host; no account was changed. Check that the host is reachable and that the service account's secret is still valid. See the server log for the remote message",
+      "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED": "The bastion service account {executor} is not allowed to change other accounts' passwords, or the target account does not exist; the target account was not changed",
+      "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING": "The bastion service account {executor} is having its own password changed, so this run skipped it; the next run after that finishes will proceed as usual",
+      "CHANGE_SECRET_EXECUTOR_CHANGED": "The bastion service account {executor} was replaced or its secret changed after this run started, so this run skipped it",
+      "CHANGE_SECRET_EXECUTOR_UNAVAILABLE": "The bastion service account {executor} has no usable secret, so the password could not be changed on its behalf",
       "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "The connection dropped or timed out after the rotation command was sent, so the remote state is unknown; the pending credential is kept for system retry. See the server log for the detailed remote message",
       "CHANGE_SECRET_REMOTE_UNREACHABLE": "Could not establish a rotation session with the target (connection refused or unanswered, timed out, or certificate verification failed); no command was sent and the remote host is unchanged. See the server log for the detailed remote message",
       "CHANGE_SECRET_VERIFY_FAILED": "Verification login with the new credential failed; the pending credential is kept for system retry. See the server log for the detailed remote message",
       "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE": "The target could not establish an encrypted management connection; the connection was refused and no credential was sent",
       "CHANGE_SECRET_STDIN_NOT_DELIVERED": "The new password never reached the rotation script on the target; the remote host is unchanged",
-      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "The target set the new password but could not authenticate with it and restored the old password on the spot; the remote host is unchanged",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "Verifying the new password on the target failed; the old password was restored on the spot and the target is unchanged",
       "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED": "The target could not authenticate with the new password and also failed to restore the old one; the remote state is unknown and the pending credential is kept for system retry",
-      "CHANGE_SECRET_INVALID_OLD_SECRET": "The current password contains characters that cannot be delivered on standard input; refused locally, the remote host was not touched",
+      "CHANGE_SECRET_INVALID_OLD_SECRET": "The current password contains characters this rotation method cannot handle; refused locally, the target was not touched",
       "CHANGE_SECRET_PROMOTE_FAILED": "Failed to commit the credential; the pending credential is kept for system retry. See the server log for details",
       "CHANGE_SECRET_SFTP_OPEN_FAILED": "Failed to open SFTP on the target host; see the server log for the detailed remote message",
       "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED": "Failed to read authorized_keys; see the server log for the detailed remote message",
@@ -3932,7 +4016,7 @@
       "CHANGE_SECRET_KEY_VERIFY_FAILED_RESTORE_FAILED": "New key verification failed and the restore also failed; the pending credential is kept for system retry. See the server log for the detailed remote message",
       "CHANGE_SECRET_RETRY_PROMOTED": "System retry verified the credential; it has been committed",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "The pending credential content could not be read; see the server log for details",
-      "CHANGE_SECRET_RETRY_LOGIN_FAILED": "Failed to log in to the target host with the pending credential; see the server log for the detailed remote message",
+      "CHANGE_SECRET_RETRY_LOGIN_FAILED": "Signing in to the target with the new credential failed; see the server log for the detailed remote message",
       "CHANGE_SECRET_HOST_KEY_MISMATCH": "The host key does not match the record; no credentials were sent. Verify the host, then adopt the new fingerprint or reset the host key in the asset settings",
       "CHANGE_SECRET_HOST_KEY_CHECK_FAILED": "The host identity could not be confirmed before sending credentials; aborted and the target was not touched. Retry later, and contact an administrator if it persists",
       "CHANGE_SECRET_AUTHZ_REVOKED": "Stopped: the initiator no longer holds the required permission; the remote target was not touched",
@@ -3972,6 +4056,31 @@
       "confirm": "These {count} plan(s) will run as you from now on. Before every run your current permissions are checked again; if they are insufficient the run stops and an alert is raised. Take over?",
       "done": "{count} plan(s) re-authorized",
       "skipped": "{skipped} plan(s) stay paused because your permissions are insufficient; someone with permission needs to take them over"
+    },
+    "channelUnencryptedSuffix": "unencrypted",
+    "selectedUnencryptedNote": "For {n} asset(s), passwords may be sent in clear text during rotation (database connection not encrypted)",
+    "recordsUnencryptedCount": "; {n} ran over an unencrypted connection",
+    "methodDelegatedBy": "Changed via bastion service account {name}",
+    "methodDetail": "{executor} signed in and changed the password for {account} ({method}).",
+    "methodElevation": "Elevation: {method}",
+    "methodSudoHelp": "A rejected command usually means the target host does not allow the service account to run chpasswd through sudo. For the setup, see the section \"Changing Linux and Unix account passwords through the bastion service account\" in the operations document docs/ops/upgrade-sop.md.",
+    "methodDelegatedByScoped": "Changed via a bastion service account",
+    "reasonScoped": {
+      "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED": "The bastion service account could not sign in to the target host; no account was changed. Check that the host is reachable and that the service account's secret is still valid. See the server log for the remote message",
+      "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED": "The bastion service account is not allowed to change other accounts' passwords, or the target account does not exist; the target account was not changed",
+      "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING": "The bastion service account is having its own password changed, so this run skipped it; the next run after that finishes will proceed as usual",
+      "CHANGE_SECRET_EXECUTOR_CHANGED": "The bastion service account was replaced or its secret changed after this run started, so this run skipped it",
+      "CHANGE_SECRET_EXECUTOR_UNAVAILABLE": "The bastion service account has no usable secret, so the password could not be changed on its behalf"
+    },
+    "methodLegend": "Rows without a note under the account were changed by the account itself.",
+    "method": {
+      "executor_root": "Changed directly as root",
+      "executor_sudo_nopasswd": "Elevated without a password",
+      "executor_sudo_password": "Elevated with the service account's password"
+    },
+    "transportRisk": {
+      "tag": "Unencrypted connection",
+      "tooltip": "{risk}. The database connection was not encrypted when this rotation ran."
     }
   },
   "hostIdentityConfirm": {
@@ -3996,7 +4105,8 @@
       "channelLabel": "Password-change channel",
       "channelOriginalLabel": "Channel when sent",
       "channelCurrentLabel": "Current channel",
-      "winrmNoKey": "WinRM has no host key"
+      "winrmNoKey": "WinRM has no host key",
+      "dbNoKey": "Database connections have no host key"
     },
     "checkHint": "First check with the host administrator: whether this host was recently reset, reinstalled, or replaced, and whether the fingerprint on record under \"Details\" belongs to this host.",
     "checkHintWinrm": "First check with the host administrator: whether this host was recently reset, reinstalled, or replaced, and whether its address still points to the same host.",
@@ -4052,6 +4162,9 @@
       "verified": "Verification succeeded; the credential is now promoted",
       "notVerified": "This verification did not succeed. The new credential is kept. The system will not retry automatically; you can confirm again when needed.",
       "moved": "The host identity changed again after you confirmed, so this result was not applied. The new credential is kept. Open the confirmation again and check the latest identity."
+    },
+    "transport": {
+      "db": "Database connection"
     }
   },
   "changeSecretBatches": {
@@ -4211,7 +4324,9 @@
       "excludeAmbiguous": "Exclude look-alike characters",
       "submit": "Start rotation",
       "accepted": "Rotation started; progress appears in the detail panel",
-      "outOfScopeHint": "{out} of the {total} attached hosts are outside your scope. You will be asked to confirm the impact before submitting."
+      "outOfScopeHint": "{out} of the {total} attached hosts are outside your scope. You will be asked to confirm the impact before submitting.",
+      "executorTitle": "This secret is the bastion service account on {count} hosts; all {count} will change together.",
+      "executorBody": "The new password is sent to every one of the {count} hosts. With \"Random per host\", each host gets its own dedicated credential and stays its bastion service account."
     },
     "detachDialog": {
       "title": "Detach from shared",
@@ -4341,7 +4456,8 @@
     },
     "actionReason": {
       "no_capability": "Your role does not allow this action.",
-      "out_of_scope": "This credential is owned outside the scope you manage."
+      "out_of_scope": "This credential is owned outside the scope you manage.",
+      "executor_managed": "This is the bastion service account. Manage it from the asset's bastion service account section."
     },
     "footer": {
       "scoped": "Company-wide shared credentials are maintained by system-wide administrators and are not listed here.",
@@ -4375,7 +4491,19 @@
       "detachHint": "Only want to change hosts in your scope? Use \"Leave shared\" on each asset.",
       "submitFix": "Save and apply to {total} host(s)",
       "submitRotate": "Rotate and apply to {total} host(s)"
-    }
+    },
+    "bindingPurpose": {
+      "header": {
+        "asset": "Asset",
+        "purpose": "Purpose",
+        "state": "Default and rotation",
+        "actions": "Actions"
+      },
+      "executor": "Bastion service",
+      "login": "User connections"
+    },
+    "bindingUnbindExecutor": "A bastion service account can't be unbound here. Manage it from the asset's Edit asset panel.",
+    "bindingUnbindExecutorLink": "Open Edit asset for {asset}"
   },
   "notFound": {
     "title": "Page not found",
@@ -4587,6 +4715,8 @@
     "VALIDATION_ROLE_BINDING_NODES_EMPTY": "Select at least one node, or switch to system-wide",
     "VALIDATION_ROLE_BINDING_NODES_INVALID": "Some of the selected nodes no longer exist. Please select again",
     "VALIDATION_ROLE_NOT_GROUP_BINDABLE": "This role cannot be assigned to a user group",
+    "VALIDATION_ROLE_SET_APPROVER_ONLY": "Not saved: this set of roles would leave the account able to approve only, without access to assets or connections. Add the system-wide base user role as well",
+    "VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS": "Cannot complete: this change would leave {count} member(s) able to approve only, without access to assets or connections",
     "ROLE_PERMISSION_DEPENDENCY_REQUIRED": "The permission set is missing a required dependency",
     "ROLE_PERMISSION_INVALID": "The permission set contains an invalid item",
     "VALIDATION_ACCOUNT_NOT_ON_ASSET": "The account does not belong to the specified asset",
@@ -4955,6 +5085,31 @@
     "NOTFOUND_ALERT_RULE": "Alert rule not found",
     "NOTFOUND_APPROVER_SCOPE": "Approver scope not found",
     "NOTFOUND_ASSET": "Asset not found",
+    "RULE_INVENTORY_PLATFORM_UNSUPPORTED": "This asset's platform does not support account inventory. Only Linux/Unix hosts connected over SSH are supported",
+    "RULE_INVENTORY_NO_ACCOUNT": "This asset has no default account, so the inventory cannot sign in",
+    "RULE_INVENTORY_NO_SECRET": "The default account has no usable password or private key, so the inventory cannot sign in",
+    "CONFLICT_INVENTORY_SCAN_RUNNING": "An account inventory is already running on this asset",
+    "RULE_INVENTORY_EXECUTOR_UNAVAILABLE": "This host's dedicated bastion account has no usable secret, so the inventory did not start. Set up the account again.",
+    "CONFLICT_INVENTORY_EXECUTOR_BUSY": "This host's dedicated bastion account is having its password changed, so the inventory did not start. Try again after it finishes.",
+    "RULE_INVENTORY_EXECUTOR_RATE_LIMITED": "There have been too many recent sign-ins with this host's dedicated bastion account (including test sign-ins), so the inventory did not start. Try again later.",
+    "RULE_EXECUTOR_CHECK_CONNECTION_FAILED": "Could not reach this host. Check the address, port, and network, then try again.",
+    "RULE_EXECUTOR_CHECK_LOGIN_FAILED": "The host rejected sign-in for {account}. Make sure the account exists on the host and has the platform's public key installed (key) or the correct password (password).",
+    "RULE_EXECUTOR_CHECK_HOST_KEY_MISMATCH": "The host's identity fingerprint does not match the record. The platform did not send the account's credentials. Confirm the host, then accept the new fingerprint or reset it.",
+    "RULE_EXECUTOR_CHECK_HOST_KEY_CHECK_FAILED": "Could not verify the host's identity fingerprint, so the platform did not sign in. Try again later.",
+    "RULE_EXECUTOR_CHECK_ESCALATION_DENIED": "Signed in, but {account} is not allowed to change other accounts' passwords. Add a sudo rule for the password-change program on the host.",
+    "RULE_EXECUTOR_CHECK_ESCALATION_NEEDS_NOPASSWD": "Signed in, but the host has no sudo rule that lets {account} run the password-change program without a password. Either no rule exists yet, or the rule is not set to NOPASSWD. A key-based account needs a password-change rule with NOPASSWD.",
+    "RULE_EXECUTOR_CHECK_UNAVAILABLE": "The account has no usable secret, so the platform did not sign in. Set up the account again.",
+    "RULE_EXECUTOR_CHECK_ROTATION_PENDING": "The account's password is being changed, so the platform did not sign in. Test again after it finishes.",
+    "RULE_EXECUTOR_CHECK_TIMEOUT": "The host did not respond in time, so the result is unknown. Try again later.",
+    "RULE_EXECUTOR_CHECK_PLATFORM_UNSUPPORTED": "Test sign-in is not available for this type of host yet.",
+    "RULE_EXECUTOR_CHECK_RATE_LIMITED": "Too many tests. Try again later.",
+    "CONFLICT_EXECUTOR_CHECK_BUSY": "The account is busy with another task (a password change or an inventory), so the platform did not sign in. Try again later.",
+    "INTERNAL_EXECUTOR_CHECK": "The test sign-in did not complete because of a server error. Try again later.",
+    "VALIDATION_INVENTORY_IGNORE_REASON": "An ignore reason is required and must not be too long",
+    "VALIDATION_INVALID_FINDING_ID": "Invalid inventory finding ID",
+    "NOTFOUND_INVENTORY_FINDING": "Inventory finding not found",
+    "INTERNAL_INVENTORY_QUERY": "Failed to query account inventory",
+    "INTERNAL_INVENTORY_UPDATE": "Account inventory operation failed",
     "NOTFOUND_ASSET_ACCOUNT": "The account does not exist or does not belong to this asset",
     "NOTFOUND_ASSET_ACCOUNT_SOURCE": "The source account to copy from does not exist",
     "NOTFOUND_ASSET_CREDENTIAL": "The asset does not exist, or its credentials could not be read",
@@ -5175,7 +5330,7 @@
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "An mssql host must not contain a comma (it conflicts with the port separator in the connection string)",
     "VALIDATION_ASSET_PROTOCOL": "Invalid protocol; only ssh, rdp, vnc, mysql, postgres, redis, mssql and k8s are supported",
     "VALIDATION_ASSET_RDP_SECURITY": "rdp_security accepts only an empty value (keep current), nla or tls",
-    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel accepts only an empty value (derived from the protocol), posix_ssh, windows_winrm, windows_ssh or none; posix_ssh requires the ssh protocol, windows_winrm and windows_ssh require the rdp or ssh protocol",
+    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel accepts only an empty value (derived from the protocol), posix_ssh, windows_winrm, windows_ssh, db_native or none; posix_ssh requires the ssh protocol, windows_winrm and windows_ssh require the rdp or ssh protocol, db_native requires the mysql, postgres or mssql protocol",
     "VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS": "The rotation channel settings are incomplete or malformed: windows_winrm requires a connection scheme (http or https), https requires a certificate verification mode (system, ca or insecure), the ca mode requires a parsable CA certificate in PEM form, and a port must be 0 (use the default) or between 1 and 65535",
     "VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED": "At least one filter is required (session_id/user_id/asset_id/time range)",
     "VALIDATION_AUDIT_INTEGRITY_FROM_FORMAT": "from must be in YYYY-MM-DD format",
@@ -5375,7 +5530,19 @@
     "RULE_AUTHORIZATION_SELF_SUBJECT": "You cannot create or modify authorization rules for yourself, a group you belong to, or an agent you own",
     "RULE_APPROVER_SCOPE_SUBJECT_OVERLAP": "Approvers and requesters must not overlap",
     "RULE_AGENT_OWNER_TRANSFER_SELF_GRANT": "The new owner previously created an active authorization or approver scope for this agent, or cast an approval vote that is still in effect, so the transfer is not allowed",
-    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "You can only narrow the account scope of this rule; widening it is not allowed"
+    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "You can only narrow the account scope of this rule; widening it is not allowed",
+    "RULE_ACCOUNT_EXECUTOR_MANAGED": "This is the bastion service account. Manage it from the asset's bastion service account section.",
+    "RULE_CREDENTIAL_PURPOSE_MISMATCH": "This credential is already used for a different purpose (login account or bastion service account) and cannot be mixed.",
+    "RULE_EXECUTOR_PROTOCOL_UNSUPPORTED": "This asset's protocol does not support a bastion service account.",
+    "RULE_EXECUTOR_SECRET_TYPE_UNSUPPORTED": "This asset does not support a key as the bastion service account.",
+    "RULE_EXECUTOR_SHARED_HOST_COUNT": "After this change, this secret will be the bastion service account on {count} hosts. Confirm the host count and submit again.",
+    "RULE_EXECUTOR_STATE_CHANGED": "The bastion service account has been changed. Reload and try again.",
+    "RULE_EXECUTOR_CONVERT_CANDIDATE_PENDING": "This account still has an unverified candidate secret. Resolve it before converting.",
+    "NOTFOUND_ASSET_EXECUTOR": "This asset has no bastion service account yet.",
+    "NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY": "This bastion service account has no public key to export.",
+    "VALIDATION_EXECUTOR_SOURCE_INVALID": "The bastion service account settings are incomplete or the source is invalid.",
+    "INTERNAL_ASSET_EXECUTOR_READ": "Failed to read the bastion service account.",
+    "INTERNAL_ASSET_EXECUTOR_WRITE": "Failed to save the bastion service account."
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "This provider has a groups claim name set, but the groups scope is not requested. Most providers will not emit group claims, so no mapping rule will match and roles already granted by rules are revoked.",
@@ -5427,6 +5594,7 @@
     "password_history_count": "Password reuse history count",
     "password_max_age_days": "Maximum password age (days)",
     "asset_secret_max_age_days": "Maximum asset account credential age (days)",
+    "host_privileged_groups_posix": "Host privileged groups (POSIX)",
     "password_min_length": "Minimum password length",
     "password_require_alnum": "Password must contain letters and digits",
     "recording_failclose_enabled": "Block new connections on recording failure",
@@ -5491,7 +5659,8 @@
     "syslog_non_tls": "Syslog forwarding unencrypted ({protocol})",
     "vnc_unencrypted": "VNC protocol unencrypted",
     "winrm_http_ntlm": "WinRM rotation channel over http (NTLM message-level encryption only, no TLS)",
-    "winrm_tls_insecure": "WinRM rotation channel does not verify the server certificate"
+    "winrm_tls_insecure": "WinRM rotation channel does not verify the server certificate",
+    "db_rotation_unencrypted": "Database rotation connection is unencrypted (passwords may be sent in clear text)"
   },
   "transportNote": {
     "ldap_ui_managed": "Maintained on the directory settings page under Identity Management",
@@ -5503,7 +5672,8 @@
     "syslog_protocol": "Forwarding protocol: {protocol}",
     "syslog_unset": "Syslog forwarding not configured",
     "vnc_no_encryption": "VNC/RFB protocol has no encryption option; all assets are always plaintext channels",
-    "winrm_rotation_channel": "Rotation channel (system path, not a user connection): NTLM message-level encryption is always on; http means no TLS transport and insecure means an unverified certificate, both counted as deviations"
+    "winrm_rotation_channel": "Rotation channel (system path, not a user connection): NTLM message-level encryption is always on; http means no TLS transport and insecure means an unverified certificate, both counted as deviations",
+    "db_rotation_channel": "Rotation channel (system path, not a user connection): when the database connection does not use TLS (any mode other than require, verify-ca, or verify-full), old and new passwords may cross the network in clear text; counted as a deviation"
   },
   "transportPreflight": {
     "db_reject": "Switching to strict will reject {n} database asset without TLS | Switching to strict will reject {n} database assets without TLS",
@@ -6898,6 +7068,12 @@
         "host_key_mismatch": "Host key did not match the record on connection: authentication was allowed and the stored sign-in credentials go to an unverified host (recorded)",
         "host_key_cred_sent": "After a host key mismatch was allowed, the sign-in credentials were sent to that host (with the authentication result)",
         "retention_floor_raised": "During the upgrade, a data retention period below the minimum was raised to the minimum (or the checkpoint retention followed it), with the old value, new value and reason",
+        "inventory_scan": "Started a host account inventory",
+        "inventory_scan_done": "A host account inventory finished",
+        "executor_login_check": "Tested sign-in to a host with the dedicated bastion account",
+        "executor_login_check_done": "A dedicated bastion account test sign-in finished; when it did not complete, the account was busy, the account had been changed, the test was interrupted, or the result was not saved",
+        "inventory_ignore": "Marked a host account finding as ignored",
+        "inventory_reopen": "Reopened a host account finding",
         "host_key_adopt": "Adopted an observed host key fingerprint as the record",
         "agent_tool_call_args_viewed": "Viewed the sensitive original arguments of a tool call (recorded)",
         "unlock": "Unlocked account",
@@ -7582,6 +7758,7 @@
     "password_history_count": "Checked only at the next password change; existing history is not removed retroactively. 0 means reuse is not checked.",
     "password_max_age_days": "Evaluated at every sign-in; anyone whose password is past its age is asked to change it at the next sign-in. 0 means passwords never expire.",
     "asset_secret_max_age_days": "Used only as the yardstick when the rotation evidence report is produced; it never changes a password. 0 means no age is set.",
+    "host_privileged_groups_posix": "Only affects how later inventories judge privilege; nothing on any host is changed. Each inventory records the list it used.",
     "force_change_on_reset": "Evaluated the moment an administrator resets a password; accounts reset earlier are unaffected.",
     "mfa_required": "Takes effect at the next sign-in; people already signed in are unaffected.",
     "web_idle_minutes": "Applies to people already signed in as well, who are signed out at the next token renewal at the latest. 0 means no idle timeout.",
@@ -8598,6 +8775,10 @@
       "concurrent_instance_detected": {
         "name": "Concurrent instance detected",
         "description": "At startup, another instance may be running against the same database (started with a confirmed override, or other guard-enabled connections were found)"
+      },
+      "unmanaged_privileged_account": {
+        "name": "Unmanaged privileged account",
+        "description": "A host account inventory found accounts that can log in, hold privileges, and are not yet managed"
       }
     },
     "groups": {
@@ -8668,7 +8849,8 @@
       "scopeNodes": "{nodes} ({count} nodes)",
       "scopeNodeDeleted": "Node #{id} (deleted)",
       "targetNamed": "{name} ({kind} #{id})",
-      "viewPermissionOverview": "View {name}'s permission overview"
+      "viewPermissionOverview": "View {name}'s permission overview",
+      "viewHostInventory": "View this host's account inventory"
     },
     "targetKinds": {
       "asset": "Asset",
@@ -9110,5 +9292,569 @@
       "discard": "Discard changes and preview",
       "back": "Back to editing"
     }
+  },
+  "assetExecutor": {
+    "title": "Bastion service account",
+    "notForUsers": "Not for user connections",
+    "unconfiguredHint": "The platform signs in to this host with this account to change passwords and inventory host accounts on your behalf. People cannot connect with it, and it never appears in authorization rules or the account list when connecting.",
+    "howToPrepare": "How to prepare this account",
+    "unsupportedProtocol": "A bastion service account can't be set on {protocol} assets. Only SSH and RDP hosts are supported.",
+    "protocolLabel": {
+      "vnc": "VNC",
+      "mysql": "MySQL",
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "mssql": "SQL Server",
+      "k8s": "Kubernetes"
+    },
+    "loadFailed": "This section can't be loaded right now. Please reopen it later.",
+    "reload": "Reload",
+    "set": "Set",
+    "getPublicKey": "Get public key",
+    "replace": "Replace",
+    "clear": "Clear",
+    "justSet": "Just set",
+    "justConverted": "Just converted",
+    "immediateNote": "Actions in this section take effect immediately and are not part of Save below.",
+    "outOfScopeNote": "This shared credential is outside your scope, so its key fingerprint and public key aren't available. You can still replace or clear it.",
+    "credentialLink": "Change password or schedule in Credentials",
+    "convertedRotateHint": "People may already know the {account} password. We recommend changing it in Credentials.",
+    "fields": {
+      "account": "Account name",
+      "secretSource": "Secret source",
+      "secretType": "Type",
+      "fingerprint": "Key fingerprint"
+    },
+    "sourceLabel": {
+      "generate": "Platform-generated key",
+      "inline": "Password entered directly",
+      "inlineKey": "Private key entered directly",
+      "convert": "Converted from an existing account",
+      "shared": "Shared credential \"{name}\"",
+      "sharedOutOfScope": "Shared credential outside your scope",
+      "dedicated": "A secret used only on this host"
+    },
+    "sharedTag": "Shared · {count} hosts",
+    "sharedTagOutOfScope": "Shared",
+    "copyFingerprint": "Copy fingerprint",
+    "fingerprintCopied": "Fingerprint copied",
+    "publicKey": {
+      "title": "Public key for {account}",
+      "copy": "Copy",
+      "download": "Download",
+      "copied": "Public key copied",
+      "logged": "This retrieval was recorded in the operation log",
+      "loggedEvery": "Every time the public key is retrieved, it's recorded in the operation log.",
+      "unavailable": "The public key can't be retrieved right now. The section has been reloaded.",
+      "loading": "Retrieving…",
+      "label": "Public key",
+      "addHint": "Add it to {account}'s authorized keys on this host."
+    },
+    "help": {
+      "first": "A platform-generated key needs its public key added on the host; a password needs the right permissions on the host first. Expand for the steps.",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "generateTitle": "Platform-generated key",
+      "generateBody": "Add the public key line to ~account/.ssh/authorized_keys on this host.",
+      "rotateTitle": "Sudo rule needed for password changes",
+      "rotateBody": "For a non-root service account to change other accounts' passwords, the host must allow it to run the password-change program as root. For a key-based service account, allow it without a password, for example (use the actual account name):",
+      "rotateWarning": "What this rule means: the rule can change the password of any account on the host, root included. Granting it is equivalent to handing the service account root. The product does not claim to restrict what the service account does, and it does not detect the service account being used outside the platform.",
+      "passwordTitle": "Password",
+      "passwordBody": "A password-based service account needs no public key. Allow it to run the same program as root and let sudo ask for a password, for example:",
+      "passwordSudoWarning": "The platform first tries the rule without a password and sends the service account's password only when the host asks for it. The host's sudo must check the service account's own password. If sudo is set to check another password (for example root's or the target user's), or is connected to another verification such as a one-time password, a failed check makes sudo read the next line, which contains the new password, as another password attempt. Use a key-based service account in those environments.",
+      "passwordWindows": "On Windows hosts, the account needs admin rights to change other accounts' passwords.",
+      "docPointer": "See the section \"Changing Linux and Unix account passwords through the bastion service account\" in the operations document docs/ops/upgrade-sop.md for details."
+    },
+    "clearConfirm": {
+      "title": "Clear this host's bastion service account?",
+      "body": "The platform will stop signing in to this host as {account}. It won't delete the {account} account or key on the host; remove them on the host if needed.",
+      "endGenerate": "The platform-generated key will be deleted from the platform and can't be recovered.",
+      "endShared": "The shared credential is kept, and the other {count} hosts aren't affected.",
+      "endSharedOutOfScope": "The shared credential is kept, and other hosts aren't affected.",
+      "endSecret": "This secret will be deleted from the platform and can't be recovered.",
+      "cancel": "Cancel",
+      "confirm": "Clear"
+    },
+    "clearDone": "Cleared. The {account} account and key are still on the host; remove them there if needed.",
+    "clearFailed": "Not cleared. Please try again later.",
+    "stateChanged": {
+      "replaced": "Not {action}: another admin just changed this host's bastion service account to {account}. The current setting is shown below; review it before trying again.",
+      "cleared": "Not {action}: another admin just cleared this host's bastion service account. The current setting is shown below.",
+      "alreadySet": "Not set: another admin just set {account} as this host's bastion service account. The current setting is shown below; review it before trying again.",
+      "actionClear": "cleared",
+      "actionReplace": "replaced"
+    },
+    "error": {
+      "usernameTaken": "Not set: this host already has an account named {account}. To let the platform use it, convert the existing account instead; no need to re-enter the password.",
+      "useConvert": "Convert existing account instead",
+      "hostCountChanged": "Not set: this {secret} is now used on {to} hosts. Another admin just added it to another host, so the count changed from {from} to {to}. Please confirm again.",
+      "confirmCount": "Confirm {count} hosts and set",
+      "purposeMismatch": "Not set: this credential is already used for user connections on other hosts. One secret can't serve both user connections and the platform. Choose another one, or use a platform-generated key instead.",
+      "useGenerate": "Use a platform-generated key instead",
+      "useInlinePassword": "Enter a password directly instead",
+      "convertPending": "Not converted: a new password for {account} is still awaiting verification. Convert after the retry finishes, or after discarding it in Password plans.",
+      "convertRotationActive": "Not converted: the {account} password is being changed. Convert after this round finishes.",
+      "convertOutOfSync": "Not converted: the last password change for {account} didn't finish on every host. Retry or abandon that round in Credentials, then convert.",
+      "replaceRotationActive": "Not replaced: this secret is being changed. Replace it after the change finishes.",
+      "clearRotationActive": "Not cleared: this secret is being changed. Clear it after the change finishes.",
+      "openRotation": "View rotation progress in a new tab",
+      "openPlans": "Open Password plans in a new tab",
+      "openCredentials": "Open Credentials in a new tab",
+      "recheckConvert": "Check again and convert",
+      "purposeMismatchWindows": "Not set: this credential is already used for user connections on other hosts. One secret can't serve both user connections and the platform. Choose another one, or enter a password directly instead."
+    },
+    "dialog": {
+      "setTitle": "Set bastion service account",
+      "replaceTitle": "Replace bastion service account",
+      "purpose": "Only the platform uses this account. People can't connect with it, and it never appears in authorization rules or the account list when connecting.",
+      "replaceDescKeep": "Currently {account} ({source}). After replacing, the platform uses the new setting. The old key is deleted from the platform; the {account} account and key on the host are not removed.",
+      "replaceDescSecret": "Currently {account} ({source}). After replacing, the platform uses the new setting. The old secret is deleted from the platform; the {account} account and key on the host are not removed.",
+      "replaceDescShared": "Currently {account} ({source}). After replacing, the platform uses the new setting. The shared credential is kept, and the {account} account on the host is not removed.",
+      "windowsNote": "Windows hosts sign in with passwords only, so a platform-generated key isn't available.",
+      "noPermission": "You don't have the credential permissions needed to set this account.",
+      "needCreate": "Requires permission to create credentials",
+      "needBind": "Requires permission to bind credentials",
+      "needUpdate": "Requires permission to edit credentials",
+      "cancel": "Cancel",
+      "done": "Done",
+      "back": "Back to other methods",
+      "recommended": "Recommended",
+      "sourceGenerate": "Platform-generated key",
+      "sourceGenerateDesc": "The platform creates a new key pair. The private key stays in the platform and no one can retrieve it. You only add the public key to this host.",
+      "sourceShared": "Use a shared credential",
+      "sourceSharedDesc": "The same secret is used on other hosts too. You'll see the total number of hosts after choosing.",
+      "sourceInline": "Enter a password or private key",
+      "sourceInlinePassword": "Enter a password",
+      "sourceInlineDesc": "Enter this account's current password or private key, used only on this host.",
+      "sourceInlinePasswordDesc": "Enter this account's current password, used only on this host.",
+      "convertEntry": "Already have a suitable account on this host?",
+      "convertLink": "Convert an existing account",
+      "usernameLabel": "Account name",
+      "usernameHint": "This account must exist on the host and have admin rights to change other accounts' passwords.",
+      "secretTypeLabel": "Secret type",
+      "password": "Password",
+      "privateKey": "Private key",
+      "credentialLabel": "Shared credential",
+      "credentialUsername": "The account name follows the credential: {account}.",
+      "disabledWindowsKey": "Windows hosts accept passwords only",
+      "disabledLoginUse": "Already used for user connections",
+      "executorUse": "Already the service account on {count} hosts",
+      "submitGenerate": "Generate and set",
+      "submitGenerateReplace": "Generate and replace",
+      "submitSet": "Set",
+      "submitReplace": "Replace",
+      "submitConvert": "Convert to bastion service account",
+      "submitting": "Setting…",
+      "submittingGenerate": "Generating…",
+      "resultOk": "{account} is now this host's bastion service account.",
+      "techDetails": "Technical details",
+      "createFailed": "The setup couldn't be completed. Please try again later.",
+      "resultNextTitle": "One more step: add this public key to {account}'s authorized keys on the host.",
+      "resultNextBody": "Until then, the platform can't sign in. When it's added, select Done, then Test sign-in in the section.",
+      "sourceLabel": "Where the secret comes from",
+      "prepareLink": "How to prepare this account",
+      "optionAccount": "Account {account}"
+    },
+    "convert": {
+      "title": "Convert existing account",
+      "desc": "Turn an account already on this host into the bastion service account. The secret stays the same and nothing needs to change on the host.",
+      "accountLabel": "Account to convert",
+      "disabledDefault": "The default account can't be converted. Make another account the default first.",
+      "disabledShared": "Accounts on a shared credential can't be converted. Use \"Use a shared credential\" instead.",
+      "effectsTitle": "After converting, only the platform uses {account}:",
+      "effect1": "1. Anyone connected as {account} stays connected until they end the session.",
+      "effect2": "2. No one can connect to this host as {account} afterward.",
+      "effect3": "3. Authorization rules or approvals that name {account} no longer apply to this host. The platform doesn't edit those rules.",
+      "rotateAdvice": "People may already know the {account} password. We recommend changing it in Credentials after converting.",
+      "placeholder": "Choose an account on this host"
+    },
+    "sharedConfirm": {
+      "titlePassword": "This password will be the bastion service account on {count} hosts, including this one.",
+      "titleKey": "This key will be the bastion service account on {count} hosts, including this one.",
+      "leak": "If it leaks from any one host, all {count} are exposed.",
+      "rotateSend": "Every time the platform uses it to change other accounts' passwords, this password is sent to every one of the {count} hosts; if any host is compromised, the password can be captured on the next change.",
+      "adviceKey": "To share, we recommend a platform-generated key.",
+      "checkPassword": "I understand this password will be used on {count} hosts",
+      "checkKey": "I understand this key will be used on {count} hosts",
+      "secretPassword": "password",
+      "secretKey": "key"
+    },
+    "credentialLead": "Password changes and schedules are handled in Credentials.",
+    "loginCheck": {
+      "button": "Test sign-in",
+      "retry": "Test again",
+      "testingButton": "Testing...",
+      "unconfirmed": {
+        "head": "Sign-in not confirmed yet.",
+        "key": "After adding the public key and sudo rule on the host, select Test sign-in.",
+        "password": "After setting the sudo rule on the host, select Test sign-in.",
+        "other": "Select Test sign-in to confirm the platform can sign in and elevate to change passwords."
+      },
+      "testing": {
+        "head": "Testing.",
+        "body": "Signing in to this host as {account} and checking the elevation needed to change passwords."
+      },
+      "success": {
+        "head": "Sign-in works.",
+        "root": "Tested {time}: signed in as {account}, which already has the rights to change passwords.",
+        "nopasswd": "Tested {time}: signed in as {account} and can elevate to change passwords.",
+        "password": "Tested {time}: signed in as {account} and can elevate with its password to change passwords."
+      },
+      "inventoryRead": {
+        "ok": "It can also read the sudo rules, so host account inventory will be complete.",
+        "denied": "It cannot read the sudo rules, so host account inventory results will be marked as possibly incomplete. To get a complete inventory, add the read rule."
+      },
+      "setupLink": "How to set it up",
+      "unsupported": "Test sign-in is not available for this type of host yet",
+      "hostKeyNote": "No host fingerprint is recorded for this host yet. This sign-in will record the current one.",
+      "fix": {
+        "hostKey": "View host key",
+        "credential": "Go to Credentials"
+      },
+      "unknown": {
+        "head": "The test did not pass.",
+        "body": "Test again. If it keeps failing, contact an administrator.",
+        "code": "Result code: {code}"
+      },
+      "result": {
+        "connection": {
+          "head": "Could not reach this host.",
+          "body": "Check the address, port, and network, then try again."
+        },
+        "loginKey": {
+          "head": "Can't sign in.",
+          "body": "The host rejected {account}'s key. Check that the public key is in {account}'s authorized keys on the host, then test again."
+        },
+        "loginPassword": {
+          "head": "Can't sign in.",
+          "body": "The host rejected {account}'s password."
+        },
+        "hostKeyMismatch": {
+          "head": "The host's identity fingerprint does not match the record.",
+          "body": "The platform did not send {account}'s credentials. Confirm the host, then accept the new fingerprint or reset it."
+        },
+        "hostKeyCheck": {
+          "head": "Could not verify the host's identity fingerprint.",
+          "body": "The platform did not sign in. Try again later."
+        },
+        "escalationDenied": {
+          "head": "Signs in, but can't change passwords.",
+          "body": "{account} lacks the sudo permission needed to change other accounts' passwords. Add a sudo rule for {account} on the host, then test again."
+        },
+        "escalationNopasswd": {
+          "head": "Signs in, but can't change passwords.",
+          "body": "The host has no sudo rule that lets {account} run the password-change program without a password. Either no rule exists yet, or the rule is not set to NOPASSWD. A key-based account needs a password-change rule with NOPASSWD. Add the rule before testing again."
+        },
+        "unavailable": {
+          "head": "The account has no usable secret.",
+          "body": "The platform did not sign in. Set up the account again."
+        },
+        "rotation": {
+          "head": "The account's password is being changed.",
+          "body": "The platform did not sign in. Test again after it finishes."
+        },
+        "timeout": {
+          "head": "The host did not respond in time.",
+          "body": "The result is unknown. Try again later."
+        }
+      },
+      "readRule": {
+        "title": "Reading sudo rules (optional)",
+        "body": "For host account inventory to read the full sudo rules, an account other than root needs one more read-only rule. Copy the arguments exactly; use the path that command -v tar prints on the host:",
+        "warning": "Copy the arguments exactly as shown. Do not omit the arguments, do not use wildcards, do not add SETENV, and do not keep TAR_OPTIONS through env_keep or disable env_reset. Any of these lets the account run tar with arbitrary options, which is equivalent to giving it root.",
+        "passwordNote": "For a password-based account, remove NOPASSWD: from the rule and copy the rest as is."
+      }
+    }
+  },
+  "hostInventory": {
+    "title": "Host account inventory",
+    "subtitle": "{name} - {host}",
+    "entry": "Host account inventory",
+    "entryUnsupported": "Only Linux and Unix hosts are supported",
+    "readonlyNote": "You can view inventory results. Starting an inventory, ignoring and reopening need the \"Host account inventory\" permission.",
+    "status": {
+      "queued": "Waiting",
+      "running": "Running",
+      "succeeded": "Completed",
+      "partial": "Partly completed: results may be incomplete",
+      "failed": "Not completed",
+      "interrupted": "Interrupted",
+      "none": "Not inventoried",
+      "unknown": "Status: {value}"
+    },
+    "line": {
+      "never": "This host has not been inventoried yet.",
+      "queued": "Waiting (other inventories are ahead)",
+      "running": "Running. This usually takes under a minute.",
+      "done": "Completed: {accounts} accounts, {privileged} privileged, {unmanaged} needing action.",
+      "doneNone": "No privileged accounts need action.",
+      "interrupted": "This inventory was interrupted by a service restart. Earlier results are unchanged.",
+      "stillRunning": "Still in progress",
+      "pollFailed": "Could not read the status",
+      "summary": "{accounts} accounts, {privileged} privileged, {unmanaged} of them needing action."
+    },
+    "lastRun": "Last run: {time} - {by} - {identity}",
+    "login": {
+      "default": "signed in with default account {name}",
+      "defaultNoName": "signed in with the default account",
+      "executor": "signed in with the bastion service account",
+      "other": "sign-in mode: {mode}",
+      "defaultNoExecutor": "signed in with the default account {name} (no bastion service account is set on this host; some settings may not be readable)",
+      "defaultNoNameNoExecutor": "signed in with the default account (no bastion service account is set on this host; some settings may not be readable)"
+    },
+    "previousResult": "Previous result ({time})",
+    "btn": {
+      "start": "Start inventory",
+      "rescan": "Run again",
+      "scanning": "Running",
+      "refresh": "Refresh",
+      "retry": "Retry"
+    },
+    "confirm": {
+      "title": "Run the inventory with default account {name}?",
+      "titleNoName": "Run the inventory with this host's default account?",
+      "body": "Only account and group lists are read; the host is not changed.",
+      "fingerprint": "No host fingerprint is recorded for this host yet. This sign-in will record the current one.",
+      "fingerprintUnknown": "The host fingerprint record for this host could not be read, so it is unclear whether one exists. If none is recorded yet, this sign-in will record the current one.",
+      "ok": "Start",
+      "cancel": "Cancel",
+      "titleExecutor": "Sign in with the bastion service account {account} to run the inventory?",
+      "titleExecutorNoName": "Sign in with this host's bastion service account to run the inventory?",
+      "noExecutor": "This host has no bastion service account, so some settings may not be readable and results will be marked \"May be incomplete\"."
+    },
+    "never": {
+      "card": "The inventory signs in with this host's default account and reads its accounts and groups without changing anything. It finds accounts that have administrative rights but are not managed on the platform.",
+      "readonly": "Someone with the \"Host account inventory\" permission needs to start it.",
+      "noDefault": "This host has no bastion service account or default account, so the inventory has no account to sign in with.",
+      "cardExecutor": "The inventory signs in with this host's bastion service account and reads its accounts and groups without changing anything. It finds accounts that have administrative rights but are not managed on the platform."
+    },
+    "goAccounts": "Go to account settings",
+    "goHostKey": "Go to host key settings",
+    "newCount": "+{n} new",
+    "count": {
+      "accounts": "Accounts on host",
+      "privileged": "Privileged accounts",
+      "unmanaged": "Privileged accounts needing action",
+      "unmanagedClickable": "Privileged accounts needing action (click to show only these)"
+    },
+    "filter": {
+      "needs": "Needs action ({n})",
+      "privileged": "All privileged",
+      "all": "All accounts",
+      "ignored": "Ignored",
+      "gone": "No longer on host",
+      "needsNoCount": "Needs action"
+    },
+    "search": {
+      "placeholder": "Account name (this page only)",
+      "hint": "Searches this page only"
+    },
+    "col": {
+      "account": "Account",
+      "uid": "uid",
+      "reasons": "Why privileged",
+      "login": "Can sign in",
+      "managed": "Managed",
+      "state": "State",
+      "verdict": "Result",
+      "actions": "Actions",
+      "asset": "Asset",
+      "firstSeen": "First seen",
+      "lastSeen": "Last seen"
+    },
+    "caption": {
+      "host": "Host account inventory results for {name}",
+      "global": "Host accounts to handle"
+    },
+    "cell": {
+      "canLogin": "Can sign in",
+      "cannotLogin": "Cannot sign in",
+      "loginNote": "Based on the login shell",
+      "managed": "Managed",
+      "unmanaged": "Not managed",
+      "ignored": "Ignored",
+      "ignoredTip": "Reason: {reason}; by {by}; at {time}",
+      "gone": "No longer on host",
+      "goneTip": "Last seen: {time}",
+      "incomplete": "May be incomplete",
+      "incompleteTip": "The sudo rules were not fully read. This account may have more rights than shown.",
+      "uidConflict": "Duplicate name",
+      "uidConflictTip": "The host has several accounts with this name and different uids. The uid shown is the first one.",
+      "hiddenChars": "Hidden characters",
+      "hiddenCharsTip": "The name contains invisible characters, shown as <U+XXXX>.",
+      "nonAscii": "Non-English characters",
+      "nonAsciiTip": "The name has characters other than English letters, digits and common symbols. They may look like ordinary letters, so check that you recognize this account.",
+      "copy": "Copy account name",
+      "copied": "Copied",
+      "moreReasons": "+{n}",
+      "byRules": "from sudo rules",
+      "none": "—"
+    },
+    "reason": {
+      "uid0": "Superuser account (uid 0)",
+      "group": "In privileged group \"{name}\"",
+      "group_primary": "Primary group is \"{name}\"",
+      "sudoers_user": "Granted directly by a sudo rule",
+      "sudoers_group": "Granted to group \"{name}\" by a sudo rule",
+      "sudoers_alias": "Granted through alias \"{name}\" in a sudo rule",
+      "sudoers_all": "A sudo rule grants everyone",
+      "sudoers_all_targetpw": "A sudo rule grants everyone but asks for the target account password (not privileged on its own)",
+      "unknown": "Other reason: {raw}"
+    },
+    "empty": {
+      "needs": "No accounts need action.",
+      "needsHint": "All privileged accounts are managed or ignored.",
+      "partialExtra": "This inventory is incomplete, so some privileged accounts may not have been found.",
+      "other": "No accounts match."
+    },
+    "partial": {
+      "title": "This inventory is incomplete",
+      "after": "Accounts marked \"may be incomplete\" may have more rights than shown, and accounts not listed as privileged may still have sudo rights.",
+      "hint": "To read all rules, set this host's bastion service account (it needs read access to the sudo rules) and run the inventory again.",
+      "hintTitle": "How to read the full rules",
+      "gap": "{check}: {state}",
+      "gapSudo": "Could not read sudo rules ({path}): the sign-in account has no read permission.",
+      "hintExecutor": "To read all rules, give this host's bastion service account {account} read access to the sudo rules and run the inventory again.",
+      "hintExecutorNoName": "To read all rules, give this host's bastion service account read access to the sudo rules and run the inventory again.",
+      "hintGo": "Go to bastion service account settings",
+      "gapSudoEscalation": "Could not read sudo rules ({path}): the service account has no read permission, and the elevated read was denied too."
+    },
+    "coverage": {
+      "title": "What this run checked",
+      "check": {
+        "accounts": "Account list",
+        "groups": "Group list",
+        "sudoers_main": "Main sudo rules file",
+        "sudoers_dir": "sudo rules directory",
+        "sudoers_unresolved": "Unparsed sudo rule entries",
+        "unknown": "Check: {raw}"
+      },
+      "state": {
+        "checked": "Checked",
+        "partial": "Partly read ({n} skipped)",
+        "unreadable": "Cannot read: the sign-in account lacks permission",
+        "absent": "Not on the host",
+        "failed": "Read failed",
+        "undetermined": "Main rules file could not be read, so this cannot be determined",
+        "unknown": "State: {raw}"
+      },
+      "reason": {
+        "permission_denied": "The sign-in account has no read permission",
+        "nondefault_location": "The sudo rules file is not in the usual place, so it was not checked",
+        "not_included": "The main rules file does not include this directory, so rules in it do not apply",
+        "invalid_rows": "Some rows had an unexpected format and were skipped",
+        "command_failed": "The query did not succeed",
+        "via_escalation": "Read through privilege escalation",
+        "escalation_denied": "The sign-in account cannot read it, and the escalated read was refused",
+        "other": "Other reason: {raw}"
+      },
+      "duplicate": "{n} rows with the same name were merged",
+      "groups": "Privileged groups used: {groups}",
+      "groupsEmpty": "Privileged groups used: none (only uid 0 and sudo rules)",
+      "adjustGroups": "Adjust privileged groups",
+      "fixedTitle": "What this inventory does not check",
+      "fixed": {
+        "other_escalation_tools": "Settings of other privilege tools such as doas or polkit.",
+        "unenumerated_directory_accounts": "Accounts provided by a directory service such as LDAP that cannot be listed locally.",
+        "replaced_noninteractive_shell": "Accounts whose login shell was replaced by a non-interactive program are still judged by the shell.",
+        "unknown": "Other item: {raw}"
+      },
+      "checkWithPath": "{label} ({path})",
+      "setupLink": "How to set it up"
+    },
+    "failure": {
+      "generic": "This inventory did not complete.",
+      "code": "Code: {code}",
+      "INVENTORY_HOST_KEY_MISMATCH": "The host fingerprint differs from the record, so the platform did not sign in.",
+      "INVENTORY_HOST_KEY_CHECK_FAILED": "The host fingerprint could not be checked, so the platform did not sign in.",
+      "INVENTORY_LOGIN_FAILED": "The host rejected the default account. Its password or key may no longer be valid.",
+      "INVENTORY_LOGIN_FAILED_more": "The platform tries once and never falls back to another account.",
+      "INVENTORY_CONNECTION_FAILED": "Could not reach the host.",
+      "INVENTORY_CONNECTION_FAILED_more": "Check the address, port and network.",
+      "INVENTORY_TIMEOUT": "The host answered too slowly and the time limit was reached.",
+      "INVENTORY_COMMAND_FAILED": "The read-only query on the host did not succeed.",
+      "INVENTORY_OUTPUT_LIMIT": "The host has more accounts or settings than one run can handle. No results were saved this time.",
+      "INVENTORY_OUTPUT_MALFORMED": "The host returned data in an unexpected format. No results were saved this time.",
+      "INVENTORY_NO_ACCOUNT": "When the run started, this host had no default account, or the default account had changed.",
+      "INVENTORY_NO_SECRET": "The default account has no usable password or key.",
+      "INVENTORY_ASSET_CHANGED": "When the run started, this host had been deleted or was no longer a Linux or Unix host.",
+      "INVENTORY_PERSIST_FAILED": "The results could not be saved. Earlier results are unchanged.",
+      "INVENTORY_INTERRUPTED": "The service restarted and this inventory was interrupted. Earlier results are unchanged.",
+      "INVENTORY_EXECUTOR_CHANGED": "When the run started, the dedicated bastion account for this host had been removed or replaced. The platform did not sign in and did not fall back to another account.",
+      "INVENTORY_EXECUTOR_BUSY": "When the run started, the dedicated bastion account for this host was being rotated, or the rotation did not finish in time. The platform did not sign in. Try again after the rotation completes.",
+      "INVENTORY_EXECUTOR_UNAVAILABLE": "When the run started, the dedicated bastion account for this host had no usable secret. The platform did not sign in and did not fall back to another account. Set the dedicated account up again."
+    },
+    "action": {
+      "manage": "Manage",
+      "ignore": "Ignore",
+      "reopen": "Reopen",
+      "viewHost": "Open this host",
+      "denied": "You do not have inventory permission for this host",
+      "manageDenied": "You do not have account management permission for this host"
+    },
+    "ignore": {
+      "title": "Ignore this account",
+      "reasonLabel": "Why is it fine to leave it unmanaged?",
+      "placeholder": "For example: vendor maintenance account, contract runs to year end",
+      "note": "If a later inventory finds a new privilege reason, or the account disappears and comes back, it is reopened automatically.",
+      "submit": "Ignore",
+      "cancel": "Cancel",
+      "errEmpty": "Enter a reason",
+      "errLong": "Reason is limited to 500 characters (now {n})",
+      "errControl": "The reason cannot contain control characters",
+      "success": "Ignored {name}"
+    },
+    "reopen": {
+      "confirm": "Reopen {name}? It returns to the list that needs action.",
+      "ok": "Reopen",
+      "cancel": "Cancel",
+      "success": "Reopened {name}"
+    },
+    "err": {
+      "noViewScope": "You do not have permission to view this host",
+      "notFound": "This host was not found. It may have been deleted.",
+      "readFailed": "Could not load",
+      "itemGone": "This result no longer exists",
+      "notInScope": "This host is outside your inventory permission scope",
+      "running": "An inventory is already running on this host",
+      "platform": "Only Linux and Unix hosts are supported",
+      "noAccount": "This host has no bastion service account or default account, so the inventory has no account to sign in with.",
+      "noSecret": "The default account has no usable password or key",
+      "generic": "The operation did not succeed. Try again later."
+    },
+    "started": "Inventory started",
+    "global": {
+      "title": "Host account inventory",
+      "subtitle": "Accounts on inventoried hosts that have administrative rights but are not managed on the platform. Inventories are started from each host on the Assets page.",
+      "tabOpen": "To handle",
+      "empty": "No accounts need handling right now.",
+      "emptyHint": "Only hosts that were inventoried are listed. Hosts never inventoried do not appear here.",
+      "incompleteNote": "Hosts whose latest inventory was incomplete or did not finish may have accounts that were not found. Check each host in its inventory view.",
+      "goAssets": "Go to Assets",
+      "loadFailed": "Could not load",
+      "lastSeenDays": "{n} days ago",
+      "lastSeenToday": "Today",
+      "assetFallback": "Asset #{id}"
+    },
+    "manageBar": {
+      "info": "Filled in from the host account inventory: {name}. Add a password or key, then add the account.",
+      "shared": "The account name comes from a shared credential. Pick the shared credential named {name}; if the names differ, the inventory will not show it as managed.",
+      "hidden": "This account name has invisible characters and was filled in as is: {shown}. Confirm it is the account you mean to manage.",
+      "done": "{name} is now managed.",
+      "back": "Back to host account inventory"
+    },
+    "policyPreview": {
+      "label": "Groups treated as privileged:",
+      "empty": "No groups are treated as privileged now. Only uid 0 and sudo rules count.",
+      "colon": "Cannot contain a colon",
+      "tooLong": "Name is too long",
+      "badChar": "Contains a character that is not allowed",
+      "overLimit": "Over the limit of 32 entries",
+      "rejected": "Saving will be rejected. Fix the entries marked as warnings first."
+    },
+    "thisRun": "This run: {time} - {by} - {identity}",
+    "previousResultNoTime": "Previous result",
+    "skeletonLabel": "Results will be listed here when the inventory finishes",
+    "goExecutor": "Go to service account settings"
   }
 }

@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { computed } from 'vue'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import Assets from '../Assets.vue'
-import { getAssetGroups, createAsset, testAssetConnection } from '@/api/assets'
+import { getAssetGroups, createAsset, updateAsset, testAssetConnection } from '@/api/assets'
 import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 import { grantFor } from '@/composables/__tests__/capabilityFixtures'
+import i18n from '@/i18n'
+import { riskLabel } from '@/utils/transportDisplay'
 
 // happy-dom 的 MutationObserver 與 el-table key-render-helper 不相容，
 // 以 no-op stub 取代（與 MyConnections.spec.js 同法）
@@ -69,11 +72,13 @@ const tableColumnStub = {
 const tableStubs = { ElTable: tableStub, ElTableColumn: tableColumnStub }
 
 const getAssetListMock = vi.fn()
+const getAssetMock = vi.fn()
 
 const getAssetTagsMock = vi.fn()
 
 vi.mock('@/api/assets', () => ({
   getAssetList: (...args) => getAssetListMock(...args),
+  getAsset: (...args) => getAssetMock(...args),
   createAsset: vi.fn(),
   updateAsset: vi.fn(),
   deleteAsset: vi.fn(),
@@ -106,6 +111,18 @@ vi.mock('@/api/credentials', () => ({
   detachCredentialBinding: vi.fn(),
   createCredential: vi.fn(),
   updateCredential: vi.fn(),
+}))
+
+const getExecutorMock = vi.fn()
+const deleteExecutorMock = vi.fn()
+const getExecutorCheckMock = vi.fn()
+vi.mock('@/api/assetExecutor', () => ({
+  getAssetExecutor: (...a) => getExecutorMock(...a),
+  deleteAssetExecutor: (...a) => deleteExecutorMock(...a),
+  putAssetExecutor: vi.fn(),
+  exportAssetExecutorPublicKey: vi.fn(),
+  getExecutorLoginCheck: (...a) => getExecutorCheckMock(...a),
+  runExecutorLoginCheck: vi.fn(),
 }))
 
 vi.mock('@/api/authorizations', () => ({
@@ -1091,5 +1108,389 @@ describe('Assets 改密通道側車', () => {
       effective_rotation_channel: 'posix_ssh',
     })
     expect(wrapper.vm.windowsSshEnabled).toBe(false)
+  })
+
+  it('資料庫資產編輯儲存：已設 db_native 只改名稱時照送 db_native；未設通道者不帶通道欄位', async () => {
+    updateAsset.mockResolvedValue({ data: { code: 0, data: {} } })
+    const wrapper = await mountForm()
+    wrapper.vm.handleEdit({
+      id: 21, name: 'mysql-app', protocol: 'mssql', host: 'db.example', port: 1433,
+      username: 'app', active: true,
+      rotation_channel: 'db_native', effective_rotation_channel: 'db_native',
+    })
+    await flushPromises()
+    expect(wrapper.vm.form.rotation_channel).toBe('db_native')
+    wrapper.vm.form.name = 'mysql-app-renamed'
+    await wrapper.vm.handleSubmit()
+
+    expect(updateAsset).toHaveBeenCalled()
+    const [id, payload] = updateAsset.mock.calls.at(-1)
+    expect(id).toBe(21)
+    expect(payload.name).toBe('mysql-app-renamed')
+    expect(payload.rotation_channel).toBe('db_native')
+    expect(Object.keys(payload)).not.toContain('winrm_scheme')
+
+    // 從未設定通道的資料庫資產：維持不帶欄位，伺服端不動
+    wrapper.vm.handleEdit({
+      id: 22, name: 'pg-report', protocol: 'postgres', host: 'db.example', port: 5432,
+      username: 'ro', active: true, effective_rotation_channel: 'none',
+    })
+    await flushPromises()
+    wrapper.vm.form.name = 'pg-report-renamed'
+    await wrapper.vm.handleSubmit()
+    const [, payload2] = updateAsset.mock.calls.at(-1)
+    expect(Object.keys(payload2)).not.toContain('rotation_channel')
+  })
+})
+
+// 資料庫資產的改密通道選擇與未加密提示（斷言以 i18n 鍵與 data-test 為準）
+describe('Assets 資料庫帳號自行改密', () => {
+  const dialogStub = {
+    props: ['modelValue'],
+    template: '<div v-if="modelValue" class="dialog-stub"><slot /></div>',
+  }
+  const treeSelectStub = {
+    name: 'ElTreeSelect',
+    props: ['modelValue', 'data'],
+    template: '<div class="tree-select-stub" />',
+  }
+  // 可聚焦的 select 替身：focus() 把焦點交給內部 input，供「前往 TLS 模式」斷言
+  const selectStub = {
+    name: 'ElSelect',
+    props: ['modelValue'],
+    template: '<div class="select-stub"><input class="select-stub__input" /><slot /></div>',
+    methods: {
+      focus() {
+        this.$el.querySelector('input').focus()
+      },
+    },
+  }
+  const optionStub = {
+    name: 'ElOption',
+    props: ['label', 'value'],
+    template: '<div class="option-stub">{{ label }}</div>',
+  }
+
+  const mountForm = async () => {
+    const wrapper = mountView({
+      'el-dialog': dialogStub,
+      'el-tree-select': treeSelectStub,
+      'el-select': selectStub,
+      'el-option': optionStub,
+      RouterLink: { template: '<a><slot /></a>' },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  const createDB = async (protocol, extra = {}) => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    Object.assign(wrapper.vm.form, {
+      name: 'orders-db', protocol, host: '10.20.1.15', port: 3306, username: 'app', password: 'pw',
+      ...extra,
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    resetCapabilities()
+    setUserRoles(['admin'])
+    getAssetListMock.mockResolvedValue(sampleAssets)
+    getAssetGroups.mockResolvedValue({ data: [], total: 0 })
+    getSecurityPoliciesMock.mockResolvedValue({
+      data: [{ key: 'access_policy_default', type: 'enum', value: 'open' }],
+    })
+  })
+
+  it('mysql 出現改密通道選單，位置在 TLS 模式之後、允許資料庫清單之前；redis 與 vnc 不出現', async () => {
+    const wrapper = await createDB('mysql')
+    const html = wrapper.html()
+    const tls = html.indexOf('data-test="db-tls-mode-item"')
+    const channel = html.indexOf('data-test="db-rotation-channel"')
+    const allowed = html.indexOf('data-test="allowed-databases"')
+    expect(tls).toBeGreaterThan(-1)
+    expect(channel).toBeGreaterThan(tls)
+    expect(allowed).toBeGreaterThan(channel)
+
+    for (const protocol of ['redis', 'vnc']) {
+      wrapper.vm.form.protocol = protocol
+      await flushPromises()
+      expect(wrapper.find('[data-test="db-rotation-channel"]').exists()).toBe(false)
+    }
+  })
+
+  it('db_native＋TLS 預設：出現未加密警示，內文帶 TLS 預設檔位的既有文案', async () => {
+    const tSpy = vi.spyOn(i18n.global, 't')
+    const wrapper = await createDB('mysql', { db_tls_mode: '', rotation_channel: 'db_native' })
+    expect(wrapper.find('[data-test="db-rotation-unencrypted"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="db-rotation-encrypted"]').exists()).toBe(false)
+    const bodyCall = tSpy.mock.calls.find(([key]) => key === 'assets.dbRotation.unencryptedBody')
+    expect(bodyCall).toBeTruthy()
+    expect(bodyCall[1]).toEqual({ mode: i18n.global.t('assets.tlsDefault') })
+    expect(tSpy.mock.calls.some(([key]) => key === 'assets.tlsDefault')).toBe(true)
+    tSpy.mockRestore()
+  })
+
+  it('TLS 模式空值：欄位顯示「預設」檔位名（與警示同一說法），不顯示佔位字；值仍為空字串', async () => {
+    // 用真的 el-select：替身不會重現空字串被當成未選而顯示 placeholder
+    const wrapper = mountView({
+      'el-dialog': dialogStub,
+      'el-tree-select': treeSelectStub,
+      RouterLink: { template: '<a><slot /></a>' },
+    })
+    await flushPromises()
+    wrapper.vm.handleCreate()
+    Object.assign(wrapper.vm.form, {
+      name: 'orders-db', protocol: 'mysql', host: '10.20.1.15', port: 3306, username: 'app', password: 'pw',
+      db_tls_mode: '', rotation_channel: 'db_native',
+    })
+    await flushPromises()
+    const tlsDefault = i18n.global.t('assets.tlsDefault')
+    const tlsItem = wrapper.find('[data-test="db-tls-mode-item"]')
+    expect(tlsItem.find('.el-select__placeholder').classes()).not.toContain('is-transparent')
+    expect(tlsItem.find('.el-select__placeholder').text()).toBe(tlsDefault)
+    expect(wrapper.find('[data-test="db-rotation-unencrypted-body"]').text()).toContain(tlsDefault)
+    expect(wrapper.vm.form.db_tls_mode).toBe('')
+
+    // 改密通道「不使用」的值也是空字串：同樣顯示選項名而非佔位字
+    wrapper.vm.form.rotation_channel = ''
+    await flushPromises()
+    const channelItem = wrapper.find('[data-test="db-rotation-channel-item"]')
+    expect(channelItem.find('.el-select__placeholder').text()).toBe(i18n.global.t('assets.dbRotation.optionNone'))
+    expect(wrapper.vm.form.rotation_channel).toBe('')
+  })
+
+  it('TLS 改為加密檔位：警示消失、改為加密說明行（不經儲存）', async () => {
+    const wrapper = await createDB('postgres', { db_tls_mode: '', rotation_channel: 'db_native' })
+    expect(wrapper.find('[data-test="db-rotation-unencrypted"]').exists()).toBe(true)
+    wrapper.vm.form.db_tls_mode = 'verify-ca'
+    await flushPromises()
+    expect(wrapper.find('[data-test="db-rotation-unencrypted"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="db-rotation-encrypted"]').exists()).toBe(true)
+    expect(createAsset).not.toHaveBeenCalled()
+  })
+
+  it('按「前往 TLS 模式」：焦點移到 TLS 模式欄位，TLS 模式的值不變', async () => {
+    const wrapper = await createDB('mysql', { db_tls_mode: 'disable', rotation_channel: 'db_native' })
+    document.body.appendChild(wrapper.element)
+    await wrapper.find('[data-test="db-rotation-go-tls"]').trigger('click')
+    await flushPromises()
+    const tlsItem = wrapper.find('[data-test="db-tls-mode-item"]').element
+    expect(tlsItem.contains(document.activeElement)).toBe(true)
+    expect(wrapper.vm.form.db_tls_mode).toBe('disable')
+  })
+
+  it('「這個方式的限制」預設收合，展開後五條皆渲染', async () => {
+    const wrapper = await createDB('mssql', { rotation_channel: 'db_native' })
+    expect(wrapper.find('[data-test="db-rotation-limits"]').exists()).toBe(true)
+    for (let n = 1; n <= 5; n += 1) {
+      expect(wrapper.find(`[data-test="db-rotation-limit-${n}"]`).exists()).toBe(false)
+    }
+    await wrapper.find('[data-test="db-rotation-limits-toggle"]').trigger('click')
+    for (let n = 1; n <= 5; n += 1) {
+      const li = wrapper.find(`[data-test="db-rotation-limit-${n}"]`)
+      expect(li.exists()).toBe(true)
+      expect(li.text()).toBe(i18n.global.t(`assets.dbRotation.limit${n}`))
+    }
+  })
+
+  it('以未加密的 db_native 儲存：不跳確認框，payload 帶 db_native', async () => {
+    createAsset.mockResolvedValue({ id: 31 })
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
+    vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
+    const wrapper = await createDB('postgres', { port: 5432, db_tls_mode: 'disable', rotation_channel: 'db_native' })
+    await wrapper.vm.handleSubmit()
+    expect(createAsset).toHaveBeenCalled()
+    expect(createAsset.mock.calls.at(-1)[0].rotation_channel).toBe('db_native')
+    expect(confirmSpy).toHaveBeenCalledTimes(0)
+    confirmSpy.mockRestore()
+  })
+
+  it('列表：資料庫改密未加密的風險項以 riskLabel 顯示在風險說明內', async () => {
+    getAssetListMock.mockResolvedValue({
+      data: [{
+        id: 41, name: 'orders-db', protocol: 'mysql', host: 'h', port: 3306, active: true,
+        permission: 'connect',
+        transmission_risks: [{ key: 'db_tls_disabled' }, { key: 'db_rotation_unencrypted' }],
+      }],
+      total: 1, page: 1, page_size: 20,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('.host-risk').text()).toBe(i18n.global.t('assets.riskCount', 2))
+    // 風險說明在 tooltip 的 content 插槽；就地展開插槽的 vnode 取文字
+    const tip = wrapper.findAllComponents({ name: 'ElTooltip' }).find((c) => c.find('.host-risk').exists())
+    expect(tip).toBeTruthy()
+    const collect = (nodes) =>
+      (Array.isArray(nodes) ? nodes : [nodes]).flatMap((n) => {
+        if (n == null) return []
+        if (typeof n === 'string') return [n.trim()]
+        return typeof n.children === 'string' ? [n.children.trim()] : collect(n.children)
+      })
+    const texts = collect(tip.vm.$slots.content())
+    expect(texts).toContain(riskLabel({ key: 'db_rotation_unencrypted' }))
+  })
+})
+
+// 專用帳號區塊的動作即時生效，不經抽屜表單：動作後關抽屜不得出現放棄修改確認
+describe('ExecutorSectionNotDirty', () => {
+  const dialogStub = {
+    props: ['modelValue'],
+    template: '<div v-if="modelValue" class="dialog-stub"><slot /></div>',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    resetCapabilities()
+    setUserRoles(['admin'])
+    setCapabilitiesForTests(['asset:view', 'asset:update', 'credential:manage', 'asset:executor-manage'])
+    getAssetListMock.mockResolvedValue(sampleAssets)
+    getAssetGroups.mockResolvedValue({ data: [], total: 0 })
+    getSecurityPoliciesMock.mockResolvedValue({
+      data: [{ key: 'access_policy_default', type: 'enum', value: 'open' }],
+    })
+    getExecutorMock.mockResolvedValue({
+      configured: true, account_id: 7, username: 'cx-exec', secret_type: 'ssh_key', source: 'generate',
+      has_public_key: true, fingerprint: 'SHA256:x', credential: { credential_id: 31 },
+    })
+    deleteExecutorMock.mockResolvedValue({})
+  })
+
+  it('清除專用帳號後取消抽屜：不跳確認框，抽屜關閉', async () => {
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
+    const wrapper = mountView({ 'el-dialog': dialogStub, RouterLink: { template: '<a><slot /></a>' } })
+    await flushPromises()
+    wrapper.vm.handleEdit({
+      id: 1, name: 'ssh-server', protocol: 'ssh', host: 'h', port: 22, username: 'u', active: true,
+    })
+    await flushPromises()
+    expect(wrapper.vm.drawerVisible).toBe(true)
+    getExecutorMock.mockResolvedValue({ configured: false })
+    await wrapper.get('[data-test="executor-clear"]').trigger('click')
+    await wrapper.get('[data-test="executor-clear-confirm-btn"]').trigger('click')
+    await flushPromises()
+    expect(deleteExecutorMock).toHaveBeenCalledTimes(1)
+    wrapper.findComponent({ name: 'AssetEditDrawerContent' }).vm.$emit('cancel')
+    await flushPromises()
+    expect(confirmSpy).toHaveBeenCalledTimes(0)
+    expect(wrapper.vm.drawerVisible).toBe(false)
+    confirmSpy.mockRestore()
+  })
+})
+
+// 編輯深連結：?edit 與 ?focus 依落點表捲動，結束後兩個參數都清掉
+describe('EditFocusTargets', () => {
+  const dialogStub = {
+    props: ['modelValue'],
+    template: '<div v-if="modelValue" class="dialog-stub"><slot /></div>',
+  }
+  let scrollSpy
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    resetCapabilities()
+    setUserRoles(['admin'])
+    setCapabilitiesForTests(['asset:view', 'asset:update', 'credential:manage', 'asset:executor-manage'])
+    getAssetListMock.mockResolvedValue(sampleAssets)
+    getAssetGroups.mockResolvedValue({ data: [], total: 0 })
+    getSecurityPoliciesMock.mockResolvedValue({
+      data: [{ key: 'access_policy_default', type: 'enum', value: 'open' }],
+    })
+    getAssetMock.mockResolvedValue({
+      id: 5, name: 'ssh-server', protocol: 'ssh', host: 'h', port: 22, username: 'u', active: true,
+    })
+    getExecutorMock.mockResolvedValue({ configured: false })
+    scrollSpy = vi.fn()
+    Element.prototype.scrollIntoView = scrollSpy
+  })
+
+  const openWith = async (query) => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/assets', component: { template: '<div />' } }],
+    })
+    await router.push({ path: '/assets', query })
+    await router.isReady()
+    const wrapper = mount(Assets, {
+      attachTo: document.body,
+      global: {
+        plugins: [ElementPlus, router],
+        stubs: { ...tableStubs, 'el-dialog': dialogStub, RouterLink: { template: '<a><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+    await new Promise((r) => setTimeout(r, 50))
+    await flushPromises()
+    return { wrapper, router }
+  }
+
+  it('?edit=5 捲到主機金鑰區塊（既有行為），結束後參數清掉', async () => {
+    const { router } = await openWith({ edit: '5' })
+    expect(getAssetMock).toHaveBeenCalledWith(5)
+    expect(router.currentRoute.value.query).toEqual({})
+  })
+
+  it('?edit=5&focus=executor 捲到專用帳號區塊，結束後兩個參數都清掉', async () => {
+    const { router } = await openWith({ edit: '5', focus: 'executor' })
+    const targets = scrollSpy.mock.instances.map((el) => el.getAttribute?.('data-focus'))
+    expect(targets).toContain('executor')
+    expect(router.currentRoute.value.query).toEqual({})
+  })
+
+  it('新分頁深連結：能力比區塊晚載入時，區塊仍出現、捲到並聚焦區塊標題', async () => {
+    resetCapabilities()
+    const { router } = await openWith({ edit: '5', focus: 'executor' })
+    expect(document.querySelector('[data-test="executor-section"]')).toBeNull()
+    setCapabilitiesForTests(['asset:view', 'asset:update', 'credential:manage', 'asset:executor-manage'])
+    await flushPromises()
+    expect(document.querySelector('[data-test="executor-section"]')).not.toBeNull()
+    // 落點等待以逾時收尾（測試環境的 MutationObserver 為替身）
+    await new Promise((r) => setTimeout(r, 2100))
+    await flushPromises()
+    const targets = scrollSpy.mock.instances.map((el) => el.getAttribute?.('data-focus'))
+    expect(targets).toContain('executor')
+    expect(document.activeElement?.getAttribute('data-test')).toBe('executor-title')
+    expect(router.currentRoute.value.query).toEqual({})
+  }, 10000)
+
+  it('?edit=5&focus=executor-test-login 捲到專用帳號區塊並聚焦「測試登入」鈕，兩個參數都清掉', async () => {
+    getExecutorMock.mockResolvedValue({
+      configured: true, account_id: 7, username: 'cx-exec', secret_type: 'ssh_key', source: 'generate',
+      credential: { credential_id: 31, credential_name: 'x', shared_credential: false, binding_count: 1 },
+      has_public_key: true, fingerprint: 'SHA256:abcd',
+    })
+    getExecutorCheckMock.mockResolvedValue({ tested: false, stale: false, success: false, code: '', method: '', inventory_read: '' })
+    const { router } = await openWith({ edit: '5', focus: 'executor-test-login' })
+    // 落點等待以逾時收尾（測試環境的 MutationObserver 為替身）
+    await new Promise((r) => setTimeout(r, 5200))
+    await flushPromises()
+    const targets = scrollSpy.mock.instances.map((el) => el.getAttribute?.('data-focus'))
+    expect(targets).toContain('executor')
+    expect(document.activeElement?.getAttribute('data-focus')).toBe('executor-test-login')
+    expect(router.currentRoute.value.query).toEqual({})
+  }, 15000)
+
+  it('同一資產關閉抽屜再開：專用帳號區塊重新讀取', async () => {
+    const { wrapper } = await openWith({ edit: '5' })
+    const calls = getExecutorMock.mock.calls.length
+    expect(calls).toBeGreaterThan(0)
+    wrapper.vm.drawerVisible = false
+    await flushPromises()
+    await wrapper.vm.handleEdit({ id: 5, name: 'ssh-server', protocol: 'ssh', host: 'h', port: 22, username: 'u', active: true })
+    await flushPromises()
+    expect(getExecutorMock.mock.calls.length).toBe(calls + 1)
+  })
+
+  it('未知的 focus 值退回主機金鑰，參數照清', async () => {
+    const { router } = await openWith({ edit: '5', focus: 'nope' })
+    const targets = scrollSpy.mock.instances.map((el) => el.getAttribute?.('data-focus'))
+    expect(targets).not.toContain('executor')
+    expect(router.currentRoute.value.query).toEqual({})
   })
 })

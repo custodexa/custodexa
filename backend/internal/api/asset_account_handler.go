@@ -127,6 +127,10 @@ func respondAccountError(c *gin.Context, internalCode apierror.ErrCode, err erro
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialProtocolMismatch, nil)
 	case errors.Is(err, asset.ErrCredentialRotationActive):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialRotationActive, nil)
+	case errors.Is(err, asset.ErrAssetAccountExecutorManaged):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountExecutorManaged, nil)
+	case errors.Is(err, asset.ErrCredentialPurposeMismatch):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialPurposeMismatch, nil)
 	case errors.Is(err, asset.ErrAssetAccountUsernameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountUsernameExists, nil)
 	case errors.Is(err, asset.ErrAssetAccountDefaultConflict):

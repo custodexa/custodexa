@@ -1,6 +1,9 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-01（角色預覽：新增 `GET /role-definitions/:id/preview-capabilities`，需 `role:view`，回應只讀的角色預覽權限集合與頁面狀態（`role`、`previewable`、`reason`、`permissions`、`entry_states`），內建超級管理者角色不可預覽；端點不寫資料、不簽發任何憑證或票證；未新增錯誤碼、審計動作與資料表。路由新增一條）
+> 最後更新：2026-11-04（盤點的兩條讀取 `GET /assets/:id/account-inventory` 與 `GET /account-inventory/findings` 的可視範圍改與資產詳情、資產列表相同；此前：堡壘機專用帳號的測試登入與盤點接上專用帳號：新增 `POST`／`GET /assets/:id/executor/login-check`，需 `asset:executor-manage`，發起一次登入與改密權限檢查並讀取最近一次結果；新增 9 個結果碼與 4 個 HTTP 錯誤碼、審計動作 `executor_login_check` 與 `executor_login_check_done`；有專用帳號的資產，盤點改以專用帳號登入並在非 root 時經提權讀取 sudo 規則，盤點發起新增 3 個錯誤碼、結束原因碼增為 16 個、檢查範圍原因增為 `via_escalation` 與 `escalation_denied`；`GET /assets/:id/account-inventory` 的回應新增頂層 `next_identity` 與盤點紀錄的 `identity_username`；`host_key_mismatch` 的 `path` 多一個值 `executor_login_check`，`unmanaged_privileged_account` 的 `identity_mode` 多一個值 `executor`。新增資料表 `executor_login_checks`，見資料庫規格。路由新增兩條）
+> 前次更新：2026-11-03（合併同日兩項。其一，以堡壘機專用帳號代改 POSIX 帳號密碼：改密執行記錄新增 `execution_method`（`self`、`executor_root`、`executor_sudo_nopasswd`、`executor_sudo_password`）、`executor_account_id`、`executor_username`、`executor_credential_id` 四欄，計畫執行記錄（`GET /change-secret-plans/:id/records`）與批次詳情（`GET /change-secret-batches/:id`）的記錄都帶，範圍化檢視者讀不到專用帳號的憑證時後三欄不帶、改帶 `executor_out_of_scope`；新增原因碼 `CHANGE_SECRET_EXECUTOR_LOGIN_FAILED`、`CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED`、`CHANGE_SECRET_EXECUTOR_ROTATION_PENDING`、`CHANGE_SECRET_EXECUTOR_CHANGED`、`CHANGE_SECRET_EXECUTOR_UNAVAILABLE`；計畫帳號範圍 `@ALL` 明定為全部登入帳號，不含堡壘機專用帳號。路由未變；其二，資產編輯畫面的堡壘機專用帳號區塊所需的三項回應加欄，路由未變：憑證列表與詳情的 `CredentialDTO` 新增 `purpose`（`login`／`executor`，該憑證未刪除掛載的用途，無掛載時不出現）；`GET`／`PUT /assets/:id/executor` 的回應新增 `source`（`generate`／`inline`／`shared`／`convert`，未記錄時不出現）與 `credential`（引用憑證的帳號列投影，範圍外共用憑證只帶共用與範圍外標記）。新增資料欄 `asset_accounts.executor_source`，見資料庫規格）
+> 前次更新：2026-11-03（主機帳號盤點：新增五條路由（發起盤點、讀取單資產結果、忽略與重新開啟結果、全域未納管特權帳號清單），讀取需 `asset:view`，發起與處置需新權限點 `account:discover`；新增 9 個錯誤碼、4 個審計動作、系統安全告警 `unmanaged_privileged_account`，`host_key_mismatch` 的 `path` 多一個值 `account_inventory`；只有審核者角色的帳號：直接指派三入口（`PUT /users/:id/roles`、`POST /users/:id/roles/:role`、建立帳號帶角色）使帳號只剩審核者角色時回 400 `VALIDATION_ROLE_SET_APPROVER_ONLY`；使用者群組三入口（`PUT /user-groups/:id/role-bindings`、`PUT /user-groups/:id/members`、`DELETE /user-groups/:id`）使原本不是此狀態的成員轉入時回 400 `VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS`，帶 `params.count` 與 `details.affected_users`；`GET /users` 與 `GET /users/:id` 的 User 新增 `approver_only`；`/auth/me` 新增呈現點 `ui:approval-history`，審核中心對讀得到審核歷史的稽核人員只呈現歷史；資料庫帳號自改密碼：資產 `rotation_channel` 值域新增 `db_native`，只相容 mysql、postgres、mssql；資產 `transmission_risks` 新增風險鍵 `db_rotation_unencrypted`；改密執行記錄新增 `transport_risk` 欄；新增原因碼 `CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED`；資料庫資產未設通道時的跳過原因改為 `CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`；計畫執行記錄與批次詳情的記錄對範圍化檢視者被收窄的列照帶 `transport_risk`；輪替報告記錄明細新增 `transport_risk`，`records.csv` 與 PDF 附表 B 末尾新增「傳輸」欄；堡壘機專用帳號：新增 `GET`／`PUT`／`DELETE /assets/:id/executor` 與 `GET /assets/:id/executor/public-key` 四條路由，需新權限點 `asset:executor-manage`（逐資產判定，範圍外與不存在同形 404）；資產帳號列表與連線、授權、申請路徑只列登入帳號，既有帳號與憑證寫入端點對專用帳號回 409 `RULE_ACCOUNT_EXECUTOR_MANAGED`；同一組憑證不得同時作為登入帳號與專用帳號（409 `RULE_CREDENTIAL_PURPOSE_MISMATCH`）；憑證詳情掛載列新增 `purpose`；新增錯誤碼十二個，見「堡壘機專用帳號」。路由新增九條（主機帳號盤點五條、堡壘機專用帳號四條））
+> 前次更新：2026-11-01（角色預覽：新增 `GET /role-definitions/:id/preview-capabilities`，需 `role:view`，回應只讀的角色預覽權限集合與頁面狀態（`role`、`previewable`、`reason`、`permissions`、`entry_states`），內建超級管理者角色不可預覽；端點不寫資料、不簽發任何憑證或票證；未新增錯誤碼、審計動作與資料表。路由新增一條）
 > 前次更新：2026-11-01（授權閘的描述對齊實作：角色定義的四條寫入、主機金鑰的重置與採用、權限狀態確認接受共七條路由，路由層即只放行內建超級管理者，非超級管理者在讀取請求本文前就得到 403 `AUTH_PERMISSION_DENIED`，原有的服務層與鏈上重驗保留；`session:terminate` 不再可指派給自訂角色，終止仍只有超級管理者可執行；`GET /role-definitions/:id` 新增 `retired_permissions`。路由未變）
 > 前次更新：2026-10-31（`GET`／`PATCH /auth/me` 的能力投影新增呈現點 `ui:session-monitor`：內建超級管理者或稽核員，與監看票簽發的角色資格判定同源，只供會話頁監看入口呈現。路由未變）
 > 前次更新：2026-10-26（新增使用者權限一覽兩條唯讀路由：`GET /users/:id/permission-overview` 與 `GET /users/:id/permission-overview/assets/:asset_id`，需 `user:manage`；新增錯誤碼 `INTERNAL_PERMISSION_OVERVIEW`；回應欄位與兩種可視界線見「使用者權限一覽」）
@@ -93,8 +96,10 @@
 | 排程時刻預覽 | 1 | `/api/v1/schedules` | 由後端解析排程字串並回下次幾個執行時刻（`schedule:manage`；不讀寫任何資料） |
 | 金鑰管理 | 4 | `/api/v1/keys` | 金鑰清冊/DEK 輪替/KEK 重包/退役材料清理（`key:manage`） |
 | 資產 | 23 | `/api/v1/assets` | CRUD、批次新增（預檢與整批建立）、批次搬移／加標籤／刪除、連線測試、傳輸能力查詢、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
+| 堡壘機專用帳號 | 4 | `/api/v1/assets/:id/executor` | 平台代為執行管理工作時登入目標機的帳號：讀取、設定與更換（四種來源）、清除、公鑰匯出（`asset:executor-manage`，逐資產判定） |
 | 帳號憑證庫 | 15 | `/api/v1/credentials`、`/api/v1/assets/:id/accounts/:accountId/credential` | 憑證 CRUD、範圍轉換、直接寫入密文、掛載與卸載、更換掛載憑證、整組改密與逐台補跑、單台脫離共用（列表、詳情、改密進度需 `credential:view`；補跑與放棄需 `credential:rotate`；其餘寫入需任一憑證語義管理能力，各動作由服務層逐項判定） |
 | Host Key | 2 | `/api/v1/assets/:id/host-key` | TOFU host key 檢視/重置 |
+| 主機帳號盤點 | 5 | `/api/v1/assets/:id/account-inventory`、`/api/v1/account-inventory/findings` | 以資產預設帳號唯讀盤點 SSH 主機上的帳號與特權來源、結果的忽略與重新開啟、全域未納管特權帳號清單（讀取 `asset:view`，發起與處置 `account:discover`） |
 | 檔案管理（SFTP） | 5 | `/api/v1/assets/:id/files` | SSH 資產檔案列表/上下傳/建目錄/刪除 |
 | 資產節點 | 6 | `/api/v1/asset-groups` | 節點樹 CRUD＋樹導覽＋搬移 |
 | Session | 5 | `/api/v1/sessions` | 列表/詳情/活動/統計/終止（讀取需 `session:view`；終止只限超級管理者，`session:terminate` 不可指派給自訂角色） |
@@ -172,6 +177,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/access-reviews` | always |
 | GET | `/api/v1/access-reviews/:id` | always |
 | GET | `/api/v1/access-reviews/matrix` | always |
+| GET | `/api/v1/account-inventory/findings` | always |
 | GET | `/api/v1/agent-tasks` | always |
 | GET | `/api/v1/agent-tasks/:requestId` | always |
 | GET | `/api/v1/agent-tool-calls` | always |
@@ -196,12 +202,22 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | DELETE | `/api/v1/assets/:id` | always |
 | GET | `/api/v1/assets/:id` | always |
 | PUT | `/api/v1/assets/:id` | always |
+| GET | `/api/v1/assets/:id/account-inventory` | always |
+| POST | `/api/v1/assets/:id/account-inventory/findings/:findingId/ignore` | always |
+| POST | `/api/v1/assets/:id/account-inventory/findings/:findingId/reopen` | always |
+| POST | `/api/v1/assets/:id/account-inventory/scans` | always |
 | GET | `/api/v1/assets/:id/accounts` | always |
 | POST | `/api/v1/assets/:id/accounts` | always |
 | DELETE | `/api/v1/assets/:id/accounts/:accountId` | always |
 | PUT | `/api/v1/assets/:id/accounts/:accountId` | always |
 | PUT | `/api/v1/assets/:id/accounts/:accountId/credential` | always |
 | POST | `/api/v1/assets/:id/accounts/:accountId/set-default` | always |
+| DELETE | `/api/v1/assets/:id/executor` | always |
+| GET | `/api/v1/assets/:id/executor` | always |
+| PUT | `/api/v1/assets/:id/executor` | always |
+| GET | `/api/v1/assets/:id/executor/login-check` | always |
+| POST | `/api/v1/assets/:id/executor/login-check` | always |
+| GET | `/api/v1/assets/:id/executor/public-key` | always |
 | DELETE | `/api/v1/assets/:id/files` | always |
 | GET | `/api/v1/assets/:id/files` | always |
 | GET | `/api/v1/assets/:id/files/download` | always |
@@ -1150,8 +1166,9 @@ agent 主體，已刪除者不計）與 `can_self_create_agent`（安全政策 `
   `can_self_create_agent`）、`ui:assets-global`（全域資產檢視的呈現）、`ui:self-service-actions`
   （申請／待申請操作的呈現）、`ui:connect-bypass`（保留的內建超級管理者身分，僅用於前端連線豁免呈現）、
   `ui:super-admin`（同一保留身分，供只限超級管理者的畫面元素使用，與連線豁免分開）、
-  `ui:session-monitor`（內建超級管理者或稽核員，與監看票簽發的角色資格判定同源，只供會話頁監看入口呈現）。
-  持有全部可指派權限不等於持有 `ui:connect-bypass`、`ui:super-admin`、`ui:session-monitor` 或 `ui:approvals`。
+  `ui:session-monitor`（內建超級管理者或稽核員，與監看票簽發的角色資格判定同源，只供會話頁監看入口呈現）、
+  `ui:approval-history`（與 `GET /access-requests/history` 放行稽核人員的判定同一函式，供審核中心以唯讀方式只呈現歷史；判定查詢失敗時不給此點，`/auth/me` 照常回 200；角色預覽不產生此點）。
+  持有全部可指派權限不等於持有 `ui:connect-bypass`、`ui:super-admin`、`ui:session-monitor`、`ui:approvals` 或 `ui:approval-history`。
 - `scope_summary`：每個有效、可指派的權限點一筆 `{permission, binding_scope}`，按 `permission` 排序；`ui:` 點不列入。
   `binding_scope` 為 `"global"` 或 `"nodes"`：只要有一筆全系統生效的指派含此權限點並使其生效，就是 `"global"`
   （直接指派與經使用者群組的指派都算；沒有指派的主體與 agent 的固定範本視為全系統），此時只回這一筆、不帶 `nodes`，
@@ -2022,14 +2039,14 @@ GET /api/v1/assets
 
 ### 範圍化檢視者的資產回應與寫入
 
-「範圍化檢視者」是持有任一經**節點範圍指派**（直接或經使用者群組）取得的資產或資產帳號權限點的主體，不論該指派的節點目前是否仍存在；節點管理權限點（`assetgroup:manage`）不計入這個判定。下列欄位與規則只對範圍化檢視者出現或生效；只持全域指派、超級管理者、稽核員、一般使用者與 agent 且沒有任何節點範圍指派的主體，資產路由的回應鍵集與行為不變。這個標記只決定回應是否帶上呈現欄位，不授予任何能力，也不決定任何操作的範圍。
+「範圍化檢視者」是持有任一經**節點範圍指派**（直接或經使用者群組）取得的資產或資產帳號權限點的主體，不論該指派的節點目前是否仍存在；節點管理權限點（`assetgroup:manage`）與主機帳號盤點權限點（`account:discover`）不計入這個判定。下列欄位與規則只對範圍化檢視者出現或生效；只持全域指派、超級管理者、稽核員、一般使用者與 agent 且沒有任何節點範圍指派的主體，資產路由的回應鍵集與行為不變。這個標記只決定回應是否帶上呈現欄位，不授予任何能力，也不決定任何操作的範圍。
 
 **可視來源與聯集**：列表為「連線可視」（現行授權集合）與「管理可視」（`asset:view` 的節點範圍涵蓋該資產的任一歸屬節點）的聯集，同一資產只出現一次。搜尋、協定、啟用狀態、節點與 `credential_pending` 篩選先套用，再計 `total` 與分頁。範圍化檢視者可使用 `credential_pending` 與 `tags` 篩選；`tags` 篩選疊加在上述聯集上，於計 `total` 與分頁之前生效，只比對聯集內資產自己的標籤，語義（逗號分隔 AND、整詞、大小寫不敏感、20 項上限）與全域主體相同。其他非 admin/auditor 主體帶 `tags` 仍回 400。只經管理可視的列以資產列為底，帶 `credential_pending`，不帶 `permission`、`access_state` 等連線欄位；只經連線可視的列欄位不變。
 
 **列表與詳情新增欄位**:
 | 欄位 | 位置 | 說明 |
 |------|------|------|
-| `actions` | 每列、詳情 | 物件，鍵固定為 `edit`、`disable`、`delete`、`test_connection`、`manage_accounts`；值 `{"allowed": bool, "reason"?: string, "count"?: int}`。`reason` 取 `no_capability`（沒有含該權限點的有效指派）、`out_of_scope`（有該能力，但範圍不涵蓋這筆資產）、`out_of_scope_nodes`（刪除或停用被範圍外歸屬擋下，帶 `count`）。旗標只決定畫面，每個寫入端點仍自行裁決 |
+| `actions` | 每列、詳情 | 物件，鍵固定為 `edit`、`disable`、`delete`、`test_connection`、`manage_accounts`、`discover_accounts`（主機帳號盤點，依 `account:discover` 自己的有效範圍）；值 `{"allowed": bool, "reason"?: string, "count"?: int}`。`reason` 取 `no_capability`（沒有含該權限點的有效指派）、`out_of_scope`（有該能力，但範圍不涵蓋這筆資產）、`out_of_scope_nodes`（刪除或停用被範圍外歸屬擋下，帶 `count`）。旗標只決定畫面，每個寫入端點仍自行裁決 |
 | `out_of_scope_node_count` | 經管理可視的列、詳情 | 範圍外歸屬數（以 `asset:view` 的管理範圍計）；只有數字，不含範圍外節點的識別碼、名稱或路徑。只經連線可視的列不帶 |
 | `node_ids`、`node_paths` | 經管理可視的列、詳情 | 只含範圍內歸屬（`node_paths` 含定位用的祖先名稱）；範圍內沒有歸屬時兩鍵省略 |
 | `management_scope` | 列表頂層 | `{"effective_node_count": N, "inactive_node_count": N, "nodes": [{"id": N, "path": "..."}]}`：該主體節點範圍指派所指定的範圍節點本身（不展開其子節點；節點去重），仍存在者計入 `effective_node_count` 並列於 `nodes`（依 `path`、再依 `id` 升冪），已刪除者只計入 `inactive_node_count`，不帶名稱 |
@@ -2110,6 +2127,8 @@ POST /api/v1/assets/tags/delete   全面刪除（超級管理員保留；其餘�
 `winrm_scheme`／`winrm_port`／`winrm_tls_mode`／`rotation_ssh_port` 為 omitempty，設了才出現；`winrm_ca_cert` 只在
 `GET /assets/:id` 出現（供編輯表單回填），列表與建立／更新的回應一律抹去本體、以 `has_winrm_ca_cert` 代之。列表每筆另帶 `transmission_risks`
 （omitempty，`[{key, label}]`）＝該資產的傳輸風險項，含連線通道與改密通道兩者的風險鍵（見傳輸安全 API）。
+改密通道為 `db_native` 且資料庫連線 TLS 檔位不是 `require`／`verify-ca`／`verify-full`（含未設定與 `disable`）的資產，另帶改密風險鍵
+`db_rotation_unencrypted`，與連線本身的未加密風險鍵並列（兩者意義不同，都保留）。
 
 ### 批次操作
 
@@ -2224,14 +2243,15 @@ POST /api/v1/assets
 - `sftp_*` 僅 vnc 有意義（SFTP 側車檔案傳輸，選配）：`sftp_enabled=true` 時 `sftp_username` 必填、`sftp_port` 預設 22；`sftp_password` 後端 AES-256-GCM 加密存放，回應僅 `has_sftp_password` 布林；Update 時 `sftp_password` 空字串＝沿用既有
 - `access_policy`: `open`（不需申請）/ `reason`（填理由即連）/ `approval`（需核准）；非法值 400。Create 空字串或省略＝NULL（繼承全域預設鍵 `access_policy_default`）；Update 為指標欄位——省略＝不動、空字串＝清除覆寫回 NULL（非沿用既有）；變更經 asset hooks 入稽核
 - `node_ids`: 掛載節點 id 集（多歸屬；節點須存在否則 400）。Create 空/省略＝未分組；Update 省略（null）＝不動、空陣列＝清空全部掛載；成員變更以 `node_ids` 舊→新入稽核。回應恆帶 `node_ids`＋`node_paths`（全路徑顯示）
-- `rotation_channel`：改密通道（僅 ssh／rdp 資產有意義）。值域：`''`（未設定，依協定推導：ssh→`posix_ssh`，其餘→`none`）／
-  `posix_ssh`（限 ssh）／`windows_winrm`（限 rdp 或 ssh）／`windows_ssh`（限 rdp 或 ssh）／`none`（顯式不改密）；
-  值域外或與協定不相容回 400 `VALIDATION_ASSET_ROTATION_CHANNEL`。
+- `rotation_channel`：改密通道（僅 ssh／rdp／mysql／postgres／mssql 資產有意義）。值域：`''`（未設定，依協定推導：ssh→`posix_ssh`，其餘→`none`；資料庫協定不會被推導為 `db_native`）／
+  `posix_ssh`（限 ssh）／`windows_winrm`（限 rdp 或 ssh）／`windows_ssh`（限 rdp 或 ssh）／`db_native`（限 mysql、postgres、mssql）／`none`（顯式不改密）；
+  值域外或與協定不相容（例如對 redis 資產設 `db_native`）回 400 `VALIDATION_ASSET_ROTATION_CHANNEL`。
   `windows_winrm` 的附屬欄：`winrm_scheme`（`http`／`https`，必填）、`winrm_port`（0＝依 scheme 取 5985／5986）、
   `winrm_tls_mode`（僅 https：`system`＝作業系統信任錨／`ca`＝只信任上傳的 CA／`insecure`＝不驗證；https 必填，http 不得帶值）、
   `winrm_ca_cert`（僅 `ca` 模式，須為可解析的 PEM 憑證，儲存時即驗）。`windows_ssh` 的附屬欄：`rotation_ssh_port`
   （rdp 資產的目標 SSH 埠，0＝22；ssh 資產沿資產 `port`，本欄不參與）。兩個埠須為 0 或 1–65535。
   附屬欄不合回 400 `VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS`。驗證以套用後的最終資產為準（協定與通道同次變動時一併檢查）。
+  `db_native` 沒有附屬欄；是否加密沿用資產的資料庫連線 TLS 檔位設定。
   Update 為指標欄位：省略＝不動、`""`／0＝清回推導；**協定改為與通道不相容時，伺服端一律清空通道與全部附屬欄**
   （不論該次請求是否帶這些欄），並將清空事實與清空前的通道值記入該次更新稽核
   （`rotation_channel_cleared`、`previous_rotation_channel`）。
@@ -2585,6 +2605,134 @@ passphrase；更新時私鑰未帶或空字串＝沿用現行私鑰，不重驗)
 **稽核**: 建立/更新/刪除/切換預設各記一筆專屬稽核，Details **只記被變更的欄位名稱**，
 絕不含密文或明文憑證。
 
+### 堡壘機專用帳號
+
+平台代為執行管理工作（例如代改密碼）時登入目標機所用的帳號，每台至多一筆。它是一筆用途為
+`executor` 的掛載列：永不為預設帳號、標為特權，**不能拿來連線**，也不出現在帳號列表、連線選帳號、
+授權規則、存取申請與帳號目標的改密計劃與批次中。只支援 ssh 與 rdp 資產。
+
+```
+GET    /api/v1/assets/:id/executor             （asset:executor-manage）
+PUT    /api/v1/assets/:id/executor             （asset:executor-manage＋依來源的憑證能力）
+DELETE /api/v1/assets/:id/executor             （asset:executor-manage；204 No Content）
+GET    /api/v1/assets/:id/executor/public-key  （asset:executor-manage；text/plain 附件）
+POST   /api/v1/assets/:id/executor/login-check （asset:executor-manage；發起一次測試登入）
+GET    /api/v1/assets/:id/executor/login-check （asset:executor-manage；最近一次結果）
+```
+
+**權限**：四條路由都需 `asset:executor-manage`，在服務層以路徑上的資產為目標判定；不持有回 403
+`AUTH_PERMISSION_DENIED`（單一形狀），範圍外與資產不存在同形 404 `NOTFOUND_ASSET`。這個權限點不在內建
+資產管理員範本內，由超級管理者或自訂角色給予。`PUT` 另依來源要求憑證語義能力：`generate`、`inline`
+需 `credential:create`，`shared` 需 `credential:bind`，`convert` 需 `credential:update`；只持
+`credential:manage` 不算滿足。
+
+**讀取**：未設定時回 `{"configured": false}`。已設定時回 `configured`、`account_id`、`username`、
+`secret_type`；金鑰型且就位版本有公鑰、所引用憑證又在讀取者的憑證可見集合內時，另回
+`has_public_key` 與 `fingerprint`（SHA256）。所引用的共用憑證不在可見集合內時兩欄都不出現。
+讀取與設定的回應都不含私鑰與公鑰本體。
+
+**來源與憑證歸屬**：已設定時另回 `source`（`generate`／`inline`／`shared`／`convert`，記在掛載列，不由審計反查；
+本欄加入前設定的列為空，此時整欄省略）與 `credential`（引用憑證的帳號列投影，與資產帳號列表同一個投影器：
+共用憑證在讀取者範圍內時帶 `credential_id`、`credential_name`、`shared_credential`、`binding_count`、
+`credential_scope` 等；範圍外的共用憑證只帶 `shared_credential: true` 與 `credential_out_of_scope: true`，
+不帶識別、名稱與台數；不具憑證檢視能力者拿到精簡形狀）。`PUT` 的成功回應與 `GET` 同形，同樣帶這兩欄。
+`source` 屬設定者本來就知道的事實，不含秘密。
+
+**設定與更換**（`PUT`）：本文帶 `source` 與 `expected_account_id`（必帶；`0` 表示送出者認為目前沒有專用帳號，
+非零為要換掉的那一筆的 `account_id`，與當下不符回 409 `RULE_EXECUTOR_STATE_CHANGED`）。四種來源：
+
+```jsonc
+{ "source": "generate", "username": "cx-exec", "expected_account_id": 0 }
+{ "source": "inline", "username": "cx-exec", "password": "…", "expected_account_id": 0 }   // 或 private_key
+{ "source": "shared", "credential_id": 12, "acknowledged_host_count": 7, "expected_account_id": 0 }
+{ "source": "convert", "account_id": 34, "expected_account_id": 56 }
+```
+
+- `generate`：平台產生 ed25519 金鑰，建一份專用憑證；公鑰經匯出端點取得後由管理者加到目標機該帳號的
+  `authorized_keys`。Windows 類資產（rdp，或改密通道為 Windows 的 ssh 資產）不接受金鑰型專用帳號，回 422
+  `RULE_EXECUTOR_SECRET_TYPE_UNSUPPORTED`。
+- `inline`：直填密碼或私鑰，建一份專用憑證。
+- `shared`：選用一筆共用憑證。`acknowledged_host_count` 為設定後這組秘密作為專用帳號的總台數（含本台；
+  以同一筆共用憑證更換時不加一），缺漏或不符回 409 `RULE_EXECUTOR_SHARED_HOST_COUNT`，參數只有 `count`
+  （當下應確認的台數）。這筆憑證已掛在任何資產作為登入帳號時回 409 `RULE_CREDENTIAL_PURPOSE_MISMATCH`。
+- `convert`：把這台既有的登入帳號就地轉為專用帳號。預設帳號不可轉（400 `RULE_ACCOUNT_DEFAULT_REQUIRED`）；
+  引用共用憑證者不可轉（409 `RULE_CREDENTIAL_PURPOSE_MISMATCH`）；有未驗證候選秘密時回 409
+  `RULE_EXECUTOR_CONVERT_CANDIDATE_PENDING`。轉換後這個帳號不能再拿來連線，進行中的連線不中斷。
+
+更換時舊的專用帳號掛載移除，隨之不再被引用的專用憑證一併回收；所引用的憑證正在輪替時回 409
+`RULE_CREDENTIAL_ROTATION_ACTIVE`。成功回 200，本文含 `configured`、`account_id`、`username`、`secret_type`；
+不帶讀取回應的 `has_public_key` 與 `fingerprint`，需要時另以讀取端點取得。
+
+**清除**（`DELETE`）：選填查詢參數 `expected_account_id`，與 `PUT` 同語義：缺漏不比對；`0` 表示送出者認為目前沒有
+專用帳號，此時已有專用帳號回 409 `RULE_EXECUTOR_STATE_CHANGED`；非零與當下不符同樣 409。沒有專用帳號回 404
+`NOTFOUND_ASSET_EXECUTOR`。平台只移除掛載與回收專用憑證，**不會刪除目標機上的帳號或金鑰**。
+
+**公鑰匯出**：回 `text/plain` 單行 authorized_keys 格式，`Content-Disposition: attachment`；comment 為
+`<產品代號>-credential-<憑證識別>`，不帶資產識別。非金鑰型、沒有公鑰、或所引用的共用憑證不在可見集合內，
+一律 404 `NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY`。每次匯出留一筆讀取審計。
+
+**測試登入**（`POST`／`GET /assets/:id/executor/login-check`）：以專用帳號實際登入目標主機一次，確認「能登入」與
+「有代改所需的權限」，非 root 時另確認能不能讀取 sudo 規則；只讀不寫：執行與代改相同的改密程式但不送任何帳號列，
+不改任何密碼、不改主機設定（主機上仍會留下登入紀錄與 sudo 的指令紀錄）。只支援有效改密通道為 `posix_ssh` 的
+ssh 資產，其餘回 422 `RULE_EXECUTOR_CHECK_PLATFORM_UNSUPPORTED`（不撥號）。權限同其他專用帳號路由：不持有回 403
+`AUTH_PERMISSION_DENIED`，範圍外與資產不存在同形 404；資產沒有專用帳號回 404 `NOTFOUND_ASSET_EXECUTOR`。
+
+- `POST` 同步等待，回 200：`{success, code, method, inventory_read, account_username, checked_at, stale}`。`success`
+  為 true 時 `code` 為空字串；測試完成但沒有通過時仍回 200，`success` 為 false，`code` 為下列結果碼之一，同時存入
+  結果表。`method` 為成功時的方式：`executor_root`、`executor_sudo_nopasswd`、`executor_sudo_password`，失敗為空字串。
+  `inventory_read` 為 `ok`（也能讀 sudo 規則）、`denied`（讀不到，盤點結果會標示可能不完整）、`not_needed`（帳號是
+  root）、`not_checked`（前一步沒通過，沒有檢查）。`stale` 在 `POST` 恆為 false。
+- `GET` 回 `{tested, stale, success, code, method, inventory_read, account_username?, checked_at?}`。尚未測試過時
+  `tested` 與 `stale` 皆為 false；有結果但專用帳號的掛載、憑證或就位的秘密版本已與測試當時不同時 `stale` 為 true、
+  不帶結果內容（舊結果不當作現況）；其餘 `tested` 為 true。
+- 同一專用帳號與改密、盤點互斥：等不到互斥（5 秒）回 409 `CONFLICT_EXECUTOR_CHECK_BUSY`；發起後專用帳號已被清除或
+  更換回 409 `RULE_EXECUTOR_STATE_CHANGED`。每操作者、每資產與全域各設有上限（同時數或頻率），另有與專用帳號盤點共用的
+  目標身分上限，超過回 429 `RULE_EXECUTOR_CHECK_RATE_LIMITED`；429 與其他錯誤都不帶 `Retry-After` 與任何數值。
+  內部錯誤回 500 `INTERNAL_EXECUTOR_CHECK`。回應與審計都不含遠端輸出、指紋或任何秘密。
+- 撥號走主機金鑰的背景路徑（`path` 為 `executor_login_check`）：指紋與記錄不符時不送出憑證。時限：撥號 15 秒、
+  整體 40 秒。
+
+結果碼（`code`，HTTP 200 的 `success: false`）：
+
+| 碼 | 意義 |
+|---|---|
+| `RULE_EXECUTOR_CHECK_CONNECTION_FAILED` | 連不到主機（位址、埠、網路） |
+| `RULE_EXECUTOR_CHECK_LOGIN_FAILED` | 主機拒絕專用帳號的登入 |
+| `RULE_EXECUTOR_CHECK_HOST_KEY_MISMATCH` | 主機指紋與記錄不符，未送出憑證 |
+| `RULE_EXECUTOR_CHECK_HOST_KEY_CHECK_FAILED` | 無法核對主機指紋，未登入 |
+| `RULE_EXECUTOR_CHECK_ESCALATION_DENIED` | 登入成功，但沒有代改所需的權限 |
+| `RULE_EXECUTOR_CHECK_ESCALATION_NEEDS_NOPASSWD` | 登入成功，但沒有允許免密碼執行改密程式的 sudo 規則（沒有規則，或規則未設免密碼）；金鑰型專用帳號適用 |
+| `RULE_EXECUTOR_CHECK_UNAVAILABLE` | 專用帳號沒有可用的秘密，未登入 |
+| `RULE_EXECUTOR_CHECK_ROTATION_PENDING` | 專用帳號的憑證正在改密，未登入 |
+| `RULE_EXECUTOR_CHECK_TIMEOUT` | 主機沒有在時間內回應，結果不確定 |
+
+HTTP 錯誤碼：`RULE_EXECUTOR_CHECK_PLATFORM_UNSUPPORTED`(422)、`RULE_EXECUTOR_CHECK_RATE_LIMITED`(429)、
+`CONFLICT_EXECUTOR_CHECK_BUSY`(409)、`INTERNAL_EXECUTOR_CHECK`(500)；沿用 `RULE_EXECUTOR_STATE_CHANGED`(409)、
+`NOTFOUND_ASSET_EXECUTOR`(404)。
+
+**稽核**：每次 `POST` 記一對審計，動作 `executor_login_check`（開始，與前置檢查同交易）與 `executor_login_check_done`
+（結束，結果為成功、結果碼或 `busy`、`state_changed`、`interrupted`、`persist_failed`），資源為 `asset_executor`；
+details 不含任何秘密、指紋或遠端輸出。`GET` 不另記專屬審計。
+
+**既有端點對專用帳號的處理**：`GET /assets/:id/accounts` 只列登入帳號。帳號修改、刪除、設預設、更換掛載憑證
+與憑證側卸載的目標是專用帳號時回 409 `RULE_ACCOUNT_EXECUTOR_MANAGED`（範圍判定之後，範圍外仍與不存在同形）。
+新增帳號、建立資產、匯入、掛載與改綁選用的既有共用憑證若已作為專用帳號，回 409
+`RULE_CREDENTIAL_PURPOSE_MISMATCH`。憑證詳情的掛載列帶 `purpose`（`login`／`executor`）；範圍化檢視者看到的
+專用帳號列 `actions.unbind` 為不可用，原因 `executor_managed`。以憑證為目標的整組改密與改密計劃照舊涵蓋
+專用帳號掛載。
+
+**錯誤碼**：`VALIDATION_EXECUTOR_SOURCE_INVALID`(400，來源不明、欄位不完整或缺 `expected_account_id`)、
+`RULE_EXECUTOR_PROTOCOL_UNSUPPORTED`(422)、`RULE_EXECUTOR_SECRET_TYPE_UNSUPPORTED`(422)、
+`RULE_EXECUTOR_SHARED_HOST_COUNT`(409，參數 `count`)、`RULE_EXECUTOR_STATE_CHANGED`(409)、
+`RULE_EXECUTOR_CONVERT_CANDIDATE_PENDING`(409)、`RULE_ACCOUNT_EXECUTOR_MANAGED`(409)、
+`RULE_CREDENTIAL_PURPOSE_MISMATCH`(409)、`NOTFOUND_ASSET_EXECUTOR`(404)、
+`NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY`(404)、`INTERNAL_ASSET_EXECUTOR_READ`(500)、
+`INTERNAL_ASSET_EXECUTOR_WRITE`(500)；沿用 `RULE_CREDENTIAL_ROTATION_ACTIVE`、`RULE_CREDENTIAL_OUT_OF_SYNC`(409)。
+
+**稽核**：設定、更換、清除、公鑰匯出各記一筆（operation `executor_set`／`executor_replace`／`executor_clear`／
+`executor_public_key_export`，動作 create／update／delete／read），與寫入同交易，寫入失敗整筆回滾。details 帶
+來源、共用台數與更換前的掛載與憑證識別，不含任何秘密或公鑰內容。
+
 ### 連線測試
 
 ```
@@ -2755,11 +2903,14 @@ GET  /api/v1/assets/:id/k8s/download    （已認證；資料面裁決；query: 
   "current_version_no": 1,       // 0＝尚無任何密文
   "rotation_active": false,
   "active_rotation_id": 0,       // 進行中那一輪的識別；0＝沒有進行中的輪替
+  "purpose": "login",            // 該憑證未刪除掛載的用途：login | executor；無掛載時不出現
   "ownership": { "kind": "node", "node_id": 7 },  // 管理歸屬，見下
   "created_at": "2026-09-06T16:29:00Z",
   "updated_at": "2026-09-06T16:29:00Z"
 }
 ```
+
+**用途 `purpose`**：同一筆憑證的未刪除掛載用途一致（見「堡壘機專用帳號」），所以憑證層是單值：`login` 為人員連線用的帳號，`executor` 為堡壘機專用帳號。用途是憑證屬性，與掛載是否在檢視範圍內無關，範圍化檢視者的回應照帶，不因此多出範圍外資產的識別或台數；沒有任何未刪除掛載的憑證不帶此欄。
 
 **管理歸屬 `ownership`**（所有主體的回應都帶）回答「誰能管理這筆憑證」，與 `scope`（共用／專用）是兩件事：
 `kind` 為 `global`（只有不受範圍限制的主體能管理與掛載）、`node`（另帶 `node_id`；節點本身或其祖先在主體指派範圍內者可管理）或
@@ -3111,6 +3262,77 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 | GET | `/assets/:id/host-key` | 檢視指紋記錄：`{id, asset_id, algorithm, fingerprint, created_at, updated_at}`（`fingerprint` 為 `SHA256:xxx`，公鑰本體不外露）；本資產尚無自身記錄但同位址有記錄時回沿用記錄 `{asset_id, algorithm, fingerprint, inherited: true}`，`asset_id` 為被查資產，不含 `id` 與任何時間戳；無記錄（或已標記待重置）回 404「尚無 host key 記錄」。資產有待確認的不符指紋時多回 `mismatches: [{algorithm, fingerprint, first_seen_at, last_seen_at, seen_count}]`（最近出現者在前，最多 5 筆，不含公鑰）；沒有觀察紀錄時不帶此欄 | 登入＋逐資產可視守門（非 admin/auditor 未授權回 404「資產不存在」，無條件生效） |
 | POST | `/assets/:id/host-key/adopt` | 採用已觀察的指紋：請求 `{"fingerprint": "SHA256:..."}`，只接受該資產 `mismatches` 中存在的指紋。同一交易以該觀察的演算法、指紋、公鑰與撥號位址寫入自身記錄（取代原記錄並清除重置待記錄狀態）、清除該資產全部觀察紀錄、寫 `host_key_adopt` 審計、產生 `host_key_record_changed` 告警；任一步失敗整筆回滾回 500 `INTERNAL_HOST_KEY_ADOPT`。指紋不在觀察中回 404 `NOTFOUND_HOST_KEY_OBSERVATION`，記錄不變；缺指紋回 400。成功回 200 與新的檢視內容（與 GET 自身記錄同形，無 `mismatches`） | 超級管理員保留（不可指派給自訂角色）；路由層即只放行超級管理者，非超管在讀取請求本文前回 403 `AUTH_PERMISSION_DENIED`（單一形狀），鏈上另有同判定的第二道 |
 | DELETE | `/assets/:id/host-key` | 重置（主機重灌場景）：標記本資產「重置待記錄」，下次連線直接記錄當次指紋並清除觀察紀錄；只有沿用記錄（無自身記錄）時同樣可重置；不刪任何記錄列。生效的重置同交易產生 `host_key_record_changed` 告警（告警寫不進去即不生效）。本資產自身與同位址皆無記錄，或本資產已標記待重置（重複重置）時，回 404 無可重置，不發告警。有待確認指紋時建議改用採用 | 超級管理員保留（不可指派給自訂角色）；路由層即只放行超級管理者，非超管回 403 `AUTH_PERMISSION_DENIED`（單一形狀），鏈上另有同判定的第二道 |
+
+
+## 主機帳號盤點 API
+
+登入目標主機（目前只支援以 SSH 連線的 Linux／Unix 主機），唯讀列出本機帳號、群組與 sudo 規則，判定每個帳號是否具特權、是否可登入、是否已納管（資產上有同名的資產帳號），只回報、不建立或修改主機上的任何帳號。登入身分由伺服端決定：資產有堡壘機專用帳號時用專用帳號（不退回預設帳號），否則用預設帳號。執行的指令為固定常數；以預設帳號登入時不以 `sudo` 提權，讀不到的項目如實標為無法讀取，結果標為部分完成；以非 root 的專用帳號登入時，帳號與群組清單照常讀取，讀不到的 sudo 規則另以一條固定的提權讀取取得（只讀 `/etc/sudoers` 與 `/etc/sudoers.d`，需要主機上有對應的 sudo 規則），讀取被拒時同樣如實標為無法讀取。
+
+撥號走主機金鑰的背景路徑：指紋與記錄不符時拒絕、不送出憑證，盤點以 `INVENTORY_HOST_KEY_MISMATCH` 結束，`host_key_mismatch` 審計與告警的 `path` 為 `account_inventory`。未記錄過金鑰的位址照首次信任規則記錄。
+
+| 方法 | 路徑 | 說明 | 權限 |
+|---|---|---|---|
+| POST | `/assets/:id/account-inventory/scans` | 發起一次盤點，202 回盤點紀錄（`status=queued`）。背景執行，同一資產同時只能有一筆未結束的盤點 | `account:discover`（範圍判定資產） |
+| GET | `/assets/:id/account-inventory` | 最近一次盤點與結果：`{scan, next_identity, coverage, fixed_notes, findings, total, page, page_size}`；查詢參數 `privileged`、`managed`、`present`、`actionable`（布林；`actionable=true` 排除系統預設帳號，見下）、`status`（`open`／`ignored`）、`page`、`page_size`（預設 50，上限 200）。尚未盤點過時 `scan` 為 null；`next_identity` 為 `{mode, username}`，是現在發起會用誰登入：`mode` 為 `executor` 或 `default_account`，`executor` 時 `username` 恆為空字串（專用帳號名只經專用帳號自己的讀取端點呈現），資產不支援盤點或兩種身分都沒有時為 null | `asset:view`（可視判定與資產詳情 `GET /assets/:id` 相同：有連線授權或在資產管理範圍內才看得到） |
+| POST | `/assets/:id/account-inventory/findings/:findingId/ignore` | 忽略一筆結果：請求 `{"reason": "..."}`（去除首尾空白後 1 至 500 字元、不含控制字元）。記下忽略當下的特權理由快照；回 `{id, asset_id, username, status}` | `account:discover`（範圍判定資產） |
+| POST | `/assets/:id/account-inventory/findings/:findingId/reopen` | 重新開啟已忽略的結果；回同上 | `account:discover`（範圍判定資產） |
+| GET | `/account-inventory/findings` | 全域清單：開啟中、特權、仍存在於主機、未納管、不是系統預設帳號，且資產未刪除的結果，只含呼叫者在資產列表看得到的資產；`{findings, total, page, page_size}` | `asset:view`（清單投影到資產列表的可見集合） |
+
+資產不存在、或不在呼叫者範圍內時，帶資產路徑的四條路由回相同的 404（不區分兩者）。結果不屬於路徑上的資產時回 404 `NOTFOUND_INVENTORY_FINDING`。
+
+**盤點紀錄（`scan`）**：`status` 為 `queued`、`running`、`succeeded`、`partial`、`failed`、`interrupted`；`identity_mode` 為 `default_account` 或 `executor`；讀取回應另帶 `identity_username`：`default_account` 時為發起當下預設帳號的名稱（查不到為空字串），`executor` 時恆為空字串；`privileged_groups` 是開始時的特權群組政策快照；另有帳號數、特權數、未納管特權數、本次自動重新開啟數與起訖時間。失敗或中斷的盤點不改動既有結果。
+
+**結束原因碼（`scan.failure_reason`，16 個）**：
+
+| 碼 | 意義 |
+|---|---|
+| `INVENTORY_HOST_KEY_MISMATCH` | 主機金鑰與記錄不符，拒絕撥號 |
+| `INVENTORY_HOST_KEY_CHECK_FAILED` | 主機金鑰檢查的留痕寫不進去或讀不到記錄 |
+| `INVENTORY_LOGIN_FAILED` | 預設帳號登入失敗（只嘗試一次） |
+| `INVENTORY_CONNECTION_FAILED` | 連不上目標 |
+| `INVENTORY_TIMEOUT` | 超過執行時限 |
+| `INVENTORY_COMMAND_FAILED` | 帳號或群組清單的指令失敗 |
+| `INVENTORY_OUTPUT_LIMIT` | 輸出超過上限（帳號 10 萬列等） |
+| `INVENTORY_OUTPUT_MALFORMED` | 輸出不符預期格式 |
+| `INVENTORY_NO_ACCOUNT` | 執行開始時資產已沒有預設帳號 |
+| `INVENTORY_NO_SECRET` | 執行開始時預設帳號沒有生效的密碼或私鑰 |
+| `INVENTORY_ASSET_CHANGED` | 執行開始時資產已刪除或不再是可盤點的平台 |
+| `INVENTORY_PERSIST_FAILED` | 結果、審計或告警寫入失敗，整筆回滾 |
+| `INVENTORY_INTERRUPTED` | 服務重新啟動時仍未結束，收尾為中斷 |
+| `INVENTORY_EXECUTOR_CHANGED` | 以專用帳號發起的盤點，執行開始時專用帳號已被清除或更換，不撥號、不改用預設帳號 |
+| `INVENTORY_EXECUTOR_BUSY` | 執行開始時專用帳號的憑證正在整組輪替、掛載有未驗證候選，或等不到輪替互斥（30 秒），不撥號 |
+| `INVENTORY_EXECUTOR_UNAVAILABLE` | 執行開始時專用帳號沒有可用的秘密、無法解封，或帳號名或秘密含不允許的字元，不撥號 |
+
+**檢查範圍（`coverage`）**：陣列，每項 `{check, state, reason?, count, duplicate_rows?}`。`check` 為 `accounts`、`groups`、`sudoers_main`、`sudoers_dir`、`sudoers_unresolved`；`state` 為 `checked`、`partial`、`unreadable`、`absent`、`failed`、`undetermined`（只用於 `sudoers_unresolved`：主規則檔為 `unreadable` 或 `failed` 時規則沒有讀到，無從判斷）；`reason` 為 `permission_denied`、`nondefault_location`（sudo 存在但主規則檔不在預設位置）、`not_included`（主規則檔沒有引入規則目錄，目錄內規則不計）、`invalid_rows`、`command_failed`、`via_escalation`（以專用帳號登入、該項內容經提權讀取取得；若提權讀取後仍有檔案讀不到，與「部分完成」「無法讀取」並列出現）、`escalation_denied`（原本讀不到，提權讀取也被拒）；`duplicate_rows` 為同名多列的列數；`sudoers_unresolved` 的 `count` 是無法解析的規則數。帳號或群組清單為 `failed` 時盤點失敗（`INVENTORY_COMMAND_FAILED`）；其餘任一項為 `partial`、`unreadable` 或 `failed` 時盤點為部分完成；sudo 主規則檔或規則目錄不完整時，該次所有結果帶 `incomplete=true`（sudo 授權的特權可能被低估）。`fixed_notes` 恆附本能力不檢查的範圍：`other_escalation_tools`、`unenumerated_directory_accounts`、`replaced_noninteractive_shell`。
+
+**結果（`findings[]`）**：`{id, asset_id, username, uid, uid_conflict, login_capable, privileged, incomplete, present, managed, privileged_reasons, status, ignore_reason, ignored_by, ignored_by_name, ignored_at, ignored_reasons, first_seen_scan_id, last_seen_scan_id, first_seen_at, last_seen_at}`。`managed` 在讀取時以資產帳號計算（盤點後新增同名帳號，不重盤即顯示已納管）。`uid_conflict` 表示同名多列的 uid 不全相同。帳號名原樣回傳，可能含不可見字元，呈現端需跳脫。
+
+**特權理由碼（`privileged_reasons`，8 種）**：`uid0`、`group:<群組>`（成員屬特權群組）、`group_primary:<群組>`（主要群組為特權群組）、`sudoers_user`、`sudoers_group:<群組>`、`sudoers_alias:<別名>`、`sudoers_all`、`sudoers_all_targetpw`（規則為 `ALL` 但需目標帳號密碼；單獨出現時不算特權）。特權群組清單取政策鍵 `host_privileged_groups_posix`。
+
+**系統預設帳號**：`login_capable=false` 且 `privileged_reasons` 只有 `group_primary:root`（可另帶 `sudoers_all_targetpw`）的結果，例如發行版預設的 `halt`、`shutdown`、`sync`。照常計入 `privileged_total` 並出現在特權篩選中，但不計入 `unmanaged_privileged_total`，`actionable=true` 與全域清單都不列；其他理由成立的不可登入特權帳號照常列入。
+
+**自動重新開啟**：已忽略的結果在之後的盤點中特權理由增加、或帳號消失後重新出現時，改回開啟並計入 `reopened_total`；理由減少不重新開啟。
+
+**告警**：盤點結束時，開啟中、特權、仍存在、可登入且結束當下未納管、且尚未告警過的結果合計為一則系統安全告警 `unmanaged_privileged_account`（身分與特權組，預設 high，參數 `new_count`、`identity_mode`）；新增數為 0 不產生。不再合格的結果之後再合格時會再告警。
+
+**審計動作**：`inventory_scan`（發起，與盤點紀錄同交易）、`inventory_scan_done`（結束，details 只含計數與檢查範圍，不含帳號名；以專用帳號登入時另有 `escalation`：`not_needed`、`used`、`denied`）；發起審計 `inventory_scan` 的 details 含 `identity_mode` 與 `identity_username`（以專用帳號登入時為其帳號名，預設帳號身分為空）、`inventory_ignore`、`inventory_reopen`（與處置同交易）。
+
+**錯誤碼**：
+
+| HTTP | 碼 | 情境 |
+|---|---|---|
+| 422 | `RULE_INVENTORY_PLATFORM_UNSUPPORTED` | 資產不是以 SSH 連線的 POSIX 主機 |
+| 422 | `RULE_INVENTORY_NO_ACCOUNT` | 資產沒有預設帳號 |
+| 422 | `RULE_INVENTORY_NO_SECRET` | 預設帳號沒有可用的密碼或私鑰 |
+| 422 | `RULE_INVENTORY_EXECUTOR_UNAVAILABLE` | 資產有專用帳號，但它沒有可用的秘密，沒有開始盤點 |
+| 409 | `CONFLICT_INVENTORY_EXECUTOR_BUSY` | 專用帳號的憑證正在改密，沒有開始盤點 |
+| 429 | `RULE_INVENTORY_EXECUTOR_RATE_LIMITED` | 最近以這台的專用帳號登入太頻繁（含測試登入），沒有開始盤點；不帶等待秒數或上限數值 |
+| 409 | `CONFLICT_INVENTORY_SCAN_RUNNING` | 同一資產已有盤點進行中 |
+| 400 | `VALIDATION_INVENTORY_IGNORE_REASON` | 忽略理由缺漏、過長或含控制字元 |
+| 400 | `VALIDATION_INVALID_FINDING_ID` | 路徑上的結果識別碼不是正整數 |
+| 404 | `NOTFOUND_INVENTORY_FINDING` | 結果不存在或不屬於該資產 |
+| 500 | `INTERNAL_INVENTORY_QUERY` | 讀取盤點時的未預期錯誤 |
+| 500 | `INTERNAL_INVENTORY_UPDATE` | 發起、忽略或重新開啟時的未預期錯誤 |
 
 ---
 
@@ -3734,6 +3956,12 @@ nginx 標「部署方管理」）＋各通道政策等級＋「若切 strict 將
 風險鍵：`winrm_http_ntlm`（scheme 為 http：載荷有 NTLM 訊息層加密但無 TLS）、`winrm_tls_insecure`（https 且 TLS 模式為 `insecure`）；
 https 配 `system` 或 `ca` 無風險。兩鍵同時進資產列表的 `transmission_risks`（徽章）與三語 `riskLabel.<key>`。
 
+**改密通道（`db_rotation`）**：排在 `winrm` 列之後，只計改密通道設為 `db_native` 且協定為 mysql、postgres、mssql 的資產。
+與 `winrm` 列相同，此通道**無政策鍵、無等級、無 strict 預檢**，不觸發 `/connect-tokens` 的同意閘。`detail_codes` 依資產的 TLS 檔位計數
+（未設定記 `unset`，與 `db` 列同一套鍵）；TLS 檔位為 `require`、`verify-ca`、`verify-full` 以外者計為偏離，判定與資產列表
+`transmission_risks` 的 `db_rotation_unencrypted` 相同。有偏離時該列帶 `risks: [{key: "db_rotation_unencrypted", label}]`，無偏離時不帶；
+`note_code` 為 `db_rotation_channel`。同一台資料庫資產同時計入連線通道 `db` 列與本列，兩列各自計數，`db` 列的計數與偏離不因改密設定改變。
+
 ---
 
 ## 金鑰管理 API（需 `key:manage`）
@@ -4187,6 +4415,7 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 `last_login_at`、`inactivity_exempt`（`password`、`totp_secret_enc`、`failed_login_attempts`、
 `totp_last_step` 永不輸出），以及允許來源網段三欄 `allowed_cidrs`、`allowed_cidrs_status`、
 `allowed_cidrs_families`（見下段）。
+`approver_only`（布林）只出現在 `GET /users` 與 `GET /users/:id` 的回應：人類帳號的有效指派（直接、外部映射、經使用者群組）至少一筆是內建審核者角色、其餘每一筆都是審核者或以節點範圍持有的內建一般使用者時為 `true`，此時帳號無法使用資產與連線，管理端據此提示補上全系統的一般使用者；agent 一律 `false`。其他共用 User 形狀的回應不帶此鍵。
 
 注意：登入/`/auth/me` 回應用的是精簡 `UserInfo`（`id/username/email/full_name/local_display_name/
 display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_origin/is_approver/
@@ -5336,6 +5565,16 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | `VALIDATION_ROLE_BINDING_NODES_EMPTY` | 400 | `role_nodes` 的某個值是空陣列；要全系統請送 `null` |
 | `VALIDATION_ROLE_BINDING_NODES_INVALID` | 400 | `role_nodes` 含不存在或已刪除的節點，兩者同形，不帶節點名稱 |
 | `VALIDATION_ROLE_NOT_GROUP_BINDABLE` | 400 | 審核者身分不經使用者群組取得 |
+| `VALIDATION_ROLE_SET_APPROVER_ONLY` | 400 | 直接指派三入口（`PUT /users/:id/roles`、`POST /users/:id/roles/:role`、建立帳號帶角色）寫入後，對象的有效指派只剩審核者角色（其餘只有節點範圍的內建一般使用者也算），不論寫入前是否已是此狀態；整筆零寫入。無參數、不帶 `details`。補上全系統的一般使用者角色即可通過 |
+| `VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS` | 400 | 使用者群組三入口（`PUT /user-groups/:id/role-bindings`、`PUT /user-groups/:id/members`、`DELETE /user-groups/:id`）使寫入前不是此狀態的成員轉入此狀態；寫入前已是此狀態的成員不阻擋，也不列入。整筆零寫入。`params.count`（整數）為轉入總人數；`details.affected_users` 為轉入者 `[{id, username}]`，依 `id` 升冪、最多 20 筆，`count` 大於筆數表示有截斷；只含寫入前就在該群組的成員，不帶角色名稱、範圍或節點 |
+
+上述兩碼由寫入完成、提交前的同一判定求得，操作者權限與其他指派關卡先於它；外部群組映射規則的寫入、身分來源的刪除與停用、登入時的映射套用不受此判定阻擋，結果落入此狀態的帳號以 `approver_only` 標示。群組碼的回應形狀：
+
+```json
+{"error": "…", "code": "VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS",
+ "params": {"count": 23},
+ "details": {"affected_users": [{"id": 12, "username": "…"}]}}
+```
 
 開放邊界：升級後新增的兩個鎖定範本與日後建立的自訂角色，與升級前存量的角色一樣可經這些入口被指派，照常經過上表的保護角色、指派能力與範圍欄位規則；`GET /roles` 的列表內容不因此改變（見「角色 API」的相容邊界）。身分管理員可為系統安全管理員帳號設定密碼、停用多因素驗證或綁定外部身分，這些操作成功後觸發系統告警並留下審計，不是被阻擋。
 
@@ -5648,7 +5887,7 @@ JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另�
 |---|---|---|
 | GET | `/access-requests/pending` | 待審列表（僅審核範圍內＋排除本人單）→ `{data, total}`。每個 `items[]` 另投影唯讀的 `asset_name`（審核者對該資產未必有讀取權，名稱是決定所需資訊，故隨項目一起回；批次解析，不需逐項回頭查資產）與 `asset_deleted`（資產已軟刪時為 true，名稱照舊可讀）；資料列已被硬刪時 `asset_name` 為空字串。同樣適用於 `/reviews/pending`、`/history`、`/mine` 與 `GET /agent-tasks/:requestId` 的項目 |
 | GET | `/access-requests/pending/count` | 待審＋待補審計數（同範圍語義，導航 badge 輪詢用）→ `{count, review_count}` |
-| GET | `/access-requests/history` | 歷史（一律依審核範圍過濾；分頁）→ `{data, total, page, page_size}` |
+| GET | `/access-requests/history` | 歷史（一律依審核範圍過濾；分頁）→ `{data, total, page, page_size}`。全域直接持內建稽核員角色者也可讀（不限審核範圍、看全部歷史，唯讀）；這類稽核人員在 `/auth/me` 得到 `ui:approval-history`，審核中心對他們只呈現歷史，不呼叫待審、清冊、待補審端點 |
 | GET | `/access-requests/tickets` | 有效限時連線（審核視角，帶 `request_id` 回鏈供撤銷）→ `{data, total}` |
 | GET | `/access-requests/reviews/pending` | 待補審破窗單（範圍過濾＋排除本人單）→ `{data, total}` |
 | POST | `/access-requests/:id/approve` | 核准（quorum 逐票）；body 可空（照申請值），或 `{item_id?, accounts?, duration_minutes?(僅可下修), date_start?(僅可推遲), remove?, note?}`／`{items:[{item_id,accounts?,duration_minutes?,date_start?,remove?}],note?}`；三種形態皆可另帶 `batch_id`（UUID，批次核決的關聯碼，原樣記入稽核列，不改變核決語義）；核准數達 `access_request_min_approvals` 門檻的那一票才同交易建 ticket 授權並回填 `authorization_id`，未達門檻回 pending 單＋進度；同人重複核准 409 |
@@ -6219,7 +6458,7 @@ GET /api/v1/rotation-report/records
            "batch_id": 0, "asset_name": "…", "account_username": "root", "account_deleted": false,
            "credential_name": "共用維運帳號", "version_no": 4,
            "secret_type": "password", "status": "failed",
-           "reason_code": "remote_exit_nonzero"}],
+           "reason_code": "remote_exit_nonzero", "transport_risk": ""}],
  "total": 16, "page": 1, "page_size": 20, "truncated": false}
 ```
 
@@ -6227,6 +6466,7 @@ GET /api/v1/rotation-report/records
 （對外回應收斂的一貫作法；可讀說明由介面依碼提供）。帳號已刪除者以當時的帳號名快照列出並標示。
 `credential_name` 與 `version_no` 是執行當下的快照，掛載事後改綁到別的憑證也不會被覆蓋
 ——稽核問的是「當時動的是哪一組秘密」。`plan_name` 為空且 `batch_id` 非 0 者來自批次改密。
+`transport_risk` 與執行記錄的同名欄同值（空字串或 `db_rotation_unencrypted`），取自紀錄本身，不由資產現況推得。
 記錄上限 50,000，達上限時 `truncated` 為真。
 
 ### 手動產出
@@ -6326,6 +6566,7 @@ POST /api/v1/schedules/next-runs
 CSV 為 UTF-8 帶 BOM、CRLF，首行為 `# as_of=<RFC3339 帶時區位移>` 註解列（載明截止時點，使單獨抽出的 CSV 仍可重算剩餘天數），第二行起為表頭與資料；欄名依報告語言，儲存格套用公式注入轉義。PDF 每頁頁尾的報告識別為 `job-<工作單編號>`，與 manifest 的 `job_id` 同源。
 PDF 內嵌可正確呈現繁體中文與日文的字型，圖表以繪圖原語繪製。
 帳號 CSV 是 PDF 附表 A 的欄位超集：附表省略位址、協定、天數來源與最近記錄狀態四欄以維持可讀。
+`records.csv` 與 PDF 附表 B 同欄同序，最後一欄為「傳輸」：記錄的 `transport_risk` 依報告語言輸出短語（`db_rotation_unencrypted` 為「未加密連線」），空值留白，系統不認得的非空值原樣輸出；其前各欄的欄序不變。
 
 **下載中心的種類參數**：
 
@@ -6538,7 +6779,7 @@ POST /api/v1/access-reviews
   只改共用的其中一員會讓同組其餘主機失去可用秘密，自動擴張到其餘掛載則是去改操作者沒有選取的
   機器；兩條都不走，要改整組請以憑證為目標。
 - `secret_type`：`password`（POSIX 通道走 chpasswd；Windows 通道走 PowerShell `Set-LocalUser`）或 `ssh_key`
-  （authorized_keys 輪替，僅 `posix_ssh` 通道；Windows 通道遇之記 skipped）；其他值回 400
+  （authorized_keys 輪替，僅 `posix_ssh` 通道；Windows 兩通道與 `db_native` 遇之記 skipped）；其他值回 400
   `VALIDATION_PLAN_BAD_SECRET_TYPE`。
 - `key_strategy`（僅 `ssh_key`）：`append_replace`（預設，加新 → 驗新 → 刪舊，零鎖死）或
   `exclusive`（清空重寫，高風險）；其他值回 400 `VALIDATION_PLAN_BAD_KEY_STRATEGY`。
@@ -6558,12 +6799,38 @@ POST /api/v1/access-reviews
 
 憑證輪替有全系統來源的發起者儲存憑證目標計畫時不需確認、不寫掛載上界，執行時涵蓋當下全部掛載，與先前相同。
 
-**執行記錄的憑證欄位**：計畫的執行記錄（`GET /change-secret-plans/:id/records`）與批次詳情的 `records` 同一形狀。範圍化檢視者看到的記錄，若該筆記錄自身保存的憑證不在其憑證檢視範圍內，則不帶 `credential_id`、`credential_name`、`target_version_id`，並帶 `"credential_out_of_scope": true`；憑證在範圍內、未解析到憑證的記錄與全量檢視者的記錄不變。次數、狀態、錯誤碼等其餘欄位照舊。
+**執行記錄的憑證欄位**：計畫的執行記錄（`GET /change-secret-plans/:id/records`）與批次詳情的 `records` 同一形狀。範圍化檢視者看到的記錄，若該筆記錄自身保存的憑證不在其憑證檢視範圍內，則不帶 `credential_id`、`credential_name`、`target_version_id`，並帶 `"credential_out_of_scope": true`；憑證在範圍內、未解析到憑證的記錄與全量檢視者的記錄不變。次數、狀態、錯誤碼等其餘欄位照舊；`transport_risk` 不是憑證識別，被收窄的記錄照帶。
 
 **計畫的憑證與資產欄位**：計畫列表與建立、更新的回應（`GET`／`POST /change-secret-plans`、`PUT /change-secret-plans/:id`）對範圍化檢視者依其憑證檢視範圍輸出。目標憑證不在範圍內時，`target_credential_id` 為 `null` 並帶 `"credential_out_of_scope": true`；`asset_ids` 只保留範圍內的資產，被省略的台數放在 `out_of_scope_asset_count`（沒有省略時不帶此欄）。全量檢視者的回應不變。
 
 **執行記錄欄位**: `{id, plan_id, asset_id, account_id, account_username, credential_id,
-credential_name, target_version_id, secret_type, status, error, executed_at}`；
+credential_name, target_version_id, secret_type, status, error, transport_risk, execution_method,
+executor_account_id, executor_username, executor_credential_id, executed_at}`；
+`transport_risk`：該筆處理以任何秘密對目標建立過連線（送出改密，或只做驗證的重試、承接後的驗證）時，依建立連線當下的資產設定判定的傳輸風險；
+值域為空字串或 `db_rotation_unencrypted`（資料庫改密通道以未加密連線進行，舊密碼與新密碼可能以明文經網路傳送）。
+跳過與本地前置檢查失敗的紀錄為空字串；升級前的紀錄為空字串（未標示），不回填。
+值取自紀錄本身：資產事後改為加密，舊紀錄仍保留原值；資產事後改為未加密，舊紀錄不補值。
+`execution_method`：這筆處理實際採用的執行方式，`self`（帳號以自己的舊秘密登入、改自己）、`executor_root`
+（以堡壘機專用帳號 root 直接改）、`executor_sudo_nopasswd`（以專用帳號經免密碼 sudo 改）、`executor_sudo_password`
+（以專用帳號經讀取其密碼的 sudo 改）。選定由專用帳號代改的目標，不論成功、失敗或跳過，都帶 `executor_account_id`、
+`executor_username`、`executor_credential_id`（執行當下的快照，專用帳號事後被更換或改名不影響）；送出指令之前就結束的
+目標記依專用帳號設定預期的方式。自改的紀錄這三欄為 `0`／空字串；升級前的紀錄為 `self`，不回填。三欄不含任何秘密。
+範圍化檢視者只在該專用帳號的憑證落在其憑證檢視範圍內時才讀到三欄；範圍外的列三欄一律不帶，改帶 `"executor_out_of_scope": true`（與該列自身的 `credential_out_of_scope` 各自獨立判定），畫面只顯示「由堡壘機專用帳號代改」而不帶名稱。全量檢視者的記錄不變。
+代改只適用於密碼型計畫與批次、通道為 `posix_ssh`、且資產設有堡壘機專用帳號的資產；憑證整組改密、每台各自隨機、
+單台脫離共用與人工承接維持自改。
+
+代改的專用帳號一側失敗使用下列原因碼（只存機器碼，遠端原文只進後端日誌；失敗不退回以目標帳號舊秘密自改）：
+
+| 原因碼 | status | 情形 |
+|---|---|---|
+| `CHANGE_SECRET_EXECUTOR_LOGIN_FAILED` | failed | 以專用帳號登入目標主機失敗（主機金鑰相關的拒絕沿用既有碼） |
+| `CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED` | failed | 專用帳號登入後改密指令被拒，目標帳號未變更 |
+| `CHANGE_SECRET_EXECUTOR_ROTATION_PENDING` | skipped | 專用帳號的憑證正在整組輪替，或其掛載有未驗證的候選秘密 |
+| `CHANGE_SECRET_EXECUTOR_CHANGED` | skipped | 本次執行展開目標之後，專用帳號被更換、清除或其就位版本改變 |
+| `CHANGE_SECRET_EXECUTOR_UNAVAILABLE` | failed | 專用帳號沒有可用秘密、無法解封，或秘密含不允許的控制字元 |
+
+後三者在候選秘密落庫之前判定，遠端零接觸、不留候選。計畫的 `accounts` 為 `["@ALL"]` 時展開為該資產的全部登入帳號，
+堡壘機專用帳號不在內。
 `status`:
 
 | 值 | 語義 |
@@ -6571,7 +6838,7 @@ credential_name, target_version_id, secret_type, status, error, executed_at}`；
 | `success` | 已驗證並就位為該掛載使用的密文版本 |
 | `failed` | 遠端**確定未變更**（指令非零退出／登入失敗／指令送出前無法建立工作階段）；就位版本原樣，無殘留候選 |
 | `unverified` | 遠端狀態**不可知**或驗證未通過；就位版本維持舊值，候選保留待系統重試 |
-| `skipped` | 無改密通道（`CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`：通道為 `none`，含未設定通道的 rdp 資產）、通道不支援計劃的秘密型別（`CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED`：Windows 通道遇 `ssh_key`）、協定不在改密射程（`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`：vnc／資料庫／k8s）、目標掛的是共用憑證而計劃以帳號為目標（`SHARED_CREDENTIAL_TARGET_REQUIRED`）、無可用憑證、或該帳號已有未驗證候選 |
+| `skipped` | 無改密通道（`CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`：通道為 `none`，含未設定通道的 rdp 資產與 mysql、postgres、mssql 資產）、通道不支援計劃的秘密型別（`CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED`：Windows 兩通道與 `db_native` 遇 `ssh_key`）、協定不在改密射程（`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`：vnc／redis／k8s）、目標掛的是共用憑證而計劃以帳號為目標（`SHARED_CREDENTIAL_TARGET_REQUIRED`）、無可用憑證、或該帳號已有未驗證候選 |
 
 `credential_id`／`credential_name`／`target_version_id` 是執行當下的**快照**：掛載事後可能改指
 別的憑證，回頭 join 讀到的會是現況而不是那一次動的是誰。
@@ -6586,6 +6853,7 @@ credential_name, target_version_id, secret_type, status, error, executed_at}`；
 | `posix_ssh` | ssh（未設定時的預設） | SSH（沿資產埠與 host key TOFU） | `chpasswd`／`authorized_keys` | `password`、`ssh_key` |
 | `windows_winrm` | rdp、ssh | WinRM：NTLM 認證，訊息層加密恆啟用；http（預設埠 5985）或 https（預設埠 5986，TLS 模式 `system`／`ca`／`insecure`） | PowerShell `Set-LocalUser` | `password` |
 | `windows_ssh` | rdp、ssh | SSH 到 Windows OpenSSH（rdp 資產用 `rotation_ssh_port`，0＝22；沿 host key TOFU） | 同上；指令顯式以 `powershell.exe -NoProfile -NonInteractive -EncodedCommand` 執行，不依賴目標預設 shell（cmd 亦可） | `password` |
+| `db_native` | mysql、postgres、mssql（需顯式設定，不由推導產生） | 資料庫驅動直連，沿資產的 TLS 檔位 | 以該帳號自己的舊密碼登入，改自己的密碼 | `password` |
 | `none` | 任一 | 不連線 | 記 skipped | 不適用 |
 
 Windows 兩通道的共同契約：
@@ -6622,6 +6890,23 @@ Windows 兩通道的共同契約：
   指令送出後：回報完成即依上表的結局碼分流（stderr 只進伺服端 log）；未回報完成（連線中斷、指令逾時 90 秒，兩通道同值；逾時即關閉連線不再等目標）＝unverified（`CHANGE_SECRET_REMOTE_STATE_UNKNOWN`，候選保留）。
 - WinRM 不支援 Basic 認證，沒有關閉加密的設定；系統對 WinRM 請求全行程序列化（同一時刻只有一則請求在飛），批次改密不並行。
 - 目標機前置條件與 TLS 三模式的部署說明見 `docs/ops/upgrade-sop.md`。
+
+`db_native` 通道的契約（資料庫帳號自改）：
+
+- 只支援 mysql、postgres、mssql 資產與 `password` 秘密型別；不使用其他帳號代改，不建立帳號、不授權、不改預設資料庫。
+  支援範圍為 MySQL 8.0.13 以上（不含 MariaDB）、PostgreSQL 10 以上、SQL Server 的 SQL 驗證登入；範圍外的版本在送出改密之前即記 failed 帶 `CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED`，目標端未被變更。
+- 流程：本地檢查帳號名與新舊密碼；以舊密碼建立第一條連線並探測版本與連上的身分，身分須等於帳號快照；在第一條連線以單一語句改密；
+  另以新密碼建立第二條連線自驗；自驗因認證被拒時，在第一條連線把密碼改回舊值。
+- 失敗分流：本地檢查不合格為 failed（`CHANGE_SECRET_INVALID_ACCOUNT_NAME`、`CHANGE_SECRET_INVALID_NEW_SECRET`、`CHANGE_SECRET_INVALID_OLD_SECRET`），遠端未被觸碰；
+  舊密碼登入被拒為 failed（`CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED`）；連不上、TLS 驗證失敗為 failed（`CHANGE_SECRET_REMOTE_UNREACHABLE`）；
+  身分核對不符、連線字元集不在支援範圍、改密語句被目標端回絕為 failed（`CHANGE_SECRET_REMOTE_REJECTED`）；
+  改密語句送出後連線中斷或逾時為 unverified（`CHANGE_SECRET_REMOTE_STATE_UNKNOWN`，候選保留）；
+  自驗被拒且改回成功為 failed（`CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED`），改回也失敗為 unverified（`CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED`，候選保留）；
+  自驗因認證以外的原因失敗不改回，記 unverified（`CHANGE_SECRET_REMOTE_STATE_UNKNOWN`）並保留候選。
+- 新密碼與舊密碼不出現在紀錄、審計或錯誤回應；資料庫驅動的錯誤只保留方言、步驟與錯誤碼或類別。
+- 連線 TLS 檔位為 `require`／`verify-ca`／`verify-full` 以外時仍可改密，風險標示在資產的 `transmission_risks` 與紀錄的 `transport_risk`（`db_rotation_unencrypted`），改密不經連線前風險同意閘。
+- 射程與限制見 `docs/ops/privileged-credential-rotation.md`。
+
 
 **未驗證憑證（候選）**：新秘密於動遠端**之前**即加密落庫，驗證成功才成為該掛載就位的密文版本
 並立即刪除候選。候選內容**不出現於任何 API 回應、UI、日誌或稽核欄位**，只供系統重試登入。清單欄位為

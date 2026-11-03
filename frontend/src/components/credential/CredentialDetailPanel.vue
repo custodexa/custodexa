@@ -258,6 +258,7 @@
         :credential-name="displayName"
         :binding-count="bindings.length"
         :out-of-scope-count="outOfScopeAssets"
+        :executor-count="executorCount"
         :bindings="bindings"
         :username="credential.username"
         @submitted="onRotationStarted"
@@ -430,6 +431,10 @@ const rotationActive = computed(() => !!props.credential?.rotation_active)
 const createdAt = computed(() => formatDateTime(props.credential?.created_at))
 const displayName = computed(() => credentialDisplayName(props.credential))
 const outOfScopeAssets = computed(() => outOfScopeCount(props.credential))
+// 用途一致規則：同一憑證的掛載用途相同，以憑證層 purpose 為準
+const executorCount = computed(() =>
+  props.credential?.purpose === 'executor' ? bindings.value.length + outOfScopeAssets.value : 0
+)
 
 // 伺服器對範圍化檢視者標示的動作旗標：不可操作時回原因碼，畫面寫出原因（不靜默禁用）
 const denied = (key) => deniedReason(props.credential, key)

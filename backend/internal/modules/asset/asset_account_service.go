@@ -340,17 +340,19 @@ func resolveAssetAccount(db *gorm.DB, assetID, accountID uint) (*model.AssetAcco
 		return &account, nil
 	}
 
-	err := db.Where("asset_id = ? AND is_default = ?", assetID, true).First(&account).Error
+	// 預設解析只認登入掛載：執行身分不得被當成預設（防禦性，服務層本就不讓它成為預設）
+	err := db.Where("asset_id = ? AND is_default = ? AND purpose = ?", assetID, true, model.AccountPurposeLogin).
+		First(&account).Error
 	if err == nil {
 		return &account, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("查詢預設帳號失敗: %w", err)
 	}
-	// 無預設帳號：零帳號資產合法，有帳號卻無預設＝不變式破損，擋下
-	var count int64
-	if err := db.Model(&model.AssetAccount{}).Where("asset_id = ?", assetID).Count(&count).Error; err != nil {
-		return nil, fmt.Errorf("查詢資產帳號數失敗: %w", err)
+	// 無預設帳號：零登入帳號的資產合法（只有執行身分者亦同），有登入帳號卻無預設＝不變式破損，擋下
+	count, err := liveAccountCount(db, assetID)
+	if err != nil {
+		return nil, err
 	}
 	if count == 0 {
 		return nil, nil
@@ -368,14 +370,29 @@ func (s *AssetService) VerifyAccountBinding(assetID, accountID uint) error {
 	if accountID == 0 {
 		return nil
 	}
-	_, err := resolveAssetAccount(database.DB, assetID, accountID)
+	_, err := resolveLoginAccount(database.DB, assetID, accountID)
 	return err
 }
 
-// liveAccountCount 該資產未軟刪的帳號數
+// resolveLoginAccount 連線出口專用的帳號解析：在 resolveAssetAccount 之上把執行身分掛載
+// 當成不存在（與不存在同形，不透露這台有執行身分）。只供人員連線的三個出口使用；
+// 管理、改密與輪替路徑仍走 resolveAssetAccount。
+func resolveLoginAccount(db *gorm.DB, assetID, accountID uint) (*model.AssetAccount, error) {
+	account, err := resolveAssetAccount(db, assetID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account != nil && account.IsExecutor() {
+		return nil, ErrAssetAccountNotFound
+	}
+	return account, nil
+}
+
+// liveAccountCount 該資產未軟刪的登入帳號數（執行身分不計入「有帳號必有預設」的不變式）
 func liveAccountCount(db *gorm.DB, assetID uint) (int64, error) {
 	var count int64
-	if err := db.Model(&model.AssetAccount{}).Where("asset_id = ?", assetID).Count(&count).Error; err != nil {
+	if err := db.Model(&model.AssetAccount{}).Where("asset_id = ? AND purpose = ?", assetID, model.AccountPurposeLogin).
+		Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("查詢資產帳號數失敗: %w", err)
 	}
 	return count, nil
@@ -460,13 +477,13 @@ func accountUniqueViolation(err error, wrapMsg string) error {
 	return ErrAssetAccountUsernameExists
 }
 
-// List 列出資產的帳號（預設帳號排首，其餘依 username）
+// List 列出資產的登入帳號（預設帳號排首，其餘依 username）。執行身分只經其專屬讀取端點呈現
 func (s *AssetAccountService) List(assetID uint) ([]*AssetAccountDTO, error) {
 	if _, err := s.assets.GetByID(assetID); err != nil {
 		return nil, err
 	}
 	var accounts []model.AssetAccount
-	if err := database.DB.Where("asset_id = ?", assetID).
+	if err := database.DB.Where("asset_id = ? AND purpose = ?", assetID, model.AccountPurposeLogin).
 		Order("is_default DESC, username ASC, id ASC").Find(&accounts).Error; err != nil {
 		return nil, fmt.Errorf("查詢資產帳號失敗: %w", err)
 	}
@@ -634,6 +651,9 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 				return err
 			}
 			if err := assertCredentialNotBound(tx, assetID, cred.ID); err != nil {
+				return err
+			}
+			if err := assertCredentialPurpose(tx, cred.ID, model.AccountPurposeLogin); err != nil {
 				return err
 			}
 			account.Username = cred.Username
@@ -833,6 +853,10 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		if account == nil {
 			return ErrAssetAccountNotFound
 		}
+		// 執行身分只能經專用帳號端點處理（判定在資產範圍與列鎖之後）
+		if account.IsExecutor() {
+			return ErrAssetAccountExecutorManaged
+		}
 		// 掛載必有憑證：存量轉換已保證此事，殘態一律大聲失敗而不就地補一筆
 		if err := requireBindingCredential(account); err != nil {
 			return err
@@ -1009,6 +1033,10 @@ func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uin
 		if account == nil {
 			return ErrAssetAccountNotFound
 		}
+		// 執行身分只能經專用帳號端點處理（判定在資產範圍與列鎖之後）
+		if account.IsExecutor() {
+			return ErrAssetAccountExecutorManaged
+		}
 		count, err := liveAccountCount(tx, assetID)
 		if err != nil {
 			return err
@@ -1081,6 +1109,10 @@ func (s *AssetAccountService) SetDefault(ctx context.Context, assetID, accountID
 		}
 		if account == nil {
 			return ErrAssetAccountNotFound
+		}
+		// 執行身分只能經專用帳號端點處理（判定在資產範圍與列鎖之後）
+		if account.IsExecutor() {
+			return ErrAssetAccountExecutorManaged
 		}
 		result = account
 		if account.IsDefault {
@@ -1157,7 +1189,8 @@ func applyAccountUpdates(account *model.AssetAccount, updates map[string]interfa
 
 // clearDefaultAccounts 清掉該資產全部 default 標記（exceptID 保留不動）
 func clearDefaultAccounts(tx *gorm.DB, assetID, exceptID uint) error {
-	q := tx.Model(&model.AssetAccount{}).Where("asset_id = ? AND is_default = ?", assetID, true)
+	q := tx.Model(&model.AssetAccount{}).Where("asset_id = ? AND is_default = ? AND purpose = ?",
+		assetID, true, model.AccountPurposeLogin)
 	if exceptID != 0 {
 		q = q.Where("id <> ?", exceptID)
 	}

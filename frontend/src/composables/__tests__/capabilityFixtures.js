@@ -10,7 +10,7 @@ export const ADMIN_PERMISSIONS = [
   'approverscope:manage_applicant',
   'asset:create', 'asset:delete', 'asset:test', 'asset:update', 'asset:view', 'assetgroup:manage',
   'audit:integrity_view', 'audit:view', 'authorization:manage', 'changesecret:manage', 'compliance:view',
-  'account:rotate', 'credential:bind', 'credential:convert-scope', 'credential:create', 'credential:delete',
+  'account:discover', 'account:rotate', 'credential:bind', 'credential:convert-scope', 'credential:create', 'credential:delete',
   'credential:detach', 'credential:manage', 'credential:rotate', 'credential:set-secret', 'credential:update',
   'credential:view', 'hostkey:reset', 'identity_source:manage', 'instanceguard:view', 'key:manage',
   'ldap:manage', 'notification_channel:manage', 'offsite:manage', 'oidc:manage', 'policygroup:manage',

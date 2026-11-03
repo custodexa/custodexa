@@ -490,6 +490,7 @@ func importFieldErrorFor(err error) (ImportFieldError, bool) {
 		{ErrCredentialDedicatedSingleBinding, importFieldCredentialID, apierror.CodeCredentialDedicatedSingle},
 		{ErrCredentialProtocolMismatch, importFieldCredentialID, apierror.CodeCredentialProtocolMismatch},
 		{ErrCredentialRotationActive, importFieldCredentialID, apierror.CodeCredentialRotationActive},
+		{ErrCredentialPurposeMismatch, importFieldCredentialID, apierror.CodeCredentialPurposeMismatch},
 		{ErrCredentialOutOfSync, importFieldCredentialID, apierror.CodeCredentialOutOfSync},
 	}
 	for _, t := range table {

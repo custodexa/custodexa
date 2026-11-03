@@ -171,6 +171,10 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 		if err := assertCredentialNotBound(tx, asset.ID, cred.ID); err != nil {
 			return err
 		}
+		// 掛載一律是登入帳號：憑證已作為執行身分時不得再掛成登入帳號
+		if err := assertCredentialPurpose(tx, cred.ID, model.AccountPurposeLogin); err != nil {
+			return err
+		}
 		if err := assertUsernameFreeOnAsset(tx, asset.ID, cred.Username, 0); err != nil {
 			return err
 		}
@@ -250,6 +254,10 @@ func (s *CredentialService) Unbind(ctx context.Context, credentialID, accountID 
 			[]uint{credentialID}, []uint{binding.AssetID}); err != nil {
 			// 範圍外資產上的掛載與不存在的掛載同形，掛載識別不得成為跨範圍的存在性探測
 			return assetScopeDenialAsBindingNotFound(err)
+		}
+		// 執行身分只能經專用帳號端點處理（判定在範圍之後，範圍外仍與不存在同形）
+		if binding.IsExecutor() {
+			return ErrAssetAccountExecutorManaged
 		}
 		if err := lockAssetForAccountMutation(tx, binding.AssetID); err != nil {
 			return err
@@ -335,6 +343,10 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 		if binding == nil {
 			return ErrAssetAccountNotFound
 		}
+		// 執行身分只能經專用帳號端點處理（判定在範圍與資產列鎖之後）
+		if binding.IsExecutor() {
+			return ErrAssetAccountExecutorManaged
+		}
 		if binding.CredentialID == credentialID {
 			result = binding
 			return nil
@@ -369,6 +381,9 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 			return err
 		}
 		if err := assertCredentialNotBound(tx, asset.ID, cred.ID); err != nil {
+			return err
+		}
+		if err := assertCredentialPurpose(tx, cred.ID, binding.Purpose); err != nil {
 			return err
 		}
 		if err := assertUsernameFreeOnAsset(tx, asset.ID, cred.Username, binding.ID); err != nil {

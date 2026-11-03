@@ -8,6 +8,7 @@
 -->
 <template>
   <div
+    ref="rootRef"
     class="add-row"
     data-test="account-add-row"
   >
@@ -21,6 +22,26 @@
       <div class="add-row__title">
         {{ t('assets.editDrawer.addTitle') }}
       </div>
+      <!-- 從主機帳號盤點帶入：資訊條說明帶入了什麼、還缺什麼；不自動送出 -->
+      <template v-if="prefill">
+        <el-alert
+          type="info"
+          show-icon
+          :closable="false"
+          class="prefill-alert"
+          data-test="prefill-info"
+          :title="prefillInfo"
+        />
+        <el-alert
+          v-if="prefillNameView.hasEscaped"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="prefill-alert"
+          data-test="prefill-hidden-warning"
+          :title="t('hostInventory.manageBar.hidden', { shown: prefillNameView.text })"
+        />
+      </template>
       <AssetCredentialSection
         :model="model"
         :protocol="protocol"
@@ -78,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { createAssetAccount } from '@/api/assetAccounts'
@@ -88,6 +109,7 @@ import { effectiveAccessNote } from '@/utils/keyDisplay'
 import { isDatabaseProtocol } from '@/utils/protocol'
 import AssetCredentialSection from '@/components/asset/AssetCredentialSection.vue'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import { visibleName } from '@/utils/visibleName'
 
 const props = defineProps({
   assetId: { type: [Number, String], default: null },
@@ -96,6 +118,8 @@ const props = defineProps({
   windowsOpenssh: { type: Boolean, default: false },
   // 已掛在這台上的憑證：同一台不會掛兩次同一筆
   excludeIds: { type: Array, default: () => [] },
+  // 主機帳號盤點帶入：{username, privileged}；帳號名一律照原值帶入（含隱藏字元）
+  prefill: { type: Object, default: null },
 })
 
 const emit = defineEmits(['added', 'cancel'])
@@ -116,6 +140,28 @@ const model = reactive({
   privileged: false,
   auth_method: 'sql',
 })
+
+// --- 盤點預填：有命名能力切專用並帶帳號名與特權；沒有則維持共用並說明同名共用憑證 ---
+const prefillNameView = computed(() => {
+  const v = visibleName(props.prefill?.username ?? '')
+  return { hasEscaped: v.hasEscaped, text: v.segments.map((x) => x.text).join('') }
+})
+const prefillInfo = computed(() => {
+  if (!props.prefill) return ''
+  const name = prefillNameView.value.text
+  return canNameAccount.value
+    ? t('hostInventory.manageBar.info', { name })
+    : t('hostInventory.manageBar.shared', { name })
+})
+function applyPrefill() {
+  if (!props.prefill) return
+  model.privileged = !!props.prefill.privileged
+  if (canNameAccount.value) {
+    model.credential_mode = 'dedicated'
+    model.username = props.prefill.username
+  }
+}
+applyPrefill()
 
 const rules = computed(() => ({
   credential_id: [
@@ -221,7 +267,14 @@ async function loadImpact() {
   }
 }
 
-onMounted(loadImpact)
+const rootRef = ref(null)
+onMounted(() => {
+  loadImpact()
+  // 焦點落在密碼欄：帶入的是帳號名，接下來要補的是秘密
+  if (props.prefill && canNameAccount.value) {
+    nextTick(() => rootRef.value?.querySelector('input[type="password"]')?.focus())
+  }
+})
 
 defineExpose({ model, payload, submit, cancel, formRef })
 </script>
@@ -244,6 +297,10 @@ defineExpose({ model, payload, submit, cancel, formRef })
   font-size: var(--ot-font-size-xs);
   color: var(--el-text-color-secondary);
   line-height: 1.6;
+}
+
+.prefill-alert {
+  margin-bottom: var(--ot-space-xs);
 }
 
 .impact-alert {

@@ -46,6 +46,8 @@ func permissionDependencies() map[Permission][]Permission {
 		PermCredentialDelete:             {PermAssetView},
 		PermCredentialBind:               {PermAssetView},
 		PermAccountRotate:                {PermAssetView},
+		PermAssetExecutorManage:          {PermAssetView},
+		PermAccountDiscover:              {PermAssetView},
 		PermChangeSecretManage:           {PermAssetView},
 		PermApproverScopeApplicantManage: {PermApproverScopeManage},
 		PermUserGroupManage:              {PermUserManage},

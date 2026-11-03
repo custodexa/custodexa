@@ -48,6 +48,28 @@ type memberRun struct {
 	secretType     string
 	// recovery 發起者失權後的有限驗證（只 Verify 與本地提交）
 	recovery bool
+	// contact 本成員這一次處理以秘密連過目標時的資產快照；每個成員各建一份
+	contact *memberContact
+}
+
+// memberContact 成員處理過程中是否以秘密連過目標（紀錄的傳輸風險依此填值）。
+type memberContact struct {
+	asset *model.Asset
+}
+
+// markContacted 記下本次處理已以秘密連過目標，以連線當下的資產快照為準。
+func (r memberRun) markContacted(asset *model.Asset) {
+	if r.contact != nil {
+		r.contact.asset = asset
+	}
+}
+
+// contactedAsset 連過目標時的資產快照；未連過回 nil。
+func (r memberRun) contactedAsset() *model.Asset {
+	if r.contact == nil {
+		return nil
+	}
+	return r.contact.asset
 }
 
 // Run 推進本輪：把排隊中與已到期的成員各推一步。
@@ -332,6 +354,7 @@ func (s *CredentialRotationService) runMember(ctx context.Context, rot *model.Cr
 		origin:         origin,
 		credentialName: credentialNameSnapshot(s.db, member.CredentialID),
 		secretType:     credentialSecretType(s.db, member.CredentialID),
+		contact:        &memberContact{},
 	}
 	switch member.State {
 	case model.CredentialMemberQueued, model.CredentialMemberRetryWait:
@@ -435,6 +458,9 @@ func (s *CredentialRotationService) recordMember(member *model.CredentialRotatio
 		Error:           reason,
 		ExecutedAt:      time.Now(),
 	}
+	if asset := run.contactedAsset(); asset != nil {
+		rec.TransportRisk = transportRiskIfContacted(asset, true)
+	}
 	if member.TargetVersionID != nil {
 		rec.TargetVersionID = *member.TargetVersionID
 	}
@@ -499,7 +525,7 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 	if secretType == "" {
 		secretType = model.ChangeSecretTypePassword
 	}
-	if model.IsWindowsRotationChannel(channel) && secretType == model.ChangeSecretTypeSSHKey {
+	if !model.RotationChannelSupportsSSHKey(channel) && secretType == model.ChangeSecretTypeSSHKey {
 		return nil, model.ChangeSecretReasonSecretTypeUnsupported
 	}
 	password, err := material.Move(next.Password)
@@ -516,14 +542,23 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 	// 基底回呼 fail-closed：正式撥號點都會依路線覆寫成綁定或預期身分回呼，
 	// 漏覆寫的新呼叫點在握手就被拒絕，不會落到一般的首次信任判定
 	hostKeyCB := ssh.HostKeyCallback(func(string, net.Addr, ssh.PublicKey) error { return ErrHostKeyCheckFailed })
+	// 堡壘機專用帳號自己的密碼型輪替改用不經殼層的提權指令，目標機只開放改密程式一條 sudo 規則也輪替得了自己
+	directCommand := false
+	if channel == model.RotationChannelPosixSSH && secretType == model.ChangeSecretTypePassword {
+		var purpose string
+		if err := s.db.Model(&model.AssetAccount{}).Where("id = ?", member.AccountID).Select("purpose").Scan(&purpose).Error; err == nil {
+			directCommand = purpose == model.AccountPurposeExecutor
+		}
+	}
 	return &memberContext{
 		target: rotationTarget{
-			asset:      asset,
-			channel:    channel,
-			username:   member.Username,
-			secretType: secretType,
-			addr:       rotationAddr(asset, channel),
-			hostKeyCB:  hostKeyCB,
+			asset:         asset,
+			channel:       channel,
+			username:      member.Username,
+			secretType:    secretType,
+			addr:          rotationAddr(asset, channel),
+			hostKeyCB:     hostKeyCB,
+			directCommand: directCommand,
 		},
 		logTarget: changeSecretTarget{
 			assetID: member.AssetID, accountID: member.AccountID,
@@ -630,23 +665,25 @@ func guardDeliveryIdentity(db *gorm.DB, member *model.CredentialRotationMember,
 }
 
 // attachDeliveryIdentity 依路線把主機身分綁定接到本次下達：
-//   - Bind：SSH 家族用綁定回呼（第一次握手在認證前綁定）；WinRM 在 Rotate 之前條件式寫入綁定。
-//   - Pinned：以成員自己的快照為預期身分，不重綁（WinRM 沒有金鑰可比）。
+//   - Bind：SSH 家族用綁定回呼（第一次握手在認證前綁定）；無主機金鑰的傳輸（winrm、db）在 Rotate
+//     之前條件式寫入綁定。
+//   - Pinned：以成員自己的快照為預期身分，不重綁（無主機金鑰的傳輸沒有金鑰可比）。
 //
 // 回傳非空原因碼＝尚未動遠端的乾淨失敗。
 func (s *CredentialRotationService) attachDeliveryIdentity(rot *model.CredentialRotation,
 	member *model.CredentialRotationMember, mc *memberContext, dec deliveryDecision) string {
 
-	winrm := rotationTransportOf(mc.target.asset) == model.HostKeyTransportWinRM
+	transport := rotationTransportOf(mc.target.asset)
+	keyless := model.HostKeyTransportIsKeyless(transport)
 	mc.deliveryGuard = s.memberVerifyGuard(rot, member)
-	if winrm {
-		// WinRM 沒有 SSH 握手，也就沒有主機金鑰回呼可言：不留 fail-closed 的基底回呼，與補跑驗證路徑一致
+	if keyless {
+		// 無主機金鑰的傳輸沒有 SSH 握手，也就沒有主機金鑰回呼可言：不留 fail-closed 的基底回呼，與補跑驗證路徑一致
 		mc.target.hostKeyCB = nil
 	}
 	switch dec.route {
 	case deliveryRouteBind:
-		if winrm {
-			if err := s.hostKeys.BindWinRM(HostKeyBindTarget{MemberID: member.ID}); err != nil {
+		if keyless {
+			if err := s.hostKeys.BindKeyless(HostKeyBindTarget{MemberID: member.ID}, transport); err != nil {
 				return model.ChangeSecretReasonHostKeyCheckFailed
 			}
 			return ""
@@ -655,7 +692,7 @@ func (s *CredentialRotationService) attachDeliveryIdentity(rot *model.Credential
 			HostKeyBindTarget{MemberID: member.ID})
 		mc.target.hostKeyCB = mc.deliveryGuard.countPasses(cb)
 	case deliveryRoutePinned:
-		if !winrm {
+		if !keyless {
 			mc.target.hostKeyCB = mc.deliveryGuard.countPasses(s.hostKeys.CallbackForPinned(
 				memberHostKeyDialContext(rot, member),
 				HostKeyPin{Algorithm: member.HostKeyAlgorithm, Fingerprint: member.HostKeyFingerprint}))
@@ -763,7 +800,12 @@ func (s *CredentialRotationService) deliverPassword(ctx context.Context,
 	mc *memberContext, cand *model.ChangeSecretCandidate, dec deliveryDecision, run memberRun) {
 
 	oldSecret := mc.old.Password
-	if err := withProtocolPair(oldSecret, mc.newPassword, func(old, next []byte) error { return mc.exec.Rotate(ctx, mc.target, old, next) }); err != nil {
+	rotateErr := withProtocolPair(oldSecret, mc.newPassword, func(old, next []byte) error { return mc.exec.Rotate(ctx, mc.target, old, next) })
+	var localErr *localPreconditionError
+	if !errors.As(rotateErr, &localErr) {
+		run.markContacted(mc.target.asset)
+	}
+	if err := rotateErr; err != nil {
 		logRemoteCause(mc.logTarget, "改密失敗", err)
 		if s.deliveryIdentityStopped(rot, member, mc, cand, dec, err, run) {
 			return
@@ -943,6 +985,7 @@ func (s *CredentialRotationService) verifyMember(ctx context.Context,
 	if mc.secretType == model.ChangeSecretTypeSSHKey {
 		newSecret = mc.newPrivateKey
 	}
+	run.markContacted(mc.target.asset)
 	if err := withProtocolSecret(newSecret, func(next []byte) error { return mc.exec.Verify(ctx, mc.target, next) }); err != nil {
 		logRemoteCause(mc.logTarget, "補跑驗證失敗", err)
 		s.memberIdentityStopped(guard, member, err)

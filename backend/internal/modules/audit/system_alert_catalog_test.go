@@ -33,6 +33,7 @@ var frozenSystemAlertTable = map[port.SystemAlertType][2]string{
 	port.SystemAlertMappingRevalidationRelaxed:   {"security_settings", "high"},
 	port.SystemAlertNotificationChannelChanged:   {"notification", "high"},
 	port.SystemAlertConcurrentInstanceDetected:   {"security_settings", "high"},
+	port.SystemAlertUnmanagedPrivilegedAccount:   {"identity_privilege", "high"},
 }
 
 // sampleSystemAlertParams 依宣告為每個參數造一個合法值（可選參數也填，讓模板的可選段都走一遍）。
@@ -93,7 +94,7 @@ func TestSystemAlertCatalogRegistry(t *testing.T) {
 			}
 		}
 	}
-	if groups["address_transport"] != 5 || groups["secret"] != 1 || groups["identity_privilege"] != 5 ||
+	if groups["address_transport"] != 5 || groups["secret"] != 1 || groups["identity_privilege"] != 6 ||
 		groups["security_settings"] != 7 || groups["notification"] != 1 {
 		t.Errorf("分組計數不符: %v", groups)
 	}
@@ -178,5 +179,25 @@ func TestSystemAlertCatalogRegistry(t *testing.T) {
 		if v.Effective != wantEff || v.Adjusted != wantAdj {
 			t.Errorf("%s 有效分級/已調整: %s/%v，應為 %s/%v", v.Type, v.Effective, v.Adjusted, wantEff, wantAdj)
 		}
+	}
+}
+
+// 未納管特權帳號告警的登入身分參數：專用帳號身分的值通過目錄驗證，未知值被擋。
+func TestSystemAlertUnmanagedPrivilegedIdentityModes(t *testing.T) {
+	mk := func(mode string) port.SystemAlertEvent {
+		return port.SystemAlertEvent{
+			Type:   port.SystemAlertUnmanagedPrivilegedAccount,
+			Actor:  port.SystemAlertActor{UserID: 1, Username: "admin"},
+			Target: port.SystemAlertTarget{Kind: port.SystemAlertTargetAsset, ID: "7"},
+			Params: map[string]string{"new_count": "1", "identity_mode": mode},
+		}
+	}
+	for _, m := range []string{"default_account", "executor"} {
+		if _, err := validateSystemAlertEvent(mk(m)); err != nil {
+			t.Fatalf("identity_mode=%s 應通過：%v", m, err)
+		}
+	}
+	if _, err := validateSystemAlertEvent(mk("other")); err == nil {
+		t.Fatal("未知的 identity_mode 應被擋")
 	}
 }

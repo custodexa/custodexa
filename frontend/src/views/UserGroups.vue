@@ -265,17 +265,52 @@
         </div>
         <span v-if="!mappedUsers.length">{{ $t('identityGroupMappings.noMappedMembers') }}</span>
       </div>
+      <GroupApproverOnlyNotice
+        v-if="membersGuard.blocked.value"
+        :detail="membersGuard.blocked.value"
+        action="remove"
+        :busy="submitting"
+        @retry="retryMembers"
+      />
       <template #footer>
         <el-button @click="membersDialogVisible = false">
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
           v-preview-write
-          type="primary"
+          :type="membersGuard.blocked.value ? 'default' : 'primary'"
           :loading="submitting"
+          data-test="members-dialog-save"
           @click="submitMembers"
         >
           {{ $t('common.save') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 刪除會讓成員只剩審核者角色：原確認換成原因與受影響成員，可補完後重新檢查並刪除 -->
+    <el-dialog
+      v-model="deleteBlockedVisible"
+      :title="$t('common.deleteConfirmTitle')"
+      width="560px"
+      :close-on-click-modal="false"
+    >
+      <p data-test="delete-blocked-question">
+        {{ deleteQuestion }}
+      </p>
+      <GroupApproverOnlyNotice
+        v-if="deleteGuard.blocked.value"
+        :detail="deleteGuard.blocked.value"
+        action="delete"
+        :busy="deleteGuard.retrying.value"
+        @retry="sendDelete(deleteGuard.retry)"
+      />
+      <template #footer>
+        <el-button
+          data-test="delete-blocked-close"
+          @click="deleteBlockedVisible = false"
+        >
+          {{ $t('common.close') }}
         </el-button>
       </template>
     </el-dialog>
@@ -283,7 +318,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, RefreshCw, SquarePen, Trash2, User } from 'lucide-vue-next'
@@ -306,6 +341,8 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { t } from '@/i18n'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import GroupApproverOnlyNotice from '@/components/GroupApproverOnlyNotice.vue'
+import { useGroupApproverOnlyRetry } from '@/composables/useGroupApproverOnlyRetry'
 
 const router = useRouter()
 const loading = ref(false)
@@ -492,10 +529,14 @@ const openMembersDialog = (row) => {
   membersDialogVisible.value = true
 }
 
-const submitMembers = async () => {
+// 移出會讓成員只剩審核者角色：對話框內列出受影響成員，「重新檢查並儲存」原樣重送；勾選一變動回到一般儲存
+const membersGuard = useGroupApproverOnlyRetry()
+watch(memberIds, () => membersGuard.clear(), { deep: true })
+watch(membersDialogVisible, (open) => open || membersGuard.clear())
+const sendMembers = async (attempt) => {
   submitting.value = true
   try {
-    await replaceUserGroupMembers(activeGroup.value.id, memberIds.value)
+    if (!(await attempt())?.ok) return
     ElMessage.success(t('userGroups.membersUpdated'))
     membersDialogVisible.value = false
     fetchGroups()
@@ -503,6 +544,33 @@ const submitMembers = async () => {
     console.error('更新成員失敗:', err)
   } finally {
     submitting.value = false
+  }
+}
+const submitMembers = () => {
+  const id = activeGroup.value.id
+  const ids = [...memberIds.value]
+  return sendMembers(() => membersGuard.run(() => replaceUserGroupMembers(id, ids)))
+}
+const retryMembers = () => sendMembers(membersGuard.retry)
+
+// 刪除被擋：保留同一個 DELETE 供重新檢查；關閉即放棄
+const deleteGuard = useGroupApproverOnlyRetry()
+const deleteBlockedVisible = ref(false)
+const deleteQuestion = ref('')
+watch(deleteBlockedVisible, (open) => open || deleteGuard.clear())
+const sendDelete = async (attempt) => {
+  try {
+    const result = await attempt()
+    if (!result) return
+    if (!result.ok) {
+      deleteBlockedVisible.value = true
+      return
+    }
+    deleteBlockedVisible.value = false
+    ElMessage.success(t('userGroups.deleted', { count: result.res?.revoked_authorizations ?? 0 }))
+    fetchGroups()
+  } catch (err) {
+    console.error('刪除群組失敗:', err)
   }
 }
 
@@ -516,11 +584,12 @@ const handleDelete = async (row) => {
     console.error('查詢群組授權數失敗:', err)
   }
 
+  const question = count > 0
+    ? t('userGroups.deleteConfirmWithAuth', { name: row.name, count })
+    : t('userGroups.deleteConfirm', { name: row.name })
   try {
     await ElMessageBox.confirm(
-      count > 0
-        ? t('userGroups.deleteConfirmWithAuth', { name: row.name, count })
-        : t('userGroups.deleteConfirm', { name: row.name }),
+      question,
       t('common.deleteConfirmTitle'),
       {
         confirmButtonText: t('common.deleteConfirmButton'),
@@ -532,15 +601,9 @@ const handleDelete = async (row) => {
     return
   }
 
-  try {
-    const res = await deleteUserGroup(row.id)
-    ElMessage.success(
-      t('userGroups.deleted', { count: res.revoked_authorizations ?? 0 })
-    )
-    fetchGroups()
-  } catch (err) {
-    console.error('刪除群組失敗:', err)
-  }
+  deleteQuestion.value = question
+  const id = row.id
+  await sendDelete(() => deleteGuard.run(() => deleteUserGroup(id)))
 }
 
 onMounted(() => {

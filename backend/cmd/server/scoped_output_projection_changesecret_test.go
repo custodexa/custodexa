@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/custodexa/backend/internal/model"
@@ -39,6 +40,14 @@ func (e *outEnv) soRecord(batchID, planID, assetID, accID uint, username string,
 		CredentialName: credName, TargetVersionID: ver, Status: "skipped", ExecutedAt: time.Now()}
 	require.NoError(e.t, e.db.Create(&r).Error)
 	return r
+}
+
+// soMarkTransportRisk 把紀錄標為資料庫改密以未加密連線進行。
+func (e *outEnv) soMarkTransportRisk(r *model.ChangeSecretRecord) {
+	e.t.Helper()
+	require.NoError(e.t, e.db.Model(&model.ChangeSecretRecord{}).Where("id = ?", r.ID).
+		Update("transport_risk", model.RiskDBRotationUnencrypted).Error)
+	r.TransportRisk = model.RiskDBRotationUnencrypted
 }
 
 func (e *outEnv) soPlan(name string, assetIDs ...uint) model.ChangeSecretPlan {
@@ -86,6 +95,9 @@ func (e *outEnv) soBuildCS() *soCSData {
 	d.histPlan = e.soPlan("zz-so-hist-plan", d.assetIn2)
 	d.recG = e.soRecord(0, d.inPlan.ID, e.assetIn0, e.gcredAcc, "zz-so-g", e.gcred, "zz-so-out-gcred", soVerG)
 	d.recI = e.soRecord(0, d.inPlan.ID, e.assetIn1, e.accI, "zz-so-g", e.inCred, "zz-so-in-cred", soVerI)
+	// 一筆計畫紀錄與一筆批次紀錄帶傳輸風險（皆為對範圍化檢視者收窄的列）：傳輸風險不是憑證識別，收窄時照帶
+	e.soMarkTransportRisk(&d.recG)
+	e.soMarkTransportRisk(&d.batchRecG)
 
 	d.candOut = e.soCandidate(e.gcredAcc, e.assetIn0, d.outPlan.ID, "zz-so-g")
 	d.candIn = e.soCandidate(e.accI, e.assetIn1, d.inPlan.ID, "zz-so-g")
@@ -275,6 +287,35 @@ func TestScopedChangeSecretOutputProjection(t *testing.T) {
 		soAssertOK(t, code, raw, http.StatusOK, []string{"data", "total"})
 		soAssertNoLeak(t, raw, nil, []string{fmt.Sprintf(`"plan_id":%d`, d.outPlan.ID), fmt.Sprintf(`"plan_id":%d`, d.inPlan.ID)})
 		soGoldenLog(t, "candidates", soKeyset(t, raw))
+	})
+
+	// 傳輸風險逐筆出站：全域檢視者與範圍化檢視者（收窄列）讀到同一個值，其餘列為空字串
+	t.Run("transport_risk", func(t *testing.T) {
+		risk := func(row map[string]any) any { return row["transport_risk"] }
+		for _, uid := range []uint{e.glb, e.mgr} {
+			code, raw := r(uid)(batchPath)
+			soAssertOK(t, code, raw, http.StatusOK, []string{"data"})
+			rows := soJSONRows(t, raw, "data", "records")
+			assert.Equal(t, model.RiskDBRotationUnencrypted, risk(soJSONRowBy(t, rows, "id", d.batchRecG.ID)), raw)
+			assert.Equal(t, "", risk(soJSONRowBy(t, rows, "id", d.batchRecI.ID)), raw)
+
+			code, raw = r(uid)(recordsPath(d.inPlan))
+			soAssertOK(t, code, raw, http.StatusOK, []string{"data", "total"})
+			rows = soJSONRows(t, raw, "data")
+			assert.Equal(t, model.RiskDBRotationUnencrypted, risk(soJSONRowBy(t, rows, "id", d.recG.ID)), raw)
+			assert.Equal(t, "", risk(soJSONRowBy(t, rows, "id", d.recI.ID)), raw)
+		}
+		// 範圍化檢視者：被收窄的列仍帶傳輸風險
+		code, raw := r(e.mgr)(recordsPath(d.inPlan))
+		soAssertOK(t, code, raw, http.StatusOK, []string{"data", "total"})
+		row := soJSONRowBy(t, soJSONRows(t, raw, "data"), "id", d.recG.ID)
+		assertMasked(t, row, "credential_id", "credential_name", "target_version_id")
+		assert.Equal(t, model.RiskDBRotationUnencrypted, risk(row))
+		code, raw = r(e.mgr)(batchPath)
+		soAssertOK(t, code, raw, http.StatusOK, []string{"data"})
+		row = soJSONRowBy(t, soJSONRows(t, raw, "data", "records"), "id", d.batchRecG.ID)
+		assertMasked(t, row, "credential_id", "credential_name", "target_version_id")
+		assert.Equal(t, model.RiskDBRotationUnencrypted, risk(row))
 	})
 
 	// 改密入口與改密能力不授予憑證識別：三種主體讀三個回應，列照列、憑證欄位全部收窄

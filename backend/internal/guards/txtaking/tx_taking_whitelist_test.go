@@ -204,6 +204,14 @@ var txTakingWhitelist = []txTakingEntry{
 		Reason: "帳號寫入隨所屬資產判定，須在取鎖後同交易重讀主體與資產歸屬，早於資產列鎖與憑證列鎖；只讀、不取鎖、不寫表。",
 	},
 	{
+		CallerFile: "internal/modules/asset/asset_executor_service.go",
+		Callee:     "AuthorizeExecutorManage",
+		OriginalSites: []string{
+			"（新增）堡壘機專用帳號設定與清除交易在取得拓撲序列化鎖之後經 asset 端窄介面呼叫 authz",
+		},
+		Reason: "專用帳號的設定與清除隨所屬資產判定 asset:executor-manage，須在取鎖後同交易重讀主體與資產歸屬，判定與寫入之間不得有指派或拓撲變動；只讀、不取鎖、不寫表。",
+	},
+	{
 		CallerFile: "internal/modules/asset/asset_write_scope_tx.go",
 		Callee:     "CoverageSnapshot",
 		OriginalSites: []string{
@@ -1256,10 +1264,10 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	// 批次改密建立交易的拓撲鎖與兩道範圍化判定三處、改密讀取投影（批次、候選、計畫記錄與可見性）
 	// 的資產範圍與憑證歸屬判定、候選清除與計畫寫入的拓撲鎖與範圍判定共九處（鎖不寫表、判定皆只讀）
 	// ＝八十處；新增資產在建立交易內以送出節點判定建立憑證能力一處（只讀）、存取政策覆寫的建立與批次新增
-	// 範圍判定一處、單台覆寫清單的範圍投影與集合套用兩處（皆只讀）＝八十四處；角色指派的節點範圍寫入在同交易內推進權限版本一處＝八十五處；節點範圍指派寫入在同交易內檢查節點存在（asset 的節點存在讀取，只讀）一處＝八十六處；範圍化管理範本種入資料步驟在單一交易內的權限狀態比對與權限版本推進兩處＝八十八處。調整此數字必須連同
+	// 範圍判定一處、單台覆寫清單的範圍投影與集合套用兩處（皆只讀）＝八十四處；角色指派的節點範圍寫入在同交易內推進權限版本一處＝八十五處；節點範圍指派寫入在同交易內檢查節點存在（asset 的節點存在讀取，只讀）一處＝八十六處；範圍化管理範本種入資料步驟在單一交易內的權限狀態比對與權限版本推進兩處＝八十八處；堡壘機專用帳號設定與清除交易在取鎖後的範圍判定一處（只讀）＝八十九處。調整此數字必須連同
 	// 上方 txTakingWhitelist 的登記與其理由一起改——這正是「新增 tx-taking 呼叫點
 	// 要被看見」的機制，不是可以隨手放寬的門檻。
-	const expectedTxTakingSites = 88
+	const expectedTxTakingSites = 89
 	total := 0
 	for _, e := range txTakingWhitelist {
 		total += len(e.OriginalSites)

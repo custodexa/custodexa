@@ -97,7 +97,51 @@ const (
 const (
 	HostKeyTransportSSH   = "ssh"
 	HostKeyTransportWinRM = "winrm"
+	// HostKeyTransportDB 資料庫原生連線（db_native 通道）：沒有 SSH 主機金鑰可比
+	HostKeyTransportDB = "db"
 )
+
+// HostKeyTransportForChannel 改密通道對應的傳輸種類。
+//
+// none 與值域外的通道回 ssh，保留既有承接判定的行為（那些工作不會走到執行器，
+// 回 ssh 只影響傳輸比較）。新增通道時要在這裡登記，否則會被當成 SSH 工作，
+// 撥號前查不到主機金鑰記錄而整批停止。
+func HostKeyTransportForChannel(channel string) string {
+	switch channel {
+	case RotationChannelWindowsWinRM:
+		return HostKeyTransportWinRM
+	case RotationChannelDBNative:
+		return HostKeyTransportDB
+	default:
+		return HostKeyTransportSSH
+	}
+}
+
+// HostKeyTransportHasHostKey 傳輸種類是否有主機金鑰可比對（只有 ssh）。
+//
+// 「這個傳輸有沒有金鑰」的唯一判定點：撥號前比對、提交前複核、綁定與承接都以它
+// 分支，不以「是不是 WinRM」二分。
+func HostKeyTransportHasHostKey(transport string) bool {
+	return transport == HostKeyTransportSSH
+}
+
+// HostKeyTransportIsKeyless 傳輸種類是否為已知的無主機金鑰傳輸（winrm、db）。
+//
+// 「跳過金鑰比對」的分支一律用它，不用 !HostKeyTransportHasHostKey：工作列的傳輸欄
+// 在綁定前是空字串，空值與值域外的值必須落到 fail-closed 的那一側，不能被當成無金鑰而放行。
+func HostKeyTransportIsKeyless(transport string) bool {
+	return transport == HostKeyTransportWinRM || transport == HostKeyTransportDB
+}
+
+// IsHostKeyTransport 傳輸種類的值域（ssh、winrm、db）。
+func IsHostKeyTransport(transport string) bool {
+	switch transport {
+	case HostKeyTransportSSH, HostKeyTransportWinRM, HostKeyTransportDB:
+		return true
+	default:
+		return false
+	}
+}
 
 // CredentialHostIdentityConfirmation 逐工作、只驗證的主機身分人工承接紀錄。
 //

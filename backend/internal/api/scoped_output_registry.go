@@ -12,13 +12,15 @@ type ScopedOutputExit struct {
 	Via string
 }
 
-// ScopedOutputExits 18 個登錄出口：帳號列 6、輪替 5、改密 7。
+// ScopedOutputExits 20 個登錄出口：帳號列 8（含執行身分讀取與設定）、輪替 5、改密 7。
 func ScopedOutputExits() []ScopedOutputExit {
 	return []ScopedOutputExit{
 		{Fn: "AssetAccountHandler.List", Group: "account"},
 		{Fn: "AssetAccountHandler.Create", Group: "account"},
 		{Fn: "AssetAccountHandler.Update", Group: "account"},
 		{Fn: "AssetAccountHandler.SetDefault", Group: "account"},
+		{Fn: "AssetExecutorHandler.Get", Group: "account"},
+		{Fn: "AssetExecutorHandler.Set", Group: "account"},
 		{Fn: "CredentialHandler.Bind", Group: "account", Via: "CredentialHandler.respondAccountRow"},
 		{Fn: "CredentialHandler.RebindAccount", Group: "account", Via: "CredentialHandler.respondAccountRow"},
 		{Fn: "CredentialHandler.StartRotation", Group: "rotation"},
@@ -55,6 +57,7 @@ func ScopedOutputProjections() []ScopedOutputProjection {
 		{"CredentialHandler.projectRotation", ProjectionEntry, "輪替回應：成員只含請求主體可見者"},
 		{"accountRowProjector.rows", ProjectionEntry, "帳號列表回應"},
 		{"accountRowProjector.one", ProjectionEntry, "帳號寫入回應（單列）"},
+		{"AssetExecutorHandler.projectExecutor", ProjectionEntry, "執行身分讀取與設定回應：credential 欄由帳號列投影器產生"},
 		{"ChangeSecretHandler.projectBatchTargets", ProjectionEntry, "批次目標回應"},
 		{"ChangeSecretHandler.projectRecords", ProjectionEntry, "改密紀錄回應（批次明細與計畫紀錄共用）"},
 		{"ChangeSecretHandler.projectCandidates", ProjectionEntry, "候選回應（來源計畫參照依可見性輸出）"},
@@ -63,13 +66,15 @@ func ScopedOutputProjections() []ScopedOutputProjection {
 		{"respondScoped", ProjectionEntry, "唯一寫出點；讀取密封欄位，不回傳 scopedOutput"},
 		{"newRotationDTO", ProjectionHelper, "輪替對外型別的組裝，只被 projectRotation 呼叫"},
 		{"newCandidateDTO", ProjectionHelper, "候選對外型別的組裝，只被 projectCandidates 呼叫"},
-		{"accountRowProjector.shape", ProjectionHelper, "決定帳號列形狀與範圍內憑證，只被 rows、one 呼叫"},
-		{"accountRowProjector.row", ProjectionHelper, "單列依形狀轉換，只被 rows、one 呼叫"},
+		{"accountRowProjector.shape", ProjectionHelper, "決定帳號列形狀與範圍內憑證，只被 rows、one、credentialRow 呼叫"},
+		{"accountRowProjector.row", ProjectionHelper, "單列依形狀轉換，只被 rows、one、credentialRow 呼叫"},
+		{"accountRowProjector.credentialRow", ProjectionHelper, "單一帳號列的投影，只被 AssetExecutorHandler.projectExecutor 呼叫（執行身分回應的 credential 欄）"},
 		{"withOutOfScopeCount", ProjectionHelper, "於輪替對外型別加範圍外台數，只被 projectRotation 呼叫"},
 		{"accountRowActions", ProjectionHelper, "範圍外帳號列的動作判定轉換，只被 row 呼叫"},
 		{"ChangeSecretHandler.maskPlans", ProjectionHelper, "計畫列的遮蔽判定，只被 projectPlanList、projectPlan 呼叫"},
 		{"maskPlanRow", ProjectionHelper, "單一計畫列的遮蔽轉換，只被 maskPlans 呼叫"},
 		{"newChangeSecretRecordDTO", ProjectionHelper, "改密紀錄對外型別的組裝，只被 projectRecords 呼叫"},
+		{"executorMasked", ProjectionHelper, "改密紀錄代改專用帳號識別的遮蔽判定，只被 projectRecords 呼叫"},
 		{"CredentialHandler.respondAccountRow", ProjectionHelper, "掛載與更換憑證的回應轉接：把帳號列交給 one 投影後經 respondScoped 寫出，本體自己不呼叫任何寫出方法"},
 	}
 }
@@ -102,6 +107,8 @@ func ScopedOutputSources() []string {
 		"AssetAccountServiceInterface.Update",
 		"AssetAccountServiceInterface.SetDefault",
 		"AssetAccountServiceInterface.List",
+		"AssetExecutorServiceInterface.Get",
+		"AssetExecutorServiceInterface.Set",
 		"CredentialServiceInterface.Bind",
 		"CredentialServiceInterface.Rebind",
 		"CredentialRotationServiceInterface.Members",
@@ -140,11 +147,13 @@ func ContextConsumers() []ContextConsumer {
 		{"apierror.Respond", ConsumerWrite, "既有錯誤出口"},
 		{"apierror.RespondInternal", ConsumerWrite, "既有錯誤出口（內部錯誤）"},
 		{"respondAccountError", ConsumerWrite, "帳號端點錯誤映射"},
+		{"respondExecutorError", ConsumerWrite, "執行身分端點錯誤映射"},
 		{"respondCredentialError", ConsumerWrite, "憑證端點錯誤映射"},
 		{"respondHostIdentityMemberError", ConsumerWrite, "主機身分補跑錯誤映射"},
 		{"respondBatchError", ConsumerWrite, "批次端點錯誤映射"},
 		{"respondPlanError", ConsumerWrite, "計畫端點錯誤映射"},
 		{"accountParams", ConsumerRead, "解析路徑參數"},
+		{"executorAssetID", ConsumerRead, "解析路徑參數"},
 		{"credentialParam", ConsumerRead, "解析路徑參數"},
 		{"credentialAccountParam", ConsumerRead, "解析路徑參數"},
 		{"credentialRotationParam", ConsumerRead, "解析路徑參數"},

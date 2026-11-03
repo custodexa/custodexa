@@ -507,6 +507,7 @@ func (s *ChangeSecretPlanService) assertNoSharedCredentialTarget(db *gorm.DB, re
 		Joins("JOIN credentials ON credentials.id = asset_accounts.credential_id"+
 			" AND credentials.deleted_at IS NULL").
 		Where("asset_accounts.asset_id IN ?", req.AssetIDs).
+		Where("asset_accounts.purpose = ?", model.AccountPurposeLogin).
 		Where("credentials.scope = ?", model.CredentialScopeShared)
 	if names := explicitAccountNames(scope); names != nil {
 		if len(names) == 0 {

@@ -53,7 +53,9 @@
     "file_transfer": "ファイル転送",
     "connection_test": "接続テスト",
     "credential_change": "パスワード変更",
-    "credential_rotation": "認証情報のローテーション"
+    "credential_rotation": "認証情報のローテーション",
+    "account_inventory": "ホストアカウント棚卸",
+    "executor_login_check": "踏み台専用アカウントのテストログイン"
   },
   "alert_state": {
     "blocked": "ブロック済み",
@@ -116,6 +118,7 @@
     "col_secret_type": "シークレット種別",
     "col_shared": "共有認証情報",
     "col_source": "出所",
+    "col_transport_risk": "通信",
     "credential_none": "なし",
     "credential_password": "パスワード",
     "credential_ssh_key": "SSH 鍵",
@@ -161,6 +164,7 @@
     "status_unverified": "未検証",
     "summary": "サマリー指標",
     "title": "資産アカウント認証情報ローテーション証拠レポート",
+    "transport_risk_db_rotation_unencrypted": "暗号化なしの接続",
     "truncation": "打ち切り",
     "truncation_none": "なし",
     "truncation_records": "記録明細を上限で打ち切り",

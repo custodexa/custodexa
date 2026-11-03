@@ -214,5 +214,11 @@
       "title": "並行して動作するインスタンスの可能性を検出しました（他の接続）",
       "text": "起動時チェック（{actor}）：起動時に、同じデータベースへ接続しているガード対応の別インスタンスの接続を確認しました[（{peers} 件）]（ピア数の照会：{peers_query}）（レベル：{severity}）。"
     }
+  },
+  "unmanaged_privileged_account": {
+    "default": {
+      "title": "ホストに未管理の特権アカウントがあります",
+      "text": "{actor} が開始したホストアカウント棚卸で、未管理の特権アカウントが新たに {new_count} 件見つかりました（ログイン ID：{identity_mode}）（レベル：{severity}）。"
+    }
   }
 }

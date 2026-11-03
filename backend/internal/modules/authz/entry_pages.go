@@ -34,6 +34,7 @@ func EntryPagePaths() map[string]string {
 		"policy_groups":           "/policy-groups",
 		"key_management":          "/key-management",
 		"transmission":            "/transmission-inventory",
+		"host_account_inventory":  "/account-inventory",
 		"offsite_storage":         "/offsite-storage",
 		"notification_channels":   "/notification-channels",
 		"system_alerts":           "/alerts",

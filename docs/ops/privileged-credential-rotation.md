@@ -355,6 +355,13 @@ such a set is one named credential with several bindings, and the binding list i
 "which hosts use this secret". This section is the recovery procedure for the case where changing
 that secret does not finish on every host.
 
+A shared credential can also be the bastion service account of several hosts (a bastion service
+account is never offered for connections). The group change in §13.1 and a plan that targets the
+credential cover those bindings the same way as any other binding; account-targeted plans neither
+select them nor fail to save because of them (§13.5). Clearing a host's bastion service account
+removes only the binding on the platform: the account and any key already installed on the host
+stay there until an administrator removes them.
+
 ### 13.1 Changing the whole group
 
 Starting a group change returns straight away; the hosts are worked through in the background,
@@ -464,6 +471,10 @@ Neither alternative is acceptable: changing one member alone leaves the other ho
 without a usable secret, and quietly extending the change to the rest means changing machines the
 operator did not select.
 
+Only login accounts count here. A host whose bastion service account uses a shared credential does
+not stop an account-targeted plan from saving, and the plan does not change that bastion service
+account.
+
 Two ways forward, both supported:
 
 - **Point the plan at the credential instead of at accounts.** The plan then changes that credential
@@ -553,6 +564,43 @@ This section describes what happens when a person holds the account-rotation or 
 - **Confirming proves that the person was told; it does not stop the change.** A person limited to some nodes who confirms and saves a credential-target plan changes the password on the hosts outside their scope as well. The confirmation only makes sure the number of those hosts was shown before saving. The bound only stops a run from reaching attachments added outside the scope after the save without a new confirmation; it does not limit what was confirmed when the plan was saved. Grant credential rotation with the same care as the right to log in to every host the credential is attached to; see [Deployment Topology Limits](./deployment-topology-limits.md#shared-credentials-within-a-limited-scope-what-the-impact-confirmation-stops-and-what-it-does-not).
 - **Choosing a secret yourself is still recorded, not prevented.** As described in §13.7, a person who may declare a secret or detach a host with a custom secret can do so on hosts within their scope, set the password to a value only they know, and then connect to that host directly without passing through this platform. The platform records and alerts; it does not prevent it.
 
+
+### 13.9 Database accounts that change their own password
+
+For an asset whose protocol is mysql, postgres or mssql and whose change channel is `db_native`, a credential change signs in to the database as that account with its current password, changes that account's own password, and then checks the new password by signing in again on a second connection. No administrator account is needed, and the change does not use any other account. It changes the password only: it does not create accounts, grant privileges or change the default database. The channel supports passwords only; an account whose secret is an SSH key is skipped.
+
+**The channel is never chosen for you.** A database asset whose change channel is unset stays unset and is skipped by credential change plans (reason: change channel not configured). An administrator has to set `db_native` on the asset on purpose. Redis assets cannot take this channel, and changing an asset's protocol to one that cannot take it clears the channel.
+
+**What is supported.** MySQL 8.0.13 or later (MariaDB is not supported), PostgreSQL 10 or later, and SQL Server SQL-authentication logins. A target outside that range fails before anything is sent, with the reason "target version not supported". Before the change is sent, the identity the session actually has on the target must equal the account on record; if not, the change is refused and nothing is sent.
+
+**When the check of the new password fails.** If the second connection is refused on authentication, the first connection changes the password back to the old one. If the check fails for any other reason (a network failure, for example), the password is not changed back: the record is marked unverified and the candidate is kept for the system's retry.
+
+**Without TLS.** A database asset whose TLS mode is unset or `disable` can still be changed with `db_native`, but the old and the new password may then cross the network in clear text. Whether the sign-in exchange sends clear text depends on how the target authenticates, and the platform cannot see that, so it does not claim that only a derived value is sent. The risk is shown where it is used, not only on this page: the asset carries the transmission risk `db_rotation_unencrypted` in its list of transmission risks, and every change record that signed in to the target with a secret carries the same value in `transport_risk`. The channel encryption inventory on the Transmission Security page has a database rotation row (`db_rotation`) that counts the assets set to `db_native` and how many of them run without TLS. A record that did not reach the target (skipped, or refused by the local checks) and a record from before the upgrade have an empty value. A change does not wait for any consent on this risk.
+
+**Moving to TLS.** Set the asset's database TLS mode to `require`, `verify-ca` or `verify-full`. `require` encrypts the connection without checking the server certificate, so it protects against listening but not against an impostor; `verify-ca` and `verify-full` also check the certificate (`verify-full` checks the host name as well) and are the settings to use when the target's certificate can be verified. Once the mode is one of these three, the asset no longer carries `db_rotation_unencrypted` and new records are empty; records written earlier keep the value they were written with.
+
+**Where the unencrypted marking appears.** In the console, the marking appears in these places:
+
+- Asset form: when a database asset's change channel is set to the database account changing its own password and its TLS mode is not one of the three encrypted settings, a warning appears under the channel field before the asset is saved. The warning does not stop the save, and its button moves the focus to the TLS mode field without changing it.
+- Asset list: the risk count next to the host lists the database rotation risk next to any other transmission risk of the asset.
+- Credential change plan form: in the asset picker, the channel tag of such an asset is shown as a warning and reads "unencrypted", and a line under the picker gives the number of selected assets that carry the risk. The form loads the first 100 assets; selected assets beyond that are not counted in this line.
+- Plan execution records, batch change results and the record details on the rotation evidence page: each record whose `transport_risk` is set shows an "Unencrypted connection" tag next to its result. The summary of the plan execution records also gives how many records ran over an unencrypted connection.
+- Rotation evidence report: `records.csv` and Appendix B of the PDF end with a "Transport" column that holds the same phrase for those records and is empty for the others.
+
+The tag on a record comes from the record itself, not from the asset's current settings. The member list on the progress page of a shared credential rotation does not show the tag; the records of those members show it on the rotation evidence page and in the report.
+
+**Limits.** The following are limits of the channel. The platform does not claim to cover them.
+
+- MySQL tells accounts apart by name and source host, so the same name can exist on several rows. A change updates only the row that the connection matched; the other rows keep the old password. The check connection usually matches the same row, so a record of success does not mean every row of that account name has been changed.
+- If the MySQL account already keeps a second password, the change does not remove it, and the old second password stays valid.
+- When the target enforces a password history or a reuse restriction, changing back after a failed check can be refused. The result is then "the target's check and the rollback both failed", and the state of the target is unknown.
+- When the MySQL connection character set is not utf8mb4, utf8mb3, latin1 or ascii, the platform ends with a remote rejection and does not send the change.
+- When the same database account appears on several assets through replication (a primary and its replicas, for example), the new password is carried to the other servers by replication after the first one is changed. The members changed after it then fail to sign in with the old password, and the credential held on the platform can diverge from the real state.
+- For MySQL and SQL Server, the change statement or its parameters contain the password. Whether the target's statement log, trace or events mask it depends on the target; the platform does not claim that the target keeps no clear text.
+- The change does not end sessions that are already signed in on the target.
+- If the old password of a PostgreSQL account contains characters outside ASCII, the platform cannot guarantee that the password after a rollback is equivalent to the original. It therefore fails at the local check, before connecting, and an administrator has to change the account to an ASCII password by hand first.
+
+**Do not register the platform's own database as a `db_native` asset.** A credential change updates only the target database and the credential held for the asset. It does not update the settings the platform itself uses to reach its own database, so the platform would lose its access. The platform's own credentials are handled by the procedures on this page.
 
 ---
 

@@ -665,7 +665,7 @@
                 </span>
               </el-tooltip>
               <el-dropdown
-                v-if="canTestAsset || canDeleteAsset || hasActions(row)"
+                v-if="canTestAsset || canDeleteAsset || hasActions(row) || inventoryEntryVisible(row)"
                 trigger="click"
                 @command="(cmd) => handleRowCommand(cmd, row)"
               >
@@ -683,8 +683,22 @@
                     <!-- 測試中態逐列獨立（4.3）：只禁用該列自己的入口，
                        其他列的測試入口仍可點擊並各自進入測試中態 -->
                     <el-dropdown-item
+                      v-if="inventoryEntryVisible(row)"
+                      command="inventory"
+                      data-test="row-inventory"
+                      :disabled="!inventorySupported(row)"
+                    >
+                      {{ $t('hostInventory.entry') }}
+                      <span
+                        v-if="!inventorySupported(row)"
+                        class="action-reason"
+                        data-test="inventory-reason"
+                      >{{ $t('hostInventory.entryUnsupported') }}</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item
                       v-if="canTestAsset || hasActions(row)"
                       command="test"
+                      :divided="inventoryEntryVisible(row)"
                       data-test="row-test"
                       :disabled="isTesting(row.id) || !rowCan(row, 'test_connection', canTestAsset)"
                     >
@@ -868,6 +882,9 @@
         :inherit-policy-label="inheritPolicyLabel"
         :security-change-fields="securityChangeList"
         :can-reset-host-key="isSuperAdmin"
+        :executor-asset="executorAssetSnapshot"
+        :account-prefill="accountPrefill"
+        @back-to-inventory="onBackToInventory"
         @update:form="Object.assign(form, $event)"
         @submit="handleSubmit"
         @cancel="drawerVisible = false"
@@ -880,6 +897,14 @@
         @winrm-scheme-change="handleWinrmSchemeChange"
       />
     </el-drawer>
+
+    <!-- 主機帳號盤點：獨立抽屜，讀取跟隨資產檢視權 -->
+    <HostAccountInventoryDrawer
+      v-model="inventoryOpen"
+      :asset-id="inventoryAssetId"
+      @goto="onInventoryGoto"
+      @manage="onInventoryManage"
+    />
 
     <!-- 申請連線：填理由段送出即連；需核准段送出後等審核 -->
     <el-dialog
@@ -1049,6 +1074,8 @@ import {
   Rows3,
 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
+import { EDIT_FOCUS_TARGETS, isWindowsFamily } from '@/constants/assetExecutor'
+import { applyEditFocus } from '@/utils/editFocus'
 import {
   getAssetList,
   getAsset,
@@ -1065,6 +1092,8 @@ import AssetBasicFields from '@/components/asset/AssetBasicFields.vue'
 import AssetCredentialSection from '@/components/asset/AssetCredentialSection.vue'
 import AssetAdvancedFields from '@/components/asset/AssetAdvancedFields.vue'
 import AssetEditDrawerContent from '@/components/asset/AssetEditDrawerContent.vue'
+import { takeManagePrefill } from '@/utils/inventoryManageHandoff'
+import HostAccountInventoryDrawer from '@/components/asset/HostAccountInventoryDrawer.vue'
 import AssetBulkDialog from '@/components/asset/bulk/AssetBulkDialog.vue'
 import AssetBatchActions from '@/components/asset/AssetBatchActions.vue'
 import { notifyHostKeyMismatchTest } from '@/components/asset/hostKeyTestNotify'
@@ -1078,6 +1107,7 @@ import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOC
 import {
   WINRM_DEFAULT_PORTS,
   ROTATION_SSH_DEFAULT_PORT,
+  DB_ROTATION_PROTOCOLS,
   effectiveRotationChannel,
 } from '@/constants/rotationChannel'
 import { needsAccessRequest, isAccessPending } from '@/utils/asset-access'
@@ -1465,6 +1495,16 @@ const resetRotationChannel = (protocol) => {
   form.rotation_ssh_port = ROTATION_SSH_DEFAULT_PORT
 }
 
+// 資料庫資產開啟編輯當下的有效通道：只在設為 db_native 或由 db_native 改掉時才送通道欄，
+// 其餘維持「不帶欄位、伺服端不動」，經 API 設定的值不會被表單覆寫
+const dbRotationChannelBaseline = ref('')
+
+const buildDBRotationChannelPayload = () => {
+  const channel = form.rotation_channel === 'db_native' ? 'db_native' : ''
+  if (channel !== 'db_native' && dbRotationChannelBaseline.value !== 'db_native') return {}
+  return { rotation_channel: channel }
+}
+
 const handleRotationChannelChange = () => {
   activeFormRef()?.clearValidate('winrm_ca_cert')
 }
@@ -1780,6 +1820,7 @@ const connectTooltipContent = (asset) => {
 
 // 重置表單
 const resetForm = () => {
+  dbRotationChannelBaseline.value = ''
   form.id = null
   form.name = ''
   form.protocol = 'ssh'
@@ -1983,9 +2024,95 @@ function connBadgeTooltip(row) {
   return base
 }
 
+// 主機帳號盤點入口：只限 SSH；持盤點權限點、全域資產檢視呈現點，或列旗標允許者才出現。
+// 帶旗標的列旗標優先；非 POSIX 通道停用並就地說明
+function inventoryEntryVisible(row) {
+  if (!row || row.protocol !== 'ssh') return false
+  return (
+    can('account:discover') ||
+    can('ui:assets-global') ||
+    (hasActions(row) && actionAllowed(row, 'discover_accounts', false))
+  )
+}
+function inventorySupported(row) {
+  return effectiveRotationChannel(row) === 'posix_ssh'
+}
+
+// 盤點抽屜只收資產識別，開啟時自行 getAsset 取旗標與基本資料
+const inventoryOpen = ref(false)
+const inventoryAssetId = ref(0)
+function openInventory(id) {
+  inventoryAssetId.value = Number(id)
+  inventoryOpen.value = true
+}
+
+// 深連結 ?inventory=<id>：讀參數、開抽屜、清參數（與 ?edit= 同作法）
+function openInventoryFromQuery() {
+  const id = Number(route?.query?.inventory)
+  if (!id) return
+  openInventory(id)
+  const query = { ...route.query }
+  delete query.inventory
+  router?.replace({ query })
+}
+
+// 盤點抽屜的「前往」：關閉後開編輯抽屜，並捲到主機金鑰或帳號區
+async function onInventoryGoto({ id, target }) {
+  inventoryOpen.value = false
+  // 專用帳號相關的下一步：開編輯抽屜並聚焦專用帳號區塊的「測試登入」（與深連結同一條落點流程）
+  if (target === 'executor-test-login') {
+    await openHostKeyEditor(Number(id), 'executor-test-login')
+    return
+  }
+  try {
+    const row = await getAsset(id)
+    handleEdit(row)
+    await nextTick()
+    await nextTick()
+    const sel = target === 'hostkey' ? '.host-key-item' : '[data-test="asset-account-rows"], .account-rows'
+    document.querySelector(sel)?.scrollIntoView({ block: 'center' })
+  } catch (err) {
+    console.error('[Assets] 盤點前往編輯失敗:', err)
+  }
+}
+
+// 盤點「納管」：關抽屜、開該資產的編輯抽屜、捲到帳號區並帶入預填（不自動送出）
+const accountPrefill = ref(null)
+async function onInventoryManage({ finding, asset }) {
+  inventoryOpen.value = false
+  const id = Number(asset?.id ?? finding?.asset_id)
+  try {
+    const row = await getAsset(id)
+    handleEdit(row)
+    accountPrefill.value = {
+      assetId: id,
+      username: finding.username,
+      privileged: !!finding.privileged,
+      fromInventory: true,
+    }
+    await scrollToAccounts()
+  } catch (err) {
+    console.error('[Assets] 盤點納管開啟編輯失敗:', err)
+  }
+}
+async function scrollToAccounts() {
+  await nextTick()
+  await nextTick()
+  document.querySelector('[data-test="asset-account-rows"], .account-rows')?.scrollIntoView({ block: 'center' })
+}
+// 納管成功條的「回到主機帳號盤點」：關編輯抽屜並重開盤點抽屜（抽屜重新讀取，已納管由後端計算）
+function onBackToInventory() {
+  const id = Number(form.id)
+  drawerVisible.value = false
+  accountPrefill.value = null
+  if (id) openInventory(id)
+}
+
 // 操作欄「更多」下拉分發（測試/刪除收納，降低欄寬與誤觸）
 function handleRowCommand(command, row) {
-  if (command === 'test') {
+  if (command === 'inventory') {
+    openInventory(row.id)
+  } else if (command === 'test') {
     handleTest(row)
   } else if (command === 'delete') {
     handleDelete(row)
@@ -2001,8 +2128,21 @@ const securityChangeList = computed(() =>
 // 開啟編輯當下的覆寫值，供降級確認比對（'' 表示跟隨全域）
 const accessPolicyBaseline = ref('')
 
+// 專用帳號區塊用「開啟抽屜當下的資產列」判斷協定與 Windows 族，不用編輯中的表單值
+// openKey 每次開抽屜遞增：同一資產關閉再開時區塊據此重新讀取（抽屜關閉不卸載內容）
+const executorAssetSnapshot = ref({ id: 0, name: '', protocol: '', windowsFamily: false, openKey: 0 })
+let executorOpenSeq = 0
+
 const handleEdit = (row) => {
+  accountPrefill.value = null
   resetForm()
+  executorAssetSnapshot.value = {
+    id: row.id,
+    name: row.name,
+    protocol: row.protocol,
+    windowsFamily: isWindowsFamily(row),
+    openKey: ++executorOpenSeq,
+  }
   isEdit.value = true
   beginEdit(row)
   form.id = row.id
@@ -2039,7 +2179,10 @@ const handleEdit = (row) => {
     form.rotation_channel = channel
   } else if (row.protocol === 'ssh') {
     form.rotation_channel = channel === 'windows_ssh' ? 'windows_ssh' : ''
+  } else if (DB_ROTATION_PROTOCOLS.includes(row.protocol)) {
+    form.rotation_channel = channel === 'db_native' ? 'db_native' : ''
   }
+  dbRotationChannelBaseline.value = DB_ROTATION_PROTOCOLS.includes(row.protocol) ? form.rotation_channel : ''
   if (channel === 'windows_winrm') {
     form.winrm_scheme = row.winrm_scheme || 'http'
     form.winrm_port = row.winrm_port || WINRM_DEFAULT_PORTS[form.winrm_scheme]
@@ -2145,9 +2288,11 @@ const handleSubmit = async () => {
       data.rdp_verify_cert = form.rdp_verify_cert
     }
 
-    // 改密通道側車：只有 rdp／ssh 可設，整份送出（含清空用的空值）
+    // 改密通道側車：rdp／ssh 整份送出（含清空用的空值）；資料庫協議只在涉及 db_native 時送通道欄
     if (form.protocol === 'rdp' || form.protocol === 'ssh') {
       Object.assign(data, buildRotationChannelPayload())
+    } else if (DB_ROTATION_PROTOCOLS.includes(form.protocol)) {
+      Object.assign(data, buildDBRotationChannelPayload())
     }
 
     if (form.protocol === 'k8s') {
@@ -2460,6 +2605,7 @@ onMounted(() => {
   loadColumnPrefs()
   openEditFromQuery()
   openApplyFromQuery()
+  openInventoryFromQuery()
 })
 
 // 資產編輯深連結：?edit=<id> 直開編輯框並捲至
@@ -2469,25 +2615,49 @@ async function openEditFromQuery() {
   // route/router 缺席防禦（單測掛載無 router 注入）：無 query 即無深連結，直接略過
   const id = Number(route?.query?.edit)
   if (!id) return
-  try {
-    await openHostKeyEditor(id)
-  } finally {
+  const focusKey = typeof route?.query?.focus === 'string' ? route.query.focus : ''
+  let cleared = false
+  const clearParams = () => {
+    if (cleared) return
+    cleared = true
     const query = { ...route.query }
     delete query.edit
+    delete query.focus
     router?.replace({ query })
+  }
+  try {
+    // 全域盤點頁「納管」帶來的一次性預填：取出即清空，資產不符就丟棄；
+    // 抽屜開啟後立即清參數，不等聚焦目標出現（等待期間重新整理不會重複觸發）
+    await openHostKeyEditor(id, focusKey, clearParams, takeManagePrefill(id))
+  } finally {
+    clearParams()
   }
 }
 
-// 開資產編輯框並捲至主機金鑰區塊：深連結與連線測試通知卡的「前往資產設定」共用
-async function openHostKeyEditor(id) {
+// 開資產編輯框並依落點表捲動：深連結與連線測試通知卡的「前往資產設定」共用。
+// 未帶或查無 focus 時沿用主機金鑰（非 SSH 資產本來就沒有該區塊，逾時後不捲）
+async function openHostKeyEditor(id, focusKey = '', onOpened = () => {}, prefill = null) {
   try {
     const asset = await getAsset(id)
     handleEdit(asset)
-    // 抽屜的內容在開啟動畫之後才進 DOM，故多等一拍再捲；
-    // 找不到就不捲（非 SSH 資產本來就沒有主機金鑰區塊）
+    if (prefill) {
+      accountPrefill.value = { ...prefill, fromInventory: true }
+      onOpened()
+      await scrollToAccounts()
+      return
+    }
+    // 抽屜的內容在開啟動畫之後才進 DOM，故多等一拍再捲
     await nextTick()
     await nextTick()
-    document.querySelector('.host-key-item')?.scrollIntoView({ block: 'center' })
+    onOpened()
+    // 主機金鑰區塊在渲染當下就存在（或根本沒有），不等待；其他落點最多等 2 秒
+    const waits = focusKey && focusKey !== 'host-key' && EDIT_FOCUS_TARGETS[focusKey]
+    await applyEditFocus({
+      targets: EDIT_FOCUS_TARGETS,
+      key: focusKey,
+      isOpen: () => drawerVisible.value,
+      scrollTimeout: waits ? 2000 : 0,
+    })
   } catch (err) {
     console.error('[Assets] 編輯深連結載入失敗:', err)
   }

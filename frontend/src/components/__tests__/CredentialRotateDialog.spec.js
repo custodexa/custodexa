@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import CredentialRotateDialog from '@/components/credential/CredentialRotateDialog.vue'
+import CredentialDetailPanel from '@/components/credential/CredentialDetailPanel.vue'
+import ExecutorNoticeBox from '@/components/asset/ExecutorNoticeBox.vue'
 
 // 共用憑證的改密對話框。
 //
@@ -24,7 +26,8 @@ vi.stubGlobal('ResizeObserver', ObserverStub)
 
 const startMock = vi.fn()
 const impactMock = vi.fn()
-vi.mock('@/api/credentials', () => ({
+vi.mock('@/api/credentials', async (importOriginal) => ({
+  ...(await importOriginal()),
   startCredentialRotation: (...a) => startMock(...a),
   confirmCredentialImpact: (...a) => impactMock(...a),
 }))
@@ -115,5 +118,74 @@ describe('改密對話框', () => {
     await flushPromises()
 
     expect(wrapper.vm.form.mode).toBe('group')
+  })
+})
+
+describe('ExecutorRotateHint', () => {
+  it('executorCount=0 時無提示', async () => {
+    const wrapper = await mountDialog({ executorCount: 0 })
+    expect(wrapper.find('[data-test="rotate-executor-hint"]').exists()).toBe(false)
+  })
+
+  it('executorCount=7 時標題與內文含 7 與「送到這 7 台的每一台」', async () => {
+    const wrapper = await mountDialog({ executorCount: 7, bindingCount: 5, outOfScopeCount: 2 })
+    const hint = wrapper.get('[data-test="rotate-executor-hint"]')
+    expect(hint.text()).toContain('7 台主機的堡壘機專用帳號')
+    expect(hint.text()).toContain('送到這 7 台的每一台')
+  })
+
+  it('專用帳號提示為與設定對話框同型的黃色提示框：小警示圖示、粗體標題、一般內文，不是 el-alert', async () => {
+    const wrapper = await mountDialog({ executorCount: 7, bindingCount: 5, outOfScopeCount: 2 })
+    const box = wrapper.findAllComponents(ExecutorNoticeBox).find((c) => c.attributes('data-test') === 'rotate-executor-hint')
+    expect(box.props('tone')).toBe('warning')
+    expect(box.classes()).toEqual(expect.arrayContaining(['notice-box', 'is-warning']))
+    expect(box.find('.el-alert').exists()).toBe(false)
+    expect(box.find('[data-test="notice-box-icon"]').exists()).toBe(true)
+    const title = box.get('[data-test="notice-box-title"]')
+    expect(title.element.tagName).toBe('STRONG')
+    expect(title.text()).toContain('7 台主機的堡壘機專用帳號')
+    expect(box.get('p').text()).toContain('送到這 7 台的每一台')
+  })
+
+  it('提示文字不含範圍外資產名稱', async () => {
+    const wrapper = await mountDialog({
+      executorCount: 7, bindingCount: 5, outOfScopeCount: 2,
+      bindings: [{ account_id: 1, asset_id: 1, asset_name: 'web-01', username: 'root' }],
+    })
+    const text = wrapper.get('[data-test="rotate-executor-hint"]').text()
+    expect(text).not.toContain('web-01')
+    expect(text).not.toContain('範圍外資產')
+  })
+
+  it('詳情面板對範圍內 5 台加範圍外 2 台的專用帳號憑證傳入 7', async () => {
+    const bindings = [1, 2, 3, 4, 5].map((n) => ({
+      account_id: n, asset_id: n, asset_name: `host-${n}`, username: 'cx-exec', purpose: 'executor',
+    }))
+    const wrapper = mount(CredentialDetailPanel, {
+      global: { plugins: [ElementPlus], stubs: { 'el-dialog': dialogStub } },
+      props: {
+        credential: {
+          id: 40, name: 'fleet-exec', scope: 'shared', purpose: 'executor', secret_type: 'password',
+          protocol_family: 'ssh', username: 'cx-exec', bindings, binding_count: 5,
+          out_of_scope_asset_count: 2,
+        },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.getComponent(CredentialRotateDialog).props('executorCount')).toBe(7)
+  })
+
+  it('人員連線用途的憑證不傳專用帳號台數', async () => {
+    const wrapper = mount(CredentialDetailPanel, {
+      global: { plugins: [ElementPlus], stubs: { 'el-dialog': dialogStub } },
+      props: {
+        credential: {
+          id: 41, name: 'ops', scope: 'shared', purpose: 'login', secret_type: 'password',
+          protocol_family: 'ssh', username: 'ops', bindings: [], binding_count: 0,
+        },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.getComponent(CredentialRotateDialog).props('executorCount')).toBe(0)
   })
 })

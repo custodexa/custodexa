@@ -48,6 +48,7 @@ var frontendRouteSegments = map[string]bool{
 	"access-control":          true,
 	"key-management":          true,
 	"transmission-inventory":  true,
+	"account-inventory":       true,
 	"offsite-storage":         true,
 	"notification-channels":   true,
 	"change-secret-plans":     true,

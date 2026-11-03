@@ -53,7 +53,9 @@
     "file_transfer": "檔案傳輸",
     "connection_test": "連線測試",
     "credential_change": "改密",
-    "credential_rotation": "憑證輪替"
+    "credential_rotation": "憑證輪替",
+    "account_inventory": "主機帳號盤點",
+    "executor_login_check": "堡壘機專用帳號測試登入"
   },
   "alert_state": {
     "blocked": "已阻斷",
@@ -116,6 +118,7 @@
     "col_secret_type": "秘密型別",
     "col_shared": "共用憑證",
     "col_source": "來源",
+    "col_transport_risk": "傳輸",
     "credential_none": "無",
     "credential_password": "密碼",
     "credential_ssh_key": "SSH 金鑰",
@@ -161,6 +164,7 @@
     "status_unverified": "未驗證",
     "summary": "摘要指標",
     "title": "資產帳號輪替證據報告",
+    "transport_risk_db_rotation_unencrypted": "未加密連線",
     "truncation": "截斷",
     "truncation_none": "無",
     "truncation_records": "記錄明細已截斷至上限",

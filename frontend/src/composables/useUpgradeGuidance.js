@@ -197,7 +197,8 @@ const SECTION_DEFS = [
   },
   {
     id: 'approvals', column: 'nextSteps', textKey: 'upgradeGuidance.approvals',
-    applies: () => entryOpen('/approvals'),
+    // 以審核資格判定：只能讀審核歷史者也進得了審核中心，但「處理你有資格審核的申請」對他不成立
+    applies: () => can('ui:approvals'),
     links: [{ to: '/approvals', labelKey: 'menu.approvals' }],
   },
   {

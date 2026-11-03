@@ -28,6 +28,11 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/v1/assets/:id/executor",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).Clear-fm"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/v1/assets/:id/files",
       "handler": "github.com/custodexa/backend/internal/api.(*SFTPHandler).Delete-fm"
     },
@@ -213,6 +218,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/account-inventory/findings",
+      "handler": "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).ListGlobal-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/agent-tasks",
       "handler": "github.com/custodexa/backend/internal/api.(*AccessRequestHandler).AgentTasks-fm"
     },
@@ -273,8 +283,28 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/assets/:id/account-inventory",
+      "handler": "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Get-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/assets/:id/accounts",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/executor",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/executor/login-check",
+      "handler": "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/executor/public-key",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).ExportPublicKey-fm"
     },
     {
       "method": "GET",
@@ -993,6 +1023,21 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/assets/:id/account-inventory/findings/:findingId/ignore",
+      "handler": "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Ignore-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/account-inventory/findings/:findingId/reopen",
+      "handler": "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Reopen-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/account-inventory/scans",
+      "handler": "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Initiate-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/assets/:id/accounts",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Create-fm"
     },
@@ -1000,6 +1045,11 @@
       "method": "POST",
       "path": "/api/v1/assets/:id/accounts/:accountId/set-default",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).SetDefault-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/executor/login-check",
+      "handler": "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).Run-fm"
     },
     {
       "method": "POST",
@@ -1548,6 +1598,11 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/assets/:id/executor",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).Set-fm"
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/auth/me/release-guidance/:version",
       "handler": "github.com/custodexa/backend/internal/api.(*ReleaseGuidanceHandler).PutState-fm"
     },
@@ -1812,6 +1867,22 @@
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Delete-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/assets/:id/executor",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.EnforceRegistry.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).Clear-fm"
       ]
     },
     {
@@ -2562,6 +2633,21 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/account-inventory/findings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).MountRoutes.EnforceRegistry.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).ListGlobal-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/agent-tasks",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -2796,6 +2882,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/assets/:id/account-inventory",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).MountRoutes.EnforceRegistry.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).MountRoutes.RequireAssetVisibleOrManaged.requireAssetVisible.func2",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/assets/:id/accounts",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -2808,6 +2910,53 @@
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func7",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/executor",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/executor/login-check",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/executor/public-key",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.EnforceRegistry.func5",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).ExportPublicKey-fm"
       ]
     },
     {
@@ -5480,6 +5629,51 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/assets/:id/account-inventory/findings/:findingId/ignore",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).MountRoutes.EnforceRegistry.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Ignore-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/account-inventory/findings/:findingId/reopen",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).MountRoutes.EnforceRegistry.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Reopen-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/account-inventory/scans",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).MountRoutes.EnforceRegistry.func1",
+        "github.com/custodexa/backend/internal/api.(*HostInventoryHandler).Initiate-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/assets/:id/accounts",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -5506,6 +5700,21 @@
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).SetDefault-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/:id/executor/login-check",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*ExecutorLoginCheckHandler).Run-fm"
       ]
     },
     {
@@ -7511,6 +7720,22 @@
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func3",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RebindAccount-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assets/:id/executor",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetExecutorHandler).Set-fm"
       ]
     },
     {

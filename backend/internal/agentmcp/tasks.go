@@ -63,7 +63,7 @@ func (h *Handler) listAssets(ctx context.Context, c *gin.Context, o sessionOwner
 			return codeResult("INTERNAL_ACCESS_REQUEST")
 		}
 		var accounts []model.AssetAccount
-		if h.ssh.DB.Where("asset_id=?", a.ID).Find(&accounts).Error != nil {
+		if h.ssh.DB.Where("asset_id=? AND purpose=?", a.ID, model.AccountPurposeLogin).Find(&accounts).Error != nil {
 			return codeResult("INTERNAL_ACCESS_REQUEST")
 		}
 		list := []map[string]any{}

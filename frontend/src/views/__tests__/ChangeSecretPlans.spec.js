@@ -414,6 +414,170 @@ describe('改密通道：資產下拉、記錄通道欄、機器碼文案', () =
     expect(wrapper.vm.assetChannelTagType(2)).toBe('warning')
   })
 
+  describe('資料庫帳號自改的未加密標示', () => {
+    const dbAssets = () => [
+      ...assetsFixture(),
+      {
+        id: 11, name: 'orders-db', host: '10.20.1.15', port: 3306, protocol: 'mysql',
+        rotation_channel: 'db_native', effective_rotation_channel: 'db_native', db_tls_mode: '',
+        transmission_risks: [{ key: 'db_tls_disabled' }, { key: 'db_rotation_unencrypted' }],
+      },
+      {
+        id: 12, name: 'report-pg', host: '10.20.1.16', port: 5432, protocol: 'postgres',
+        rotation_channel: 'db_native', effective_rotation_channel: 'db_native', db_tls_mode: 'verify-full',
+        transmission_risks: [],
+      },
+    ]
+    const mountDB = async (assets = dbAssets()) => {
+      const { getAssetList } = await import('@/api/assets')
+      getAssetList.mockResolvedValueOnce({ data: assets })
+      const wrapper = mount(ChangeSecretPlans, {
+        global: {
+          plugins: [ElementPlus],
+          stubs: { 'el-dialog': dialogStub, 'el-select': selectStub, 'el-option': optionStub },
+        },
+      })
+      await flushPromises()
+      return wrapper
+    }
+
+    it('選一台未加密、一台已加密的資料庫資產：提示列出 1 台，仍可儲存', async () => {
+      const wrapper = await mountDB()
+      wrapper.vm.openCreate()
+      wrapper.vm.form.name = 'monthly-db'
+      wrapper.vm.form.asset_ids = [11, 12]
+      await flushPromises()
+      const note = wrapper.find('[data-test="plan-db-unencrypted-note"]')
+      expect(note.exists()).toBe(true)
+      expect(wrapper.vm.selectedUnencryptedDBAssets.map((a) => a.id)).toEqual([11])
+      expect(note.text()).toBe(i18n.global.t('changeSecretPlans.selectedUnencryptedNote', 1))
+      // 通道標籤：未加密者警示樣式附後綴，已加密者一般樣式
+      const options = wrapper.find('[data-test="plan-assets"]').findAll('.option-stub')
+      const byValue = (v) => options.find((o) => o.attributes('data-value') === String(v))
+      expect(byValue(11).findComponent({ name: 'ElTag' }).props('type')).toBe('warning')
+      expect(byValue(11).text()).toContain(i18n.global.t('changeSecretPlans.channelUnencryptedSuffix'))
+      expect(byValue(12).findComponent({ name: 'ElTag' }).props('type')).toBe('info')
+      await wrapper.vm.submit()
+      await flushPromises()
+      expect(createPlanMock).toHaveBeenCalled()
+    })
+
+    it('只選已加密的資料庫資產：沒有未加密提示', async () => {
+      const wrapper = await mountDB()
+      wrapper.vm.openCreate()
+      wrapper.vm.form.asset_ids = [12]
+      await flushPromises()
+      expect(wrapper.find('[data-test="plan-db-unencrypted-note"]').exists()).toBe(false)
+    })
+
+    it('執行紀錄：只有傳輸風險非空的那筆有標示，統計列另列筆數；通道欄只寫通道名', async () => {
+      const wrapper = await mountDB()
+      const { getChangeSecretRecords } = await import('@/api/changeSecret')
+      getChangeSecretRecords.mockResolvedValueOnce({
+        data: [
+          { id: 1, asset_id: 11, account_username: 'app_user', status: 'success', error: '', transport_risk: 'db_rotation_unencrypted', executed_at: '2026-11-02T02:00:14Z' },
+          { id: 2, asset_id: 1, account_username: 'app', status: 'success', error: '', transport_risk: '', executed_at: '2026-11-02T02:00:21Z' },
+          { id: 3, asset_id: 12, account_username: 'report_ro', status: 'skipped', error: 'CHANGE_SECRET_CHANNEL_NOT_CONFIGURED', transport_risk: '', executed_at: '2026-11-02T02:00:22Z' },
+        ],
+      })
+      await wrapper.vm.openRecords(planFixture())
+      await flushPromises()
+      const dialog = wrapper.findAll('.dialog-stub').at(-1)
+      expect(dialog.findAll('[data-test="transport-risk-mark"]')).toHaveLength(1)
+      expect(wrapper.find('[data-test="records-summary"]').text()).toContain(
+        i18n.global.t('changeSecretPlans.recordsUnencryptedCount', 1)
+      )
+      expect(wrapper.vm.assetChannelText(11)).toBe(i18n.global.t('enum.rotationChannel.db_native'))
+      expect(wrapper.vm.assetChannelTagType(11)).toBe('info')
+    })
+
+    it('執行紀錄：代改列在帳號名下方標示專用帳號，自改與空帳號名不標示；專用帳號原因文案帶帳號名', async () => {
+      const wrapper = await mountDB()
+      const { getChangeSecretRecords } = await import('@/api/changeSecret')
+      getChangeSecretRecords.mockResolvedValueOnce({
+        data: [
+          { id: 1, asset_id: 1, account_username: 'deploy', status: 'success', error: '', execution_method: 'executor_sudo_nopasswd', executor_username: 'cx-exec', executed_at: '2026-11-02T02:00:16Z' },
+          { id: 2, asset_id: 1, account_username: 'ops', status: 'failed', error: 'CHANGE_SECRET_EXECUTOR_LOGIN_FAILED', execution_method: 'executor_root', executor_username: 'cx-exec', executed_at: '2026-11-02T02:00:19Z' },
+          { id: 3, asset_id: 1, account_username: 'app', status: 'success', error: '', execution_method: 'self', executor_username: '', executed_at: '2026-11-02T02:00:21Z' },
+          { id: 4, asset_id: 1, account_username: 'svc', status: 'success', error: '', execution_method: 'executor_root', executor_username: '', executed_at: '2026-11-02T02:00:22Z' },
+        ],
+      })
+      await wrapper.vm.openRecords(planFixture())
+      await flushPromises()
+      const dialog = wrapper.findAll('.dialog-stub').at(-1)
+      const notes = dialog.findAll('[data-test="execution-method-note"]')
+      expect(notes).toHaveLength(2)
+      expect(notes[0].text()).toContain('cx-exec')
+      expect(notes[0].attributes('tabindex')).toBe('0')
+      expect(dialog.text()).toContain(
+        i18n.global.t('changeSecretPlans.reason.CHANGE_SECRET_EXECUTOR_LOGIN_FAILED', { executor: 'cx-exec' })
+      )
+      expect(dialog.find('[data-test="method-legend"]').exists()).toBe(true)
+    })
+
+    // 代改標示逐案：代改列顯示帳號名、自改列不顯示、空帳號名不顯示、第二層觸發元素可聚焦
+    const openExecRecords = async (rows) => {
+      const wrapper = await mountDB()
+      const { getChangeSecretRecords } = await import('@/api/changeSecret')
+      getChangeSecretRecords.mockResolvedValueOnce({ data: rows })
+      await wrapper.vm.openRecords(planFixture())
+      await flushPromises()
+      return { wrapper, dialog: wrapper.findAll('.dialog-stub').at(-1) }
+    }
+    const execRow = (over) => ({
+      id: 1, asset_id: 1, account_username: 'deploy', status: 'success', error: '',
+      execution_method: 'executor_sudo_password', executor_username: 'cx-exec', executed_at: '2026-11-02T02:00:16Z', ...over,
+    })
+
+    it('代改標示：代改列在帳號名下方顯示專用帳號名', async () => {
+      const { dialog } = await openExecRecords([execRow()])
+      const notes = dialog.findAll('[data-test="execution-method-note"]')
+      expect(notes).toHaveLength(1)
+      expect(notes[0].text()).toBe(i18n.global.t('changeSecretPlans.methodDelegatedBy', { name: 'cx-exec' }))
+    })
+
+    it('代改標示：自改列不顯示', async () => {
+      const { dialog } = await openExecRecords([execRow({ execution_method: 'self', executor_username: '' })])
+      expect(dialog.text()).toContain('deploy')
+      expect(dialog.find('[data-test="execution-method-note"]').exists()).toBe(false)
+    })
+
+    it('代改標示：專用帳號名為空時不顯示', async () => {
+      const { dialog } = await openExecRecords([execRow({ executor_username: '' })])
+      expect(dialog.text()).toContain('deploy')
+      expect(dialog.find('[data-test="execution-method-note"]').exists()).toBe(false)
+    })
+
+    it('代改標示：第二層觸發元素可聚焦，focus 後出現提權方式說明', async () => {
+      const { dialog } = await openExecRecords([execRow()])
+      const note = dialog.find('[data-test="execution-method-note"]')
+      expect(note.attributes('tabindex')).toBe('0')
+      expect(document.body.querySelector('[data-test="execution-method-detail"]')).toBeNull()
+      await note.trigger('focus')
+      await flushPromises()
+      const detail = document.body.querySelector('[data-test="execution-method-detail"]')
+      expect(detail).not.toBeNull()
+      expect(detail.textContent).toContain(i18n.global.t('changeSecretPlans.method.executor_sudo_password'))
+    })
+
+    it('資產事後改為加密：舊紀錄仍依紀錄本身標示', async () => {
+      const assets = dbAssets()
+      assets.find((a) => a.id === 11).transmission_risks = []
+      assets.find((a) => a.id === 11).db_tls_mode = 'verify-ca'
+      const wrapper = await mountDB(assets)
+      const { getChangeSecretRecords } = await import('@/api/changeSecret')
+      getChangeSecretRecords.mockResolvedValueOnce({
+        data: [
+          { id: 1, asset_id: 11, account_username: 'app_user', status: 'success', error: '', transport_risk: 'db_rotation_unencrypted', executed_at: '2026-11-02T02:00:14Z' },
+        ],
+      })
+      await wrapper.vm.openRecords(planFixture())
+      await flushPromises()
+      const dialog = wrapper.findAll('.dialog-stub').at(-1)
+      expect(dialog.findAll('[data-test="transport-risk-mark"]')).toHaveLength(1)
+    })
+  })
+
   it('五個新原因碼皆有文案；協議不支援的文案不再說「僅支援 SSH」', async () => {
     const wrapper = await mountPage()
     const codes = [

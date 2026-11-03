@@ -50,29 +50,57 @@ func (h *ChangeSecretHandler) outputScope(ctx context.Context) (asset.Credential
 
 // changeSecretRecordDTO 改密紀錄的對外表示。全量時鍵集與 model 序列化逐鍵相同；
 // 憑證欄位為指標，範圍外憑證的列省略三欄並帶 credential_out_of_scope。
+// 代改的專用帳號識別（帳號、帳號名、憑證）獨立判定：其憑證不在檢視者的憑證檢視範圍內時三欄一併省略並帶 executor_out_of_scope，
+// 與紀錄自身憑證是否在範圍內無關。
 type changeSecretRecordDTO struct {
-	ID              uint      `json:"id"`
-	PlanID          uint      `json:"plan_id"`
-	BatchID         uint      `json:"batch_id"`
-	AssetID         uint      `json:"asset_id"`
-	AccountID       uint      `json:"account_id"`
-	AccountUsername string    `json:"account_username"`
-	SecretType      string    `json:"secret_type"`
-	CredentialID    *uint     `json:"credential_id,omitempty"`
-	CredentialName  *string   `json:"credential_name,omitempty"`
-	TargetVersionID *uint     `json:"target_version_id,omitempty"`
-	Status          string    `json:"status"`
-	Error           string    `json:"error"`
-	ExecutedAt      time.Time `json:"executed_at"`
+	ID              uint    `json:"id"`
+	PlanID          uint    `json:"plan_id"`
+	BatchID         uint    `json:"batch_id"`
+	AssetID         uint    `json:"asset_id"`
+	AccountID       uint    `json:"account_id"`
+	AccountUsername string  `json:"account_username"`
+	SecretType      string  `json:"secret_type"`
+	CredentialID    *uint   `json:"credential_id,omitempty"`
+	CredentialName  *string `json:"credential_name,omitempty"`
+	TargetVersionID *uint   `json:"target_version_id,omitempty"`
+	Status          string  `json:"status"`
+	Error           string  `json:"error"`
+	TransportRisk   string  `json:"transport_risk"`
+
+	ExecutionMethod      string    `json:"execution_method"`
+	ExecutorAccountID    *uint     `json:"executor_account_id,omitempty"`
+	ExecutorUsername     *string   `json:"executor_username,omitempty"`
+	ExecutorCredentialID *uint     `json:"executor_credential_id,omitempty"`
+	ExecutedAt           time.Time `json:"executed_at"`
 
 	CredentialOutOfScope bool `json:"credential_out_of_scope,omitempty"`
+	ExecutorOutOfScope   bool `json:"executor_out_of_scope,omitempty"`
 }
 
-func newChangeSecretRecordDTO(r *model.ChangeSecretRecord, masked bool) changeSecretRecordDTO {
+// executorMasked 代改專用帳號的識別是否須對本檢視者隱藏。全量檢視者不隱藏；
+// 有專用帳號憑證識別者以該憑證是否在檢視範圍判定；沒有憑證識別卻帶了帳號識別的列一律隱藏（不信任不完整的列）。
+func executorMasked(r *model.ChangeSecretRecord, full bool, inView map[uint]bool) bool {
+	if full {
+		return false
+	}
+	if r.ExecutorCredentialID != 0 {
+		return !inView[r.ExecutorCredentialID]
+	}
+	return r.ExecutorAccountID != 0 || r.ExecutorUsername != ""
+}
+
+func newChangeSecretRecordDTO(r *model.ChangeSecretRecord, masked, execMasked bool) changeSecretRecordDTO {
 	d := changeSecretRecordDTO{
 		ID: r.ID, PlanID: r.PlanID, BatchID: r.BatchID, AssetID: r.AssetID,
 		AccountID: r.AccountID, AccountUsername: r.AccountUsername, SecretType: r.SecretType,
-		Status: r.Status, Error: r.Error, ExecutedAt: r.ExecutedAt,
+		Status: r.Status, Error: r.Error, TransportRisk: r.TransportRisk, ExecutedAt: r.ExecutedAt,
+		ExecutionMethod: r.ExecutionMethod,
+	}
+	if execMasked {
+		d.ExecutorOutOfScope = true
+	} else {
+		aid, uname, xcid := r.ExecutorAccountID, r.ExecutorUsername, r.ExecutorCredentialID
+		d.ExecutorAccountID, d.ExecutorUsername, d.ExecutorCredentialID = &aid, &uname, &xcid
 	}
 	if masked {
 		d.CredentialOutOfScope = true
@@ -99,6 +127,9 @@ func (h *ChangeSecretHandler) projectRecords(ctx context.Context, records []mode
 			if records[i].CredentialID != 0 {
 				ids = append(ids, records[i].CredentialID)
 			}
+			if records[i].ExecutorCredentialID != 0 {
+				ids = append(ids, records[i].ExecutorCredentialID)
+			}
 		}
 		if inView, err = scope.CredentialsInView(ids); err != nil {
 			return scopedOutput{}, err
@@ -107,7 +138,8 @@ func (h *ChangeSecretHandler) projectRecords(ctx context.Context, records []mode
 	rows := make([]changeSecretRecordDTO, 0, len(records))
 	for i := range records {
 		masked := !scope.Full() && records[i].CredentialID != 0 && !inView[records[i].CredentialID]
-		rows = append(rows, newChangeSecretRecordDTO(&records[i], masked))
+		execMasked := executorMasked(&records[i], scope.Full(), inView)
+		rows = append(rows, newChangeSecretRecordDTO(&records[i], masked, execMasked))
 	}
 	return scopedOutput{body: wrap(rows)}, nil
 }

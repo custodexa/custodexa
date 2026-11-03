@@ -30,6 +30,26 @@
       </div>
     </div>
 
+    <!-- 從主機帳號盤點納管成功：成功條與回到盤點的連結（只有從盤點進來時出現） -->
+    <el-alert
+      v-if="managedDone"
+      type="success"
+      show-icon
+      :closable="false"
+      class="row-alert"
+      data-test="manage-done"
+      :title="t('hostInventory.manageBar.done', { name: managedDone.shown })"
+    >
+      <el-link
+        v-if="managedDone.fromInventory"
+        type="primary"
+        data-test="manage-back"
+        @click="emit('back-to-inventory')"
+      >
+        {{ t('hostInventory.manageBar.back') }}
+      </el-link>
+    </el-alert>
+
     <el-alert
       v-if="protocol === 'k8s'"
       :title="t('assetAccounts.k8sSingleAccount')"
@@ -356,8 +376,9 @@
       :protocol="protocol"
       :windows-openssh="windowsOpenssh"
       :exclude-ids="mountedCredentialIds"
+      :prefill="activePrefill"
       @added="onAdded"
-      @cancel="adding = false"
+      @cancel="closeAdd"
     />
 
     <!-- 兩個動作的語義差別常駐在畫面上，不藏在確認框裡才看得到 -->
@@ -419,15 +440,18 @@ import CredentialSecretFixDialog from '@/components/credential/CredentialSecretF
 import { credentialSecretKind } from '@/constants/credentials'
 import { deniedReason } from '@/utils/credentialActions'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import { visibleText } from '@/utils/visibleName'
 
 const props = defineProps({
   assetId: { type: [Number, String], default: null },
   assetName: { type: String, default: '' },
   protocol: { type: String, default: '' },
   windowsOpenssh: { type: Boolean, default: false },
+  // 主機帳號盤點帶入：{assetId, username, privileged, fromInventory}。只在資產識別相符時使用一次
+  prefill: { type: Object, default: null },
 })
 
-const emit = defineEmits(['changed'])
+const emit = defineEmits(['changed', 'back-to-inventory'])
 
 const { t } = useI18n()
 
@@ -689,20 +713,46 @@ async function onSecretFixed({ noun }) {
 
 // --- 新增帳號（表內一列）---
 const adding = ref(false)
+// 預填只使用一次：開啟新增列時取走，收起（取消或成功）即清掉
+const activePrefill = ref(null)
+const managedDone = ref(null)
 
-function openAdd() {
+function openAdd(prefill = null) {
+  // 按鈕的 click 事件物件不是預填
+  activePrefill.value = prefill && typeof prefill.username === 'string' ? prefill : null
+  managedDone.value = null
   adding.value = true
 }
 
 function closeAdd() {
   adding.value = false
+  activePrefill.value = null
 }
 
 async function onAdded() {
+  const used = activePrefill.value
   adding.value = false
+  activePrefill.value = null
+  managedDone.value = used
+    ? { shown: visibleText(used.username), fromInventory: !!used.fromInventory }
+    : null
   emit('changed')
   await reload()
 }
+
+// 預填由父層傳入：資產識別相符才用，且同一份只消費一次
+const consumedPrefill = new WeakSet()
+watch(
+  () => [props.prefill, props.assetId],
+  () => {
+    const p = props.prefill
+    if (!p || consumedPrefill.has(p)) return
+    if (Number(p.assetId) !== Number(props.assetId)) return
+    consumedPrefill.add(p)
+    openAdd(p)
+  },
+  { immediate: true }
+)
 
 defineExpose({
   accounts,

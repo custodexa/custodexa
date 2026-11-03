@@ -332,6 +332,10 @@ func respondCredentialError(c *gin.Context, internalCode apierror.ErrCode, err e
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialPendingCandidate, nil)
 	case errors.Is(err, asset.ErrCredentialRotationActive):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialRotationActive, nil)
+	case errors.Is(err, asset.ErrAssetAccountExecutorManaged):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountExecutorManaged, nil)
+	case errors.Is(err, asset.ErrCredentialPurposeMismatch):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialPurposeMismatch, nil)
 	case errors.Is(err, asset.ErrCredentialOutOfSync):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialOutOfSync, nil)
 	case errors.Is(err, asset.ErrCredentialSharedRequiresName):

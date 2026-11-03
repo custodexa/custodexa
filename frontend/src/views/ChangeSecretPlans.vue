@@ -251,6 +251,7 @@
           <template #default="{ row }">
             <el-tag
               v-if="assetChannelText(row.asset_id)"
+              class="record-channel-tag"
               size="small"
               :type="assetChannelTagType(row.asset_id)"
               effect="plain"
@@ -398,6 +399,17 @@
               </span>
             </el-option>
           </el-select>
+          <div
+            v-if="selectedUnencryptedDBAssets.length"
+            class="plan-db-unencrypted-note"
+            data-test="plan-db-unencrypted-note"
+          >
+            <TriangleAlert
+              :size="14"
+              aria-hidden="true"
+            />
+            {{ $t('changeSecretPlans.selectedUnencryptedNote', selectedUnencryptedDBAssets.length) }}
+          </div>
           <div
             class="muted"
             data-test="plan-assets-hint"
@@ -605,7 +617,13 @@
         class="muted"
         data-test="records-summary"
       >
-        {{ $t('changeSecretPlans.recordsSummary', recordsSummary) }}
+        {{ recordsSummaryText }}
+      </p>
+      <p
+        class="muted"
+        data-test="method-legend"
+      >
+        {{ $t('changeSecretPlans.methodLegend') }}
       </p>
       <el-table
         :data="records"
@@ -621,10 +639,14 @@
           </template>
         </el-table-column>
         <el-table-column
-          prop="account_username"
           :label="$t('changeSecretPlans.colAccount')"
-          min-width="110"
-        />
+          min-width="130"
+        >
+          <template #default="{ row }">
+            <div>{{ row.account_username }}</div>
+            <ExecutionMethodNote :row="row" />
+          </template>
+        </el-table-column>
         <!-- 通道由資產現況推得（記錄本身不存通道）：資產已改通道或已刪時顯示佔位 -->
         <el-table-column
           :label="$t('changeSecretPlans.colChannel')"
@@ -634,6 +656,7 @@
           <template #default="{ row }">
             <el-tag
               v-if="assetChannelText(row.asset_id)"
+              class="record-channel-tag"
               size="small"
               :type="assetChannelTagType(row.asset_id)"
               effect="plain"
@@ -651,9 +674,12 @@
           width="120"
         >
           <template #default="{ row }">
-            <el-tag :type="recordTagType(row.status)">
-              {{ recordStatusText(row.status) }}
-            </el-tag>
+            <div class="record-status">
+              <el-tag :type="recordTagType(row.status)">
+                {{ recordStatusText(row.status) }}
+              </el-tag>
+              <TransportRiskMark :risk="row.transport_risk || ''" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column
@@ -663,7 +689,7 @@
           show-overflow-tooltip
         >
           <template #default="{ row }">
-            {{ reasonText(row.error) }}
+            {{ reasonText(row.error, row) }}
           </template>
         </el-table-column>
         <el-table-column
@@ -701,6 +727,9 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ScheduleFrequencyPicker from '@/components/ScheduleFrequencyPicker.vue'
 import HostIdentityConfirmDialog from '@/components/HostIdentityConfirmDialog.vue'
+import TransportRiskMark from '@/components/rotation/TransportRiskMark.vue'
+import ExecutionMethodNote from '@/components/rotation/ExecutionMethodNote.vue'
+import { TriangleAlert } from 'lucide-vue-next'
 import { formatDateTime } from '@/utils/format'
 import { CUSTOM_MODE, describeSchedule, formatRunTime, parseCron } from '@/utils/cron-shape'
 import { t, te } from '@/i18n'
@@ -714,6 +743,7 @@ import {
   isRotatableAsset,
   rotationChannelText,
   rotationChannelTagType,
+  hasDBRotationRisk,
 } from '@/constants/rotationChannel'
 import {
   getChangeSecretPlans,
@@ -769,15 +799,17 @@ function assetById(assetId) {
   return assets.value.find((a) => a.id === assetId)
 }
 
-// 記錄與候選的通道欄由資產現況推得（兩者本身不存通道）；查無資產或通道為 none 回空字串
+// 記錄與候選的通道欄由資產現況推得（兩者本身不存通道）；查無資產或通道為 none 回空字串。
+// 只顯示通道名：未加密與否由紀錄當時的傳輸風險標示，不與資產現況混在同一欄
 function assetChannelText(assetId) {
   const asset = assetById(assetId)
-  return asset ? rotationChannelText(asset) : ''
+  return asset ? rotationChannelText(asset, { withRisk: false }) : ''
 }
 
 function assetChannelTagType(assetId) {
   const asset = assetById(assetId)
-  return asset ? rotationChannelTagType(asset) : 'info'
+  if (!asset || effectiveRotationChannel(asset) === 'db_native') return 'info'
+  return rotationChannelTagType(asset)
 }
 
 // 已選資產中走 Windows 通道者：金鑰型別對它們只會記為略過，選型時就提示
@@ -785,6 +817,13 @@ const selectedWindowsAssets = computed(() =>
   (form.value.asset_ids || [])
     .map(assetById)
     .filter((a) => a && effectiveRotationChannel(a).startsWith('windows_'))
+)
+
+// 已選資產中資料庫改密以未加密連線進行者：判定取伺服端回傳的傳輸風險，不在前端重算
+const selectedUnencryptedDBAssets = computed(() =>
+  (form.value.asset_ids || [])
+    .map(assetById)
+    .filter((a) => a && effectiveRotationChannel(a) === 'db_native' && hasDBRotationRisk(a))
 )
 const loading = ref(false)
 const saving = ref(false)
@@ -837,6 +876,18 @@ const recordsSummary = computed(() => {
     if (r.status in counts) counts[r.status] += 1
   })
   return counts
+})
+
+// 以未加密連線進行的紀錄數：取紀錄本身的傳輸風險（執行當下的判定）
+const recordsUnencryptedCount = computed(
+  () => records.value.filter((r) => !!r.transport_risk).length
+)
+
+// 統計句；有以未加密連線進行的紀錄時另列其筆數
+const recordsSummaryText = computed(() => {
+  const base = t('changeSecretPlans.recordsSummary', recordsSummary.value)
+  const n = recordsUnencryptedCount.value
+  return n ? base + t('changeSecretPlans.recordsUnencryptedCount', n) : base
 })
 
 // 執行記錄以資產名稱呈現（查無對照時退回 ID）
@@ -1322,10 +1373,17 @@ function recordTagType(status) {
 // 不進這兩欄——那是攻擊者可控輸入，且會隨告警離開產品邊界），遠端細節只留在
 // 伺服器日誌，故對應文案會提示「詳細遠端訊息見伺服器日誌」。
 // 找不到對應鍵（歷史資料留下的舊散文訊息）則原樣顯示。
-function reasonText(code) {
+//
+// 代改的原因文案帶專用帳號名（row.executor_username，執行當下的快照）；其餘文案忽略該參數。
+function reasonText(code, row) {
   if (!code) return ''
+  // 專用帳號在檢視者範圍外時後端不給帳號名，改用不帶名稱的文案
+  if (row?.executor_out_of_scope === true) {
+    const scoped = `changeSecretPlans.reasonScoped.${code}`
+    if (te(scoped)) return t(scoped)
+  }
   const key = `changeSecretPlans.reason.${code}`
-  return te(key) ? t(key) : code
+  return te(key) ? t(key, { executor: row?.executor_username || '' }) : code
 }
 
 function recordStatusText(status) {
@@ -1345,6 +1403,38 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.plan-db-unencrypted-note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ot-warning);
+}
+
+/* 通道名在英日文較長：允許換行，不被欄寬截斷（中文一行放得下，版面不變） */
+.record-channel-tag {
+  max-width: 100%;
+  height: auto;
+  min-height: 20px;
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 16px;
+  white-space: normal;
+}
+
+.record-channel-tag :deep(.el-tag__content) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.record-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .reconfirm-reason {
   margin-top: 4px;
   font-size: 12px;

@@ -537,6 +537,7 @@ type routeDeps struct {
 	auditCheckpoint       *api.AuditCheckpointHandler
 	asset                 *api.AssetHandler
 	assetAccount          *api.AssetAccountHandler
+	assetExecutor         *api.AssetExecutorHandler
 	session               *api.SessionHandler
 	myConnection          *api.MyConnectionHandler
 	sessionCommand        *api.SessionCommandHandler
@@ -576,6 +577,8 @@ type routeDeps struct {
 	auditExport           *api.AuditExportHandler
 	accessReview          *api.AccessReviewHandler
 	hostKey               *api.HostKeyHandler
+	hostInventory         *api.HostInventoryHandler
+	executorLoginCheck    *api.ExecutorLoginCheckHandler
 	clipboard             *api.ClipboardEventHandler
 	auditTimeline         *api.AuditTimelineHandler
 	changeSecret          *api.ChangeSecretHandler
@@ -693,6 +696,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// 資產帳號：與 /assets 同前綴不同子路徑，
 		// 讀取端沿用逐資產可視守門，故需授權服務
 		d.assetAccount.RegisterRoutes(v1, d.authService, d.authorizationService)
+		// 堡壘機專用帳號：同帳號群組的可視守門，範圍判定在服務層
+		d.assetExecutor.RegisterRoutes(v1, d.authService, d.authorizationService)
 		d.session.RegisterRoutes(v1, d.authService)
 		d.myConnection.RegisterRoutes(v1, d.authService)
 		d.sessionCommand.RegisterRoutes(v1, d.authService)
@@ -745,6 +750,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		v1.GET("/connect", d.conn.HandleConnect)
 
 		d.hostKey.RegisterRoutes(v1, d.authService)
+		d.hostInventory.RegisterRoutes(v1, d.authService)
+		d.executorLoginCheck.RegisterRoutes(v1, d.authService)
 		d.clipboard.RegisterRoutes(v1, d.authService)
 		// 稽核調查工作台（auditor-workbench）：唯讀聚合端點兩支。
 		// **不掛在 auditLogEnabled 條件內**——它聚合的是六類資料，

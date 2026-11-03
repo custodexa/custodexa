@@ -9,6 +9,7 @@ import { shouldBlockInPreview } from '@/utils/previewOverlay'
 import {
   clearSession,
   getAccessToken,
+  isRefreshAuthRejection,
   refreshAccessToken,
 } from '@/utils/session'
 
@@ -38,6 +39,26 @@ const showPreviewBlocked = () => {
   })
   // ElMessage 回傳的實例即使被測試替身換成別的值，也只要求「仍在畫面上時不重複」
   if (!previewNotice) previewNotice = true
+}
+
+// 換發暫時失敗（伺服器或代理的暫時狀態）：登入仍在，提示仍在畫面上時不重複。
+// 輪詢頁面每一輪都會再觸發一次換發，不去重就會疊出一串相同的提示
+let refreshUnavailableNotice = null
+
+/** 測試用：清除「換發暫時失敗提示仍在畫面上」的記錄。 */
+export function resetRefreshUnavailableNoticeForTests() {
+  refreshUnavailableNotice = null
+}
+
+const showRefreshUnavailable = () => {
+  if (refreshUnavailableNotice) return
+  refreshUnavailableNotice = ElMessage.error({
+    message: t('api.refreshUnavailable'),
+    onClose: () => {
+      refreshUnavailableNotice = null
+    },
+  })
+  if (!refreshUnavailableNotice) refreshUnavailableNotice = true
 }
 
 // 請求攔截器
@@ -135,14 +156,17 @@ request.interceptors.response.use(
 
     let message = t('api.requestFailed')
     let httpStatus = 0
+    let refreshUnavailable = false
     if (error.response) {
       const { status, data } = error.response
       const config = error.config || {}
       httpStatus = status
 
       if (status === 401 && shouldRefresh401(data, config.url)) {
-        // access token 失效：未重試過先透明刷新後重試原請求；終敗才清憑證導向
+        // access token 失效：未重試過先透明刷新後重試原請求；認證結論才清憑證導向。
+        // 換發失敗的判定一律取換發請求自身的回應，不取上面原請求的 status、data
         let transportFailure = false
+        let refreshResponse = null
         if (!config._retried) {
           const staleToken = (config.headers?.Authorization || '').replace(
             'Bearer ',
@@ -162,14 +186,28 @@ request.interceptors.response.use(
             // 頁面開始導向時續期請求在本頁先被拒、實際仍在背景完成，此時清掉同源
             // 共享的登入跡象或改導登入頁，等於把一次導向變成登出
             transportFailure = !refreshError?.response
+            // 5xx（含代理產生的 502、503、504）、408、429 不是認證結論：
+            // 伺服器或代理暫時無法換發，登入仍在，不清會話、不導向
+            if (!transportFailure && !isRefreshAuthRejection(refreshError)) {
+              refreshResponse = refreshError.response
+            }
             // 刷新終敗：若本分頁從未成功續期過且頁面走 http，登入頁要能回答
-            // 「為什麼又要我登入」。條件判定在 reloginContext 內，
+            // 「為什麼又要我登入」。只對認證結論記錄；條件判定在 reloginContext 內，
             // 寫入必須發生在 clearSessionAndRedirect 之前（那是整頁載入）
-            if (!transportFailure) recordInsecureTransportRelogin()
+            if (!transportFailure && !refreshResponse) recordInsecureTransportRelogin()
           }
         }
         if (transportFailure) {
           message = t('api.networkError')
+        } else if (refreshResponse) {
+          const { status: refreshStatus, data: refreshData } = refreshResponse
+          if (refreshData?.code === SEAL_GATE_CODE) {
+            // 封印閘：服務封印中，不是認證失敗；提示封印狀態並導向解封頁
+            message = resolveApiError(refreshData, refreshStatus)
+            redirectToUnsealIfSealed(refreshData)
+          } else {
+            refreshUnavailable = true
+          }
         } else {
           message = t('api.sessionExpired')
           clearSessionAndRedirect()
@@ -194,7 +232,8 @@ request.interceptors.response.use(
     const skipToast = error.config?.skipErrorToast
     const skipped = typeof skipToast === 'function' ? skipToast(error) : skipToast
     if (!skipped && httpStatus !== 423) {
-      ElMessage.error(message)
+      if (refreshUnavailable) showRefreshUnavailable()
+      else ElMessage.error(message)
     }
     return Promise.reject(error)
   }

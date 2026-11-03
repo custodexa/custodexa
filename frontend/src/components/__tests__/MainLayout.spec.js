@@ -857,6 +857,16 @@ describe('MainLayout 角色頁頂列', () => {
     clearDetailSubject()
   })
 
+  it('主機帳號盤點頁頂列是「主機帳號盤點」，不是首頁', async () => {
+    setUser(['admin'])
+    routeState.path = '/account-inventory'
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+    const crumbs = wrapper.find('.current-path').text()
+    expect(crumbs).toContain('主機帳號盤點')
+    expect(crumbs).not.toContain('首頁')
+  })
+
   it('告警頁頂列是「稽核 › 告警」，群組名不可點', async () => {
     setUser(['admin'])
     routeState.path = '/alerts'

@@ -183,9 +183,9 @@ type AssetAction struct {
 	OutOfScopeNodes int
 }
 
-// AssetRowActions 一列資產的五個動作。
+// AssetRowActions 一列資產的六個動作。
 type AssetRowActions struct {
-	Edit, Disable, Delete, TestConnection, ManageAccounts AssetAction
+	Edit, Disable, Delete, TestConnection, ManageAccounts, DiscoverAccounts AssetAction
 }
 
 // ManagementScopeNode 管理範圍中仍存在的節點與其由根起的名稱路徑。
@@ -214,7 +214,7 @@ type AssetScopeView struct {
 // MaskNodes 依管理可視範圍遮蔽歸屬：回範圍內節點（原順序）與範圍外筆數。
 func (v *AssetScopeView) MaskNodes(nodeIDs []uint) ([]uint, int) { return v.view.split(nodeIDs) }
 
-// Actions 一列資產（以其全部歸屬節點）的五個動作；每個鍵依自己的權限點判定。
+// Actions 一列資產（以其全部歸屬節點）的六個動作；每個鍵依自己的權限點判定。
 func (v *AssetScopeView) Actions(nodeIDs []uint) AssetRowActions {
 	return AssetRowActions{
 		Edit:           v.action(PermAssetUpdate, nodeIDs, false),
@@ -222,6 +222,8 @@ func (v *AssetScopeView) Actions(nodeIDs []uint) AssetRowActions {
 		Delete:         v.action(PermAssetDelete, nodeIDs, true),
 		TestConnection: v.action(PermAssetTest, nodeIDs, false),
 		ManageAccounts: v.action(PermAssetUpdate, nodeIDs, false),
+		// 主機帳號盤點（發起與處置）依盤點權限點自己的有效範圍；不因此把持有者算成範圍化檢視者。
+		DiscoverAccounts: v.action(PermAccountDiscover, nodeIDs, false),
 	}
 }
 
@@ -245,7 +247,7 @@ func (e *ScopeEvaluator) assetViewOn(tx *gorm.DB, p *Principal) (*AssetScopeView
 		}
 		v.view = ns
 	}
-	for _, perm := range []Permission{PermAssetUpdate, PermAssetDelete, PermAssetTest} {
+	for _, perm := range []Permission{PermAssetUpdate, PermAssetDelete, PermAssetTest, PermAccountDiscover} {
 		ns, err := e.materialize(tx, scopeSetOn(p, perm, sourcesAll))
 		if err != nil {
 			return nil, err

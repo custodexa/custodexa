@@ -50,6 +50,8 @@ type assetRowActionsDTO struct {
 	Delete         assetActionDTO `json:"delete"`
 	TestConnection assetActionDTO `json:"test_connection"`
 	ManageAccounts assetActionDTO `json:"manage_accounts"`
+	// 主機帳號盤點（發起與處置）
+	DiscoverAccounts assetActionDTO `json:"discover_accounts"`
 }
 
 type managementScopeNodeDTO struct {
@@ -80,6 +82,7 @@ func rowActionsDTO(a authz.AssetRowActions) assetRowActionsDTO {
 	return assetRowActionsDTO{
 		Edit: actionDTO(a.Edit), Disable: actionDTO(a.Disable), Delete: actionDTO(a.Delete),
 		TestConnection: actionDTO(a.TestConnection), ManageAccounts: actionDTO(a.ManageAccounts),
+		DiscoverAccounts: actionDTO(a.DiscoverAccounts),
 	}
 }
 

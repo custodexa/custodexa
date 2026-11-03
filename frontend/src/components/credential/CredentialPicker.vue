@@ -21,14 +21,29 @@
       data-test="credential-picker"
       @update:model-value="onSelect"
     >
+      <!-- 專用帳號模式：選定值也帶「帳號 · 型別」，與選項同格式 -->
+      <template
+        v-if="executorMode"
+        #label="{ value }"
+      >
+        <span class="opt-name">{{ selectedLabel(value) }}</span>
+        <span
+          class="opt-meta"
+          data-test="picker-selected-meta"
+        >{{ selectedMeta(value) }}</span>
+      </template>
       <el-option
         v-for="item in options"
         :key="item.id"
         :label="credentialDisplayName(item)"
         :value="item.id"
+        :disabled="optionDisabledReason(item) !== ''"
       >
         <span class="opt-name">{{ credentialDisplayName(item) }}</span>
-        <span class="opt-meta">{{ optionMeta(item) }}</span>
+        <span
+          class="opt-meta"
+          :data-test="optionDisabledReason(item) ? `picker-disabled-${item.id}` : `picker-meta-${item.id}`"
+        >{{ optionMeta(item) }}</span>
       </el-option>
       <template #empty>
         <div class="picker-empty">
@@ -85,6 +100,10 @@ const props = defineProps({
   // 已掛在本資產上的憑證：同一台不會掛兩次同一筆
   excludeIds: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
+  // 堡壘機專用帳號的選擇模式：用途為人員連線的憑證停用；Windows 族資產上金鑰型停用；
+  // 已是專用帳號的憑證在選項後綴寫台數
+  executorMode: { type: Boolean, default: false },
+  windowsFamily: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue', 'loaded'])
@@ -138,12 +157,48 @@ function onSelect(value) {
   emit('update:modelValue', value ?? null)
 }
 
+// 專用帳號模式下選項停用的原因（空字串＝可選）；伺服器的 409 仍是最後防線
+const optionDisabledReason = (item) => {
+  if (!props.executorMode) return ''
+  if (item.purpose === 'login') return t('assetExecutor.dialog.disabledLoginUse')
+  if (props.windowsFamily && item.secret_type === 'ssh_key') return t('assetExecutor.dialog.disabledWindowsKey')
+  return ''
+}
+
+// 專用帳號模式的選項後綴（一行、以「 · 」分段）：
+// 可選＝「帳號 {名} · 型別」，已是專用帳號再加「已是 N 台的專用帳號」；
+// 停用＝人員連線用的只寫原因，Windows 上的金鑰型寫「型別 · 原因」
+const executorAccountMeta = (item) => [
+  t('assetExecutor.dialog.optionAccount', { account: item.username || t('credentials.usernameUnset') }),
+  t(`enum.credentialSecretType.${item.secret_type}`),
+]
+const executorOptionMeta = (item) => {
+  const reason = optionDisabledReason(item)
+  if (item.purpose === 'login') return reason
+  if (reason) return [t(`enum.credentialSecretType.${item.secret_type}`), reason].join(' · ')
+  const parts = executorAccountMeta(item)
+  if (item.purpose === 'executor') parts.push(t('assetExecutor.dialog.executorUse', { count: item.binding_count || 0 }))
+  return parts.join(' · ')
+}
+
 const optionMeta = (item) =>
-  t('assets.credentialSection.picker.meta', {
-    username: item.username || t('credentials.usernameUnset'),
-    type: t(`enum.credentialSecretType.${item.secret_type}`),
-    count: item.binding_count || 0,
-  })
+  props.executorMode
+    ? executorOptionMeta(item)
+    : t('assets.credentialSection.picker.meta', {
+      username: item.username || t('credentials.usernameUnset'),
+      type: t(`enum.credentialSecretType.${item.secret_type}`),
+      count: item.binding_count || 0,
+    })
+
+const findOption = (value) => options.value.find((item) => item.id === value) || null
+const selectedLabel = (value) => {
+  const item = findOption(value)
+  return item ? credentialDisplayName(item) : ''
+}
+const selectedMeta = (value) => {
+  const item = findOption(value)
+  return item ? executorAccountMeta(item).join(' · ') : ''
+}
 
 function openCreate() {
   createVisible.value = true
@@ -164,7 +219,7 @@ async function onCreated() {
   emit('update:modelValue', picked.id)
 }
 
-defineExpose({ options, load, openCreate, onCreated, createVisible })
+defineExpose({ options, load, openCreate, onCreated, createVisible, optionDisabledReason, optionMeta, selectedMeta })
 </script>
 
 <style scoped>

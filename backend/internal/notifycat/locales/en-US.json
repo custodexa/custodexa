@@ -214,5 +214,11 @@
       "title": "Possible concurrent instance detected (other connections)",
       "text": "Startup check ({actor}): at startup, other guard-enabled instance connections were found on the same database[ ({peers} connections)] (peer query: {peers_query}) (severity: {severity})."
     }
+  },
+  "unmanaged_privileged_account": {
+    "default": {
+      "title": "Unmanaged privileged accounts on a host",
+      "text": "The host account inventory started by {actor} found {new_count} new unmanaged privileged accounts (login identity: {identity_mode}) (severity: {severity})."
+    }
   }
 }

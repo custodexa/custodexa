@@ -224,7 +224,7 @@ func renderAppendixA(doc *pdfdoc.Doc, rep *RotationReport, ph phraseFn) {
 // renderAppendixB 區間內的改密記錄。原因碼只有機器碼，不含遠端原文。
 func renderAppendixB(doc *pdfdoc.Doc, rep *RotationReport, ph phraseFn) {
 	doc.SectionTitle(ph("appendix_b"))
-	widths := doc.FitColumns([]float64{1, 4.2, 2, 2.4, 1.8, 1.4, 1.3, 1.2, 2})
+	widths := doc.FitColumns([]float64{1, 4.2, 2, 2.4, 1.8, 1.4, 1.3, 1.2, 2, 1.8})
 	cols := make([]pdfdoc.Column, len(recordColumnKeys))
 	for i, k := range recordColumnKeys {
 		cols[i] = pdfdoc.Column{Title: ph(k), Width: widths[i]}

@@ -201,6 +201,10 @@ func (s *UserGroupService) deleteGroup(id uint, actorID uint, actorName, clientI
 		if h := loadGroupDeleteLockHooks().afterPrefetch; h != nil {
 			h()
 		}
+		approverOnlyPrev, err := approverOnlyBefore(tx, id, prefetchIDs)
+		if err != nil {
+			return err
+		}
 		if err := authz.BeginPermissionChange(tx); err != nil {
 			return err
 		}
@@ -262,6 +266,9 @@ func (s *UserGroupService) deleteGroup(id uint, actorID uint, actorName, clientI
 
 		if err := tx.Delete(&group).Error; err != nil {
 			return fmt.Errorf("刪除群組失敗: %w", err)
+		}
+		if err := assertNoApproverOnlyTransitions(tx, approverOnlyPrev); err != nil {
+			return err
 		}
 		// 權限版本：群組刪除連同成員、映射規則的清除，與刪除同交易
 		if err := authz.AdvanceVersion(tx); err != nil {
@@ -366,6 +373,10 @@ func (s *UserGroupService) replaceMembers(id uint, manualIDs, legacyIDs *[]uint,
 			return err
 		}
 		if err := lockUsersCredentialUpfrontTx(tx, prefetchIDs); err != nil {
+			return err
+		}
+		approverOnlyPrev, err := approverOnlyBefore(tx, id, prefetchIDs)
+		if err != nil {
 			return err
 		}
 		if err := authz.BeginPermissionChange(tx); err != nil {
@@ -475,6 +486,9 @@ func (s *UserGroupService) replaceMembers(id uint, manualIDs, legacyIDs *[]uint,
 			}); err != nil {
 				return err
 			}
+		}
+		if err := assertNoApproverOnlyTransitions(tx, approverOnlyPrev); err != nil {
+			return err
 		}
 		if membersChanged {
 			if err := authz.AdvanceVersion(tx); err != nil {

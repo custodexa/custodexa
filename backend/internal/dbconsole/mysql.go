@@ -3,6 +3,7 @@ package dbconsole
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"net"
 	"strconv"
@@ -32,6 +33,19 @@ func openMySQL(ctx context.Context, cfg Config) (Dialect, error) {
 		return nil, err
 	}
 
+	driverCfg := mysqlDriverConfig(cfg, tlsSet)
+
+	connector, err := mysqldriver.NewConnector(driverCfg)
+	if err != nil {
+		zeroConfig(&driverCfg.Passwd, cfg.Password)
+		return nil, fmt.Errorf("dbconsole: 組裝 mysql connector 失敗: %w", err)
+	}
+	return finishOpenMySQL(ctx, cfg, driverCfg, connector)
+}
+
+// mysqlDriverConfig 逐欄位組裝主控台的 MySQL 連線設定。改密控制連線以它為底再收窄
+// （TLS 檔位語義只有這一處）。
+func mysqlDriverConfig(cfg Config, tlsSet tlsSettings) *mysqldriver.Config {
 	driverCfg := mysqldriver.NewConfig()
 	driverCfg.Net = "tcp"
 	driverCfg.Addr = net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
@@ -55,13 +69,11 @@ func openMySQL(ctx context.Context, cfg Config) (Dialect, error) {
 		// 全域註冊表要有人負責取消註冊，而取消註冊失敗的路徑是行程崩潰時
 		driverCfg.TLS = tlsSet.stdConfig(cfg.Host)
 	}
+	return driverCfg
+}
 
-	connector, err := mysqldriver.NewConnector(driverCfg)
-	if err != nil {
-		zeroConfig(&driverCfg.Passwd, cfg.Password)
-		return nil, fmt.Errorf("dbconsole: 組裝 mysql connector 失敗: %w", err)
-	}
-
+func finishOpenMySQL(ctx context.Context, cfg Config, driverCfg *mysqldriver.Config,
+	connector driver.Connector) (Dialect, error) {
 	oneShot := newOneShotConnector(connector, func() {
 		zeroConfig(&driverCfg.Passwd, cfg.Password)
 	})

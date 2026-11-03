@@ -146,7 +146,9 @@ var auditReasonEvents = []auditReasonEvent{
 // 帳號與憑證審計的 operation 值域（帳號側沿用 model.AccountOp*；憑證另有掛載與輪替類）
 var (
 	reasonAccountOps = []string{model.AccountOpCreate, model.AccountOpUpdate, model.AccountOpDelete,
-		model.AccountOpSetDefault, model.AccountOpDiscardCandidate}
+		model.AccountOpSetDefault, model.AccountOpDiscardCandidate,
+		model.AccountOpExecutorSet, model.AccountOpExecutorReplace, model.AccountOpExecutorClear,
+		model.AccountOpExecutorPublicKeyExport}
 	reasonCredentialOps = []string{model.AccountOpCreate, model.AccountOpUpdate, model.AccountOpDelete,
 		"bind", "unbind", "scope", "rebind", "rotate", "abandon", "detach", model.AccountOpSetSecret,
 		"authorization_stop", "recovery_verify", "rotation_reauthorized", "rotation_interrupted",

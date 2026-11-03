@@ -264,3 +264,93 @@ describe('UserRoleScopeTab：映射與群組來源', () => {
     expect(w.find('[data-test="mapped-block"]').exists()).toBe(true)
   })
 })
+
+describe('UserRoleScopeTab：只有審核者角色的就近說明與修正', () => {
+  const approverOnlyErr = { response: { status: 400, data: { error: 'x', code: 'VALIDATION_ROLE_SET_APPROVER_ONLY' } } }
+  // 第一次整組替換被擋，之後照常
+  const failFirstPut = () => {
+    const base = h.request.getMockImplementation()
+    let n = 0
+    h.request.mockImplementation(async (c) => {
+      if (c.method.toUpperCase() === 'PUT' && c.url === '/users/9/roles' && n++ === 0) throw approverOnlyErr
+      return base(c)
+    })
+  }
+  const roleNames = (w) => w.findAll('[data-test^="manual-role-"]').map((e) => e.attributes('data-test'))
+  const saveOnlyApprover = async (w) => {
+    await w.get('[data-test="remove-auditor"]').trigger('click')
+    await w.get('[data-test="roles-save"]').trigger('click')
+    await flushPromises()
+  }
+
+  it('收到碼後按修正鈕：第二次請求本文含全域一般使用者與審核人員', async () => {
+    failFirstPut()
+    const w = await mountTab()
+    await saveOnlyApprover(w)
+    const box = w.get('[data-test="approver-only-prompt"]')
+    expect(box.text()).toContain(t('users.approverOnlyPrompt.title'))
+    expect(box.text()).toContain(t('users.approverOnlyPrompt.fix'))
+    // 草稿原樣保留、不另顯示錯誤字句，原儲存鈕降為次要
+    expect(roleNames(w)).toEqual(['manual-role-approver'])
+    expect(w.find('[data-test="assign-error"]').exists()).toBe(false)
+    expect(w.get('[data-test="roles-save"]').classes()).not.toContain('el-button--primary')
+    await w.get('[data-test="approver-only-fix"]').trigger('click')
+    await flushPromises()
+    const puts = calls('PUT', '/users/9/roles')
+    expect(puts).toHaveLength(2)
+    expect(puts[1].data.manual_roles).toEqual(['approver', 'user'])
+    expect(puts[1].data.role_nodes?.user ?? null).toBeNull()
+    expect(w.find('[data-test="approver-only-prompt"]').exists()).toBe(false)
+  })
+
+  it('原集合的一般使用者限定在節點：說明改為限定節點版，第二次請求的一般使用者為全系統', async () => {
+    setup({ userBindings: { data: [
+      { role_name: 'auditor', role_id: 1, source: 'manual' },
+      { role_name: 'user', role_id: 6, source: 'manual', node_ids: [11] },
+      { role_name: 'approver', role_id: 2, source: 'manual' },
+    ] } })
+    failFirstPut()
+    const w = await mountTab({ roleSets: { manual: ['auditor', 'user', 'approver'], mapped: [] } })
+    await saveOnlyApprover(w)
+    expect(calls('PUT', '/users/9/roles')[0].data.role_nodes).toBeUndefined()
+    expect(w.get('[data-test="approver-only-prompt"]').text()).toContain(t('users.approverOnlyPrompt.nodeTitle'))
+    await w.get('[data-test="approver-only-fix"]').trigger('click')
+    await flushPromises()
+    const second = calls('PUT', '/users/9/roles')[1].data
+    expect(second.manual_roles).toEqual(['user', 'approver'])
+    expect(second.role_nodes).toEqual({ user: null })
+  })
+
+  it('不按修正鈕：沒有第二次請求；取消收起說明並保留剛才的選擇', async () => {
+    failFirstPut()
+    const w = await mountTab()
+    await saveOnlyApprover(w)
+    await wait(50)
+    await flushPromises()
+    expect(calls('PUT', '/users/9/roles')).toHaveLength(1)
+    await w.get('[data-test="approver-only-cancel"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="approver-only-prompt"]').exists()).toBe(false)
+    expect(calls('PUT', '/users/9/roles')).toHaveLength(1)
+    expect(roleNames(w)).toEqual(['manual-role-approver'])
+  })
+
+  it('頂端說明條：按「加上一般使用者」送出 PUT /users/:id/roles，本文含原直接指派與全域一般使用者', async () => {
+    const w = await mountTab({ approverOnly: true, roleSets: { manual: ['approver'], mapped: [] } })
+    expect(w.get('[data-test="approver-only-banner"]').text()).toContain(t('users.approverOnlyBanner.body'))
+    await w.get('[data-test="approver-only-add-user"]').trigger('click')
+    await flushPromises()
+    const puts = calls('PUT', '/users/9/roles')
+    expect(puts).toHaveLength(1)
+    expect(puts[0].data.manual_roles).toEqual(['approver', 'user'])
+    expect(puts[0].data.role_nodes?.user ?? null).toBeNull()
+    expect(w.get('[data-test="approver-only-done"]').text()).toBe(t('users.approverOnlyBanner.done'))
+  })
+
+  it('頂端說明條：下方有未儲存的修改時按鈕停用並說明', async () => {
+    const w = await mountTab({ approverOnly: true, roleSets: { manual: ['auditor', 'approver'], mapped: [] } })
+    await w.get('[data-test="remove-auditor"]').trigger('click')
+    expect(w.get('[data-test="approver-only-add-user"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-test="approver-only-banner-dirty"]').text()).toBe(t('users.approverOnlyBanner.dirtyNote'))
+  })
+})

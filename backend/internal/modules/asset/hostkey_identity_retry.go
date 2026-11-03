@@ -56,8 +56,8 @@ func (r *ChangeSecretRetryRunner) retryHostKeyCallback(guard *immediateVerifyGua
 	}
 	if err == nil && in.Job.Binding == model.HostKeyBindingPending {
 		target := HostKeyBindTarget{CandidateID: in.CandidateID}
-		if rotationTransportOf(asset) == model.HostKeyTransportWinRM {
-			if berr := r.hostKeys.BindWinRM(target); berr != nil {
+		if transport := rotationTransportOf(asset); model.HostKeyTransportIsKeyless(transport) {
+			if berr := r.hostKeys.BindKeyless(target, transport); berr != nil {
 				return nil, fmt.Errorf("%w: %v", ErrHostKeyCheckFailed, berr)
 			}
 			return nil, nil

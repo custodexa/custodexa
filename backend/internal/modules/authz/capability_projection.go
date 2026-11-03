@@ -24,6 +24,9 @@ const (
 const (
 	UIPrefix             = "ui:"
 	UIApprovals          = "ui:approvals"
+	// UIApprovalHistory 審核歷史唯讀端點以稽核身分放行的同一判定（IsAccessRequestHistoryAuditor）。
+	// 只讓審核中心入口出現並只讀歷史，不授予待審、核准、駁回或撤銷。
+	UIApprovalHistory = "ui:approval-history"
 	UIMyAgents           = "ui:my-agents"
 	UIAssetsGlobal       = "ui:assets-global"
 	UISelfServiceActions = "ui:self-service-actions"
@@ -38,7 +41,7 @@ const (
 
 // UIPresentationPoints 全部呈現點（排序副本）。
 func UIPresentationPoints() []string {
-	out := []string{UIApprovals, UIMyAgents, UIAssetsGlobal, UISelfServiceActions, UIConnectBypass, UISuperAdmin, UISessionMonitor}
+	out := []string{UIApprovals, UIApprovalHistory, UIMyAgents, UIAssetsGlobal, UISelfServiceActions, UIConnectBypass, UISuperAdmin, UISessionMonitor}
 	sort.Strings(out)
 	return out
 }
@@ -46,6 +49,7 @@ func UIPresentationPoints() []string {
 // ProjectionInputs 與 UserInfo 同一次組裝得到的既有資格值；投影不再自行查詢一次而與其矛盾。
 type ProjectionInputs struct {
 	IsApprover         bool
+	IsHistoryAuditor   bool
 	OwnsAgents         bool
 	CanSelfCreateAgent bool
 }
@@ -93,6 +97,9 @@ func ProjectCapabilitiesWithNodePaths(p *Principal, in ProjectionInputs, paths m
 	derived := []string{}
 	if in.IsApprover {
 		derived = append(derived, UIApprovals)
+	}
+	if in.IsHistoryAuditor {
+		derived = append(derived, UIApprovalHistory)
 	}
 	if in.OwnsAgents || in.CanSelfCreateAgent {
 		derived = append(derived, UIMyAgents)

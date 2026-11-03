@@ -160,8 +160,7 @@ func (s *HostIdentityTakeoverService) createConfirmation(ctx context.Context, ki
 		if !tj.confirmable(now) {
 			return takeoverConflict(takeoverDetailNotConfirmable)
 		}
-		if req.Transport == model.HostKeyTransportWinRM &&
-			tj.job.Binding != model.HostKeyBindingLegacy && tj.job.Transport != model.HostKeyTransportWinRM {
+		if !keylessConfirmTransportAllowed(tj.job, req.Transport) {
 			return takeoverConflict("")
 		}
 		verdict := hostIdentityVerdict(tx, tj.job, &asset)
@@ -266,15 +265,29 @@ func pinMemberTargetInTx(tx *gorm.DB, m *model.CredentialRotationMember, subject
 	return nil
 }
 
+// keylessConfirmTransportAllowed 無主機金鑰傳輸的確認，只受理工作綁定的傳輸種類等於確認指明的
+// 傳輸種類；無歷史身分的工作（升級前建立）只可能來自 SSH 或 WinRM 派送，只能以 winrm 確認。
+// 有主機金鑰的確認不在此判定（由指紋比對處理），恆回真。
+func keylessConfirmTransportAllowed(job hostIdentityJob, transport string) bool {
+	if model.HostKeyTransportHasHostKey(transport) {
+		return true
+	}
+	if job.Binding == model.HostKeyBindingLegacy {
+		return transport == model.HostKeyTransportWinRM
+	}
+	return job.Transport == transport
+}
+
 // checkConfirmedIdentity 確認的身分必須等於資產當下有效狀態；任一不等回 409。
 func checkConfirmedIdentity(tx *gorm.DB, asset *model.Asset, req HostIdentityConfirmRequest) error {
-	if req.Transport == model.HostKeyTransportWinRM {
-		if rotationTransportOf(asset) != model.HostKeyTransportWinRM {
+	current := rotationTransportOf(asset)
+	if model.HostKeyTransportIsKeyless(req.Transport) {
+		if current != req.Transport {
 			return takeoverConflict("")
 		}
 		return nil
 	}
-	if rotationTransportOf(asset) != model.HostKeyTransportSSH {
+	if !model.HostKeyTransportHasHostKey(current) {
 		return takeoverConflict("")
 	}
 	q := tx.Where("asset_id = ?", asset.ID)

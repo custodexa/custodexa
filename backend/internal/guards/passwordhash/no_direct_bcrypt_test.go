@@ -32,6 +32,13 @@ var forbiddenImports = []string{
 // 若日後有人在 pkg/crypto 下新增一個繞過介面的 helper，這個守衛仍要抓到。
 var allowedFiles = map[string]bool{
 	filepath.Join("pkg", "crypto", "password_hasher.go"): true,
+	// 資料庫自改密碼的 SCRAM-SHA-256 verifier：格式由 PostgreSQL 協定固定
+	// （PBKDF2-HMAC-SHA256、4096 次），不是平台自身的密碼儲存，演算法不可更換，
+	// 故不能經可換演算法的 pkg/crypto 介面。僅限此檔，且檔內不得存放雜湊結果。
+	// 本檔只需要 crypto/pbkdf2；守衛以檔為單位豁免、不支援逐 import 的粒度，
+	// 所以此處豁免的是全部 forbiddenImports。檔內若出現 pbkdf2 以外的雜湊函式庫，
+	// 須靠審查擋下。
+	filepath.Join("internal", "dbrotate", "scram.go"): true,
 }
 
 // TestNoDirectPasswordHashImport 掃描全部**非測試**的產品程式碼。

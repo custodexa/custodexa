@@ -23,6 +23,10 @@ const (
 	// WinRM 時，該資產同時受其連線協議通道與本通道管轄，清冊分列。無政策鍵——
 	// 改密不走 connect-token 閘，等級對它沒有可作用的攔截點
 	TransportChannelWinRM = "winrm"
+	// TransportChannelDBRotation 改密通道（系統路徑，不經使用者連線）：資料庫資產改密
+	// 通道設為 db_native 時，該資產同時計入連線通道 db 與本通道，清冊分列。無政策鍵、
+	// 不進 channelPolicyKeys——改密不走 connect-token 閘，等級對它沒有可作用的攔截點
+	TransportChannelDBRotation = "db_rotation"
 )
 
 // 風險項鍵（穩定識別，供 fingerprint 與前端呈現；label 變動不影響既有同意）
@@ -39,6 +43,9 @@ const (
 	RiskWinRMHTTPNTLM = "winrm_http_ntlm"
 	// RiskWinRMTLSInsecure WinRM 改密通道走 https 但不驗證伺服器憑證
 	RiskWinRMTLSInsecure = "winrm_tls_insecure"
+	// RiskDBRotationUnencrypted 資料庫自改密碼以未加密連線進行（字面定義在 model，
+	// 改密紀錄寫入端共用）
+	RiskDBRotationUnencrypted = model.RiskDBRotationUnencrypted
 )
 
 // RiskItem 一項傳輸風險（型別定義在 model.TransmissionRisk——資產列表
@@ -131,6 +138,7 @@ func init() {
 	registerRisk(RiskNotifyHTTP, RiskDescriptor{ZhTemplate: "通知投遞使用 http 明文"})
 	registerRisk(RiskWinRMHTTPNTLM, RiskDescriptor{ZhTemplate: "WinRM 改密通道走 http（僅 NTLM 訊息層加密，無 TLS）"})
 	registerRisk(RiskWinRMTLSInsecure, RiskDescriptor{ZhTemplate: "WinRM 改密通道未驗證伺服器憑證"})
+	registerRisk(RiskDBRotationUnencrypted, RiskDescriptor{ZhTemplate: "資料庫改密連線未加密（密碼可能以明文傳送）"})
 }
 
 // AllRiskDescriptors 回傳 registry 副本（完備性測試枚舉用）
@@ -271,9 +279,20 @@ func (s *TransmissionPolicyService) AssetRotationChannel(asset *model.Asset) str
 	return ""
 }
 
-// AssetRotationRisks 改密通道的風險判定：http → 僅訊息層加密；https＋insecure → 未驗證憑證；
-// https 配 system／ca 無風險。scheme 為空或未知一律計為 http 檔（fail-closed）。
+// AssetRotationRisks 改密通道的風險判定。
+//
+// WinRM：http → 僅訊息層加密；https＋insecure → 未驗證憑證；https 配 system／ca
+// 無風險；scheme 為空或未知一律計為 http 檔（fail-closed）。資料庫自改：判定見
+// model.DBRotationTransportRisk，非空結果併入。
 func (s *TransmissionPolicyService) AssetRotationRisks(asset *model.Asset) []RiskItem {
+	risks := s.winrmRotationRisks(asset)
+	if key := model.DBRotationTransportRisk(string(asset.Protocol), asset.EffectiveRotationChannel(), asset.DBTLSMode); key != "" {
+		risks = append(risks, newRisk(key, nil))
+	}
+	return risks
+}
+
+func (s *TransmissionPolicyService) winrmRotationRisks(asset *model.Asset) []RiskItem {
 	if s.AssetRotationChannel(asset) != TransportChannelWinRM {
 		return nil
 	}

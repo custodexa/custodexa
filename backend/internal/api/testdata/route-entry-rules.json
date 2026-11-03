@@ -14,6 +14,14 @@
     ]
   },
   {
+    "path": "/account-inventory",
+    "kind": "any",
+    "permissions": [
+      "account:discover",
+      "ui:assets-global"
+    ]
+  },
+  {
     "path": "/alerts",
     "kind": "any",
     "permissions": [
@@ -24,9 +32,10 @@
   },
   {
     "path": "/approvals",
-    "kind": "all",
+    "kind": "any",
     "permissions": [
-      "ui:approvals"
+      "ui:approvals",
+      "ui:approval-history"
     ]
   },
   {

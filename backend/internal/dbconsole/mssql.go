@@ -32,7 +32,18 @@ func openMSSQL(ctx context.Context, cfg Config) (Dialect, error) {
 	if err != nil {
 		return nil, err
 	}
+	driverCfg, err := mssqlDriverConfig(cfg, tlsSet, mssqlConsoleAppName)
+	if err != nil {
+		return nil, err
+	}
+	return finishOpenMSSQL(ctx, cfg, driverCfg)
+}
 
+// mssqlConsoleAppName 主控台連線在目標端顯示的應用程式名稱
+const mssqlConsoleAppName = "custodexa-db-console"
+
+// mssqlDriverConfig 逐欄位組裝 SQL Server 連線設定（主控台與改密控制連線共用，TLS 檔位語義只有這一處）。
+func mssqlDriverConfig(cfg Config, tlsSet tlsSettings, appName string) (msdsn.Config, error) {
 	driverCfg := msdsn.Config{
 		Host:     cfg.Host,
 		Port:     uint64(cfg.Port),
@@ -47,7 +58,7 @@ func openMSSQL(ctx context.Context, cfg Config) (Dialect, error) {
 		// 開著的話，一次因連線中斷而失敗的執行會被 database/sql 悄悄重跑一次，
 		// 而重跑一條 DML 是使用者沒有要求的第二次生效
 		DisableRetry: true,
-		AppName:      "custodexa-db-console",
+		AppName:      appName,
 	}
 
 	switch {
@@ -62,7 +73,7 @@ func openMSSQL(ctx context.Context, cfg Config) (Dialect, error) {
 		// 要更嚴的傳輸保證有專屬檔位（require／verify-ca／verify-full）
 		stdCfg, tlsErr := msdsn.SetupTLS("", "", true, cfg.Host, "")
 		if tlsErr != nil {
-			return nil, fmt.Errorf("dbconsole: mssql 預設 TLS 設定失敗: %w", tlsErr)
+			return driverCfg, fmt.Errorf("dbconsole: mssql 預設 TLS 設定失敗: %w", tlsErr)
 		}
 		driverCfg.TLSConfig = stdCfg
 	case !tlsSet.enabled:
@@ -71,7 +82,10 @@ func openMSSQL(ctx context.Context, cfg Config) (Dialect, error) {
 		driverCfg.Encryption = msdsn.EncryptionRequired
 		driverCfg.TLSConfig = tlsSet.stdConfig(cfg.Host)
 	}
+	return driverCfg, nil
+}
 
+func finishOpenMSSQL(ctx context.Context, cfg Config, driverCfg msdsn.Config) (Dialect, error) {
 	connector := mssql.NewConnectorConfig(driverCfg)
 	oneShot := newOneShotConnector(connector, func() {
 		zeroConfig(&driverCfg.Password, cfg.Password)

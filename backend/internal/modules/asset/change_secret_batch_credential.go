@@ -204,7 +204,8 @@ func (r *ChangeSecretRunner) skipOutOfSyncBindings(job rotationJob,
 		return nil, blocked
 	}
 	var accounts []model.AssetAccount
-	if err := r.db.Where("asset_id IN ? AND username IN ?", assetIDs, names).
+	if err := r.db.Where("asset_id IN ? AND username IN ? AND purpose = ?", assetIDs, names,
+		model.AccountPurposeLogin).
 		Order("asset_id asc, id asc").Find(&accounts).Error; err != nil {
 		log.Printf("[ChangeSecret] 查詢批次目標掛載失敗 batch=%d err=%v", job.batchID, err)
 		return nil, blocked
@@ -255,7 +256,8 @@ func (r *ChangeSecretRunner) runSharedMembersSplit(job rotationJob,
 		return nil, routed
 	}
 	var accounts []model.AssetAccount
-	if err := r.db.Where("asset_id IN ? AND username IN ?", assetIDs, names).
+	if err := r.db.Where("asset_id IN ? AND username IN ? AND purpose = ?", assetIDs, names,
+		model.AccountPurposeLogin).
 		Order("asset_id asc, id asc").Find(&accounts).Error; err != nil {
 		log.Printf("[ChangeSecret] 查詢批次目標掛載失敗 batch=%d err=%v", job.batchID, err)
 		return nil, routed

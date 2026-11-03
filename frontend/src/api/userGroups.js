@@ -1,4 +1,5 @@
 import request from './request'
+import { isGroupApproverOnly } from './approverOnly'
 
 /**
  * 使用者群組 API（admin only）
@@ -63,6 +64,8 @@ export function deleteUserGroup(id) {
   return request({
     url: `/user-groups/${id}`,
     method: 'delete',
+    // 會讓成員只剩審核者角色的拒絕由畫面就近列出受影響成員
+    skipErrorToast: isGroupApproverOnly,
   })
 }
 
@@ -75,6 +78,8 @@ export function replaceUserGroupMembers(id, manualUserIds) {
   return request({
     url: `/user-groups/${id}/members`,
     method: 'put',
+    // 會讓成員只剩審核者角色的拒絕由畫面就近列出受影響成員
+    skipErrorToast: isGroupApproverOnly,
     data: { manual_user_ids: manualUserIds },
   })
 }
@@ -105,6 +110,8 @@ export function replaceUserGroupRoleBindings(id, roleIds, roleNodes) {
   return request({
     url: `/user-groups/${id}/role-bindings`,
     method: 'put',
+    // 會讓成員只剩審核者角色的拒絕由畫面就近列出受影響成員
+    skipErrorToast: isGroupApproverOnly,
     data,
   })
 }

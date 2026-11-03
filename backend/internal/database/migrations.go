@@ -377,6 +377,53 @@ var migrations = []Migration{
 		Up:      applyScopedTemplateBuiltinKeys,
 		Down:    rollbackScopedTemplateBuiltinKeys,
 	},
+	{
+		// 改密紀錄的傳輸風險欄：change_secret_records 加 transport_risk（非空、預設空字串）。
+		// 只加欄，無資料步驟；既有紀錄為空字串＝未標示。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261102_db_account_rotation",
+		Name:    "db_account_rotation",
+		Up:      applyDBAccountRotation,
+		Down:    rollbackDBAccountRotation,
+	},
+	{
+		// 主機帳號盤點：新表 host_account_scans、host_account_findings 與其索引、CHECK。
+		// 只建表，不回填、不改既有表。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261102_host_account_inventory",
+		Name:    "host_account_inventory",
+		Up:      applyHostAccountInventory,
+		Down:    rollbackHostAccountInventory,
+	},
+	{
+		// 資產帳號用途：asset_accounts 加 purpose（既有列取 login）與每資產至多一筆執行身分的
+		// 部分唯一索引。純加法，不回填。
+		Version: "20261102_asset_account_purpose",
+		Name:    "asset_account_purpose",
+		Up:      applyAssetAccountPurpose,
+		Down:    rollbackAssetAccountPurpose,
+	},
+	{
+		// 執行身分來源：asset_accounts 加 executor_source（既有列取空字串）。純加法，不回填。
+		Version: "20261103_asset_account_executor_source",
+		Name:    "asset_account_executor_source",
+		Up:      applyAssetAccountExecutorSource,
+		Down:    rollbackAssetAccountExecutorSource,
+	},
+	{
+		// 改密紀錄的執行方式欄：change_secret_records 加 execution_method（既有列取 self）與代改當下
+		// 堡壘機專用帳號的三欄快照。純加法，無資料步驟。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261103_change_secret_execution_method",
+		Name:    "change_secret_execution_method",
+		Up:      applyChangeSecretExecutionMethod,
+		Down:    rollbackChangeSecretExecutionMethod,
+	},
+	{
+		// 堡壘機專用帳號的測試登入結果：新表 executor_login_checks（每個專用帳號掛載一列）。
+		// 只建表，不回填、不改既有表。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261103_executor_login_checks",
+		Name:    "executor_login_checks",
+		Up:      applyExecutorLoginChecks,
+		Down:    rollbackExecutorLoginChecks,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -440,7 +487,13 @@ func schemaDDLStatements() []string {
 	out = append(out, credentialHostIdentityDDL()...)
 	out = append(out, userReleaseGuidanceDDL()...)
 	out = append(out, credentialOwnershipDDL()...)
-	return append(out, changeSecretScopeColumnsDDL()...)
+	out = append(out, changeSecretScopeColumnsDDL()...)
+	out = append(out, dbAccountRotationDDL()...)
+	out = append(out, hostAccountInventoryDDL()...)
+	out = append(out, assetAccountPurposeDDL()...)
+	out = append(out, assetAccountExecutorSourceDDL()...)
+	out = append(out, changeSecretExecutionMethodDDL()...)
+	return append(out, executorLoginChecksDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

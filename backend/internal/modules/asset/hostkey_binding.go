@@ -120,15 +120,19 @@ func (s *HostKeyService) bindWorkRow(assetID uint, target HostKeyBindTarget, key
 	return pin, err
 }
 
-// BindWinRM WinRM 首次派送在 Rotate 之前的綁定：WinRM 沒有金鑰交換，只寫「自始為 WinRM」的持久證據
-// （傳輸 winrm、記錄 ID 與快照欄為零值）。條件與 SSH 綁定相同：一般候選須為 pending，
-// 成員須滿足 memberBindEligibleSQL；受影響列不為 1 或任何錯誤回 ErrHostKeyCheckFailed，呼叫端不得派送。
-func (s *HostKeyService) BindWinRM(target HostKeyBindTarget) error {
+// BindKeyless 無主機金鑰傳輸（winrm、db）首次派送在 Rotate 之前的綁定：沒有金鑰交換，只寫
+// 「自始為該傳輸」的持久證據（傳輸種類、記錄 ID 與快照欄為零值）。條件與 SSH 綁定相同：一般候選須為
+// pending，成員須滿足 memberBindEligibleSQL；傳輸有主機金鑰或值域外、受影響列不為 1 或任何錯誤
+// 回 ErrHostKeyCheckFailed，呼叫端不得派送。
+func (s *HostKeyService) BindKeyless(target HostKeyBindTarget, transport string) error {
 	if (target.CandidateID == 0) == (target.MemberID == 0) {
 		return ErrHostKeyCheckFailed
 	}
+	if !model.HostKeyTransportIsKeyless(transport) {
+		return ErrHostKeyCheckFailed
+	}
 	fields := map[string]any{
-		"host_key_binding": model.HostKeyBindingBound, "host_key_transport": model.HostKeyTransportWinRM,
+		"host_key_binding": model.HostKeyBindingBound, "host_key_transport": transport,
 		"host_key_record_id": 0, "host_key_algorithm": "", "host_key_fingerprint": "",
 		"host_key_generation": 0, "host_key_bound_at": s.now(),
 	}

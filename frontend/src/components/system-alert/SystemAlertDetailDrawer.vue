@@ -132,6 +132,19 @@
           </router-link>
         </section>
 
+        <!-- 前往該台的主機帳號盤點：只給目標是資產、識別為正整數、且進得了資產頁者 -->
+        <section
+          v-if="inventoryLink"
+          data-test="sa-inventory"
+        >
+          <router-link
+            :to="inventoryLink.to"
+            data-test="sa-view-host-inventory"
+          >
+            {{ inventoryLink.text }}
+          </router-link>
+        </section>
+
         <section data-test="sa-tech">
           <h4>{{ $t('systemAlerts.detail.techTitle') }}</h4>
           <dl class="sa-dl">
@@ -349,6 +362,18 @@ const overviewLink = computed(() => {
   return {
     to: { path: `/users/${d.target_id}`, query: { tab: 'permissions' } },
     text: t('systemAlerts.detail.viewPermissionOverview', { name }),
+  }
+})
+
+// 「查看這台的主機帳號盤點」：目標種類與識別一律取明細的 target_kind／target_id，不從文字反推
+const inventoryLink = computed(() => {
+  const d = detail.value
+  if (!d || d.alert_type !== 'unmanaged_privileged_account' || d.target_kind !== 'asset') return null
+  if (!/^[1-9][0-9]*$/.test(String(d.target_id ?? ''))) return null
+  if (!canEnter(ENTRY_RULES['/assets'])) return null
+  return {
+    to: { path: '/assets', query: { inventory: String(d.target_id) } },
+    text: t('systemAlerts.detail.viewHostInventory'),
   }
 })
 

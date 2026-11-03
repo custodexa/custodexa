@@ -38,6 +38,8 @@ export const SECURITY_SECTIONS = [
   // 密碼，這一鍵管的是被納管主機上的帳號憑證，兩者互不作用。混進密碼政策區
   // 會讓管理者以為調它會影響自己的登入
   section('asset_secret', ['asset_secret_max_age_days']),
+  // 主機帳號盤點：同為被納管主機的設定，獨立一區，不與平台使用者的政策混放
+  section('host_inventory', ['host_privileged_groups_posix']),
   section('mfa', ['mfa_required']),
   section('session_account', [
     'web_idle_minutes',

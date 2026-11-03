@@ -244,6 +244,7 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { Plus, RotateCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import ManageScopeLine from '@/components/ManageScopeLine.vue'
@@ -341,7 +342,7 @@ async function loadList() {
   }
 }
 
-async function loadDetail(id) {
+async function loadDetail(id, config) {
   if (!id) {
     detail.value = null
     aggregateState.value = ''
@@ -349,7 +350,8 @@ async function loadDetail(id) {
   }
   detailLoading.value = true
   try {
-    const res = await getCredential(id)
+    // 未帶設定時維持單參數呼叫，與落點流程之外的既有呼叫形狀一致
+    const res = config ? await getCredential(id, config) : await getCredential(id)
     detail.value = res?.data || null
     aggregateState.value = res?.aggregate_state || ''
   } catch (err) {
@@ -433,9 +435,29 @@ async function onDeleted() {
   await loadList()
 }
 
-onMounted(() => {
-  loadList()
+// 深連結 ?credential=<id>：載入該筆詳情並選取，之後清掉參數。取不到（404、範圍外）時
+// 不選取、不另提示，與不存在同形；其他錯誤照常提示
+const route = useRoute()
+const router = useRouter()
+
+async function openFromQuery() {
+  const id = Number(route?.query?.credential)
+  if (!id) return
+  try {
+    selectedId.value = id
+    await loadDetail(id, { skipErrorToast: (e) => e?.response?.status === 404 })
+    if (!detail.value) selectedId.value = null
+  } finally {
+    const query = { ...route.query }
+    delete query.credential
+    router?.replace({ query })
+  }
+}
+
+onMounted(async () => {
   loadNodePaths()
+  await loadList()
+  await openFromQuery()
 })
 
 defineExpose({

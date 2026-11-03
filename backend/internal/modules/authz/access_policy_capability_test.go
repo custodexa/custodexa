@@ -55,7 +55,8 @@ var scopedEnforcedEnabled = map[Permission]bool{PermAssetGroupManage: true,
 	PermCredentialSetSecret: true, PermCredentialRotate: true, PermCredentialConvertScope: true,
 	PermCredentialDetach: true, PermCredentialDelete: true, PermCredentialBind: true,
 	PermAuthorizationManage: true, PermApproverScopeManage: true, PermAssetCreate: true,
-	PermChangeSecretManage: true, PermAccountRotate: true, PermAccessPolicyManage: true}
+	PermChangeSecretManage: true, PermAccountRotate: true, PermAccessPolicyManage: true,
+	PermAssetExecutorManage: true, PermAccountDiscover: true}
 
 // assertScopedEnforcedOnlyEnabled 目錄的 scoped-enforced 集合恰為已啟用表（不多也不少）。
 func assertScopedEnforcedOnlyEnabled(t *testing.T, defs []PermissionDef) {

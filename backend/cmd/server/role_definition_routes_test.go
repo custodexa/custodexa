@@ -302,13 +302,14 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 			require.True(t, ok, "%s 的 read_via 必須是字串", w.ID)
 			assert.Equal(t, w.ReadVia, readVia, w.ID)
 		}
-		// 位置與隨附來源：五個非一般列的值固定。
+		// 位置與隨附來源：六個非一般列的值固定。
 		type pv struct {
 			placement string
 			entries   []string
 			readVia   string
 		}
 		wantRows := map[string]pv{
+			"asset_executor": {"embedded", []string{"assets"}, ""},
 			"syslog":         {"embedded", []string{"security_policies"}, ""},
 			"schedules":      {"helper", []string{"change_secret", "rotation_schedules"}, ""},
 			"instance_guard": {"banner", []string{}, ""},
@@ -329,7 +330,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 			assert.Equal(t, want, pv{e["placement"].(string), gotPE, e["read_via"].(string)}, id)
 			delete(wantRows, id)
 		}
-		assert.Empty(t, wantRows, "五個入口都應出現在編輯描述中")
+		assert.Empty(t, wantRows, "六個入口都應出現在編輯描述中")
 		cl, list := get("S01", "/api/v1/role-definitions")
 		require.Equal(t, http.StatusOK, cl)
 		for id, row := range rows(list) {

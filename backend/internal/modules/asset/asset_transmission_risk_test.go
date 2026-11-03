@@ -48,6 +48,7 @@ func TestAssetListCarriesTransmissionRisks(t *testing.T) {
 	for _, a := range []model.Asset{
 		{Name: "vnc-risky", Protocol: model.ProtocolVNC, Host: "h", Port: 5900, CreatedBy: 1},
 		{Name: "db-safe", Protocol: model.ProtocolMySQL, Host: "h", Port: 3306, CreatedBy: 1, DBTLSMode: "require"},
+		{Name: "db-rotation-plain", Protocol: model.ProtocolMySQL, Host: "h", Port: 3306, CreatedBy: 1, RotationChannel: model.RotationChannelDBNative},
 	} {
 		asset := a
 		if err := db.Create(&asset).Error; err != nil {
@@ -68,6 +69,13 @@ func TestAssetListCarriesTransmissionRisks(t *testing.T) {
 	}
 	if len(byName["db-safe"]) != 0 {
 		t.Errorf("TLS 已啟資產不應附風險, got %v", byName["db-safe"])
+	}
+	keys := map[string]bool{}
+	for _, r := range byName["db-rotation-plain"] {
+		keys[r.Key] = true
+	}
+	if len(byName["db-rotation-plain"]) != 2 || !keys[policy.RiskDBTLSDisabled] || !keys[policy.RiskDBRotationUnencrypted] {
+		t.Errorf("未加密的資料庫自改資產應同時附 db_tls_disabled 與 db_rotation_unencrypted, got %v", byName["db-rotation-plain"])
 	}
 }
 

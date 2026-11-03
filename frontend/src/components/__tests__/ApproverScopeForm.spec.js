@@ -38,6 +38,13 @@ vi.mock('@/api/accessRequests', () => ({
   createApproverScope: (...a) => createApproverScopeMock(...a),
 }))
 
+// 確認框內文為 VNode：攤平成文字比對
+const vnodeText = (v) => {
+  if (typeof v === 'string') return v
+  if (Array.isArray(v)) return v.map(vnodeText).join('')
+  return v?.children ? vnodeText(v.children) : ''
+}
+
 const mountForm = (props = {}) =>
   mount(ApproverScopeForm, {
     props,
@@ -107,9 +114,9 @@ describe('ApproverScopeForm 共用範圍表單', () => {
     await flushPromises()
 
     expect(confirmSpy).toHaveBeenCalled()
-    expect(String(confirmSpy.mock.calls[0][0])).toContain('尚未具備審核人員角色')
+    expect(vnodeText(confirmSpy.mock.calls[0][0])).toContain('尚未具備審核人員角色')
     // 冪等追加端點：只送單一角色，不整包覆蓋
-    expect(addUserRoleMock).toHaveBeenCalledWith(7, 'approver')
+    expect(addUserRoleMock.mock.calls.map((c) => c.slice(0, 2))).toContainEqual([7, 'approver'])
     expect(createApproverScopeMock).toHaveBeenCalledWith({ approver_id: 7, asset_id: 1 })
     // 代配後選項標註消除（避免重複代配）
     expect(alice.needsRole).toBe(false)
@@ -166,5 +173,44 @@ describe('ApproverScopeForm 共用範圍表單', () => {
     const noHelp = mountForm({ presetActor: { type: 'user', id: 8 }, showHelp: false })
     await flushPromises()
     expect(noHelp.text()).not.toContain('節點範圍含整棵子樹')
+  })
+
+  it('一站式代配：兩次追加呼叫依序為一般使用者、審核人員；確認框補一句會一併加上一般使用者', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    const wrapper = mountForm()
+    await flushPromises()
+    wrapper.vm.form.actorId = 7
+    wrapper.vm.form.targetId = 1
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(vnodeText(confirmSpy.mock.calls[0][0])).toContain('也會一併加上，確保仍能使用資產')
+    expect(addUserRoleMock.mock.calls.map((c) => c.slice(0, 2))).toEqual([
+      [7, 'user'],
+      [7, 'approver'],
+    ])
+    expect(createApproverScopeMock).toHaveBeenCalledWith({ approver_id: 7, asset_id: 1 })
+    confirmSpy.mockRestore()
+  })
+
+  it('一站式代配第二步被判定只有審核者角色：表單下方說明並連到該帳號的角色分頁，不建範圍', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    addUserRoleMock
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', code: 'VALIDATION_ROLE_SET_APPROVER_ONLY' } } })
+    const wrapper = mountForm()
+    await flushPromises()
+    wrapper.vm.form.actorId = 7
+    wrapper.vm.form.targetId = 1
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    const box = wrapper.get('[data-test="scope-form-approver-only"]')
+    expect(box.text()).toContain('尚未儲存')
+    const link = wrapper.get('[data-test="scope-form-go-roles"]')
+    expect(link.attributes('href')).toBe('/users/7?tab=roles')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(createApproverScopeMock).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
   })
 })

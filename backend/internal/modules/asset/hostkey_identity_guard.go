@@ -85,10 +85,7 @@ func (j hostIdentityJob) expected() *hostIdentityExpected {
 
 // rotationTransportOf 資產當下有效輪替通道對應的主機身分傳輸種類。
 func rotationTransportOf(asset *model.Asset) string {
-	if asset.EffectiveRotationChannel() == model.RotationChannelWindowsWinRM {
-		return model.HostKeyTransportWinRM
-	}
-	return model.HostKeyTransportSSH
+	return model.HostKeyTransportForChannel(asset.EffectiveRotationChannel())
 }
 
 // hostIdentityVerdict 撥號前查庫：回空字串＝可進入撥號（含「重新首次派送」與「WinRM 無主機金鑰可比」）；
@@ -113,8 +110,8 @@ func hostIdentityVerdict(db *gorm.DB, job hostIdentityJob, asset *model.Asset) s
 	if job.Transport != rotationTransportOf(asset) {
 		return hostIdentityTransportChanged
 	}
-	if job.Transport == model.HostKeyTransportWinRM {
-		return "" // 沒有主機金鑰可比
+	if model.HostKeyTransportIsKeyless(job.Transport) {
+		return "" // 沒有主機金鑰可比（winrm、db）
 	}
 
 	var own model.AssetHostKey
@@ -140,11 +137,11 @@ func hostIdentityVerdict(db *gorm.DB, job hostIdentityJob, asset *model.Asset) s
 // 且在取任何憑證列之前呼叫。重新取得主機金鑰信任鎖後重讀自身列，id、世代、重置旗標、指紋與演算法
 // 全部等於預期才放行，否則回 ErrHostIdentityChanged（呼叫端交易回滾、候選保留）。
 //
-//   - transport 為 winrm 的工作沒有記錄可比，直接放行。
+//   - 沒有主機金鑰的傳輸（winrm、db）沒有記錄可比，直接放行。
 //   - expected 為 nil 時以工作列自身快照為預期；工作列非 bound 又沒有外部預期（承接紀錄）時，
 //     狀態不一致，回 ErrHostKeyCheckFailed（fail-closed，不是身分變更）。
 func assertHostIdentityUnchangedTx(tx *gorm.DB, job hostIdentityJob, expected *hostIdentityExpected) error {
-	if job.Transport == model.HostKeyTransportWinRM {
+	if model.HostKeyTransportIsKeyless(job.Transport) {
 		return nil
 	}
 	exp := expected

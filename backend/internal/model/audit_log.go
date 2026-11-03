@@ -42,6 +42,18 @@ const (
 	// ActionHostKeyCredSent 主機金鑰不符放行後，登入憑證已實際送到該主機（認證階段完成）：
 	// 與不符審計同 correlation_id，details 記認證結果。18 字元
 	ActionHostKeyCredSent AuditAction = "host_key_cred_sent"
+	// 主機帳號盤點（resource 為 host_account_scan／host_account_finding）：
+	// 發起與建列同交易；結束與結果、告警同交易（中斷與殘留收尾亦寫）；忽略與手動重開與處置同交易。
+	// details 不含帳號名清單，只有單筆處置記該帳號名。皆在 varchar(20) 內
+	ActionInventoryScan     AuditAction = "inventory_scan"
+	ActionInventoryScanDone AuditAction = "inventory_scan_done"
+	ActionInventoryIgnore   AuditAction = "inventory_ignore"
+	ActionInventoryReopen   AuditAction = "inventory_reopen"
+	// 堡壘機專用帳號的測試登入（resource 為 asset_executor）：開始審計在撥號前與前置檢查同交易，
+	// 結束審計與結果表同交易；不更新結果表的出口另以獨立短交易寫結束審計。details 不含秘密與遠端原文。
+	// 20、25 字元，varchar(32) 內
+	ActionExecutorLoginCheck     AuditAction = "executor_login_check"
+	ActionExecutorLoginCheckDone AuditAction = "executor_login_check_done"
 	// ActionRetentionFloorRaised 升級對帳把低於下限的資料保留天數抬升到下限，或讓檢查點保留
 	// 跟隨抬升（resource=security_policy）：與政策列、抬升紀錄同交易寫入；details 記鍵、原值、
 	// 新值、下限與理由碼。22 字元

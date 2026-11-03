@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { mount, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import CredentialBindingList from '@/components/credential/CredentialBindingList.vue'
 import { resetCapabilities, setCapabilitiesForTests } from '@/composables/useCapabilities'
 
@@ -110,5 +112,73 @@ describe('掛載清單', () => {
 
     expect(wrapper.text()).toContain('尚未掛到任何資產')
     expect(wrapper.findAll('[data-test^="binding-row-"]')).toHaveLength(0)
+  })
+})
+
+describe('BindingPurpose', () => {
+  const executorRows = () => [
+    bindingFixture({ account_id: 1, asset_id: 11, asset_name: 'web-01', purpose: 'executor' }),
+    bindingFixture({ account_id: 2, asset_id: 12, asset_name: 'web-02', purpose: 'executor', is_default: false }),
+    bindingFixture({ account_id: 3, asset_id: 13, asset_name: 'web-03', purpose: 'executor', is_default: false }),
+  ]
+
+  it('三列 executor 顯示用途字，卸載停用、脫離可用', () => {
+    const wrapper = mountList({ bindings: executorRows() })
+    for (const id of [1, 2, 3]) {
+      expect(wrapper.get(`[data-test="binding-purpose-${id}"]`).text()).toBe('堡壘機專用')
+      expect(wrapper.get(`[data-test="binding-unbind-${id}"]`).attributes('disabled')).toBeDefined()
+      expect(wrapper.get(`[data-test="binding-detach-${id}"]`).attributes('disabled')).toBeUndefined()
+    }
+  })
+
+  it('無 actions 旗標的全域主體列只靠 purpose 即停用卸載', () => {
+    const rows = [bindingFixture({ account_id: 9, purpose: 'executor' })]
+    expect(rows[0].actions).toBeUndefined()
+    const wrapper = mountList({ bindings: rows })
+    expect(wrapper.get('[data-test="binding-unbind-9"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('login 列用途為人員連線，卸載可用性與以前相同', () => {
+    const wrapper = mountList({ bindings: [bindingFixture({ account_id: 5, purpose: 'login' }), bindingFixture({ account_id: 6 })] })
+    expect(wrapper.get('[data-test="binding-purpose-5"]').text()).toBe('人員連線')
+    expect(wrapper.get('[data-test="binding-purpose-6"]').text()).toBe('人員連線')
+    expect(wrapper.get('[data-test="binding-unbind-5"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="binding-unbind-6"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('聚焦停用外層後說明與連結出現且 href 正確', async () => {
+    const wrapper = mount(CredentialBindingList, {
+      global: { plugins: [ElementPlus] },
+      props: { bindings: executorRows(), scope: 'shared' },
+      attachTo: document.body,
+    })
+    await wrapper.get('[data-test="binding-unbind-wrap-2"]').trigger('focus')
+    await flushPromises()
+    expect(wrapper.get('[data-test="binding-unbind-wrap-2"]').attributes('tabindex')).toBe('0')
+    const note = wrapper.get('[data-test="binding-unbind-note-2"]')
+    expect(note.text()).toContain('堡壘機專用帳號不能在這裡卸載')
+    const link = wrapper.get('[data-test="binding-unbind-link-2"]')
+    expect(link.attributes('href')).toBe('/assets?edit=12&focus=executor')
+    expect(link.text()).toContain('web-02')
+    expect(link.classes()).toContain('unbind-note-link')
+  })
+
+  it('解除綁定提示內連結用站內連結色、無底線', () => {
+    const sfc = readFileSync(join(process.cwd(), 'src/components/credential/CredentialBindingList.vue'), 'utf8')
+    const rule = /\.unbind-note-link \{[^}]*\}/.exec(sfc)?.[0] || ''
+    expect(rule).toMatch(/color: var\(--ot-primary\)/)
+    expect(rule).toMatch(/text-decoration: none/)
+  })
+
+  it('範圍化檢視者的 executor 列帶 unbind 不可用旗標時，標頭下方不出現該原因；login 列同碼仍彙整', () => {
+    const flag = { unbind: { allowed: false, reason: 'no_capability' } }
+    const wrapper = mountList({
+      bindings: [
+        bindingFixture({ account_id: 1, purpose: 'executor', actions: flag }),
+      ],
+    })
+    expect(wrapper.find('[data-test^="bindings-denied-"]').exists()).toBe(false)
+    const login = mountList({ bindings: [bindingFixture({ account_id: 2, purpose: 'login', actions: flag })] })
+    expect(login.find('[data-test="bindings-denied-no_capability"]').exists()).toBe(true)
   })
 })

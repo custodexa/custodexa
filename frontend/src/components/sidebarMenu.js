@@ -40,6 +40,7 @@ import {
   CloudUpload,
   Send,
   Bot,
+  UserSearch,
 } from 'lucide-vue-next'
 
 export const MENU_GROUPS = [
@@ -69,6 +70,7 @@ export const MENU_GROUPS = [
       { id: 'authorizations', path: '/authorizations', titleKey: 'menu.authorizations', icon: TicketCheck },
       { id: 'change-secret-plans', path: '/change-secret-plans', titleKey: 'menu.changeSecretPlans', icon: RotateCcwKey },
       { id: 'change-secret-batches', path: '/change-secret-batches', titleKey: 'menu.changeSecretBatches', icon: Layers },
+      { id: 'account-inventory', path: '/account-inventory', titleKey: 'menu.hostAccountInventory', icon: UserSearch },
     ],
   },
   {

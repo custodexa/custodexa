@@ -433,6 +433,7 @@ const pageTitleKeys = {
   '/access-control': 'menu.accessControl',
   '/key-management': 'menu.keyManagement',
   '/transmission-inventory': 'menu.transmissionInventory',
+  '/account-inventory': 'menu.hostAccountInventory',
   '/offsite-storage': 'menu.offsiteStorage',
   '/notification-channels': 'alerts.tabChannels',
 }

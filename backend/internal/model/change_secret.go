@@ -130,10 +130,33 @@ type ChangeSecretRecord struct {
 	CredentialName  string `gorm:"size:128" json:"credential_name"`
 	TargetVersionID uint   `gorm:"not null;default:0" json:"target_version_id"`
 
-	Status     string    `gorm:"size:16;not null" json:"status"`
-	Error      string    `gorm:"size:512" json:"error"`
-	ExecutedAt time.Time `json:"executed_at"`
+	Status string `gorm:"size:16;not null" json:"status"`
+	Error  string `gorm:"size:512" json:"error"`
+	// TransportRisk 這筆處理以秘密連過目標時的傳輸風險（值域見 DBRotationTransportRisk）。
+	// 空＝沒有連過目標，或連線已加密
+	TransportRisk string `gorm:"size:32;not null;default:''" json:"transport_risk"`
+	// ExecutionMethod 實際採用的執行方式（值域見 ChangeSecretExecution*）；選路為代改的目標不論成敗都填，
+	// 其餘為 self
+	ExecutionMethod string `gorm:"size:32;not null;default:'self'" json:"execution_method"`
+	// ExecutorAccountID／ExecutorUsername／ExecutorCredentialID 代改當下堡壘機專用帳號的快照
+	// （掛載識別、帳號名、憑證識別）；自改為 0／空。快照理由同 AccountUsername
+	ExecutorAccountID    uint      `gorm:"not null;default:0" json:"executor_account_id"`
+	ExecutorUsername     string    `gorm:"size:100;not null;default:''" json:"executor_username"`
+	ExecutorCredentialID uint      `gorm:"not null;default:0" json:"executor_credential_id"`
+	ExecutedAt           time.Time `json:"executed_at"`
 }
+
+// 改密記錄的執行方式（ChangeSecretRecord.ExecutionMethod）
+const (
+	// ChangeSecretExecutionSelf 帳號以自己的舊秘密登入、改自己
+	ChangeSecretExecutionSelf = "self"
+	// ChangeSecretExecutionExecutorRoot 以堡壘機專用帳號 root 直接改
+	ChangeSecretExecutionExecutorRoot = "executor_root"
+	// ChangeSecretExecutionExecutorSudoNopasswd 以堡壘機專用帳號經免密碼 sudo 改
+	ChangeSecretExecutionExecutorSudoNopasswd = "executor_sudo_nopasswd"
+	// ChangeSecretExecutionExecutorSudoPassword 以堡壘機專用帳號經讀取其密碼的 sudo 改
+	ChangeSecretExecutionExecutorSudoPassword = "executor_sudo_password"
+)
 
 // ChangeSecretCandidate 未驗證的候選憑證。
 //

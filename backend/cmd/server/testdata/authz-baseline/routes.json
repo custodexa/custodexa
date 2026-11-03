@@ -3629,6 +3629,124 @@
    "subject_hint": "S01",
    "body_mode": "full",
    "note": "Read-only probe of one asset for a fixture user; writes nothing."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/account-inventory/scans",
+   "params": {
+    "id": "{asset.vnc}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "VNC asset is not an inventory platform, so authorized subjects get 422 before any scan row is written or any dial happens."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/account-inventory",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "No scan has run in the fixture, so the response carries a null scan and no findings."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/account-inventory/findings/:findingId/ignore",
+   "params": {
+    "id": "{asset.ssh}",
+    "findingId": "999999"
+   },
+   "body": {
+    "reason": "authz baseline probe"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Finding never exists, so authorized subjects get 404 and nothing changes."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/account-inventory/findings/:findingId/reopen",
+   "params": {
+    "id": "{asset.ssh}",
+    "findingId": "999999"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Finding never exists, so authorized subjects get 404 and nothing changes."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/account-inventory/findings",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Read-only global list; empty in the fixture."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/executor",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Unconfigured read returns configured=false."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/assets/:id/executor",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "body": {
+    "source": "inline",
+    "username": "baseline-exec",
+    "password": "Baseline-Exec-123",
+    "expected_account_id": 0
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Inline password keeps the response deterministic; the per-scenario reset removes the account."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/assets/:id/executor",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "The fixture asset has no dedicated bastion account, so authorized callers get the not-found shape."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/executor/public-key",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "No dedicated bastion account on the fixture asset, so authorized callers get the not-found shape."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/assets/:id/executor/login-check",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "The fixture asset has no dedicated bastion account, so authorized callers get the not-found shape before any dial."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/executor/login-check",
+   "params": {
+    "id": "{asset.ssh}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "No dedicated bastion account on the fixture asset, so authorized callers get the not-found shape."
   }
  ]
 }

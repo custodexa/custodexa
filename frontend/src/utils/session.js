@@ -151,8 +151,36 @@ export function announceLogin() {
 // 對應的三個做法：keepalive 傳輸（卸載後請求照常完成、cookie 照常寫回）、
 // 逾時只通知呼叫端而不中止請求（鎖持有到請求落地）、在途標記（見 waitForOrphanedRefresh）。
 // 網路在回應途中斷線這一種，前端無從補救。
+//
+// 換發失敗分兩類，只有認證結論會清會話：刷新端點對憑證的判決是 4xx；
+// 5xx（含反向代理產生的 502、503、504）是伺服器或代理的暫時狀態，408、429
+// 按語義是「稍後再試」，沒有回應更談不上結論，這些都保留登入跡象。
 
 const noop = () => {}
+
+/**
+ * 換發失敗是否為認證結論：狀態碼為 4xx（408、429 除外）。
+ * 5xx、408、429、沒有回應或狀態不是數字都不是。
+ *
+ * @param {unknown} error 換發請求的錯誤
+ * @returns {boolean}
+ */
+export function isRefreshAuthRejection(error) {
+  const status = error?.response?.status
+  if (typeof status !== 'number') return false
+  if (status < 400 || status > 499) return false
+  return status !== 408 && status !== 429
+}
+
+// 單調計時：不隨系統時鐘調整；環境不提供時回傳 null，由呼叫端退回只用牆鐘
+const monotonicNow = () => {
+  try {
+    const value = globalThis.performance?.now?.()
+    return typeof value === 'number' ? value : null
+  } catch {
+    return null
+  }
+}
 
 // keepalive 傳輸：自訂 axios adapter，讓呼叫端仍拿到 axios 形狀的回應與錯誤。
 // 不掛中止訊號：中止＝丟棄回應＝cookie 停在已輪替的舊憑證
@@ -245,12 +273,19 @@ const clearInflightMarker = (id) => {
  * 因此新的持鎖者一接手就看到標記，只有一種可能：前一位持鎖者在請求途中消失
  * （頁面卸載使鎖釋放），它的回應可能還在路上。等標記清除或預算用盡再送出，
  * 讓那個回應先把 cookie 寫回。預算自標記時戳起算，逾時已久的標記不造成等待。
+ * 標記時戳是牆鐘，系統時鐘被調早時它會落在未來；總等待另以單調計時封頂，
+ * 不因時鐘調整而延長。
  */
 const waitForOrphanedRefresh = async () => {
+  const start = monotonicNow()
   for (;;) {
     const marker = readInflightMarker()
     if (!marker) return
-    const remaining = marker.at + ORPHAN_REFRESH_WAIT_MS - Date.now()
+    let remaining = marker.at + ORPHAN_REFRESH_WAIT_MS - Date.now()
+    const now = start === null ? null : monotonicNow()
+    if (now !== null) {
+      remaining = Math.min(remaining, ORPHAN_REFRESH_WAIT_MS - (now - start))
+    }
     if (remaining <= 0) return
     await sleep(Math.min(ORPHAN_POLL_MS, remaining))
   }
@@ -343,9 +378,10 @@ export function ensureSession() {
     restoreInFlight = refreshAccessToken('')
       .then(() => true)
       .catch((error) => {
-        // 沒有回應（傳輸失敗、逾時、頁面導向中）不是認證結論：登入跡象同源共享，
-        // 在此清掉會讓他分頁與導向後的新頁面都直接判定未登入
-        if (error?.response) {
+        // 只有認證結論（4xx，408、429 除外）才清：5xx、408、429 與沒有回應
+        //（傳輸失敗、逾時、頁面導向中）都不是。登入跡象同源共享，在此清掉會讓
+        // 他分頁與導向後的新頁面都直接判定未登入
+        if (isRefreshAuthRejection(error)) {
           // 續期終敗：登入頁要能回答「為什麼又要我登入」。
           recordInsecureTransportRelogin()
           clearSession()

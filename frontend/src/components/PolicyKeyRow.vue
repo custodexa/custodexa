@@ -93,6 +93,43 @@
           max: policy.max_length,
         }) }}</span>
       </div>
+      <!-- 主機特權群組清單的解析預覽：只供呈現，會被後端拒收的項目標成警示 -->
+      <div
+        v-if="groupPreview"
+        class="policy-group-preview"
+        data-test="group-preview"
+      >
+        <span class="policy-help-inline">{{ $t('hostInventory.policyPreview.label') }}</span>
+        <span
+          v-if="!groupPreview.items.length"
+          data-test="group-preview-empty"
+        >{{ $t('hostInventory.policyPreview.empty') }}</span>
+        <template v-else>
+          <el-tag
+            v-for="item in groupPreview.items"
+            :key="item.name"
+            size="small"
+            :type="item.problem ? 'danger' : 'info'"
+            :effect="item.problem ? 'light' : 'plain'"
+            :title="item.problem ? $t(`hostInventory.policyPreview.${item.problem}`) : ''"
+            data-test="group-preview-item"
+            :data-problem="item.problem || undefined"
+          >
+            <template
+              v-for="(seg, i) in visibleName(item.name).segments"
+              :key="i"
+            >
+              <span :class="{ 'policy-esc': seg.escaped }">{{ seg.text }}</span>
+            </template>
+          </el-tag>
+        </template>
+        <span
+          v-if="groupPreview.rejected"
+          class="policy-help policy-help-error"
+          role="alert"
+          data-test="group-preview-rejected"
+        >{{ $t('hostInventory.policyPreview.rejected') }}</span>
+      </div>
       <span
         v-if="unit"
         class="policy-unit"
@@ -144,6 +181,8 @@ import {
   retentionFloorViolated,
 } from '@/utils/policyFormat'
 import DailyReviewTimezoneField from './daily-review/DailyReviewTimezoneField.vue'
+import { visibleName } from '@/utils/visibleName'
+import { HOST_GROUPS_POLICY_KEY, parseGroupList } from '@/utils/hostGroupPreview'
 
 const props = defineProps({
   policy: { type: Object, required: true },
@@ -159,6 +198,9 @@ defineEmits(['update:value', 'info'])
 
 const label = computed(() => policyLabel(props.policy))
 const unit = computed(() => policyUnit(props.policy))
+const groupPreview = computed(() =>
+  props.policy.key === HOST_GROUPS_POLICY_KEY && props.policy.type === 'text' ? parseGroupList(props.value) : null
+)
 const hasFloor = computed(() => hasRetentionFloor(props.policy))
 const floorViolated = computed(() => retentionFloorViolated(props.policy, props.value))
 
@@ -218,6 +260,20 @@ const textLength = (value) => Array.from(value || '').length
 
 .policy-counter-over {
   color: var(--ot-danger);
+}
+
+.policy-group-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ot-space-xs);
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+}
+
+.policy-esc {
+  color: var(--ot-warning);
+  font-family: var(--ot-font-mono, monospace);
 }
 
 .policy-unit {

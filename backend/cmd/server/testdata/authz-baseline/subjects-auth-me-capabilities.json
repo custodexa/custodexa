@@ -1,5 +1,5 @@
 {
- "manifest_sha256": "6133515d7ef814834354f2cfeb49a4312b9ded15bf2e2fefe835e289cd0be066",
+ "manifest_sha256": "666cac9037443dc9347f366e34d63aa0034e0b014a4c26aa500c577bfe5797cd",
  "program_version": "dev",
  "subjects": {
   "S00": {
@@ -25,6 +25,7 @@
     "permissions": [
      "access_policy:manage",
      "accessreview:manage",
+     "account:discover",
      "account:rotate",
      "alert:manage",
      "alert:view",
@@ -33,6 +34,7 @@
      "approverscope:manage_applicant",
      "asset:create",
      "asset:delete",
+     "asset:executor-manage",
      "asset:test",
      "asset:update",
      "asset:view",
@@ -96,6 +98,10 @@
      },
      {
       "binding_scope": "global",
+      "permission": "account:discover"
+     },
+     {
+      "binding_scope": "global",
       "permission": "account:rotate"
      },
      {
@@ -125,6 +131,10 @@
      {
       "binding_scope": "global",
       "permission": "asset:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:executor-manage"
      },
      {
       "binding_scope": "global",
@@ -358,6 +368,7 @@
      "compliance:view",
      "policygroup:view",
      "session:view",
+     "ui:approval-history",
      "ui:assets-global",
      "ui:session-monitor"
     ],
@@ -487,6 +498,7 @@
     "permissions": [
      "access_policy:manage",
      "accessreview:manage",
+     "account:discover",
      "account:rotate",
      "alert:manage",
      "alert:view",
@@ -495,6 +507,7 @@
      "approverscope:manage_applicant",
      "asset:create",
      "asset:delete",
+     "asset:executor-manage",
      "asset:test",
      "asset:update",
      "asset:view",
@@ -560,6 +573,10 @@
      },
      {
       "binding_scope": "global",
+      "permission": "account:discover"
+     },
+     {
+      "binding_scope": "global",
       "permission": "account:rotate"
      },
      {
@@ -589,6 +606,10 @@
      {
       "binding_scope": "global",
       "permission": "asset:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:executor-manage"
      },
      {
       "binding_scope": "global",
@@ -787,6 +808,7 @@
      "compliance:view",
      "policygroup:view",
      "session:view",
+     "ui:approval-history",
      "ui:assets-global",
      "ui:session-monitor"
     ],
@@ -967,6 +989,7 @@
     "permissions": [
      "access_policy:manage",
      "accessreview:manage",
+     "account:discover",
      "account:rotate",
      "alert:manage",
      "alert:view",
@@ -975,6 +998,7 @@
      "approverscope:manage_applicant",
      "asset:create",
      "asset:delete",
+     "asset:executor-manage",
      "asset:test",
      "asset:update",
      "asset:view",
@@ -1038,6 +1062,10 @@
      },
      {
       "binding_scope": "global",
+      "permission": "account:discover"
+     },
+     {
+      "binding_scope": "global",
       "permission": "account:rotate"
      },
      {
@@ -1067,6 +1095,10 @@
      {
       "binding_scope": "global",
       "permission": "asset:delete"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "asset:executor-manage"
      },
      {
       "binding_scope": "global",

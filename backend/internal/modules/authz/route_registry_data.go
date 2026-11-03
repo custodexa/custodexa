@@ -1,5 +1,5 @@
 // Code generated from the route registry derivation; DO NOT EDIT.
-// 318 條路由登錄項（method + 路由樣板），與路由 golden 的 routes 一一對應。
+// 323 條路由登錄項（method + 路由樣板），與路由 golden 的 routes 一一對應。
 
 package authz
 
@@ -25,6 +25,7 @@ func routeRegistryEntries() []RouteEntry {
 		{Method: "POST", Path: "/api/v1/access-reviews", Base: BasePerm, Perm: PermAccessReviewManage},
 		{Method: "GET", Path: "/api/v1/access-reviews/:id", Base: BasePerm, Perm: PermAuditView},
 		{Method: "GET", Path: "/api/v1/access-reviews/matrix", Base: BasePerm, Perm: PermAuditView},
+		{Method: "GET", Path: "/api/v1/account-inventory/findings", Base: BasePerm, Perm: PermAssetView},
 		{Method: "GET", Path: "/api/v1/agent-tasks", Base: BasePerm, Perm: PermAuditView},
 		{Method: "GET", Path: "/api/v1/agent-tasks/:requestId", Base: BasePerm, Perm: PermAuditView},
 		{Method: "GET", Path: "/api/v1/agent-tool-calls", Base: BasePerm, Perm: PermAuditIntegrityView},
@@ -49,12 +50,22 @@ func routeRegistryEntries() []RouteEntry {
 		{Method: "DELETE", Path: "/api/v1/assets/:id", Base: BasePerm, Perm: PermAssetDelete},
 		{Method: "GET", Path: "/api/v1/assets/:id", Base: BasePerm, Perm: PermAssetView},
 		{Method: "PUT", Path: "/api/v1/assets/:id", Base: BaseAuthenticated, Fields: []FieldCondition{{Field: FieldWildcard, Perm: PermAssetUpdate}, {Field: "access_policy", Perm: PermAccessPolicyManage}, {Field: "username", Perm: PermCredentialUpdate, AnyOf: []Permission{PermCredentialManage}}, {Field: "password", Perm: PermCredentialSetSecret, AnyOf: []Permission{PermCredentialManage}}, {Field: "private_key", Perm: PermCredentialSetSecret, AnyOf: []Permission{PermCredentialManage}}, {Field: "sftp_username", Perm: PermCredentialUpdate, AnyOf: []Permission{PermCredentialManage}}, {Field: "sftp_password", Perm: PermCredentialSetSecret, AnyOf: []Permission{PermCredentialManage}}}},
+		{Method: "GET", Path: "/api/v1/assets/:id/account-inventory", Base: BasePerm, Perm: PermAssetView},
+		{Method: "POST", Path: "/api/v1/assets/:id/account-inventory/findings/:findingId/ignore", Base: BasePerm, Perm: PermAccountDiscover},
+		{Method: "POST", Path: "/api/v1/assets/:id/account-inventory/findings/:findingId/reopen", Base: BasePerm, Perm: PermAccountDiscover},
+		{Method: "POST", Path: "/api/v1/assets/:id/account-inventory/scans", Base: BasePerm, Perm: PermAccountDiscover},
 		{Method: "GET", Path: "/api/v1/assets/:id/accounts", Base: BasePerm, Perm: PermAssetView, Fields: []FieldCondition{{Field: "credential_identity_fields", Perm: PermCredentialView, AnyOf: []Permission{PermCredentialManage}}}},
 		{Method: "POST", Path: "/api/v1/assets/:id/accounts", Base: BasePerm, Perm: PermAssetUpdate, Fields: []FieldCondition{{Field: "username", Perm: PermCredentialCreate, AnyOf: []Permission{PermCredentialManage}}}},
 		{Method: "DELETE", Path: "/api/v1/assets/:id/accounts/:accountId", Base: BasePerm, Perm: PermAssetUpdate},
 		{Method: "PUT", Path: "/api/v1/assets/:id/accounts/:accountId", Base: BasePerm, Perm: PermAssetUpdate, Fields: []FieldCondition{{Field: "username", Perm: PermCredentialUpdate, AnyOf: []Permission{PermCredentialManage}}}},
 		{Method: "PUT", Path: "/api/v1/assets/:id/accounts/:accountId/credential", Base: BasePerm, Perm: PermCredentialManage, AnyOf: credentialWriteCapabilities()},
 		{Method: "POST", Path: "/api/v1/assets/:id/accounts/:accountId/set-default", Base: BasePerm, Perm: PermAssetUpdate},
+		{Method: "GET", Path: "/api/v1/assets/:id/executor", Base: BasePerm, Perm: PermAssetExecutorManage},
+		{Method: "PUT", Path: "/api/v1/assets/:id/executor", Base: BasePerm, Perm: PermAssetExecutorManage},
+		{Method: "DELETE", Path: "/api/v1/assets/:id/executor", Base: BasePerm, Perm: PermAssetExecutorManage},
+		{Method: "GET", Path: "/api/v1/assets/:id/executor/public-key", Base: BasePerm, Perm: PermAssetExecutorManage},
+		{Method: "GET", Path: "/api/v1/assets/:id/executor/login-check", Base: BasePerm, Perm: PermAssetExecutorManage},
+		{Method: "POST", Path: "/api/v1/assets/:id/executor/login-check", Base: BasePerm, Perm: PermAssetExecutorManage},
 		{Method: "DELETE", Path: "/api/v1/assets/:id/files", Base: BaseAuthenticated},
 		{Method: "GET", Path: "/api/v1/assets/:id/files", Base: BaseAuthenticated},
 		{Method: "GET", Path: "/api/v1/assets/:id/files/download", Base: BaseAuthenticated},

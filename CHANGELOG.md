@@ -2,6 +2,204 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.21.0 — bastion service accounts, host account inventory and database password rotation (2026-11-04)
+
+Schema changes. Upgrading runs six migrations. They add three tables with their indexes, columns
+on two existing tables and one index on an existing table, with no data step. Existing assets,
+accounts and connections work as before, and existing credential change plans keep running with
+one changed skip reason, described below. A 1.18.x, 1.19.x or 1.20.x package deployment upgrades
+with `custodexa.sh upgrade 1.21.0`. A 1.17.x deployment can upgrade straight to 1.21.0; that
+upgrade also runs the 1.18.0 migrations, so follow "What you need to do" in the 1.18.0 notes
+below and [Upgrading to 1.18.0][1180-sop] in the upgrade SOP before you start. Once its
+migrations have run, `custodexa.sh rollback` does not switch back, and going back means restoring
+the backup taken before the upgrade ([Upgrading to 1.21.0][1210-sop]). Backups include the new data,
+and the backup commands are unchanged.
+
+### What you need to do
+
+- To have the platform change Linux and Unix passwords through a bastion service account, create
+  that account on each host and let it run `chpasswd` as root. Use `root` itself, a key-based
+  account with a rule such as `cx-exec ALL=(root) NOPASSWD: /usr/sbin/chpasswd`, or a
+  password-based account with the same rule without `NOPASSWD:`. This rule can change any
+  password on the host, root's included, so granting it is equivalent to granting root. For a
+  password-based account, sudo must check that account's own password
+  ([setting up the host][1210-sop-exec]).
+- For complete host account inventories with a service account other than `root`, also add the
+  read-only rule `cx-exec ALL=(root) NOPASSWD: /usr/bin/tar -cf - -C /etc sudoers sudoers.d`,
+  taking the path of `tar` from `command -v tar`; a password-based account uses the same rule
+  without `NOPASSWD:`. Copy the arguments exactly: omitting them,
+  using wildcards, adding `SETENV`, keeping `TAR_OPTIONS` or disabling `env_reset` makes the rule
+  equivalent to root.
+  Without this rule the inventory still completes and marks its results as possibly incomplete.
+- Database passwords are changed only on database assets whose change channel you set. When
+  such an asset's TLS mode is unset or `disable`, the old and new passwords may cross the
+  network in clear text. Set the TLS mode to `require`, `verify-ca` or `verify-full` where the
+  target allows it ([database password rotation][1210-pcr-db]). Do not register the platform's
+  own database as such an asset: a change there does not update the settings the platform uses to
+  reach it.
+- Scripts that read skip reasons: database assets in existing plans now report
+  `CHANGE_SECRET_CHANNEL_NOT_CONFIGURED` instead of `CHANGE_SECRET_PROTOCOL_UNSUPPORTED`.
+- Tools that read the rotation evidence report's `records.csv` by column position: the file
+  ends with a new Transport column.
+- Scripts that assign roles: a request that would leave an account with only the Approver role
+  is refused with 400 `VALIDATION_ROLE_SET_APPROVER_ONLY`. Assign the system-wide User role in
+  the same request. A user group change that would leave members with only the Approver role is
+  refused with 400 `VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS`.
+- Holders of the built-in Asset Administrator role can start host account inventories after the
+  upgrade. Managing bastion service accounts needs a new permission that only super
+  administrators hold; give it to others through a custom role.
+
+### New capabilities
+
+#### Bastion service accounts
+
+- An SSH or RDP asset can have one bastion service account, set in a new section of Edit asset.
+  On Linux and Unix hosts the platform signs in with it for test sign-in, password changes and
+  inventories. People cannot connect to the host with it, and it does not appear in account
+  lists, connection choices, authorization rules, access requests, or credential change plans
+  and batches that target accounts.
+- Its secret can be a key the platform generates, a shared credential from the credential
+  library, or a password or private key entered directly. An existing account of the asset that
+  is not its default account can also be converted in place. On Windows hosts the secret is a
+  password. After generating a key, the dialog shows the public key to add to the account's
+  `authorized_keys` on the host, and Get public key fetches it again later.
+- Choosing a shared credential shows how many hosts would then use it as their bastion service
+  account, and setting it requires confirming that number. A credential used this way cannot
+  also be attached as a login account. In the credential library, attached assets show their
+  purpose (Bastion service or User connections), and rotating such a credential states that the
+  new password is sent to every one of those hosts.
+- Setting, replacing and clearing the service account take effect at once, independent of the
+  drawer's Save.
+  Clearing the service account removes it from the platform; the account and its key on the host
+  stay as they are.
+- Test sign-in, for Linux and Unix hosts, signs in as the service account and runs the
+  password-change program with no account in its input, so no password changes. It reports
+  whether the sign-in works, how the account elevates, and for an account other than `root`
+  whether it can read the sudo rules, with the next step when a check fails. The section keeps
+  showing the last result until the service account or its secret changes.
+- A host whose fingerprint does not match the record is refused before the service account's
+  credentials are sent. Test sign-ins and inventories that use the service account share a rate
+  limit, because repeated failures can trigger the host's account lockout.
+
+#### Password changes through the service account
+
+- On a Linux or Unix host with a bastion service account, credential change plans and batch
+  changes of account passwords sign in as the service account and change the target account's
+  password. The target account no longer needs its own sudo rule or a valid old password. Key
+  rotation and whole-group changes of a shared credential work as before.
+- When the service account cannot sign in, is not allowed to run the program, has no usable
+  secret, or the target account does not exist, the record gives the reason and names the
+  service account. The platform does not retry with the target account's old password.
+- Plan execution records and batch results show "Changed via bastion service account", the
+  service account's name and how it elevated.
+- A shared password-based service account sends the same password to every host that uses it,
+  at sign-in and again when it elevates. A compromised host can capture it at the next change
+  and use it on the others. When one credential serves several hosts, use a key generated by
+  the platform.
+
+#### Host account inventory
+
+- Host account inventory, in the menu of an SSH asset on Assets, reads the host's account and
+  group lists and its sudo rules with fixed read-only commands. It lists each account with why it
+  is privileged (uid 0, a privileged group, a sudo rule), whether it can sign in (judged by its
+  login shell) and whether the asset already manages an account of that name. Nothing on the
+  host changes and no account is added to the platform. Linux and Unix hosts are supported.
+- The inventory signs in as the bastion service account when the asset has one, and otherwise
+  as the default account. When the service account exists but cannot be used, the inventory is
+  refused and does not switch to another account. The default account does not elevate. When the
+  sudo rules cannot be read, the run is shown as partly completed and the affected accounts are
+  marked May be incomplete.
+- Each run lists what it checked and the state of each check, and failed runs give the reason
+  and the next step. Results of the previous run stay visible while a new run is in progress or
+  after it fails.
+- Manage opens Edit asset with a new account row filled in with the account name and the
+  privileged mark, ready for its password or key. Ignore asks for a reason, and an ignored
+  account returns to the list when a later inventory finds a new privilege reason for it or it
+  disappears and comes back. Reopen returns it by hand.
+- Host account inventory under Assets in the sidebar lists the privileged accounts that still
+  need action across inventoried hosts.
+- An inventory that finds privileged accounts that can sign in and are not managed raises one
+  Unmanaged privileged account system security alert (high). Later inventories do not raise it
+  again for accounts that stay in that state.
+- Groups treated as privileged default to `root`, `sudo`, `wheel` and `admin` and are set in
+  Security Policies under Host privileged groups (POSIX).
+- Starting an inventory, ignoring and reopening need the new Host account inventory permission,
+  which can be limited to nodes. Inventory results are visible to the people who can see the
+  asset's details.
+
+#### Database password rotation
+
+- MySQL, PostgreSQL and SQL Server assets have a change channel under TLS mode in the advanced
+  settings: Database account changes its own password. A change signs in with the account's
+  current password, changes that account's own password and checks the new one on a second
+  connection. When the target refuses the new password at sign-in, the first connection changes
+  it back. Only the password changes; no account is created and no privilege is granted.
+- Supported targets are MySQL 8.0.13 or later, PostgreSQL 10 or later and SQL Server logins that
+  use SQL authentication. Other versions, MariaDB included, end with "target version not
+  supported" before anything is sent. Read the channel's limits in the
+  [operations guide][1210-pcr-db] before you set it, such as MySQL accounts with several source
+  hosts.
+- For PostgreSQL the change statement carries a SCRAM-SHA-256 verifier instead of the new
+  password. The current password is still used to sign in.
+- When the channel runs without TLS, the asset form shows a warning under the channel field
+  with Go to TLS mode, and saving still works. The asset list shows the risk, the plan's asset
+  picker marks such assets and counts them, and each record that signed in to the target in plan
+  execution records, batch results and Rotation Evidence shows an Unencrypted connection tag.
+  Transmission Security adds a Database rotation row that counts the assets on this channel and
+  those without TLS.
+
+### Approval Center and Approver-only accounts
+
+- Auditors who hold the built-in Auditor role system-wide see Approval Center in the sidebar
+  with History only, read-only.
+- Assigning roles that would leave an account with only the Approver role, which cannot use
+  assets or connect, is stopped with an explanation and Also add User and save. User group
+  edits that would do this list the affected accounts. Accounts that reach this state another
+  way, such as through an identity source mapping, are marked Approve only, no access in Users
+  and on their user page, with Add User.
+
+### Fixes
+
+- When renewing the sign-in gets a 5xx, 408 or 429 response or no response, you stay signed in
+  and see that the server could not renew the sign-in right now. Other 4xx responses still end
+  the session.
+- Waiting for another tab's sign-in renewal ends within 10 seconds, also after the system clock
+  is set back.
+- The frontend image's proxy waits at most 8 seconds for the sign-in renewal endpoint. Other
+  `/api` paths keep their timeout.
+
+### API
+
+- Bastion service accounts: `GET`, `PUT` and `DELETE /api/v1/assets/:id/executor`,
+  `GET /api/v1/assets/:id/executor/public-key`, and `POST` and
+  `GET /api/v1/assets/:id/executor/login-check`, all requiring the new permission
+  `asset:executor-manage`. Out-of-scope assets return the same 404 as a missing asset. `PUT`
+  also requires the credential permission that matches the source.
+- Host account inventory: `POST /api/v1/assets/:id/account-inventory/scans`,
+  `POST /api/v1/assets/:id/account-inventory/findings/:findingId/ignore` and `.../reopen`
+  require the new permission `account:discover`. `GET /api/v1/assets/:id/account-inventory`
+  returns 404 `NOTFOUND_ASSET` for an asset whose details the caller cannot see, and
+  `GET /api/v1/account-inventory/findings` lists only assets in the caller's asset list.
+- Asset account list, connection, authorization and access request endpoints include login
+  accounts only, and an account scope of `@ALL` covers login accounts only. Existing account and
+  credential write endpoints return 409 `RULE_ACCOUNT_EXECUTOR_MANAGED` for a bastion service
+  account, and attaching a credential for the other purpose returns 409
+  `RULE_CREDENTIAL_PURPOSE_MISMATCH`. Credential list and detail responses add `purpose`.
+- Assets accept `rotation_channel` `db_native` for mysql, postgres and mssql, and
+  `transmission_risks` can include `db_rotation_unencrypted`. Plan execution records, batch
+  details and rotation report records add `transport_risk`. Plan execution records and batch
+  details add `execution_method` and the service account used. New reason codes include
+  `CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED` and five `CHANGE_SECRET_EXECUTOR_*` codes.
+  `GET /api/v1/transmission-inventory` and its export add a `db_rotation` channel row.
+- `/auth/me` adds `ui:approval-history` for those auditors. `GET /users` and `GET /users/:id`
+  add `approver_only`. For scoped viewers, asset row actions add `discover_accounts`. The
+  [API reference][1210-api] documents these changes.
+
+[1210-sop]: docs/ops/upgrade-sop.md#upgrading-to-1210
+[1210-sop-exec]: docs/ops/upgrade-sop.md#changing-linux-and-unix-account-passwords-through-the-bastion-service-account-new-in-this-release-the-parts-that-affect-upgrade-decisions
+[1210-pcr-db]: docs/ops/privileged-credential-rotation.md#139-database-accounts-that-change-their-own-password
+[1210-api]: docs/API_SPEC.md
+
 ## 1.20.0 — preview a role's screens, and move nodes by dragging (2026-11-01)
 
 No schema change. A 1.18.x or 1.19.x package deployment upgrades with

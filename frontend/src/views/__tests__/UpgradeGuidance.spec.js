@@ -248,6 +248,19 @@ describe('UpgradeGuidance 段落適用與連結分開判定', () => {
     expect(ids.filter((s) => s === 'credentialOwnership')).toHaveLength(1)
   })
 
+  it('只持審核歷史呈現點：審核中心進得去，但沒有審核段落', async () => {
+    setCaps(['ui:approval-history'])
+    expect(canEnter(entryMeta('/approvals'))).toBe(true)
+    const { wrapper } = await mountAt()
+    expect(sections(wrapper)).not.toContain('approvals')
+  })
+
+  it('持審核資格呈現點：審核段落出現', async () => {
+    setCaps(['ui:approvals'])
+    const { wrapper } = await mountAt()
+    expect(sections(wrapper)).toContain('approvals')
+  })
+
   it('只有通道能力者看得到通道段落，且沒有告警段落', async () => {
     setCaps(['notification_channel:manage'])
     const { wrapper } = await mountAt()

@@ -34,10 +34,12 @@ import (
 // 自 `internal/model/asset_account_audit.go` 隨 T-2 收口一併遷入（未匯出，零 export budget）。
 func auditActionForAccountOp(op string) model.AuditAction {
 	switch op {
-	case model.AccountOpCreate:
+	case model.AccountOpCreate, model.AccountOpExecutorSet:
 		return model.ActionCreate
-	case model.AccountOpDelete:
+	case model.AccountOpDelete, model.AccountOpExecutorClear:
 		return model.ActionDelete
+	case model.AccountOpExecutorPublicKeyExport:
+		return model.ActionRead
 	default:
 		return model.ActionUpdate
 	}
@@ -59,6 +61,11 @@ func writeAssetAccountAudit(sink port.TxSink, tx *gorm.DB, a model.AssetAccountA
 		CredentialScope: a.CredentialScope,
 		CorrelationID:   a.CorrelationID,
 		SecretSource:    a.SecretSource,
+
+		Source:               a.ExecutorSource,
+		HostCount:            a.HostCount,
+		PreviousAccountID:    a.PreviousAccountID,
+		PreviousCredentialID: a.PreviousCredentialID,
 	}
 	detailsJSON, err := json.Marshal(details)
 	if err != nil {

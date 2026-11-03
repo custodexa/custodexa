@@ -384,6 +384,22 @@ services:
       - custodexa-network
     restart: unless-stopped
 
+  # 資料庫帳號自改密碼的 PostgreSQL 測試靶機（不是平台庫；平台庫是 postgres 服務）。
+  # 版本與平台庫同釘選。log_statement=ddl 讓伺服器把 ALTER ROLE 記到 stderr，
+  # 用來檢查改密語句只送出驗證值、伺服器記錄不含密碼明文
+  #（以 `docker compose logs postgres-test` 讀，故關閉 logging_collector）。
+  # 不映射主機埠：只供容器網路內的後端與整合測試連線。
+  postgres-test:
+    image: postgres:16.15-alpine3.24
+    container_name: custodexa-postgres-test-dev
+    hostname: postgres-test
+    environment:
+      - POSTGRES_PASSWORD=testpass123
+    command: ["postgres", "-c", "log_statement=ddl", "-c", "password_encryption=scram-sha-256", "-c", "logging_collector=off"]
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
   # DB CLI 測試用 SQL Server：對標 mysql-test，供 dbproxy mssql 路徑驗證。
   #
   # **映像選擇（為什麼不用原生 arm64 映像）**：

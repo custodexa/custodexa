@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import TransmissionInventory from '../TransmissionInventory.vue'
+import zhTW from '@/i18n/locales/zh-TW.json'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -272,5 +273,55 @@ describe('TransmissionInventory WinRM 改密通道列', () => {
     expect(text).toContain('NTLM 訊息層加密恆啟用')
     expect(text).toContain('scheme=http: 1')
     expect(text).toContain('scheme=https,tls=ca: 1')
+  })
+})
+
+// 資料庫改密通道列：清冊在 winrm 之後多一列 channel=db_rotation，
+// 通道名、風險行、說明與明細「未設定」皆走 i18n 鍵查譯。
+describe('TransmissionInventory 資料庫改密通道列', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPoliciesMock.mockResolvedValue(policyFixture())
+    getInventoryMock.mockResolvedValue({
+      data: {
+        generated_at: '2026-11-02T00:00:00Z',
+        channels: [
+          { channel: 'ssh', total_count: 2, at_risk_count: 0, note_code: 'ssh_encrypted' },
+          {
+            channel: 'db_rotation', total_count: 3, at_risk_count: 2,
+            detail_codes: { unset: 1, disable: 1, 'verify-full': 1 },
+            // label 刻意與 zh-TW 譯文不同：畫面若直接顯示後端 label 即可被斷言分辨
+            risks: [{ key: 'db_rotation_unencrypted', label: 'BACKEND_LABEL_db_rotation_unencrypted' }],
+            note_code: 'db_rotation_channel',
+          },
+        ],
+      },
+    })
+  })
+
+  it('通道名、風險行、說明與未設定明細依 i18n 鍵查譯，其餘檔位原樣', async () => {
+    const wrapper = mount(TransmissionInventory, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: {
+          ElTable: cellTableStub,
+          ElTableColumn: cellColumnStub,
+          RouterLink: { template: '<a class="router-link-stub"><slot /></a>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    const text = wrapper.text()
+    const channelName = zhTW.enum.transmissionChannel.db_rotation
+    expect(channelName).toBeTruthy()
+    expect(wrapper.vm.channelLabel('db_rotation')).toBe(channelName)
+    expect(text).toContain(channelName)
+    expect(text).toContain(zhTW.riskLabel.db_rotation_unencrypted)
+    expect(text).not.toContain('BACKEND_LABEL_db_rotation_unencrypted')
+    expect(text).toContain(zhTW.transportNote.db_rotation_channel)
+    expect(text).toContain(`${zhTW.transportDetail.unset}: 1`)
+    expect(text).toContain('disable: 1')
+    expect(text).toContain('verify-full: 1')
   })
 })

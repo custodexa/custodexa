@@ -42,6 +42,8 @@ In a `docker compose` deployment, all persistent data lives under a **single dat
 
 An asset's credential change channel settings (including the CA certificate uploaded for a WinRM channel) live in the asset table in the database and are backed up with the first row above; there is no separate location for them.
 
+**Data added in 1.21.0** is all in the database, so the backup of §3.2 and the backup file of §3.8 both take it along, with no change to the backup commands. The bastion service account of an asset is a row of `asset_accounts` marked by its purpose, and its secret (a password or a private key, including a key the platform generated) is stored as a credential version like the secret of any other asset account, under envelope encryption. Host account inventory results (`host_account_scans`, `host_account_findings`) and the latest sign-in test result of each bastion service account (`executor_login_checks`) are new tables, and credential change records gain columns that record how each change was carried out. The prerequisites of a restore are the same as before: the backup's version, and the KEK of section 4. Without the KEK the secret of a bastion service account cannot be decrypted, on the same terms as the other asset credentials. The inventory and sign-in test tables hold no secrets.
+
 **A directory that is kept but is not a backup target**: the artifacts of asynchronous exports land in `/var/lib/custodexa/exports`
 (`EXPORT_ARTIFACT_PATH`, the path inside the container), which evidence packages, rotation evidence reports and compliance reports share.
 The production compose file mounts it at `${DATA_PATH}/exports`. **It is not a backup target**, and the retention period and the way to retrieve the artifact differ between the kinds:

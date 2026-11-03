@@ -1,6 +1,12 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-10-25（`20261101_scoped_template_builtin_keys`：`roles_builtin_key_check` 重建，值域加 `asset_admin`／`authz_admin`；只有 DDL、不建新表、不改任何列，兩個範圍化管理範本（資產管理員、授權管理員）由啟動資料步驟種入；migration 總數 +1，表數不變）
+> **最後更新**：2026-11-03（`20261103_executor_login_checks`：新表 `executor_login_checks`（堡壘機專用帳號最近一次測試登入的結果，每個專用帳號掛載一列，見第 78 節），只建表與一條索引、不回填、不改既有表、不設外鍵；不提供 Down；執行順序在 `20261103_change_secret_execution_method` 之後。同日 `host_account_scans.identity_mode` 開始寫入 `executor`（以專用帳號登入的盤點）、`failure_reason` 值域由 13 個增為 16 個，欄位定義不變。migration 總數 56（含 baseline）、應用資料表 90 張、全庫 93 張表）
+> 前次更新：2026-11-03（`20261103_change_secret_execution_method`：`change_secret_records` 加四欄——`execution_method`（`self`／`executor_root`／`executor_sudo_nopasswd`／`executor_sudo_password`，非空、預設 `self`）、`executor_account_id`（bigint、預設 0）、`executor_username`（varchar(100)、預設空字串）、`executor_credential_id`（bigint、預設 0），記代改當下堡壘機專用帳號的快照；純加法、不回填，既有列為自改；不提供 Down；執行順序在 `20261103_asset_account_executor_source` 之後。migration 總數 55（含 baseline），表數不變：應用資料表 89 張、全庫 92 張表）
+> 前次更新：2026-11-03（`20261103_asset_account_executor_source`：`asset_accounts` 加 `executor_source` 欄（`varchar(16) NOT NULL DEFAULT ''`，值域 `generate`／`inline`／`shared`／`convert`，空字串＝未記錄），記堡壘機專用帳號是怎麼設定的，供 `GET /assets/:id/executor` 的 `source` 欄讀取；純加法、不回填，既有列為空字串；執行順序在 `20261102_asset_account_purpose` 之後。migration 總數 54（含 baseline），表數不變：應用資料表 89 張、全庫 92 張表）
+> 前次更新：2026-11-03（`20261102_asset_account_purpose`：`asset_accounts` 加 `purpose` 欄（`login`／`executor`，既有列取 `login`）與部分唯一索引 `idx_asset_accounts_executor`（每資產至多一筆未刪除的堡壘機專用帳號）；`credential_secret_versions.created_reason` 值域加 `generated`（平台產生的金鑰）；純加法、不回填；執行順序在 `20261102_host_account_inventory` 之後。migration 總數 53（含 baseline），表數不變：應用資料表 89 張、全庫 92 張表）
+> 前次更新：2026-11-02（`20261102_host_account_inventory`：新表 `host_account_scans`（主機帳號盤點紀錄，見第 76 節）與 `host_account_findings`（每台資產每個主機帳號的最新盤點結果，見第 77 節），含三條 CHECK、未結束盤點的部分唯一索引與全域清單的部分索引；只加表與索引、不改既有表；不提供 Down。migration 總數 52（含 baseline）、應用資料表 89 張、全庫 92 張表）
+> 前次更新：2026-11-02（`20261102_db_account_rotation`：`change_secret_records` 加 `transport_risk`（非空、預設空字串），記該筆處理以秘密連過目標時的傳輸風險；只加欄、無資料步驟，既有列為空字串；不提供 Down。migration 總數 51（含 baseline）、表數不變）
+> 前次更新：2026-10-25（`20261101_scoped_template_builtin_keys`：`roles_builtin_key_check` 重建，值域加 `asset_admin`／`authz_admin`；只有 DDL、不建新表、不改任何列，兩個範圍化管理範本（資產管理員、授權管理員）由啟動資料步驟種入；migration 總數 +1，表數不變）
 > 前次更新：2026-10-21（`change_secret_plans.authorization_state` 值域補 `needs_reconfirmation`（憑證目標計畫由只經節點範圍持有憑證改密者執行、範圍外掛載超出該版掛載上界，且計畫發起者的憑證改密沒有全系統來源時暫停）；`credential_job_authorizations` 的 `target_bound` 用途更正為批次讀取投影與由批次發起之拆分的資產上界。表結構不變，migration 與表數不變：migration 總數 49、應用資料表 87 張、全庫 90 張表）
 > 前次更新：2026-10-21（合併兩項同期增量：`20261031_change_secret_scope_columns`（改密批次與背景工作授權加欄，見下一列）與審核範圍管理鍵補鍵的執行期標記 `20261030_approver_scope_management_key`（`runtimeMarkerVersions` 由三個增為四個，見再下一列，不計入 migration）；migration 總數 49、應用資料表 87 張、全庫 90 張表）
 > 前次更新：2026-10-21（`20261031_change_secret_scope_columns`：`change_secret_batches` 加 `shared_credential_owner_kind`（非空、預設 `global`）與 `shared_credential_owner_node_id`（可空）兩欄，記整批同一組模式要新建的共用憑證歸屬；`credential_job_authorizations` 加 `target_mount_bound`（非空、預設空字串），記範圍化發起者儲存憑證目標計畫時的掛載上界；只加欄、不回填，既有列取預設值；不提供 Down。migration 總數 49、應用資料表 87 張、全庫 90 張表）
@@ -96,7 +102,7 @@
 | PermissionStateEvent | `permission_state_events` | 增量 `20261017_permission_state_attestation`，`seq` 唯一索引、`kind` CHECK＋增量 `20261017_permission_state_event_integrity` 加 `integrity_hmac`、`key_version` | 權限狀態的可重放變更事件，歸稽核模組（audit）（見第 66 節） |
 | CredentialJobAuthorization | `credential_job_authorizations` | 增量 `20261022_credential_job_authorization`，`idx_credential_job_authorizations_source`＝`(source_kind, source_id)`、`source_kind` CHECK | 背景工作的發起者授權脈絡（不可變列；見文末「憑證背景工作授權增量」） |
 | Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄＋增量 `20260904_windows_local_account_rotation` 加改密通道六欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
-| AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引＋增量 `20260906_credential_library` 加 `credential_id`／`effective_version_id` 與 `idx_asset_accounts_credential` partial unique＋增量 `20260906_credential_library_contract` 卸下兩個密文欄與群組索引 | 憑證掛載列（這台以哪筆憑證登入、就位在哪一版；本表不再持有密文，至多一 default） |
+| AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引＋增量 `20260906_credential_library` 加 `credential_id`／`effective_version_id` 與 `idx_asset_accounts_credential` partial unique＋增量 `20260906_credential_library_contract` 卸下兩個密文欄與群組索引＋增量 `20261102_asset_account_purpose` 加 `purpose` 欄與 `idx_asset_accounts_executor` partial unique＋增量 `20261103_asset_account_executor_source` 加 `executor_source` 欄 | 憑證掛載列（這台以哪筆憑證登入、就位在哪一版；本表不再持有密文，至多一 default） |
 | Credential | `credentials` | **增量 `20260906_credential_library`（非 baseline）**（`idx_credentials_shared_name` partial unique＝共用名稱唯一且軟刪後可重用） | 登入秘密的唯一真相（範圍、帳號名、秘密型別、協定族、輪替指標） |
 | CredentialSecretVersion | `credential_secret_versions` | **增量 `20260906_credential_library`（非 baseline）**（`(credential_id, version_no)` 唯一） | 憑證的**不可變**密文版本；`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
 | CredentialRotation | `credential_rotations` | **增量 `20260906_credential_library`（非 baseline）** | 一次輪替（整組或拆分）的狀態與密碼策略 |
@@ -125,7 +131,7 @@
 | CredentialHostIdentityConfirmation | `credential_host_identity_confirmations` | 增量 `20261027_credential_host_identity`（主鍵 bigserial，唯一索引 `(kind, job_id, revision)`，無外鍵） | 逐工作、只驗證的主機身分人工承接紀錄（見第 74 節） |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
 | ChangeSecretPlan | `change_secret_plans` | baseline＋增量 `20260903_rotation_evidence_report` 加 `max_age_days` 欄＋增量 `20260906_credential_library` 加 `target_kind`／`target_credential_id` | 改密計劃（目標為資產集×帳號範圍，或一筆憑證的全部掛載） |
-| ChangeSecretRecord | `change_secret_records` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與索引＋增量 `20260906_credential_library` 加三個憑證快照欄 | 改密執行記錄 |
+| ChangeSecretRecord | `change_secret_records` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與索引＋增量 `20260906_credential_library` 加三個憑證快照欄＋增量 `20261102_db_account_rotation` 加 `transport_risk` 欄＋增量 `20261103_change_secret_execution_method` 加執行方式與專用帳號快照四欄 | 改密執行記錄 |
 | ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄＋增量 `20260906_credential_library` 加三個憑證快照欄＋增量 `20260906_credential_library_contract` 卸下 `shared_group`＋增量 `20261027_credential_host_identity` 加主機身分綁定欄 | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
 | ChangeSecretBatch | `change_secret_batches` | 增量 `20260905_account_batch_rotation`＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 以帳號為主軸的批次改密（一列一次批次；不存任何密碼） |
 | SecurityPolicy | `security_policies` | baseline | PCI 安全政策 key-value |
@@ -168,8 +174,8 @@
 | UserGroupMappingRuleSupport | `user_group_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 使用者群組逐規則支持 |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **87 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **43 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **90 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **46 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
 `credential_job_authorizations`，`credential_impact_confirmations`，
@@ -180,12 +186,12 @@ agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_even
 權限模型三表 `user_group_roles`／`role_binding_nodes`／`authz_state`，
 `permission_state_events`、`role_permissions`，`security_policy_history`、`security_policy_floor_raises`，
 系統安全告警三表 `system_alert_outbox`／`system_alert_details`／`system_alert_severity_overrides`，
-`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，與 `user_release_guidance`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **90 張**表
+`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，`user_release_guidance`，主機帳號盤點兩表 `host_account_scans`／`host_account_findings`，與堡壘機專用帳號測試登入結果 `executor_login_checks`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **93 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含四十九條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含五十四條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -196,7 +202,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共五十條：baseline 加四十九條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共五十五條：baseline 加五十四條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -347,6 +353,7 @@ erDiagram
         bool privileged
         string auth_method
         string note
+        string purpose
     }
 
     credentials {
@@ -1019,7 +1026,8 @@ const (
 **建表方式**: baseline（`baseline_schema_asset.go`）＋增量 `20260906_credential_library`
 （加 `credential_id`／`effective_version_id` 兩欄與 `idx_asset_accounts_credential`）
 ＋增量 `20260906_credential_library_contract`（卸下 `password_enc`／`private_key_enc` 與
-`idx_asset_accounts_credential_group`）。兩條 partial unique index 承載本表的資料層不變式：
+`idx_asset_accounts_credential_group`）＋增量 `20261102_asset_account_purpose`（加 `purpose` 欄與
+`idx_asset_accounts_executor`）＋增量 `20261103_asset_account_executor_source`（加 `executor_source` 欄）。兩條 partial unique index 承載本表的資料層不變式：
 `idx_asset_accounts_default`（一資產至多一預設帳號）與 `idx_asset_accounts_username`（同資產內帳號名唯一、軟刪列不佔名）；
 兩者以 `pg_get_indexdef` 逐字比對釘在 `baselineStructuralAssertions`
 
@@ -1044,6 +1052,8 @@ const (
 | `Privileged` | bool | `default:false` | `privileged` | 特權帳號標記（如 root/sa）。**純標示欄**，供 UI 與稽核辨識，不改變授權判定。逐掛載獨立：同一組秘密在不同主機上的特權性可以不同 |
 | `AuthMethod` | string | `size:20;default:sql` | `auth_method` | 認證類型的**同步副本**（真相在 `credentials.auth_method`）。值域 `sql`｜`domain`；**1.0 只接受 `sql`**，`domain` 由驗證層明確拒絕（`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`，不靜默降級）。刻意放帳號而非資產：同一台 MSSQL 可同時掛 SQL login 與域帳號，放資產上兩者無法並存 |
 | `Note` | string | `size:255` | `note` | 備註 |
+| `Purpose` | string | `size:16;not null;default:login` | `purpose` | 掛載用途：`login`（人員登入帳號）｜`executor`（堡壘機專用帳號：平台代為執行管理工作時登入目標機的身分）。`executor` 列永不為預設、標為特權，不進連線、帳號列表、授權、申請與帳號目標的改密路徑，只經 `/assets/:id/executor` 端點設定與清除。部分唯一索引 `idx_asset_accounts_executor`（`asset_id`，`WHERE purpose = 'executor' AND deleted_at IS NULL`）保證每資產至多一筆；「不得為預設」與「同一筆憑證的掛載用途一致」在服務層交易內維護 |
+| `ExecutorSource` | string | `size:16;not null;default:''` | `executor_source` | 執行身分的設定來源：`generate`（平台產生金鑰）｜`inline`（直接輸入）｜`shared`（共用憑證）｜`convert`（由既有帳號轉換）；空字串＝未記錄（登入帳號，或本欄加入前設定的執行身分）。只在設定與更換執行身分時寫入；讀取端點遇空值整欄省略。來源不由審計反查（審計可被保留期限清除） |
 
 **`username` 與 `auth_method` 是同步副本，不是唯讀欄**：兩者仍由帳號服務寫入（帳號更新、
 資產表單對預設帳號的追趕同步），並由連線解析在憑證讀不到名字時回退讀取、由釘住名比對、
@@ -1815,7 +1825,8 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 **檔案**: `backend/internal/model/change_secret.go`
 **建表方式**: baseline（`baseline_schema_asset.go`），含 `plan_id`／`asset_id`／`account_id` 三條一般索引；
 增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與 `idx_change_secret_records_batch_id` 索引；
-增量 `20260906_credential_library` 加 `credential_id`／`credential_name`／`target_version_id` 三個快照欄。
+增量 `20260906_credential_library` 加 `credential_id`／`credential_name`／`target_version_id` 三個快照欄；
+增量 `20261102_db_account_rotation` 加 `transport_risk` 欄。
 無唯一索引、無外鍵、無 `deleted_at`（`account_username` 與 `account_id` 並存，記錄執行當下的帳號名）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -1832,6 +1843,7 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 | `SecretType` | string | `size:16` | `secret_type` | 秘密類型（`password`／`ssh_key`） |
 | `Status` | string | `size:16;not null` | `status` | 執行狀態 |
 | `Error` | string | `size:512` | `error` | 錯誤訊息（機器碼） |
+| `TransportRisk` | string | `size:32;not null;default:''` | `transport_risk` | 該筆處理以任何秘密對目標建立過連線時，依建立連線當下的資產設定判定的傳輸風險：空字串＝未連過目標（跳過、本地前置失敗）或連線已加密；`db_rotation_unencrypted`＝資料庫改密通道以未加密連線進行。升級前的紀錄為空字串，不回填。增量 `20261102_db_account_rotation` |
 | `ExecutedAt` | time.Time | - | `executed_at` | 執行時間 |
 
 **狀態常數**:
@@ -2670,7 +2682,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共五十條**：baseline 一條，其後的增量四十九條
+**現行 migration 共五十五條**：baseline 一條，其後的增量五十四條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2725,10 +2737,16 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20261029_credential_ownership` | 憑證管理歸屬：`credentials` 加 `owner_kind character varying(16)`、`owner_node_id bigint`（皆可空）與複合索引 `idx_credentials_owner`；新表 `credential_impact_confirmations`（第 75 節）與唯一索引 `idx_credential_impact_confirmations_actor`，共 **5 條 DDL**。**資料步驟**：只對 `owner_kind` 為 NULL 的列回填，共用憑證設為 `global`、專用憑證設為 `asset`（含已軟刪的列，同一規則）；預先設定過的列保留不動，故可重入。回填前先算報告，回填後以同一函式重算，待設定應為 0、其餘欄與預估一致，不一致即回傳錯誤使整筆交易回滾。報告（`shared_to_global`、`dedicated_to_asset`、`already_set`、`dedicated_not_single_binding`，只含筆數）以固定前綴 `credential_ownership_migration_report` 寫入後端日誌，供備份試跑與正式升級逐欄比對。不符「專用憑證恰一個未刪除掛載」的列只計入報告、不阻擋升級 | `rollbackCredentialOwnership`：**一律回拒絕錯誤**，不提供回滾；回退只走還原升級前備份 |
 | `20261031_change_secret_scope_columns` | 改密範圍欄位：`change_secret_batches` 加 `shared_credential_owner_kind character varying(16) NOT NULL DEFAULT 'global'` 與 `shared_credential_owner_node_id bigint`；`credential_job_authorizations` 加 `target_mount_bound text NOT NULL DEFAULT ''`，共 **3 條 DDL**。只加欄、不回填，既有列取預設值（批次歸屬為 `global`、掛載上界為空），可隨升級前備份還原 | `rollbackChangeSecretScopeColumns`：**一律回拒絕錯誤**，不提供回滾；回退只走還原升級前備份 |
 | `20261101_scoped_template_builtin_keys` | 範圍化管理範本的內建識別值域：`roles_builtin_key_check` 重建為含 `asset_admin`／`authz_admin` 的值域（共八個識別）。只有 DDL，不寫角色列、不改任何 `user_roles`／`user_group_roles` 列；兩個範本列由啟動資料步驟種入（見 Role 欄位表之後的「範圍化管理範本的種入」） | `rollbackScopedTemplateBuiltinKeys`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261102_db_account_rotation` | 改密紀錄的傳輸風險欄：`change_secret_records` 加 `transport_risk character varying(32) NOT NULL DEFAULT ''`，共 **1 條 DDL**。只加欄、無資料步驟，既有紀錄為空字串（未標示），不回填 | `rollbackDBAccountRotation`：**一律回拒絕錯誤**，不提供回滾；回退只走還原升級前備份 |
+| `20261102_host_account_inventory` | 主機帳號盤點：建 `host_account_scans`（第 76 節，含 `platform`／`identity_mode`／`status` 三條 CHECK、索引 `idx_host_account_scans_asset` 與部分唯一索引 `uniq_host_account_scans_active`）與 `host_account_findings`（第 77 節，含 `status` CHECK、唯一索引 `idx_host_account_findings_asset_user` 與部分索引 `idx_host_account_findings_open_privileged`），共 **6 條 DDL**。純新表、無回填、不改既有表 | `rollbackHostAccountInventory`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261102_asset_account_purpose` | 資產帳號用途：`asset_accounts` 加 `purpose character varying(16) NOT NULL DEFAULT 'login'`（值域 `login`／`executor`，既有列經預設值為 `login`）與部分唯一索引 `idx_asset_accounts_executor`＝`(asset_id) WHERE purpose = 'executor' AND deleted_at IS NULL`（每資產至多一筆未刪除的堡壘機專用帳號），共 **2 條 DDL**；純加法、無資料步驟。`credential_secret_versions.created_reason` 值域加 `generated` 屬應用層值域，不改 DDL | `rollbackAssetAccountPurpose`（卸索引與欄；非正式環境回退手段） |
+| `20261103_asset_account_executor_source` | 執行身分來源：`asset_accounts` 加 `executor_source character varying(16) NOT NULL DEFAULT ''`（值域 `generate`／`inline`／`shared`／`convert`，既有列經預設值為空字串），共 **1 條 DDL**；純加法、無資料步驟、不回填 | `rollbackAssetAccountExecutorSource`（卸欄；非正式環境回退手段） |
+| `20261103_change_secret_execution_method` | 改密紀錄的執行方式：`change_secret_records` 加 `execution_method character varying(32) NOT NULL DEFAULT 'self'`、`executor_account_id bigint NOT NULL DEFAULT 0`、`executor_username character varying(100) NOT NULL DEFAULT ''`、`executor_credential_id bigint NOT NULL DEFAULT 0` 四欄，記代改當下堡壘機專用帳號的快照，共 **4 條 DDL**；純加法、無資料步驟、不回填，既有紀錄經預設值為 `self`（帳號自行改密） | `rollbackChangeSecretExecutionMethod`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261103_executor_login_checks` | 堡壘機專用帳號測試登入結果：建 `executor_login_checks`（第 78 節），共 **2 條 DDL**（1 建表＋1 一般索引 `idx_executor_login_checks_asset`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackExecutorLoginChecks`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的四十九條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的五十四條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
 > - **讀寫存量資料列，耗時隨對應表的列數成長（12 條）**：
@@ -3551,7 +3569,7 @@ pending → uploading → uploaded → local_purged
 | `PrivateKeyEnc` | string | `type:text` | `-` | 信封加密 SSH 私鑰，同上 |
 | `PublicKey` | string | `type:text` | `public_key` | 新公鑰的 authorized_keys 行（公鑰非機密，明文保存供刪舊／還原比對） |
 | `PreviousPublicKey` | string | `type:text` | `previous_public_key` | 本系統先前推送的公鑰行；空值＝先前無系統推送鑰 |
-| `CreatedReason` | string | `size:16;not null` | `created_reason` | 這一版從哪來：`manual`（操作者宣告）／`rotation`（系統改密產生）／`migration`（既有帳號資料轉換時原樣搬入）／`detach`（單台脫離共用時產生） |
+| `CreatedReason` | string | `size:16;not null` | `created_reason` | 這一版從哪來：`manual`（操作者宣告）／`rotation`（系統改密產生）／`migration`（既有帳號資料轉換時原樣搬入）／`detach`（單台脫離共用時產生）／`generated`（設定堡壘機專用帳號時由平台產生的金鑰） |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 
 **索引**:
@@ -4212,6 +4230,77 @@ pending → uploading → uploaded → local_purged
 索引：唯一索引 `idx_credential_impact_confirmations_actor`＝`(user_id, credential_id, operation)`，同一（操作者、憑證、動作）只保留一列，新確認以同交易刪除舊列取代。
 
 **寫入語義**：提交時在憑證列鎖內重算範圍外集合；集合為空時不看確認；否則確認缺漏、已使用、操作者／憑證／動作不符，或當下集合超出確認保存的集合，一律拒絕並不留任何變更；集合縮小或相同則照常執行並刪除該列（單次使用）。本表不設時效。確認只證明操作者知情，不是授權，伺服器每次提交仍自行重算。
+
+
+### 76. host_account_scans（主機帳號盤點紀錄）
+
+**表名**: `host_account_scans`；**檔案**: `backend/internal/model/host_account_inventory.go`（`model.HostAccountScan`）。**建表方式**: 增量 migration `20261102_host_account_inventory`。
+
+每次對一台資產發起的帳號盤點一列。**無外鍵、不 cascade**：資產刪除後紀錄保留供審計追溯。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial，主鍵 `host_account_scans_pkey` | |
+| `asset_id` | bigint NOT NULL，索引 `idx_host_account_scans_asset` | 盤點的資產 |
+| `platform` | varchar(16) NOT NULL，CHECK `platform IN ('posix','windows')` | 盤點平台（目前只執行 `posix`） |
+| `identity_mode` | varchar(20) NOT NULL，CHECK `identity_mode IN ('default_account','executor')` | 登入模式：`default_account`（資產的預設帳號）｜`executor`（資產有堡壘機專用帳號掛載時以專用帳號登入） |
+| `identity_account_id` | bigint NOT NULL | 發起時解析出的登入帳號（`asset_accounts.id`） |
+| `initiated_by`／`initiated_by_name` | bigint NOT NULL／varchar(100) NOT NULL DEFAULT '' | 發起者與其名稱快照 |
+| `status` | varchar(16) NOT NULL，CHECK `status IN ('queued','running','succeeded','partial','failed','interrupted')` | 狀態 |
+| `failure_reason` | varchar(48) NOT NULL DEFAULT '' | 結束原因碼（16 個，見 API 規格「主機帳號盤點 API」） |
+| `privileged_groups` | text NOT NULL | 開始時的特權群組政策快照（逗號分隔） |
+| `coverage` | text NOT NULL DEFAULT '[]' | 檢查範圍 JSON 陣列 `[{check, state, reason, count, duplicate_rows}]` |
+| `accounts_total`／`privileged_total`／`unmanaged_privileged_total`／`reopened_total` | bigint NOT NULL DEFAULT 0 | 結束時的計數 |
+| `started_at`／`finished_at`／`created_at` | timestamptz，可空 | |
+
+索引：部分唯一索引 `uniq_host_account_scans_active`＝`(asset_id) WHERE status IN ('queued','running')`，同一資產至多一筆未結束的盤點；併發發起的第二筆因此失敗並轉為 409。服務啟動時把仍未結束的列改為 `interrupted`（原因 `INVENTORY_INTERRUPTED`）並寫結束審計。
+
+### 77. host_account_findings（主機帳號盤點結果）
+
+**表名**: `host_account_findings`；**檔案**: `backend/internal/model/host_account_inventory.go`（`model.HostAccountFinding`）。**建表方式**: 增量 migration `20261102_host_account_inventory`。
+
+每台資產上每個主機帳號一列，保存最近一次盤點的判定與處置狀態。盤點結束交易內批次 upsert；上一次有、這一次沒有的帳號標 `present=false`。失敗的盤點不改動本表。**無外鍵、不 cascade**：資產刪除不連動刪除，讀取端以 `assets.deleted_at IS NULL` 過濾。是否已納管不存於本表，讀取時以 `asset_accounts` 的 `(asset_id, username)` 計算。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial，主鍵 `host_account_findings_pkey` | |
+| `asset_id` | bigint NOT NULL | 資產 |
+| `username` | varchar(256) NOT NULL | 主機上的帳號名（原樣保存） |
+| `uid` | varchar(32) NOT NULL DEFAULT '' | POSIX uid 的十進位字串；同名多列取第一列 |
+| `uid_conflict` | boolean NOT NULL DEFAULT false | 同名多列的 uid 不全相同 |
+| `login_capable` | boolean NOT NULL DEFAULT false | 殼層可登入 |
+| `privileged` | boolean NOT NULL DEFAULT false | 判定為特權 |
+| `incomplete` | boolean NOT NULL DEFAULT false | sudo 規則讀取不完整，判定可能低估 |
+| `present` | boolean NOT NULL DEFAULT true | 最近一次盤點仍存在於主機 |
+| `privileged_reasons` | text NOT NULL DEFAULT '[]' | 特權理由碼 JSON 陣列（排序去重） |
+| `status` | varchar(12) NOT NULL，CHECK `status IN ('open','ignored')` | 處置狀態 |
+| `ignore_reason`／`ignored_by`／`ignored_by_name`／`ignored_at` | varchar(500)／bigint／varchar(100)／timestamptz | 忽略的理由、操作者與時間 |
+| `ignored_reasons` | text NOT NULL DEFAULT '[]' | 忽略當下的特權理由快照，供判定是否自動重新開啟 |
+| `alerted` | boolean NOT NULL DEFAULT false | 已計入未納管特權帳號告警且之後一直合格；不再合格時清除 |
+| `first_seen_scan_id`／`last_seen_scan_id` | bigint NOT NULL | 首次與最近出現的盤點 |
+| `first_seen_at`／`last_seen_at` | timestamptz NOT NULL | 首次與最近出現時間 |
+
+索引：唯一索引 `idx_host_account_findings_asset_user`＝`(asset_id, username)`；部分索引 `idx_host_account_findings_open_privileged`＝`(asset_id) WHERE status = 'open' AND privileged AND present`，供全域未納管特權帳號清單的預設篩選。
+
+### 78. executor_login_checks（堡壘機專用帳號測試登入結果）
+
+**表名**: `executor_login_checks`；**檔案**: `backend/internal/model/executor_login_check.go`（`model.ExecutorLoginCheck`）。**建表方式**: 增量 migration `20261103_executor_login_checks`。
+
+每個堡壘機專用帳號掛載最近一次測試登入的結果，一列；重測以主鍵覆蓋，不保留歷史（歷次執行見審計）。**無外鍵、不 cascade**：專用帳號被清除或更換後列留著，讀取端以當下掛載識別查詢，舊列自然不再出現。不存任何秘密、公鑰、指紋或遠端輸出。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `asset_account_id` | bigint NOT NULL，主鍵 `executor_login_checks_pkey` | 專用帳號掛載列（`asset_accounts.id`） |
+| `asset_id` | bigint NOT NULL，索引 `idx_executor_login_checks_asset` | 資產 |
+| `credential_id` | bigint NOT NULL | 測試當時所引用的憑證 |
+| `credential_version_id` | bigint NOT NULL | 測試當時就位的秘密版本；掛載、憑證或就位版本與目前不同時，讀取端把結果標為過期 |
+| `result` | varchar(64) NOT NULL DEFAULT '' | 空字串＝成功；否則為九個結果碼之一（`RULE_EXECUTOR_CHECK_*`，見 API 規格） |
+| `method` | varchar(32) NOT NULL DEFAULT '' | 成功時的方式：`executor_root`｜`executor_sudo_nopasswd`｜`executor_sudo_password`；失敗為空字串 |
+| `inventory_read` | varchar(16) NOT NULL DEFAULT '' | 盤點讀取的提權檢查：`ok`｜`denied`｜`not_needed`｜`not_checked`；`not_checked`＝沒有檢查（登入或改密權限檢查沒通過時一律如此）；`not_needed`＝專用帳號本身是 root，不需提權 |
+| `checked_by`／`checked_by_name` | bigint NOT NULL DEFAULT 0／varchar(100) NOT NULL DEFAULT '' | 發起者與其名稱快照 |
+| `checked_at` | timestamptz NOT NULL | 測試完成時間 |
+
+值域由寫入端檢查（非法值拒寫），資料層不設 CHECK。
 
 ---
 

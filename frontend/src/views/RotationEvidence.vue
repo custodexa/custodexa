@@ -337,14 +337,19 @@
                 :label="$t('rotationEvidence.column.result')"
                 width="120"
               >
+                <!-- 傳輸風險取紀錄本身（執行當下的判定），貼在結果旁；放不下時換到下一行，
+                     不加寬本欄，以免把右側「原因」欄擠出卡片 -->
                 <template #default="{ row }">
-                  <el-tag
-                    :type="recordTagType(row.status)"
-                    effect="plain"
-                    :data-test="`rotation-record-status-${row.record_id}`"
-                  >
-                    {{ recordStatusText(row.status) }}
-                  </el-tag>
+                  <div class="record-status">
+                    <el-tag
+                      :type="recordTagType(row.status)"
+                      effect="plain"
+                      :data-test="`rotation-record-status-${row.record_id}`"
+                    >
+                      {{ recordStatusText(row.status) }}
+                    </el-tag>
+                    <TransportRiskMark :risk="row.transport_risk || ''" />
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column
@@ -352,7 +357,7 @@
                 min-width="220"
               >
                 <template #default="{ row }">
-                  {{ reasonText(row.reason_code) }}
+                  {{ reasonText(row.reason_code, row) }}
                 </template>
               </el-table-column>
             </el-table>
@@ -922,6 +927,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CircleHelp, FileClock } from 'lucide-vue-next'
+import TransportRiskMark from '@/components/rotation/TransportRiskMark.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ReadonlyNote from '@/components/ReadonlyNote.vue'
@@ -1172,11 +1178,17 @@ const recordStatusText = (status) =>
     : status || ''
 
 // 原因碼走既有的改密原因碼對照表（同一組機器碼，不另立第二份譯文）；
-// 查不到的碼原樣顯示，不吞掉
-const reasonText = (code) => {
+// 查不到的碼原樣顯示，不吞掉。
+// 代改的原因文案帶專用帳號名參數；列上沒有帳號名時改用不帶名稱的文案，避免名稱處留白
+const reasonText = (code, row) => {
   if (!code) return ''
+  const name = row?.executor_username || ''
+  if (!name) {
+    const nameless = `changeSecretPlans.reasonScoped.${code}`
+    if (te(nameless)) return t(nameless)
+  }
   const key = `changeSecretPlans.reason.${code}`
-  return te(key) ? t(key) : code
+  return te(key) ? t(key, { executor: name }) : code
 }
 
 const loadReport = async () => {
@@ -1469,6 +1481,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.record-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .rotation-evidence {
   display: flex;
   flex-direction: column;

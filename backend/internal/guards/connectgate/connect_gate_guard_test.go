@@ -66,6 +66,11 @@ var gateUnsealAllowlist = map[string]string{
 	"internal/modules/session/sftp_service.go#connect": "資料面（StageData）的 SFTP 短連線，" +
 		"不屬那三處兩階段化的連線入口，其本身尚未兩階段化。" +
 		"該路徑的授權由呼叫端 handler 完成",
+	"internal/modules/asset/host_inventory_identity.go#Credentials": "主機帳號盤點的登入身分取密" +
+		"（資產預設帳號、帶 accountID 的 GetWithCredentialsForAccount）。" +
+		"不屬兩階段化的連線入口：它是持盤點權限點者發起的背景唯讀作業，沒有 connect-token；" +
+		"授權面是發起時的盤點權限點與資產範圍，執行開頭以當下資料重新判定資產與身分。" +
+		"明文只用於本行程內的 SSH 客戶端，撥號為背景路徑（主機金鑰不符即拒絕、不送憑證）",
 	"internal/modules/asset/asset_service.go#GetWithCredentialsDefault": "asset 模組內部委派" +
 		"（預設帳號捷徑，解封出口自身的實作側，非新的解封面）",
 	"internal/modules/asset/change_secret_runner.go#runTargetSteps": "改密 runner 的目標帳號憑證解封" +

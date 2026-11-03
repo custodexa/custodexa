@@ -53,7 +53,9 @@
     "file_transfer": "file transfer",
     "connection_test": "connection test",
     "credential_change": "credential change",
-    "credential_rotation": "credential rotation"
+    "credential_rotation": "credential rotation",
+    "account_inventory": "host account inventory",
+    "executor_login_check": "dedicated bastion account test sign-in"
   },
   "alert_state": {
     "blocked": "Blocked",
@@ -116,6 +118,7 @@
     "col_secret_type": "Secret type",
     "col_shared": "Shared credential",
     "col_source": "Source",
+    "col_transport_risk": "Transport",
     "credential_none": "None",
     "credential_password": "Password",
     "credential_ssh_key": "SSH key",
@@ -161,6 +164,7 @@
     "status_unverified": "Unverified",
     "summary": "Summary",
     "title": "Asset Account Rotation Evidence Report",
+    "transport_risk_db_rotation_unencrypted": "Unencrypted connection",
     "truncation": "Truncation",
     "truncation_none": "None",
     "truncation_records": "Record rows truncated at the cap",

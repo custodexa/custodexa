@@ -6,6 +6,7 @@ import {
   getUserGroupMappingUsage,
 } from '../identitySources'
 import { replaceUserGroupMembers } from '../userGroups'
+import { isGroupApproverOnly } from '../approverOnly'
 
 const requestMock = vi.fn(() => Promise.resolve({ data: [] }))
 vi.mock('../request', () => ({ default: (options) => requestMock(options) }))
@@ -38,6 +39,7 @@ describe('外部群組映射 API 契約', () => {
     expect(requestMock).toHaveBeenCalledWith({
       url: '/user-groups/8/members',
       method: 'put',
+      skipErrorToast: isGroupApproverOnly,
       data: { manual_user_ids: [2, 5] },
     })
   })

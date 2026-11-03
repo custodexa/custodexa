@@ -310,7 +310,9 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 	}
 
 	// 特殊路由處理
-	if strings.Contains(path, "/login") {
+	// HasSuffix 而非 Contains：/assets/:id/executor/login-check 這類路徑含 "/login"
+	// 子字串，Contains 會把資產的測試登入誤記為登入動作、資源歸 auth
+	if strings.HasSuffix(path, "/login") {
 		action = model.ActionLogin
 		resource = model.ResourceAuth
 	} else if strings.Contains(path, "/logout") {
@@ -414,7 +416,7 @@ func extractResource(path string) model.AuditResource {
 
 	for _, part := range parts {
 		switch part {
-		case "assets":
+		case "assets", "account-inventory":
 			return model.ResourceAsset
 		case "sessions":
 			return model.ResourceSession

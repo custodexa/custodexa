@@ -42,6 +42,16 @@ export const descriptorsFixture = {
       read_via: '',
     },
     {
+      id: 'asset_executor',
+      group: 'asset',
+      states: [hidden, st('manage', 'asset:executor-manage', 'asset:view')],
+      details: [],
+      write_keys: ['asset:executor-manage'],
+      placement: 'embedded',
+      placement_entries: ['assets'],
+      read_via: '',
+    },
+    {
       id: 'authorizations',
       group: 'authorization',
       states: [hidden, st('manage', 'authorization:manage')],

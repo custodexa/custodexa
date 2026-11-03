@@ -27,7 +27,7 @@ import (
 
 // saPerms 注入目錄改標為範圍生效的資產權限點。
 var saPerms = []authz.Permission{authz.PermAssetView, authz.PermAssetCreate, authz.PermAssetUpdate,
-	authz.PermAssetDelete, authz.PermAssetTest}
+	authz.PermAssetDelete, authz.PermAssetTest, authz.PermAccountDiscover}
 
 const saMissing = "999907" // 不存在的資產 ID
 

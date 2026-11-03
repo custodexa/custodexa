@@ -178,7 +178,7 @@ describe('auth guard', () => {
   it('僅具 admin 者不得進入審核中心（registered route meta）', async () => {
     const approvalsRoute = router.getRoutes().find((r) => r.name === 'Approvals')
     expect(approvalsRoute, '審核中心路由必須存在').toBeTruthy()
-    expect(approvalsRoute.meta.permissionsAll).toEqual(['ui:approvals'])
+    expect(approvalsRoute.meta.permissionsAny).toEqual(['ui:approvals', 'ui:approval-history'])
     expect(approvalsRoute.meta.roles).toBeUndefined()
 
     signInAs(['admin'], { approver: false })

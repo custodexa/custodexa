@@ -215,6 +215,13 @@ var schemaParityModels = []interface{}{
 	// 憑證修改的範圍外影響確認。由增量 migration 20261029_credential_ownership 建表，
 	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
 	&model.CredentialImpactConfirmation{},
+	// 主機帳號盤點兩張表。由增量 migration 20261102_host_account_inventory 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵，兩條部分索引只在 DDL
+	&model.HostAccountScan{},
+	&model.HostAccountFinding{},
+	// 堡壘機專用帳號的測試登入結果。由增量 migration 20261103_executor_login_checks 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
+	&model.ExecutorLoginCheck{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

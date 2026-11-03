@@ -26,6 +26,11 @@ var tableOwner = map[string]string{
 	"change_secret_candidates":               "asset",
 	// 共用憑證修改的範圍外影響確認：確認集合的語義與其所屬的憑證同屬 asset
 	"credential_impact_confirmations": "asset",
+	// 主機帳號盤點的紀錄與結果：比對對象是資產帳號，判定與處置的語義同屬 asset
+	"host_account_scans":    "asset",
+	"host_account_findings": "asset",
+	// 堡壘機專用帳號的測試登入結果：結果對象是資產的專用帳號掛載，語義同屬 asset
+	"executor_login_checks": "asset",
 	// 輪替證據報告的排程（rotation-evidence-report）：排程的業務語義
 	// （範圍、區間錨點、留存）與其產出的資料同屬 asset
 	"rotation_report_schedules": "asset",

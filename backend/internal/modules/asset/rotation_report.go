@@ -220,6 +220,9 @@ type RecordRow struct {
 	Status         string `json:"status"`
 	// ReasonCode 只有系統列舉的機器碼，不含遠端回傳的任何字串
 	ReasonCode string `json:"reason_code"`
+	// TransportRisk 這筆處理以秘密連過目標時的傳輸風險（執行當下的判定，空＝無風險或未連到目標）；
+	// 取自紀錄本身，不由資產現況推得
+	TransportRisk string `json:"transport_risk"`
 }
 
 // ReportTruncation 截斷狀態。上限與是否截斷都出站——讀者必須能分辨

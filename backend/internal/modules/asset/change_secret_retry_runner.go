@@ -324,7 +324,7 @@ func (r *ChangeSecretRetryRunner) RetryOneAsResult(caller context.Context, cand 
 		// 仍少於 2 且再無待驗證候選，該轉回專用就在此刻
 		settleBatchSharedCredential(r.db, cand.CredentialID)
 	}
-	r.recordPromotion(cand, recovery)
+	r.recordPromotion(cand, recovery, asset)
 	return RetryResult{Promoted: true}
 }
 
@@ -362,7 +362,9 @@ func (r *ChangeSecretRetryRunner) noteFailure(cand *model.ChangeSecretCandidate,
 
 // recordPromotion 轉正時補一筆成功記錄——否則「後來自己好了」這件事在記錄上看不見，
 // 使用者只會看到當初那筆 unverified 而以為問題還在
-func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandidate, recovery bool) {
+//
+// 轉正前必然以新秘密連過目標，傳輸風險一律依驗證時的資產快照填值。
+func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandidate, recovery bool, asset *model.Asset) {
 	reason := model.ChangeSecretReasonRetryPromoted
 	cleanupPending := recovery && cand.SecretType == model.ChangeSecretTypeSSHKey && cand.PreviousPublicKey != ""
 	if cleanupPending {
@@ -381,6 +383,7 @@ func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandid
 		TargetVersionID: committedVersionID(r.db, cand.AccountID, cand.TargetVersionID),
 		Status:          model.ChangeSecretSuccess,
 		Error:           reason,
+		TransportRisk:   transportRiskIfContacted(asset, true),
 		ExecutedAt:      time.Now(),
 	}
 	if err := r.db.Create(&rec).Error; err != nil {

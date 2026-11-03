@@ -45,7 +45,7 @@ describe('側欄模型（純函式）', () => {
     expect(ids).toContain('users')
     expect(ids).toContain('agent-principals')
     // 34 個有選單項的入口（/profile 在帳號選單）＋/users?kind=agent 別名
-    expect(MENU_GROUPS.flatMap((g) => g.items)).toHaveLength(35)
+    expect(MENU_GROUPS.flatMap((g) => g.items)).toHaveLength(36)
   })
 
   it('多組各自可收合；只剩一個來源組時攤平且不帶收合狀態', () => {

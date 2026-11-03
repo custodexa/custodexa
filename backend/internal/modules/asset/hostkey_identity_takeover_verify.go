@@ -179,13 +179,14 @@ func failConfirmationOn(db *gorm.DB, rec *model.CredentialHostIdentityConfirmati
 
 // confirmedIdentityHolds 驗證前（交易外）核對資產當下身分仍等於承接紀錄確認的身分。
 func confirmedIdentityHolds(db *gorm.DB, asset *model.Asset, rec *model.CredentialHostIdentityConfirmation) error {
-	if rec.ConfirmedTransport == model.HostKeyTransportWinRM {
-		if rotationTransportOf(asset) != model.HostKeyTransportWinRM {
+	current := rotationTransportOf(asset)
+	if model.HostKeyTransportIsKeyless(rec.ConfirmedTransport) {
+		if current != rec.ConfirmedTransport {
 			return ErrHostIdentityChanged
 		}
 		return nil
 	}
-	if rotationTransportOf(asset) != model.HostKeyTransportSSH {
+	if !model.HostKeyTransportHasHostKey(current) {
 		return ErrHostIdentityChanged
 	}
 	var own model.AssetHostKey
@@ -281,6 +282,6 @@ func (r *ChangeSecretRetryRunner) verifyConfirmedCandidate(ctx context.Context,
 	if cand.CredentialID != 0 && cand.TargetVersionID != 0 {
 		settleBatchSharedCredential(r.db, cand.CredentialID)
 	}
-	r.recordPromotion(&cand, false)
+	r.recordPromotion(&cand, false, asset)
 	return nil
 }

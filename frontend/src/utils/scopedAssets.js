@@ -4,7 +4,14 @@
 // 範圍外歸屬計數 out_of_scope_node_count、列表頂層的 management_scope。
 // 這裡只消費這些欄位，不以節點樹或權限集合重算可操作與否；強制點一律在後端。
 
-export const ACTION_KEYS = ['edit', 'disable', 'delete', 'test_connection', 'manage_accounts']
+export const ACTION_KEYS = [
+  'edit',
+  'disable',
+  'delete',
+  'test_connection',
+  'manage_accounts',
+  'discover_accounts',
+]
 
 /** 該列是否帶伺服器旗標（帶旗標的列不回退全域能力判斷）。 */
 export function hasActions(row) {

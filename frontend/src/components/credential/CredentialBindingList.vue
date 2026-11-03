@@ -37,6 +37,15 @@
       class="rows"
     >
       <div
+        class="binding-head"
+        data-test="binding-head"
+      >
+        <span class="asset-name">{{ t('credentials.bindingPurpose.header.asset') }}</span>
+        <span class="purpose-cell">{{ t('credentials.bindingPurpose.header.purpose') }}</span>
+        <span class="head-state">{{ t('credentials.bindingPurpose.header.state') }}</span>
+        <span class="head-actions">{{ t('credentials.bindingPurpose.header.actions') }}</span>
+      </div>
+      <div
         v-for="binding in bindings"
         :key="binding.account_id"
         class="binding-row"
@@ -46,6 +55,12 @@
           <span class="asset-name">
             {{ binding.asset_name || t('common.assetRef', { id: binding.asset_id }) }}
           </span>
+          <span
+            class="purpose-cell"
+            :data-test="`binding-purpose-${binding.account_id}`"
+          >{{ isExecutor(binding)
+            ? t('credentials.bindingPurpose.executor')
+            : t('credentials.bindingPurpose.login') }}</span>
           <el-tag
             v-if="binding.is_default"
             size="small"
@@ -85,17 +100,48 @@
             >
               {{ t('credentials.detach') }}
             </el-button>
-            <el-button
+            <el-tooltip
               v-if="can('credential:bind')"
-              v-preview-write
-              link
-              type="danger"
-              :disabled="rotationActive || !!deniedReason(binding, 'unbind')"
-              :data-test="`binding-unbind-${binding.account_id}`"
-              @click="emit('unbind', binding)"
+              :disabled="!isExecutor(binding)"
+              placement="top"
+              effect="light"
+              :trigger="['hover', 'focus']"
+              :teleported="false"
+              persistent
+              :show-after="0"
             >
-              {{ t('credentials.unbind') }}
-            </el-button>
+              <template #content>
+                <div
+                  class="executor-unbind-note"
+                  :data-test="`binding-unbind-note-${binding.account_id}`"
+                >
+                  <p>{{ t('credentials.bindingUnbindExecutor') }}</p>
+                  <a
+                    class="unbind-note-link"
+                    :href="`/assets?edit=${binding.asset_id}&focus=executor`"
+                    target="_blank"
+                    rel="noopener"
+                    :data-test="`binding-unbind-link-${binding.account_id}`"
+                  >{{ t('credentials.bindingUnbindExecutorLink', { asset: binding.asset_name || t('common.assetRef', { id: binding.asset_id }) }) }}</a>
+                </div>
+              </template>
+              <span
+                class="unbind-wrap"
+                :tabindex="isExecutor(binding) ? 0 : undefined"
+                :data-test="`binding-unbind-wrap-${binding.account_id}`"
+              >
+                <el-button
+                  v-preview-write
+                  link
+                  type="danger"
+                  :disabled="rotationActive || !!deniedReason(binding, 'unbind') || isExecutor(binding)"
+                  :data-test="`binding-unbind-${binding.account_id}`"
+                  @click="emit('unbind', binding)"
+                >
+                  {{ t('credentials.unbind') }}
+                </el-button>
+              </span>
+            </el-tooltip>
           </div>
         </div>
       </div>
@@ -140,12 +186,16 @@ const deniedCodes = computed(() => {
   const codes = new Set()
   for (const binding of props.bindings) {
     for (const key of ['detach', 'unbind']) {
+      // 專用帳號列的卸載原因只由按鈕旁說明呈現，標頭不重複
+      if (key === 'unbind' && isExecutor(binding)) continue
       const code = deniedReason(binding, key)
       if (code) codes.add(code)
     }
   }
   return [...codes]
 })
+
+const isExecutor = (binding) => binding.purpose === 'executor'
 
 function versionText(binding) {
   if (!binding.effective_version_no) return t('credentials.bindingNoVersion')
@@ -190,6 +240,43 @@ function versionText(binding) {
   gap: var(--ot-space-sm);
   min-height: 32px;
   font-size: var(--ot-font-size-sm);
+}
+
+.binding-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-sm);
+  padding: var(--ot-space-xs) 0;
+  font-size: var(--ot-font-size-xs, 12px);
+  color: var(--ot-text-secondary);
+  border-bottom: 1px solid var(--ot-border-subtle);
+}
+
+.purpose-cell {
+  width: 84px;
+  flex: none;
+}
+
+.head-state {
+  flex: 1;
+}
+
+.unbind-wrap {
+  display: inline-block;
+}
+
+.executor-unbind-note p {
+  margin: 0 0 4px;
+}
+
+/* 提示內連結用站內連結色、不加底線（瀏覽器預設為紫藍加底線） */
+.unbind-note-link {
+  color: var(--ot-primary);
+  text-decoration: none;
+}
+
+.unbind-note-link:hover {
+  color: var(--ot-primary-hover);
 }
 
 .asset-name {

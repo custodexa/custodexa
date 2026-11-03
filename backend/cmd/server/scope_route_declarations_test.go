@@ -20,7 +20,7 @@ import (
 // 存取政策、審核範圍、改密）。
 var scopeOwnershipKeys = []authz.Permission{
 	authz.PermAssetView, authz.PermAssetCreate, authz.PermAssetUpdate, authz.PermAssetDelete, authz.PermAssetTest,
-	authz.PermAccountRotate,
+	authz.PermAccountRotate, authz.PermAccountDiscover,
 	authz.PermCredentialManage, authz.PermCredentialView, authz.PermCredentialCreate, authz.PermCredentialUpdate,
 	authz.PermCredentialSetSecret, authz.PermCredentialRotate, authz.PermCredentialConvertScope,
 	authz.PermCredentialDetach, authz.PermCredentialDelete, authz.PermCredentialBind,
@@ -279,7 +279,8 @@ func TestScopedEnforcedRequiresTargetResolution(t *testing.T) {
 			authz.PermCredentialSetSecret: true, authz.PermCredentialRotate: true, authz.PermCredentialConvertScope: true,
 			authz.PermCredentialDetach: true, authz.PermCredentialDelete: true, authz.PermCredentialBind: true,
 			authz.PermAuthorizationManage: true, authz.PermApproverScopeManage: true, authz.PermAssetCreate: true,
-			authz.PermChangeSecretManage: true, authz.PermAccountRotate: true, authz.PermAccessPolicyManage: true}
+			authz.PermChangeSecretManage: true, authz.PermAccountRotate: true, authz.PermAccessPolicyManage: true,
+			authz.PermAssetExecutorManage: true, authz.PermAccountDiscover: true}
 		n := 0
 		for _, k := range authz.CatalogKeys() {
 			if d, ok := product.Lookup(k); ok && d.Scope == authz.ScopeEnforced {

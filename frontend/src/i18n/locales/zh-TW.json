@@ -134,7 +134,8 @@
     "complianceMap": "合規對照",
     "policyGroups": "政策組",
     "myAgents": "我的 agent",
-    "agentPrincipals": "AI agent 主體"
+    "agentPrincipals": "AI agent 主體",
+    "hostAccountInventory": "主機帳號盤點"
   },
   "login": {
     "bannerRegionLabel": "登入告示",
@@ -219,7 +220,8 @@
     "requestFailed": "請求失敗",
     "requestFailedStatus": "請求失敗 ({status})",
     "sessionExpired": "登入已過期，請重新登入",
-    "networkError": "網路連線失敗，請檢查網路"
+    "networkError": "網路連線失敗，請檢查網路",
+    "refreshUnavailable": "伺服器暫時無法更新登入狀態，你仍在登入中，請稍後再試"
   },
   "connect": {
     "risksIntro": "此連線的傳輸通道存在下列風險：",
@@ -318,6 +320,12 @@
       "suspend": "已停用",
       "new_source_ip": "自新來源位址登入",
       "host_key_mismatch": "主機金鑰與記錄不符",
+      "inventory_scan": "發起主機帳號盤點",
+      "inventory_scan_done": "主機帳號盤點結束",
+      "executor_login_check": "測試堡壘機專用帳號登入",
+      "executor_login_check_done": "堡壘機專用帳號測試登入結束",
+      "inventory_ignore": "忽略主機帳號盤點結果",
+      "inventory_reopen": "重新開啟主機帳號盤點結果",
       "host_key_adopt": "採用主機金鑰指紋",
       "host_key_cred_sent": "主機金鑰不符後憑證已送出",
       "retention_floor_raised": "保留下限抬升",
@@ -491,7 +499,8 @@
       "syslog": "syslog",
       "notify": "通知",
       "nginx": "nginx / HTTPS",
-      "winrm": "WinRM 改密"
+      "winrm": "WinRM 改密",
+      "db_rotation": "資料庫改密"
     },
     "scopeType": {
       "asset": "資產",
@@ -577,7 +586,8 @@
       "posix_ssh": "POSIX SSH",
       "windows_winrm": "WinRM",
       "windows_ssh": "SSH → PowerShell",
-      "none": "未設定"
+      "none": "未設定",
+      "db_native": "資料庫帳號自改"
     },
     "winrmScheme": {
       "http": "HTTP",
@@ -674,6 +684,10 @@
       "asset_secret": {
         "title": "資產帳號憑證",
         "hint": "被納管主機上的帳號憑證多久該換一次；不影響平台使用者的登入密碼"
+      },
+      "host_inventory": {
+        "title": "主機帳號盤點",
+        "hint": "盤點被納管主機上的帳號時，哪些群組的成員算特權帳號；不影響平台使用者的權限"
       },
       "mfa": {
         "title": "MFA",
@@ -1062,6 +1076,10 @@
       "asset_account_create": "新增資產帳號 {account}",
       "asset_account_delete": "刪除資產帳號 {account}",
       "asset_account_discard_candidate": "清除資產帳號 {account} 未驗證的候選憑證",
+      "asset_account_executor_clear": "清除堡壘機專用帳號 {account}",
+      "asset_account_executor_public_key_export": "取得堡壘機專用帳號 {account} 的公鑰",
+      "asset_account_executor_replace": "更換堡壘機專用帳號為 {account}",
+      "asset_account_executor_set": "設定堡壘機專用帳號 {account}",
       "asset_account_set_default": "將資產帳號 {account} 設為預設帳號",
       "asset_account_update": "修改資產帳號 {account}",
       "asset_deleted": "刪除資產（資料層紀錄）",
@@ -1621,7 +1639,22 @@
     "applyLinkConnectable": "「{name}」目前已可連線，不需要申請。",
     "applyLinkUnavailable": "「{name}」目前無法從這裡申請連線。",
     "noAssetViewTitle": "你的角色沒有資產檢視權限",
-    "noAssetViewHint": "這裡不會列出資產。需要經平台連線時，請聯絡管理員為你加上「{role}」角色。"
+    "noAssetViewHint": "這裡不會列出資產。需要經平台連線時，請聯絡管理員為你加上「{role}」角色。",
+    "dbRotation": {
+      "optionNone": "未設定（不參與改密）",
+      "optionDbNative": "資料庫帳號自行改密",
+      "hint": "選了之後，改密計劃才會改這台資料庫上帳號的密碼：系統用帳號目前的密碼登入，再把它改成新密碼。",
+      "unencryptedTitle": "改密時，密碼會經未加密的連線傳送",
+      "unencryptedBody": "這台資料庫的 TLS 模式是「{mode}」，連線沒有加密。改密時，目前的密碼與新密碼可能以明文經過網路。資產列表與每一筆改密紀錄都會標示這件事。",
+      "goToTls": "前往 TLS 模式",
+      "encrypted": "改密走加密連線（TLS 模式：{mode}）。",
+      "limitsTitle": "這個方式的限制",
+      "limit1": "只改密碼，不會建立帳號，也不會調整帳號權限。",
+      "limit2": "MySQL 同一個帳號名若有多個來源主機設定，只會改到其中一個。",
+      "limit3": "PostgreSQL 帳號目前的密碼含中文、全形符號這類字元時，無法用這個方式改密。",
+      "limit4": "MariaDB 與較舊的資料庫版本不支援，改密會略過並說明原因。",
+      "limit5": "改密不會中斷這個帳號已經登入的連線。"
+    }
   },
   "sessions": {
     "headerDesc": "監控活動連線與檢視歷史記錄。AI agent 指代人操作的自動化程式。",
@@ -2375,7 +2408,8 @@
     "dek_cache_ttl_seconds": "資產密碼與側錄內容這類資料，都是加密後才存進資料庫，解開它們要用一把資料金鑰。這把金鑰由主金鑰解開後放在記憶體裡，本設定決定它放多久。留空：解開後一直留著，直到系統封存或重新啟動，這是出廠預設，也是目前的做法。0：不留，每次要用時才向金鑰保管處重新取得，用完立刻抹掉。填秒數：解開後過了這麼多秒抹掉，下次要用再取一次，期間內反覆使用不會延長期限。設 0 或填秒數等於把金鑰保管處放進日常運作路徑，保管處連不上的期間，凡是需要重新取得金鑰的動作都會失敗，包含建立連線時取用資產帳號的密碼，以及連線進行中要寫入的側錄內容。每次重新取得都要向保管處往返一次，延遲依部署環境而異，請在自己的環境量測後再決定秒數。若主金鑰由環境變數提供，或由管理員在啟動時輸入，主金鑰本來就在本系統的記憶體裡，本設定縮短的只是資料金鑰的存放時間。本設定只管資料金鑰：稽核紀錄用的金鑰不受影響，以免保管處連不上時連稽核紀錄都寫不進去；操作進行中，記憶體裡仍然會有金鑰與資料原文。",
     "k8s_list_timeout_seconds": "挑選容器時，向叢集要一份執行中項目清單，最多等這麼久。等不到就顯示錯誤。調大：忙碌或距離遠的叢集有更多時間，但真的故障時要等更久才看到錯誤。調小：故障更快浮現，但正常叢集可能被誤判。下限 3 秒——一次查詢光是建立加密連線就可能花上一兩秒；低於這個值，連正常的叢集也會全部連不上，而資產列表上仍看得到它們。",
     "login_banner_body": "純文字顯示，不支援 HTML 與連結；換行會保留。內文留空即不顯示告示，標題也不會單獨出現。登入前任何人都讀得到，勿寫入內部資訊。",
-    "asset_secret_max_age_days": "輪替證據報告的全域適用天數；改密計劃可各自覆蓋。0＝不設定，報告會把該帳號列為無政策。"
+    "asset_secret_max_age_days": "輪替證據報告的全域適用天數；改密計劃可各自覆蓋。0＝不設定，報告會把該帳號列為無政策。",
+    "host_privileged_groups_posix": "以逗號分隔的群組名稱，最多 32 個；屬於這些群組（含主要群組）的帳號在盤點時判為特權。留空表示不以群組判定。"
   },
   "fileManager": {
     "mkdir": "新增目錄",
@@ -2659,7 +2693,27 @@
     "groupSnapshotEmpty": "尚無觀測。此帳號尚未經外部身分來源登入過。",
     "groupSnapshotChannel": "觀測途徑：{channel}",
     "groupSnapshotAt": "觀測時間：{time}",
-    "groupSnapshotNoGroups": "該次登入未觀測到任何群組值。"
+    "groupSnapshotNoGroups": "該次登入未觀測到任何群組值。",
+    "approverOnlyTag": "只能審核，無法連線",
+    "approverOnlyHint": "這個帳號只有「審核人員」角色，只能審核，無法使用資產與連線。處理方式：到「角色與範圍」加上全系統的「一般使用者」。點這個標籤即可前往。",
+    "approverOnlyBanner": {
+      "body": "這個帳號只有「審核人員」角色，目前無法使用資產與連線。加上全系統的「一般使用者」即可恢復。",
+      "addButton": "加上一般使用者",
+      "dirtyNote": "下方有尚未儲存的修改，請先儲存或還原。",
+      "done": "已加上全系統的「一般使用者」，這個帳號現在可以使用資產與連線。"
+    },
+    "approverOnlyPrompt": {
+      "title": "尚未儲存：只留「審核人員」會讓這個帳號無法使用資產與連線",
+      "body": "只有「審核人員」角色的帳號只能處理審核，看不到資產，也不能連線。一般會同時給「一般使用者」。",
+      "fix": "同時加上一般使用者並儲存",
+      "nodeTitle": "尚未儲存：這個帳號仍然只能審核，無法使用資產與連線",
+      "nodeBody": "「一般使用者」限定在部分節點時不會給任何能力，所以這個帳號仍然只能審核。要讓這個帳號能使用資產，「一般使用者」需要是全系統。",
+      "nodeFix": "改成全系統一般使用者並儲存",
+      "createTitle": "只勾「審核人員」的帳號無法使用資產與連線。",
+      "createBody": "這個帳號只能處理審核，看不到資產，也不能連線。一般會同時給「一般使用者」。",
+      "createFix": "同時勾選一般使用者並建立",
+      "goRoleTab": "前往 {username} 的角色與範圍"
+    }
   },
   "userGroups": {
     "roleScopeColumn": "角色與管理範圍",
@@ -2728,6 +2782,21 @@
         "none": "無",
         "comboNote": "成員中有 {n} 人會出現需要確認的組合，儲存時會請你確認。"
       }
+    },
+    "approverOnly": {
+      "reasonSave": "無法儲存：這次修改會讓 {count} 位成員只剩「審核人員」角色，將無法使用資產與連線。",
+      "reasonRemove": "無法移出：移出後會有 {count} 位成員只剩「審核人員」角色，將無法使用資產與連線。",
+      "reasonDelete": "無法刪除：刪除後會有 {count} 位成員只剩「審核人員」角色，將無法使用資產與連線。",
+      "howToSave": "這些成員直接被指派「審核人員」，「一般使用者」只來自這個群組。請在新分頁為這些成員加上全系統的「一般使用者」，再回來按「重新檢查並儲存」。",
+      "howToDelete": "請在新分頁為這些成員加上全系統的「一般使用者」，再回來按「重新檢查並刪除」。",
+      "revertNote": "或按「改回全系統」撤回這次的範圍修改。",
+      "affected": "受影響成員：",
+      "more": "及其他 {n} 位",
+      "linkTitle": "開啟角色與範圍（新分頁）",
+      "listNote": "點帳號名會在新分頁開啟該帳號的「角色與範圍」，這裡的修改保留不動。",
+      "retrySave": "重新檢查並儲存",
+      "retryDelete": "重新檢查並刪除",
+      "revert": "改回全系統"
     }
   },
   "roles": {
@@ -2765,7 +2834,8 @@
     },
     "permissionLabel": {
       "roleAssign": "指派角色",
-      "systemalertManage": "系統告警分級"
+      "systemalertManage": "系統告警分級",
+      "assetExecutorManage": "管理堡壘機專用帳號"
     },
     "dangerCombo": {
       "authz_rules_with_asset_or_credential": "同時能管理授權規則，又能管理資產或憑證",
@@ -2914,6 +2984,7 @@
       "entry": {
         "assets": "資產管理",
         "credentials": "帳號憑證庫",
+        "host_account_inventory": "主機帳號盤點",
         "change_secret": "改密計劃",
         "authorizations": "資產授權",
         "approver_scopes": "審核範圍",
@@ -2938,7 +3009,8 @@
         "alert_rules": "告警規則",
         "schedules": "排程時刻預覽",
         "rotation_schedules": "輪替排程",
-        "instance_guard": "實例保護"
+        "instance_guard": "實例保護",
+        "asset_executor": "堡壘機專用帳號"
       },
       "detail": {
         "asset": {
@@ -2973,9 +3045,11 @@
       "nodeScopedNotice": "這個角色有 {n} 筆限定節點的指派，新加入的只能全系統生效的功能在那些指派上不會生效。",
       "nodeScopedNoEffectNotice": "這個角色有 {n} 筆限定節點的指派；角色的權限不受節點限制，那些指派的範圍不會生效。",
       "entryNote": {
+        "host_account_inventory": "持有此權限點，即可讓平台以該資產預設帳號的憑證登入目標主機並讀取帳號清單（未記錄主機金鑰的主機會首次信任並記錄）。過去這需要連線測試權限。有堡壘機專用帳號時，改以專用帳號登入。",
         "alerts": "告警記錄與「操作日誌」讀的是同一份稽核資料，選唯讀或管理時會一併加上稽核檢視權限。",
         "access_reviews": "複審清單讀的是稽核資料，選管理時會一併加上稽核檢視權限。",
-        "audit_logs": "同一個稽核檢視權限也開啟調查工作台、指令稽核、下載中心、AI agent 任務與輪替證據的報告。"
+        "audit_logs": "同一個稽核檢視權限也開啟調查工作台、指令稽核、下載中心、AI agent 任務與輪替證據的報告。",
+        "asset_executor": "設定卡在資產編輯畫面內。持有者可以設定、更換、清除平台自用的帳號並取得其公鑰；這個帳號不能拿來連線。"
       },
       "placementTag": {
         "embedded": "設定卡",
@@ -3056,6 +3130,8 @@
   },
   "approvals": {
     "headerDesc": "處理連線申請：核准後申請人會拿到限時連線，時間到自動失效",
+    "readOnlyTag": "唯讀",
+    "historyOnlyNote": "這裡列出每一筆連線申請的審核結果，供你查核。你只能查看，不能核准、駁回或撤銷。",
     "pendingTab": "待審",
     "pendingTabCount": "待審（{n}）",
     "colRequester": "申請人",
@@ -3435,11 +3511,13 @@
     "submit": "新增",
     "continue": "繼續",
     "actorNeedsRoleLabel": "{username}（將加上審核人員角色）",
-    "assignRoleConfirm": "{username} 尚未具備審核人員角色，將同時為其分配該角色並開始接收範圍內申請。是否繼續？",
+    "assignRoleConfirm": "{username} 尚未具備審核人員角色，將同時為其分配該角色並開始接收範圍內申請。",
     "assignRoleTitle": "分配審核人員角色",
     "roleAssignedScopeFailed": "審核人員角色已分配，但範圍建立失敗，請重試新增範圍",
     "scopeAssigned": "已分配審核範圍",
-    "approverRoleRequiredHint": "只列出已具備審核人員角色的使用者。要讓其他人成為審核方，請先由可指派角色的管理者為其加上審核人員角色。"
+    "approverRoleRequiredHint": "只列出已具備審核人員角色的使用者。要讓其他人成為審核方，請先由可指派角色的管理者為其加上審核人員角色。",
+    "assignRoleUserNote": "這個帳號若還沒有「一般使用者」角色，也會一併加上，確保仍能使用資產。",
+    "assignRoleQuestion": "是否繼續？"
   },
   "roleScope": {
     "bannerTitle": "這裡設定的是管理範圍。",
@@ -3900,8 +3978,9 @@
       "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "此協議的資產不支援改密，本次跳過",
       "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED": "取得資產帳號失敗",
       "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE": "資產無符合帳號範圍的帳號",
-      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "資產未設定改密通道，本次跳過",
+      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "資產未設定改密通道，本次跳過（可在資產設定的「改密通道」選擇）",
       "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED": "此改密通道不支援計劃指定的秘密型別，本次跳過",
+      "CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED": "目標的資料庫版本或產品不支援此改密方式，未送出改密",
       "CHANGE_SECRET_CANDIDATE_QUERY_FAILED": "查詢候選憑證失敗",
       "CHANGE_SECRET_CANDIDATE_PENDING": "帳號有未驗證的候選憑證，待系統重試完成",
       "CHANGE_SECRET_CANDIDATE_PERSIST_FAILED": "候選憑證落庫失敗",
@@ -3914,16 +3993,21 @@
       "CHANGE_SECRET_INVALID_ACCOUNT_NAME": "帳號名稱含非法字元，未對遠端下達任何指令",
       "CHANGE_SECRET_INVALID_NEW_SECRET": "產生的新密碼含非法字元，未對遠端下達任何指令",
       "CHANGE_SECRET_ACCOUNT_NAME_INVALID": "帳號名不符目標系統的字元集或長度限制，未對遠端下達任何指令",
-      "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "以舊憑證登入目標主機失敗；詳細遠端訊息見伺服器日誌",
-      "CHANGE_SECRET_REMOTE_REJECTED": "遠端拒絕改密指令，主機憑證未變更；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "以目前的憑證登入目標失敗；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_REMOTE_REJECTED": "目標拒絕改密，目標上的憑證未變更；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED": "堡壘機專用帳號 {executor} 無法登入目標主機，未改動任何帳號；請確認主機可以連線，以及專用帳號的秘密仍有效。詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED": "堡壘機專用帳號 {executor} 沒有替其他帳號改密的權限，或目標帳號不存在；目標帳號未變更",
+      "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING": "堡壘機專用帳號 {executor} 正在改密，這次先跳過；完成後的下一次執行會照常處理",
+      "CHANGE_SECRET_EXECUTOR_CHANGED": "堡壘機專用帳號 {executor} 在這次執行開始後被更換或改了秘密，這次先跳過",
+      "CHANGE_SECRET_EXECUTOR_UNAVAILABLE": "堡壘機專用帳號 {executor} 目前沒有可用的秘密，無法代為改密",
       "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "改密指令送出後連線中斷或逾時，遠端狀態未知，已保留候選待系統重試；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_REMOTE_UNREACHABLE": "無法與目標建立改密工作階段（連線被拒或未回應、逾時、憑證驗證失敗），改密指令未送出，遠端未變更；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_VERIFY_FAILED": "新憑證驗證登入失敗，已保留候選待系統重試；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE": "目標無法建立加密的管理連線，已拒絕連線且未送出任何憑證",
       "CHANGE_SECRET_STDIN_NOT_DELIVERED": "新密碼未送達目標的改密腳本，遠端未變更",
-      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "目標設定新密碼後在本機驗證無法登入，已當場改回舊密碼，遠端維持原樣",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "目標上以新密碼驗證失敗，已當場改回舊密碼，目標維持原樣",
       "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED": "目標以新密碼驗證無法登入，改回舊密碼也失敗，遠端狀態不可知；已保留候選待系統重試",
-      "CHANGE_SECRET_INVALID_OLD_SECRET": "現行密碼含無法經標準輸入投遞的字元，已在本地攔下，遠端未被觸碰",
+      "CHANGE_SECRET_INVALID_OLD_SECRET": "目前的密碼含此改密方式無法處理的字元，已在本地攔下，目標未被觸碰",
       "CHANGE_SECRET_PROMOTE_FAILED": "憑證提交失敗，已保留候選待系統重試；詳細訊息見伺服器日誌",
       "CHANGE_SECRET_SFTP_OPEN_FAILED": "開啟目標主機 SFTP 失敗；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED": "讀取 authorized_keys 失敗；詳細遠端訊息見伺服器日誌",
@@ -3932,7 +4016,7 @@
       "CHANGE_SECRET_KEY_VERIFY_FAILED_RESTORE_FAILED": "新鑰驗證失敗且還原失敗，已保留候選待系統重試；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_RETRY_PROMOTED": "系統重試驗證成功，憑證已轉正",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "無法取用候選憑證內容；詳細訊息見伺服器日誌",
-      "CHANGE_SECRET_RETRY_LOGIN_FAILED": "以候選憑證登入目標主機失敗；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_RETRY_LOGIN_FAILED": "以新憑證登入目標失敗；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_HOST_KEY_MISMATCH": "主機金鑰與記錄不符，未送出任何憑證。請確認主機後在資產設定採用新指紋或重置主機金鑰",
       "CHANGE_SECRET_HOST_KEY_CHECK_FAILED": "無法在送出憑證前確認主機身分，已中止，目標未被觸碰。請稍後重試，持續發生請聯絡管理員",
       "CHANGE_SECRET_AUTHZ_REVOKED": "已停止：發起者目前的權限不足，遠端未被觸碰",
@@ -3972,6 +4056,31 @@
       "confirm": "這 {count} 個計畫之後會以您的身分執行，每次執行前都會依您當下的權限重新檢查；若您的權限不足，該次會停止並發出告警。確定承接？",
       "done": "已重新授權 {count} 個計畫",
       "skipped": "{skipped} 個計畫因您的權限不足而維持暫停，需有權限的人承接"
+    },
+    "channelUnencryptedSuffix": "未加密",
+    "selectedUnencryptedNote": "{n} 台資產改密時密碼可能以明文傳送（資料庫連線未加密）",
+    "recordsUnencryptedCount": "；其中 {n} 筆以未加密連線進行",
+    "methodDelegatedBy": "由堡壘機專用帳號 {name} 代改",
+    "methodDetail": "{executor} 登入後，以{method}替 {account} 改密。",
+    "methodElevation": "提權方式：{method}",
+    "methodSudoHelp": "改密指令被拒，多半是目標主機沒有允許專用帳號以 sudo 執行 chpasswd；設定方式見營運文件 docs/ops/upgrade-sop.md「以堡壘機專用帳號代改 Linux／Unix 帳號密碼」一節。",
+    "methodDelegatedByScoped": "由堡壘機專用帳號代改",
+    "reasonScoped": {
+      "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED": "堡壘機專用帳號無法登入目標主機，未改動任何帳號；請確認主機可以連線，以及專用帳號的秘密仍有效。詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED": "堡壘機專用帳號沒有替其他帳號改密的權限，或目標帳號不存在；目標帳號未變更",
+      "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING": "堡壘機專用帳號正在改密，這次先跳過；完成後的下一次執行會照常處理",
+      "CHANGE_SECRET_EXECUTOR_CHANGED": "堡壘機專用帳號在這次執行開始後被更換或改了秘密，這次先跳過",
+      "CHANGE_SECRET_EXECUTOR_UNAVAILABLE": "堡壘機專用帳號目前沒有可用的秘密，無法代為改密"
+    },
+    "methodLegend": "帳號下方未標示者為帳號自行改密。",
+    "method": {
+      "executor_root": "root 直接改",
+      "executor_sudo_nopasswd": "免密碼提權",
+      "executor_sudo_password": "以專用帳號密碼提權"
+    },
+    "transportRisk": {
+      "tag": "未加密連線",
+      "tooltip": "{risk}；這筆改密當時的資料庫連線沒有加密。"
     }
   },
   "hostIdentityConfirm": {
@@ -3996,7 +4105,8 @@
       "channelLabel": "改密通道",
       "channelOriginalLabel": "送出時的通道",
       "channelCurrentLabel": "目前的通道",
-      "winrmNoKey": "WinRM 沒有主機金鑰"
+      "winrmNoKey": "WinRM 沒有主機金鑰",
+      "dbNoKey": "資料庫連線沒有主機金鑰"
     },
     "checkHint": "請先向主機管理者核對：這台主機最近是否重置、重灌或更換過，以及「詳細資訊」中目前記錄的指紋是否屬於這台主機。",
     "checkHintWinrm": "請先向主機管理者核對：這台主機最近是否重置、重灌或更換過，以及它的位址是否仍指向同一台主機。",
@@ -4052,6 +4162,9 @@
       "verified": "驗證成功，憑證已轉正",
       "notVerified": "這次驗證沒有成功，新憑證仍保留。系統不會自動再試，需要時可以再確認一次。",
       "moved": "主機身分在你確認之後又變更了，這次的結果沒有套用，新憑證仍保留。請重新開啟確認，核對最新的身分。"
+    },
+    "transport": {
+      "db": "資料庫連線"
     }
   },
   "changeSecretBatches": {
@@ -4211,7 +4324,9 @@
       "excludeAmbiguous": "排除易混淆字元",
       "submit": "送出改密",
       "accepted": "改密已送出，進度會在詳情面板更新",
-      "outOfScopeHint": "掛載的 {total} 台中有 {out} 台在你的範圍外。送出前會請你確認影響範圍。"
+      "outOfScopeHint": "掛載的 {total} 台中有 {out} 台在你的範圍外。送出前會請你確認影響範圍。",
+      "executorTitle": "這組秘密是 {count} 台主機的堡壘機專用帳號，{count} 台會一起改。",
+      "executorBody": "新密碼會送到這 {count} 台的每一台。選「每台各自隨機」時，每台改成各自的專用憑證，仍是該台的堡壘機專用帳號。"
     },
     "detachDialog": {
       "title": "脫離共用",
@@ -4341,7 +4456,8 @@
     },
     "actionReason": {
       "no_capability": "你的角色沒有執行這個動作的權限。",
-      "out_of_scope": "這筆憑證的歸屬不在你可管理的範圍內。"
+      "out_of_scope": "這筆憑證的歸屬不在你可管理的範圍內。",
+      "executor_managed": "這是堡壘機專用帳號，請由資產的專用帳號區塊處理。"
     },
     "footer": {
       "scoped": "全公司共用的憑證由全系統管理者維護，不會列在這裡",
@@ -4375,7 +4491,19 @@
       "detachHint": "只想改範圍內的主機？可在資產上逐台「脫離共用」。",
       "submitFix": "儲存並套用到 {total} 台",
       "submitRotate": "送出改密並套用到 {total} 台"
-    }
+    },
+    "bindingPurpose": {
+      "header": {
+        "asset": "資產",
+        "purpose": "用途",
+        "state": "預設與輪替",
+        "actions": "操作"
+      },
+      "executor": "堡壘機專用",
+      "login": "人員連線"
+    },
+    "bindingUnbindExecutor": "堡壘機專用帳號不能在這裡卸載，請到該資產的「編輯資產」處理。",
+    "bindingUnbindExecutorLink": "開啟 {asset} 的編輯資產"
   },
   "notFound": {
     "title": "找不到您要的頁面",
@@ -4587,6 +4715,8 @@
     "VALIDATION_ROLE_BINDING_NODES_EMPTY": "請至少選擇一個節點，或改為全系統",
     "VALIDATION_ROLE_BINDING_NODES_INVALID": "選擇的節點有些已不存在，請重新選擇",
     "VALIDATION_ROLE_NOT_GROUP_BINDABLE": "這個角色不能指派給使用者群組",
+    "VALIDATION_ROLE_SET_APPROVER_ONLY": "尚未儲存：這組角色會讓帳號只能審核、無法使用資產與連線，請一併加上全系統的基本使用角色",
+    "VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS": "無法完成：這次變更會讓 {count} 位成員只能審核、無法使用資產與連線",
     "ROLE_PERMISSION_DEPENDENCY_REQUIRED": "權限集合缺少必要的依賴權限",
     "ROLE_PERMISSION_INVALID": "權限集合含不合法的項目",
     "VALIDATION_ACCOUNT_NOT_ON_ASSET": "帳號不屬於指定資產",
@@ -4955,6 +5085,31 @@
     "NOTFOUND_ALERT_RULE": "告警規則不存在",
     "NOTFOUND_APPROVER_SCOPE": "審核範圍不存在",
     "NOTFOUND_ASSET": "資產不存在",
+    "RULE_INVENTORY_PLATFORM_UNSUPPORTED": "這台資產的平台不支援帳號盤點，目前只支援以 SSH 連線的 Linux／Unix 主機",
+    "RULE_INVENTORY_NO_ACCOUNT": "這台資產沒有預設帳號，無法登入進行帳號盤點",
+    "RULE_INVENTORY_NO_SECRET": "預設帳號沒有可用的密碼或私鑰，無法登入進行帳號盤點",
+    "CONFLICT_INVENTORY_SCAN_RUNNING": "這台資產已有一次帳號盤點正在進行",
+    "RULE_INVENTORY_EXECUTOR_UNAVAILABLE": "這台的堡壘機專用帳號目前沒有可用的秘密，沒有開始盤點。請重新設定專用帳號。",
+    "CONFLICT_INVENTORY_EXECUTOR_BUSY": "這台的堡壘機專用帳號正在改密，沒有開始盤點。改密完成後再試。",
+    "RULE_INVENTORY_EXECUTOR_RATE_LIMITED": "最近以這台的堡壘機專用帳號登入太頻繁（含測試登入），沒有開始盤點。請稍後再試。",
+    "RULE_EXECUTOR_CHECK_CONNECTION_FAILED": "連不到這台主機。請確認位址、通訊埠與網路後再試。",
+    "RULE_EXECUTOR_CHECK_LOGIN_FAILED": "主機拒絕了專用帳號 {account} 的登入。請確認主機上有這個帳號，並已加入平台的公鑰（金鑰型）或密碼正確（密碼型）。",
+    "RULE_EXECUTOR_CHECK_HOST_KEY_MISMATCH": "主機的身分指紋和記錄不同，平台沒有送出專用帳號的憑證。請確認主機後，採用新指紋或重置。",
+    "RULE_EXECUTOR_CHECK_HOST_KEY_CHECK_FAILED": "無法核對主機的身分指紋，平台沒有登入。請稍後再試。",
+    "RULE_EXECUTOR_CHECK_ESCALATION_DENIED": "登入成功，但 {account} 沒有替其他帳號改密的權限。請在主機上為它加上改密程式的 sudo 規則。",
+    "RULE_EXECUTOR_CHECK_ESCALATION_NEEDS_NOPASSWD": "登入成功，但主機沒有允許 {account} 免密碼執行改密程式的 sudo 規則：可能還沒加規則，或規則沒有設為免密碼（NOPASSWD）。金鑰型專用帳號需要一條免密碼的改密規則。",
+    "RULE_EXECUTOR_CHECK_UNAVAILABLE": "專用帳號目前沒有可用的秘密，沒有登入。請重新設定專用帳號。",
+    "RULE_EXECUTOR_CHECK_ROTATION_PENDING": "專用帳號正在改密，這次沒有登入。改密完成後再測試。",
+    "RULE_EXECUTOR_CHECK_TIMEOUT": "主機沒有在時間內回應，結果不確定。請稍後再試。",
+    "RULE_EXECUTOR_CHECK_PLATFORM_UNSUPPORTED": "這類主機目前不支援測試登入。",
+    "RULE_EXECUTOR_CHECK_RATE_LIMITED": "測試太頻繁，請稍後再試。",
+    "CONFLICT_EXECUTOR_CHECK_BUSY": "專用帳號正在執行其他作業（改密或盤點），這次沒有登入。請稍後再試。",
+    "INTERNAL_EXECUTOR_CHECK": "測試登入沒有完成（伺服器內部錯誤），請稍後再試。",
+    "VALIDATION_INVENTORY_IGNORE_REASON": "忽略理由必填，且不得過長",
+    "VALIDATION_INVALID_FINDING_ID": "無效的盤點結果 ID",
+    "NOTFOUND_INVENTORY_FINDING": "盤點結果不存在",
+    "INTERNAL_INVENTORY_QUERY": "查詢帳號盤點失敗",
+    "INTERNAL_INVENTORY_UPDATE": "帳號盤點操作失敗",
     "NOTFOUND_ASSET_ACCOUNT": "資產帳號不存在或不屬於該資產",
     "NOTFOUND_ASSET_ACCOUNT_SOURCE": "複製來源帳號不存在",
     "NOTFOUND_ASSET_CREDENTIAL": "資產不存在或憑證讀取失敗",
@@ -5175,7 +5330,7 @@
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "mssql 主機不得含逗號（與連線字串的埠分隔語義衝突）",
     "VALIDATION_ASSET_PROTOCOL": "無效的協議，僅支援 ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s",
     "VALIDATION_ASSET_RDP_SECURITY": "rdp_security 僅允許空值（沿現狀）、nla 或 tls",
-    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh 或 none；posix_ssh 限 ssh 協議，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協議",
+    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh、db_native 或 none；posix_ssh 限 ssh 協議，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協議，db_native 限 mysql、postgres 或 mssql 協議",
     "VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS": "改密通道設定不完整或不合格式：windows_winrm 須指定連線方式（http／https），https 須指定憑證驗證模式（system／ca／insecure），ca 模式須提供可解析的 CA 憑證（PEM），埠須為 0（取預設）或 1 至 65535",
     "VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED": "至少需指定一個篩選條件（session_id/user_id/asset_id/時段）",
     "VALIDATION_AUDIT_INTEGRITY_FROM_FORMAT": "from 格式須為 YYYY-MM-DD",
@@ -5375,7 +5530,19 @@
     "RULE_AUTHORIZATION_SELF_SUBJECT": "不得對自己、自己所屬的群組或自己擁有的 agent 建立或調整授權規則",
     "RULE_APPROVER_SCOPE_SUBJECT_OVERLAP": "審核方與申請人不得重疊",
     "RULE_AGENT_OWNER_TRANSFER_SELF_GRANT": "新擁有者曾替此 agent 建立仍有效的授權、審核範圍或核准票，不得轉移",
-    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "非規則建立者只能縮小帳號範圍，不能擴大"
+    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "非規則建立者只能縮小帳號範圍，不能擴大",
+    "RULE_ACCOUNT_EXECUTOR_MANAGED": "這筆是堡壘機專用帳號，請由資產的專用帳號區塊處理",
+    "RULE_CREDENTIAL_PURPOSE_MISMATCH": "這組憑證已用於另一種用途（登入帳號或堡壘機專用帳號），不可混用",
+    "RULE_EXECUTOR_PROTOCOL_UNSUPPORTED": "此資產協定不支援堡壘機專用帳號",
+    "RULE_EXECUTOR_SECRET_TYPE_UNSUPPORTED": "此資產不支援以金鑰作為堡壘機專用帳號",
+    "RULE_EXECUTOR_SHARED_HOST_COUNT": "這組秘密設定後將在 {count} 台主機上作為堡壘機專用帳號，請確認台數後再送出",
+    "RULE_EXECUTOR_STATE_CHANGED": "堡壘機專用帳號已被變更，請重新載入後再試",
+    "RULE_EXECUTOR_CONVERT_CANDIDATE_PENDING": "此帳號仍有未驗證的候選秘密，請先收斂後再轉換",
+    "NOTFOUND_ASSET_EXECUTOR": "此資產尚未設定堡壘機專用帳號",
+    "NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY": "此堡壘機專用帳號沒有可匯出的公鑰",
+    "VALIDATION_EXECUTOR_SOURCE_INVALID": "堡壘機專用帳號的設定內容不完整或來源不正確",
+    "INTERNAL_ASSET_EXECUTOR_READ": "讀取堡壘機專用帳號失敗",
+    "INTERNAL_ASSET_EXECUTOR_WRITE": "設定堡壘機專用帳號失敗"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "此提供者設定了群組 claim 名稱，但授權範圍不含 groups。多數提供者因此不會發出群組宣告，映射規則將無人命中，已依規則取得的角色也會被撤回。",
@@ -5427,6 +5594,7 @@
     "password_history_count": "禁止重用最近密碼筆數",
     "password_max_age_days": "密碼最長使用天數",
     "asset_secret_max_age_days": "資產帳號憑證最長使用天數",
+    "host_privileged_groups_posix": "主機特權群組（POSIX）",
     "password_min_length": "密碼最小長度",
     "password_require_alnum": "密碼須含字母與數字",
     "recording_failclose_enabled": "錄影失敗擋新連線",
@@ -5491,7 +5659,8 @@
     "syslog_non_tls": "syslog 轉發未加密（{protocol}）",
     "vnc_unencrypted": "VNC 協議未加密",
     "winrm_http_ntlm": "WinRM 改密通道走 http（僅 NTLM 訊息層加密，無 TLS）",
-    "winrm_tls_insecure": "WinRM 改密通道未驗證伺服器憑證"
+    "winrm_tls_insecure": "WinRM 改密通道未驗證伺服器憑證",
+    "db_rotation_unencrypted": "資料庫改密連線未加密（密碼可能以明文傳送）"
   },
   "transportNote": {
     "ldap_ui_managed": "設定於身分管理的目錄設定頁維護",
@@ -5503,7 +5672,8 @@
     "syslog_protocol": "轉發協議：{protocol}",
     "syslog_unset": "syslog 轉發未設定",
     "vnc_no_encryption": "VNC/RFB 協議無加密選項，全部資產恆為明文通道",
-    "winrm_rotation_channel": "改密通道（系統路徑，不經使用者連線）：NTLM 訊息層加密恆啟用；http 為無 TLS 傳輸、insecure 為未驗證憑證，皆列為偏離"
+    "winrm_rotation_channel": "改密通道（系統路徑，不經使用者連線）：NTLM 訊息層加密恆啟用；http 為無 TLS 傳輸、insecure 為未驗證憑證，皆列為偏離",
+    "db_rotation_channel": "改密通道（系統路徑，不經使用者連線）：資料庫連線未啟用 TLS（require、verify-ca、verify-full 以外的檔位）時，舊密碼與新密碼可能以明文經網路傳送，列為偏離"
   },
   "transportPreflight": {
     "db_reject": "若切 strict 將拒絕 {n} 台未啟 TLS 的資料庫資產連線",
@@ -6898,6 +7068,12 @@
         "host_key_mismatch": "連線時主機金鑰與記錄不符：平台已放行認證，登入憑證將送往未核對的主機（已留痕）",
         "host_key_cred_sent": "主機金鑰不符放行後，登入憑證已實際送到該主機（含認證結果）",
         "retention_floor_raised": "升級時把低於下限的資料保留天數抬升到下限（或讓檢查點保留跟隨抬升），附原值、新值與理由",
+        "inventory_scan": "發起了一次主機帳號盤點",
+        "inventory_scan_done": "一次主機帳號盤點已結束",
+        "executor_login_check": "以堡壘機專用帳號測試登入主機",
+        "executor_login_check_done": "一次堡壘機專用帳號測試登入已結束；沒有完成時，原因為帳號忙碌、帳號已被變更、測試中斷或結果沒有寫入之一",
+        "inventory_ignore": "將一筆主機帳號盤點結果標為忽略",
+        "inventory_reopen": "重新開啟了一筆主機帳號盤點結果",
         "host_key_adopt": "採用了一個觀察到的主機金鑰指紋為記錄",
         "agent_tool_call_args_viewed": "調閱了工具呼叫的機敏參數原文（已留痕）",
         "unlock": "解鎖帳號",
@@ -7582,6 +7758,7 @@
     "password_history_count": "只在下次改密碼時檢查，既有的歷史紀錄不會回頭刪；設 0 表示不檢查重用。",
     "password_max_age_days": "每次登入即時算，既有密碼超齡的人下次登入就被要求改；設 0 表示不過期。",
     "asset_secret_max_age_days": "只在產出輪替證據報告時當判定基準，不會去改任何密碼；設 0 表示不設定。",
+    "host_privileged_groups_posix": "只影響之後的盤點如何判定特權，不會改動任何主機上的群組或帳號；每次盤點會記下當時使用的清單。",
     "force_change_on_reset": "只在管理員按下重設密碼的當下判斷，先前重設過的帳號不受影響。",
     "mfa_required": "下次登入才生效，已經登入的人不受影響。",
     "web_idle_minutes": "已登入的人也立刻適用，最慢在下次換發登入權杖時被登出；設 0 表示不逾時。",
@@ -8598,6 +8775,10 @@
       "concurrent_instance_detected": {
         "name": "並行實例偵測",
         "description": "啟動時偵測到可能有其他實例連到同一資料庫（確認覆寫啟動，或查得其他守衛版實例的連線）"
+      },
+      "unmanaged_privileged_account": {
+        "name": "未納管特權帳號",
+        "description": "主機帳號盤點發現可登入、具特權且尚未納管的帳號"
       }
     },
     "groups": {
@@ -8668,7 +8849,8 @@
       "scopeNodes": "{nodes}（共 {count} 個節點）",
       "scopeNodeDeleted": "節點 #{id}（已刪除）",
       "targetNamed": "{name}（{kind} #{id}）",
-      "viewPermissionOverview": "查看 {name} 的權限一覽"
+      "viewPermissionOverview": "查看 {name} 的權限一覽",
+      "viewHostInventory": "查看這台的主機帳號盤點"
     },
     "targetKinds": {
       "asset": "資產",
@@ -9110,5 +9292,569 @@
       "discard": "放棄修改並預覽",
       "back": "返回編輯"
     }
+  },
+  "assetExecutor": {
+    "title": "堡壘機專用帳號",
+    "notForUsers": "人員不能用它連線",
+    "unconfiguredHint": "平台用這個帳號登入這台主機，代為改密碼、盤點主機上的帳號。人員不能用它連線，授權規則與連線時的帳號選單也不會列出它。",
+    "howToPrepare": "這個帳號要怎麼準備",
+    "unsupportedProtocol": "{protocol} 資產目前不能設定堡壘機專用帳號，只支援 SSH 與 RDP 主機。",
+    "protocolLabel": {
+      "vnc": "VNC",
+      "mysql": "MySQL",
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "mssql": "SQL Server",
+      "k8s": "Kubernetes"
+    },
+    "loadFailed": "目前讀不到這一區的設定，請稍後重新開啟。",
+    "reload": "重新讀取",
+    "set": "設定",
+    "getPublicKey": "取得公鑰",
+    "replace": "更換",
+    "clear": "清除",
+    "justSet": "剛設定",
+    "justConverted": "剛轉換",
+    "immediateNote": "這一區的動作按下即生效，與下方的「儲存」無關。",
+    "outOfScopeNote": "這組共用憑證不在你的管理範圍內，看不到金鑰指紋，也不能取得公鑰；仍可更換或清除。",
+    "credentialLink": "到憑證庫改密或設定排程",
+    "convertedRotateHint": "{account} 的密碼過去可能有人知道，建議到憑證庫改一次密碼。",
+    "fields": {
+      "account": "帳號名稱",
+      "secretSource": "秘密來源",
+      "secretType": "型別",
+      "fingerprint": "金鑰指紋"
+    },
+    "sourceLabel": {
+      "generate": "平台產生的金鑰",
+      "inline": "直接輸入的密碼",
+      "inlineKey": "直接輸入的私鑰",
+      "convert": "由既有帳號轉換",
+      "shared": "共用憑證「{name}」",
+      "sharedOutOfScope": "範圍外的共用憑證",
+      "dedicated": "只給這台的秘密"
+    },
+    "sharedTag": "共用 · {count} 台",
+    "sharedTagOutOfScope": "共用",
+    "copyFingerprint": "複製指紋",
+    "fingerprintCopied": "已複製指紋",
+    "publicKey": {
+      "title": "{account} 的公鑰",
+      "copy": "複製",
+      "download": "下載",
+      "copied": "已複製公鑰",
+      "logged": "這次取得已記在操作日誌",
+      "loggedEvery": "每次取得公鑰都會記在操作日誌。",
+      "unavailable": "目前取不到這把公鑰，區塊已重新讀取。",
+      "loading": "取得中…",
+      "label": "公鑰",
+      "addHint": "加到這台主機上 {account} 的登入金鑰清單。"
+    },
+    "help": {
+      "first": "平台產生的金鑰要把公鑰加到主機上；密碼型要先備好主機端的權限。展開看做法。",
+      "expand": "展開",
+      "collapse": "收合",
+      "generateTitle": "平台產生的金鑰",
+      "generateBody": "把公鑰那一行加到這台主機上該帳號的 ~帳號/.ssh/authorized_keys。",
+      "rotateTitle": "改密所需的 sudo 規則",
+      "rotateBody": "非 root 的專用帳號要代改其他帳號的密碼，主機上要允許它以 root 執行改密程式。金鑰型專用帳號允許免密碼執行，例如（帳號名依實際為準）：",
+      "rotateWarning": "這條規則的意義：規則能改主機上任何帳號（含 root）的密碼，開放它等同把 root 交給專用帳號。產品不宣稱能限縮專用帳號的行為，也不偵測專用帳號在平台以外被使用。",
+      "passwordTitle": "密碼",
+      "passwordBody": "密碼型專用帳號不需要加公鑰；允許它以 root 執行同一支程式並讓 sudo 要求密碼，例如：",
+      "passwordSudoWarning": "平台先試免密碼的規則，只有主機要求密碼時才送出專用帳號的密碼。主機的 sudo 必須驗專用帳號自己的密碼；若 sudo 設成驗其他密碼（例如 root 或目標使用者的密碼），或接了另一套驗證（例如一次性密碼），驗證失敗時 sudo 會把下一列（內含新密碼）當成另一次密碼嘗試讀走。這類環境請改用金鑰型專用帳號。",
+      "passwordWindows": "Windows 主機的帳號要有修改其他帳號密碼的管理權限。",
+      "docPointer": "完整說明見營運文件 docs/ops/upgrade-sop.md「以堡壘機專用帳號代改 Linux／Unix 帳號密碼」一節。"
+    },
+    "clearConfirm": {
+      "title": "清除這台的堡壘機專用帳號？",
+      "body": "平台之後不再用 {account} 登入這台。平台不會刪除目標機上的 {account} 帳號或金鑰，要停用請到主機上自行移除。",
+      "endGenerate": "這把平台產生的金鑰會從平台刪除，無法復原。",
+      "endShared": "共用憑證本身保留，其他 {count} 台不受影響。",
+      "endSharedOutOfScope": "共用憑證本身保留，其他主機不受影響。",
+      "endSecret": "這組秘密會從平台刪除，無法復原。",
+      "cancel": "取消",
+      "confirm": "清除"
+    },
+    "clearDone": "已清除。目標機上的 {account} 帳號與金鑰仍在，需要時請到主機上移除。",
+    "clearFailed": "尚未清除，請稍後再試。",
+    "stateChanged": {
+      "replaced": "尚未{action}：這台的堡壘機專用帳號剛被其他管理員換成 {account}。下方已更新為目前的設定，確認後再操作。",
+      "cleared": "尚未{action}：這台的堡壘機專用帳號剛被其他管理員清除。下方已更新為目前的設定。",
+      "alreadySet": "尚未設定：這台剛被其他管理員設定了堡壘機專用帳號 {account}。下方已更新為目前的設定，確認後再操作。",
+      "actionClear": "清除",
+      "actionReplace": "更換"
+    },
+    "error": {
+      "usernameTaken": "尚未設定：這台已有名為 {account} 的帳號。要讓平台改用這個帳號，請改用「轉換既有帳號」，不必重新輸入密碼。",
+      "useConvert": "改用轉換既有帳號",
+      "hostCountChanged": "尚未設定：這組{secret}現在用在 {to} 台。剛才有其他管理員把它設到另一台主機，台數從 {from} 台變成 {to} 台。請重新確認。",
+      "confirmCount": "確認 {count} 台並設定",
+      "purposeMismatch": "尚未設定：這組憑證已是其他主機上人員連線用的帳號。同一組秘密不能同時給人員連線又給平台專用。請選另一組，或改用平台產生金鑰。",
+      "useGenerate": "改用平台產生金鑰",
+      "useInlinePassword": "改用直接輸入密碼",
+      "convertPending": "尚未轉換：{account} 有一組新密碼還在等驗證。等系統重試完成，或在改密計劃清除這組新密碼之後，再回來轉換。",
+      "convertRotationActive": "尚未轉換：{account} 的密碼正在改。這一輪改密結束後再轉換。",
+      "convertOutOfSync": "尚未轉換：{account} 上一輪改密還有主機沒改完。到憑證庫補跑或放棄這一輪後再轉換。",
+      "replaceRotationActive": "尚未更換：這組秘密正在改密。改密結束後再更換。",
+      "clearRotationActive": "尚未清除：這組秘密正在改密。改密結束後再清除。",
+      "openRotation": "在新分頁查看改密進度",
+      "openPlans": "在新分頁開啟改密計劃",
+      "openCredentials": "在新分頁開啟憑證庫",
+      "recheckConvert": "重新檢查並轉換",
+      "purposeMismatchWindows": "尚未設定：這組憑證已是其他主機上人員連線用的帳號。同一組秘密不能同時給人員連線又給平台專用。請選另一組，或改用直接輸入密碼。"
+    },
+    "dialog": {
+      "setTitle": "設定堡壘機專用帳號",
+      "replaceTitle": "更換堡壘機專用帳號",
+      "purpose": "這個帳號只給平台使用。人員不能用它連線，授權規則與連線時的帳號選單都不會列出它。",
+      "replaceDescKeep": "目前是 {account}（{source}）。更換後平台改用新的設定；原本這把金鑰會從平台刪除，目標機上的 {account} 帳號與金鑰不會被移除。",
+      "replaceDescSecret": "目前是 {account}（{source}）。更換後平台改用新的設定；原本這組秘密會從平台刪除，目標機上的 {account} 帳號與金鑰不會被移除。",
+      "replaceDescShared": "目前是 {account}（{source}）。更換後平台改用新的設定；共用憑證本身保留，目標機上的 {account} 帳號不會被移除。",
+      "windowsNote": "Windows 主機只能用密碼登入，所以沒有「平台產生金鑰」。",
+      "noPermission": "你目前沒有設定這個帳號所需的憑證權限。",
+      "needCreate": "需要建立憑證的權限",
+      "needBind": "需要掛載憑證的權限",
+      "needUpdate": "需要修改憑證的權限",
+      "cancel": "取消",
+      "done": "完成",
+      "back": "返回其他設定方式",
+      "recommended": "建議",
+      "sourceGenerate": "平台產生金鑰",
+      "sourceGenerateDesc": "平台產生一組新金鑰，私鑰只存在平台，沒有人拿得到。你只需要把公鑰加到這台主機。",
+      "sourceShared": "使用憑證庫的共用憑證",
+      "sourceSharedDesc": "同一組秘密也會用在其他主機，選定後會告訴你一共幾台。",
+      "sourceInline": "直接輸入密碼或私鑰",
+      "sourceInlinePassword": "直接輸入密碼",
+      "sourceInlineDesc": "輸入這個帳號現有的密碼或私鑰，只給這台用。",
+      "sourceInlinePasswordDesc": "輸入這個帳號現有的密碼，只給這台用。",
+      "convertEntry": "這台已有合適的帳號？",
+      "convertLink": "轉換既有帳號",
+      "usernameLabel": "帳號名稱",
+      "usernameHint": "這台主機上要有這個帳號，並具備修改其他帳號密碼的管理權限。",
+      "secretTypeLabel": "秘密型別",
+      "password": "密碼",
+      "privateKey": "私鑰",
+      "credentialLabel": "共用憑證",
+      "credentialUsername": "帳號名稱沿用憑證上的 {account}。",
+      "disabledWindowsKey": "Windows 主機只能用密碼",
+      "disabledLoginUse": "已是人員連線用的帳號",
+      "executorUse": "已是 {count} 台的專用帳號",
+      "submitGenerate": "產生並設定",
+      "submitGenerateReplace": "產生並更換",
+      "submitSet": "設定",
+      "submitReplace": "更換",
+      "submitConvert": "轉換為堡壘機專用帳號",
+      "submitting": "設定中…",
+      "submittingGenerate": "產生中…",
+      "resultOk": "已把 {account} 設為這台的堡壘機專用帳號。",
+      "techDetails": "技術細節",
+      "createFailed": "無法完成設定，請稍後再試。",
+      "resultNextTitle": "還差一步：把這行公鑰加到這台主機上 {account} 的登入金鑰清單。",
+      "resultNextBody": "加上之前，平台還登不進這台。加好之後按「完成」，再按區塊裡的「測試登入」確認。",
+      "sourceLabel": "秘密從哪裡來",
+      "prepareLink": "怎麼準備這個帳號",
+      "optionAccount": "帳號 {account}"
+    },
+    "convert": {
+      "title": "轉換既有帳號",
+      "desc": "把這台已有的帳號改成堡壘機專用帳號。秘密不變，不需要到主機上做任何設定。",
+      "accountLabel": "要轉換的帳號",
+      "disabledDefault": "預設帳號不能轉換，請先把其他帳號設為預設",
+      "disabledShared": "共用憑證的帳號不能轉換，請改用「使用共用憑證」",
+      "effectsTitle": "轉換後，{account} 只給平台使用：",
+      "effect1": "1. 正在用 {account} 連線的人不會被中斷，可以用到自己結束。",
+      "effect2": "2. 之後沒有人能再用 {account} 連線這台主機。",
+      "effect3": "3. 授權規則或核准單裡指名 {account} 的項目，對這台不再有效；平台不會修改那些規則。",
+      "rotateAdvice": "{account} 的密碼過去可能有人知道，轉換後建議到憑證庫改一次密碼。",
+      "placeholder": "選擇這台的帳號"
+    },
+    "sharedConfirm": {
+      "titlePassword": "這組密碼將在 {count} 台主機上作為堡壘機專用帳號（含這台）。",
+      "titleKey": "這把金鑰將在 {count} 台主機上作為堡壘機專用帳號（含這台）。",
+      "leak": "任一台外洩，等於 {count} 台都外洩。",
+      "rotateSend": "之後平台每一次用它代為改其他帳號的密碼，都會把這組密碼送到這 {count} 台的每一台；任一台被入侵，就可能在下一次代改時拿到這組密碼。",
+      "adviceKey": "要共用時，建議改用平台產生的金鑰。",
+      "checkPassword": "我了解這組密碼會用在 {count} 台主機",
+      "checkKey": "我了解這把金鑰會用在 {count} 台主機",
+      "secretPassword": "密碼",
+      "secretKey": "金鑰"
+    },
+    "credentialLead": "改密與定期排程在憑證庫處理。",
+    "loginCheck": {
+      "button": "測試登入",
+      "retry": "再測一次",
+      "testingButton": "測試中...",
+      "unconfirmed": {
+        "head": "尚未確認能登入",
+        "key": "到主機加上公鑰並設定 sudo 後，按「測試登入」確認。",
+        "password": "到主機設定 sudo 規則後，按「測試登入」確認。",
+        "other": "按「測試登入」確認平台登得進去，也能提權改密。"
+      },
+      "testing": {
+        "head": "測試中",
+        "body": "正在以 {account} 登入這台，並檢查改密所需的提權。"
+      },
+      "success": {
+        "head": "可以登入",
+        "root": "{time} 測試：能以 {account} 登入，本身就有改密權限。",
+        "nopasswd": "{time} 測試：能以 {account} 登入，也能提權改密。",
+        "password": "{time} 測試：能以 {account} 登入，也能用它的密碼提權改密。"
+      },
+      "inventoryRead": {
+        "ok": "也能讀取 sudo 規則，主機帳號盤點會是完整的。",
+        "denied": "讀不到 sudo 規則，主機帳號盤點的結果會標示「可能不完整」。要完整盤點，請加上讀取規則。"
+      },
+      "setupLink": "設定方式",
+      "unsupported": "這類主機目前不支援測試登入",
+      "hostKeyNote": "這台還沒有記錄主機指紋，這次登入會記下目前的指紋。",
+      "fix": {
+        "hostKey": "查看主機金鑰",
+        "credential": "前往憑證庫"
+      },
+      "unknown": {
+        "head": "測試沒有通過",
+        "body": "請再測一次；若持續失敗，請聯絡管理員。",
+        "code": "結果碼：{code}"
+      },
+      "result": {
+        "connection": {
+          "head": "連不到這台主機",
+          "body": "請確認位址、通訊埠與網路後再試。"
+        },
+        "loginKey": {
+          "head": "登不進去",
+          "body": "主機拒絕了 {account} 的金鑰。確認公鑰已加到主機上 {account} 的登入金鑰清單，再測一次。"
+        },
+        "loginPassword": {
+          "head": "登不進去",
+          "body": "主機拒絕了 {account} 的密碼。"
+        },
+        "hostKeyMismatch": {
+          "head": "主機的身分指紋和記錄不同",
+          "body": "平台沒有送出 {account} 的憑證。請確認主機後，採用新指紋或重置。"
+        },
+        "hostKeyCheck": {
+          "head": "無法核對主機的身分指紋",
+          "body": "平台沒有登入。請稍後再試。"
+        },
+        "escalationDenied": {
+          "head": "登得進去，但不能改密",
+          "body": "{account} 沒有改其他帳號密碼所需的 sudo 權限。到主機為 {account} 加上 sudo 規則，再測一次。"
+        },
+        "escalationNopasswd": {
+          "head": "登得進去，但不能改密",
+          "body": "主機沒有允許 {account} 免密碼執行改密程式的 sudo 規則，可能還沒加規則，或規則沒有設為免密碼（NOPASSWD）。金鑰型專用帳號需要一條免密碼的改密規則。再測一次前請先補上規則。"
+        },
+        "unavailable": {
+          "head": "專用帳號目前沒有可用的秘密",
+          "body": "沒有登入。請重新設定專用帳號。"
+        },
+        "rotation": {
+          "head": "專用帳號正在改密",
+          "body": "這次沒有登入。改密完成後再測試。"
+        },
+        "timeout": {
+          "head": "主機沒有在時間內回應",
+          "body": "結果不確定。請稍後再試。"
+        }
+      },
+      "readRule": {
+        "title": "讀取 sudo 規則（選配）",
+        "body": "想讓主機帳號盤點讀到完整的 sudo 規則，非 root 的專用帳號要另加一條唯讀規則。參數必須逐字照抄，路徑以主機上 command -v tar 的結果為準：",
+        "warning": "參數必須逐字照抄：不可省略參數、不可使用萬用字元、不可加上 SETENV，也不可以 env_keep 保留 TAR_OPTIONS 或關閉 env_reset。任一種寫法都會讓這個帳號能以任意選項執行 tar，等同交出 root 權限。",
+        "passwordNote": "密碼型專用帳號把規則中的 NOPASSWD: 拿掉即可，其餘照抄。"
+      }
+    }
+  },
+  "hostInventory": {
+    "title": "主機帳號盤點",
+    "subtitle": "{name}・{host}",
+    "entry": "主機帳號盤點",
+    "entryUnsupported": "只支援 Linux／Unix 主機",
+    "readonlyNote": "你可以檢視盤點結果；開始盤點、忽略與重新開啟需要「主機帳號盤點」權限。",
+    "status": {
+      "queued": "等待中",
+      "running": "盤點中",
+      "succeeded": "完成",
+      "partial": "部分完成：結果可能不完整",
+      "failed": "沒有完成",
+      "interrupted": "中斷",
+      "none": "尚未盤點",
+      "unknown": "狀態：{value}"
+    },
+    "line": {
+      "never": "這台還沒有盤點過。",
+      "queued": "等待中（前面還有其他盤點）",
+      "running": "盤點中，通常一分鐘內完成",
+      "done": "完成：共 {accounts} 個帳號，{privileged} 個特權帳號，其中 {unmanaged} 個需要處理。",
+      "doneNone": "沒有需要處理的特權帳號。",
+      "interrupted": "這次盤點因服務重新啟動而中斷，先前的結果不變。",
+      "stillRunning": "仍在進行中",
+      "pollFailed": "讀取失敗",
+      "summary": "共 {accounts} 個帳號，{privileged} 個特權帳號，其中 {unmanaged} 個需要處理。"
+    },
+    "lastRun": "上次：{time}・{by}・{identity}",
+    "login": {
+      "default": "用預設帳號 {name} 登入",
+      "defaultNoName": "用預設帳號登入",
+      "executor": "用堡壘機專用帳號登入",
+      "other": "登入方式：{mode}",
+      "defaultNoExecutor": "用預設帳號 {name} 登入（這台沒有設定堡壘機專用帳號，部分設定可能讀不到）",
+      "defaultNoNameNoExecutor": "用預設帳號登入（這台沒有設定堡壘機專用帳號，部分設定可能讀不到）"
+    },
+    "previousResult": "上一次的結果（{time}）",
+    "btn": {
+      "start": "開始盤點",
+      "rescan": "重新盤點",
+      "scanning": "盤點中",
+      "refresh": "重新整理",
+      "retry": "重試"
+    },
+    "confirm": {
+      "title": "用預設帳號 {name} 登入盤點？",
+      "titleNoName": "用這台的預設帳號登入盤點？",
+      "body": "只讀取帳號與群組清單，不會修改主機。",
+      "fingerprint": "這台還沒有記錄主機指紋，這次登入會記下目前的指紋。",
+      "fingerprintUnknown": "讀不到這台的主機指紋記錄，無法確認是否已記錄；若尚未記錄，這次登入會記下目前的指紋。",
+      "ok": "開始",
+      "cancel": "取消",
+      "titleExecutor": "用堡壘機專用帳號 {account} 登入盤點？",
+      "titleExecutorNoName": "用這台的堡壘機專用帳號登入盤點？",
+      "noExecutor": "這台沒有設定堡壘機專用帳號，部分設定可能讀不到，結果會標示「可能不完整」。"
+    },
+    "never": {
+      "card": "盤點會用這台的預設帳號登入，唯讀列出主機上的帳號與群組，找出有管理權限、但還沒有在平台納管的帳號。不會修改主機上的任何設定。",
+      "readonly": "需要有「主機帳號盤點」權限的人發起。",
+      "noDefault": "這台沒有堡壘機專用帳號，也沒有預設帳號，盤點沒有帳號可以登入。",
+      "cardExecutor": "盤點會用這台的堡壘機專用帳號登入，唯讀列出主機上的帳號與群組，找出有管理權限、但還沒有在平台納管的帳號。不會修改主機上的任何設定。"
+    },
+    "goAccounts": "前往帳號設定",
+    "goHostKey": "前往主機金鑰設定",
+    "newCount": "新增 {n}",
+    "count": {
+      "accounts": "主機上的帳號",
+      "privileged": "特權帳號",
+      "unmanaged": "需要處理的特權帳號",
+      "unmanagedClickable": "需要處理的特權帳號（點一下只看這些）"
+    },
+    "filter": {
+      "needs": "需要處理（{n}）",
+      "privileged": "全部特權帳號",
+      "all": "全部帳號",
+      "ignored": "已忽略",
+      "gone": "已不在主機上",
+      "needsNoCount": "需要處理"
+    },
+    "search": {
+      "placeholder": "帳號名（只搜尋本頁）",
+      "hint": "只搜尋本頁"
+    },
+    "col": {
+      "account": "帳號",
+      "uid": "uid",
+      "reasons": "特權原因",
+      "login": "可登入",
+      "managed": "納管",
+      "state": "狀態",
+      "verdict": "判定",
+      "actions": "操作",
+      "asset": "資產",
+      "firstSeen": "首次發現",
+      "lastSeen": "最近看到"
+    },
+    "caption": {
+      "host": "{name} 的主機帳號盤點結果",
+      "global": "待處理的主機帳號"
+    },
+    "cell": {
+      "canLogin": "可登入",
+      "cannotLogin": "不能登入",
+      "loginNote": "依殼層判斷",
+      "managed": "已納管",
+      "unmanaged": "未納管",
+      "ignored": "已忽略",
+      "ignoredTip": "理由：{reason}；操作者：{by}；時間：{time}",
+      "gone": "已不在主機上",
+      "goneTip": "最近出現：{time}",
+      "incomplete": "可能不完整",
+      "incompleteTip": "sudo 規則沒有完整讀到，這個帳號的實際權限可能比這裡顯示的更高。",
+      "uidConflict": "同名多筆",
+      "uidConflictTip": "主機上有多筆同名帳號且 uid 不同，這裡顯示的是第一筆的 uid",
+      "hiddenChars": "含隱藏字元",
+      "hiddenCharsTip": "名稱裡有看不見的字元，已改成 <U+XXXX> 顯示。",
+      "nonAscii": "含非英文字元",
+      "nonAsciiTip": "名稱裡有英文字母、數字與一般符號以外的字元，外觀可能和一般字母很像，請確認是你認得的帳號。",
+      "copy": "複製帳號名",
+      "copied": "已複製",
+      "moreReasons": "＋{n}",
+      "byRules": "依規則判斷",
+      "none": "—"
+    },
+    "reason": {
+      "uid0": "最高權限帳號（uid 0）",
+      "group": "在特權群組「{name}」",
+      "group_primary": "主要群組是「{name}」",
+      "sudoers_user": "sudo 規則直接授權",
+      "sudoers_group": "sudo 規則授權給群組「{name}」",
+      "sudoers_alias": "sudo 規則經別名「{name}」授權",
+      "sudoers_all": "sudo 規則授權給所有人",
+      "sudoers_all_targetpw": "sudo 規則授權給所有人，但需輸入目標帳號密碼（不單獨算特權）",
+      "unknown": "其他原因：{raw}"
+    },
+    "empty": {
+      "needs": "沒有需要處理的帳號。",
+      "needsHint": "特權帳號都已納管或已忽略。",
+      "partialExtra": "這次盤點不完整，可能有沒找到的特權帳號。",
+      "other": "沒有符合條件的帳號。"
+    },
+    "partial": {
+      "title": "這次盤點不完整",
+      "after": "標示「可能不完整」的帳號，實際權限可能比這裡顯示的更高；沒有列為特權的帳號也可能其實有 sudo 權限。",
+      "hint": "設定這台的堡壘機專用帳號（需能讀取 sudo 規則）後重新盤點，可以讀到完整規則。",
+      "hintTitle": "怎麼讀到完整規則",
+      "gap": "{check}：{state}",
+      "gapSudo": "讀不到 sudo 規則（{path}）：登入帳號沒有讀取權限。",
+      "hintExecutor": "讓這台的堡壘機專用帳號 {account} 能讀取 sudo 規則後重新盤點，可以讀到完整規則。",
+      "hintExecutorNoName": "讓這台的堡壘機專用帳號能讀取 sudo 規則後重新盤點，可以讀到完整規則。",
+      "hintGo": "前往堡壘機專用帳號設定",
+      "gapSudoEscalation": "讀不到 sudo 規則（{path}）：專用帳號沒有讀取權限，提權讀取也被拒絕。"
+    },
+    "coverage": {
+      "title": "這次檢查了什麼",
+      "check": {
+        "accounts": "帳號清單",
+        "groups": "群組清單",
+        "sudoers_main": "sudo 主規則檔",
+        "sudoers_dir": "sudo 規則目錄",
+        "sudoers_unresolved": "sudo 規則中無法解析的項目",
+        "unknown": "檢查項目：{raw}"
+      },
+      "state": {
+        "checked": "已檢查",
+        "partial": "部分讀到（{n} 筆略過）",
+        "unreadable": "讀不到：登入帳號沒有權限",
+        "absent": "主機上沒有",
+        "failed": "讀取失敗",
+        "undetermined": "主規則檔讀不到，無法判斷",
+        "unknown": "狀態：{raw}"
+      },
+      "reason": {
+        "permission_denied": "登入帳號沒有讀取權限",
+        "nondefault_location": "sudo 規則檔不在常見位置，這次沒有檢查",
+        "not_included": "主規則檔沒有引用這個目錄，目錄內的規則不生效",
+        "invalid_rows": "有格式不符的列，已略過",
+        "command_failed": "查詢沒有成功",
+        "via_escalation": "經由提權讀取取得",
+        "escalation_denied": "登入帳號沒有讀取權限，提權讀取也被拒絕",
+        "other": "其他原因：{raw}"
+      },
+      "duplicate": "有 {n} 列同名紀錄，已合併",
+      "groups": "判定用的特權群組：{groups}",
+      "groupsEmpty": "判定用的特權群組：無（只看 uid 0 與 sudo 規則）",
+      "adjustGroups": "調整特權群組",
+      "fixedTitle": "這個盤點不會檢查的地方",
+      "fixed": {
+        "other_escalation_tools": "其他提權工具（例如 doas、polkit）的設定。",
+        "unenumerated_directory_accounts": "由目錄服務（例如 LDAP）提供、無法在本機列出的帳號。",
+        "replaced_noninteractive_shell": "登入殼層被換成非互動程式的帳號，仍以殼層判斷是否可登入。",
+        "unknown": "未列名的項目：{raw}"
+      },
+      "checkWithPath": "{label}（{path}）",
+      "setupLink": "設定方式"
+    },
+    "failure": {
+      "generic": "這次盤點沒有完成。",
+      "code": "錯誤碼：{code}",
+      "INVENTORY_HOST_KEY_MISMATCH": "主機的身分指紋和記錄不同，平台沒有登入。",
+      "INVENTORY_HOST_KEY_CHECK_FAILED": "無法核對主機的身分指紋，平台沒有登入。",
+      "INVENTORY_LOGIN_FAILED": "預設帳號登入被主機拒絕，密碼或私鑰可能已失效。",
+      "INVENTORY_LOGIN_FAILED_more": "平台只嘗試一次，不會改用其他帳號。",
+      "INVENTORY_CONNECTION_FAILED": "連不上主機。",
+      "INVENTORY_CONNECTION_FAILED_more": "請確認位址、埠與網路。",
+      "INVENTORY_TIMEOUT": "主機回應太慢，超過時間上限。",
+      "INVENTORY_COMMAND_FAILED": "主機上的唯讀查詢沒有成功。",
+      "INVENTORY_OUTPUT_LIMIT": "主機上的帳號或設定太多，超過一次能處理的上限，這次沒有寫入任何結果。",
+      "INVENTORY_OUTPUT_MALFORMED": "主機回傳的內容格式不對，這次沒有寫入任何結果。",
+      "INVENTORY_NO_ACCOUNT": "開始執行時，這台已沒有預設帳號，或預設帳號已換成別的帳號。",
+      "INVENTORY_NO_SECRET": "預設帳號沒有可用的密碼或私鑰。",
+      "INVENTORY_ASSET_CHANGED": "開始執行時，這台已被刪除或已不是 Linux／Unix 主機。",
+      "INVENTORY_PERSIST_FAILED": "結果寫入失敗，先前的結果不變。",
+      "INVENTORY_INTERRUPTED": "服務重新啟動，這次盤點中斷，先前的結果不變。",
+      "INVENTORY_EXECUTOR_CHANGED": "開始執行時，這台的堡壘機專用帳號已被清除或更換，平台沒有登入，也沒有改用其他帳號。",
+      "INVENTORY_EXECUTOR_BUSY": "開始執行時，這台的堡壘機專用帳號正在改密，或等不到改密結束，平台沒有登入。改密完成後再試。",
+      "INVENTORY_EXECUTOR_UNAVAILABLE": "開始執行時，這台的堡壘機專用帳號沒有可用的秘密，平台沒有登入，也沒有改用其他帳號。請重新設定專用帳號。"
+    },
+    "action": {
+      "manage": "納管",
+      "ignore": "忽略",
+      "reopen": "重新開啟",
+      "viewHost": "查看這台",
+      "denied": "你沒有這台的盤點權限",
+      "manageDenied": "你沒有這台的帳號管理權限"
+    },
+    "ignore": {
+      "title": "忽略這個帳號",
+      "reasonLabel": "為什麼可以不納管？",
+      "placeholder": "例如：供應商維護帳號，合約至年底",
+      "note": "之後的盤點若發現它多了新的特權原因，或它從主機消失後又出現，會自動重新開啟。",
+      "submit": "忽略",
+      "cancel": "取消",
+      "errEmpty": "請填寫理由",
+      "errLong": "理由最多 500 字（目前 {n} 字）",
+      "errControl": "理由不能包含控制字元",
+      "success": "已忽略 {name}"
+    },
+    "reopen": {
+      "confirm": "重新開啟 {name}？它會回到需要處理的清單。",
+      "ok": "重新開啟",
+      "cancel": "取消",
+      "success": "已重新開啟 {name}"
+    },
+    "err": {
+      "noViewScope": "你沒有檢視這台資產的權限",
+      "notFound": "找不到這台資產，可能已被刪除",
+      "readFailed": "讀取失敗",
+      "itemGone": "這筆結果已不存在",
+      "notInScope": "這台不在你的盤點權限範圍內",
+      "running": "這台已有一筆盤點在進行",
+      "platform": "只支援 Linux／Unix 主機",
+      "noAccount": "這台沒有堡壘機專用帳號，也沒有預設帳號，盤點沒有帳號可以登入。",
+      "noSecret": "預設帳號沒有可用的密碼或私鑰",
+      "generic": "操作沒有成功，請稍後再試"
+    },
+    "started": "已開始盤點",
+    "global": {
+      "title": "主機帳號盤點",
+      "subtitle": "已盤點的主機上，有管理權限但還沒有在平台納管的帳號。盤點要從資產頁的各台主機發起。",
+      "tabOpen": "待處理",
+      "empty": "目前沒有待處理的帳號。",
+      "emptyHint": "這裡只列已盤點過的主機；還沒盤點的主機不會出現在這裡。",
+      "incompleteNote": "最近一次盤點不完整或沒有完成的主機，可能有沒找到的帳號，請到各台的盤點畫面確認。",
+      "goAssets": "前往資產管理",
+      "loadFailed": "讀取失敗",
+      "lastSeenDays": "{n} 天前",
+      "lastSeenToday": "今天",
+      "assetFallback": "資產 #{id}"
+    },
+    "manageBar": {
+      "info": "從主機帳號盤點帶入：{name}。請補上密碼或私鑰後新增。",
+      "shared": "帳號名須來自共用憑證。請選擇帳號名為 {name} 的共用憑證；名稱不同時，盤點結果不會顯示為已納管。",
+      "hidden": "這個帳號名含看不見的字元，已照原樣帶入：{shown}。請確認這是你要納管的帳號。",
+      "done": "{name} 已納管。",
+      "back": "回到主機帳號盤點"
+    },
+    "policyPreview": {
+      "label": "會判定為特權的群組：",
+      "empty": "目前不以群組判定特權，只看 uid 0 與 sudo 規則",
+      "colon": "不能含冒號",
+      "tooLong": "名稱太長",
+      "badChar": "含不允許的字元",
+      "overLimit": "超過 32 項上限",
+      "rejected": "存檔會被拒絕，請先修正標成警示的項目。"
+    },
+    "thisRun": "這次：{time}・{by}・{identity}",
+    "previousResultNoTime": "上一次的結果",
+    "skeletonLabel": "盤點完成後會在這裡列出結果",
+    "goExecutor": "前往專用帳號設定"
   }
 }

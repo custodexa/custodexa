@@ -72,7 +72,7 @@
         <div class="actions">
           <el-button
             v-preview-write
-            type="primary"
+            :type="guard.blocked.value ? 'default' : 'primary'"
             :disabled="!dirty"
             :loading="saving"
             data-test="members-save"
@@ -81,6 +81,13 @@
             {{ $t('common.save') }}
           </el-button>
         </div>
+        <GroupApproverOnlyNotice
+          v-if="guard.blocked.value"
+          :detail="guard.blocked.value"
+          action="remove"
+          :busy="saving || guard.retrying.value"
+          @retry="retrySave"
+        />
       </template>
     </section>
 
@@ -109,6 +116,8 @@ import { apiErrorSummary } from '@/api/redact'
 import DangerComboConfirm from '@/components/DangerComboConfirm.vue'
 import { managementRoleNames } from '../groupProtection'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import GroupApproverOnlyNotice from '@/components/GroupApproverOnlyNotice.vue'
+import { useGroupApproverOnlyRetry } from '@/composables/useGroupApproverOnlyRetry'
 
 /**
  * 群組詳情的成員分頁：成員與加入方式、穿梭框維護（只改手動成員）、儲存前預覽與確認。
@@ -191,19 +200,29 @@ const notifyMessage = computed(() => {
   return ''
 })
 
-const persist = async () => {
+// 移出會讓成員只剩審核者角色時保留本次本文，「重新檢查並儲存」原樣重送；勾選一變動回到一般儲存
+const guard = useGroupApproverOnlyRetry()
+watch(() => [...manualIds.value], () => guard.clear())
+const onSaved = () => {
+  ElMessage.success(t('userGroups.membersUpdated'))
+  preview.cancel()
+  emit('changed')
+}
+const submit = async (attempt) => {
   saving.value = true
   try {
-    await replaceUserGroupMembers(props.group.id, [...manualIds.value])
-    ElMessage.success(t('userGroups.membersUpdated'))
-    preview.cancel()
-    emit('changed')
+    if ((await attempt())?.ok) onSaved()
   } catch (error) {
     console.error(...apiErrorSummary('user_group_members_failed', error))
   } finally {
     saving.value = false
   }
 }
+const persist = () => {
+  const ids = [...manualIds.value]
+  return submit(() => guard.run(() => replaceUserGroupMembers(props.group.id, ids)))
+}
+const retrySave = () => submit(guard.retry)
 
 const save = async () => {
   if (!dirty.value || saving.value || props.protectedRole) return

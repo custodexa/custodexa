@@ -108,7 +108,12 @@ const (
 	PermCredentialDelete       Permission = "credential:delete"
 	PermCredentialBind         Permission = "credential:bind"
 	PermAccountRotate          Permission = "account:rotate"
+	PermAccountDiscover        Permission = "account:discover"
 )
+
+// PermAssetExecutorManage 資產執行身分（平台專用、人員不可連的特權帳號）的讀取、設定、更換、清除與公鑰匯出。
+// scoped-enforced：以資產管理範圍判定；不列入任何內建範圍化範本（只隨全域管理員的全目錄出現）。
+const PermAssetExecutorManage Permission = "asset:executor-manage"
 
 // PermissionDef 一個權限點的宣告。
 type PermissionDef struct {
@@ -132,6 +137,7 @@ var permissionCatalog = mustValidateCatalog([]PermissionDef{
 	{PermApproverScopeApplicantManage, GroupAuthzRule, CategoryManage, ScopeGlobalOnly},
 	{PermAssetCreate, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermAssetDelete, GroupAsset, CategoryManage, ScopeEnforced},
+	{PermAssetExecutorManage, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermAssetGroupManage, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermAssetTest, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermAssetUpdate, GroupAsset, CategoryManage, ScopeEnforced},
@@ -141,6 +147,7 @@ var permissionCatalog = mustValidateCatalog([]PermissionDef{
 	{PermAuthorizationManage, GroupAuthzRule, CategoryManage, ScopeEnforced},
 	{PermChangeSecretManage, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermComplianceView, GroupAudit, CategoryAudit, ScopeReserved},
+	{PermAccountDiscover, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermAccountRotate, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermCredentialBind, GroupAsset, CategoryManage, ScopeEnforced},
 	{PermCredentialConvertScope, GroupAsset, CategoryManage, ScopeEnforced},

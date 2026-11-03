@@ -75,6 +75,7 @@
             :username="user.username"
             :role-sets="roleSets"
             :snapshot="snapshot"
+            :approver-only="user.approver_only === true"
             @changed="load"
           />
         </el-tab-pane>

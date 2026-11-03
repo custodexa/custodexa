@@ -81,7 +81,7 @@ syslog／通知通道／LDAP 目錄設定在 warn 檔下，存檔含不安全傳
 - **THEN** 徽章的風險項說明即時重繪為日文，無須重新載入列表
 
 ### Requirement: 通道加密清冊與稽核匯出
-系統 SHALL 提供傳輸安全域頁（admin-only，頁面名稱「傳輸安全」，路由沿用原通道加密清冊路徑不變）：同頁承載 (1) `transport_*` 政策鍵設定區（六通道等級與同意效期，沿安全政策機制與本頁 PCI 子集偏離摘要／套用本頁建議值）與 (2) 通道加密清冊——彙整 SSH／RDP／VNC／DB／LDAP／syslog／通知／nginx 各通道的加密狀態、政策等級與偏離摘要；部署層設定（nginx/HTTPS）SHALL 呈現狀態與偏離提示、標示「部署方管理」，不提供設定開關；LDAP 通道 SHALL 呈現現行 DB 設定的加密狀態與偏離提示、標示於身分管理 UI 維護（附前往設定頁指引），其政策等級與「若切 strict 將拒絕 LDAP 登入」預檢 SHALL 一併呈現。清冊 SHALL 可匯出快照（含產生時間戳與產生者），匯出動作 SHALL 入審計。清冊各通道的說明（`note`）、strict 預檢（`strict_preflight`）與明細未設定標記 SHALL 以穩定機器碼（`note_code`／`preflight_code`／`transportDetail.unset`）＋參數承載，前端依當前 UI 語言查譯顯示（帶數量的預檢採 count-aware plural）；後端保留既有 zh `note`／`strict_preflight` 字串為 fallback 與匯出快照可讀；明細的技術複合鍵（如 `security=nla,verify_cert=true`、DB tls mode）為技術識別字不譯。清冊審計 SHALL 續記 event 碼、不序列化 note/preflight 中文（形狀不變）。
+系統 SHALL 提供傳輸安全域頁（admin-only，頁面名稱「傳輸安全」，路由沿用原通道加密清冊路徑不變）：同頁承載 (1) `transport_*` 政策鍵設定區（六通道等級與同意效期，沿安全政策機制與本頁 PCI 子集偏離摘要／套用本頁建議值）與 (2) 通道加密清冊——彙整 SSH／RDP／VNC／DB／LDAP／syslog／通知／nginx 各通道，以及 WinRM 改密、資料庫改密兩條改密通道（無政策等級）的加密狀態、政策等級與偏離摘要；部署層設定（nginx/HTTPS）SHALL 呈現狀態與偏離提示、標示「部署方管理」，不提供設定開關；LDAP 通道 SHALL 呈現現行 DB 設定的加密狀態與偏離提示、標示於身分管理 UI 維護（附前往設定頁指引），其政策等級與「若切 strict 將拒絕 LDAP 登入」預檢 SHALL 一併呈現。清冊 SHALL 可匯出快照（含產生時間戳與產生者），匯出動作 SHALL 入審計。清冊各通道的說明（`note`）、strict 預檢（`strict_preflight`）與明細未設定標記 SHALL 以穩定機器碼（`note_code`／`preflight_code`／`transportDetail.unset`）＋參數承載，前端依當前 UI 語言查譯顯示（帶數量的預檢採 count-aware plural）；後端保留既有 zh `note`／`strict_preflight` 字串為 fallback 與匯出快照可讀；明細的技術複合鍵（如 `security=nla,verify_cert=true`、DB tls mode）為技術識別字不譯。清冊審計 SHALL 續記 event 碼、不序列化 note/preflight 中文（形狀不變）。
 
 #### Scenario: 政策與清冊同頁呈現
 - **WHEN** admin 開啟傳輸安全頁
@@ -134,3 +134,31 @@ syslog／通知通道／LDAP 目錄設定在 warn 檔下，存檔含不安全傳
 #### Scenario: 確認風險後資產撤權
 - **WHEN** 前端已因簽發428顯示風險，使用者確認後的同意請求因資產撤權回404
 - **THEN** 前端呈現既有資產不存在文案並中止，不再重試簽發；正常同意流程仍可於成功立據後重試一次
+
+### Requirement: 資料庫改密通道的清冊列
+
+通道加密清冊 SHALL 另列 `db_rotation` 通道，排在 `winrm` 列之後：只計改密通道為 `db_native` 且協定為 mysql、postgres、mssql 的資產。同一資產 SHALL 同時計入連線通道 `db` 列與 `db_rotation` 列，`db` 列的計數與偏離 SHALL NOT 因改密設定改變。
+偏離判定 SHALL 與資產風險鍵 `db_rotation_unencrypted` 同一判定：TLS 檔位為 `require`、`verify-ca`、`verify-full` 者為已加密，其餘（未設定、`disable`、值域外）計為偏離。明細 SHALL 依 TLS 檔位計數，未設定記為 `unset`。有偏離時該列 SHALL 帶風險項 `db_rotation_unencrypted`，前端以 `riskLabel.<key>` 依當前 UI 語言查譯；說明 SHALL 以 note 碼 `db_rotation_channel` 承載。
+改密屬系統路徑而非使用者連線：`db_rotation` 通道 SHALL NOT 設 off／warn／strict 強制等級、SHALL NOT 帶 strict 預檢、SHALL NOT 觸發連線前風險同意閘。
+通道名、note 碼 SHALL 納入既有三語文案完備性守衛；匯出快照 SHALL 含該列，匯出審計形狀不變。
+
+#### Scenario: 未加密的資料庫改密計入偏離
+
+- **WHEN** 清冊彙整時有兩台改密通道為 `db_native` 的資料庫資產，一台 TLS 未設定、一台 `verify-full`
+- **THEN** `db_rotation` 列總數 2、偏離 1，明細為 `unset` 1 與 `verify-full` 1，風險項含 `db_rotation_unencrypted`，該列無政策等級與 strict 預檢
+
+#### Scenario: 未設改密通道的資料庫資產不列入
+
+- **WHEN** 一台 TLS 未設定的 mysql 資產未設改密通道
+- **THEN** 該資產計入 `db` 列（含其偏離），不計入 `db_rotation` 列
+
+#### Scenario: 改密風險不進連線同意
+
+- **WHEN** DB 通道政策為 warn，使用者連線一台改密通道為 `db_native` 且 TLS 為 `disable` 的資料庫資產
+- **THEN** 連線前同意要求的風險項只有 `db_tls_disabled`，不含 `db_rotation_unencrypted`
+
+#### Scenario: 改密列說明隨語言查譯
+
+- **WHEN** admin 以 ja-JP 開啟傳輸安全頁，`db_rotation` 列有偏離
+- **THEN** 通道名、風險項與說明以日文顯示（查 `enum.transmissionChannel.db_rotation`、`riskLabel.db_rotation_unencrypted`、`transportNote.db_rotation_channel`），明細的未設定列查 `transportDetail.unset`
+

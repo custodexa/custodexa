@@ -411,11 +411,21 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "POST /api/v1/assets/:id/accounts/:accountId/set-default":
 		return false, true
+	// 堡壘機專用帳號：平台自用身分的設定、公鑰與測試登入，自動化主體一律不可用
+	case "GET /api/v1/assets/:id/executor", "PUT /api/v1/assets/:id/executor",
+		"DELETE /api/v1/assets/:id/executor", "GET /api/v1/assets/:id/executor/public-key",
+		"GET /api/v1/assets/:id/executor/login-check", "POST /api/v1/assets/:id/executor/login-check":
+		return false, true
 	case "POST /api/v1/assets/:id/files/mkdir":
 		return false, true
 	case "POST /api/v1/assets/:id/files/upload":
 		return false, true
 	case "POST /api/v1/assets/:id/host-key/adopt":
+		return false, true
+	case "GET /api/v1/account-inventory/findings", "GET /api/v1/assets/:id/account-inventory",
+		"POST /api/v1/assets/:id/account-inventory/scans",
+		"POST /api/v1/assets/:id/account-inventory/findings/:findingId/ignore",
+		"POST /api/v1/assets/:id/account-inventory/findings/:findingId/reopen":
 		return false, true
 	case "POST /api/v1/assets/:id/k8s/upload":
 		return false, true

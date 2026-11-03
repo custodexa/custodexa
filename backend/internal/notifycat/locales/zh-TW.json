@@ -214,5 +214,11 @@
       "title": "偵測到可能的並行實例（其他連線）",
       "text": "啟動檢查（{actor}）：啟動時查得同一資料庫上另有守衛版實例的連線[（共 {peers} 條）]（對等數查詢：{peers_query}）（分級：{severity}）。"
     }
+  },
+  "unmanaged_privileged_account": {
+    "default": {
+      "title": "主機上有未納管的特權帳號",
+      "text": "{actor} 發起的主機帳號盤點發現 {new_count} 個新的未納管特權帳號（登入身分：{identity_mode}）（分級：{severity}）。"
+    }
   }
 }

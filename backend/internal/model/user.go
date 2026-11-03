@@ -79,6 +79,10 @@ type User struct {
 	// 以 `gorm:"-"` 避免污染 schema：它是查詢時組出的視圖資料，不是帳號的屬性
 	AuthProviderNames []string `gorm:"-" json:"auth_provider_names,omitempty"`
 
+	// ApproverOnly 帳號是否只有審核者角色（無法使用資產與連線）。查詢時視圖欄位：只在使用者列表與
+	// 單筆讀取的處理路徑填值（真假都填），其他共用本型別的回應維持 nil、鍵不出現。
+	ApproverOnly *bool `gorm:"-" json:"approver_only,omitempty"`
+
 	// CredentialEpoch 使用者級憑證世代（單調遞增）。
 	//
 	// provider 級的 AuthEpoch 只能涵蓋「與某 provider 有關」的失效；下列操作與

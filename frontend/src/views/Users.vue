@@ -329,6 +329,22 @@
                   {{ $t('users.mappedApproverNeedsScope') }}
                 </el-tag>
               </el-tooltip>
+              <!-- 伺服器判定只有審核者角色：只能審核、無法使用資產與連線；點標籤到角色與範圍分頁補上 -->
+              <el-tooltip
+                v-if="row.approver_only === true"
+                :content="$t('users.approverOnlyHint')"
+                placement="top"
+              >
+                <el-tag
+                  type="warning"
+                  size="small"
+                  class="approver-only-tag"
+                  data-test="approver-only-tag"
+                  @click="openDetail(row, 'roles')"
+                >
+                  {{ $t('users.approverOnlyTag') }}
+                </el-tag>
+              </el-tooltip>
             </el-space>
           </template>
         </el-table-column>
@@ -964,6 +980,9 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+.approver-only-tag {
+  cursor: pointer;
+}
 .role-source-tag {
   margin-left: 4px;
 }

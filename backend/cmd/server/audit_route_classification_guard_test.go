@@ -204,6 +204,13 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	// ── classResource：主機金鑰採用（host-key-verification 新增路由；獨立對齊群組）──
 	{"POST", "/api/v1/assets/:id/host-key/adopt"}: {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 
+	// ── classResource：主機帳號盤點（五條）──
+	{"POST", "/api/v1/assets/:id/account-inventory/scans"}:                      {classResource, model.ResourceAsset, "命中分類器段 `assets`；發起另有同交易專屬審計"},
+	{"GET", "/api/v1/assets/:id/account-inventory"}:                             {classResource, model.ResourceAsset, "命中分類器段 `assets`；唯讀"},
+	{"POST", "/api/v1/assets/:id/account-inventory/findings/:findingId/ignore"}: {classResource, model.ResourceAsset, "命中分類器段 `assets`；處置另有同交易專屬審計"},
+	{"POST", "/api/v1/assets/:id/account-inventory/findings/:findingId/reopen"}: {classResource, model.ResourceAsset, "命中分類器段 `assets`；處置另有同交易專屬審計"},
+	{"GET", "/api/v1/account-inventory/findings"}:                               {classResource, model.ResourceAsset, "全域唯讀清單；與單資產讀取同類別"},
+
 	// ── classResource：分類器命中具名段（171 條）──
 	{"GET", "/api/v1/access-requests/:id/reports"}:                 {classResource, model.ResourceAccessRequest, "任務報告唯讀查詢，id 為任務"},
 	{"POST", "/api/v1/access-requests/:id/reports"}:                {classResource, model.ResourceAccessRequest, "提交任務報告，版本內容另由交易審計留摘要"},
@@ -257,6 +264,12 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"DELETE", "/api/v1/assets/:id/accounts/:accountId"}:           {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"PUT", "/api/v1/assets/:id/accounts/:accountId"}:              {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"POST", "/api/v1/assets/:id/accounts/:accountId/set-default"}: {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
+	{"GET", "/api/v1/assets/:id/executor"}:                         {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
+	{"PUT", "/api/v1/assets/:id/executor"}:                         {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
+	{"DELETE", "/api/v1/assets/:id/executor"}:                      {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
+	{"GET", "/api/v1/assets/:id/executor/public-key"}:              {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
+	{"GET", "/api/v1/assets/:id/executor/login-check"}:             {classResource, model.ResourceAsset, "命中分類器段 `assets`；唯讀"},
+	{"POST", "/api/v1/assets/:id/executor/login-check"}:            {classResource, model.ResourceAsset, "命中分類器段 `assets`；測試登入另有同交易專屬審計（開始、結束各一筆）"},
 	{"DELETE", "/api/v1/assets/:id/files"}:                         {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"GET", "/api/v1/assets/:id/files"}:                            {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"GET", "/api/v1/assets/:id/files/download"}:                   {classResource, model.ResourceAsset, "命中分類器段 `assets`"},

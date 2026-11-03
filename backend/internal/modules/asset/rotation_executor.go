@@ -53,6 +53,9 @@ type rotationTarget struct {
 	// verifyHostKeyCB 非 nil 時，派送後的立即 Verify 撥號前呼叫它取得只認綁定金鑰的回呼（不還原、不 TOFU）；
 	// 回錯誤＝撥號前查庫不放行，不得撥號。nil 時沿用 hostKeyCB。
 	verifyHostKeyCB func() (ssh.HostKeyCallback, error)
+	// directCommand 自改時改用不經殼層的提權指令（堡壘機專用帳號自己的密碼型整組輪替）：
+	// 目標機只開放改密程式一條 sudo 規則時仍輪替得了自己。登入帳號的自改指令不變
+	directCommand bool
 }
 
 // remoteRejectedError 遠端確定未變更。
@@ -109,6 +112,8 @@ func rotationExecutorFor(channel string) rotationExecutor {
 		return newWindowsWinRMExecutor()
 	case model.RotationChannelWindowsSSH:
 		return newWindowsSSHExecutor()
+	case model.RotationChannelDBNative:
+		return newDBNativeExecutor()
 	default:
 		return notWiredExecutor{}
 	}
@@ -151,6 +156,14 @@ func (posixSSHExecutor) Rotate(ctx context.Context, t rotationTarget, oldSecret,
 			reason: oldCredentialLoginReason(err),
 			cause:  err,
 		}
+	}
+	if t.directCommand {
+		_, derr := runElevatedChpasswd(client, rotationLogin{username: t.username, password: oldSecret}, t.username, newSecret, true)
+		client.Close()
+		if derr != nil {
+			return classifyElevatedError(derr, model.ChangeSecretReasonRemoteRejected)
+		}
+		return nil
 	}
 	err = runChpasswd(client, t.username, oldSecret, newSecret)
 	client.Close()
@@ -196,6 +209,7 @@ func (posixSSHExecutor) Verify(ctx context.Context, t rotationTarget, newSecret 
 //
 // posix_ssh 用資產本身的 port；windows_ssh 在 rdp 資產上用 rotation_ssh_port
 // （rdp 的 port 是 3389，不是 SSH 服務），在 ssh 資產上仍是同一條 SSH 服務。
+// db_native 取資產本身的 port（資料庫服務埠）；它不撥 SSH，位址只進目標指紋。
 func rotationAddr(asset *model.Asset, channel string) string {
 	port := asset.Port
 	if channel == model.RotationChannelWindowsSSH {

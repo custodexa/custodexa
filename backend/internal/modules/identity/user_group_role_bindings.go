@@ -182,6 +182,10 @@ func (s *UserGroupService) ReplaceRoleBindings(op Operator, groupID uint, req Gr
 		if err := s.assignmentGuard().CheckNodesLive(tx, newScopes); err != nil {
 			return err
 		}
+		approverOnlyPrev, err := approverOnlyBefore(tx, groupID, members)
+		if err != nil {
+			return err
+		}
 		if groupRoleBindingsPreWriteHook != nil {
 			groupRoleBindingsPreWriteHook()
 		}
@@ -205,6 +209,9 @@ func (s *UserGroupService) ReplaceRoleBindings(op Operator, groupID uint, req Gr
 					return err
 				}
 			}
+		}
+		if err := assertNoApproverOnlyTransitions(tx, approverOnlyPrev); err != nil {
+			return err
 		}
 		// 範圍縮小：成員在該角色上原本涵蓋的節點，變更後（本群組新範圍加其餘指派）不再涵蓋者，
 		// 與失去角色者同樣推進憑證世代。成員一律取自預取集合，不含預取之後才加入的人

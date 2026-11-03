@@ -320,6 +320,13 @@ const routes = [
         meta: { requiresAuth: true, ...entryMeta('/key-management') },
       },
       {
+        // 主機帳號盤點全域頁：已盤點的主機上，有管理權限但還沒有納管的帳號（待處理）
+        path: 'account-inventory',
+        name: 'AccountInventory',
+        component: () => import('../views/AccountInventory.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/account-inventory') },
+      },
+      {
         path: 'transmission-inventory',
         name: 'TransmissionInventory',
         component: () => import('../views/TransmissionInventory.vue'),

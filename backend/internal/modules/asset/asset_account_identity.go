@@ -23,7 +23,7 @@ type AccountIdentity struct {
 // 與 GetWithCredentialsForAccount 共用 resolveAssetAccount，故客體綁定 fail-close
 // 語義完全一致；差別只在不碰密文——簽發點只需要判定，不需要（也不該）解密憑證
 func (s *AssetService) ResolveAccountIdentity(assetID, accountID uint) (AccountIdentity, error) {
-	account, err := resolveAssetAccount(database.DB, assetID, accountID)
+	account, err := resolveLoginAccount(database.DB, assetID, accountID)
 	if err != nil {
 		return AccountIdentity{}, err
 	}

@@ -414,6 +414,7 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 		return nil, err
 	}
 	s.fillAuthProviderNames(users)
+	s.fillApproverOnly(users)
 	decorateSourcePolicyAll(users)
 
 	return &UserListResponse{
@@ -628,6 +629,10 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 				log.Printf("[UserService] Create: Assign roles error: %v", err)
 				return nil, fmt.Errorf("分配角色失敗: %w", err)
 			}
+		}
+		if err := assertNotApproverOnly(tx, user.ID); err != nil {
+			tx.Rollback()
+			return nil, err
 		}
 		// 權限版本：帶角色建帳號改變授權集合，與指派同交易
 		if err := authz.AdvanceVersion(tx); err != nil {
@@ -1040,6 +1045,9 @@ func (s *UserService) addRole(op *Operator, userID uint, roleName string, scopeR
 		if _, err := AddManualRole(tx, userID, role.ID); err != nil {
 			return err
 		}
+		if err := assertNotApproverOnly(tx, userID); err != nil {
+			return err
+		}
 		return tr.finishDirect(tx, userID)
 	}); err != nil {
 		var pe *PrincipalError
@@ -1395,6 +1403,9 @@ func (s *UserService) assignRoles(op *Operator, userID uint, roleNames []string,
 			return err
 		}
 		result.NodeRangeNoEffect = noEffect
+		if err := assertNotApproverOnly(tx, userID); err != nil {
+			return err
+		}
 
 		sets, err := roleSetsOf(tx, userID)
 		if err != nil {

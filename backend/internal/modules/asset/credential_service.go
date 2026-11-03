@@ -599,12 +599,22 @@ func (s *CredentialService) List(ctx context.Context, filter CredentialFilter) (
 		return nil, fmt.Errorf("查詢憑證失敗: %w", err)
 	}
 	out := make([]*CredentialDTO, 0, len(creds))
+	ids := make([]uint, 0, len(creds))
 	for i := range creds {
-		dto, err := s.credentialDTO(database.DB, &creds[i])
+		dto, err := credentialDTOFrom(database.DB, &creds[i])
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, dto)
+		ids = append(ids, creds[i].ID)
+	}
+	// 用途整批一次查（不隨筆數增加查詢次數）
+	purposes, err := credentialPurposes(database.DB, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i, dto := range out {
+		dto.Purpose = purposes[creds[i].ID]
 	}
 	if view != nil {
 		if err := s.decorateScoped(database.DB, view, creds, out); err != nil {

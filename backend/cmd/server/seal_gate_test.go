@@ -216,6 +216,8 @@ var stage2ServiceProbe = map[string]string{
 	"checkpointSigning":     "/api/v1/audit-checkpoints/public-key",
 	"sshHandler":            "/api/v1/ssh",
 	"hostKeyService":        "/api/v1/assets/:id/host-key",
+	// hostAccountInventoryService：盤點服務；對外面是全域清單端點，封印期同樣須 503
+	"hostAccountInventoryService": "/api/v1/account-inventory/findings",
 	// credentialRotationInterruptedRecovery：段 2 啟動時一次性的收束步驟（停在「改密中」的
 	// 輪替成員轉為已送出未驗證），不註冊路由、不留 goroutine，純內部設施。
 	// 唯一呼叫點在 runStage2 內、改密排程啟動前；輪替的對外面由 apiHandlers 涵蓋，

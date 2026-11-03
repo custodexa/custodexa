@@ -75,6 +75,11 @@ const (
 	// HostKeyPathAgentTerminal 自動化代理（agent token 主體）經 MCP 開的終端會話：無人即時在場，
 	// 屬背景路徑，不符時拒絕
 	HostKeyPathAgentTerminal HostKeyPath = "agent_terminal"
+	// HostKeyPathAccountInventory 主機帳號盤點：背景唯讀作業，無人即時在場，不符時拒絕
+	HostKeyPathAccountInventory HostKeyPath = "account_inventory"
+	// HostKeyPathExecutorLoginCheck 堡壘機專用帳號的測試登入：有人在場，但登入的是等同 root 的平台自用帳號，
+	// 不符時拒絕、不送憑證（秘密等級決定處置，不是有無人在場）
+	HostKeyPathExecutorLoginCheck HostKeyPath = "executor_login_check"
 )
 
 // Interactive 回報此路徑不符時是否放行。未知路徑一律視為背景路徑（拒絕），不預設放行。

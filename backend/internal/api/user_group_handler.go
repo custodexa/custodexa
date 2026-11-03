@@ -37,6 +37,19 @@ func respondUserGroupError(c *gin.Context, internalCode apierror.ErrCode, err er
 	if respondPrincipalError(c, err) {
 		return
 	}
+	var approverOnly *identity.ApproverOnlyMembersError
+	if errors.As(err, &approverOnly) {
+		users := approverOnly.Users
+		if users == nil {
+			users = []identity.AffectedUser{}
+		}
+		apierror.Write(c, http.StatusBadRequest, apierror.ErrorResponse{
+			Code:   apierror.CodeValidationUserGroupApproverOnlyMembers,
+			Params: map[string]any{"count": approverOnly.Count},
+			Meta:   map[string]any{"details": map[string]any{"affected_users": users}},
+		})
+		return
+	}
 	switch {
 	case errors.Is(err, identity.ErrUserGroupNameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeUserGroupNameExists, nil)

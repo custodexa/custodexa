@@ -296,6 +296,8 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialProtocolMismatch, nil)
 	case errors.Is(err, asset.ErrCredentialRotationActive):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialRotationActive, nil)
+	case errors.Is(err, asset.ErrCredentialPurposeMismatch):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialPurposeMismatch, nil)
 	case errors.Is(err, asset.ErrCredentialUsernameImmutable):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialUsernameImmutable, nil)
 	case errors.Is(err, asset.ErrCredentialOutOfSync):

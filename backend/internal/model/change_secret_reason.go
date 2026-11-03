@@ -71,6 +71,9 @@ const (
 	// 未回應、撥號逾時、TLS 憑證驗證失敗、目標未提供可用的交握）＝遠端確定未變更
 	ChangeSecretReasonRemoteUnreachable = "CHANGE_SECRET_REMOTE_UNREACHABLE"
 	ChangeSecretReasonVerifyFailed      = "CHANGE_SECRET_VERIFY_FAILED"
+	// ChangeSecretReasonTargetVersionUnsupported 目標資料庫版本不支援帳號自改密碼
+	//（MySQL 8.0.13 以前、MariaDB、PostgreSQL 10 以前）。在改密語句之前判定＝遠端確定未變更
+	ChangeSecretReasonTargetVersionUnsupported = "CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED"
 	// ChangeSecretReasonWinRMEncryptionUnavailable 目標無法以訊息層加密交握。
 	// 這是拒連而非降級：明文送出的下一個封包就是新密碼
 	ChangeSecretReasonWinRMEncryptionUnavailable = "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE"
@@ -122,6 +125,18 @@ const (
 	// 整次停止、遠端零操作，計畫轉待重新確認
 	ChangeSecretReasonScopeBoundExceeded = "CHANGE_SECRET_SCOPE_BOUND_EXCEEDED"
 
+	// --- 以堡壘機專用帳號代改 ---
+	// ChangeSecretReasonExecutorLoginFailed 以專用帳號登入目標主機失敗（連不上或認證被拒；主機金鑰相關沿用既有碼）
+	ChangeSecretReasonExecutorLoginFailed = "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED"
+	// ChangeSecretReasonExecutorCommandRejected 專用帳號登入後改密指令被拒（含提權被拒、目標帳號不存在）；遠端確定未變更
+	ChangeSecretReasonExecutorCommandRejected = "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED"
+	// ChangeSecretReasonExecutorRotationPending 專用帳號的憑證正在整組輪替，或其掛載有未驗證候選（skipped）
+	ChangeSecretReasonExecutorRotationPending = "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING"
+	// ChangeSecretReasonExecutorChanged 執行開始後專用帳號被更換、清除或就位版本改變（skipped）
+	ChangeSecretReasonExecutorChanged = "CHANGE_SECRET_EXECUTOR_CHANGED"
+	// ChangeSecretReasonExecutorUnavailable 專用帳號沒有可用秘密、解不開或秘密含不允許的字元
+	ChangeSecretReasonExecutorUnavailable = "CHANGE_SECRET_EXECUTOR_UNAVAILABLE"
+
 	// --- 服務重啟 ---
 	// ChangeSecretReasonInterrupted 服務重啟時本台正在改密（成員停在改密中），遠端是否已收下新秘密未知：
 	// 啟動時轉為已送出未驗證並保留候選，由逐台補跑以新秘密驗證確認
@@ -159,9 +174,15 @@ func ChangeSecretReasons() []string {
 		ChangeSecretReasonHostKeyMismatch,
 		ChangeSecretReasonHostKeyCheckFailed,
 		ChangeSecretReasonRemoteRejected,
+		ChangeSecretReasonExecutorLoginFailed,
+		ChangeSecretReasonExecutorCommandRejected,
+		ChangeSecretReasonExecutorRotationPending,
+		ChangeSecretReasonExecutorChanged,
+		ChangeSecretReasonExecutorUnavailable,
 		ChangeSecretReasonRemoteStateUnknown,
 		ChangeSecretReasonRemoteUnreachable,
 		ChangeSecretReasonVerifyFailed,
+		ChangeSecretReasonTargetVersionUnsupported,
 		ChangeSecretReasonWinRMEncryptionUnavailable,
 		ChangeSecretReasonStdinNotDelivered,
 		ChangeSecretReasonRemoteSelfVerifyFailed,

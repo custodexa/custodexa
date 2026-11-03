@@ -163,6 +163,29 @@ html.dark .el-button--danger.is-plain:not(.is-disabled):focus {
   color: var(--ot-danger);
 }
 
+/* 上一條把各狀態的文字都釘成紅色，EP 在滑過與按下時又把底色換成紅色，
+   字與底同色、按鈕只剩一塊紅。滑過與按下改用實心危險按鈕的填色階，
+   白字在其上 4.9:1（按下 5.9:1）；須排在上一條之後才蓋得過 :focus */
+html.dark .el-button--danger.is-plain:not(.is-disabled):hover {
+  --el-button-hover-text-color: var(--el-color-white);
+  --el-button-hover-bg-color: var(--ot-danger-fill);
+  --el-button-hover-border-color: var(--ot-danger-fill);
+
+  color: var(--el-color-white);
+  background-color: var(--ot-danger-fill);
+  border-color: var(--ot-danger-fill);
+}
+
+html.dark .el-button--danger.is-plain:not(.is-disabled):active {
+  --el-button-active-text-color: var(--el-color-white);
+  --el-button-active-bg-color: var(--ot-danger-fill-hover);
+  --el-button-active-border-color: var(--ot-danger-fill-hover);
+
+  color: var(--el-color-white);
+  background-color: var(--ot-danger-fill-hover);
+  border-color: var(--ot-danger-fill-hover);
+}
+
 /* 表單列距回到間距階：EP 預設 18px 不在 4/8/16/24/32 之內，
    同一頁就會同時出現兩種節奏，讀起來像兩套版面 */
 .el-form-item {

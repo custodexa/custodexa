@@ -447,6 +447,7 @@ func (b *RotationReportBuilder) periodRecords(assetFilter []uint, planFilter mod
 			CredentialName: r.CredentialName, VersionNo: versionNos[r.TargetVersionID],
 			SecretType: r.SecretType,
 			Status:     r.Status, ReasonCode: r.Error,
+			TransportRisk: r.TransportRisk,
 		})
 	}
 	return out, truncated, nil

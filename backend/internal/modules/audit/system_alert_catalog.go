@@ -235,7 +235,7 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 			DefaultSeverity: model.AlertSeverityHigh,
 			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetAsset},
 			Params: []SystemAlertParamSpec{
-				{Name: "path", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"terminal", "agent_terminal", "file_transfer", "connection_test", "credential_change", "credential_rotation"}},
+				{Name: "path", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"terminal", "agent_terminal", "file_transfer", "connection_test", "credential_change", "credential_rotation", "account_inventory", "executor_login_check"}},
 				{Name: "outcome", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"allowed", "refused"}},
 				{Name: "record_source", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"own", "address"}},
 				{Name: "recorded_fingerprint", Kind: SystemAlertParamOpaque, Required: true},
@@ -279,6 +279,16 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "peers", Kind: SystemAlertParamInt, Required: false},
 				{Name: "confirm_source", Kind: SystemAlertParamEnum, Required: false, Enum: []string{"env", "page"}},
 				{Name: "confirmed_by", Kind: SystemAlertParamOpaque, Required: false},
+			},
+		},
+		{
+			Type:            port.SystemAlertUnmanagedPrivilegedAccount,
+			Group:           SystemAlertGroupIdentityPrivilege,
+			DefaultSeverity: model.AlertSeverityHigh,
+			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetAsset},
+			Params: []SystemAlertParamSpec{
+				{Name: "new_count", Kind: SystemAlertParamInt, Required: true},
+				{Name: "identity_mode", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"default_account", "executor"}},
 			},
 		},
 	}

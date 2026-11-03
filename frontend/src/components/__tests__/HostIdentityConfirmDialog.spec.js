@@ -502,12 +502,42 @@ describe('M-5D 版面與畫板對照', () => {
   it('升級前舊工作（WinRM）：改密通道與目前記錄的金鑰分成兩列', () => {
     const winrmCurrent = { transport: 'winrm', record_id: null, algorithm: '', fingerprint: '', generation: 0, reset_pending: false, recorded_at: null }
     const w = mountDialog(identity({ status: 'unbound_legacy', original: null, current: winrmCurrent }))
-    expect(w.find('[data-test="hic-channel-winrm"]').text()).toBe('WinRM')
+    expect(w.find('[data-test="hic-channel-keyless"]').text()).toBe('WinRM')
     const keyRow = w.find('[data-test="hic-winrm-no-key"]').element.parentElement.parentElement
     expect(keyRow.textContent).toContain(msg('hostIdentityConfirm.summary.keyLabel'))
     expect(keyRow.textContent).toContain(msg('hostIdentityConfirm.summary.relationUnavailable'))
     expect(w.find('[data-test="hic-winrm-no-key"]').classes()).toContain('hic-tag')
-    expect(w.find('[data-test="hic-channel-winrm"]').element.parentElement).not.toBe(keyRow)
+    expect(w.find('[data-test="hic-channel-keyless"]').element.parentElement).not.toBe(keyRow)
+  })
+})
+
+describe('資料庫連線的傳輸名稱', () => {
+  const dbCurrent = { transport: 'db', record_id: null, algorithm: '', fingerprint: '', generation: 0, reset_pending: false, recorded_at: null }
+
+  it('通道改變：資料庫連線改為 SSH，兩個名稱都有值，不出現「—」', () => {
+    const w = mountDialog(
+      identity({
+        status: 'transport_changed', detail: 'transport_changed', confirmable: false,
+        original: { ...identity().original, transport: 'db' },
+      })
+    )
+    expect(w.find('[data-test="hic-channel-original"]').text()).toBe(msg('hostIdentityConfirm.transport.db'))
+    expect(w.find('[data-test="hic-channel-current"]').text()).toBe('SSH')
+    expect(w.find('[data-test="hic-blocked-body"]').text()).not.toContain('—')
+  })
+
+  it('目前傳輸為資料庫連線：沒有金鑰可比，不判為不同鑰', () => {
+    const w = mountDialog(identity({ current: dbCurrent }))
+    expect(w.find('[data-test="hic-check-different-key"]').exists()).toBe(false)
+    expect(w.vm.isDifferentKey).toBe(false)
+  })
+
+  it('可確認且目前為資料庫連線：通道名取實際傳輸，不是 WinRM', () => {
+    const w = mountDialog(identity({ confirmable: true, current: dbCurrent }))
+    const channel = w.find('[data-test="hic-channel-keyless"]')
+    expect(channel.text()).toBe(msg('hostIdentityConfirm.transport.db'))
+    expect(channel.text()).not.toBe('WinRM')
+    expect(w.find('[data-test="hic-winrm-no-key"]').text()).toBe(msg('hostIdentityConfirm.summary.dbNoKey'))
   })
 })
 

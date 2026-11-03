@@ -509,7 +509,7 @@ const loadOptions = async () => {
 watch(canAssign, loadOptions)
 onMounted(loadOptions)
 
-defineExpose({ roleOptions, addPicked, draft, holdsAllScope, classOf, draftOf, nodePath })
+defineExpose({ roleOptions, addPicked, draft, holdsAllScope, classOf, draftOf, nodePath, setDraft })
 </script>
 
 <style scoped>

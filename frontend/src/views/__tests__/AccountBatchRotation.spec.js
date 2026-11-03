@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import i18n from '@/i18n'
 import AccountBatchRotation from '../AccountBatchRotation.vue'
 import { ROTATION_BUCKETS } from '@/constants/rotationEvidence'
 
@@ -350,5 +351,112 @@ describe('整批同一組的共用憑證名稱', () => {
     await flushPromises()
 
     expect(createMock.mock.calls[0][0].credential_name).toBe('資料庫維運 2026-09')
+  })
+})
+
+describe('結果表的未加密連線標示', () => {
+  it('只有傳輸風險非空的紀錄在結果旁有標示（失敗也標：舊密碼已送出）', async () => {
+    const wrapper = await mountWithTargets()
+    const records = recordsFixture()
+    records[1].transport_risk = 'db_rotation_unencrypted'
+    getMock.mockResolvedValue({
+      data: { batch: batchFixture({ status: 'completed', finished_at: '2026-09-06T02:00:08Z' }), records },
+    })
+    await wrapper.vm.openHistory({ id: 7 })
+    await flushPromises()
+
+    const result = wrapper.find('[data-test="batch-result"]')
+    const marks = result.findAll('[data-test="transport-risk-mark"]')
+    expect(marks).toHaveLength(1)
+    const failedCell = wrapper.find('[data-test="record-status-102"]').element.parentElement
+    expect(failedCell.querySelector('[data-test="transport-risk-mark"]')).not.toBeNull()
+    const okCell = wrapper.find('[data-test="record-status-101"]').element.parentElement
+    expect(okCell.querySelector('[data-test="transport-risk-mark"]')).toBeNull()
+  })
+})
+
+describe('結果表的代改標示', () => {
+  // 逐案：代改列顯示帳號名、自改列不顯示、空帳號名不顯示、第二層觸發元素可聚焦
+  const openExecHistory = async (mut) => {
+    const wrapper = await mountWithTargets()
+    const records = recordsFixture()
+    for (const r of records) {
+      r.execution_method = 'self'
+      r.executor_username = ''
+    }
+    mut(records[0])
+    getMock.mockResolvedValue({
+      data: { batch: batchFixture({ status: 'completed', finished_at: '2026-09-06T02:00:08Z' }), records },
+    })
+    await wrapper.vm.openHistory({ id: 7 })
+    await flushPromises()
+    return { wrapper, result: wrapper.find('[data-test="batch-result"]') }
+  }
+  const delegated = (r) => {
+    r.execution_method = 'executor_sudo_password'
+    r.executor_username = 'cx-exec'
+  }
+
+  it('代改列在帳號名下方顯示專用帳號名', async () => {
+    const { result } = await openExecHistory(delegated)
+    const notes = result.findAll('[data-test="execution-method-note"]')
+    expect(notes).toHaveLength(1)
+    expect(notes[0].text()).toBe(i18n.global.t('changeSecretPlans.methodDelegatedBy', { name: 'cx-exec' }))
+  })
+
+  it('自改列不顯示', async () => {
+    const { result } = await openExecHistory(() => {})
+    expect(result.exists()).toBe(true)
+    expect(result.find('[data-test="execution-method-note"]').exists()).toBe(false)
+  })
+
+  it('專用帳號名為空時不顯示', async () => {
+    const { result } = await openExecHistory((r) => {
+      r.execution_method = 'executor_root'
+      r.executor_username = ''
+    })
+    expect(result.exists()).toBe(true)
+    expect(result.find('[data-test="execution-method-note"]').exists()).toBe(false)
+  })
+
+  it('第二層觸發元素可聚焦，focus 後出現提權方式說明', async () => {
+    const { result } = await openExecHistory(delegated)
+    const note = result.find('[data-test="execution-method-note"]')
+    expect(note.attributes('tabindex')).toBe('0')
+    expect(document.body.querySelector('[data-test="execution-method-detail"]')).toBeNull()
+    await note.trigger('focus')
+    await flushPromises()
+    const detail = document.body.querySelector('[data-test="execution-method-detail"]')
+    expect(detail).not.toBeNull()
+    expect(detail.textContent).toContain(i18n.global.t('changeSecretPlans.method.executor_sudo_password'))
+  })
+
+  it('代改列在帳號名下方標示專用帳號，自改列不標示；失敗原因文案帶專用帳號名；表格說明在上方', async () => {
+    const wrapper = await mountWithTargets()
+    const records = recordsFixture()
+    records[0].execution_method = 'executor_sudo_password'
+    records[0].executor_username = 'cx-exec'
+    records[1].execution_method = 'self'
+    records[1].status = 'failed'
+    records[1].error = 'CHANGE_SECRET_EXECUTOR_LOGIN_FAILED'
+    records[1].executor_username = 'ops-exec'
+    getMock.mockResolvedValue({
+      data: { batch: batchFixture({ status: 'completed', finished_at: '2026-09-06T02:00:08Z' }), records },
+    })
+    await wrapper.vm.openHistory({ id: 7 })
+    await flushPromises()
+
+    const result = wrapper.find('[data-test="batch-result"]')
+    const notes = result.findAll('[data-test="execution-method-note"]')
+    expect(notes).toHaveLength(1)
+    expect(notes[0].text()).toContain('cx-exec')
+    expect(notes[0].attributes('tabindex')).toBe('0')
+    expect(wrapper.vm.reasonText('CHANGE_SECRET_EXECUTOR_LOGIN_FAILED', { executor_username: 'ops-exec' })).toContain('ops-exec')
+    // 範圍外：後端不給帳號名，文案不帶名稱也不留空位
+    const scoped = wrapper.vm.reasonText('CHANGE_SECRET_EXECUTOR_LOGIN_FAILED', { executor_out_of_scope: true })
+    expect(scoped).toBeTruthy()
+    expect(scoped).not.toContain('{executor}')
+    expect(scoped).not.toBe('CHANGE_SECRET_EXECUTOR_LOGIN_FAILED')
+    expect(wrapper.find('[data-test="method-legend"]').exists()).toBe(true)
   })
 })

@@ -415,7 +415,7 @@ func reseedGoldenWith(dir string, fresh goldenSet, old map[string]map[string]any
 
 // baselineEntryRules declared number of front-end entry rules (E group);
 // the E-group spec fails when ENTRY_RULES no longer has this many entries.
-const baselineEntryRules = 35
+const baselineEntryRules = 36
 
 // releaseRoutesPath route inventory the R group is expanded from.
 var releaseRoutesPath = filepath.Join("testdata", "route-golden", "release-auditon.json")

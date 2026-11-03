@@ -246,7 +246,7 @@ const generatedAt = ref('')
 
 // 通道名／政策等級（i18n：閉集走 enum.transmissionChannel / enum.transportLevel、
 // 未知值原樣顯示）；值域與後端清冊通道一致
-const CHANNEL_VALUES = ['ssh', 'rdp', 'vnc', 'db', 'ldap', 'syslog', 'notify', 'nginx', 'winrm']
+const CHANNEL_VALUES = ['ssh', 'rdp', 'vnc', 'db', 'ldap', 'syslog', 'notify', 'nginx', 'winrm', 'db_rotation']
 const channelLabel = (c) =>
   CHANNEL_VALUES.includes(c) ? t(`enum.transmissionChannel.${c}`) : c
 

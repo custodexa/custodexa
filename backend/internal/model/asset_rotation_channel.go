@@ -13,6 +13,10 @@ const (
 	RotationChannelWindowsWinRM = "windows_winrm"
 	// RotationChannelWindowsSSH SSH 到 Windows OpenSSH，指令走 PowerShell
 	RotationChannelWindowsSSH = "windows_ssh"
+	// RotationChannelDBNative 以資料庫自身的連線協定讓帳號改自己的密碼
+	// （mysql、postgres、mssql）。不參與推導：未設定的資料庫資產仍是 none，
+	// 要改資料庫密碼必須由管理員顯式設定
+	RotationChannelDBNative = "db_native"
 	// RotationChannelNone 不改密。顯式設定的「不做」，與「未設定」不同：
 	// 前者是管理者的決定，後者交給推導
 	RotationChannelNone = "none"
@@ -46,6 +50,7 @@ func RotationChannels() []string {
 		RotationChannelPosixSSH,
 		RotationChannelWindowsWinRM,
 		RotationChannelWindowsSSH,
+		RotationChannelDBNative,
 		RotationChannelNone,
 	}
 }
@@ -86,7 +91,9 @@ func IsWindowsRotationChannel(channel string) bool {
 // RotationChannelCompatibleWith 通道與協定的相容性。
 //
 // windows_* 限 rdp 與 ssh：Windows 主機在本系統以 rdp 登記，而已經以 ssh 登記的
-// Windows 主機（OpenSSH）只是指令集不同。posix_ssh 限 ssh。none 與未設定恆相容。
+// Windows 主機（OpenSSH）只是指令集不同。posix_ssh 限 ssh。db_native 限查詢主控台
+// 支援的資料庫協定（mysql、postgres、mssql；redis 沒有帳號自改密碼的語句）。
+// none 與未設定恆相容。
 func RotationChannelCompatibleWith(protocol ProtocolType, channel string) bool {
 	switch channel {
 	case "", RotationChannelNone:
@@ -95,9 +102,19 @@ func RotationChannelCompatibleWith(protocol ProtocolType, channel string) bool {
 		return protocol == ProtocolSSH
 	case RotationChannelWindowsWinRM, RotationChannelWindowsSSH:
 		return protocol == ProtocolRDP || protocol == ProtocolSSH
+	case RotationChannelDBNative:
+		return protocol.SupportsQueryConsole()
 	default:
 		return false
 	}
+}
+
+// RotationChannelSupportsSSHKey 通道是否能輪替 SSH 金鑰型秘密。
+//
+// 只有 posix_ssh 會寫 authorized_keys；Windows 兩條通道只改密碼，資料庫自改也
+// 只有密碼。未設定與 none 不會走到執行器，回假不影響判定。
+func RotationChannelSupportsSSHKey(channel string) bool {
+	return channel == RotationChannelPosixSSH
 }
 
 // EffectiveWinrmPort winrm_port 為 0 時依 scheme 取預設。
@@ -123,4 +140,25 @@ func (a *Asset) EffectiveRotationSSHPort() int {
 		return a.RotationSSHPort
 	}
 	return RotationDefaultSSHPort
+}
+
+// RiskDBRotationUnencrypted 資料庫自改密碼以未加密的資料庫連線進行：舊密碼與新密碼
+// 可能以明文經網路傳送。資產風險與改密紀錄共用此字面。
+const RiskDBRotationUnencrypted = "db_rotation_unencrypted"
+
+// DBRotationTransportRisk 資料庫自改密碼的傳輸風險判定（純函式）。
+//
+// 只有 db_native 通道且協定為查詢主控台支援的資料庫時才可能有風險；TLS 檔位為
+// require、verify-ca、verify-full 視為已加密，其餘（空、disable、值域外）一律計為
+// 未加密（fail-closed，與資料庫連線風險的判定同源）。
+func DBRotationTransportRisk(protocol, channel, tlsMode string) string {
+	if channel != RotationChannelDBNative || !ProtocolType(protocol).SupportsQueryConsole() {
+		return ""
+	}
+	switch tlsMode {
+	case "require", "verify-ca", "verify-full":
+		return ""
+	default:
+		return RiskDBRotationUnencrypted
+	}
 }

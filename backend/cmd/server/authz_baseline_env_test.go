@@ -125,6 +125,20 @@ func buildBaselineEnv(t testing.TB, recv *egressReceivers) *baselineEnv {
 	} {
 		tt.Setenv(k, v)
 	}
+	// Startup seeds several security-policy rows from the environment the
+	// first time it runs (an env-init row with updated_by/updated_at, and the
+	// env value instead of the built-in default). The goldens were captured
+	// in the development container, which sets the two session-timeout
+	// variables and leaves the rest empty; pin exactly that so a one-off
+	// container records the same policy and compliance responses.
+	for k, v := range map[string]string{
+		"SSH_IDLE_TIMEOUT_MINUTES": "30", "SSH_MAX_SESSION_MINUTES": "0",
+		"RECORDING_RETENTION_DAYS": "", "AUDIT_CHECKPOINT_INTERVAL_SECONDS": "",
+		"AUDIT_CHECKPOINT_ROW_THRESHOLD": "", "RETENTION_MAX_PER_RUN": "",
+		"KEY_ROTATION_MAX_PER_RUN": "", "K8S_LIST_TIMEOUT_SECONDS": "",
+	} {
+		tt.Setenv(k, v)
+	}
 
 	sealEnv := newSealIntegrationEnvWith(tt, func(s1 *stage1) {
 		completeBaselineSchema(tt)

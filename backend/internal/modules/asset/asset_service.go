@@ -248,7 +248,7 @@ type AssetFilter struct {
 	// 僅 admin/auditor 全量分支使用（一般 user 帶參數由 handler 拒 400）
 	Tags []string
 
-	// CredentialPending 只列待配憑證（沒有任何未刪除掛載）的資產；
+	// CredentialPending 只列待配憑證（沒有任何未刪除登入帳號掛載）的資產；
 	// 僅 admin/auditor 全量分支使用（一般 user 帶參數由 handler 拒 400）
 	CredentialPending bool
 
@@ -880,6 +880,9 @@ func (s *AssetService) createPreparedTx(ctx context.Context, tx *gorm.DB, p *pre
 		if err := assertSharedCredentialBindable(tx, cred, asset); err != nil {
 			return false, err
 		}
+		if err := assertCredentialPurpose(tx, cred.ID, model.AccountPurposeLogin); err != nil {
+			return false, err
+		}
 		// 顯示旗標取自鎖住當下的現行版本（與掛載的就位版本同一版）
 		asset.HasPassword, asset.HasPrivateKey = false, false
 		if cred.CurrentVersionID != nil {
@@ -989,9 +992,9 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 		query = query.Where(tagWholeWordCondition, tagWholeWordPattern(tag))
 	}
 
-	// 待配憑證：沒有任何未刪除的掛載（與零帳號閘同一判準）
+	// 待配憑證：沒有任何未刪除的登入帳號掛載（與零帳號閘同一判準；執行身分不算）
 	if filter.CredentialPending {
-		query = query.Where("NOT EXISTS (SELECT 1 FROM asset_accounts aa WHERE aa.asset_id = assets.id AND aa.deleted_at IS NULL)")
+		query = query.Where("NOT EXISTS (SELECT 1 FROM asset_accounts aa WHERE aa.asset_id = assets.id AND aa.deleted_at IS NULL AND aa.purpose = ?)", model.AccountPurposeLogin)
 	}
 
 	// 可視聯集限制：先於計數與分頁
@@ -1296,6 +1299,13 @@ func (s *AssetService) GetWithCredentialsForAccount(assetID, accountID uint) (*A
 		return nil, err
 	}
 	creds := &AssetCredentials{Asset: asset}
+
+	// 連線出口：執行身分掛載與不存在同形，且在任何解封之前判定
+	if accountID != 0 {
+		if _, err := resolveLoginAccount(database.DB, assetID, accountID); err != nil {
+			return nil, err
+		}
+	}
 
 	// 解析器內部即以 resolveAssetAccount 作帳號歸屬的 fail-close 判定
 	// （與本函式同源），故一般路徑一次解析即完成歸屬判定與取密。
@@ -2068,7 +2078,8 @@ func FillNodeInfo(db *gorm.DB, assets []model.Asset) error {
 }
 
 // FillCredentialPending 批次填資產的待配憑證旗標：以一次 `asset_id IN (…)` 查出
-// 有未刪除掛載的資產，其餘即待配憑證。判準與連線的零帳號閘一致（沒有任何掛載）
+// 有未刪除登入帳號掛載的資產，其餘即待配憑證。判準與連線的零帳號閘一致
+// （沒有任何登入帳號；只有執行身分的資產仍算待配憑證）
 func FillCredentialPending(db *gorm.DB, assets []model.Asset) error {
 	if len(assets) == 0 {
 		return nil
@@ -2078,7 +2089,7 @@ func FillCredentialPending(db *gorm.DB, assets []model.Asset) error {
 		ids = append(ids, assets[i].ID)
 	}
 	var mounted []uint
-	if err := db.Model(&model.AssetAccount{}).Where("asset_id IN ?", ids).
+	if err := db.Model(&model.AssetAccount{}).Where("asset_id IN ? AND purpose = ?", ids, model.AccountPurposeLogin).
 		Distinct("asset_id").Pluck("asset_id", &mounted).Error; err != nil {
 		return fmt.Errorf("查詢資產掛載失敗: %w", err)
 	}

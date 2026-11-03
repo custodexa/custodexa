@@ -13,7 +13,7 @@ import (
 // 常數被改動時才抓得到。
 var frozenAssetAdminKeys = []string{
 	"asset:view", "asset:create", "asset:update", "asset:delete", "asset:test",
-	"assetgroup:manage", "changesecret:manage", "account:rotate",
+	"assetgroup:manage", "changesecret:manage", "account:rotate", "account:discover",
 	"credential:view", "credential:create", "credential:update", "credential:set-secret",
 	"credential:rotate", "credential:convert-scope", "credential:detach",
 	"credential:delete", "credential:bind",
@@ -47,8 +47,8 @@ func TestScopedTemplatePermissionSets(t *testing.T) {
 		{"asset_admin", ScopedTemplateAssetAdminPermissions(), frozenAssetAdminKeys},
 		{"authorization_admin", ScopedTemplateAuthorizationAdminPermissions(), frozenAuthzAdminKeys},
 	}
-	if len(frozenAssetAdminKeys) != 17 || len(frozenAuthzAdminKeys) != 3 {
-		t.Fatalf("凍結表筆數應為 17 與 3，實際 %d 與 %d", len(frozenAssetAdminKeys), len(frozenAuthzAdminKeys))
+	if len(frozenAssetAdminKeys) != 18 || len(frozenAuthzAdminKeys) != 3 {
+		t.Fatalf("凍結表筆數應為 18 與 3，實際 %d 與 %d", len(frozenAssetAdminKeys), len(frozenAuthzAdminKeys))
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

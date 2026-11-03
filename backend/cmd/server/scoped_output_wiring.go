@@ -15,6 +15,7 @@ var _ api.RotationMemberProjection = (*asset.CredentialRotationService)(nil)
 type scopedOutputWiring struct {
 	accountCredentialScope bool // 帳號 handler 的憑證投影來源
 	accountRowProjector    bool // 憑證 handler 的帳號列投影器
+	executorRowProjector   bool // 執行身分 handler 的帳號列投影器
 	rotationProjection     bool // 憑證 handler 的輪替成員投影已注入
 	rotationOutputScope    bool // 輪替成員投影的輸出判定已注入
 	changeSecretOutput     bool // 改密 handler 的輸出判定
@@ -22,10 +23,11 @@ type scopedOutputWiring struct {
 }
 
 func collectScopedOutputWiring(accounts *api.AssetAccountHandler, creds *api.CredentialHandler,
-	changeSecret *api.ChangeSecretHandler) scopedOutputWiring {
+	executor *api.AssetExecutorHandler, changeSecret *api.ChangeSecretHandler) scopedOutputWiring {
 	return scopedOutputWiring{
 		accountCredentialScope: accounts.AccountRowProjectorWired(),
 		accountRowProjector:    creds.AccountRowProjectorWired(),
+		executorRowProjector:   executor.AccountRowProjectorWired(),
 		rotationProjection:     creds.RotationProjectionInjected(),
 		rotationOutputScope:    creds.RotationProjectionWired(),
 		changeSecretOutput:     changeSecret.CredentialOutputScopeWired(),
@@ -41,6 +43,7 @@ func (w scopedOutputWiring) require() error {
 	}{
 		{w.accountCredentialScope, "帳號 handler 的憑證投影來源未注入"},
 		{w.accountRowProjector, "憑證 handler 的帳號列投影器未注入"},
+		{w.executorRowProjector, "執行身分 handler 的帳號列投影器未注入"},
 		{w.rotationProjection, "憑證 handler 的輪替成員投影未注入"},
 		{w.rotationOutputScope, "輪替成員投影的輸出判定未注入"},
 		{w.changeSecretOutput, "改密 handler 的輸出判定未注入"},

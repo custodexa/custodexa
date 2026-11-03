@@ -155,10 +155,10 @@
         <p
           v-if="member.last_error"
           class="member-reason"
-          :title="reasonText(member.last_error)"
+          :title="reasonText(member.last_error, member)"
           :data-test="`member-reason-${member.id}`"
         >
-          {{ reasonText(member.last_error) }}
+          {{ reasonText(member.last_error, member) }}
         </p>
       </div>
     </div>
@@ -404,11 +404,17 @@ const assetLabel = (member) =>
   member.asset_name || t('common.assetRef', { id: member.asset_id })
 
 // 成員的失敗原因與改密記錄同一組機器碼，走既有的對照表，不另立第二份譯文。
-// 查不到的碼原樣顯示——顯示空白會讓「失敗但沒說為什麼」看起來像「沒有原因」
-function reasonText(code) {
+// 查不到的碼原樣顯示——顯示空白會讓「失敗但沒說為什麼」看起來像「沒有原因」。
+// 代改的原因文案帶專用帳號名參數；成員列沒有帳號名時改用不帶名稱的文案，避免名稱處留白
+function reasonText(code, row) {
   if (!code) return ''
+  const name = row?.executor_username || ''
+  if (!name) {
+    const nameless = `changeSecretPlans.reasonScoped.${code}`
+    if (te(nameless)) return t(nameless)
+  }
   const key = `changeSecretPlans.reason.${code}`
-  return te(key) ? t(key) : code
+  return te(key) ? t(key, { executor: name }) : code
 }
 
 function stopPolling() {
@@ -547,7 +553,7 @@ async function retryMember(member, { quiet = false, confirmBody } = {}) {
     if (confirming) {
       closeHostIdentityDialog()
       if (fresh?.last_error === TARGET_CHANGED_CODE) {
-        ElMessage.warning(reasonText(fresh.last_error))
+        ElMessage.warning(reasonText(fresh.last_error, fresh))
       } else if (fresh?.state === 'applied') {
         ElMessage.success(t('hostIdentityConfirm.result.verified'))
       } else {

@@ -60,6 +60,8 @@
 
 改密通道 WinRM **不在這六鍵內**：改密是系統路徑而非使用者連線，沒有強制等級也沒有同意閘；其加密狀態
 （http 的訊息層加密、https 的憑證驗證模式）只在傳輸清冊的 `winrm` 列與資產風險徽章上呈現，見 §2.5 的 Windows 段。
+資料庫帳號自行改密（通道 `db_native`）同理：改密是否走 TLS 只在傳輸清冊的 `db_rotation` 列與資產風險徽章
+（`db_rotation_unencrypted`）上呈現，計算使用者連線的 `db` 列不受改密設定影響。
 
 確認預覽只填入表單值，**按下「儲存」才生效**，儲存前隨時可還原。
 套用範圍是「當前頁的政策鍵」，故必須逐頁執行，一次不會蓋到全部。
@@ -316,7 +318,7 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 舊版映像保有自己的名字。以映像檔交付時，交付的映像也包含這顆官方映像。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
-> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的四十九條見下 §2.5）；
+> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的五十五條見下 §2.5）；
 > 因此本節適用於同屬 1.0 baseline 世代的版本更替，
 > 也就是資料庫已套用過該 baseline 的部署。
 >
@@ -329,6 +331,17 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 > **單實例守衛的保證範圍**：本版起，第二個應用實例對同一資料庫啟動會被攔下並要求確認（§2.6b）。
 > 這道互斥**只在守衛版之間成立**：不含守衛的舊版本不持鎖，首次自無守衛版升級到本版時，
 > 新版能取得鎖**不代表**舊版已停。§2.3 步驟 5 的首次升級檢核就是為此而設，不可略過。
+
+#### 升到 1.21.0
+
+新增六條遷移。它們新增三張資料表及其索引、在 `asset_accounts` 與 `change_secret_records` 加欄，並在既有資料表加一條索引，沒有資料步驟：既有列取欄位預設值，既有資產、帳號與連線照常運作。套用之後，回退的方式是還原升級前備份（§4.1）。
+
+- **改密紀錄的傳輸風險欄（`20261102_db_account_rotation`）。** 這條遷移在 `change_secret_records` 加一欄 `transport_risk`（非空、預設空字串）。它沒有資料步驟，既有紀錄維持空值，表示當時未標示，沒有 `Down`。升級後資料庫資產的改密通道仍是未設定：在管理員對該資產顯式設定通道 `db_native` 之前，不會有任何資料庫密碼被更換。唯一看得到的差異是既有計畫涵蓋的資料庫資產，跳過原因由「協定不支援」改為「未設定改密通道」，會出現在升級後的第一份輪替報告。
+- **主機帳號盤點（`20261102_host_account_inventory`）。** 這條遷移新增兩張表 `host_account_scans`（盤點紀錄）與 `host_account_findings`（每台資產每個主機帳號的最新盤點結果）及其索引。它只建表、不回填，不改任何既有資料表，升級後兩張表都是空的，沒有 `Down`。
+- **資產帳號用途（`20261102_asset_account_purpose`）。** 這條遷移在 `asset_accounts` 加一欄 `purpose`（`login` 或 `executor`），既有列經欄位預設值一律為 `login`，並新增一條部分唯一索引，讓每台資產至多一筆未刪除的堡壘機專用帳號。它沒有資料步驟，既有帳號都維持登入帳號，連線照常。它的 `Down` 不是正式環境的回退手段（§4.1）。
+- **資產帳號的專用帳號來源（`20261103_asset_account_executor_source`）。** 這條遷移在 `asset_accounts` 加一欄 `executor_source`，既有列經欄位預設值一律為空字串，讀取端點視為「未記錄」。它沒有資料步驟、不回填，既有帳號與連線不受影響。它的 `Down` 不是正式環境的回退手段（§4.1）。
+- **改密紀錄的執行方式欄（`20261103_change_secret_execution_method`）。** 這條遷移在 `change_secret_records` 加四欄：`execution_method`（非空、預設 `self`）、`executor_account_id`、`executor_username` 與 `executor_credential_id`，記下代改當下所用堡壘機專用帳號的快照。它沒有資料步驟，既有紀錄一律視為帳號自行改密，沒有 `Down`。管理員為資產設定堡壘機專用帳號之前，既有資產的改密方式不變。
+- **堡壘機專用帳號的測試登入結果（`20261103_executor_login_checks`）。** 這條遷移建一張新表 `executor_login_checks`，每個專用帳號保留最近一次測試登入的結果（一個帳號一列，重測即覆蓋），不存任何秘密與遠端輸出。它沒有資料步驟、不回填，升級後這張表是空的，既有資產與連線不受影響，沒有 `Down`。
 
 #### 升到 1.18.0：權限模型遷移
 
@@ -779,7 +792,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
 
 **升級到引入新增量 migration 的版本時**，每套用一條就多出一行 `執行 migration: <版本> (<名稱>)`，
 該增量在同一交易內套用；未見對應行即代表該增量**未跑**（多半是來源版本已含它），非異常。
-本版的四十九條增量對應的日誌行逐字為：
+本版的五十五條增量對應的日誌行逐字為：
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -831,6 +844,12 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
   執行 migration: 20261029_credential_ownership (credential_ownership)
   執行 migration: 20261031_change_secret_scope_columns (change_secret_scope_columns)
   執行 migration: 20261101_scoped_template_builtin_keys (scoped_template_builtin_keys)
+  執行 migration: 20261102_db_account_rotation (db_account_rotation)
+  執行 migration: 20261102_host_account_inventory (host_account_inventory)
+  執行 migration: 20261102_asset_account_purpose (asset_account_purpose)
+  執行 migration: 20261103_asset_account_executor_source (asset_account_executor_source)
+  執行 migration: 20261103_change_secret_execution_method (change_secret_execution_method)
+  執行 migration: 20261103_executor_login_checks (executor_login_checks)
 ```
 
 `20260825_evidence_offsite` 建立離機儲存的兩張表（設定世代表與保管帳冊）並對會話與匯出 job
@@ -1146,6 +1165,21 @@ TLS 最低版本 1.2。目標的監聽器憑證由貴方準備（需含 Server A
 - 本產品對 Windows 改密路徑的自動化回歸在單一 Windows Server 主機的 loopback 網路上進行（該主機同時是客戶端與目標）。
   跨主機的網路拓撲、內部 CA 憑證鏈、Server 2012 R2 以下的主機不在其射程內；正式啟用前，請先對一台代表性主機
   手動觸發一次計劃並確認記錄為 success（§2.7 第 10 項）。
+
+#### 以堡壘機專用帳號代改 Linux／Unix 帳號密碼（本版新增，影響升級判斷的部分）
+
+資產設定了堡壘機專用帳號時，以帳號為目標的密碼改密（秘密型別為密碼的改密計劃與批次，Linux／Unix 主機的 SSH 通道）改由專用帳號執行：平台以專用帳號登入主機，替目標帳號改密。目標帳號不再需要可用的 sudo 規則，也不需要正確的舊密碼。金鑰輪替、Windows 主機、共用憑證的整組改密與其他整組處理憑證的路徑維持原樣：帳號以自己的舊秘密登入、改自己。
+
+- **目標主機要設定什麼。** 支援三種方式，由專用帳號本身決定。(1) 專用帳號是 `root`：不需任何設定。(2) 金鑰型專用帳號：允許它以 root 免密碼執行改密程式，例如 `cx-exec ALL=(root) NOPASSWD: /usr/sbin/chpasswd`。(3) 密碼型專用帳號：允許它以 root 執行同一支程式並讓 sudo 要求密碼，例如 `cx-exec ALL=(root) /usr/sbin/chpasswd`。平台直接執行該程式、不經殼層，這一條規則就夠了。
+- **這條規則的意義。** 規則能改主機上任何帳號（含 root）的密碼，開放它等同把 root 交給專用帳號。產品不宣稱能限縮專用帳號的行為，也不偵測專用帳號在平台以外被使用。
+- **密碼型專用帳號。** 平台先試免密碼的規則，只有主機要求密碼時才送出專用帳號的密碼。主機的 sudo 必須驗專用帳號自己的密碼；若 sudo 設成驗其他密碼（例如 root 或目標使用者的密碼），或接了另一套驗證（例如一次性密碼），驗證失敗時 sudo 會把下一列（內含新密碼）當成另一次密碼嘗試讀走。這類環境請改用金鑰型專用帳號。
+- **共用的密碼型專用帳號。** 每次改密都以同一組密碼登入主機，提權時再送一次。只要其中一台主機被入侵，攻擊者就能在下一次改密時取得這組密碼，並用它登入掛同一筆憑證的其餘所有主機。跨主機共用時，請使用平台產生的金鑰。
+- **失敗不退回。** 專用帳號登入不了、沒有權限執行該程式、沒有可用秘密，或目標帳號不存在時，紀錄會如實寫出並指明專用帳號；平台不會改以目標帳號的舊密碼重試。跳過的情形（專用帳號正在自己改密，或在這次執行中被更換）由下一次執行處理。
+- **專用帳號自己的輪替。** 密碼型專用帳號同樣只需要這一條 `chpasswd` 規則；金鑰型專用帳號只改寫自己的 `authorized_keys`，不需要 sudo。
+- **盤點時讀取 sudo 規則。** 資產有專用帳號時，主機帳號盤點改以專用帳號登入，不再用預設帳號。專用帳號是 `root` 時不需額外設定；不是 `root` 時，帳號與群組清單照常讀取，但要讀 sudo 規則，主機上須再有一條只讀規則，例如 `cx-exec ALL=(root) NOPASSWD: /usr/bin/tar -cf - -C /etc sudoers sudoers.d`（密碼型專用帳號用同一條、去掉 `NOPASSWD:`；`tar` 的路徑以主機上 `command -v tar` 的結果為準）。參數照範例逐字寫時，這條規則只能讀 `/etc/sudoers` 與 `/etc/sudoers.d` 兩個位置。沒有這條規則時盤點仍會完成，結果標示為可能不完整，不會宣稱沒有發現規則。參數必須逐字照抄：不可省略參數、不可使用萬用字元、不可加上 SETENV，也不可以 env_keep 保留 TAR_OPTIONS 或關閉 env_reset。任一種寫法都會讓這個帳號能以任意選項執行 tar，等同交出 root 權限。
+- **測試登入。** 在資產的專用帳號區塊按「測試登入」，平台會以專用帳號登入主機，並執行一次改密程式、輸入中不帶任何帳號，所以不會改任何密碼。結果會說明能不能登入、帳號有沒有執行該程式的權限，專用帳號不是 `root` 時還會說明讀不讀得到 sudo 規則。主機的登入紀錄與 sudo 紀錄會出現這次操作。短時間內多次失敗（尤其是密碼型專用帳號）可能觸發主機的鎖帳設定；平台對測試登入與以專用帳號發起的盤點合併限制頻率，但無從得知主機的鎖帳門檻。主機指紋與記錄不符時，在送出任何憑證之前就會拒絕。
+- **升級影響。** 沒有設定專用帳號的資產不受影響。設定之後，該資產以帳號為目標的密碼改密改由專用帳號執行，失敗不會退回帳號自行改密。紀錄多一欄執行方式與專用帳號的快照。
+- **備份範圍與升級步驟不變。** 新欄位在既有資料表內，測試登入結果在同一資料庫的一張新表。
 
 #### 離機儲存相關的啟動日誌（本版新增）
 
@@ -1677,11 +1711,13 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 安裝包部署（包含先前版本已轉換的部署）依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)
 用腳本所做的備份回退。§4.1 與 §4.3 的考量同樣適用；§4.2 的步驟則是給手動升級的 `git clone` 部署。
 
+**回退前，先讓資料庫自改密碼的未驗證候選收斂。** `20261102_db_account_rotation` 之前的版本不認得改密通道 `db_native`：儲存這類資產會被拒，計畫執行時這些資產記為「未設定改密通道」；它也不認得資料庫自改密碼的主機身分綁定，所以這類資產處於未驗證的候選（紀錄顯示 `unverified`）會被當成傳輸變更而停住，留待人工處理。回退前，請先在目前版本讓每一筆這樣的候選收斂為成功或失敗（交給系統重試，或人工驗證），避免有資料庫帳號停在舊版無法確認的密碼上。
+
 ### 4.1 回退的唯一手段是還原備份
 
 升級後若要退回舊版本，走的是「部署回舊版映像，再還原升級前的備份」，程序見 §4.2。
 
-本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的四十九條增量。
+本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的五十五條增量。
 其中三十一條列在這裡（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
 `20260826_db_query_console`、`20260903_security_policies_value_text`、
 `20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、
@@ -1694,7 +1730,7 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 `20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、
 `20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`）。
 
-另外十八條增量是 1.18.0 的遷移（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns` 與 `20261101_scoped_template_builtin_keys`），因為不提供正式環境的降版路徑，不在上面的清單中。已套用它們的資料庫不能用管理腳本指回上一版；請還原升級前備份（見 §2.0 的「升到 1.18.0」）。要回到 1.18.0 之前的版本，還須照該處說明更換 `JWT_SECRET` 並撤銷長效登入。
+另外二十四條增量不在上面的清單中，因為它們都不提供正式環境的降版路徑：1.18.0 的十八條遷移（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）與 1.21.0 的六條遷移（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method` 與 `20261103_executor_login_checks`）。已套用它們的資料庫不能用管理腳本指回上一版；請還原升級前備份（見 §2.0 的「升到 1.18.0」與「升到 1.21.0」）。要回到 1.18.0 之前的版本，還須照該處說明更換 `JWT_SECRET` 並撤銷長效登入。
 
 **增量 migration 的 `Down` 不作為生產回退手段**，這是本產品的一貫立場，不隨版本增減而改變：
 `Down` 還原的是**結構**，不是資料。它刪掉的欄位與資料表裡有什麼，執行後就沒有第二個來源可補；

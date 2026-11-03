@@ -426,6 +426,9 @@ func TestCredentialOnlyLockSitesAreEnumerated(t *testing.T) {
 		// 批次匯入同理：整批的新資產與其掛載都在本交易內才建立；
 		// 取鎖依憑證 id 遞增（與 lockCredentialRowsOrdered 同序）
 		"lockImportCredentials": "批次匯入的掛載列於本交易內才建立，無既有列可鎖",
+		// 堡壘機專用帳號的共用與轉換來源：呼叫端 Set 已在同一交易先取資產列鎖
+		"AssetExecutorService.setShared":  "呼叫端 Set 已先取資產列鎖",
+		"AssetExecutorService.setConvert": "呼叫端 Set 已先取資產列鎖",
 	}
 	got := map[string]bool{}
 	for _, path := range lockOrderSources(t) {

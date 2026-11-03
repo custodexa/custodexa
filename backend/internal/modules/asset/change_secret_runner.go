@@ -9,6 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/sshmaterial"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/custodexa/backend/internal/branding"
@@ -124,6 +125,9 @@ type changeSecretTarget struct {
 	credentialName string
 	// sharedCredential 該掛載引用的是共用憑證
 	sharedCredential bool
+	// executorPin 非 nil＝選路為代改：以該資產的堡壘機專用帳號登入、替本帳號改密。
+	// 選路在展開該資產的目標時一次決定，其後同一次執行不再改變，代改的失敗也不退回自改
+	executorPin *ExecutorPin
 }
 
 // rotationJob 一次執行的設定來源。
@@ -635,29 +639,31 @@ func (r *ChangeSecretRunner) resolveTargets(job rotationJob, assetID uint) ([]ch
 	}
 	// 改密通道決定「這台機器改不改得了密、怎麼改」。
 	//
-	// 兩種跳過刻意分碼：協定本身不在改密射程內（資料庫、VNC、K8s——沒有作業系統
-	// 帳號可換）回 PROTOCOL_UNSUPPORTED；協定改得了密但這台沒設定通道
-	//（rdp 資產預設如此）回 CHANNEL_NOT_CONFIGURED。前者無事可做，
-	// 後者是一個設定動作就能解決的狀態，混為一碼會讓管理員看不出差別。
+	// 兩種跳過刻意分碼：協定本身不在改密射程內（redis、VNC、K8s——沒有可換密碼的
+	// 帳號語句）回 PROTOCOL_UNSUPPORTED；協定改得了密但這台沒設定通道
+	//（rdp 資產與 mysql、postgres、mssql 資產預設如此）回 CHANNEL_NOT_CONFIGURED。
+	// 前者無事可做，後者是一個設定動作就能解決的狀態，混為一碼會讓管理員看不出差別。
 	channel := asset.EffectiveRotationChannel()
 	if channel == model.RotationChannelNone {
 		base.Status = model.ChangeSecretSkipped
-		if asset.Protocol == model.ProtocolSSH || asset.Protocol == model.ProtocolRDP {
+		if asset.Protocol == model.ProtocolSSH || asset.Protocol == model.ProtocolRDP ||
+			asset.Protocol.SupportsQueryConsole() {
 			base.Error = model.ChangeSecretReasonChannelNotConfigured
 		} else {
 			base.Error = model.ChangeSecretReasonProtocolUnsupported
 		}
 		return nil, &base
 	}
-	// Windows 通道沒有等價於 authorized_keys 的金鑰模型（其 ACL 與檔案位置另成一套），
-	// 本版不做。誠實跳過勝過以密碼路徑冒充成功
-	if model.IsWindowsRotationChannel(channel) && job.secretType == model.ChangeSecretTypeSSHKey {
+	// 只有 posix_ssh 會寫 authorized_keys：Windows 通道的金鑰模型（ACL 與檔案位置）另成一套、
+	// 本版不做，資料庫自改只有密碼。誠實跳過勝過以密碼路徑冒充成功
+	if !model.RotationChannelSupportsSSHKey(channel) && job.secretType == model.ChangeSecretTypeSSHKey {
 		base.Status = model.ChangeSecretSkipped
 		base.Error = model.ChangeSecretReasonSecretTypeUnsupported
 		return nil, &base
 	}
+	// 以帳號為目標的計劃只展開登入帳號：執行身分只經整組輪替或以其憑證為目標的計劃改密
 	var accounts []model.AssetAccount
-	if err := r.db.Where("asset_id = ?", assetID).
+	if err := r.db.Where("asset_id = ? AND purpose = ?", assetID, model.AccountPurposeLogin).
 		Order("is_default DESC, username ASC, id ASC").Find(&accounts).Error; err != nil {
 		base.Status = model.ChangeSecretFailed
 		base.Error = model.ChangeSecretReasonAccountLookupFailed
@@ -672,6 +678,16 @@ func (r *ChangeSecretRunner) resolveTargets(job rotationJob, assetID uint) ([]ch
 		base.Error = model.ChangeSecretReasonCredentialLoadFailed
 		return nil, &base
 	}
+	// 選路：有堡壘機專用帳號、通道為 posix_ssh、本次為密碼型的資產，以專用帳號代改；其餘自改。
+	// 在資產層一次決定，釘住該台專用帳號當下的掛載、憑證與就位版本
+	var pin *ExecutorPin
+	if channel == model.RotationChannelPosixSSH && job.secretType == model.ChangeSecretTypePassword {
+		if pin, err = readExecutorPin(r.db, assetID); err != nil {
+			base.Status = model.ChangeSecretFailed
+			base.Error = model.ChangeSecretReasonAccountLookupFailed
+			return nil, &base
+		}
+	}
 	var targets []changeSecretTarget
 	for _, acc := range accounts {
 		if !scope.Contains(acc.Username) {
@@ -682,6 +698,7 @@ func (r *ChangeSecretRunner) resolveTargets(job rotationJob, assetID uint) ([]ch
 			assetID: assetID, accountID: acc.ID, username: acc.Username, channel: channel,
 			credentialID: snap.CredentialID, credentialName: snap.Name,
 			sharedCredential: snap.Shared,
+			executorPin:      pin,
 		})
 	}
 	if len(targets) == 0 {
@@ -744,6 +761,14 @@ func (r *ChangeSecretRunner) runTargetSteps(job rotationJob, tgt changeSecretTar
 		AccountID: tgt.accountID, AccountUsername: tgt.username,
 		SecretType: job.secretType, ExecutedAt: time.Now(),
 		CredentialID: tgt.credentialID, CredentialName: tgt.credentialName,
+		ExecutionMethod: model.ChangeSecretExecutionSelf,
+	}
+	if tgt.executorPin != nil {
+		// 選路為代改的目標不論成敗都記下是哪個專用帳號；方式先填依設定預期的值，Rotate 之後改記實際採用的
+		rec.ExecutionMethod = expectedPinMethod(tgt.executorPin)
+		rec.ExecutorAccountID = tgt.executorPin.AccountID
+		rec.ExecutorUsername = tgt.executorPin.Username
+		rec.ExecutorCredentialID = tgt.executorPin.CredentialID
 	}
 	finish := func(status, errMsg string) model.ChangeSecretRecord {
 		rec.Status = status
@@ -822,6 +847,29 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 	if creds.Password.IsEmpty() {
 		return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonNoPasswordCredential)
 	}
+	var executorUnlock func()
+	// 代改：在候選落庫之前取專用帳號的秘密。錯誤一律在這裡結束，遠端零接觸、不留候選，
+	// 也不改走自改
+	var execCreds *ExecutorCredentials
+	if tgt.executorPin != nil {
+		unlock := lockRotationAccount(tgt.executorPin.AccountID)
+		release := sync.OnceFunc(unlock)
+		defer release()
+		var rerr error
+		execCreds, rerr = r.assetService.ResolveExecutorCredentials(context.Background(), tgt.assetID, *tgt.executorPin)
+		if rerr != nil {
+			switch {
+			case errors.Is(rerr, ErrExecutorChanged):
+				return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonExecutorChanged)
+			case errors.Is(rerr, ErrExecutorBusy):
+				return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonExecutorRotationPending)
+			default:
+				return finish(model.ChangeSecretFailed, model.ChangeSecretReasonExecutorUnavailable)
+			}
+		}
+		defer execCreds.Destroy()
+		executorUnlock = release
+	}
 	// 整批同一組模式已在批次開頭產生密碼；其餘每個目標各自隨機
 	newPassword := job.fixedPassword
 	if newPassword == "" {
@@ -851,9 +899,10 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCandidatePersistFailed)
 	}
 
-	if tgt.channel == model.RotationChannelWindowsWinRM {
-		// WinRM 沒有金鑰交換：在 Rotate 之前先寫下「自始為 WinRM」的綁定，寫不進去就不派送
-		if err := r.hostKeys.BindWinRM(HostKeyBindTarget{CandidateID: cand.ID}); err != nil {
+	if transport := model.HostKeyTransportForChannel(tgt.channel); model.HostKeyTransportIsKeyless(transport) {
+		// 無主機金鑰的傳輸（winrm、db）沒有金鑰交換：在 Rotate 之前先寫下「自始為該傳輸」的綁定，
+		// 寫不進去就不派送
+		if err := r.hostKeys.BindKeyless(HostKeyBindTarget{CandidateID: cand.ID}, transport); err != nil {
 			_ = r.candidates.Discard(cand.ID)
 			return finish(model.ChangeSecretFailed, model.ChangeSecretReasonHostKeyCheckFailed)
 		}
@@ -867,11 +916,23 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 	}
 	newBytes := []byte(newPassword)
 	defer material.Wipe(newBytes)
-	if err := withProtocolSecret(creds.Password, func(oldPassword []byte) error { return exec.Rotate(ctx, rt, oldPassword, newBytes) }); err != nil {
+	var rotateErr error
+	if execCreds != nil {
+		rotateErr = r.rotateDelegated(ctx, exec, rt, execCreds, newBytes, rec)
+		// 遠端改密一結束就放開專用帳號的互斥；驗證只用目標帳號
+		executorUnlock()
+	} else {
+		rotateErr = withProtocolSecret(creds.Password, func(oldPassword []byte) error { return exec.Rotate(ctx, rt, oldPassword, newBytes) })
+	}
+	var localErr *localPreconditionError
+	if !errors.As(rotateErr, &localErr) {
+		// 呼叫過 Rotate 且不是本地前置失敗＝已以秘密連過目標（含舊密碼登入被拒）
+		rec.TransportRisk = transportRiskIfContacted(rt.asset, true)
+	}
+	if err := rotateErr; err != nil {
 		logRemoteCause(tgt, "改密失敗", err)
 		// 本地前置驗證失敗＝完全未接觸遠端，遠端狀態並非不可知：清候選走乾淨失敗。
 		// 若誤歸為 unverified，候選會一直卡著並擋住該帳號後續全部改密
-		var localErr *localPreconditionError
 		if errors.As(err, &localErr) {
 			_ = r.candidates.Discard(cand.ID)
 			return finish(model.ChangeSecretFailed, localErr.reason)
@@ -928,6 +989,37 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 	rec.CredentialName = candidateCredentialName(job, tgt)
 	rec.TargetVersionID = committedVersionID(r.db, tgt.accountID, job.sharedVersionID)
 	return finish(model.ChangeSecretSuccess, "")
+}
+
+// rotateDelegated 以專用帳號登入並替目標改密；執行器不支援代改時乾淨失敗，不退回自改。
+// 實際採用的執行方式記回 rec。
+func (r *ChangeSecretRunner) rotateDelegated(ctx context.Context, exec rotationExecutor, rt rotationTarget,
+	execCreds *ExecutorCredentials, newBytes []byte, rec *model.ChangeSecretRecord) error {
+
+	dexec, ok := exec.(delegatedRotationExecutor)
+	if !ok {
+		return &localPreconditionError{reason: model.ChangeSecretReasonExecutorUnavailable}
+	}
+	return withProtocolPair(execCreds.Password, execCreds.PrivateKey, func(password, privateKey []byte) error {
+		method, err := dexec.RotateDelegated(ctx, rt,
+			rotationLogin{username: execCreds.Username, password: password, privateKey: privateKey}, newBytes)
+		if method != "" {
+			rec.ExecutionMethod = method
+		}
+		return err
+	})
+}
+
+// expectedPinMethod 依專用帳號的設定預期的代改方式（記錄在送出指令之前就結束時用）。
+func expectedPinMethod(pin *ExecutorPin) string {
+	switch {
+	case pin.Username == "root":
+		return model.ChangeSecretExecutionExecutorRoot
+	case pin.SecretType == model.ChangeSecretTypeSSHKey:
+		return model.ChangeSecretExecutionExecutorSudoNopasswd
+	default:
+		return model.ChangeSecretExecutionExecutorSudoPassword
+	}
 }
 
 // rotateKey SSH 金鑰輪替：加新 → 驗新 → 刪舊。

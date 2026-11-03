@@ -249,6 +249,12 @@
         data-test="poll-exhausted"
         :title="$t('changeSecretBatches.pollExhausted')"
       />
+      <p
+        class="muted"
+        data-test="method-legend"
+      >
+        {{ $t('changeSecretPlans.methodLegend') }}
+      </p>
       <el-table
         :data="activeRecords"
         stripe
@@ -259,7 +265,8 @@
           min-width="200"
         >
           <template #default="{ row }">
-            {{ assetName(row.asset_id) }} / {{ row.account_username }}
+            <div>{{ assetName(row.asset_id) }} / {{ row.account_username }}</div>
+            <ExecutionMethodNote :row="row" />
           </template>
         </el-table-column>
         <el-table-column
@@ -275,13 +282,16 @@
           width="140"
         >
           <template #default="{ row }">
-            <el-tag
-              effect="plain"
-              :type="recordTagType(row.status)"
-              :data-test="`record-status-${row.id}`"
-            >
-              {{ recordStatusText(row.status) }}
-            </el-tag>
+            <div class="record-status">
+              <el-tag
+                effect="plain"
+                :type="recordTagType(row.status)"
+                :data-test="`record-status-${row.id}`"
+              >
+                {{ recordStatusText(row.status) }}
+              </el-tag>
+              <TransportRiskMark :risk="row.transport_risk || ''" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column
@@ -289,7 +299,7 @@
           min-width="220"
         >
           <template #default="{ row }">
-            {{ reasonText(row.error) }}
+            {{ reasonText(row.error, row) }}
           </template>
         </el-table-column>
         <el-table-column
@@ -506,6 +516,8 @@ import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import CredentialOwnershipSelect from '@/components/credential/CredentialOwnershipSelect.vue'
+import TransportRiskMark from '@/components/rotation/TransportRiskMark.vue'
+import ExecutionMethodNote from '@/components/rotation/ExecutionMethodNote.vue'
 import { formatDateTime } from '@/utils/format'
 import { t, te } from '@/i18n'
 import { ROTATION_BUCKETS, BUCKET_TAG_TYPE } from '@/constants/rotationEvidence'
@@ -642,10 +654,16 @@ const channelText = (channel) =>
 
 // 不可改密原因與改密結果原因走同一組機器碼對照表，不另立第二份譯文；
 // 查無對應鍵原樣顯示，不吞成空白
-const reasonText = (code) => {
+// 代改的原因文案帶專用帳號名（紀錄的快照）；其餘文案忽略該參數
+const reasonText = (code, row) => {
   if (!code) return ''
+  // 專用帳號在檢視者範圍外時後端不給帳號名，改用不帶名稱的文案
+  if (row?.executor_out_of_scope === true) {
+    const scoped = `changeSecretPlans.reasonScoped.${code}`
+    if (te(scoped)) return t(scoped)
+  }
   const key = `changeSecretPlans.reason.${code}`
-  return te(key) ? t(key) : code
+  return te(key) ? t(key, { executor: row?.executor_username || '' }) : code
 }
 
 const recordStatusText = (status) =>
@@ -878,6 +896,13 @@ onUnmounted(stopPolling)
 </script>
 
 <style scoped>
+.record-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .unavailable-banner {
   margin-bottom: var(--ot-space-md);
 }

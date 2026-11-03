@@ -97,6 +97,12 @@ describe('枚舉三語完備性（值域 × locale）', () => {
     expectKeyInAllLocales('transportNote.winrm_rotation_channel')
   })
 
+  it('transmissionChannel：清冊的 db_rotation 通道、說明碼與風險鍵三語皆有非空 key', () => {
+    expectKeyInAllLocales('enum.transmissionChannel.db_rotation')
+    expectKeyInAllLocales('riskLabel.db_rotation_unencrypted')
+    expectKeyInAllLocales('transportNote.db_rotation_channel')
+  })
+
   it('role：seeded 四角色三語皆有 label 與 description（roles 為開放集僅鎖 seeded）', () => {
     for (const role of ['admin', 'auditor', 'approver', 'user']) {
       expectKeyInAllLocales(`enum.role.${role}.label`)

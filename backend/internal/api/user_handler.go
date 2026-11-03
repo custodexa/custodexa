@@ -60,6 +60,11 @@ type guardedPin interface {
 	PinMappedRoleBy(op identity.Operator, userID uint, roleName string) (*identity.RoleSets, error)
 }
 
+// 單筆讀取的「只有審核者角色」標示（服務實作了才填；生產組裝的服務都有）。
+type approverOnlyMarker interface {
+	MarkApproverOnly(user *model.User) error
+}
+
 // 帳號身分操作（設定密碼、綁定、解綁）的帶操作者入口：服務實作了就一律走帳號身分操作關卡。
 type guardedAccountOps interface {
 	ChangePasswordBy(op identity.Operator, userID uint, newPassword string) error
@@ -296,6 +301,12 @@ func (h *UserHandler) Get(c *gin.Context) {
 		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserQuery, err)
 		return
+	}
+	if m, ok := h.userService.(approverOnlyMarker); ok {
+		if err := m.MarkApproverOnly(user); err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserQuery, err)
+			return
+		}
 	}
 
 	// role_sets 與 data.roles 並存：後者是有效角色集（既有用戶端沿用），

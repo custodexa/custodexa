@@ -144,6 +144,34 @@ func TestParseRoute_ApproverScopeNotApprove(t *testing.T) {
 	}
 }
 
+// TestParseRoute_LoginOnlyForAuthLogin 路徑含 "/login" 子字串不等於登入：資產的測試登入
+// （/assets/:id/executor/login-check）是對資產的讀取或建立，資源歸 asset，不得記成登入動作與 auth 資源。
+// 對照組 /auth/login 仍須記為登入，證明規則本身沒有被拿掉。
+func TestParseRoute_LoginOnlyForAuthLogin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		method, route, reqURL string
+		wantAction            model.AuditAction
+		wantResource          model.AuditResource
+	}{
+		{"POST", "/api/v1/auth/login", "/api/v1/auth/login", model.ActionLogin, model.ResourceAuth},
+		{"POST", "/api/v1/assets/:id/executor/login-check", "/api/v1/assets/4/executor/login-check", model.ActionCreate, model.ResourceAsset},
+		{"GET", "/api/v1/assets/:id/executor/login-check", "/api/v1/assets/4/executor/login-check", model.ActionRead, model.ResourceAsset},
+	}
+	for _, tc := range cases {
+		var action model.AuditAction
+		var resource model.AuditResource
+		r := gin.New()
+		r.Handle(tc.method, tc.route, func(c *gin.Context) {
+			action, resource, _ = parseRoute(c)
+		})
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(tc.method, tc.reqURL, nil))
+		if action != tc.wantAction || resource != tc.wantResource {
+			t.Errorf("%s %s: action/resource = %s/%s, want %s/%s", tc.method, tc.route, action, resource, tc.wantAction, tc.wantResource)
+		}
+	}
+}
+
 // TestBatch2FamiliesNoForgedAssetID A 類接線的**假 asset_id 迴歸**。
 //
 // **釘子打在哪**：斷言打在 `audit_logs` 實列而非 `extractResource` 的回傳值，

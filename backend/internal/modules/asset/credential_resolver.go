@@ -461,7 +461,17 @@ func createDedicatedCredential(tx *gorm.DB, username, secretType, authMethod, pr
 //
 // 版本序號在同一交易內以 MAX+1 取得；並行寫入由呼叫端的憑證列鎖序列化，
 // 真的撞上時 (credential_id, version_no) 的唯一索引是最後一道網。
-func appendCredentialVersion(tx *gorm.DB, credentialID uint, secretType, passwordEnc, privateKeyEnc, reason string) (*model.CredentialSecretVersion, error) {
+// credentialVersionOption 建立版本列時一併寫入的附帶欄位。版本列建立後不得再改，
+// 凡要與密文同列記錄的值（如公鑰）都必須經此在 Create 前填好。
+type credentialVersionOption func(*model.CredentialSecretVersion)
+
+// withVersionPublicKey 版本列一併記錄公鑰（authorized_keys 行；公鑰非機密）。
+func withVersionPublicKey(publicKey string) credentialVersionOption {
+	return func(v *model.CredentialSecretVersion) { v.PublicKey = publicKey }
+}
+
+func appendCredentialVersion(tx *gorm.DB, credentialID uint, secretType, passwordEnc, privateKeyEnc, reason string,
+	opts ...credentialVersionOption) (*model.CredentialSecretVersion, error) {
 	if credentialID == 0 {
 		return nil, ErrCredentialNotFound
 	}
@@ -478,6 +488,9 @@ func appendCredentialVersion(tx *gorm.DB, credentialID uint, secretType, passwor
 		PasswordEnc:   passwordEnc,
 		PrivateKeyEnc: privateKeyEnc,
 		CreatedReason: reason,
+	}
+	for _, opt := range opts {
+		opt(version)
 	}
 	if err := tx.Create(version).Error; err != nil {
 		return nil, fmt.Errorf("建立憑證密文版本失敗: %w", err)
@@ -623,7 +636,7 @@ func bindingCiphertext(db *gorm.DB, account *model.AssetAccount) (string, string
 // 遠端有效——是否有效由第一次連線或改密揭露，只是把「未經驗證」從「連不上」
 // 降級為「連得上或連不上，兩者都看得見」。
 func bindNewDedicatedCredential(tx *gorm.DB, account *model.AssetAccount, asset *model.Asset,
-	authMethod, passwordEnc, privateKeyEnc, reason string) error {
+	authMethod, passwordEnc, privateKeyEnc, reason string, opts ...credentialVersionOption) error {
 
 	if account == nil {
 		return fmt.Errorf("建立專用憑證失敗: 掛載列為空")
@@ -644,7 +657,7 @@ func bindNewDedicatedCredential(tx *gorm.DB, account *model.AssetAccount, asset 
 		// 就位版本留空即「尚未取得任何密文」——取密路徑會據此大聲失敗
 		return nil
 	}
-	version, err := appendCredentialVersion(tx, cred.ID, secretType, passwordEnc, privateKeyEnc, reason)
+	version, err := appendCredentialVersion(tx, cred.ID, secretType, passwordEnc, privateKeyEnc, reason, opts...)
 	if err != nil {
 		return err
 	}

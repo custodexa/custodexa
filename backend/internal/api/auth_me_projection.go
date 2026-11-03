@@ -70,6 +70,7 @@ func (h *AuthHandler) currentUserNodePaths(p *authz.Principal) (map[uint][]strin
 func buildCurrentUserResponse(info *identity.UserInfo, p *authz.Principal, paths map[uint][]string) *currentUserResponse {
 	proj := authz.ProjectCapabilitiesWithNodePaths(p, authz.ProjectionInputs{
 		IsApprover:         info.IsApprover,
+		IsHistoryAuditor:   info.IsHistoryAuditor,
 		OwnsAgents:         info.OwnsAgents,
 		CanSelfCreateAgent: info.CanSelfCreateAgent,
 	}, paths)

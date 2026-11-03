@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { t } from '@/i18n'
 import ElementPlus from 'element-plus'
 import Approvals from '../Approvals.vue'
+import { setCapabilitiesForTests, resetCapabilities } from '@/composables/useCapabilities'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
@@ -247,5 +248,69 @@ describe('Approvals 審核中心', () => {
 
     expect(reviewMock).toHaveBeenCalledWith(40, 'violation', '未依規範')
     expect(wrapper.vm.reviewVisible).toBe(false)
+  })
+})
+
+describe('Approvals 審核歷史唯讀（只持審核歷史呈現點）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPendingMock.mockResolvedValue(samplePending)
+    getHistoryMock.mockResolvedValue(sampleHistory)
+    getTicketsMock.mockResolvedValue({ data: [], total: 0 })
+    getReviewsMock.mockResolvedValue({ data: [], total: 0 })
+    getCountMock.mockResolvedValue({ count: 1, review_count: 0 })
+  })
+  afterEach(() => {
+    resetCapabilities()
+    window.history.replaceState({}, '', '/')
+  })
+
+  const tabNames = (wrapper) => wrapper.findAll('.el-tabs__item').map((n) => n.text())
+
+  it('只有歷史分頁、唯讀說明，不讀待審、清冊、待補審與待審數；重新整理只重讀歷史', async () => {
+    setCapabilitiesForTests(['ui:approval-history'])
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(tabNames(wrapper)).toEqual([t('approvals.tabHistory')])
+    expect(wrapper.text()).toContain(t('approvals.historyOnlyNote'))
+    expect(wrapper.find('[data-test="page-header-tag"]').text()).toBe(t('approvals.readOnlyTag'))
+    expect(wrapper.text()).not.toContain(t('approvals.forbiddenTitle'))
+    expect(wrapper.text()).toContain('bob')
+
+    await wrapper.find('.page-actions button').trigger('click')
+    await flushPromises()
+    expect(getHistoryMock).toHaveBeenCalledTimes(2)
+    expect(getPendingMock).toHaveBeenCalledTimes(0)
+    expect(getTicketsMock).toHaveBeenCalledTimes(0)
+    expect(getReviewsMock).toHaveBeenCalledTimes(0)
+    expect(getCountMock).toHaveBeenCalledTimes(0)
+  })
+
+  it('深連結 ?request= 照常定位該筆並展開', async () => {
+    setCapabilitiesForTests(['ui:approval-history'])
+    window.history.replaceState({}, '', '/approvals?request=20')
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.highlightId).toBe(20)
+    expect(wrapper.find('[data-test="history-highlight-missing"]').exists()).toBe(false)
+    expect(wrapper.find('.el-table__expanded-cell').exists()).toBe(true)
+    expect(getPendingMock).toHaveBeenCalledTimes(0)
+  })
+
+  it('同時持審核資格與審核歷史：分頁與只持審核資格時相同', async () => {
+    setCapabilitiesForTests(['ui:approvals'])
+    const approver = mountView()
+    await flushPromises()
+    const approverTabs = tabNames(approver)
+    approver.unmount()
+
+    setCapabilitiesForTests(['ui:approvals', 'ui:approval-history'])
+    const both = mountView()
+    await flushPromises()
+    expect(tabNames(both)).toEqual(approverTabs)
+    expect(approverTabs.length).toBeGreaterThan(1)
+    expect(both.text()).not.toContain(t('approvals.historyOnlyNote'))
+    expect(getPendingMock).toHaveBeenCalled()
   })
 })

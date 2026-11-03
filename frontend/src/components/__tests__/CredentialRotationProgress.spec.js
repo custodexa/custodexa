@@ -144,6 +144,17 @@ describe('進行中的逐台狀態', () => {
     expect(wrapper.find('[data-test="member-reason-34"]').exists()).toBe(true)
   })
 
+  it('代改原因碼：有專用帳號名時帶入名稱，沒有時用不帶名稱的文案，名稱處不留白', async () => {
+    const failed = (id, over) => memberFixture({ id, account_id: id, state: 'terminal_failed', last_error: 'CHANGE_SECRET_EXECUTOR_LOGIN_FAILED', ...over })
+    getMock.mockResolvedValue({ data: rotationFixture({ members: [failed(61, {}), failed(62, { executor_username: 'cx-exec' })] }) })
+    const w = await mountProgress()
+
+    const nameless = w.find('[data-test="member-reason-61"]').text()
+    expect(nameless).toContain('堡壘機專用帳號無法登入目標主機')
+    expect(nameless).not.toMatch(/專用帳號\s{2,}/)
+    expect(w.find('[data-test="member-reason-62"]').text()).toContain('堡壘機專用帳號 cx-exec 無法登入目標主機')
+  })
+
   it('只給兩個版本號：目標與現行，不列版本清單', async () => {
     const wrapper = await mountProgress()
 

@@ -54,6 +54,10 @@ const (
 	// 未設定、逾期無從判定——那本身就是稽核要看見的發現，不該以擋住報告代替。
 	PolicyAssetSecretMaxAgeDays = "asset_secret_max_age_days"
 
+	// PolicyHostPrivilegedGroupsPOSIX 主機帳號盤點判定特權用的 POSIX 群組清單（逗號分隔）。
+	// 盤點開始時讀一次並把清單快照存入盤點紀錄；空值＝不以群組判定特權。
+	PolicyHostPrivilegedGroupsPOSIX = "host_privileged_groups_posix"
+
 	// 日誌保留與審閱政策鍵（PCI Req 10）
 	PolicyRetentionAuditLogDays       = "retention_audit_log_days"
 	PolicyRetentionSessionCommandDays = "retention_session_command_days"
@@ -336,6 +340,9 @@ type PolicyDef struct {
 	// Multiline text 型是否允許換行。false 時值內含 LF 即拒絕。
 	// 非 text 型必為 false（validatePolicyDefs 釘住）
 	Multiline bool `json:"multiline,omitempty"`
+	// ListFormat text 型的清單格式（值域：空、PolicyListPOSIXGroups）。設值時在文字正規化之後
+	// 再做清單正規化與逐項驗證。非 text 型必為空（validatePolicyDefs 釘住）
+	ListFormat string `json:"list_format,omitempty"`
 	// EnumOrder 枚舉序（弱→強）；「至少」型要求以序位比較
 	EnumOrder []string `json:"enum_order,omitempty"`
 	// Label/Unit 供前端渲染；Unit 為 zh fallback，前端優先以 UnitKey 查譯
@@ -859,6 +866,11 @@ var policyDefs = []PolicyDef{
 		Key: PolicyLoginBannerBody, Type: PolicyTypeText, Default: "",
 		MaxLength: 2000, Multiline: true, Label: "登入告示內文",
 	},
+	// 主機帳號盤點的特權群組清單：被納管主機的設定，與平台使用者的密碼政策分開
+	{
+		Key: PolicyHostPrivilegedGroupsPOSIX, Type: PolicyTypeText, Default: "root,sudo,wheel,admin",
+		MaxLength: 8192, ListFormat: PolicyListPOSIXGroups, Label: "主機特權群組（POSIX）",
+	},
 }
 
 // unitKeyByZh 政策單位的 zh→語義鍵 canonical 映射（unit 閉集）。
@@ -972,7 +984,16 @@ func validateDefList(defs []PolicyDef) error {
 			if def.MaxLength <= 0 {
 				return fmt.Errorf("%s Type=text 須設正的 MaxLength（否則長度上限形同不存在）", def.Key)
 			}
+			if def.ListFormat != "" && def.ListFormat != PolicyListPOSIXGroups {
+				return fmt.Errorf("%s ListFormat=%q 不在值域", def.Key, def.ListFormat)
+			}
+			if def.ListFormat != "" && def.Multiline {
+				return fmt.Errorf("%s ListFormat 須為單行", def.Key)
+			}
 		} else {
+			if def.ListFormat != "" {
+				return fmt.Errorf("%s Type=%s 不得設 ListFormat（僅 text 型有清單格式）", def.Key, def.Type)
+			}
 			if def.MaxLength != 0 {
 				return fmt.Errorf("%s Type=%s 不得設 MaxLength（僅 text 型有字元上限）", def.Key, def.Type)
 			}
@@ -1526,6 +1547,9 @@ func normalizeTextPolicyValue(def *PolicyDef, value string) (string, error) {
 			Key:    def.Key,
 			Reason: fmt.Sprintf("字元數 %d 超過上限 %d", n, def.MaxLength),
 		}
+	}
+	if def.ListFormat == PolicyListPOSIXGroups {
+		return normalizePOSIXGroupList(def, v)
 	}
 	// 正規化後為空＝未設定，是合法值
 	return v, nil

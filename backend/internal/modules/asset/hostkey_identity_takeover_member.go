@@ -132,6 +132,7 @@ func (s *CredentialRotationService) verifyConfirmedMember(ctx context.Context,
 	run := memberRun{
 		credentialName: credentialNameSnapshot(s.db, m.CredentialID),
 		secretType:     credentialSecretType(s.db, m.CredentialID),
+		contact:        &memberContact{},
 	}
 	mc, reason := s.prepareMember(ctx, rot, m)
 	if reason != "" {
@@ -170,6 +171,7 @@ func (s *CredentialRotationService) verifyConfirmedMember(ctx context.Context,
 	if mc.secretType == model.ChangeSecretTypeSSHKey {
 		newSecret = mc.newPrivateKey
 	}
+	run.markContacted(mc.target.asset)
 	if err := withProtocolSecret(newSecret, func(next []byte) error { return mc.exec.Verify(ctx, mc.target, next) }); err != nil {
 		if errors.Is(err, ErrHostIdentityChanged) {
 			return moved()

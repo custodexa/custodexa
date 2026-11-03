@@ -9,11 +9,13 @@ import {
   getAccessToken,
   hasSessionHint,
   installCrossTabSync,
+  isRefreshAuthRejection,
   refreshAccessToken,
   resetSessionForTests,
   setAccessToken,
 } from '../session'
 import {
+  consumeReloginContext,
   hasRefreshSucceeded,
   resetReloginContext,
 } from '../reloginContext'
@@ -624,5 +626,103 @@ describe('TestEnsureSessionFailureBranches', () => {
     await expect(ensureSession()).resolves.toBe(true)
     expect(getAccessToken()).toBe('restored')
     expect(post).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('會話模組：換發失敗的兩類判定', () => {
+  const INFLIGHT_KEY = 'ot-refresh-inflight'
+
+  // 換發走 keepalive adapter：以 fetch 替身回指定狀態，本文非 JSON 時 json() 擲錯
+  const stubRefreshFetch = (status, body) => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: '',
+      json: async () => {
+        if (typeof body === 'string') throw new SyntaxError('Unexpected token <')
+        return body
+      },
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    return fetchSpy
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    resetReloginContext()
+    vi.restoreAllMocks()
+    window.location.href = 'http://localhost:3000/dashboard'
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it.each([
+    [399, false],
+    [400, true],
+    [401, true],
+    [403, true],
+    [408, false],
+    [429, false],
+    [499, true],
+    [500, false],
+    [502, false],
+    [504, false],
+  ])('isRefreshAuthRejection：狀態 %i 判為認證結論＝%s', (status, expected) => {
+    expect(isRefreshAuthRejection({ response: { status } })).toBe(expected)
+  })
+
+  it('isRefreshAuthRejection：沒有回應或狀態不是數字都不是認證結論', () => {
+    expect(isRefreshAuthRejection(new TypeError('Failed to fetch'))).toBe(false)
+    expect(isRefreshAuthRejection(undefined)).toBe(false)
+    expect(isRefreshAuthRejection({ response: {} })).toBe(false)
+    expect(isRefreshAuthRejection({ response: { status: '401' } })).toBe(false)
+  })
+
+  it.each([
+    ['500 JSON', 500, { code: 'INTERNAL_REFRESH' }],
+    ['502 HTML 錯誤頁', 502, '<html>502 Bad Gateway</html>'],
+    ['503', 503, { error: 'unavailable' }],
+    ['504 HTML 錯誤頁', 504, '<html>504 Gateway Time-out</html>'],
+    ['429', 429, { error: 'too many requests' }],
+  ])('恢復換發取得 %s：回報未登入但保留登入跡象、不記非安全傳輸成因', async (_name, status, body) => {
+    localStorage.setItem('user', '{"username":"admin"}')
+    const fetchSpy = stubRefreshFetch(status, body)
+
+    await expect(ensureSession()).resolves.toBe(false)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('user')).not.toBeNull()
+    expect(consumeReloginContext()).toBe('')
+  })
+
+  it('恢復換發取得 403：照舊清除登入跡象', async () => {
+    localStorage.setItem('user', '{"username":"admin"}')
+    stubRefreshFetch(403, { code: 'AUTH_ORIGIN_FORBIDDEN' })
+
+    await expect(ensureSession()).resolves.toBe(false)
+    expect(localStorage.getItem('user')).toBeNull()
+  })
+
+  it('在途標記寫入後系統時鐘被調早一小時：至多 10 秒即送出換發', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem(
+      INFLIGHT_KEY,
+      JSON.stringify({ at: Date.now(), id: 'unloaded-tab' })
+    )
+    vi.setSystemTime(Date.now() - 3600_000)
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ data: { token: 'fresh-jwt' } })
+
+    const mine = refreshAccessToken('stale')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(postSpy).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(10500)
+    expect(postSpy).toHaveBeenCalledTimes(1)
+    await expect(mine).resolves.toBe('fresh-jwt')
   })
 })

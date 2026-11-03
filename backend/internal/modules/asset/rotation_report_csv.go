@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/csvsafe"
+	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/notifycat"
 )
 
@@ -40,6 +41,7 @@ var accountColumnKeys = []string{
 var recordColumnKeys = []string{
 	"col_record_id", "col_executed_at", "col_source", "col_asset", "col_account",
 	"col_account_deleted", "col_secret_type", "col_result", "col_reason_code",
+	"col_transport_risk",
 }
 
 // csvAsOfPrefix CSV 首行註解列的前綴；其後接 RFC3339 的截止時點（含時區位移）。
@@ -144,6 +146,20 @@ func recordValues(rec *RecordRow, ph phraseFn, tf timeFmt) []string {
 		rec.SecretType,
 		statusLabel(rec.Status, ph),
 		rec.ReasonCode,
+		transportRiskPhrase(rec.TransportRisk, ph),
+	}
+}
+
+// transportRiskPhrase 記錄的傳輸風險短語：空值留白；認得的值依報告語言；
+// 不認得的非空值原樣輸出——不留白，否則讀者會把它讀成「沒有風險」。
+func transportRiskPhrase(risk string, ph phraseFn) string {
+	switch risk {
+	case "":
+		return ""
+	case model.RiskDBRotationUnencrypted:
+		return ph("transport_risk_" + risk)
+	default:
+		return risk
 	}
 }
 

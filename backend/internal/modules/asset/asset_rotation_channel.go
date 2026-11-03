@@ -12,7 +12,7 @@ var (
 	// ErrInvalidRotationChannel 通道值不在值域內，或與資產協定不相容。
 	// 值域外的通道會讓執行期選路落到「未接線」分支，而管理員在畫面上看到的是
 	// 一個設好了的通道——症狀是每次執行都失敗卻查不出設定哪裡不對
-	ErrInvalidRotationChannel = errors.New("rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh 或 none；posix_ssh 限 ssh 協定，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協定")
+	ErrInvalidRotationChannel = errors.New("rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh、db_native 或 none；posix_ssh 限 ssh 協定，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協定，db_native 限 mysql、postgres 或 mssql 協定")
 	// ErrInvalidRotationChannelParams 通道附屬欄位不合（連線方式、TLS 模式、CA 憑證、埠）。
 	// 五種違規共用一碼：它們都是「這組通道設定不完整或不合格式」，
 	// 逐項分碼會讓前端多五個鍵而使用者拿到的指引沒有更精確

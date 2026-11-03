@@ -18,10 +18,20 @@ vi.mock('@/api/auth', () => ({
 const guard = createAuthGuard()
 const holds = (...perms) => (needed) => needed.every((p) => perms.includes(p))
 
+describe('主機帳號盤點入口', () => {
+  it('持盤點權限點或全域資產視角者可進，其他人不可', () => {
+    const rule = ENTRY_RULES['/account-inventory']
+    expect(canEnter(rule, holds('account:discover'))).toBe(true)
+    expect(canEnter(rule, holds('ui:assets-global'))).toBe(true)
+    expect(canEnter(rule, holds('asset:view'))).toBe(false)
+    expect(canEnter(rule, holds())).toBe(false)
+  })
+})
+
 describe('入口規則表', () => {
-  it('共 35 個入口，不保留 roles 形狀，每條不是 signedIn 就是非空的 permissionsAll', () => {
+  it('共 36 個入口，不保留 roles 形狀，每條不是 signedIn 就是非空的 permissionsAll', () => {
     const entries = Object.entries(ENTRY_RULES)
-    expect(entries).toHaveLength(35)
+    expect(entries).toHaveLength(36)
     for (const [path, rule] of entries) {
       expect(rule.roles, path).toBeUndefined()
       const signedIn = rule.signedIn === true

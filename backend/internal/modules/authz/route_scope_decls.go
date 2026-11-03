@@ -67,6 +67,7 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 	const assetWrites = "資產寫入服務（交易內判定）"
 	const assetTarget = "資產（登錄閘以路徑資產判定）"
 	const accountWrites = "資產帳號寫入服務（交易內判定，隨所屬資產）"
+	const executorService = "堡壘機專用帳號服務（隨所屬資產判定；讀取不在交易內，寫入在交易內）"
 	const assetList = "資產列表（管理可視與連線可視的聯集投影）"
 	const tagDictionary = "標籤字典（以資產列表同一可視聯集彙整）"
 	const assetRead = "逐資產讀取守門（連線可視或管理可視）"
@@ -126,7 +127,18 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 		{Method: "PUT", Path: "/api/v1/assets/:id/accounts/:accountId", Source: ReqSourcePerm, Perm: PermAssetUpdate, Kind: ScopeDeclServiceTx, Owner: accountWrites},
 		{Method: "DELETE", Path: "/api/v1/assets/:id/accounts/:accountId", Source: ReqSourcePerm, Perm: PermAssetUpdate, Kind: ScopeDeclServiceTx, Owner: accountWrites},
 		{Method: "POST", Path: "/api/v1/assets/:id/accounts/:accountId/set-default", Source: ReqSourcePerm, Perm: PermAssetUpdate, Kind: ScopeDeclServiceTx, Owner: accountWrites},
+		{Method: "GET", Path: "/api/v1/assets/:id/executor", Source: ReqSourcePerm, Perm: PermAssetExecutorManage, Kind: ScopeDeclServiceRead, Owner: executorService},
+		{Method: "PUT", Path: "/api/v1/assets/:id/executor", Source: ReqSourcePerm, Perm: PermAssetExecutorManage, Kind: ScopeDeclServiceTx, Owner: executorService},
+		{Method: "DELETE", Path: "/api/v1/assets/:id/executor", Source: ReqSourcePerm, Perm: PermAssetExecutorManage, Kind: ScopeDeclServiceTx, Owner: executorService},
+		{Method: "GET", Path: "/api/v1/assets/:id/executor/public-key", Source: ReqSourcePerm, Perm: PermAssetExecutorManage, Kind: ScopeDeclServiceRead, Owner: executorService},
+		{Method: "GET", Path: "/api/v1/assets/:id/executor/login-check", Source: ReqSourcePerm, Perm: PermAssetExecutorManage, Kind: ScopeDeclTarget, Target: ScopeTargetAsset, Owner: assetTarget},
+		{Method: "POST", Path: "/api/v1/assets/:id/executor/login-check", Source: ReqSourcePerm, Perm: PermAssetExecutorManage, Kind: ScopeDeclTarget, Target: ScopeTargetAsset, Owner: assetTarget},
 		{Method: "POST", Path: "/api/v1/assets/:id/test-connection", Source: ReqSourcePerm, Perm: PermAssetTest, Kind: ScopeDeclTarget, Target: ScopeTargetAsset, Owner: assetTarget},
+		{Method: "GET", Path: "/api/v1/assets/:id/account-inventory", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclRouteGuard, Owner: assetRead},
+		{Method: "POST", Path: "/api/v1/assets/:id/account-inventory/scans", Source: ReqSourcePerm, Perm: PermAccountDiscover, Kind: ScopeDeclTarget, Target: ScopeTargetAsset, Owner: assetTarget},
+		{Method: "POST", Path: "/api/v1/assets/:id/account-inventory/findings/:findingId/ignore", Source: ReqSourcePerm, Perm: PermAccountDiscover, Kind: ScopeDeclTarget, Target: ScopeTargetAsset, Owner: assetTarget},
+		{Method: "POST", Path: "/api/v1/assets/:id/account-inventory/findings/:findingId/reopen", Source: ReqSourcePerm, Perm: PermAccountDiscover, Kind: ScopeDeclTarget, Target: ScopeTargetAsset, Owner: assetTarget},
+		{Method: "GET", Path: "/api/v1/account-inventory/findings", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclListProjection, Owner: assetList},
 		{Method: "POST", Path: "/api/v1/asset-groups", Source: ReqSourcePerm, Perm: PermAssetGroupManage, Kind: ScopeDeclServiceTx, Owner: nodeWrites},
 		{Method: "PUT", Path: "/api/v1/asset-groups/:id", Source: ReqSourcePerm, Perm: PermAssetGroupManage, Kind: ScopeDeclServiceTx, Owner: nodeWrites},
 		{Method: "PUT", Path: "/api/v1/asset-groups/:id/move", Source: ReqSourcePerm, Perm: PermAssetGroupManage, Kind: ScopeDeclServiceTx, Owner: nodeWrites},

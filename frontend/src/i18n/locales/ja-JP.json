@@ -134,7 +134,8 @@
     "complianceMap": "コンプライアンス対照",
     "policyGroups": "ポリシーグループ",
     "myAgents": "自分のエージェント",
-    "agentPrincipals": "AI agent 主体"
+    "agentPrincipals": "AI agent 主体",
+    "hostAccountInventory": "ホストアカウント棚卸し"
   },
   "login": {
     "bannerRegionLabel": "ログイン告知",
@@ -219,7 +220,8 @@
     "requestFailed": "リクエストに失敗しました",
     "requestFailedStatus": "リクエストに失敗しました ({status})",
     "sessionExpired": "ログインの有効期限が切れました。再度ログインしてください",
-    "networkError": "ネットワーク接続に失敗しました。ネットワークをご確認ください"
+    "networkError": "ネットワーク接続に失敗しました。ネットワークをご確認ください",
+    "refreshUnavailable": "サーバーが一時的にログイン状態を更新できませんでした。ログインは維持されています。しばらくしてから再度お試しください。"
   },
   "connect": {
     "risksIntro": "この接続の通信チャネルには次のリスクがあります：",
@@ -318,6 +320,12 @@
       "suspend": "停止済み",
       "new_source_ip": "新しい送信元からのログイン",
       "host_key_mismatch": "ホスト鍵の不一致",
+      "inventory_scan": "ホストアカウント棚卸の開始",
+      "inventory_scan_done": "ホストアカウント棚卸の終了",
+      "executor_login_check": "踏み台専用アカウントのテストログイン",
+      "executor_login_check_done": "踏み台専用アカウントのテストログイン終了",
+      "inventory_ignore": "ホストアカウント棚卸結果の無視",
+      "inventory_reopen": "ホストアカウント棚卸結果の再オープン",
       "host_key_adopt": "ホスト鍵フィンガープリントの採用",
       "host_key_cred_sent": "ホスト鍵不一致後に認証情報を送信",
       "retention_floor_raised": "保持期間の下限引き上げ",
@@ -491,7 +499,8 @@
       "syslog": "syslog",
       "notify": "通知",
       "nginx": "nginx / HTTPS",
-      "winrm": "WinRM パスワード変更"
+      "winrm": "WinRM パスワード変更",
+      "db_rotation": "データベース パスワード変更"
     },
     "scopeType": {
       "asset": "資産",
@@ -577,7 +586,8 @@
       "posix_ssh": "POSIX SSH",
       "windows_winrm": "WinRM",
       "windows_ssh": "SSH → PowerShell",
-      "none": "未設定"
+      "none": "未設定",
+      "db_native": "データベースアカウント自身による変更"
     },
     "winrmScheme": {
       "http": "HTTP",
@@ -674,6 +684,10 @@
       "asset_secret": {
         "title": "資産アカウント認証情報",
         "hint": "管理対象ホスト上のアカウント認証情報を変更する間隔。プラットフォーム利用者のログインパスワードには影響しません"
+      },
+      "host_inventory": {
+        "title": "ホストアカウント棚卸し",
+        "hint": "管理対象ホストのアカウントを棚卸しする際、どのグループのメンバーを特権アカウントとみなすか。プラットフォームユーザーの権限には影響しません。"
       },
       "mfa": {
         "title": "MFA",
@@ -1062,6 +1076,10 @@
       "asset_account_create": "資産アカウント {account} を追加",
       "asset_account_delete": "資産アカウント {account} を削除",
       "asset_account_discard_candidate": "資産アカウント {account} の未検証の候補資格情報を破棄",
+      "asset_account_executor_clear": "踏み台専用アカウント {account} を解除",
+      "asset_account_executor_public_key_export": "踏み台専用アカウント {account} の公開鍵を取得",
+      "asset_account_executor_replace": "踏み台専用アカウントを {account} に変更",
+      "asset_account_executor_set": "踏み台専用アカウント {account} を設定",
       "asset_account_set_default": "資産アカウント {account} を既定に設定",
       "asset_account_update": "資産アカウント {account} を変更",
       "asset_deleted": "資産を削除（データ層の記録）",
@@ -1621,7 +1639,22 @@
     "applyLinkConnectable": "「{name}」はすでに接続できます。申請は不要です。",
     "applyLinkUnavailable": "「{name}」はここから接続を申請できません。",
     "noAssetViewTitle": "あなたのロールには資産の閲覧権限がありません",
-    "noAssetViewHint": "ここには資産が表示されません。プラットフォーム経由で接続する必要がある場合は、管理者に「{role}」ロールの追加を依頼してください。"
+    "noAssetViewHint": "ここには資産が表示されません。プラットフォーム経由で接続する必要がある場合は、管理者に「{role}」ロールの追加を依頼してください。",
+    "dbRotation": {
+      "optionNone": "未設定（変更対象外）",
+      "optionDbNative": "データベースアカウント自身で変更",
+      "hint": "選択すると、パスワード変更計画がこのデータベース上のアカウントのパスワードを変更します。現在のパスワードでログインし、新しいパスワードに変更します。",
+      "unencryptedTitle": "パスワード変更時、パスワードは暗号化されていない接続で送信されます",
+      "unencryptedBody": "このデータベースの TLS モードは「{mode}」で、接続は暗号化されていません。パスワード変更時、現在のパスワードと新しいパスワードが平文でネットワークを通る可能性があります。アセット一覧とすべての変更記録にこのことが表示されます。",
+      "goToTls": "TLS モードへ移動",
+      "encrypted": "パスワード変更は暗号化された接続で行われます（TLS モード：{mode}）。",
+      "limitsTitle": "この方式の制限",
+      "limit1": "パスワードのみ変更します。アカウントの作成や権限の調整は行いません。",
+      "limit2": "MySQL で同じアカウント名に複数の接続元ホスト設定がある場合、変更されるのはそのうち 1 つだけです。",
+      "limit3": "PostgreSQL で現在のパスワードに日本語や全角記号などの文字が含まれる場合、この方式では変更できません。",
+      "limit4": "MariaDB と古いバージョンのデータベースは非対応です。理由を示して変更をスキップします。",
+      "limit5": "パスワード変更は、このアカウントですでにログイン中の接続を切断しません。"
+    }
   },
   "sessions": {
     "headerDesc": "アクティブな接続の監視と履歴の確認。AI エージェントは人に代わって操作する自動化プログラムです。",
@@ -2375,7 +2408,8 @@
     "dek_cache_ttl_seconds": "資産のパスワードや記録した操作内容などのデータは、暗号化してから保存され、取り出すにはデータ鍵が必要です。この鍵はマスター鍵で解いたあとメモリに置かれ、本設定はその置いておく時間を決めます。空欄：システムをシールするか再起動するまで置いたままです。これが出荷時の既定であり、現在の動作でもあります。0：置かずに、必要になるたびに鍵の保管先から取り直し、使い終わった直後に消去します。秒数：解いてからその秒数が過ぎた時点で消去し、次に必要になったときに取り直します。期間中に何度使っても期限は延びません。0 または秒数を設定すると、鍵の保管先が日常の動作経路に入ります。保管先につながらない間は、鍵を取り直す必要のある操作がすべて失敗します。接続を確立するときの資産アカウントのパスワード取得や、接続中に書き込む記録内容も含まれます。取り直しのたびに保管先との往復が 1 回発生し、その遅延は環境によって異なります。秒数は自分の環境で計測してから決めてください。マスター鍵を環境変数で渡している場合や、起動時に管理者が入力している場合は、マスター鍵はもともと本システムのメモリにあります。本設定が短くするのはデータ鍵を置いておく時間だけです。対象はデータ鍵のみで、監査記録に使う鍵は影響を受けません。保管先につながらないときに監査記録すら書けなくなるのを避けるためです。操作の実行中は、メモリに鍵とデータの元の内容が存在します。",
     "k8s_list_timeout_seconds": "コンテナを選ぶ際、実行中の項目一覧をクラスターに要求してから最大どれだけ待つか。超えるとエラーを表示します。大きく：混雑や遠距離のクラスターに余裕ができますが、実際の障害は表示までより長くかかります。小さく：障害は早く表れますが、正常なクラスターが誤判定されることがあります。下限は 3 秒——一度の問い合わせは暗号化接続の確立だけで 1〜2 秒かかることがあり、これを下回ると正常なクラスターまで一斉に接続不可となる一方、資産一覧には表示され続けます。",
     "login_banner_body": "プレーンテキストとして表示します。HTML やリンクは反映されず、改行はそのまま保たれます。本文を空にすると告知は表示されず、見出しだけが出ることもありません。サインイン前に誰でも読めるため、社内情報は記載しないでください。",
-    "asset_secret_max_age_days": "ローテーション証跡レポートで用いる全体の適用日数。各パスワード変更計画で上書きできます。0 は未設定で、レポートでは「ポリシーなし」として扱われます。"
+    "asset_secret_max_age_days": "ローテーション証跡レポートで用いる全体の適用日数。各パスワード変更計画で上書きできます。0 は未設定で、レポートでは「ポリシーなし」として扱われます。",
+    "host_privileged_groups_posix": "カンマ区切りのグループ名（最大 32 個）。これらのグループに属するアカウント（プライマリグループを含む）は棚卸し時に特権とみなされます。空欄の場合はグループで判定しません。"
   },
   "fileManager": {
     "mkdir": "ディレクトリを作成",
@@ -2659,7 +2693,27 @@
     "groupSnapshotEmpty": "観測はまだありません。このアカウントは外部アイデンティティソース経由でログインしていません。",
     "groupSnapshotChannel": "観測経路：{channel}",
     "groupSnapshotAt": "観測時刻：{time}",
-    "groupSnapshotNoGroups": "そのログインではグループ値は観測されませんでした。"
+    "groupSnapshotNoGroups": "そのログインではグループ値は観測されませんでした。",
+    "approverOnlyTag": "承認のみ・接続不可",
+    "approverOnlyHint": "このアカウントは「承認者」ロールのみのため、承認はできますがアセットの利用や接続はできません。「ロールと範囲」でシステム全体の「一般ユーザー」を追加してください。このタグをクリックすると移動します。",
+    "approverOnlyBanner": {
+      "body": "このアカウントは「承認者」ロールのみのため、現在アセットの利用や接続ができません。システム全体の「一般ユーザー」を追加すると利用できます。",
+      "addButton": "一般ユーザーを追加",
+      "dirtyNote": "下に未保存の変更があります。先に保存するか元に戻してください。",
+      "done": "システム全体の「一般ユーザー」を追加しました。アセットの利用と接続ができるようになりました。"
+    },
+    "approverOnlyPrompt": {
+      "title": "保存されていません：「承認者」だけにすると、このアカウントはアセットの利用や接続ができなくなります",
+      "body": "「承認者」ロールだけのアカウントは承認作業のみ可能で、アセットの閲覧や接続はできません。通常は「一般ユーザー」も付与します。",
+      "fix": "「一般ユーザー」も追加して保存",
+      "nodeTitle": "保存されていません：このアカウントは引き続き承認作業のみで、アセットの利用や接続ができません",
+      "nodeBody": "「一般ユーザー」を一部のノードに限定すると権限は付与されないため、承認作業しかできません。アセットを使うには「一般ユーザー」をシステム全体に設定する必要があります。",
+      "nodeFix": "「一般ユーザー」をシステム全体に変更して保存",
+      "createTitle": "「承認者」だけのアカウントはアセットの利用や接続ができません。",
+      "createBody": "承認作業のみ可能で、アセットの閲覧や接続はできません。通常は「一般ユーザー」も付与します。",
+      "createFix": "「一般ユーザー」も選択して作成",
+      "goRoleTab": "{username} のロールと範囲へ"
+    }
   },
   "userGroups": {
     "roleScopeColumn": "ロールと管理範囲",
@@ -2728,6 +2782,21 @@
         "none": "なし",
         "comboNote": "{n} 人のメンバーに確認が必要な組み合わせが生じます。保存時に確認をお願いします。"
       }
+    },
+    "approverOnly": {
+      "reasonSave": "保存できません：この変更により {count} 人のメンバーが「承認者」ロールのみになり、アセットの利用や接続ができなくなります。",
+      "reasonRemove": "削除できません：{count} 人のメンバーが「承認者」ロールのみになり、アセットの利用や接続ができなくなります。",
+      "reasonDelete": "削除できません：グループを削除すると {count} 人のメンバーが「承認者」ロールのみになり、アセットの利用や接続ができなくなります。",
+      "howToSave": "これらのメンバーは「承認者」を直接付与され、「一般ユーザー」をこのグループからのみ得ています。新しいタブでこれらのメンバーにシステム全体の「一般ユーザー」を追加してから、「再確認して保存」を押してください。",
+      "howToDelete": "新しいタブでこれらのメンバーにシステム全体の「一般ユーザー」を追加してから、「再確認して削除」を押してください。",
+      "revertNote": "または「システム全体に戻す」でこの範囲の変更を取り消せます。",
+      "affected": "影響を受けるメンバー：",
+      "more": "ほか {n} 人",
+      "linkTitle": "ロールと範囲を開く（新しいタブ）",
+      "listNote": "アカウント名を選ぶと、そのアカウントの「ロールと範囲」が新しいタブで開きます。ここでの変更はそのまま残ります。",
+      "retrySave": "再確認して保存",
+      "retryDelete": "再確認して削除",
+      "revert": "システム全体に戻す"
     }
   },
   "roles": {
@@ -2765,7 +2834,8 @@
     },
     "permissionLabel": {
       "roleAssign": "ロールの割り当て",
-      "systemalertManage": "システムアラートの等級"
+      "systemalertManage": "システムアラートの等級",
+      "assetExecutorManage": "踏み台専用アカウントの管理"
     },
     "dangerCombo": {
       "authz_rules_with_asset_or_credential": "認可ルールを管理でき、資産または認証情報も管理できる",
@@ -2914,6 +2984,7 @@
       "entry": {
         "assets": "資産管理",
         "credentials": "アカウント認証情報ライブラリ",
+        "host_account_inventory": "ホストアカウント棚卸し",
         "change_secret": "パスワード変更計画",
         "authorizations": "資産認可",
         "approver_scopes": "承認範囲",
@@ -2938,7 +3009,8 @@
         "alert_rules": "アラートルール",
         "schedules": "スケジュール時刻プレビュー",
         "rotation_schedules": "ローテーションスケジュール",
-        "instance_guard": "インスタンス保護"
+        "instance_guard": "インスタンス保護",
+        "asset_executor": "踏み台専用アカウント"
       },
       "detail": {
         "asset": {
@@ -2973,9 +3045,11 @@
       "nodeScopedNotice": "このロールにはノードを限定した割り当てが {n} 件あります。新しく加えた、システム全体でのみ有効な機能は、それらの割り当てでは有効になりません。",
       "nodeScopedNoEffectNotice": "このロールにはノードを限定した割り当てが {n} 件あります。ロールの権限はノードの制限を受けないため、それらの割り当ての範囲は有効になりません。",
       "entryNote": {
+        "host_account_inventory": "この権限を持つと、プラットフォームが資産の既定アカウントの認証情報でホストにログインし、アカウント一覧を読み取れます（ホスト鍵が未登録のホストは初回に信頼して記録されます）。従来は接続テストの権限が必要でした。ホストに踏み台専用アカウントがある場合は、そのアカウントでログインします。",
         "alerts": "アラート記録は「操作ログ」と同じ監査データを参照するため、「閲覧」または「管理」を選ぶと監査閲覧権限も追加されます。",
         "access_reviews": "レビュー一覧は監査データを参照するため、「管理」を選ぶと監査閲覧権限も追加されます。",
-        "audit_logs": "同じ監査閲覧権限で、監査調査ビュー、コマンド監査、ダウンロードセンター、AI エージェントのタスク、ローテーション証跡のレポートも開けます。"
+        "audit_logs": "同じ監査閲覧権限で、監査調査ビュー、コマンド監査、ダウンロードセンター、AI エージェントのタスク、ローテーション証跡のレポートも開けます。",
+        "asset_executor": "設定カードは資産の編集画面内にあります。保持者はプラットフォーム自身が使うアカウントの設定・変更・解除と公開鍵の取得ができます。このアカウントは接続には使えません。"
       },
       "placementTag": {
         "embedded": "設定カード",
@@ -3056,6 +3130,8 @@
   },
   "approvals": {
     "headerDesc": "接続申請を処理します。承認後、申請者は期限付きの接続を取得し、期限が切れると自動的に無効になります",
+    "readOnlyTag": "閲覧のみ",
+    "historyOnlyNote": "すべての接続申請の審査結果を確認できます。閲覧のみで、承認・却下・取り消しはできません。",
     "pendingTab": "審査待ち",
     "pendingTabCount": "審査待ち（{n}）",
     "colRequester": "申請者",
@@ -3435,11 +3511,13 @@
     "submit": "追加",
     "continue": "続行",
     "actorNeedsRoleLabel": "{username}（承認者ロールを追加します）",
-    "assignRoleConfirm": "{username}はまだ承認者ロールを持っていません。同時にそのロールを割り当て、範囲内の申請の受信を開始します。続行しますか？",
+    "assignRoleConfirm": "{username}はまだ承認者ロールを持っていません。同時にそのロールを割り当て、範囲内の申請の受信を開始します。",
     "assignRoleTitle": "承認者ロールの割り当て",
     "roleAssignedScopeFailed": "承認者ロールは割り当てられましたが、範囲の作成に失敗しました。範囲の追加を再試行してください",
     "scopeAssigned": "承認範囲を割り当てました",
-    "approverRoleRequiredHint": "承認者ロールを持つユーザーのみ表示しています。ほかのユーザーを承認者にするには、ロールを割り当てられる管理者に承認者ロールの追加を依頼してください。"
+    "approverRoleRequiredHint": "承認者ロールを持つユーザーのみ表示しています。ほかのユーザーを承認者にするには、ロールを割り当てられる管理者に承認者ロールの追加を依頼してください。",
+    "assignRoleUserNote": "このアカウントに「一般ユーザー」ロールがまだない場合は同時に追加し、引き続きアセットを使えるようにします。",
+    "assignRoleQuestion": "続行しますか？"
   },
   "roleScope": {
     "bannerTitle": "ここで設定するのは管理範囲です。",
@@ -3900,8 +3978,9 @@
       "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "このプロトコルの資産はパスワード変更に対応していないため、今回はスキップしました",
       "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED": "資産アカウントの取得に失敗しました",
       "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE": "アカウント範囲に一致するアカウントがありません",
-      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "資産にパスワード変更チャネルが設定されていないため、スキップしました",
+      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "資産にパスワード変更チャネルが設定されていないため、スキップしました（資産設定の「パスワード変更チャネル」で選択できます）",
       "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED": "このパスワード変更チャネルは計画で指定された秘密の種別に対応していないため、スキップしました",
+      "CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED": "対象のデータベースのバージョンまたは製品がこの変更方式に対応していないため、変更は送信されていません。",
       "CHANGE_SECRET_CANDIDATE_QUERY_FAILED": "未検証資格情報の照会に失敗しました",
       "CHANGE_SECRET_CANDIDATE_PENDING": "未検証の資格情報が残っています。システム再試行の完了をお待ちください",
       "CHANGE_SECRET_CANDIDATE_PERSIST_FAILED": "未検証資格情報の保存に失敗しました",
@@ -3914,16 +3993,21 @@
       "CHANGE_SECRET_INVALID_ACCOUNT_NAME": "アカウント名に不正な文字が含まれています。リモートへはコマンドを送信していません",
       "CHANGE_SECRET_INVALID_NEW_SECRET": "生成されたパスワードに不正な文字が含まれています。リモートへはコマンドを送信していません",
       "CHANGE_SECRET_ACCOUNT_NAME_INVALID": "アカウント名が対象システムの文字種または長さの制限を満たしていません。リモートへはコマンドを送信していません",
-      "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "現行の資格情報での対象ホストへのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
-      "CHANGE_SECRET_REMOTE_REJECTED": "リモートがパスワード変更コマンドを拒否しました。ホストの資格情報は変更されていません。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "現在の認証情報で対象へのログインに失敗しました。詳細なリモートメッセージはサーバーログを参照してください。",
+      "CHANGE_SECRET_REMOTE_REJECTED": "対象がパスワード変更を拒否しました。対象の資格情報は変更されていません。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED": "踏み台専用アカウント {executor} で対象ホストにログインできませんでした。どのアカウントも変更していません。ホストに接続できること、専用アカウントのシークレットが有効であることを確認してください。詳細なリモートメッセージはサーバーログを参照してください",
+      "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED": "踏み台専用アカウント {executor} に他のアカウントのパスワードを変更する権限がないか、対象アカウントが存在しません。対象アカウントは変更されていません",
+      "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING": "踏み台専用アカウント {executor} 自身のパスワード変更中のため、今回はスキップしました。完了後の次回実行で通常どおり処理します",
+      "CHANGE_SECRET_EXECUTOR_CHANGED": "踏み台専用アカウント {executor} が今回の実行開始後に交換されたかシークレットが変更されたため、今回はスキップしました",
+      "CHANGE_SECRET_EXECUTOR_UNAVAILABLE": "踏み台専用アカウント {executor} に使用できるシークレットがないため、代理で変更できません",
       "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "コマンド送信後に接続が切断またはタイムアウトし、リモートの状態が不明です。未検証資格情報を保持し再試行します。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_REMOTE_UNREACHABLE": "対象との変更セッションを確立できませんでした（接続拒否または無応答、タイムアウト、証明書検証の失敗）。コマンドは送信されておらず、リモートは変更されていません。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_VERIFY_FAILED": "新しい資格情報での検証ログインに失敗しました。未検証資格情報を保持し再試行します。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE": "対象と暗号化された管理接続を確立できないため、接続を拒否し資格情報を送信していません",
       "CHANGE_SECRET_STDIN_NOT_DELIVERED": "新しいパスワードが対象のスクリプトに届いていません。リモートは変更されていません",
-      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "対象は新しいパスワードを設定しましたがローカル検証で認証できず、その場で旧パスワードに戻しました。リモートは変更されていません",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "対象で新しいパスワードの検証に失敗したため、その場で旧パスワードに戻しました。対象は変更されていません",
       "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED": "対象は新しいパスワードで認証できず、旧パスワードへの復元にも失敗しました。リモートの状態は不明で、未検証資格情報を保持し再試行します",
-      "CHANGE_SECRET_INVALID_OLD_SECRET": "現在のパスワードに標準入力で渡せない文字が含まれるため、ローカルで拒否しました。リモートには接触していません",
+      "CHANGE_SECRET_INVALID_OLD_SECRET": "現在のパスワードにこの変更方式で扱えない文字が含まれるため、ローカルで拒否しました。対象には接触していません",
       "CHANGE_SECRET_PROMOTE_FAILED": "資格情報の確定に失敗しました。未検証資格情報を保持し再試行します。詳細はサーバーログをご確認ください",
       "CHANGE_SECRET_SFTP_OPEN_FAILED": "対象ホストの SFTP を開けませんでした。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED": "authorized_keys の読み取りに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
@@ -3932,7 +4016,7 @@
       "CHANGE_SECRET_KEY_VERIFY_FAILED_RESTORE_FAILED": "新しい鍵の検証に失敗し、復元にも失敗しました。未検証資格情報を保持し再試行します。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_RETRY_PROMOTED": "システム再試行で検証に成功し、資格情報を確定しました",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "未検証資格情報の内容を読み取れませんでした。詳細はサーバーログをご確認ください",
-      "CHANGE_SECRET_RETRY_LOGIN_FAILED": "未検証資格情報での対象ホストへのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_RETRY_LOGIN_FAILED": "新しい資格情報での対象へのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_HOST_KEY_MISMATCH": "ホスト鍵が記録と一致しないため、資格情報は送信していません。ホストを確認のうえ、資産設定で新しいフィンガープリントを採用するかホスト鍵をリセットしてください",
       "CHANGE_SECRET_HOST_KEY_CHECK_FAILED": "認証情報を送る前にホストの識別情報を確認できなかったため中止しました。対象には変更を加えていません。しばらくしてから再試行し、続く場合は管理者に連絡してください",
       "CHANGE_SECRET_AUTHZ_REVOKED": "停止しました：発起者の現在の権限が不足しており、リモートには触れていません",
@@ -3972,6 +4056,31 @@
       "confirm": "この {count} 件の計画は今後あなたの権限で実行され、実行のたびに現在の権限が再確認されます。権限が不足している場合、その回は停止してアラートが発行されます。引き継ぎますか？",
       "done": "{count} 件の計画を再承認しました",
       "skipped": "{skipped} 件の計画はあなたの権限が不足しているため一時停止のままです。権限のある方による引き継ぎが必要です"
+    },
+    "channelUnencryptedSuffix": "暗号化なし",
+    "selectedUnencryptedNote": "{n} 台のアセットで、パスワード変更時にパスワードが平文で送信される可能性があります（データベース接続が暗号化されていません）",
+    "recordsUnencryptedCount": "。うち {n} 件は暗号化なしの接続で実行",
+    "methodDelegatedBy": "踏み台専用アカウント {name} が代理で変更",
+    "methodDetail": "{executor} がログインし、{method}で {account} のパスワードを変更しました。",
+    "methodElevation": "昇格方法：{method}",
+    "methodSudoHelp": "コマンドが拒否された場合、多くは対象ホストが専用アカウントに sudo での chpasswd 実行を許可していません。設定方法は運用ドキュメント docs/ops/upgrade-sop.md の「踏み台専用アカウントによる Linux／Unix アカウントのパスワード変更」の節を参照してください。",
+    "methodDelegatedByScoped": "踏み台専用アカウントが代理で変更",
+    "reasonScoped": {
+      "CHANGE_SECRET_EXECUTOR_LOGIN_FAILED": "踏み台専用アカウントで対象ホストにログインできませんでした。どのアカウントも変更していません。ホストに接続できること、専用アカウントのシークレットが有効であることを確認してください。詳細なリモートメッセージはサーバーログを参照してください",
+      "CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED": "踏み台専用アカウントに他のアカウントのパスワードを変更する権限がないか、対象アカウントが存在しません。対象アカウントは変更されていません",
+      "CHANGE_SECRET_EXECUTOR_ROTATION_PENDING": "踏み台専用アカウント自身のパスワード変更中のため、今回はスキップしました。完了後の次回実行で通常どおり処理します",
+      "CHANGE_SECRET_EXECUTOR_CHANGED": "踏み台専用アカウントが今回の実行開始後に交換されたかシークレットが変更されたため、今回はスキップしました",
+      "CHANGE_SECRET_EXECUTOR_UNAVAILABLE": "踏み台専用アカウントに使用できるシークレットがないため、代理で変更できません"
+    },
+    "methodLegend": "アカウントの下に表示がない行は、アカウント自身で変更したものです。",
+    "method": {
+      "executor_root": "root で直接変更",
+      "executor_sudo_nopasswd": "パスワードなしで昇格",
+      "executor_sudo_password": "専用アカウントのパスワードで昇格"
+    },
+    "transportRisk": {
+      "tag": "暗号化なしの接続",
+      "tooltip": "{risk}。この変更の実行時、データベース接続は暗号化されていませんでした。"
     }
   },
   "hostIdentityConfirm": {
@@ -3996,7 +4105,8 @@
       "channelLabel": "パスワード変更チャネル",
       "channelOriginalLabel": "送信時のチャネル",
       "channelCurrentLabel": "現在のチャネル",
-      "winrmNoKey": "WinRM にはホスト鍵がありません"
+      "winrmNoKey": "WinRM にはホスト鍵がありません",
+      "dbNoKey": "データベース接続にはホスト鍵がありません"
     },
     "checkHint": "先にホストの管理者へ確認してください。このホストが最近リセット、再インストール、または入れ替えられていないか、また「詳細情報」に表示された現在記録中のフィンガープリントがこのホストのものか、を確認します。",
     "checkHintWinrm": "先にホストの管理者へ確認してください。このホストが最近リセット、再インストール、または入れ替えられていないか、また、そのアドレスが引き続き同じホストを指しているか、を確認します。",
@@ -4052,6 +4162,9 @@
       "verified": "検証に成功し、認証情報を正式なものに切り替えました",
       "notVerified": "今回の検証は成功しませんでした。新しい認証情報は保持されています。システムは自動では再試行しません。必要に応じて、もう一度確認してください。",
       "moved": "確認後にホストの識別情報が再び変更されたため、今回の結果は適用されませんでした。新しい認証情報は保持されています。確認を開き直して、最新の識別情報を照合してください。"
+    },
+    "transport": {
+      "db": "データベース接続"
     }
   },
   "changeSecretBatches": {
@@ -4211,7 +4324,9 @@
       "excludeAmbiguous": "紛らわしい文字を除外",
       "submit": "変更を実行",
       "accepted": "パスワード変更を開始しました。進捗は詳細パネルに表示されます",
-      "outOfScopeHint": "割り当て済みの {total} 台のうち {out} 台は管理範囲外です。送信前に影響範囲の確認を求めます。"
+      "outOfScopeHint": "割り当て済みの {total} 台のうち {out} 台は管理範囲外です。送信前に影響範囲の確認を求めます。",
+      "executorTitle": "このシークレットは {count} 台の踏み台専用アカウントです。{count} 台まとめて変更されます。",
+      "executorBody": "新しいパスワードは {count} 台すべてに送られます。「ホストごとにランダム」を選ぶと各ホストが個別の専用認証情報になり、引き続き踏み台専用アカウントのままです。"
     },
     "detachDialog": {
       "title": "共用から外す",
@@ -4341,7 +4456,8 @@
     },
     "actionReason": {
       "no_capability": "ご利用のロールにはこの操作の権限がありません。",
-      "out_of_scope": "この認証情報の所属は管理範囲外です。"
+      "out_of_scope": "この認証情報の所属は管理範囲外です。",
+      "executor_managed": "踏み台専用アカウントです。資産の専用アカウント欄で操作してください。"
     },
     "footer": {
       "scoped": "全社共用の認証情報はシステム全体の管理者が管理するため、ここには表示されません",
@@ -4375,7 +4491,19 @@
       "detachHint": "範囲内のホストだけ変更したい場合は、資産ごとに「共用から離脱」を使用してください。",
       "submitFix": "保存して {total} 台に適用",
       "submitRotate": "変更を実行して {total} 台に適用"
-    }
+    },
+    "bindingPurpose": {
+      "header": {
+        "asset": "アセット",
+        "purpose": "用途",
+        "state": "既定とローテーション",
+        "actions": "操作"
+      },
+      "executor": "踏み台専用",
+      "login": "ユーザー接続"
+    },
+    "bindingUnbindExecutor": "踏み台専用アカウントはここでは解除できません。アセットの「アセットを編集」から操作してください。",
+    "bindingUnbindExecutorLink": "{asset} のアセット編集を開く"
   },
   "notFound": {
     "title": "ページが見つかりません",
@@ -4587,6 +4715,8 @@
     "VALIDATION_ROLE_BINDING_NODES_EMPTY": "ノードを1つ以上選択するか、システム全体に切り替えてください",
     "VALIDATION_ROLE_BINDING_NODES_INVALID": "選択したノードの一部が存在しません。選択し直してください",
     "VALIDATION_ROLE_NOT_GROUP_BINDABLE": "このロールはユーザーグループに割り当てられません",
+    "VALIDATION_ROLE_SET_APPROVER_ONLY": "保存されていません：このロールの組み合わせでは承認作業のみとなり、アセットの利用や接続ができなくなります。システム全体の基本利用ロールも追加してください",
+    "VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS": "完了できません：この変更により {count} 人のメンバーが承認作業のみとなり、アセットの利用や接続ができなくなります",
     "ROLE_PERMISSION_DEPENDENCY_REQUIRED": "権限セットに必要な依存権限が不足しています",
     "ROLE_PERMISSION_INVALID": "権限セットに無効な項目が含まれています",
     "VALIDATION_ACCOUNT_NOT_ON_ASSET": "アカウントは指定された資産に属していません",
@@ -4955,6 +5085,31 @@
     "NOTFOUND_ALERT_RULE": "アラートルールが見つかりません",
     "NOTFOUND_APPROVER_SCOPE": "承認範囲が存在しません",
     "NOTFOUND_ASSET": "アセットが存在しません",
+    "RULE_INVENTORY_PLATFORM_UNSUPPORTED": "この資産のプラットフォームはアカウント棚卸しに対応していません。SSH で接続する Linux／Unix ホストのみ対応しています",
+    "RULE_INVENTORY_NO_ACCOUNT": "この資産には既定アカウントがないため、棚卸しのログインができません",
+    "RULE_INVENTORY_NO_SECRET": "既定アカウントに使用可能なパスワードまたは秘密鍵がないため、棚卸しのログインができません",
+    "CONFLICT_INVENTORY_SCAN_RUNNING": "この資産ではすでにアカウント棚卸しが実行中です",
+    "RULE_INVENTORY_EXECUTOR_UNAVAILABLE": "このホストの踏み台専用アカウントに使用できるシークレットがないため、棚卸しを開始していません。専用アカウントを設定し直してください。",
+    "CONFLICT_INVENTORY_EXECUTOR_BUSY": "このホストの踏み台専用アカウントはパスワード変更中のため、棚卸しを開始していません。完了後に再試行してください。",
+    "RULE_INVENTORY_EXECUTOR_RATE_LIMITED": "このホストの踏み台専用アカウントでのログインが最近多すぎるため（テストログインを含む）、棚卸しを開始していません。しばらくしてから再試行してください。",
+    "RULE_EXECUTOR_CHECK_CONNECTION_FAILED": "このホストに接続できません。アドレス、ポート、ネットワークを確認してから再試行してください。",
+    "RULE_EXECUTOR_CHECK_LOGIN_FAILED": "ホストが専用アカウント {account} のログインを拒否しました。ホスト上にアカウントがあり、プラットフォームの公開鍵が登録されているか（鍵）、パスワードが正しいか（パスワード）を確認してください。",
+    "RULE_EXECUTOR_CHECK_HOST_KEY_MISMATCH": "ホストの識別フィンガープリントが記録と一致しません。専用アカウントの認証情報は送信していません。ホストを確認してから、新しいフィンガープリントを採用するかリセットしてください。",
+    "RULE_EXECUTOR_CHECK_HOST_KEY_CHECK_FAILED": "ホストの識別フィンガープリントを確認できなかったため、ログインしていません。しばらくしてから再試行してください。",
+    "RULE_EXECUTOR_CHECK_ESCALATION_DENIED": "ログインはできましたが、{account} には他のアカウントのパスワードを変更する権限がありません。ホストでパスワード変更プログラムの sudo ルールを追加してください。",
+    "RULE_EXECUTOR_CHECK_ESCALATION_NEEDS_NOPASSWD": "ログインはできましたが、ホストには {account} がパスワードなしでパスワード変更プログラムを実行できる sudo ルールがありません。ルールが未追加か、パスワード不要（NOPASSWD）になっていません。鍵方式の専用アカウントには NOPASSWD のパスワード変更ルールが必要です。",
+    "RULE_EXECUTOR_CHECK_UNAVAILABLE": "専用アカウントに使用できるシークレットがないため、ログインしていません。専用アカウントを設定し直してください。",
+    "RULE_EXECUTOR_CHECK_ROTATION_PENDING": "専用アカウントのパスワード変更中のため、ログインしていません。完了後に再テストしてください。",
+    "RULE_EXECUTOR_CHECK_TIMEOUT": "ホストが時間内に応答しなかったため、結果は不明です。しばらくしてから再試行してください。",
+    "RULE_EXECUTOR_CHECK_PLATFORM_UNSUPPORTED": "この種類のホストではテストログインはまだ利用できません。",
+    "RULE_EXECUTOR_CHECK_RATE_LIMITED": "テストの回数が多すぎます。しばらくしてから再試行してください。",
+    "CONFLICT_EXECUTOR_CHECK_BUSY": "専用アカウントは別の処理（パスワード変更または棚卸し）を実行中のため、ログインしていません。しばらくしてから再試行してください。",
+    "INTERNAL_EXECUTOR_CHECK": "サーバーエラーのため、テストログインを完了できませんでした。しばらくしてから再試行してください。",
+    "VALIDATION_INVENTORY_IGNORE_REASON": "無視する理由は必須で、長すぎないようにしてください",
+    "VALIDATION_INVALID_FINDING_ID": "棚卸し結果の ID が無効です",
+    "NOTFOUND_INVENTORY_FINDING": "棚卸し結果が見つかりません",
+    "INTERNAL_INVENTORY_QUERY": "アカウント棚卸しの照会に失敗しました",
+    "INTERNAL_INVENTORY_UPDATE": "アカウント棚卸しの操作に失敗しました",
     "NOTFOUND_ASSET_ACCOUNT": "アカウントが存在しないか、この資産に属していません",
     "NOTFOUND_ASSET_ACCOUNT_SOURCE": "コピー元のアカウントが存在しません",
     "NOTFOUND_ASSET_CREDENTIAL": "資産が存在しないか、認証情報を読み取れません",
@@ -5175,7 +5330,7 @@
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "mssql のホストにカンマを含めることはできません（接続文字列のポート区切りと競合します）",
     "VALIDATION_ASSET_PROTOCOL": "無効なプロトコルです。ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s のみ対応しています",
     "VALIDATION_ASSET_RDP_SECURITY": "rdp_security は空値（現状維持）、nla、tls のみ指定できます",
-    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel は空値（プロトコルから導出）、posix_ssh、windows_winrm、windows_ssh、none のみ指定できます。posix_ssh は ssh プロトコル、windows_winrm と windows_ssh は rdp または ssh プロトコルに限ります",
+    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel は空値（プロトコルから導出）、posix_ssh、windows_winrm、windows_ssh、db_native、none のみ指定できます。posix_ssh は ssh プロトコル、windows_winrm と windows_ssh は rdp または ssh プロトコル、db_native は mysql、postgres または mssql プロトコルに限ります",
     "VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS": "パスワード変更チャネルの設定が不完全または不正です。windows_winrm は接続方式（http／https）、https は証明書検証モード（system／ca／insecure）、ca モードは解析可能な CA 証明書（PEM）が必要です。ポートは 0（既定値を使用）または 1〜65535 である必要があります",
     "VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED": "少なくとも 1 つの絞り込み条件が必要です（session_id/user_id/asset_id/期間）",
     "VALIDATION_AUDIT_INTEGRITY_FROM_FORMAT": "from は YYYY-MM-DD 形式で指定してください",
@@ -5375,7 +5530,19 @@
     "RULE_AUTHORIZATION_SELF_SUBJECT": "自分自身、所属するグループ、または所有する agent を対象とする権限付与ルールは作成・変更できません",
     "RULE_APPROVER_SCOPE_SUBJECT_OVERLAP": "承認者と申請者は重複できません",
     "RULE_AGENT_OWNER_TRANSFER_SELF_GRANT": "新しい所有者はこの agent に対して有効な権限付与、承認範囲、または有効な承認票を持っているため、移管できません",
-    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "ルール作成者以外はアカウント範囲を狭めることのみ可能で、広げることはできません"
+    "RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED": "ルール作成者以外はアカウント範囲を狭めることのみ可能で、広げることはできません",
+    "RULE_ACCOUNT_EXECUTOR_MANAGED": "これは踏み台専用アカウントです。資産の踏み台専用アカウント欄から操作してください。",
+    "RULE_CREDENTIAL_PURPOSE_MISMATCH": "この認証情報は別の用途（ログインアカウントまたは踏み台専用アカウント）で使用中のため、併用できません。",
+    "RULE_EXECUTOR_PROTOCOL_UNSUPPORTED": "この資産のプロトコルは踏み台専用アカウントに対応していません。",
+    "RULE_EXECUTOR_SECRET_TYPE_UNSUPPORTED": "この資産では鍵を踏み台専用アカウントとして使用できません。",
+    "RULE_EXECUTOR_SHARED_HOST_COUNT": "設定後、このシークレットは {count} 台のホストで踏み台専用アカウントになります。台数を確認してから再送信してください。",
+    "RULE_EXECUTOR_STATE_CHANGED": "踏み台専用アカウントが変更されました。再読み込みしてからやり直してください。",
+    "RULE_EXECUTOR_CONVERT_CANDIDATE_PENDING": "このアカウントには未検証の候補シークレットが残っています。解消してから変換してください。",
+    "NOTFOUND_ASSET_EXECUTOR": "この資産には踏み台専用アカウントがまだ設定されていません。",
+    "NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY": "この踏み台専用アカウントにはエクスポートできる公開鍵がありません。",
+    "VALIDATION_EXECUTOR_SOURCE_INVALID": "踏み台専用アカウントの設定内容が不完全か、取得元が正しくありません。",
+    "INTERNAL_ASSET_EXECUTOR_READ": "踏み台専用アカウントの読み込みに失敗しました。",
+    "INTERNAL_ASSET_EXECUTOR_WRITE": "踏み台専用アカウントの保存に失敗しました。"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "このプロバイダーにはグループ claim 名が設定されていますが、groups スコープが要求されていません。多くのプロバイダーはグループクレームを発行しないため、マッピング規則は誰にも一致せず、規則で付与済みのロールも取り消されます。",
@@ -5427,6 +5594,7 @@
     "password_history_count": "パスワード再利用禁止履歴数",
     "password_max_age_days": "パスワード最長使用日数",
     "asset_secret_max_age_days": "資産アカウント認証情報の最長使用日数",
+    "host_privileged_groups_posix": "ホスト特権グループ（POSIX）",
     "password_min_length": "パスワード最小長",
     "password_require_alnum": "パスワードに英字と数字を含める",
     "recording_failclose_enabled": "録画失敗時に新規接続をブロック",
@@ -5491,7 +5659,8 @@
     "syslog_non_tls": "syslog 転送が未暗号化（{protocol}）",
     "vnc_unencrypted": "VNC プロトコルが未暗号化",
     "winrm_http_ntlm": "WinRM パスワード変更チャネルが http（NTLM メッセージ層暗号化のみ、TLS なし）",
-    "winrm_tls_insecure": "WinRM パスワード変更チャネルがサーバー証明書を未検証"
+    "winrm_tls_insecure": "WinRM パスワード変更チャネルがサーバー証明書を未検証",
+    "db_rotation_unencrypted": "データベースのパスワード変更接続が暗号化されていません（パスワードが平文で送信される可能性があります）"
   },
   "transportNote": {
     "ldap_ui_managed": "設定は ID 管理のディレクトリ設定ページで管理",
@@ -5503,7 +5672,8 @@
     "syslog_protocol": "転送プロトコル：{protocol}",
     "syslog_unset": "syslog 転送は未設定",
     "vnc_no_encryption": "VNC/RFB プロトコルに暗号化オプションはなく、全資産が常に平文チャネル",
-    "winrm_rotation_channel": "パスワード変更チャネル（システム経路、ユーザー接続ではない）：NTLM メッセージ層暗号化は常時有効。http は TLS なしの転送、insecure は証明書未検証で、いずれも逸脱として計上"
+    "winrm_rotation_channel": "パスワード変更チャネル（システム経路、ユーザー接続ではない）：NTLM メッセージ層暗号化は常時有効。http は TLS なしの転送、insecure は証明書未検証で、いずれも逸脱として計上",
+    "db_rotation_channel": "パスワード変更チャネル（システム経路、ユーザー接続ではない）：データベース接続で TLS が有効でない場合（require、verify-ca、verify-full 以外のモード）、旧パスワードと新パスワードが平文でネットワークを通る可能性があり、逸脱として数えます"
   },
   "transportPreflight": {
     "db_reject": "strict に切り替えると TLS 未使用のデータベース資産 {n} 台の接続を拒否します",
@@ -6898,6 +7068,12 @@
         "host_key_mismatch": "接続時にホスト鍵が記録と一致しなかった：認証を許可し、保管中のログイン認証情報は未確認のホストへ送られる（記録済み）",
         "host_key_cred_sent": "ホスト鍵不一致を許可した後、ログイン認証情報が実際にそのホストへ送信された（認証結果を含む）",
         "retention_floor_raised": "アップグレード時に下限未満のデータ保持日数を下限まで引き上げた（またはチェックポイント保持を追随して引き上げた）。旧値・新値・理由を含む",
+        "inventory_scan": "ホストアカウント棚卸を開始した",
+        "inventory_scan_done": "ホストアカウント棚卸が終了した",
+        "executor_login_check": "踏み台専用アカウントでホストへのテストログインを実行しました",
+        "executor_login_check_done": "踏み台専用アカウントのテストログインが終了しました。完了しなかった場合、理由はアカウントの使用中、アカウントの変更、テストの中断、結果の保存失敗のいずれかです",
+        "inventory_ignore": "ホストアカウント棚卸の結果を無視に設定した",
+        "inventory_reopen": "ホストアカウント棚卸の結果を再オープンした",
         "host_key_adopt": "観測されたホスト鍵フィンガープリントを記録として採用した",
         "agent_tool_call_args_viewed": "ツール呼び出しの機密パラメータ原文を閲覧（記録済み）",
         "unlock": "アカウントのロック解除",
@@ -7582,6 +7758,7 @@
     "password_history_count": "次回のパスワード変更時にのみ確認し、既存の履歴をさかのぼって削除することはありません。0 は再利用を確認しないことを表します。",
     "password_max_age_days": "ログインのたびに判定し、期限を過ぎたパスワードは次回ログイン時に変更を求められます。0 は期限なしを表します。",
     "asset_secret_max_age_days": "ローテーション証跡レポートの作成時にのみ判定基準として使われ、パスワードを変更することはありません。0 は設定なしを表します。",
+    "host_privileged_groups_posix": "以降の棚卸しで特権を判定する方法にのみ影響し、ホスト上のグループやアカウントは変更しません。各棚卸しは使用したリストを記録します。",
     "force_change_on_reset": "管理者がパスワードをリセットした時点で判定され、以前にリセットされたアカウントには影響しません。",
     "mfa_required": "次回のログインから有効になり、すでにログイン中の利用者には影響しません。",
     "web_idle_minutes": "ログイン中の利用者にも適用され、遅くとも次回のトークン更新時にログアウトされます。0 はタイムアウトなしを表します。",
@@ -8598,6 +8775,10 @@
       "concurrent_instance_detected": {
         "name": "並行インスタンスの検出",
         "description": "起動時に、同じデータベースに対して別のインスタンスが動作している可能性を検出しました（確認による上書き起動、またはガード対応の他の接続を確認）"
+      },
+      "unmanaged_privileged_account": {
+        "name": "未管理の特権アカウント",
+        "description": "ホストアカウント棚卸で、ログイン可能・特権あり・未管理のアカウントが見つかりました"
       }
     },
     "groups": {
@@ -8668,7 +8849,8 @@
       "scopeNodes": "{nodes}（計 {count} ノード）",
       "scopeNodeDeleted": "ノード #{id}（削除済み）",
       "targetNamed": "{name}（{kind} #{id}）",
-      "viewPermissionOverview": "{name} の権限一覧を見る"
+      "viewPermissionOverview": "{name} の権限一覧を見る",
+      "viewHostInventory": "このホストのアカウント棚卸しを見る"
     },
     "targetKinds": {
       "asset": "資産",
@@ -9110,5 +9292,569 @@
       "discard": "変更を破棄してプレビュー",
       "back": "編集に戻る"
     }
+  },
+  "assetExecutor": {
+    "title": "踏み台専用アカウント",
+    "notForUsers": "ユーザーは接続に使用できません",
+    "unconfiguredHint": "プラットフォームはこのアカウントでホストにサインインし、パスワード変更とアカウント棚卸しを代行します。ユーザーはこのアカウントで接続できず、認可ルールや接続時のアカウント一覧にも表示されません。",
+    "howToPrepare": "このアカウントの準備方法",
+    "unsupportedProtocol": "{protocol} アセットには踏み台専用アカウントを設定できません。SSH と RDP ホストのみ対応しています。",
+    "protocolLabel": {
+      "vnc": "VNC",
+      "mysql": "MySQL",
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "mssql": "SQL Server",
+      "k8s": "Kubernetes"
+    },
+    "loadFailed": "現在このセクションの設定を読み込めません。しばらくしてから開き直してください。",
+    "reload": "再読み込み",
+    "set": "設定",
+    "getPublicKey": "公開鍵を取得",
+    "replace": "変更",
+    "clear": "解除",
+    "justSet": "設定しました",
+    "justConverted": "変換しました",
+    "immediateNote": "このセクションの操作はすぐに反映され、下の「保存」とは関係ありません。",
+    "outOfScopeNote": "この共有認証情報は管理範囲外のため、鍵フィンガープリントと公開鍵は表示できません。変更と解除は可能です。",
+    "credentialLink": "認証情報ライブラリでパスワード変更・スケジュール設定",
+    "convertedRotateHint": "{account} のパスワードを知っている人がいる可能性があります。認証情報ライブラリで変更することをおすすめします。",
+    "fields": {
+      "account": "アカウント名",
+      "secretSource": "シークレットの出所",
+      "secretType": "種別",
+      "fingerprint": "鍵フィンガープリント"
+    },
+    "sourceLabel": {
+      "generate": "プラットフォーム生成の鍵",
+      "inline": "直接入力したパスワード",
+      "inlineKey": "直接入力した秘密鍵",
+      "convert": "既存アカウントから変換",
+      "shared": "共有認証情報「{name}」",
+      "sharedOutOfScope": "範囲外の共有認証情報",
+      "dedicated": "このホスト専用のシークレット"
+    },
+    "sharedTag": "共有 · {count} 台",
+    "sharedTagOutOfScope": "共有",
+    "copyFingerprint": "フィンガープリントをコピー",
+    "fingerprintCopied": "フィンガープリントをコピーしました",
+    "publicKey": {
+      "title": "{account} の公開鍵",
+      "copy": "コピー",
+      "download": "ダウンロード",
+      "copied": "公開鍵をコピーしました",
+      "logged": "今回の取得は操作ログに記録されました",
+      "loggedEvery": "公開鍵を取得するたびに操作ログに記録されます。",
+      "unavailable": "現在この公開鍵を取得できません。セクションを再読み込みしました。",
+      "loading": "取得中…",
+      "label": "公開鍵",
+      "addHint": "このホスト上の {account} の認可済み鍵リストに追加してください。"
+    },
+    "help": {
+      "first": "プラットフォーム生成の鍵はホストに公開鍵を追加します。パスワード型はホスト側の権限を先に用意します。手順を展開して確認してください。",
+      "expand": "展開",
+      "collapse": "折りたたむ",
+      "generateTitle": "プラットフォーム生成の鍵",
+      "generateBody": "公開鍵の 1 行を、このホスト上の該当アカウントの ~アカウント/.ssh/authorized_keys に追加します。",
+      "rotateTitle": "パスワード変更に必要な sudo ルール",
+      "rotateBody": "root 以外の専用アカウントが他アカウントのパスワードを変更するには、ホストで root としてパスワード変更プログラムを実行することを許可します。鍵型の専用アカウントはパスワードなしで実行することを許可します。例（アカウント名は実際のものに置き換えてください）：",
+      "rotateWarning": "このルールの意味：このルールはホスト上のあらゆるアカウント（root を含む）のパスワードを変更できます。許可することは専用アカウントに root を渡すことと同じです。製品は専用アカウントの動作を制限できるとは述べておらず、プラットフォーム外での専用アカウントの使用も検知しません。",
+      "passwordTitle": "パスワード",
+      "passwordBody": "パスワード型の専用アカウントには公開鍵の追加は不要です。同じプログラムを root として実行することを許可し、sudo にパスワードを求めさせます。例：",
+      "passwordSudoWarning": "プラットフォームはまずパスワードなしのルールを試し、ホストが求めたときだけ専用アカウントのパスワードを送ります。ホストの sudo は専用アカウント自身のパスワードを検証する必要があります。sudo が別のパスワード（root や対象ユーザーのものなど）を検証する設定の場合や、ワンタイムパスワードなど別の認証が組み込まれている場合は、検証に失敗すると sudo が次の行（新しいパスワードを含みます）を別のパスワード試行として読み取ります。そのような環境では鍵型の専用アカウントを使ってください。",
+      "passwordWindows": "Windows ホストではアカウントに他のアカウントのパスワードを変更できる管理権限が必要です。",
+      "docPointer": "詳細は運用ドキュメント docs/ops/upgrade-sop.md の「踏み台専用アカウントによる Linux／Unix アカウントのパスワード変更」の節を参照してください。"
+    },
+    "clearConfirm": {
+      "title": "このホストの踏み台専用アカウントを解除しますか？",
+      "body": "プラットフォームは今後 {account} でこのホストにサインインしません。ホスト上の {account} アカウントや鍵は削除されないため、必要に応じてホスト側で削除してください。",
+      "endGenerate": "プラットフォーム生成の鍵は削除され、元に戻せません。",
+      "endShared": "共有認証情報は残り、他の {count} 台には影響しません。",
+      "endSharedOutOfScope": "共有認証情報は残り、他のホストには影響しません。",
+      "endSecret": "このシークレットはプラットフォームから削除され、元に戻せません。",
+      "cancel": "キャンセル",
+      "confirm": "解除"
+    },
+    "clearDone": "解除しました。ホスト上の {account} アカウントと鍵は残っています。必要に応じてホスト側で削除してください。",
+    "clearFailed": "未解除です。しばらくしてからもう一度お試しください。",
+    "stateChanged": {
+      "replaced": "未{action}：他の管理者がこのホストの踏み台専用アカウントを {account} に変更しました。現在の設定を下に表示しています。確認してから操作してください。",
+      "cleared": "未{action}：他の管理者がこのホストの踏み台専用アカウントを解除しました。現在の設定を下に表示しています。",
+      "alreadySet": "未設定：他の管理者がこのホストに踏み台専用アカウント {account} を設定しました。現在の設定を下に表示しています。確認してから操作してください。",
+      "actionClear": "解除",
+      "actionReplace": "変更"
+    },
+    "error": {
+      "usernameTaken": "未設定：このホストには既に {account} というアカウントがあります。プラットフォームで使うには「既存アカウントを変換」を使ってください。パスワードの再入力は不要です。",
+      "useConvert": "既存アカウントの変換に切り替え",
+      "hostCountChanged": "未設定：この{secret}は現在 {to} 台で使われています。他の管理者が別のホストに設定したため、{from} 台から {to} 台に変わりました。もう一度確認してください。",
+      "confirmCount": "{count} 台を確認して設定",
+      "purposeMismatch": "未設定：この認証情報は他のホストでユーザー接続用に使われています。同じシークレットをユーザー接続とプラットフォーム専用の両方には使えません。別の認証情報を選ぶか、プラットフォーム生成の鍵に切り替えてください。",
+      "useGenerate": "プラットフォーム生成の鍵に切り替え",
+      "useInlinePassword": "直接パスワード入力に切り替え",
+      "convertPending": "未変換：{account} の新しいパスワードが検証待ちです。再試行の完了後、またはパスワード変更計画で破棄してから変換してください。",
+      "convertRotationActive": "未変換：{account} のパスワードを変更中です。このラウンドが終わってから変換してください。",
+      "convertOutOfSync": "未変換：{account} の前回のパスワード変更が一部のホストで未完了です。認証情報ライブラリで再実行または破棄してから変換してください。",
+      "replaceRotationActive": "未変更：このシークレットは変更中です。変更完了後に変更してください。",
+      "clearRotationActive": "未解除：このシークレットは変更中です。変更完了後に解除してください。",
+      "openRotation": "新しいタブでパスワード変更の進捗を表示",
+      "openPlans": "新しいタブでパスワード変更計画を開く",
+      "openCredentials": "新しいタブで認証情報ライブラリを開く",
+      "recheckConvert": "再確認して変換",
+      "purposeMismatchWindows": "未設定：この認証情報は他のホストでユーザー接続用に使われています。同じシークレットをユーザー接続とプラットフォーム専用の両方には使えません。別の認証情報を選ぶか、パスワードの直接入力に切り替えてください。"
+    },
+    "dialog": {
+      "setTitle": "踏み台専用アカウントを設定",
+      "replaceTitle": "踏み台専用アカウントを変更",
+      "purpose": "このアカウントはプラットフォーム専用です。ユーザーは接続に使用できず、認可ルールや接続時のアカウント一覧にも表示されません。",
+      "replaceDescKeep": "現在は {account}（{source}）です。変更後は新しい設定を使います。古い鍵はプラットフォームから削除されますが、ホスト上の {account} アカウントと鍵は削除されません。",
+      "replaceDescSecret": "現在は {account}（{source}）です。変更後は新しい設定を使います。古いシークレットはプラットフォームから削除されますが、ホスト上の {account} アカウントと鍵は削除されません。",
+      "replaceDescShared": "現在は {account}（{source}）です。変更後は新しい設定を使います。共有認証情報は残り、ホスト上の {account} アカウントは削除されません。",
+      "windowsNote": "Windows ホストはパスワードでのみサインインするため、鍵の生成は選べません。",
+      "noPermission": "このアカウントの設定に必要な認証情報の権限がありません。",
+      "needCreate": "認証情報を作成する権限が必要です",
+      "needBind": "認証情報を紐付ける権限が必要です",
+      "needUpdate": "認証情報を編集する権限が必要です",
+      "cancel": "キャンセル",
+      "done": "完了",
+      "back": "他の設定方法に戻る",
+      "recommended": "おすすめ",
+      "sourceGenerate": "プラットフォーム生成の鍵",
+      "sourceGenerateDesc": "新しい鍵ペアを生成します。秘密鍵はプラットフォーム内にのみ保存され、誰も取り出せません。公開鍵をこのホストに追加するだけです。",
+      "sourceShared": "共有認証情報を使用",
+      "sourceSharedDesc": "同じシークレットが他のホストでも使われます。選択後に合計台数を表示します。",
+      "sourceInline": "パスワードまたは秘密鍵を入力",
+      "sourceInlinePassword": "パスワードを入力",
+      "sourceInlineDesc": "このアカウントの現在のパスワードまたは秘密鍵を入力します。このホスト専用です。",
+      "sourceInlinePasswordDesc": "このアカウントの現在のパスワードを入力します。このホスト専用です。",
+      "convertEntry": "適切なアカウントが既にありますか？",
+      "convertLink": "既存アカウントを変換",
+      "usernameLabel": "アカウント名",
+      "usernameHint": "このアカウントがホスト上に存在し、他のアカウントのパスワードを変更できる管理権限が必要です。",
+      "secretTypeLabel": "シークレットの種別",
+      "password": "パスワード",
+      "privateKey": "秘密鍵",
+      "credentialLabel": "共有認証情報",
+      "credentialUsername": "アカウント名は認証情報の {account} を使用します。",
+      "disabledWindowsKey": "Windows ホストはパスワードのみ",
+      "disabledLoginUse": "ユーザー接続用に使用中",
+      "executorUse": "既に {count} 台の専用アカウントです",
+      "submitGenerate": "生成して設定",
+      "submitGenerateReplace": "生成して変更",
+      "submitSet": "設定",
+      "submitReplace": "変更",
+      "submitConvert": "踏み台専用アカウントに変換",
+      "submitting": "設定中…",
+      "submittingGenerate": "生成中…",
+      "resultOk": "{account} をこのホストの踏み台専用アカウントに設定しました。",
+      "techDetails": "技術的な詳細",
+      "createFailed": "設定を完了できませんでした。しばらくしてからもう一度お試しください。",
+      "resultNextTitle": "あと一歩：この公開鍵をホスト上の {account} の認可済み鍵リストに追加してください。",
+      "resultNextBody": "追加するまでプラットフォームはサインインできません。追加したら「完了」を押し、セクションの「サインインをテスト」で確認してください。",
+      "sourceLabel": "シークレットの入手元",
+      "prepareLink": "このアカウントの準備方法",
+      "optionAccount": "アカウント {account}"
+    },
+    "convert": {
+      "title": "既存アカウントを変換",
+      "desc": "このホストの既存アカウントを踏み台専用アカウントにします。シークレットは変わらず、ホスト側の設定も不要です。",
+      "accountLabel": "変換するアカウント",
+      "disabledDefault": "既定アカウントは変換できません。先に別のアカウントを既定にしてください。",
+      "disabledShared": "共有認証情報のアカウントは変換できません。「共有認証情報を使用」を選んでください。",
+      "effectsTitle": "変換後、{account} はプラットフォーム専用になります：",
+      "effect1": "1. {account} で接続中のユーザーは切断されず、自分で終了するまで使えます。",
+      "effect2": "2. 以後、誰も {account} でこのホストに接続できません。",
+      "effect3": "3. {account} を指定した認可ルールや承認は、このホストには適用されなくなります。ルール自体は変更されません。",
+      "rotateAdvice": "{account} のパスワードを知っている人がいる可能性があります。変換後に認証情報ライブラリで変更することをおすすめします。",
+      "placeholder": "このホストのアカウントを選択"
+    },
+    "sharedConfirm": {
+      "titlePassword": "このパスワードは本ホストを含む {count} 台で踏み台専用アカウントになります。",
+      "titleKey": "この鍵は本ホストを含む {count} 台で踏み台専用アカウントになります。",
+      "leak": "どれか 1 台で漏えいすれば {count} 台すべてに影響します。",
+      "rotateSend": "プラットフォームがこのアカウントで他のアカウントのパスワードを変更するたびに、このパスワードは {count} 台すべてに送られます。どれか 1 台が侵害されると、次の変更時にこのパスワードを取得される可能性があります。",
+      "adviceKey": "共有する場合はプラットフォーム生成の鍵をおすすめします。",
+      "checkPassword": "このパスワードが {count} 台で使われることを理解しました",
+      "checkKey": "この鍵が {count} 台で使われることを理解しました",
+      "secretPassword": "パスワード",
+      "secretKey": "鍵"
+    },
+    "credentialLead": "パスワード変更と定期スケジュールは認証情報ライブラリで行います。",
+    "loginCheck": {
+      "button": "サインインをテスト",
+      "retry": "もう一度テスト",
+      "testingButton": "テスト中...",
+      "unconfirmed": {
+        "head": "サインイン未確認",
+        "key": "ホストに公開鍵と sudo 設定を追加してから「サインインをテスト」を押してください。",
+        "password": "ホストで sudo ルールを設定してから「サインインをテスト」を押してください。",
+        "other": "「サインインをテスト」でサインインとパスワード変更用の権限昇格ができるか確認します。"
+      },
+      "testing": {
+        "head": "テスト中",
+        "body": "{account} でこのホストにサインインし、パスワード変更に必要な権限昇格を確認しています。"
+      },
+      "success": {
+        "head": "サインイン可能",
+        "root": "{time} テスト：{account} でサインインでき、パスワード変更の権限を既に持っています。",
+        "nopasswd": "{time} テスト：{account} でサインインでき、パスワード変更の権限昇格も可能です。",
+        "password": "{time} テスト：{account} でサインインでき、そのパスワードによる権限昇格でパスワード変更も可能です。"
+      },
+      "inventoryRead": {
+        "ok": "sudo ルールも読み取れるため、ホストアカウントの棚卸しは完全になります。",
+        "denied": "sudo ルールを読み取れないため、ホストアカウントの棚卸し結果は「不完全の可能性あり」と表示されます。完全に棚卸しするには読み取りルールを追加してください。"
+      },
+      "setupLink": "設定方法",
+      "unsupported": "この種類のホストではテストログインはまだ利用できません",
+      "hostKeyNote": "このホストの識別フィンガープリントはまだ記録されていません。今回のサインインで現在のものを記録します。",
+      "fix": {
+        "hostKey": "ホストキーを確認",
+        "credential": "認証情報ライブラリへ"
+      },
+      "unknown": {
+        "head": "テストに通りませんでした",
+        "body": "もう一度テストしてください。繰り返し失敗する場合は管理者に連絡してください。",
+        "code": "結果コード：{code}"
+      },
+      "result": {
+        "connection": {
+          "head": "このホストに接続できません",
+          "body": "アドレス、ポート、ネットワークを確認してから再試行してください。"
+        },
+        "loginKey": {
+          "head": "サインインできません",
+          "body": "ホストが {account} の鍵を拒否しました。公開鍵がホスト上の {account} の認可済み鍵リストにあるか確認し、もう一度テストしてください。"
+        },
+        "loginPassword": {
+          "head": "サインインできません",
+          "body": "ホストが {account} のパスワードを拒否しました。"
+        },
+        "hostKeyMismatch": {
+          "head": "ホストの識別フィンガープリントが記録と一致しません",
+          "body": "{account} の認証情報は送信していません。ホストを確認してから、新しいフィンガープリントを採用するかリセットしてください。"
+        },
+        "hostKeyCheck": {
+          "head": "ホストの識別フィンガープリントを確認できませんでした",
+          "body": "ログインしていません。しばらくしてから再試行してください。"
+        },
+        "escalationDenied": {
+          "head": "サインインできますが、パスワードを変更できません",
+          "body": "{account} には他のアカウントのパスワード変更に必要な sudo 権限がありません。ホストで {account} に sudo ルールを追加し、もう一度テストしてください。"
+        },
+        "escalationNopasswd": {
+          "head": "サインインできますが、パスワードを変更できません",
+          "body": "ホストには {account} がパスワードなしでパスワード変更プログラムを実行できる sudo ルールがありません。ルールが未追加か、パスワード不要（NOPASSWD）になっていません。鍵方式の専用アカウントには NOPASSWD のパスワード変更ルールが必要です。ルールを追加してから再テストしてください。"
+        },
+        "unavailable": {
+          "head": "専用アカウントに使用できるシークレットがありません",
+          "body": "ログインしていません。専用アカウントを設定し直してください。"
+        },
+        "rotation": {
+          "head": "専用アカウントのパスワード変更中です",
+          "body": "ログインしていません。完了後に再テストしてください。"
+        },
+        "timeout": {
+          "head": "ホストが時間内に応答しませんでした",
+          "body": "結果は不明です。しばらくしてから再試行してください。"
+        }
+      },
+      "readRule": {
+        "title": "sudo ルールの読み取り（任意）",
+        "body": "ホストアカウントの棚卸しで sudo ルールを完全に読み取るには、root 以外の専用アカウントに読み取り専用ルールをもう 1 つ追加します。引数は記載どおりに正確に記述し、パスはホストで command -v tar が示す場所にしてください：",
+        "warning": "引数は記載どおりに正確に記述してください。引数の省略、ワイルドカードの使用、SETENV の追加、env_keep による TAR_OPTIONS の保持、env_reset の無効化はいずれも行わないでください。いずれかを行うと、このアカウントが任意のオプションで tar を実行できるようになり、root 権限を渡すのと同じになります。",
+        "passwordNote": "パスワード方式のアカウントは、ルールから NOPASSWD: を外し、残りはそのまま記述します。"
+      }
+    }
+  },
+  "hostInventory": {
+    "title": "ホストアカウント棚卸し",
+    "subtitle": "{name}・{host}",
+    "entry": "ホストアカウント棚卸し",
+    "entryUnsupported": "Linux／Unix ホストのみ対応しています",
+    "readonlyNote": "棚卸し結果は閲覧できます。棚卸しの開始、無視、再開には「ホストアカウント棚卸し」権限が必要です。",
+    "status": {
+      "queued": "待機中",
+      "running": "実行中",
+      "succeeded": "完了",
+      "partial": "一部完了：結果が不完全な可能性があります",
+      "failed": "未完了",
+      "interrupted": "中断",
+      "none": "未実施",
+      "unknown": "状態：{value}"
+    },
+    "line": {
+      "never": "このホストはまだ棚卸しされていません。",
+      "queued": "待機中（先に実行中の棚卸しがあります）",
+      "running": "実行中です。通常は 1 分以内に完了します。",
+      "done": "完了：アカウント {accounts} 件、特権 {privileged} 件、うち要対応 {unmanaged} 件。",
+      "doneNone": "要対応の特権アカウントはありません。",
+      "interrupted": "今回の棚卸しはサービス再起動により中断されました。以前の結果は変わりません。",
+      "stillRunning": "まだ実行中です",
+      "pollFailed": "状態を読み込めませんでした",
+      "summary": "アカウント {accounts} 件、特権アカウント {privileged} 件、うち要対応 {unmanaged} 件。"
+    },
+    "lastRun": "前回：{time}・{by}・{identity}",
+    "login": {
+      "default": "デフォルトアカウント {name} でログイン",
+      "defaultNoName": "デフォルトアカウントでログイン",
+      "executor": "踏み台専用アカウントでログイン",
+      "other": "ログイン方式：{mode}",
+      "defaultNoExecutor": "デフォルトアカウント {name} でログイン（このホストには踏み台専用アカウントが設定されていないため、一部の設定を読み取れない可能性があります）",
+      "defaultNoNameNoExecutor": "デフォルトアカウントでログイン（このホストには踏み台専用アカウントが設定されていないため、一部の設定を読み取れない可能性があります）"
+    },
+    "previousResult": "前回の結果（{time}）",
+    "btn": {
+      "start": "棚卸しを開始",
+      "rescan": "再実行",
+      "scanning": "実行中",
+      "refresh": "再読み込み",
+      "retry": "再試行"
+    },
+    "confirm": {
+      "title": "デフォルトアカウント {name} で棚卸しを実行しますか？",
+      "titleNoName": "このホストのデフォルトアカウントで棚卸しを実行しますか？",
+      "body": "アカウントとグループの一覧を読み取るだけで、ホストは変更しません。",
+      "fingerprint": "このホストにはまだホストフィンガープリントが記録されていません。今回のログインで現在のものを記録します。",
+      "fingerprintUnknown": "このホストのフィンガープリント記録を読み取れず、記録済みかどうか確認できません。未記録の場合は、今回のログインで現在のものを記録します。",
+      "ok": "開始",
+      "cancel": "キャンセル",
+      "titleExecutor": "踏み台専用アカウント {account} でログインして棚卸ししますか？",
+      "titleExecutorNoName": "このホストの踏み台専用アカウントでログインして棚卸ししますか？",
+      "noExecutor": "このホストには踏み台専用アカウントが設定されていないため、一部の設定を読み取れない可能性があり、結果に「不完全の可能性」と表示されます。"
+    },
+    "never": {
+      "card": "このホストのデフォルトアカウントでログインし、アカウントとグループを読み取り専用で一覧します。管理権限を持つのにプラットフォームで管理されていないアカウントを見つけます。ホストの設定は一切変更しません。",
+      "readonly": "「ホストアカウント棚卸し」権限を持つ人が開始する必要があります。",
+      "noDefault": "このホストには踏み台専用アカウントもデフォルトアカウントもないため、棚卸しでログインできるアカウントがありません。",
+      "cardExecutor": "このホストの踏み台専用アカウントでログインし、アカウントとグループを読み取り専用で一覧します。管理権限を持つのにプラットフォームで管理されていないアカウントを見つけます。ホストの設定は一切変更しません。"
+    },
+    "goAccounts": "アカウント設定へ",
+    "goHostKey": "ホストキー設定へ",
+    "newCount": "新規 {n}",
+    "count": {
+      "accounts": "ホスト上のアカウント",
+      "privileged": "特権アカウント",
+      "unmanaged": "要対応の特権アカウント",
+      "unmanagedClickable": "要対応の特権アカウント（クリックするとこれだけを表示）"
+    },
+    "filter": {
+      "needs": "要対応（{n}）",
+      "privileged": "特権すべて",
+      "all": "すべてのアカウント",
+      "ignored": "無視済み",
+      "gone": "ホストにない",
+      "needsNoCount": "要対応"
+    },
+    "search": {
+      "placeholder": "アカウント名（このページのみ）",
+      "hint": "このページのみ検索"
+    },
+    "col": {
+      "account": "アカウント",
+      "uid": "uid",
+      "reasons": "特権の理由",
+      "login": "ログイン可",
+      "managed": "管理",
+      "state": "状態",
+      "verdict": "判定",
+      "actions": "操作",
+      "asset": "資産",
+      "firstSeen": "初回検出",
+      "lastSeen": "最終検出"
+    },
+    "caption": {
+      "host": "{name} のホストアカウント棚卸し結果",
+      "global": "未対応のホストアカウント"
+    },
+    "cell": {
+      "canLogin": "ログイン可",
+      "cannotLogin": "ログイン不可",
+      "loginNote": "ログインシェルで判定",
+      "managed": "管理済み",
+      "unmanaged": "未管理",
+      "ignored": "無視済み",
+      "ignoredTip": "理由：{reason}／操作者：{by}／日時：{time}",
+      "gone": "ホストにない",
+      "goneTip": "最終確認：{time}",
+      "incomplete": "不完全の可能性",
+      "incompleteTip": "sudo ルールを完全に読み取れていません。このアカウントの実際の権限は表示より高い可能性があります。",
+      "uidConflict": "同名複数",
+      "uidConflictTip": "ホストに同名で uid の異なるアカウントが複数あります。ここには最初の uid を表示しています。",
+      "hiddenChars": "非表示文字を含む",
+      "hiddenCharsTip": "名前に見えない文字が含まれています。<U+XXXX> の形で表示しています。",
+      "nonAscii": "英数字以外を含む",
+      "nonAsciiTip": "名前に英字・数字・一般的な記号以外の文字があります。通常の文字に似て見える場合があるため、見覚えのあるアカウントか確認してください。",
+      "copy": "アカウント名をコピー",
+      "copied": "コピーしました",
+      "moreReasons": "＋{n}",
+      "byRules": "ルールから判定",
+      "none": "—"
+    },
+    "reason": {
+      "uid0": "最高権限アカウント（uid 0）",
+      "group": "特権グループ「{name}」に所属",
+      "group_primary": "プライマリグループが「{name}」",
+      "sudoers_user": "sudo ルールで直接許可",
+      "sudoers_group": "sudo ルールでグループ「{name}」に許可",
+      "sudoers_alias": "sudo ルールのエイリアス「{name}」で許可",
+      "sudoers_all": "sudo ルールで全員に許可",
+      "sudoers_all_targetpw": "sudo ルールで全員に許可されますが、対象アカウントのパスワードが必要です（単独では特権扱いしません）",
+      "unknown": "その他の理由：{raw}"
+    },
+    "empty": {
+      "needs": "対応が必要なアカウントはありません。",
+      "needsHint": "特権アカウントはすべて管理済みか無視済みです。",
+      "partialExtra": "今回の棚卸しは不完全なため、見つかっていない特権アカウントがある可能性があります。",
+      "other": "条件に合うアカウントはありません。"
+    },
+    "partial": {
+      "title": "今回の棚卸しは不完全です",
+      "after": "「不完全の可能性」と表示されたアカウントは、実際の権限が表示より高い場合があります。特権と表示されていないアカウントにも sudo 権限がある可能性があります。",
+      "hint": "すべてのルールを読み取るには、このホストの踏み台専用アカウント（sudo ルールを読み取れる必要があります）を設定して、もう一度棚卸ししてください。",
+      "hintTitle": "ルール全体を読み取るには",
+      "gap": "{check}：{state}",
+      "gapSudo": "sudo ルール（{path}）を読み取れません：ログインアカウントに読み取り権限がありません。",
+      "hintExecutor": "すべてのルールを読み取るには、このホストの踏み台専用アカウント {account} が sudo ルールを読み取れるようにして、もう一度棚卸ししてください。",
+      "hintExecutorNoName": "すべてのルールを読み取るには、このホストの踏み台専用アカウントが sudo ルールを読み取れるようにして、もう一度棚卸ししてください。",
+      "hintGo": "踏み台専用アカウントの設定へ",
+      "gapSudoEscalation": "sudo ルール（{path}）を読み取れません：専用アカウントに読み取り権限がなく、権限昇格による読み取りも拒否されました。"
+    },
+    "coverage": {
+      "title": "今回の確認内容",
+      "check": {
+        "accounts": "アカウント一覧",
+        "groups": "グループ一覧",
+        "sudoers_main": "sudo メインルールファイル",
+        "sudoers_dir": "sudo ルールディレクトリ",
+        "sudoers_unresolved": "sudo ルールの解析できない項目",
+        "unknown": "確認項目：{raw}"
+      },
+      "state": {
+        "checked": "確認済み",
+        "partial": "一部のみ読み取り（{n} 件スキップ）",
+        "unreadable": "読み取れません：ログインアカウントに権限がありません",
+        "absent": "ホストにありません",
+        "failed": "読み取りに失敗",
+        "undetermined": "メインルールファイルを読み取れないため判断できません",
+        "unknown": "状態：{raw}"
+      },
+      "reason": {
+        "permission_denied": "ログインアカウントに読み取り権限がありません",
+        "nondefault_location": "sudo ルールファイルが一般的な場所になく、今回は確認していません",
+        "not_included": "メインルールファイルがこのディレクトリを参照しておらず、中のルールは有効になりません",
+        "invalid_rows": "形式が合わない行をスキップしました",
+        "command_failed": "問い合わせが成功しませんでした",
+        "via_escalation": "権限昇格で読み取り済み",
+        "escalation_denied": "サインインアカウントでは読み取れず、権限昇格での読み取りも拒否されました",
+        "other": "その他の理由：{raw}"
+      },
+      "duplicate": "同名の {n} 行を統合しました",
+      "groups": "判定に使った特権グループ：{groups}",
+      "groupsEmpty": "判定に使った特権グループ：なし（uid 0 と sudo ルールのみ）",
+      "adjustGroups": "特権グループを調整",
+      "fixedTitle": "この棚卸しで確認しない項目",
+      "fixed": {
+        "other_escalation_tools": "doas や polkit など他の権限昇格ツールの設定。",
+        "unenumerated_directory_accounts": "LDAP などのディレクトリサービスが提供し、ローカルで列挙できないアカウント。",
+        "replaced_noninteractive_shell": "ログインシェルが非対話プログラムに置き換えられたアカウントも、シェルで可否を判定します。",
+        "unknown": "その他の項目：{raw}"
+      },
+      "checkWithPath": "{label}（{path}）",
+      "setupLink": "設定方法"
+    },
+    "failure": {
+      "generic": "今回の棚卸しは完了しませんでした。",
+      "code": "コード：{code}",
+      "INVENTORY_HOST_KEY_MISMATCH": "ホストのフィンガープリントが記録と異なるため、ログインしていません。",
+      "INVENTORY_HOST_KEY_CHECK_FAILED": "ホストのフィンガープリントを確認できず、ログインしていません。",
+      "INVENTORY_LOGIN_FAILED": "ホストがデフォルトアカウントのログインを拒否しました。パスワードまたは秘密鍵が無効になっている可能性があります。",
+      "INVENTORY_LOGIN_FAILED_more": "プラットフォームは 1 回だけ試行し、他のアカウントには切り替えません。",
+      "INVENTORY_CONNECTION_FAILED": "ホストに接続できません。",
+      "INVENTORY_CONNECTION_FAILED_more": "アドレス、ポート、ネットワークを確認してください。",
+      "INVENTORY_TIMEOUT": "ホストの応答が遅く、制限時間を超えました。",
+      "INVENTORY_COMMAND_FAILED": "ホスト上の読み取り専用の問い合わせが成功しませんでした。",
+      "INVENTORY_OUTPUT_LIMIT": "ホストのアカウントや設定が多く、一度に処理できる上限を超えました。今回は結果を保存していません。",
+      "INVENTORY_OUTPUT_MALFORMED": "ホストが想定外の形式のデータを返しました。今回は結果を保存していません。",
+      "INVENTORY_NO_ACCOUNT": "実行開始時、このホストにはデフォルトアカウントがないか、別のアカウントに変更されていました。",
+      "INVENTORY_NO_SECRET": "デフォルトアカウントに使えるパスワードまたは秘密鍵がありません。",
+      "INVENTORY_ASSET_CHANGED": "実行開始時、このホストは削除されたか、Linux／Unix ホストではなくなっていました。",
+      "INVENTORY_PERSIST_FAILED": "結果を保存できませんでした。以前の結果は変わりません。",
+      "INVENTORY_INTERRUPTED": "サービスの再起動により今回の棚卸しは中断されました。以前の結果は変わりません。",
+      "INVENTORY_EXECUTOR_CHANGED": "実行開始時に、このホストの踏み台専用アカウントが削除または置き換えられていました。プラットフォームはサインインせず、他のアカウントにも切り替えていません。",
+      "INVENTORY_EXECUTOR_BUSY": "実行開始時に、このホストの踏み台専用アカウントがパスワード更新中だったか、更新の完了を待てませんでした。プラットフォームはサインインしていません。更新の完了後にやり直してください。",
+      "INVENTORY_EXECUTOR_UNAVAILABLE": "実行開始時に、このホストの踏み台専用アカウントに使用可能な秘密情報がありませんでした。プラットフォームはサインインせず、他のアカウントにも切り替えていません。専用アカウントを設定し直してください。"
+    },
+    "action": {
+      "manage": "管理に追加",
+      "ignore": "無視",
+      "reopen": "再開",
+      "viewHost": "このホストを開く",
+      "denied": "このホストの棚卸し権限がありません",
+      "manageDenied": "このホストのアカウント管理権限がありません"
+    },
+    "ignore": {
+      "title": "このアカウントを無視",
+      "reasonLabel": "管理しなくてよい理由は？",
+      "placeholder": "例：ベンダー保守用アカウント、契約は年末まで",
+      "note": "以降の棚卸しで新しい特権の理由が見つかった場合や、アカウントが消えて再び現れた場合は、自動的に再開されます。",
+      "submit": "無視する",
+      "cancel": "キャンセル",
+      "errEmpty": "理由を入力してください",
+      "errLong": "理由は 500 文字までです（現在 {n} 文字）",
+      "errControl": "理由に制御文字は使えません",
+      "success": "{name} を無視しました"
+    },
+    "reopen": {
+      "confirm": "{name} を再開しますか？対応が必要な一覧に戻ります。",
+      "ok": "再開する",
+      "cancel": "キャンセル",
+      "success": "{name} を再開しました"
+    },
+    "err": {
+      "noViewScope": "このホストを閲覧する権限がありません",
+      "notFound": "このホストが見つかりません。削除された可能性があります。",
+      "readFailed": "読み込みに失敗しました",
+      "itemGone": "この結果はすでに存在しません",
+      "notInScope": "このホストはあなたの棚卸し権限の範囲外です",
+      "running": "このホストでは棚卸しがすでに実行中です",
+      "platform": "Linux／Unix ホストのみ対応しています",
+      "noAccount": "このホストには踏み台専用アカウントもデフォルトアカウントもないため、棚卸しでログインできるアカウントがありません。",
+      "noSecret": "デフォルトアカウントに使えるパスワードまたは秘密鍵がありません",
+      "generic": "操作が成功しませんでした。しばらくしてからお試しください。"
+    },
+    "started": "棚卸しを開始しました",
+    "global": {
+      "title": "ホストアカウント棚卸し",
+      "subtitle": "棚卸し済みのホストにある、管理権限を持つのにプラットフォームで管理されていないアカウントです。棚卸しは資産ページの各ホストから開始します。",
+      "tabOpen": "未対応",
+      "empty": "現在対応が必要なアカウントはありません。",
+      "emptyHint": "ここには棚卸し済みのホストだけが表示されます。未実施のホストは表示されません。",
+      "incompleteNote": "直近の棚卸しが不完全または未完了のホストには、見つかっていないアカウントがある可能性があります。各ホストの棚卸し画面で確認してください。",
+      "goAssets": "資産管理へ",
+      "loadFailed": "読み込みに失敗しました",
+      "lastSeenDays": "{n} 日前",
+      "lastSeenToday": "今日",
+      "assetFallback": "資産 #{id}"
+    },
+    "manageBar": {
+      "info": "ホストアカウント棚卸しから入力しました：{name}。パスワードまたは秘密鍵を追加してからアカウントを追加してください。",
+      "shared": "アカウント名は共有資格情報から決まります。{name} という名前の共有資格情報を選んでください。名前が異なる場合、棚卸し結果では管理済みと表示されません。",
+      "hidden": "このアカウント名には見えない文字が含まれており、そのまま入力しました：{shown}。管理したいアカウントか確認してください。",
+      "done": "{name} を管理に追加しました。",
+      "back": "ホストアカウント棚卸しに戻る"
+    },
+    "policyPreview": {
+      "label": "特権として扱われるグループ：",
+      "empty": "現在はグループで特権を判定せず、uid 0 と sudo ルールのみを見ます",
+      "colon": "コロンは使えません",
+      "tooLong": "名前が長すぎます",
+      "badChar": "使えない文字が含まれています",
+      "overLimit": "上限の 32 項目を超えています",
+      "rejected": "保存は拒否されます。警告表示の項目を先に修正してください。"
+    },
+    "thisRun": "今回：{time}・{by}・{identity}",
+    "previousResultNoTime": "前回の結果",
+    "skeletonLabel": "棚卸しが完了すると、ここに結果が表示されます",
+    "goExecutor": "専用アカウントの設定へ"
   }
 }

@@ -4,6 +4,13 @@
     class="role-scope-tab"
     data-test="role-scope-tab"
   >
+    <ApproverOnlyBanner
+      v-if="approverOnly || bannerDone"
+      :dirty="dirty"
+      :busy="saving"
+      :done="bannerDone"
+      @add="addGeneralUser"
+    />
     <div
       class="scope-banner"
       data-test="scope-banner"
@@ -268,7 +275,7 @@
       <div class="actions">
         <el-button
           v-preview-write
-          type="primary"
+          :type="prompt.visible.value ? 'default' : 'primary'"
           :disabled="!dirty"
           :loading="saving"
           data-test="roles-save"
@@ -277,6 +284,15 @@
           {{ $t('common.save') }}
         </el-button>
       </div>
+      <ApproverOnlyPrompt
+        v-if="prompt.visible.value"
+        :copy="prompt.copy.value"
+        show-cancel
+        :loading="saving"
+        data-test="approver-only-prompt"
+        @fix="fixApproverOnly"
+        @cancel="prompt.dismiss"
+      />
     </section>
 
     <!-- 儲存後的變化（建議性預覽；只讀整筆彙總的頁面入口） -->
@@ -565,6 +581,9 @@ import { can } from '@/composables/useCapabilities'
 import { canEnter, entryRuleFor } from '@/router/entryRules'
 import { classifyRole, isNoEffectClass, SCOPE_CLASS, filterByQuery, splitBuiltinCustom } from '@/utils/roleScopePresentation'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import ApproverOnlyPrompt from '@/components/ApproverOnlyPrompt.vue'
+import ApproverOnlyBanner from './ApproverOnlyBanner.vue'
+import { useApproverOnlyPrompt } from '@/composables/useApproverOnlyPrompt'
 
 /**
  * 使用者詳情的「角色與範圍」分頁：管理者指派、來自映射、來自群組三區。
@@ -578,6 +597,8 @@ const props = defineProps({
   // GET /users/:id 的 role_sets 與觀測快照原始欄位
   roleSets: { type: Object, default: () => ({ manual: [], mapped: [] }) },
   snapshot: { type: Object, default: null },
+  // GET /users/:id 的 approver_only：帳號只有審核者角色時頂端顯示說明條
+  approverOnly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['changed'])
 
@@ -867,13 +888,15 @@ const SCOPE_ERROR_CODES = new Set([
   'VALIDATION_ROLE_NOT_NODE_SCOPABLE',
 ])
 
-const persist = async () => {
+// extraNodes：本次額外指定的範圍（一般使用者改回全系統），不能指派角色者也照帶
+const persist = async (extraNodes = {}) => {
   saving.value = true
   assignError.value = ''
   try {
     // 只送管理者指派集。映射賦予的角色不在這份裡——要固定下來走釘住
     const roleNodes = {}
     for (const n of changedRanges.value) roleNodes[n] = rangeValue(n)
+    Object.assign(roleNodes, extraNodes)
     const res = await assignManualRoles(props.userId, selected.value, roleNodes)
     const ignored = (res?.disclosures || []).find((d) => d.code === 'role.mapped_ignored')
     if (ignored) {
@@ -901,7 +924,10 @@ const persist = async () => {
     ranges.value = {}
     preview.cancel()
     loadBindings()
+    return true
   } catch (error) {
+    // 只有審核者角色：草稿原樣保留，在儲存鈕下方說明並提供修正鈕
+    if (prompt.captureDraft(error)) return false
     const code = roleErrorCode(error)
     if (code && te(`apiError.${code}`)) {
       assignError.value = t(`apiError.${code}`)
@@ -942,6 +968,23 @@ const save = async () => {
 const confirmSave = async () => {
   confirmOpen.value = false
   await persist()
+}
+
+// —— 只有審核者角色：就近說明與修正（管理者已看過預覽與確認，修正鈕不再重問）——
+const prompt = useApproverOnlyPrompt({
+  roles: selected,
+  sources: [selected, ranges],
+  isNodeScoped: (n) => draftOf(n).mode === 'nodes',
+  setGlobal: (n) => setDraft(n, ALL),
+})
+const fixApproverOnly = async () => {
+  if (!saving.value) await persist(prompt.toGlobalUser())
+}
+// 頂端說明條：以目前已儲存的指派加上全系統的一般使用者整組替換；有未儲存修改時不動作
+const bannerDone = ref(false)
+const addGeneralUser = async () => {
+  if (dirty.value || saving.value || !definitionsLoaded.value) return
+  bannerDone.value = await persist(prompt.toGlobalUser())
 }
 
 // 釘住一個映射賦予的角色：走專用端點，不併進替換主體

@@ -19,6 +19,8 @@ import (
 const (
 	CredentialActionNoCapability = "no_capability"
 	CredentialActionOutOfScope   = "out_of_scope"
+	// CredentialActionExecutorManaged 堡壘機專用帳號的掛載只能經資產的專用帳號區塊處理（卸載不可用）
+	CredentialActionExecutorManaged = "executor_managed"
 )
 
 // CredentialAction 一個動作的可操作結果。
@@ -218,6 +220,9 @@ func filterBindingsInView(db *gorm.DB, view CredentialScopeView, in []*Credentia
 			continue
 		}
 		unbind, ur := view.Allows(CredCapBind, nodes[b.AssetID])
+		if b.Purpose == model.AccountPurposeExecutor {
+			unbind, ur = false, CredentialActionExecutorManaged
+		}
 		detach, dr := view.Allows(CredCapDetach, nodes[b.AssetID])
 		b.Actions = map[string]CredentialAction{
 			"unbind": {Allowed: unbind, Reason: ur},

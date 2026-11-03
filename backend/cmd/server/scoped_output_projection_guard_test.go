@@ -823,8 +823,8 @@ func (g *sgChecker) checkFloors() {
 	if g.stats.outsideSelectors < 100 {
 		g.addGlobal("R", fmt.Sprintf("全包清單外 gin.Context 選擇子只掃到 %d 處（下限 100），掃描範圍可能縮小", g.stats.outsideSelectors))
 	}
-	if len(g.reg.exits) != 18 {
-		g.addGlobal("R", fmt.Sprintf("登錄出口 %d 列，應為 18（帳號列 6、輪替 5、改密 7）", len(g.reg.exits)))
+	if len(g.reg.exits) != 20 {
+		g.addGlobal("R", fmt.Sprintf("登錄出口 %d 列，應為 20（帳號列 8、輪替 5、改密 7）", len(g.reg.exits)))
 	}
 	if len(g.reg.exemptions) > 5 {
 		g.addGlobal("R", fmt.Sprintf("豁免 %d 列，超過上限 5", len(g.reg.exemptions)))
@@ -903,7 +903,7 @@ func TestScopedOutputProjectionGuard(t *testing.T) {
 		}
 		assert.Fail(t, "守衛違規", "共 %d 筆：%s", len(vs), sb.String())
 	}
-	assert.Len(t, reg.exits, 18)
+	assert.Len(t, reg.exits, 20)
 	assert.Len(t, reg.allow, 7)
 	assert.Len(t, reg.exceptions, 2)
 	assert.GreaterOrEqual(t, st.outsideSelectors, 100)

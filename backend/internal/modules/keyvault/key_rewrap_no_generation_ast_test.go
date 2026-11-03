@@ -665,6 +665,8 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 		Reason: "受保護帳號操作的關聯編號（16 bytes hex），串起同一操作的審計列與告警；純識別字，非加密材料、從不安裝為 KEK。"},
 	{File: "internal/modules/asset/credential_impact.go", Func: "newImpactConfirmationID",
 		Reason: "產出一次性的影響確認識別（16 bytes hex，只回給操作者的不透明識別），非金鑰材料、從不安裝為 KEK。"},
+	{File: "internal/dbrotate/scram.go", Func: "SCRAMVerifier",
+		Reason: "資料庫帳號改密時產生 PostgreSQL SCRAM-SHA-256 verifier 的鹽值（16 bytes，以標準 base64 寫進 verifier 交給目標資料庫保存），鹽值本身公開、不參與平台的加解密，非金鑰材料、從不安裝為 KEK。"},
 }
 
 // TestBackendHasNoKEKMaterialGenerator 安全紅線的**模組級**機械把關：

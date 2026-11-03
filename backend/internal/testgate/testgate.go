@@ -43,6 +43,12 @@ const (
 	EnvDBConsoleMySQL    = "TEST_DBCONSOLE_MYSQL"
 	EnvDBConsolePostgres = "TEST_DBCONSOLE_POSTGRES"
 	EnvDBConsoleMSSQL    = "TEST_DBCONSOLE_MSSQL"
+
+	// 資料庫自改密碼（internal/dbrotate）的三個靶機座標，同樣是五段式、
+	// 帳號須具建立與刪除一次性帳號的管理權限。
+	EnvDBRotateMySQL    = "TEST_DBROTATE_MYSQL"
+	EnvDBRotatePostgres = "TEST_DBROTATE_POSTGRES"
+	EnvDBRotateMSSQL    = "TEST_DBROTATE_MSSQL"
 )
 
 // RequireIntegration 是否要求整合測試必須實際執行

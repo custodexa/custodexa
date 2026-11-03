@@ -9,9 +9,9 @@ Windows 主機本機帳號的密碼改密：經 WinRM（NTLM 認證、訊息層�
 
 ### Requirement: 改密通道
 
-資產 SHALL 持有「改密通道」設定，值域為 `posix_ssh`、`windows_winrm`、`windows_ssh`、`none`；未設定時 SHALL 依協定推導：ssh 協定為 `posix_ssh`，其餘為 `none`。
-`windows_winrm` 與 `windows_ssh` SHALL 只允許 rdp 或 ssh 協定的資產；`posix_ssh` SHALL 只允許 ssh 協定。
-通道為 `none` 的資產於改密計劃執行時 SHALL 記為 skipped 並帶「未設定改密通道」機器碼；秘密型別為 SSH 金鑰時，Windows 兩通道 SHALL 記為 skipped 並帶「秘密型別不支援」機器碼。
+資產 SHALL 持有「改密通道」設定，值域為 `posix_ssh`、`windows_winrm`、`windows_ssh`、`db_native`、`none`；未設定時 SHALL 依協定推導：ssh 協定為 `posix_ssh`，其餘為 `none`。`db_native` SHALL NOT 由推導產生，資料庫資產必須顯式設定才會改密。
+`windows_winrm` 與 `windows_ssh` SHALL 只允許 rdp 或 ssh 協定的資產；`posix_ssh` SHALL 只允許 ssh 協定；`db_native` SHALL 只允許 mysql、postgres、mssql 協定。
+通道為 `none` 的資產於改密計劃執行時 SHALL 記為 skipped 並帶「未設定改密通道」機器碼；秘密型別為 SSH 金鑰時，Windows 兩通道與 `db_native` SHALL 記為 skipped 並帶「秘密型別不支援」機器碼。
 資產協定改為不支援該通道的值時，系統 SHALL 清空通道與其附屬欄位並於資產變更審計留痕。
 
 #### Scenario: rdp 資產預設不改密
@@ -33,6 +33,21 @@ Windows 主機本機帳號的密碼改密：經 WinRM（NTLM 認證、訊息層�
 
 - **WHEN** 秘密型別為 ssh_key 的計劃涵蓋 `windows_ssh` 資產
 - **THEN** 該帳號記為 skipped、原因為秘密型別不支援
+
+#### Scenario: 資料庫資產不推導為 db_native
+
+- **WHEN** 升級後一台既有的 mysql 資產未設定改密通道
+- **THEN** 其有效通道為 `none`，改密計畫涵蓋時記為 skipped、原因為未設定改密通道
+
+#### Scenario: db_native 與 redis 不相容
+
+- **WHEN** admin 對 redis 資產設定通道 `db_native`
+- **THEN** 系統拒絕並回機器可讀錯誤碼，資產未被更新
+
+#### Scenario: 資料庫資產改為 redis 清空通道
+
+- **WHEN** 已設 `db_native` 的 mysql 資產改為 redis 協定
+- **THEN** 通道被清空，資產變更審計記錄此清空
 
 ### Requirement: WinRM 傳輸不變式
 
@@ -180,3 +195,4 @@ ssh 協定資產設為 `windows_ssh` 時沿資產埠；rdp 資產設為 `windows
 
 - **WHEN** 客戶依文件準備目標機
 - **THEN** 文件不要求 TrustedHosts，且明確要求維持 AllowUnencrypted 為 false
+

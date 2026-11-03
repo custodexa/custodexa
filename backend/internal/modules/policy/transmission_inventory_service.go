@@ -60,7 +60,7 @@ type InventoryChannel struct {
 	// DetailCodes 完整 machine-keyed 明細（技術複合鍵原樣、`(未設定)`→`unset`）：
 	// 新前端整份採用取代 Detail、不合併
 	DetailCodes map[string]int64 `json:"detail_codes,omitempty"`
-	// Risks 單例通道（LDAP/syslog）的風險項
+	// Risks 單例通道（LDAP/syslog）的風險項；改密列（資料庫改密）有偏離時亦帶
 	Risks []RiskItem `json:"risks,omitempty"`
 	// StrictPreflight 「若切 strict」預檢描述（zh fallback；前端優先 PreflightCode 查譯）
 	StrictPreflight string `json:"strict_preflight,omitempty"`
@@ -107,6 +107,10 @@ func (s *TransmissionInventoryService) Build() (*TransmissionInventory, error) {
 	if err != nil {
 		return nil, err
 	}
+	dbRotation, err := s.buildDBRotation()
+	if err != nil {
+		return nil, err
+	}
 	syslog, err := s.buildSyslog()
 	if err != nil {
 		return nil, err
@@ -115,7 +119,7 @@ func (s *TransmissionInventoryService) Build() (*TransmissionInventory, error) {
 	if err != nil {
 		return nil, err
 	}
-	inv.Channels = []InventoryChannel{ssh, rdp, vnc, db, winrm, s.buildLDAP(), syslog, notify, buildNginx()}
+	inv.Channels = []InventoryChannel{ssh, rdp, vnc, db, winrm, dbRotation, s.buildLDAP(), syslog, notify, buildNginx()}
 	return inv, nil
 }
 
@@ -150,6 +154,46 @@ func (s *TransmissionInventoryService) buildWinRM() (InventoryChannel, error) {
 	}
 	ch.Detail = legacyDetailFromCodes(ch.DetailCodes)
 	setNote(&ch, "winrm_rotation_channel", nil)
+	return ch, nil
+}
+
+// buildDBRotation 改密通道設為 db_native 的資料庫資產，依 TLS 檔位分布。
+//
+// 只列設定了該通道且協定為 mysql／postgres／mssql 的資產：其他協定即使帶了 db_native
+// 也不會走資料庫改密，判定函式對它回空，計入會被算成「已加密」。偏離判定與資產的
+// 傳輸風險同一份（AssetRotationRisks）；無政策等級、無 strict 預檢。
+func (s *TransmissionInventoryService) buildDBRotation() (InventoryChannel, error) {
+	ch := InventoryChannel{Channel: TransportChannelDBRotation, DetailCodes: map[string]int64{}}
+	var rows []struct {
+		Protocol  model.ProtocolType
+		DBTLSMode string
+		N         int64
+	}
+	err := s.db.Model(&model.Asset{}).
+		Select("protocol, db_tls_mode, COUNT(*) AS n").
+		Where("rotation_channel = ? AND protocol IN ?", model.RotationChannelDBNative,
+			[]model.ProtocolType{model.ProtocolMySQL, model.ProtocolPostgres, model.ProtocolMSSQL}).
+		Group("protocol, db_tls_mode").Scan(&rows).Error
+	if err != nil {
+		return ch, err
+	}
+	for _, r := range rows {
+		mode := r.DBTLSMode
+		if mode == "" {
+			mode = detailUnsetCode
+		}
+		ch.DetailCodes[mode] += r.N
+		ch.TotalCount += r.N
+		rep := model.Asset{Protocol: r.Protocol, RotationChannel: model.RotationChannelDBNative, DBTLSMode: r.DBTLSMode}
+		if len(s.policy.AssetRotationRisks(&rep)) > 0 {
+			ch.AtRiskCount += r.N
+		}
+	}
+	ch.Detail = legacyDetailFromCodes(ch.DetailCodes)
+	if ch.AtRiskCount > 0 {
+		ch.Risks = []RiskItem{newRisk(RiskDBRotationUnencrypted, nil)}
+	}
+	setNote(&ch, "db_rotation_channel", nil)
 	return ch, nil
 }
 
@@ -193,7 +237,7 @@ func registerInventory(kind inventoryKind, code, tmpl string, required ...string
 }
 
 func init() {
-	// note（9）：LDAP 三完整碼（啟用／未啟用／讀取失敗），不用中文前綴組合
+	// note（11）：LDAP 三完整碼（啟用／未啟用／讀取失敗），不用中文前綴組合
 	registerInventory(invKindNote, "ssh_encrypted", "SSH 協議本身加密，不在政策範疇")
 	registerInventory(invKindNote, "vnc_no_encryption", "VNC/RFB 協議無加密選項，全部資產恆為明文通道")
 	// LDAP 三碼：設定自 env 遷入 DB 後由
@@ -207,6 +251,7 @@ func init() {
 	registerInventory(invKindNote, "syslog_disabled", "syslog 轉發未啟用")
 	registerInventory(invKindNote, "syslog_protocol", "轉發協議：{protocol}", "protocol")
 	registerInventory(invKindNote, "winrm_rotation_channel", "改密通道（系統路徑，不經使用者連線）：NTLM 訊息層加密恆啟用；http 為無 TLS 傳輸、insecure 為未驗證憑證，皆列為偏離")
+	registerInventory(invKindNote, "db_rotation_channel", "改密通道（系統路徑，不經使用者連線）：資料庫連線未啟用 TLS（require、verify-ca、verify-full 以外的檔位）時，舊密碼與新密碼可能以明文經網路傳送，列為偏離")
 	registerInventory(invKindNote, "nginx_deploy_managed", "前端對外 HTTPS 屬部署層：對外 TLS 由內建代理或部署方 ingress 終止（443 ssl＋80→443 redirect＋HSTS＋wss，設定見 docker/reverse-proxy/）；後端與前端容器間為單主機內網明文；部署方管理")
 	// preflight（4）：rdp/vnc/db 帶 {n}（vue-i18n 隱式 plural 參數，對齊 codebase 慣例
 	// 如 riskCount "{n} risk | {n} risks"）、ldap 無參

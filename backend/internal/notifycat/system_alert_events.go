@@ -32,6 +32,7 @@ const (
 	EventSystemAlertHostKeyRecordChanged         Event = "host_key_record_changed"
 	EventSystemAlertNotificationChannelChanged   Event = "notification_channel_changed"
 	EventSystemAlertConcurrentInstanceDetected   Event = "concurrent_instance_detected"
+	EventSystemAlertUnmanagedPrivilegedAccount   Event = "unmanaged_privileged_account"
 )
 
 func systemAlertEventSpecs() map[Event]EventSpec {
@@ -144,7 +145,7 @@ func systemAlertEventSpecs() map[Event]EventSpec {
 		EventSystemAlertHostKeyMismatch: {Params: []ParamSpec{
 			{Name: "actor", Kind: KindOpaque, Required: true},
 			{Name: "severity", Kind: KindEnum, Required: true, Enum: systemAlertSeverityEnum(), Lexicon: LexiconSeverity},
-			{Name: "path", Kind: KindEnum, Required: true, Enum: []string{"terminal", "agent_terminal", "file_transfer", "connection_test", "credential_change", "credential_rotation"}, Lexicon: LexiconHostKeyPath},
+			{Name: "path", Kind: KindEnum, Required: true, Enum: []string{"terminal", "agent_terminal", "file_transfer", "connection_test", "credential_change", "credential_rotation", "account_inventory", "executor_login_check"}, Lexicon: LexiconHostKeyPath},
 			{Name: "outcome", Kind: KindEnum, Required: true, Enum: []string{"allowed", "refused"}, Lexicon: LexiconHostKeyOutcome},
 			{Name: "record_source", Kind: KindEnum, Required: true, Enum: []string{"own", "address"}},
 			{Name: "recorded_fingerprint", Kind: KindOpaque, Required: true},
@@ -176,6 +177,12 @@ func systemAlertEventSpecs() map[Event]EventSpec {
 			{Name: "confirm_source", Kind: KindEnum, Enum: []string{"env", "page"}},
 			{Name: "confirmed_by", Kind: KindOpaque},
 		}, VariantParam: "signal"},
+		EventSystemAlertUnmanagedPrivilegedAccount: {Params: []ParamSpec{
+			{Name: "actor", Kind: KindOpaque, Required: true},
+			{Name: "severity", Kind: KindEnum, Required: true, Enum: systemAlertSeverityEnum(), Lexicon: LexiconSeverity},
+			{Name: "new_count", Kind: KindInt, Required: true},
+			{Name: "identity_mode", Kind: KindEnum, Required: true, Enum: []string{"default_account", "executor"}},
+		}},
 	}
 }
 

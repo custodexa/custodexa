@@ -82,6 +82,15 @@ vi.mock('@/api/authorizations', () => ({
   getEffectiveUsers: vi.fn().mockResolvedValue({ users: [{ id: 3, paths: [{ via_group_id: 8 }] }] }),
 }))
 
+const getExecutorMock = vi.fn()
+const deleteExecutorMock = vi.fn()
+vi.mock('@/api/assetExecutor', () => ({
+  getAssetExecutor: (...a) => getExecutorMock(...a),
+  deleteAssetExecutor: (...a) => deleteExecutorMock(...a),
+  putAssetExecutor: vi.fn(),
+  exportAssetExecutorPublicKey: vi.fn(),
+}))
+
 vi.mock('@/api/securityPolicies', () => ({
   getSecurityPolicies: vi.fn().mockResolvedValue({ data: [] }),
 }))
@@ -750,5 +759,47 @@ describe('主機金鑰與深連結', () => {
         expect(text.toLowerCase(), `${locale} 洩漏措辭 ${word}`).not.toContain(word.toLowerCase())
       }
     }
+  })
+})
+
+describe('ExecutorSectionNotDirty', () => {
+  const executorAsset = { id: 2, name: 'ssh-multi-test', protocol: 'ssh', windowsFamily: false }
+  const configured = {
+    configured: true, account_id: 7, username: 'cx-exec', secret_type: 'ssh_key', source: 'generate',
+    has_public_key: true, fingerprint: 'SHA256:x', credential: { credential_id: 31 },
+  }
+
+  beforeEach(() => {
+    setCapabilitiesForTests(['asset:update', 'credential:manage', 'asset:executor-manage'])
+    getExecutorMock.mockResolvedValue(configured)
+    deleteExecutorMock.mockResolvedValue({})
+  })
+
+  it('區塊位於帳號表與主機金鑰之間', async () => {
+    const wrapper = await mountContent({ executorAsset })
+    const html = wrapper.html()
+    expect(html.indexOf('data-focus="executor"')).toBeGreaterThan(html.indexOf('account-credential-21'))
+    expect(html.indexOf('data-focus="executor"')).toBeLessThan(html.indexOf('host-key-item'))
+  })
+
+  it('清除成功後 form 不變、不 emit update:form、changed 往上 emit 1 次、帳號表重讀', async () => {
+    const form = formFixture()
+    const before = JSON.stringify(form)
+    const wrapper = await mountContent({ form, executorAsset })
+    const loads = listAssetAccountsMock.mock.calls.length
+    getExecutorMock.mockResolvedValue({ configured: false })
+    await wrapper.get('[data-test="executor-clear"]').trigger('click')
+    await wrapper.get('[data-test="executor-clear-confirm-btn"]').trigger('click')
+    await flushPromises()
+    expect(JSON.stringify(form)).toBe(before)
+    expect(wrapper.emitted('update:form')).toBeUndefined()
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(listAssetAccountsMock.mock.calls.length).toBe(loads + 1)
+    expect(wrapper.props('securityChangeFields')).toEqual([])
+  })
+
+  it('沒有 executorAsset 時不渲染區塊', async () => {
+    const wrapper = await mountContent()
+    expect(wrapper.find('[data-focus="executor"]').exists()).toBe(false)
   })
 })

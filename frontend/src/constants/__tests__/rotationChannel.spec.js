@@ -12,11 +12,14 @@ import {
   isRotatableAsset,
   rotationChannelText,
   rotationChannelTagType,
+  DB_ROTATION_ENCRYPTED_TLS_MODES,
+  DB_ROTATION_PROTOCOLS,
 } from '../rotationChannel'
+import { t } from '@/i18n'
 
 describe('改密通道值域（硬拷後端）', () => {
   it('通道、連線方式、憑證驗證模式三組值域與後端常數一致', () => {
-    expect(ROTATION_CHANNEL_VALUES).toEqual(['posix_ssh', 'windows_winrm', 'windows_ssh', 'none'])
+    expect(ROTATION_CHANNEL_VALUES).toEqual(['posix_ssh', 'windows_winrm', 'windows_ssh', 'db_native', 'none'])
     expect(WINRM_SCHEME_VALUES).toEqual(['http', 'https'])
     expect(WINRM_TLS_MODE_VALUES).toEqual(['system', 'ca', 'insecure'])
     expect(WINRM_DEFAULT_PORTS).toEqual({ http: 5985, https: 5986 })
@@ -72,5 +75,36 @@ describe('通道顯示', () => {
     expect(rotationChannelTagType(winrm({ winrm_scheme: 'https', winrm_tls_mode: 'ca' }))).toBe('info')
     expect(rotationChannelTagType({ protocol: 'ssh' })).toBe('info')
     expect(rotationChannelTagType({ protocol: 'rdp', effective_rotation_channel: 'windows_ssh' })).toBe('info')
+  })
+})
+
+describe('資料庫帳號自改的通道顯示', () => {
+  const dbAsset = (extra) => ({ protocol: 'mysql', effective_rotation_channel: 'db_native', ...extra })
+  const name = () => t('enum.rotationChannel.db_native')
+
+  it('伺服端未回報未加密：一般樣式、無後綴', () => {
+    const a = dbAsset({ transmission_risks: [{ key: 'db_tls_disabled' }] })
+    expect(rotationChannelTagType(a)).toBe('info')
+    expect(rotationChannelText(a)).toBe(name())
+  })
+
+  it('伺服端回報未加密：警示樣式並附未加密後綴；withRisk=false 只回通道名', () => {
+    const a = dbAsset({ transmission_risks: [{ key: 'db_rotation_unencrypted' }] })
+    expect(rotationChannelTagType(a)).toBe('warning')
+    expect(rotationChannelText(a)).toBe(`${name()} · ${t('changeSecretPlans.channelUnencryptedSuffix')}`)
+    expect(rotationChannelText(a, { withRisk: false })).toBe(name())
+  })
+
+  it('加密檔位恰為三值，協議只含三種 SQL 方言', () => {
+    expect(DB_ROTATION_ENCRYPTED_TLS_MODES).toEqual(['require', 'verify-ca', 'verify-full'])
+    expect(DB_ROTATION_PROTOCOLS).toEqual(['mysql', 'postgres', 'mssql'])
+  })
+
+  it('posix_ssh 與 windows_winrm 的既有回傳不變', () => {
+    expect(rotationChannelText({ protocol: 'ssh' })).toBe('POSIX SSH')
+    expect(rotationChannelTagType({ protocol: 'ssh' })).toBe('info')
+    const winrm = { protocol: 'rdp', effective_rotation_channel: 'windows_winrm', winrm_scheme: 'http' }
+    expect(rotationChannelText(winrm)).toBe('WinRM · HTTP')
+    expect(rotationChannelTagType(winrm)).toBe('warning')
   })
 })

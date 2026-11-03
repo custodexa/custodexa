@@ -54,6 +54,8 @@ const (
 	CredentialVersionReasonMigration = "migration"
 	// CredentialVersionReasonDetach 單台脫離共用時產生
 	CredentialVersionReasonDetach = "detach"
+	// CredentialVersionReasonGenerated 平台為執行身分產生的金鑰對（私鑰只存於密文版本）
+	CredentialVersionReasonGenerated = "generated"
 )
 
 // 輪替模式。

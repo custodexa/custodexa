@@ -51,6 +51,16 @@ type AssetAccount struct {
 	// Privileged 特權帳號標記：純標示欄，供 UI 與審計辨識（如 root/sa），不改變授權判定
 	Privileged bool `gorm:"default:false" json:"privileged"`
 
+	// Purpose 掛載用途：login（人員登入帳號，預設）｜executor（平台專用的執行身分）。
+	// 執行身分不進任何人員連線、授權與帳號列表路徑，每資產至多一筆
+	// （partial unique index idx_asset_accounts_executor）；它不得為預設掛載，
+	// 「有登入帳號必有預設」的不變式只計 login 掛載。
+	Purpose string `gorm:"size:16;not null;default:login" json:"purpose"`
+
+	// ExecutorSource 執行身分的設定來源：generate｜inline｜shared｜convert；空字串＝未記錄
+	// （登入帳號，或來源欄加入前設定的執行身分）。只在設定與更換執行身分時寫入。
+	ExecutorSource string `gorm:"size:16;not null;default:''" json:"executor_source"`
+
 	// AuthMethod 認證類型：sql｜domain。
 	// **真相在憑證**（credentials.auth_method）；本欄為同步維護的顯示副本。
 	// **放帳號而非資產**——憑證屬帳號，且同一台 MSSQL 可同時掛 SQL login 與域帳號。
@@ -66,3 +76,12 @@ type AssetAccount struct {
 func (AssetAccount) TableName() string {
 	return "asset_accounts"
 }
+
+// 掛載用途（AssetAccount.Purpose）
+const (
+	AccountPurposeLogin    = "login"
+	AccountPurposeExecutor = "executor"
+)
+
+// IsExecutor 本掛載是否為執行身分。空值視同 login（升級前的列由欄位預設值取得 login）。
+func (a AssetAccount) IsExecutor() bool { return a.Purpose == AccountPurposeExecutor }

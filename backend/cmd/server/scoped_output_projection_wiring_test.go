@@ -53,9 +53,18 @@ func TestScopedOutputProjectionWiring(t *testing.T) {
 		if csOutput {
 			cs.SetCredentialOutputScope(reader)
 		}
-		return collectScopedOutputWiring(accounts, ch, cs)
+		ex := api.NewAssetExecutorHandler(nil)
+		ex.SetAccountRowProjector(reader)
+		return collectScopedOutputWiring(accounts, ch, ex, cs)
 	}
 
+	t.Run("執行身分 handler 的帳號列投影器未注入", func(t *testing.T) {
+		w := build(true, true, true, true)
+		w.executorRowProjector = api.NewAssetExecutorHandler(nil).AccountRowProjectorWired()
+		err := w.require()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "執行身分 handler 的帳號列投影器未注入")
+	})
 	t.Run("complete", func(t *testing.T) {
 		require.NoError(t, build(true, true, true, true).require())
 	})

@@ -112,6 +112,9 @@ var stage2ServiceInventory = []string{
 	"checkpointSigning",
 	"sshHandler",
 	"hostKeyService",
+	// hostAccountInventoryService：主機帳號盤點。建構之後立即做啟動收尾（把殘留的未結束盤點收為中斷），
+	// 收尾須早於任何發起：路由在 apiHandlers 之後才掛載，順序反了，剛發起的新盤點會被當成殘留收掉
+	"hostAccountInventoryService",
 	"credentialRotationInterruptedRecovery",
 	"changeSecretScheduler",
 	"changeSecretRetryScheduler",
@@ -954,6 +957,23 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	mark("sshHandler")
 	mark("hostKeyService")
 
+	// 主機帳號盤點：登入身分是資產預設帳號，主機金鑰走同一個服務（不符即拒絕）。
+	// 收尾只收「不在本行程工作登記表」的未結束列，必須早於任何發起；失敗只記日誌、不阻擋啟動
+	// （殘留列在下一次發起時由孤兒收尾處理）
+	executorCheckLimiter := asset.NewExecutorCheckLimiter()
+	hostAccountInventory := asset.NewHostAccountInventoryService(
+		database.DB, assetService, hostKeyService, policyService, auditTxSink, systemAlertSink)
+	// 有堡壘機專用帳號的資產以它登入盤點；限流器與測試登入共用同一個實例
+	hostAccountInventory.UseExecutorIdentity(assetService, executorCheckLimiter)
+	if n, rerr := hostAccountInventory.RecoverInterrupted(); rerr != nil {
+		log.Printf("[HostInventory] 啟動時收束未結束的盤點失敗（不阻擋啟動）: %v", rerr)
+	} else if n > 0 {
+		log.Printf("[HostInventory] 啟動時把 %d 筆未結束的盤點收為中斷", n)
+	}
+	mark("hostAccountInventoryService")
+	// 堡壘機專用帳號的測試登入：與盤點共用限流器與主機金鑰服務
+	executorLoginCheck := asset.NewExecutorLoginCheckService(database.DB, assetService, hostKeyService, auditTxSink, executorCheckLimiter)
+
 	// change-secret: 改密計劃（排程器於下方統一啟動）
 	changeSecretPlanService := asset.NewChangeSecretPlanService(database.DB)
 	changeSecretCandidates, err := asset.NewChangeSecretCandidateService(
@@ -1264,6 +1284,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		exportSigning:              exportSigning,
 		keyManager:                 keyManager,
 		hostKeyService:             hostKeyService,
+		hostAccountInventory:       hostAccountInventory,
+		executorLoginCheck:         executorLoginCheck,
 		syslogForwarder:            syslogForwarder,
 		auditIntegrity:             auditIntegrity,
 		alertNotifier:              alertNotifier,
@@ -1861,6 +1883,8 @@ type routeServices struct {
 	exportSigning         *keyvault.ExportSigningService
 	keyManager            *keyvault.KeyManagerService
 	hostKeyService        *asset.HostKeyService
+	hostAccountInventory  *asset.HostAccountInventoryService
+	executorLoginCheck    *asset.ExecutorLoginCheckService
 	syslogForwarder       *audit.SyslogForwarder
 	auditIntegrity        *audit.AuditIntegrityService
 	agentTokenService     *identity.AgentTokenService
@@ -2031,6 +2055,13 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	assetAccountHandler.SetAccountCredentialScope(authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB))
 	// 範圍外憑證帳號列的動作旗標：與更換憑證、移除帳號、更正秘密、脫離的寫入端點同一組判定
 	assetAccountHandler.SetAccountRowActions(asset.NewAccountRowActionJudge(s.credentialService, assetAccountService))
+	// 堡壘機專用帳號：範圍判定 asset:executor-manage（隨資產），公鑰揭露沿帳號列的憑證投影
+	assetExecutorService := asset.NewAssetExecutorService(assetAccountService, authz.NewAssetWriteScope(s.scopeEvaluator)).
+		WithCredentialVisibility(authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB))
+	assetExecutorHandler := api.NewAssetExecutorHandler(assetExecutorService, scopeGate)
+	assetExecutorHandler.SetAssetManagementVisibility(authz.NewAssetScopeReader(s.scopeEvaluator, database.DB))
+	// 回應的 credential 欄與帳號列表同一個投影器：範圍外共用憑證只帶共用與範圍外標記
+	assetExecutorHandler.SetAccountRowProjector(authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB))
 
 	sessionHandler := api.NewSessionHandler(s.sessionService)
 	sessionHandler.SetRecordingProbe(s.recordingService)
@@ -2160,6 +2191,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	accessReviewHandler := api.NewAccessReviewHandler(authz.NewAccessReviewService(database.DB), s.auditService)
 	hostKeyHandler := api.NewHostKeyHandler(s.hostKeyService, s.authorizationService)
 	hostKeyHandler.SetAssetManagementVisibility(authz.NewAssetScopeReader(s.scopeEvaluator, database.DB))
+	// 盤點讀取的可視範圍與資產詳情、資產列表同源：連線可視（授權服務）與管理可視（範圍化讀取器）
+	hostInventoryHandler := api.NewHostInventoryHandler(s.hostAccountInventory, s.authorizationService,
+		authz.NewAssetScopeReader(s.scopeEvaluator, database.DB),
+		scopeGate)
+	executorLoginCheckHandler := api.NewExecutorLoginCheckHandler(s.executorLoginCheck, scopeGate)
 	// 單筆剪貼簿內容調閱：解密＋逐筆留痕
 	// （fail-close，留痕不成即不交付），審計失敗經告警鏈揭露
 	clipboardContentService := session.NewClipboardContentService(
@@ -2189,7 +2225,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	credentialHandler.SetAccountRowProjector(
 		authz.NewCredentialScopeReader(s.scopeEvaluator, database.DB),
 		asset.NewAccountRowActionJudge(s.credentialService, assetAccountService))
-	if err := collectScopedOutputWiring(assetAccountHandler, credentialHandler, changeSecretHandler).require(); err != nil {
+	if err := collectScopedOutputWiring(assetAccountHandler, credentialHandler, assetExecutorHandler, changeSecretHandler).require(); err != nil {
 		return routeDeps{}, err
 	}
 
@@ -2235,6 +2271,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		auditCheckpoint:       auditCheckpointHandler,
 		asset:                 assetHandler,
 		assetAccount:          assetAccountHandler,
+		assetExecutor:         assetExecutorHandler,
 		session:               sessionHandler,
 		myConnection:          myConnectionHandler,
 		sessionCommand:        sessionCommandHandler,
@@ -2270,6 +2307,8 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		auditExport:           auditExportHandler,
 		accessReview:          accessReviewHandler,
 		hostKey:               hostKeyHandler,
+		hostInventory:         hostInventoryHandler,
+		executorLoginCheck:    executorLoginCheckHandler,
 		clipboard:             clipboardHandler,
 		auditTimeline:         auditTimelineHandler,
 		changeSecret:          changeSecretHandler,

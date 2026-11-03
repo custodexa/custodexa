@@ -92,7 +92,9 @@ func TestUserServiceAddRole(t *testing.T) {
 	seedAuthzState(t, db)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
-		&model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.AuditLog{}, &model.UserRole{},
+		// 追加審核者時會判定寫入後是否只剩審核者，需讀經使用者群組的指派
+		&model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	svc := NewUserService(db, authz.NewAssetAuthorizationService(db))

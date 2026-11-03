@@ -94,10 +94,10 @@ describe('SecurityPolicies 分區導覽', () => {
     vi.unstubAllGlobals()
   })
 
-  it('八區全有時導覽項目與頁面卡片逐項相同，文字等於卡片標題', async () => {
+  it('九區全有時導覽項目與頁面卡片逐項相同，文字等於卡片標題', async () => {
     const wrapper = await mountPage()
     const ids = navIds(wrapper)
-    expect(ids).toHaveLength(8)
+    expect(ids).toHaveLength(9)
     expect(ids).toEqual(cardIds(wrapper))
     expect(ids).toEqual(SECURITY_SECTIONS.map((s) => s.id))
     const navTexts = wrapper.findAll('[data-test="policy-section-nav"] button').map((b) => b.text())
@@ -105,14 +105,14 @@ describe('SecurityPolicies 分區導覽', () => {
     expect(navTexts).toEqual(titles)
   })
 
-  it('回應拿掉叢集存取的鍵時頁面與導覽都沒有 cluster，其餘七項不變', async () => {
+  it('回應拿掉叢集存取的鍵時頁面與導覽都沒有 cluster，其餘八項不變', async () => {
     getPoliciesMock.mockResolvedValue(response(allKeys.filter((k) => k !== 'k8s_list_timeout_seconds')))
     const wrapper = await mountPage()
     const ids = navIds(wrapper)
     expect(ids).not.toContain('cluster')
     expect(cardIds(wrapper)).not.toContain('cluster')
     expect(ids).toEqual(SECURITY_SECTIONS.map((s) => s.id).filter((id) => id !== 'cluster'))
-    expect(ids).toHaveLength(7)
+    expect(ids).toHaveLength(8)
     expect(ids).toEqual(cardIds(wrapper))
   })
 
@@ -179,7 +179,7 @@ describe('SecurityPolicies 分區導覽', () => {
     expect(nav.exists()).toBe(true)
     expect(nav.attributes('aria-label')).toBe('安全政策分區')
     const buttons = nav.findAll('button')
-    expect(buttons.length).toBe(8)
+    expect(buttons.length).toBe(9)
     buttons[0].element.focus()
     await buttons[0].trigger('keydown', { key: 'ArrowDown' })
     expect(document.activeElement).toBe(buttons[1].element)

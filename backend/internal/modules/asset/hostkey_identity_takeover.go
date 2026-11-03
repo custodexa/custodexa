@@ -66,20 +66,21 @@ func DecodeHostIdentityConfirmRequest(raw []byte) (*HostIdentityConfirmRequest, 
 	return &req, nil
 }
 
-// validate 傳輸值域與身分欄位的對應：ssh 四欄齊全，winrm 四欄全空。
+// validate 傳輸值域與身分欄位的對應：有主機金鑰的傳輸（ssh）四欄齊全，無金鑰的傳輸（winrm、db）
+// 四欄全空。
 func (r *HostIdentityConfirmRequest) validate() error {
-	identityEmpty := r.RecordID == 0 && r.Algorithm == "" && r.Fingerprint == "" && r.Generation == 0
-	switch r.Transport {
-	case model.HostKeyTransportSSH:
-		if r.RecordID == 0 || strings.TrimSpace(r.Algorithm) == "" || strings.TrimSpace(r.Fingerprint) == "" || r.Generation <= 0 {
-			return fmt.Errorf("%w: ssh 必須帶完整的記錄、演算法、指紋與世代", ErrHostIdentityConfirmInvalid)
-		}
-	case model.HostKeyTransportWinRM:
-		if !identityEmpty {
-			return fmt.Errorf("%w: winrm 不得帶身分欄位", ErrHostIdentityConfirmInvalid)
-		}
-	default:
+	if !model.IsHostKeyTransport(r.Transport) {
 		return fmt.Errorf("%w: transport 值域錯誤", ErrHostIdentityConfirmInvalid)
+	}
+	if model.HostKeyTransportHasHostKey(r.Transport) {
+		if r.RecordID == 0 || strings.TrimSpace(r.Algorithm) == "" || strings.TrimSpace(r.Fingerprint) == "" || r.Generation <= 0 {
+			return fmt.Errorf("%w: %s 必須帶完整的記錄、演算法、指紋與世代", ErrHostIdentityConfirmInvalid, r.Transport)
+		}
+		return nil
+	}
+	identityEmpty := r.RecordID == 0 && r.Algorithm == "" && r.Fingerprint == "" && r.Generation == 0
+	if !identityEmpty {
+		return fmt.Errorf("%w: %s 不得帶身分欄位", ErrHostIdentityConfirmInvalid, r.Transport)
 	}
 	return nil
 }
