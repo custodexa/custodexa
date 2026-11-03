@@ -147,7 +147,7 @@ require (
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	// LDAP filter AST 走訪直接使用（internal/service/ldap_settings_validation.go）
 	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect

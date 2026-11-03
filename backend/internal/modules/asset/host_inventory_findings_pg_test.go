@@ -145,7 +145,7 @@ func TestInventoryIgnoreReopen(t *testing.T) {
 		e, assetID, f := setup(t, invGroupWheel)
 		_, err := e.svc.IgnoreFinding(assetID, f.ID, "服務帳號", invAdmin)
 		require.NoError(t, err)
-		e.tg.setStandard("0\n", stdPasswd, invGroupWheel, sudoFrames(false, nil, "absent"))
+		e.tg.setStandard("0\n", stdAccountList, invGroupWheel, sudoFrames(false, nil, "absent"))
 		e.runScan(assetID)
 		gone := e.finding(assetID, "svc1")
 		assert.False(t, gone.Present)

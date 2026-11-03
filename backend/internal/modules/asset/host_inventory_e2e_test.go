@@ -33,7 +33,7 @@ func e2eCoverage(res *invScanResult, check string) *invCoverageItem {
 // root 身分讀得到 sudoers：完成，各項檢查範圍皆為已檢查。
 func TestInventoryE2ERoot(t *testing.T) {
 	tg := newInvTarget(t, "pw")
-	tg.setStandard("0\n", stdPasswd+"alice:x:1001:1001:Linux User:/home/alice:/bin/sh\n", stdGroup,
+	tg.setStandard("0\n", stdAccountList+"alice:x:1001:1001:Linux User:/home/alice:/bin/sh\n", stdGroup,
 		sudoFrames(true, strp(e2eSudoers), "ok"))
 	res, ie := runCollect(t, tg, "root", "")
 	if ie != nil {
@@ -59,7 +59,7 @@ func TestInventoryE2ERoot(t *testing.T) {
 // 非 root 身分讀不到 sudoers：部分完成，逐項標無法讀取，帳號標 incomplete。
 func TestInventoryE2ENonRoot(t *testing.T) {
 	tg := newInvTarget(t, "pw")
-	tg.setStandard("1000\n", stdPasswd, stdGroup, sudoFrames(true, strp("!unreadable"), "ok", [2]string{"90-x", "!unreadable"}))
+	tg.setStandard("1000\n", stdAccountList, stdGroup, sudoFrames(true, strp("!unreadable"), "ok", [2]string{"90-x", "!unreadable"}))
 	res, ie := runCollect(t, tg, "ops", "")
 	if ie != nil {
 		t.Fatalf("盤點失敗：%v", ie)
@@ -85,7 +85,7 @@ func TestInventoryE2ENonRoot(t *testing.T) {
 // 登入失敗：只有一次交握，出現的帳號名恰為該帳號，密碼與公鑰嘗試各至多一次。
 func TestInventoryE2ELoginFailedSingleHandshake(t *testing.T) {
 	tg := newInvTarget(t, "right-password")
-	tg.setStandard("0\n", stdPasswd, stdGroup, sudoFrames(false, nil, "absent"))
+	tg.setStandard("0\n", stdAccountList, stdGroup, sudoFrames(false, nil, "absent"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	_, ie := collectInventory(ctx, 1, tg.addr(), "ops", sshmaterial.CopyPassword([]byte("wrong")), nil, tg.hostKeyCallback(), "")
@@ -111,7 +111,7 @@ func TestInventoryE2ELoginFailedSingleHandshake(t *testing.T) {
 // 逾時：遠端停滯超過期限，以逾時原因碼結束，不寫部分結果。
 func TestInventoryE2ETimeout(t *testing.T) {
 	tg := newInvTarget(t, "pw")
-	tg.setStandard("0\n", stdPasswd, stdGroup, sudoFrames(false, nil, "absent"))
+	tg.setStandard("0\n", stdAccountList, stdGroup, sudoFrames(false, nil, "absent"))
 	tg.stall = 3 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
 	defer cancel()

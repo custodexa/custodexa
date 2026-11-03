@@ -143,14 +143,14 @@ func runCollect(t *testing.T, tg *invTarget, user string, groups string) (*invSc
 	return collectInventory(ctx, 1, tg.addr(), user, sshmaterial.CopyPassword([]byte("pw")), nil, tg.hostKeyCallback(), groups)
 }
 
-const stdPasswd = "root:x:0:0:root:/root:/bin/sh\nops:x:1000:1000:Linux User:/home/ops:/bin/sh\n"
+const stdAccountList = "root:x:0:0:root:/root:/bin/sh\nops:x:1000:1000:Linux User:/home/ops:/bin/sh\n"
 const stdGroup = "root:x:0:root\nwheel:x:10:root\nops:x:1000:\n"
 
 func TestInventoryCommandsConstant(t *testing.T) {
 	var runs [][]string
 	for _, v := range []struct{ user, groups string }{{"ops", "root,wheel"}, {"svc-admin", "domain admins,sudo"}} {
 		tg := newInvTarget(t, "pw")
-		tg.setStandard("1000\n", stdPasswd, stdGroup, sudoFrames(false, nil, "absent"))
+		tg.setStandard("1000\n", stdAccountList, stdGroup, sudoFrames(false, nil, "absent"))
 		if _, ie := runCollect(t, tg, v.user, v.groups); ie != nil {
 			t.Fatalf("盤點失敗：%v", ie)
 		}
@@ -205,14 +205,14 @@ func TestInventoryNoRemoteTextInLog(t *testing.T) {
 
 func TestInventoryParseAccounts(t *testing.T) {
 	t.Run("正常", func(t *testing.T) {
-		rows, st, err := parseInventoryPasswd([]byte(stdPasswd))
+		rows, st, err := parseInventoryAccounts([]byte(stdAccountList))
 		if err != nil || len(rows) != 2 || st.Invalid != 0 {
 			t.Fatalf("%v %+v %v", len(rows), st, err)
 		}
 	})
 	t.Run("不合格列排除並計數", func(t *testing.T) {
 		in := "a:x:1:1::/:/bin/sh\nbad:x:1:1:/:/bin/sh\nb\x01c:x:2:2::/:/bin/sh\nd:e:x:3:3::/:/bin/sh\n\xff\xfe:x:4:4::/:/bin/sh\nz\u200bw:x:5:5::/:/bin/sh\n"
-		rows, st, err := parseInventoryPasswd([]byte(in))
+		rows, st, err := parseInventoryAccounts([]byte(in))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -229,9 +229,9 @@ func TestInventoryParseAccounts(t *testing.T) {
 	})
 	t.Run("同名兩列 uid 不同", func(t *testing.T) {
 		raw := &inventoryRawOutput{
-			Passwd: []byte("deploy:x:1001:1001::/home/deploy:/bin/sh\ndeploy:x:0:0::/root:/bin/sh\n"),
-			Group:  []byte(stdGroup),
-			Sudo:   []byte(sudoFrames(false, nil, "absent")),
+			AccountList: []byte("deploy:x:1001:1001::/home/deploy:/bin/sh\ndeploy:x:0:0::/root:/bin/sh\n"),
+			Group:       []byte(stdGroup),
+			Sudo:        []byte(sudoFrames(false, nil, "absent")),
 		}
 		res, err := evaluateInventory(raw, "")
 		if err != nil {
@@ -279,9 +279,9 @@ func TestInventoryParseAccounts(t *testing.T) {
 	}
 	t.Run("3 欄群組作為主要群組仍判定特權且檢查完成", func(t *testing.T) {
 		res, err := evaluateInventory(&inventoryRawOutput{
-			Passwd: []byte("ops2:x:1002:10::/:/bin/sh\n"),
-			Group:  []byte("root:x:0:root\nwheel:x:10\n"),
-			Sudo:   []byte(sudoFrames(false, nil, "absent")),
+			AccountList: []byte("ops2:x:1002:10::/:/bin/sh\n"),
+			Group:       []byte("root:x:0:root\nwheel:x:10\n"),
+			Sudo:        []byte(sudoFrames(false, nil, "absent")),
 		}, "root,wheel")
 		if err != nil {
 			t.Fatal(err)
@@ -297,10 +297,10 @@ func TestInventoryParseAccounts(t *testing.T) {
 	})
 	t.Run("passwd 超過列數上限", func(t *testing.T) {
 		var b strings.Builder
-		for i := 0; i < inventoryMaxPasswdRows+1; i++ {
+		for i := 0; i < inventoryMaxAccountRows+1; i++ {
 			fmt.Fprintf(&b, "u%d:x:%d:%d::/:/bin/sh\n", i, i+1000, i+1000)
 		}
-		_, _, err := parseInventoryPasswd([]byte(b.String()))
+		_, _, err := parseInventoryAccounts([]byte(b.String()))
 		var ie *inventoryError
 		if !errors.As(err, &ie) || ie.Reason != model.InventoryOutputLimit {
 			t.Fatalf("got %v", err)
@@ -429,8 +429,8 @@ func coverageOf(res *invScanResult, check string) invCoverageItem {
 func TestInventoryCoverage(t *testing.T) {
 	eval := func(t *testing.T, raw *inventoryRawOutput) *invScanResult {
 		t.Helper()
-		if raw.Passwd == nil {
-			raw.Passwd = []byte(stdPasswd)
+		if raw.AccountList == nil {
+			raw.AccountList = []byte(stdAccountList)
 		}
 		if raw.Group == nil {
 			raw.Group = []byte(stdGroup)
@@ -513,7 +513,7 @@ func TestInventoryPrivilege(t *testing.T) {
 	}
 	eval := func(t *testing.T, passwd, group, sudo, groups string) *invScanResult {
 		t.Helper()
-		res, err := evaluateInventory(&inventoryRawOutput{Passwd: []byte(passwd), Group: []byte(group), Sudo: []byte(sudo)}, groups)
+		res, err := evaluateInventory(&inventoryRawOutput{AccountList: []byte(passwd), Group: []byte(group), Sudo: []byte(sudo)}, groups)
 		if err != nil {
 			t.Fatal(err)
 		}

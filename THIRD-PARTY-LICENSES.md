@@ -70,7 +70,7 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | go | github.com/gin-contrib/sse | v1.1.0 | MIT |
 | go | github.com/gin-gonic/gin | v1.9.1 | MIT |
 | go | github.com/go-asn1-ber/asn1-ber | v1.5.8-0.20250403174932-29230038a667 | MIT |
-| go | github.com/go-jose/go-jose/v4 | v4.1.4 | Apache-2.0 |
+| go | github.com/go-jose/go-jose/v4 | v4.1.6 | Apache-2.0 |
 | go | github.com/go-ldap/ldap/v3 | v3.4.13 | MIT |
 | go | github.com/go-logr/logr | v1.4.2 | Apache-2.0 |
 | go | github.com/go-openapi/jsonpointer | v0.19.6 | Apache-2.0 |

@@ -91,7 +91,7 @@ func listCoverage(check string, exit int, st invListStats) invCoverageItem {
 // privGroups 為盤點開始時的政策快照（已正規化的逗號分隔清單）。
 func evaluateInventory(raw *inventoryRawOutput, privGroups string) (*invScanResult, error) {
 	res := &invScanResult{}
-	accounts, ast, err := parseInventoryPasswd(raw.Passwd)
+	accounts, ast, err := parseInventoryAccounts(raw.AccountList)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func evaluateInventory(raw *inventoryRawOutput, privGroups string) (*invScanResu
 		applyEscalation(frames, raw.Escalation)
 	}
 	res.Escalation = escalationLabel(raw.Executor, raw.Escalation)
-	accItem := listCoverage(invCheckAccounts, raw.PasswdExit, ast)
+	accItem := listCoverage(invCheckAccounts, raw.AccountListExit, ast)
 	grpItem := listCoverage(invCheckGroups, raw.GroupExit, gst)
 
 	mainItem := invCoverageItem{Check: invCheckSudoMain}
@@ -189,8 +189,8 @@ func splitPrivGroups(s string) []string {
 }
 
 // judgePrivileges 逐帳號判定特權理由（全部成立的理由，排序去重）與可登入。
-func judgePrivileges(accounts []*invPasswdRow, groups map[string]*invGroup, rules *invSudoRules, privGroups []string, incomplete bool) []invFindingResult {
-	inGroup := func(a *invPasswdRow, g *invGroup) (member, primary bool) {
+func judgePrivileges(accounts []*invAccountRow, groups map[string]*invGroup, rules *invSudoRules, privGroups []string, incomplete bool) []invFindingResult {
+	inGroup := func(a *invAccountRow, g *invGroup) (member, primary bool) {
 		if g == nil {
 			return false, false
 		}

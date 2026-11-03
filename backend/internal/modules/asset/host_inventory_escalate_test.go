@@ -56,7 +56,7 @@ func dirE(name string) tarEnt       { return tarEnt{name: name, typ: tar.TypeDir
 // runEsc 以專用帳號身分對靶機跑一次盤點；password 為 nil＝金鑰型（不提供密碼副本），否則為密碼型。
 func runEsc(t *testing.T, tg *invTarget, uid string, sudo string, password []byte) (*invScanResult, *inventoryError) {
 	t.Helper()
-	tg.setStandard(uid, stdPasswd, stdGroup, sudo)
+	tg.setStandard(uid, stdAccountList, stdGroup, sudo)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	esc := password
@@ -73,7 +73,7 @@ func TestInventoryEscalatedReadConstant(t *testing.T) {
 	for _, v := range []string{"ops", "svc-admin"} {
 		tg := newInvTarget(t, "pw")
 		tg.setCmd(inventoryEscalatedCmdNoPassword, invResponse{Out: archive})
-		tg.setStandard("1000\n", stdPasswd, stdGroup, unreadable)
+		tg.setStandard("1000\n", stdAccountList, stdGroup, unreadable)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		_, ie := collectInventoryWith(ctx, 1, tg.addr(), v, sshmaterial.CopyPassword([]byte("pw")), nil, tg.hostKeyCallback(), "root,wheel", []byte{})
 		cancel()

@@ -146,7 +146,7 @@ func newInvEnv(t *testing.T) *invEnv {
 	e := &invEnv{t: t, db: db, secrets: &invSecrets{pws: map[uint]string{}},
 		audits: &invAuditSink{real: audit.NewTxSink()}, alerts: &invAlertSink{}}
 	e.tg = newInvTarget(t, "pw")
-	e.tg.setStandard("0\n", stdPasswd, stdGroup, sudoFrames(false, nil, "absent"))
+	e.tg.setStandard("0\n", stdAccountList, stdGroup, sudoFrames(false, nil, "absent"))
 	e.svc = NewHostAccountInventoryService(db, e.secrets, nil, invPolicies{"host_privileged_groups_posix": "root,sudo,wheel,admin"}, e.audits, e.alerts)
 	e.svc.hostKeyFor = func(HostKeyDialContext) ssh.HostKeyCallback { return e.tg.hostKeyCallback() }
 	return e

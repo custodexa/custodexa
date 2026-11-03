@@ -24,8 +24,8 @@ const (
 	inventoryReasonOutputMalformed    = model.InventoryOutputMalformed
 )
 
-// invPasswdRow 合併後的一個主機帳號。
-type invPasswdRow struct {
+// invAccountRow 合併後的一個主機帳號。
+type invAccountRow struct {
 	Name   string
 	UID    string // 第一列的 uid
 	GIDs   []uint64
@@ -94,15 +94,15 @@ func splitInventoryLines(data []byte, sess inventorySessionID, maxRows int) ([]s
 	return lines, nil
 }
 
-// parseInventoryPasswd 解析 getent passwd：7 欄；不合格列排除並計數；同名多列合併。
-func parseInventoryPasswd(data []byte) ([]*invPasswdRow, invListStats, error) {
+// parseInventoryAccounts 解析 getent passwd：7 欄；不合格列排除並計數；同名多列合併。
+func parseInventoryAccounts(data []byte) ([]*invAccountRow, invListStats, error) {
 	var st invListStats
-	lines, err := splitInventoryLines(data, inventorySessionPasswd, inventoryMaxPasswdRows)
+	lines, err := splitInventoryLines(data, inventorySessionAccounts, inventoryMaxAccountRows)
 	if err != nil {
 		return nil, st, err
 	}
-	byName := map[string]*invPasswdRow{}
-	var order []*invPasswdRow
+	byName := map[string]*invAccountRow{}
+	var order []*invAccountRow
 	for _, l := range lines {
 		if l == "" {
 			continue
@@ -122,7 +122,7 @@ func parseInventoryPasswd(data []byte) ([]*invPasswdRow, invListStats, error) {
 		uidStr := strconv.FormatUint(uid, 10)
 		row := byName[f[0]]
 		if row == nil {
-			row = &invPasswdRow{Name: f[0], UID: uidStr}
+			row = &invAccountRow{Name: f[0], UID: uidStr}
 			byName[f[0]] = row
 			order = append(order, row)
 		} else {

@@ -27,10 +27,10 @@ import (
 type inventorySessionID string
 
 const (
-	inventorySessionUID    inventorySessionID = "uid"
-	inventorySessionPasswd inventorySessionID = "passwd"
-	inventorySessionGroup  inventorySessionID = "group"
-	inventorySessionSudo   inventorySessionID = "sudo"
+	inventorySessionUID      inventorySessionID = "uid"
+	inventorySessionAccounts inventorySessionID = "accounts"
+	inventorySessionGroup    inventorySessionID = "group"
+	inventorySessionSudo     inventorySessionID = "sudo"
 )
 
 // inventorySudoScript sudo 段：sudo 是否存在、主規則檔與規則目錄的讀取。
@@ -48,7 +48,7 @@ var inventoryCommands = []struct {
 	Cmd string
 }{
 	{inventorySessionUID, `sh -c 'id -u'`},
-	{inventorySessionPasswd, `sh -c 'getent passwd'`},
+	{inventorySessionAccounts, `sh -c 'getent passwd'`},
 	{inventorySessionGroup, `sh -c 'getent group'`},
 	{inventorySessionSudo, `sh -c '` + inventorySudoScript + `'`},
 }
@@ -56,7 +56,7 @@ var inventoryCommands = []struct {
 // 輸出上限（常數）。超過任一項即整筆以 INVENTORY_OUTPUT_LIMIT 結束，不寫部分結果。
 const (
 	inventoryMaxTotalBytes    = 16 << 20
-	inventoryMaxPasswdRows    = 100000
+	inventoryMaxAccountRows   = 100000
 	inventoryMaxGroupRows     = 100000
 	inventoryMaxLineBytes     = 1 << 20
 	inventoryMaxSudoFiles     = 256
@@ -83,12 +83,12 @@ func invErr(reason string, sess inventorySessionID, detail string) *inventoryErr
 
 // inventoryRawOutput 四項讀取的原始輸出（只存在於記憶體，處理完即丟棄）。
 type inventoryRawOutput struct {
-	UID        []byte
-	Passwd     []byte
-	Group      []byte
-	Sudo       []byte
-	PasswdExit int
-	GroupExit  int
+	UID             []byte
+	AccountList     []byte
+	Group           []byte
+	Sudo            []byte
+	AccountListExit int
+	GroupExit       int
 
 	// 專用帳號身分才有：Executor 為真代表這次以專用帳號登入；Escalation 非空代表跑過提權讀取。
 	Executor   bool
@@ -121,8 +121,8 @@ func runInventoryCommands(ctx context.Context, client *ssh.Client) (*inventoryRa
 				return nil, invErr(inventoryReasonCommandFailed, c.ID, fmt.Sprintf("exit=%d", exit))
 			}
 			out.UID = data
-		case inventorySessionPasswd:
-			out.Passwd, out.PasswdExit = data, exit
+		case inventorySessionAccounts:
+			out.AccountList, out.AccountListExit = data, exit
 		case inventorySessionGroup:
 			out.Group, out.GroupExit = data, exit
 		case inventorySessionSudo:
@@ -253,7 +253,7 @@ func collectInventoryWith(ctx context.Context, scanID uint, addr, user string, p
 		res, err = evaluateInventory(raw, privGroups)
 		if err == nil {
 			if res.Status == model.HostAccountScanFailed {
-				e := invErr(res.Failure, inventorySessionPasswd, fmt.Sprintf("passwd_exit=%d group_exit=%d", raw.PasswdExit, raw.GroupExit))
+				e := invErr(res.Failure, inventorySessionAccounts, fmt.Sprintf("accounts_exit=%d group_exit=%d", raw.AccountListExit, raw.GroupExit))
 				logInventoryFailure(scanID, e)
 				return nil, e
 			}
