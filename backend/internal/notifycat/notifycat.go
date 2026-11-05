@@ -99,6 +99,8 @@ var mechanismEnum = []string{
 	model.MechanismPrincipalStateIntegrity,
 	model.MechanismDEKUnwrap,
 	model.MechanismRestoreSeal,
+	model.MechanismKeystrokeProbe,
+	model.MechanismKeystrokeRecord,
 }
 
 // ---- 事件常數（值＝現行呼叫點字串，逐一與呼叫點實查對照）----

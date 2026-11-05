@@ -36,7 +36,12 @@
     "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經應用程式留痕）",
     "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）",
     "restore_seal_deferred": "還原後封章失敗，服務已照常開放並待補封（涵蓋還原後權限狀態的檢查點尚未進鏈）",
-    "restore_seal_state_unreadable": "啟動時讀不到還原後的待封狀態，服務照常開放並已嘗試補封（補封成功即結案）"
+    "restore_seal_state_unreadable": "啟動時讀不到還原後的待封狀態，服務照常開放並已嘗試補封（補封成功即結案）",
+    "KEYSTROKE_DIR_UNWRITABLE": "鍵盤紀錄目錄無法寫入",
+    "KEYSTROKE_KEY_SEAL_FAILED": "鍵盤紀錄的檔案金鑰無法封存（金鑰材料尚未解封或金鑰管理失敗）",
+    "KEYSTROKE_FILE_CREATE_FAILED": "鍵盤紀錄檔無法建立",
+    "KEYSTROKE_WRITE_FAILED": "鍵盤紀錄寫入失敗",
+    "KEYSTROKE_WRITER_STALLED": "鍵盤紀錄寫入端停擺（長時間沒有進展）"
   },
   "severity": {
     "high": "高風險",
@@ -196,7 +201,8 @@
     "queue_uncounted": "還沒對應完成的輸入無法再對應，實際次數可能比紀錄多。",
     "queue_overflow": "等待對應的輸入達到上限，之後的輸入沒有排入對應。",
     "input_without_echo": "有送出輸入，但畫面輸出中沒有可還原的文字；若對端關閉了回顯，錄影也看不到這段內容。",
-    "input_without_command": "這條連線有送出輸入，但沒有任何一筆可還原的指令。"
+    "input_without_command": "這條連線有送出輸入，但沒有任何一筆可還原的指令。",
+    "echo_incomplete_at_close": "連線在這一輪的回顯完成前結束，已回顯的部分無法確認就是送出的整行指令。"
   },
   "compliance_report": {
     "title": "合規對照報告",

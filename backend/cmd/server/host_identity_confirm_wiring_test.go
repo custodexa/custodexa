@@ -78,9 +78,10 @@ func TestHostIdentityConfirmWiring(t *testing.T) {
 		if !strings.Contains(err.Error(), "hostIdentityTakeoverWiring") || !strings.Contains(err.Error(), "candidateRunner") {
 			t.Fatalf("錯誤應指名步驟與缺口，實得: %v", err)
 		}
-		// syslogForwarder 在人工承接服務之前就已啟動（與本檢查無關）；其餘排程一個都不得啟動
+		// syslogForwarder、keystrokeReconciler 在人工承接服務之前就已啟動（與本檢查無關；
+		// 後者只對帳自己的紀錄列）；其餘排程一個都不得啟動
 		for _, n := range started {
-			if n != "syslogForwarder" {
+			if n != "syslogForwarder" && n != "keystrokeReconciler" {
 				t.Fatalf("缺依賴時不得有排程在檢查之後啟動，實際啟動: %v", started)
 			}
 		}

@@ -72,6 +72,10 @@ var (
 		ZhFallback: "會話記錄建立失敗，連線已中止"})
 	CodeRecordingUnavailable = register("RULE_RECORDING_UNAVAILABLE", Descriptor{
 		ZhFallback: "錄影儲存異常，暫停新連線，請聯絡管理員"})
+	// CodeKeystrokeUnavailable 鍵盤紀錄目錄不可寫且錄影 fail-close 政策開啟時拒發連線。
+	// 不沿用 RULE_RECORDING_UNAVAILABLE：訊息不能把鍵盤紀錄的問題說成錄影無法使用
+	CodeKeystrokeUnavailable = register("RULE_KEYSTROKE_UNAVAILABLE", Descriptor{
+		ZhFallback: "鍵盤紀錄儲存異常，暫停新連線，請聯絡管理員"})
 	CodeAccessApprovalRequired = register("RULE_ACCESS_APPROVAL_REQUIRED", Descriptor{
 		ZhFallback: "本資產的存取政策要求申請核准後連線"})
 	CodeAccessReasonRequired = register("RULE_ACCESS_REASON_REQUIRED", Descriptor{

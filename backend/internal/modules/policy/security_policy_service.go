@@ -63,6 +63,11 @@ const (
 	PolicyRetentionSessionCommandDays = "retention_session_command_days"
 	PolicyRetentionAlertDays          = "retention_alert_days"
 	PolicyRetentionRecordingDays      = "retention_recording_days"
+	// PolicyRetentionKeystrokeDays 鍵盤紀錄檔的保留天數。出廠 0＝永久。
+	// **不納入檢查點跨鍵約束**（不在 dataRetentionKeys）：跨鍵約束只涵蓋被檢查點鏈
+	// 證明的審計資料，鍵盤紀錄檔不在鏈內；納入會讓出廠 0 使升級前已設有期檢查點保留的
+	// 部署一升級就違規。也不進任何內建政策組種子。
+	PolicyRetentionKeystrokeDays = "retention_keystroke_days"
 	// PolicyOffsiteLocalRetentionDays 離機儲存啟用後，本機錄影副本的**快取期**。
 	//
 	// **不是保留期**：到期只刪本機檔，錄影仍可播（改自離機副本取回），
@@ -512,6 +517,13 @@ var policyDefs = []PolicyDef{
 		Key: PolicyRetentionRecordingDays, Type: PolicyTypeInt, Default: "90",
 		Direction: DirectionMin, ZeroDisables: true, Min: RetentionFloorDays, Max: 3650,
 		Label: "連線錄影保留天數", Unit: "天",
+	},
+	{
+		// 鍵盤紀錄保留：出廠 0＝永久。值域 {0} ∪ [7, 3650]，下限與縮短確認、保留下調告警
+		// 同其他資料保留鍵；不受檢查點跨鍵約束（理由見鍵常數）
+		Key: PolicyRetentionKeystrokeDays, Type: PolicyTypeInt, Default: "0",
+		Direction: DirectionMin, ZeroDisables: true, Min: RetentionFloorDays, Max: 3650,
+		Label: "鍵盤紀錄保留天數", Unit: "天",
 	},
 	{
 		// 離機儲存的本機快取期：

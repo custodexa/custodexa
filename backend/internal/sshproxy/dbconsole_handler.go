@@ -16,6 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/dbconsole"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/session"
@@ -232,6 +233,9 @@ func (h *Handler) runConsoleSession(cs *consoleSession, releaseAdmission func())
 			releaseAdmission()
 		}
 	}()
+
+	// 主控台的語句已原樣保存在伺服端，不產生鍵盤紀錄；留一筆判定列讓呈現端不必猜
+	h.startKeystroke(sess, string(sess.Protocol), keystroke.KindDBConsole)
 
 	// 轉錄錄影：啟動失敗不斷線（fail-close 只掛簽發點），但不得沉默
 	var recTap *recordingTap

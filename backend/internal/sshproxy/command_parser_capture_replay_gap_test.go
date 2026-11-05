@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/custodexa/backend/internal/model"
 )
 
 // B 層重放的「已知缺口棘輪」。
@@ -47,7 +49,10 @@ var knownTeardownGaps = map[string]teardownGap{
 	// 依上面的集合相等規則，它必須從本清單移除，不得留著假裝還沒修。
 	// 回歸釘死在 command_parser_interrupt_test.go。
 	"psql-meta": {
-		gotCommand: "custodexa=#",
+		// 此輪在會話結束時仍等不到回顯換行：舊行為把重印的提示符 `custodexa=#`
+		// 當成乾淨指令發出；現在記為「會話結束時回顯未完成」的降級列（無文字）。
+		// 缺口仍在（`\\q` 依然還原不出來），但從捏造變成可告警的降級。
+		gotCommand: degradedSlot(model.DegradeEchoIncompleteAtClose),
 		reason: "`\\dt` 的輸出超過一頁而落入 pager，`\\q` 的按鍵被 pager 吃掉、" +
 			"**回顯根本不在輸出流裡**（實測事件流：`\\q\\r` 之後的 out 只有 pager 的重繪與重印的提示符，" +
 			"沒有任何 `\\q` 字樣）。以螢幕重建為原理的解析器記的是「終端上出現過什麼」，" +

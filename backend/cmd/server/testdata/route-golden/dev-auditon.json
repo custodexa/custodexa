@@ -823,6 +823,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/sessions/:id/keystrokes",
+      "handler": "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).Meta-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/sessions/:id/monitor",
       "handler": "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleMonitor-fm"
     },
@@ -1470,6 +1475,11 @@
       "method": "POST",
       "path": "/api/v1/security-policies/compliance/preview",
       "handler": "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).CompliancePreview-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/:id/keystrokes/view",
+      "handler": "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).View-fm"
     },
     {
       "method": "POST",
@@ -5052,6 +5062,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/sessions/:id/keystrokes",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).Meta-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/sessions/:id/monitor",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -7658,6 +7684,22 @@
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).CompliancePreview-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/:id/keystrokes/view",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*KeystrokeViewHandler).View-fm"
       ]
     },
     {

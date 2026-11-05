@@ -19,6 +19,7 @@ import (
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/k8sproxy"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
@@ -152,7 +153,10 @@ type Handler struct {
 	SessionService       *session.SessionService
 	Registry             *proxy.ConnectionRegistry
 	RecordingPath        string
-	Monitor              *MonitorHub
+	// KeystrokeService 鍵盤紀錄（平台已轉送出去的輸入的加密存檔）：
+	// 常開，沒有關閉選項。組裝端注入；nil 僅限既有測試與獨立路徑（不產生紀錄）
+	KeystrokeService *session.KeystrokeService
+	Monitor          *MonitorHub
 	Shares               *ShareManager
 	ConnectTokens        *proxy.ConnectTokenManager
 	HostKeys             *asset.HostKeyService
@@ -335,6 +339,7 @@ func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
 	var store *CommandStore
 	var tap *auditTap
 	var recTap *recordingTap
+	var ksRec *session.KeystrokeRecorder
 	if sess != nil {
 		// asciicast 錄製：啟動失敗不斷線（fail-close 只掛簽發點），
 		// 但須標記＋告警不得沉默
@@ -362,6 +367,16 @@ func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
 			}
 			log.Printf("[SSHProxy] 錄製已啟用 (SessionID=%d)", sess.ID)
 		}
+
+		// 鍵盤紀錄：自己的 tap 與檔案，只進輸入方向；掛在錄影 tap 之後，
+		// 兩者各自失敗互不影響。K8s 日誌唯讀沒有輸入通道，寫一筆判定列
+		ksKind := keystroke.KindSSHTerminal
+		if k8sLogsMode {
+			ksKind = keystroke.KindK8sLogs
+		} else if _, inProc := ws.(*InProcessTransport); inProc {
+			ksKind = keystroke.KindAgentTerminal
+		}
+		ksRec = h.attachKeystrokeTo(bridge, sess, string(assetRow.Protocol), ksKind)
 
 		// 即時監看 room：會話結束時於下方 CloseRoom
 		bridge.attachMonitor(h.Monitor.OpenRoom(sess.ID, cols, rows))
@@ -423,6 +438,12 @@ func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
 	}
 	if recTap != nil {
 		recTap.Close(h.SessionService, sess.ID)
+	}
+	// 鍵盤紀錄收尾在錄影收尾之後：排空佇列、封結束段（送出即斷線也一定走到這裡）
+	if ksRec != nil {
+		// 結束原因標記：緊接最後一筆輸入、結束段之前
+		ksRec.AppendMarker(bridge.EndMarker())
+		ksRec.Close()
 	}
 
 	// 9. 清理

@@ -87,6 +87,23 @@ describe('createConnectTokenWithConsent', () => {
     expect(requestMock).toHaveBeenCalledTimes(1)
   })
 
+  it('403 keystroke_unavailable→比照錄影開對話框並中止（不落 generic toast）', async () => {
+    const err = new Error('forbidden')
+    err.response = {
+      status: 403,
+      data: { error: '鍵盤紀錄儲存異常', reason: 'keystroke_unavailable' },
+    }
+    requestMock.mockRejectedValueOnce(err)
+    alertMock.mockResolvedValueOnce('ok')
+
+    await expect(createConnectTokenWithConsent(9)).rejects.toBe(err)
+    expect(alertMock).toHaveBeenCalledTimes(1)
+    expect(alertMock.mock.calls[0][0]).toContain('目前無法建立新連線')
+    expect(alertMock.mock.calls[0][1]).toBe('鍵盤紀錄儲存異常')
+    expect(messageErrorMock).not.toHaveBeenCalled()
+    expect(requestMock).toHaveBeenCalledTimes(1)
+  })
+
   it('非 428 失敗→補全域錯誤呈現並拋出', async () => {
     const err = new Error('strict')
     err.response = { status: 400, data: { error: '傳輸安全政策（嚴格）拒絕連線' } }

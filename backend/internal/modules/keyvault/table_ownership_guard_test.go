@@ -75,6 +75,8 @@ var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 		Reason: "**自有表**（CheckpointSigningService 的 Ed25519 私鑰，audit-checkpoint-chain），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
 	{Table: "clipboard_events", OwnerModule: "session",
 		Reason: "剪貼簿留存內容欄 content_enc。session 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替與 AAD 遷移必須涵蓋本欄，否則輪替後剪貼簿審計證據不可解。"},
+	{Table: "keystroke_records", OwnerModule: "session",
+		Reason: "鍵盤紀錄檔的檔案金鑰欄 file_key_enc。session 擁有語義（紀錄生命週期、清除時改空字串），密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替只重包這個小欄位、檔案不重寫，退役 DEK 引用掃描必須涵蓋本欄，否則仍有紀錄引用的 DEK 會被銷毀、紀錄永久不可解。"},
 	{Table: "offsite_profiles", OwnerModule: "offsite",
 		Reason: "離機儲存逐世代的物件儲存憑證欄 credentials_enc。internal/offsite 擁有語義（世代生命週期、憑證模式三值），密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替與退役 DEK 引用掃描必須涵蓋本欄，否則輪替後歷史世代憑證不可解、其遠端物件永不可取回。**沒有 tx-taking 出路**：重加密橫跨全部模組的表，改呼叫擁有者會製造 keyvault→offsite 出向依賴。"},
 }

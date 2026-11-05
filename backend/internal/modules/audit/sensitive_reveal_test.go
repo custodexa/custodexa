@@ -37,3 +37,28 @@ func TestSensitiveRevealAlertKindFilter(t *testing.T) {
 		}
 	}
 }
+
+type allowReveal struct{}
+
+func (allowReveal) GetBool(string) bool { return true }
+
+// 揭露告警的來源碼：鍵盤紀錄寫 keystroke_record，其餘來源維持 kind，前端依此分句。
+func TestSensitiveRevealReasonCodeBySource(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{"keystroke_record", model.AlertReasonKeystrokeReveal},
+		{"clipboard_event", model.AlertKindSensitiveReveal},
+	} {
+		_, db := setupAlertDB(t)
+		svc := NewSensitiveRevealService(allowReveal{}, NewAlertRecorder(db), nil)
+		svc.Report(context.Background(), SensitiveRevealInput{
+			Actor: gatewayapi.Actor{UserID: 9}, SourceType: tc.source, SourceID: 5, SessionID: 1,
+		})
+		var row model.CommandAlert
+		if err := db.Where("kind = ?", model.AlertKindSensitiveReveal).First(&row).Error; err != nil {
+			t.Fatalf("%s: %v", tc.source, err)
+		}
+		if row.ReasonCode != tc.want || row.Kind != model.AlertKindSensitiveReveal {
+			t.Errorf("%s: kind=%q reason_code=%q want %q", tc.source, row.Kind, row.ReasonCode, tc.want)
+		}
+	}
+}

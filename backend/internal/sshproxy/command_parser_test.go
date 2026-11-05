@@ -3,6 +3,8 @@ package sshproxy
 import (
 	"testing"
 	"time"
+
+	"github.com/custodexa/backend/internal/model"
 )
 
 // newTestParser 建立測試用解析器與收集結算指令的 slice（逐行模式，非 SQL）
@@ -243,8 +245,10 @@ func TestCommandParserSQLFlushIncomplete(t *testing.T) {
 }
 
 func TestCommandParserFlushPending(t *testing.T) {
-	// Arrange：會話在 Enter 後立即斷線，echo 換行未到
-	parser, commands := newTestParser()
+	// Arrange：會話在 Enter 後立即斷線，echo 換行未到。
+	// 已回顯的 `exit` 無法確認就是送出的整行（換行未到＝回顯可能只到一半），
+	// 故結算為降級列而非乾淨指令（見 command_parser_truncated_echo_test.go）。
+	parser, commands, records := newRecordingParser("ssh")
 	parser.WriteOutput([]byte("$ "))
 	parser.WriteInput([]byte("x"))
 	parser.WriteOutput([]byte("exit"))
@@ -254,7 +258,10 @@ func TestCommandParserFlushPending(t *testing.T) {
 	parser.Flush()
 
 	// Assert
-	if len(*commands) != 1 || (*commands)[0] != "exit" {
-		t.Errorf("commands = %v, want [\"exit\"]", *commands)
+	if len(*commands) != 0 {
+		t.Errorf("commands = %v, want none", *commands)
+	}
+	if len(*records) != 1 || !(*records)[0].degraded || (*records)[0].reason != model.DegradeEchoIncompleteAtClose {
+		t.Errorf("records = %+v, want one degraded %q", *records, model.DegradeEchoIncompleteAtClose)
 	}
 }

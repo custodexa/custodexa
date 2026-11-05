@@ -72,6 +72,14 @@ const routes = [
         meta: { requiresAuth: true, ...entryMeta('/sessions') },
       },
       {
+        // 鍵盤紀錄檢視頁：需連線檢視與鍵盤紀錄查看兩項能力（入口規則 /sessions/keystrokes）。
+        // 查看理由與內容只經記憶體交接，不放在網址或儲存裡；重新整理後要求重新填理由
+        path: 'sessions/:id/keystrokes',
+        name: 'KeystrokeViewer',
+        component: () => import('../views/KeystrokeViewer.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/sessions/keystrokes') },
+      },
+      {
         path: 'my-connections',
         name: 'MyConnections',
         component: () => import('../views/MyConnections.vue'),

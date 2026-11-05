@@ -580,6 +580,7 @@ type routeDeps struct {
 	hostInventory         *api.HostInventoryHandler
 	executorLoginCheck    *api.ExecutorLoginCheckHandler
 	clipboard             *api.ClipboardEventHandler
+	keystrokeView         *api.KeystrokeViewHandler
 	auditTimeline         *api.AuditTimelineHandler
 	changeSecret          *api.ChangeSecretHandler
 	// credential 帳號憑證庫：憑證 CRUD、掛載／卸載、範圍轉換、改密與脫離共用
@@ -753,6 +754,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.hostInventory.RegisterRoutes(v1, d.authService)
 		d.executorLoginCheck.RegisterRoutes(v1, d.authService)
 		d.clipboard.RegisterRoutes(v1, d.authService)
+		d.keystrokeView.RegisterRoutes(v1, d.authService)
 		// 稽核調查工作台（auditor-workbench）：唯讀聚合端點兩支。
 		// **不掛在 auditLogEnabled 條件內**——它聚合的是六類資料，
 		// 關閉操作日誌不代表會話、指令、告警的調查面也該消失

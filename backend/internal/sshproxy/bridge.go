@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/session"
@@ -44,6 +45,18 @@ type inputSink interface {
 	WriteInput(p []byte)
 }
 
+// blockedInputSink 旁路消費「被指令阻斷、未轉送」的那一塊輸入。
+// 只有鍵盤紀錄實作它；指令重組與阻斷行為不因此改變。
+type blockedInputSink interface {
+	WriteBlockedInput(p []byte)
+}
+
+// platformInputSink 旁路消費平台自己送出的輸入（阻斷後清遠端行緩衝的 0x03）。
+// 只在寫入成功時呼叫。
+type platformInputSink interface {
+	WritePlatformInput(p []byte)
+}
+
 // resizeSink 旁路消費尺寸變更（錄製器尺寸事件、審計螢幕尺寸）
 type resizeSink interface {
 	Resize(cols, rows int)
@@ -77,10 +90,15 @@ type bridge struct {
 	// endReason 斷線原因（session-timeout）：第一個觸發者勝出
 	endReasonMu sync.Mutex
 	endReason   string
+	// closeCause 收線來源（鍵盤紀錄的結束標記用，不進 sessions.end_reason）：第一個觸發者勝出
+	closeCause string
 
 	outputSinks []outputSink
 	inputSinks  []inputSink
 	resizeSinks []resizeSink
+	// 鍵盤紀錄專用的兩條窄旁路（見 attachKeystroke）
+	blockedSinks  []blockedInputSink
+	platformSinks []platformInputSink
 
 	// pendingNotices 連線建立時就要送達的通知（目前只有主機金鑰不符警示）：
 	// 在 connected 之後、任何輸出之前依序送出
@@ -145,6 +163,31 @@ func (b *bridge) setEndReason(reason string) {
 	}
 }
 
+// setCloseCause 記錄收線來源（keystroke.MarkerEnd* 碼；第一個觸發者勝出）
+func (b *bridge) setCloseCause(marker string) {
+	b.endReasonMu.Lock()
+	defer b.endReasonMu.Unlock()
+	if b.closeCause == "" {
+		b.closeCause = marker
+	}
+}
+
+// EndMarker 回傳鍵盤紀錄的會話結束標記碼：平台主動收線的原因優先，
+// 其次是第一個觀察到的收線來源；都沒有時回空（不寫標記）。
+func (b *bridge) EndMarker() string {
+	b.endReasonMu.Lock()
+	defer b.endReasonMu.Unlock()
+	switch b.endReason {
+	case endReasonIdleTimeout:
+		return keystroke.MarkerEndIdleTimeout
+	case endReasonMaxDuration:
+		return keystroke.MarkerEndMaxDuration
+	case endReasonBlockClearFailed:
+		return keystroke.MarkerEndBlockClearFailed
+	}
+	return b.closeCause
+}
+
 // EndReason 回傳斷線原因（Run 結束後由 handler 讀取寫入 session）
 func (b *bridge) EndReason() string {
 	b.endReasonMu.Lock()
@@ -163,6 +206,15 @@ func (b *bridge) attachAudit(tap *auditTap) {
 func (b *bridge) attachRecording(tap *recordingTap) {
 	b.outputSinks = append(b.outputSinks, tap)
 	b.resizeSinks = append(b.resizeSinks, tap)
+}
+
+// attachKeystroke 掛載鍵盤紀錄旁路（須在 Run 前呼叫）。
+// 只進輸入方向：已轉送的輸入、被阻斷未轉送的那一塊、平台送出的中斷字元；
+// 不經 attachAudit、不經 attachRecording，不碰輸出與尺寸。
+func (b *bridge) attachKeystroke(tap *keystrokeTap) {
+	b.inputSinks = append(b.inputSinks, tap)
+	b.blockedSinks = append(b.blockedSinks, tap)
+	b.platformSinks = append(b.platformSinks, tap)
 }
 
 // attachMonitor 掛載即時監看旁路（須在 Run 前呼叫）
@@ -266,6 +318,7 @@ func (b *bridge) stop() {
 // 斷線通知走本 bridge 寫鎖與文字訊息協議（前身 Registry 裸寫 guac 指令＝
 // 錯協議＋併發寫 panic 風險）；stop 冪等（stopOnce），與自然收線競態安全
 func (b *bridge) terminate() error {
+	b.setCloseCause(keystroke.MarkerEndTerminated)
 	b.writeErrorMessage(apierror.CodeSessionTerminated)
 	b.stop()
 	return nil
@@ -413,10 +466,12 @@ func (b *bridge) pumpOutput() {
 			return
 		case res, ok := <-readChan:
 			if !ok {
+				b.setCloseCause(keystroke.MarkerEndTargetClosed)
 				flush()
 				return
 			}
 			if res.err != nil {
+				b.setCloseCause(keystroke.MarkerEndTargetClosed)
 				if len(res.data) > 0 {
 					pending = append(pending, res.data...)
 				}
@@ -439,7 +494,10 @@ func (b *bridge) pumpOutput() {
 // pumpInput WS → SSH stdin，並處理 resize / ping 控制訊息
 func (b *bridge) pumpInput() {
 	defer b.stop()
-	touchWS := startWSKeepalive(b.ws, &b.wsWriteMu, b.stopChan, b.stop)
+	touchWS := startWSKeepalive(b.ws, &b.wsWriteMu, b.stopChan, func() {
+		b.setCloseCause(keystroke.MarkerEndClientLost)
+		b.stop()
+	})
 
 	for {
 		select {
@@ -452,6 +510,9 @@ func (b *bridge) pumpInput() {
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("[SSHProxy] WebSocket 正常關閉")
+				b.setCloseCause(keystroke.MarkerEndUserClosed)
+			} else {
+				b.setCloseCause(keystroke.MarkerEndClientLost)
 			}
 			return
 		}
@@ -479,6 +540,9 @@ func (b *bridge) pumpInput() {
 						blockedInput = b.redactBlockedInput(b.blocker.blockedInput)
 					}
 					b.writeBlockedMarkerToSinks(blockedRule.Name, blockedInput)
+					for _, sink := range b.blockedSinks {
+						sink.WriteBlockedInput(data) // 被阻斷、未轉送的那一塊
+					}
 					if _, err := b.conn.Write([]byte{0x03}); err != nil { // Ctrl+C 清遠端已鍵入行
 						// fail-close：清行失敗＝遠端行緩衝可能殘留被阻斷指令的
 						// 前綴，使用者下次按 Enter 就送出殘句——阻斷等於沒發生。
@@ -491,6 +555,9 @@ func (b *bridge) pumpInput() {
 						b.writeErrorMessage(apierror.CodeCommandBlockClearFailed)
 						b.setEndReason(endReasonBlockClearFailed)
 						return // defer b.stop() 收線
+					}
+					for _, sink := range b.platformSinks {
+						sink.WritePlatformInput([]byte{0x03})
 					}
 					log.Printf("[SSHProxy] 指令已阻斷: session=%v rule=%q",
 						b.sessionID(), notifycat.SanitizeOpaque(blockedRule.Name))

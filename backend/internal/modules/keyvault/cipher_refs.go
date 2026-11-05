@@ -85,6 +85,12 @@ var (
 	// 取回能力**：漏登於 envelopeMigrationTargets 會使退役 DEK 誤判零引用而銷毀，
 	// 屆時該世代憑證永久不可解，那批已離機且本機已到期清除的錄影**永不可取回**
 	RefOffsiteCredentials = crypto.CipherRef{Table: "offsite_profiles", Column: "credentials_enc"}
+
+	// keystroke_records：鍵盤紀錄檔的檔案金鑰（每份紀錄一把 256-bit 隨機金鑰）。
+	// 欄位內容是**金鑰本身**而非被監控材料：封存走 BytesColumnCodec，不以字串經手。
+	// 漏登於 envelopeMigrationTargets 會使退役 DEK 誤判零引用而銷毀，
+	// 該 DEK 保護的全部鍵盤紀錄檔永久不可解
+	RefKeystrokeFileKey = crypto.CipherRef{Table: "keystroke_records", Column: "file_key_enc"}
 )
 
 // allCipherRefs 供守衛測試逐項比對登記表。
@@ -103,4 +109,5 @@ var allCipherRefs = []crypto.CipherRef{
 	RefLDAPBindPassword,
 	RefClipboardContent, RefAgentToolCallArgs,
 	RefOffsiteCredentials,
+	RefKeystrokeFileKey,
 }

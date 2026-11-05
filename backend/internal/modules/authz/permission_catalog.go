@@ -90,6 +90,9 @@ const (
 	// 刪除單一會話錄影（設定組、global-only、無依賴）：刪除證據是全系統層級的動作，
 	// 不放稽核組以免範圍化指派落地後可分節點委派；只有 API，沒有畫面入口。
 	PermRecordingDelete Permission = "recording:delete"
+	// 查看鍵盤紀錄（稽核組、global-only）：讀取鍵盤紀錄的中繼資料與帶理由查看內容。
+	// 內建稽核員範本含此鍵；不列指派保護權限點（見 keystroke_view_permission_test.go）。
+	PermKeystrokeView Permission = "keystroke:view"
 )
 
 // 憑證背景工作授權：憑證管理六類語義能力與支持能力。
@@ -163,6 +166,7 @@ var permissionCatalog = mustValidateCatalog([]PermissionDef{
 	{PermIdentitySourceManage, GroupIdentity, CategoryManage, ScopeGlobalOnly},
 	{PermInstanceGuardView, GroupSettings, CategoryManage, ScopeGlobalOnly},
 	{PermKeyManage, GroupSettings, CategoryManage, ScopeGlobalOnly},
+	{PermKeystrokeView, GroupAudit, CategoryAudit, ScopeGlobalOnly},
 	{PermLDAPManage, GroupIdentity, CategoryManage, ScopeGlobalOnly},
 	{PermNotificationChannel, GroupSettings, CategoryManage, ScopeGlobalOnly},
 	{PermOffsiteManage, GroupSettings, CategoryManage, ScopeGlobalOnly},

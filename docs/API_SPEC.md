@@ -1,6 +1,8 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-04（盤點的兩條讀取 `GET /assets/:id/account-inventory` 與 `GET /account-inventory/findings` 的可視範圍改與資產詳情、資產列表相同；此前：堡壘機專用帳號的測試登入與盤點接上專用帳號：新增 `POST`／`GET /assets/:id/executor/login-check`，需 `asset:executor-manage`，發起一次登入與改密權限檢查並讀取最近一次結果；新增 9 個結果碼與 4 個 HTTP 錯誤碼、審計動作 `executor_login_check` 與 `executor_login_check_done`；有專用帳號的資產，盤點改以專用帳號登入並在非 root 時經提權讀取 sudo 規則，盤點發起新增 3 個錯誤碼、結束原因碼增為 16 個、檢查範圍原因增為 `via_escalation` 與 `escalation_denied`；`GET /assets/:id/account-inventory` 的回應新增頂層 `next_identity` 與盤點紀錄的 `identity_username`；`host_key_mismatch` 的 `path` 多一個值 `executor_login_check`，`unmanaged_privileged_account` 的 `identity_mode` 多一個值 `executor`。新增資料表 `executor_login_checks`，見資料庫規格。路由新增兩條）
+> 最後更新：2026-11-06（連線簽發段補列錄影與鍵盤紀錄前置檢查被拒的錯誤碼 `RULE_RECORDING_UNAVAILABLE`、`RULE_KEYSTROKE_UNAVAILABLE`，不動路由；此前：安全政策段補 `retention_keystroke_days` 並把資料保留鍵的計數由四個改為五個，不動路由）
+> 前次更新：2026-11-05（鍵盤紀錄查看：新增 `GET /sessions/:id/keystrokes`（中繼資料，不解密）與 `POST /sessions/:id/keystrokes/view`（帶理由查看內容），皆需新權限點 `keystroke:view`（稽核組、僅全域指派生效，內建稽核員範本含此權限點）；新增錯誤碼 `VALIDATION_KEYSTROKE_REASON_REQUIRED`、`VALIDATION_KEYSTROKE_REASON_TOO_LONG`、`RESOURCE_KEYSTROKE_NOT_VIEWABLE`、`RULE_KEYSTROKE_VAULT_SEALED`、`RULE_KEYSTROKE_RECORD_REJECTED`、`INTERNAL_KEYSTROKE_VIEW`；審計資源 `keystroke_record`；揭露告警來源類別 `keystroke_record`。路由新增兩條）
+> 前次更新：2026-11-04（盤點的兩條讀取 `GET /assets/:id/account-inventory` 與 `GET /account-inventory/findings` 的可視範圍改與資產詳情、資產列表相同；此前：堡壘機專用帳號的測試登入與盤點接上專用帳號：新增 `POST`／`GET /assets/:id/executor/login-check`，需 `asset:executor-manage`，發起一次登入與改密權限檢查並讀取最近一次結果；新增 9 個結果碼與 4 個 HTTP 錯誤碼、審計動作 `executor_login_check` 與 `executor_login_check_done`；有專用帳號的資產，盤點改以專用帳號登入並在非 root 時經提權讀取 sudo 規則，盤點發起新增 3 個錯誤碼、結束原因碼增為 16 個、檢查範圍原因增為 `via_escalation` 與 `escalation_denied`；`GET /assets/:id/account-inventory` 的回應新增頂層 `next_identity` 與盤點紀錄的 `identity_username`；`host_key_mismatch` 的 `path` 多一個值 `executor_login_check`，`unmanaged_privileged_account` 的 `identity_mode` 多一個值 `executor`。新增資料表 `executor_login_checks`，見資料庫規格。路由新增兩條）
 > 前次更新：2026-11-03（合併同日兩項。其一，以堡壘機專用帳號代改 POSIX 帳號密碼：改密執行記錄新增 `execution_method`（`self`、`executor_root`、`executor_sudo_nopasswd`、`executor_sudo_password`）、`executor_account_id`、`executor_username`、`executor_credential_id` 四欄，計畫執行記錄（`GET /change-secret-plans/:id/records`）與批次詳情（`GET /change-secret-batches/:id`）的記錄都帶，範圍化檢視者讀不到專用帳號的憑證時後三欄不帶、改帶 `executor_out_of_scope`；新增原因碼 `CHANGE_SECRET_EXECUTOR_LOGIN_FAILED`、`CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED`、`CHANGE_SECRET_EXECUTOR_ROTATION_PENDING`、`CHANGE_SECRET_EXECUTOR_CHANGED`、`CHANGE_SECRET_EXECUTOR_UNAVAILABLE`；計畫帳號範圍 `@ALL` 明定為全部登入帳號，不含堡壘機專用帳號。路由未變；其二，資產編輯畫面的堡壘機專用帳號區塊所需的三項回應加欄，路由未變：憑證列表與詳情的 `CredentialDTO` 新增 `purpose`（`login`／`executor`，該憑證未刪除掛載的用途，無掛載時不出現）；`GET`／`PUT /assets/:id/executor` 的回應新增 `source`（`generate`／`inline`／`shared`／`convert`，未記錄時不出現）與 `credential`（引用憑證的帳號列投影，範圍外共用憑證只帶共用與範圍外標記）。新增資料欄 `asset_accounts.executor_source`，見資料庫規格）
 > 前次更新：2026-11-03（主機帳號盤點：新增五條路由（發起盤點、讀取單資產結果、忽略與重新開啟結果、全域未納管特權帳號清單），讀取需 `asset:view`，發起與處置需新權限點 `account:discover`；新增 9 個錯誤碼、4 個審計動作、系統安全告警 `unmanaged_privileged_account`，`host_key_mismatch` 的 `path` 多一個值 `account_inventory`；只有審核者角色的帳號：直接指派三入口（`PUT /users/:id/roles`、`POST /users/:id/roles/:role`、建立帳號帶角色）使帳號只剩審核者角色時回 400 `VALIDATION_ROLE_SET_APPROVER_ONLY`；使用者群組三入口（`PUT /user-groups/:id/role-bindings`、`PUT /user-groups/:id/members`、`DELETE /user-groups/:id`）使原本不是此狀態的成員轉入時回 400 `VALIDATION_USER_GROUP_APPROVER_ONLY_MEMBERS`，帶 `params.count` 與 `details.affected_users`；`GET /users` 與 `GET /users/:id` 的 User 新增 `approver_only`；`/auth/me` 新增呈現點 `ui:approval-history`，審核中心對讀得到審核歷史的稽核人員只呈現歷史；資料庫帳號自改密碼：資產 `rotation_channel` 值域新增 `db_native`，只相容 mysql、postgres、mssql；資產 `transmission_risks` 新增風險鍵 `db_rotation_unencrypted`；改密執行記錄新增 `transport_risk` 欄；新增原因碼 `CHANGE_SECRET_TARGET_VERSION_UNSUPPORTED`；資料庫資產未設通道時的跳過原因改為 `CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`；計畫執行記錄與批次詳情的記錄對範圍化檢視者被收窄的列照帶 `transport_risk`；輪替報告記錄明細新增 `transport_risk`，`records.csv` 與 PDF 附表 B 末尾新增「傳輸」欄；堡壘機專用帳號：新增 `GET`／`PUT`／`DELETE /assets/:id/executor` 與 `GET /assets/:id/executor/public-key` 四條路由，需新權限點 `asset:executor-manage`（逐資產判定，範圍外與不存在同形 404）；資產帳號列表與連線、授權、申請路徑只列登入帳號，既有帳號與憑證寫入端點對專用帳號回 409 `RULE_ACCOUNT_EXECUTOR_MANAGED`；同一組憑證不得同時作為登入帳號與專用帳號（409 `RULE_CREDENTIAL_PURPOSE_MISMATCH`）；憑證詳情掛載列新增 `purpose`；新增錯誤碼十二個，見「堡壘機專用帳號」。路由新增九條（主機帳號盤點五條、堡壘機專用帳號四條））
 > 前次更新：2026-11-01（角色預覽：新增 `GET /role-definitions/:id/preview-capabilities`，需 `role:view`，回應只讀的角色預覽權限集合與頁面狀態（`role`、`previewable`、`reason`、`permissions`、`entry_states`），內建超級管理者角色不可預覽；端點不寫資料、不簽發任何憑證或票證；未新增錯誤碼、審計動作與資料表。路由新增一條）
@@ -105,6 +107,7 @@
 | Session | 5 | `/api/v1/sessions` | 列表/詳情/活動/統計/終止（讀取需 `session:view`；終止只限超級管理者，`session:terminate` 不可指派給自訂角色） |
 | 自助連線 | 2 | `/api/v1/my/connections`（列表＋`:id/terminate` 自助終止） | 一般 user 自己的連線精簡紀錄與自助終止（僅需登入） |
 | 指令稽核 | 2 | `/api/v1/sessions`, `/api/v1/commands` | 單會話指令流、跨會話搜尋 |
+| 鍵盤紀錄 | 2 | `/api/v1/sessions/:id/keystrokes` | 鍵盤紀錄中繼資料（不解密）與帶理由查看內容（需 `keystroke:view`；每次查看同步留痕） |
 | 剪貼簿稽核 | 2 | `/api/v1/sessions/:id/clipboard-events` | RDP/VNC 剪貼簿留存事實列表＋單筆內容解密調閱（逐筆留痕） |
 | 會話分享 | 3 | `/api/v1/sessions` | 建立/撤銷分享、分享觀看（WS） |
 | 監看 / 會話指標 | 2 | `/api/v1/sessions`, `/api/v1/ssh` | 即時監看（WS）、目標主機指標 |
@@ -442,6 +445,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/sessions/:id/clipboard-events` | always |
 | GET | `/api/v1/sessions/:id/clipboard-events/:eventID/content` | always |
 | GET | `/api/v1/sessions/:id/commands` | always |
+| GET | `/api/v1/sessions/:id/keystrokes` | always |
+| POST | `/api/v1/sessions/:id/keystrokes/view` | always |
 | GET | `/api/v1/sessions/:id/monitor` | always |
 | POST | `/api/v1/sessions/:id/monitor-token` | always |
 | DELETE | `/api/v1/sessions/:id/recording` | always |
@@ -3521,6 +3526,37 @@ POST /api/v1/sessions/:id/terminate  → {}
 
 終止只有超級管理者可執行：路由登錄仍以 `session:terminate` 把關，該權限點不可指派給自訂角色，非超級管理者一律得到 403 `AUTH_PERMISSION_DENIED`（單一形狀）；已關閉的 session 回 400。
 
+### 鍵盤紀錄（中繼資料與查看）
+
+> 權限：兩支端點皆需 `keystroke:view`（稽核組、僅全域指派生效；內建稽核員範本含它，範圍化範本不含）。沒有此權限點者得到既有的能力拒絕回應形狀。鍵盤紀錄不出現在 `GET /sessions/:id`、指令清單、回放或監看的任何回應中。
+
+```
+GET  /api/v1/sessions/:id/keystrokes        → {"data": 中繼資料}（不解密、不需理由）
+POST /api/v1/sessions/:id/keystrokes/view   → {"data": {events, integrity, record_status, last_event_ms, next_event?, failed_segment?}}
+```
+
+**中繼資料 `state`**（會話不存在回既有 404 `NOTFOUND_SESSION`，不會回報成下列任一狀態）:
+
+| `state` | 條件 | 附帶欄位 |
+|---|---|---|
+| `pre_feature` | 沒有紀錄列，且會話開始時間早於鍵盤紀錄上線時間 | `feature_since` |
+| `not_covered` | 此會話類型不產生鍵盤紀錄 | `coverage_reason` |
+| `record_missing` | 沒有紀錄列，且會話開始於上線之後（呈現為啟動失敗、未建立紀錄） | 無 |
+| `recording`／`complete`／`incomplete`／`failed`／`purged` | 沿用紀錄列狀態 | `failure_cause`（`failed`）、`event_count`、`byte_size`、`started_at`、`last_write_at`、`ended_at`、`purged_at`、`protocol` |
+
+所有回應都帶布林 `viewable`：後端判定「是否有可查看的內容」（有檔案與封存金鑰、且狀態為 `recording`／`complete`／`incomplete`／`failed`）。前端只看它決定開理由對話框或直接顯示狀態說明。中繼資料讀取留一列讀取審計，不需理由。
+
+**查看**（本文 `{"reason": "...", "from_event": 0, "limit": 5000}`）:
+
+- `reason` 必填，去除前後空白後以字元計 1 至 1000；缺少或空白回 400 `VALIDATION_KEYSTROKE_REASON_REQUIRED`，超長回 400 `VALIDATION_KEYSTROKE_REASON_TOO_LONG`；兩者都不解密。理由只取自本文，查詢字串中的 `reason` 不採用也不記錄。
+- `from_event` 為起始事件序號（預設 0），`limit` 上限與預設都是 5000；每一頁都是一次帶理由的請求，各自留痕。
+- 沒有可查看的內容（`viewable=false`）回 404 `RESOURCE_KEYSTROKE_NOT_VIEWABLE`，不寫查看嘗試、不解密。
+- 平台金鑰未解封回 503 `RULE_KEYSTROKE_VAULT_SEALED`；紀錄標頭與資料庫不符或檔案路徑越界回 422 `RULE_KEYSTROKE_RECORD_REJECTED`，不交付任何事件；查看留痕失敗回 500 `INTERNAL_KEYSTROKE_VIEW`（fail-close，不交付內容）。
+- 事件：`seq`、`t_ms`（自紀錄開始的毫秒）、`at`、`kind`、`source`（`user`／`platform`）、`blocked`（已阻斷、未送出）、`data_b64`（位元組流與未知種類）或 `marker`（紀錄內的狀態標記碼）。
+- `integrity`：`complete`／`truncated`／`tampered`（帶 `failed_segment`）／`file_missing`。除標頭不符與路徑越界外，其他完整性狀態照常交付可讀的部分並如實標示，不以空內容冒充沒有輸入。
+
+**兩列審計**（同一請求識別關聯）：服務層在解密之前於交易內同步寫「查看嘗試」（資源 `keystroke_record`、動作讀取，`details` 含 `session_id`、`reason`、`from_event`、`limit`、`record_status`、`phase=attempt`），寫不進去即拒絕交付並經審計失敗告警鏈通報；請求層審計另記結果（成功或失敗與錯誤碼）。解封失敗或標頭不符時只有查看嘗試加上失敗的結果列。交付成功後依安全政策 `alert_on_sensitive_reveal` 發出來源類別 `keystroke_record` 的揭露告警。查看回應的內容不進任何日誌或審計欄位；沒有匯出端點，也沒有刪除端點。
+
 ---
 
 ## 自助連線 API（my-connections）
@@ -3706,7 +3742,7 @@ data 項另含審閱處置欄位 `reviewed_by`/`reviewed_at`/`disposition`（`pe
 機器碼落 `reason_code`（`audit_degraded_span`／`new_source_ip_session`／`RULE_AGENT_BREAKER_TRIPPED`／`sensitive_reveal`）。
 另有第六類 `system_security`（系統安全告警：系統對自身高風險設定與授權變更產生的告警），
 `rule_id` 為 `null`、`command` 為空字串，`rule_name` 與 `reason_code` 都是類型鍵；細節見「系統告警目錄與明細」。
-`sensitive_reveal` 只在安全政策 `alert_on_sensitive_reveal` 開啟時產生（出廠關閉），為 `severity=medium`，`note` 帶來源類別（`agent_tool_call`／`clipboard_event`）、來源 id、任務 id（若有）與調閱者填寫的理由；`command` 不放被調閱的原文。它是「有人看了機敏內容」的加強訊號，逐筆調閱稽核列不論政策開關都存在。
+`sensitive_reveal` 只在安全政策 `alert_on_sensitive_reveal` 開啟時產生（出廠關閉），為 `severity=medium`，`note` 帶來源類別（`agent_tool_call`／`clipboard_event`／`keystroke_record`）、來源 id、任務 id（若有）與調閱者填寫的理由；`command` 不放被調閱的原文。它是「有人看了機敏內容」的加強訊號，逐筆調閱稽核列不論政策開關都存在。
 `new_source_ip` 為 `severity=medium`；它記錄的是「這個帳號以前沒從這個位址連過」，
 **不表示該次連線被阻擋**——是否放行由允許來源網段（見「用戶 API」）決定，兩者互不影響。
 
@@ -3923,7 +3959,7 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| POST | `/connect-tokens` | 簽發前經停用硬擋：資產 `active=false`→**403＋`{reason: "asset_disabled"}`**（授權檢查之後、政策閘之前；admin 不豁免——停用是資產態非權限態，須先重新啟用留稽核）；再經傳輸閘：strict 命中→400＋`{channel, level, risks}`；warn 無有效同意→428＋`{channel, level, risks}`（與 strict 同一 body 形狀）；off/無風險→照常簽發。SFTP 檔案端點同收口（停用資產 403 `asset_disabled`）；token 兌換點（`/ssh`、`/connect`）建線前重查 active——簽發後停用者殘窗內同 403。停用硬擋後另經**錄影前置檢查**（偵測/告警恆做；政策鍵 `recording_failclose_enabled` 開啟且錄影目錄不可寫→**403＋`{reason: "recording_unavailable"}`**，admin 唯一例外放行＋稽核豁免標記 `recording_exemption`） |
+| POST | `/connect-tokens` | 簽發前經停用硬擋：資產 `active=false`→**403＋`{reason: "asset_disabled"}`**（授權檢查之後、政策閘之前；admin 不豁免——停用是資產態非權限態，須先重新啟用留稽核）；再經傳輸閘：strict 命中→400＋`{channel, level, risks}`；warn 無有效同意→428＋`{channel, level, risks}`（與 strict 同一 body 形狀）；off/無風險→照常簽發。SFTP 檔案端點同收口（停用資產 403 `asset_disabled`）；token 兌換點（`/ssh`、`/connect`）建線前重查 active——簽發後停用者殘窗內同 403。停用硬擋後另經**錄影前置檢查**（偵測/告警恆做；政策鍵 `recording_failclose_enabled` 開啟且錄影目錄不可寫→**403 `RULE_RECORDING_UNAVAILABLE`＋`{reason: "recording_unavailable"}`**，admin 唯一例外放行＋稽核豁免標記 `recording_exemption`）；同一道閘另探測鍵盤紀錄目錄（偵測/告警恆做；同一政策鍵開啟且鍵盤紀錄目錄不可寫→**403 `RULE_KEYSTROKE_UNAVAILABLE`＋`{reason: "keystroke_unavailable"}`**，admin 唯一例外同上，不另立標記值；平台金鑰尚未解封不在此探測範圍） |
 | POST | `/transmission-consents` | 傳輸風險同意立據（主體可連線與 connect 授權，同簽發資產邊界） |
 
 以上兩個 POST 的資產不存在或無 connect 權限，皆回 **404** `{"code":"NOTFOUND_ASSET","error":"資產不存在"}`，本文只有這兩欄，相關標頭相同，不回風險或權限原因；兩者均先判資產資格，才進各自後續的政策／風險處理。admin 沿既有 connect 例外，auditor 仍須具 connect 授權。已授權後的 `reason_required`／`approval_required` 403、傳輸同意428及其他政策回應維持。
@@ -4865,6 +4901,7 @@ GET /api/v1/roles
 `inactive_disable_days`；日誌保留與審閱（PCI Req 10）:
 `retention_audit_log_days`、`retention_session_command_days`、`retention_alert_days`（預設 0=永久，PCI 365）、
 `retention_recording_days`（預設 90，初始值由 `RECORDING_RETENTION_DAYS` env 播種；env 值落在 1–6 時視為不合法而忽略，沿用 90）、
+`retention_keystroke_days`（鍵盤紀錄保留，值域 `{0} ∪ [7, 3650]`、預設 0＝永久；不受檢查點跨鍵約束；下調（含由 0 改為正數）建立 `retention_shortened` 系統告警）、
 `retention_checkpoint_days`（檢查點鏈保留，預設 0＝永久、上界 3650、不在任何內建組的對照內——
 其合規語義是**跨鍵**關係，見下方跨鍵約束）、
 `daily_review_enabled`、`failure_alert_enabled`（bool，預設 false，PCI true）；存取政策（PCI 7.2）:
@@ -4884,20 +4921,20 @@ PCI 建議 365——金鑰超齡提醒天數，反映於金鑰清冊的 `reminde
 另有兩組政策鍵於他處詳述而不重複列於此：錄影 fail-close（`recording_failclose_enabled`，見連線簽發段）
 與傳輸風險（7 個 `transport_*`，見傳輸安全段）。
 
-**保留政策的值域**：四個資料保留鍵（`retention_audit_log_days`、`retention_session_command_days`、
-`retention_alert_days`、`retention_recording_days`）的合法值為 `{0} ∪ [7, 3650]`，0＝永久保留；
+**保留政策的值域**：五個資料保留鍵（`retention_audit_log_days`、`retention_session_command_days`、
+`retention_alert_days`、`retention_recording_days`、`retention_keystroke_days`）的合法值為 `{0} ∪ [7, 3650]`，0＝永久保留；
 儲存 1–6 回 400 `VALIDATION_POLICY_INVALID_VALUE` 並以 `params.key` 指出該鍵，同一批的其他鍵一併不生效。
 `retention_checkpoint_days` 不設下界（0 或 1–3650），只受下方跨鍵約束。直接改庫寫入的 1–6 於讀取時視為不合法，
 退回最後已知合法值（沒有則用出廠預設）。啟動時另有一個冪等對帳步驟，把已存為 1–6 的資料保留鍵抬升為 7
 （必要時檢查點保留跟隨抬升為 7），每筆寫稽核 `retention_floor_raised`，不產生告警，也不修補原本就違反跨鍵約束的存量。
 
-**保留與高危設定的告警**：政策批次中，下調四個資料保留鍵（含由 0 改為正數）產生 `retention_shortened`
+**保留與高危設定的告警**：政策批次中，下調五個資料保留鍵（含由 0 改為正數）產生 `retention_shortened`
 系統告警，`recording_failclose_enabled` 由 true 改 false 產生 `recording_failclose_disabled`，
 `access_policy_default` 降級產生 `access_policy_relaxed`；告警與稽核同交易，任一寫不進去整批回滾。
 調長、改為 0、開啟只寫稽核。告警保證的是建立與留痕，送達取決於通知通道。
 
 **保留政策的跨鍵約束**：`retention_checkpoint_days` SHALL NOT
-低於四個資料保留鍵中最長者，**0 視為無限大**（任一資料鍵為 0＝永久時，檢查點鍵僅允許 0）。
+低於前四個資料保留鍵（不含 `retention_keystroke_days`，它不參與此約束）中最長者，**0 視為無限大**（任一資料鍵為 0＝永久時，檢查點鍵僅允許 0）。
 批次只要觸及這五個鍵中任一個，就以**批次套用後的終值**對四組關係全部驗一遍
 （結果不因鍵在請求中的先後順序而異）；違反即整批拒絕，回
 `VALIDATION_POLICY_RETENTION_CROSS_KEY` 並以 `params.key` 指出觸發的資料保留鍵。
@@ -7444,7 +7481,7 @@ agent 會話的列表與詳情另投影兩個唯讀名稱欄：`owner_username`�
 
 **這道計數的涵蓋範圍要先看清楚**：跳閘門檻只數 never_visible，也就是**目標資產確實存在、但從未對該主體曝光過**的引用。對外回應雖然三類相同，但列舉不存在的資產 id（含已軟刪者）歸 retired、有過曝光紀錄者歸 revoked，兩者都**不累計、不會跳閘**，僅留事件列供查。因此「以遞增 id 掃描」這種最常見的探測形態，只要掃到的 id 多半不存在，就不會撞上這道熔斷。它防的是「拿真實但不該看到的資產反覆試」，不是通用的 id 掃描偵測；要涵蓋後者請另配告警規則與速率政策。事件列的 `class` 欄即為此三分類，可用 `GET /users/:id/agent-breaker/events` 逐筆核對。跳閘停該 token、失效其已換出憑證與既有會話，主體標未處置；其間發證回 409 `RULE_AGENT_BREAKER_PENDING`。告警 `kind=agent_breaker_tripped` 可無會話（session_id=null）；既有會話告警仍回數值 session_id。曝光紀錄自升級起累積，不回推升級前歷史，詳見升級 SOP。
 
-工作台 timeline 與證據包 manifest 的 command coverage 共用完整性來源：同樞紐、半開時間窗 `[from,to)` 的留存 `input_without_command` 降級列。存在時新增 `incomplete=true` 與 `degraded_count`；零列時省略，既有欄位保持一致。此軸與 present／purged／not_retained 保留期三態並存；不含已清除列，也不證明原指令從未遺漏。無樞紐的舊式 session 匯出仍不提供 coverage。
+工作台 timeline 與證據包 manifest 的 command coverage 共用完整性來源：同樞紐、半開時間窗 `[from,to)` 的留存的無指令文字降級列（`input_without_command`、`input_without_echo`、`echo_incomplete_at_close`）。存在時新增 `incomplete=true` 與 `degraded_count`；零列時省略，既有欄位保持一致。此軸與 present／purged／not_retained 保留期三態並存；不含已清除列，也不證明原指令從未遺漏。無樞紐的舊式 session 匯出仍不提供 coverage。
 
 agent 種子是指令文字規則，只涵蓋可列舉形態，無法窮舉寫檔、別名或其他工具的等效操作；仍需任務範圍與報告對照，不代表操作面已受完整控制。
 

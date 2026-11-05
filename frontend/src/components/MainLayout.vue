@@ -472,6 +472,12 @@ const detailPages = {
     title: () => t('sessionDetail.title'),
     parent: { to: '/sessions', label: () => t('menu.sessions') },
   },
+  // 連線管理 › 連線詳情 › 鍵盤紀錄（核可稿三層麵包屑）
+  KeystrokeViewer: {
+    title: () => t('keystrokeView.viewer.crumb'),
+    parent: { to: '/sessions', label: () => t('menu.sessions') },
+    middle: () => ({ to: `/sessions/${encodeURIComponent(String(route.params.id))}`, label: t('sessionDetail.title') }),
+  },
 }
 
 const currentPageTitle = computed(
@@ -488,7 +494,10 @@ const groupLeads = new Map([
 const breadcrumbs = computed(() => {
   const parent = detailPages[route.name]?.parent
   const current = { label: currentPageTitle.value, to: '' }
-  if (parent) return [{ label: parent.label(), to: parent.to }, current]
+  if (parent) {
+    const middle = detailPages[route.name]?.middle?.()
+    return [{ label: parent.label(), to: parent.to }, ...(middle ? [middle] : []), current]
+  }
   const lead = groupLeads.get(activeMenu.value)
   return lead ? [{ label: lead(), to: '' }, current] : [current]
 })

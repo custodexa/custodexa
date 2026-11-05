@@ -13,6 +13,10 @@
           <el-icon><ArrowLeft /></el-icon>
           {{ $t('sessionDetail.backToList') }}
         </el-button>
+        <KeystrokeEntry
+          v-if="session"
+          :session-id="sessionId"
+        />
         <RecordingDownloadButton
           v-if="session?.has_recording"
           :blocked-state="recordingBlocked"
@@ -774,6 +778,7 @@ const evidenceTab = ref('recording')
 import AsciinemaPlayer from '@/components/AsciinemaPlayer.vue'
 import GuacamolePlayer from '@/components/GuacamolePlayer.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import KeystrokeEntry from '@/components/keystroke/KeystrokeEntry.vue'
 import RecordingDownloadButton from '@/components/recording/RecordingDownloadButton.vue'
 import RecordingStatusTag from '@/components/recording/RecordingStatusTag.vue'
 import RecordingUnavailableCard from '@/components/recording/RecordingUnavailableCard.vue'

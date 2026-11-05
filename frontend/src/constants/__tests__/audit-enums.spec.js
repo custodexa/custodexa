@@ -51,7 +51,7 @@ const BACKEND_RESOURCES = [
   // auditor-workbench 訂正的三個獨立分類（原落 default asset 分支）
   'change_secret_plan', 'rotation_report', 'authorization', 'audit_timeline',
   // 取走剪貼簿明文的動作獨立分類
-  'clipboard_event',
+  'clipboard_event', 'keystroke_record',
   // A 類新分類十族＋兜底哨兵
   'audit_checkpoint', 'audit_failure', 'audit_integrity', 'alert_rule',
   'notify_channel', 'system_alert_type', 'oidc_provider', 'ldap_directory', 'asset_group',
@@ -93,6 +93,8 @@ const BACKEND_MECHANISMS = [
   'principal_state_integrity',
   'dek_unwrap',
   'restore_seal',
+  'keystroke_probe',
+  'keystroke_record',
 ]
 
 // 後端↔前端雙向完備性守衛：直讀後端原始碼取
@@ -144,7 +146,7 @@ const parseBackendResources = (src) => [
 const parseBackendCauses = (src) =>
   [
     ...new Set(
-      [...src.matchAll(/^\s*Cause\w+\s*=\s*"([a-z0-9_]+)"/gm)].map((m) => m[1])
+      [...src.matchAll(/^\s*Cause\w+\s*=\s*"([A-Za-z0-9_]+)"/gm)].map((m) => m[1])
     ),
   ].filter((v) => v !== 'detail')
 
@@ -186,6 +188,11 @@ const BACKEND_CAUSES = [
   'dek_unwrap_failed',
   'restore_seal_deferred',
   'restore_seal_state_unreadable',
+  'KEYSTROKE_DIR_UNWRITABLE',
+  'KEYSTROKE_KEY_SEAL_FAILED',
+  'KEYSTROKE_FILE_CREATE_FAILED',
+  'KEYSTROKE_WRITE_FAILED',
+  'KEYSTROKE_WRITER_STALLED',
 ]
 
 describe('audit-enums 完備性（前後端值域一致）', () => {
@@ -237,7 +244,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(37)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(42)
   })
 
   it.skipIf(!backendSourcePath)(

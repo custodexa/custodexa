@@ -274,6 +274,7 @@ var zeroMeaningVariantOracle = map[string]string{
 	PolicyRetentionSessionCommandDays: "retention",
 	PolicyRetentionAlertDays:          "retention",
 	PolicyRetentionRecordingDays:      "retention",
+	PolicyRetentionKeystrokeDays:      "retention",
 	PolicyRetentionCheckpointDays:     "retention",
 	PolicyOffsiteLocalRetentionDays:   "localRetention",
 	PolicyKeyCryptoperiodReminderDays: "keyReminder",

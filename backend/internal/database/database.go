@@ -222,6 +222,9 @@ var schemaParityModels = []interface{}{
 	// 堡壘機專用帳號的測試登入結果。由增量 migration 20261103_executor_login_checks 建表，
 	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
 	&model.ExecutorLoginCheck{},
+	// 鍵盤紀錄中繼資料。由增量 migration 20261105_keystroke_records 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
+	&model.KeystrokeRecord{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

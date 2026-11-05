@@ -225,7 +225,7 @@ func complianceReportBuiltinSection(rep *ComplianceReport, ph reportPhraseFn) (s
 func zeroMeaningVariant(key string) string {
 	switch key {
 	case PolicyRetentionAuditLogDays, PolicyRetentionSessionCommandDays, PolicyRetentionAlertDays,
-		PolicyRetentionRecordingDays, PolicyRetentionCheckpointDays:
+		PolicyRetentionRecordingDays, PolicyRetentionKeystrokeDays, PolicyRetentionCheckpointDays:
 		return "retention"
 	case PolicyOffsiteLocalRetentionDays:
 		return "local_retention"

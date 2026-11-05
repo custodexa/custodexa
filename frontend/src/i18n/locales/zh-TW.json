@@ -234,8 +234,10 @@
     "reasonSubmit": "送出並連線",
     "reasonPlaceholder": "例如：例行維護，更新套件",
     "reasonRequired": "請填寫理由",
-    "recordingUnavailableMessage": "這台主機目前無法建立新連線：伺服器錄影儲存異常，操作軌跡無法留存。請聯絡管理員處理。",
+    "recordingUnavailableMessage": "目前無法建立新連線：伺服器錄影儲存異常，操作軌跡無法留存。請聯絡管理員處理。",
     "recordingUnavailableTitle": "錄影儲存異常",
+    "keystrokeUnavailableMessage": "目前無法建立新連線：伺服器的鍵盤紀錄儲存異常，輸入內容無法留存。請聯絡管理員處理。",
+    "keystrokeUnavailableTitle": "鍵盤紀錄儲存異常",
     "ok": "知道了",
     "approvalPendingMessage": "你的申請（單號 #{id}）還在等候審核，核准後才能連線。進度可到「我的申請」檢視。",
     "approvalNeededMessage": "這台主機需要申請、經審核人核准後才能連線。請回「資產管理」對這台主機按「申請連線」。",
@@ -380,6 +382,7 @@
       "authorization": "資產授權",
       "audit_timeline": "調查工作台查詢",
       "clipboard_event": "剪貼簿內容調閱",
+      "keystroke_record": "鍵盤紀錄查看",
       "audit_checkpoint": "稽核檢查點",
       "audit_failure": "稽核失效事件",
       "audit_integrity": "稽核完整性驗證",
@@ -418,7 +421,9 @@
       "role_state_integrity": "角色指派與稽核鏈的一致性",
       "principal_state_integrity": "主體與憑證狀態完整性",
       "dek_unwrap": "資料金鑰的重新取得",
-      "restore_seal": "還原後封章"
+      "restore_seal": "還原後封章",
+      "keystroke_probe": "鍵盤紀錄前置檢查",
+      "keystroke_record": "鍵盤紀錄"
     },
     "cause": {
       "recording_probe_failed": "簽發點錄影前置檢查失敗",
@@ -457,7 +462,18 @@
       "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經應用程式留痕）",
       "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）",
       "restore_seal_deferred": "還原後封章失敗，服務已照常開放並待補封（涵蓋還原後權限狀態的檢查點尚未進鏈）",
-      "restore_seal_state_unreadable": "啟動時讀不到還原後的待封狀態，服務照常開放並已嘗試補封（補封成功即結案）"
+      "restore_seal_state_unreadable": "啟動時讀不到還原後的待封狀態，服務照常開放並已嘗試補封（補封成功即結案）",
+      "KEYSTROKE_DIR_UNWRITABLE": "鍵盤紀錄目錄無法寫入",
+      "KEYSTROKE_KEY_SEAL_FAILED": "鍵盤紀錄的檔案金鑰無法封存（金鑰材料尚未解封或金鑰管理失敗）",
+      "KEYSTROKE_FILE_CREATE_FAILED": "鍵盤紀錄檔無法建立",
+      "KEYSTROKE_WRITE_FAILED": "鍵盤紀錄寫入失敗",
+      "KEYSTROKE_WRITER_STALLED": "鍵盤紀錄寫入端停擺（長時間沒有進展）"
+    },
+    "keystrokeCoverageReason": {
+      "k8s_logs_readonly": "K8s 日誌唯讀，沒有輸入通道",
+      "db_console": "網頁資料庫主控台，語句已原樣保存",
+      "graphics_pending": "圖形協定尚未納入鍵盤紀錄",
+      "file_transfer": "檔案傳輸，內容由檔案稽核涵蓋"
     },
     "endReason": {
       "normal": "正常結束",
@@ -549,6 +565,7 @@
       "queue_overflow": "待結算的輸入達到上限，其後送出的輸入不再排隊；這一筆是溢出的起點，不代表其後只有一輪。",
       "input_without_echo": "這一輪送出了輸入，但輸出流中沒有可還原的文字。",
       "input_without_command": "這條連線曾送出輸入，但結束時沒有任何一筆可還原的指令；這一筆代表指令稽核在本連線失效，請以錄影為準。",
+      "echo_incomplete_at_close": "連線在這一輪的回顯完成前就結束了；已回顯的部分無法確認就是送出的整行，故不記錄指令文字。",
       "replay_input_bytes": "此列文字取自使用者送出的輸入位元組；Tab 補全與歷史鍵實際展開的內容只存在於回顯中，故可能與實際執行的指令不同。"
     },
     "commandAlertReason": {
@@ -699,7 +716,7 @@
       },
       "log_retention": {
         "title": "日誌保留與審閱",
-        "hint": "稽核資料保留與每日審閱。操作日誌自檢查點鏈啟用起改以「檢查點區間」為清除單位：區間內只要有一列未過期，整段暫不清除，故首輪清除後可能看到少量已過期列仍在（預期行為，非缺陷）。檢查點保留天數出廠為 0＝永久，且不得短於四個資料保留鍵中最長者（0 視為永久）——證明必須活得比它所證明的資料久，違反時整批儲存被拒。四項資料保留天數都有最少天數，不能再短。"
+        "hint": "稽核資料保留與每日審閱。操作日誌自檢查點鏈啟用起改以「檢查點區間」為清除單位：區間內只要有一列未過期，整段暫不清除，故首輪清除後可能看到少量已過期列仍在（預期行為，非缺陷）。檢查點保留天數出廠為 0＝永久，且不得短於操作日誌、指令流、告警記錄、錄影四項保留天數中最長者（0 視為永久；鍵盤紀錄不受此限）——證明必須活得比它所證明的資料久，違反時整批儲存被拒。五項資料保留天數都有最少天數，不能再短。"
       },
       "access_policy": {
         "title": "連線政策",
@@ -1190,6 +1207,7 @@
       "audit_checkpoints": "檢查點鏈",
       "audit_logs": "操作日誌",
       "command_alerts": "告警記錄",
+      "keystroke_records": "鍵盤紀錄",
       "recordings": "會話錄影",
       "session_commands": "指令流"
     },
@@ -1896,6 +1914,7 @@
     "kindRule": "規則告警",
     "kindSensitiveReveal": "敏感原文調閱",
     "sensitiveRevealDescription": "有人調閱了敏感原文；詳情請查逐筆調閱稽核。",
+    "sensitiveRevealKeystrokeDescription": "有人查看了這段連線的鍵盤紀錄；查看者、理由與時間見操作日誌。",
     "title": "告警",
     "headerDesc": "危險指令與系統安全事件的告警記錄",
     "channelsHeaderDesc": "告警會送到這些通道。任何通道的新增、修改、停用或刪除，都會通知安全人員。",
@@ -3010,7 +3029,8 @@
         "schedules": "排程時刻預覽",
         "rotation_schedules": "輪替排程",
         "instance_guard": "實例保護",
-        "asset_executor": "堡壘機專用帳號"
+        "asset_executor": "堡壘機專用帳號",
+        "keystroke_investigation": "鍵盤紀錄調查"
       },
       "detail": {
         "asset": {
@@ -3049,7 +3069,8 @@
         "alerts": "告警記錄與「操作日誌」讀的是同一份稽核資料，選唯讀或管理時會一併加上稽核檢視權限。",
         "access_reviews": "複審清單讀的是稽核資料，選管理時會一併加上稽核檢視權限。",
         "audit_logs": "同一個稽核檢視權限也開啟調查工作台、指令稽核、下載中心、AI agent 任務與輪替證據的報告。",
-        "asset_executor": "設定卡在資產編輯畫面內。持有者可以設定、更換、清除平台自用的帳號並取得其公鑰；這個帳號不能拿來連線。"
+        "asset_executor": "設定卡在資產編輯畫面內。持有者可以設定、更換、清除平台自用的帳號並取得其公鑰；這個帳號不能拿來連線。",
+        "keystroke_investigation": "在連線詳情頁的頁首多一顆「調查：鍵盤紀錄」按鈕，可以看到使用者鍵入的原始內容（包括密碼）。每次查看都要填寫理由並留下紀錄。只在全系統指派時生效。"
       },
       "placementTag": {
         "embedded": "設定卡",
@@ -4700,8 +4721,10 @@
     "AUTH_AGENT_TOKEN_INVALID": "自動化權杖無效",
     "AUTH_AGENT_FORBIDDEN_ROUTE": "自動化主體不可使用此端點",
     "AUTH_REQUEST_ITEM_MISMATCH": "存取申請項目不符",
+    "INTERNAL_KEYSTROKE_VIEW": "查看鍵盤紀錄失敗",
     "INTERNAL_SYSTEM_ALERT_RAISE": "系統告警處理失敗，變更已取消",
     "NOTFOUND_SYSTEM_ALERT_TYPE": "系統告警類型不存在",
+    "RESOURCE_KEYSTROKE_NOT_VIEWABLE": "此連線沒有可查看的鍵盤紀錄內容",
     "ROLE_DEFINITION_CONFLICT": "角色已被其他人修改，或名稱已被使用，請重新載入後再試",
     "ROLE_DEFINITION_IN_USE": "此角色仍在使用中，請先移除指派或映射再刪除",
     "ROLE_DEFINITION_LOCKED": "此角色為系統內建範本，不能修改、刪除或複製",
@@ -4710,6 +4733,10 @@
     "MAPPING_SCOPE_FIELD_REJECTED": "映射規則不支援範圍或節點設定",
     "AUTH_PROTECTED_ACCOUNT_OPERATION": "這個帳號受保護，你無法執行此操作",
     "AUTH_ROLE_ASSIGNMENT_FORBIDDEN": "你沒有指派角色的權限",
+    "RULE_KEYSTROKE_RECORD_REJECTED": "鍵盤紀錄無法驗證，已拒絕交付內容",
+    "RULE_KEYSTROKE_VAULT_SEALED": "平台金鑰尚未解封，暫時無法查看鍵盤紀錄",
+    "VALIDATION_KEYSTROKE_REASON_REQUIRED": "查看鍵盤紀錄須填寫理由",
+    "VALIDATION_KEYSTROKE_REASON_TOO_LONG": "查看理由不得超過 1000 個字元",
     "VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED": "這個入口只支援全系統的角色指派，不能指定節點範圍；要限定節點，請用整組替換指派的入口",
     "VALIDATION_ROLE_NOT_NODE_SCOPABLE": "這個角色含只能套用到全系統的權限，不能限定節點",
     "VALIDATION_ROLE_BINDING_NODES_EMPTY": "請至少選擇一個節點，或改為全系統",
@@ -5245,6 +5272,7 @@
     "RULE_K8S_UNAUTHORIZED": "Token 認證失敗（401）：請確認 Bearer Token 有效",
     "RULE_K8S_UNKNOWN": "連線 K8s 失敗，請確認叢集位址、認證與網路",
     "RULE_K8S_UNREACHABLE": "無法連到 API server：請確認位址/連接埠與網路可達性",
+    "RULE_KEYSTROKE_UNAVAILABLE": "鍵盤紀錄儲存異常，暫停新連線，請聯絡管理員",
     "RULE_LDAP_TEST_RATE_LIMITED": "LDAP 連線測試過於頻繁，請稍後再試",
     "RULE_MFA_INVALID_CODE": "MFA 驗證碼錯誤",
     "RULE_MFA_REPLAY": "MFA 驗證碼已使用過",
@@ -5604,6 +5632,7 @@
     "retention_checkpoint_days": "檢查點保留天數",
     "retention_max_per_run": "單次清理刪除上限",
     "retention_recording_days": "連線錄影保留天數",
+    "retention_keystroke_days": "鍵盤紀錄保留天數",
     "retention_session_command_days": "指令流保留天數",
     "session_idle_minutes": "協議連線閒置逾時",
     "session_max_minutes": "協議連線最長時長",
@@ -6974,7 +7003,9 @@
       "notRetainedDetail": "{category}：這類紀錄不在自動清除的對象內，從未依保留政策刪除過，故這段期間的空白不是清除造成的。這與「已依保留政策清除」是兩回事；但空白也不等於當時沒有事情發生，紀錄以系統實際採集到的為準（例如剪貼簿只在圖形桌面連線上採集，且只收文字內容）。",
       "emptyPresent": "{category}：此區間無紀錄。",
       "checkpointLink": "查核這段清除是否合法（檢查點序號 {from}–{to}）",
-      "commandIncomplete": "指令紀錄不完整：{count} 筆缺少指令內容"
+      "commandIncomplete": "{count} 筆輸入沒有回顯或回顯不完整（例如密碼提示），無法還原指令內容",
+      "commandIncompleteChip": "{count} 筆無法還原",
+      "commandIncompleteHint": "關鍵字搜尋不會涵蓋它們。"
     },
     "spans": {
       "title": "連線",
@@ -7772,6 +7803,7 @@
     "retention_session_command_days": "每日凌晨的清理排程執行時套用，已刪除的資料無法復原；設 0 表示永久保留。",
     "retention_alert_days": "每日凌晨的清理排程執行時套用，已刪除的資料無法復原；設 0 表示永久保留。",
     "retention_recording_days": "每日凌晨的清理排程執行時套用，已刪除的錄影無法復原；設 0 表示永久保留。",
+    "retention_keystroke_days": "每日凌晨的清理排程執行時套用，已刪除的鍵盤紀錄無法復原；設 0 表示永久保留。",
     "offsite_local_retention_days": "每日清理時只刪本機副本、離機副本仍在，離機儲存未啟用時本鍵無作用；設 0 表示不提前清。",
     "retention_checkpoint_days": "每日清理排程執行時套用，短於任一資料保留天數會在存檔當下被擋；設 0 表示永久保留。",
     "audit_checkpoint_interval_seconds": "下一次排程檢查即採新週期，已建立查核證明的區間不重算。",
@@ -8738,7 +8770,7 @@
       },
       "retention_shortened": {
         "name": "保留天數調短",
-        "description": "操作日誌、錄影、指令流或告警記錄的保留天數被調短"
+        "description": "操作日誌、錄影、指令流、告警記錄或鍵盤紀錄的保留天數被調短"
       },
       "offsite_or_syslog_changed": {
         "name": "離機副本或 syslog 變更",
@@ -9856,5 +9888,236 @@
     "previousResultNoTime": "上一次的結果",
     "skeletonLabel": "盤點完成後會在這裡列出結果",
     "goExecutor": "前往專用帳號設定"
+  },
+  "keystrokeView": {
+    "entry": {
+      "button": "調查：鍵盤紀錄",
+      "metaFailed": "無法取得鍵盤紀錄狀態，請重試"
+    },
+    "dialog": {
+      "title": "查看鍵盤紀錄",
+      "introLead": "這是調查用的原始輸入紀錄：使用者鍵入的每一個字都會原樣顯示，包括密碼。",
+      "introLog": "查看會留下紀錄（你的帳號、時間與下面的理由），並可能通知管理者。",
+      "reasonLabel": "查看理由",
+      "reasonPlaceholder": "例如：追查事件單 INC-1234，確認此連線在 14:00 前後輸入的內容",
+      "reasonCount": "{n} / 1000",
+      "errEmpty": "請寫下查看理由",
+      "errTooLong": "理由最多 1000 字，目前多了 {n} 字",
+      "submit": "送出並查看",
+      "cancel": "取消",
+      "close": "關閉",
+      "retry": "再試一次",
+      "keyHint": "Enter 換行，Ctrl+Enter 送出",
+      "reasonNote": "理由會寫進查看紀錄，稽核與管理者都看得到。每載入一頁內容都會用這段理由再記一次。"
+    },
+    "error": {
+      "sealed": {
+        "title": "平台金鑰尚未解封，暫時無法查看",
+        "body": "平台金鑰要先解封（通常在系統重新啟動後），才能解密鍵盤紀錄。這次查看已記錄為失敗，請聯絡系統管理者解封後再試。"
+      },
+      "rejected": {
+        "title": "這份紀錄無法通過驗證，不予顯示",
+        "body": "紀錄檔與系統的登記資料對不上，可能被替換或移動過。為避免顯示錯誤的內容，系統沒有交付任何事件。請通知系統管理者調查。"
+      },
+      "audit": {
+        "title": "系統暫時無法留下查看紀錄，因此沒有顯示內容",
+        "body": "每次查看都必須先留下紀錄。這次沒有顯示任何內容，系統管理者已收到通知。請稍後再試。"
+      },
+      "noPermission": {
+        "title": "你已沒有查看鍵盤紀錄的權限",
+        "body": "權限可能剛被調整。關閉後這顆入口會消失；如需查看請聯絡管理者。"
+      },
+      "notViewable": {
+        "title": "這份鍵盤紀錄目前沒有可查看的內容",
+        "body": "紀錄可能剛被清除或不存在。請關閉後重新確認狀態。"
+      },
+      "other": {
+        "title": "查看鍵盤紀錄失敗",
+        "body": "這次沒有顯示任何內容，請稍後再試。"
+      }
+    },
+    "noContent": {
+      "dialogTitle": "鍵盤紀錄",
+      "ok": "知道了",
+      "preFeature": {
+        "title": "這段連線在鍵盤紀錄功能啟用之前",
+        "body": "鍵盤紀錄從 {time} 起才開始記錄；這段連線開始於更早之前，當時沒有記錄輸入。",
+        "bodyNoTime": "這段連線開始於鍵盤紀錄功能啟用之前，當時沒有記錄輸入。"
+      },
+      "preFeatureHint": "要了解當時做了什麼，請看錄影回放與指令記錄。",
+      "notCovered": {
+        "generic": {
+          "title": "此類連線不產生鍵盤紀錄",
+          "body": "這類連線沒有可記錄的鍵盤輸入。"
+        },
+        "db_console": {
+          "title": "此類連線不產生鍵盤紀錄",
+          "body": "網頁版資料庫查詢主控台送出的每一句查詢已由系統原樣保存，所以不另外記錄鍵盤輸入。"
+        },
+        "graphics_pending": {
+          "title": "圖形桌面連線的鍵盤紀錄尚未提供",
+          "body": "目前只記錄終端型連線（SSH、資料庫命令列等）的輸入；遠端桌面與 VNC 的按鍵紀錄會在之後的版本加入。"
+        },
+        "k8s_logs_readonly": {
+          "title": "此類連線不產生鍵盤紀錄",
+          "body": "Kubernetes 唯讀日誌檢視不接受鍵盤輸入，因此沒有可記錄的內容。"
+        },
+        "file_transfer": {
+          "title": "此類連線不產生鍵盤紀錄",
+          "body": "檔案傳輸連線沒有鍵盤輸入；傳了哪些檔案請看檔案傳輸紀錄。"
+        }
+      },
+      "recordMissing": {
+        "title": "鍵盤紀錄啟動失敗，未建立紀錄",
+        "body": "這段連線應該要有鍵盤紀錄，但連線開始時紀錄沒有建立起來，所以沒有任何輸入被記下。"
+      },
+      "recordMissingHint": "這是需要追查的異常：請通知系統管理者檢查當時的系統告警。錄影與指令記錄不受影響。",
+      "failedNoFile": {
+        "title": "鍵盤紀錄啟動失敗",
+        "body": "連線開始時就失敗，沒有記下任何輸入。",
+        "bodyCause": "原因：{cause}。連線開始時就失敗，沒有記下任何輸入。"
+      },
+      "purged": {
+        "title": "鍵盤紀錄已依保留期清除",
+        "body": "這段連線的鍵盤紀錄已超過保留期限，於 {time} 依保留政策清除。這是政策正常執行，不是紀錄遺失。",
+        "bodyNoTime": "這段連線的鍵盤紀錄已超過保留期限，依保留政策清除。這是政策正常執行，不是紀錄遺失。"
+      },
+      "purgedHint": "清除作業本身也有一筆操作日誌可查。",
+      "generic": {
+        "title": "這份鍵盤紀錄目前沒有可查看的內容",
+        "body": "請稍後重新確認狀態。"
+      }
+    },
+    "failureCause": {
+      "KEYSTROKE_DIR_UNWRITABLE": "紀錄存放位置無法寫入",
+      "KEYSTROKE_KEY_SEAL_FAILED": "加密金鑰無法準備",
+      "KEYSTROKE_FILE_CREATE_FAILED": "無法建立紀錄檔",
+      "KEYSTROKE_WRITE_FAILED": "寫入失敗",
+      "KEYSTROKE_WRITER_STALLED": "寫入停滯"
+    },
+    "viewer": {
+      "crumb": "鍵盤紀錄",
+      "title": "鍵盤紀錄（調查用）",
+      "description": "連線編號 {id}　·　這是使用者原樣鍵入的內容，含密碼；離開本頁即清除，不會留在瀏覽器",
+      "back": "返回連線詳情",
+      "loading": "載入中…",
+      "summary": {
+        "connection": "這次查看的連線",
+        "user": "使用者",
+        "asset": "資產",
+        "protocol": "協議",
+        "range": "起訖",
+        "status": "紀錄狀態",
+        "reason": "本次查看理由",
+        "logged": "已留下查看紀錄（{time}，含這段理由）",
+        "countSize": "共 {count} 筆事件、{size}",
+        "keyCountWithNote": "共 {count} 筆事件；圖形桌面只記按鍵，不記滑鼠"
+      },
+      "integrity": {
+        "complete": "完整",
+        "completeHint": "從連線開始記到連線結束，中間沒有缺口。",
+        "recording": "紀錄中",
+        "recordingHint": "連線還在進行，這裡只有已寫入的部分。要看更新的內容請再查看一次（會再留一筆查看紀錄）。",
+        "incomplete": "未正常結束",
+        "incompleteHint": "紀錄在系統異常中止時停止。之後若連線仍有輸入，沒有被記下。",
+        "truncated": "不完整｜最後可讀時間 {time}",
+        "truncatedHint": "紀錄檔尾端不完整，只能讀到 {time} 為止。之後的內容無法讀出。",
+        "failed": "紀錄中途失敗",
+        "failedHint": "原因：{cause}。中止之前的內容可讀，之後沒有記下。",
+        "failedHintNoCause": "中止之前的內容可讀，之後沒有記下。",
+        "tampered": "疑似遭竄改",
+        "tamperedHint": "紀錄檔從第 {segment} 段起無法通過驗證，可能被改動過。只顯示驗證通過的前段。",
+        "tamperedHintNoSegment": "紀錄檔有一段無法通過驗證，可能被改動過。只顯示驗證通過的前段。",
+        "fileMissing": "檔案缺失",
+        "fileMissingTitle": "找不到紀錄檔，無法顯示任何內容",
+        "fileMissingBody": "資料庫有這份紀錄，但存放位置找不到紀錄檔。這是異常，請通知系統管理者，並查看操作日誌是否有刪除或還原作業。",
+        "fileMissingLogged": "你的查看理由已記錄。"
+      },
+      "tail": {
+        "end": "已到最後一筆。這份紀錄共 {n} 筆。",
+        "allOnePage": "已到最後一筆。這份紀錄共 {n} 筆，全部在這一頁。",
+        "recording": "以上是目前已寫入的全部內容。連線仍在進行中，之後的輸入還在記錄。",
+        "incomplete": "紀錄在這裡中斷：系統異常中止，之後沒有紀錄。這不代表使用者沒有再輸入。",
+        "truncated": "最後可讀時間 {time}。之後的內容無法讀出，不代表沒有輸入。",
+        "failed": "紀錄在這裡中止，原因：{cause}。之後的輸入沒有被記下。",
+        "failedNoCause": "紀錄在這裡中止。之後的輸入沒有被記下。",
+        "tampered": "以下內容無法通過驗證，不予顯示。請通知系統管理者保全紀錄檔並調查。",
+        "empty": "這份紀錄沒有任何輸入事件。",
+        "refresh": "重新查看最新內容"
+      },
+      "toolbar": {
+        "events": "輸入事件",
+        "count": "已顯示 {shown} 筆，共 {total} 筆",
+        "display": "顯示方式",
+        "text": "可讀文字",
+        "hex": "十六進位",
+        "keyEvents": "按鍵事件",
+        "range": "第 {from}–{to} 筆，共 {total} 筆",
+        "showKeyCodes": "顯示按鍵代碼"
+      },
+      "legend": {
+        "title": "記號說明：",
+        "enter": "Enter",
+        "tab": "Tab",
+        "esc": "Esc",
+        "backspace": "退格",
+        "ctrlC": "Ctrl+C",
+        "arrows": "方向鍵",
+        "other": "其他看不見的字元（十六進位）"
+      },
+      "table": {
+        "seq": "#",
+        "offset": "連線後",
+        "time": "時間",
+        "source": "來源",
+        "content": "內容",
+        "contentHex": "內容（十六進位）",
+        "action": "動作",
+        "key": "按鍵"
+      },
+      "source": {
+        "user": "使用者",
+        "platform": "平台",
+        "system": "系統"
+      },
+      "blocked": "已阻斷、未送出",
+      "platformHint": "阻斷後由平台送出，清掉目標主機上沒送出的那一行",
+      "unknownKind": "未知事件種類 0x{kind}",
+      "marker": {
+        "end_user_closed": "紀錄結束：使用者關閉了連線",
+        "end_client_lost": "紀錄結束：使用者端連線中斷",
+        "end_target_closed": "紀錄結束：目標主機端結束了連線",
+        "end_idle_timeout": "紀錄結束：閒置逾時，由平台收線",
+        "end_max_duration": "紀錄結束：達到時長上限，由平台收線",
+        "end_block_clear_failed": "紀錄結束：指令阻斷後無法清除目標主機上的輸入行，平台收線",
+        "end_terminated": "紀錄結束：平台終止了連線",
+        "writer_stalled": "紀錄寫入停擺：之後的輸入不再記錄",
+        "unknown": "系統標記：{code}"
+      },
+      "paging": {
+        "next": "載入下一頁（第 {from}–{to} 筆）",
+        "loading": "載入中…",
+        "note": "每載入一頁都會用同一段理由再留一筆查看紀錄。",
+        "divider": "第 {n} 頁　·　查看紀錄 {time}",
+        "failed": "第 {n} 頁沒有載入：{reason}",
+        "retry": "再試一次",
+        "attempted": "這次嘗試已記錄。"
+      },
+      "reenter": {
+        "title": "需要重新填寫查看理由",
+        "body": "為了保護內容，鍵盤紀錄不會保存在瀏覽器；重新整理或開新分頁後，要再填一次理由才能查看（會再留一筆紀錄）。",
+        "action": "填寫理由並查看"
+      },
+      "action": {
+        "down": "按下",
+        "up": "放開"
+      },
+      "key": {
+        "left": "左 {key}",
+        "right": "右 {key}",
+        "unicode": "{char}（{code}）",
+        "unknown": "未知按鍵"
+      }
+    }
   }
 }

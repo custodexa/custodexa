@@ -157,6 +157,7 @@ var tableOwner = map[string]string{
 	"sessions":         "session",
 	"snippets":         "session",
 	"clipboard_events": "session",
+	"keystroke_records": "session",
 	// offsite（evidence-offsite-storage）：離機儲存的保管帳冊與設定世代表。
 	//
 	// **不是第八個模組**——`internal/offsite` 是基礎設施包（形態比照
@@ -358,6 +359,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 		Reason: "同上（通知通道 url／secret 兩欄）。"},
 	{Module: "keyvault", Table: "clipboard_events", Kind: "write", Invisible: true,
 		Reason: "同上（剪貼簿留存內容欄 content_enc）。"},
+	{Module: "keyvault", Table: "keystroke_records", Kind: "write", Invisible: true,
+		Reason: "同上（鍵盤紀錄檔的檔案金鑰欄 file_key_enc；輪替只重包這個小欄位、檔案不重寫）。"},
 	{Module: "keyvault", Table: "system_alert_outbox", Kind: "write", Invisible: true,
 		Reason: "同上（系統告警投遞佇列的目的地快照 url_enc／secret_enc 兩欄）。"},
 	{Module: "keyvault", Table: "assets", Kind: "read", Invisible: true,
@@ -375,6 +378,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 	{Module: "keyvault", Table: "notification_channels", Kind: "read", Invisible: true,
 		Reason: "同上。"},
 	{Module: "keyvault", Table: "clipboard_events", Kind: "read", Invisible: true,
+		Reason: "同上。"},
+	{Module: "keyvault", Table: "keystroke_records", Kind: "read", Invisible: true,
 		Reason: "同上。"},
 	{Module: "keyvault", Table: "system_alert_outbox", Kind: "read", Invisible: true,
 		Reason: "同上。"},

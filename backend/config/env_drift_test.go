@@ -56,6 +56,7 @@ var driftAllowlist = map[string]bool{
 	"REQUIRE_INTEGRATION": true, // 設 1 時整合測試的 skip 轉 fail（CI 開啟，消滅假綠）
 	"TEST_PG_DSN":         true, // postgres 靶機 DSN
 	"LOOPBACK_PASSWORD":   true, // loopback 回歸 CLI 專用（build tag loopback，不進正式映像）
+	"DEVCHECK_EXPECT_CR":  true, // 鍵盤紀錄開發驗證工具專用（build tag keystroke_devcheck，不進正式映像）
 	// 同一支回歸 CLI 以絕對路徑呼叫 powershell.exe 時讀的 Windows 系統變數；
 	// 由 Windows runner 自身提供，不是部署旋鈕，故不入範本
 	"SystemRoot":              true,
@@ -77,9 +78,9 @@ var driftAllowlist = map[string]bool{
 	"KEK_KMS_KEY_ID":      true,
 	"KEK_VAULT_SECRET_ID": true,
 
-	"TEST_KMS_ENDPOINT":       true, // KMS 模擬器（localstack）端點
-	"TEST_S3_ENDPOINT":        true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
-	"TEST_GCS_ENDPOINT":       true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
+	"TEST_KMS_ENDPOINT": true, // KMS 模擬器（localstack）端點
+	"TEST_S3_ENDPOINT":  true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
+	"TEST_GCS_ENDPOINT": true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
 	// 查詢主控台的三個資料庫靶機座標（五段式 host|port|user|password|database）
 	"TEST_DBCONSOLE_MYSQL":    true,
 	"TEST_DBCONSOLE_POSTGRES": true,

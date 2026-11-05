@@ -1,6 +1,9 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-11-03（`20261103_executor_login_checks`：新表 `executor_login_checks`（堡壘機專用帳號最近一次測試登入的結果，每個專用帳號掛載一列，見第 78 節），只建表與一條索引、不回填、不改既有表、不設外鍵；不提供 Down；執行順序在 `20261103_change_secret_execution_method` 之後。同日 `host_account_scans.identity_mode` 開始寫入 `executor`（以專用帳號登入的盤點）、`failure_reason` 值域由 13 個增為 16 個，欄位定義不變。migration 總數 56（含 baseline）、應用資料表 90 張、全庫 93 張表）
+> **最後更新**：2026-11-06（政策鍵表補 `retention_keystroke_days` 一列，無 schema 變更）
+> 前次更新：2026-11-05（`20261105_keystroke_records`：新表 `keystroke_records`（鍵盤紀錄中繼資料，一個會話一列，見第 79 節），只建表與三條索引、不回填、不改既有表、不設外鍵；不提供 Down；檔案金鑰欄 `file_key_enc` 登記於信封加密的欄位登記表。新增保留天數政策鍵 `retention_keystroke_days`（出廠 0，不受檢查點跨鍵約束）。migration 總數 +1、應用資料表 +1）
+> 前次更新：2026-11-05（指令稽核降級原因新增 `echo_incomplete_at_close`：會話結束時該輪已收到部分回顯、但 Enter 的回顯換行未抵達，記為無文字的降級列；無 migration，表數不變）
+> 前次更新：2026-11-03（`20261103_executor_login_checks`：新表 `executor_login_checks`（堡壘機專用帳號最近一次測試登入的結果，每個專用帳號掛載一列，見第 78 節），只建表與一條索引、不回填、不改既有表、不設外鍵；不提供 Down；執行順序在 `20261103_change_secret_execution_method` 之後。同日 `host_account_scans.identity_mode` 開始寫入 `executor`（以專用帳號登入的盤點）、`failure_reason` 值域由 13 個增為 16 個，欄位定義不變。migration 總數 56（含 baseline）、應用資料表 90 張、全庫 93 張表）
 > 前次更新：2026-11-03（`20261103_change_secret_execution_method`：`change_secret_records` 加四欄——`execution_method`（`self`／`executor_root`／`executor_sudo_nopasswd`／`executor_sudo_password`，非空、預設 `self`）、`executor_account_id`（bigint、預設 0）、`executor_username`（varchar(100)、預設空字串）、`executor_credential_id`（bigint、預設 0），記代改當下堡壘機專用帳號的快照；純加法、不回填，既有列為自改；不提供 Down；執行順序在 `20261103_asset_account_executor_source` 之後。migration 總數 55（含 baseline），表數不變：應用資料表 89 張、全庫 92 張表）
 > 前次更新：2026-11-03（`20261103_asset_account_executor_source`：`asset_accounts` 加 `executor_source` 欄（`varchar(16) NOT NULL DEFAULT ''`，值域 `generate`／`inline`／`shared`／`convert`，空字串＝未記錄），記堡壘機專用帳號是怎麼設定的，供 `GET /assets/:id/executor` 的 `source` 欄讀取；純加法、不回填，既有列為空字串；執行順序在 `20261102_asset_account_purpose` 之後。migration 總數 54（含 baseline），表數不變：應用資料表 89 張、全庫 92 張表）
 > 前次更新：2026-11-03（`20261102_asset_account_purpose`：`asset_accounts` 加 `purpose` 欄（`login`／`executor`，既有列取 `login`）與部分唯一索引 `idx_asset_accounts_executor`（每資產至多一筆未刪除的堡壘機專用帳號）；`credential_secret_versions.created_reason` 值域加 `generated`（平台產生的金鑰）；純加法、不回填；執行順序在 `20261102_host_account_inventory` 之後。migration 總數 53（含 baseline），表數不變：應用資料表 89 張、全庫 92 張表）
@@ -1465,7 +1468,7 @@ const (
 | `K8sPod` | string | `size:253` | `k8s_pod` | K8s 冗餘欄：當次選定 pod（跨會話搜尋免 JOIN sessions） |
 | `K8sContainer` | string | `size:63` | `k8s_container` | K8s 冗餘欄：當次 container |
 | `Degraded` | bool | `not null;default:false` | `degraded` | **該輪沒有可信的指令文字**。全螢幕重繪、alt-screen 標記區間、無回顯輸入等情形下，重組結果不可信，此時記一筆降級列而非靜默丟棄——後者可被主動觸發成「零紀錄」。為 true 時 `Command` 必為空 |
-| `DegradeReason` | string | `size:64;not null;default:''` | `degrade_reason` | 降級原因機器碼。**兩個值域刻意不合併**：`Degraded=true` 時取 `Degrade*` 常數（無可信文字）；`Degraded=false` 且本欄非空時取 `Qualify*` 常數（**文字已入庫但可能不等於實際執行的指令**）。合併會使「`Degraded=false` ⇒ 文字可信」變成假話。值域見 `model/session_command.go`。`input_without_command` 為會話結束時的安全網：有實質輸入卻零紀錄時補一筆（2026-09-15 起） |
+| `DegradeReason` | string | `size:64;not null;default:''` | `degrade_reason` | 降級原因機器碼。**兩個值域刻意不合併**：`Degraded=true` 時取 `Degrade*` 常數（無可信文字）；`Degraded=false` 且本欄非空時取 `Qualify*` 常數（**文字已入庫但可能不等於實際執行的指令**）。合併會使「`Degraded=false` ⇒ 文字可信」變成假話。值域見 `model/session_command.go`。`input_without_command` 為會話結束時的安全網：有實質輸入卻零紀錄時補一筆（2026-09-15 起）。`echo_incomplete_at_close` 為會話結束時該輪回顯未完成（已收到部分回顯、Enter 的回顯換行未抵達）：已回顯的前綴不寫入 `command`（2026-11-05 起） |
 
 **查詢主控台的結果事實欄**（十一欄，由增量 migration `20260826_db_query_console` 加欄）。
 **文字終端會話的列一律留在預設值**：`result_status = ''` 即「這不是主控台列」，
@@ -1963,6 +1966,7 @@ const (
 | `retention_session_command_days` | int | `0` | min | 指令流保留天數（0=永久保留，判不符；其餘值須在 7 至 3650） |
 | `retention_alert_days` | int | `0` | min | 告警記錄保留天數（0=永久保留，判不符；其餘值須在 7 至 3650） |
 | `retention_recording_days` | int | `90` | min | 會話錄影保留天數（0=永久保留；其餘值須在 7 至 3650；初始值由 `RECORDING_RETENTION_DAYS` 播種，播種值落在 1 至 6 會被忽略） |
+| `retention_keystroke_days` | int | `0` | min | 鍵盤紀錄保留天數（0=永久保留；其餘值須在 7 至 3650；不受檢查點跨鍵約束） |
 | `daily_review_enabled` | bool | `false` | - | 每日審閱簽核（保留變更歷史，見 `security_policy_history`） |
 | `daily_review_timezone` | timezone | `UTC` | - | 每日簽核的業務時區（IANA 名稱，以 `time.LoadLocation` 驗證，拒 `Local` 與空字串；首次啟動依 `TZ` → `/etc/localtime` → `UTC` 播種，已有列不覆蓋；改後自下一個日期生效；保留變更歷史；不對照任何條文） |
 | `failure_alert_enabled` | bool | `false` | - | 稽核失效告警通知（失效事件記錄恆開，此鍵僅控通知） |
@@ -2743,6 +2747,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20261103_asset_account_executor_source` | 執行身分來源：`asset_accounts` 加 `executor_source character varying(16) NOT NULL DEFAULT ''`（值域 `generate`／`inline`／`shared`／`convert`，既有列經預設值為空字串），共 **1 條 DDL**；純加法、無資料步驟、不回填 | `rollbackAssetAccountExecutorSource`（卸欄；非正式環境回退手段） |
 | `20261103_change_secret_execution_method` | 改密紀錄的執行方式：`change_secret_records` 加 `execution_method character varying(32) NOT NULL DEFAULT 'self'`、`executor_account_id bigint NOT NULL DEFAULT 0`、`executor_username character varying(100) NOT NULL DEFAULT ''`、`executor_credential_id bigint NOT NULL DEFAULT 0` 四欄，記代改當下堡壘機專用帳號的快照，共 **4 條 DDL**；純加法、無資料步驟、不回填，既有紀錄經預設值為 `self`（帳號自行改密） | `rollbackChangeSecretExecutionMethod`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 | `20261103_executor_login_checks` | 堡壘機專用帳號測試登入結果：建 `executor_login_checks`（第 78 節），共 **2 條 DDL**（1 建表＋1 一般索引 `idx_executor_login_checks_asset`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackExecutorLoginChecks`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
+| `20261105_keystroke_records` | 鍵盤紀錄中繼資料：建 `keystroke_records`（第 79 節），共 **4 條 DDL**（1 建表＋2 唯一索引 `idx_keystroke_records_record_uuid`／`idx_keystroke_records_session_id`＋1 一般索引 `idx_keystroke_records_status`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackKeystrokeRecords`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新目錄 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
@@ -4301,6 +4306,31 @@ pending → uploading → uploaded → local_purged
 | `checked_at` | timestamptz NOT NULL | 測試完成時間 |
 
 值域由寫入端檢查（非法值拒寫），資料層不設 CHECK。
+
+### 79. keystroke_records（鍵盤紀錄中繼資料）
+
+**表名**: `keystroke_records`；**檔案**: `backend/internal/model/keystroke_record.go`（`model.KeystrokeRecord`）。**建表方式**: 增量 migration `20261105_keystroke_records`。
+
+一個會話一列：平台已轉送出去的使用者輸入所存成的加密檔案之中繼資料，或「此會話類型不產生鍵盤紀錄」的判定紀錄。**無外鍵、不 cascade**：會話列被清除時，紀錄列與檔案各依自己的保留期處理。檔案本體在審計資料根下的 `keystrokes/YYYY-MM-DD/<record_uuid>.cxkr`，落地即密文。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial，主鍵 `keystroke_records_pkey` | |
+| `record_uuid` | varchar(36) NOT NULL，唯一索引 `idx_keystroke_records_record_uuid` | 隨機 UUID；檔名與檔案標頭都用它 |
+| `session_id` | bigint NOT NULL，唯一索引 `idx_keystroke_records_session_id` | 一個會話一列 |
+| `protocol` | varchar(16) NOT NULL DEFAULT '' | 會話協定 |
+| `status` | varchar(16) NOT NULL，索引 `idx_keystroke_records_status` | `recording`／`complete`／`incomplete`（行程異常中止）／`failed`／`purged`／`not_covered` |
+| `coverage_reason` | varchar(32) NOT NULL DEFAULT '' | `not_covered` 時的原因碼：`k8s_logs_readonly`／`db_console`／`graphics_pending`／`file_transfer` |
+| `file_path` | varchar(255) NOT NULL DEFAULT '' | 相對於鍵盤紀錄根目錄；清除後保留原值供稽核；`not_covered` 與未開檔的 `failed` 為空 |
+| `file_key_enc` | text NOT NULL DEFAULT '' | 檔案金鑰（每份紀錄一把 256-bit）經欄位信封封存的密文；清除後為空字串（不是 NULL，信封遷移的 `<> ''` 謂詞會跳過它）。登記於 `allCipherRefs` 與 `envelopeMigrationTargets`，資料金鑰輪替只重包這一欄、檔案不重寫 |
+| `failure_cause` | varchar(64) NOT NULL DEFAULT '' | 失敗原因碼：`KEYSTROKE_DIR_UNWRITABLE`／`KEYSTROKE_KEY_SEAL_FAILED`／`KEYSTROKE_FILE_CREATE_FAILED`／`KEYSTROKE_WRITE_FAILED`／`KEYSTROKE_WRITER_STALLED` |
+| `writer_instance` | varchar(64) NOT NULL DEFAULT '' | 寫入者的實例識別（對帳用） |
+| `event_count`／`byte_size`／`segment_count` | bigint NOT NULL DEFAULT 0 | 收尾或失敗時寫入的計數 |
+| `started_at` | timestamptz NOT NULL | |
+| `last_write_at` | timestamptz | 寫入端最多每 60 秒更新一次（心跳），供對帳判斷寫入者仍在 |
+| `ended_at`／`purged_at` | timestamptz | |
+
+值域由寫入端檢查，資料層不設 CHECK。對帳：啟動時與每 10 分鐘一次，把 `status = recording`、不在本行程活躍集合、且 `COALESCE(last_write_at, started_at)` 早於 5 分鐘前者改為 `incomplete`。保留期清除以 `COALESCE(ended_at, last_write_at, started_at)` 判定到期，`recording` 一律跳過。
 
 ---
 

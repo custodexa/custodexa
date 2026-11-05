@@ -50,7 +50,7 @@ func newKeyManagerDB(t *testing.T) *gorm.DB {
 	// OIDCProvider／LDAPDirectory 一併建表：其 client_secret_enc／bind_password_enc
 	// 登記於 envelopeMigrationTargets，AAD 殘餘掃描會逐表計數，缺表即整個掃描失敗
 	// （非本測試意圖）
-	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}); err != nil {
+	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.KeystrokeRecord{}, &model.OffsiteProfile{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立。
@@ -159,7 +159,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
 		&model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
-		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.UserRole{}); err != nil {
+		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.KeystrokeRecord{}, &model.OffsiteProfile{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立

@@ -108,13 +108,28 @@ func loadCapture(t *testing.T, path string) []captureScenario {
 	return scenarios
 }
 
-// replayScenario 以原始 chunk 邊界重放一個情境，回傳 CommandParser 發出的所有指令。
+// degradedSlot 降級紀錄在重放結果中的佔位字串。降級列沒有指令文字，
+// 但它仍是「一輪一筆」中的那一筆：不佔位的話，依輸入方向數出的收尾輪數
+// 會從實質指令那一端扣起，比對對象整個錯位。
+func degradedSlot(reason string) string {
+	return "<degraded:" + reason + ">"
+}
+
+// replayScenario 以原始 chunk 邊界重放一個情境，回傳 CommandParser 發出的所有紀錄：
+// 指令與受限定文字照原樣，降級列以 degradedSlot 佔位。
 func replayScenario(t *testing.T, sc captureScenario, protocol string) []string {
 	t.Helper()
 	var emitted []string
 	p := NewCommandParser(func(command string, _ time.Time) {
 		emitted = append(emitted, command)
 	}, protocol)
+	p.SetRecordSink(func(command string, degraded bool, reason string, _ time.Time) {
+		if degraded {
+			emitted = append(emitted, degradedSlot(reason))
+			return
+		}
+		emitted = append(emitted, command)
+	})
 
 	for i, ev := range sc.Events {
 		data, err := base64.StdEncoding.DecodeString(ev.Data)

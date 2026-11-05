@@ -127,7 +127,7 @@ func TestLockBusyReturns409Sentinel(t *testing.T) {
 	}
 	if err := shared.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.SystemAlertOutbox{}, &model.AuditLog{}, &model.DataKey{},
-		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{}, &model.UserRole{}); err != nil {
+		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.KeystrokeRecord{}, &model.OffsiteProfile{}, &model.AgentToolCall{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := shared.Exec("CREATE TABLE schema_migrations (version varchar(50) PRIMARY KEY, applied_at datetime NOT NULL)").Error; err != nil {

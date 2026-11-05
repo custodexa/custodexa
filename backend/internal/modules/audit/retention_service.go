@@ -115,12 +115,24 @@ type RetentionService struct {
 	// offsiteRecordings 離機啟用後的錄影保留補充面；nil＝未組裝離機子系統
 	// （此時本檔的行為與該功能不存在時逐字相同）
 	offsiteRecordings OffsiteRecordingRetention
+	// keystrokes 鍵盤紀錄清理；nil＝未組裝。保留鍵 retention_keystroke_days
+	// 不在檢查點跨鍵約束內（鍵盤紀錄檔不在鏈內），也不記保留水位
+	keystrokes KeystrokeRetention
 
 	// watermarks 保留期清除水位。nil＝不記水位
 	//（單元測試與 scripts/retention_smoke.go），此時工作台一律回 present——
 	// 那是冷啟動語義，不是錯誤
 	watermarks *RetentionWatermarkService
 }
+
+// KeystrokeRetention 鍵盤紀錄的保留清除面（由 session.KeystrokeService 滿足）。
+// 與錄影清理互不呼叫：兩者各自依自己的保留天數到期。
+type KeystrokeRetention interface {
+	PurgeKeystrokes(days, limit int) (purged, orphans int, err error)
+}
+
+// SetKeystrokeRetention 接上鍵盤紀錄清理（組裝根）。未接上時不清理鍵盤紀錄。
+func (s *RetentionService) SetKeystrokeRetention(k KeystrokeRetention) { s.keystrokes = k }
 
 // SetOffsiteRecordingRetention 接上離機錄影保留補充面（組裝根）。
 func (s *RetentionService) SetOffsiteRecordingRetention(r OffsiteRecordingRetention) {
@@ -283,6 +295,20 @@ func (s *RetentionService) PurgeAll() []PurgeResult {
 		// 錄影與前三類同記水位：會話列的錄影三態（可回放／已清除／無錄影）
 		// 靠它區分「檔案被保留政策清掉」與「這場從未錄影」
 		s.recordWatermark("recordings", days, false, runAt)
+	}
+
+	// 鍵盤紀錄：獨立於錄影，以紀錄列判定到期；紀錄列與孤兒檔共用單次上限。
+	// 不記水位（水位屬檢查點鏈語義下的審計資料呈現，鍵盤紀錄不在鏈內）
+	if days := s.policy.GetInt(policy.PolicyRetentionKeystrokeDays); days > 0 && s.keystrokes != nil {
+		result := PurgeResult{Target: "keystroke_records", Days: days}
+		purged, orphans, err := s.keystrokes.PurgeKeystrokes(days, s.maxPerRunNow())
+		result.Deleted = int64(purged + orphans)
+		if err != nil {
+			result.Error = err.Error()
+			log.Printf("[Retention] 鍵盤紀錄清除未完全成功（紀錄 %d、孤兒檔 %d）: %v", purged, orphans, err)
+		}
+		results = append(results, result)
+		s.logPurge(result, "鍵盤紀錄")
 	}
 
 	// 離機本機副本的**快取清除段**：獨立於保留政策之後執行。

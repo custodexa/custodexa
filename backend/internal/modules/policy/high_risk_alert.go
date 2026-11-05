@@ -91,6 +91,7 @@ var retentionDataClass = map[string]string{
 	PolicyRetentionSessionCommandDays: "session_command",
 	PolicyRetentionAlertDays:          "alert",
 	PolicyRetentionRecordingDays:      "recording",
+	PolicyRetentionKeystrokeDays:      "keystroke",
 }
 
 // highRiskClassifiers 高危鍵的分類器，以鍵註冊。新增高危鍵只在此登錄（取鎖判定同步涵蓋）。
@@ -99,6 +100,7 @@ var highRiskClassifiers = map[string]highRiskClassifier{
 	PolicyRetentionSessionCommandDays: classifyRetention(PolicyRetentionSessionCommandDays),
 	PolicyRetentionAlertDays:          classifyRetention(PolicyRetentionAlertDays),
 	PolicyRetentionRecordingDays:      classifyRetention(PolicyRetentionRecordingDays),
+	PolicyRetentionKeystrokeDays:      classifyRetention(PolicyRetentionKeystrokeDays),
 	PolicyRecordingFailCloseEnabled:   classifyFailClose,
 	PolicyAccessPolicyDefault:         classifyAccessDefault,
 	PolicyMappingRevalidationHours:    classifyMappingRevalidation,

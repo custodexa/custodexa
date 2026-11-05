@@ -35,6 +35,8 @@ export const ENTRY_RULES = Object.freeze({
   '/my-agents': needs('ui:my-agents'),
   '/approvals': needsAny('ui:approvals', 'ui:approval-history'),
   '/sessions': needs('session:view'),
+  // 鍵盤紀錄檢視頁：連線詳情（session:view）加鍵盤紀錄查看；詳情頁入口與此同判
+  '/sessions/keystrokes': needs('session:view', 'keystroke:view'),
   '/audit/workbench': needs('audit:view'),
   '/audit/agent-tasks': needs('audit:view'),
   // 輪替證據：報告需稽核檢視；排程管理只需 rotation_schedule:manage，頁內依能力分兩種呈現

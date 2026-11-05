@@ -1,9 +1,10 @@
 {
- "count": 540,
+ "count": 555,
  "recaptures": [
   "2026-10-15: initial capture",
   "2026-10-19: append entries /notification-channels (notification channel entry)",
-  "2026-11-02: append entries /account-inventory (host account inventory global page entry)"
+  "2026-11-02: append entries /account-inventory (host account inventory global page entry)",
+  "2026-11-05: append entries /sessions/keystrokes (Add the keystroke investigation entry rule)"
  ],
  "records": [
   {
@@ -200,6 +201,12 @@
   },
   {
    "subject": "S00",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S00",
    "path": "/transmission-inventory",
    "menu_visible": null,
    "guard_result": "/login"
@@ -416,6 +423,12 @@
   },
   {
    "subject": "S01",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S01",
    "path": "/transmission-inventory",
    "menu_visible": true,
    "guard_result": "allow"
@@ -632,6 +645,12 @@
   },
   {
    "subject": "S02",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S02",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -848,6 +867,12 @@
   },
   {
    "subject": "S03",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S03",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -1064,6 +1089,12 @@
   },
   {
    "subject": "S04",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S04",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -1280,6 +1311,12 @@
   },
   {
    "subject": "S05",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S05",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -1496,6 +1533,12 @@
   },
   {
    "subject": "S06",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S06",
    "path": "/transmission-inventory",
    "menu_visible": true,
    "guard_result": "allow"
@@ -1712,6 +1755,12 @@
   },
   {
    "subject": "S07",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S07",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -1928,6 +1977,12 @@
   },
   {
    "subject": "S08",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S08",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -2144,6 +2199,12 @@
   },
   {
    "subject": "S09",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S09",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -2360,6 +2421,12 @@
   },
   {
    "subject": "S10",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S10",
    "path": "/transmission-inventory",
    "menu_visible": false,
    "guard_result": "/dashboard"
@@ -2576,6 +2643,12 @@
   },
   {
    "subject": "S11",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S11",
    "path": "/transmission-inventory",
    "menu_visible": null,
    "guard_result": "/login"
@@ -2792,6 +2865,12 @@
   },
   {
    "subject": "S12",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "/login"
+  },
+  {
+   "subject": "S12",
    "path": "/transmission-inventory",
    "menu_visible": null,
    "guard_result": "/login"
@@ -3008,6 +3087,12 @@
   },
   {
    "subject": "S13",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
+   "guard_result": "allow"
+  },
+  {
+   "subject": "S13",
    "path": "/transmission-inventory",
    "menu_visible": true,
    "guard_result": "allow"
@@ -3220,6 +3305,12 @@
    "subject": "S14",
    "path": "/sessions",
    "menu_visible": false,
+   "guard_result": "/dashboard"
+  },
+  {
+   "subject": "S14",
+   "path": "/sessions/keystrokes",
+   "menu_visible": null,
    "guard_result": "/dashboard"
   },
   {

@@ -25,6 +25,7 @@ func EntryPagePaths() map[string]string {
 		"roles":                   "/roles",
 		"identity_sources":        "/identity-sources",
 		"sessions":                "/sessions",
+		"keystroke_investigation": "/sessions/keystrokes",
 		"audit_logs":              "/audit-logs",
 		"checkpoint_verification": "/checkpoint-verification",
 		"alerts":                  "/alerts",

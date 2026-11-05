@@ -44,6 +44,7 @@ var keysRequiringEvidenceFloor = map[string]string{
 	PolicyRetentionSessionCommandDays: "指令流：調短可清掉設定者自己的會話指令紀錄",
 	PolicyRetentionAlertDays:          "告警記錄：調短可清掉設定者觸發的告警紀錄",
 	PolicyRetentionRecordingDays:      "錄影：調短可清掉設定者自己的會話錄影",
+	PolicyRetentionKeystrokeDays:      "鍵盤紀錄：調短可清掉設定者自己的鍵入紀錄",
 }
 
 // allKeysRequiringMin 兩類需要下界的鍵（預算／逾時類與證據保留類）的聯集。

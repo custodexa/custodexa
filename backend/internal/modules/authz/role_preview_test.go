@@ -30,7 +30,7 @@ func TestEntryPagePathsCoverRouteEntryRules(t *testing.T) {
 
 	t.Run("入口鏡像每條路徑恰好歸一類", func(t *testing.T) {
 		rules := RouteEntryRules()
-		require.Len(t, rules, 36)
+		require.Len(t, rules, 37)
 		unowned := 0
 		for _, r := range rules {
 			n := 0

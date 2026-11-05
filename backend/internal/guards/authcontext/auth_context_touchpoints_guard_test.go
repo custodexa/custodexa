@@ -234,6 +234,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// 計劃、候選、批次三個路由群組各掛一次（批次改密隨帳號批次改密加入）
 	{symbol: "AuthMiddleware", file: "internal/api/change_secret_handler.go", fn: "ChangeSecretHandler.RegisterRoutes", count: 3},
 	{symbol: "AuthMiddleware", file: "internal/api/clipboard_event_handler.go", fn: "ClipboardEventHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/keystroke_view_handler.go", fn: "KeystrokeViewHandler.RegisterRoutes", count: 1},
 	// 憑證庫兩個路由群組各掛一次：/credentials 全族，以及掛在資產帳號路徑下的
 	// 「更換掛載憑證」。兩者都動登入秘密的歸屬，漏掛即等於未認證者改得掉
 	// 「哪台機器用哪一組秘密登入」

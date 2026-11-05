@@ -103,6 +103,8 @@ export const AUDIT_RESOURCE_VALUES = [
   // 取走剪貼簿明文內容的動作，與一般連線讀取
   // 在後端已分屬兩個 resource；此處補值域，介面才不會顯示機器碼
   'clipboard_event',
+  // 鍵盤紀錄查看（讀取嘗試列）：後端 audit_log.go 的 ResourceKeystrokeRecord
+  'keystroke_record',
   // 十族的常數從未存在，整族落
   // `extractResource` 的兜底（舊兜底是 asset，於是帶 :id 的五族把規則／分組／
   // 通道／提供者／片段的 id 灌進 asset_id，在同號資產的時間軸上長出假事件）
@@ -182,6 +184,9 @@ export const AUDIT_MECHANISM_VALUES = [
   'dek_unwrap',
   // 還原後涵蓋新世代的檢查點未能封出：服務照常開放，補封待下次封章或重啟
   'restore_seal',
+  // 鍵盤紀錄：簽發點目錄探測與逐會話紀錄各自成機制，恢復只配對自己
+  'keystroke_probe',
+  'keystroke_record',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -275,6 +280,20 @@ export const AUDIT_CAUSE_VALUES = [
   'restore_seal_deferred',
   // 啟動時讀不到還原後的待封狀態：不擋啟動，立即嘗試補封
   'restore_seal_state_unreadable',
+  // 鍵盤紀錄失敗原因（同時是 keystroke_records.failure_cause 的值）
+  'KEYSTROKE_DIR_UNWRITABLE',
+  'KEYSTROKE_KEY_SEAL_FAILED',
+  'KEYSTROKE_FILE_CREATE_FAILED',
+  'KEYSTROKE_WRITE_FAILED',
+  'KEYSTROKE_WRITER_STALLED',
+]
+
+// 鍵盤紀錄「不涵蓋」的原因碼（紀錄列 coverage_reason；呈現端查譯）
+export const KEYSTROKE_COVERAGE_REASON_VALUES = [
+  'k8s_logs_readonly',
+  'db_console',
+  'graphics_pending',
+  'file_transfer',
 ]
 
 export const AUDIT_CAUSES = {}

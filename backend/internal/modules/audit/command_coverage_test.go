@@ -62,3 +62,36 @@ func TestCoverageCommandIntegrityAndBundleManifest(t *testing.T) {
 		t.Fatal(string(got), string(want))
 	}
 }
+
+// 不含指令文字的降級（含截斷回顯、回顯關閉）都必須讓覆蓋度呈現不完整；
+// 全螢幕類降級維持不計。
+func TestCoverageCountsEveryTextlessDegradeReason(t *testing.T) {
+	cases := []struct {
+		reason string
+		want   int64
+	}{
+		{model.DegradeInputNoCommand, 1},
+		{model.DegradeNoEcho, 1},
+		{model.DegradeEchoIncompleteAtClose, 1},
+		{model.DegradeAltScreen, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.reason, func(t *testing.T) {
+			svc, db := setupReportEnv(t)
+			from, to, at := reportWindow()
+			uid := uint(1)
+			r := model.SessionCommand{SessionID: 1, UserID: uid, Seq: 1, ExecutedAt: at, Degraded: true, DegradeReason: c.reason}
+			if err := db.Select("session_id", "user_id", "seq", "executed_at", "command", "degraded", "degrade_reason").Create(&r).Error; err != nil {
+				t.Fatal(err)
+			}
+			q := TimelineQuery{Subject: SubjectUser, SubjectID: uid, From: from, To: to, Types: []TimelineEventType{TimelineTypeCommand}}
+			cov, err := svc.timeline.buildCoverage(q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cov[0].DegradedCount != c.want || cov[0].Incomplete != (c.want > 0) {
+				t.Fatalf("reason %s: %+v", c.reason, cov[0])
+			}
+		})
+	}
+}

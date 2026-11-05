@@ -137,6 +137,7 @@ const ZERO_MEANING_KEYS = {
   retention_session_command_days: 'retention',
   retention_alert_days: 'retention',
   retention_recording_days: 'retention',
+  retention_keystroke_days: 'retention',
   retention_checkpoint_days: 'retention',
   offsite_local_retention_days: 'localRetention',
   key_cryptoperiod_reminder_days: 'keyReminder',
@@ -192,13 +193,14 @@ export const policyMin = (policy) => {
   return policy.min || 1
 }
 
-// 四個資料保留鍵（不含檢查點保留）：合法值域是 {0} ∪ [min, max]。
-// 判定只認這四個鍵——檢查點保留天數同為 retention_ 前綴，但它受另一條跨鍵約束
+// 五個資料保留鍵（不含檢查點保留）：合法值域是 {0} ∪ [min, max]。
+// 判定只認這五個鍵——檢查點保留天數同為 retention_ 前綴，但它受另一條跨鍵約束
 export const RETENTION_DATA_KEYS = [
   'retention_audit_log_days',
   'retention_session_command_days',
   'retention_alert_days',
   'retention_recording_days',
+  'retention_keystroke_days',
 ]
 
 export const isRetentionDataKey = (key) => RETENTION_DATA_KEYS.includes(key)

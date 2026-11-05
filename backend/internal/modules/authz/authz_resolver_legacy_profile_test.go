@@ -113,7 +113,7 @@ func TestAuthzResolverLegacyProfile(t *testing.T) {
 		assert.Subset(t, permStrings(su), permStrings(au))
 		assert.Subset(t, permStrings(au), permStrings(us))
 		assert.Equal(t, []string{"alert:manage", "alert:view", "asset:view", "audit:integrity_view", "audit:view",
-			"compliance:view", "policygroup:view", "session:view"}, permStrings(au))
+			"compliance:view", "keystroke:view", "policygroup:view", "session:view"}, permStrings(au))
 		assert.Equal(t, []string{"asset:view"}, permStrings(us))
 		assert.Empty(t, ap, "審核者範本無權限點，審核資格是獨立的內建身分")
 		assert.Nil(t, TemplatePermissions("custom"), "未知範本鍵無集合")

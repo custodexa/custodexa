@@ -27,6 +27,7 @@ export const DEGRADE_REASON_VALUES = [
   'queue_overflow',
   'input_without_echo',
   'input_without_command',
+  'echo_incomplete_at_close',
 ]
 
 // Qualify*：文字已入庫但受限定（`degraded=false` 且原因碼非空）

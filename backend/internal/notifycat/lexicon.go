@@ -146,6 +146,11 @@ var causeEnum = []string{
 	model.CauseDEKUnwrapFailed,
 	model.CauseRestoreSealDeferred,
 	model.CauseRestoreSealStateUnreadable,
+	model.CauseKeystrokeDirUnwritable,
+	model.CauseKeystrokeKeySealFailed,
+	model.CauseKeystrokeFileCreateFailed,
+	model.CauseKeystrokeWriteFailed,
+	model.CauseKeystrokeWriterStalled,
 }
 
 //go:embed lexicons/*.json

@@ -30,6 +30,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/observability"
 	"github.com/custodexa/backend/internal/offsite"
@@ -111,6 +112,8 @@ var stage2ServiceInventory = []string{
 	"exportSigning",
 	"checkpointSigning",
 	"sshHandler",
+	// keystrokeService：鍵盤紀錄服務與對帳。落點在 sshHandler 之後（注入其欄位）
+	"keystrokeService",
 	"hostKeyService",
 	// hostAccountInventoryService：主機帳號盤點。建構之後立即做啟動收尾（把殘留的未結束盤點收為中斷），
 	// 收尾須早於任何發起：路由在 apiHandlers 之後才掛載，順序反了，剛發起的新盤點會被當成殘留收掉
@@ -955,6 +958,24 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	oidcProviderService.SetAgentTokenService(agentTokens)
 	oidcProviderService.SetSubscriptionTerminator(sshHandler.Monitor)
 	mark("sshHandler")
+
+	// 鍵盤紀錄（平台已轉送出去的輸入的加密存檔）：常開、沒有關閉選項。
+	// 根目錄在審計資料根之下，備份自動涵蓋；檔案金鑰經欄位信封封存（keyManager）。
+	// 對帳在啟動時與每 10 分鐘執行，把無人在寫的 recording 紀錄標為未正常結束
+	keystrokeAuditDir := audit.ResolveAuditDir()
+	if os.Getenv("AUDIT_LOG_PATH") == "" {
+		log.Printf("[Keystroke] AUDIT_LOG_PATH 未設定：鍵盤紀錄位於退路目錄 %s，不在備份範圍", keystrokeAuditDir)
+	}
+	keystrokeService := session.NewKeystrokeService(database.DB, keyManager,
+		keystroke.RootFromAuditDir(keystrokeAuditDir), auditFailureAdapter{auditFailureService})
+	sshHandler.KeystrokeService = keystrokeService
+	connHandler.KeystrokeService = keystrokeService
+	keystrokeCtx, keystrokeCancel := context.WithCancel(context.Background())
+	g.bag.AddFunc("keystrokeService", func(context.Context) error { keystrokeCancel(); return nil })
+	if stage2BackgroundAllowed("keystrokeReconciler") {
+		keystrokeService.StartReconciler(keystrokeCtx)
+	}
+	mark("keystrokeService")
 	mark("hostKeyService")
 
 	// 主機帳號盤點：登入身分是資產預設帳號，主機金鑰走同一個服務（不符即拒絕）。
@@ -1271,6 +1292,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		userService:                userService,
 		assetService:               assetService,
 		sessionService:             sessionService,
+		keystrokeService:           keystrokeService,
 		reconciliationService:      reconciliationService,
 		recordingService:           recordingService,
 		dailyReviewService:         dailyReviewService,
@@ -1364,6 +1386,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// **恆注入**——兩者各自以「政策值 0」與「帳冊無列」自我早退，
 	// 未啟用時一次查詢也不會發出
 	retentionService.SetOffsiteRecordingRetention(recordingService)
+	// 鍵盤紀錄的保留清除：與錄影清理互不呼叫，各自依自己的保留天數到期
+	retentionService.SetKeystrokeRetention(keystrokeService)
 	retentionScheduler := scheduler.NewRetentionScheduler(retentionService)
 	starts[0].start, starts[0].stop = sealBeforeFirstStart(s1, restoreSealWrap(checkpointService, auditFailureAdapter{auditFailureService}, auditService), retentionScheduler.Start), retentionScheduler.Stop
 	reviewReminderScheduler := scheduler.NewDailyReviewReminderScheduler(dailyReviewService)
@@ -1869,6 +1893,7 @@ type routeServices struct {
 	userService                *identity.UserService
 	assetService               *asset.AssetService
 	sessionService             *session.SessionService
+	keystrokeService           *session.KeystrokeService
 	reconciliationService      *session.SessionReconciliationService
 	recordingService           *session.RecordingService
 	dailyReviewService         *audit.DailyReviewService
@@ -2202,6 +2227,10 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		database.DB, s.keyManager, s.auditTxSink, s.auditFailureService)
 	clipboardHandler := api.NewClipboardEventHandler(s.sessionService, clipboardContentService)
 	clipboardHandler.SetSensitiveRevealReporter(audit.NewSensitiveRevealService(s.policyService, s.alertSink, s.auditFailureService))
+	// 鍵盤紀錄：中繼資料與帶理由查看（解密前交易內同步留痕，fail-close）
+	keystrokeViewHandler := api.NewKeystrokeViewHandler(session.NewKeystrokeViewService(
+		database.DB, s.keyManager, s.keystrokeService.Root(), s.auditTxSink, s.auditFailureService))
+	keystrokeViewHandler.SetSensitiveRevealReporter(audit.NewSensitiveRevealService(s.policyService, s.alertSink, s.auditFailureService))
 
 	// 稽核調查工作台（auditor-workbench）：六來源聚合＋主體目錄，唯讀
 	auditTimelineHandler := api.NewAuditTimelineHandler(audit.NewTimelineService(database.DB))
@@ -2310,6 +2339,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		hostInventory:         hostInventoryHandler,
 		executorLoginCheck:    executorLoginCheckHandler,
 		clipboard:             clipboardHandler,
+		keystrokeView:         keystrokeViewHandler,
 		auditTimeline:         auditTimelineHandler,
 		changeSecret:          changeSecretHandler,
 		credential:            credentialHandler,

@@ -3747,6 +3747,29 @@
    "subject_hint": "S01",
    "body_mode": "full",
    "note": "No dedicated bastion account on the fixture asset, so authorized callers get the not-found shape."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/sessions/:id/keystrokes",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Metadata only, no decryption and no reason; the fixture session has no keystroke record so authorized callers get a state answer."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/sessions/:id/keystrokes/view",
+   "params": {
+    "id": "{session.closed}"
+   },
+   "body": {
+    "reason": "baseline review"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full",
+   "note": "Reason is carried in the request body; the fixture session has no keystroke content, so authorized callers get the not-viewable shape and no attempt row."
   }
  ]
 }

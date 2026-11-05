@@ -155,6 +155,10 @@ func resolveFallbackDir() string {
 	return filepath.Join("logs", "audit_fallback")
 }
 
+// ResolveAuditDir 回傳審計資料根目錄（與降級 fallback 檔案同一個解析）。
+// 鍵盤紀錄根目錄是其下的 keystrokes 子目錄，因此自動落在備份範圍內。
+func ResolveAuditDir() string { return resolveFallbackDir() }
+
 // NewAuditLogService 創建審計日誌服務
 func NewAuditLogService(cfg *config.FeatureFlags) *AuditLogService {
 	service := &AuditLogService{

@@ -37,6 +37,7 @@ func TemplatePermissions(builtinKey string) []Permission {
 		return []Permission{
 			PermAssetView, PermSessionView, PermAuditView, PermAlertView, PermAlertManage,
 			PermAuditIntegrityView, PermComplianceView, PermPolicyGroupView,
+			PermKeystrokeView, // 稽核員範本含鍵盤紀錄查看
 		}
 	case model.BuiltinUser:
 		return []Permission{PermAssetView} // 一般使用者範本：asset:view

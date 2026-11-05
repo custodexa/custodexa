@@ -58,6 +58,7 @@ export const SECURITY_SECTIONS = [
     'retention_session_command_days',
     'retention_alert_days',
     'retention_recording_days',
+    'retention_keystroke_days',
     // 檢查點鏈保留（audit-checkpoint-chain）：受跨鍵約束——不得短於上列
     // 四個資料保留鍵。放在它們之後，讀起來即「資料留多久、證明留多久」
     'retention_checkpoint_days',

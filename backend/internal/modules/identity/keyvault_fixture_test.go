@@ -51,7 +51,7 @@ func newKeyManagerDB(t *testing.T) *gorm.DB {
 	// OIDCProvider／LDAPDirectory 一併建表：其 client_secret_enc／bind_password_enc
 	// 登記於 envelopeMigrationTargets，AAD 殘餘掃描會逐表計數，缺表即整個掃描失敗
 	// （非本測試意圖）
-	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.OffsiteProfile{},
+	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.KeystrokeRecord{}, &model.OffsiteProfile{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)

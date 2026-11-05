@@ -28,6 +28,7 @@ func TestExtractResource(t *testing.T) {
 		// 會話內子資源優先於容器段：剪貼簿證物讀取
 		// 不得與一般連線讀取同歸 session，否則取證動作無法以資源欄篩出
 		{"/api/v1/sessions/:id/clipboard-events", model.ResourceClipboardEvent},
+		{"/api/v1/sessions/:id/keystrokes", model.ResourceKeystrokeRecord},
 		// 錄影與指令同理：取走
 		// 終端畫面錄影本體／被監控者輸入的指令原文都是取證動作
 		{"/api/v1/sessions/:id/commands", model.ResourceCommand},

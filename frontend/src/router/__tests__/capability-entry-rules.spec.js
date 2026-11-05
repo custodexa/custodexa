@@ -29,9 +29,9 @@ describe('主機帳號盤點入口', () => {
 })
 
 describe('入口規則表', () => {
-  it('共 36 個入口，不保留 roles 形狀，每條不是 signedIn 就是非空的 permissionsAll', () => {
+  it('共 37 個入口，不保留 roles 形狀，每條不是 signedIn 就是非空的 permissionsAll', () => {
     const entries = Object.entries(ENTRY_RULES)
-    expect(entries).toHaveLength(36)
+    expect(entries).toHaveLength(37)
     for (const [path, rule] of entries) {
       expect(rule.roles, path).toBeUndefined()
       const signedIn = rule.signedIn === true

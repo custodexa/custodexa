@@ -29,6 +29,10 @@ const (
 	AlertKindSensitiveReveal = "sensitive_reveal"
 )
 
+// AlertReasonKeystrokeReveal 揭露告警的來源機器碼：來源為鍵盤紀錄查看時寫入 reason_code，
+// 前端依此選說明句；其餘來源（剪貼簿等）沿用 kind 作為 reason_code。
+const AlertReasonKeystrokeReveal = "keystroke_record"
+
 // AlertReasonDegradedSpan 降級告警的機器碼：一段連續的降級輪次（span）開始。
 //
 // **一個 span 只發這一筆**，理由見 sshproxy/command_degrade_alert.go 的量測結論：

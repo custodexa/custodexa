@@ -55,12 +55,39 @@ const (
 	// 一條會話最多一筆，時間取會話結束時刻。
 	// **UI 文案 SHALL 描述事實（有輸入但無法還原任何指令）、SHALL NOT 斷言成因。**
 	DegradeInputNoCommand = "input_without_command"
+	// DegradeEchoIncompleteAtClose 會話結束時，該輪已送出 Enter 並收到部分回顯，
+	// 但 Enter 的回顯換行在連線關閉前未抵達。
+	//
+	// 已回顯的文字只能證明遠端收到了這段前綴，無法證明那就是送出的整行；
+	// 故不入指令文字欄。錄影保有已抵達的那段回顯（可能不完整）。
+	// **UI 文案 SHALL 描述事實（回顯未完成即結束）、SHALL NOT 宣稱錄影含完整指令。**
+	DegradeEchoIncompleteAtClose = "echo_incomplete_at_close"
 
 	// QualifyReplayFallback 重放輪未能在輸出中定位自身回顯，改以使用者送出的
 	// 輸入位元組結算：文字是使用者確實送出的位元組，**但 tab 補全與歷史鍵的
 	// 實際執行內容只存在於回顯中**，故可能不等於實際執行的指令。
 	QualifyReplayFallback = "replay_input_bytes"
 )
+
+// CoverageIncompleteReasons 回傳「該輪有輸入、卻沒有任何指令文字入庫」的降級原因。
+// 覆蓋度（timeline coverage 與證據包 manifest 的 incomplete／degraded_count）
+// 以此清單計數：命中即代表稽核端在這段區間少了指令文字。
+//
+// 納入：
+//   - DegradeInputNoCommand、DegradeNoEcho、DegradeEchoIncompleteAtClose：
+//     皆為使用者確實送出輸入、指令文字卻無法還原。
+//
+// 不納入（刻意，理由同列）：
+//   - DegradeAltScreen、DegradeRedrawUnanchored、DegradeFullScreenInput：
+//     輸入是餵給全螢幕程式的按鍵，本就不是 shell 指令，不構成指令遺漏。
+//   - DegradeQueueDiscarded、DegradeQueueDiscardedAtClose、DegradeQueueUncounted、
+//     DegradeQueueOverflow：同為全螢幕重繪或佇列上限情境下的處置，維持既有口徑，
+//     不在此次調整範圍。
+//
+// 每次回傳新切片，呼叫端可自由使用。
+func CoverageIncompleteReasons() []string {
+	return []string{DegradeInputNoCommand, DegradeNoEcho, DegradeEchoIncompleteAtClose}
+}
 
 // SessionCommand SSH 會話指令記錄
 // 由 proxy 端重組 client→guacd 的 key instruction 而來（command-audit）

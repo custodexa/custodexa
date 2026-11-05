@@ -46,7 +46,7 @@
             type="warning"
             :data-test="`coverage-incomplete-${type}`"
           >
-            {{ $t('auditorWorkbench.coverage.commandIncomplete', { count: coverage.find((c) => c.type === type)?.degraded_count || 0 }) }}
+            {{ $t('auditorWorkbench.coverage.commandIncompleteChip', { count: coverage.find((c) => c.type === type)?.degraded_count || 0 }) }}
           </el-tag>
         </button>
       </template>
@@ -57,6 +57,16 @@
       >
         <p class="chip-detail-text">
           {{ detailText(type) }}
+        </p>
+        <!-- 回顯不完整的覆蓋度說明全文（chip 上只放短標籤） -->
+        <p
+          v-if="isOn(type) && coverage.find((c) => c.type === type)?.incomplete"
+          class="chip-detail-text"
+          :data-test="`coverage-incomplete-detail-${type}`"
+        >
+          {{ $t('auditorWorkbench.coverage.commandIncomplete', { count: coverage.find((c) => c.type === type)?.degraded_count || 0 }) }}
+          <br>
+          {{ $t('auditorWorkbench.coverage.commandIncompleteHint') }}
         </p>
         <!-- 清除區間的查核入口：說明可以收進 popover，動作不可以消失 -->
         <el-button

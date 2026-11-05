@@ -212,10 +212,12 @@ type CommandParser struct {
 	taintedDropped bool
 	noEcho         bool
 	altScreenRound bool
-	unanchorLogged bool
-	taintedLogged  bool
-	noEchoLogged   bool
-	altScreenLog   bool
+	// echoIncompleteAtClose 會話結束時有一輪回顯未完成而記為降級（見 noteEchoIncompleteAtClose）。
+	echoIncompleteAtClose bool
+	unanchorLogged        bool
+	taintedLogged         bool
+	noEchoLogged          bool
+	altScreenLog          bool
 	// pendingCaveat 下一筆入庫文字的限定碼（見 noteReplayFallback），由 emit 消費。
 	// 以欄位而非參數傳遞：標注點與發出點之間隔著 finalizeReplay／accumulateSQL
 	// 兩層，改簽章要動的呼叫點比它值得的多；單執行緒（auditTap 以單鎖序列化）故無競態。
@@ -387,7 +389,9 @@ func (p *CommandParser) Flush() {
 		if p.replayRound {
 			p.finalizeReplayFallback()
 		} else {
-			p.finalize()
+			// 會話結束時仍在等 Enter 的回顯換行：回顯可能只到一半，
+			// 結算時不得把已回顯的部分當成乾淨指令（見 finalizeRound）。
+			p.finalizeRound(true)
 		}
 	}
 	// 佇列殘留＝使用者已送出、但對端從未回顯到可供結算的輪次。
@@ -861,6 +865,21 @@ func (p *CommandParser) noteEmptyRound() {
 	p.emitDegraded(model.DegradeNoEcho)
 }
 
+// noteEchoIncompleteAtClose 會話結束時，該輪已收到部分回顯、但 Enter 的回顯換行未抵達。
+//
+// 已回顯的文字無法確認等於遠端實際讀到的那一行：使用者可能已送出更長的內容，
+// 只是回顯在連線關閉前沒有回來。以乾淨紀錄入庫會讓「degraded=false ⇒ 文字可信」
+// 變成假話，故記為降級、command 為空，經既有降級告警路徑發出。
+//
+// **不回填輸入位元組**：本解析器只記「這一輪有輸入」的事實，不留存輸入內容。
+// sqlMode 下累積中的半條語句一併丟棄：它的最後一段無從確認，
+// 留著會在 Flush 尾段以乾淨紀錄發出同型的前綴（與 discardSQLStatement 同一條紀律）。
+func (p *CommandParser) noteEchoIncompleteAtClose() {
+	p.echoIncompleteAtClose = true
+	p.emitDegraded(model.DegradeEchoIncompleteAtClose)
+	p.discardSQLStatement()
+}
+
 // noteUnanchored 「認不出這是不是指令行」的可觀測訊號。
 // 這是原型 D 把捏造換成漏記的那個交換點，必須留下告警面。
 //
@@ -983,6 +1002,18 @@ func roundSpannedRows(screen screenRender) bool {
 // 螢幕以 beginTyping 快照的原點種入後才寫入 echo：種入的即是真實終端在輸入起始
 // 那一刻的螢幕狀態，欄位算術因而與 shell 一致。
 func (p *CommandParser) finalize() {
+	p.finalizeRound(false)
+}
+
+// finalizeRound 是 finalize 的本體。atClose 為真代表本輪由會話結束（Flush）結算，
+// 而非由 Enter 的回顯換行或 pendingFlushMax 觸發。
+//
+// 兩者差在**有沒有證據說回顯已經完整**：一輪正常結算的條件是 Enter 的回顯換行已抵達，
+// 輸出流依序送達，換行之前的字元回顯因此也已全部到齊。會話結束時仍在 pending，
+// 代表那個換行從未抵達——已收到的回顯可能只是前綴，而遠端實際讀到的是完整一行。
+// 此時只有「發出指令文字」這一個終態需要改變（見 noteEchoIncompleteAtClose）；
+// 其餘終態（全螢幕、錨落空、零回顯）本來就不發文字，行為不變。
+func (p *CommandParser) finalizeRound(atClose bool) {
 	p.pending = false
 	p.pendingLen = 0
 
@@ -1027,6 +1058,16 @@ func (p *CommandParser) finalize() {
 	command := strings.TrimSpace(stripped)
 	if command == "" {
 		p.noteEmptyRound()
+		if atClose {
+			// 會話結束時最後一段零回顯：累積中的前綴無從確認後半段，
+			// 留著會在 Flush 尾段以乾淨紀錄發出（與 noteEchoIncompleteAtClose 同一條紀律）。
+			// 僅限 atClose：會話進行中的零回顯輪不改變既有累積行為。
+			p.discardSQLStatement()
+		}
+		return
+	}
+	if atClose {
+		p.noteEchoIncompleteAtClose()
 		return
 	}
 	p.learnPrompt(kind)

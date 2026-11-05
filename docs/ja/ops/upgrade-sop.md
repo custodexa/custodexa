@@ -70,6 +70,8 @@
 
 ### 1.3 `DATA_PATH` のファイル権限を確認します
 
+`audit/keystrokes` フォルダーはバックエンドが起動時に権限 `0700` で自動作成するため手作業は不要ですが、`DATA_PATH` 配下の `audit` フォルダーはバックエンドが書き込める状態を保つ必要があります。`audit/keystrokes` は `0700` のままにしてください。`audit` フォルダーは、バックエンドが書き込める限り、録画フォルダーとは別の独立したマウントに置いてもかまいません。
+
 bind mount の状況ではイメージ内の権限の設定は効かず、ホスト側のディレクトリの権限はデプロイ側が担います。録画ファイルには、利用者が対象ホスト上で入力した内容の全体が含まれます。詳しくは[バックアップとリストア §3.6](./backup-and-restore.md#36-data_path-のファイル権限デプロイ側の責任)を参照してください。
 
 > **行わない場合**：ホスト上のどのローカルアカウントからも、すべてのセッションの録画を読み取れます。
@@ -240,13 +242,20 @@ git clone をルートとする古いデプロイは `custodexa.sh` でその場
 
 **ロールバックには 2 つのものが要り、どちらが欠けても戻れません。アップグレード前のバックアップと、旧バージョンのイメージです。** バックアップは §2.1 を参照してください。イメージのほうは特に漏れやすい箇所です。本プロジェクトがビルドする backend と frontend の 2 つのイメージの参照はいずれも `custodexa/*:latest` であり、新しいバージョンをビルドするか、受け渡されたイメージファイルを読み込んだ時点で同名の tag が上書きされます。旧バージョンのイメージに別の名前が付いていなければ、取り戻せません。1.13.0 からこの 2 つのイメージは GitHub Container Registry にも公開され、Docker Hub へミラーされます（[README](../README.md#ビルド済みイメージ) の「ビルド済みイメージ」を参照）。ただしリポジトリの compose ファイルは公開イメージを参照しないため、この SOP に従うデプロイでは、イメージは引き続きソースツリーからのビルドか、受け渡されたイメージファイルのどちらかから得られます。自分でビルドする場合は §2.2 の tag の別名保存を参照してください。受け渡されたイメージでデプロイする場合は、旧バージョンのイメージファイルが手元に残っていることを先に確認してください。guacd サービスは本プロジェクトではビルドしません。1.13.0 から compose ファイルは公式イメージ `guacamole/guacd:1.6.0` をバージョンと digest で参照しており、旧バージョンのイメージは自分の名前を保ちます。イメージをファイルで受け渡す場合は、この公式イメージも受け渡すイメージに含まれます。
 
-> **本節が適用される範囲**：`Custodexa 1.0` のデータベースの schema は単一の baseline（`20260816_schema_baseline`）を起点とし、その後は**増分の migration** で進んでいきます（本バージョンの 55 件は下の §2.5 を参照）。したがって本節は、1.0 の baseline の世代に属するバージョンの入れ替え、すなわちデータベースにその baseline が適用済みのデプロイに適用されます。
+> **本節が適用される範囲**：`Custodexa 1.0` のデータベースの schema は単一の baseline（`20260816_schema_baseline`）を起点とし、その後は**増分の migration** で進んでいきます（本バージョンの 56 件は下の §2.5 を参照）。したがって本節は、1.0 の baseline の世代に属するバージョンの入れ替え、すなわちデータベースにその baseline が適用済みのデプロイに適用されます。
 >
 > データベースの `schema_migrations` テーブルに本バージョンのコードが認識しないバージョンの値が含まれ、かつ baseline が未適用の場合、バックエンドは起動を拒否します（§2.6 参照）。この種の baseline の世代をまたぐアップグレードは「新規導入＋データ移行のプロジェクト」として扱ってください。移行の範囲とツールは受け渡し側と別途協議する必要があり、本 SOP の範囲外です。
 >
 > アップグレードを計画する前に、貴組織の元のバージョンを確認してください。
 
 > **単一インスタンスのガードが保証する範囲**：本バージョンから、2 つめのアプリケーションインスタンスが同じデータベースに対して起動すると停止させられ、確認を求められます（§2.6b）。この排他は**ガードを備えたバージョン同士でのみ成立します**。ガードを含まない旧バージョンはロックを保持しないため、ガードのないバージョンから本バージョンへ初めて上げるとき、新しいバージョンがロックを取得できたことは旧バージョンが停止していることを**意味しません**。§2.3 の手順 5 の初回アップグレードのチェックはそのために設けられており、省略できません。
+
+#### 1.22.0 へ上げる場合
+
+新しいマイグレーションが 1 件実行されます（`20261105_keystroke_records`）。テーブルを 1 つ（キー入力記録のメタデータ。セッション 1 件につき 1 行）と 3 つのインデックスを作成し、データ処理はありません。バックフィルはなく、既存のテーブルも変わらず、既存のデータ、資産、接続は従来どおり動作します。この `Down` は常に拒否のエラーを返すため、適用した後に戻すには、アップグレード前のバックアップをリストアします（§4.1）。
+
+- **アップグレード後にキー入力記録を閲覧できる人。** 組み込みの監査担当ロールには、キー入力記録を閲覧する新しい権限が含まれるため、その保持者はアップグレードの完了後すぐに閲覧できます。この権限は、ロールがシステム全体に割り当てられている場合にだけ有効です。現在の監査担当者にこの権限を持たせたくない場合は、アップグレードの前に、この権限を含まないカスタムロールへ切り替えてください。
+- **記録の保存場所とバックアップ。** キー入力記録は、監査ディレクトリ配下の `keystrokes/` サブフォルダー（`DATA_PATH` 配下の `audit/keystrokes`）にある暗号化ファイルで、バックエンドが初回の使用時に作成します。`audit.tar.gz` の中に含まれるため、§2.1 のアップグレード前のバックアップを含むすべてのバックアップに入ります。録画のように除外することはできません。内容にはユーザー自身が入力したパスワードが含まれることがあるため、バックアップファイルは相応の保護レベルで保管してください。[バックアップとリストア §4](./backup-and-restore.md#4-暗号鍵に関する災害復旧の前提デプロイの前に必ず読んでください)のキー入力記録に関する説明を参照してください。
 
 #### 1.21.0 へ上げる場合
 
@@ -598,7 +607,7 @@ guacd サービスには build の区画がありません。イメージは公�
 所有 migrations 都已執行，無需更新
 ```
 
-**新しい増分の migration を導入するバージョンへ上げる場合**、1 件適用するごとに `執行 migration: <バージョン> (<名前>)` の行が増えます。その増分は同一のトランザクション内で適用されます。対応する行が見えなければ、その増分は**実行されていない**ということであり（多くは元のバージョンがすでに含んでいるためです）、異常ではありません。本バージョンの 55 件の増分に対応するログの行は、そのまま次のとおりです。
+**新しい増分の migration を導入するバージョンへ上げる場合**、1 件適用するごとに `執行 migration: <バージョン> (<名前>)` の行が増えます。その増分は同一のトランザクション内で適用されます。対応する行が見えなければ、その増分は**実行されていない**ということであり（多くは元のバージョンがすでに含んでいるためです）、異常ではありません。本バージョンの 56 件の増分に対応するログの行は、そのまま次のとおりです。
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -656,6 +665,7 @@ guacd サービスには build の区画がありません。イメージは公�
   執行 migration: 20261103_asset_account_executor_source (asset_account_executor_source)
   執行 migration: 20261103_change_secret_execution_method (change_secret_execution_method)
   執行 migration: 20261103_executor_login_checks (executor_login_checks)
+  執行 migration: 20261105_keystroke_records (keystroke_records)
 ```
 
 `20260825_evidence_offsite` はオフサイト保管の 2 つのテーブル（設定世代のテーブルと保管台帳）を作成し、セッションとエクスポートのジョブにそれぞれ 2 つの列を加えます。**追加のみで、データの埋め戻しも codec への依存もありません。** 所要時間は蓄積量に依存しません。**その Down はデータの追跡が不可逆です。** ロールバックの前に台帳の一覧をエクスポートする必要があります。第 4 節を参照してください。
@@ -1206,9 +1216,9 @@ docker compose logs backend | tail -20   # 「關閉過程有未完成項目」�
 
 アップグレードの後に旧バージョンへ戻す場合、通るのは「旧バージョンのイメージをデプロイし直し、アップグレード前のバックアップをリストアする」経路です。手順は §4.2 を参照してください。
 
-本バージョンのデータベースには schema baseline（`20260816_schema_baseline`）と、その後の 55 件の増分があります。そのうち 31 件をここに挙げます（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、`20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、`20260909_policy_groups`、`20260913_kek_topology`、`20260921_alert_rule_direction`、`20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`）。
+本バージョンのデータベースには schema baseline（`20260816_schema_baseline`）と、その後の 56 件の増分があります。そのうち 31 件をここに挙げます（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、`20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、`20260909_policy_groups`、`20260913_kek_topology`、`20260921_alert_rule_direction`、`20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`）。
 
-残りの 24 件の増分は、いずれも本番環境でのダウングレード手段を提供しないため上の一覧には含まれません。1.18.0 の 18 件（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）と 1.21.0 の 6 件（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method`、`20261103_executor_login_checks`）です。これらを適用済みのデータベースは、管理スクリプトを前のバージョンに向けても戻せません。アップグレード前のバックアップをリストアしてください（§2.0 の「1.18.0 へ上げる場合」と「1.21.0 へ上げる場合」を参照）。1.18.0 より前のバージョンへ戻す場合は、そこに書かれたとおり `JWT_SECRET` の入れ替えと長期のサインインの失効も必要です。
+残りの 25 件の増分は、いずれも本番環境でのダウングレード手段を提供しないため上の一覧には含まれません。1.18.0 の 18 件（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）と 1.21.0 の 6 件（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method`、`20261103_executor_login_checks`）、および 1.22.0 の 1 件（`20261105_keystroke_records`）です。これらを適用済みのデータベースは、管理スクリプトを前のバージョンに向けても戻せません。アップグレード前のバックアップをリストアしてください（§2.0 の「1.18.0 へ上げる場合」、「1.21.0 へ上げる場合」と「1.22.0 へ上げる場合」を参照）。1.18.0 より前のバージョンへ戻す場合は、そこに書かれたとおり `JWT_SECRET` の入れ替えと長期のサインインの失効も必要です。
 
 **増分の migration の `Down` は本番のロールバックの手段としません。** これは本製品の一貫した立場であり、バージョンの増減によって変わりません。`Down` が戻すのは**構造**であって、データではありません。それが削除する列やテーブルの中身は、実行した後に補う第 2 の出所がありません。再びアップグレードすれば、それらの列は空の値で現れ直し、「戻ってきた」ように見えますが、実際には空の新しい構造です。ロールバックの方針を計画するとき、選択肢に入れられるのは**アップグレード前のバックアップのリストア**だけです。1 件ずつの具体的な代償は次のとおりです。
 

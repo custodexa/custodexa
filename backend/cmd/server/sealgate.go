@@ -218,6 +218,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		hostInventory:         &api.HostInventoryHandler{},
 		executorLoginCheck:    &api.ExecutorLoginCheckHandler{},
 		clipboard:             &api.ClipboardEventHandler{},
+		keystrokeView:         &api.KeystrokeViewHandler{},
 		auditTimeline:         &api.AuditTimelineHandler{},
 		changeSecret:          &api.ChangeSecretHandler{},
 		accessRequest:         &api.AccessRequestHandler{},

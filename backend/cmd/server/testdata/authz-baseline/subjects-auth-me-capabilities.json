@@ -1,5 +1,5 @@
 {
- "manifest_sha256": "666cac9037443dc9347f366e34d63aa0034e0b014a4c26aa500c577bfe5797cd",
+ "manifest_sha256": "d0b1f686e681d74c6cd3f273486266a99ef01014c23dfb63adf8a080a756c7f5",
  "program_version": "dev",
  "subjects": {
   "S00": {
@@ -58,6 +58,7 @@
      "identity_source:manage",
      "instanceguard:view",
      "key:manage",
+     "keystroke:view",
      "ldap:manage",
      "notification_channel:manage",
      "offsite:manage",
@@ -230,6 +231,10 @@
      },
      {
       "binding_scope": "global",
+      "permission": "keystroke:view"
+     },
+     {
+      "binding_scope": "global",
       "permission": "ldap:manage"
      },
      {
@@ -366,6 +371,7 @@
      "audit:integrity_view",
      "audit:view",
      "compliance:view",
+     "keystroke:view",
      "policygroup:view",
      "session:view",
      "ui:approval-history",
@@ -401,6 +407,10 @@
      {
       "binding_scope": "global",
       "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "keystroke:view"
      },
      {
       "binding_scope": "global",
@@ -531,6 +541,7 @@
      "identity_source:manage",
      "instanceguard:view",
      "key:manage",
+     "keystroke:view",
      "ldap:manage",
      "notification_channel:manage",
      "offsite:manage",
@@ -705,6 +716,10 @@
      },
      {
       "binding_scope": "global",
+      "permission": "keystroke:view"
+     },
+     {
+      "binding_scope": "global",
       "permission": "ldap:manage"
      },
      {
@@ -806,6 +821,7 @@
      "audit:integrity_view",
      "audit:view",
      "compliance:view",
+     "keystroke:view",
      "policygroup:view",
      "session:view",
      "ui:approval-history",
@@ -842,6 +858,10 @@
      {
       "binding_scope": "global",
       "permission": "compliance:view"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "keystroke:view"
      },
      {
       "binding_scope": "global",
@@ -1022,6 +1042,7 @@
      "identity_source:manage",
      "instanceguard:view",
      "key:manage",
+     "keystroke:view",
      "ldap:manage",
      "notification_channel:manage",
      "offsite:manage",
@@ -1191,6 +1212,10 @@
      {
       "binding_scope": "global",
       "permission": "key:manage"
+     },
+     {
+      "binding_scope": "global",
+      "permission": "keystroke:view"
      },
      {
       "binding_scope": "global",

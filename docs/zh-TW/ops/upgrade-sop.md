@@ -92,6 +92,8 @@
 
 ### 1.3 檢查 `DATA_PATH` 的檔案權限
 
+`audit/keystrokes` 資料夾由後端啟動時自建、權限 `0700`，不需要手動處理，但 `DATA_PATH` 下的 `audit` 資料夾必須維持後端可寫。`audit/keystrokes` 保持 `0700`。`audit` 資料夾可以與錄影資料夾分開、使用獨立的掛載，只要後端可寫即可。
+
 bind mount 情境下映像內的權限設定不生效，主機端目錄權限由部署方負責。
 錄影檔含使用者在目標主機上鍵入的完整內容。詳見
 [備份與還原 §3.6](./backup-and-restore.md#36-data_path-的檔案權限部署方責任)。
@@ -318,7 +320,7 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 舊版映像保有自己的名字。以映像檔交付時，交付的映像也包含這顆官方映像。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
-> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的五十五條見下 §2.5）；
+> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的五十六條見下 §2.5）；
 > 因此本節適用於同屬 1.0 baseline 世代的版本更替，
 > 也就是資料庫已套用過該 baseline 的部署。
 >
@@ -331,6 +333,13 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 > **單實例守衛的保證範圍**：本版起，第二個應用實例對同一資料庫啟動會被攔下並要求確認（§2.6b）。
 > 這道互斥**只在守衛版之間成立**：不含守衛的舊版本不持鎖，首次自無守衛版升級到本版時，
 > 新版能取得鎖**不代表**舊版已停。§2.3 步驟 5 的首次升級檢核就是為此而設，不可略過。
+
+#### 升到 1.22.0
+
+新增一條遷移 `20261105_keystroke_records`。它建立一張資料表（鍵盤紀錄的中繼資料，一個會話一列）與三條索引，沒有資料步驟：不回填、不改既有資料表，既有資料、資產與連線照常運作。它的 `Down` 一律回傳拒絕錯誤，所以套用之後，回退的方式是還原升級前備份（§4.1）。
+
+- **升級後誰能查看鍵盤紀錄。** 內建稽核員角色持有查看鍵盤紀錄的新權限，升級完成後其持有者即可查看。這個權限只在該角色以全系統指派時生效。若不希望現有的稽核人員取得，請在升級前把他們改用不含此權限的自訂角色。
+- **紀錄存放位置與備份。** 鍵盤紀錄是審計目錄下 `keystrokes/` 子資料夾中的加密檔案（`DATA_PATH` 下的 `audit/keystrokes`），由後端在首次使用時建立。它們包含在 `audit.tar.gz` 內，因此每一份備份都會帶上，§2.1 的升級前備份也不例外；不能像錄影那樣被排除。內容可能包含使用者自己鍵入的密碼，備份檔請用對應的保護等級保管，見[備份與還原 §4](./backup-and-restore.md#4-加密金鑰的災難復原前提部署前必讀)中關於鍵盤紀錄的說明。
 
 #### 升到 1.21.0
 
@@ -792,7 +801,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
 
 **升級到引入新增量 migration 的版本時**，每套用一條就多出一行 `執行 migration: <版本> (<名稱>)`，
 該增量在同一交易內套用；未見對應行即代表該增量**未跑**（多半是來源版本已含它），非異常。
-本版的五十五條增量對應的日誌行逐字為：
+本版的五十六條增量對應的日誌行逐字為：
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -850,6 +859,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
   執行 migration: 20261103_asset_account_executor_source (asset_account_executor_source)
   執行 migration: 20261103_change_secret_execution_method (change_secret_execution_method)
   執行 migration: 20261103_executor_login_checks (executor_login_checks)
+  執行 migration: 20261105_keystroke_records (keystroke_records)
 ```
 
 `20260825_evidence_offsite` 建立離機儲存的兩張表（設定世代表與保管帳冊）並對會話與匯出 job
@@ -1717,7 +1727,7 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 
 升級後若要退回舊版本，走的是「部署回舊版映像，再還原升級前的備份」，程序見 §4.2。
 
-本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的五十五條增量。
+本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的五十六條增量。
 其中三十一條列在這裡（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
 `20260826_db_query_console`、`20260903_security_policies_value_text`、
 `20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、
@@ -1730,7 +1740,7 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 `20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、
 `20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`）。
 
-另外二十四條增量不在上面的清單中，因為它們都不提供正式環境的降版路徑：1.18.0 的十八條遷移（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）與 1.21.0 的六條遷移（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method` 與 `20261103_executor_login_checks`）。已套用它們的資料庫不能用管理腳本指回上一版；請還原升級前備份（見 §2.0 的「升到 1.18.0」與「升到 1.21.0」）。要回到 1.18.0 之前的版本，還須照該處說明更換 `JWT_SECRET` 並撤銷長效登入。
+另外二十五條增量不在上面的清單中，因為它們都不提供正式環境的降版路徑：1.18.0 的十八條遷移（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）與 1.21.0 的六條遷移（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method` 與 `20261103_executor_login_checks`），以及 1.22.0 的一條遷移（`20261105_keystroke_records`）。已套用它們的資料庫不能用管理腳本指回上一版；請還原升級前備份（見 §2.0 的「升到 1.18.0」、「升到 1.21.0」與「升到 1.22.0」）。要回到 1.18.0 之前的版本，還須照該處說明更換 `JWT_SECRET` 並撤銷長效登入。
 
 **增量 migration 的 `Down` 不作為生產回退手段**，這是本產品的一貫立場，不隨版本增減而改變：
 `Down` 還原的是**結構**，不是資料。它刪掉的欄位與資料表裡有什麼，執行後就沒有第二個來源可補；

@@ -52,8 +52,8 @@ type scopeDeniedBuild struct {
 }
 
 var scopeDeniedBuilds = []scopeDeniedBuild{
-	{name: "linux+loopback", env: []string{"GOOS=linux", "CGO_ENABLED=0"}, flags: []string{"-tags=loopback"}},
-	{name: "darwin+loopback", env: []string{"GOOS=darwin", "CGO_ENABLED=0"}, flags: []string{"-tags=loopback"}},
+	{name: "linux+loopback", env: []string{"GOOS=linux", "CGO_ENABLED=0"}, flags: []string{"-tags=loopback,keystroke_devcheck"}},
+	{name: "darwin+loopback", env: []string{"GOOS=darwin", "CGO_ENABLED=0"}, flags: []string{"-tags=loopback,keystroke_devcheck"}},
 }
 
 type scopeDeniedHit struct {

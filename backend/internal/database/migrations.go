@@ -424,6 +424,14 @@ var migrations = []Migration{
 		Up:      applyExecutorLoginChecks,
 		Down:    rollbackExecutorLoginChecks,
 	},
+	{
+		// 鍵盤紀錄中繼資料：新表 keystroke_records（一個會話一列）。
+		// 只建表，不回填、不改既有表。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261105_keystroke_records",
+		Name:    "keystroke_records",
+		Up:      applyKeystrokeRecords,
+		Down:    rollbackKeystrokeRecords,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -493,7 +501,8 @@ func schemaDDLStatements() []string {
 	out = append(out, assetAccountPurposeDDL()...)
 	out = append(out, assetAccountExecutorSourceDDL()...)
 	out = append(out, changeSecretExecutionMethodDDL()...)
-	return append(out, executorLoginChecksDDL()...)
+	out = append(out, executorLoginChecksDDL()...)
+	return append(out, keystrokeRecordsDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

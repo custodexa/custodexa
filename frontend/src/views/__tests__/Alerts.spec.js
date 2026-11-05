@@ -184,6 +184,19 @@ describe('Alerts', () => {
     expect(searchAlertsMock).toHaveBeenCalledWith({ page: 1, page_size: 20, kind: 'sensitive_reveal' })
   })
 
+  it('picks the reveal description by source: keystroke_record gets its own sentence, others keep the original', async () => {
+    setUserRoles(['auditor'])
+    searchAlertsMock.mockResolvedValue({ data: [
+      { id: 9, kind: 'sensitive_reveal', reason_code: 'keystroke_record', rule_name: '', session_id: 'sess-001', triggered_at: '2026-06-12T08:01:00Z', severity: 'medium' },
+      { id: 10, kind: 'sensitive_reveal', reason_code: 'sensitive_reveal', rule_name: '', session_id: 'sess-002', triggered_at: '2026-06-12T08:02:00Z', severity: 'medium' },
+    ], total: 2 })
+    const wrapper = mountAlerts()
+    await flushPromises()
+    const texts = wrapper.findAll('[data-test="alert-sensitive-reveal"]').map(n => n.text())
+    expect(texts).toEqual([t('alerts.sensitiveRevealKeystrokeDescription'), t('alerts.sensitiveRevealDescription')])
+    expect(texts[0]).not.toBe(texts[1])
+  })
+
   it('navigates to session detail when clicking 檢視連線', async () => {
     setUserRoles(['auditor'])
 

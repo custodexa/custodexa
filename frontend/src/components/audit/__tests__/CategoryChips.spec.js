@@ -163,8 +163,15 @@ describe('command integrity coverage', () => {
     await wrapper.setProps({ coverage: COVERAGE.map(c => c.type === 'command'
       ? { ...c, incomplete: true, degraded_count: 2 } : c) })
     expect(wrapper.find('[data-test="coverage-incomplete-command"]').exists()).toBe(true)
+    // chip 只放短標籤；說明全文與補充句在說明框
+    expect(wrapper.find('[data-test="coverage-incomplete-command"]').text()).toBe('2 筆無法還原')
+    const detail = wrapper.find('[data-test="coverage-incomplete-detail-command"]')
+    expect(detail.exists()).toBe(true)
+    expect(detail.text()).toContain('2 筆輸入沒有回顯或回顯不完整')
+    expect(detail.text()).toContain('關鍵字搜尋不會涵蓋它們')
     expect(wrapper.props('coverage').find(c => c.type === 'command').state).toBe('present')
     await wrapper.setProps({ coverage: COVERAGE })
     expect(wrapper.find('[data-test="coverage-incomplete-command"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="coverage-incomplete-detail-command"]').exists()).toBe(false)
   })
 })

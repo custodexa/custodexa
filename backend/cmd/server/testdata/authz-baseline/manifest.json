@@ -1,13 +1,13 @@
 {
  "commit": "daca3314",
  "captured_at": "2026-10-15",
- "routes": 354,
- "routes_sha256": "67041f2bc7f5174e2a0dc67f03ff30f018d37c0f15c1d2b123a44a501ee0d9d7",
- "entry_rules": 36,
+ "routes": 356,
+ "routes_sha256": "3c7e52b7439c4c658a7ad4c998f3fe5719e0a677a501299a7927b4feebc46e6a",
+ "entry_rules": 37,
  "groups": {
   "B": 82,
   "I": 27,
-  "R": 5310,
+  "R": 5340,
   "T": 9
  },
  "schema": {
@@ -1091,6 +1091,7 @@
   "2026-11-02 R: Dedicated bastion account routes and capability (recapture at commit 6774852f8)",
   "2026-11-02 R: Host account inventory page adds one front-end entry rule (36) and moves its role editor entry to a page, merged after the dedicated bastion account routes (recapture at commit unknown)",
   "2026-11-03 R: Executor test-login adds two routes and the inventory read response gains next_identity (recapture at commit ff2b9edf7)",
-  "2026-11-03 R: Host account inventory reads follow the asset detail visibility decision; the single-asset read gains the per-asset visibility guard in the route inventory (recapture at commit unknown)"
+  "2026-11-03 R: Host account inventory reads follow the asset detail visibility decision; the single-asset read gains the per-asset visibility guard in the route inventory (recapture at commit unknown)",
+  "2026-11-05 R: Add the keystroke record view routes and the keystroke investigation front-end entry rule (37) (recapture at commit unknown)"
  ]
 }

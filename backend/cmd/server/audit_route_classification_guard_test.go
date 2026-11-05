@@ -446,6 +446,8 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/sessions/:id"}:                                                  {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/:id/clipboard-events"}:                                 {classResource, model.ResourceClipboardEvent, "命中分類器段 `clipboard-events`；子資源前置特判先於容器段 sessions"},
 	{"GET", "/api/v1/sessions/:id/clipboard-events/:eventID/content"}:                {classResource, model.ResourceClipboardEvent, "命中分類器段 `clipboard-events`；單筆內容調閱＝取走證物本體，另有 handler 側逐筆 fail-close 留痕（AP-74），中介層本列為請求層留痕、兩者語義並存"},
+	{"GET", "/api/v1/sessions/:id/keystrokes"}:                                       {classResource, model.ResourceKeystrokeRecord, "命中分類器段 `keystrokes`；子資源前置特判先於容器段 sessions；只回中繼資料、不解密，不另寫 handler 側留痕"},
+	{"POST", "/api/v1/sessions/:id/keystrokes/view"}:                                 {classResource, model.ResourceKeystrokeRecord, "命中分類器段 `keystrokes`；解密查看＝取走證物本體，另有 handler 側嘗試列交易內 fail-close 留痕，中介層本列為請求層結果列（只記 session_id、不記理由與內容），兩者語義並存"},
 	{"GET", "/api/v1/sessions/:id/commands"}:                                         {classResource, model.ResourceCommand, "命中前置特判段 `commands`；取走指令原文＝取證，與容器段 sessions 分開"},
 	{"DELETE", "/api/v1/sessions/:id/recording"}:                                     {classResource, model.ResourceRecording, "命中前置特判段 `recording`；刪除錄影證物須與一般連線操作分得開"},
 	{"GET", "/api/v1/sessions/:id/recording"}:                                        {classResource, model.ResourceRecording, "命中前置特判段 `recording`；錄影中繼資料讀取與取流同族"},

@@ -292,6 +292,8 @@ func routeRegistryEntries() []RouteEntry {
 		{Method: "GET", Path: "/api/v1/sessions/:id/clipboard-events", Base: BasePerm, Perm: PermAuditView},
 		{Method: "GET", Path: "/api/v1/sessions/:id/clipboard-events/:eventID/content", Base: BasePerm, Perm: PermAuditView},
 		{Method: "GET", Path: "/api/v1/sessions/:id/commands", Base: BasePerm, Perm: PermSessionView},
+		{Method: "GET", Path: "/api/v1/sessions/:id/keystrokes", Base: BasePerm, Perm: PermKeystrokeView},
+		{Method: "POST", Path: "/api/v1/sessions/:id/keystrokes/view", Base: BasePerm, Perm: PermKeystrokeView},
 		{Method: "GET", Path: "/api/v1/sessions/:id/monitor", Base: BaseManual},
 		{Method: "POST", Path: "/api/v1/sessions/:id/monitor-token", Base: BaseAuthenticated},
 		{Method: "DELETE", Path: "/api/v1/sessions/:id/recording", Base: BasePerm, Perm: PermRecordingDelete},

@@ -51,6 +51,7 @@ func RouteEntryRules() []RouteEntryRule {
 		entryAll("/my-agents", "ui:my-agents"),
 		entryAny("/approvals", "ui:approvals", "ui:approval-history"),
 		entryAll("/sessions", "session:view"),
+		entryAll("/sessions/keystrokes", "session:view", "keystroke:view"),
 		entryAll("/audit/workbench", "audit:view"),
 		entryAll("/audit/agent-tasks", "audit:view"),
 		entryAny("/rotation-evidence", "audit:view", "rotation_schedule:manage"),

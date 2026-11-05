@@ -40,6 +40,7 @@ const BACKEND_POLICY_KEYS = [
   'retention_session_command_days',
   'retention_alert_days',
   'retention_recording_days',
+  'retention_keystroke_days',
   'retention_checkpoint_days',
   'audit_checkpoint_interval_seconds',
   'audit_checkpoint_row_threshold',

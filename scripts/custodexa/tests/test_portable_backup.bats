@@ -94,6 +94,26 @@ EOF
   if grep -rqF 'plaintext evidence' "$X"; then echo "export plaintext in the backup"; return 1; fi
 }
 
+@test "portable: the keystroke records under audit/keystrokes ride in audit.tar.gz as the ciphertext they are, and recordings stay out" {
+  # A sealed record file (stand-in bytes: the real files hold no readable key text) in the dated
+  # folder the writer creates; the marker string is what a reader would look for in plaintext.
+  local marker=ks-plain-marker-0001 d="$ROOT/data/audit/keystrokes/2026-11-05"
+  mkdir -p "$d"
+  head -c 512 /dev/urandom >"$d/0b8f6c52-6d4a-4a39-9f0e-4f3a1c9d2e11.cxkr"
+  chmod 700 "$ROOT/data/audit/keystrokes" "$d"
+  chmod 600 "$d/0b8f6c52-6d4a-4a39-9f0e-4f3a1c9d2e11.cxkr"
+  backup_run en --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  bk_one || return 1
+  extract_all
+  /usr/bin/tar -tzf "$X/audit.tar.gz" | grep -q '^audit/keystrokes/2026-11-05/0b8f6c52-6d4a-4a39-9f0e-4f3a1c9d2e11.cxkr$' \
+    || { /usr/bin/tar -tzf "$X/audit.tar.gz"; return 1; }
+  [ "$(/usr/bin/tar -xzOf "$X/audit.tar.gz" audit/keystrokes/2026-11-05/0b8f6c52-6d4a-4a39-9f0e-4f3a1c9d2e11.cxkr | grep -c "$marker" || true)" = 0 ] || return 1
+  /usr/bin/tar -xzOf "$X/audit.tar.gz" audit/keystrokes/2026-11-05/0b8f6c52-6d4a-4a39-9f0e-4f3a1c9d2e11.cxkr \
+    | cmp - "$d/0b8f6c52-6d4a-4a39-9f0e-4f3a1c9d2e11.cxkr" || return 1
+  if /usr/bin/tar -tzf "$X/audit.tar.gz" | grep -q recordings; then echo "recordings in audit.tar.gz"; return 1; fi
+}
+
 # ---------- tls/ and the proxy template ----------
 
 # members_of: the member names of BK_FILE, one per line, in the stored order.

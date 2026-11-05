@@ -272,7 +272,7 @@
                 <span
                   v-else-if="row.kind === 'sensitive_reveal'"
                   data-test="alert-sensitive-reveal"
-                >{{ $t('alerts.sensitiveRevealDescription') }}</span>
+                >{{ row.reason_code === 'keystroke_record' ? $t('alerts.sensitiveRevealKeystrokeDescription') : $t('alerts.sensitiveRevealDescription') }}</span>
                 <span
                   v-else-if="isSystemAlert(row)"
                   data-test="alert-system-description"

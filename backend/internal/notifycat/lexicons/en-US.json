@@ -36,7 +36,12 @@
     "principal_state_mismatch": "Principal or credential state does not match the checkpoint chain (a change has no audit record)",
     "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)",
     "restore_seal_deferred": "Seal after restore failed; service is open and the sealing is retried (the checkpoint covering the restored permission state is not in the chain yet)",
-    "restore_seal_state_unreadable": "The pending seal state after a restore could not be read at startup; service is open and a seal was attempted (resolved once a seal succeeds)"
+    "restore_seal_state_unreadable": "The pending seal state after a restore could not be read at startup; service is open and a seal was attempted (resolved once a seal succeeds)",
+    "KEYSTROKE_DIR_UNWRITABLE": "The keystroke record directory is not writable",
+    "KEYSTROKE_KEY_SEAL_FAILED": "The keystroke record file key could not be sealed (key material not unsealed or key management failed)",
+    "KEYSTROKE_FILE_CREATE_FAILED": "The keystroke record file could not be created",
+    "KEYSTROKE_WRITE_FAILED": "Writing the keystroke record failed",
+    "KEYSTROKE_WRITER_STALLED": "The keystroke record writer stalled (no progress for a long time)"
   },
   "severity": {
     "high": "High",
@@ -196,7 +201,8 @@
     "queue_uncounted": "Input not yet matched could no longer be matched, and the actual number of inputs may be higher than recorded.",
     "queue_overflow": "Pending input reached its limit, and later input was not queued for matching.",
     "input_without_echo": "Input was sent, but the output contains no text that can be reconstructed. If the remote side turned off echo, the recording will not show it either.",
-    "input_without_command": "This connection received input, but no command could be reconstructed from it."
+    "input_without_command": "This connection received input, but no command could be reconstructed from it.",
+    "echo_incomplete_at_close": "The connection ended before the echo for this input finished, so the part that was echoed cannot be confirmed as the full command that was sent."
   },
   "compliance_report": {
     "title": "Compliance Mapping Report",

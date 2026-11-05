@@ -50,7 +50,7 @@ func newKeyManagerDB(t *testing.T) *gorm.DB {
 	// OIDCProvider／LDAPDirectory 一併建表：其 client_secret_enc／bind_password_enc
 	// 登記於 envelopeMigrationTargets，AAD 殘餘掃描會逐表計數，缺表即整個掃描失敗
 	// （非本測試意圖）
-	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{}); err != nil {
+	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.KeystrokeRecord{}, &model.OffsiteProfile{}, &model.AgentToolCall{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立。
@@ -172,7 +172,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.SystemAlertOutbox{}, &model.AuditLog{}, &model.DataKey{},
-		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{},
+		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.KeystrokeRecord{}, &model.OffsiteProfile{}, &model.AgentToolCall{},
 		// 憑證密文版本亦為信封目標表（登入秘密的現行落點），空表即 pending 0；
 		// 缺表會讓逐表掃描整個 error 而擋住 KEK 輪替
 		&model.CredentialSecretVersion{}, &model.UserRole{}); err != nil {

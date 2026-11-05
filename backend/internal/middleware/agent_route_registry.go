@@ -331,6 +331,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/sessions/:id/commands":
 		return false, true
+	case "GET /api/v1/sessions/:id/keystrokes":
+		return false, true
 	case "GET /api/v1/sessions/:id/monitor":
 		return false, true
 	case "GET /api/v1/sessions/:id/recording":
@@ -558,6 +560,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "POST /api/v1/security-policies/apply-preview":
 		return false, true
 	case "POST /api/v1/security-policies/compliance/preview":
+		return false, true
+	case "POST /api/v1/sessions/:id/keystrokes/view":
 		return false, true
 	case "POST /api/v1/sessions/:id/monitor-token":
 		return false, true

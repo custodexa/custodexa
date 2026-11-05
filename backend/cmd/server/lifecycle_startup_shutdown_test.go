@@ -71,6 +71,7 @@ var expectedReleaseRegistration = []string{
 	"alertNotifier",                 // R-9　必須早於兩排程器登記 ⇒ 晚於其停止（危險點 2）
 	"exportSigning",                 // R-10 衍生材料，早於根材料執行
 	"checkpointSigning",             // R-10b 同上（檢查點簽章鑰，多版本逐一歸零）
+	"keystrokeService",              // R-10c 停止鍵盤紀錄對帳迴圈（各會話紀錄由 handler 自行收尾）
 	"changeSecretScheduler",         // R-11
 	"changeSecretRetryScheduler",    // R-11b
 	"accessRequestScheduler",        // R-12

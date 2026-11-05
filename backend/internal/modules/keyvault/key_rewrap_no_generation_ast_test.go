@@ -617,6 +617,10 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 	{File: "internal/modules/keyvault/dek_cache_ttl.go", Func: "dekBackoff",
 		Reason: "DEK 到期重解的重試退避抖動（±50%），只決定「下一次重試等多久」；" +
 			"不產出任何位元組材料，與 KEK 無關。"},
+	{File: "internal/keystroke/writer/writer.go", Func: "Open",
+		Reason: "鍵盤紀錄檔標頭的 8-byte nonce 前綴（與段序號組成每段 nonce，公開於檔頭）；金鑰本身不在此產生，非 KEK。"},
+	{File: "internal/modules/session/keystroke_service.go", Func: "newFileKey",
+		Reason: "鍵盤紀錄檔的檔案金鑰（每份紀錄一把 256-bit，以欄位信封封存於紀錄列）；與 DEK 同型的資料金鑰，非 KEK、不包覆任何其他金鑰。"},
 	{File: "internal/sealjournal/open.go", Func: "newBootID",
 		Reason: "封印期日誌的 boot 識別（防檔名／序列碰撞），非加密材料。"},
 	{File: "internal/modules/identity/auth_refresh_service.go", Func: "generateRefreshPlain",

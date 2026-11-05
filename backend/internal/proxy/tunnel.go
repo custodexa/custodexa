@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/pkg/guacamole"
 )
 
@@ -66,6 +67,11 @@ type Tunnel struct {
 	recvTap *ClipboardTap
 	// 檔案上傳審計旁路（vnc-file-transfer）：RDP 磁碟＋VNC SFTP 共用；nil 時略過
 	fileTap *FileTap
+	// 鍵盤紀錄旁路：只看 key 指令，且在指令成功轉送給圖形閘道之後才記；nil 時略過
+	keyTap *KeystrokeTap
+	// closeMarker 鍵盤紀錄的會話結束標記碼（第一個觀察到的收線來源；空＝不寫標記）
+	closeMarkerMu sync.Mutex
+	closeMarker   string
 
 	// 會話閒置/最大時長：0 = 停用該檢查
 	idleTimeout   time.Duration
@@ -91,6 +97,31 @@ func NewTunnel(ws *websocket.Conn, conn *Connection, sendTap, recvTap *Clipboard
 	}
 	t.lastInputNano.Store(time.Now().UnixNano())
 	return t
+}
+
+// SetKeystrokeTap 掛上鍵盤紀錄旁路（須在 Start 前）。
+func (t *Tunnel) SetKeystrokeTap(tap *KeystrokeTap) { t.keyTap = tap }
+
+func (t *Tunnel) noteCloseMarker(code string) {
+	t.closeMarkerMu.Lock()
+	defer t.closeMarkerMu.Unlock()
+	if t.closeMarker == "" {
+		t.closeMarker = code
+	}
+}
+
+// EndMarker 回傳鍵盤紀錄的會話結束標記碼：逾時由平台收線者優先，
+// 其次是第一個觀察到的收線來源；都沒有時回空（不寫標記）。
+func (t *Tunnel) EndMarker() string {
+	switch t.EndReason() {
+	case tunnelEndReasonIdleTimeout:
+		return keystroke.MarkerEndIdleTimeout
+	case tunnelEndReasonMaxDuration:
+		return keystroke.MarkerEndMaxDuration
+	}
+	t.closeMarkerMu.Lock()
+	defer t.closeMarkerMu.Unlock()
+	return t.closeMarker
 }
 
 // SetTimeouts 設定閒置與最大會話時長（須在 Start 前；0 = 停用該檢查）
@@ -288,8 +319,10 @@ func (t *Tunnel) pumpWebSocketToGuacamole() error {
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("[Tunnel] WebSocket 正常關閉")
+				t.noteCloseMarker(keystroke.MarkerEndUserClosed)
 				return nil
 			}
+			t.noteCloseMarker(keystroke.MarkerEndClientLost)
 			return fmt.Errorf("讀取 WebSocket 失敗: %w", err)
 		}
 
@@ -334,8 +367,11 @@ func (t *Tunnel) pumpWebSocketToGuacamole() error {
 
 		// 直接轉發到 Guacamole（無握手攔截）
 		if err := t.conn.WriteInstruction(instruction); err != nil {
+			t.noteCloseMarker(keystroke.MarkerEndTargetClosed)
 			return fmt.Errorf("寫入 Guacamole 失敗: %w", err)
 		}
+		// 鍵盤紀錄：轉送成功之後才記（寫入失敗的指令不記）
+		t.keyTap.Observe(instruction)
 	}
 }
 
@@ -374,8 +410,10 @@ func (t *Tunnel) pumpGuacamoleToWebSocket() error {
 			// 否則對 nil *Client 呼叫 IsConnected() 會 nil deref panic 拖垮整個 backend
 			if t.conn.GuacClient == nil || !t.conn.GuacClient.IsConnected() {
 				log.Println("[Tunnel] Guacamole 連線已關閉")
+				t.noteCloseMarker(keystroke.MarkerEndTargetClosed)
 				return nil
 			}
+			t.noteCloseMarker(keystroke.MarkerEndTargetClosed)
 			return fmt.Errorf("讀取 Guacamole 失敗: %w", err)
 		}
 
@@ -389,6 +427,7 @@ func (t *Tunnel) pumpGuacamoleToWebSocket() error {
 		t.mu.Unlock()
 
 		if err != nil {
+			t.noteCloseMarker(keystroke.MarkerEndClientLost)
 			return fmt.Errorf("寫入 WebSocket 失敗: %w", err)
 		}
 	}
@@ -428,6 +467,7 @@ func (t *Tunnel) IsClosed() bool {
 // 於本 tunnel 寫鎖內送 Guacamole disconnect 指令通知前端，再走冪等 Close。
 // 通知失敗不影響收線——Close 本身就會讓前端斷開
 func (t *Tunnel) Disconnect() error {
+	t.noteCloseMarker(keystroke.MarkerEndTerminated)
 	t.mu.Lock()
 	if !t.closed {
 		// 格式: 10.disconnect; (10 是 "disconnect" 的字串長度)

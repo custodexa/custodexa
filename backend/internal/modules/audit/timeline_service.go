@@ -918,7 +918,7 @@ func (s *TimelineService) buildCoverage(q TimelineQuery) ([]TimelineCoverage, er
 	for _, t := range q.Types {
 		cov := TimelineCoverage{Type: t, State: CoveragePresent}
 		if t == TimelineTypeCommand {
-			if err := s.commandScope(q).Where("sc.degraded = ? AND sc.degrade_reason = ?", true, model.DegradeInputNoCommand).Count(&cov.DegradedCount).Error; err != nil {
+			if err := s.commandScope(q).Where("sc.degraded = ? AND sc.degrade_reason IN ?", true, model.CoverageIncompleteReasons()).Count(&cov.DegradedCount).Error; err != nil {
 				return nil, err
 			}
 			cov.Incomplete = cov.DegradedCount > 0

@@ -357,8 +357,9 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// 每日簽核業務時區（63 → 64），無單位、不對照條文。
 		// 映射重新驗證時限（64 → 65），單位沿用既有的小時。
 		// 主機帳號盤點的特權群組清單（65 → 66），無單位、不對照條文。
+		// 鍵盤紀錄保留天數（66 → 67），單位沿用天，不對照條文。
 		// riskLabel 由 10 增為 11：資料庫自改密碼的未加密連線風險碼（db_rotation_unencrypted）
-		"policyLabel": 66, "policyUnit": 9, "riskLabel": 11,
+		"policyLabel": 67, "policyUnit": 9, "riskLabel": 11,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed
 		// 再由 9 增為 10：改密通道列的說明碼 winrm_rotation_channel

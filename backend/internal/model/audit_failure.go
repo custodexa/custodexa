@@ -115,6 +115,13 @@ const (
 	// 但在補封成功前，還原當下的權限狀態附證尚未進鏈。待封狀態持久化於資料庫，
 	// 重啟會再嘗試補封。**解除判準＝下一次封章成功**（啟動補封或例行封章皆算）
 	MechanismRestoreSeal = "restore_seal"
+	// 鍵盤紀錄失敗機制族：比照錄影把探測與逐會話紀錄分列，
+	// 兩者各自只配對自己的恢復信號。
+	// MechanismKeystrokeProbe 簽發點目錄探測（失敗=探測錯；恢復=探測成功）
+	MechanismKeystrokeProbe = "keystroke_probe"
+	// MechanismKeystrokeRecord 逐會話鍵盤紀錄（失敗=啟動／寫入／寫入端停擺；
+	// 恢復=下一次成功啟動）。探測成功不解除本機制的失敗
+	MechanismKeystrokeRecord = "keystroke_record"
 )
 
 // 失效原因機器碼。
@@ -230,6 +237,28 @@ const (
 	// CauseRestoreSealStateUnreadable 啟動時讀不到還原後的待封狀態：不擋啟動，照「可能待封」處理
 	// 並立即嘗試封章；封章成功即結案
 	CauseRestoreSealStateUnreadable = "restore_seal_state_unreadable"
+	// 鍵盤紀錄失敗原因碼。值同時是 keystroke_records.failure_cause 的內容，
+	// 呈現端依碼查譯。
+	// CauseKeystrokeDirUnwritable 鍵盤紀錄目錄不可建立或不可寫
+	CauseKeystrokeDirUnwritable = "KEYSTROKE_DIR_UNWRITABLE"
+	// CauseKeystrokeKeySealFailed 檔案金鑰封存失敗（金鑰材料未解封等）
+	CauseKeystrokeKeySealFailed = "KEYSTROKE_KEY_SEAL_FAILED"
+	// CauseKeystrokeFileCreateFailed 紀錄檔建立或標頭寫入失敗
+	CauseKeystrokeFileCreateFailed = "KEYSTROKE_FILE_CREATE_FAILED"
+	// CauseKeystrokeWriteFailed 紀錄檔寫入或 fsync 失敗
+	CauseKeystrokeWriteFailed = "KEYSTROKE_WRITE_FAILED"
+	// CauseKeystrokeWriterStalled 寫入端連續一段時間沒有任何進展
+	CauseKeystrokeWriterStalled = "KEYSTROKE_WRITER_STALLED"
+)
+
+// 鍵盤紀錄不涵蓋原因碼（keystroke_records.coverage_reason）。
+// 命名不用 Cause* 前綴：它們不是失效原因，不進 cause 詞庫。
+const (
+	CoverageReasonK8sLogsReadonly = "k8s_logs_readonly"
+	CoverageReasonDBConsole       = "db_console"
+	// CoverageReasonGraphicsPending 圖形擷取上線前寫入的歷史列仍會用到；現行判定不再產生此值。
+	CoverageReasonGraphicsPending = "graphics_pending"
+	CoverageReasonFileTransfer    = "file_transfer"
 )
 
 // CauseParamDetail forensic 明細參數鍵：承載底層 err 原文。

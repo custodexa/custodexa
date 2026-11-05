@@ -106,6 +106,7 @@ func entryDescriptors() []EntryDescriptor {
 		{ID: "sessions", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermSessionView)}},
 		{ID: "audit_logs", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView)}},
 		{ID: "checkpoint_verification", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermAuditView, PermAuditIntegrityView)}},
+		{ID: "keystroke_investigation", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermSessionView, PermKeystrokeView)}},
 		{ID: "alerts", Group: GroupAudit, States: []EntryState{hid(), st(StateRead, PermAlertView, PermAuditView), st(StateManage, PermAlertView, PermAlertManage, PermAuditView)},
 			ReadVia: "audit_logs"},
 		{ID: "compliance_map", Group: GroupAudit, States: []EntryState{hid(), st(StateAvailable, PermComplianceView)}},

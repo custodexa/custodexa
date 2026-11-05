@@ -237,6 +237,27 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 				// 恢復僅配對自己的信號流（probe 成功≠他路錄製恢復，機制族分列）
 				failure.Resolve(model.MechanismRecordingProbe)
 			}
+			// 鍵盤紀錄目錄探測：同一道閘內、同一個 fail-close 政策與豁免對象。
+			// 只看目錄可寫，不看金鑰材料是否解封（材料未解封期間簽發的會話
+			// 可能沒有鍵盤紀錄，依啟動失敗處理）。探測成功只解除探測機制自己的失敗
+			if h.KeystrokeService != nil {
+				if kerr := h.KeystrokeService.ProbeRoot(); kerr != nil {
+					if failure := audit.GetAuditFailure(); failure != nil {
+						failure.Report(model.MechanismKeystrokeProbe, model.CauseKeystrokeDirUnwritable,
+							map[string]string{model.CauseParamDetail: kerr.Error()})
+					}
+					if h.RecordingFailClose != nil && h.RecordingFailClose() {
+						if !st.principal.IsSuperAdmin() {
+							return connectgate.Deny(http.StatusForbidden,
+								string(apierror.CodeKeystrokeUnavailable),
+								map[string]any{"reason": "keystroke_unavailable"})
+						}
+						mergeAuditDetails(c, map[string]string{"recording_exemption": "admin"})
+					}
+				} else if failure := audit.GetAuditFailure(); failure != nil {
+					failure.Resolve(model.MechanismKeystrokeProbe)
+				}
+			}
 			return nil
 		}},
 		{Name: "G-I12", Eval: func() *connectgate.Outcome {

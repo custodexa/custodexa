@@ -2,6 +2,143 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.22.0 — keystroke records, and command audit when the echo is cut off (2026-11-06)
+
+Schema change. Upgrading runs one migration. It adds one table with its indexes, with no data
+step and no change to existing tables. A 1.17.x to 1.21.x package deployment upgrades with
+`custodexa.sh upgrade 1.22.0`. Coming from 1.20.x or earlier, the upgrade also runs the
+migrations of the releases in between, so read "What you need to do" in each of those releases'
+notes below before you start, and on 1.17.x also [Upgrading to 1.18.0][1180-sop] in the upgrade
+SOP. Once its migration has run, `custodexa.sh rollback` does not switch back, and going back
+means restoring the backup taken before the upgrade ([Upgrading to 1.22.0][1220-sop]). The
+backup commands are unchanged.
+
+### What you need to do
+
+- Holders of the built-in Auditor role assigned system-wide can view keystroke records as soon
+  as the upgrade finishes. To keep someone from viewing them, move that person before you upgrade
+  to a custom role without the new permission `keystroke:view`. The permission takes effect only
+  on system-wide assignments. It is not a protected permission: anyone who holds `role:assign`
+  can build a custom role with it and assign that role, including to themselves, and the role
+  changes and every view are written to the operation log.
+- Keystroke recording cannot be turned off. It records input to sessions opened to assets: what
+  people type in terminal sessions, including terminals that AI agents open, and key presses in
+  RDP and VNC sessions. What people type into the platform's own pages, such as the management
+  screens and the unseal page, is not recorded. A password a user types inside a session is
+  stored as typed.
+- Keystroke records are stored encrypted under `audit/keystrokes` in the data root and go into
+  every backup, the one taken before an upgrade included. With `KEK_PROVIDER=env`, a backup
+  together with its copy of `.env` is enough to read every keystroke record in it, and a backup
+  file written by `custodexa.sh backup` holds both. Use `KEK_PROVIDER=ui`, where the master key
+  is entered in the interface and never written to disk ([mode B][1220-kek-ui]), or
+  [encrypt backups with a passphrase][1220-backup-enc], and limit who can read backup files.
+- Records removed under the retention policy can still be read from backups taken before the
+  removal. To read keystroke records after a restore, restore both the database and the
+  encrypted files from the same backup and provide the master key that was in use when the
+  backup was taken ([encryption keys and backups][1220-keys]).
+- Mount the audit directory and the recordings directory on separate file systems, and set a
+  quota on the recordings directory. When the disk that holds the audit directory is full,
+  keystroke records stop being written and an alert is raised, and the connection continues. The
+  backend creates `audit/keystrokes` itself, so the audit directory has to stay writable by the
+  backend ([file permissions][1220-sop-perm]). With `recording_failclose_enabled` on, an
+  unwritable keystroke directory stops new connections for everyone except super
+  administrators, the same way a recording storage failure does.
+- The new security policy key `retention_keystroke_days` ships at 0, which keeps records
+  forever. Other valid values are 7 to 3650. Shortening it asks for confirmation and raises a
+  system alert. From the next daily cleanup, records past the new period are deleted from live
+  storage and cannot be recovered there; backups taken earlier still hold them.
+- Scripts that read command audit degrade reasons: the new reason `echo_incomplete_at_close`
+  marks a round whose echo was cut off when the connection ended. Its command text is empty.
+
+### New capabilities
+
+#### Keystroke records
+
+- SSH, database CLI and Kubernetes exec terminal sessions, terminals that AI agents open, and RDP
+  and VNC sessions each keep a keystroke record of the input the platform forwarded to the target
+  host. While recording works, a command sent just before the connection drops is in the record
+  even when command audit could not reconstruct it from the host's echo.
+- Terminal input is stored byte for byte, control characters included. Graphical sessions store
+  key presses and releases only. Credentials the platform fills in at sign-in are not in the
+  record.
+- Input that a command blocking rule stopped is recorded and marked Blocked, not sent. The
+  Ctrl+C the platform then sends to clear the line on the host is marked as sent by the
+  platform.
+- Each record is encrypted before it reaches disk with its own key, which the platform's key
+  management seals. Data key rotation re-seals these keys without rewriting the files. Reading a
+  record checks it against the database and reports it as complete, still recording, ended
+  abnormally, readable up to a point in time, possibly tampered with, or file missing, and the
+  part that verifies stays readable. A record whose header does not match the database, or whose
+  file path falls outside the keystroke directory, is refused as a whole.
+- Input faster than the record can be written waits for the writer and is not dropped. When
+  writing fails or stalls, the session continues, the record is marked failed with the cause,
+  and the audit failure panel shows one Keystroke record event for it. Before issuing a
+  connection, the platform checks that the keystroke directory is writable and raises Keystroke
+  record pre-check when it is not.
+- Keystroke records are kept apart from recordings and have their own retention period. They
+  are removed only by the retention policy, and a removed record still shows when it was
+  removed.
+
+#### Viewing keystroke records
+
+- Session Details has an Investigate: keystrokes button for holders of `keystroke:view`. Viewing
+  asks for a reason of up to 1000 characters, then shows the input exactly as typed. Control
+  characters appear as named marks with a switch to hexadecimal, and key events show the key
+  name, its code and whether it was pressed or released.
+- Every view, and every further page loaded, is written to the operation log with the viewer,
+  the session, the asset and the reason before anything is shown. When that entry cannot be
+  written, nothing is shown. With `alert_on_sensitive_reveal` on, each view raises a
+  `sensitive_reveal` alert.
+- A session without viewable content shows its state without asking for a reason: it started
+  before keystroke recording, its type produces no record, recording failed to start, or the
+  record was removed under the retention policy.
+- In the web interface, keystroke content appears only on this viewer page, which writes nothing
+  to browser storage. Leaving the page clears the content, and a refresh or a new tab asks for a
+  reason again.
+
+#### Roles and security policies
+
+- The role editor has a new Keystroke investigation entry. Turning it on also adds
+  `session:view`, which the button needs.
+- Security Policies lists Keystroke record retention days with the other retention settings.
+
+### Fixes
+
+- When a connection ended after Enter was sent and before the echo of that line came back in
+  full, command audit recorded the part of the echo that had arrived as a clean command, while
+  the host may have run the whole line. Such a round is now a degraded entry
+  `echo_incomplete_at_close` with no command text, and the usual degraded-audit alert fires. In
+  database CLI sessions, a multi-line statement whose last line is cut off this way is not
+  recorded as a command.
+- Where the Investigation Workbench timeline and evidence packages show command completeness,
+  it now also counts rounds that had input and no echo, and rounds cut off as above, so a
+  window holding them is shown as incomplete.
+
+### API
+
+- `GET /api/v1/sessions/:id/keystrokes` returns the record's state, event count, size and times
+  without decrypting. `POST /api/v1/sessions/:id/keystrokes/view` takes `reason` in the body,
+  `from_event` and `limit` (at most 5000) and returns the events with an `integrity` value. Both
+  require `keystroke:view` on a system-wide assignment, and a missing session returns 404
+  `NOTFOUND_SESSION`.
+- Viewing returns 400 `VALIDATION_KEYSTROKE_REASON_REQUIRED` or
+  `VALIDATION_KEYSTROKE_REASON_TOO_LONG`, 404 `RESOURCE_KEYSTROKE_NOT_VIEWABLE`, 503
+  `RULE_KEYSTROKE_VAULT_SEALED` while the platform key is sealed, 422
+  `RULE_KEYSTROKE_RECORD_REJECTED` when the record does not match the database, and 500
+  `INTERNAL_KEYSTROKE_VIEW` when the view cannot be logged.
+- Issuing a connection can return 403 `RULE_KEYSTROKE_UNAVAILABLE`.
+- Security policies add `retention_keystroke_days`. Command records add the `degrade_reason`
+  value `echo_incomplete_at_close`, and command coverage counts it and `input_without_echo` in
+  `incomplete` and `degraded_count`. `sensitive_reveal` alerts and operation log entries use the
+  new source `keystroke_record`. The [API reference][1220-api] documents these changes.
+
+[1220-sop]: docs/ops/upgrade-sop.md#upgrading-to-1220
+[1220-sop-perm]: docs/ops/upgrade-sop.md#13-check-the-file-permissions-on-data_path
+[1220-keys]: docs/ops/backup-and-restore.md#4-disaster-recovery-prerequisites-for-encryption-keys-read-before-deployment
+[1220-kek-ui]: docs/ops/backup-and-restore.md#42-mode-b-kek_providerui-key-entered-in-the-interface-never-written-to-disk
+[1220-backup-enc]: docs/ops/backup-and-restore.md#encrypting-the-backup-file-with-a-passphrase
+[1220-api]: docs/API_SPEC.md
+
 ## 1.21.0 — bastion service accounts, host account inventory and database password rotation (2026-11-04)
 
 Schema changes. Upgrading runs six migrations. They add three tables with their indexes, columns
@@ -27,9 +164,8 @@ and the backup commands are unchanged.
 - For complete host account inventories with a service account other than `root`, also add the
   read-only rule `cx-exec ALL=(root) NOPASSWD: /usr/bin/tar -cf - -C /etc sudoers sudoers.d`,
   taking the path of `tar` from `command -v tar`; a password-based account uses the same rule
-  without `NOPASSWD:`. Copy the arguments exactly: omitting them,
-  using wildcards, adding `SETENV`, keeping `TAR_OPTIONS` or disabling `env_reset` makes the rule
-  equivalent to root.
+  without `NOPASSWD:`. Copy the arguments exactly: omitting them, using wildcards, adding
+  `SETENV`, keeping `TAR_OPTIONS` or disabling `env_reset` makes the rule equivalent to root.
   Without this rule the inventory still completes and marks its results as possibly incomplete.
 - Database passwords are changed only on database assets whose change channel you set. When
   such an asset's TLS mode is unset or `disable`, the old and new passwords may cross the
@@ -69,8 +205,7 @@ and the backup commands are unchanged.
   purpose (Bastion service or User connections), and rotating such a credential states that the
   new password is sent to every one of those hosts.
 - Setting, replacing and clearing the service account take effect at once, independent of the
-  drawer's Save.
-  Clearing the service account removes it from the platform; the account and its key on the host
+  drawer's Save. Clearing the service account removes it from the platform; the account and its key on the host
   stay as they are.
 - Test sign-in, for Linux and Unix hosts, signs in as the service account and runs the
   password-change program with no account in its input, so no password changes. It reports
@@ -102,8 +237,8 @@ and the backup commands are unchanged.
 - Host account inventory, in the menu of an SSH asset on Assets, reads the host's account and
   group lists and its sudo rules with fixed read-only commands. It lists each account with why it
   is privileged (uid 0, a privileged group, a sudo rule), whether it can sign in (judged by its
-  login shell) and whether the asset already manages an account of that name. Nothing on the
-  host changes and no account is added to the platform. Linux and Unix hosts are supported.
+  login shell) and whether the asset already manages an account of that name. It adds no account
+  to the platform. Linux and Unix hosts are supported.
 - The inventory signs in as the bastion service account when the asset has one, and otherwise
   as the default account. When the service account exists but cannot be used, the inventory is
   refused and does not switch to another account. The default account does not elevate. When the
@@ -133,7 +268,7 @@ and the backup commands are unchanged.
   settings: Database account changes its own password. A change signs in with the account's
   current password, changes that account's own password and checks the new one on a second
   connection. When the target refuses the new password at sign-in, the first connection changes
-  it back. Only the password changes; no account is created and no privilege is granted.
+  it back.
 - Supported targets are MySQL 8.0.13 or later, PostgreSQL 10 or later and SQL Server logins that
   use SQL authentication. Other versions, MariaDB included, end with "target version not
   supported" before anything is sent. Read the channel's limits in the
@@ -163,7 +298,7 @@ and the backup commands are unchanged.
 - When renewing the sign-in gets a 5xx, 408 or 429 response or no response, you stay signed in
   and see that the server could not renew the sign-in right now. Other 4xx responses still end
   the session.
-- Waiting for another tab's sign-in renewal ends within 10 seconds, also after the system clock
+- Waiting for another tab's sign-in renewal ends within 10 seconds, even if the system clock
   is set back.
 - The frontend image's proxy waits at most 8 seconds for the sign-in renewal endpoint. Other
   `/api` paths keep their timeout.

@@ -234,8 +234,10 @@
     "reasonSubmit": "Submit and Connect",
     "reasonPlaceholder": "e.g. routine maintenance, package updates",
     "reasonRequired": "Please enter a reason",
-    "recordingUnavailableMessage": "New connections to this host are currently blocked: the server's recording storage is failing, so the operation trail cannot be preserved. Please contact an administrator.",
+    "recordingUnavailableMessage": "New connections are currently blocked: the server's recording storage is failing, so the operation trail cannot be preserved. Please contact an administrator.",
     "recordingUnavailableTitle": "Recording Storage Failure",
+    "keystrokeUnavailableMessage": "New connections are currently blocked: the server's keystroke record storage is failing, so typed input cannot be preserved. Please contact an administrator.",
+    "keystrokeUnavailableTitle": "Keystroke Record Storage Failure",
     "ok": "OK",
     "approvalPendingMessage": "Your request (#{id}) is awaiting review; you can connect once it is approved. Check its progress under My Requests.",
     "approvalNeededMessage": "This host requires a request approved by a reviewer before connecting. Go to Assets and click Request Access on this host.",
@@ -380,6 +382,7 @@
       "authorization": "Asset Authorization",
       "audit_timeline": "Investigation Workbench Query",
       "clipboard_event": "Clipboard Content Retrieval",
+      "keystroke_record": "Keystroke record viewing",
       "audit_checkpoint": "Audit Checkpoint",
       "audit_failure": "Audit Failure Event",
       "audit_integrity": "Audit Integrity Verification",
@@ -418,7 +421,9 @@
       "role_state_integrity": "Role assignment consistency with the audit chain",
       "principal_state_integrity": "Principal and credential state integrity",
       "dek_unwrap": "Data key re-unwrap",
-      "restore_seal": "Seal after restore"
+      "restore_seal": "Seal after restore",
+      "keystroke_probe": "Keystroke record pre-check",
+      "keystroke_record": "Keystroke record"
     },
     "cause": {
       "recording_probe_failed": "Recording pre-flight check failed at issuance",
@@ -457,7 +462,18 @@
       "principal_state_mismatch": "Principal or credential state does not match the checkpoint chain (a change has no audit record)",
       "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)",
       "restore_seal_deferred": "Seal after restore failed; service is open and the sealing is retried (the checkpoint covering the restored permission state is not in the chain yet)",
-      "restore_seal_state_unreadable": "The pending seal state after a restore could not be read at startup; service is open and a seal was attempted (resolved once a seal succeeds)"
+      "restore_seal_state_unreadable": "The pending seal state after a restore could not be read at startup; service is open and a seal was attempted (resolved once a seal succeeds)",
+      "KEYSTROKE_DIR_UNWRITABLE": "The keystroke record directory is not writable",
+      "KEYSTROKE_KEY_SEAL_FAILED": "The keystroke record file key could not be sealed (key material not unsealed or key management failed)",
+      "KEYSTROKE_FILE_CREATE_FAILED": "The keystroke record file could not be created",
+      "KEYSTROKE_WRITE_FAILED": "Writing the keystroke record failed",
+      "KEYSTROKE_WRITER_STALLED": "The keystroke record writer stalled (no progress for a long time)"
+    },
+    "keystrokeCoverageReason": {
+      "k8s_logs_readonly": "Read-only Kubernetes logs have no input channel",
+      "db_console": "Web database console: statements are already stored as sent",
+      "graphics_pending": "Graphical protocols are not yet covered by keystroke records",
+      "file_transfer": "File transfer: contents are covered by file auditing"
     },
     "endReason": {
       "normal": "Ended Normally",
@@ -549,6 +565,7 @@
       "queue_overflow": "Pending input reached its limit and later input was no longer queued. This entry marks where the overflow began; it does not mean only one round followed.",
       "input_without_echo": "Input was sent in this round, but the output stream holds no text that could be reconstructed.",
       "input_without_command": "Input was sent on this connection, but no command could be reconstructed by the time it ended; this entry marks a command-audit failure for the connection. Use the recording as the source of truth.",
+      "echo_incomplete_at_close": "The connection ended before the echo for this round finished. The echoed part cannot be confirmed as the full line that was sent, so no command text is recorded.",
       "replay_input_bytes": "This text comes from the input bytes the user sent. What tab completion and history keys actually expanded to exists only in the echo, so it may differ from the command that ran."
     },
     "commandAlertReason": {
@@ -699,7 +716,7 @@
       },
       "log_retention": {
         "title": "Log Retention and Review",
-        "hint": "Audit data retention and daily review. Since the checkpoint chain was enabled, audit logs are purged by checkpoint interval: if any row in an interval has not expired, the whole interval is retained, so a few already-expired rows may remain after the first purge (expected behavior, not a defect). Checkpoint retention defaults to 0 (forever) and must not be shorter than the longest of the four data retention keys (0 means forever): the proof must outlive the data it proves, and violating batches are rejected in full. Each of the four data retention periods has a minimum number of days and cannot be set shorter."
+        "hint": "Audit data retention and daily review. Since the checkpoint chain was enabled, audit logs are purged by checkpoint interval: if any row in an interval has not expired, the whole interval is retained, so a few already-expired rows may remain after the first purge (expected behavior, not a defect). Checkpoint retention defaults to 0 (forever) and must not be shorter than the longest of the operation log, command stream, alert record and recording retention periods (0 means forever; keystroke records are not included): the proof must outlive the data it proves, and violating batches are rejected in full. Each of the five data retention periods has a minimum number of days and cannot be set shorter."
       },
       "access_policy": {
         "title": "Connection Policy",
@@ -1190,6 +1207,7 @@
       "audit_checkpoints": "checkpoint chain",
       "audit_logs": "audit log",
       "command_alerts": "alert record",
+      "keystroke_records": "keystroke record",
       "recordings": "session recording",
       "session_commands": "command stream"
     },
@@ -1896,6 +1914,7 @@
     "kindRule": "Rule alert",
     "kindSensitiveReveal": "Sensitive content access",
     "sensitiveRevealDescription": "Sensitive content was accessed; see the per-access audit record for details.",
+    "sensitiveRevealKeystrokeDescription": "Someone viewed this connection's keystroke record; see the operation log for who, why and when.",
     "title": "Alerts",
     "headerDesc": "Alert records for dangerous commands and system security events",
     "channelsHeaderDesc": "Alerts are sent to these channels. Adding, changing, disabling or deleting any channel notifies security staff.",
@@ -3010,7 +3029,8 @@
         "schedules": "Schedule preview",
         "rotation_schedules": "Rotation schedules",
         "instance_guard": "Instance guard",
-        "asset_executor": "Bastion service account"
+        "asset_executor": "Bastion service account",
+        "keystroke_investigation": "Keystroke investigation"
       },
       "detail": {
         "asset": {
@@ -3049,7 +3069,8 @@
         "alerts": "Alert records come from the same audit data as Audit logs, so choosing Read or Manage also adds the audit view permission.",
         "access_reviews": "Review lists come from audit data, so choosing Manage also adds the audit view permission.",
         "audit_logs": "The same audit view permission also opens Investigation Workbench, Command Audit, Downloads, AI agent tasks and the Rotation Evidence report.",
-        "asset_executor": "The settings card is inside the asset edit screen. Holders can set, replace and clear the account the platform uses for itself, and get its public key. This account cannot be used to connect."
+        "asset_executor": "The settings card is inside the asset edit screen. Holders can set, replace and clear the account the platform uses for itself, and get its public key. This account cannot be used to connect.",
+        "keystroke_investigation": "Adds an \"Investigate: keystrokes\" button to the connection detail page header for viewing exactly what the user typed, including passwords. Every view requires a reason and is logged. Takes effect only on system-wide assignments."
       },
       "placementTag": {
         "embedded": "Settings card",
@@ -4700,8 +4721,10 @@
     "AUTH_AGENT_TOKEN_INVALID": "Invalid agent token",
     "AUTH_AGENT_FORBIDDEN_ROUTE": "Agents cannot access this endpoint",
     "AUTH_REQUEST_ITEM_MISMATCH": "Access request item mismatch",
+    "INTERNAL_KEYSTROKE_VIEW": "Could not view the keystroke record",
     "INTERNAL_SYSTEM_ALERT_RAISE": "System alert handling failed; the change was cancelled",
     "NOTFOUND_SYSTEM_ALERT_TYPE": "System alert type not found",
+    "RESOURCE_KEYSTROKE_NOT_VIEWABLE": "This connection has no keystroke record content to view",
     "ROLE_DEFINITION_CONFLICT": "The role was changed by someone else, or the name is already taken. Reload and try again",
     "ROLE_DEFINITION_IN_USE": "This role is still in use. Remove its assignments or mappings before deleting it",
     "ROLE_DEFINITION_LOCKED": "This role is a built-in template and cannot be modified, deleted or copied",
@@ -4710,6 +4733,10 @@
     "MAPPING_SCOPE_FIELD_REJECTED": "Mapping rules do not support scope or node settings",
     "AUTH_PROTECTED_ACCOUNT_OPERATION": "This account is protected. You cannot perform this operation",
     "AUTH_ROLE_ASSIGNMENT_FORBIDDEN": "You do not have permission to assign roles",
+    "RULE_KEYSTROKE_RECORD_REJECTED": "The keystroke record could not be verified, so nothing was delivered",
+    "RULE_KEYSTROKE_VAULT_SEALED": "The platform key is not unsealed yet, so keystroke records cannot be viewed right now",
+    "VALIDATION_KEYSTROKE_REASON_REQUIRED": "A reason is required to view the keystroke record",
+    "VALIDATION_KEYSTROKE_REASON_TOO_LONG": "The reason must not exceed 1000 characters",
     "VALIDATION_ROLE_BINDING_SCOPE_UNSUPPORTED": "This entry point only supports system-wide role assignments and cannot specify node scopes. To limit an assignment to nodes, use the entry point that replaces the whole assignment set",
     "VALIDATION_ROLE_NOT_NODE_SCOPABLE": "This role includes permissions that only apply system-wide, so it cannot be limited to nodes",
     "VALIDATION_ROLE_BINDING_NODES_EMPTY": "Select at least one node, or switch to system-wide",
@@ -5245,6 +5272,7 @@
     "RULE_K8S_UNAUTHORIZED": "Token authentication failed (401): verify that the Bearer Token is valid",
     "RULE_K8S_UNKNOWN": "Failed to connect to K8s: check the cluster address, credentials and network",
     "RULE_K8S_UNREACHABLE": "Cannot reach the API server: check the address/port and network connectivity",
+    "RULE_KEYSTROKE_UNAVAILABLE": "Keystroke record storage is unhealthy; new connections are suspended. Please contact an administrator",
     "RULE_LDAP_TEST_RATE_LIMITED": "Too many LDAP connection tests, please try again later",
     "RULE_MFA_INVALID_CODE": "Incorrect MFA verification code",
     "RULE_MFA_REPLAY": "MFA verification code has already been used",
@@ -5604,6 +5632,7 @@
     "retention_checkpoint_days": "Checkpoint retention days",
     "retention_max_per_run": "Deletion limit per cleanup run",
     "retention_recording_days": "Connection recording retention days",
+    "retention_keystroke_days": "Keystroke record retention days",
     "retention_session_command_days": "Command stream retention days",
     "session_idle_minutes": "Protocol connection idle timeout",
     "session_max_minutes": "Protocol connection max duration",
@@ -6974,7 +7003,9 @@
       "notRetainedDetail": "{category}: records of this kind are not on any deletion schedule and have never been removed under the retention policy, so a blank stretch here was not caused by deletion. That is not the same as 'deleted under the retention policy'. It still does not prove nothing happened: only events the system actually captures become records — clipboard events, for example, are captured only on graphical desktop sessions and only for text.",
       "emptyPresent": "{category}: no records in this interval.",
       "checkpointLink": "Check whether this deletion was legitimate (checkpoint numbers {from}-{to})",
-      "commandIncomplete": "Command history incomplete: {count} records with missing command text"
+      "commandIncomplete": "{count} inputs had no echo or an incomplete echo (for example a password prompt), so the command text cannot be recovered",
+      "commandIncompleteChip": "{count} not reconstructable",
+      "commandIncompleteHint": "Keyword search does not cover them."
     },
     "spans": {
       "title": "Sessions",
@@ -7772,6 +7803,7 @@
     "retention_session_command_days": "Applied when the nightly cleanup runs; data already deleted cannot be recovered. 0 means keep forever.",
     "retention_alert_days": "Applied when the nightly cleanup runs; data already deleted cannot be recovered. 0 means keep forever.",
     "retention_recording_days": "Applied when the nightly cleanup runs; recordings already deleted cannot be recovered. 0 means keep forever.",
+    "retention_keystroke_days": "Applied when the nightly cleanup runs; keystroke records already deleted cannot be recovered. 0 means keep forever.",
     "offsite_local_retention_days": "The nightly cleanup removes only the local copy while the offsite copy stays; the setting does nothing while offsite storage is off. 0 means no early cleanup.",
     "retention_checkpoint_days": "Applied when the nightly cleanup runs; a value shorter than any data retention period is refused at save time. 0 means keep forever.",
     "audit_checkpoint_interval_seconds": "The next scheduled check uses the new interval; ranges that already have a proof are not recalculated.",
@@ -8738,7 +8770,7 @@
       },
       "retention_shortened": {
         "name": "Retention shortened",
-        "description": "The retention days of operation logs, recordings, command streams, or alert records were shortened"
+        "description": "The retention days of operation logs, recordings, command streams, alert records, or keystroke records were shortened"
       },
       "offsite_or_syslog_changed": {
         "name": "Off-site copy or syslog changed",
@@ -9856,5 +9888,236 @@
     "previousResultNoTime": "Previous result",
     "skeletonLabel": "Results will be listed here when the inventory finishes",
     "goExecutor": "Go to service account settings"
+  },
+  "keystrokeView": {
+    "entry": {
+      "button": "Investigate: keystrokes",
+      "metaFailed": "Couldn't load the keystroke record status. Try again."
+    },
+    "dialog": {
+      "title": "View keystroke record",
+      "introLead": "This is the raw input record, for investigations. Everything the user typed is shown exactly as entered, including passwords.",
+      "introLog": "Viewing it is logged (your account, the time and the reason below) and may notify administrators.",
+      "reasonLabel": "Reason for viewing",
+      "reasonPlaceholder": "Example: investigating ticket INC-1234, confirming what was typed around 14:00 in this session",
+      "reasonCount": "{n} / 1000",
+      "errEmpty": "Enter a reason for viewing",
+      "errTooLong": "Reason can be up to 1000 characters ({n} over)",
+      "submit": "Submit and view",
+      "cancel": "Cancel",
+      "close": "Close",
+      "retry": "Try again",
+      "keyHint": "Enter adds a line, Ctrl+Enter submits",
+      "reasonNote": "The reason goes into the viewing log, visible to auditors and administrators. Each page you load is logged again with this reason."
+    },
+    "error": {
+      "sealed": {
+        "title": "The platform key is sealed. Viewing is unavailable for now.",
+        "body": "The platform key must be unsealed (usually after a system restart) before keystroke records can be decrypted. This attempt was logged as failed. Ask a system administrator to unseal it, then try again."
+      },
+      "rejected": {
+        "title": "This record failed verification and won't be shown",
+        "body": "The record file doesn't match the system's registration data and may have been replaced or moved. To avoid showing wrong content, no events were delivered. Notify a system administrator."
+      },
+      "audit": {
+        "title": "Viewing couldn't be logged, so nothing was shown",
+        "body": "Every view must be logged first. Nothing was shown this time, and system administrators have been notified. Try again later."
+      },
+      "noPermission": {
+        "title": "You no longer have permission to view keystroke records",
+        "body": "Your permissions may have just changed. This entry will disappear after you close this. Contact an administrator if you need access."
+      },
+      "notViewable": {
+        "title": "This keystroke record has no viewable content right now",
+        "body": "The record may have just been removed or doesn't exist. Close this and check the status again."
+      },
+      "other": {
+        "title": "Couldn't view the keystroke record",
+        "body": "Nothing was shown this time. Try again later."
+      }
+    },
+    "noContent": {
+      "dialogTitle": "Keystroke record",
+      "ok": "OK",
+      "preFeature": {
+        "title": "This session started before keystroke recording was turned on",
+        "body": "Keystroke recording has been on since {time}. This session began earlier, so its input wasn't recorded.",
+        "bodyNoTime": "This session began before keystroke recording was turned on, so its input wasn't recorded."
+      },
+      "preFeatureHint": "To see what happened, use the recording playback and the command log.",
+      "notCovered": {
+        "generic": {
+          "title": "This session type doesn't produce a keystroke record",
+          "body": "This type of session has no keyboard input to record."
+        },
+        "db_console": {
+          "title": "This session type doesn't produce a keystroke record",
+          "body": "Every query sent from the web database console is already saved exactly as submitted, so keyboard input isn't recorded separately."
+        },
+        "graphics_pending": {
+          "title": "Keystroke records aren't available for graphical desktop sessions yet",
+          "body": "Only terminal-type sessions (SSH, database command line and similar) are recorded for now. Key records for remote desktop and VNC will be added in a later version."
+        },
+        "k8s_logs_readonly": {
+          "title": "This session type doesn't produce a keystroke record",
+          "body": "The read-only Kubernetes log view accepts no keyboard input, so there is nothing to record."
+        },
+        "file_transfer": {
+          "title": "This session type doesn't produce a keystroke record",
+          "body": "File transfer sessions have no keyboard input. See the file transfer records for the files that were sent."
+        }
+      },
+      "recordMissing": {
+        "title": "Keystroke recording failed to start; no record was created",
+        "body": "This session should have a keystroke record, but it wasn't created when the session started, so no input was recorded."
+      },
+      "recordMissingHint": "This needs follow-up: ask a system administrator to check the system alerts from that time. Recording and the command log are not affected.",
+      "failedNoFile": {
+        "title": "Keystroke recording failed to start",
+        "body": "It failed when the session started, and no input was recorded.",
+        "bodyCause": "Cause: {cause}. It failed when the session started, and no input was recorded."
+      },
+      "purged": {
+        "title": "Keystroke record removed under the retention policy",
+        "body": "This session's keystroke record passed its retention period and was removed on {time} under the retention policy. This is the policy working as intended, not a lost record.",
+        "bodyNoTime": "This session's keystroke record passed its retention period and was removed under the retention policy. This is the policy working as intended, not a lost record."
+      },
+      "purgedHint": "The removal itself is also in the operation log.",
+      "generic": {
+        "title": "This keystroke record has no viewable content right now",
+        "body": "Check the status again later."
+      }
+    },
+    "failureCause": {
+      "KEYSTROKE_DIR_UNWRITABLE": "the record storage location isn't writable",
+      "KEYSTROKE_KEY_SEAL_FAILED": "the encryption key couldn't be prepared",
+      "KEYSTROKE_FILE_CREATE_FAILED": "the record file couldn't be created",
+      "KEYSTROKE_WRITE_FAILED": "writing failed",
+      "KEYSTROKE_WRITER_STALLED": "writing stalled"
+    },
+    "viewer": {
+      "crumb": "Keystroke record",
+      "title": "Keystroke record (investigation)",
+      "description": "Session {id}  ·  Shows exactly what the user typed, including passwords. Cleared when you leave this page; nothing is stored in the browser.",
+      "back": "Back to session details",
+      "loading": "Loading…",
+      "summary": {
+        "connection": "Session being viewed",
+        "user": "User",
+        "asset": "Asset",
+        "protocol": "Protocol",
+        "range": "Span",
+        "status": "Record status",
+        "reason": "Reason for this view",
+        "logged": "View logged at {time}, with this reason",
+        "countSize": "{count} events, {size}",
+        "keyCountWithNote": "{count} events. Graphical sessions record keys only, not the mouse"
+      },
+      "integrity": {
+        "complete": "Complete",
+        "completeHint": "Recorded from the start of the session to its end, with no gaps.",
+        "recording": "Recording",
+        "recordingHint": "The session is still running; only what has been written so far is here. View again for newer content (this logs another view).",
+        "incomplete": "Ended abnormally",
+        "incompleteHint": "Recording stopped when the system aborted abnormally. Any later input in the session wasn't recorded.",
+        "truncated": "Incomplete, readable up to {time}",
+        "truncatedHint": "The end of the record file is incomplete; it can only be read up to {time}. Later content can't be read.",
+        "failed": "Recording failed partway",
+        "failedHint": "Cause: {cause}. Content before it stopped is readable; nothing after was recorded.",
+        "failedHintNoCause": "Content before it stopped is readable; nothing after was recorded.",
+        "tampered": "Possibly tampered with",
+        "tamperedHint": "The record file fails verification from segment {segment} on and may have been altered. Only the verified earlier part is shown.",
+        "tamperedHintNoSegment": "Part of the record file fails verification and may have been altered. Only the verified earlier part is shown.",
+        "fileMissing": "File missing",
+        "fileMissingTitle": "Record file not found; nothing can be shown",
+        "fileMissingBody": "The database has this record, but its file isn't in the storage location. This is abnormal. Notify a system administrator and check the operation log for deletion or restore work.",
+        "fileMissingLogged": "Your reason for viewing was logged."
+      },
+      "tail": {
+        "end": "Reached the last entry. This record has {n} entries.",
+        "allOnePage": "Reached the last entry. This record has {n} entries, all on this page.",
+        "recording": "That is everything written so far. The session is still running and later input is still being recorded.",
+        "incomplete": "The record breaks off here: the system aborted abnormally and nothing after it was recorded. This doesn't mean the user typed nothing more.",
+        "truncated": "Readable up to {time}. Later content can't be read, which doesn't mean there was no input.",
+        "failed": "Recording stopped here. Cause: {cause}. Later input wasn't recorded.",
+        "failedNoCause": "Recording stopped here. Later input wasn't recorded.",
+        "tampered": "The content below fails verification and isn't shown. Notify a system administrator to preserve the record file and investigate.",
+        "empty": "This record has no input events.",
+        "refresh": "View latest content"
+      },
+      "toolbar": {
+        "events": "Input events",
+        "count": "Showing {shown} of {total}",
+        "display": "Display",
+        "text": "Readable text",
+        "hex": "Hex",
+        "keyEvents": "Key events",
+        "range": "Events {from}–{to} of {total}",
+        "showKeyCodes": "Show key codes"
+      },
+      "legend": {
+        "title": "Notation:",
+        "enter": "Enter",
+        "tab": "Tab",
+        "esc": "Esc",
+        "backspace": "Backspace",
+        "ctrlC": "Ctrl+C",
+        "arrows": "Arrow keys",
+        "other": "Other invisible characters (hex)"
+      },
+      "table": {
+        "seq": "#",
+        "offset": "Since start",
+        "time": "Time",
+        "source": "Source",
+        "content": "Content",
+        "contentHex": "Content (hex)",
+        "action": "Action",
+        "key": "Key"
+      },
+      "source": {
+        "user": "User",
+        "platform": "Platform",
+        "system": "System"
+      },
+      "blocked": "Blocked, not sent",
+      "platformHint": "Sent by the platform after blocking, to clear the unsent line on the host",
+      "unknownKind": "Unknown event kind 0x{kind}",
+      "marker": {
+        "end_user_closed": "Record ended: the user closed the session",
+        "end_client_lost": "Record ended: the user's connection dropped",
+        "end_target_closed": "Record ended: the target host ended the session",
+        "end_idle_timeout": "Record ended: idle timeout, closed by the platform",
+        "end_max_duration": "Record ended: maximum duration reached, closed by the platform",
+        "end_block_clear_failed": "Record ended: after a command was blocked, the unsent line on the host couldn't be cleared, so the platform closed the session",
+        "end_terminated": "Record ended: the platform terminated the session",
+        "writer_stalled": "Record writing stalled: later input is no longer recorded",
+        "unknown": "System marker: {code}"
+      },
+      "paging": {
+        "next": "Load next page ({from}–{to})",
+        "loading": "Loading…",
+        "note": "Each page you load is logged again with the same reason.",
+        "divider": "Page {n} · logged {time}",
+        "failed": "Page {n} didn't load: {reason}",
+        "retry": "Try again",
+        "attempted": "This attempt was logged."
+      },
+      "reenter": {
+        "title": "Enter a reason again to view",
+        "body": "To protect the content, keystroke records aren't kept in the browser. After a refresh or in a new tab, enter a reason again to view it (this logs another view).",
+        "action": "Enter a reason and view"
+      },
+      "action": {
+        "down": "Pressed",
+        "up": "Released"
+      },
+      "key": {
+        "left": "Left {key}",
+        "right": "Right {key}",
+        "unicode": "{char} ({code})",
+        "unknown": "Unknown key"
+      }
+    }
   }
 }

@@ -228,6 +228,14 @@
     ]
   },
   {
+    "path": "/sessions/keystrokes",
+    "kind": "all",
+    "permissions": [
+      "session:view",
+      "keystroke:view"
+    ]
+  },
+  {
     "path": "/transmission-inventory",
     "kind": "all",
     "permissions": [

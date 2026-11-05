@@ -232,6 +232,12 @@ const (
 	// 為免此語義只存在於註解，同一筆審計列的 Details 另記 session_id。
 	// 值長 15，在 resource 欄 varchar(20) 內
 	ResourceClipboardEvent AuditResource = "clipboard_event"
+	// ResourceKeystrokeRecord 鍵盤紀錄的中繼資料讀取與帶理由查看。
+	//
+	// resource_id 是**連線 id**（範圍鍵，同 ResourceClipboardEvent），Details 另記
+	// session_id。查看內容是被監控者原樣鍵入的材料，與看一眼連線詳情必須在 resource
+	// 欄上分得開。值長 16，在 resource 欄 varchar(20) 內
+	ResourceKeystrokeRecord AuditResource = "keystroke_record"
 
 	// ── A 類新分類（10 個）──
 	//
@@ -366,7 +372,7 @@ const (
 var AuditHubSubResources = map[AuditResource][]AuditResource{
 	// 一場連線的調查須答得出：誰取走了它的剪貼簿明文、錄影本體、指令原文。
 	// 三者的取證動作各自獨立分類後，若不在此展開就會從連線樞紐消失
-	ResourceSession: {ResourceClipboardEvent, ResourceRecording, ResourceCommand},
+	ResourceSession: {ResourceClipboardEvent, ResourceRecording, ResourceCommand, ResourceKeystrokeRecord},
 }
 
 // AuditReasonTokenExpired 認證中介層拒絕列的**審計側**原因碼：token 曾經有效但已到期。

@@ -144,6 +144,7 @@ var policyKeyZhLabels = identityLabels(
 	"retention_session_command_days",
 	"retention_alert_days",
 	"retention_recording_days",
+	"retention_keystroke_days",
 	// 檢查點鏈保留（audit-checkpoint-chain）
 	"retention_checkpoint_days",
 	// 封章觸發門檻（audit-checkpoint-chain）：週期與筆數先到先觸發

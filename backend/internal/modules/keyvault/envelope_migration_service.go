@@ -107,6 +107,11 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	// **pkColumn 非預設**：本表的主鍵是 generation_id（世代識別，不可重用），
 	// 不是 id；keyset 分頁與 CAS 寫回都以它為座標（pk 不參與 AAD）
 	{table: "offsite_profiles", column: "credentials_enc", pkColumn: "generation_id"},
+	// 鍵盤紀錄檔的檔案金鑰（每份紀錄一把，封存於紀錄列）。與 model 同批入冊——
+	// 本清單同時是 DEK 輪替重加密（只重包這個小欄位、不重寫檔案）與退役 DEK 銷毀前
+	// 引用掃描的來源，漏登會使仍有紀錄引用的 DEK 被誤判零引用而銷毀，紀錄永久不可解。
+	// 清除後該欄為空字串，掃描的 `<> ''` 謂詞自然跳過
+	{table: "keystroke_records", column: "file_key_enc"},
 }
 
 // EnvelopeMigrationResult 遷移結果（審計 Details 與清冊狀態用）

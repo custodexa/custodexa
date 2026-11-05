@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
@@ -105,6 +107,10 @@ type ConnectionHandler struct {
 	// ——fail-visible（缺口態）而非明文降級，但仍屬組裝錯誤，建構子參數使
 	// 「漏接」成為編譯錯誤。nil 僅限既有測試路徑
 	ClipboardEncrypt ClipboardEncryptor
+	// KeystrokeService 鍵盤紀錄服務：RDP／VNC 會話的 key 指令經 tunnel 轉送成功後
+	// 由 KeystrokeTap 交給紀錄；啟動失敗只留標記與通報，會話照常。
+	// nil＝既有測試路徑（不建立紀錄）
+	KeystrokeService *session.KeystrokeService
 }
 
 // NewConnectionHandler 建立連線處理器。
@@ -441,6 +447,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	// 剪貼簿審計旁路（clipboard-audit）：session 建立失敗時無主鍵，跳過留存
 	var sendTap, recvTap *ClipboardTap
 	var fileTap *FileTap
+	finishKeystroke := func() {}
 	if sess != nil {
 		sendTap = NewClipboardTap(database.DB, h.ClipboardEncrypt, sess.ID, "send")
 		recvTap = NewClipboardTap(database.DB, h.ClipboardEncrypt, sess.ID, "recv")
@@ -462,6 +469,20 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		}
 	}
 	tunnel := NewTunnel(ws, conn, sendTap, recvTap, fileTap)
+
+	// 鍵盤紀錄：與剪貼簿、檔案 tap 同處建立；錄影與鍵盤紀錄各自啟動、各自失敗，互不影響。
+	// 收尾在 tunnel 結束之後（含提早返回的路徑，Close 冪等）
+	if ksRec := h.startKeystroke(sess, protocol); ksRec != nil {
+		tunnel.SetKeystrokeTap(NewKeystrokeTap(ksRec))
+		var ksOnce sync.Once
+		finishKeystroke = func() {
+			ksOnce.Do(func() {
+				ksRec.AppendMarker(tunnel.EndMarker())
+				ksRec.Close()
+			})
+		}
+		defer finishKeystroke()
+	}
 
 	// 10. 註冊關閉回呼到 Registry：disconnect 指令經 tunnel 寫鎖送出，
 	// 取代裸 conn 直寫；登記於 tunnel 建立後、下方複查前——REVOKE-1 窗口語義不變
@@ -502,6 +523,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 
 	log.Println("[Handler] 連線已結束")
+	finishKeystroke()
 
 	// 11.3 處理 Guacamole RDP/VNC 錄製檔案。
 	// 落地鏈本體抽到 finalizeGraphicsRecording（graphics_recording.go）：行為逐字不變，
@@ -698,4 +720,28 @@ func fillDefaults(params map[string]string, protocol string) map[string]string {
 	}
 
 	return result
+}
+
+// startKeystroke 啟動圖形會話的鍵盤紀錄。KeystrokeService 或會話為 nil（既有測試路徑）時不做事；
+// 啟動失敗已由服務留下標記並通報，回傳 nil，轉發照常。
+func (h *ConnectionHandler) startKeystroke(sess *model.Session, protocol string) *session.KeystrokeRecorder {
+	if h.KeystrokeService == nil || sess == nil {
+		return nil
+	}
+	covered, reason := keystroke.Coverage(keystroke.KindGraphics)
+	if !covered {
+		if reason == "" {
+			return nil
+		}
+		if err := h.KeystrokeService.RecordNotCovered(sess.ID, protocol, reason); err != nil {
+			log.Printf("[Handler] 鍵盤紀錄判定列寫入失敗 (SessionID=%d): %v", sess.ID, err)
+		}
+		return nil
+	}
+	rec, err := h.KeystrokeService.Start(sess, protocol)
+	if err != nil {
+		log.Printf("[Handler] 鍵盤紀錄未啟動，轉發照常 (SessionID=%d)", sess.ID)
+		return nil
+	}
+	return rec
 }

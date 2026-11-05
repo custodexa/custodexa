@@ -187,6 +187,15 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 
 		// 審計資源的讀取記查詢條件摘要（PCI 10.2.1.3）
 		details := ""
+		if c.Request.Method == "POST" && resource == model.ResourceKeystrokeRecord {
+			// 帶理由查看（POST）：摘要只記連線 id。查詢字串一律不入摘要（理由只在本文，
+			// 查詢字串中的理由不被採用也不被記錄）
+			if sessionID := c.Param("id"); sessionID != "" {
+				if data, err := json.Marshal(map[string]string{"session_id": sessionID}); err == nil {
+					details = string(data)
+				}
+			}
+		}
 		if c.Request.Method == "GET" && auditSensitiveResources[resource] {
 			summary := map[string]string{}
 			if query := c.Request.URL.RawQuery; query != "" {
@@ -214,7 +223,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			// /commands），那些路徑無 :id，`c.Param("id")` 回空字串而不寫鍵——
 			// 摘要退化為只有 query 一鍵，與其他敏感資源同形
 			switch resource {
-			case model.ResourceClipboardEvent, model.ResourceRecording, model.ResourceCommand:
+			case model.ResourceClipboardEvent, model.ResourceRecording, model.ResourceCommand, model.ResourceKeystrokeRecord:
 				if sessionID := c.Param("id"); sessionID != "" {
 					summary["session_id"] = sessionID
 				}
@@ -335,6 +344,10 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 	} else if strings.HasSuffix(path, "/review") {
 		// HasSuffix：GET /reviews/pending 不含此結尾，不受影響
 		action = model.ActionReview // 破窗事後補審
+	} else if strings.HasSuffix(path, "/keystrokes/view") {
+		// 查看鍵盤紀錄是帶理由的讀取（POST 只為把理由放進本文）；不得記成建立，
+		// 否則每次查看都灌大每日簽核的高危操作數且與真正的新增同形
+		action = model.ActionRead
 	} else if strings.HasSuffix(path, "/source-policy/check") {
 		// 允許來源網段的判定端點是**唯讀試算**：它拿一份尚未儲存的清單草稿問
 		// 「這個位址進不進得來」，不寫任何狀態。上面的動詞推導卻把它記成
@@ -402,6 +415,9 @@ func extractResource(path string) model.AuditResource {
 			return model.ResourceAuditIntegrity
 		case "clipboard-events":
 			return model.ResourceClipboardEvent
+		// 鍵盤紀錄（`/sessions/:id/keystrokes{,/view}`）：同為會話內取證，先於 sessions 判定
+		case "keystrokes":
+			return model.ResourceKeystrokeRecord
 		// `recording` 是**單數**段（`/sessions/:id/recording{,/download,/stream,/token}`），
 		// 與主迴圈的跨會話 `recordings`（`/recordings/stats|stream`）不同段；
 		// 兩者共用 ResourceRecording，resource_id 的語義差異見 model 常數註解
@@ -645,6 +661,9 @@ var auditSensitiveResources = map[model.AuditResource]bool{
 	// 剪貼簿證物讀取：Content 是 64KB 明文欄，
 	// 該端點是調查流程中「取走證物」的動作，比任何審計列表讀取更需要留痕
 	model.ResourceClipboardEvent: true,
+	// 鍵盤紀錄：查看回傳被監控者原樣鍵入的內容（含密碼）。
+	// 中繼資料 GET 與帶理由的 POST view 都歸此資源，摘要帶 session_id；回應本文不被擷取
+	model.ResourceKeystrokeRecord: true,
 	// 錄影調閱：回傳的是終端畫面
 	// 錄影本體——被監控者產生的原始材料，且可能含憑證輸入畫面。取走它與看一眼
 	// 連線詳情必須分得開，且須答得出「取的是哪一場連線的錄影」（details.session_id）。

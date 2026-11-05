@@ -111,6 +111,15 @@ export async function createConnectTokenWithConsent(assetId, accountId = null) {
       ).catch(() => {})
       throw error
     }
+    if (resp?.status === 403 && resp.data?.reason === 'keystroke_unavailable') {
+      // 鍵盤紀錄 fail-close：與錄影同型，用對話框明確告知
+      await ElMessageBox.alert(
+        t('connect.keystrokeUnavailableMessage'),
+        t('connect.keystrokeUnavailableTitle'),
+        { confirmButtonText: t('connect.ok'), type: 'error' }
+      ).catch(() => {})
+      throw error
+    }
     if (resp?.status === 403 && resp.data?.reason === 'approval_required') {
       const pendingId = resp.data?.pending_request_id
       await ElMessageBox.alert(

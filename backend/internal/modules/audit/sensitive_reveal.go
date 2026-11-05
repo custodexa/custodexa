@@ -65,9 +65,13 @@ func (s *SensitiveRevealService) Report(ctx context.Context, in SensitiveRevealI
 	}
 	// All values above are strings/integers; marshaling cannot fail.
 	note, _ := json.Marshal(details)
+	reasonCode := model.AlertKindSensitiveReveal
+	if in.SourceType == model.AlertReasonKeystrokeReveal {
+		reasonCode = model.AlertReasonKeystrokeReveal
+	}
 	err := gatewayapi.RecordAlert(ctx, s.alerts, gatewayapi.CommandAlert{
 		Kind: model.AlertKindSensitiveReveal, RuleName: model.AlertKindSensitiveReveal,
-		ReasonCode: model.AlertKindSensitiveReveal, Level: "medium", Command: "",
+		ReasonCode: reasonCode, Level: "medium", Command: "",
 		SessionID: in.SessionID, Actor: in.Actor, AssetID: in.AssetID,
 		OccurredAt: time.Now().UTC(), Disposition: model.AlertDispositionPending, Note: string(note),
 	})

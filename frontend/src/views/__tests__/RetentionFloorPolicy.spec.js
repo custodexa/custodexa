@@ -83,6 +83,7 @@ const DATA_KEYS = [
   ['retention_session_command_days', '指令流保留天數'],
   ['retention_alert_days', '告警記錄保留天數'],
   ['retention_recording_days', '連線錄影保留天數'],
+  ['retention_keystroke_days', '鍵盤紀錄保留天數'],
 ]
 
 const retentionInt = (key, label, value) => ({
@@ -144,7 +145,7 @@ const expectNotice = (text) => {
   FORBIDDEN.forEach((s) => expect(text).not.toContain(s))
 }
 
-describe('資料保留四鍵的下限', () => {
+describe('資料保留五鍵的下限', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getSyslogMock.mockResolvedValue({
@@ -154,7 +155,7 @@ describe('資料保留四鍵的下限', () => {
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
   })
 
-  it('四欄常駐顯示下限提示', async () => {
+  it('五欄常駐顯示下限提示', async () => {
     const wrapper = await mountPolicies()
     DATA_KEYS.forEach(([key]) => {
       const hint = wrapper.find(`[data-test="retention-floor-hint-${key}"]`)
@@ -257,7 +258,7 @@ describe('縮短確認與通知字樣', () => {
     expectNotice(failClose.text())
 
     // 區塊說明：補句在，現行內容仍在
-    expect(wrapper.text()).toContain('四項資料保留天數都有最少天數，不能再短。')
+    expect(wrapper.text()).toContain('五項資料保留天數都有最少天數，不能再短。')
     expect(wrapper.text()).toContain('檢查點保留天數出廠為 0＝永久')
   })
 })

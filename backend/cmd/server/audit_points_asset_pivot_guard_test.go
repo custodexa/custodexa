@@ -126,6 +126,7 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-248": {pivotFilled, false, "主機帳號盤點結果的忽略與重新開啟：AssetID 取結果列的資產"},
 	"AP-273": {pivotFilled, false, "堡壘機專用帳號測試登入的開始審計：AssetID 取該資產"},
 	"AP-274": {pivotFilled, false, "堡壘機專用帳號測試登入的結束審計：AssetID 取該資產"},
+	"AP-275": {pivotFilled, false, "鍵盤紀錄查看嘗試列：AssetID 取該連線的資產"},
 	"AP-179": {pivotNotAsset, false, "啟動時偵測其他實例：主體是整個部署（守衛鎖與實例），不是單一資產"},
 	"AP-176": {pivotFilled, false, "重啟時改密中的輪替成員轉為已送出未驗證：AssetID 取該成員掛載的資產"},
 	"AP-105": {pivotFilled, false, "帳本原文調閱的同步審計：有會話時解析資產主體；無會話的工具呼叫維持空資產"},

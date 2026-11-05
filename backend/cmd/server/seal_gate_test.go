@@ -215,6 +215,8 @@ var stage2ServiceProbe = map[string]string{
 	// 接線完成，本項自空字串改填該路徑——封印期它必須同樣回 503
 	"checkpointSigning":     "/api/v1/audit-checkpoints/public-key",
 	"sshHandler":            "/api/v1/ssh",
+	// keystrokeService：鍵盤紀錄服務與對帳，純內部設施；查看端點屬後續段，本段無專屬路由
+	"keystrokeService":      "",
 	"hostKeyService":        "/api/v1/assets/:id/host-key",
 	// hostAccountInventoryService：盤點服務；對外面是全域清單端點，封印期同樣須 503
 	"hostAccountInventoryService": "/api/v1/account-inventory/findings",
