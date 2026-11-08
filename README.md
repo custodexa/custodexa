@@ -32,7 +32,7 @@ carry a signature an auditor can verify offline.
 
 For a supported Linux server, the release package and `custodexa.sh` are the installation, backup and upgrade path. `scripts/quickstart.sh` is for development and macOS or Windows evaluation.
 
-Disk: at least 40 GB free, of which about 10 GB is the Docker data folder. Recordings and backups are counted on top of that; the growth estimate is in [Capacity and storage planning](docs/QUICKSTART.md#6-capacity-and-storage-planning).
+Disk: at least 40 GB free, of which about 10 GB is the Docker data folder. Recordings and backups are counted on top of that; the growth estimate is in [Capacity and storage planning](docs/QUICKSTART.md#6-capacity-and-storage-planning). Upgrading to 1.23.0 needs extra free space for the database conversion: about twice the size of the database, plus 2 GiB ([details](docs/ops/upgrade-sop.md#converting-the-bundled-database-to-postgresql-18)).
 
 From 1.14.0, the release download guide fetches the latest package and `SHA256SUMS`, checks the package SHA-256, unpacks it to `/opt/custodexa`, and opens the management menu:
 
@@ -108,8 +108,8 @@ By default the platform's own master key never touches disk. Your first visit op
 the **master-key initialization page**; the key is generated locally in your browser.
 Save it — every restart stays sealed until it is entered again. Unattended deployments
 can switch to the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
-`.env.example` to `.env`, follow its inline notes, then `docker compose up -d`.
-On a Linux host, prepare the recordings directory before that first `up`, as described in
+`.env.example` to `.env`, follow its inline notes, then start with `bash scripts/quickstart.sh --up`.
+On a Linux host, prepare the recordings directory before that first start, as described in
 [Start the services](docs/QUICKSTART.md#3-start-the-services).
 On Windows, run the script inside WSL.
 
@@ -119,7 +119,9 @@ port number; a host already running something there takes a different pair throu
 a certificate it generated itself, so the address the script prints opens with a browser
 warning until you install the accompanying certificate authority: download it from
 `/custodexa-ca.crt` and hand it to the machines that connect. Leaving TLS to a load
-balancer you already run is covered in [docs/QUICKSTART.md](docs/QUICKSTART.md).
+balancer you already run is covered in [docs/QUICKSTART.md](docs/QUICKSTART.md): set `TLS_MODE=external`
+in `.env`. Likewise, PostgreSQL on a server of your own takes one line, `EXTERNAL_DB_HOST`; the script
+derives the rest, and the same guide has the details.
 
 To serve it under your own host name, put that name in `.env`; the proxy configuration picks it up
 at startup. The certificate from the first start stays in `tls/` until you remove or replace it;
@@ -148,7 +150,9 @@ Full configuration options, development mode, and troubleshooting are covered in
 
 **Want to hack on it?** Uncomment `COMPOSE_FILE=docker-compose.dev.yml` in `.env` to
 switch to the development stack (hot reload for both frontend and backend, plus test
-target machines to connect to). Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+target machines to connect to). The development stack has its own database and entry point, so the
+script refuses it together with `EXTERNAL_DB_HOST` or `TLS_MODE=external`. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Why Custodexa
 
@@ -213,7 +217,7 @@ watermark), session replay with per-session command log, cross-session command a
 
 ## Architecture
 
-**Backend** Go · Gin · GORM · PostgreSQL 16　**Frontend** Vue 3 · Element Plus · Vite
+**Backend** Go · Gin · GORM · PostgreSQL 18　**Frontend** Vue 3 · Element Plus · Vite
 **Text terminals** xterm.js + native backend proxying　**Graphical protocols**
 Apache Guacamole (guacd; RDP/VNC only)
 

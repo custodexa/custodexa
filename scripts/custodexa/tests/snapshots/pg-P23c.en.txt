@@ -1,0 +1,10 @@
+[FAIL] The data folder is incomplete, so the database will not start.
+       Nothing was changed.
+  /opt/custodexa/data/postgresql/18/docker is missing, or holds no PG_VERSION file.
+  Starting now would make PostgreSQL 18 create a new database with no
+  data in an empty folder.
+  Find the data first (for example among the kept folders /opt/custodexa/data/postgresql.*),
+  or restore the backup taken before the upgrade:
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar
+  To see the state of this deployment:
+    sudo /opt/custodexa/custodexa.sh status

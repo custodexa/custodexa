@@ -1,0 +1,10 @@
+[FAIL] 上次的升級在第 8 步「轉換資料庫」時中斷，要先完成升級。
+       沒有做任何變更。
+  版本仍是 1.13.0；舊資料 /opt/custodexa/data/postgres 完整、沒有被改動。
+  再執行一次升級即可接續（轉換到一半的資料先移到
+  /opt/custodexa/data/postgresql.partial-convert-<時間>，不刪除）：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+  接續的起點依實況：能確認停機後應用沒有再啟動過時沿用備份、從第 8 步
+  重來，否則整個升級重跑、重新停機並備份；執行 upgrade 時會先說明是哪一種。
+  查看這個部署的狀態：
+    sudo /opt/custodexa/custodexa.sh status

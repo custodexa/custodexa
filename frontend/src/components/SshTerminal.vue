@@ -458,6 +458,9 @@ async function connect() {
 // eslint-disable-next-line no-control-regex -- 本正則的用途就是比對控制字元
 const TERMINAL_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g
 
+// 資料庫命令列守衛無法確定整行內容而未送出的提示碼（黃字、不帶規則名）
+const LINE_UNCERTAIN_CODE = 'RULE_DB_LINE_UNCERTAIN'
+
 function sanitizeForTerminal(text) {
   return String(text ?? '').replace(TERMINAL_CONTROL_CHARS, '')
 }
@@ -474,7 +477,9 @@ function writeNotice(msg) {
   )
   const rule = typeof msg.params?.rule === 'string' ? msg.params.rule.trim() : ''
   const text = rule ? t('sshTerminal.noticeWithRule', { message: base, rule }) : base
-  terminal?.write(`\r\n\x1b[31m${sanitizeForTerminal(text)}\x1b[0m\r\n`)
+  // 「無法確認整行內容」不是命中規則，用黃字避免被讀成使用者做錯了什麼；其餘維持紅字
+  const color = msg.code === LINE_UNCERTAIN_CODE ? 33 : 31
+  terminal?.write(`\r\n\x1b[${color}m${sanitizeForTerminal(text)}\x1b[0m\r\n`)
 }
 
 function reconnect() {

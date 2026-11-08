@@ -12,6 +12,9 @@
 # shellcheck source=lib/upgrade_query.sh
 . "${BASH_SOURCE[0]%/*}/upgrade_query.sh"
 
+# shellcheck source=lib/cmd_db_upgrade.sh
+. "${BASH_SOURCE[0]%/*}/cmd_db_upgrade.sh"
+
 CX_MENU_SELF=""   # the script as it was started (<root>/custodexa.sh follows current/ after an upgrade)
 CX_MENU_KIND=""   # none | package
 CX_MENU_VERSION=""
@@ -56,7 +59,12 @@ cx_menu_actions() {
           else printf 'stop rs_%s help' "$(cx_rs_return_action)"; fi ;;
       esac ;;
     none) printf '%s' "install restore_new load_first help" ;;
-    package) printf '%s' "status start stop upgrade backup restore load help" ;;
+    package)
+      printf '%s' "status start stop upgrade backup restore load "
+      # The bundled database has a major version of its own to look after; an external one is the
+      # operator's. The entries before it keep their numbers either way.
+      [[ " $(cx_state_get current.overlays) " == *" external-database "* ]] || printf 'db_upgrade '
+      printf help ;;
   esac
 }
 
@@ -76,7 +84,7 @@ cx_menu_read() {
 cx_menu_pick() {
   local a
   while :; do
-    printf '%s' "$(cx_msg menu_choose_sub "$1")"
+    printf '%s' "$(cx_msg "${2:-menu_choose_sub}" "$1")"
     cx_menu_read a
     [ -n "$a" ] || return 1
     if [[ $a =~ ^[1-9][0-9]*$ ]] && [ "$a" -le "$1" ]; then
@@ -264,6 +272,65 @@ cx_menu_upgrade() {
 }
 
 # cx_menu_do <action>: returns only to show the main menu again (a question answered with Enter).
+# cx_menu_db_label: the label of the database upgrade entry. The bracket says what is there to do:
+# nothing is said when the major cannot be read.
+cx_menu_db_label() {
+  local disk
+  CX_OVERLAYS=$(cx_state_get current.overlays)
+  if cx_dbo_current 2>/dev/null; then
+    cx_bk_vars
+    disk=$(cx_pgm_dir_major "$CX_BK_DATA" "$CX_DBO_DIR" "$CX_DBO_PGDATA") || disk=""
+    if [ -n "$disk" ] && [ "$disk" -lt "$CX_DBO_MAJOR" ]; then
+      cx_msg menu_db_upgrade_to "$disk" "$CX_DBO_MAJOR"
+      return
+    fi
+    if [ -n "$disk" ]; then
+      cx_msg menu_db_upgrade_cur "$disk"
+      return
+    fi
+  fi
+  cx_msg menu_db_upgrade
+}
+
+# cx_menu_db_upgrade: P11 A. The old folders are listed and one is picked (or all); the removal is
+# the command's own, with its own confirmation. The data older than the release: the command converts.
+cx_menu_db_upgrade() {
+  local n i e kind p major bytes w
+  local -a rows
+  CX_OVERLAYS=$(cx_state_get current.overlays)
+  cx_dbo_current 2>/dev/null || { cx_menu_run db-upgrade; return 0; }
+  cx_dbu_read
+  if [ -z "$CX_DBU_DISK" ] || [ "$CX_DBU_DISK" != "$CX_DBO_MAJOR" ]; then
+    cx_menu_run db-upgrade
+    return 0
+  fi
+  cx_dbo_list "$CX_DBU_DATA"
+  rows=("${CX_DBO_ROWS[@]}")
+  n=${#rows[@]}
+  w=$(cx_dbo_size_width)
+  cx_dbu_head
+  cx_line OK "$(cx_msg dbu_latest)" | sed 's/^/  /'
+  if [ "$n" -eq 0 ]; then
+    printf '\n%s\n' "$(cx_msg dbu_nothing)"
+    return 0
+  fi
+  printf '\n%s\n' "$(cx_msg dbu_old_head)"
+  for ((i = 0; i < n; i++)); do
+    IFS='|' read -r kind p major bytes <<<"${rows[i]}"
+    cx_menu_item $((i + 1)) "$p"$'\n'"PostgreSQL $(cx_dbo_major_text "$major")    $(cx_dbo_size_text "$bytes" "$w")    $(cx_dbo_kind_text "$kind" 1)"
+  done
+  [ "$n" -lt 2 ] || cx_menu_item $((n + 1)) "$(cx_msg dbu_old_all)"
+  printf '\n'
+  [ "$n" -lt 2 ] || n=$((n + 1))
+  cx_menu_pick "$n" menu_choose_remove || return 1
+  if [ "$CX_MENU_PICK" -le "${#rows[@]}" ]; then
+    IFS='|' read -r _ e _ _ <<<"${rows[CX_MENU_PICK - 1]}"
+    cx_menu_run db-upgrade --remove-old "$e"
+  else
+    cx_menu_run db-upgrade --remove-old
+  fi
+}
+
 cx_menu_do() {
   case $1 in
     install)
@@ -290,6 +357,7 @@ cx_menu_do() {
       cx_menu_run restore "$CX_MENU_FILE" --same-host
       ;;
     upgrade) cx_menu_upgrade || return 0 ;;
+    db_upgrade) cx_menu_db_upgrade || return 0 ;;
     load | load_first)
       cx_menu_pick_file bundle || return 0
       cx_menu_run load "$CX_MENU_FILE"
@@ -317,7 +385,8 @@ cx_menu_show() {
   printf '%s\n\n' "$(cx_msg menu_language)"
   for a in "${actions[@]}"; do
     i=$((i + 1))
-    cx_menu_item "$i" "$(cx_msg "menu_$a")"
+    if [ "$a" = db_upgrade ]; then cx_menu_item "$i" "$(cx_menu_db_label)"
+    else cx_menu_item "$i" "$(cx_msg "menu_$a")"; fi
   done
   cx_menu_item 0 "$(cx_msg menu_quit)"
   printf '\n'

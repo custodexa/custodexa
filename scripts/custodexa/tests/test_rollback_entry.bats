@@ -22,6 +22,10 @@ unchanged_after() {
 
 @test "rollback entry: equal migrations switch back without touching data, configuration, certificates or backups" {
   local protected
+  # The block of .env is in place, as an earlier start or backup of this deployment leaves it; the
+  # entry puts it there itself otherwise, which is not what this case is about.
+  run bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; cx_env_sync_managed "$2/.env" overlays ""' _ "$SRC" "$ROOT"
+  [ "$status" -eq 0 ]
   protected=$(tree_of "$ROOT/data"; tree_of "$ROOT/tls"; sha256sum "$ROOT/.env"; tree_of "$ROOT/backups")
   rb_run en --yes
   [ "$status" -eq 0 ] || { echo "$output"; cat "$DB/events"; return 1; }

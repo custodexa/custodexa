@@ -14,6 +14,8 @@ Restore preview: this new host (nothing has been changed yet)
                  custodexa-images-1.16.0-x86_64.tar
   Deployment     bundled database; self-signed certificate; master key:
                  entered in the browser
+                 the form at backup time; the restore keeps it. This host
+                 is asked only for the values of the host values rows below
   Restores       database 17.4 GB, audit files 12 MB, settings file
                  .env, certificates tls/
   Recordings     not in the backup file (212 GB at the source); a list of

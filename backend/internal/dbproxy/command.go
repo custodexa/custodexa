@@ -248,6 +248,8 @@ func PasswordPrompt(t Target) *localpty.PasswordAuth {
 			// redis-cli --askpass 走遮罩式 raw 讀取（實測 ICANON=false／ECHO=false），
 			// 與其互動模式同態，無 termios 判準可用
 			RequireCanonical: false,
+			// raw 讀取下 Enter 是 CR，LF 不被當成結尾而會併進密碼
+			Terminator: '\r',
 		}
 	case "mssql":
 		return &localpty.PasswordAuth{
@@ -260,6 +262,7 @@ func PasswordPrompt(t Target) *localpty.PasswordAuth {
 			// ECHO 關），與其互動 readline 同態——與 redis-cli --askpass 完全同型，
 			// 無 termios 判準可用
 			RequireCanonical: false,
+			// liner 的密碼讀取同時接受 CR 與 LF 為結尾，維持零值（LF）
 		}
 	default:
 		return nil

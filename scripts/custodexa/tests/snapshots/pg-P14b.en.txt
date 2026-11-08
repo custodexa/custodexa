@@ -1,0 +1,8 @@
+[FAIL] Old database folders cannot be removed now. Nothing was changed.
+  [FAIL] the current database does not answer, so PostgreSQL 18
+         cannot be confirmed to work
+  [ OK ] the last upgrade finished and the new version has started
+  [ OK ] no upgrade, rollback or restore is in progress
+  Start the service and check the status, then try again:
+    sudo /opt/custodexa/custodexa.sh start
+    sudo /opt/custodexa/custodexa.sh status

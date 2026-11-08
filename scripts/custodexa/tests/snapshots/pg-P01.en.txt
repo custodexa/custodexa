@@ -1,0 +1,69 @@
+Custodexa upgrade preview (nothing has been changed yet)
+
+  Installed          1.13.0
+  Upgrade to         1.23.0
+  Deployment         /opt/custodexa
+  Master key mode    entered in the browser
+
+What will happen
+  1. Wait until all audit records are in the database, then stop the
+     services (the database keeps running)
+  2. Full backup: database, recordings, audit files, settings,
+     certificates. About 3.5 GB; 211 GB free where backups go
+  3. Convert the database from PostgreSQL 16 to 18 (see "Database
+     conversion" below)
+  4. Switch to 1.23.0 and start it
+  5. Check the version, that it is the same data as before, and that
+     the keys did not change
+
+Database conversion: PostgreSQL 16 -> 18
+  Why                1.23.0 moves the bundled database to
+                     PostgreSQL 18 (community support until 2030);
+                     PostgreSQL 16 is supported until 2028. This is
+                     part of the upgrade and cannot be skipped.
+  How                The data is exported, then imported into a
+                     new PostgreSQL 18 database
+  Old data           kept as it is in /opt/custodexa/data/postgres, not changed
+  New data           /opt/custodexa/data/postgresql
+  Space              /opt   the backup and the new database are both here
+                            needs 7.5 GB, 211 GB free
+                             (backup 3.5 GB, new database 1.0 GB,
+                            export scratch 1.0 GB, margin 2 GB)
+                     /var   Docker image storage /var/lib/docker
+                            needs 5.6 GB (new images), 60.0 GB free
+  Time               about 2 to 4 minutes, longer on a slow disk;
+                     counted in the downtime below
+  If it fails        stops before the version changes: 1.13.0
+                     starts again and works as before; the old data
+                     is not changed
+  To go back to 1.13.0 later there are two ways, and both return to
+  the data of the upgrade:
+    - rollback: uses the old data kept above
+    - restore of the backup taken before the upgrade
+    Both are the same in one respect: data written after the new
+    version starts (audit records, connection records, recording
+    index, setting and account changes) is not brought back.
+
+Good to know
+  - Expect 10 to 20 minutes of downtime (the database conversion
+    included). Nobody can connect meanwhile, and open connections
+    will be cut (2 are open now)
+  - After the upgrade the system stays sealed until someone enters
+    the master key on the unseal page
+  - Image checksums, signatures and build provenance are verified
+  - Have someone familiar with operating this host run it inside a
+    terminal tool that keeps the session alive (such as tmux or
+    screen), to reduce the risk that a dropped SSH connection stops
+    the upgrade
+
+.env will change (rewritten in step 9; no other setting is touched)
+  - remove   COMPOSE_FILE=current/compose.yml
+  + add      the managed block at the end of the file (one marker
+             line before and after):
+             COMPOSE_FILE=current/compose.yml
+             COMPOSE_PROFILES=bundled-db,builtin-tls
+  From 1.23.0 on, the form of the deployment comes from two lines:
+  EXTERNAL_DB_HOST (database) and TLS_MODE (web entry). The script
+  maintains the managed block; do not edit it by hand.
+
+Start the upgrade? [y/N]

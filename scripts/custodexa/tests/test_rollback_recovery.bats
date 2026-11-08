@@ -143,6 +143,28 @@ settled() {
   ! grep -q '^up' "$DB/events" || return 1
 }
 
+@test "rollback recovery: commands toward the newer version run that release's own script, the way back runs the root script" {
+  fresh
+  touch "$DB/rb.health"
+  rb_run en --yes
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $(rb_state last_rollback.step) =~ ^[2-4]$ ]] || { echo "step $(rb_state last_rollback.step)"; return 1; }
+  [ "$(rb_state last_rollback.direction)" != revert ]
+  [ -f "$ROOT/releases/1.16.2/custodexa.sh" ]
+  # Going back (--resume) is for the root script; returning to the new version (--revert) is for the new release's.
+  [[ $output == *"sudo $ROOT/custodexa.sh rollback --resume"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"sudo $ROOT/releases/1.16.2/custodexa.sh rollback --revert"* ]] || { echo "$output"; return 1; }
+  [[ $output != *"$ROOT/custodexa.sh rollback --revert"* ]] || { echo "$output"; return 1; }
+  # An interrupted revert: its --resume also runs the new release's script.
+  rm "$DB/rb.health"
+  rb_interrupt cx_rb_switch after
+  rb_run en --revert --yes
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ "$(rb_state last_rollback.direction)" = revert ]
+  [[ $output == *"sudo $ROOT/releases/1.16.2/custodexa.sh rollback --resume"* ]] || { echo "$output"; return 1; }
+  [[ $output != *"$ROOT/custodexa.sh rollback --"* ]] || { echo "$output"; return 1; }
+}
+
 @test "rollback recovery: pending rollback rejects a new one, backup and upgrade, while start and status remain usable" {
   fresh
   touch "$DB/rb.health"
@@ -160,12 +182,9 @@ settled() {
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   run bash "$ROOT/custodexa.sh" status --lang en </dev/null
   [ "$status" -ne 3 ] && [[ $output == *'rollback --resume'* && $output == *'rollback --revert'* ]] || { echo "$output"; return 1; }
-  # Execute the printed logs command from / (without sudo inside the test container).
-  local command
-  command=$(printf '%s\n' "$identity" | sed -n 's/^    sudo \(docker compose .* logs --tail 50 backend\)$/\1/p')
-  [ -n "$command" ]
-  run bash -c 'cd / && eval "$1"' _ "$command"
-  grep -q -- "-f $ROOT/current/compose.yml logs --tail 50 backend" "$FAKE_DOCKER_LOG"
+  # The printed logs command is the plain container one: no compose file, no project name.
+  printf '%s\n' "$identity" | grep -qxF "    sudo docker logs --tail 50 custodexa-backend"
+  [[ $identity != *"docker compose"* ]]
 }
 
 @test "rollback recovery: reverting a never-started upgrade records the new start before up and never clears it" {

@@ -302,6 +302,8 @@ dr_install() {
   if [ "$DR_FORM" = external ]; then
     ex_pg_start "$DR_SERVER" 17 "$DR_EXT_PORT"
     ex_db_create "$DR_SERVER"
+    # The published release installed here reads its external database as a COMPOSE_FILE overlay
+    # (overlays layout); the upgrade to the working tree converts it.
     ex_preset "$LV_ROOT" "COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml" \
       "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$DR_EXT_PORT" "DB_NAME=$EX_DB" "DB_USER=$EX_USER" \
       "DB_PASSWORD=$EX_PASS" KEK_PROVIDER=env

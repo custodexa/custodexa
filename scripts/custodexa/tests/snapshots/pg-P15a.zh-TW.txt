@@ -1,0 +1,8 @@
+資料庫
+  [ OK ] PostgreSQL 18（內建），資料在 /opt/custodexa/data/postgresql，18.2 GB
+         資料校驗（data checksums）已開啟
+  保留中的舊目錄 2 個，可從選單「資料庫升級」清除：
+         /opt/custodexa/data/postgres
+             PostgreSQL 16    17.4 GB    回到上一版要用它
+         /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+             PostgreSQL 18    18.0 GB    回到上一版之前的新版資料，沒有帶回

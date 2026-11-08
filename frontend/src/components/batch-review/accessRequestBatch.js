@@ -90,6 +90,7 @@ export function decidedByMe(row, kind, me) {
 const BATCH_REASON_KEYS = {
   RULE_ACCESS_REQUEST_NOT_ELIGIBLE_APPROVER: 'approvals.batch.notEligible',
   RULE_ACCESS_REQUEST_SELF_APPROVAL: 'approvals.batch.selfApproval',
+  RULE_ACCESS_REQUEST_CONNECT_REQUIRED: 'approvals.batch.connectRequired',
 }
 
 export function batchRejectReason(item) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/dbproxy"
 	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
@@ -79,6 +80,8 @@ type bridge struct {
 
 	// blocker 指令阻斷（command-blocking 輪 B）：nil 時直通
 	blocker *commandBlocker
+	// reconnect 資料庫命令列的改連目標守衛（固定行為，不依指令規則）：nil 時直通
+	reconnect *reconnectGuard
 
 	// 會話超時（session-timeout）：0 = 停用該檢查
 	idleTimeout    time.Duration
@@ -226,6 +229,11 @@ func (b *bridge) attachMonitor(tap *monitorTap) {
 // attachBlocker 掛載指令阻斷器（須在 Run 前呼叫）
 func (b *bridge) attachBlocker(blocker *commandBlocker) {
 	b.blocker = blocker
+}
+
+// attachReconnectGuard 掛載資料庫命令列的改連目標守衛（須在 Run 前呼叫）
+func (b *bridge) attachReconnectGuard(g *reconnectGuard) {
+	b.reconnect = g
 }
 
 // Run 啟動雙向轉發，阻塞直到任一方向結束
@@ -401,11 +409,15 @@ func (b *bridge) writeRaw(raw []byte) {
 // Agent input arrives without remote echo. Only this added evidence line is
 // redacted; ordinary host output and human WS recording retain their semantics.
 func (b *bridge) redactBlockedInput(input string) string {
+	return redactBlockedInputFor(b.blocker.protocol, input)
+}
+
+// redactBlockedInputFor 依協議的輸出規則遮蔽 agent 輸入（規則不可用即整段不顯示）。
+func redactBlockedInputFor(protocol, input string) string {
 	matcher := audit.GetAlertMatcher()
 	if matcher == nil || matcher.BlockerHealth() != nil {
 		return "[REDACTION_UNAVAILABLE]"
 	}
-	protocol := b.blocker.protocol
 	rules, err := sensitivescan.Compile(matcher.OutputRules(protocol, model.KindAgent), protocol)
 	if err != nil {
 		return "[REDACTION_UNAVAILABLE]"
@@ -529,47 +541,33 @@ func (b *bridge) pumpInput() {
 			data := []byte(msg.Data)
 			// 使用者輸入＝活躍，重置閒置計時（session-timeout；resize/ping 不算）
 			b.touchActive()
-			if b.blocker != nil {
-				if blockedRule := b.blocker.Inspect(data); blockedRule != nil {
-					// 阻斷：本段輸入不轉發；送 MsgNotice 控制幀（規則名以
-					// params 傳遞、由前端組字與上色）；中斷鍵清遠端行緩衝
-					b.writeNoticeMessage(apierror.CodeCommandBlocked,
-						map[string]string{"rule": blockedRule.Name})
-					blockedInput := ""
-					if _, inProcess := b.ws.(*InProcessTransport); inProcess {
-						blockedInput = b.redactBlockedInput(b.blocker.blockedInput)
-					}
-					b.writeBlockedMarkerToSinks(blockedRule.Name, blockedInput)
+			// 改連目標守衛先於指令阻斷：整行含改連指令（或無法確定整行內容）時，
+			// 該行與其後同幀的內容不轉送
+			var reconnectBlk *reconnectBlock
+			if b.reconnect != nil {
+				data, reconnectBlk = b.reconnect.Filter(data)
+				// 守衛不轉送的 ESC 序列照樣進鍵盤紀錄的 blocked 旁路
+				if discarded := b.reconnect.takeDiscarded(); len(discarded) > 0 {
 					for _, sink := range b.blockedSinks {
-						sink.WriteBlockedInput(data) // 被阻斷、未轉送的那一塊
+						sink.WriteBlockedInput(discarded)
 					}
-					if _, err := b.conn.Write([]byte{0x03}); err != nil { // Ctrl+C 清遠端已鍵入行
-						// fail-close：清行失敗＝遠端行緩衝可能殘留被阻斷指令的
-						// 前綴，使用者下次按 Enter 就送出殘句——阻斷等於沒發生。
-						// 原行為只 log 續跑（fail-open），改為終止會話：先送碼化
-						// MsgError 說明原因，再記 end_reason 讓終止落入審計軌
-						// 規則名進日誌前淨化：AlertRule.Name 可含換行／ESC，
-						// 未淨化即可在 log 裡偽造整行事件或操縱讀 log 的終端
-						log.Printf("[SSHProxy] 阻斷後清行失敗，終止會話: session=%v rule=%q err=%v",
-							b.sessionID(), notifycat.SanitizeOpaque(blockedRule.Name), err)
-						b.writeErrorMessage(apierror.CodeCommandBlockClearFailed)
-						b.setEndReason(endReasonBlockClearFailed)
-						return // defer b.stop() 收線
-					}
-					for _, sink := range b.platformSinks {
-						sink.WritePlatformInput([]byte{0x03})
-					}
-					log.Printf("[SSHProxy] 指令已阻斷: session=%v rule=%q",
-						b.sessionID(), notifycat.SanitizeOpaque(blockedRule.Name))
-					continue
+				}
+				if reconnectBlk != nil && b.blocker != nil {
+					// 被攔下的行不會走到阻斷器的 Enter；清掉它已累積的前綴，
+					// 免得與下一行拼接
+					b.blocker.buf.Reset()
 				}
 			}
-			if _, err := b.conn.Write(data); err != nil {
-				log.Printf("[SSHProxy] 寫入 SSH stdin 失敗: %v", err)
-				return
+			// 整幀都被攔下時沒有可轉送的內容；其餘情形維持原行為（含空幀）
+			if len(data) > 0 || reconnectBlk == nil {
+				if stop := b.forwardInput(data); stop {
+					return
+				}
 			}
-			for _, sink := range b.inputSinks {
-				sink.WriteInput(data)
+			if reconnectBlk != nil {
+				if stop := b.blockReconnect(reconnectBlk); stop {
+					return
+				}
 			}
 		case MsgResize:
 			payload, err := ParseResizePayload(msg.Data)
@@ -589,4 +587,95 @@ func (b *bridge) pumpInput() {
 			// connected/error/pong 為後端→前端方向，前端送來即忽略
 		}
 	}
+}
+
+// forwardInput 把一段已通過改連守衛的輸入交給指令阻斷器，未命中即轉送並旁路給 sinks。
+// 回傳 true＝輸入泵應結束（寫入失敗，或阻斷後清行失敗而終止會話）。
+func (b *bridge) forwardInput(data []byte) (stop bool) {
+	if b.blocker != nil {
+		if blockedRule := b.blocker.Inspect(data); blockedRule != nil {
+			// 阻斷：本段輸入不轉發；送 MsgNotice 控制幀（規則名以
+			// params 傳遞、由前端組字與上色）；中斷鍵清遠端行緩衝
+			noticeCode := apierror.CodeCommandBlocked
+			if b.blocker.blockedMultiLine {
+				noticeCode = apierror.CodeCommandBlockedMultiLine
+			}
+			b.writeNoticeMessage(noticeCode,
+				map[string]string{"rule": blockedRule.Name})
+			blockedInput := ""
+			if _, inProcess := b.ws.(*InProcessTransport); inProcess {
+				blockedInput = b.redactBlockedInput(b.blocker.blockedInput)
+			}
+			b.writeBlockedMarkerToSinks(blockedRule.Name, blockedInput)
+			for _, sink := range b.blockedSinks {
+				sink.WriteBlockedInput(data) // 被阻斷、未轉送的那一塊
+			}
+			if _, err := b.conn.Write([]byte{0x03}); err != nil { // Ctrl+C 清遠端已鍵入行
+				// fail-close：清行失敗＝遠端行緩衝可能殘留被阻斷指令的
+				// 前綴，使用者下次按 Enter 就送出殘句——阻斷等於沒發生。
+				// 原行為只 log 續跑（fail-open），改為終止會話：先送碼化
+				// MsgError 說明原因，再記 end_reason 讓終止落入審計軌
+				// 規則名進日誌前淨化：AlertRule.Name 可含換行／ESC，
+				// 未淨化即可在 log 裡偽造整行事件或操縱讀 log 的終端
+				log.Printf("[SSHProxy] 阻斷後清行失敗，終止會話: session=%v rule=%q err=%v",
+					b.sessionID(), notifycat.SanitizeOpaque(blockedRule.Name), err)
+				b.writeErrorMessage(apierror.CodeCommandBlockClearFailed)
+				b.setEndReason(endReasonBlockClearFailed)
+				return true // defer b.stop() 收線
+			}
+			for _, sink := range b.platformSinks {
+				sink.WritePlatformInput([]byte{0x03})
+			}
+			log.Printf("[SSHProxy] 指令已阻斷: session=%v rule=%q",
+				b.sessionID(), notifycat.SanitizeOpaque(blockedRule.Name))
+			return false
+		}
+	}
+	if _, err := b.conn.Write(data); err != nil {
+		log.Printf("[SSHProxy] 寫入 SSH stdin 失敗: %v", err)
+		return true
+	}
+	for _, sink := range b.inputSinks {
+		sink.WriteInput(data)
+	}
+	return false
+}
+
+// blockReconnect 處理改連守衛的一次攔截：向終端與錄影留下可讀警告、命中者另入阻斷告警，
+// 並送中斷位元組清掉 CLI 當前輸入。清行失敗即終止會話（與指令阻斷同一條 fail-close）。
+// 回傳 true＝輸入泵應結束。
+func (b *bridge) blockReconnect(blk *reconnectBlock) (stop bool) {
+	code := apierror.CodeDBLineUncertain
+	if blk.verdict == dbproxy.ReconnectHit {
+		code = apierror.CodeDBReconnectBlocked
+	}
+	b.writeNoticeMessage(code, nil)
+	if blk.verdict == dbproxy.ReconnectHit {
+		blockedInput := ""
+		if _, inProcess := b.ws.(*InProcessTransport); inProcess {
+			// agent 入口沒有遠端回顯，被攔的行只在這條證據行出現，須先過輸出規則遮蔽
+			blockedInput = redactBlockedInputFor(b.reconnect.protocol, blk.line)
+		}
+		b.writeBlockedMarkerToSinks(apierror.DBReconnectRuleName, blockedInput)
+		b.reconnect.recordBlocked(blk.line)
+	} else {
+		marker := "\r\n\x1b[33m" + apierror.DBLineUncertainAuditMarker() + "\x1b[0m\r\n"
+		for _, sink := range b.outputSinks {
+			sink.WriteOutput([]byte(marker))
+		}
+	}
+	for _, sink := range b.blockedSinks {
+		sink.WriteBlockedInput(blk.dropped)
+	}
+	if _, err := b.conn.Write([]byte{0x03}); err != nil {
+		log.Printf("[SSHProxy] 改連守衛攔截後清行失敗，終止會話: session=%v err=%v", b.sessionID(), err)
+		b.writeErrorMessage(apierror.CodeCommandBlockClearFailed)
+		b.setEndReason(endReasonBlockClearFailed)
+		return true
+	}
+	for _, sink := range b.platformSinks {
+		sink.WritePlatformInput([]byte{0x03})
+	}
+	log.Printf("[SSHProxy] 改連守衛已攔下一行: session=%v verdict=%v", b.sessionID(), blk.verdict)
+	return false
 }

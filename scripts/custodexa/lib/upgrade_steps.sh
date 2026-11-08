@@ -11,9 +11,11 @@
 #      not encrypted) holding state.json as it was when the upgrade began, which is what going back
 #      by hand puts in place again; the snapshot the checks of step 12 compare with is kept beside
 #      the log (<log>.before.txt) as well, since packing the file removes its members
-#   8  reserved to retain the recorded step numbers of older upgrades
-#   9  state.json: previous.* <- current.*, current.* <- the target; then current -> the target
-#      release and the recordings folder prepared
+#   8  the bundled database is converted to the new major (lib/pgconvert.sh); SKIP when the
+#      release keeps the major or the database is external
+#   9  state.json: previous.* <- current.*, current.* <- the target, and the record that .env is
+#      to be converted (lib/upgrade_convert.sh); then current -> the target release; then .env
+#      rewritten; then the recordings folder prepared
 #   10 start   11 ready within 180 seconds   12 the checks (lib/post_checks.sh)   13 the record,
 #      then the old own images removed (lib/image_retention.sh) before the closing screen
 # A failure stops where it is and prints what the upgrade guide says for that
@@ -23,6 +25,8 @@
 . "${BASH_SOURCE[0]%/*}/post_checks.sh"
 # shellcheck source=lib/image_retention.sh
 . "${BASH_SOURCE[0]%/*}/image_retention.sh"
+# shellcheck source=lib/pgconvert_post.sh
+. "${BASH_SOURCE[0]%/*}/pgconvert_post.sh"
 
 CX_UP_D1="" CX_UP_D2="" CX_UP_DRAINED="" CX_UP_SNAP="" CX_UP_BACKUP_DIR="" CX_UP_BACKUP_KIND=""
 CX_UP_BACKUP="" # the backup of this upgrade as recorded: backups/<file>, or backups/<id> for an own one
@@ -77,9 +81,13 @@ cx_up_begin() {
   cx_state_set last_upgrade.to "$CX_UP_TARGET"
   # The keys an earlier upgrade left that describe that run only.
   local k
-  for k in new_started_at backup_kind snapshot rolled_back_at handed_to handed_at settled_by settled_at; do
+  for k in new_started_at backup_kind snapshot rolled_back_at handed_to handed_at settled_by settled_at \
+    env_rewrite env_rewrite_from env_rewrite_keys; do
     cx_state_unset "last_upgrade.$k"
   done
+  # What an earlier run left of its stop, conversion and backup is carried over only by a run that
+  # continues at step 8 on that run's proven backup (lib/pgresume.sh); every other run starts clean.
+  [ "$CX_UP_RESUME" = resume ] || cx_pgr_forget
   if [ -n "${CX_UP_PACKAGE_VERIFICATION:-}" ]; then
     cx_state_set last_upgrade.package_verification "$CX_UP_PACKAGE_VERIFICATION"
   fi
@@ -258,6 +266,8 @@ cx_up_record_switch() {
   cx_tools_record current
   cx_state_set current.image_source "$src"
   cx_state_set current.verification "$(cx_trust_state)"
+  # First step of the conversion: the conversion of .env is on record in the same save, before anything is switched.
+  cx_up_conv_record
   cx_state_save "$CX_ROOT/state.json"
 }
 
@@ -283,6 +293,12 @@ cx_up_switch() {
     cx_up_step_line FAIL "$1" "$(cx_msg up_step_switch "$CX_UP_TARGET")"
     return 1
   fi
+  # Last step of the conversion: only now, with the target's script in place, .env is rewritten.
+  if ! cx_up_env_rewrite || ! cx_up_env_done; then
+    cx_up_step_line FAIL "$1" "$(cx_msg up_step_switch "$CX_UP_TARGET")"
+    cx_up_par "$(cx_msg uc_env_failed)"
+    return 1
+  fi
   if ! cx_up_recordings; then
     cx_up_step_line FAIL "$1" "$(cx_msg up_step_switch "$CX_UP_TARGET")"
     cx_up_par "$(cx_msg install_recordings_failed "$CX_BK_DATA/recordings")"
@@ -295,6 +311,10 @@ cx_up_switch() {
 cx_up_start() {
   local t0
   t0=$(cx_now)
+  if ! cx_dirop_start_guard "$CX_ROOT/releases/$CX_UP_TARGET"; then
+    cx_up_step_line FAIL "$1" "$(cx_msg up_step_start)"
+    return 1
+  fi
   if ! cx_new_started_mark || ! cx_log_run cx_compose up -d --remove-orphans >/dev/null 2>&1; then
     cx_up_step_line FAIL "$1" "$(cx_msg up_step_start)"
     return 1
@@ -325,13 +345,16 @@ cx_up_fail_switched() {
   cx_line FAIL "$(cx_msg "$id" "$@")"
   printf '\n%s\n' "$(cx_up_par "$(cx_msg up_state_title)")"
   cx_up_bullet "$(cx_msg "$st" "$CX_UP_TARGET")"
+  cx_pgc_fail_state
   cx_up_bullet_backup
   cx_up_bullet "$(cx_msg up_state_no_auto)"
   printf '\n%s\n' "$(cx_up_par "$(cx_msg up_logs_first)")"
-  cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
+  cx_cmd "sudo docker logs --tail 50 custodexa-backend"
   cx_up_par "$(cx_msg up_logs_more)"
   printf '\n'
-  if cx_rb_hint_ok; then
+  if cx_pgc_fail_next; then
+    :
+  elif cx_rb_hint_ok; then
     cx_rb_hint
   else
     cx_up_par "$(cx_msg up_restore_guide "$CX_UP_CURRENT")"
@@ -359,15 +382,26 @@ cx_up_main() {
   cx_up_step_line OK 1 "$(cx_msg up_step_env)" "$CX_UP_D1"
   cx_up_step_line OK 2 "$(cx_msg up_step_images)" "$CX_UP_D2"
   cx_up_step_line OK 3 "$(cx_msg up_step_confirmed)"
-  cx_up_at 4 drain
-  cx_dg_wait 4 || cx_up_fail_exit
-  CX_UP_DRAINED=$(date +%H:%M:%S)
-  cx_up_at 5 stop
-  cx_up_stop 5 || cx_up_fail_exit
-  cx_up_at 6 gone
-  cx_up_gone 6 || cx_up_fail_exit
-  cx_up_at 7 backup
-  cx_up_backup 7 || cx_up_fail_exit
+  if [ "$CX_UP_RESUME" = resume ] && cx_pgr_resume_load; then
+    # Cut short in the conversion with the stop proven unbroken: steps 4 to 7 are not repeated.
+    local n
+    for n in 4 5 6; do
+      cx_up_at "$n" kept
+      cx_up_step_line SKIP "$n" "$(cx_msg pgr_step_kept)"
+    done
+    cx_up_at 7 kept
+    cx_up_step_line SKIP 7 "$(cx_msg pgr_step_kept_backup "${CX_UP_BACKUP##*/}")"
+  else
+    cx_up_at 4 drain
+    cx_dg_wait 4 || cx_up_fail_exit
+    CX_UP_DRAINED=$(date +%H:%M:%S)
+    cx_up_at 5 stop
+    cx_up_stop 5 || cx_up_fail_exit
+    cx_up_at 6 gone
+    cx_up_gone 6 || cx_up_fail_exit
+    cx_up_at 7 backup
+    cx_up_backup 7 || cx_up_fail_exit
+  fi
   # On record from here: a failure of steps 9 to 12 points at this backup as the way back, and a
   # rollback compares the database with the snapshot taken while the old version was stopped.
   cx_state_set last_upgrade.backup "$CX_UP_BACKUP"
@@ -377,8 +411,8 @@ cx_up_main() {
   else
     cx_state_unset last_upgrade.snapshot
   fi
-  cx_up_at 8 reserved
-  cx_up_step_line SKIP 8 "$(cx_msg up_step_reserved)"
+  cx_up_at 8 convert
+  cx_pgc_run 8 || cx_up_fail_exit
   cx_up_at 9 switch
   cx_up_switch 9 || { cx_up_fail_switched up_fail_switch; cx_up_fail_exit; }
   cx_up_at 10 start

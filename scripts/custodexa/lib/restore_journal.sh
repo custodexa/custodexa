@@ -219,13 +219,20 @@ cx_rs_swapped() {
   cx_rs_reconcile resume || return 1
   # An external database keeps no folder on this host: none is renamed or made for it.
   if ! cx_rs_ext; then
-    cx_rs_journal_move postgres-before "$CX_RS_DATA/postgres" "$CX_RS_DATA/postgres.${CX_RS_KEEP_KIND:-before-restore}-$CX_RS_TS" || return 1
+    local db_dir db_other
+    db_dir=$(cx_rs_db_dir) db_other=$(cx_rs_db_other_dir)
+    cx_rs_journal_move postgres-before "$CX_RS_DATA/$db_dir" "$CX_RS_DATA/$db_dir.${CX_RS_KEEP_KIND:-before-restore}-$CX_RS_TS" || return 1
+    # The deployment being replaced kept its data in another folder (another PostgreSQL major):
+    # that one is renamed and kept as well, so only the folder of the restored release remains.
+    if [ -n "$db_other" ]; then
+      cx_rs_journal_move postgres-other-before "$CX_RS_DATA/$db_other" "$CX_RS_DATA/$db_other.${CX_RS_KEEP_KIND:-before-restore}-$CX_RS_TS" || return 1
+    fi
   fi
   cx_rs_journal_move audit-before "$CX_RS_DATA/audit" "$CX_RS_DATA/audit.${CX_RS_KEEP_KIND:-before-restore}-$CX_RS_TS" || return 1
   if [ "$(cx_rs_get contents.tls)" = true ]; then
     cx_rs_journal_move tls-before "$CX_ROOT/tls" "$CX_ROOT/tls.${CX_RS_KEEP_KIND:-before-restore}-$CX_RS_TS" || return 1
   fi
-  if ! cx_rs_ext; then cx_rs_journal postgres-empty mkdir "$CX_RS_DATA/postgres" 0700 || return 1; fi
+  if ! cx_rs_ext; then cx_rs_journal postgres-empty mkdir "$CX_RS_DATA/$(cx_rs_db_dir)" "$(cx_rs_db_dir_mode)" || return 1; fi
   cx_rs_journal_put env-merged "$CX_RS_DIR/env.merged" "$CX_ROOT/.env" 0600 &&
     cx_rs_phase swapped
 }

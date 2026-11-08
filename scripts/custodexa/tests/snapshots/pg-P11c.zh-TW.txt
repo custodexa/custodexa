@@ -1,0 +1,7 @@
+資料庫升級
+
+  目前         PostgreSQL 18，資料在 /opt/custodexa/data/postgresql
+  這一版支援   PostgreSQL 18
+  [ OK ] 已是這一版支援的最新版本，不需要升級。
+
+沒有做任何變更。

@@ -1,0 +1,19 @@
+
+前次轉換失敗留下的資料（可以清除，釋放空間）
+  上次升級在第 8 步失敗時留下的半成品，只供診斷，從來沒有被系統使用：
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+  清除之後
+    - 這些資料無法復原
+    - 不影響目前運作的 1.13.0，也不影響它的資料
+      /opt/custodexa/data/postgres
+    - 清除後會重新計算升級所需的空間
+
+先清除這 2 個目錄，再檢查空間嗎？[y/N] y
+
+[ OK ] 已清除 /opt/custodexa/data/postgresql.failed-convert-20261120-021502，釋放 0.0 KB
+[ OK ] 已清除 /opt/custodexa/data/postgresql.partial-convert-20261120-021502，釋放 0.0 KB
+[ OK ] 重新計算空間：/opt/custodexa/data/postgresql 需要 3.0 GB，還有 858 GB
+       /opt/custodexa/data/postgres 沒有被改動

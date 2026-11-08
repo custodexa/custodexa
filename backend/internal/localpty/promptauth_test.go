@@ -50,6 +50,7 @@ func setLineState(t *testing.T, f *os.File, canonical, echo bool) {
 			tio.Lflag |= syscall.ICANON
 		} else {
 			tio.Lflag &^= syscall.ICANON
+			tio.Iflag &^= syscall.ICRNL // raw 讀取的 client 同時關掉 CR→LF 轉換
 		}
 		if echo {
 			tio.Lflag |= syscall.ECHO
@@ -126,6 +127,32 @@ func readRaw(t *testing.T, f *os.File, d time.Duration) []byte {
 	n, _ := f.Read(buf)
 	_ = f.SetReadDeadline(time.Time{})
 	return buf[:n]
+}
+
+// TestPromptAuthTerminatorByte 結尾位元組依設定：零值為 LF，指定 CR 時以 CR 結尾
+func TestPromptAuthTerminatorByte(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		term byte
+		want string
+	}{
+		{"default", 0, "pw\n"},
+		{"cr", '\r', "pw\r"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, slave := newInjector(t, PasswordAuth{
+				Password: material.Adopt([]byte("pw")), Prompt: testPrompt, Terminator: tc.term,
+			})
+			setLineState(t, slave, false, false) // raw 讀取
+			startCollector(a)
+			if _, err := slave.Write([]byte(testPrompt)); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(readRaw(t, slave, time.Second)); got != tc.want {
+				t.Fatalf("client 收到的輸入 = %q，預期 %q", got, tc.want)
+			}
+		})
+	}
 }
 
 // TestPromptAuthInjectsAndHidesPrompt 主線：提示不外流、密碼注入到 client、

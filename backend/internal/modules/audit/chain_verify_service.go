@@ -663,7 +663,7 @@ func (s *ChainVerifyService) mergeOpenFailed(st *model.AuditChainVerifyState,
 func chainVerifyContentFailed(status string) bool {
 	switch status {
 	case IntervalStatusCountMismatch, IntervalStatusHashMismatch,
-		IntervalStatusPurgedInvalid, IntervalStatusExtraRowsValidHMAC:
+		IntervalStatusPurgedInvalid, IntervalStatusExtraRowsValidHMAC, IntervalStatusRowsHidden:
 		return true
 	}
 	return false

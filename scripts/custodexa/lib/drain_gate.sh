@@ -73,7 +73,7 @@ cx_dg_sealed_empty() {
 cx_dg_manual() {
   local hdr=""
   [ -z "$(cx_env_get "$CX_ROOT/.env" METRICS_TOKEN)" ] || hdr='--header="Authorization: Bearer <token>" '
-  cx_cmd "sudo docker compose $(cx_up_compose_hint) exec -T backend \\"
+  cx_cmd "sudo docker exec custodexa-backend \\"
   cx_cmd "  wget -qO- ${hdr}http://localhost:8080/metrics | grep custodexa_audit_queue_depth"
 }
 

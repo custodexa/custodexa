@@ -1,0 +1,36 @@
+Back to the previous version: preview (nothing has been changed yet)
+
+  Installed      1.16.2 (PostgreSQL 18)
+  Go back to     1.16.1 (before the upgrade, PostgreSQL 16)
+  Database       the new version never started, so the data did not
+                 change. Use the PostgreSQL 16 data kept as it was
+                 at the upgrade:
+                 /opt/custodexa/data/postgres
+                 The PostgreSQL 18 data it converted is renamed and
+                 kept, not deleted:
+                 /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+  So no data is lost and no restore is needed.
+  Old images     all 4 are on this host; the running containers are
+                 checked against them after the start
+  .env       the managed block goes back to the layout of 1.16.1; every other
+             line stays as it is
+
+  Steps: stop the services -> check that the PostgreSQL 16 data
+  is still there and rename the PostgreSQL 18 data to keep it ->
+  switch back to 1.16.1 -> start -> check the version and the running
+  images
+
+Start? [y/N] y
+
+[ OK ] 1/4  Stop the services                               0s
+[ OK ] 2/4  The PostgreSQL 16 data is still there and the PostgreSQL 18
+            data is renamed and kept; switch back to 1.16.1
+[ OK ] 3/4  Start the services                              0s
+[ OK ] 4/4  Check: the backend reports 1.16.1 and the running
+            images are the ones from before the upgrade     0s
+
+[ OK ] Back on 1.16.1. The system is sealed; unseal it at
+       https://10.0.0.12/unseal
+  To upgrade again later, run upgrade as usual; it converts the
+  database again.
+  Log file /opt/custodexa/logs/rollback-20261120-021502.log

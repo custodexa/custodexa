@@ -30,6 +30,17 @@ type PasswordAuth struct {
 	// 「查詢結果剛好以提示字串結尾」的偽提示；redis-cli --askpass 走遮罩式
 	// raw 讀取，無此判準可用（false）。
 	RequireCanonical bool
+	// Terminator 接在密碼後面的結尾位元組，零值為 '\n'。
+	// canonical 模式的 client 認 LF；raw 模式（ICANON 關、ICRNL 關）的 Enter 是 CR，
+	// 不認 LF，結尾用錯會讓使用者下一次輸入被併進密碼。
+	Terminator byte
+}
+
+func (c PasswordAuth) terminator() byte {
+	if c.Terminator == 0 {
+		return '\n'
+	}
+	return c.Terminator
 }
 
 // promptAuth 提示注入器：夾在 ptmx 與呼叫端之間過濾輸出。
@@ -123,7 +134,7 @@ func (a *promptAuth) process(chunk []byte) {
 				pw := make([]byte, len(raw)+1)
 				defer material.Wipe(pw)
 				copy(pw, raw)
-				pw[len(raw)] = '\n'
+				pw[len(raw)] = a.cfg.terminator()
 				_, err := a.write(pw)
 				return err
 			})

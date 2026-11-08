@@ -1,0 +1,9 @@
+[FAIL] 不能直接回到 1.16.1：升級時保留的 PostgreSQL 16 資料已經不在。
+       沒有做任何變更，服務仍在執行。
+  原因       1.16.1 只能使用 PostgreSQL 16 的資料，而
+             /opt/custodexa/data/postgres 已在 2026-11-20 02:15 清除
+  要回到 1.16.1，請用升級前的備份還原。資料會回到備份當時
+  （2026-11-20 02:15，升級開始時）；之後寫入的資料會遺失，包括稽核紀錄、
+  連線紀錄、錄影索引、設定與帳號異動。升級後如果還沒有人使用過系統，
+  還原不會遺失資料。還原會先讓你確認：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

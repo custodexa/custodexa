@@ -99,7 +99,7 @@ func TestRedactHasNoProductCallers(t *testing.T) {
 			t.Fatalf("scan %s: %v", dir, err)
 		}
 	}
-	if !reflect.DeepEqual(callers, []string{"internal/agentmcp/dispatch.go:redactValue", "internal/sshproxy/bridge.go:redactBlockedInput"}) {
+	if !reflect.DeepEqual(callers, []string{"internal/agentmcp/dispatch.go:redactValue", "internal/sshproxy/bridge.go:redactBlockedInputFor"}) {
 		t.Fatalf("found %d product .Redact( calls; want MCP evidence/delivery and agent blocked-input callsites:\n%s", len(callers), strings.Join(callers, "\n"))
 	}
 }

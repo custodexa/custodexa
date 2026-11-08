@@ -120,7 +120,7 @@ func TestAgentAllowlistPositiveAssetsAndOwnRequests(t *testing.T) {
 	if err := db.Create(&model.AssetAccount{AssetID: visible.ID, Username: "app", CredentialID: credential.ID, IsDefault: true}).Error; err != nil {
 		t.Fatal(err)
 	}
-	grant := model.AssetAuthorization{UserID: &agent.ID, AssetID: &visible.ID, Permission: model.PermissionView, GrantedBy: owner.ID}
+	grant := model.AssetAuthorization{UserID: &agent.ID, AssetID: &visible.ID, Permission: model.PermissionConnect, GrantedBy: owner.ID}
 	if err := db.Create(&grant).Error; err != nil {
 		t.Fatal(err)
 	}

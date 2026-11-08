@@ -1,0 +1,14 @@
+Database upgrade
+
+  Now           PostgreSQL 18, data in /opt/custodexa/data/postgresql
+  This release  PostgreSQL 18
+  [ OK ] Already the newest PostgreSQL this release supports; no upgrade needed.
+
+Old database folders kept (they can be removed to free space)
+  [1] /opt/custodexa/data/postgres
+      PostgreSQL 16    17.4 GB    kept as at the upgrade to 1.23.0; the previous version needs it
+  [2] /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+      PostgreSQL 18     3.2 GB    left by a failed conversion, kept for diagnosis
+  [3] Remove all
+
+Choose what to remove [1-3], or press Enter for the main menu: 

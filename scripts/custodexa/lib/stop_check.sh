@@ -13,20 +13,27 @@
 # The services stay stopped after a failure here; the command that starts the old version again is
 # printed in full (project, folder, files), never relying on the current directory.
 
+# shellcheck source=lib/pgresume.sh
+. "${BASH_SOURCE[0]%/*}/pgresume.sh"
+
 readonly CX_UP_DRAIN_TIMEOUT_MARK='稽核佇列排空逾時'
 
 # cx_up_compose <compose arguments...>: compose on the version that runs now.
 cx_up_compose() { cx_compose "$@"; }
 
+# cx_up_services: the compose services of the application tier for the form of this deployment
+# (the same answer as cx_bk_services, without needing lib/backup.sh: the backup-reference path of
+# upgrade does not load it).
+cx_up_services() { cx_form_app_services "$(cx_form_layout "$CX_ROOT/current")" "${CX_OVERLAYS:-}"; }
+
 # cx_up_resume_cmd: how to start the old version's services again.
 cx_up_resume_cmd() {
   local files=""
   printf '%s\n' "$(cx_up_par "$(cx_msg st_resume)")"
-  files="-f $CX_ROOT/current/compose.yml"
-  local ov
-  for ov in ${CX_OVERLAYS:-}; do files+=" -f $CX_ROOT/current/compose.$ov.yml"; done
+  # A release with the profiles layout has one file; its profiles come from the managed block of .env.
+  files=$(cx_compose_files_for "$CX_ROOT/current" | paste -sd' ' -)
   cx_cmd "sudo docker compose -p $CX_PROJECT --project-directory $CX_ROOT $files \\"
-  cx_cmd "  start $CX_BK_SERVICES"
+  cx_cmd "  start $(cx_up_services)"
   cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
 }
 
@@ -34,12 +41,14 @@ cx_up_resume_cmd() {
 cx_up_stop() {
   local n=$1 t0 started line
   t0=$(cx_now)
-  # shellcheck disable=SC2086
-  if ! cx_up_compose stop $CX_BK_SERVICES >/dev/null 2>&1; then
+  # shellcheck disable=SC2086,SC2046
+  if ! cx_up_compose stop $(cx_up_services)>/dev/null 2>&1; then
     cx_up_step_line FAIL "$n" "$(cx_msg st_stop_failed)"
     cx_up_resume_cmd
     return 1
   fi
+  # The proof the next upgrade needs if the conversion is cut short: when, and which containers.
+  cx_pgr_record_stop
   if ! started=$(docker container inspect --format '{{.State.StartedAt}}' custodexa-backend 2>/dev/null) \
     || [ -z "$started" ]; then
     cx_up_step_line FAIL "$n" "$(cx_msg st_log_unreadable)"
@@ -88,7 +97,7 @@ cx_up_gone() {
     cx_cmd "psql -h $(cx_bk_env EXTERNAL_DB_HOST) -p ${port:-5432} -U $CX_BK_DBUSER -d $CX_BK_DBNAME \\"
     cx_cmd "  -tAc \"SELECT count(*) FROM pg_stat_activity"
   else
-    cx_cmd "sudo docker compose $(cx_up_compose_hint) exec -T postgres \\"
+    cx_cmd "sudo docker exec custodexa-postgres \\"
     cx_cmd "  psql -U $CX_BK_DBUSER -d $CX_BK_DBNAME -tAc \"SELECT count(*) FROM pg_stat_activity"
   fi
   cx_cmd "  WHERE datname = current_database() AND usename = current_user"

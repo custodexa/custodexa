@@ -91,7 +91,39 @@
             {{ $t('checkpointVerification.overview.unsealedHint', { id: chain?.unsealed_from_id ?? '-' }) }}
           </span>
         </el-descriptions-item>
+        <el-descriptions-item
+          v-if="chain?.trim_unverified_segments > 0"
+          :label="$t('checkpointVerification.overview.trimRecord')"
+        >
+          <el-tag
+            type="warning"
+            data-test="trim-unverified"
+          >
+            {{ $t('checkpointVerification.status.trim_unverified') }}
+            {{ $t('checkpointVerification.overview.trimSegments', { count: chain.trim_unverified_segments }) }}
+          </el-tag>
+        </el-descriptions-item>
       </el-descriptions>
+      <el-alert
+        v-if="chain?.trim_paused"
+        type="error"
+        :closable="false"
+        show-icon
+        data-test="trim-paused"
+        :title="$t('checkpointVerification.trimPause.title')"
+        :description="$t('checkpointVerification.trimPause.desc')"
+        class="load-error"
+      />
+      <el-alert
+        v-if="chain?.trim_unverified_segments > 0"
+        type="warning"
+        :closable="false"
+        show-icon
+        data-test="trim-unverified-hint"
+        :title="$t('checkpointVerification.status.trim_unverified')"
+        :description="$t('checkpointVerification.statusHint.trim_unverified', { count: chain.trim_unverified_segments })"
+        class="load-error"
+      />
 
       <!--
         角色指派對帳。
@@ -713,6 +745,8 @@ const STATUS_TAG = {
   passed: 'success',
   purged_legal: 'info',
   extra_rows_valid_hmac: 'warning',
+  trim_unverified: 'warning',
+  rows_hidden: 'danger',
   purged_invalid: 'danger',
   count_mismatch: 'danger',
   hash_mismatch: 'danger',

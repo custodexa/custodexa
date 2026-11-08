@@ -68,8 +68,8 @@ MSG_help_cmd_upgrade='  upgrade                新しいバージョンの有無
   upgrade <バージョン>   指定バージョンへ更新（サービスを停止し、
                          先にバックアップする）
   upgrade <パッケージ>   ダウンロード済みのパッケージで更新（オフライン可）'
-MSG_help_cmd_status='  status                 バージョン、サービス、バックアップ、前回の更新の
-                         状態を表示（何も変更しない）'
+MSG_help_cmd_status='  status                 バージョン、配置形態、サービス、バックアップ、
+                         前回の更新の状態を表示（何も変更しない）'
 MSG_help_cmd_backup='  backup                 単一ファイルにバックアップ（サービスを停止する。
                          ファイルは他のホストへ移せる）'
 MSG_help_cmd_load='  load <バンドル>        オフラインイメージバンドルを読み込む（起動しない）'
@@ -165,8 +165,8 @@ MSG_text_pre_existing='このホストには既に配置があり、install は�
 
 # ---- 設定ファイル .env ----
 MSG_env_compose_file_bad='.env の COMPOSE_FILE=%s はこのパッケージの配置形態ではありません。
-current/compose.yml に変更してください（外部入口や外部データベースを
-使う場合は、対応するファイルを : でつなげます）。'
+この行を削除してください。配置形態は EXTERNAL_DB_HOST と TLS_MODE だけで
+決まり、この行はスクリプトが自分で管理します。'
 MSG_env_project_bad='.env の COMPOSE_PROJECT_NAME=%s ですが、この配置は常に %s を使います。
 元に戻して再実行してください。'
 MSG_env_kek_bad='.env の KEK_PROVIDER=%s は env、ui、kms、hsm のいずれでもありません。
@@ -174,6 +174,172 @@ MSG_env_kek_bad='.env の KEK_PROVIDER=%s は env、ui、kms、hsm のいずれ�
 MSG_env_db_external='外部データベース（EXTERNAL_DB_HOST）が設定されていますが、DB_PASSWORD が
 空かテンプレートの値です。%s にそのデータベースアカウントのパスワードを
 入れて再実行してください（何も生成していません）。'
+
+# ---- 配置形態：インストールのプレビュー ----
+MSG_fi_section='配置形態'
+MSG_fi_db_builtin='  データベース  内蔵：このホストが専用の PostgreSQL を起動します
+                データの置き場所は %s
+                .env の EXTERNAL_DB_HOST で決まります：空欄＝内蔵'
+MSG_fi_db_external='  データベース  外部：%s
+                このホストは内蔵データベースを起動しません。データベース
+                サーバー自体（メジャーアップグレードを含む）は
+                お客様が管理します
+                .env の EXTERNAL_DB_HOST と EXTERNAL_DB_PORT で決まります'
+MSG_fi_web_builtin='  Web 入口      内蔵 HTTPS：利用者は %s に接続します
+                ポート %s（HTTPS）と %s（HTTPS へ自動転送）
+                .env の TLS_MODE で決まります：現在は %s'
+MSG_fi_tls_selfsigned='selfsigned（自己生成の証明書）'
+MSG_fi_tls_provided='provided（お客様の証明書）'
+MSG_fi_web_own='  Web 入口      お客様のリバースプロキシ：Web サービスはこのホストの
+                ポート %s（HTTP）で公開されます
+                リバースプロキシの宛先は http://%s:%s にしてください
+                .env の TLS_MODE=external で決まります
+                （ポートは HTTP_PORT）'
+MSG_fi_note='  この 2 項目はインストール前に決めてください。インストール後に
+  この 2 行を変えても配置形態は切り替わらず、以後の起動、
+  アップグレード、バックアップは理由を表示して停止します。'
+MSG_fi_ask='インストールしますか？[y/N]'
+MSG_fm_rerun='  直したら、同じコマンドをもう一度実行してください：'
+MSG_fm_moved_note='.env にあった旧形式の %s をスクリプト管理領域へ移しました。'
+MSG_fm_tls_bad='.env の TLS_MODE=%s は有効な値ではありません。何も変更していません。'
+MSG_fm_tls_valid='  有効な値：selfsigned、provided、external（空欄は selfsigned 扱い）。'
+MSG_fm_host_head='.env の EXTERNAL_DB_HOST=%s は使えません。何も変更していません。'
+MSG_fm_host_head_wrap='.env の EXTERNAL_DB_HOST=%s は使えません。
+何も変更していません。'
+MSG_fm_host_why_service='  理由     %s は Custodexa 自身のサービス名です。これを入れると
+           別に用意したデータベースサーバーではなく内蔵データベースに
+           つながります'
+MSG_fm_host_fill_service='  入れる値  データベースサーバーのホスト名または IP。例：
+             EXTERNAL_DB_HOST=db01.example.internal
+             EXTERNAL_DB_HOST=10.0.0.40'
+MSG_fm_host_why_loopback='  理由     コンテナの中で %s が指すのはバックエンドコンテナ自身で、
+           このホストではありません'
+MSG_fm_host_fill_loopback='  入れる値  別のホストにある場合：そのホスト名または IP
+           このホストにある場合：このホストのネットワークアドレス
+           （例：10.0.0.12）'
+MSG_fm_host_why_syntax='  理由     この行にはホスト名または IP だけを入れます。プロトコル、
+           ポート番号、アカウント、空白は入れません'
+MSG_fm_host_fill_syntax='  入れる値  EXTERNAL_DB_HOST=%s
+           EXTERNAL_DB_PORT=%s        （ポートは別の行に。既定は 5432）
+           アカウントとパスワードは DB_USER、DB_PASSWORD に'
+MSG_fm_host_empty='  内蔵データベースを使うなら、EXTERNAL_DB_HOST の行を
+  空欄にするか削除します。'
+MSG_fm_port_head='.env に EXTERNAL_DB_PORT=%s がありますが、EXTERNAL_DB_HOST が空です。
+何も変更しておらず、サービスはそのまま動いています。'
+MSG_fm_port_body='  ポートだけでは、内蔵データベースにそのポートで接続しようとして
+  つながりません。どちらかを選んでください：
+  - 外部データベースを使う：EXTERNAL_DB_HOST
+    （サーバーのホスト名または IP）を追加
+  - 内蔵データベースを使う：EXTERNAL_DB_PORT の行を削除'
+MSG_fm_n2_head='このホストには内蔵データベースのデータがあり、外部データベースでの
+インストールはそれを使いません。何も変更していません。'
+MSG_fm_n2_found='  .env の EXTERNAL_DB_HOST=%s は外部データベースを使う指定ですが、
+  この配置フォルダーには内蔵データベースのデータがあります：'
+MSG_fm_n2_paths='  外部データベースでのインストールは、このデータを使いも削除もしません。
+  まず中身を確認してください：
+  - 不要と確認できた：フォルダーごと別の場所へ移し、もう一度
+    インストールします。例：
+      sudo mv %s %s
+      %s
+  - このデータを使い続ける：そのままインストールしません。このデータで
+    取ったバックアップから「バックアップからの復元」を行い、
+    「バックアップと復元」の移行手順で外部データベースへ移します。'
+MSG_fm_e2_head='.env は外部データベースを指していますが、データは
+内蔵データベースにあります。
+何も変更しておらず、サービスはそのまま動いています。'
+MSG_fm_e2_body='
+  データの場所   内蔵データベース %s
+  .env の指定    EXTERNAL_DB_HOST=%s
+                 この行は一度も有効になっていません。システムはずっと
+                 内蔵データベースを使っています。この行のとおりに
+                 切り替えると別のデータベースにつながり、
+                 元のデータは移りません。
+
+  どちらかを選んでください：
+  1. 内蔵データベースを使い続ける：.env の EXTERNAL_DB_HOST の行を
+     削除するか空欄にして、同じコマンドをもう一度実行します：
+       %s
+  2. データを外部データベースへ移す：「バックアップと復元」の
+     「外部データベースへの切り替え」手順に従い、先にバックアップを取り、
+     外部データベースへ復元します。.env を直すだけでは
+     データは移りません。'
+MSG_fm_e3_head='.env の EXTERNAL_DB_HOST が空ですが、このホストはずっと外部データベースを
+使っています。何も変更しておらず、サービスはそのまま動いています。'
+MSG_fm_e3_body='  このホストがつないでいた先   %s
+  この行を空にすると、データのない内蔵データベースが新しく起動します。
+  新規インストールのように見え、ユーザー、資産、監査記録は
+  そこにありません。
+  外部データベースを使い続けるには、この行を元の値に戻してください：
+    EXTERNAL_DB_HOST=%s
+  直したら、同じコマンドをもう一度実行してください：
+    %s'
+MSG_fm_e3_unknown='（配置の記録にアドレスがありません）'
+MSG_fm_e3_placeholder='<外部データベースのホスト名または IP>'
+MSG_fm_e4_head='.env の Web 入口の設定がインストール時と違います。
+何も変更しておらず、サービスはそのまま動いています。'
+MSG_fm_e4_was_own='お客様のリバースプロキシ（TLS_MODE=external）、Web サービスはポート %s'
+MSG_fm_e4_was_builtin='内蔵 HTTPS（TLS_MODE=%s）'
+MSG_fm_e4_now_own='お客様のリバースプロキシ'
+MSG_fm_e4_now_builtin='内蔵 HTTPS'
+MSG_fm_e4_body='  インストール時  %s
+  現在の .env     TLS_MODE=%s（%s）
+  インストール後に「内蔵 HTTPS」と「お客様のリバースプロキシ」を
+  切り替えることは、このバージョンでは未対応です。公開ポート、証明書、
+  プロキシ設定を一緒に変える必要があり、その手順はまだありません。
+  .env を元の値に戻せば続けられます：
+    TLS_MODE=%s
+  直したら、同じコマンドをもう一度実行してください：
+    %s'
+MSG_fm_legacy_db='.env の COMPOSE_FILE が外部データベースを指していますが、
+EXTERNAL_DB_HOST が空です。何も変更していません。
+  COMPOSE_FILE=%s
+  EXTERNAL_DB_HOST（データベースサーバーのホスト名または IP）を
+  追加するか、COMPOSE_FILE の行を削除して、もう一度実行してください。'
+MSG_fm_legacy_ingress='.env の COMPOSE_FILE が外部入口を指していますが、TLS_MODE が
+external ではありません。何も変更していません。
+  COMPOSE_FILE=%s
+  TLS_MODE=%s
+  外部入口は今後 TLS_MODE=external だけで表します。
+  TLS_MODE を external に変え、COMPOSE_FILE の行を削除して、
+  もう一度実行してください。'
+
+# ---- アップグレード時の .env 変換 ----
+MSG_fm_f09_head='現在の設定では %s が起動できないため、アップグレードの前に
+修正が必要です。サービスは停止せず、何も変更していません。'
+MSG_fm_f09_body='  .env の COMPOSE_FILE が外部データベース
+  （compose.external-database.yml）を指していますが、
+  EXTERNAL_DB_HOST が空です。
+  このホストの現状   %s
+  次の行を追加してください   EXTERNAL_DB_HOST=%s'
+MSG_fm_f09_rec='配置の記録は外部データベース %s'
+MSG_fm_f09_rec_none='配置の記録にアドレスがありません'
+MSG_uc_head='.env を調整します（手順 9 で書き換え。ほかの設定は変更しません）'
+MSG_uc_remove='  - 削除   %s'
+MSG_uc_tls='  ~ 変更   TLS_MODE=%s  →  TLS_MODE=external
+           （Web 入口はこの行で表します。配置の形態は変わりません）'
+MSG_uc_add='  + 追加   ファイル末尾のスクリプト管理ブロック（前後に印の行）：'
+MSG_uc_foot='  %s 以降、配置の形態は 2 行だけで決まります：
+  EXTERNAL_DB_HOST（データベース）と TLS_MODE（Web 入口）。
+  管理ブロックはスクリプトが管理します。手で編集しないでください。'
+MSG_uc_env_failed='  手順 9 で .env を書き換えられませんでした。.env は元のままです。'
+MSG_pc_form_bad='配置の形態       .env の形態「%s」、アップグレード前の記録「%s」'
+MSG_pc_form_none='内蔵データベース、内蔵 HTTPS'
+MSG_rb_env_back='.env       スクリプト管理ブロックを %s の書き方に戻します。
+           ほかの行は変更しません：'
+MSG_rb_env_fwd='.env       スクリプト管理ブロックを %s の書き方にします。
+           ほかの行は変更しません：'
+MSG_rb_env_noprofiles='（%s は COMPOSE_PROFILES を使わないため、この行は削除します）'
+MSG_rv_pending_head='%s には戻せません：前回のアップグレードの .env 変換が
+完了していません。何も変更していません。'
+MSG_rv_pending_body='  前回のアップグレードは .env を書き換える前に止まっており、%s は
+  新しい .env で起動したことがありません。現在の .env はアップグレード前
+  （%s）の書き方のままで、これで %s を起動すると誤ったサービスが
+  起動します。
+  進める方法は 2 つです。
+    - %s（アップグレード前に動いていたバージョン）への切り戻しを続ける：'
+MSG_rv_pending_restore='    - アップグレード前のバックアップから復元する。手順は次の文書：'
+MSG_rs_env_form_bad='バックアップ内の .env から導いた形態は「%s」、バックアップ一覧の記録は
+「%s」です。このバックアップは破損しています。何も変更していません。'
 
 # ---- 手順 3：プログラムのイメージ ----
 MSG_step_images='プログラムのイメージを取得'
@@ -383,6 +549,35 @@ MSG_load_next_upgrade='アップグレードする場合：'
 # status。各セクションの行は実行時に 56 桁で折り返す。ここでの改行はそのまま残る。
 MSG_status_title='Custodexa の状態    %s    %s'
 MSG_status_sec_version='バージョン'
+MSG_status_sec_form='配置形態'
+MSG_status_form_db_builtin='データベース: 内蔵'
+MSG_status_form_db_external='データベース: 外部 %s'
+MSG_status_form_web_builtin='Web 入口: 内蔵 HTTPS（ポート %s、%s）'
+MSG_status_form_web_own='Web 入口: お客様のリバースプロキシ（Web サービスはポート %s）'
+MSG_status_form_join='%s、%s'
+MSG_status_form_db_added='.env が現在の配置と一致しません: EXTERNAL_DB_HOST=%s
+システムは引き続き内蔵データベースを使っており、この行は有効に
+なっていません。次回の起動、アップグレード、バックアップ、リストア、
+ロールバックは停止します。
+内蔵データベースを使い続ける場合: この行を削除してください。
+外部データベースへ移す場合:「バックアップとリストア」の
+「外部データベースへの切り替え」の手順に従ってください。'
+MSG_status_form_db_emptied='.env が現在の配置と一致しません: EXTERNAL_DB_HOST が空です
+システムは引き続き外部データベース %s を使っています。
+次回の起動、アップグレード、バックアップ、リストア、ロールバック
+は停止します。元の値に戻してください: EXTERNAL_DB_HOST=%s'
+MSG_status_form_tls_changed='.env が現在の配置と一致しません: TLS_MODE=%s
+システムは「%s」ではなく、
+インストール時の入口を使っています。
+次回の起動、アップグレード、バックアップ、リストア、ロールバック
+は停止します。インストール時の値に戻してください: TLS_MODE=%s'
+MSG_status_form_bad_host='.env の EXTERNAL_DB_HOST=%s は使えません。
+次回の起動、アップグレード、バックアップ、リストア、ロールバック
+は理由を表示して停止します。内蔵データベースを使う場合は、この行を
+空にしてください。'
+MSG_status_form_bad_tls='.env の TLS_MODE=%s は有効な値ではありません。
+次回の起動、アップグレード、バックアップ、リストア、ロールバック
+は停止します。有効な値: selfsigned、provided、external。'
 MSG_status_sec_services='サービス'
 MSG_status_sec_images='イメージ'
 MSG_status_sec_backup='バックアップ'
@@ -1088,6 +1283,7 @@ MSG_menu_help='ヘルプ'
 MSG_menu_quit='終了'
 MSG_menu_choose='選択してください [0-%s]：'
 MSG_menu_choose_sub='選択してください [1-%s]（Enter でメインメニューに戻る）：'
+MSG_menu_choose_remove='削除する項目を選んでください [1-%s]（Enter でメインメニューへ）：'
 MSG_menu_invalid='その選択肢はありません。角かっこ内の数字を入力してください。'
 MSG_menu_other_path='別のパスを入力'
 MSG_menu_bundle_found='オフラインイメージバンドルを読み込みます。
@@ -1871,6 +2067,11 @@ MSG_rs_provider_ui='ブラウザーで入力'
 MSG_rs_provider_env='設定ファイルで指定'
 
 MSG_rs_provider_kms='鍵管理サービスで保管'
+
+MSG_rs_form_keep='バックアップ時の配置形態。リストア後もそのまま使います'
+
+MSG_rs_form_keep_new='バックアップ時の配置形態。リストア後もそのまま使います。
+このホストで尋ねるのは、下の「ホスト値」の行の値だけです'
 
 MSG_rs_restores_new='データベース %s、監査ファイル %s、設定ファイル
 .env'
@@ -2872,3 +3073,527 @@ MSG_rs_ext_finish_export='エクスポート  外部データベースの復元�
 # 1 argument: when the restore settled it
 MSG_status_upgrade_settled='この失敗は %s の復元で対処済みです。
 再度アップグレードできます'
+
+# ---------- compose 呼び出し：Web コンテナの引き継ぎ ----------
+MSG_compose_frontend_running='Web コンテナ custodexa-frontend がまだ実行中のため、別バージョンの
+定義に置き換えられません。サービスを停止してから再実行してください。'
+
+# ---------- データフォルダ名変更ログ（同梱データベース） ----------
+MSG_dirop_ambiguous_title='データフォルダの名前変更が前回完了しておらず、どちらが正しい
+データか判断できません。データベースのサービスは起動せず、
+フォルダも変更していません。'
+MSG_dirop_ambiguous_body='  スクリプトはどちらが正しいかを推測しません。間違った方で起動すると、
+  空のフォルダに新しい空のデータベースを作ったり、不完全なデータに
+  サービスをつないだりするおそれがあります。
+  両方のフォルダの中身を自分で確認してください。確認するまで、名前の
+  変更、移動、削除はしないでください。
+  手順は「アップグレード手順書」の「データフォルダの名前変更が中断した
+  とき」の節にあります。
+  この状態をあきらめてアップグレード時点のデータへ戻すには、
+  アップグレード前のバックアップから復元します：
+    %s'
+MSG_dirop_intent_failed='未完了の名前変更（%s から %s）を完了できませんでした。
+データベースサービスは起動せず、ほかの変更もしていません。'
+MSG_dirop_no_version='データフォルダが不完全なため、データベースは起動しません。
+何も変更していません。'
+MSG_dirop_not_empty='フォルダ %s にはすでにデータがあります。
+そこに新しいデータベースは作れません。変更はありません。'
+MSG_dirop_wrong_version='データフォルダ %s は PostgreSQL %s で、このリリースには %s が必要です。
+データベースは起動しません。変更はありません。'
+
+# ---------- 同梱データベースの変換（アップグレード第 8 ステップ） ----------
+MSG_pgc_unsupported_head='自動変換できない設定がデータベースにあるため、アップグレードは
+始まりません。サービスは停止せず、変更もありません。'
+MSG_pgc_unsupported_ext='拡張機能：%s'
+MSG_pgc_unsupported_ts='独自テーブルスペース：%s'
+MSG_pgc_unsupported_role='ほかのロール：%s（オブジェクトに権限が付与されています）'
+MSG_pgc_unsupported_foot='Custodexa はこれらを作らないため、データベースは手作業で変更
+されています。自動変換は Custodexa 自身のデータだけを移すので、
+これらがあると不完全になるため、ここで止めます。アップグレード SOP
+（Upgrade SOP）の「データベースに追加の設定があるとき」に従い、設定を
+削除して同じコマンドをもう一度実行するか、残したい場合は外部データ
+ベースへ移してください。
+  %s'
+MSG_pgc_where_backups='バックアップフォルダ'
+MSG_pgc_where_images='Docker のイメージ保存領域'
+MSG_pgc_where_newdb='新しいデータベースのフォルダ'
+MSG_pgc_where_dump='エクスポート用の作業フォルダ'
+MSG_pgc_space_unknown_head='空きが足りるか確認できないため、アップグレードは始まりません。
+サービスは止めておらず、何も変更していません。'
+MSG_pgc_space_unknown='特定できない場所   %s（パスを読み取れません）
+空きが足りると仮定して進めることはしません。Docker が正常に動くこと
+を確認してから、同じコマンドをもう一度実行してください。
+  sudo docker info
+  %s'
+MSG_pgc_space_head='空き容量が足りないため、アップグレードは始まりません。サービスは
+停止せず、変更もありません。'
+MSG_pgc_space_foot='%s の空きを増やしてから、同じコマンドをもう一度実行してください。
+  %s'
+MSG_pgc_space_art='前回の変換の失敗で残ったデータ（診断用で、システムは使っていません）が
+容量を使っています。'
+MSG_pgc_space_art_hint='削除するには、端末で同じアップグレードコマンドを実行し、
+削除の確認に y と答えます（端末なしの実行では何も削除しません）。
+  %s
+%s の空きを自分で増やしてから実行し直すこともできます。'
+MSG_pgc_art_head='前回の変換の失敗で残ったデータ（削除して空きを増やせます）'
+MSG_pgc_art_desc='  前回のアップグレードが第 8 ステップで失敗したときに残った
+  途中のデータです。診断のためだけに残してあり、
+  システムが使ったことはありません：'
+MSG_pgc_art_ver='PostgreSQL %s'
+MSG_pgc_art_ver_unknown='バージョン不明'
+MSG_pgc_art_ni='  端末なしの実行では、これらのフォルダは削除しません。'
+MSG_pgc_art_after_head='  削除後'
+MSG_pgc_art_after_1='元に戻せません'
+MSG_pgc_art_after_2='動作中の %s とそのデータ
+%s には影響しません'
+MSG_pgc_art_after_3='アップグレードに必要な空き容量を計算し直します'
+MSG_pgc_art_ask='この %s 個のフォルダを削除してから空きを確認しますか？[y/N]'
+MSG_pgc_art_cleared='%s を削除しました（%s 解放）'
+MSG_pgc_art_recount='空き容量の再計算：%s に %s 必要、空き %s'
+MSG_pgc_art_untouched='%s は変更していません'
+MSG_pgc_art_kept='この %s 個のフォルダは残します。'
+MSG_pgc_prev_head='データベースの変換：PostgreSQL %s → %s'
+MSG_pgc_prev_why='  理由               %s から同梱データベースは PostgreSQL %s に
+                     なります（コミュニティのサポートは %s 年まで）。
+                     PostgreSQL %s のサポートは %s 年までです。これは
+                     アップグレードの一部で、省略できません。'
+MSG_pgc_prev_how='  方法               データを書き出し、新しい PostgreSQL %s の
+                     データベースに取り込みます'
+MSG_pgc_prev_old='  旧データ           %s にそのまま残し、変更しません'
+MSG_pgc_prev_new='  新データ           %s'
+MSG_pgc_prev_time='  時間               変換に約 %s から %s 分。ディスクが遅いとさらに
+                     かかることがあります。下の停止時間に含めています'
+MSG_pgc_prev_fail='  失敗時             バージョン切り替えの前で止まり、%s が再起動して
+                     これまで通り動きます。旧データは変更されません'
+MSG_pgc_prev_back='  後で %s に戻す場合は、2 つの方法があり、どちらもアップグレード
+  時点のデータに戻ります。
+    - 前のバージョンに戻す（rollback）：上に残した旧データを使います
+    - アップグレード前のバックアップから復元する（restore）
+    どちらも同じです。新しいバージョンの起動後に書き込まれた
+    データ（監査記録、接続記録、録画の索引、設定とアカウントの
+    変更）は戻りません。'
+MSG_up_will_conv='  3. データベースを PostgreSQL %s から %s に変換（下の「データベース
+     変換」を参照）'
+MSG_up_will_conv_switch='  4. %s に切り替えて起動'
+MSG_up_will_conv_check='  5. 確認：バージョン、以前と同じデータか、鍵が変わっていないか'
+MSG_pgr_head='前回のアップグレードは第 8 ステップ「データベースの変換」で中断しました。'
+MSG_pgr_state_stopped='サービスは停止中で、バージョンは %s のままです。旧データ %s は
+完全で、変更されていません。'
+MSG_pgr_state_running='サービスは実行中で、バージョンは %s のままです。旧データ %s は
+完全で、変更されていません。'
+MSG_pgr_a_proof='前回の停止以降にアプリケーションサービスが再起動されていないことを
+確認しました。アップグレード前のバックアップは引き続き有効です。
+今回は第 8 ステップから変換をやり直します：'
+MSG_pgr_a_reuse='前回完了したバックアップを再利用：%s'
+MSG_pgr_b_unknown='前回の停止以降にアプリケーションサービスが再起動されていないことを
+確認できません。停止後に書かれたデータは前回のバックアップに
+含まれないため、そのバックアップは再利用しません
+（ファイルは残し、削除しません）：
+  %s'
+MSG_pgr_b_failed='前回の変換はすでに失敗しており、旧サービスを復旧していました。その後に
+書かれたデータは前回のバックアップに含まれないため、そのバックアップは
+再利用しません（ファイルは残し、削除しません）：
+  %s'
+MSG_pgr_b_again='今回はアップグレード全体をやり直します：チェックとプレビューのあと、
+監査記録を書き切り、サービスを停止し、バックアップを取り直してから
+変換します。もう一度停止します。'
+MSG_pgr_aside='変換途中のデータを先に次の場所へ移します（削除しません）：
+%s'
+MSG_pgr_step_kept='前回の結果を使用'
+MSG_pgr_step_kept_backup='前回のバックアップ %s を使用'
+MSG_pgr_c_head='前回のアップグレードは第 8 ステップ「データベースの変換」で中断しました。
+先にアップグレードを完了してください。変更は行っていません。'
+MSG_pgr_c_state='バージョンは %s のままです。旧データ %s は完全で、変更されていません。'
+MSG_pgr_c_again='アップグレードをもう一度実行すると続きから進みます（変換途中のデータは
+先に %s/postgresql.partial-convert-<時刻> へ移し、削除しません）：'
+MSG_pgr_c_start='続きの開始位置は状況によります：停止後にアプリケーションが再起動されて
+いないと確認できれば、バックアップを使って第 8 ステップからやり直し、
+そうでなければアップグレード全体をやり直し、停止とバックアップも
+取り直します。
+upgrade の実行時に、どちらになるかを先に説明します。'
+MSG_pgr_c_status='このデプロイの状態を確認するには：'
+MSG_pgc_fail_head_stopped='アップグレードは第 8/13 ステップで停止：データベースの変換が「%s」で
+失敗し、旧バージョンも再起動できませんでした'
+MSG_pgc_fail_no_auto='スクリプトはこれを自動では処理しません'
+MSG_pc_db_ok='データベース   PostgreSQL %s、データは %s にあります'
+MSG_pc_db_bad='データベース   PostgreSQL %s のはずですが、データフォルダは %s、実行中の
+               サーバーは %s、データの場所は %s です'
+MSG_pgc_done_head='データベース'
+MSG_pgc_done_old='旧 PostgreSQL %s のデータは %s に残してあります（%s）。
+しばらく正常に動くことを確認してから、メニューの
+「データベースのアップグレード」で削除できます。'
+MSG_pgc_done_back='今後 %s に戻す場合、rollback でもアップグレード前のバックアップからの
+restore でも、その後に書かれたデータは戻りません。'
+MSG_pgc_done_gone='旧データを削除すると rollback はできなくなり、アップグレード前の
+バックアップからの restore だけになります。'
+MSG_pgc_p18_converted='データベースは PostgreSQL %s に変換済みです。PostgreSQL %s の旧データは
+%s にそのまま残してあります'
+MSG_pgc_p18_both='%s に戻す方法は 2 つあり、どちらもアップグレード時点のデータに戻ります：'
+MSG_pgc_p18_roll='1. 残してある PostgreSQL %s の旧データで前のバージョンに戻す
+   （停止の前に確認します）：'
+MSG_pgc_p18_roll_note='   新しいバージョンの起動後に書かれたデータは、戻した後のデータベースには
+   ありません。'
+MSG_pgc_p18_restore='2. アップグレード前のバックアップから restore：'
+MSG_pgc_p18_gone='%s に戻すには、アップグレード前のバックアップから restore してください。
+アップグレード時に残した PostgreSQL %s のデータ %s は
+もうないため、直接は戻せません：'
+# データベースのメジャーバージョンをまたぐロールバックと取り消し。
+MSG_pgrb_versions='現在のバージョン   %s（PostgreSQL %s）
+戻り先             %s（アップグレード前、PostgreSQL %s）'
+MSG_pgrb_db_untouched='データベース       新しいバージョンは起動していないため、データは
+                   変わっていません。アップグレード時のまま残してある
+                   PostgreSQL %s のデータを使います：%s
+                   変換して作られた PostgreSQL %s のデータは、名前を
+                   変えて削除せずに残します：
+                   %s'
+MSG_pgrb_no_loss='そのため失われるデータはなく、バックアップからの復元も不要です。'
+MSG_pgrb_db_started='データベース       アップグレード時のまま残してある PostgreSQL %s の
+                   データを使います：
+                   %s
+                   内容は %s のアップグレード時点のままです'
+MSG_pgrb_db_started_nostamp='データベース       アップグレード時のまま残してある PostgreSQL %s の
+                   データを使います：
+                   %s
+                   内容はアップグレード時点のままです'
+MSG_pgrb_warn='新しいバージョン %s はすでに起動しています（%s 以降）。
+アップグレード後に書き込まれたデータは、%s に戻した後の
+データベースにはありません：
+  - 監査記録
+  - 接続記録
+  - 録画インデックス：録画ファイルはディスクに残りますが、
+    %s に戻した後はシステムから見つかりません
+  - 設定とアカウントの変更（ユーザー、資産、権限、ポリシーの
+    追加・変更・削除）'
+MSG_pgrb_warn_kept='現在の PostgreSQL %s のデータは削除せず、名前を変えて
+次の場所に残します：
+  %s
+後で %s に再度アップグレードすると、PostgreSQL %s のデータから
+あらためて変換します。残した PostgreSQL %s のデータは戻されません。'
+MSG_pgrb_warn_restore='もう一つの方法は、アップグレード前のバックアップから復元して
+アップグレード時点のデータに戻すことです：'
+MSG_pgrb_warn_restore_own='もう一つの方法は、アップグレード前に取った自分のバックアップから
+復元して、アップグレード時点のデータに戻すことです。
+バックアップの記録は %s にあります。
+登録した復元手順で手動で復元してください。'
+MSG_pgrb_steps='手順：サービス停止 → PostgreSQL %s のデータが残っていることを
+確認し、%s のデータの名前を変えて残す → %s に戻す → 起動 →
+バージョンと実行中のイメージを確認'
+MSG_pgrb_ask='%s に戻し、アップグレード後に書き込まれたデータを破棄しますか？[y/N]'
+MSG_pgrb_need_yes='%s に戻すと、アップグレード後に書き込まれたデータが破棄されます。
+今回は非対話の実行（端末なし）のため、--yes を付けた場合のみ実行します。
+何も変更していません。'
+MSG_pgrb_step_switch='PostgreSQL %s のデータは残っています。%s のデータは名前を変えて
+残し、%s に戻す'
+MSG_pgrb_upgrade_later='再度アップグレードする場合は、通常どおり upgrade を実行してください。
+データベースをあらためて変換します。'
+MSG_pgrb_gone='%s に直接戻せません。アップグレード時に残した PostgreSQL %s の
+データがもうありません。
+何も変更していません。%s。'
+MSG_pgrb_gone_why='原因               %s が使えるのは PostgreSQL %s のデータだけですが、
+                   %s はもうありません'
+MSG_pgrb_gone_why_at='原因               %s が使えるのは PostgreSQL %s のデータだけですが、
+                   %s は %s に削除されました'
+MSG_pgrb_wrong='%s に直接戻せません。%s は
+PostgreSQL %s のデータではありません。
+何も変更していません。%s。'
+MSG_pgrb_wrong_why='原因               このフォルダーに記録されたデータベースのバージョンは
+                   %s で、%s は使用できません'
+MSG_pgrb_restore='%s に戻すには、アップグレード前のバックアップから復元してください。
+データはバックアップ時点（%s、アップグレード開始時）に戻り、
+その後に書き込まれたデータ（監査記録、接続記録、録画インデックス、
+設定とアカウントの変更）は失われます。アップグレード後に誰も
+システムを使っていなければ、復元で失われるデータはありません。
+復元の前に確認があります：'
+MSG_pgrb_restore_same='%s に戻すには、アップグレード前のバックアップから復元してください
+（説明は上と同じ）：'
+MSG_pgrb_when_backup='バックアップ時点'
+MSG_pgrb_rename_blocked='%s を %s に名前変更できません。
+元がないか、移動先がすでにあります。何も起動していません。'
+MSG_pgrv_preview='新しいバージョンへの取り消し：プレビュー（まだ何も変更していません）'
+MSG_pgrv_state_started='現在の状態         前回の「前のバージョンに戻す」は完了していません。
+                   すでに PostgreSQL %s を使っていますが、%s 起動後の
+                   確認が通りませんでした'
+MSG_pgrv_state_early='現在の状態         前回の「前のバージョンに戻す」は
+                   %s の起動前に中断しました'
+MSG_pgrv_to='取り消し先         %s（PostgreSQL %s）'
+MSG_pgrv_db='データベース       戻す前に残しておいた PostgreSQL %s のデータを
+                   再び使います：
+                   %s
+                   名前を %s に戻します
+                   内容は戻した時点のままで、それ以前に PostgreSQL %s に
+                   書き込まれたデータはすべて残っています'
+MSG_pgrv_warn='%s は PostgreSQL %s でしばらく動作していました。戻している間に
+PostgreSQL %s に書き込まれたデータは、取り消し後の
+データベースにはありません：
+  - 監査記録
+  - 接続記録
+  - 録画インデックス：録画ファイルはディスクに残りますが、
+    %s に取り消した後はシステムから見つかりません
+  - 設定とアカウントの変更（ユーザー、資産、権限、ポリシーの
+    追加・変更・削除）'
+MSG_pgrv_warn_kept='このデータは古いデータフォルダーに残り、削除も統合もされません：
+  %s'
+MSG_pgrv_early_none='%s は PostgreSQL %s で起動していないため、PostgreSQL %s の
+データは変わっておらず、失われるデータはありません。'
+MSG_pgrv_ask='%s に取り消し、戻している間に PostgreSQL %s に
+書き込まれたデータを破棄しますか？[y/N]'
+MSG_pgrv_need_yes='取り消すと、戻している間に PostgreSQL %s に書き込まれたデータが
+破棄されます。今回は非対話の実行（端末なし）のため、
+--yes を付けた場合のみ実行します。何も変更しておらず、
+ロールバックの記録もそのままです。'
+MSG_pgrv_step_switch='PostgreSQL %s のデータを %s に名前変更して戻す'
+MSG_pgrv_step_check='確認：バックエンドの応答は %s。データベースは PostgreSQL %s'
+MSG_pgrv_done='%s に取り消しました。'
+MSG_pgrv_done_kept='戻している間に PostgreSQL %s に書き込まれたデータは %s に
+残っており、削除していません。'
+MSG_pgc_mh_backup='アップグレード前のバックアップの場所 %s'
+MSG_pgc_mh_images='Docker のイメージ保存領域 %s'
+MSG_pgc_mh_newdb='新しいデータベースの場所 %s'
+MSG_pgc_mh_dump='エクスポート用の作業領域の場所 %s'
+MSG_pgc_mh_newdb_dump='新しいデータベースの場所 %s と作業領域 %s'
+MSG_pgc_mh_mixed='Docker のイメージ保存領域 %s とその他の書き込み先'
+MSG_pgc_mh_shared='バックアップと新しいデータベースの場所はここです'
+MSG_pgc_c_backup='バックアップ %s'
+MSG_pgc_c_images='新しいイメージ %s'
+MSG_pgc_c_newdb='新しいデータベース %s'
+MSG_pgc_c_dump='エクスポート用 %s'
+MSG_pgc_c_margin='余裕 %s'
+MSG_pgc_cl_backup='アップグレード前のバックアップ %s'
+MSG_pgc_cl_images='新しいイメージ %s'
+MSG_pgc_cl_newdb='新しいデータベース %s'
+MSG_pgc_cl_dump='エクスポート用 %s'
+MSG_pgc_cl_margin='余裕 %s'
+MSG_pgc_sp_item_sep='、'
+MSG_pgc_sp_sep='、'
+MSG_pgc_sp_list_sep='、'
+MSG_pgc_sp_open='（'
+MSG_pgc_sp_close='）'
+MSG_pgc_sp_need='必要 %s'
+MSG_pgc_sp_free='空き %s'
+MSG_pgc_sp_only='空きは %s のみ'
+MSG_pgc_sp_short='%s 不足'
+MSG_pgc_sp_one_images='（新しいイメージ）'
+MSG_pgc_ok_both='バックアップの場所 %s と新しいデータベースの場所 %s の空きは足ります。'
+MSG_pgc_ok_new='新しいデータベースの場所 %s の空きは足ります。'
+MSG_pgc_space_foot_backup='古いバックアップファイルを別の場所へ移して削除するか、%s を拡張
+してください。
+現在のバックアップファイル：ls -l %s/
+そのあと同じコマンドをもう一度実行してください。
+  %s'
+MSG_pgc_prev_space_lead='  容量               '
+MSG_pgc_prev_why_plain='  理由               %s から同梱データベースは PostgreSQL %s に
+                     なります。これはアップグレードの一部で、
+                     省略できません。'
+MSG_up_know_pause_conv='  - 停止時間は %s〜%s 分の見込みです（データベースの変換を含む）。
+    停止中は接続できず、進行中の接続は切断されます
+    （現在 %s 本の接続が進行中）'
+MSG_up_know_pause_unknown_conv='  - 停止時間は %s〜%s 分の見込みです（データベースの変換を含む）。
+    停止中は接続できず、進行中の接続は切断されます'
+MSG_up_step_pgconvert_done='データベースの変換：PostgreSQL %s → %s'
+MSG_pgc_subf_verify='確認：新旧のデータベースのデータが同じか'
+MSG_pgc_fail_reason_lab='  原因       '
+MSG_pgc_fail_summary='（概要。全文はログにあります）'
+MSG_pgc_why_prepare='準備中に旧データベースの設定を読み取れませんでした'
+MSG_pgc_why_dump='書き出し中に旧データベースへ接続できませんでした'
+MSG_pgc_why_init='新しいデータベースの作成中に、一時的なコンテナが起動しませんでした'
+MSG_pgc_why_restore='取り込みが完了しませんでした'
+MSG_pgc_why_restore_d='データベースの報告：%s'
+MSG_pgc_why_verify='確認のためのデータを読み取れないか、データベースの設定が想定と違います'
+MSG_pgc_why_verify_d='確認で新旧のデータベースの不一致が見つかりました：%s'
+MSG_pgc_why_analyze='クエリ統計の整理が完了しませんでした'
+MSG_pgc_why_done='最後の後始末が完了しませんでした'
+MSG_pgc_fail_again_b='そのあと、もう一度アップグレードを実行します：'
+MSG_up_step_pgconvert_external='データベースの変換（外部データベースはお客様の管理のため、
+変換しません）'
+MSG_dirop_lost_title='データフォルダの名前変更が前回完了しておらず、関係するフォルダが
+見つかりません。データベースのサービスは起動せず、フォルダも
+変更していません。'
+MSG_dirop_op_rolled_back='  前回の操作   前のバージョンへ戻す：%s を
+               %s に名前を変えて残す'
+MSG_dirop_op_revert='  前回の操作   直前の巻き戻しの取り消し：%s を
+               %s に名前を変えて残す'
+MSG_dirop_op_before_convert='  前回の操作   データベース変換の前：%s を
+               %s に名前を変えて残す'
+MSG_dirop_op_failed_convert='  前回の操作   変換失敗の後：%s を
+               %s に名前を変えて残す'
+MSG_dirop_op_removing='  前回の操作   旧データの削除：%s を
+               %s に名前を変えてから削除'
+MSG_dirop_op_other='  前回の操作   データフォルダの名前変更：%s を
+               %s に変更'
+MSG_dirop_both_head='  両方のフォルダがあります（バージョンファイル = フォルダ内の
+  PG_VERSION の内容）'
+MSG_dirop_none_head='  どちらのフォルダもありません'
+MSG_dirop_dir_row='    %s'
+MSG_dirop_dir_ver='        バージョンファイル：%s    %s'
+MSG_dirop_dir_gone='        ありません'
+MSG_dirop_ver_none='なし'
+MSG_dirop_backup_file='<バックアップファイル>'
+MSG_dirop_lost_body='  データが別の場所へ移されたか、誤って削除された可能性があります。
+  まず探してください。確認するまで、フォルダの名前変更、移動、削除は
+  しないでください。手順は「アップグレード手順書」の「データフォルダの
+  名前変更が中断したとき」の節にあります。
+  データが見つからない場合は、アップグレード前のバックアップから
+  復元するしかありません：
+    %s'
+MSG_dirop_missing_body='  %s がないか、中に PG_VERSION ファイルがありません。
+  このまま起動すると、PostgreSQL %s が空のフォルダにデータのない
+  新しいデータベースを作ってしまいます。
+  まずデータを探してください（例：残してあるフォルダ %s.* で確認）。
+  または、アップグレード前のバックアップから復元します：
+    %s
+  この配置の状態を見るには：
+    sudo %s/custodexa.sh status%s'
+MSG_up_step_pgconvert='データベースの変換：PostgreSQL %s → %s（データ %s）'
+MSG_pgc_run_note='中断しないでください。中断しても旧データは壊れず、アップグレードを
+        再実行すると変換を最初からやり直します。'
+MSG_pgc_tick='経過 %s、あと約 %s から %s 分'
+MSG_pgc_tick_over='経過 %s、見積もりを超えています。もう少しかかります'
+MSG_pgc_tick_bare='経過 %s'
+MSG_pgc_sub_dump='旧データベースの書き出し'
+MSG_pgc_sub_init='新しい PostgreSQL %s データベースの作成'
+MSG_pgc_sub_restore='新しいデータベースへの取り込み'
+MSG_pgc_sub_verify='確認：%s テーブルの件数、構造バージョン、シーケンス、文字コードが一致'
+MSG_pgc_sub_analyze='クエリ統計の整理'
+MSG_pgc_sub_done='完了'
+MSG_pgc_old_kept='旧データは %s にそのまま残っています'
+MSG_pgc_ph_prepare='準備'
+MSG_pgc_ph_dump='書き出し'
+MSG_pgc_ph_init='新データベースの作成'
+MSG_pgc_ph_restore='取り込み'
+MSG_pgc_ph_verify='確認'
+MSG_pgc_ph_analyze='統計の整理'
+MSG_pgc_ph_done='後処理'
+MSG_pgc_fail_phase='データベースの変換が失敗した段階：%s'
+MSG_pgc_fail_head='アップグレードは第 8/13 ステップで停止：データベースの変換が「%s」で失敗'
+MSG_pgc_fail_reason='原因  %s（概要。全文はログにあります）'
+MSG_pgc_fail_state_title='現在の状態'
+MSG_pgc_fail_running='バージョンは変わっていません。%s を再起動し、通常どおり動いています'
+MSG_pgc_fail_stopped='バージョンは変わっていません（%s のまま）が、サービスは停止しています'
+MSG_pgc_fail_old_kept='旧データ %s は変更されていません'
+MSG_pgc_fail_kept='変換途中の新データベースは下の場所へ移しました。あなたまたはサポート
+担当が調べるために残し、自動では削除しません：
+%s'
+MSG_pgc_fail_again='原因を取り除いたら、同じアップグレードコマンドをもう一度実行して
+ください（バックアップと変換をやり直します）：'
+MSG_pgc_fail_restart='旧バージョンのサービスを再開します：'
+
+# 内蔵データベースのメジャーバージョンをまたぐ復元。
+MSG_rs_db_major_mismatch='バックアップの一覧は PostgreSQL %s ですが、%s が内蔵するのは
+PostgreSQL %s です。一覧とリリースが一致しません。'
+MSG_rs_db_major_guide='バックアップファイルが変更されたか、不完全な可能性があります。
+作成されたままのファイルを使ってください。'
+MSG_rs_db_init_stage='新しいデータベースは、それを作る段階でだけ作成します。復元は
+「%s」で止まっています。何も起動していません。'
+MSG_rs_db_init_unknown='復元するリリースのデータベース構成を読み取れません。何も起動
+していません。'
+MSG_rs_db_same='バックアップは PostgreSQL %s、PostgreSQL %s で復元します'
+MSG_rs_db_other='バックアップは PostgreSQL %s（%s のバックアップ）、
+PostgreSQL %s で復元します'
+MSG_rs_db_differs='現在の PostgreSQL %s とは異なります：'
+MSG_rs_db_back='- 復元後、このホストは %s と PostgreSQL %s に戻ります'
+MSG_rs_db_kept_cur='- 現在の PostgreSQL %s のデータは削除せず、名前を変えて保管します：
+  %s'
+MSG_rs_db_kept_old='- 残っている PostgreSQL %s の旧フォルダーも名前を変えて保管します：
+  %s'
+MSG_rs_db_again='- %s をまた使うときは、通常どおり upgrade を実行します。
+  PostgreSQL %s に再び変換されます'
+
+# データベースのアップグレード、古いデータベースフォルダ、メニュー項目、status のデータベース欄（db-upgrade）。
+MSG_usage_db_upgrade_only='オプション %s は db-upgrade 専用です。
+custodexa.sh --help を参照してください'
+MSG_help_cmd_db_upgrade='  db-upgrade             内蔵データベースの PostgreSQL バージョンと、残してある
+                         古いデータフォルダを表示（何も変更しない）
+  db-upgrade --remove-old  確認のうえ、その古いデータフォルダを削除する。
+                         削除後は元に戻せない'
+MSG_help_opt_remove_old='  --remove-old           （db-upgrade）古いデータベースフォルダを削除する'
+MSG_menu_db_upgrade='データベースのアップグレード'
+MSG_menu_db_upgrade_cur='データベースのアップグレード（現在 PostgreSQL %s。
+古いデータベースフォルダを削除）'
+MSG_menu_db_upgrade_to='データベースのアップグレード（現在 PostgreSQL %s。
+PostgreSQL %s にアップグレード可能）'
+MSG_dbo_kind_previous='前のバージョンに戻すのに必要'
+MSG_dbo_kind_previous_up='%s へのアップグレード時のまま保管。前のバージョンに戻すのに必要'
+MSG_dbo_kind_before_convert='変換前のまま保管したデータ'
+MSG_dbo_kind_rolled_back='前のバージョンに戻る前の新しいバージョンのデータ。引き継いでいない'
+MSG_dbo_kind_before_restore='リストア前のまま保管したデータ'
+MSG_dbo_kind_failed_convert='変換の失敗で残った作りかけ。調査用'
+MSG_dbo_kind_partial_convert='変換の中断で残った作りかけ。調査用'
+MSG_dbo_kind_removing='削除を始めたが終わっていない'
+MSG_status_sec_db='データベース'
+MSG_status_db_external='外部データベース %s（利用者が管理）'
+MSG_status_db_unknown='このバージョンの内蔵データベースのバージョンを読み取れません。'
+MSG_status_db_no_version='%s に読める PostgreSQL バージョンファイルがありません。'
+MSG_status_db_main='PostgreSQL %s（内蔵）、データは %s、%s'
+MSG_status_db_checksums_on='データチェックサム（data checksums）は有効'
+MSG_status_db_checksums_off='データチェックサム（data checksums）は無効'
+MSG_status_db_old_head='残してある古いフォルダ %s 件。メニューの
+「データベースのアップグレード」から削除できます：'
+MSG_status_db_removing='前回の古いデータベースフォルダの削除が終わっていません：
+%s が残っています（%s）。
+もう一度削除を実行してください：
+  sudo %s/custodexa.sh db-upgrade --remove-old'
+MSG_dbu_title='データベースのアップグレード'
+MSG_dbu_row_current='  現在         PostgreSQL %s、データは %s'
+MSG_dbu_row_supported='  このバージョンの対応   PostgreSQL %s'
+MSG_dbu_latest='このバージョンが対応する最新の PostgreSQL です。
+アップグレードは不要です。'
+MSG_dbu_old_head='残してある古いデータベースフォルダ（削除して容量を空けられます）'
+MSG_dbu_old_remove='削除する（対象を表示し、確認を求めます）：'
+MSG_dbu_old_all='すべて削除'
+MSG_dbu_query_only='このコマンドは確認のみで、何も変更していません。'
+MSG_dbu_nothing='何も変更していません。'
+MSG_dbu_external='このホストは外部データベース %s:%s を使っています。
+外部データベースは利用者が管理します。
+Custodexa はアップグレードしません。メジャーバージョンの更新は、
+お使いのデータベース運用手順で行ってください。'
+MSG_dbu_newer='データは PostgreSQL %s で、このバージョンが対応する
+PostgreSQL %s より新しいです。
+先にプログラムをアップグレードしてください。何も変更していません。'
+MSG_dbu_mismatch='データフォルダは PostgreSQL %s ですが、
+動作中のサーバーは PostgreSQL %s です。
+何も変更していません。'
+MSG_dbu_unreadable='%s の PostgreSQL バージョンを読み取れません。何も変更していません。'
+MSG_dbu_release_unreadable='MANIFEST からこのバージョンの内蔵データベースを読み取れません。'
+MSG_dbu_remove_before_convert='データがこのバージョンの内蔵データベースより古いため、
+先に変換してください（--remove-old なしで db-upgrade を実行）。
+フォルダは何も削除していません。'
+MSG_dbu_convert_note='データは PostgreSQL %s、このバージョンは PostgreSQL %s を
+内蔵しています。変換します。'
+MSG_dbu_rm_head='古いデータベースフォルダの削除（削除後は元に戻せません）'
+MSG_dbu_rm_what='削除するもの'
+MSG_dbu_rm_after='削除後'
+MSG_dbu_rm_b_lost='- このデータは復元できません'
+MSG_dbu_rm_b_rollback='- rollback で %s に戻れなくなります。%s に戻すには、
+  アップグレード前のバックアップをリストアするしかなく、
+  アップグレード後に書き込まれたデータは失われます'
+MSG_dbu_rm_b_backup='- アップグレード前のバックアップ：%s
+  （%s に作成、%s、ファイルあり）'
+MSG_dbu_rm_nobackup='アップグレード前のバックアップ %s が見つかりません。
+削除すると、このホストには %s に戻る方法がなくなります。'
+MSG_dbu_rm_unaffected='使用中の PostgreSQL %s（%s）には影響せず、
+サービスも停止しません。'
+MSG_dbu_rm_ask_one='確認のため、削除するデータベースのバージョン %s を入力してください：'
+MSG_dbu_rm_ask_all='確認のため %s と入力してください：'
+MSG_dbu_rm_cancel='キャンセルしました。何も削除していません。'
+MSG_dbu_rm_done='%s を削除しました（%s を解放）'
+MSG_dbu_rm_failed='%s を最後まで削除できませんでした。もう一度削除を実行してください。'
+MSG_dbu_rm_needs_yes='古いデータベースフォルダの削除は元に戻せません。今回は対話ではない実行
+（端末なし）のため、--yes が必要です。何も変更していません。'
+MSG_dbu_rm_none='削除する古いデータベースフォルダはありません。'
+MSG_dbu_rm_not_listed='%s は古いデータベースフォルダではありません。何も削除していません。'
+MSG_dbu_blocked_head='次のフォルダは今は削除できません。理由は以下のとおりです：'
+MSG_dbu_ref_head='今は古いデータベースフォルダを削除できません。何も変更していません。'
+MSG_dbu_chk_db_ok='現在のデータベースは PostgreSQL %s で、正常に動作しています'
+MSG_dbu_chk_db_bad='現在のデータベースが応答せず、PostgreSQL %s が正常か確認できません'
+MSG_dbu_chk_up_ok='前回のアップグレードは完了しています'
+MSG_dbu_chk_up_bad='前回のアップグレードが完了していません（ステップ %s/13 で停止）'
+MSG_dbu_chk_new_bad='新しいバージョンがまだ起動していません'
+MSG_dbu_chk_idle_ok='進行中のアップグレード、ロールバック、リストアはありません'
+MSG_dbu_chk_up_started='前回のアップグレードは完了し、新しいバージョンは起動済みです'
+MSG_dbu_chk_idle_short='進行中のロールバック、リストアはありません'
+MSG_dbu_chk_idle_bad='終わっていないアップグレード、ロールバック、リストアがあります'
+MSG_dbu_chk_mount_bad='%s は実行中のコンテナが使っています'
+MSG_dbu_ref_keep='%s は %s に戻れる唯一のデータです。残しておいてください。'
+MSG_dbu_ref_start='サービスを起動して状態を確認してから、もう一度実行してください：'
+MSG_dbu_ref_later='アップグレードを終えるか（または前のバージョンに戻すか）して
+から、もう一度実行してください。状態の確認：'

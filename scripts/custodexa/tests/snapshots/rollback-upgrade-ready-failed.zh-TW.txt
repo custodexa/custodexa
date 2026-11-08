@@ -65,7 +65,7 @@ Custodexa 升級預覽（還沒有做任何變更）
     - 腳本不會自動回退
 
   先查看後端日誌找原因：
-    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+    sudo docker logs --tail 50 custodexa-backend
   若仍無法判斷，請將這份日誌與升級紀錄檔交給維運人員。
 
   決定回到 1.16.1 時執行下面的指令。腳本會先確認資料庫沒有被新版改過，

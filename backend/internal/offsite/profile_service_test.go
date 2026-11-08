@@ -594,7 +594,7 @@ func TestOffsiteConfirmEndpointRevalidatesAllInputs(t *testing.T) {
 			rig, genID := base(t)
 			in := tc.build()
 			// 直呼 confirm：digest 由**請求體自己**算出（模擬繞過者能算對 digest 的最壞情況）
-			norm, nerr := validateAndNormalizeOffsiteSettings(in)
+			norm, nerr := validateAndNormalizeOffsiteSettings(in, existingCredentialState{})
 			digest := ""
 			if nerr == nil {
 				digest = norm.settingsDigest()
@@ -1013,7 +1013,7 @@ func TestOffsiteProfileServiceClientForUsesOwnGenerationCredentials(t *testing.T
 	// 切到 gcs（跨 provider）——歷史物件因此散在不同後端
 	next := SettingsInput{
 		Provider: ProviderGCS, Bucket: "bucket-new", Prefix: "custodexa",
-		ServiceAccountJSON: `{"type":"service_account","client_email":"sa@example.iam"}`,
+		ServiceAccountJSON: minimalServiceAccountJSON,
 	}
 	current := mustSave(t, rig, next).View
 

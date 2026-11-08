@@ -4,8 +4,9 @@
 # The deployment's .env: created from the release's .env.example, then filled key by key with the
 # same rules as scripts/quickstart.sh (the source deployment path), so both paths produce the same
 # settings. A value that is already set is never changed; generated secrets are never logged.
-# On top of those rules: an absolute DATA_PATH, and COMPOSE_FILE / COMPOSE_PROJECT_NAME so that
-# `docker compose` typed in the deployment folder acts on the current release and this project.
+# On top of those rules: an absolute DATA_PATH, COMPOSE_PROJECT_NAME, and the managed block
+# (COMPOSE_FILE / COMPOSE_PROFILES, lib/form.sh) so that `docker compose` typed in the deployment
+# folder acts on the current release and this project.
 
 CX_ENV_GENERATED=""     # names generated in this run: jwt kek admin db
 CX_ENV_ADMIN_PASSWORD="" # only when generated in this run; shown once on the terminal
@@ -97,21 +98,19 @@ cx_env_generated() { CX_ENV_GENERATED="${CX_ENV_GENERATED:+$CX_ENV_GENERATED }$1
 # cx_env_generate <root>: create or complete <root>/.env. Prints nothing; a rule that cannot be met
 # prints one FAIL line and returns 1 (nothing generated after that point).
 cx_env_generate() {
-  local root=$1 f=$1/.env v prov data cf ov
+  local root=$1 f=$1/.env v prov data cf
   CX_ENV_GENERATED="" CX_ENV_ADMIN_PASSWORD="" CX_ENV_OVERLAYS=""
   if [ ! -f "$f" ]; then
     (umask 077 && cp "$root/current/.env.example" "$f") || return 1
   fi
   chmod 600 "$f"
 
-  # Deployment form and project first: the rules below depend on the form.
+  # Deployment form and project first: the rules below depend on the form. The form is what the two
+  # keys say (lib/form.sh); a COMPOSE_FILE in the old notation must agree with them and is replaced
+  # by the managed block at the end.
   cf=$(cx_env_get "$f" COMPOSE_FILE)
-  if [ -z "$cf" ]; then
-    cf=current/compose.yml
-    cx_env_set "$f" COMPOSE_FILE "$cf"
-  fi
   case $cf in
-    current/compose.yml | current/compose.yml:current/compose.external-ingress.yml | \
+    "" | current/compose.yml | current/compose.yml:current/compose.external-ingress.yml | \
       current/compose.yml:current/compose.external-database.yml | \
       current/compose.yml:current/compose.external-ingress.yml:current/compose.external-database.yml) ;;
     *)
@@ -119,9 +118,12 @@ cx_env_generate() {
       return 1
       ;;
   esac
-  for ov in $CX_OVERLAY_NAMES; do
-    [[ $cf == *"compose.$ov.yml"* ]] && CX_ENV_OVERLAYS="${CX_ENV_OVERLAYS:+$CX_ENV_OVERLAYS }$ov"
-  done
+  cx_form_legacy_check "$f" >&2 || return 1
+  if ! CX_ENV_OVERLAYS=$(cx_form_derive "$f"); then
+    cx_line FAIL "$(cx_msg fm_tls_bad "$(cx_form_tls_mode "$f")")"
+    printf '%s\n' "$(cx_msg fm_tls_valid)"
+    return 1
+  fi
   v=$(cx_env_get "$f" COMPOSE_PROJECT_NAME)
   if [ -z "$v" ]; then
     cx_env_set "$f" COMPOSE_PROJECT_NAME "$CX_PROJECT"
@@ -167,7 +169,8 @@ cx_env_generate() {
   # The database password is never changed once the database exists; an external database has
   # its own password, which only the operator knows.
   v=$(cx_env_get "$f" DB_PASSWORD)
-  if [ -d "$data/postgres" ] && [ -n "$(ls -A "$data/postgres" 2>/dev/null)" ]; then
+  if { [ -d "$data/postgres" ] && [ -n "$(ls -A "$data/postgres" 2>/dev/null)" ]; } ||
+    { [ -d "$data/postgresql" ] && [ -n "$(ls -A "$data/postgresql" 2>/dev/null)" ]; }; then
     :
   elif [ -n "$(cx_env_get "$f" EXTERNAL_DB_HOST)" ]; then
     if [ -z "$v" ] || [ "$v" = postgres ]; then
@@ -203,5 +206,6 @@ cx_env_generate() {
     v=$(cx_env_get "$f" DOCKER_SUBNET)
     cx_env_set "$f" TRUSTED_PROXIES "${v:-172.28.100.0/24}"
   fi
+  cx_env_sync_managed "$f" "$(cx_form_layout "$root/current")" "$CX_ENV_OVERLAYS" || return 1
   chmod 600 "$f"
 }

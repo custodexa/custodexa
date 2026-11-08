@@ -1,0 +1,8 @@
+[FAIL] 1.16.1 に直接戻せません。/opt/custodexa/data/postgres は
+       PostgreSQL 16 のデータではありません。
+       何も変更していません。サービスは引き続き実行中です。
+  原因               このフォルダーに記録されたデータベースのバージョンは
+                     18 で、1.16.1 は使用できません
+  1.16.1 に戻すには、アップグレード前のバックアップから復元してください
+  （説明は上と同じ）：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

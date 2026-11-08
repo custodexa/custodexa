@@ -1,0 +1,10 @@
+
+.env 將調整（第 9 步換版時改寫；其他設定一行都不動）
+  - 移除   COMPOSE_FILE=current/compose.yml:current/compose.external-ingress.yml:current/compose.external-database.yml
+  ~ 改     TLS_MODE=selfsigned  →  TLS_MODE=external
+           （網頁入口改由這一行表示，部署型態不變）
+  + 加入   檔案末尾的腳本管理區（前後各一行標記）：
+             COMPOSE_FILE=current/compose.yml
+             COMPOSE_PROFILES=own-ingress
+  從 9.9.9 起，部署型態只看兩行：EXTERNAL_DB_HOST（資料庫）
+  與 TLS_MODE（網頁入口）。管理區由腳本維護，請不要手動修改。

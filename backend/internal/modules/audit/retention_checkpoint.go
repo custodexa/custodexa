@@ -41,6 +41,9 @@ type CheckpointPurger struct {
 	// now 時間注入點（tombstone 的 purged_at 進簽章 payload，測試需可控）
 	now func() time.Time
 
+	// alerts 修剪暫停時的結構層告警出口；nil＝只寫 log（單元測試與未接線環境）
+	alerts AuditFailureAlerter
+
 	// faults 故障注入點：**僅單元測試設定，生產路徑恆為零值**。
 	// 之所以做進生產型別而非以介面包裝：要注入的是「同一交易內部的
 	// 特定時點」，包裝層無法在交易中途插入
@@ -64,6 +67,9 @@ type purgeFaults struct {
 func NewCheckpointPurger(db *gorm.DB, signer checkpointSigner) *CheckpointPurger {
 	return &CheckpointPurger{db: db, signer: signer, now: time.Now}
 }
+
+// SetFailureAlerter 注入結構層告警出口（修剪暫停時經既有結構層失效路徑上報）
+func (p *CheckpointPurger) SetFailureAlerter(a AuditFailureAlerter) { p.alerts = a }
 
 // GenesisIDFrom pre-genesis 逐列路徑的 id 上界（回傳值 g 代表 `id < g` 為 pre-genesis）。
 //
@@ -301,10 +307,14 @@ func (p *CheckpointPurger) PurgeableIntervals(cutoff time.Time) ([]model.AuditCh
 //  3. **至少留一個檢查點**。全數修剪＝鏈為空＝GenesisIDFrom fail-close，
 //     audit_logs 清除會整個停擺。
 //
-// 修剪錨（第二版）以簽章帶走被剪段的累計權限事實：被剪段曾有附證→至少 attested；曾有驗不過的點
-// →unverified；並承接前一錨（只承接驗過章且接得上現存鏈頭者，證明不了就帶 unverified）。累計單調，
-// 修剪因此不會讓原本沒有可信起點的狀態自行獲得起點。錨值取自簽章可驗的邊界：被剪最後一點驗得過就
-// 以它重算，否則取殘鏈新鏈頭簽章內的 prev_checkpoint_hash（新鏈頭須驗得過）；兩者皆驗不過本輪不剪。
+// 修剪前置（任一不成立即整輪不修剪、不簽修剪記錄，並經結構層失效路徑上報）：
+// 現存鏈頭須可錨定（有前一修剪記錄時，其簽章有效且與鏈頭相接）；每個候選點的點簽章須有效，封章時間取自
+// 驗過的載荷；覆蓋列數大於零者須清除標記存在且清除簽章有效，空區間不要求清除標記。因此每輪新修剪記錄的
+// 未驗證段數恆為 0，錨值只取自被修剪最後一點重算的鏈接。
+//
+// 修剪錨（第二版）以簽章帶走被剪段的累計權限事實：被剪段曾有附證→至少 attested，並承接前一錨
+// （前置已確認前一錨有效且接得上鏈頭）。累計單調，修剪因此不會讓原本沒有可信起點的狀態自行獲得起點。
+// 升級前簽出的修剪記錄所載未驗證段數由鏈驗證加總揭露，不由新記錄承接。
 //
 // 讀前錨、讀鏈、逐點驗章、簽章、刪除、寫入錨在同一交易內以同一份輸入完成；PG 上交易開頭對修剪錨表
 // 取 SHARE ROW EXCLUSIVE 表鎖，兩個並行修剪因此序列化（後者看得到前者寫出的錨）。
@@ -314,6 +324,7 @@ func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTri
 	}
 	cutoff := p.now().UTC().AddDate(0, 0, -days)
 	var trim *model.AuditCheckpointTrim
+	pauseReason := ""
 	err := p.db.Transaction(func(tx *gorm.DB) error {
 		if tx.Dialector.Name() == "postgres" {
 			if err := tx.Exec("LOCK TABLE audit_checkpoint_trims IN SHARE ROW EXCLUSIVE MODE").Error; err != nil {
@@ -331,15 +342,20 @@ func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTri
 		if err != nil {
 			return err // 讀取錯誤不當成「沒有前錨」：本輪不剪
 		}
-		cut := trimCutIndex(chain, cutoff)
-		if cut < 0 {
-			return nil
-		}
 		baseline, err := readIntegrityBaseline(tx)
 		if err != nil {
 			return err
 		}
-		inherited := checkpointChainStructure(chain, prev, baseline, p.signer).HeadHistory
+		structure := checkpointChainStructure(chain, prev, baseline, p.signer)
+		cut, pause := p.trimDecision(chain, prev, structure, cutoff, days)
+		if pause != "" {
+			pauseReason = pause
+			return nil
+		}
+		if cut < 0 {
+			return nil
+		}
+		inherited := structure.HeadHistory
 		segment, unverified := model.TrimPermHistoryNone, int64(0)
 		for i := 0; i <= cut; i++ {
 			cp := &chain[i]
@@ -355,8 +371,7 @@ func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTri
 		}
 		link, ok := trimAnchorLink(&chain[cut], &chain[cut+1], p.signer)
 		if !ok {
-			log.Printf("[Retention] 被剪段最後一點 seq=%d 與殘鏈新鏈頭 seq=%d 的簽章皆驗不過，本輪不修剪",
-				chain[cut].Seq, chain[cut+1].Seq)
+			pauseReason = "被剪段最後一點簽章驗不過"
 			return nil
 		}
 		genesisIDFrom := chain[0].IDFrom
@@ -410,6 +425,11 @@ func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTri
 	if err != nil {
 		return 0, nil, err
 	}
+	if pauseReason != "" {
+		// 交易外上報：失效服務自己寫庫，不得與修剪交易搶同一連線
+		p.reportTrimPaused(pauseReason)
+		return 0, nil, nil
+	}
 	if trim == nil {
 		return 0, nil, nil
 	}
@@ -419,8 +439,78 @@ func (p *CheckpointPurger) TrimChain(days int) (int64, *model.AuditCheckpointTri
 	return trim.TrimmedCount, trim, nil
 }
 
-// trimCutIndex 自鏈頭起逐個判定，遇到第一個不可修剪的就停（連續性由此保證）；回傳最後可剪的索引（-1＝不剪）。
-func trimCutIndex(chain []model.AuditCheckpoint, cutoff time.Time) int {
+// trimDecision 修剪前置判定（唯讀）：回傳最後可剪的索引（-1＝無可剪）與暫停原因（空＝未暫停）。
+//
+// 先確認現存鏈頭可錨定，再逐一判定候選點；任一不成立即暫停（整輪不修剪、不簽修剪記錄）。
+func (p *CheckpointPurger) trimDecision(chain []model.AuditCheckpoint, prev *model.AuditCheckpointTrim,
+	structure chainStructure, cutoff time.Time, days int) (int, string) {
+	if len(chain) == 0 {
+		return -1, ""
+	}
+	if structure.Points[0].Status != IntervalStatusPassed {
+		return -1, "鏈頭無法錨定：" + structure.Points[0].Status
+	}
+	if prev != nil && prev.LastTrimmedSeq+1 != chain[0].Seq {
+		return -1, "前一修剪記錄與現存鏈頭不相接"
+	}
+	return trimCutIndex(chain, cutoff, days, p)
+}
+
+// TrimPauseReason 現況下修剪是否會暫停（唯讀；供驗證頁顯示暫停警示）。空字串＝不暫停。
+func (p *CheckpointPurger) TrimPauseReason(days int) (string, error) {
+	if days <= 0 || p.signer == nil {
+		return "", nil
+	}
+	var chain []model.AuditCheckpoint
+	if err := p.db.Order("seq ASC").Find(&chain).Error; err != nil {
+		return "", fmt.Errorf("讀取檢查點鏈失敗: %w", err)
+	}
+	if len(chain) <= 1 {
+		return "", nil
+	}
+	prev, err := latestTrimTx(p.db)
+	if err != nil {
+		return "", err
+	}
+	baseline, err := readIntegrityBaseline(p.db)
+	if err != nil {
+		return "", err
+	}
+	structure := checkpointChainStructure(chain, prev, baseline, p.signer)
+	_, pause := p.trimDecision(chain, prev, structure, p.now().UTC().AddDate(0, 0, -days), days)
+	return pause, nil
+}
+
+// TrimUnverifiedSegments 全部既有修剪記錄所載未驗證段數之和（只揭露，不參與判定；第一版載荷計 0）。
+func (p *CheckpointPurger) TrimUnverifiedSegments() (int64, error) {
+	if !p.db.Migrator().HasTable(&model.AuditCheckpointTrim{}) {
+		return 0, nil
+	}
+	var sum int64
+	if err := p.db.Model(&model.AuditCheckpointTrim{}).
+		Select("COALESCE(SUM(unverified_count), 0)").Scan(&sum).Error; err != nil {
+		return 0, fmt.Errorf("加總修剪記錄未驗證段數失敗: %w", err)
+	}
+	return sum, nil
+}
+
+// reportTrimPaused 修剪暫停：寫 log 並經結構層失效路徑上報（只上報，結案由鏈驗證的結構層通過時處理）。
+func (p *CheckpointPurger) reportTrimPaused(reason string) {
+	log.Printf("[Retention] 檢查點鏈修剪暫停：%s", reason)
+	if p.alerts == nil {
+		return
+	}
+	p.alerts.ReportWithCounts(model.MechanismAuditChainStructure, model.CauseAuditChainStructureInvalid,
+		map[string]string{model.FailureParamChainVerifyLayer: "retention", model.CauseParamDetail: reason},
+		map[string]int{model.FailureParamFailedPoints: 1})
+}
+
+// trimCutIndex 自鏈頭起逐個判定，遇到第一個不可修剪的就停（連續性由此保證）；
+// 回傳最後可剪的索引（-1＝不剪）與暫停原因（空＝未暫停）。
+//
+// 每個被檢視的點先驗點簽章，封章時間取自驗過的載荷；覆蓋列數大於零者須清除標記存在且清除簽章驗得過
+// 才算已清除，覆蓋列數為零的空區間不進清除路徑、不要求清除標記與清除簽章。簽章或清除簽章驗不過即暫停。
+func trimCutIndex(chain []model.AuditCheckpoint, cutoff time.Time, days int, p *CheckpointPurger) (int, string) {
 	cut := -1
 	for i := 0; i < len(chain)-1; i++ { // len-1：至少留一個
 		cp := chain[i]
@@ -429,31 +519,39 @@ func trimCutIndex(chain []model.AuditCheckpoint, cutoff time.Time) int {
 			log.Printf("[Retention] 檢查點鏈於 seq=%d 前已有斷洞，停止修剪", cp.Seq)
 			break
 		}
+		if _, ok := checkpointPointSignature(&cp, p.signer); !ok {
+			return -1, fmt.Sprintf("檢查點 seq=%d 簽章驗不過", cp.Seq)
+		}
 		if !cp.SealedAt.UTC().Before(cutoff) {
 			break // 尚未到期
 		}
-		if cp.RowCount > 0 && cp.PurgedAt == nil {
-			log.Printf("[Retention] 檢查點 seq=%d 仍覆蓋 %d 列現存資料，停止修剪"+
-				"（修剪它會讓那些列成為無法歸因的孤兒段）", cp.Seq, cp.RowCount)
-			break
+		if cp.RowCount > 0 {
+			if cp.PurgedAt == nil {
+				log.Printf("[Retention] 檢查點 seq=%d 仍覆蓋 %d 列現存資料，停止修剪"+
+					"（修剪它會讓那些列成為無法歸因的孤兒段）", cp.Seq, cp.RowCount)
+				break
+			}
+			if ok, err := p.VerifyPurgeTombstone(&cp, days); err != nil || !ok {
+				return -1, fmt.Sprintf("檢查點 seq=%d 的清除簽章驗不過", cp.Seq)
+			}
 		}
 		cut = i
 	}
-	return cut
+	return cut, ""
 }
 
-// trimAnchorLink 修剪錨的錨值：被剪最後一點驗得過就以它重算鏈接；否則取殘鏈新鏈頭簽章內的
-// prev_checkpoint_hash（新鏈頭須驗得過）；兩者皆驗不過回 false（本輪不剪）。
+// trimAnchorLink 修剪錨的錨值：只取被修剪最後一點重算的鏈接；該點簽章驗不過回 false（本輪不剪）。
+// newHead 為殘鏈新鏈頭，僅供對照，不得作為錨值來源（其 prev_checkpoint_hash 不代表被剪段的末端）。
 func trimAnchorLink(last, newHead *model.AuditCheckpoint, signer permissionSigner) (string, bool) {
-	if _, ok := checkpointPointSignature(last, signer); ok {
-		if link, err := CheckpointLinkHash(last); err == nil {
-			return link, true
-		}
+	_ = newHead
+	if _, ok := checkpointPointSignature(last, signer); !ok {
+		return "", false
 	}
-	if _, ok := checkpointPointSignature(newHead, signer); ok {
-		return newHead.PrevCheckpointHash, true
+	link, err := CheckpointLinkHash(last)
+	if err != nil {
+		return "", false
 	}
-	return "", false
+	return link, true
 }
 
 // VerifyTrim 修剪記錄的簽章是否有效（驗證端據此把殘鏈鏈頭錨回被修剪段）

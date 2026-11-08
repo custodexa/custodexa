@@ -40,12 +40,12 @@ func b64(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
 
-// waitAuditCount 輪詢等待非同步審計入庫（record 走 goroutine）
+// waitAuditCount 輪詢等待非同步審計入庫（record 走 goroutine）；只計「上傳完成」的列（不含開始紀錄）
 func waitAuditCount(t *testing.T, db *gorm.DB, want int64) int64 {
 	t.Helper()
 	var count int64
 	for i := 0; i < 50; i++ {
-		db.Model(&model.AuditLog{}).Where("action = ?", model.ActionFileUpload).Count(&count)
+		db.Model(&model.AuditLog{}).Scopes(model.ScopeCompletedFileUpload).Count(&count)
 		if count >= want {
 			return count
 		}
@@ -70,7 +70,7 @@ func TestFileTapRecordsUpload(t *testing.T) {
 		t.Fatalf("審計筆數 = %d, want 1", got)
 	}
 	var entry model.AuditLog
-	db.Where("action = ?", model.ActionFileUpload).First(&entry)
+	db.Scopes(model.ScopeCompletedFileUpload).First(&entry)
 	if entry.Path != "report.txt" {
 		t.Errorf("檔名 = %q, want report.txt", entry.Path)
 	}
@@ -96,7 +96,7 @@ func TestFileTapRdpVia(t *testing.T) {
 	tap.Observe(inst("end", "s2"))
 	waitAuditCount(t, db, 1)
 	var entry model.AuditLog
-	db.Where("action = ?", model.ActionFileUpload).First(&entry)
+	db.Scopes(model.ScopeCompletedFileUpload).First(&entry)
 	if !contains(entry.Details, `"via":"guac-drive"`) {
 		t.Errorf("RDP via 應為 guac-drive: %s", entry.Details)
 	}

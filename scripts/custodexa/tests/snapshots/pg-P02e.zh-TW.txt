@@ -1,0 +1,11 @@
+[FAIL] 空間不夠，升級不會開始。沒有停止任何服務，也沒有做任何變更。
+  /data   新資料庫的位置 /opt/custodexa/data/postgresql，與匯出暫存 /opt/custodexa/data/.pg-convert
+          需要 4.0 GB，只有 1.0 GB，還差 3.0 GB
+
+  前次轉換失敗留下的資料（只供診斷，從來沒有被系統使用）佔了空間：
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502    3.2 GB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502  13.1 GB
+  要清除它們，請在終端機重新執行同一個升級指令，對清除的詢問回答 y
+  （非互動執行不會清除任何東西）：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+  也可以自行釋放或擴充 /data 的空間後再重跑。

@@ -24,6 +24,18 @@ docker compose exec backend go test ./...      # 後端測試
 docker compose exec frontend npm run test      # 前端測試
 ```
 
+開發版有自己的資料庫與入口。填了 `EXTERNAL_DB_HOST` 或設了 `TLS_MODE=external` 時，`quickstart.sh`
+會拒絕執行開發版，因為開發用的 compose 檔不會套用它們；正式形態的組成則由這兩個鍵決定
+（見 [`docs/QUICKSTART.md`](../QUICKSTART.md)）。
+
+**開發資料重建一次（1.23.0）。** 開發版的平台資料庫從 PostgreSQL 16 換成 18，資料夾從 `${DATA_PATH:-./data}/postgres` 換成 `${DATA_PATH:-./data}/postgresql`；正式形態一起換了，因為兩者預設共用那個資料夾。開發版不轉換舊資料，所以拉到這項變更之後請重建一次。重建後，你在開發版裡建立的帳號、資產與設定都會消失，請先記下需要的東西。`postgres-test` 靶機仍是 PostgreSQL 16，不受影響。
+
+```bash
+docker compose down                  # 停止開發版
+rm -rf ./data/postgres               # 舊的 PostgreSQL 16 資料（DATA_PATH 不是 ./data 時改用你的路徑）
+bash scripts/quickstart.sh --up      # 在 ./data/postgresql 建立 PostgreSQL 18 資料
+```
+
 驗證一律在 docker compose 內執行。更多指令、環境陷阱與守衛測試的紀律見
 [`docs/dev/testing.md`](../dev/testing.md)。
 

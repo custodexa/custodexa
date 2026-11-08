@@ -11,6 +11,10 @@ cmd_start() {
     return 0
   fi
   printf '%s\n' "$(cx_msg svc_start_title)"
+  if ! cx_dirop_start_guard "$CX_ROOT/current/"; then
+    cx_svc_finish failed
+    return "$CX_EXIT_FAILED"
+  fi
   cx_line RUN "$(cx_msg svc_start_run)"
   if ! cx_new_started_mark || ! cx_compose up -d --remove-orphans >/dev/null 2>&1; then
     cx_line FAIL "$(cx_msg svc_start_failed)"

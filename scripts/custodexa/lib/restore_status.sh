@@ -6,8 +6,8 @@ cx_rs_kept_count() {
   local data stamp count=0 path
   data=$(cmd_status_data_path) stamp=$(cx_state_get last_restore.stamp)
   [ -n "$stamp" ] || { printf 0; return; }
-  for path in "$data/postgres.before-restore-$stamp" "$data/audit.before-restore-$stamp" "$CX_ROOT/tls.before-restore-$stamp" \
-    "$data/postgres.abandoned-$stamp" "$data/audit.abandoned-$stamp" "$CX_ROOT/tls.abandoned-$stamp"; do
+  for path in "$data/postgres.before-restore-$stamp" "$data/postgresql.before-restore-$stamp" "$data/audit.before-restore-$stamp" "$CX_ROOT/tls.before-restore-$stamp" \
+    "$data/postgres.abandoned-$stamp" "$data/postgresql.abandoned-$stamp" "$data/audit.abandoned-$stamp" "$CX_ROOT/tls.abandoned-$stamp"; do
     [ ! -d "$path" ] || count=$((count + 1))
   done
   printf '%s' "$count"

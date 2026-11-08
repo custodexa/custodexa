@@ -84,7 +84,7 @@ func setupAccessRequestEnv(t *testing.T) (*AccessRequestService, *policy.Securit
 
 // seedRequestFixture user 1（requester）、user 2（approver）、user 3（admin）、
 // user 4（另一 requester）；asset 1 ∈ group 1（approval）、asset 2 ∈ group 2（reason）、
-// asset 3 未分組（全域 open）。user 1/4 對三資產皆有常設 view（可視）
+// asset 3 未分組（全域 open）。user 1/4 對三資產皆有常設 connect（可視且具申請資格）
 func seedRequestFixture(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	users := []model.User{
@@ -112,9 +112,9 @@ func seedRequestFixture(t *testing.T, db *gorm.DB) {
 		for aid := uint(1); aid <= 3; aid++ {
 			u, a := uid, aid
 			if err := db.Create(&model.AssetAuthorization{
-				UserID: &u, AssetID: &a, Permission: model.PermissionView, GrantedBy: 3,
+				UserID: &u, AssetID: &a, Permission: model.PermissionConnect, GrantedBy: 3,
 			}).Error; err != nil {
-				t.Fatalf("seed view grant: %v", err)
+				t.Fatalf("seed connect grant: %v", err)
 			}
 		}
 	}
@@ -461,7 +461,7 @@ func TestAccessRequest_ApproveFlow(t *testing.T) {
 		seedRequestFixture(t, db)
 		// user 2（approver、範圍含 asset 1）自己提申請
 		u2, a1 := uint(2), uint(1)
-		db.Create(&model.AssetAuthorization{UserID: &u2, AssetID: &a1, Permission: model.PermissionView, GrantedBy: 3})
+		db.Create(&model.AssetAuthorization{UserID: &u2, AssetID: &a1, Permission: model.PermissionConnect, GrantedBy: 3})
 		req, err := svc.Submit(2, "approver", false, SubmitAccessRequestInput{
 			AssetID: 1, Reason: "自己的單", DurationMinutes: 60,
 		})
@@ -856,7 +856,7 @@ func TestAccessRequest_PendingExcludesOwn(t *testing.T) {
 	seedRequestFixture(t, db)
 	// user 2（approver、範圍含 asset1）自己申請 asset1（先補可視）
 	u2, a1 := uint(2), uint(1)
-	db.Create(&model.AssetAuthorization{UserID: &u2, AssetID: &a1, Permission: model.PermissionView, GrantedBy: 3})
+	db.Create(&model.AssetAuthorization{UserID: &u2, AssetID: &a1, Permission: model.PermissionConnect, GrantedBy: 3})
 	own, err := svc.Submit(2, "approver", false, SubmitAccessRequestInput{
 		AssetID: 1, Reason: "自己的單", DurationMinutes: 60,
 	})
@@ -946,6 +946,11 @@ func TestAccessRequest_HistoryScopeFiltered(t *testing.T) {
 func grantConnect(t *testing.T, db *gorm.DB, userID, assetID uint) {
 	t.Helper()
 	u, a := userID, assetID
+	var existing int64
+	db.Model(&model.AssetAuthorization{}).Where("user_id = ? AND asset_id = ? AND permission = ? AND source <> ?", u, a, model.PermissionConnect, model.AuthorizationSourceTicket).Count(&existing)
+	if existing > 0 {
+		return
+	}
 	if err := db.Create(&model.AssetAuthorization{
 		UserID: &u, AssetID: &a, Permission: model.PermissionConnect, GrantedBy: 3,
 	}).Error; err != nil {
@@ -1009,6 +1014,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 	t.Run("view-only 無資格", func(t *testing.T) {
 		svc, policies, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
+		setViewOnly(t, db, 1, 1)
 		enableBreakGlass(t, policies)
 		if _, err := svc.BreakGlass(1, "requester", false, 1, "緊急"); !errors.Is(err, ErrBreakGlassNotEligible) {
 			t.Fatalf("want ErrBreakGlassNotEligible, got %v", err)
@@ -1018,6 +1024,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 	t.Run("票證不構成資格", func(t *testing.T) {
 		svc, policies, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
+		setViewOnly(t, db, 1, 1)
 		enableBreakGlass(t, policies)
 		u, a := uint(1), uint(1)
 		start := time.Now().Add(-10 * time.Minute)
@@ -1443,6 +1450,9 @@ func TestAnnotateBreakGlassAvailable(t *testing.T) {
 		return dtos
 	}
 
+	// asset2 只持 view（常設 connect 才有破窗資格）
+	setViewOnly(t, db, 1, 2)
+
 	// 開關關：恆 false（藏入口）
 	dtos := loadDTOs()
 	if err := ap.AnnotateConnectStates(1, dtos); err != nil {
@@ -1498,10 +1508,8 @@ func TestBreakGlass_EligibilityRecheckedInTx(t *testing.T) {
 	grantConnect(t, db, 1, 1)
 	enableBreakGlass(t, policies)
 
-	// 撤掉常設 connect（模擬資格消失）後破窗應 403
-	db.Where("user_id = ? AND asset_id = ? AND permission = ? AND source = ?",
-		1, 1, model.PermissionConnect, model.AuthorizationSourceManual).
-		Delete(&model.AssetAuthorization{})
+	// 撤掉常設 connect（模擬資格消失，保留 view 使資產仍可視）後破窗應 403
+	setViewOnly(t, db, 1, 1)
 	if _, err := svc.BreakGlass(1, "requester", false, 1, "資格已撤"); !errors.Is(err, ErrBreakGlassNotEligible) {
 		t.Fatalf("撤常設後破窗應 ErrBreakGlassNotEligible, got %v", err)
 	}

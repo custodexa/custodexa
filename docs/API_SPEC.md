@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-06（連線簽發段補列錄影與鍵盤紀錄前置檢查被拒的錯誤碼 `RULE_RECORDING_UNAVAILABLE`、`RULE_KEYSTROKE_UNAVAILABLE`，不動路由；此前：安全政策段補 `retention_keystroke_days` 並把資料保留鍵的計數由四個改為五個，不動路由）
+> 最後更新：2026-11-08（`POST /auth/mfa/setup` 新增選填 `code`：已啟用 MFA 時必填，新增錯誤碼 `RULE_MFA_CURRENT_CODE_REQUIRED`；檔案端點與傳輸能力查詢端點新增來源網段限制的 403 `AUTH_SOURCE_NOT_ALLOWED`；連線申請：提出申請須先持有常設連線權限，新增 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，`reason` 段與 agent 的 `open` 段自動核准限於常設帳號範圍、超出者維持 pending，破窗票證帳號範圍同限，核准與拒絕的自核判定擴及執行者 agent 的擁有者；檢查點驗證：區間狀態新增 `rows_hidden`，鏈報告新增 `trim_disclosure`、`trim_unverified_segments`、`trim_paused`；終端新增通知碼 `RULE_COMMAND_BLOCKED_MULTILINE`，`run_command` 只收單行。路由未變）
+> 前次更新：2026-11-06（連線簽發段補列錄影與鍵盤紀錄前置檢查被拒的錯誤碼 `RULE_RECORDING_UNAVAILABLE`、`RULE_KEYSTROKE_UNAVAILABLE`，不動路由；此前：安全政策段補 `retention_keystroke_days` 並把資料保留鍵的計數由四個改為五個，不動路由）
 > 前次更新：2026-11-05（鍵盤紀錄查看：新增 `GET /sessions/:id/keystrokes`（中繼資料，不解密）與 `POST /sessions/:id/keystrokes/view`（帶理由查看內容），皆需新權限點 `keystroke:view`（稽核組、僅全域指派生效，內建稽核員範本含此權限點）；新增錯誤碼 `VALIDATION_KEYSTROKE_REASON_REQUIRED`、`VALIDATION_KEYSTROKE_REASON_TOO_LONG`、`RESOURCE_KEYSTROKE_NOT_VIEWABLE`、`RULE_KEYSTROKE_VAULT_SEALED`、`RULE_KEYSTROKE_RECORD_REJECTED`、`INTERNAL_KEYSTROKE_VIEW`；審計資源 `keystroke_record`；揭露告警來源類別 `keystroke_record`。路由新增兩條）
 > 前次更新：2026-11-04（盤點的兩條讀取 `GET /assets/:id/account-inventory` 與 `GET /account-inventory/findings` 的可視範圍改與資產詳情、資產列表相同；此前：堡壘機專用帳號的測試登入與盤點接上專用帳號：新增 `POST`／`GET /assets/:id/executor/login-check`，需 `asset:executor-manage`，發起一次登入與改密權限檢查並讀取最近一次結果；新增 9 個結果碼與 4 個 HTTP 錯誤碼、審計動作 `executor_login_check` 與 `executor_login_check_done`；有專用帳號的資產，盤點改以專用帳號登入並在非 root 時經提權讀取 sudo 規則，盤點發起新增 3 個錯誤碼、結束原因碼增為 16 個、檢查範圍原因增為 `via_escalation` 與 `escalation_denied`；`GET /assets/:id/account-inventory` 的回應新增頂層 `next_identity` 與盤點紀錄的 `identity_username`；`host_key_mismatch` 的 `path` 多一個值 `executor_login_check`，`unmanaged_privileged_account` 的 `identity_mode` 多一個值 `executor`。新增資料表 `executor_login_checks`，見資料庫規格。路由新增兩條）
 > 前次更新：2026-11-03（合併同日兩項。其一，以堡壘機專用帳號代改 POSIX 帳號密碼：改密執行記錄新增 `execution_method`（`self`、`executor_root`、`executor_sudo_nopasswd`、`executor_sudo_password`）、`executor_account_id`、`executor_username`、`executor_credential_id` 四欄，計畫執行記錄（`GET /change-secret-plans/:id/records`）與批次詳情（`GET /change-secret-batches/:id`）的記錄都帶，範圍化檢視者讀不到專用帳號的憑證時後三欄不帶、改帶 `executor_out_of_scope`；新增原因碼 `CHANGE_SECRET_EXECUTOR_LOGIN_FAILED`、`CHANGE_SECRET_EXECUTOR_COMMAND_REJECTED`、`CHANGE_SECRET_EXECUTOR_ROTATION_PENDING`、`CHANGE_SECRET_EXECUTOR_CHANGED`、`CHANGE_SECRET_EXECUTOR_UNAVAILABLE`；計畫帳號範圍 `@ALL` 明定為全部登入帳號，不含堡壘機專用帳號。路由未變；其二，資產編輯畫面的堡壘機專用帳號區塊所需的三項回應加欄，路由未變：憑證列表與詳情的 `CredentialDTO` 新增 `purpose`（`login`／`executor`，該憑證未刪除掛載的用途，無掛載時不出現）；`GET`／`PUT /assets/:id/executor` 的回應新增 `source`（`generate`／`inline`／`shared`／`convert`，未記錄時不出現）與 `credential`（引用憑證的帳號列投影，範圍外共用憑證只帶共用與範圍外標記）。新增資料欄 `asset_accounts.executor_source`，見資料庫規格）
@@ -1301,7 +1302,7 @@ scope 限定 `mfa_pending`），再以 TOTP 驗證碼換取正式 JWT。
 | 方法 | 路徑 | 說明 | 認證 |
 |---|---|---|---|
 | POST | `/auth/mfa/verify` | body: `{pending_token, code}` → `{token, user}`＋`Set-Cookie` 下發刷新憑證（若仍須改密則回 `password_change_required`） | 公開 |
-| POST | `/auth/mfa/setup` | 產生 secret 與 otpauth URL：`{secret, otpauth_url}`（發行者 "Custodexa"；重做即覆蓋舊 secret）。POST 而非 GET：有寫入副作用（覆蓋 pending secret、重設 enabled） | JWT |
+| POST | `/auth/mfa/setup` | body 選填 `{code}`。產生 secret 與 otpauth URL：`{secret, otpauth_url}`（發行者 "Custodexa"；重做即覆蓋舊 secret）。POST 而非 GET：有寫入副作用（覆蓋 pending secret、重設 enabled）。已啟用 MFA 的帳號必須帶現行驗證器的有效驗證碼 `code`（沿用登入驗證的防重放）：未帶回 400 `RULE_MFA_CURRENT_CODE_REQUIRED`，碼錯或已使用過回 400 `RULE_MFA_INVALID_CODE`，兩者皆不改動既有密鑰與啟用狀態並留 `denied` 審計；成功時審計細節帶 `mfa_reset`。讀取後狀態被另一請求改變而不覆寫時同回 `RULE_MFA_CURRENT_CODE_REQUIRED`。未啟用者免帶 `code` | JWT |
 | POST | `/auth/mfa/enable` | body: `{code}`，驗證通過後啟用 | JWT |
 | POST | `/auth/mfa/disable` | body: `{password}`，驗密後停用 | JWT |
 | POST | `/auth/mfa/enroll/setup` | 強制註冊：以 `enrollment_token`（Bearer）產生 TOTP 設定 → `{secret, otpauth_url}`。已註冊者持 token 重放回 409（防改綁） | 公開（自帶 enrollment token） |
@@ -2019,7 +2020,7 @@ GET /api/v1/assets
 
 **可視範圍**: 非 admin/auditor 一律由伺服端收斂為該使用者的授權資產集合——個人授權與所屬使用者群組授權的聯集（各自含直授與資產分組授權，四路徑）、僅計入時效窗內授權，一般使用者的 `authorized_only` 參數被忽略；admin/auditor 見全量且參數仍可自查；持有節點範圍管理指派的範圍化主體預設見管理可視與連線可視的聯集，帶 `authorized_only=true` 時只回連線可視的資產（同一台資產的列內容與不帶參數時逐欄相同，範圍外歸屬仍只顯示計數）。授權分支的每筆 Asset 額外帶 `permission` 欄位（該資產最高授權等級 `view`/`connect` 兩階取高，已移除 `manage`）；管理角色回應不帶該欄。approver 的審核範圍另構成第三個可視來源（範圍內資產可見、不可連）。
 
-**連線入口三態**: 非 admin/auditor 的授權分支每筆 Asset 由伺服端統一標註 `access_state`（`connectable`＝可直接連線／`reason_required`＝填理由即連／`approval_required`＝需核准／`pending`＝已有在途申請，另帶 `pending_request_id`），持有效臨時授權時帶 `ticket_date_expired`；破窗可用時另帶 `break_glass_available`（伺服端事實源，omitempty）。前端按鈕狀態零推導，一律以此欄為準；點擊後仍以連線簽發點的政策閘回應為最終裁決（按鈕過時會被 403 自癒）。
+**連線入口三態**: 非 admin/auditor 的授權分支每筆 Asset 由伺服端統一標註 `access_state`（`connectable`＝可直接連線／`reason_required`＝填理由即連／`approval_required`＝需核准／`pending`＝已有在途申請，另帶 `pending_request_id`），持有效臨時授權時帶 `ticket_date_expired`；破窗可用時另帶 `break_glass_available`（伺服端事實源，omitempty）。非 open 段位的資產若呼叫者沒有常設連線權限且沒有在途申請，則不帶 `access_state`（不提供申請入口）；有在途申請者仍標 `pending`。前端按鈕狀態零推導，一律以此欄為準；點擊後仍以連線簽發點的政策閘回應為最終裁決（按鈕過時會被 403 自癒）。
 
 **Query 參數**:
 | 參數 | 類型 | 說明 |
@@ -3364,6 +3365,10 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 | POST | `/assets/:id/files/mkdir` | body: `{"path": "/abs/dir"}` → `{"path": "..."}` |
 | DELETE | `/assets/:id/files?path=/abs/target` | 刪除檔案或空目錄 → `{"path": "..."}` |
 
+> 五個檔案端點與 `GET /assets/:id/transfer-capabilities` 在授權判定之前先套用呼叫者的來源網段限制：
+> 來源不在允許範圍內回 403 `AUTH_SOURCE_NOT_ALLOWED`，不觸及目標主機並留 `denied` 審計；
+> 此判定不依資產，對存在與不存在的資產回應相同。未設來源限制的使用者與允許來源內的請求不受影響。
+
 ---
 
 ## 資產節點 API（分組升級節點樹）
@@ -4375,6 +4380,8 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 | `VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED` | 400 | region 與端點皆空 |
 | `VALIDATION_OFFSITE_CREDENTIAL_HALF_SET` | 400 | 憑證只填了一半 |
 | `VALIDATION_OFFSITE_CREDENTIAL_CONFLICT` | 400 | 同時帶新憑證與清除旗標，或帶了與 provider 不相稱的憑證欄 |
+| `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID` | 400 | gcs 憑證不是可用的服務帳號金鑰 JSON；`params.field` 指名不符的欄位（`json`、`type`、`client_email`、`private_key`、`token_uri`），不回顯值 |
+| `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL` | 400 | gcs 本次結果不帶顯式服務帳號憑證（清除憑證、沿用而既存世代不是保存型、首次設定未填）而端點不是空值或 Google 官方網域（`googleapis.com` 及其子網域） |
 | `RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE` | 409 | 落點已變更卻要沿用既存憑證 |
 | `CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION` | 409 | 確認所依據的現行世代已被其他操作變更 |
 | `CONFLICT_OFFSITE_SETTINGS_DIGEST_MISMATCH` | 409 | 確認攜回的設定摘要與請求體不符 |
@@ -5509,7 +5516,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/audit-checkpoints?page=&page_size=` | 檢查點列表（seq 倒序）→ `{data: {items: [...], total}}`；每筆含 `seq`／`id_from`／`id_to`／`row_count`／`agg_hash`／`agg_scheme`／`prev_checkpoint_hash`／`sealed_at`／`signing_key_version`／`signature`／`anchor_status`／`purged_at`；第三版起另含帳本區間四欄；**第四版（`agg_scheme` 為 `cp-agg-v4`）的列一律帶 `perm`**：帶權限附證者為八鍵物件 `{format, model, catalog, snapshot_digest, event_seq, event_head, reconciled, origin}`（只含整數、雜湊與布林，不含快照本體），不帶附證者明寫 `null`；第三版以前的列不帶此鍵。附證欄組合不合法的第四版列不帶此鍵（離線驗證回報「載荷無法重建」）。離線重建規則見 `docs/security/audit-checkpoint-offline-verification.md` 第四版一節 |
-| GET | `/audit-checkpoints/verify` | **結構層**（預設全鏈）→ `{data: {chain: {total, latest_seq, oldest_seq, passed, failed, status, failures, unsealed_rows, unsealed_from_id, anchor_disabled, role_state, principal_state, agent_token_state, permission_state?}}}`（`permission_state` 只在權限狀態對帳無法判定時出現） |
+| GET | `/audit-checkpoints/verify` | **結構層**（預設全鏈）→ `{data: {chain: {total, latest_seq, oldest_seq, passed, failed, status, failures, unsealed_rows, unsealed_from_id, anchor_disabled, role_state, principal_state, agent_token_state, permission_state?, trim_disclosure?, trim_unverified_segments?, trim_paused?}}}`（`permission_state` 只在權限狀態對帳無法判定時出現；`trim_disclosure` 的值為 `trim_unverified`，表示既有修剪記錄載明有段落在修剪時未經簽章驗證，`trim_unverified_segments` 為全部既有修剪記錄所載段數之和，兩者只揭露、不使 `status` 失敗；`trim_paused` 為 true 表示依現況下一輪修剪會暫停，原因是檢查點簽章、清除證明或鏈頭錨定驗證不過） |
 | GET | `/audit-checkpoints/verify?content=true&seq_from=&seq_to=` | 加驗**內容層**（亦支援 `from=`／`to=` 日期映射）→ 另回 `content.intervals[]`，逐區間帶 `status` 與 `remain_rows` |
 | GET | `/audit-checkpoints/public-key` | 鏈簽章公鑰 → `{data: {algorithm: "Ed25519", public_key, fingerprint, version}}`，供離線驗章 |
 
@@ -5519,7 +5526,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 回 `VALIDATION_CHECKPOINT_RANGE_FORMAT`）——不設此閘則一個無參數請求就會啟動
 全歷史掃描。日期範圍映射不到任何檢查點時回空結果，不退化成全鏈。
 
-逐區間狀態（十態，前端逐態有獨立文案與視覺分級）：
+逐區間狀態（十一態，前端逐態有獨立文案與視覺分級）：
 
 | 狀態 | 語義 |
 |---|---|
@@ -5530,6 +5537,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | `hash_mismatch` | 列數相符但聚合不符（含多出的列其列級 HMAC 無效） |
 | `extra_rows_valid_hmac` | 多出列且列級 HMAC 皆有效（遲到交易或持蓋章鑰者插列，需人工研判） |
 | `signature_invalid` | 檢查點自身簽章驗不過 |
+| `rows_hidden` | 區間內有被標記為已刪除的操作日誌列（回報 `hidden_rows` 列數）。系統不刪除操作日誌，這些列在讀取面照常可見；即使列數與聚合雜湊相符也不判 `passed`，排程驗證沿內容層失敗路徑開立事件 |
 | `chain_broken` | `prev_checkpoint_hash` 與前一點重算值不符 |
 | `seq_gap` | seq 斷洞，且無修剪記錄可解釋 |
 | `attestation_invalid` | 檢查點本身驗過，但附證形狀不對：第四版之前的點帶權限附證欄（那些欄不在其簽章內），或鏈上已有附證之後（或修剪錨記載曾有附證／曾有驗不過的點）又出現不帶附證的第四版點（只出現在結構層）。第四版的附證被清空或改動時，該點本身簽章驗不過，回報 `signature_invalid`；部分清空回報 `payload_invalid` |
@@ -5870,8 +5878,8 @@ GET /api/v1/authorizations/target-options?kind=asset|node|tag&search=&node_id=&t
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| POST | `/access-requests` | 提出申請，body `{asset_id, accounts?, reason, duration_minutes, date_start?}` 或 `{items:[{asset_id,accounts?}], executor_user_id?, reason, duration_minutes, date_start?}` → 201；reason 段自動核准；open 段僅人類自行執行拒建，agent 執行項自動核准 |
-| POST | `/access-requests/break-glass` | 破窗緊急連線，body `{asset_id, reason(≤1000 必填)}` → 201；時長固定政策鍵（client 傳入即忽略）；即時核准＋建 ticket 授權＋標記待補審 |
+| POST | `/access-requests` | 提出申請，body `{asset_id, accounts?, reason, duration_minutes, date_start?}` 或 `{items:[{asset_id,accounts?}], executor_user_id?, reason, duration_minutes, date_start?}` → 201；reason 段自動核准；open 段僅人類自行執行拒建，agent 執行項自動核准。申請人（輔助模式另含執行者）須對每個項目的資產持有時窗內、非申請核發的常設連線權限，否則 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`（`details: {item_index, asset_id}`，執行者不符時維持既有的 404 封套）。自動核准的帳號範圍限於受授權主體的常設帳號範圍：未帶帳號者收斂為該範圍，具名帳號有任一超出者該項不自動核准而維持 pending，因此 `reason` 段的回應 `status` 可能是 `pending` |
+| POST | `/access-requests/break-glass` | 破窗緊急連線，body `{asset_id, reason(≤1000 必填)}` → 201；時長固定政策鍵（client 傳入即忽略）；即時核准＋建 ticket 授權＋標記待補審；票證帳號範圍限於申請人的常設帳號範圍 |
 | GET | `/access-requests/mine` | 我的申請（全狀態；破窗單帶 `kind='break_glass'`、撤銷單帶 `revoked_at`/`revoke_note`）→ `{data, total}` |
 | GET | `/access-requests/mine/tickets` | 我的有效限時連線（時窗內 ticket 授權，帶 `request_id` 回鏈）→ `{data, total}` |
 | POST | `/access-requests/:id/cancel` | 撤回自己的 pending 單（他人單 403、非 pending 409） |
@@ -5918,7 +5926,7 @@ JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另�
 > 或持有 `authorization:manage` 的有效指派者；細緻資格見下方「撤銷資格」）——一併收斂會造成 admin 無法撤銷已核出的票證＝安全倒退。
 > **自核禁止擴及自有 agent**：操作者對其擁有的 agent 主體所提申請執行核准或拒絕（逐項、整單、批次皆同），
 > 一律回 403 `RULE_ACCESS_REQUEST_SELF_APPROVAL`，擁有關係以決定當下現查為準；這些單也不出現在該操作者的
-> 待審列表與待審計數（`/pending`、`/pending/count`），其他具資格者照常決定。
+> 待審列表與待審計數（`/pending`、`/pending/count`），其他具資格者照常決定。申請的執行者是操作者所擁有的 agent 時同樣適用（核准、拒絕、待審列表與計票皆比照）。核准時另在交易內重判申請人（輔助模式另含執行者）仍持常設連線權限，不符回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED` 且不建票。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
@@ -5935,7 +5943,7 @@ JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另�
 **裁決資格**（雙側聯集）: 資產側範圍命中（直配資產 OR 經節點含子樹）**OR**
 申請人側範圍命中（申請人本人 OR 其所屬使用者群組）；**admin 身分不再兜底**，範圍未命中即
 無人可裁，解法為 admin 補建審核範圍或指派 approver。**禁自核硬擋**（申請人＝操作者一律 403，
-兼具 admin 身分者也不例外）。**錯誤**: 400 上調時長/提前起始/放寬帳號/空帳號集合、403 範圍外或自核、409 非 pending 或已逾時
+兼具 admin 身分者也不例外）。**錯誤**: 400 上調時長/提前起始/放寬帳號/空帳號集合、403 範圍外、自核或不持常設連線權限（`RULE_ACCESS_REQUEST_CONNECT_REQUIRED`）、409 非 pending 或已逾時
 （CAS 帶 `pending_expires_at > now` 守衛——逾期單核准落敗）、409 同人重複核准。
 
 **最少核准人數**（政策鍵 `access_request_min_approvals`，預設 1、區間 1–10）: 每筆核准逐票記錄於
@@ -7523,7 +7531,7 @@ Authenticate with `Authorization: Bearer cxa_...` (an active agent token). Human
 
 The ten tools are `list_assets`, `request_access`, `check_request`, `open_session`, `close_session`, `run_command`, `send_keys`, `query`, `read_screen` and `close_task`. Discover their schemas with `tools/list`. Supply explicit per-asset `accounts` to request access, and an explicit `request_id` to open a session. Handles use `session_handle`; reset uses `key` (`ctrl-c`, `ctrl-d`, `enter`); reports use `report`. No HTTP connect-token or WebSocket route is available to agent credentials.
 
-**Who decides a `request_access` task.** The decision is not agent-specific: each requested asset carries an access policy segment, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. A requested item in the `approval` segment stays `pending` until a human approver with that asset in scope decides it. Items in the `open` and `reason` segments are approved at submission time and the request comes back `status: "approved"` immediately, recorded with `auto_approved: true` and a policy snapshot of `{"segment": ..., "auto_basis": ..., "required_approvals": 0}`. Under the shipped defaults most assets fall outside `approval`, so an integrator who never changes the policy will see every agent task approve itself. **To put agent tasks in front of a human, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval`**; `access_request_min_approvals` then sets how many approvals such a request needs. A request that was auto-approved has no approval votes, and `POST /access-requests/:id/approve` on it returns `409` because it has already left `pending`.
+**Who decides a `request_access` task.** The decision is not agent-specific: each requested asset carries an access policy segment, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. A requested item in the `approval` segment stays `pending` until a human approver with that asset in scope decides it. Items in the `open` and `reason` segments are approved at submission time, provided the requested accounts are within the standing accounts of the principal that will connect (an item naming an account outside that scope stays `pending` for manual review), and the request comes back `status: "approved"` immediately when every item was approved, recorded with `auto_approved: true` and a policy snapshot of `{"segment": ..., "auto_basis": ..., "required_approvals": 0}`. Under the shipped defaults most assets fall outside `approval`, so an integrator who never changes the policy will see every agent task approve itself. **To put agent tasks in front of a human, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval`**; `access_request_min_approvals` then sets how many approvals such a request needs. A request that was auto-approved has no approval votes, and `POST /access-requests/:id/approve` on it returns `409` because it has already left `pending`.
 
 `check_request` reports `approvals_required` from the items' policy snapshots: the largest `required_approvals` among the items, which is `0` when every item was auto-approved and the configured threshold when an item is in the `approval` segment. The task detail reports the same snapshot value per item, so the two views agree on one request. `approvals_received` counts recorded approvals and is meaningful only while `status` is `pending`; read `status` first.
 
@@ -7534,6 +7542,6 @@ Four operational boundaries:
 3. Agent-visible output and report text are masked; recordings and command records retain the original. Masking is rule-driven and enumerated, not a general sensitive-data filter: it applies the enabled alert rules with `direction=output` whose subject kind covers agents and whose protocol list covers the session, and it replaces each matched span with `[REDACTED]`. Anything no enabled rule matches reaches the agent in full. The shipped rule set contains two output rules (a card-number pattern and a private-key header pattern); other categories, such as password hashes or API keys, need rules of their own before they are masked or alerted on. `masked_count` on the tool-call ledger row states how many spans were replaced in that response. Attributable calls first create a pending ledger row and update that same row on completion. Unattributable task/handle calls are rejected before that ledger and recorded in the same HTTP request's audit row (principal, tool, reason, time). Pending proves recorded intent, not delivery or completion. Command coverage exists in the Investigation Workbench and batch export, not a single-session export.
 4. Token expiry, bound-item expiry and task closure terminate existing sessions and in-flight tools without waiting for command completion. The 250ms sampling interval is not a completion SLA. Only system-created sessions are controlled; detached target processes may survive. Cancellation during a request closes its session; silent departure between POSTs is detected through a five-minute idle lease, not immediately. Handles cannot transfer across tokens, MCP connections, restart or takeover.
 
-**What a block looks like.** A command that matches an enabled `action=block` input rule comes back as `{"status": "blocked", "code": "RULE_COMMAND_BLOCKED", "notices": [{"code": "RULE_COMMAND_BLOCKED"}]}` and is recorded in the tool-call ledger with `decision: "denied"`. The typed bytes are never forwarded to the target, and an interrupt byte is then written to the target to clear whatever is already in its line buffer. That interrupt is part of the mechanism, so the `output` field of a blocked response is not reliably empty: depending on the target's shell and echo settings it can contain `^C` and a fresh prompt, and the same `^C` appears at that point in the recording. **A `^C` next to a blocked command is the platform clearing the line, not an operator pressing Ctrl-C**; the blocked command's own text never reaches the target, so no interpretation of it is needed. Reviewers should read the accompanying alert row (`blocked: true` plus rule identity) rather than the terminal text, and the recording carries a standalone marker line containing `[RULE_COMMAND_BLOCKED]` and the rule name, in a fixed server-side format, so it stays greppable across viewer locales. If that line-clearing write fails, the session is terminated rather than continued, so that no fragment of a blocked command can be completed by a later Enter.
+**What a block looks like.** A command that matches an enabled `action=block` input rule comes back as `{"status": "blocked", "code": "RULE_COMMAND_BLOCKED", "notices": [{"code": "RULE_COMMAND_BLOCKED"}]}` and is recorded in the tool-call ledger with `decision: "denied"`. The typed bytes are never forwarded to the target, and an interrupt byte is then written to the target to clear whatever is already in its line buffer. That interrupt is part of the mechanism, so the `output` field of a blocked response is not reliably empty: depending on the target's shell and echo settings it can contain `^C` and a fresh prompt, and the same `^C` appears at that point in the recording. **A `^C` next to a blocked command is the platform clearing the line, not an operator pressing Ctrl-C**; the blocked command's own text never reaches the target, so no interpretation of it is needed. Reviewers should read the accompanying alert row (`blocked: true` plus rule identity) rather than the terminal text, and the recording carries a standalone marker line containing `[RULE_COMMAND_BLOCKED]` and the rule name, in a fixed server-side format, so it stays greppable across viewer locales. If that line-clearing write fails, the session is terminated rather than continued, so that no fragment of a blocked command can be completed by a later Enter. `run_command` takes one command line per call: a command containing a line break or another control character (a tab included) is refused with `VALIDATION_BAD_REQUEST` before anything is sent. In a human terminal, when one line of a multi-line input matches a blocking rule, no line of that input is sent and the notice code is `RULE_COMMAND_BLOCKED_MULTILINE`.
 
 Terminal recovery fields are structured: `needs_input` includes `recovery: {tool: "send_keys", key: "ctrl-c", automatic: false}`; a confirmed reset includes `reset: true` and `next_action: "run_command"`. A stale running response includes `dispatched: false` and `next_action: "observe_or_send_keys"`. These fields describe local observations and available actions, not a guarantee about the remote process.

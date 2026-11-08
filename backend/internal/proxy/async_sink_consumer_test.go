@@ -70,11 +70,17 @@ func TestAsyncSinkConsumerEmitsUploadEventThroughInterface(t *testing.T) {
 	tap.Observe(inst("blob", "s1", b64("world")))
 	tap.Observe(inst("end", "s1"))
 
-	events := sink.waitFor(t, 1)
-	if len(events) != 1 {
-		t.Fatalf("經介面投遞的事件數 = %d, want 1", len(events))
+	// 開始與完成各一筆；完成列才帶累計大小
+	events := sink.waitFor(t, 2)
+	if len(events) != 2 {
+		t.Fatalf("經介面投遞的事件數 = %d, want 2（開始與完成）", len(events))
 	}
 	ev := events[0]
+	for _, e := range events {
+		if strings.Contains(e.Details, `"phase":"completed"`) {
+			ev = e
+		}
+	}
 	if ev.Action != string(model.ActionFileUpload) || ev.Resource != string(model.ResourceFile) {
 		t.Fatalf("動作／資源不符: action=%q resource=%q", ev.Action, ev.Resource)
 	}

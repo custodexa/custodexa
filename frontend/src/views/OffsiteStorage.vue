@@ -598,6 +598,22 @@
         >
           <template #default="{ row }">
             {{ errorCodeLabel(row.error_code) }}
+            <div
+              v-if="row.error_code === CREDENTIAL_CONFIG_INVALID_CODE"
+              class="reason-action"
+              :data-test="`offsite-credential-config-${row.object_id}`"
+            >
+              <span class="muted">{{ $t('offsite.credentialConfigInvalidHint') }}</span>
+              <el-button
+                type="primary"
+                link
+                size="small"
+                :data-test="`offsite-goto-settings-${row.object_id}`"
+                @click="goToSettings"
+              >
+                {{ $t('offsite.goToSettings') }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
         <el-table-column
@@ -1017,6 +1033,19 @@ const testCodeLabel = (code) =>
   OFFSITE_TEST_CODES.includes(code)
     ? t(`offsite.testCode.${codeSuffix(code)}`)
     : t('offsite.testCodeUnknown')
+
+const CREDENTIAL_CONFIG_INVALID_CODE = 'offsite.credential_config_invalid'
+
+// 失敗清單與設定表單在同一頁：捲到表單，並讓第一個輸入框取得焦點
+const goToSettings = async () => {
+  try {
+    formRef.value?.$el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  } catch {
+    // jsdom／happy-dom 無 scrollIntoView：捲不動不該讓動作整個爆掉
+  }
+  await nextTick()
+  rootRef.value?.querySelector?.('[data-test="offsite-settings-form"] input')?.focus?.()
+}
 
 const errorCodeLabel = (code) =>
   OFFSITE_ERROR_CODES.includes(code)
@@ -1854,6 +1883,15 @@ onMounted(() => {
 
 .owner-link {
   color: var(--el-color-primary);
+}
+
+.reason-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .muted {

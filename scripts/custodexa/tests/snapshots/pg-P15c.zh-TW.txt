@@ -1,0 +1,7 @@
+資料庫
+  [ OK ] PostgreSQL 18（內建），資料在 /opt/custodexa/data/postgresql，18.2 GB
+         資料校驗（data checksums）已開啟
+  [WARN] 上次清除舊資料庫目錄沒有完成：
+         /opt/custodexa/data/postgres.removing-20261120-021502 仍在（9.1 GB）
+         再執行一次清除：
+           sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old

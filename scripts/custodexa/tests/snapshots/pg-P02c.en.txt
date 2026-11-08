@@ -1,0 +1,8 @@
+[FAIL] Not enough space, so the upgrade will not start. No service was
+       stopped and nothing was changed.
+  /var    Docker image storage /var/lib/docker
+          needs 5.6 GB (new images), only 2.1 GB free, 3.5 GB short
+  The backup location /opt and the new database location /data
+  have enough space.
+  Free or add space on /var, then run the same command again:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

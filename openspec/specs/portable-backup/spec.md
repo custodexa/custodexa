@@ -2,12 +2,10 @@
 
 ## Purpose
 規範管理腳本產出的單一可攜備份檔：檔案組成、命名與權限、自我描述清單的欄位與版本語義、完整性驗證與提交點、主金鑰模式的判定與材料處理、可選的通行密語加密、工具映像的取得與核對、錄影的選擇，以及備份過程的問答、進度、完成、失敗與中斷輸出。還原行為不在本能力範圍。
-
 ## Requirements
-
 ### Requirement: 備份清單記載版本與部署型態
 
-備份檔 SHALL 含 `backup-manifest.json`，其行格式與狀態檔相同：單層扁平 JSON、一行一鍵、鍵只含 `[a-z0-9_.]`、值為不含引號、反斜線與控制字元的 ASCII 字串；所有鍵必寫，布林只接受 `true`／`false`。清單 SHALL 至少記載：備份格式版本 `format`（本版為 `1`）、產生方式（手動或升級前）、停止服務的時間、是否加密與加密方案代號、產品版本、產生此檔的腳本版本、兩份發行清單成員的 SHA-256、匯出工具映像的鍵名、其所屬發行清單（內建資料庫為資料版本的發行清單，外接資料庫為產生者腳本的發行清單）與在該清單中的 digest、資料庫的 migration 筆數與排序後清單的 SHA-256、資料庫位置與伺服器版本、編碼與定序、匯出工具版本、部署 overlays、主機架構、TLS 模式、後端實際採用的主金鑰模式與是否顯式宣告、主金鑰材料是否在檔內、主金鑰指紋與其取得狀態、快照是否整體可用、各選擇性成員（錄影、TLS 憑證、自訂代理範本、狀態檔、資料庫 CA）是否收錄、各部分的原始大小，以及來源主機名稱、部署根、`DATA_PATH`、`TLS_DOMAIN`、`TLS_IP_SAN`、`PUBLIC_BASE_URL`、`TLS_NGINX_TEMPLATE`。`release-MANIFEST.json` SHALL 與備份當時 `current/MANIFEST.json` 逐位元組相同；`tool-MANIFEST.json` SHALL 與執行中腳本所屬發行版的 MANIFEST 逐位元組相同。選擇性成員的收錄旗標 SHALL 與實際成員雙向一致；TLS 憑證未收錄 SHALL 只表示部署當時沒有 `tls/`。自訂代理範本的原路徑 SHALL 在且只在收錄範本時非空。`TLS_NGINX_TEMPLATE` 的值是路徑而非機密，SHALL 照原值記入清單與紀錄檔。外接資料庫用的保留鍵（連線設定、TLS 信任來源與驗證程度、用戶端憑證旗標、授權角色清單、CA 收錄旗標）SHALL 在每一份檔案寫入；內建部署的值固定為空或 `false`；外接部署 SHALL 寫入實際值：原連線設定、信任錨來源、依後端連線程式庫規則推得的實際驗證程度、是否使用用戶端憑證，以及以每個角色名 UTF-8 位元組的 hex 表示、去重並依位元組序排列、以空白分隔的授權角色清單。讀取時，內建部署的檔案缺少這些保留鍵 SHALL 視同空或 `false`；外接部署的檔案缺任一保留鍵 SHALL 判為無效。
+備份檔 SHALL 含 `backup-manifest.json`，其行格式與狀態檔相同：單層扁平 JSON、一行一鍵、鍵只含 `[a-z0-9_.]`、值為不含引號、反斜線與控制字元的 ASCII 字串；所有鍵必寫，布林只接受 `true`／`false`。清單 SHALL 至少記載：備份格式版本 `format`（本版為 `1`）、產生方式（手動或升級前）、停止服務的時間、是否加密與加密方案代號、產品版本、產生此檔的腳本版本、兩份發行清單成員的 SHA-256、匯出工具映像的鍵名、其所屬發行清單（內建資料庫為資料版本的發行清單，外接資料庫為產生者腳本的發行清單）與在該清單中的 digest、資料庫的 migration 筆數與排序後清單的 SHA-256、資料庫位置與伺服器版本、編碼與定序、匯出工具版本、部署形態（鍵名沿用 `deploy.overlays`，值為形態詞 `external-ingress`、`external-database` 以空白相連；單一 compose 與疊加 compose 兩種佈局共用同一組詞彙）、主機架構、TLS 模式、後端實際採用的主金鑰模式與是否顯式宣告、主金鑰材料是否在檔內、主金鑰指紋與其取得狀態、快照是否整體可用、各選擇性成員（錄影、TLS 憑證、自訂代理範本、狀態檔、資料庫 CA）是否收錄、各部分的原始大小，以及來源主機名稱、部署根、`DATA_PATH`、`TLS_DOMAIN`、`TLS_IP_SAN`、`PUBLIC_BASE_URL`、`TLS_NGINX_TEMPLATE`。`release-MANIFEST.json` SHALL 與備份當時 `current/MANIFEST.json` 逐位元組相同；`tool-MANIFEST.json` SHALL 與執行中腳本所屬發行版的 MANIFEST 逐位元組相同。選擇性成員的收錄旗標 SHALL 與實際成員雙向一致；TLS 憑證未收錄 SHALL 只表示部署當時沒有 `tls/`。自訂代理範本的原路徑 SHALL 在且只在收錄範本時非空。`TLS_NGINX_TEMPLATE` 的值是路徑而非機密，SHALL 照原值記入清單與紀錄檔。外接資料庫用的保留鍵（連線設定、TLS 信任來源與驗證程度、用戶端憑證旗標、授權角色清單、CA 收錄旗標）SHALL 在每一份檔案寫入；內建部署的值固定為空或 `false`；外接部署 SHALL 寫入實際值：原連線設定、信任錨來源、依後端連線程式庫規則推得的實際驗證程度、是否使用用戶端憑證，以及以每個角色名 UTF-8 位元組的 hex 表示、去重並依位元組序排列、以空白分隔的授權角色清單。讀取時，內建部署的檔案缺少這些保留鍵 SHALL 視同空或 `false`；外接部署的檔案缺任一保留鍵 SHALL 判為無效。
 
 清單的產品版本 SHALL 等於狀態檔記載的已安裝版本，且等於 `current/MANIFEST.json` 的版本；兩者不一致時備份 SHALL 在停機前拒絕並指出兩個值。清單 SHALL NOT 含 `.env` 中任何機密值，也 SHALL NOT 含通行密語或其衍生值。
 
@@ -120,11 +118,11 @@
 加密使用的 openssl 映像在服務映像組不含它的部署形態（外部入口形態），以及外接資料庫部署的 PostgreSQL 16、17、18 客戶端映像，SHALL 作為工具映像取得，並以發行清單的 digest 核對內容、記錄本機 image ID；工具映像 SHALL NOT 被當成須常駐執行的部署容器核對，也 SHALL NOT 列在 `status` 的容器清單中。執行工具時 SHALL 以記錄的 image ID 啟動，且 SHALL NOT 拉取未釘選的映像。
 
 #### Scenario: 外部入口形態的工具映像
-- **WHEN** 使用外部入口 overlay 的部署完成安裝或升級
+- **WHEN** 外部入口形態（`TLS_MODE=external`）的部署完成安裝或升級
 - **THEN** openssl 映像已取得並核對內容，啟動後的容器核對不要求有執行中的 tls-init 容器且結果為通過，`status` 的容器清單不含它
 
 #### Scenario: 外接資料庫與外部入口同時使用
-- **WHEN** 外部入口與外接資料庫兩種 overlay 同時使用的部署完成安裝或升級
+- **WHEN** 外部入口與外接資料庫兩種形態同時使用（`TLS_MODE=external` 且 `EXTERNAL_DB_HOST` 有值）的部署完成安裝或升級
 - **THEN** openssl 與三顆 PostgreSQL 客戶端映像已取得並核對內容，啟動後的容器核對不要求它們有執行中的容器且結果為通過
 
 ### Requirement: 錄影預設不放入備份檔
@@ -230,7 +228,7 @@
 - **THEN** 備份檔含 `db-ca.pem`，內容與該 CA 檔相同，清單的 CA 收錄旗標為 `true`
 
 #### Scenario: 外接資料庫部署產出同一格式的備份檔
-- **WHEN** 使用外接資料庫 overlay、伺服器主版本有對應客戶端且沒有不支援依賴的部署執行 `backup --yes`
+- **WHEN** 外接資料庫形態（`EXTERNAL_DB_HOST` 有值）、伺服器主版本有對應客戶端且沒有不支援依賴的部署執行 `backup --yes`
 - **THEN** 腳本不以外接資料庫為由拒絕，產出同一命名與權限的備份檔與其 `.sha256`，封存成員為固定清單，清單記載資料庫位置為外接
 
 #### Scenario: 同一秒已有備份
@@ -239,7 +237,7 @@
 
 ### Requirement: 外接資料庫部署由腳本一併備份
 
-使用外接資料庫 overlay 的部署，`backup` SHALL 連到 `.env` 指定的外接資料庫匯出資料庫，SHALL NOT 以外接資料庫為由拒絕。匯出 SHALL 使用發行清單釘選、已核對的 PostgreSQL 16、17、18 客戶端映像，這些映像 SHALL 作為工具映像取得與核對，SHALL NOT 被當成須常駐執行的部署容器核對。停機前 SHALL 依序：確認客戶端映像在本機、以客戶端探測伺服器版本、選用與伺服器主版本相同的客戶端、檢查支援邊界、估算空間；任一步不成立 SHALL 在停止任何服務前拒絕，並分別說明是工具不在本機、連不上或認證失敗、沒有同主版本工具，或有不支援的依賴。
+外接資料庫形態（見 deployment-configuration「部署形態由 .env 推導」）的部署，`backup` SHALL 連到 `.env` 指定的外接資料庫匯出資料庫，SHALL NOT 以外接資料庫為由拒絕。匯出 SHALL 使用發行清單釘選、已核對的 PostgreSQL 16、17、18 客戶端映像，這些映像 SHALL 作為工具映像取得與核對，SHALL NOT 被當成須常駐執行的部署容器核對。停機前 SHALL 依序：確認客戶端映像在本機、以客戶端探測伺服器版本、選用與伺服器主版本相同的客戶端、檢查支援邊界、估算空間；任一步不成立 SHALL 在停止任何服務前拒絕，並分別說明是工具不在本機、連不上或認證失敗、沒有同主版本工具，或有不支援的依賴。
 
 支援邊界：資料庫有自訂表空間、物件擁有者不只 `DB_USER`、有 `plpgsql` 以外的擴充套件時 SHALL 拒絕並列出命中項目；`public` schema 本身由內建角色 `pg_database_owner` 擁有時 SHALL NOT 視為其他擁有者，但其中的物件仍須由 `DB_USER` 擁有。物件權限授予 `DB_USER`、`PUBLIC` 與 `pg_` 開頭內建角色以外的角色時 SHALL NOT 拒絕，SHALL 把角色名以可逆編碼記入清單並在完成畫面以 WARN 說明新伺服器上須先建立這些角色，否則還原後權限會不同。客戶端驗證伺服器憑證的程度 SHALL 與後端連線程式庫在同一設定下的實際行為相同，SHALL NOT 降低或提高 `sslmode`（`PGSSLROOTCERT=system` 時後端本身即改用 `verify-full`，客戶端相同）；`DB_SSLMODE` 未設或為空時 SHALL 依後端設定層的規則視為 `disable`；後端不驗證伺服器憑證的模式下，客戶端 SHALL NOT 載入任何根憑證（不帶 `sslrootcert`、不繼承 `PGSSLROOTCERT` 或家目錄的根憑證檔）；`verify-ca` 而未指定 CA 檔時 SHALL 以匯出工具映像的系統 CA 檔驗證，該檔不存在即在停機前拒絕；`.env` 指定自訂 CA 檔時，該檔 SHALL 放入備份檔，指定的路徑無法換算為腳本可讀的位置時 SHALL 拒絕。用戶端憑證的私鑰 SHALL NOT 放入備份檔，清單 SHALL 記載有使用用戶端憑證；私鑰位於會被打包的目錄下時 SHALL 拒絕。資料庫密碼 SHALL NOT 出現在任何程序的命令列參數或環境變數，也 SHALL NOT 出現在紀錄檔。快照（筆數、migration、指紋）SHALL 以同一客戶端取得。預覽 SHALL 提醒備份期間不得讓備援主機接手該資料庫。
 
@@ -278,3 +276,4 @@
 #### Scenario: 未設 DB_SSLMODE
 - **WHEN** `.env` 沒有 `DB_SSLMODE`（或為空字串）且沒有 `PGSSLROOTCERT`
 - **THEN** 客戶端以 `disable` 連線，清單的 `sslmode` 欄為空、驗證程度為 `none`，預覽的連線行顯示 `disable`
+

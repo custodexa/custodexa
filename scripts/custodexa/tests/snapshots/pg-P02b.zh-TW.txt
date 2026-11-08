@@ -1,0 +1,10 @@
+[FAIL] 空間不夠，升級不會開始。沒有停止任何服務，也沒有做任何變更。
+  /opt    備份位置與新資料庫的位置都在這裡
+          需要 7.5 GB（升級前備份 3.5 GB、新資料庫 1.0 GB、
+          匯出暫存 1.0 GB、餘裕 2 GB），只有 4.7 GB，還差 2.8 GB
+  /var    Docker 映像儲存區 /var/lib/docker
+          需要 5.6 GB（新版映像），還有 60.0 GB
+  可以：把舊的備份檔搬到別處後刪除，或擴充 /opt。
+  目前的備份檔：ls -l /opt/custodexa/backups/
+  處理後重新執行同一個指令：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

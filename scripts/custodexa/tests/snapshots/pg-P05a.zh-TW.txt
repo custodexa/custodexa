@@ -1,0 +1,23 @@
+[ .. ]  8/13  轉換資料庫：PostgreSQL 16 → 18（資料 0.0 KB）
+        請不要中斷。萬一中斷，舊資料也不會損壞，重跑升級會從轉換重新開始。
+        [ OK ] 1/5  匯出舊資料庫                            0 秒
+        [ OK ] 2/5  建立新的 PostgreSQL 18 資料庫           0 秒
+        [FAIL] 3/5  匯入到新資料庫
+
+[FAIL] 升級停在第 8/13 步：資料庫轉換在「匯入」時失敗
+  原因       資料庫回報：pg_restore: error: could not execute query:
+             foreign key fk_session_asset（摘要；完整訊息在紀錄檔）
+
+  目前狀態
+    - 沒有換版：1.13.0 已重新啟動並照常運作
+    - 舊資料 /opt/custodexa/data/postgres 沒有被改動
+    - 轉換到一半的新資料庫移到下面的位置，保留給你或支援人員診斷，
+      不會自動刪除：
+      /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+    - 升級前的備份完整：/opt/custodexa/backups/custodexa-backup-1.13.0-20261120-021502.tar
+  主金鑰模式是網頁輸入，服務恢復後要再解封一次。
+
+  處理原因後，重新執行同一個升級指令即可（會重新備份、重新轉換）：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+
+  紀錄檔 /tmp/log

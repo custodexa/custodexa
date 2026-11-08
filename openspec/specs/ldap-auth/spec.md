@@ -3,9 +3,7 @@
 ## Purpose
 
 LDAP/AD 目錄服務的使用者認證與帳號同步：目錄設定以資料庫為事實源、由 admin 於身分管理 UI 維護（含連線測試與出站位址政策），登入時以單次解析快照完成傳輸風險判定與撥號。
-
 ## Requirements
-
 ### Requirement: LDAP authentication with shadow provisioning
 When LDAP is enabled, a user not found locally (or flagged is_ldap) SHALL be authenticated against the directory via search-then-bind. On first successful login the system SHALL auto-create a shadow user (is_ldap=true, default user role, no local password usable).
 
@@ -305,3 +303,65 @@ LDAP 認證路徑 SHALL 於每次登入嘗試單次解析現行設定（一次 D
 
 - **WHEN** 管理者開啟目錄詳情頁且尚未執行連線測試
 - **THEN** 兩項狀態呈現「尚未測試」並指出「測試連線」動作
+
+### Requirement: Directory sign-in resolves names case-insensitively to existing accounts
+For a directory sign-in, the system SHALL resolve the submitted username against the set of non-deleted accounts whose usernames are equivalent to it under the directory's name matching (the case-variant set), and SHALL NOT provision a new shadow user while that set contains a directory account. Two usernames are equivalent when they are equal after Unicode compatibility normalization (NFKC), removal of leading and trailing whitespace, collapsing of internal whitespace runs to a single space, and case folding. A directory sign-in is one where the exact-name match is a directory account, or where no account matches exactly. A newly provisioned shadow user SHALL store the username after normalization and whitespace trimming, with letter case preserved.
+
+- Account state SHALL apply across the set: if any directory account in the set is locked, the lockout gate SHALL reject the attempt before the directory is contacted; if any directory account in the set is inactive, the sign-in SHALL be rejected as inactive after successful directory authentication.
+- When no account matches exactly and the set contains an account that is not a directory account (local, external identity, or agent principal), the sign-in SHALL be rejected with the same error shape as an invalid credential, the directory SHALL NOT be contacted, and no account SHALL be created.
+- Otherwise the sign-in SHALL proceed as a sign-in to the exact-name match if present. When there is no exact-name match and the set contains exactly one directory account, the sign-in SHALL proceed as a sign-in to that account only if the submitted username is identical to the account's username or differs from it only in ASCII letter case; any other match through the equivalence above (whitespace, full-width or other compatibility forms, non-ASCII case folding) SHALL be rejected with the invalid-credential error shape, without contacting the directory and without creating an account, after the lockout gate has been applied. When there is no exact-name match and the set contains more than one directory account, the sign-in SHALL be rejected with the invalid-credential error shape and a server-side log entry so that an administrator can consolidate the accounts.
+- Role and user-group mapping recomputation SHALL run against the account the sign-in proceeds as.
+- When the set is empty, the existing first-login provisioning SHALL apply unchanged.
+
+Sign-in to a local or external-identity account that matches exactly SHALL keep its existing behavior; local username matching SHALL remain exact.
+
+#### Scenario: Letter case does not create a separate directory account
+- **GIVEN** active directory account `alice` exists and no other account matches `alice` in any letter case
+- **WHEN** the person signs in as `Alice` with a valid directory password
+- **THEN** the session belongs to the existing `alice` account and the number of accounts is unchanged
+
+#### Scenario: Inactive state of any case variant applies to the sign-in
+- **GIVEN** directory accounts `erin` (inactive) and `Erin` (active) both exist
+- **WHEN** the person signs in with any letter case of the name, including `Erin`, using a valid directory password
+- **THEN** the sign-in is rejected as inactive, no account is created, and no mapped role or user group is granted
+
+#### Scenario: Whitespace and compatibility forms are rejected, not adopted
+- **GIVEN** directory account `alice` exists, whether active or inactive
+- **WHEN** the person signs in as ` alice`, `alice `, or the full-width form `ａｌｉｃｅ`, using a valid directory password
+- **THEN** the sign-in is rejected with the invalid-credential error shape, the directory is not contacted, no account is created, and no mapped role or user group is granted
+
+#### Scenario: Only exact or ASCII-case differences adopt the existing account
+- **GIVEN** directory account `alice` exists and is active
+- **WHEN** the person signs in as `ALICE` using a valid directory password
+- **THEN** the sign-in resolves to the existing account and no account is created
+
+#### Scenario: Non-ASCII folding differences are never adopted
+- **GIVEN** directory account `strasse` exists
+- **WHEN** someone signs in as `straße`
+- **THEN** the sign-in is rejected with the invalid-credential error shape and the existing account is not reused
+
+#### Scenario: Locked state of any case variant applies before the directory is contacted
+- **GIVEN** directory accounts `frank` (locked out) and `Frank` (active) both exist
+- **WHEN** the person signs in with any letter case of the name, including `Frank`
+- **THEN** the lockout gate rejects the attempt and the directory is not contacted
+
+#### Scenario: Name that differs only in case from a local account
+- **GIVEN** local account `Bob` exists, no directory account matches `bob` in any letter case, and directory sign-in is enabled
+- **WHEN** someone signs in as `bob`
+- **THEN** the sign-in fails with the invalid-credential error shape, the directory is not contacted, and no account is created
+
+#### Scenario: Several active case variants without an exact match
+- **GIVEN** active directory accounts `carol` and `Carol` both exist
+- **WHEN** the person signs in as `CAROL` with a valid directory password
+- **THEN** the sign-in fails with the invalid-credential error shape, a server-side log entry is written, and no account is created
+
+#### Scenario: Sign-in succeeds after redundant case variants are deleted
+- **GIVEN** directory accounts `gina` (active) and `Gina` (inactive) existed and an administrator deleted `Gina`
+- **WHEN** the person signs in as `gina` or `Gina` with a valid directory password
+- **THEN** the session belongs to the remaining `gina` account
+
+#### Scenario: First directory sign-in still provisions
+- **GIVEN** no account matches `dave` in any letter case
+- **WHEN** a directory user signs in as `dave`
+- **THEN** a shadow account is provisioned as before
+

@@ -363,7 +363,7 @@ func (s *AccessRequestService) pendingScopeFilter(actorID uint, isAdmin bool, no
 	q := s.db.Model(&model.AccessRequest{}).
 		Where("status = ? AND pending_expires_at > ? AND requester_id <> ?",
 			model.AccessRequestPending, now, actorID).
-		Where(ownAgentRequesterCondition+" AND "+executorExclusionCondition, actorID, actorID)
+		Where(ownAgentRequesterCondition+" AND "+executorExclusionCondition+" AND "+ownAgentExecutorCondition, actorID, actorID, actorID)
 	if isAdmin {
 		return q.Where(anyPendingItemCondition())
 	}
@@ -661,6 +661,16 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username string, req
 		if !reSources.Standing {
 			return ErrBreakGlassNotEligible
 		}
+		// 破窗只解除審核等待：臨時授權的帳號範圍等於破窗人的常設連線帳號範圍，
+		// 於同一交易同一時點現查；零命中不視為任何範圍（空範圍會被當成全部帳號）。
+		bounds, err := s.standingBoundsOf(tx, []uint{requesterID}, []uint{asset.ID}, now)
+		if err != nil {
+			return err
+		}
+		bound, ok := bounds[standingKey{requesterID, asset.ID}]
+		if !ok {
+			return ErrBreakGlassNotEligible
+		}
 
 		// 去重（交易內，鎖後無競態）：同資產仍有有效破窗票證即拒，
 		// 帶現有單號＋票證到期供 409 回應（規格要求「帶現有票證資訊」；
@@ -687,6 +697,7 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username string, req
 			RequesterID:              requesterID,
 			AssetID:                  asset.ID,
 			Reason:                   reason,
+			Accounts:                 breakGlassAccounts(bound),
 			RequestedDurationMinutes: duration, // 固定短窗政策鍵（六題 2），client 值不進入
 			Status:                   model.AccessRequestPending,
 			PendingExpiresAt:         now.Add(time.Duration(duration) * time.Minute),
@@ -863,31 +874,27 @@ func (s *AccessRequestService) NotifyOverdueReviews(now time.Time) (int, error) 
 	return notified, nil
 }
 
-// selfDecisionBlockedLocked 交易內版本：先鎖申請人的使用者列（agent 申請人的擁有關係以這一列
-// 為準，與擁有者轉移 guardOwnerTransfer 一樣先鎖此列再判定），再做同一判定。交易外的判定只是
-// 快速失敗，不作為寫票與發票證的依據：擁有者轉移可以插在交易外判定與交易之間。
+// selfDecisionBlockedLocked 交易內版本：前置條件是呼叫端已在同一交易以一次 lockUserRows 取得申請人與
+// 執行者的使用者列（agent 主體的擁有關係以這些列為準，與擁有者轉移 guardOwnerTransfer 同樣先鎖 agent 列
+// 再判定），這裡不再自行補取使用者列鎖——在已持申請單之後才取使用者列會與 agent 會話建立成環。
+// 交易外的判定只是快速失敗，不作為寫票與發票證的依據：擁有者轉移可以插在交易外判定與交易之間。
 func (s *AccessRequestService) selfDecisionBlockedLocked(tx *gorm.DB, actorID uint, req *model.AccessRequest) error {
 	if h := loadLockOrderHook(); h != nil {
 		h("request_decide_before_requester_lock", tx, req.RequesterID)
 	}
-	if err := lockUserRows(tx, []uint{req.RequesterID}); err != nil {
-		return err
-	}
 	return s.selfDecisionBlocked(tx, actorID, req)
 }
 
-// dependentDeciders 與申請人不獨立的主體：申請人、執行者，以及申請人為 agent 時的現任擁有者。
-// 須在 selfDecisionBlockedLocked 之後呼叫（擁有關係已鎖定，交易內不會再變）。
+// dependentDeciders 與申請單不獨立的主體：申請人、執行者，以及兩者為 agent 時的現任擁有者。
+// 須在持有雙方使用者列鎖之後呼叫（擁有關係已鎖定，交易內不會再變）。
 func dependentDeciders(tx *gorm.DB, req *model.AccessRequest) ([]uint, error) {
-	ids := []uint{req.RequesterID}
-	if req.ExecutorUserID != nil {
-		ids = append(ids, *req.ExecutorUserID)
-	}
+	parties := requestPartyIDs(req.RequesterID, req.ExecutorUserID)
+	ids := append([]uint{}, parties...)
 	var owners []uint
 	if err := tx.Model(&model.User{}).
-		Where("id = ? AND kind = ? AND owner_user_id IS NOT NULL", req.RequesterID, model.KindAgent).
+		Where("id IN ? AND kind = ? AND owner_user_id IS NOT NULL", parties, model.KindAgent).
 		Pluck("owner_user_id", &owners).Error; err != nil {
-		return nil, fmt.Errorf("查詢申請人擁有者失敗: %w", err)
+		return nil, fmt.Errorf("查詢申請單當事人擁有者失敗: %w", err)
 	}
 	return append(ids, owners...), nil
 }
@@ -903,19 +910,29 @@ func independentVoteCount(tx *gorm.DB, requestID, itemID uint, dependents []uint
 	return votes, err
 }
 
-// selfDecisionBlocked 自我核准的唯一判定式：操作者是申請人、執行者，或申請人是操作者
+// selfDecisionBlocked 自我核准的唯一判定式：操作者是申請人、執行者，或申請人、執行者是操作者
 // 擁有的 agent（擁有關係以決定當下現查為準），四條決定路徑（逐項核准、逐項拒絕、
 // 舊整單路徑、批次核決）與待審過濾共用此結論。
 func (s *AccessRequestService) selfDecisionBlocked(db *gorm.DB, actorID uint, req *model.AccessRequest) error {
 	if actorID == req.RequesterID || req.ExecutorUserID != nil && actorID == *req.ExecutorUserID {
 		return ErrSelfApproval
 	}
-	own, err := (SelfGrantGuard{}).IsOwnAgentRequest(db, actorID, req.RequesterID)
-	if err != nil {
-		return err
-	}
-	if own {
-		return ErrSelfApproval
+	for _, party := range requestPartyIDs(req.RequesterID, req.ExecutorUserID) {
+		own, err := (SelfGrantGuard{}).IsOwnAgentRequest(db, actorID, party)
+		if err != nil {
+			return err
+		}
+		if own {
+			return ErrSelfApproval
+		}
 	}
 	return nil
+}
+
+// breakGlassAccounts 上界為全部帳號時維持未限定（nil），否則為上界本身。
+func breakGlassAccounts(bound model.AccountScope) model.AccountScope {
+	if bound.IsAll() {
+		return nil
+	}
+	return bound
 }

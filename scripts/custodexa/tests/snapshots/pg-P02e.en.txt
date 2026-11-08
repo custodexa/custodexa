@@ -1,0 +1,13 @@
+[FAIL] Not enough space, so the upgrade will not start. No service was
+       stopped and nothing was changed.
+  /data   new database at /opt/custodexa/data/postgresql, and export scratch at /opt/custodexa/data/.pg-convert
+          needs 4.0 GB, only 1.0 GB free, 3.0 GB short
+
+  Data left by an earlier failed conversion (kept only for diagnosis,
+  never used by the system) takes space:
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502    3.2 GB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502  13.1 GB
+  To remove it, run the same upgrade command in a terminal and answer
+  y when it asks to remove it (a run without a terminal removes nothing):
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+  You can also free or add space on /data yourself and run it again.

@@ -8,15 +8,16 @@ docker_rc() { printf '%s\n' "$2" >"$FAKE_DOCKER_REPLAY/$1.rc"; }
 fake() { printf '#!/bin/bash\n%s\n' "$2" >"$FAKES/$1"; chmod +x "$FAKES/$1"; }
 host_arch() { fake uname 'if [ "$1" = -m ]; then echo '"$1"'; else exec /bin/uname "$@"; fi'; }
 host_ip() { fake ip 'echo "1.1.1.1 via 10.0.0.1 dev eth0 src '"$1"' uid 0"'; }
-host_free() { # <mount> <free KiB>: df answers for a path with the longest mount above it
+host_free() { # <mount> <free KiB> [name]: df answers for a path with the longest mount above it
+  # (name: what df calls the mount, when a screen should show another name than the path)
   touch "$FAKES/df.table"
-  { grep -v "^$1 " "$FAKES/df.table" || true; printf '%s %s\n' "$1" "$2"; } >"$FAKES/df.new"
+  { grep -v "^$1 " "$FAKES/df.table" || true; printf '%s %s %s\n' "$1" "$2" "${3:-$1}"; } >"$FAKES/df.new"
   mv "$FAKES/df.new" "$FAKES/df.table"
-  fake df 'd=${@: -1}; best=""; kb=""
-while read -r m k; do
-  if [ "$m" = / ] || [ "$d" = "$m" ] || [[ $d == "$m"/* ]]; then [ ${#m} -le ${#best} ] || { best=$m; kb=$k; }; fi
+  fake df 'd=${@: -1}; best=""; kb=""; shown=""
+while read -r m k name; do
+  if [ "$m" = / ] || [ "$d" = "$m" ] || [[ $d == "$m"/* ]]; then [ ${#m} -le ${#best} ] || { best=$m; kb=$k; shown=$name; }; fi
 done <'"$FAKES/df.table"'
-echo "Filesystem 1024-blocks Used Available Capacity Mounted on"; echo "/dev/x 999999999 1 $kb 1% $best"'
+echo "Filesystem 1024-blocks Used Available Capacity Mounted on"; echo "/dev/x 999999999 1 $kb 1% $shown"'
 }
 port_holder() { # <port> <ss users field>: ss reports a listener on that port
   printf 'LISTEN 0 511 0.0.0.0:%s 0.0.0.0:* %s\n' "$1" "$2" >"$FAKES/ss.$1"

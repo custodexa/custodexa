@@ -1,0 +1,28 @@
+[ .. ]  8/13  Convert the database: PostgreSQL 16 -> 18 (data 0.0 KB)
+        Do not interrupt. If it is interrupted the old data is not damaged,
+        and running the upgrade again starts the conversion over.
+        [ OK ] 1/5  Export the old database                 0s
+        [ OK ] 2/5  Create the new PostgreSQL 18 database   0s
+        [FAIL] 3/5  Import into the new database
+
+[FAIL] The upgrade stopped at step 8/13: the database conversion failed at "import"
+  Cause      reported by the database: pg_restore: error: could not
+             execute query: foreign key fk_session_asset
+             (a summary; the full message is in the log)
+
+  Current state
+    - The version did not change: 1.13.0 was started again and works
+    - The old data /opt/custodexa/data/postgres was not changed
+    - The half-converted new database was moved to the place below. It is
+      kept for you or support to diagnose and is not deleted automatically:
+      /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+    - The pre-upgrade backup is complete:
+      /opt/custodexa/backups/custodexa-backup-1.13.0-20261120-021502.tar
+  The master key is entered in the browser, so unseal once more
+  after the services start.
+
+  After fixing the cause, run the same upgrade command again (it backs
+  up and converts again):
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+
+  Log file /tmp/log

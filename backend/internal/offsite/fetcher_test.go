@@ -315,7 +315,7 @@ func TestFetcherCrossGenerationUsesLedgerGeneration(t *testing.T) {
 	// 切到世代 2（gcs，另一組憑證與 bucket）
 	second := SettingsInput{
 		Provider: ProviderGCS, Bucket: "new-bucket", Prefix: "custodexa",
-		ServiceAccountJSON: `{"type":"service_account","client_email":"a@b.iam.gserviceaccount.com","private_key":"k"}`,
+		ServiceAccountJSON: minimalServiceAccountJSON,
 	}
 	res, err := rig.svc.Save(context.Background(), second, OffsiteActor{ID: 1, Name: "admin"})
 	if err != nil {

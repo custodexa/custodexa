@@ -1,0 +1,20 @@
+[FAIL] The rename of a data folder was left unfinished, and now it cannot
+       be told which one holds the right data. No database service was
+       started and no folder was changed.
+  Last action   going back to the previous version: rename /opt/custodexa/data/postgresql
+                to /opt/custodexa/data/postgresql.rolled-back-20261120-021502 and keep it
+  Both folders are there (version = what PG_VERSION in the folder says)
+    /opt/custodexa/data/postgresql
+        version: 18    17.9 GB
+    /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+        version: 18    17.4 GB
+  The script will not guess which one is right. Starting with the wrong
+  one can create a new, empty database in an empty folder, or connect
+  the services to incomplete data.
+  Check the content of both folders yourself. Until then do not
+  rename, move or delete anything.
+  The steps are in the upgrade guide, section "When a data folder
+  rename was interrupted".
+  To give this state up and return to the data of the upgrade, restore
+  the backup taken before the upgrade:
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

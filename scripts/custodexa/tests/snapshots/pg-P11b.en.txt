@@ -1,0 +1,13 @@
+Database upgrade
+
+  Now           PostgreSQL 18, data in /opt/custodexa/data/postgresql
+  This release  PostgreSQL 18
+  [ OK ] Already the newest PostgreSQL this release supports; no upgrade needed.
+
+Old database folders kept (they can be removed to free space)
+  /opt/custodexa/data/postgres
+      PostgreSQL 16    17.4 GB    kept as at the upgrade to 1.23.0; the previous version needs it
+  Remove them (lists what goes and asks you to confirm):
+    sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old
+
+This command only queries; nothing was changed.

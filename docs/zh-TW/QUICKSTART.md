@@ -9,7 +9,7 @@
 - Docker 20.10+
 - Docker Compose 2.0+
 - Git（只有從原始碼執行才需要）
-- 磁碟：至少 40 GB 可用空間，其中 Docker 資料目錄約需 10 GB（現行版與前一版的映像，加上升級所需的餘裕）。錄影與備份另外計算，增長估算見[容量與儲存規劃](#6-容量與儲存規劃)。
+- 磁碟：至少 40 GB 可用空間，其中 Docker 資料目錄約需 10 GB（現行版與前一版的映像，加上升級所需的餘裕）。錄影與備份另外計算，增長估算見[容量與儲存規劃](#6-容量與儲存規劃)。升級到 1.23.0 時還會轉換內建資料庫，需要額外約資料庫大小兩倍再加 2 GiB 的可用空間（[升級 SOP](ops/upgrade-sop.md#把內建資料庫轉換到-postgresql-18)）。
 
 驗證安裝：
 ```bash
@@ -186,6 +186,14 @@ sudo /opt/custodexa/custodexa.sh status
 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解，之後所有 `docker compose`
 指令自動指向開發版（前端 Vite HMR、後端 Air 熱重載，並帶起各協議的測試靶機），無須每次打 `-f`。
 
+**部署形態由 `.env` 的兩行決定。** 一份 `docker-compose.yml` 涵蓋正式版的所有形態：
+`EXTERNAL_DB_HOST` 留空是內建資料庫，填值就是你自己的資料庫伺服器（第 7 節）；
+`TLS_MODE` 選擇憑證來源（`selfsigned`、`provided`），或把 HTTPS 交給你自己的 ingress
+（`external`，見「交給自家 ingress」）。`bash scripts/quickstart.sh` 讀這兩行、推導出堆疊要包含哪些部分，
+並把結果記在 `.env` 末端的管理區；請用 `bash scripts/quickstart.sh --up` 啟動，不要直接跑
+`docker compose up -d`。開發版不屬於這些形態：它固定使用 `docker-compose.dev.yml` 內的資料庫與入口，
+填了 `EXTERNAL_DB_HOST` 或設了 `TLS_MODE=external` 時，腳本會拒絕執行並說明，不會默默忽略。
+
 ### 1. 取得原始碼
 
 ```bash
@@ -265,9 +273,10 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ```bash
 # 背景執行（無既存映像時會先自動建置——正式版建置就是部署流程的第一步）
-docker compose up -d
+bash scripts/quickstart.sh --up
 
-# 前台執行（可看到日誌）
+# 前台執行（可看到日誌）：第一行只準備 .env 與它的管理區，不啟動任何東西
+bash scripts/quickstart.sh
 docker compose up
 ```
 
@@ -279,7 +288,7 @@ docker compose up
 ```bash
 docker compose ps
 # 正式版（預設）：backend, frontend, postgres, guacd, tls-proxy
-#   （tls-init 準備憑證後即結束，狀態顯示為 exited(0) 是正常的）
+#   （tls-init 準備憑證後即結束，所以 ps 不會列出它；用 ps -a 會看到 exited(0)，這是正常的）
 # 開發版（已啟用 COMPOSE_FILE）另有測試靶機：
 #   ssh-test, ssh-multi-test, mssql-test, mysql-test, rdp-test, vnc-test, k3s-test
 #   （另有 ldap-test / dex / localstack 三個服務供 LDAP、OIDC、S3 相關功能使用）
@@ -456,7 +465,7 @@ release 模式對這些值 **fail-close**（不合格即拒絕啟動，非警告
 ```bash
 # 先準備錄影目錄（指令見上方「3. 啟動服務」）。
 # 無既存映像時 up 會先建置正式版映像（建置就是部署流程的第一步）。
-docker compose up -d
+bash scripts/quickstart.sh --up
 ```
 
 > 正式版與開發版 image 已分離命名（`custodexa/*:latest` 與 `custodexa/*:dev`），
@@ -485,6 +494,8 @@ docker compose logs backend | tail -30
 ```
 
 > 開發機驗證正式版時，上列指令一律加顯式 `-f docker-compose.yml`（覆蓋 `.env` 的 `COMPOSE_FILE`）。
+> 正式版堆疊包含哪些部分，來自 `.env` 末端由 `scripts/quickstart.sh` 寫入的管理區；
+> 在腳本從未跑過的資料夾裡直接 `docker compose up -d`，不會啟動資料庫與代理。
 
 出貨預設 `ui` 模式下，(4) 在**初始化解封完成前**會被封存閘擋下；先於瀏覽器完成
 初始化（見「首次使用」），或以 `curl -k https://localhost/api/v1/seal/status` 確認狀態。
@@ -621,28 +632,119 @@ multicast；**私有網段預設放行**（目錄服務的常態位置即內網�
   請對 `custodexa_recording_storage_bytes` 設成長率或容量門檻告警。
 - 需要縮減佔用時走**保留期**（系統設定→安全政策），依時間刪除過期錄影。
 
-### 7. 資料庫放在另一台伺服器（external database overlay）
+### 7. 資料庫放在另一台伺服器（外接資料庫）
 
 預設的堆疊自帶 postgres，與應用跑在同一台主機。要把 PostgreSQL 放到別處（機構既有的
-資料庫伺服器、代管服務，或你自己的第二台機器），用 external database overlay 讓堆疊不起
-自帶的 postgres，改讓後端連向那台伺服器：
+資料庫伺服器、代管服務，或你自己的第二台機器），填 `EXTERNAL_DB_HOST` 即可：
+堆疊不起自帶的 postgres，後端改連向那台伺服器：
 
 ```bash
-# .env：把「自備資料庫的部署」一段的三行取消註解並填值
-#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+# .env：把「自備資料庫的部署」一段的 EXTERNAL_DB_HOST 取消註解並填值
 #   EXTERNAL_DB_HOST=db.example.internal
-#   EXTERNAL_DB_PORT=5432
+#   EXTERNAL_DB_PORT=5432          （獨立一行；只有埠不是 5432 時才需要）
 # DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE 此時描述的是那台伺服器（跨網路請用 require 或 verify-full）
-docker compose up -d
+bash scripts/quickstart.sh --up
 docker compose ps        # backend、frontend、guacd、tls-proxy；沒有 postgres
 ```
 
 執行 `scripts/quickstart.sh` 之前先自己填好 `DB_PASSWORD`：設了 `EXTERNAL_DB_HOST` 之後，腳本不會生成這個值，缺值時會停下來要求填入。
-那台伺服器上的資料庫與帳號要在首次啟動前建好；schema 由後端建立。
+那台伺服器上的資料庫與帳號要在首次啟動前建好；schema 由後端建立。`EXTERNAL_DB_HOST` 只能是主機名或
+IP 位址（不含協定、埠、帳號或空白），也不能是指回這台主機或這套堆疊內某個服務的名稱；
+腳本會拒絕這類值、說明原因，並且不改動任何東西。它可以與 `TLS_MODE=external` 併用。
+
+有兩種情況腳本會停下來，而不是自己猜：
+
+- **內建資料庫已有資料，而你填了 `EXTERNAL_DB_HOST`。** 填值不會搬動資料，堆疊會連到一個沒有任何資料的資料庫。
+  腳本會印出它找到的資料目錄，並指向
+  [換到外接資料庫](ops/backup-and-restore.md#54-換到外接資料庫)，那一節會先把資料搬過去。
+- **這套部署上次是以外接資料庫啟動的，而你清空了 `EXTERNAL_DB_HOST`。** 腳本會啟動一個沒有資料的內建資料庫，
+  所以拒絕。把原本的值填回去，或照同一節的退回步驟刻意回到內建資料庫。
+
+**1.22 以前的 `.env`** 可能有一行 `COMPOSE_FILE`，列出外接資料庫疊加檔、外部入口疊加檔，或兩者都有；
+這兩個檔案已不再隨附。腳本下次執行時會翻譯那一行：移除該 `COMPOSE_FILE` 行、列有外部入口疊加檔時把
+`TLS_MODE` 設為 `external`、寫入管理區，並印出每一項改動。`.env` 的其他部分不會被動到，再跑一次也不會有任何變化。
 
 這個形態換到的是一台可替換的應用主機：以同一套檔案準備、指向同一個資料庫的第二台主機，
 在第一台停機時接手。接手程序、備援主機事先要備妥的東西、接手保不住的東西、以及此形態下備份對象的變化，
 見[應用主機備援接手](ops/standby-takeover.md)。
+
+### 8. 原始碼部署換到 PostgreSQL 18 (Moving a source deployment to PostgreSQL 18)
+
+自 1.23.0 起，原始碼樹的內建資料庫是 PostgreSQL 18，資料放在 `${DATA_PATH:-./data}/postgresql`。更早的原始碼樹在 `${DATA_PATH:-./data}/postgres` 執行 PostgreSQL 16。新映像打不開舊資料夾，所以 `postgres` 有資料而 `postgresql` 是空的時候，`scripts/quickstart.sh` 會在啟動任何東西之前停下。它不轉換資料；本節就是它的訊息所指向的手動程序。適用於使用內建資料庫的正式形態（`docker-compose.yml`）。開發堆疊改在全新的資料庫上啟動（見 [CONTRIBUTING](CONTRIBUTING.md)），由安裝包安裝的部署則由 `upgrade` 轉換（[升級 SOP](ops/upgrade-sop.md#把內建資料庫轉換到-postgresql-18)）。
+
+做法：用一個暫時的 PostgreSQL 16 容器打開舊資料夾，只開到把它匯出為止；再建立空的新資料庫，把匯出檔載入進去。舊資料夾不會被刪除，裡面也不會被改寫，除了任何一次 PostgreSQL 16 啟動都會動到的部分。開始之前，先做一份你確定能還原的備份（[備份與還原 §3](ops/backup-and-restore.md#3-備份程序)），挑沒有人連線的時段，並確認磁碟有約資料庫大小兩倍再加 2 GiB 的可用空間。下列指令讀取 `.env` 的方式如[備份與還原 §2.3](ops/backup-and-restore.md#23-本文-shell-指令如何取得部署變數動手前先讀)所說明：逐字讀取，缺值時直接失敗。
+
+**1. 停止整組服務並讀取設定。** 在原始碼樹內操作。重新打開舊資料夾之前，服務必須已停止。
+
+```bash
+docker compose --profile bundled-db down
+ENV_FILE="${ENV_FILE:-./.env}"
+env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
+DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
+DB_USER="${DB_USER:-$(env_get DB_USER)}"
+DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
+DATA_PATH="$(cd "${DATA_PATH:?DATA_PATH is empty in .env}" && pwd)"
+printf 'DATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' "$DATA_PATH" "${DB_USER:?}" "${DB_NAME:?}"   # 親眼看這三行
+ls "${DATA_PATH}/postgres/PG_VERSION" && cat "${DATA_PATH}/postgres/PG_VERSION"          # 舊資料夾裡是 PostgreSQL 16
+```
+
+**2. 用暫時的 PostgreSQL 16 打開舊資料夾，並記下裡面有什麼。** 使用先前版本執行的映像，1.22.x 是 `postgres:16.15-alpine3.24`。
+
+```bash
+docker run -d --name custodexa-pg16-export -v "${DATA_PATH}/postgres:/var/lib/postgresql/data" postgres:16.15-alpine3.24
+for i in $(seq 1 60); do docker exec custodexa-pg16-export pg_isready -U "${DB_USER}" && break; sleep 2; done
+q16() { docker exec -i custodexa-pg16-export psql -U "${DB_USER}" -d "${DB_NAME}" -Atq -c "$1"; }
+ENC_Q="select pg_encoding_to_char(encoding) || ' ' || datcollate || ' ' || datctype from pg_database where datname = current_database()"
+COUNT_Q="select table_name || ' ' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by 1"
+MIG_Q="select * from schema_migrations order by 1"
+SEQ_Q="select sequencename || ' ' || coalesce(last_value::text, '') from pg_sequences order by 1"
+q16 "${ENC_Q}" | tee "${DATA_PATH}/pg16-encoding.txt"          # 例如：UTF8 en_US.utf8 en_US.utf8
+q16 "${COUNT_Q}" >"${DATA_PATH}/pg16-counts.txt"
+q16 "${MIG_Q}" >"${DATA_PATH}/pg16-migrations.txt"
+q16 "${SEQ_Q}" >"${DATA_PATH}/pg16-sequences.txt"
+```
+
+**3. 匯出，然後停掉暫時容器。** 匯出檔以明文形式包含整個資料庫：只放在這台主機上，並在第 6 步刪除。
+
+```bash
+( umask 077; docker exec custodexa-pg16-export pg_dump -U "${DB_USER}" -Fc "${DB_NAME}" >"${DATA_PATH}/pg16-export.dump" ) && echo exported
+ls -l "${DATA_PATH}/pg16-export.dump"
+docker stop custodexa-pg16-export && docker rm custodexa-pg16-export
+```
+
+**4. 建立新資料庫並核對它的設定。** 新的 compose 檔會在 `postgresql/18/docker` 建立空的 PostgreSQL 18 資料庫，使用者、資料庫名稱與密碼取自 `.env`。
+
+```bash
+docker compose --profile bundled-db up -d postgres
+for i in $(seq 1 60); do docker compose exec -T postgres pg_isready -U "${DB_USER}" && break; sleep 2; done
+dq() { docker compose exec -T postgres psql -U "${DB_USER}" -d "${DB_NAME}" -Atq -c "$1"; }
+dq "${ENC_Q}" | diff "${DATA_PATH}/pg16-encoding.txt" - && echo "encoding and collation equal"   # 必須印出這一行
+dq "show data_checksums"                                                                       # 必須印出 on
+```
+
+編碼那一行不同時不要繼續：用 `docker compose --profile bundled-db down` 停止，刪除資料夾 `${DATA_PATH}/postgresql`（這個程序建立的），並在再試之前先求助。兩個版本出貨的映像預設值相同，所以不同代表舊資料庫是用其他設定建立的，本節不涵蓋那種情形。
+
+**5. 載入匯出檔並比對。** 載入是單一交易，遇到第一個錯誤就中止，所以失敗時新資料庫仍是空的。失敗後要重試，執行 `docker compose --profile bundled-db down`，刪除 `${DATA_PATH}/postgresql`，再從第 4 步開始。
+
+```bash
+docker compose exec -T postgres pg_restore -U "${DB_USER}" -d "${DB_NAME}" --single-transaction --exit-on-error <"${DATA_PATH}/pg16-export.dump" && echo loaded
+dq "${COUNT_Q}" | diff "${DATA_PATH}/pg16-counts.txt" - && echo "row counts equal"
+dq "${MIG_Q}" | diff "${DATA_PATH}/pg16-migrations.txt" - && echo "migrations equal"
+dq "${SEQ_Q}" | diff "${DATA_PATH}/pg16-sequences.txt" - && echo "sequences equal"
+docker compose exec -T postgres vacuumdb -U "${DB_USER}" --all --analyze-in-stages
+```
+
+除非每一項比對都印出它的 "equal" 那一行，否則不要繼續。
+
+**6. 刪除暫時檔並啟動整組服務。** 刪除匯出檔與記錄檔，停掉單獨運行的資料庫，再用腳本啟動全部。腳本會看到新資料夾已有資料，啟動整組服務，並告訴你舊資料夾還在。
+
+```bash
+rm -f "${DATA_PATH}/pg16-export.dump" "${DATA_PATH}/pg16-encoding.txt" "${DATA_PATH}/pg16-counts.txt" "${DATA_PATH}/pg16-migrations.txt" "${DATA_PATH}/pg16-sequences.txt"
+docker compose --profile bundled-db down
+bash scripts/quickstart.sh --up
+```
+
+接著依[4. 驗證服務](#4-驗證服務)操作，並登入確認你的資料。在你確定之前，請保留 `${DATA_PATH}/postgres`。它是你的退路：停止整組服務並重新啟動先前的原始碼樹會用到它，但搬移之後寫入的資料不在其中。不再需要這條退路時，請手動刪除它。
 
 ## 原始碼樹部署方的責任與行為邊界
 
@@ -659,7 +761,7 @@ frontend 與 backend 都不發布 host 埠。代理提供 TLS 1.2+、HSTS 與 **
 
 憑證來源由 `.env` 的 `TLS_MODE` 決定，兩個值對應下面前兩個小節：`selfsigned`（預設，
 產品自簽的本地 CA）與 `provided`（你自己的憑證）。已經有自家 ingress 的部署走第三條路，
-用 overlay 關掉內建代理。
+用 `TLS_MODE=external` 關掉內建代理。
 
 不論走哪一條，這兩件事不變：對外的 edge 須提供 TLS 1.2+、HTTP→HTTPS 導向、HSTS 與
 WebSocket upgrade 轉發；edge 到本主機的 hop 若跨越不可信網段，該 hop 亦須加密（re-encrypt）。
@@ -721,7 +823,7 @@ docker compose logs backend | grep "refresh cookie"
    PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
-2. `docker compose up -d`。憑證在第一次啟動時產生。
+2. `bash scripts/quickstart.sh --up`。憑證在第一次啟動時產生。
 
 3. 下載 CA 憑證並派發到會連進來的機器：
 
@@ -766,7 +868,7 @@ openssl req -newkey rsa:2048 -nodes -keyout tls/privkey.pem \
 1. 把憑證鏈與私鑰放到 `tls/fullchain.pem` 與 `tls/privkey.pem`。
 2. `.env` 設 `TLS_MODE=provided`、`TLS_DOMAIN`（與憑證上的主機名一致）與
    `PUBLIC_BASE_URL=https://<主機名>`。
-3. `docker compose up -d`。
+3. `bash scripts/quickstart.sh --up`。
 
 缺任何一個檔案時啟動會停在憑證準備步驟並指名缺哪一個，代理不會帶著半套設定起來：
 
@@ -799,7 +901,7 @@ docker compose logs tls-init
 3. 套用：
 
    ```bash
-   docker compose up -d                                       # 套用 .env 的變更
+   bash scripts/quickstart.sh --up                            # 套用 .env 的變更
    docker compose up -d --force-recreate tls-init tls-proxy   # 重跑憑證步驟，代理以新檔重新啟動
    ```
 
@@ -822,18 +924,21 @@ docker compose logs tls-init
    `curl -vI https://bastion.example.com` 在交握輸出中也會列出同樣的憑證資訊
    （自簽模式加 `--cacert tls/ca-public/custodexa-ca.crt`）。
 
-#### 交給自家 ingress（external ingress overlay）
+#### 交給自家 ingress（`TLS_MODE=external`）
 
-前面已經有雲端 LB、既有 nginx／Traefik 之類的 ingress 時，用 overlay 關掉內建代理，
+前面已經有雲端 LB、既有 nginx／Traefik 之類的 ingress 時，設 `TLS_MODE=external` 關掉內建代理，
 由前端自己發布 HTTP 埠給你的 ingress 連：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.external-ingress.yml up -d
+# .env
+#   TLS_MODE=external
+#   HTTP_PORT=80              （選填；前端發布的埠，預設 80）
+bash scripts/quickstart.sh --up
 ```
 
-在 `.env` 取消 `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml`
-的註解之後，日常的 `docker compose up -d`／`ps`／`down` 就不必每次帶 `-f`。
-此形態下前端發布 `80`（`.env` 的 `HTTP_PORT` 可改），對外 TLS 由你的 ingress 承載，
+之後在這個資料夾裡的日常 `docker compose ps`／`down` 涵蓋的是同一批服務，因為 `docker compose`
+會讀 `quickstart.sh` 寫入的管理區。此形態下腳本結尾畫面給的是在本機開啟的位址
+`http://localhost:<HTTP_PORT>/`。前端發布 `80`（`.env` 的 `HTTP_PORT` 可改），對外 TLS 由你的 ingress 承載，
 契約如本節開頭所列；`PUBLIC_BASE_URL` 請填使用者實際看到的 https 位址。
 
 有兩件事屬於你的 ingress 而不是這套堆疊。**轉發的 Host 標頭要帶上使用者實際連的那個埠**
@@ -859,8 +964,9 @@ TLS_NGINX_TEMPLATE=./tls/custodexa.conf.template
 
 #### 主機安裝 nginx 的變體
 
-不想跑代理容器、要用主機上既有 nginx 時：用 external ingress overlay 讓前端發布 HTTP 埠
-（建議綁 loopback，把 overlay 內的映射改成 `127.0.0.1:8088:80`），設定沿用同一份範本，
+不想跑代理容器、要用主機上既有 nginx 時：設 `TLS_MODE=external` 讓前端發布 HTTP 埠
+（建議綁 loopback：`HTTP_PORT` 選不了介面，把 `docker-compose.yml` 中 `frontend-published`
+服務的 `ports` 那一行改成 `127.0.0.1:8088:80`），設定沿用同一份範本，
 upstream 改指 `127.0.0.1:8088`，`server_name` 與憑證路徑換成你的。
 nginx 低於 1.25.1 不支援 `http2 on;` 指令，改寫成 `listen 443 ssl http2;` 即可。
 其他反向代理（Caddy、Traefik、雲端 LB）滿足本節開頭那組契約即可，
@@ -869,7 +975,7 @@ nginx 低於 1.25.1 不支援 `http2 on;` 指令，改寫成 `listen 443 ssl htt
 #### 驗證 TLS 生效
 
 ```bash
-docker compose ps                                  # tls-proxy 為 Up（tls-init 為 exited(0)）
+docker compose ps -a                               # tls-proxy 為 Up（tls-init 為 exited(0)）
 curl -sI http://localhost/ | head -1          # 301，導向 https
 curl -skI https://localhost/ | head -1        # 200
 curl --cacert tls/ca-public/custodexa-ca.crt -sI https://<TLS_DOMAIN>/ | head -1   # 自簽模式：200
@@ -1058,11 +1164,11 @@ docker compose up -d --force-recreate frontend
 
 
 ### macOS：postgres 因 `wrong ownership` 起不來（Docker Desktop 檔案共享）
-症狀：postgres 日誌出現 `data directory ... has wrong ownership`，且這個資料目錄從未成功啟動過。資料庫目錄是 bind mount（`${DATA_PATH:-./data}/postgres`）。在 macOS 上，這可能與 Docker Desktop 選用的檔案共享實作有關。
+症狀：postgres 日誌出現 `data directory ... has wrong ownership`，且這個資料目錄從未成功啟動過。資料庫目錄是 bind mount（1.23.0 起是 `${DATA_PATH:-./data}/postgresql`，之前是 `postgres`）。在 macOS 上，這可能與 Docker Desktop 選用的檔案共享實作有關。
 
 1. 開啟 Docker Desktop 設定（Docker 選單，再選 Settings），General 分頁，把 "Choose file sharing implementation for your containers" 改為 VirtioFS。套用後重啟 Docker Desktop。
 2. 只有在兩個條件同時成立時，才清空這個半初始化的資料目錄：這個資料目錄從未成功啟動過，而且目錄內沒有需要保留的資料。若不確定目錄的來源或內容，不要清空；先備份或另尋協助。
-3. 兩個條件都成立時，先確認實際路徑：它是 `.env` 內 `DATA_PATH` 底下的 `postgres` 目錄（未設定 `DATA_PATH` 時為 `./data/postgres`）。刪除該目錄後，重新執行 `docker compose up -d`。
+3. 兩個條件都成立時，先確認實際路徑：它是 `.env` 內 `DATA_PATH` 底下的 `postgresql` 目錄（1.23.0 之前是 `postgres`；未設定 `DATA_PATH` 時為 `./data/postgresql`）。刪除該目錄後，重新執行 `bash scripts/quickstart.sh --up`。
 
 開發版首次啟動時，Docker 在建立單檔掛載的過程中也可能報 `outside of rootfs`。重跑 `docker compose up -d` 即可；`scripts/quickstart.sh --up` 會事先建立這些掛載點。
 

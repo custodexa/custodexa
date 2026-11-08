@@ -46,12 +46,17 @@ export function verifyMFA(data) {
 /**
  * 產生 MFA 設定資訊（secret 與 otpauth URL）
  * POST：後端會覆寫 pending secret 並重設啟用狀態（有副作用，非冪等讀取）
+ * 已啟用 MFA 的帳號重新設定驗證器時須帶 data.code（目前驗證器的 6 位數驗證碼）
+ * @param {Object} [data] - { code }
+ * @param {Object} [config] - 額外 axios 設定（如 skipErrorToast）
  * @returns {Promise} 回傳 { secret, otpauth_url }
  */
-export function getMFASetup() {
+export function getMFASetup(data, config) {
   return request({
     url: '/auth/mfa/setup',
     method: 'post',
+    ...(data ? { data } : {}),
+    ...config,
   })
 }
 
@@ -61,11 +66,12 @@ export function getMFASetup() {
  * @param {string} data.code - 6 位數 TOTP 驗證碼
  * @returns {Promise}
  */
-export function enableMFA(data) {
+export function enableMFA(data, config) {
   return request({
     url: '/auth/mfa/enable',
     method: 'post',
     data,
+    ...config,
   })
 }
 

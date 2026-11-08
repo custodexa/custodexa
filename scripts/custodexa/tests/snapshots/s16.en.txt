@@ -3,6 +3,9 @@ Custodexa status    /opt/custodexa    2026-10-02 09:30
 Version
   Installed  1.13.2    package deployment, upgraded 2026-09-30
   Previous   1.13.0    kept in releases/
+Deployment form
+  [ OK ] Database: built-in;
+         Web entry: built-in HTTPS (ports 443, 80)
 Services
   [ OK ] 6 service processes started (tls-init runs once and has
          finished)

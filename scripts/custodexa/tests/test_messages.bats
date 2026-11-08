@@ -110,7 +110,7 @@ help_options() { "$ROOT/custodexa.sh" --help --lang en | grep -oE -- '--[a-z][a-
   [ -n "$known" ]
   listed=$("$ROOT/custodexa.sh" --help --lang en | sed -n '/^Commands$/,/^$/p' | awk '/^  [a-z]/ {print $1}' | sort -u)
   [ "$(printf '%s\n' $known | sort -u)" = "$listed" ]
-  for c in $known; do grep -q "^MSG_help_cmd_$c=" "$SRC/lang/en.sh"; done
+  for c in $known; do grep -q "^MSG_help_cmd_${c//-/_}=" "$SRC/lang/en.sh"; done
 }
 
 @test "<command> --help shows that command and only the options it accepts" {
@@ -189,7 +189,7 @@ fake_commands() {
   printf '%s\n' 'cmd_restore() { printf "restore %s same=%s new=%s\n" "$*" "$CX_RS_SAME" "$CX_RS_NEW" >>"$CX_CALLS"; }' \
     >"$ROOT/releases/1.13.0/lib/cmd_restore.sh"
 }
-package_state() { printf '{\n  "format": "2",\n  "current.version": "1.13.2"\n}\n' >"$ROOT/state.json"; }
+package_state() { printf '{\n  "format": "2",\n  "current.version": "1.13.2",\n  "current.overlays": "external-database"\n}\n' >"$ROOT/state.json"; }
 # menu_run <lang> <typed lines> [folder to start in]: on a terminal (stdin and stdout).
 menu_run() {
   run script -qec "cd ${3:-$BATS_TEST_TMPDIR} && bash $ROOT/custodexa.sh --lang $1" /dev/null <<<"$2"
@@ -210,7 +210,7 @@ menu_screen() {
     diff <(menu_screen) "$TESTS_DIR/snapshots/menu-none.$l.txt" || { echo "not installed: $l"; return 1; }
   done
   printf '1.16.0\n' >"$ROOT/releases/1.13.0/VERSION"
-  printf '{\n  "format": "2",\n  "current.version": "1.16.0"\n}\n' >"$ROOT/state.json"
+  printf '{\n  "format": "2",\n  "current.version": "1.16.0",\n  "current.overlays": "external-database"\n}\n' >"$ROOT/state.json"
   for l in $LANGS; do
     menu_run "$l" 0
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -359,7 +359,7 @@ after_picker() {
   mkdir -p "$here"
   bk=$(cd -P "$ROOT/backups" && pwd)
   printf '1.16.0\n' >"$ROOT/releases/1.13.0/VERSION"
-  printf '{\n  "format": "2",\n  "current.version": "1.16.0"\n}\n' >"$ROOT/state.json"
+  printf '{\n  "format": "2",\n  "current.version": "1.16.0",\n  "current.overlays": "external-database"\n}\n' >"$ROOT/state.json"
   for l in $LANGS; do
     : >"$CX_CALLS"
     menu_run "$l" $'6\n1\n0' "$here"

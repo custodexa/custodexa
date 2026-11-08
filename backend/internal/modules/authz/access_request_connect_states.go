@@ -75,23 +75,19 @@ func (s *AccessRequestService) AnnotateConnectStates(userID uint, assets []*Auth
 		}
 	}
 
-	// 4. 破窗可用性 bulk 判定：開關開啟時，
-	// 非 open 段位×持時窗內常設 connect×無有效票證的資產標註可破窗——
-	// 伺服端單一事實源，開關關閉＝前端零入口（藏入口語義）
+	// 4. 常設 connect bulk 判定（非 open 段位）：它既是申請資格，也是破窗資格的一部分。
+	// 沒有常設 connect 的資產不呈現申請入口；破窗另外受開關限制，
+	// 開關關閉＝前端零入口（藏入口語義）
 	breakGlassOn := s.policies.GetBool(policy.PolicyBreakGlassEnabled)
-	standing := map[uint]bool{}
-	if breakGlassOn {
-		nonOpen := make([]uint, 0, len(assets))
-		for i, a := range assets {
-			if segments[i] != model.AccessPolicyOpen {
-				nonOpen = append(nonOpen, a.ID)
-			}
+	nonOpen := make([]uint, 0, len(assets))
+	for i, a := range assets {
+		if segments[i] != model.AccessPolicyOpen {
+			nonOpen = append(nonOpen, a.ID)
 		}
-		var err error
-		standing, err = s.authzRepo.StandingConnectAssetIDs(userID, nonOpen, now)
-		if err != nil {
-			return err
-		}
+	}
+	standing, err := s.authzRepo.StandingConnectAssetIDs(userID, nonOpen, now)
+	if err != nil {
+		return err
 	}
 
 	for i, a := range assets {
@@ -116,6 +112,10 @@ func (s *AccessRequestService) AnnotateConnectStates(userID uint, assets []*Auth
 			id := reqID
 			a.AccessState = policy.AccessStatePending
 			a.PendingRequestID = &id
+			continue
+		}
+		if !standing[a.ID] {
+			// 只有檢視權（或只因審核範圍而可見）：不能提出申請，不標示可申請狀態
 			continue
 		}
 		if segment == model.AccessPolicyReason {

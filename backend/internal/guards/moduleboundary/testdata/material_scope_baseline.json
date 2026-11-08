@@ -33,7 +33,7 @@
   "pkg/crypto/kms/arn.go": "2d5cd7276575642569cf10ec4c861617be760633273023180b9a864bd9fe3b86",
   "pkg/crypto/kms/client.go": "430b29b5385ac23066f2d19794e6c516076436a32b9d880f668c1ebb2e90c1ba",
   "pkg/crypto/kms/contract_test.go": "53b0090600f0c6213a171310f8812d4d4c14b3ea7090ca2fa491495e55588055",
-  "pkg/crypto/kms/endpoint_gate_test.go": "5158fb4c8ed00fb577f5bc32be6f57b74fc8e8e6e982de58fa75644582dcadc2",
+  "pkg/crypto/kms/endpoint_gate_test.go": "86749804fec359f380b605c5dad9411df6e09035bac5335c141840cf0fd03bae",
   "pkg/crypto/kms/fake_client_test.go": "a7e6d82928c51a7c76ac5c9eee8b95c2c0a9e355456f0b4cf322dbe25a952447",
   "pkg/crypto/kms/hardening_test.go": "6df1fcf051cc8d3ca9ae4d76606579a5d850d5f8e4cd90ff8e714656965ac958",
   "pkg/crypto/kms/localstack_test.go": "99ef3db86551e64a46d9c41524ab959ddce73424d0ef42607c4e561cf5588751",

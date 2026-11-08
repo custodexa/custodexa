@@ -80,7 +80,7 @@ xr_gone() {
 xr_install() {
   local root=$1 port=$2
   it_unpack "${root%/*}" "$XR_V"
-  ex_preset "$root" "COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml" \
+  ex_preset "$root" \
     "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$port" "DB_NAME=$EX_DB" "DB_USER=$EX_USER" \
     "DB_PASSWORD=$EX_PASS" KEK_PROVIDER=env
   xr_cx install "$root" install --images "$(it_bundle_file "$XR_V")"

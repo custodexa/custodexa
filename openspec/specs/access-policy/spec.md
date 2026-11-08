@@ -3,9 +3,7 @@
 ## Purpose
 
 三段存取政策（`open`／`reason`／`approval`）：資產本身的政策段位與全域預設 fallback（政策掛資產本身、不掛組織結構）、connect-token 簽發點的單點政策閘（全模態一致）、admin 豁免留痕與 auditor 不豁免。
-
 ## Requirements
-
 ### Requirement: 三段存取政策
 資產 SHALL 可設定存取政策段位：`open`（不需申請）／`reason`（填理由即過）／`approval`（強制審核）；未設定 SHALL 走全域預設政策鍵，全域預設出廠 SHALL 為 `open`。政策段位 SHALL 掛於資產本身（`assets.access_policy`，nullable），SHALL NOT 掛於資產分組或節點——資產組織結構（含未來的多歸屬節點樹）SHALL 不影響政策解析。資產單台覆寫的設定與清除 SHALL 只由持有存取政策權限點的主體執行（超級管理者保留身分照常具備），變更 SHALL 入審計；全域預設鍵的設定權限 SHALL 依安全政策設定的既有規則，SHALL NOT 因持有存取政策權限點而取得。
 
@@ -42,7 +40,7 @@ connect-token 簽發 SHALL 於連線授權檢查之後檢查資產政策段位�
 
 #### Scenario: reason 段同樣攔截常設
 - **WHEN** 使用者對 `reason` 段位資產持常設 connect 申請 connect-token 且無有效臨時授權
-- **THEN** 簽發被攔（403、reason=reason_required）——與 approval 段的差別僅在申請將被即時自動核准
+- **THEN** 簽發被攔（403、reason=reason_required）——與 approval 段的差別在於：申請的帳號範圍未超出其常設帳號範圍時將被即時自動核准，超出時同樣轉人工審核
 
 #### Scenario: 攔截回應機器可辨
 - **WHEN** 政策閘攔截且該使用者已有一張 pending 申請
@@ -202,3 +200,4 @@ break-glass SHALL NOT 繞過政策閘：破窗產生的票證即 ticket 來源�
 #### Scenario: 全域持有者見全部
 - **WHEN** 超級管理者查詢覆寫清單
 - **THEN** 回應含全部已覆寫資產，節點歸屬完整、不帶範圍外計數
+

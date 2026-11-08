@@ -529,3 +529,38 @@ func TestOffsiteSaveSettingsRejectionCodes(t *testing.T) {
 		t.Fatalf("被拒的請求不得改動現行設定: %s", w.Body.String())
 	}
 }
+
+// TestOffsiteGCSRejectionCodes 兩個 gcs 驗證拒絕碼的 HTTP 出口：
+// 憑證不可用時只指名欄位（params.field），回應本文不含任何憑證內容。
+func TestOffsiteGCSRejectionCodes(t *testing.T) {
+	env := newOffsiteAPIEnv(t)
+	token := env.adminToken(t, 304)
+
+	const marker = "credential-marker-not-for-output"
+	badType := map[string]any{
+		"provider": "gcs", "bucket": "b", "prefix": "custodexa",
+		"service_account_json": `{"type":"external_account","audience":"` + marker + `"}`,
+	}
+	w := env.do(t, http.MethodPut, "/api/v1/offsite-storage/settings", token, badType)
+	if w.Code != http.StatusBadRequest ||
+		!strings.Contains(w.Body.String(), `"code":"VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID"`) ||
+		!strings.Contains(w.Body.String(), `"field":"type"`) {
+		t.Fatalf("憑證型別不符應回 400＋指名 type 欄位，實得 %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), marker) {
+		t.Fatalf("回應不得回顯憑證內容：%s", w.Body.String())
+	}
+
+	noCred := map[string]any{
+		"provider": "gcs", "bucket": "b", "prefix": "custodexa",
+		"endpoint": "https://storage.example.net",
+	}
+	w = env.do(t, http.MethodPut, "/api/v1/offsite-storage/settings", token, noCred)
+	if w.Code != http.StatusBadRequest ||
+		!strings.Contains(w.Body.String(), `"code":"VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL"`) {
+		t.Fatalf("無顯式憑證的外部端點應回 400 端點需憑證，實得 %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "storage.example.net") {
+		t.Fatalf("回應不得回顯端點值：%s", w.Body.String())
+	}
+}

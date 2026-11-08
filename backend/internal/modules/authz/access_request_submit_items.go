@@ -10,7 +10,6 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/internal/notifycat"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"time"
 )
 
@@ -20,7 +19,18 @@ var (
 	ErrAgentAccountsRequired = errors.New("VALIDATION_AGENT_ACCOUNTS_REQUIRED")
 	ErrExecutorNotAgent      = errors.New("VALIDATION_EXECUTOR_NOT_AGENT")
 	ErrAgentRequestRate      = errors.New("RULE_AGENT_REQUEST_RATE")
+	// ErrRequestConnectRequired 申請人（或輔助模式的執行者）對資產未持時窗內常設連線權
+	ErrRequestConnectRequired = errors.New("RULE_ACCESS_REQUEST_CONNECT_REQUIRED")
 )
+
+// RequestConnectRequiredError 帶出第一個不符資格的項目序號與資產識別。
+type RequestConnectRequiredError struct {
+	ItemIndex int
+	AssetID   uint
+}
+
+func (e *RequestConnectRequiredError) Error() string { return ErrRequestConnectRequired.Error() }
+func (e *RequestConnectRequiredError) Unwrap() error { return ErrRequestConnectRequired }
 
 type AccountNotOnAssetError struct {
 	ItemIndex int
@@ -144,6 +154,22 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 		}
 		assets = append(assets, found.Asset)
 	}
+	// The requester must personally hold standing connect rights (visibility alone is not enough).
+	// This is a pre-filter only; the transaction below repeats it before anything is written.
+	checkedAt := time.Now()
+	assetIDs := make([]uint, len(items))
+	for i, item := range items {
+		assetIDs[i] = item.AssetID
+	}
+	requesterStanding, err := s.authzRepo.StandingConnectAssetIDs(requesterID, assetIDs, checkedAt)
+	if err != nil {
+		return nil, err
+	}
+	for i, id := range assetIDs {
+		if !requesterStanding[id] {
+			return nil, &RequestConnectRequiredError{ItemIndex: i, AssetID: id}
+		}
+	}
 	if input.ExecutorUserID != nil {
 		var executor model.User
 		if err := s.db.First(&executor, *input.ExecutorUserID).Error; err != nil {
@@ -163,6 +189,15 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 				return nil, err
 			}
 			if !visible {
+				return nil, ErrAccessRequestNotFound
+			}
+		}
+		executorStanding, err := s.authzRepo.StandingConnectAssetIDs(*input.ExecutorUserID, assetIDs, checkedAt)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range assetIDs {
+			if !executorStanding[id] {
 				return nil, ErrAccessRequestNotFound
 			}
 		}
@@ -213,25 +248,30 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 	var req *model.AccessRequest
 	create := func() error {
 		return s.db.Transaction(func(tx *gorm.DB) error {
+			// Lock the requester and executor rows in one ascending-id statement before anything
+			// else, so this path shares one lock order with decisions, break-glass and owner transfer.
+			if err := lockUserRows(tx, requestPartyIDs(requesterID, input.ExecutorUserID)); err != nil {
+				return err
+			}
+			if requesterKind == model.KindAgent && tx.Dialector.Name() == "postgres" {
+				if h := loadLockOrderHook(); h != nil {
+					h("request_submit_after_requester_lock", tx, requesterID)
+				}
+			}
+			if h := loadLockOrderHook(); h != nil {
+				h("request_submit_before_recheck", tx, requesterID)
+			}
+			// Re-evaluate eligibility and the account bound from one query inside the transaction.
+			bounds, err := s.recheckRequestParties(tx, requesterID, input.ExecutorUserID, assetIDs, true, time.Now())
+			if err != nil {
+				return err
+			}
 			if requesterKind == model.KindAgent {
-				// Row lock serializes counting and inserting across processes.
-				// 鎖序守衛探針（測試期；生產恆為 nil）：取帳號列鎖之前
-				if probe := LockOrderProbeHook(); probe != nil {
-					probe(tx, LockLayerUserRow, requesterID)
-				}
-				if tx.Dialector.Name() == "postgres" {
-					var locked model.User
-					if err := tx.Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).Select("id").First(&locked, requesterID).Error; err != nil {
-						return err
-					}
-					if h := loadLockOrderHook(); h != nil {
-						h("request_submit_after_requester_lock", tx, requesterID)
-					}
-				}
 				if err := s.checkAgentRequestRate(tx, requesterID, now); err != nil {
 					return err
 				}
 			}
+			grantee := executorIDValue(input.ExecutorUserID, requesterID)
 			req = &model.AccessRequest{RequesterID: requesterID, ExecutorUserID: input.ExecutorUserID, AssetID: prepared[0].asset.ID, Accounts: prepared[0].scope, Reason: input.Reason, RequestedDurationMinutes: input.DurationMinutes, RequestedDateStart: input.DateStart, Status: model.AccessRequestPending, PendingExpiresAt: now.Add(time.Duration(timeout) * time.Hour), Kind: model.AccessRequestKindNormal}
 			if err := tx.Create(req).Error; err != nil {
 				return err
@@ -246,7 +286,19 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 					pending = true
 					continue
 				}
-				if err := s.approveInTx(tx, req, nil, DecideInput{ItemID: item.ID}, true, now); err != nil {
+				// Automatic approval never grants beyond the grantee's standing account scope.
+				bound := bounds[standingKey{grantee, p.asset.ID}]
+				decision := DecideInput{ItemID: item.ID}
+				// 未帶帳號（全部帳號）者收斂到上界；具名帳號超出上界者改走人工審核。
+				if !p.scope.IsAll() && !withinBound(p.scope, bound) {
+					pending = true
+					continue
+				}
+				if p.scope.IsAll() && !bound.IsAll() {
+					names := []string(bound)
+					decision.Accounts = &names
+				}
+				if err := s.approveInTx(tx, req, nil, decision, true, now); err != nil {
 					return err
 				}
 			}
@@ -258,7 +310,7 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 			return tx.Model(req).Updates(map[string]any{"status": req.Status, "auto_approved": true}).Error
 		})
 	}
-	err := create()
+	err = create()
 	if err != nil && dberr.IsUniqueViolation(err) {
 		expired := false
 		for _, p := range prepared {

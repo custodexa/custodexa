@@ -10,7 +10,7 @@
 [FAIL] The last upgrade run was interrupted at step 11.
   The new version is already in place. Check the backend log for the
   reason first:
-    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+    sudo docker logs --tail 50 custodexa-backend
   Pre-upgrade backup: /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar
   To go back to 1.16.1, run the command below. The script first makes sure
   the new version has not changed the database, and only then switches

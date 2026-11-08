@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/model"
@@ -75,7 +76,13 @@ var fileTapForward = FileTapVerdict{Forward: true}
 // **這是 guac 通道的主強制點**，guacd 的 disable-upload／sftp-disable-* 參數是縱深
 // 防線：guacd 版本一換，只靠參數的控制就消失了。
 type FileTap struct {
-	db *gorm.DB
+	// mu 保護串流狀態：指令觀察在 WS→guacd 泵上，收線結算在 Close 的呼叫者上，兩者並行
+	mu sync.Mutex
+	// closed 收線結算之後不再登記新串流
+	closed bool
+	// seq 本連線內的上傳串流序號，與串流 index 合成串接各筆紀錄的串流識別
+	seq int
+	db  *gorm.DB
 	// auditSink 檔案傳輸審計的投遞面（AP-28）。**刻意是 DirectSink 而非
 	// AuditLogService**：本點現況走 db.Create 直寫，從不看 AuditLogEnabled——
 	// 接到受開關管制的 sink 上會在開關關閉時新增「留痕消失」行為（見
@@ -97,7 +104,16 @@ type FileTap struct {
 type fileUploadStream struct {
 	name string
 	size int64
+	// id 串流識別：開始、完成、未完成三種紀錄以它串接（審計列不可更新，故各自獨立成列）
+	id string
 }
+
+// 上傳紀錄的階段（details.phase）：開始、完成、連線關閉時仍未結束
+const (
+	uploadPhaseStarted    = "started"
+	uploadPhaseCompleted  = "completed"
+	uploadPhaseIncomplete = "incomplete"
+)
 
 // NewFileTap 建立單一連線的檔案傳輸觀察器；db/session 缺失時回傳可安全 no-op 的實例。
 // 不帶管控（既有呼叫形態）——管控以 SetDecider 注入。
@@ -140,7 +156,7 @@ func (t *FileTap) via() string {
 
 // Observe 觀察一條指令並回傳處置；非檔案傳輸相關指令一律放行。
 //
-// guac filesystem 上傳序列：put[object,stream,mimetype,name] → blob[stream,data]… → end[stream]
+// guac filesystem 上傳序列：put[object,stream,mimetype,name]（或 file[stream,mimetype,name]）→ blob[stream,data]… → end[stream]
 // 下載觸發：get[object_index, name]（guacd 回 body 開串流）。
 //
 // **能力判定每個 put／get 至多一次**（5.7）：判定結果登記在 stream 狀態上，
@@ -149,31 +165,24 @@ func (t *FileTap) Observe(inst *guacamole.Instruction) FileTapVerdict {
 	if t == nil || t.db == nil || t.sessionID == 0 {
 		return fileTapForward
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return fileTapForward
+	}
 	switch inst.Opcode {
 	case "put":
 		// args: [object_index, stream_index, mimetype, name]
 		if len(inst.Args) < 4 {
 			return fileTapForward
 		}
-		streamIdx := inst.Args[1]
-		name := truncateAuditName(inst.Args[3])
-		if !t.allows(policy.TransferActionFileUpload) {
-			// 登記為被拒 stream：後續 blob／end 一併丟棄（串流狀態機）
-			t.deniedStreams[streamIdx] = true
-			delete(t.streams, streamIdx)
-			// 拒絕留痕：大小為 0（未收 blob）
-			t.recordDenied(model.ActionFileUpload, name, 0)
-			return FileTapVerdict{
-				Forward: false,
-				Ack: &guacamole.Instruction{
-					Opcode: "ack",
-					Args:   []string{streamIdx, "transfer denied by policy", guacAckClientForbidden},
-				},
-			}
+		return t.openUpload(inst.Args[1], truncateAuditName(inst.Args[3]))
+	case "file":
+		// 客戶端直接開上傳串流的另一種指令。args: [stream_index, mimetype, name]
+		if len(inst.Args) < 3 {
+			return fileTapForward
 		}
-		delete(t.deniedStreams, streamIdx)
-		t.streams[streamIdx] = &fileUploadStream{name: name}
-		return fileTapForward
+		return t.openUpload(inst.Args[0], truncateAuditName(inst.Args[2]))
 	case "blob":
 		// args: [stream_index, base64data]——只累加大小，不留內容
 		if len(inst.Args) < 2 {
@@ -209,7 +218,7 @@ func (t *FileTap) Observe(inst *guacamole.Instruction) FileTapVerdict {
 			return fileTapForward
 		}
 		delete(t.streams, streamIdx)
-		t.record(s)
+		t.submitUpload(model.StatusSuccess, s, uploadPhaseCompleted)
 		return fileTapForward
 	case "get":
 		// 下載方向（5.4）：客戶端主動觸發的 filesystem 讀取。
@@ -236,13 +245,63 @@ func (t *FileTap) recordDenied(action model.AuditAction, name string, size int64
 	t.submit(action, model.StatusDenied, name, size)
 }
 
-// record 非同步寫入檔案上傳審計（比照 ClipboardTap：失敗僅記 log，不回壓會話）
-func (t *FileTap) record(s *fileUploadStream) {
-	t.submit(model.ActionFileUpload, model.StatusSuccess, s.name, s.size)
+// openUpload put 與 file 共用的開串流處理：每次開串流判定一次；拒絕時登記為被拒串流、
+// 回非零 ack 並留 denied 紀錄；允許時登記串流並立即留一筆開始紀錄（留痕不依賴客戶端送 end）。
+// 呼叫端已持有 t.mu。
+func (t *FileTap) openUpload(streamIdx, name string) FileTapVerdict {
+	if !t.allows(policy.TransferActionFileUpload) {
+		// 登記為被拒 stream：後續 blob／end 一併丟棄（串流狀態機）
+		t.deniedStreams[streamIdx] = true
+		delete(t.streams, streamIdx)
+		// 拒絕留痕：大小為 0（未收 blob）
+		t.recordDenied(model.ActionFileUpload, name, 0)
+		return FileTapVerdict{
+			Forward: false,
+			Ack: &guacamole.Instruction{
+				Opcode: "ack",
+				Args:   []string{streamIdx, "transfer denied by policy", guacAckClientForbidden},
+			},
+		}
+	}
+	delete(t.deniedStreams, streamIdx)
+	t.seq++
+	s := &fileUploadStream{name: name, id: fmt.Sprintf("%s:%d", streamIdx, t.seq)}
+	t.streams[streamIdx] = s
+	t.submitUpload(model.StatusSuccess, s, uploadPhaseStarted)
+	return fileTapForward
+}
+
+// FinishOpenStreams 收線結算：仍未收到 end 的上傳串流各留一筆 failure 的未完成紀錄（含已轉送大小），
+// 不標為成功。收線之後不再登記新串流；重複呼叫不會重複結算。
+func (t *FileTap) FinishOpenStreams() {
+	if t == nil || t.db == nil || t.sessionID == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.closed = true
+	for idx, s := range t.streams {
+		delete(t.streams, idx)
+		t.submitUpload(model.StatusFailure, s, uploadPhaseIncomplete)
+	}
+}
+
+// submitUpload 寫入一筆上傳階段紀錄（開始、完成、未完成）
+func (t *FileTap) submitUpload(status model.AuditStatus, s *fileUploadStream, phase string) {
+	size := s.size
+	if phase == uploadPhaseStarted {
+		size = 0
+	}
+	t.submitDetails(model.ActionFileUpload, status, s.name, size, phase, s.id)
 }
 
 // submit 檔案傳輸審計的單一投遞實作（成功與被拒共用，杜絕兩條路徑漂移）
 func (t *FileTap) submit(action model.AuditAction, status model.AuditStatus, name string, size int64) {
+	t.submitDetails(action, status, name, size, "", "")
+}
+
+// submitDetails 投遞實作；phase、streamID 非空時寫入 details 以區分上傳的階段與串流
+func (t *FileTap) submitDetails(action model.AuditAction, status model.AuditStatus, name string, size int64, phase, streamID string) {
 	db := t.db
 	sink := t.auditSink
 	sessionID := t.sessionID
@@ -261,6 +320,10 @@ func (t *FileTap) submit(action model.AuditAction, status model.AuditStatus, nam
 			return
 		}
 		details := fmt.Sprintf(`{"session_id":%d,"size":%d,"via":%q}`, sessionID, size, via)
+		if phase != "" {
+			details = fmt.Sprintf(`{"session_id":%d,"size":%d,"via":%q,"phase":%q,"stream":%q}`,
+				sessionID, size, via, phase, streamID)
+		}
 		if status == model.StatusDenied {
 			// 拒絕來源：期 1 只有全域政策層可能拒絕；期 2 會多出
 			// 「無匹配放寬」一種來源，屆時由解析端回傳並填入此欄

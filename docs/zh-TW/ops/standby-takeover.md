@@ -4,12 +4,12 @@
 
 > 適用範圍：已演練的 1.13.3 原始碼樹目錄結構；以下不是現行安裝包部署可直接照抄的命令。安裝包部署須在各主機用 `custodexa.sh` 安裝與升級，並遵守 §8 外接資料庫備份邊界；倚賴前應在自己的環境驗證完整雙主機程序。
 >
-> **本程序的驗證狀態**：專案在單一機器上演練過一次，以兩個 compose 專案代表兩台應用主機、第三個代表資料庫；守衛的行為、確認碼路徑與備援主機上的登入都在那次演練中走過。尚未在兩台實體主機之間演練過。倚賴它之前，請在自己的環境演練一次並留下記錄。
+> **本程序的驗證狀態**：專案在單一機器上演練過一次，以兩個 compose 專案代表兩台應用主機、第三個代表資料庫；守衛的行為、確認碼路徑與備援主機上的登入都在那次演練中走過。尚未在兩台實體主機之間演練過。倚賴它之前，請在自己的環境演練一次並留下記錄。§2.1、§2.2、§3 與 §5 的指令區塊另在單一機器上的自動化測試中執行過，形態是外接資料庫加內建代理（兩個部署資料夾、相同的機密、一台資料庫伺服器；第一個部署啟動並寫入資料、移除其容器，第二個從複製來的檔案啟動並讀到第一個部署寫的資料）。§2.2 的複製在本機完成，沒有用 rsync 到另一台主機，占位值也已填入。那驗的是指令，不含守衛的確認碼路徑，也不是在兩台實體主機之間的演練。
 >
 > 相關文件：[部署形態限制](./deployment-topology-limits.md)、[備份與還原](./backup-and-restore.md)、
 > [部署與升級 SOP](./upgrade-sop.md)（§2.6b 守衛訊息、§3.4 執行期的鎖狀態）。
 >
-> 本文的每一條 `docker compose` 指令都在 external database 形態的應用主機上執行，所以都需要兩個檔案（`-f docker-compose.yml -f docker-compose.external-database.yml`），或在 `.env` 的 `COMPOSE_FILE` 列出它們；前面有自家 ingress 時，那份清單是三個檔案。下文只寫 `docker compose`，是為了簡短。
+> 本文的每一條 `docker compose` 指令都在應用主機的部署資料夾執行，也就是放著 `docker-compose.yml` 與 `.env` 的那個資料夾。所有形態共用一個 compose 檔，形態由 `.env` 決定：填了 `EXTERNAL_DB_HOST` 就不起自帶的 postgres，`TLS_MODE` 決定用內建代理或自家 ingress。`bash scripts/quickstart.sh` 依這兩個鍵推導形態，並以 `COMPOSE_PROFILES` 記在 `.env` 末尾的管理區，`docker compose` 從那裡讀取。不需要 `-f` 選項，也不需要 `COMPOSE_FILE` 那一行；下文只寫 `docker compose`。
 
 ---
 
@@ -34,11 +34,10 @@
 
 ### 2.1 把資料庫放在應用主機之外
 
-堆疊自帶的 postgres 住在應用主機上，預設形態下主機與資料一起倒。external database overlay 讓堆疊不起自帶的 postgres，改讓後端連向你指定的伺服器：
+堆疊自帶的 postgres 住在應用主機上，預設形態下主機與資料一起倒。填入 `EXTERNAL_DB_HOST` 讓堆疊不起自帶的 postgres，改讓後端連向你指定的伺服器。編輯 `.env` 之後執行 `bash scripts/quickstart.sh`：它會檢查位址並記下形態（§2.2 步驟 2）。
 
 ```env
 # 每台應用主機的 .env（主用主機與備援主機用相同的值）
-COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
 EXTERNAL_DB_HOST=db.example.internal
 EXTERNAL_DB_PORT=5432
 DB_NAME=custodexa
@@ -102,7 +101,7 @@ services:
 備援主機是以同一套檔案準備的第二台應用主機，在需要之前保持**停止**。與主用主機同時準備，主用主機每一次變動之後重做一次準備，因為落後的備援主機會以錯的版本或錯的設定接手。
 
 1. **相同的映像、相同的版本。** 在備援主機上建置或載入正式版映像，做法與主用主機相同（部署與升級 SOP §2.2）。主用主機的每一次升級也是備援主機的升級（§8）：停在前一版的備援主機對著較新的 schema 啟動會拒絕啟動（SOP §2.6），而版本較新的備援主機會在主用主機腳下遷移 schema。
-2. **相同的 compose 檔與相同的 `.env`。** 從主用主機複製 `docker-compose.yml`、`docker-compose.external-database.yml`（有用 ingress overlay 就一併）、`docker/` 與 `.env`。兩台主機之間不同的值只有下表這幾個；其餘包括機密在內都要一模一樣，否則備援主機讀不了主用主機寫的東西。
+2. **相同的檔案與相同的 `.env`。** 從主用主機複製 `docker-compose.yml`、`docker/`、`scripts/`、`VERSION` 與 `.env`。所有形態共用一個 compose 檔，所以外接資料庫或自家 ingress 都沒有別的檔案要複製。兩台主機之間不同的值只有下表這幾個；其餘包括機密在內都要一模一樣，否則備援主機讀不了主用主機寫的東西。
 
    | 鍵 | 在備援主機上 |
    |---|---|
@@ -114,11 +113,22 @@ services:
    ```bash
    # 在主用主機上：備援主機需要的部署檔案，含 .env 與 tls/
    rsync -a --relative \
-     docker-compose.yml docker-compose.external-database.yml docker/ .env tls/ \
+     docker-compose.yml docker/ scripts/ VERSION .env tls/ \
      standby:/opt/custodexa/
    ```
 
+   `TLS_MODE=external` 時沒有 `tls/` 資料夾，請把它從清單中拿掉。
+
    `.env` 帶著資料庫密碼，在 `KEK_PROVIDER=env` 模式下還帶著 KEK 材料；`tls/ca-private/` 帶著本地 CA 的私鑰。用搬運機密的方式搬運它們，並在備援主機上保留 `0600` 權限。
+
+   在備援主機的部署資料夾裡，檢查複製過來的 `.env` 並記下形態。這一步不會啟動任何東西：
+
+   ```bash
+   # 在備援主機上，於部署資料夾中
+   bash scripts/quickstart.sh
+   ```
+
+   腳本依 `EXTERNAL_DB_HOST` 與 `TLS_MODE` 推導形態，它回報的 `COMPOSE_PROFILES` 那一行必須與主用主機相同。往後接手不需要任何選項，也不需要 compose 檔名：在備援主機上 `docker compose up -d` 起的服務與主用主機相同。
 3. **相同的 TLS 材料。** `TLS_MODE=selfsigned` 時複製 `tls/`，備援主機才會提供同一個 CA 與憑證；首次啟動自己產生 CA 的備援主機，對每個瀏覽器與每個 SSO 回呼都是一個新的、不受信任的站台。`TLS_MODE=provided` 時放入相同的憑證檔。
 4. **KEK 材料在備援主機上要取得到**，否則備援主機啟動後停在已封存，什麼都讀不出來：
 
@@ -279,7 +289,7 @@ docker compose logs backend | grep InstanceGuard
 
 | # | 檢查 | 做法 | 預期 |
 |---|---|---|---|
-| 1 | 服務都起來 | `docker compose ps` | backend、frontend、guacd、tls-proxy 執行中；沒有 postgres（它不在這個形態裡） |
+| 1 | 服務都起來 | `docker compose ps` | backend、frontend、guacd 執行中，使用內建代理時另有 tls-proxy；沒有 postgres（它不在這個形態裡） |
 | 2 | 後端健康 | `docker compose exec backend wget -qO- http://localhost:8080/health` | 正常回應 |
 | 3 | 鎖狀態 | `curl -sk https://<位址>/api/v1/seal/status`；在 `overridden` 期間另以管理者身分查 `GET /api/v1/instance-guard`，或看橫幅裡的持鎖者 | §3 之後 `instance_guard.state` 為 `held`；§4.3 之後為 `held`，或 `overridden` 且持鎖者的 `backend_start` 與 §4.2 訊息裡的相同。`reason` 在攔下頁確認時為 `ack_page`、以 `INSTANCE_GUARD_ACK` 確認時為 `ack_startup`；`overridden` 稽核列前者記確認的帳號、後者記 `operator via env`。持鎖者的 `backend_start` 變新，表示另一個後端拿到了鎖（§4.4） |
 | 4 | 登入可用 | 以你知道密碼的帳號登入 | 登入成功；使用者帳號、角色與資產都在，因為它們在資料庫裡 |
@@ -354,7 +364,7 @@ curl -sk https://<位址>/api/v1/seal/status
 
 建立 agent 主體並指定有效的人類 owner。由 owner 或管理員建立具名稱及期限的 agent token，將僅顯示一次的明文保存於執行者的秘密儲存處。agent 僅有 user 角色，資產與帳號授權須明確限縮。在 agent 所在的機器安裝 stdio 客戶端 `custodexa-mcp`，取自 https://github.com/custodexa/custodexa-mcp：執行 `go install github.com/custodexa/custodexa-mcp@latest`，或下載 release 二進位並以同一 release 發布的 `checksums.txt` 驗證。以環境變數 `CUSTODEXA_AGENT_TOKEN` 提供給 `custodexa-mcp`，`CUSTODEXA_MCP_URL` 指向 HTTPS 的 `/api/v1/mcp`；該入口不接受人類 JWT 或 cookie。stdio 客戶端只轉送，所有判定及證據寫入均在服務端；不要把 token 放入命令參數或報告。
 
-agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
+agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。自動核准不會超出將要連線的主體所持有的常設帳號範圍：項目指名了範圍之外的帳號時，改為維持待審，由範圍涵蓋該資產的審核者決定。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
 
 輪替時先發新具名 token、更新執行者秘密、建立新的 MCP 連線並確認可視資產，再撤銷舊 token。沒有原地換 token 秘密或從備份自動找回明文的能力。撤銷會關閉由舊 token 建立的會話；句柄不能轉給新 token 或新 MCP 連線。還原或備機接管後須新建 MCP 連線，按需要重新申請任務；記憶體句柄與 60 秒冪等快取不跨重啟保存。續作前先核對保留的 token 與任務狀態。
 

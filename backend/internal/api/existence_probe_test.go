@@ -63,7 +63,7 @@ func TestExistenceProbeRequestResponses(t *testing.T) {
 		}
 		for _, grant := range []struct{ user, asset uint }{{requester.ID, 1}, {requester.ID, 2}, {agent.ID, 1}} {
 			u, a := grant.user, grant.asset
-			require.NoError(t, db.Create(&model.AssetAuthorization{UserID: &u, AssetID: &a, Permission: model.PermissionView, GrantedBy: owner.ID}).Error)
+			require.NoError(t, db.Create(&model.AssetAuthorization{UserID: &u, AssetID: &a, Permission: model.PermissionConnect, GrantedBy: owner.ID}).Error)
 		}
 		policies := policy.NewSecurityPolicyService(db)
 		svc := authz.NewAccessRequestService(db, policies, policy.NewAccessPolicyService(db, policies, authz.NewAssetAuthorizationService(db)), nil, nil)

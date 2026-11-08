@@ -1,8 +1,12 @@
 package identity
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 // LoginUsernameAcceptable 回報登入帳號字串能否送進帳號查詢：合法 UTF-8 且不含
@@ -21,6 +25,45 @@ func LoginUsernameAcceptable(username string) bool {
 	}
 	for _, r := range username {
 		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// directoryLoginName 目錄登入名稱的保存形：先做 Unicode 相容正規化（NFKC），
+// 再去前後空白並把內部連續空白壓成一個，大小寫保留。目錄端判定同名時不計較
+// 這些差異，帳號名稱存成這個形式，才與目錄端認得的名稱一致。
+func directoryLoginName(username string) string {
+	return strings.Join(strings.Fields(norm.NFKC.String(username)), " ")
+}
+
+// directoryLoginNameKey 目錄登入名稱的比對鍵：在保存形之上再做大小寫摺疊。
+// 兩個名稱的比對鍵相同，目錄端就視為同一人；目錄登入對應帳號一律以此鍵判定，
+// 不只看 ASCII 大小寫。
+func directoryLoginNameKey(username string) string {
+	folded := norm.NFKC.String(cases.Fold().String(directoryLoginName(username)))
+	return strings.Join(strings.Fields(folded), " ")
+}
+
+// asciiEqualFold 兩字串完全相同，或只差 ASCII 英文字母大小寫。
+// 不做 Unicode 摺疊：非 ASCII 的大小寫或相容形差異不算同名。
+func asciiEqualFold(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		x, y := a[i], b[i]
+		if x == y {
+			continue
+		}
+		if 'A' <= x && x <= 'Z' {
+			x += 'a' - 'A'
+		}
+		if 'A' <= y && y <= 'Z' {
+			y += 'a' - 'A'
+		}
+		if x != y {
 			return false
 		}
 	}

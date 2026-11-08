@@ -206,6 +206,10 @@ func (SelfGrantGuard) IsOwnAgentRequest(tx *gorm.DB, actorID, requesterID uint) 
 // 與 IsOwnAgentRequest 同一判定（kind=agent 且 owner_user_id=操作者）。
 const ownAgentRequesterCondition = "requester_id NOT IN (SELECT id FROM users WHERE kind = 'agent' AND owner_user_id = ? AND deleted_at IS NULL)"
 
+// ownAgentExecutorCondition 待審過濾的 SQL 片段：排除執行者為操作者所擁有 agent 的單
+// （輔助模式；與 IsOwnAgentRequest 套在執行者上的判定相同）。
+const ownAgentExecutorCondition = "(executor_user_id IS NULL OR executor_user_id NOT IN (SELECT id FROM users WHERE kind = 'agent' AND owner_user_id = ? AND deleted_at IS NULL))"
+
 // CheckOwnerTransfer 把 agent 的擁有者改為 newOwnerID 前的判定：新擁有者曾建立以該 agent
 // 為主體、仍有效的授權規則（未刪除、未過期，含核准產生的臨時授權）、以該 agent 為申請人
 // 的審核範圍，或對該 agent 的申請投下仍有效的核准票（項目待審中，或已核准且其票證未到期），
@@ -264,7 +268,7 @@ func ownerTransferBlockers(tx *gorm.DB, agentID, newOwnerID uint, now time.Time)
 	return votes > 0, nil
 }
 
-// activeVotesBy 新擁有者對該 agent 所提申請、仍有效的核准票數：
+// activeVotesBy 新擁有者對該 agent 所提（申請人）或代為執行（執行者）的申請、仍有效的核准票數：
 // 項目待審（單未逾期）或已核准且票證未刪除、未到期。項目層級缺席的舊票以單的狀態判定。
 func activeVotesBy(tx *gorm.DB, agentID, approverID uint, now time.Time) (int64, error) {
 	const validTicket = "EXISTS (SELECT 1 FROM asset_authorizations aa WHERE aa.id = %s AND aa.deleted_at IS NULL AND (aa.date_expired IS NULL OR aa.date_expired > ?))"
@@ -272,7 +276,7 @@ func activeVotesBy(tx *gorm.DB, agentID, approverID uint, now time.Time) (int64,
 	err := tx.Table("access_request_approvals AS a").
 		Joins("JOIN access_requests AS r ON r.id = a.request_id AND r.deleted_at IS NULL").
 		Joins("LEFT JOIN access_request_items AS i ON i.id = a.item_id AND i.deleted_at IS NULL").
-		Where("r.requester_id = ? AND a.approver_id = ?", agentID, approverID).
+		Where("(r.requester_id = ? OR r.executor_user_id = ?) AND a.approver_id = ?", agentID, agentID, approverID).
 		Where("(a.item_id IS NOT NULL AND ((i.status = ? AND r.status = ? AND r.pending_expires_at > ?) OR (i.status = ? AND "+fmt.Sprintf(validTicket, "i.authorization_id")+")))"+
 			" OR (a.item_id IS NULL AND ((r.status = ? AND r.pending_expires_at > ?) OR (r.status = ? AND "+fmt.Sprintf(validTicket, "r.authorization_id")+")))",
 			model.AccessRequestPending, model.AccessRequestPending, now, model.AccessRequestApproved, now,

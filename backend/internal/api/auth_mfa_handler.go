@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
@@ -32,15 +33,42 @@ func (h *AuthHandler) MFASetup(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.GenerateMFASetup(userID)
+	// 選填的現行驗證碼：已啟用 MFA 的帳號重新產生密鑰時必填。空本體視為未帶碼
+	var req struct {
+		Code string `json:"code"`
+	}
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+			return
+		}
+	}
+
+	resp, err := h.authService.GenerateMFASetup(userID, req.Code)
 	if err != nil {
 		status := principalErrorStatus(err, http.StatusInternalServerError)
-		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusFailure, status, err.Error())
+		auditStatus := model.StatusFailure
+		if errors.Is(err, identity.ErrMFACurrentCodeRequired) || errors.Is(err, identity.ErrMFAInvalidCode) ||
+			errors.Is(err, identity.ErrMFAReplay) {
+			// 驗證器重設被拒：因子更新前置條件不成立，留 denied 審計
+			status = http.StatusBadRequest
+			auditStatus = model.StatusDenied
+		}
+		if errors.Is(err, identity.ErrAccountLocked) {
+			// 重設入口的錯碼與登入共用鎖定計數，達門檻或鎖定期間回鎖定
+			status = http.StatusLocked
+			auditStatus = model.StatusDenied
+		}
+		h.auditAuthEvent(c, userID, username, model.ActionUpdate, auditStatus, status, err.Error())
 		respondMFAError(c, status, err, apierror.CodeInternalMFASetup)
 		return
 	}
 
-	h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusSuccess, http.StatusOK, "")
+	details := ""
+	if resp.Reset {
+		details = `{"mfa_reset":true}`
+	}
+	h.auditAuthEventFull(c, userID, username, model.ActionUpdate, model.StatusSuccess, http.StatusOK, "", 0, details)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -340,6 +368,8 @@ func mfaSentinelCode(err error) apierror.ErrCode {
 		return apierror.CodeMFAInvalidCode
 	case errors.Is(err, identity.ErrMFAReplay):
 		return apierror.CodeMFAReplay
+	case errors.Is(err, identity.ErrMFACurrentCodeRequired):
+		return apierror.CodeMFACurrentCodeRequired
 	case errors.Is(err, identity.ErrMFASetupRequired):
 		return apierror.CodeMFASetupRequired
 	case errors.Is(err, identity.ErrMFAPendingTokenInvalid):

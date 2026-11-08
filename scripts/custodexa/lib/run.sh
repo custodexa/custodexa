@@ -51,20 +51,29 @@ cx_run_command_of() {
 # and load are safe to repeat; upgrade and rollback add their own per-step table; until then the
 # hint is status plus the log.
 cx_recovery_hint() {
-  local bundle
+  local bundle newer
   case $1 in
     install) cx_cmd "sudo $CX_ROOT/custodexa.sh install" ;;
     rollback)
+      # Going toward the newer version runs that version's own script (releases/<v>/): the root
+      # script may already be the older one, which can start only the older compose layout.
+      newer="$CX_ROOT/releases/$(cx_state_get last_rollback.from)/custodexa.sh"
       if [ "$(cx_state_get last_rollback.direction)" = revert ]; then
         printf '  %s\n' "$(cx_msg rb_resume_revert "$(cx_state_get last_rollback.from)")"
+        cx_cmd "sudo $newer rollback --resume$(cx_status_lang_arg)"
       else
         printf '  %s\n' "$(cx_msg rb_resume)"
+        cx_cmd "sudo $CX_ROOT/custodexa.sh rollback --resume$(cx_status_lang_arg)"
       fi
-      cx_cmd "sudo $CX_ROOT/custodexa.sh rollback --resume$(cx_status_lang_arg)"
-      if [ "$(cx_state_get last_rollback.direction)" != revert ] &&
+      if cx_fg_pending; then
+        # The .env conversion of the upgrade is unfinished: going back to the new version is not
+        # offered; the other way is the restore guide.
+        printf '%s\n' "$(cx_msg rv_pending_restore)"
+        printf '        %s\n' "docs/ops/backup-and-restore.md"
+      elif [ "$(cx_state_get last_rollback.direction)" != revert ] &&
         [[ $(cx_state_get last_rollback.step) =~ ^[2-4]$ ]]; then
         printf '  %s\n' "$(cx_msg rb_revert "$(cx_state_get last_rollback.from)")"
-        cx_cmd "sudo $CX_ROOT/custodexa.sh rollback --revert$(cx_status_lang_arg)"
+        cx_cmd "sudo $newer rollback --revert$(cx_status_lang_arg)"
       fi
       ;;
     restore) cx_rs_control_hints ;;
@@ -218,12 +227,28 @@ cx_run_upgrade_restored() {
   cx_log STATE "last_upgrade.settled_by=restore step=$(cx_state_get last_upgrade.step)"
 }
 
+# cx_run_conversion_screen: P06 C, for a command other than upgrade while the conversion was cut short.
+# Needs nothing but state.json (the commands that call it have not loaded the upgrade libraries).
+cx_run_conversion_screen() {
+  local old to
+  old=$(cx_state_get last_upgrade.db_convert.old_path)
+  to=$(cx_state_get last_upgrade.to)
+  cx_line FAIL "$(cx_msg pgr_c_head)"
+  cx_up_par "$(cx_msg pgr_c_state "$(cx_state_get current.version)" "${old:-?}")"
+  cx_up_par "$(cx_msg pgr_c_again "${old%/*}")"
+  cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade $to"
+  cx_up_par "$(cx_msg pgr_c_start)"
+  cx_up_par "$(cx_msg pgr_c_status)"
+  cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
+}
+
 # cx_begin <command>: lock, stop on an unfinished earlier run, then mark this run in progress.
 cx_begin() {
   local cmd=$1 key prefix step handed=0
   CX_RUN_CMD=$cmd
   cx_lock
   cx_state_load "$CX_ROOT/state.json"
+  [ "$cmd" != backup ] || cx_form_guard backup || exit "$CX_EXIT_REFUSED"
   for key in "${CX_STATE_KEYS[@]+"${CX_STATE_KEYS[@]}"}"; do
     [[ $key == *.result ]] || continue
     [ "${CX_STATE[$key]}" = in_progress ] || continue
@@ -243,6 +268,11 @@ cx_begin() {
         cx_run_backup_refuse
         exit "$CX_EXIT_REFUSED"
       fi
+    fi
+    # The conversion of the bundled database was cut short: its own screen (the upgrade judges it).
+    if [ "$prefix" = last_upgrade ] && [ "$step" = 8 ] && [ "$cmd" != upgrade ]; then
+      cx_run_conversion_screen
+      exit "$CX_EXIT_REFUSED"
     fi
     cx_line WARN "$(cx_msg run_interrupted "$prefix" "$step")"
     if [ "$prefix" = install ] && [ "$cmd" = install ]; then

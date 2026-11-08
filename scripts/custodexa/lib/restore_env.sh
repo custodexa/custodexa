@@ -82,17 +82,27 @@ cx_rs_template() {
 }
 
 cx_rs_env_merge() {
-  local source=$CX_RS_DIR/pass2/env.bak key suggestion flag old value host ips port suffix="" cf ov="" expected
+  local source=$CX_RS_DIR/pass2/env.bak key suggestion flag old value host ips port suffix="" cf ov="" expected layout
   CX_RS_ENV=$CX_RS_DIR/env.merged
   cp "$source" "$CX_RS_ENV" && chmod 600 "$CX_RS_ENV" || return 1
-  cf=$(cx_env_get "$source" COMPOSE_FILE)
-  for key in $CX_OVERLAY_NAMES; do
-    [[ ":$cf:" != *":current/compose.$key.yml:"* ]] || ov="${ov:+$ov }$key"
-  done
-  expected=current/compose.yml
-  for key in $ov; do expected+=:current/compose.$key.yml; done
-  if [ "$cf" != "$expected" ] || [ "$ov" != "$(cx_rs_get deploy.overlays)" ]; then
-    cx_rs_refuse env_compose_file_bad "$cf"; return 1
+  # The check follows the layout of the release the backup was made with: an older release
+  # wrote the form as a COMPOSE_FILE, a release with the profiles layout derives it from the two
+  # keys, and the derived form has to be the one the manifest recorded.
+  layout=$(cx_form_layout "${CX_RS_RELEASE:-}")
+  if [ "$layout" = profiles ]; then
+    if ! expected=$(cx_form_derive "$source") || [ "$expected" != "$(cx_rs_get deploy.overlays)" ]; then
+      cx_rs_refuse rs_env_form_bad "${expected:-?}" "$(cx_rs_get deploy.overlays)"; return 1
+    fi
+  else
+    cf=$(cx_env_get "$source" COMPOSE_FILE)
+    for key in $CX_OVERLAY_NAMES; do
+      [[ ":$cf:" != *":current/compose.$key.yml:"* ]] || ov="${ov:+$ov }$key"
+    done
+    expected=current/compose.yml
+    for key in $ov; do expected+=:current/compose.$key.yml; done
+    if [ "$cf" != "$expected" ] || [ "$ov" != "$(cx_rs_get deploy.overlays)" ]; then
+      cx_rs_refuse env_compose_file_bad "$cf"; return 1
+    fi
   fi
   value=$(cx_env_get "$source" COMPOSE_PROJECT_NAME)
   [ "$value" = "$CX_PROJECT" ] || { cx_rs_refuse env_project_bad "$value" "$CX_PROJECT"; return 1; }
@@ -143,6 +153,8 @@ cx_rs_env_merge() {
     CX_RS_REISSUE=1
   fi
   cx_rs_legacy_rotate || return 1
+  # The block follows the layout of the backup's release.
+  [ "$layout" != profiles ] || cx_env_sync_managed "$CX_RS_ENV" "$layout" "$(cx_rs_get deploy.overlays)" || return 1
   cx_rs_template
 }
 # A backup of a version without the permission model gets a new sign-in secret (the revoking half is

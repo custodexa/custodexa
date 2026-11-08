@@ -524,7 +524,13 @@ case $all in
     rc=0 ;;
   *" up -d postgres "*)
     ev "up postgres"
-    if [ -e "$DB/up.rc" ]; then rc=$(cat "$DB/up.rc"); else printf 'running\n' >"$DB/ctr/postgres"; rc=0; fi ;;
+    if [ -e "$DB/up.rc" ]; then rc=$(cat "$DB/up.rc"); else
+      # A real postgres writes its version file into the folder it initialises.
+      if [ -d "${ROOT:-/nonexistent}/data/postgres" ] && [ ! -e "$ROOT/data/postgres/PG_VERSION" ]; then
+        printf '16\n' >"$ROOT/data/postgres/PG_VERSION"
+      fi
+      printf 'running\n' >"$DB/ctr/postgres"; rc=0
+    fi ;;
   *" pg_restore"*" -l "*)
     ev "pg_restore list"
     cat >/dev/null

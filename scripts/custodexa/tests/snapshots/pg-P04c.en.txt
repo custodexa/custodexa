@@ -1,0 +1,2 @@
+[SKIP]  8/13  Convert the database (an external database is yours to
+              manage, so it is not converted)

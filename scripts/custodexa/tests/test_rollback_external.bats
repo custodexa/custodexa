@@ -106,3 +106,43 @@ setup() {
   [ "$(readlink "$ROOT/current")" = releases/1.16.2 ]
   ! grep -Eq '^(stop|up|start)' "$DB/events"
 }
+
+# env_others: the lines of .env that are neither the managed block nor the two keys it holds.
+env_others() { grep -vE '^(COMPOSE_FILE|COMPOSE_PROFILES)=|^# (>>>|<<<) managed' "$ROOT/.env"; }
+
+@test "rollback to a release with the overlays layout: the block becomes the overlay notation, every other line is the same byte for byte" {
+  UP_LAYOUT=profiles
+  ext_host
+  # The version before ran on the same external database; its record says so.
+  bk_state_set previous.overlays external-database
+  grep -qx 'COMPOSE_PROFILES=bundled-db,builtin-tls' "$ROOT/.env" || { cat "$ROOT/.env"; jq . "$ROOT/state.json" | grep -i rewrite; return 1; }
+  local others
+  others=$(env_others)
+  rb_run en
+  [[ $output == *'.env       the managed block goes back to the layout of 1.16.1'* ]] || { echo "$output"; return 1; }
+  # The target release has the old layout (1.22 and before): the block goes back to the overlay notation.
+  [[ $output == *'COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'(1.16.1 does not use COMPOSE_PROFILES, so that line is removed)'* ]] || { echo "$output"; return 1; }
+  rb_run en --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(readlink "$ROOT/current")" = releases/1.16.1 ]
+  [ "$(grep -c '^COMPOSE_FILE=' "$ROOT/.env")" = 1 ]
+  # Overlay notation of the old layout (1.22 and before), as 1.16.1 here stands for.
+  grep -qx 'COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml' "$ROOT/.env" || { cat "$ROOT/.env"; return 1; }
+  ! grep -q '^COMPOSE_PROFILES=' "$ROOT/.env"
+  [ "$(env_others)" = "$others" ]
+}
+
+@test "rollback to a release with the same layout: .env keeps its hash and the preview has no .env line" {
+  rb_cached ready
+  # The block is already there, as an earlier start or backup of this deployment put it.
+  run bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; cx_env_sync_managed "$2/.env" overlays ""' _ "$SRC" "$ROOT"
+  [ "$status" -eq 0 ]
+  local before
+  before=$(sha256sum "$ROOT/.env")
+  rb_run en
+  [[ $output != *'.env       '* ]] || { echo "$output"; return 1; }
+  rb_run en --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(sha256sum "$ROOT/.env")" = "$before" ]
+}

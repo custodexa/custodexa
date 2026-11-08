@@ -69,7 +69,8 @@ const (
 func offsiteFakeSAJSON() string {
 	return `{"type":"service_account","project_id":"fake-project",` +
 		`"client_email":"` + offsiteFakeSAEmail + `",` +
-		`"private_key":"` + offsiteFakePEMBegin + `\n` + offsiteFakePEMBody + `\n-----END PRIVATE KEY-----\n"}`
+		`"private_key":"` + offsiteFakePEMBegin + `\n` + offsiteFakePEMBody + `\n-----END PRIVATE KEY-----\n",` +
+		`"token_uri":"https://oauth2.googleapis.com/token"}`
 }
 
 // offsiteSecretNeedles 一切「不得出現在任何出站面」的字面，含其 base64 形態。

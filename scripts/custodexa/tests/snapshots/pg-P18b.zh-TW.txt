@@ -1,0 +1,17 @@
+
+[FAIL] 升級停在第 11/13 步：後端在 180 秒內沒有回報就緒
+
+  目前狀態
+    - 已切換到 1.23.0，服務已啟動，但後端沒有就緒
+    - 升級前的備份完整：/opt/custodexa/backups/custodexa-backup-1.22.0-20261120-021502.tar
+    - 腳本不會自動回退
+
+  先查看後端日誌找原因：
+    sudo docker logs --tail 50 custodexa-backend
+  若仍無法判斷，請將這份日誌與升級紀錄檔交給維運人員。
+
+  決定回到 1.13.0 時，請用升級前的備份還原。升級時保留的 PostgreSQL 16
+  資料 /opt/custodexa/data/postgres 已經不在，無法直接回到上一版：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.22.0-20261120-021502.tar
+
+  紀錄檔 /opt/custodexa/logs/upgrade-20261120-021502.log

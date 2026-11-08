@@ -1,6 +1,8 @@
 # <group>: <scenario>... ; run.sh <group> runs these in order, each on its own integration host.
 selfcheck: smoke openssl-versions pg-roundtrip two-hosts
 backup-matrix: overlays restore encrypt large interrupt docs
-external-matrix: overlays-external restore-external external upgrade-external upgrade-bundled upgrade-twice upgrade-from-published docs-external
+external-matrix: form-upgrade form-upgrade-old form-old-backup overlays-external restore-external external upgrade-external upgrade-bundled upgrade-twice upgrade-from-published docs-external
 rollback-matrix: local-versions rollback-switch rollback-refused rollback-race
 restore-external: restore-external restore-external-checks restore-external-atomic restore-external-grants restore-external-db
+source-deploy: compose-forms quickstart-forms quickstart-migrate docs-quickstart docs-standby docs-migrate
+pg18: pg18-convert pg18-upgrade-from-published pg18-rollback pg18-restore pg18-docs

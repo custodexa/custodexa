@@ -218,7 +218,7 @@ func TestMFAFailureSharesLockoutCounter(t *testing.T) {
 	auth.SetSecurityPolicies(policies)
 
 	user := seedLockoutUser(t, db, "right-pass-1")
-	setup, err := auth.GenerateMFASetup(user.ID)
+	setup, err := auth.GenerateMFASetup(user.ID, "")
 	if err != nil {
 		t.Fatalf("GenerateMFASetup: %v", err)
 	}

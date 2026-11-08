@@ -240,10 +240,11 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 		required = 1
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// 先鎖申請人的使用者列、再鎖申請單：agent 會話建立先持使用者層鎖再取任務單，
-		// 核決若反過來先持申請單再等申請人列就會成環。申請人編號建立後不變，可直接作為鎖計畫；
-		// 後續狀態、期限、自核與擁有關係的判定照舊在交易內重做。
-		if err := lockUserRows(tx, []uint{req.RequesterID}); err != nil {
+		// 交易第一個動作：一次取得申請人與執行者的使用者列鎖（去重、編號升冪），再鎖申請單。
+		// agent 會話建立先持使用者層鎖再取任務單，核決若反過來先持申請單再等使用者列就會成環；
+		// 兩者編號建立後不變，可直接作為鎖計畫。後續狀態、期限、自核與擁有關係的判定照舊在交易內重做，
+		// 且判定過程不再補取使用者列鎖。
+		if err := lockUserRows(tx, requestPartyIDs(req.RequesterID, req.ExecutorUserID)); err != nil {
 			return err
 		}
 		if err := s.lockRequest(tx, req, now, true); err != nil {
@@ -252,7 +253,7 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 		if err := s.humanDecider(tx, actorID); err != nil {
 			return err
 		}
-		// 交易內鎖申請人列後重判自核（擁有者轉移可能已在交易外判定之後提交）
+		// 持有雙方使用者列鎖後重判自核（擁有者轉移可能已在交易外判定之後提交）
 		if err := s.selfDecisionBlockedLocked(tx, actorID, req); err != nil {
 			return err
 		}
@@ -318,6 +319,15 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 					return e
 				}
 				continue
+			}
+			// 每一票都在記票前重判申請人（輔助模式另含執行者）仍持常設連線權：
+			// 達門檻才重判會漏掉未達門檻的前幾票。
+			if _, err := s.recheckRequestParties(tx, req.RequesterID, req.ExecutorUserID, []uint{item.AssetID}, false, now); err != nil {
+				var typed *RequestConnectRequiredError
+				if errors.As(err, &typed) {
+					typed.ItemIndex = i
+				}
+				return err
 			}
 			vote := model.AccessRequestApproval{RequestID: req.ID, ItemID: &item.ID, ApproverID: actorID, Note: input.Note}
 			if err := tx.Create(&vote).Error; err != nil {
@@ -406,8 +416,8 @@ func (s *AccessRequestService) RejectItem(actorID uint, isAdmin bool, requestID,
 	}
 	now := time.Now()
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// 先鎖申請人的使用者列再動申請單，順序理由同核准入口。
-		if err := lockUserRows(tx, []uint{req.RequesterID}); err != nil {
+		// 一次鎖申請人與執行者的使用者列再動申請單，順序理由同核准入口。
+		if err := lockUserRows(tx, requestPartyIDs(req.RequesterID, req.ExecutorUserID)); err != nil {
 			return err
 		}
 		// Rejection remains possible after the pending deadline, as in the legacy API.

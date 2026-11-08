@@ -51,7 +51,8 @@ cx_pc_snap() { cx_snap_get "$1" "$2"; }
 
 # cx_pc_services: the long-running services are up; postgres also healthy.
 cx_pc_services() {
-  local out s want="backend guacd frontend" line bad=""
+  local out s want line bad=""
+  want=$(cx_bk_services)
   [ "$CX_UP_PRE_EXTERNAL_DB" = 1 ] || want+=" postgres"
   out=$(cx_compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null) || out=""
   for s in $want; do
@@ -80,6 +81,7 @@ cx_pc_data() {
   local b=$CX_UP_SNAP a=$CX_PC_AFTER missing added k
   if [ -z "$b" ] || [ -z "$a" ]; then
     cx_pc_row WARN pc_data_unknown
+    cx_pc_dbmajor
     return 0
   fi
   local bu bs ba au as aa
@@ -94,12 +96,15 @@ cx_pc_data() {
     cx_pc_row FAIL pc_counts_bad "$(cx_up_num "$au")" "$(cx_up_num "$bu")" "$(cx_up_num "$as")" \
       "$(cx_up_num "$bs")" "$(cx_up_num "$aa")" "$(cx_up_num "$ba")"
   fi
+  # The database row follows the data row; it says which major the data is in.
+  cx_pc_dbmajor
   missing=$(comm -23 <(cx_snap_migrations "$b" | sort) <(cx_snap_migrations "$a" | sort))
   added=$(comm -13 <(cx_snap_migrations "$b" | sort) <(cx_snap_migrations "$a" | sort))
   if [ -n "$missing" ]; then
     cx_pc_row FAIL pc_mig_missing "$(printf '%s\n' "$missing" | paste -sd' ')"
   elif [ -z "$added" ]; then
-    cx_pc_row OK pc_mig_none
+    # A conversion carries the schema over whole, so "no change" adds nothing to say.
+    [ "${CX_PGC_ACTIVE:-0}" = 1 ] || cx_pc_row OK pc_mig_none
   elif [ "$(printf '%s\n' "$added" | grep -c .)" -eq 1 ]; then
     cx_pc_row OK pc_mig_one "$added"
   else
@@ -141,6 +146,17 @@ cx_pc_authz() {
     cx_pc_row WARN pc_authz_zero
   else
     cx_pc_row WARN pc_authz_dangling "${d:-?}"
+  fi
+}
+
+# cx_pc_form: the form .env derives now is the form state.json recorded before the upgrade.
+# Only a mismatch is shown; the other checks say the services run. A release that keeps the old
+# COMPOSE_FILE notation (no conversion, lib/upgrade_convert.sh) has no two-key form to compare.
+cx_pc_form() {
+  local now
+  cx_up_conv_active || return 0
+  if ! now=$(cx_form_derive "$CX_ROOT/.env") || [ "$now" != "$CX_OVERLAYS" ]; then
+    cx_pc_row FAIL pc_form_bad "${now:-$(cx_msg pc_form_none)}" "${CX_OVERLAYS:-$(cx_msg pc_form_none)}"
   fi
 }
 
@@ -199,6 +215,7 @@ cx_up_post_checks() {
     cx_pc_row FAIL pc_images_bad
   fi
   rm -f "$tmp"
+  cx_pc_form
   cx_pc_data
   cx_pc_lock
   cx_pc_authz
@@ -257,6 +274,7 @@ cx_up_done() {
   fi
   printf '\n'
   cx_pc_print
+  cx_pgc_done_section
   # The old images removed after the record (lib/image_retention.sh); nothing when none were.
   if [ "$CX_IR_SKIPPED" = 1 ] || [ "$CX_IR_REMOVED" -gt 0 ] || [ "${#CX_IR_FAILED[@]}" -gt 0 ]; then
     printf '\n'

@@ -137,8 +137,11 @@ cx_rs_preview() {
     fi
   fi
   cx_rs_preview_package
+  # The database row sits with the version rows: it says what the version changes.
+  cx_rs_preview_db
   if cx_rs_ext; then label=rs_deployment_external; else label=rs_deployment; fi
   cx_rs_row deployment "$(cx_msg "$label" "$(cx_msg "rs_tls_${tls:-external}")" "$(cx_msg "rs_provider_$provider")")"
+  if [ "$CX_RS_FLOW" = new ]; then cx_rs_row - "$(cx_msg rs_form_keep_new)"; else cx_rs_row - "$(cx_msg rs_form_keep)"; fi
   if [ "$CX_RS_FLOW" = new ]; then
     restores=$(cx_msg rs_restores_new "$(cx_rs_size "$(cx_rs_get size.db_bytes)")" "$(cx_rs_size "$(cx_rs_get size.audit_bytes)")")
   else restores=$(cx_msg rs_restores_same); fi
@@ -173,7 +176,7 @@ cx_rs_preview() {
     else
       if [ "$(cx_rs_get contents.tls)" = true ]; then kept=$(cx_msg rs_kept)
       else kept=$(cx_msg rs_kept_no_tls); fi
-      kept+=$'\n'"$CX_RS_DATA/postgres.before-restore-$CX_RS_TS"$'\n'"$CX_RS_DATA/audit.before-restore-$CX_RS_TS"
+      kept+=$'\n'"$(cx_rs_db_kept_paths)"$'\n'"$CX_RS_DATA/audit.before-restore-$CX_RS_TS"
       [ "$(cx_rs_get contents.tls)" != true ] || kept+=$'\n'"$CX_ROOT/tls.before-restore-$CX_RS_TS"
       cx_rs_row kept "$kept"
     fi

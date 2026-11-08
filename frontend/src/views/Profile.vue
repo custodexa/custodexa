@@ -209,6 +209,67 @@
             type="success"
             :closable="false"
           />
+          <div
+            class="mfa-reset"
+            data-test="mfa-reset"
+          >
+            <div class="setup-label">
+              {{ $t('profile.mfaResetTitle') }}
+            </div>
+            <template v-if="!resetOpen">
+              <div class="mfa-reset-desc">
+                {{ $t('profile.mfaResetDesc') }}
+              </div>
+              <el-button
+                v-preview-write
+                data-test="mfa-reset-open"
+                @click="openReset"
+              >
+                {{ $t('profile.mfaResetTitle') }}
+              </el-button>
+            </template>
+            <el-form
+              v-else
+              label-position="top"
+              @submit.prevent
+            >
+              <el-form-item :label="$t('profile.mfaResetCodeLabel')">
+                <el-input
+                  v-model="resetCode"
+                  maxlength="6"
+                  inputmode="numeric"
+                  :placeholder="$t('login.codePlaceholder')"
+                  data-test="mfa-reset-code"
+                  @input="handleResetCodeInput"
+                  @keyup.enter="handleResetMFA"
+                />
+              </el-form-item>
+              <div
+                v-if="resetError"
+                class="mfa-reset-error"
+                data-test="mfa-reset-error"
+              >
+                {{ resetError }}
+              </div>
+              <div class="mfa-reset-desc">
+                {{ $t('profile.mfaResetLostHint') }}
+              </div>
+              <div class="mfa-reset-actions">
+                <el-button @click="closeReset">
+                  {{ $t('common.cancel') }}
+                </el-button>
+                <el-button
+                  v-preview-write
+                  type="primary"
+                  :loading="resetting"
+                  data-test="mfa-reset-submit"
+                  @click="handleResetMFA"
+                >
+                  {{ $t('profile.mfaResetContinue') }}
+                </el-button>
+              </div>
+            </el-form>
+          </div>
           <el-form
             label-position="top"
             @submit.prevent
@@ -254,6 +315,15 @@
           </el-button>
 
           <template v-else>
+            <el-alert
+              v-if="resetWarning"
+              :title="$t('profile.mfaResetWarnTitle')"
+              :description="$t('profile.mfaResetWarnDesc')"
+              type="warning"
+              :closable="false"
+              show-icon
+              data-test="mfa-reset-warning"
+            />
             <div class="setup-field">
               <div class="setup-label">
                 {{ $t('profile.scanQr') }}
@@ -305,6 +375,15 @@
                 />
               </el-form-item>
             </el-form>
+            <el-alert
+              v-if="waitHint"
+              :title="$t('profile.mfaResetWaitTitle')"
+              :description="$t('profile.mfaResetWaitDesc')"
+              type="info"
+              :closable="false"
+              show-icon
+              data-test="mfa-reset-wait"
+            />
             <el-button
               v-preview-write
               type="primary"
@@ -514,6 +593,68 @@ const enabling = ref(false)
 const disablePassword = ref('')
 const disabling = ref(false)
 
+// 已啟用 MFA 時重新設定驗證器：須輸入目前驗證器的驗證碼
+const resetOpen = ref(false)
+const resetCode = ref('')
+const resetting = ref(false)
+const resetError = ref('')
+// 重設後的新密鑰步驟：舊驗證器已失效的警示、啟用遇重放時的等待提示
+const resetWarning = ref(false)
+const waitHint = ref(false)
+
+// 這三個碼的錯誤就地顯示在輸入欄下方，不再另跳全域提示
+const RESET_INLINE_CODES = [
+  'RULE_MFA_CURRENT_CODE_REQUIRED',
+  'RULE_MFA_INVALID_CODE',
+  'RULE_MFA_REPLAY',
+]
+const skipResetToast = (error) => RESET_INLINE_CODES.includes(error?.response?.data?.code)
+
+const openReset = () => {
+  resetOpen.value = true
+  resetCode.value = ''
+  resetError.value = ''
+}
+
+const closeReset = () => {
+  resetOpen.value = false
+  resetCode.value = ''
+  resetError.value = ''
+}
+
+const handleResetCodeInput = (value) => {
+  resetCode.value = value.replace(/\D/g, '')
+}
+
+const handleResetMFA = async () => {
+  resetError.value = ''
+  if (resetCode.value.length !== MFA_CODE_LENGTH) {
+    resetError.value = t('apiError.RULE_MFA_CURRENT_CODE_REQUIRED')
+    return
+  }
+  resetting.value = true
+  try {
+    const response = await getMFASetup({ code: resetCode.value }, { skipErrorToast: skipResetToast })
+    mfaSetup.value = {
+      secret: response.secret,
+      otpauth_url: response.otpauth_url,
+    }
+    // 密鑰已換、尚未啟用：回到啟用步驟，並說明舊驗證器已失效
+    mfaEnabled.value = false
+    resetWarning.value = true
+    waitHint.value = false
+    closeReset()
+  } catch (error) {
+    console.error('重設驗證器失敗:', error?.response?.data?.code)
+    const data = error?.response?.data
+    if (skipResetToast(error)) {
+      resetError.value = resolveApiError(data, error.response.status)
+    }
+  } finally {
+    resetting.value = false
+  }
+}
+
 const handleGenerateMFASetup = async () => {
   setupLoading.value = true
   try {
@@ -533,17 +674,33 @@ const handleEnableCodeInput = (value) => {
   enableCode.value = value.replace(/\D/g, '')
 }
 
+// 重設流程的啟用步驟遇重放時改以等待提示呈現，其餘錯誤照常 toast
+const skipEnableReplayToast = (error) =>
+  resetWarning.value && error?.response?.data?.code === 'RULE_MFA_REPLAY'
+
 const handleEnableMFA = async () => {
   if (enableCode.value.length !== MFA_CODE_LENGTH) return
   enabling.value = true
   try {
-    await enableMFA({ code: enableCode.value })
+    waitHint.value = false
+    if (resetWarning.value) {
+      await enableMFA({ code: enableCode.value }, { skipErrorToast: skipEnableReplayToast })
+    } else {
+      await enableMFA({ code: enableCode.value })
+    }
     ElMessage.success(t('profile.mfaEnabledTitle'))
     mfaEnabled.value = true
     mfaSetup.value = null
+    resetWarning.value = false
     enableCode.value = ''
   } catch (error) {
-    console.error('啟用 MFA 失敗:', error)
+    if (skipEnableReplayToast(error)) {
+      // 新舊驗證器同一時間步的碼：不是設定失敗，保留 QR 與密鑰、不重新產生，等下一組碼
+      waitHint.value = true
+      enableCode.value = ''
+    } else {
+      console.error('啟用 MFA 失敗:', error)
+    }
   } finally {
     enabling.value = false
   }
@@ -630,6 +787,28 @@ onMounted(() => {
 
 .mfa-generate-btn {
   align-self: flex-start;
+}
+
+.mfa-reset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.mfa-reset-desc {
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
+.mfa-reset-error {
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-danger);
+}
+
+.mfa-reset-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .setup-field {

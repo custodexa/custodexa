@@ -31,8 +31,26 @@ setup() { rs_import_host; }
   [ "$status" = 0 ] || { echo "$output"; return 1; }
   [ "$(cat "$ROOT/data/postgres.partial-restore-import-test-1/import-data")" = unfinished ] || return 1
   [ "$(cat "$ROOT/data/postgres/import-data")" = complete ] || return 1
+  [ "$(stat -c %a "$ROOT/data/postgres")" = 700 ] || return 1
   [ "$(jq -r '."last_restore.phase"' "$ROOT/state.json")" = imported ] || return 1
   rs_import_only_postgres
+}
+
+# The 18 image creates <major>/docker under the volume as its own user, so the empty volume the
+# restore makes (first by the swap, again by a retry) must be traversable, not root-only 0700.
+@test "restore import: the empty volume of the 18 layout stays traversable after the swap and after a retry" {
+  local mf=$ROOT/releases/1.16.1/MANIFEST.json
+  jq '.bundled_db = {major: 18, data_dir: "postgresql", pgdata: "18/docker"}' "$mf" >"$mf.new" && mv "$mf.new" "$mf" || return 1
+  mkdir -p "$ROOT/data/postgresql"
+  printf '1\n' >"$DB/import.rc"
+  rs_import_run
+  [ "$status" = 1 ] || { echo "$output"; return 1; }
+  [ "$(stat -c %a "$ROOT/data/postgresql")" = 755 ] || { stat -c %a "$ROOT/data/postgresql"; return 1; }
+  rm "$DB/import.rc"
+  run bash "$RS_I_ENGINE" restore --resume --lang en
+  [ "$status" = 0 ] || { echo "$output"; return 1; }
+  [ "$(stat -c %a "$ROOT/data/postgresql")" = 755 ] || return 1
+  [ -d "$ROOT"/data/postgresql.partial-restore-import-test-1 ] || return 1
 }
 
 @test "restore import: failed client diagnostics follow the timed header and all lines reach the log" {

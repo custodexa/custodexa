@@ -1,0 +1,31 @@
+
+Data left by an earlier failed conversion (can be removed to free space)
+  What the last upgrade left when step 8 failed, kept only for
+  diagnosis and never used by the system:
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+  After removing
+    - They cannot be recovered
+    - The running 1.13.0 is not affected, nor is its data
+      /opt/custodexa/data/postgres
+    - The space the upgrade needs is counted again
+
+Remove these 2 folders before checking the space? [y/N] 
+Kept these 2 folders.
+[FAIL] Not enough space, so the upgrade will not start. No service was
+       stopped and nothing was changed.
+  /opt/custodexa/data/postgresql new database, at /opt/custodexa/data/postgresql
+                                                             needs 3.0 GB,
+                                                             only 100 KB free,
+                                                             3.0 GB short
+
+  Data left by an earlier failed conversion (kept only for diagnosis,
+  never used by the system) takes space:
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502    0.0 KB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502   0.0 KB
+  To remove it, run the same upgrade command in a terminal and answer
+  y when it asks to remove it (a run without a terminal removes nothing):
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+  You can also free or add space on /opt/custodexa/data/postgresql yourself and run it again.

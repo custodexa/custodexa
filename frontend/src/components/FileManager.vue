@@ -25,6 +25,25 @@
       @dismiss="hostKeyMismatch = false"
     />
 
+    <!-- 來源網段限制：目前來源位址不在使用者的允許範圍內時，面板內就地說明（清單與操作都會被拒） -->
+    <el-alert
+      v-if="sourceDenied"
+      class="file-caps-alert"
+      type="error"
+      :closable="false"
+      show-icon
+      data-test="source-denied"
+      :title="$t('fileManager.sourceDeniedTitle')"
+      :description="$t('fileManager.sourceDeniedDesc')"
+    >
+      <el-button
+        size="small"
+        @click="refresh"
+      >
+        {{ $t('fileManager.sourceDeniedReload') }}
+      </el-button>
+    </el-alert>
+
     <!-- 資料傳輸能力提示（data-transfer-control 6.2）：哪些動作被政策擋下先講明白，
          不讓使用者點下去才吃 403。瀏覽與列目錄不受此區塊影響 -->
     <el-alert
@@ -250,6 +269,18 @@ const loadedSessionId = ref(undefined)
 // 清單身分是否已與現行 props 不符——不符時畫面上的檔案清單屬於另一個帳號
 const identityStale = computed(() => loadedSessionId.value !== sessionKey.value)
 
+// 來源網段限制拒絕（403 AUTH_SOURCE_NOT_ALLOWED）：記下狀態讓面板顯示說明，
+// 單項操作被拒時全站錯誤提示照常出現
+const sourceDenied = ref(false)
+
+function noteSourceDenied(err) {
+  if (err?.response?.data?.code === 'AUTH_SOURCE_NOT_ALLOWED') {
+    sourceDenied.value = true
+    return true
+  }
+  return false
+}
+
 async function refresh() {
   const identity = sessionKey.value
   loading.value = true
@@ -264,7 +295,9 @@ async function refresh() {
     entries.value = res.entries || []
     hostKeyMismatch.value = res.host_key_mismatch === true
     loadedSessionId.value = identity
+    sourceDenied.value = false
   } catch (err) {
+    noteSourceDenied(err)
     console.error('[FileManager] 讀取目錄失敗:', err?.response?.status, err?.response?.data?.code)
   } finally {
     loading.value = false
@@ -317,6 +350,7 @@ async function handleUpload({ file }) {
     ElMessage.success(t('fileManager.uploaded', { name: file.name }))
     refresh()
   } catch (err) {
+    noteSourceDenied(err)
     console.error('[FileManager] 上傳失敗:', err)
   }
 }
@@ -332,6 +366,7 @@ async function handleDownload(row) {
     a.click()
     URL.revokeObjectURL(url)
   } catch (err) {
+    noteSourceDenied(err)
     console.error('[FileManager] 下載失敗:', err)
   }
 }
@@ -348,6 +383,7 @@ async function handleMkdir() {
     refresh()
   } catch (err) {
     if (err !== 'cancel' && err?.message !== 'cancel') {
+      noteSourceDenied(err)
       console.error('[FileManager] 建立目錄失敗:', err)
     }
   }
@@ -372,6 +408,7 @@ async function handleDelete(row) {
     refresh()
   } catch (err) {
     if (err !== 'cancel') {
+      noteSourceDenied(err)
       console.error('[FileManager] 刪除失敗:', err)
     }
   }

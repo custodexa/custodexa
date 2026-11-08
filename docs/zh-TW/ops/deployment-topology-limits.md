@@ -856,7 +856,7 @@ groups:
 
 建立 agent 主體並指定有效的人類 owner。由 owner 或管理員建立具名稱及期限的 agent token，將僅顯示一次的明文保存於執行者的秘密儲存處。agent 僅有 user 角色，資產與帳號授權須明確限縮。在 agent 所在的機器安裝 stdio 客戶端 `custodexa-mcp`，取自 https://github.com/custodexa/custodexa-mcp：執行 `go install github.com/custodexa/custodexa-mcp@latest`，或下載 release 二進位並以同一 release 發布的 `checksums.txt` 驗證。以環境變數 `CUSTODEXA_AGENT_TOKEN` 提供給 `custodexa-mcp`，`CUSTODEXA_MCP_URL` 指向 HTTPS 的 `/api/v1/mcp`；該入口不接受人類 JWT 或 cookie。stdio 客戶端只轉送，所有判定及證據寫入均在服務端；不要把 token 放入命令參數或報告。
 
-agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
+agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。自動核准不會超出將要連線的主體所持有的常設帳號範圍：項目指名了範圍之外的帳號時，改為維持待審，由範圍涵蓋該資產的審核者決定。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
 
 輪替時先發新具名 token、更新執行者秘密、建立新的 MCP 連線並確認可視資產，再撤銷舊 token。沒有原地換 token 秘密或從備份自動找回明文的能力。撤銷會關閉由舊 token 建立的會話；句柄不能轉給新 token 或新 MCP 連線。還原或備機接管後須新建 MCP 連線，按需要重新申請任務；記憶體句柄與 60 秒冪等快取不跨重啟保存。續作前先核對保留的 token 與任務狀態。
 

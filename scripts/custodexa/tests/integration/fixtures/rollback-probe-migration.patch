@@ -1,8 +1,6 @@
 --- a/backend/internal/database/migrations.go
 +++ b/backend/internal/database/migrations.go
-@@ -227,6 +227,7 @@
- 		Up:      applyDailyReviewSignoff,
- 		Down:    rollbackDailyReviewSignoff,
+@@ -434,4 +434,5 @@
  	},
 +	{Version: "it_rollback_probe", Name: "it_rollback_probe", Up: func(*gorm.DB) error { return nil }, Down: func(*gorm.DB) error { return nil }},
  }

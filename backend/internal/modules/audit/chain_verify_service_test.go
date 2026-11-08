@@ -711,3 +711,36 @@ func TestChainVerifyFingerprintFromOpenSetOnly(t *testing.T) {
 		t.Fatal("結構層失敗點數不為 0 時仍屬異常，指紋不得為空")
 	}
 }
+
+// TestRowsHiddenKeepsIncidentOpen 區間內有隱藏列時，後續輪次驗到其他區間全數通過，事件不結案、區間仍在失敗集合。
+func TestRowsHiddenKeepsIncidentOpen(t *testing.T) {
+	f := setupChainVerifyFixture(t)
+	seqs := f.sealIntervals(t, 3, 3)
+	victim := f.rowIn(t, seqs[1], 1)
+	f.mustExec(t, "UPDATE audit_logs SET deleted_at = ? WHERE id = ?", time.Now().UTC(), victim.ID)
+
+	if err := f.svc.RunFullNow(context.Background()); err != nil {
+		t.Fatalf("第一輪: %v", err)
+	}
+	if !f.alerts.has("report", model.MechanismAuditChainContent) {
+		t.Fatalf("隱藏列應使內容層上報，實得 %+v", f.alerts.calls)
+	}
+	open := decodeSeqSet(f.state(t).OpenFailedSeqs)
+	if open[seqs[1]] != IntervalStatusRowsHidden {
+		t.Fatalf("失敗集合應含 seq=%d 且狀態 rows_hidden，實得 %v", seqs[1], open)
+	}
+
+	// 後續封出新區間；下一輪其他區間全數通過
+	f.alerts.reset()
+	f.sealIntervals(t, 1, 3)
+	if err := f.svc.RunFullNow(context.Background()); err != nil {
+		t.Fatalf("第二輪: %v", err)
+	}
+	if f.alerts.has("resolve", model.MechanismAuditChainContent) {
+		t.Fatalf("其他區間通過不構成結案條件，實得 %+v", f.alerts.calls)
+	}
+	open = decodeSeqSet(f.state(t).OpenFailedSeqs)
+	if open[seqs[1]] != IntervalStatusRowsHidden {
+		t.Fatalf("seq=%d 應仍在失敗集合（rows_hidden），實得 %v", seqs[1], open)
+	}
+}

@@ -3,7 +3,13 @@
 # needs: package local-versions
 # images:
 
-readonly RF_OLD=1.16.90 RF_NEW=1.16.92
+# The versions come from the builder's list (CX_IT_LOCAL_VERSIONS): the one ending in .90 and the probe
+# ending in .92; the default list gives 1.16.90 and 1.16.92. Run with a list at or above the newest
+# runtime marker's first version (build-package.sh runtime_marker_first_versions, 1.18.0 now), e.g.
+# CX_IT_LOCAL_VERSIONS="1.23.90 1.23.92": a restore refuses a marker newer than the backup's version.
+RF_OLD=$(tr ' ' '\n' </it-run/local-versions | grep -m1 '\.90$' || true)
+RF_NEW=$(tr ' ' '\n' </it-run/local-versions | grep -m1 '\.92$' || true)
+readonly RF_OLD=${RF_OLD:-1.16.90} RF_NEW=${RF_NEW:-1.16.92}
 
 # rf_refused <label>: rollback refuses, exit 3, nothing stopped, the restore command names the backup
 # file the upgrade recorded.

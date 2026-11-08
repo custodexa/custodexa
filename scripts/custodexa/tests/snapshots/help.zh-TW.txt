@@ -11,7 +11,7 @@ Custodexa 管理腳本 1.13.0
                        資料不動；改過時不做任何變更，並告訴你怎麼還原
   rollback --resume    接續上一次沒有完成的回到上一版
   rollback --revert    放棄上一次沒有完成的回到上一版，回到升級後的版本
-  status               顯示版本、服務、備份與上次升級的狀態（不做任何變更）
+  status               顯示版本、部署型態、服務、備份與上次升級（不做任何變更）
   start                啟動整組服務並等待後端就緒
   stop                 確認並停止整組服務
   backup               備份成單一檔案（會暫停服務；檔案可搬到其他主機）
@@ -22,6 +22,9 @@ Custodexa 管理腳本 1.13.0
   restore --resume     接續上一次沒有完成的還原，包括解封後的主金鑰核對
   restore --revert     用還原前的安全備份還原回去
   restore --abandon    放棄新主機上沒有完成的還原，回到尚未安裝
+  db-upgrade           顯示內建資料庫的 PostgreSQL 版本與保留中的舊資料目錄
+                       （不做任何變更）
+  db-upgrade --remove-old  確認後清除那些舊資料目錄，清除後無法復原
 
 選項
   --yes                不詢問確認，自動化時使用
@@ -37,6 +40,7 @@ Custodexa 管理腳本 1.13.0
   --images-from <模式> （install、帶目標的 upgrade）auto 或 source；
                        預設 auto；source 從安裝包原始碼建置自家映像
   --keep-images        （upgrade）保留舊版映像；預設只留現行版與前一版的映像
+  --remove-old         （db-upgrade）清除舊資料庫目錄
   --lang <語言>         zh-TW、ja、en；見下方「顯示語言」
   --no-color           不使用顏色
   --version            顯示腳本版本

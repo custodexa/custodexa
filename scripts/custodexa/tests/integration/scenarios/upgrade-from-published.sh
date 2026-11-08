@@ -5,6 +5,8 @@
 # images:
 
 readonly UP_OLD=1.15.2 UP_NEW=1.16.90
+# The published release installed here has the overlays layout, so the external ingress is written the
+# way that release reads it (a COMPOSE_FILE overlay); the upgrade converts it (TLS_MODE=external, managed block).
 readonly UP_INGRESS=current/compose.yml:current/compose.external-ingress.yml
 
 # up_flat: the screen of the last lv_cx on one line, spaces squeezed.
@@ -126,6 +128,8 @@ up_upgrade() {
     bash -c 'docker exec -i custodexa-postgres pg_restore --data-only --table=users -f - <"$1" | grep -q it-before-upgrade' _ "$x/db.dump"
   if [ "$form" = ingress ]; then
     it_same "$form: the external ingress overlay is kept" external-ingress "$(lv_st current.overlays)"
+    it_same "$form: the upgrade wrote TLS_MODE=external" external "$(lv_env_get TLS_MODE)"
+    it_check "$form: no COMPOSE_FILE or COMPOSE_PROFILES outside the managed block" fu_no_overlay_lines
     it_check "$form: still no tls/ folder" test ! -e "$LV_ROOT/tls"
     it_check "$form: no certificate initializer or built-in proxy container" \
       bash -c '! docker container inspect custodexa-tls-init >/dev/null 2>&1 && ! docker container inspect custodexa-tls-proxy >/dev/null 2>&1'

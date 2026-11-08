@@ -27,6 +27,15 @@
 #                     does not become ready; with CX_READY_TRIES the wait is short)
 #   hold-after-up     `compose up -d` of every service runs, then waits until $IT_WORK/lv-hold is
 #                     removed ($IT_WORK/lv-up-reached tells it got there) before it returns
+#   convert-restore-fail  the pg_restore of the bundled database conversion (upgrade step 8, in the
+#                     container custodexa-pgconvert) fails
+#   hold-convert-restore  that pg_restore waits until $IT_WORK/lv-hold is removed
+#                     ($IT_WORK/lv-convert-reached tells it got there); the test kills the script
+#   hold-recovery     after the failure wrap-up recorded db_convert.recovery=restart_old and the old
+#                     services started, wait until $IT_WORK/lv-hold is removed
+#                     ($IT_WORK/lv-recovery-reached tells it got there)
+#   every call is also appended to $IT_WORK/docker-calls.log; a file $IT_WORK/df-small makes df report
+#   1 MiB free while data/postgresql.failed-convert-* exists
 #   restore-place-fail  once: the restore's stop before it places the files fails
 #   restore-check-fail  once: the restore's check of the imported database reads 999999 users
 #   hold-import       the restore's pg_restore gets the first 4 KiB of the dump, the rest 8 seconds
@@ -58,6 +67,32 @@ case " \${LV_INJECT:-} " in
 esac
 if [ "\${1:-}" = compose ] && [[ \$args == *" exec -T backend wget "* ]]; then
   case " \${LV_INJECT:-} " in *" health-fail "*) exit 1 ;; esac
+fi
+printf '%s\\n' "\$*" >>"$IT_WORK/docker-calls.log"
+# The conversion of the bundled database (upgrade step 8, temporary container custodexa-pgconvert):
+if [[ \$args == *" pg_restore "* ]] && [[ \$args == *"custodexa-pgconvert"* ]]; then
+  case " \${LV_INJECT:-} " in
+    *" convert-restore-fail "*) echo "injected: the pg_restore of the conversion failed" >&2; exit 1 ;;
+    *" hold-convert-restore "*)
+      touch "$IT_WORK/lv-convert-reached"
+      while [ -e "$IT_WORK/lv-hold" ]; do sleep 0.2; done
+      ;;
+  esac
+fi
+# hold-recovery: the failure wrap-up has recorded recovery=restart_old; the old services start,
+# then the script waits here (the test kills it) before it records the upgrade as failed.
+if [ "\${1:-}" = compose ] && [[ \$args == *" up -d "* || \$args == *" start "* ]]; then
+  case " \${LV_INJECT:-} " in
+    *" hold-recovery "*)
+      if [ "\$(jq -r '."last_upgrade.db_convert.recovery" // ""' "$LV_ROOT/state.json" 2>/dev/null)" = restart_old ]; then
+        "\$real" "\$@"
+        rc=\$?
+        touch "$IT_WORK/lv-recovery-reached"
+        while [ -e "$IT_WORK/lv-hold" ]; do sleep 0.2; done
+        exit \$rc
+      fi
+      ;;
+  esac
 fi
 phase() { jq -r '."last_restore.phase" // ""' "$LV_ROOT/state.json" 2>/dev/null; }
 if [ "\${1:-}" = compose ] && [ ! -e "$IT_WORK/lv-injected" ]; then
@@ -115,6 +150,18 @@ fi
 exec "\$real" "\$@"
 EOF
   chmod +x "$IT_WORK/lvshim/docker"
+  # df: while $IT_WORK/df-small exists and a failed conversion folder is in the data folder, every
+  # file system reports 1 MiB free (the leftovers of the first conversion use up the room).
+  cat >"$IT_WORK/lvshim/df" <<EOF
+#!/usr/bin/env bash
+real=\$(PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin command -v df)
+if [ -e "$IT_WORK/df-small" ] && compgen -G "$LV_ROOT/data/postgresql.failed-convert-*" >/dev/null; then
+  "\$real" "\$@" | awk 'NR == 2 { \$4 = 1024 } { print }'
+  exit 0
+fi
+exec "\$real" "\$@"
+EOF
+  chmod +x "$IT_WORK/lvshim/df"
   # hold-swap: the restore moved the old database folder aside and has not moved the audit folder
   # yet (the sync after the first rename); wait there until $IT_WORK/lv-hold is removed.
   cat >"$IT_WORK/lvshim/sync" <<EOF
@@ -138,7 +185,7 @@ lv_cx() {
   shift
   lv_shim
   LV_OUT=$(LV_INJECT=${LV_INJECT:-} CX_READY_TRIES=${LV_READY_TRIES:-} PATH=$IT_WORK/lvshim:$PATH \
-    "$LV_ROOT/custodexa.sh" "$@" --lang en 2>&1) && LV_RC=0 || LV_RC=$?
+    "${LV_SCRIPT:-$LV_ROOT/custodexa.sh}" "$@" --lang en 2>&1) && LV_RC=0 || LV_RC=$?
   printf '%s\n' "$LV_OUT" | sed "s/^/   $label> /"
   printf '   %s> (exit %s)\n' "$label" "$LV_RC"
 }

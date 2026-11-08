@@ -20,6 +20,8 @@ type blockMatcher interface {
 type commandBlocker struct {
 	buf          *InputLineBuffer
 	blockedInput string // Last matched complete line; input pump owns this state.
+	// blockedMultiLine 被阻斷的那一幀含兩行以上的內容（含未提交殘段；整段未轉送）；input pump 擁有此狀態。
+	blockedMultiLine bool
 	matcher      blockMatcher
 	// alerts 告警落地面：取代原本的 *gorm.DB 直寫。
 	// 型別是介面而非 *gorm.DB 正是修法本體——本型別自此沒有「自己寫一列」的能力，
@@ -52,25 +54,42 @@ func newCommandBlocker(matcher blockMatcher, alerts gatewayapi.AlertSink, sessio
 	}
 }
 
-// Inspect 檢視一段輸入：命中 block 規則時回傳規則，未命中回 nil；
-// 緩衝失準（ESC 後）fail-open。
+// Inspect 檢視一個輸入幀：逐一比對幀內所有已提交的行，任一可信行命中 block 規則即回傳規則
+// （只記第一個命中行），未命中回 nil；失準（跳脫序列或未追蹤的編輯字元後）的行 fail-open。
+//
+// 命中時整幀不轉送，連同最後一個換行之後的殘段與行解析狀態一併捨棄，
+// 使本地比對的行與遠端收到的命令一致。
+// 未命中時殘段留在緩衝，與下一幀接續。
 //
 // 不再回傳注入用警告字串——警告改由 bridge 送 MsgNotice 控制幀
 // （Code＋zh fallback＋params{rule}），文案與 ANSI 上色歸前端。
 func (c *commandBlocker) Inspect(data []byte) *model.AlertRule {
 	c.blockedInput = ""
-	line, submitted, trusted := c.buf.Feed(data)
-	if !submitted || !trusted || line == "" {
-		return nil
+	c.blockedMultiLine = false
+	lines := c.buf.Feed(data)
+	// 最後一個換行之後還有未提交的殘段，也算同一幀被一併丟棄的內容
+	hasTail := c.buf.line.Len() > 0
+	committed := 0
+	for _, l := range lines {
+		if !l.Trusted || l.Text != "" {
+			committed++
+		}
 	}
-	rule, ok := c.matcher.MatchBlock(line, c.protocol)
-	if !ok {
-		return nil
+	for _, l := range lines {
+		if !l.Trusted || l.Text == "" {
+			continue
+		}
+		rule, ok := c.matcher.MatchBlock(l.Text, c.protocol)
+		if !ok {
+			continue
+		}
+		c.buf.Reset()
+		c.blockedInput = l.Text
+		c.blockedMultiLine = committed > 1 || hasTail
+		c.recordBlocked(rule, l.Text)
+		return rule
 	}
-
-	c.blockedInput = line
-	c.recordBlocked(rule, line)
-	return rule
+	return nil
 }
 
 // recordBlocked 阻斷事件經告警落地面入庫＋推送通知＋離機 syslog 轉發。

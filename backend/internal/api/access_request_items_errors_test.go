@@ -42,3 +42,36 @@ func TestAccessRequestItemErrorResponses(t *testing.T) {
 		})
 	}
 }
+
+func TestAccessRequestConnectRequiredResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		item float64
+		id   float64
+	}{
+		{"typed with item details", &authz.RequestConnectRequiredError{ItemIndex: 2, AssetID: 9}, 2, 9},
+		{"bare sentinel", authz.ErrRequestConnectRequired, -1, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := new(MockAccessRequestService)
+			svc.On("Submit", uint(5), "tester", false, mock.Anything).Return(nil, fmt.Errorf("submit: %w", tc.err))
+			r, _ := newAccessRequestRouter(svc, nil, 5, "user", nil)
+			w := doJSON(r, "POST", "/access-requests", map[string]any{"asset_id": 3, "reason": "maintenance", "duration_minutes": 60})
+			var body map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 403 || body["code"] != "RULE_ACCESS_REQUEST_CONNECT_REQUIRED" {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			if tc.item >= 0 {
+				details, _ := body["details"].(map[string]any)
+				if details["item_index"] != tc.item || details["asset_id"] != tc.id {
+					t.Fatalf("details = %v", body["details"])
+				}
+			}
+			svc.AssertExpectations(t)
+		})
+	}
+}

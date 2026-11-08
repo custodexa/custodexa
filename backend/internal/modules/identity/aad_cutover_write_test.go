@@ -71,7 +71,7 @@ func TestMFASecretWrittenWithAAD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth: %v", err)
 	}
-	setup, err := auth.GenerateMFASetup(user.ID)
+	setup, err := auth.GenerateMFASetup(user.ID, "")
 	if err != nil {
 		t.Fatalf("GenerateMFASetup: %v", err)
 	}

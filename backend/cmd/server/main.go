@@ -203,7 +203,7 @@ func main() {
 	// 只在對外入口可能是明文時才印：`PUBLIC_BASE_URL` 是 https 就表示對外那一段已終止 TLS
 	// （內建代理形態的 quickstart 會把它填成 https），此時後端與代理之間的明文屬單主機內網，不必告警。
 	if s1.cfg.IsReleaseMode() && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(s1.cfg.OIDC.PublicBaseURL)), "https://") {
-		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後；預設 compose 內建的 TLS 代理已停用（external-ingress 形態）時，請確認前置 ingress 已終止 TLS")
+		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後；預設 compose 內建的 TLS 代理已停用（外部入口形態，`TLS_MODE=external`）時，請確認前置 ingress 已終止 TLS")
 	}
 
 	// refresh cookie 的 Secure 歸因日誌**已移入段 2**：生效值住在安全政策服務裡，

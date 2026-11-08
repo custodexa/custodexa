@@ -30,9 +30,7 @@ web 為唯一入口，繞道面不存在（前提：DB 網路層僅對本系統�
 - DBMS 廣度：需求驅動逐個加（CLI 模態新增一 DBMS≈新增一 client），不設固定目標數。
 - 報表範本廣度：接受為定位差異結案（審計頁＋證據匯出＋API 已覆蓋稽核核心，
   不追範本數量堆疊）。
-
 ## Requirements
-
 ### Requirement: 資料庫 CLI 代理連線
 系統 SHALL 以本地 CLI 子程序（psql/mariadb/redis-cli/sqlcmd）代理資料庫資產連線；憑證 SHALL 由後端記憶體組裝，SHALL NOT 出現於 argv、子程序環境或前端（詳見「明文憑證於 CLI 子程序內不得可讀」），SHALL 於 client 索取時經 PTY 注入：mariadb SHALL 以不帶值的 `-p` 觸發提示（帶值即落 argv），redis-cli SHALL 以 `--askpass` 觸發，psql 不設 `PGPASSWORD` 時即自行提示，**sqlcmd 在給定 `-U` 而不給 `-P` 且未設 `SQLCMDPASSWORD` 時即自行提示**。子程序環境 SHALL 最小化，SHALL NOT 繼承後端程序的機密環境變數。MySQL 連線 SHALL 使用 `mariadb`（非 deprecated 別名 `mysql`）並具備 caching_sha2_password client plugin，以連線 MySQL 8 預設認證。
 
@@ -512,3 +510,87 @@ mssql 會話的 web CLI SHALL 在連線成功後呈現一則協議專屬提示�
 #### Scenario: 重複或並行 Close
 - **WHEN** 多個 Close 呼叫處理同一連線，或程序已自行結束後再次 Close
 - **THEN** 終止、回收與清理回呼至多執行一次，既有已結束狀態不導致卡死
+
+### Requirement: CLI 重連指令不得沿用受管憑證連往其他目標
+
+受管憑證 SHALL 只用於本次會話所指向的資產。mysql／mariadb、redis 與 mssql 會話中，系統 SHALL 在輸入側檢查
+每一個送出的整行；整行含該 CLI 改連目標的指令時，該行 SHALL NOT 轉送至 CLI 子程序。判定 SHALL 以 token 為單位、
+任一位置命中即算，SHALL NOT 只檢查行首：
+
+- 正規化：先去除引號字元；redis 另依 redis-cli 的引號規則解碼雙引號內的跳脫。正規化後以空白與語句分隔符切成 token。
+- mysql／mariadb：任一 token 不分大小寫等於 `connect`，或整行任一位置出現 `\r` 短指令。
+- redis：任一 token 不分大小寫等於 `connect`。
+- mssql：任一 token 不分大小寫等於 `:connect`，或等於會在會話內改變輸出入目標、執行本機指令的命令 `:r`、`:out`、`!!`。
+
+判定採寧可誤擋：字面恰為上述指令的字串常值或鍵名同樣不轉送，使用者可改寫輸入；子字串（如 `connected_clients`）不算命中。
+
+一個輸入幀含多行時，系統 SHALL 逐行判定；跨多個輸入幀組成的整行、貼上的內容與經 AI agent 入口送出的輸入
+SHALL 一律受同一判定。
+
+被攔下時系統 SHALL 清除 CLI 當前的輸入、向終端與錄影注入可讀警告（說明換目標須由資產列表開新連線），
+並 SHALL 以阻斷事件的既有紀錄形態留痕。此檢查為固定行為，SHALL NOT 依指令規則設定開關或規則清單而失效。
+
+系統無法確定送出整行的內容時（例如輸入中出現無法追蹤的編輯序列或編輯鍵、引號或跳脫無法正規化），
+在上述 CLI 的會話中 SHALL NOT 轉送該行，SHALL 提示使用者重新鍵入；SHALL NOT 以「無法判讀即放行」處理。
+
+postgres 會話維持既有的改連守衛，不套用本條的輸入側檢查。
+
+新增協議 CLI 上線前 SHALL 檢核其會話內改連其他目標的指令，並視需要納入本條的判定範圍。
+
+#### Scenario: redis 改連指令被攔
+- **WHEN** 使用者在 redis 資產會話中送出以 `connect` 開頭、帶主機與埠參數的整行
+- **THEN** 該行未送入 CLI 子程序，終端顯示警告，錄影含該警告，且會話留下阻斷紀錄
+
+#### Scenario: redis 帶引號或跳脫的改連指令被攔
+- **WHEN** 使用者在 redis 資產會話中送出以雙引號包住、或以雙引號內跳脫字元拼出 `connect` 的改連整行
+- **THEN** 正規化後判定命中，該行未送入 CLI 子程序，終端顯示警告並留下阻斷紀錄
+
+#### Scenario: mariadb 改連指令被攔
+- **WHEN** 使用者在 mysql 資產會話中送出 `\r` 短指令或大小寫變體 `CONNECT` 帶參數的整行
+- **THEN** 該行未送入 CLI 子程序，終端顯示警告，會話留下阻斷紀錄
+
+#### Scenario: mariadb 同行後段的改連指令被攔
+- **WHEN** 使用者在 mysql 資產會話中送出前段為一般查詢、以 `;` 分隔後接 `\r` 短指令的整行
+- **THEN** 整行（含前段查詢）未送入 CLI 子程序，終端顯示警告，會話留下阻斷紀錄
+
+#### Scenario: mssql 改連被攔
+- **WHEN** 使用者在 mssql 資產會話中送出前置空白、大小寫混用的 `:connect` 整行
+- **THEN** 該行未送入 CLI 子程序，終端顯示警告
+
+#### Scenario: mssql 改變輸出入目標或執行本機指令的命令被攔
+- **WHEN** 使用者在 mssql 資產會話中送出以 `:r`、`:out` 或 `!!` 起頭的整行（大小寫與前置空白不拘）
+- **THEN** 該行未送入 CLI 子程序，終端顯示警告並留下阻斷紀錄；一般查詢與僅含這些字樣的子字串（如 `:rollback`）照常轉送
+
+#### Scenario: 同一幀的第二行被逐行判定
+- **WHEN** 使用者一次貼上兩行，第一行為一般查詢、第二行為改連指令
+- **THEN** 第一行照常轉送，第二行未送入 CLI 子程序，終端顯示警告並留下阻斷紀錄
+
+#### Scenario: AI agent 入口受同一判定
+- **WHEN** AI agent 經其入口在 redis 資產會話送出改連指令
+- **THEN** 該行未送入 CLI 子程序，並與真人會話相同地留下警告與阻斷紀錄
+
+#### Scenario: 字面恰為指令的 token 寧可誤擋
+- **WHEN** 使用者在 redis 會話送出 `GET connect`
+- **THEN** 該行不轉送，終端顯示警告；使用者改用其他鍵名後照常執行
+
+#### Scenario: 一般查詢不受影響
+- **WHEN** 使用者在 mysql 會話送出 `SELECT 1;`，或在 redis 會話送出 `INFO clients`
+- **THEN** 該行照常轉送並執行，不產生阻斷紀錄
+
+#### Scenario: 無法確定整行內容時不轉送
+- **WHEN** 使用者在 redis 會話中輸入的內容含系統無法追蹤的編輯序列或編輯鍵，且無法確定送出的整行為何
+- **THEN** 該行不轉送，終端提示重新鍵入
+
+#### Scenario: 只轉送游標類標準序列，括號貼上標記不轉送
+- **WHEN** 使用者在 mysql、redis 或 mssql 會話中輸入以 ESC 起頭的序列
+- **THEN** 只有方向鍵、Home、End、Delete、PageUp、PageDown 等游標與編輯類標準序列轉送至 CLI 子程序，且轉送後該行視為無法確定；其餘 ESC 起頭的序列不轉送
+- **AND** 括號貼上的開始與結束標記不轉送，標記之間的內容視同鍵入逐行判定
+
+#### Scenario: 規則開關不影響
+- **WHEN** 站點未設定任何指令規則，使用者在 redis 會話送出改連指令
+- **THEN** 該行仍被攔下
+
+#### Scenario: postgres 沿用既有改連守衛
+- **WHEN** 使用者在 postgres 會話送出 `\c` 改連指令
+- **THEN** 不經本條輸入側檢查；CLI 對新目標要求密碼時，系統不提供受管密碼
+

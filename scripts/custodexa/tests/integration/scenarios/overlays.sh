@@ -64,29 +64,24 @@ overlays_front() {
   it_check "$1 answers $2" grep -q "^HTTP/[0-9.]* $2" <<<"$out"
 }
 
-# overlays_upgrade <root>: upgrade from the older release to the package's, with the package's
-# offline bundle; the backup it takes is a folder backups/<YYYYMMDD-HHMMSS>/ (0700, complete).
+# overlays_upgrade <root> <version>: upgrade from the older release to the package's, with the
+# package's offline bundle; the backup it takes is one portable file backups/custodexa-backup-*.tar
+# (0600) with its .sha256, and no backup folder.
 overlays_upgrade() {
-  local root=$1 to=$2 d
+  local root=$1 to=$2 f
   touch "$IT_WORK/mark"
   sleep 1
   it_cx "$root" upgrade "$(it_package_file)" --images "$(it_bundle_file)" --yes --lang en
   it_same "upgrade recorded as succeeded" succeeded "$(st last_upgrade.result)"
   it_same "current version is $to" "$to" "$(st current.version)"
-  d=$(find "$root/backups" -mindepth 1 -maxdepth 1 -type d -newer "$IT_WORK/mark" ! -name '.*')
-  it_check "the upgrade's backup is a folder backups/<YYYYMMDD-HHMMSS>/" grep -qE '/backups/[0-9]{8}-[0-9]{6}$' <<<"$d"
-  it_same "that folder is 0700" 700 "$(stat -c %a "$d")"
-  it_check "that folder is complete: no INCOMPLETE, SHA256SUMS matches, snapshot.txt and state.json in it" \
-    bash -c 'cd "$1" && [ ! -e INCOMPLETE ] && sha256sum -c --quiet SHA256SUMS && [ -s snapshot.txt ] && [ -s state.json ]' _ "$d"
+  f=$(st last_upgrade.backup)
+  it_check "the upgrade's backup is a file backups/custodexa-backup-*.tar ($f)" grep -qE '^backups/custodexa-backup-.*\.tar$' <<<"$f"
+  it_same "that file and its .sha256 are 0600" "600 600" "$(stat -c %a "$root/$f" "$root/$f.sha256" | paste -sd' ')"
+  it_check "its checksum file matches" bash -c 'cd "${1%/*}" && sha256sum -c --quiet "${1##*/}.sha256"' _ "$root/$f"
+  it_same "no backup folder is made" "" "$(find "$root/backups" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -newer "$IT_WORK/mark")"
   it_check "the earlier backup file is untouched" \
     bash -c 'cd "$1" && sha256sum -c --quiet "$2.sha256"' _ "$root/backups" "$OV_FILE"
   it_say "   backups/: $(cd "$root/backups" && find . -mindepth 1 -maxdepth 1 ! -name '.*' | sort | tr '\n' ' ')"
-  if [ -e "$root/tls" ]; then
-    it_check "the folder holds the tls archive" bash -c 'compgen -G "$1/custodexa-tls-*.tar.gz" >/dev/null' _ "$d"
-  else
-    it_check "no tls/: the folder has no tls archive, and the upgrade's log says why" \
-      bash -c '! compgen -G "$1/custodexa-tls-*.tar.gz" >/dev/null && grep -q "CHECK tls=absent" "$(ls -t "$2"/logs/upgrade-*.log | head -n 1)"' _ "$d" "$root"
-  fi
 }
 
 scenario() {
@@ -125,7 +120,7 @@ scenario() {
 
   it_step "external ingress form: install $from --images $(it_bundle_file from)"
   it_unpack /opt from
-  it_env_preset "$root" "COMPOSE_FILE=current/compose.yml:current/compose.external-ingress.yml"
+  it_env_preset "$root" "TLS_MODE=external"
   it_cx "$root" install --images "$(it_bundle_file from)"
   it_same "install recorded as succeeded" succeeded "$(st install.result)"
   it_same "the external ingress overlay" external-ingress "$(st current.overlays)"

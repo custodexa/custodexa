@@ -111,6 +111,7 @@ var knownAccountabilityVoids = map[string]string{
 	// 由 TestNoStaleAccountabilityVoidEntries 擋下
 	"POST /api/v1/auth/mfa/disable | api.(*AuthHandler).MFADisable":              "password 為密碼本體",
 	"POST /api/v1/auth/mfa/enable | api.(*AuthHandler).MFAEnable":                "code 為 TOTP 一次性碼",
+	"POST /api/v1/auth/mfa/setup | api.(*AuthHandler).MFASetup":                  "code 為 TOTP 一次性碼；驗證器重設事實由審計列的 mfa_reset 細節課責",
 	"POST /api/v1/auth/mfa/enroll/confirm | api.(*AuthHandler).MFAEnrollConfirm": "code 為 TOTP 一次性碼",
 	"POST /api/v1/auth/mfa/verify | api.(*AuthHandler).MFAVerify":                "code 為一次性碼、pending_token 為持有型憑證",
 	"PUT /api/v1/users/:id/password | api.(*UserHandler).ChangePassword":         "password 為密碼本體；改密事實由路徑與 resource_id 課責",

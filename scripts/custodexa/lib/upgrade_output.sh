@@ -4,6 +4,9 @@
 # The step number is right-aligned to "13/13", so every text starts at column 15 and later lines
 # of a text sit under it (14 columns in). A duration starts at column 61 (lib/common.sh).
 
+# Sourced by more than one command library: a second load must not touch the readonly settings.
+[ -z "${CX_LIB_LOADED_upgrade_output:-}" ] || return 0
+CX_LIB_LOADED_upgrade_output=1
 readonly CX_UP_STEPS=13
 
 # cx_up_step_line <mark> <n> <text> [duration]
@@ -26,9 +29,9 @@ cx_up_num() {
 # cx_up_par <text>: a paragraph 2 columns in.
 cx_up_par() { printf '%s\n' "$1" | sed 's/^/  /'; }
 
-# cx_up_compose_hint: the -p and -f arguments of this deployment, for commands people copy.
-cx_up_compose_hint() {
-  local ov out="-p $CX_PROJECT -f $CX_ROOT/current/compose.yml"
-  for ov in ${CX_OVERLAYS:-}; do out+=" -f $CX_ROOT/current/compose.$ov.yml"; done
-  printf '%s' "$out"
+# cx_up_preview_head: the top of the preview.
+cx_up_preview_head() {
+  printf '%s\n\n' "$(cx_msg up_title)"
+  printf '%s\n' "$(cx_msg up_row_installed "$CX_UP_CURRENT")" "$(cx_msg up_row_target "$CX_UP_TARGET")" \
+    "$(cx_msg up_row_root "$CX_ROOT")"
 }

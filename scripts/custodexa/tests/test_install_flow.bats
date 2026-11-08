@@ -653,11 +653,87 @@ source_is() {
   fresh_host
   : >"$SIM/images"
   cp "$ROOT/current/.env.example" "$ROOT/.env"
+  # The old notation of an external ingress: it is moved into the managed block and reported.
   printf 'COMPOSE_FILE=current/compose.yml:current/compose.external-ingress.yml\n' >>"$ROOT/.env"
+  # The old notation must agree with the keys: TLS_MODE says external too, and the line is replaced.
+  sed -i 's/^TLS_MODE=.*/TLS_MODE=external/' "$ROOT/.env"
   clock 0 2 0 48 0 9 0 21
   install_run en --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(state install.result)" = succeeded ] || return 1
   [[ " $(state current.image_ids) " == *" postgres=${CFG[postgres]} "* ]] || { echo "$(state current.image_ids)"; return 1; }
   ! grep -q '^DB_PASSWORD=postgres$' "$ROOT/.env"
+  [[ $output == *'compose.external-ingress.yml'* && $output == *'moved into the managed block'* ]] || { echo "$output"; return 1; }
+  [ "$(state current.overlays)" = external-ingress ] && [ "$(state current.tls_mode)" = external ]
+  # this fixture release is of the older layout: the block carries the old notation, once
+  [ "$(grep -c '^COMPOSE_FILE=' "$ROOT/.env")" -eq 1 ] && grep -q 'managed by custodexa.sh' "$ROOT/.env"
+}
+
+@test "install with only EXTERNAL_DB_HOST set: the preview says external, no built-in database is created, the form is recorded" {
+  host_full
+  fresh_host
+  : >"$SIM/images"
+  cp "$ROOT/current/.env.example" "$ROOT/.env"
+  printf 'EXTERNAL_DB_HOST=db.example.internal\nDB_PASSWORD=pw-of-the-external-database\n' >>"$ROOT/.env"
+  clock 0 2 0 48 0 9 0 21
+  install_run en --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *'External: db.example.internal:5432'* ]] || { echo "$output"; return 1; }
+  [ "$(state current.overlays)" = external-database ] && [ "$(state current.external_db_host)" = db.example.internal ]
+  [ ! -e "$ROOT/data/postgres" ]
+  ! grep -q $'\tcompose .* up -d .*postgres' "$FAKE_DOCKER_LOG"
+  # Either layout: the profiles block, or the overlay notation of the old layout (1.22 and before).
+  grep -qx 'COMPOSE_PROFILES=builtin-tls' "$ROOT/.env" || grep -q '^COMPOSE_FILE=.*compose.external-database.yml' "$ROOT/.env"
+}
+
+@test "install preview without a terminal prints no question and installs; --yes shows the question answered" {
+  host_full
+  fresh_host
+  : >"$SIM/images"
+  clock 0 2 0 48 0 9 0 21
+  install_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *'Deployment form'* && $output != *'[y/N]'* ]] || { echo "$output"; return 1; }
+  fresh_host
+  : >"$SIM/images"
+  clock 0 2 0 48 0 9 0 21
+  install_run en --yes
+  [ "$status" -eq 0 ] && [[ $output == *'Install now? [y/N] y'* ]] || { echo "$output"; return 1; }
+}
+
+@test "install preview on a terminal: Enter at the question ends with nothing written and no compose call; y goes on" {
+  host_full
+  fresh_host
+  : >"$SIM/images"
+  : >"$FAKE_DOCKER_LOG"
+  # script gives the command a terminal; the answer is typed ahead and waits for the read
+  run script -qec "bash $ROOT/custodexa.sh install --lang en --no-color" /dev/null <<<""
+  [ "$status" -eq 3 ] || { echo "exit $status"; echo "$output"; return 1; }
+  [[ $output == *'Install now? [y/N] '* && $output == *'Nothing was changed.'* ]] || { echo "$output"; return 1; }
+  [ ! -e "$ROOT/state.json" ] && [ ! -e "$ROOT/.env" ] && [ ! -e "$ROOT/logs" ]
+  ! grep -q $'\tcompose ' "$FAKE_DOCKER_LOG"
+  clock 0 2 0 48 0 9 0 21
+  run script -qec "bash $ROOT/custodexa.sh install --lang en --no-color" /dev/null <<<"y"
+  [ "$status" -eq 0 ] || { echo "exit $status"; echo "$output"; return 1; }
+  [ "$(state install.result)" = succeeded ]
+}
+
+@test "install with EXTERNAL_DB_HOST=127.0.0.1: refused before any file is written, the address of this host is asked for" {
+  host_full
+  fresh_host
+  : >"$SIM/images"
+  cp "$ROOT/current/.env.example" "$ROOT/.env"
+  printf 'EXTERNAL_DB_HOST=127.0.0.1\nDB_PASSWORD=pw-of-the-external-database\n' >>"$ROOT/.env"
+  local before
+  before=$(cd "$ROOT" && find . -path ./releases -prune -o -print0 | sort -z | xargs -0 ls -ld --time-style=+%s.%N; sha256sum .env)
+  : >"$FAKE_DOCKER_LOG"
+  install_run en --yes
+  [ "$status" -eq 3 ] || { echo "exit $status"; echo "$output"; return 1; }
+  [[ $output == *'Inside a container, 127.0.0.1 is the backend container itself,'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'database on this host: the network address of this host'* && $output != *host.docker.internal* ]] || { echo "$output"; return 1; }
+  [ ! -e "$ROOT/state.json" ] && [ ! -e "$ROOT/logs" ] && [ ! -e "$ROOT/data" ] || { ls -la "$ROOT"; return 1; }
+  [ "$(cd "$ROOT" && find . -path ./releases -prune -o -print0 | sort -z | xargs -0 ls -ld --time-style=+%s.%N; sha256sum .env)" = "$before" ] || { echo "files changed"; return 1; }
+  # The host checks before it only ask docker (info, compose version, inspect); nothing is pulled,
+  # loaded, created or started.
+  ! grep -vE $'^ARGS\t(info|version|compose version|container inspect|image inspect|inspect)[ \t]' "$FAKE_DOCKER_LOG" | grep -q . || { cat "$FAKE_DOCKER_LOG"; return 1; }
 }

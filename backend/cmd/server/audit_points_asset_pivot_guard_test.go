@@ -148,6 +148,7 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-04": {pivotFilled, false, "kubectl cp 成功留痕；檔案傳輸類的資產樞紐來源（檔案傳輸列）"},
 	"AP-65": {pivotFilled, false, "kubectl cp 被傳輸閘擋下的 denied 留痕，與 AP-04 對稱"},
 	"AP-14": {pivotFilled, false, "SFTP 上傳／下載／刪除／建目錄成功留痕（resource=file，資產樞紐讀 asset_id）"},
+	"AP-276": {pivotFilled, false, "SFTP 檔案端點因來源網段限制被拒的 denied 留痕（resource=file，資產樞紐讀 asset_id）"},
 	"AP-21": {pivotFilled, false, "HTTP 中介層批次：resource=asset 時由 resource_id 推導，其餘由 handler 經 audit_asset_id 覆寫（見面 3）"},
 	"AP-22": {pivotFilled, false, "資產帳號 CRUD／設預設／同步的落地本體；11 個 RecordCall 呼叫點全部委由本點"},
 	"AP-23": {pivotFilled, false, "資產建立 GORM hook（AfterCreate）"},

@@ -1,0 +1,18 @@
+[ .. ]  8/13  轉換資料庫：PostgreSQL 16 → 18（資料 0.0 KB）
+        請不要中斷。萬一中斷，舊資料也不會損壞，重跑升級會從轉換重新開始。
+        [FAIL] 1/5  匯出舊資料庫
+
+[FAIL] 升級停在第 8/13 步：資料庫轉換在「匯出」時失敗，舊版也沒有重新啟動
+  原因       匯出時連不上舊資料庫（摘要；完整訊息在紀錄檔）
+
+  目前狀態
+    - 沒有換版：版本仍是 1.13.0，但服務目前停止
+    - 舊資料 /opt/custodexa/data/postgres 沒有被改動
+    - 升級前的備份完整：/opt/custodexa/backups/custodexa-backup-1.13.0-20261120-021502.tar
+    - 腳本不會自動處理
+  恢復舊版服務：
+    sudo /opt/custodexa/custodexa.sh start
+  恢復之後，再執行一次升級：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+
+  紀錄檔 /tmp/log

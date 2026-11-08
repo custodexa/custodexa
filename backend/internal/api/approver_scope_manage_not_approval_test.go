@@ -110,6 +110,9 @@ func TestApproverScopeManageIsNotApproval(t *testing.T) {
 	e := newManageNotApprovalEnv(t)
 	srv := e.hostAsset("srv", "10.9.9.9", "prod/db")
 	requester := e.user("requester")
+	// 申請人持常設連線權：核准入口於交易內重判此資格，直接寫表的待審單也要符合
+	srvAsset, requesterID := srv, requester
+	require.NoError(t, e.db.Create(&model.AssetAuthorization{UserID: &requesterID, AssetID: &srvAsset, Permission: model.PermissionConnect, GrantedBy: requester}).Error)
 
 	globalManager := e.user("manager-global")
 	e.grantGlobal(globalManager, e.role(authz.PermApproverScopeManage, authz.PermApproverScopeApplicantManage))

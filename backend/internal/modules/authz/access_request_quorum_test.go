@@ -140,6 +140,7 @@ func TestApproverScope_SingleListEquivalence(t *testing.T) {
 	db.Create(&model.ApproverScope{ApproverGroupID: &rev, AssetGroupID: &g3, GrantedBy: 3})
 
 	// 兩張 pending 單：user 1×asset 4（節點子樹＋申請人側命中）、user 4×asset 1（資產側命中）
+	grantConnect(t, db, 1, 4)
 	reqA := submitBasic(t, svc, 1, 4)
 	reqB := submitBasic(t, svc, 4, 1)
 

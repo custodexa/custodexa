@@ -1,0 +1,13 @@
+[FAIL] 空き容量が足りないため、アップグレードは始まりません。サービスは
+       停止せず、変更もありません。
+  /data   新しいデータベースの場所 /opt/custodexa/data/postgresql と作業領域 /opt/custodexa/data/.pg-convert
+          必要 4.0 GB、空きは 1.0 GB のみ、3.0 GB 不足
+
+  前回の変換の失敗で残ったデータ（診断用で、システムは使っていません）が
+  容量を使っています。
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502    3.2 GB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502  13.1 GB
+  削除するには、端末で同じアップグレードコマンドを実行し、
+  削除の確認に y と答えます（端末なしの実行では何も削除しません）。
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+  /data の空きを自分で増やしてから実行し直すこともできます。

@@ -1368,6 +1368,7 @@
     "applyConnect": "Request Access",
     "connectTooltip": "Connect to this asset",
     "noPermTooltip": "Insufficient permission — contact an administrator",
+    "viewOnlyTooltip": "You only have view access to this host, so you can't connect or submit a request. Ask an administrator to grant you connect access.",
     "testConnection": "Test Connection",
     "emptyTitle": "No assets yet",
     "emptyHintAdmin": "Click New Asset in the top-right corner to create the first one",
@@ -1480,6 +1481,7 @@
     "applyHintReason": "\"{name}\" only needs a reason — the connection opens right after you submit.",
     "applyHintApproval": "\"{name}\" requires approver approval; you will be notified after submitting (track progress under My Requests).",
     "applyApproved": "Approved — opening the connection",
+    "applyApprovedWithAccounts": "Approved — opening the connection (accounts: {accounts})",
     "applySubmitted": "Request submitted; you can connect once approved (see My Requests for progress)",
     "breakGlassStarted": "Emergency connection started — connecting (post-review required)",
     "pendingInfo": "Your access request for \"{name}\" is awaiting review; this becomes Connect once approved.",
@@ -1656,6 +1658,7 @@
     "applyLinkPending": "An access request for \"{name}\" is already under review. There is no need to submit another one.",
     "applyLinkConnectable": "\"{name}\" is already available to connect. No request is needed.",
     "applyLinkUnavailable": "Access to \"{name}\" cannot be requested from here.",
+    "applyLinkViewOnly": "\"{name}\": you only have view access, so you can't submit a connection request. Ask an administrator to grant you connect access.",
     "noAssetViewTitle": "Your roles do not include asset view permission",
     "noAssetViewHint": "No assets are listed here. If you need to connect through the platform, ask an administrator to add the {role} role to your account.",
     "dbRotation": {
@@ -1797,6 +1800,21 @@
     "emptyHint": "Records appear here after you connect from Assets"
   },
   "auditLogs": {
+    "uploadPhase": {
+      "label": "Upload phase",
+      "actionFmt": "{action} ({phase})",
+      "startedStatus": "Started",
+      "tag": {
+        "started": "Upload started",
+        "completed": "Upload completed",
+        "incomplete": "Upload incomplete (connection closed)"
+      },
+      "hint": {
+        "started": "This only means the upload has started, not that the file arrived in full. Check the \"Upload completed\" record for the same stream.",
+        "completed": "The upload completed. The size is the total transferred.",
+        "incomplete": "The connection closed before this upload received its end command; only the amount in the size field is confirmed as transferred. The remote file may be incomplete; check the target host."
+      }
+    },
     "headerDesc": "Search and export system audit logs",
     "exportEvidence": "Export Evidence",
     "tabReviews": "Daily Review",
@@ -2444,7 +2462,10 @@
     "deleted": "Deleted",
     "accountSession": "File operations use the session account {username}",
     "accountDefault": "File operations use this asset's default account",
-    "identityChanged": "The session account is now in effect; the file list was reloaded — please review before acting"
+    "identityChanged": "The session account is now in effect; the file list was reloaded — please review before acting",
+    "sourceDeniedTitle": "File features are unavailable",
+    "sourceDeniedDesc": "Your current source address is outside your allowed range. Contact an administrator.",
+    "sourceDeniedReload": "Reload"
   },
   "snippets": {
     "searchPlaceholder": "Search snippets by name",
@@ -3133,7 +3154,16 @@
     "ldapIdentityNote": "Identity fields are managed by the directory service and read-only.",
     "externalPasswordTitle": "This account is managed by an external identity provider",
     "externalPasswordDesc": "Change your password with the identity provider; this system neither stores nor can modify this account's password.",
-    "externalIdentityNote": "Identity fields are managed by the external identity provider and are read-only."
+    "externalIdentityNote": "Identity fields are managed by the external identity provider and are read-only.",
+    "mfaResetTitle": "Reset authenticator",
+    "mfaResetDesc": "Use this when you change phones or switch authenticator apps. You'll need the code your current authenticator shows.",
+    "mfaResetCodeLabel": "Enter the 6-digit code from your current authenticator to reset it",
+    "mfaResetLostHint": "If you've lost your authenticator, ask an administrator to reset it.",
+    "mfaResetContinue": "Continue",
+    "mfaResetWarnTitle": "A new secret has been generated",
+    "mfaResetWarnDesc": "Your old authenticator no longer works. Until you finish enabling the new one below, sign-in won't ask for a code.",
+    "mfaResetWaitTitle": "That code was just used",
+    "mfaResetWaitDesc": "Wait for your authenticator to show the next code, then enter it. This isn't a setup failure and your secret hasn't changed."
   },
   "approverScope": {
     "semantics1": "The approving party can be an individual or a user group: group members automatically qualify (joining grants, leaving revokes), while individuals need the approver role.",
@@ -3260,6 +3290,7 @@
       "rejectedWith": "Rejected: {reason}",
       "notEligible": "An asset is outside your approver scope, so nothing on this request took effect",
       "selfApproval": "You made this request or are its executor; another approver must handle it",
+      "connectRequired": "The requester no longer has connect access to this asset, so nothing took effect for this request; you can still reject it",
       "handledByOther": "Already handled by another approver",
       "unconfirmedCheckHistory": "Unconfirmed: check the result of this request on the History tab",
       "checking": "Checking the actual status with the server",
@@ -5184,6 +5215,7 @@
     "POLICY_GROUP_NOT_FOUND": "The specified policy group was not found",
     "RULE_ACCESS_APPROVAL_REQUIRED": "The access policy for this asset requires an approved request before connecting",
     "RULE_ACCESS_REASON_REQUIRED": "The access policy for this asset requires a stated reason before connecting",
+    "RULE_ACCESS_REQUEST_CONNECT_REQUIRED": "You don't have connect access to this asset, so you can't submit a request. Ask an administrator to grant you connect access.",
     "RULE_ACCESS_REQUEST_DECISION_INCREASE": "Approved values cannot exceed the requested ones (duration may only be shortened, start time may only be deferred)",
     "RULE_ACCESS_REQUEST_DURATION_EXCEEDS": "The requested duration exceeds the policy limit ({minutes} minutes max)",
     "RULE_ACCESS_REQUEST_DURATION_EXCEEDS_POLICY": "Requested duration exceeds the policy limit",
@@ -5224,6 +5256,7 @@
     "RULE_BREAK_GLASS_NOT_ELIGIBLE": "Not eligible for break-glass access (a standing connection grant for this asset is required)",
     "RULE_BREAK_GLASS_SELF_REVIEW": "You cannot review your own break-glass session",
     "RULE_COMMAND_BLOCKED": "The command matched a blocking rule and was not sent to the target host",
+    "RULE_COMMAND_BLOCKED_MULTILINE": "One line in this input matched a blocking rule, so the whole input was not sent (the other lines will not run either). Remove that line and send again.",
     "RULE_COMMAND_BLOCK_CLEAR_FAILED": "The remote input line could not be cleared after the command was blocked; the session has been terminated",
     "RULE_CONNECT_TARGET_PARAMS_REJECTED": "Connection target parameters are not accepted: connections always start from an asset, through the token issuing endpoint",
     "RULE_CONNECT_TOKEN_CAPACITY": "Connection issuing is temporarily at capacity. Please try again shortly.",
@@ -5261,6 +5294,8 @@
     "RULE_DB_CONSOLE_LIMIT_REACHED": "Query console connections have reached the concurrent limit. Close one of your own consoles to try again, or wait and retry, or contact an administrator",
     "RULE_DB_CONSOLE_STATEMENT_BLOCKED": "The statement matched a blocking rule and was not sent to the target database",
     "RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL": "The query console supports only mysql, postgres and mssql assets",
+    "RULE_DB_LINE_UNCERTAIN": "The full line couldn't be confirmed, so it was not sent. Please type it again.",
+    "RULE_DB_RECONNECT_BLOCKED": "Switching to another host inside a session isn't allowed, so this line was not sent. Open a new connection from the asset list. (rule: built-in – reconnect target)",
     "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "The export artifact is not currently downloadable",
     "RULE_EXPORT_JOB_BUNDLE_ONLY": "Export jobs accept evidence bundles only; use the synchronous export endpoint for event reports",
     "RULE_K8S_FORBIDDEN": "Forbidden (403): the token lacks the list pods permission for this namespace",
@@ -5274,8 +5309,9 @@
     "RULE_K8S_UNREACHABLE": "Cannot reach the API server: check the address/port and network connectivity",
     "RULE_KEYSTROKE_UNAVAILABLE": "Keystroke record storage is unhealthy; new connections are suspended. Please contact an administrator",
     "RULE_LDAP_TEST_RATE_LIMITED": "Too many LDAP connection tests, please try again later",
-    "RULE_MFA_INVALID_CODE": "Incorrect MFA verification code",
-    "RULE_MFA_REPLAY": "MFA verification code has already been used",
+    "RULE_MFA_INVALID_CODE": "That code isn't correct. Enter the 6-digit code your authenticator shows now.",
+    "RULE_MFA_CURRENT_CODE_REQUIRED": "Enter the 6-digit code from your current authenticator.",
+    "RULE_MFA_REPLAY": "That code was already used. Wait for the next code and try again.",
     "RULE_MY_CONNECTION_ENDED": "Connection has ended",
     "RULE_NODE_CYCLE": "A node cannot be moved into itself or one of its descendants",
     "RULE_NODE_DEPTH_EXCEEDED": "Node depth exceeds the limit (10 levels)",
@@ -5466,6 +5502,8 @@
     "VALIDATION_OFFSITE_CREDENTIAL_HALF_SET": "Provide both the access key and the secret key, or leave both blank to use the default credential chain",
     "VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS": "The endpoint must not contain credentials, a query string, or a fragment; enter credentials in their own fields",
     "VALIDATION_OFFSITE_ENDPOINT_INVALID": "Endpoint must start with http:// or https:// and include a host name",
+    "VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID": "The \"{field}\" field in the service account JSON doesn't meet the requirements. Download the key file again and paste it.",
+    "VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL": "Without a service account JSON, the endpoint must be empty or a Google domain (googleapis.com). To use another endpoint, enter a service account JSON.",
     "VALIDATION_OFFSITE_PROVIDER_INVALID": "Storage type must be s3 or gcs",
     "VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED": "With S3, either the endpoint or the region must be provided",
     "VALIDATION_OIDC_ADMISSION_RULES": "Invalid admission rules: ensure rule keys are valid and non-empty; shared identity providers require a tenant or domain condition",
@@ -6685,6 +6723,8 @@
       "oldestSeq": "Oldest checkpoint number",
       "passedFailed": "Passed / failed",
       "trimmedThrough": "(deleted under retention policy through number {seq})",
+      "trimRecord": "Trim record",
+      "trimSegments": "{count} segments",
       "unsealed": "Records not yet notarized",
       "unsealedHint": "(from record {id}; this stretch is not yet covered by the chain, see boundary R5 below)"
     },
@@ -6790,7 +6830,9 @@
       "signature_invalid": "Invalid signature",
       "chain_broken": "Chain broken",
       "seq_gap": "Numbering not continuous",
-      "attestation_invalid": "Permission state proof invalid"
+      "attestation_invalid": "Permission state proof invalid",
+      "rows_hidden": "Hidden records",
+      "trim_unverified": "Trimmed without signature check"
     },
     "statusHint": {
       "purged_legal": "Deleted under the retention policy, and the deletion claim itself passed verification. This is not an anomaly. To check what the deletion was based on, look up the retention period for this kind of data under System settings → Security policies; no further follow-up is needed.",
@@ -6801,7 +6843,13 @@
       "signature_invalid": "The signature of this checkpoint itself does not verify, so nothing it claims can be trusted. Do not draw conclusions about the range from it: bound what is trustworthy using the nearest checkpoints on either side that still verify, check whether the signing key was replaced or the system rebuilt in that period, and compare against the off-box copy.",
       "chain_broken": "The link value to the previous checkpoint, or the adjoining of their ranges, does not match. The period between those two checkpoints is the suspect window: check whether a system restore or a database rollback happened then, and compare that range against the off-box copy.",
       "seq_gap": "The numbering is not continuous and no matching record of a legitimate deletion under the retention policy exists. Check whether a retention deletion ran over the missing stretch; if no such record exists, treat the checkpoint as removed and reconcile that stretch against the off-box copy.",
-      "attestation_invalid": "The checkpoint itself verifies, but the permission state record sealed with it is missing, altered, or fails its signature. What this checkpoint says about its range still holds; what is lost is its proof of the permission state at that time. Check whether that record was cleared or edited directly in the database, and compare against the off-box copy."
+      "attestation_invalid": "The checkpoint itself verifies, but the permission state record sealed with it is missing, altered, or fails its signature. What this checkpoint says about its range still holds; what is lost is its proof of the permission state at that time. Check whether that record was cleared or edited directly in the database, and compare against the off-box copy.",
+      "rows_hidden": "Some audit log rows in this range are marked as deleted, but this system never deletes audit logs. They are shown on the Audit Logs page. Keep the off-site copy and investigate through your usual process; until then, don't rely on this range as audit evidence.",
+      "trim_unverified": "This is a trim record created before the upgrade: {count} trimmed segments were not signature-checked at the time and can't be checked later. This is disclosed only: it isn't counted as a failure and no event is opened. Trims after the upgrade always check signatures first and are skipped if a check fails."
+    },
+    "trimPause": {
+      "title": "Checkpoint trimming is paused",
+      "desc": "A checkpoint signature or purge proof failed verification, so nothing was trimmed this round. Investigate that checkpoint first, then wait for the next scheduled run."
     },
     "limits": {
       "title": "What this mechanism protects, and where its boundaries are",
@@ -7535,8 +7583,11 @@
       "integrity_mismatch": "Retrieved content does not match what was uploaded",
       "profile_missing": "The storage settings generation for this object is missing",
       "foreign_credentials_missing": "Credentials for that generation were revoked or are absent",
-      "credentials_unavailable": "Credentials are currently unusable"
+      "credentials_unavailable": "Credentials are currently unusable",
+      "credential_config_invalid": "The current credential settings do not meet the new requirements"
     },
+    "credentialConfigInvalidHint": "Go to Offsite storage and re-enter the service account JSON, or change the endpoint back to the official Google domain, then select Test connection.",
+    "goToSettings": "Go to offsite storage settings",
     "errorCodeUnknown": "Reason not recorded",
     "queueTitle": "Custody queue",
     "retryFailed": "Retry failed items",
@@ -8603,6 +8654,7 @@
     "submit": "Submit selected decisions",
     "invalid": "Check reasons, account scope and time window. Approval may only narrow the request.",
     "voteRecorded": "Approval vote recorded; awaiting other reviewers.",
+    "connectRequired": "The requester no longer has connect access to this asset, so this can't be approved. You can still reject the request.",
     "saved": "Decision saved for this item",
     "action": {
       "approve": "Approve / narrow",

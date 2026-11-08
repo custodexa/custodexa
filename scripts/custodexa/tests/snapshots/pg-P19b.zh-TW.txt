@@ -1,0 +1,5 @@
+[FAIL] 不能直接回到 1.16.1：/opt/custodexa/data/postgres 不是 PostgreSQL 16 的資料。
+       沒有做任何變更，服務仍在執行。
+  原因       這個目錄記錄的資料庫版本是 18，1.16.1 無法使用
+  要回到 1.16.1，請用升級前的備份還原（說明同上）：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

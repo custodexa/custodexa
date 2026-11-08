@@ -1,0 +1,14 @@
+Return to the new version: preview (nothing has been changed yet)
+
+  Current state  the last "go back" stopped before 1.16.1 started
+  Return to      1.16.2 (PostgreSQL 18)
+  Database       put the PostgreSQL 18 data kept before going back in
+                 use again:
+                 /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+                 rename it back to /opt/custodexa/data/postgresql
+                 its content stops at the moment of going back; the data
+                 written to PostgreSQL 18 before then is all still there
+  1.16.1 never started on PostgreSQL 16, so the PostgreSQL 16 data
+  did not change and nothing is lost.
+
+Start? [y/N] 

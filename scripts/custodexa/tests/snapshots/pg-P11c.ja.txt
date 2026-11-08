@@ -1,0 +1,8 @@
+データベースのアップグレード
+
+  現在         PostgreSQL 18、データは /opt/custodexa/data/postgresql
+  このバージョンの対応   PostgreSQL 18
+  [ OK ] このバージョンが対応する最新の PostgreSQL です。
+         アップグレードは不要です。
+
+何も変更していません。

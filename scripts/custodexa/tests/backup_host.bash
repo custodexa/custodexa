@@ -81,6 +81,8 @@ backup_host() {
   BK_PG_DIGEST_OTHER=sha256:1111111111111111111111111111111111111111111111111111111111111111
   bk_manifest 1.13.0 "$BK_PG_DIGEST" >"$ROOT/releases/1.13.0/MANIFEST.json"
   mkdir -p "$ROOT/data/recordings/2026" "$ROOT/data/audit" "$ROOT/data/exports" "$ROOT/tls"
+  mkdir -p "$ROOT/data/postgres"
+  printf '16\n' >"$ROOT/data/postgres/PG_VERSION"
   printf 'rec\n' >"$ROOT/data/recordings/2026/a.cast"
   printf 'audit\n' >"$ROOT/data/audit/fallback.log"
   printf 'plaintext evidence\n' >"$ROOT/data/exports/evidence.zip"

@@ -204,7 +204,7 @@ func (e *refreshCookieEnv) post(t *testing.T, path string, handler gin.HandlerFu
 // enableTOTP 讓測試使用者完成 TOTP 綁定（走服務層真流程，不手工塞欄位）
 func (e *refreshCookieEnv) enableTOTP(t *testing.T) {
 	t.Helper()
-	setup, err := e.auth.GenerateMFASetup(e.user.ID)
+	setup, err := e.auth.GenerateMFASetup(e.user.ID, "")
 	if err != nil {
 		t.Fatalf("GenerateMFASetup: %v", err)
 	}

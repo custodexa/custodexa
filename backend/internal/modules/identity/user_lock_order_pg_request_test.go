@@ -71,7 +71,7 @@ func (e *lockOrderEnv) requestEnv(t *testing.T, sub string) requestFixture {
 	}
 	for _, u := range viewers {
 		uu, aa := u, f.asset.ID
-		require.NoError(t, e.dbA.Create(&model.AssetAuthorization{UserID: &uu, AssetID: &aa, Permission: model.PermissionView, GrantedBy: e.root}).Error)
+		require.NoError(t, e.dbA.Create(&model.AssetAuthorization{UserID: &uu, AssetID: &aa, Permission: model.PermissionConnect, GrantedBy: e.root}).Error)
 	}
 	if sub == "decide_approver" {
 		aid := f.asset.ID
@@ -195,6 +195,10 @@ func runRequestFKVsGroupAdd(t *testing.T, sub string) {
 			}
 			return out
 		}
+		groupPlan := cyclePlan{class: "nowait"}
+		if !decide {
+			groupPlan = cyclePlan{class: "wait", kind: "row"}
+		}
 		e.runCycle(t, cycleSpec{
 			subcase: "request_fk_vs_group_add/" + sub,
 			shared:  fmt.Sprintf("users:%d", f.ag),
@@ -211,7 +215,9 @@ func runRequestFKVsGroupAdd(t *testing.T, sub string) {
 				return err
 			}},
 			plans: map[string]cyclePlan{
-				"group":   {class: "nowait"},
+				// 送單入口一次鎖申請人與執行者兩列（升冪）：輔助模式下群組先行持有較小編號的執行者列，
+				// 送單在第一步就等它；核決入口的申請人為 agent 時只有一方在群組內，維持不等待
+				"group":   groupPlan,
 				"request": {class: "wait", kind: "row"},
 			},
 			snap: snap, want: want,

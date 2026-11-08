@@ -404,7 +404,10 @@ type AuditLog struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `gorm:"index:idx_audit_created_at;index:idx_audit_asset_created,priority:2;index:idx_audit_user_created,priority:2" json:"created_at"`
 	UpdatedAt time.Time      `json:"-"` // 審計日誌不應被更新
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	// DeletedAt 保留欄位映射但不具軟刪語意：型別刻意不是 gorm.DeletedAt，GORM 不會自動附加
+	// deleted_at IS NULL 範圍，因此此欄非空的列仍出現在所有讀取面；非空本身是異常，
+	// 由檢查點內容層驗證與逐列完整性驗證另行回報（本系統從不軟刪操作日誌）
+	DeletedAt *time.Time `gorm:"index" json:"-"`
 
 	// 核心欄位
 	Action     AuditAction   `gorm:"type:varchar(32);not null;index:idx_audit_action_status" json:"action"`
@@ -538,7 +541,7 @@ func (a *AuditLog) BeforeUpdate(tx *gorm.DB) error {
 }
 
 // BeforeDelete 禁止經 ORM 刪除審計日誌（PCI 10.3.2）：
-// model 帶 DeletedAt 軟刪欄，無此守衛時 DB.Delete() 仍可軟刪。
+// 無此守衛時 DB.Delete() 會直接刪列。
 // 保留政策到期清除走 service 層 retention 的原生 SQL 專用路徑，不經此 hook。
 // 殘餘風險：Session(SkipHooks:true) 可繞過本守衛——全庫非測試碼零使用，
 // 新增 audit 相關碼時不得引入 SkipHooks

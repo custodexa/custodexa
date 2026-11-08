@@ -32,6 +32,17 @@ func TestNonSSHMaterialLifetime(t *testing.T) {
 	}
 }
 
+// TestPasswordPromptTerminator redis-cli --askpass 是 raw 讀取、Enter 為 CR；
+// psql／mariadb 為 canonical 讀取，維持零值（LF）。
+func TestPasswordPromptTerminator(t *testing.T) {
+	for proto, want := range map[string]byte{"redis": '\r', "postgres": 0, "mysql": 0, "mssql": 0} {
+		got := PasswordPrompt(Target{Protocol: proto, Username: "u", Password: material.Adopt([]byte("x"))}).Terminator
+		if got != want {
+			t.Errorf("%s Terminator = %q，預期 %q", proto, got, want)
+		}
+	}
+}
+
 func passwordEquals(owner *material.Secret, want string) bool {
 	same := false
 	_ = owner.Borrow(func(raw []byte) error { same = bytes.Equal(raw, []byte(want)); return nil })

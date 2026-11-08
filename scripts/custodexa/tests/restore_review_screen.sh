@@ -126,6 +126,7 @@ case $4 in
     cx_rs_stop_all() { :; }
     cx_rs_swapped() { cx_rs_phase swapped; }
     cx_rs_db_import() { cx_rs_phase imported; }
+    cx_rs_dirop_start_guard() { :; }
     cx_rs_db_check() { cx_rs_phase db_checked; }
     cx_rs_images_load() { :; }
     cx_rs_files_place() { cx_rs_phase placed; }

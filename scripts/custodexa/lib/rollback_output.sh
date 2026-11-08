@@ -56,6 +56,7 @@ cx_rb_premise_screen() {
 }
 cx_rb_refused() {
   local after=$1 new desc items="" item count=${#CX_RB_ADDED[@]} shown=0 key=rb_refused
+  if [ "$CX_RB_CROSSED" = 1 ]; then cx_rb_pg_refused "$after"; return; fi
   [ "$CX_RB_REASON" != unreadable ] || key=rb_refused_unreadable
   new=$(cx_state_get last_upgrade.to)
   if [ "$after" = 1 ]; then
@@ -108,8 +109,34 @@ cx_rb_images_screen() {
   cx_cmd "sudo $CX_ROOT/custodexa.sh load <custodexa-images-$CX_RB_TARGET-$arch.tar>$(cx_status_lang_arg)"
   cx_cmd "sudo $CX_ROOT/custodexa.sh rollback$(cx_status_lang_arg)"
 }
+# cx_rb_env_preview: the line of the preview about .env, when the block changes.
+cx_rb_env_preview() {
+  local was_profiles=0
+  cx_rb_env_plan "$CX_RB_TARGET" || return 0
+  [ -z "$(cx_env_get "$CX_ROOT/.env" COMPOSE_PROFILES)" ] || was_profiles=1
+  if [ "$CX_RB_ENV_LAYOUT" = overlays ] && [ "$(cx_form_layout "$CX_ROOT/current")" = profiles ]; then
+    cx_up_par "$(cx_msg rb_env_back "$CX_RB_TARGET")"
+  else
+    cx_up_par "$(cx_msg rb_env_fwd "$CX_RB_TARGET")"
+  fi
+  cx_form_managed_text "$CX_RB_ENV_LAYOUT" "${CX_OVERLAYS:-}" | sed '1d;$d; s/^/               /'
+  if [ "$CX_RB_ENV_LAYOUT" = overlays ] && [ "$was_profiles" = 1 ]; then
+    printf '               %s\n' "$(cx_msg rb_env_noprofiles "$CX_RB_TARGET")"
+  fi
+}
+# cx_rb_revert_refused: rollback --revert while the .env conversion of the upgrade is unfinished.
+cx_rb_revert_refused() {
+  local to from
+  to=$(cx_state_get last_upgrade.to) from=$(cx_state_get last_upgrade.from)
+  cx_line FAIL "$(cx_msg rv_pending_head "$to")"
+  printf '%s\n' "$(cx_msg rv_pending_body "$to" "$from" "$to" "$from")"
+  printf '        %s\n' "sudo $CX_ROOT/custodexa.sh rollback --resume$(cx_status_lang_arg)"
+  printf '%s\n' "$(cx_msg rv_pending_restore)"
+  printf '        %s\n' "docs/ops/backup-and-restore.md"
+}
 cx_rb_preview() {
   local count=0 pair text key=rb_basis_compatible
+  if [ "$CX_RB_CROSSED" = 1 ]; then cx_rb_pg_preview; return; fi
   for pair in $(cx_rb_target_ids); do count=$((count + 1)); done
   [ "${#CX_RB_ADDED[@]}" != 1 ] || key=rb_basis_compatible_one
   printf '%s\n\n' "$(cx_msg rb_preview)"
@@ -128,6 +155,7 @@ cx_rb_preview() {
   cx_up_par "$text"
   cx_up_par "$(cx_msg rb_keep_data)"
   cx_up_par "$(cx_msg rb_images "$count")"
+  cx_rb_env_preview
   printf '\n'
   cx_up_par "$(cx_msg rb_steps "$CX_RB_TARGET")"
   cx_up_par "$(cx_msg rb_keep_records)"
@@ -158,7 +186,7 @@ cx_rb_failed() {
   cx_rb_bullet "$(cx_msg rb_state_services "${running//$'\n'/ }")"
   cx_rb_bullet "$(cx_msg rb_unchanged_data)"
   cx_up_par "$(cx_msg up_logs_first)"
-  cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
+  cx_cmd "sudo docker logs --tail 50 custodexa-backend"
   cx_recovery_hint rollback
   cx_up_par "$(cx_msg bk_log "$CX_LOG_FILE")"
   trap - INT TERM HUP
@@ -168,6 +196,7 @@ cx_rb_done() {
   printf '\n'
   if [ "$CX_RB_DIRECTION" = revert ]; then
     text=$(cx_msg rb_reverted "$CX_RB_TARGET")
+    ! cx_rb_pg_saved || text=$(cx_msg pgrv_done "$CX_RB_TARGET")
   else
     text=$(cx_msg rb_done "$CX_RB_TARGET")
   fi
@@ -179,6 +208,10 @@ cx_rb_done() {
       text+=$(cx_msg rb_unseal "${url%/}/unseal") ;;
   esac
   cx_line OK "$text"
-  [ "$CX_RB_DIRECTION" != rollback ] || cx_up_par "$(cx_msg rb_upgrade_later)"
+  if [ "$CX_RB_DIRECTION" = rollback ]; then
+    if cx_rb_pg_saved; then cx_up_par "$(cx_msg pgrb_upgrade_later)"; else cx_up_par "$(cx_msg rb_upgrade_later)"; fi
+  elif cx_rb_pg_saved; then
+    cx_up_par "$(cx_msg pgrv_done_kept "$(cx_state_get last_rollback.db_old_major)" "$(cx_state_get last_rollback.db_old_path)")"
+  fi
   cx_up_par "$(cx_msg bk_log "$CX_LOG_FILE")"
 }

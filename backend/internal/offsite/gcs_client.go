@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
+	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/option"
 )
@@ -29,6 +31,10 @@ type GCSParams struct {
 	CredentialsFile string
 	// Endpoint 自訂端點（模擬器／私有連接點）；空＝正式 GCS
 	Endpoint string
+	// SkipEndpointCredentialCheck 略過「無顯式憑證時端點須為官方網域」的建構檢查。
+	// 只供已非現行世代的歷史取回使用，讓過去合法設定的世代仍可取回既有離機證據；
+	// 憑證內容檢查不受影響。
+	SkipEndpointCredentialCheck bool
 }
 
 // gcsDefaultJSONEndpoint 正式 GCS 的 JSON API 端點。
@@ -45,10 +51,10 @@ const gcsDefaultJSONEndpoint = "https://storage.googleapis.com/storage/v1/"
 type gcsBuildParams struct {
 	// Endpoint 實際交給 option.WithEndpoint 的值（恆非空：顯式釘住）
 	Endpoint string
-	// CredentialsJSON 實際交給 option.WithCredentialsJSON 的內容；空＝不注入。
+	// CredentialsJSON 實際交給帶服務帳號型別的憑證載入選項的內容；空＝不注入。
 	// 與 CredentialsFile 互斥（本欄非空時取本欄）
 	CredentialsJSON string
-	// CredentialsFile 實際交給 option.WithCredentialsFile 的值；空＝走 ADC 鏈、
+	// CredentialsFile 實際交給帶服務帳號型別的憑證檔載入選項的值；空＝走 ADC 鏈、
 	// 不注入 credentials 選項
 	CredentialsFile string
 	// NoAuth true＝注入 option.WithoutAuthentication（測試靶機通道，見
@@ -59,10 +65,10 @@ type gcsBuildParams struct {
 // resolveGCSBuildParams 由 GCSParams 推導最終建構參數。
 //
 // **純函式、只看入參**：本功能的設定來源只有 OFFSITE_GCS_* 鍵（經組裝根帶入），
-// 全域 `GOOGLE_APPLICATION_CREDENTIALS`／`STORAGE_EMULATOR_HOST` 不在入參之列，
-// 故不可能被採用——這正是 TestGCSClientIgnoresGlobalEnv 釘住的形狀。
-// （憑證檔鍵為空時 SDK 走 ADC 鏈；ADC 鏈自身的解析順序屬 SDK 契約，
-// 本功能不攔截、也不把它當成自己的設定鍵。）
+// 全域 `GOOGLE_APPLICATION_CREDENTIALS`／`STORAGE_EMULATOR_HOST` 不會被當成建構參數——
+// 這是 TestGCSClientIgnoresGlobalEnv 釘住的範圍（只涵蓋本函式的產物）。
+// 沒有顯式憑證時 SDK 仍會走預設憑證鏈（ADC）；預設憑證鏈取得的權杖只會送往
+// 空值或 Google 官方網域的端點，其餘由建構前檢查（checkGCSBuildPolicy）拒絕。
 //
 // **NoAuth 的判準（沿 pkg/crypto/kms 測試靶機先例）**：顯式 http 端點＋
 // 無憑證檔＝模擬器靶機（fake-gcs-server 不驗認證，而 SDK 無憑證時建構即失敗）。
@@ -90,15 +96,74 @@ type gcsClient struct {
 	bucket string
 }
 
+// gcsOAuthScopes 與 storage.NewClient 預設的 scope 一致（完整控制＋cloud-platform）。
+func gcsOAuthScopes() []string {
+	return []string{storage.ScopeFullControl, "https://www.googleapis.com/auth/cloud-platform"}
+}
+
+// gcsServiceAccountOption 以**服務帳號型別**載入憑證內容：JSON 的 type 不是
+// service_account 時載入即失敗，不會依憑證內容讀取本機檔案或對其指定的位址換權杖。
+//
+// 這裡不用 option.WithAuthCredentialsJSON(option.ServiceAccount, …)：該選項在目前的
+// SDK 版本下走新版驗證庫的 HTTP 傳輸路徑時不檢查型別（型別只在舊路徑檢查），
+// 所以改由驗證庫帶型別的建構函式先載入、再以 option.WithAuthCredentials 交給 client。
+func gcsServiceAccountOption(credJSON []byte) (option.ClientOption, error) {
+	creds, err := credentials.NewCredentialsFromJSON(credentials.ServiceAccount, credJSON,
+		&credentials.DetectOptions{Scopes: gcsOAuthScopes()})
+	if err != nil {
+		return nil, err
+	}
+	return option.WithAuthCredentials(creds), nil
+}
+
+// gcsServiceAccountFileOption 同上，來源為憑證檔路徑。
+func gcsServiceAccountFileOption(path string) (option.ClientOption, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("讀取憑證檔失敗: %w", err)
+	}
+	return gcsServiceAccountOption(content)
+}
+
+// checkGCSBuildPolicy 建構前的內容與落點檢查（在任何 SDK 呼叫之前，失敗時零對外請求）：
+//
+//   - 帶憑證內容時須通過服務帳號金鑰檢查（含權杖端點為官方值）。
+//   - 沒有顯式憑證時，https 端點必須是 Google 官方網域。http 端點走無認證通道（測試靶機），不帶任何權杖。
+func checkGCSBuildPolicy(p GCSParams, bp gcsBuildParams) error {
+	if bp.CredentialsJSON != "" {
+		if err := validateGCSServiceAccountJSON(bp.CredentialsJSON); err != nil {
+			return err
+		}
+	}
+	explicit := bp.CredentialsJSON != "" || bp.CredentialsFile != ""
+	if !explicit && !p.SkipEndpointCredentialCheck &&
+		strings.HasPrefix(bp.Endpoint, "https://") && !gcsHostIsOfficial(bp.Endpoint) {
+		return reject(ReasonGCSEndpointNeedsCredential)
+	}
+	return nil
+}
+
 // NewGCSClient 建構 gcs driver（storage.NewClient＝HTTP transport；
 // 不得改用 NewGRPCClient，理由見 gcsClient 型別註解）。
 func NewGCSClient(ctx context.Context, p GCSParams) (Client, error) {
 	bp := resolveGCSBuildParams(p)
+	if err := checkGCSBuildPolicy(p, bp); err != nil {
+		return nil, fmt.Errorf("offsite: gcs 客戶端建構被拒: %w", err)
+	}
 	opts := []option.ClientOption{option.WithEndpoint(bp.Endpoint)}
-	if bp.CredentialsJSON != "" {
-		opts = append(opts, option.WithCredentialsJSON([]byte(bp.CredentialsJSON)))
-	} else if bp.CredentialsFile != "" {
-		opts = append(opts, option.WithCredentialsFile(bp.CredentialsFile))
+	switch {
+	case bp.CredentialsJSON != "":
+		credOpt, err := gcsServiceAccountOption([]byte(bp.CredentialsJSON))
+		if err != nil {
+			return nil, fmt.Errorf("offsite: gcs 憑證載入失敗: %w", err)
+		}
+		opts = append(opts, credOpt)
+	case bp.CredentialsFile != "":
+		credOpt, err := gcsServiceAccountFileOption(bp.CredentialsFile)
+		if err != nil {
+			return nil, fmt.Errorf("offsite: gcs 憑證載入失敗: %w", err)
+		}
+		opts = append(opts, credOpt)
 	}
 	if bp.NoAuth {
 		opts = append(opts, option.WithoutAuthentication())

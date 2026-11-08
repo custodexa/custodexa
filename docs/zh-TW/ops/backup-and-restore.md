@@ -42,6 +42,8 @@
 > 資料庫裡的保管帳冊（哪一份錄影的副本在哪個儲存桶、哪個 key、上傳當下的雜湊）
 > **隨資料庫備份一起走**，所以帳冊與遠端物件的對應，取決於兩者的時點是否對得上（見 §3.1）。
 
+> **內建資料庫的資料放在哪裡，依版本而定。** 1.22.x 與更早的版本使用 `${DATA_PATH}/postgres`，掛載到 `/var/lib/postgresql/data`，如上表所示。自 1.23.0 起資料庫是 PostgreSQL 18，資料夾是 `${DATA_PATH}/postgresql`，掛載到 `/var/lib/postgresql`，資料在其下的 `18/docker`。升級把部署換到 1.23.0 時，會把舊的 `postgres` 資料夾留在原處。第 5 節與 §5.1 的手動還原指令中，寫到 `postgres` 資料夾的部分是依第一種配置寫的；1.23.0 或更新版的部署請使用 `restore` 與 `rollback`，它們知道各版本使用哪個資料夾。
+
 **上表前四列全部為 bind mount，無 named volume**。兩個直接後果：
 
 - `docker compose down -v` **不會**清掉資料（`-v` 只清 named volume）。
@@ -190,9 +192,9 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 > - 本文的 `docker compose` 指令都假定在部署專案目錄下執行（正式部署即
 >   `docker-compose.yml`）。在同時放有開發版 compose 的機器上驗證時，一律加顯式
 >   `-f docker-compose.yml`。
-> - 交由自家 ingress 承載 TLS 的部署（`docker-compose.external-ingress.yml`）：本文每一道
->   `docker compose` 指令都要帶兩個 `-f`（`-f docker-compose.yml -f docker-compose.external-ingress.yml`），
->   或在 `.env` 設 `COMPOSE_FILE` 讓它成為預設；只帶一個會以內建 TLS 代理的形態啟動。
+> - 原始碼部署中，堆疊包含哪些部分來自 `.env` 末端的管理區，那是 `scripts/quickstart.sh` 依 `EXTERNAL_DB_HOST` 與 `TLS_MODE` 寫入的。
+>   在你打本文的指令之前先跑一次腳本（`bash scripts/quickstart.sh` 只準備 `.env`、不啟動任何東西）；之後不論用內建 TLS 代理或自家 ingress
+>   （`TLS_MODE=external`），都不需要 `-f`。腳本從未跑過的資料夾裡，`docker compose` 不會啟動資料庫與代理。
 > - 安裝包部署（§3.8）請在部署目錄下執行。該處 `.env` 的 `COMPOSE_FILE` 已指向 `current/` 下的
 >   compose 檔，不需要 `-f`；但 `up` 與 `down` 要帶 `--project-directory .`（第 5 節的指令已帶上），
 >   其他須先設定的事項見 §5.1。
@@ -450,7 +452,7 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 
 #### 外接資料庫的部署
 
-在外接資料庫形態（`compose.external-database.yml`）下，`backup` 與升級第 7 步的備份，會對 `.env` 指定的伺服器（`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT`、`DB_NAME`、`DB_USER`、`DB_SSLMODE`）匯出資料庫。步驟、檔案、成員與問答都與上文相同；第 1 步停止 backend、guacd 與 frontend，不動資料庫。
+在外接資料庫形態（`.env` 填了 `EXTERNAL_DB_HOST`）下，`backup` 與升級第 7 步的備份，會對 `.env` 指定的伺服器（`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT`、`DB_NAME`、`DB_USER`、`DB_SSLMODE`）匯出資料庫。步驟、檔案、成員與問答都與上文相同；第 1 步停止 backend、guacd 與 frontend，不動資料庫。
 
 - **匯出工具。** 發行版附有 PostgreSQL 16、17、18 的用戶端，以發行清單釘住的映像提供。這個形態下 `install`、`upgrade` 與 `load` 會取得它們，並對照發行清單檢查；它們是腳本執行的工具而不是服務，所以 `status` 不會把它們列為容器。停止任何服務之前，腳本先向伺服器查詢版本，之後只使用與伺服器主版本相同的用戶端，匯出與 `snapshot.txt` 都是如此。其他主版本的伺服器，例如 15 或 19，即使另一個用戶端讀得了也會被拒絕。清單以 `tool.dump_image`（`pgclient16`、`pgclient17` 或 `pgclient18`）記錄所用的用戶端，其摘要見 `tool-MANIFEST.json`。
 - **停止任何服務之前先檢查**，除了上述的檢查之外，各有各的訊息：用戶端映像在這台主機上（沒有就以 `load` 載入發行版的離線映像包）、伺服器連得上且接受登入（失敗原因在紀錄檔）、發行版有伺服器主版本的用戶端，以及下列各項所述的設定。被拒絕時不會停止任何服務。
@@ -797,7 +799,7 @@ KEK_KMS_PROVIDER=aws
 
 **會取代與會保留的。**
 
-- `DATA_PATH` 下目前的 `postgres`、`audit`，以及部署目錄的 `tls/`，改名為 `*.before-restore-<STAMP>` 保留，不刪除：第 6 節核對無誤後請自行刪除。
+- `DATA_PATH` 下目前的資料庫資料夾（`postgres`，1.23.0 起是 `postgresql`，見[還原其他資料庫大版本的備份](#還原其他資料庫大版本的備份)）、`audit`，以及部署目錄的 `tls/`，改名為 `*.before-restore-<STAMP>` 保留，不刪除：第 6 節核對無誤後，資料庫資料夾可用 `db-upgrade --remove-old` 清除（會列出 `postgres*.before-restore-*`），其他請自行刪除。
 - 錄影：備份不含錄影時，不動 `recordings` 資料夾。已安裝的主機上，錄影因此可能與備份時點不一致：備份之後新錄的仍在磁碟上，但系統不會再列出；備份之後被清掉的不會回來。新主機上，完成畫面列出還原後資料庫記錄、但檔案不在這台的錄影數，清單是暫存目錄裡的 `missing-recordings.txt`；請從來源主機 `DATA_PATH` 下的 `recordings` 複製過來。已上傳到異地儲存的錄影，播放時會從異地取回。備份含錄影時會放回，已有同名檔案的保留，不覆蓋。
 - 版本隨資料一起回去：已安裝的主機還原後的版本是備份的版本，即使這台原本執行較新的版本。
 
@@ -838,6 +840,18 @@ KEK_KMS_PROVIDER=aws
 - **識別不符時**，腳本停止服務，還原沒有完成。請照 §6 第 6 項核對金鑰清冊，再決定接續（模式 A 先重新核對 `.env` 裡的金鑰，仍不符就不啟動服務；模式 B 與 C 重新啟動服務，等有人以正確的主金鑰解封後再核對一次），或照下方說明還原回去或放棄。
 
 **完成時**，完成畫面列出還原的來源備份、保留的資料夾與安全備份、網址、主金鑰核對結果、錄影與各項警告，並指向仍待完成的第 6 節（見下）。部署目錄 `restore/` 下的暫存目錄（權限 `0700`）會刪除資料庫、`.env` 與各封存檔的明文複本；保留缺少的錄影清單，以及還原前 `state.json` 與 `.env` 的複本（`state-before.json`、`env-before-restore`，權限 `0600`，含密鑰）。有終端機時，腳本接著以與選單相同的方式查詢最新版本，並詢問要不要升級，預設否；沒有終端機時只印指令。備份是升級時做的那份（`trigger` 為 `upgrade`）時，不查詢也不詢問：它說明部署已回到升級前的版本，並印出升級指令。
+
+#### 還原其他資料庫大版本的備份
+
+自 1.23.0 起，內建資料庫是 PostgreSQL 18；在它之前的版本使用 PostgreSQL 16。`restore` 依備份決定資料庫版本，而不是依這台主機目前執行的版本：
+
+- 備份檔記錄了資料庫的大版本（`db.server_major`）。內建資料庫的備份，這個值必須等於備份所屬版本所帶的內建資料庫大版本：1.23.0 是 18，1.22.x 與更早的版本是 16。兩者不同時，檔案本身不一致，`restore` 在停止任何服務之前就拒絕，不做任何變更。
+- 資料庫用備份所屬版本的 PostgreSQL 映像匯入，匯入到該版本使用的資料夾：1.23.0 是 `postgresql`，更早的版本是 `postgres`。
+- 目前部署使用的資料夾與備份所屬版本使用的不同時，例如在執行 1.23.0 的主機上還原 1.22.x 的備份，兩個資料夾都會在做完安全備份之後改名為 `<名稱>.before-restore-<STAMP>` 保留，不刪除。還原後的部署只留下它的版本使用的資料夾。
+- 預覽會寫明備份的資料庫版本、這次還原使用的版本，以及部署回到的版本。上述例子裡，它會說部署回到 1.22.x 與 PostgreSQL 16，目前的 PostgreSQL 18 資料會先移到一旁。服務啟動之前，腳本會核對它建出的資料夾是備份所屬版本的資料庫版本。
+- 之後再升級到 1.23.0，會從 PostgreSQL 16 重新轉換資料。保留資料夾裡的 PostgreSQL 18 資料不會合併回來。
+
+第 6 節核對無誤後，保留的資料庫資料夾（`postgres*.before-restore-<STAMP>`）可用 `db-upgrade --remove-old` 清除，它會和其他保留的資料庫資料夾一併列出；`restore` 保留的其他東西（`audit`、`tls/`）請自行清除。
 
 #### `restore` 中途停下時
 
@@ -904,6 +918,8 @@ KEK_KMS_PROVIDER=aws
 腳本只在 `restore --revert` 完成時刪除 `safety-db.dump`。其他情形它都留在暫存目錄，包括還原已完成之後；它是資料庫的明文，第 6 節核對無誤後請自行刪除。
 
 #### 手動還原
+
+**資料夾名稱。** 下面的指令寫的是 1.22.x 與更早版本的 `postgres` 資料夾。1.23.0 或更新版的部署把資料庫放在 `postgresql`（見第 2 節的說明），並需要 PostgreSQL 18 來載入；那種部署請使用 `restore` 與 `rollback`，它們知道各版本使用哪個資料夾。
 
 **以管理腳本升級後要回到舊版**（腳本畫面會指到這裡）：請先讀 §5.1。它說明下列步驟之前與之後要做什麼，
 以及如何用 `backups/` 下的資料夾填入這些步驟。
@@ -1032,9 +1048,9 @@ KEK 模式 B 的部署在步驟 6 之後仍處於已封存，須到 `/unseal` �
 ### 5.1 以管理腳本升級後，回到升級前的版本
 
 自 1.16.0 起，請先用 `rollback` 指令。它在停止任何服務之前，先判斷能不能直接回到升級前的版本：
-能的話只換回版本，資料保持不動；不能的話不做任何變更，並印出下一步。它不會自行還原備份。
+能的話只換回版本，資料保持不動（內建資料庫換過大版本之後，還會把新的資料夾移開，新版寫入的資料不會保留，見[跨資料庫大版本回到上一版](#跨資料庫大版本回到上一版)）；不能的話不做任何變更，並印出下一步。它不會自行還原備份。
 
-切換版本前的失敗不需要回到上一版。第 1 到 7 步的畫面會印出重新啟動舊版的指令；第 8 步保留編號，不執行轉換。
+切換版本前的失敗不需要回到上一版。第 1 到 7 步的畫面會印出重新啟動舊版的指令；第 8 步的資料庫轉換失敗時，腳本會自行重新啟動舊版（[升級 SOP](./upgrade-sop.md#把內建資料庫轉換到-postgresql-18)）。
 在這個狀態下執行 `rollback`，它會說明升級停在換版之前，並印出同樣的指令。
 
 #### `rollback` 可以直接回到上一版的條件
@@ -1065,7 +1081,7 @@ sudo /opt/custodexa/custodexa.sh rollback
 3. **啟動服務**，用的是上一版的映像。
 4. **核對**後端回報的是上一版，且執行中的映像就是升級前記錄的那些。
 
-資料、`.env` 與憑證都不動，也不還原備份，所以升級之後產生的紀錄都會保留。部署啟動後處於封存狀態時（KEK 模式 B 或 C，§4.2、§4.3），
+資料、`.env` 與憑證都不動，也不還原備份，所以升級之後產生的紀錄都會保留（內建資料庫換過大版本之後除外，新版寫入的資料不會保留；見下一節）。部署啟動後處於封存狀態時（KEK 模式 B 或 C，§4.2、§4.3），
 最後一行會列出 `/unseal` 的位址。此後部署目錄下的 `custodexa.sh` 是上一版的腳本，`status` 會顯示上次升級已經回到上一版。
 每次執行各有一份紀錄檔 `logs/rollback-<時間>.log`。
 
@@ -1075,13 +1091,27 @@ sudo /opt/custodexa/custodexa.sh rollback
 
 ```bash
 sudo /opt/custodexa/custodexa.sh rollback --resume   # 查明原因後，接續完成這次回到上一版
-sudo /opt/custodexa/custodexa.sh rollback --revert   # 或回到升級後的版本
+sudo /opt/custodexa/releases/<升級後版本>/custodexa.sh rollback --revert   # 或回到升級後的版本
 ```
 
 - `--resume` 從停下的那一步接著做；結果已經就位的步驟會略過。
-- `--revert` 放棄這次回到上一版，以同樣的四步回到升級後的版本，不做資料庫的再確認。停在第 1 步時還沒有換版，畫面只印 `--resume`。
-- `--revert` 開始之後，未完成的就是回到升級後版本的這一次。之後的畫面只印 `rollback --resume`，用來完成這次撤回。撤回完成後要再回到上一版，重新執行 `rollback`。
+- `--revert` 放棄這次回到上一版，以同樣的四步回到升級後的版本，不做資料庫的再確認。它要用 `releases/` 下升級後版本的腳本執行，因為回到上一版時安裝目錄最上層的腳本已換成上一版的；畫面會印出完整路徑。停在第 1 步時還沒有換版，畫面只印 `--resume`。
+- `--revert` 開始之後，未完成的就是回到升級後版本的這一次。之後的畫面只印同一個 `releases/` 路徑的 `rollback --resume`，用來完成這次撤回。撤回完成後要再回到上一版，重新執行 `rollback`。
 - 回到上一版未完成時，`upgrade`、`backup`、`restore` 會拒絕執行，並印出同樣的指令；`start`、`stop`、`status` 照常可用。
+
+#### 跨資料庫大版本回到上一版
+
+這一段只適用於使用內建資料庫、且升級確實把它換了大版本的部署：上一版的資料庫大版本與目前不同，且第 8 步的轉換已經完成。使用外接資料庫的部署，以及第 8 步被略過的升級，照上面的規則：不改名任何資料庫資料夾，也不顯示下面的警告。
+
+這種情形下，「新版沒有改動過資料庫」這個條件不適用。`rollback` 改以上一版的資料夾判定，因為轉換從不寫入它，新版也只寫新的那一個。下列全部成立時它會回去：上一版的資料夾（1.22.x 是 `postgres/`）還在，且是上一版的資料庫大版本（16）；上一版不早於 1.16.0；上面其他條件成立（只退一版、映像都在）。這個判定不讀新資料庫的 migration，也不讀新版發行清單列出的可直接回退版本。它在換版之前會再核對一次資料夾。
+
+- **新版從未啟動**（升級停在第 9 步，新版還沒啟動）。應用從未寫過 PostgreSQL 18 資料庫，舊資料夾保有升級當時的完整資料。預覽會說不會遺失任何資料，並請你確認。
+- **新版可能已經啟動。** `rollback` 仍然回去。在詢問之前，預覽會警告：新版寫入的資料不在回退後的資料庫中，包括稽核紀錄、連線紀錄、錄影索引（錄影檔留在磁碟上，但資料庫已不認得它們），以及設定與帳號的異動。它會寫出 PostgreSQL 18 資料夾改名後的路徑並說明不會刪除，也會列出另一條路：還原升級所做的備份，附上備份路徑與 `restore` 指令，那會回到升級當時，遺失的範圍相同。確認的預設為否；沒有終端機時需要 `--yes`，同樣的警告照樣印出。
+- **這次執行做了什麼。** 資料庫停止之後、上一版啟動之前，PostgreSQL 18 資料夾會改名為 `postgresql.rolled-back-<時間>`。腳本在改名之前先把這次改名記下來，執行被中斷時會完成或核對它。舊的 `postgres/` 資料夾原樣使用：腳本不改名、不搬移、不刪除它。這次改名是 `rollback` 唯一會變更資料夾的情形。
+- **`rollback --revert`** 回到 1.23.0，並在服務啟動之前把資料夾改名回來。上一版已經在舊資料上啟動過（這次執行已到啟動步驟）而健康檢查沒有通過時，它可能已在 PostgreSQL 16 接受過寫入。在詢問之前，預覽會說：這段期間寫進 PostgreSQL 16 的資料不會帶回 PostgreSQL 18，會留在舊資料夾（顯示路徑；不改名也不刪除，之後的 `rollback` 可以使用，你也可以自行匯出），而 1.23.0 會繼續使用回退之前的 PostgreSQL 18 資料。確認方式同上。上一版還沒啟動過時，沒有這段警告。
+- **回退之後**，之後再升級到 1.23.0 會重新轉換舊資料；`postgresql.rolled-back-<時間>` 不會被合併進來。`status` 把它列在保留的資料夾中，不加警告行。
+- **舊資料夾已不在時**（以 `db-upgrade --remove-old` 清除，或版本不符），`rollback` 在停止任何服務之前拒絕、不做任何變更，並說明原因：上一版的資料夾已不在。若是停機之後的最後一次核對才發現資料夾不在，拒絕時服務已經停了，畫面會印出 `start` 指令讓目前版本重新啟動。它會印出以升級所做的備份執行的 `restore` 指令。那會還原升級當時的資料，所以之後記錄的一切都會遺失；升級之後如果沒有人使用過部署，則不會遺失任何資料。
+- **這種部署在換版之後升級失敗時**（第 9 到 12 步），畫面會印出 `rollback` 指令，並把以備份執行的 `restore` 指令印出作為另一條路。新版可能已啟動時，另加一句說明新版寫入的資料在回退後不會在資料庫中。舊資料夾已不在時，只印出 `restore`。
 
 #### 只能退一版
 
@@ -1101,6 +1131,7 @@ sudo /opt/custodexa/custodexa.sh rollback --revert   # 或回到升級後的版�
 | 新版已經改過資料庫，或讀不到資料庫，並印出 `restore` 指令。外接資料庫時，畫面可能只說讀不到資料庫，而不列出新增了哪些 migration | 照印出的指令執行。它指名升級所做的備份檔，例如 `sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-<STAMP>.tar`。該次備份之後記錄的一切都會被取代。還原完成後，失敗的那次升級不再擋住 `upgrade`，可以照常再升級。還原的說明見第 5 節。 |
 | 腳本只能回到 1.16.0 以後的版本，或指向第 5 節的手動還原 | 依下方「手動回到上一版」操作，畫面會列出備份的位置。升級前的版本早於 1.16.0，或第 7 步選擇了自備備份時，就是這種情形。 |
 | 上一版的映像不在這台主機，或與紀錄不同 | 以畫面印出的 `load` 指令載入上一版的離線映像包，再執行一次 `rollback`。 |
+| 畫面說上一版的資料庫資料夾已不在（只有在內建資料庫換過大版本之後才會發生） | 沒有任何變更。執行它印出的 `restore` 指令，使用升級所做的備份；它會回到升級當時，之後記錄的一切都會遺失。見[跨資料庫大版本回到上一版](#跨資料庫大版本回到上一版) |
 | 沒有可以回到的上一版 | 沒有可以退回的變動：這個部署沒有由腳本升級過、上一次版本變動已經是回到上一版、升級之後版本紀錄已經改變，或目前執行的版本與紀錄不一致。以 `status` 查看狀態。 |
 
 #### 從 1.18.0 以後回到更早的版本
@@ -1116,6 +1147,8 @@ sudo /opt/custodexa/custodexa.sh rollback --revert   # 或回到升級後的版�
 產生不出新秘密時，還原在停止任何服務之前就拒絕。要放回的設定仍是備份裡的秘密，或撤銷沒有完成時，還原停在核對資料庫這一步、服務維持停止，還原未完成。之後請重新核發 agent 憑證。改用下方的手動方式退回時，同樣兩步要由你在第 5 節的停止點（步驟 5a）完成：資料庫載入之後、任何服務啟動之前。語句見[平台自身特權憑證輪替 §7](./privileged-credential-rotation.md#撤銷長效登入回到舊版時)。
 
 #### 手動回到上一版
+
+**資料夾名稱。** 下面的指令寫的是 1.22.x 與更早版本的 `postgres` 資料夾。1.23.0 或更新版的部署把資料庫放在 `postgresql`（見第 2 節的說明），並需要 PostgreSQL 18 來載入；那種部署請使用 `restore` 與 `rollback`，它們知道各版本使用哪個資料夾。
 
 本程序還原升級第 7 步所做的備份。升級畫面會列出它：腳本做了備份時是備份檔 `backups/custodexa-backup-<版本>-<STAMP>.tar`；升級的是 1.16.0 之前的版本時是資料夾 `backups/<STAMP>/`（§3.8）。**該次備份之後記錄的一切都會遺失**，
 這也是備份在服務停止時進行的原因。
@@ -1324,6 +1357,197 @@ docker run --rm -it --network host \
 echo "pg_restore exit code: $?"
 ```
 
+### 5.4 換到外接資料庫
+
+這一節把以堆疊自帶 postgres 運行的部署，搬到你自己的資料庫伺服器上：機構自己營運的伺服器、代管服務，或第二台機器。內建資料庫仍有資料時，若 `.env` 填了 `EXTERNAL_DB_HOST`，`scripts/quickstart.sh` 與管理腳本都會拒絕啟動，並指到這裡。本節沒有任何一步是腳本化的：它就是 §3.2 與 §5.3 的手動備份與還原，只是排成一個順序，讓原部署在新部署開始接受寫入之前完全不被動到。它涵蓋原始碼部署（以 `scripts/quickstart.sh` 執行的 clone）與安裝包部署（`custodexa.sh`）；兩者不同之處，區塊以 `state.json` 判斷，只有安裝包部署才有這個檔。用在正式資料之前，請先在副本上演練。自動化演練已把本節的區塊照寫法各跑過一次：原始碼部署與安裝包部署都從帶有資料的內建資料庫，切到要求 TLS 的 PostgreSQL 16 伺服器，並涵蓋第 6 步之前與之後的退回，以及核對值不符的情形。
+
+它不做的事：不刪除任何東西、不會自動把資料庫搬回來，也不適用於已經在用外接資料庫的部署（那種情況用 §5.3 搬到另一台伺服器）。
+
+本節的每個區塊都以 root 在同一個 shell 中依序執行；後面的區塊會用到第一個區塊定義的變數與函式。服務從步驟 2 起停機，直到步驟 6 啟動新部署。
+
+**步驟 1. 開工前先檢查（服務照常運行）。** 把三行 `X_` 填成外接伺服器的值；步驟 6 時，`DB_SSLMODE`、`EXTERNAL_DB_HOST` 與 `EXTERNAL_DB_PORT` 會取這些值。
+
+```bash
+sudo -s
+# 部署目錄；原始碼部署則是專案資料夾（`.env` 所在處）
+cd /opt/custodexa
+[ ! -f current/images.env ] || { set -a; . ./current/images.env; set +a; }
+ENV_FILE="${ENV_FILE:-./.env}"
+env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
+DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
+DB_USER="${DB_USER:-$(env_get DB_USER)}"
+DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
+DB_PASSWORD="${DB_PASSWORD:-$(env_get DB_PASSWORD)}"
+printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' "$ENV_FILE" "$DATA_PATH" "$DB_USER" "$DB_NAME"
+X_HOST=db.example.internal
+X_PORT=5432
+X_SSLMODE=require
+X_ROOT=""
+case "$X_SSLMODE" in verify-ca | verify-full) X_ROOT=" sslrootcert=system" ;; esac
+X_CONN="host=${X_HOST} port=${X_PORT} dbname=${DB_NAME:?} user=${DB_USER:?} sslmode=${X_SSLMODE}${X_ROOT}"
+CX_PGIMG="$(docker compose --project-directory . --profile bundled-db config --images | grep -E '(^|/)postgres:' | head -n 1)"
+CX_PGPASS="$(mktemp)"
+printf '%s:%s:%s:%s:%s\n' "$X_HOST" "$X_PORT" "$DB_NAME" "$DB_USER" "$(printf '%s' "${DB_PASSWORD:?}" | sed 's/[\\:]/\\&/g')" > "$CX_PGPASS"
+cx_in() { docker compose --project-directory . exec -T postgres "$@"; }
+cx_ext() { docker run --rm -i --pull never -e PGPASSFILE=/cx.pgpass -v "${CX_PGPASS}:/cx.pgpass:ro" "${CX_PGIMG:?}" "$@"; }
+CX_Q="SELECT 'migrations', count(*), md5(string_agg(version::text, ',' ORDER BY version::text)) FROM schema_migrations UNION ALL SELECT 'users', count(*), '' FROM users UNION ALL SELECT 'sessions', count(*), '' FROM sessions UNION ALL SELECT 'audit_logs', count(*), '' FROM audit_logs"
+cx_check_in() { cx_in psql -U "$DB_USER" -d "$DB_NAME" -AtX -v ON_ERROR_STOP=1 -c "$CX_Q"; }
+cx_check_ext() { cx_ext psql "$X_CONN" -AtX -v ON_ERROR_STOP=1 -c "$CX_Q"; }
+cx_in psql -U "$DB_USER" -d postgres -AtX -c "SELECT version()"
+cx_in psql -U "$DB_USER" -d postgres -AtX -c "SELECT pg_encoding_to_char(encoding), datcollate, datctype FROM pg_database WHERE datname = '${DB_NAME}'"
+cx_in psql -U "$DB_USER" -d "$DB_NAME" -AtX -c "SELECT pg_size_pretty(pg_database_size(current_database()))"
+df -h "${DATA_PATH:?}" .
+cx_ext psql "$X_CONN" -AtX -c "SELECT version()"
+cx_ext psql "$X_CONN" -AtX -c "SELECT pg_encoding_to_char(encoding), datcollate, datctype FROM pg_database WHERE datname = current_database()"
+cx_ext psql "$X_CONN" -AtX -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')"
+```
+
+下列各項都成立才能繼續：
+
+- 資料庫伺服器的管理者已建好一個名為 `DB_NAME`、擁有者為 `DB_USER`、密碼為 `.env` 內那個密碼的空資料庫。本程序讓 `DB_NAME`、`DB_USER` 與 `DB_PASSWORD` 維持 `.env` 現有的值；只有 `EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 與 `DB_SSLMODE` 會改。最後一個指令印出 `0`：資料庫是空的。
+- 兩行編碼、定序與字元類型相同，且外接伺服器的 `version()` 是 PostgreSQL 16、17 或 18，主版本不低於內建資料庫的。步驟 4 的載入，是從內建 postgres 映像的拋棄式容器執行 `pg_restore`（上面的 `X_` 指令也是），所以這台主機要連得到外接伺服器，也要有那個映像；這套堆疊曾在這台主機上跑過就符合。
+- 指令從部署目錄執行（`.env` 所在的資料夾；原始碼部署就是專案資料夾），而且 `df` 顯示那裡的可用空間大於上面印出的大小（dump 與檔案副本都寫在那裡）。外接伺服器自己的容量由它的管理者確認：腳本與本程序都看不到它的磁碟。
+- `X_SSLMODE` 用 `verify-ca` 或 `verify-full` 時，是以 postgres 容器的系統憑證授權單位檢查伺服器。伺服器憑證由你自己的授權單位簽發時，步驟 1 與 4 用 `require`，並在步驟 6 啟動之前，依 §3.8 的表在 `.env` 設好 `DB_SSLMODE` 與 `PGSSLROOTCERT`。
+
+**步驟 2. 停掉所有會寫入的東西（postgres 保持運行）。** 原始碼部署在停止之前，先確認稽核佇列已排空（[升級 SOP §2.4](./upgrade-sop.md#24-停機前確認稽核佇列已排空)）；安裝包部署的 `stop` 會自己做這件事。最後幾行必須印出 `running: postgres`。
+
+```bash
+if [ -f state.json ] && [ -x ./custodexa.sh ]; then
+  ./custodexa.sh stop --yes
+else
+  docker compose --project-directory . stop
+fi
+docker compose --project-directory . start postgres
+for _ in $(seq 1 60); do cx_in pg_isready -h 127.0.0.1 -U "$DB_USER" >/dev/null 2>&1 && break; sleep 2; done
+cx_in psql -U "$DB_USER" -d "$DB_NAME" -AtX -c 'select 1'
+CX_RUN="$(docker compose --project-directory . ps --status running --services)"
+echo "running: ${CX_RUN}"
+```
+
+從這裡到步驟 6 啟動新部署之前，沒有任何東西會寫入任何一邊的資料庫。
+
+**步驟 3. 做最終備份，並記下核對數字。** 這是 §3.2 的步驟 0 到 4 與 6，不含它的步驟 5：服務維持停止。請保留這些檔案；它們含有模式 A 的主金鑰材料與資料庫，保護方式見 §3.5。
+
+```bash
+STAMP="$(date +%Y%m%d-%H%M%S)"
+cx_in pg_dump -U "$DB_USER" -d "$DB_NAME" -Fc > "custodexa-db-${STAMP}.dump"
+tar -czf "custodexa-files-${STAMP}.tar.gz" -C "${DATA_PATH:?}" recordings audit
+cp "$ENV_FILE" "custodexa-env-${STAMP}.bak"
+[ ! -d tls ] || tar -czf "custodexa-tls-${STAMP}.tar.gz" tls
+cx_check_in > "custodexa-check-${STAMP}.txt"
+cat "custodexa-check-${STAMP}.txt"
+cx_in pg_restore --list < "custodexa-db-${STAMP}.dump" | head
+tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
+```
+
+核對檔記下已套用的 migration 筆數與清單雜湊，以及 `users`、`sessions`、`audit_logs` 的筆數。啟用離機儲存時，bucket 內的副本不在這份備份裡（§3.2 步驟 3）。
+
+**步驟 4. 把 dump 載入外接資料庫並比對。** `pg_restore` 遇到第一個錯誤就停，而且兩份核對檔必須相同。任何一項不成立就停在這裡：原部署還沒有被改動，照下面「步驟 6 之前退回」處理，並請資料庫管理者清空外接資料庫。
+
+```bash
+cx_ext pg_restore --dbname="$X_CONN" --exit-on-error < "custodexa-db-${STAMP}.dump"
+echo "pg_restore exit code: $?"
+cx_check_ext > "custodexa-check-external-${STAMP}.txt"
+diff "custodexa-check-${STAMP}.txt" "custodexa-check-external-${STAMP}.txt" && echo "check numbers are equal"
+```
+
+**步驟 5. 保留舊資料。** 原資料庫不會被刪除或清空，只是放到一邊，之後還能再啟動。這個區塊會記下舊資料目錄的檔案數與大小，之後查看時兩者必須相同。
+
+```bash
+docker compose --project-directory . down
+( cd "${DATA_PATH:?}" && find postgres | wc -l && du -sk postgres ) | tee "custodexa-olddata-${STAMP}.txt"
+if [ ! -f state.json ]; then
+  mv "${DATA_PATH:?}/postgres" "${DATA_PATH:?}/postgres.before-external-${STAMP}"
+fi
+```
+
+原始碼部署會把資料目錄改名為 `postgres.before-external-<時間>`，內容不動。安裝包部署整個部署目錄維持原樣（狀態檔、`.env`、資料目錄），只移除它的容器，因為已有同名容器的地方，`install` 會拒絕啟動。
+
+**步驟 6. 切換。** 這一步的服務一旦運行，就開始接受寫入外接資料庫，原部署絕不能再與它並存啟動。`set_env` 負責填 `.env`：該行存在就取代，不存在就接手範本中註解掉的那一行，最後才在檔尾附加。
+
+**原始碼部署**，在專案資料夾：
+
+```bash
+set_env() {
+  awk -v k="$1" -v v="$2" 'BEGIN { d = 0 } !d && ($0 ~ "^" k "=" || $0 ~ "^# *" k "=") { print k "=" v; d = 1; next } { print } END { if (!d) print k "=" v }' "$ENV_FILE" > "$ENV_FILE.new" &&
+    cat "$ENV_FILE.new" > "$ENV_FILE" && rm -f "$ENV_FILE.new"
+}
+set_env EXTERNAL_DB_HOST "$X_HOST"
+set_env EXTERNAL_DB_PORT "$X_PORT"
+set_env DB_SSLMODE "$X_SSLMODE"
+bash scripts/quickstart.sh --up
+```
+
+`quickstart.sh` 沒有被要求略過它的檢查：資料目錄已在步驟 5 改名，也沒有 postgres 容器，部署已經沒有內建資料庫的資料，所以這個形態會被接受。
+
+**安裝包部署**，在新的部署目錄。新主機上，先依[快速開始](../QUICKSTART.md#用安裝包安裝)的「用安裝包安裝」把同一版安裝包放到那裡但先不執行 `install`，並把步驟 3 的檔案複製過去。同一台主機上，則如下面所示解開到另一個資料夾；區塊預期安裝包檔案 `custodexa-<版本>.tar.gz` 就在目前資料夾，若放在別處，請先複製過來。新的 `.env` 取自步驟 3，拿掉 `DATA_PATH` 與管理區（讓 `install` 依新資料夾重寫它們），並填好三個鍵。步驟 3 的檔案要在 `install` 之前放進新的資料目錄，新部署才會帶著舊部署的錄影與稽核檔啟動；`install` 本身看到資料庫已載入，不會建立或覆寫任何帳號。
+
+```bash
+OLD_ROOT="$PWD"
+VERSION="$(tr -d '[:space:]' < current/VERSION)"
+NEW_PARENT=/srv/custodexa-b
+mkdir -p "${NEW_PARENT:?}"
+tar -xzf "custodexa-${VERSION}.tar.gz" -C "$NEW_PARENT"
+NEW_ROOT="${NEW_PARENT}/custodexa"
+cd "$NEW_ROOT"
+cp "${OLD_ROOT}/custodexa-env-${STAMP}.bak" .env
+chmod 600 .env
+ENV_FILE="$NEW_ROOT/.env"
+awk '/^# >>> managed by custodexa.sh/ { skip = 1; next } skip { if ($0 ~ /^# <<< managed by custodexa.sh/) skip = 0; next } /^[[:space:]]*DATA_PATH=/ { next } { print }' .env > .env.new &&
+  cat .env.new > .env && rm -f .env.new
+set_env() {
+  awk -v k="$1" -v v="$2" 'BEGIN { d = 0 } !d && ($0 ~ "^" k "=" || $0 ~ "^# *" k "=") { print k "=" v; d = 1; next } { print } END { if (!d) print k "=" v }' "$ENV_FILE" > "$ENV_FILE.new" &&
+    cat "$ENV_FILE.new" > "$ENV_FILE" && rm -f "$ENV_FILE.new"
+}
+set_env EXTERNAL_DB_HOST "$X_HOST"
+set_env EXTERNAL_DB_PORT "$X_PORT"
+set_env DB_SSLMODE "$X_SSLMODE"
+mkdir -p data
+tar -xzf "${OLD_ROOT}/custodexa-files-${STAMP}.tar.gz" -C data
+[ ! -e "${OLD_ROOT}/custodexa-tls-${STAMP}.tar.gz" ] || tar -xzf "${OLD_ROOT}/custodexa-tls-${STAMP}.tar.gz"
+./custodexa.sh install --yes
+```
+
+這裡的 `install` 是「新部署、外接資料庫、內建資料目錄為空」的情形，所以會被接受。沒有映像庫連線時，如快速開始所述加上 `--images <映像包>`。使用 KEK 模式 B 或 C 的部署，跟任何一次啟動一樣會回到已封存狀態（§4.2、§4.3）。
+
+**步驟 7. 驗證。** 新部署是第一個接受寫入的，所以在使用者開始用之前先檢查。再跑一次核對：`migrations` 與 `users` 兩行對步驟 3 的檔案要印出 `equal`。`sessions` 與 `audit_logs` 預期比步驟 3 大，因為新部署啟動時會寫入稽核紀錄，每次登入也會新增一個工作階段；最後一個指令把兩個檔案中這兩行都印出來，可以看出多了多少。接著走一遍 §6，並用既有的管理者帳號登入。
+
+```bash
+cx_check_ext > "custodexa-check-after-${STAMP}.txt"
+for k in migrations users; do
+  [ "$(grep "^$k|" "${OLD_ROOT:-.}/custodexa-check-${STAMP}.txt")" = "$(grep "^$k|" "custodexa-check-after-${STAMP}.txt")" ] && echo "$k: equal" || echo "$k: DIFFERENT"
+done
+grep -E '^(sessions|audit_logs)\|' "${OLD_ROOT:-.}/custodexa-check-${STAMP}.txt" "custodexa-check-after-${STAMP}.txt"
+```
+
+此後絕不能再啟動原部署。刪除舊資料是另一個決定，只在 §6 已通過、並已為新部署另做一份最終備份之後才做；本節不提供刪除的指令。第 1 步建立的 `$CX_PGPASS` 檔含資料庫密碼，不再需要本節的外接資料庫指令後，以 `rm -f "$CX_PGPASS"` 刪除。
+
+**步驟 6 之前退回。** 還沒有任何新的東西被寫入任何地方，所以原部署直接再啟動即可。先還原步驟 5，再啟動它。這個區塊適用於步驟 1 到 5 失敗的情形。若步驟 6 本身失敗或中途停住，因為 `.env` 已經改過，請改用下面的「步驟 6 之後退回」。
+
+```bash
+cd "${OLD_ROOT:-.}"
+[ ! -d "${DATA_PATH:?}/postgres.before-external-${STAMP}" ] || mv "${DATA_PATH:?}/postgres.before-external-${STAMP}" "${DATA_PATH:?}/postgres"
+if [ -f state.json ] && [ -x ./custodexa.sh ]; then
+  ./custodexa.sh start
+else
+  bash scripts/quickstart.sh --up
+fi
+```
+
+**步驟 6 之後退回。** 新部署自步驟 6 啟動後接受的所有資料，只存在外接資料庫裡，**退回不會把它們帶回來**：原部署只有步驟 3 當時的資料。停止新部署、（原始碼部署）把原本的 `.env` 放回去，再啟動原部署；`quickstart.sh` 與 `start` 會把它當作原本的形態接受。區塊假設舊、新資料夾在同一台主機；若是新主機，請先停止新主機上的服務，再到舊資料夾執行 `start`。
+
+```bash
+if [ -f "${OLD_ROOT:-.}/state.json" ]; then
+  ( cd "${NEW_ROOT:?}" && ./custodexa.sh stop --yes; docker compose --project-directory "${NEW_ROOT:?}" down )
+  cd "${OLD_ROOT:?}" && ./custodexa.sh start
+else
+  docker compose --project-directory . down
+  mv "${DATA_PATH:?}/postgres.before-external-${STAMP}" "${DATA_PATH:?}/postgres"
+  cp "custodexa-env-${STAMP}.bak" "$ENV_FILE"
+  bash scripts/quickstart.sh --up
+fi
+```
+
 ---
 
 ## 6. 還原後的驗證清單
@@ -1424,7 +1648,7 @@ echo "pg_restore exit code: $?"
 
 建立 agent 主體並指定有效的人類 owner。由 owner 或管理員建立具名稱及期限的 agent token，將僅顯示一次的明文保存於執行者的秘密儲存處。agent 僅有 user 角色，資產與帳號授權須明確限縮。在 agent 所在的機器安裝 stdio 客戶端 `custodexa-mcp`，取自 https://github.com/custodexa/custodexa-mcp：執行 `go install github.com/custodexa/custodexa-mcp@latest`，或下載 release 二進位並以同一 release 發布的 `checksums.txt` 驗證。以環境變數 `CUSTODEXA_AGENT_TOKEN` 提供給 `custodexa-mcp`，`CUSTODEXA_MCP_URL` 指向 HTTPS 的 `/api/v1/mcp`；該入口不接受人類 JWT 或 cookie。stdio 客戶端只轉送，所有判定及證據寫入均在服務端；不要把 token 放入命令參數或報告。
 
-agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
+agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。自動核准不會超出將要連線的主體所持有的常設帳號範圍：項目指名了範圍之外的帳號時，改為維持待審，由範圍涵蓋該資產的審核者決定。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
 
 輪替時先發新具名 token、更新執行者秘密、建立新的 MCP 連線並確認可視資產，再撤銷舊 token。沒有原地換 token 秘密或從備份自動找回明文的能力。撤銷會關閉由舊 token 建立的會話；句柄不能轉給新 token 或新 MCP 連線。還原或備機接管後須新建 MCP 連線，按需要重新申請任務；記憶體句柄與 60 秒冪等快取不跨重啟保存。續作前先核對保留的 token 與任務狀態。
 

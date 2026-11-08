@@ -48,10 +48,12 @@ cx_rs_revert_screen() {
   local file at count=0 path first="" minutes bytes
   file=$(cx_state_get last_restore.safety_file)
   at=$(date -d "$(cx_state_get last_restore.stopped_at)" '+%Y-%m-%d %H:%M' 2>/dev/null) || at='?'
-  for path in "$CX_RS_DATA/postgres" "$CX_RS_DATA/audit" "$CX_ROOT/tls"; do
+  local db_dir
+  db_dir=$(cx_rs_db_dir)
+  for path in "$CX_RS_DATA/$db_dir" "$CX_RS_DATA/audit" "$CX_ROOT/tls"; do
     [ -d "$path" ] || continue
     # An external database keeps no folder on this host.
-    [ "$path" != "$CX_RS_DATA/postgres" ] || ! cx_db_external || continue
+    [ "$path" != "$CX_RS_DATA/$db_dir" ] || ! cx_db_external || continue
     count=$((count + 1)); [ -n "$first" ] || first=$path.partial-restore-$CX_RS_TS
   done
   printf '%s\n\n' "$(cx_msg rs_revert_title)"

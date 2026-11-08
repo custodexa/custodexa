@@ -414,7 +414,7 @@ func TestExistingAgentRequestContract(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		asset := model.Asset{Name: fmt.Sprintf("a%d", i), Host: fmt.Sprintf("192.0.2.%d", i), Protocol: model.ProtocolSSH, AccessPolicy: &approval}
 		require.NoError(t, e.db.Create(&asset).Error)
-		require.NoError(t, e.db.Create(&model.AssetAuthorization{UserID: &e.agent.ID, AssetID: &asset.ID, Permission: model.PermissionView, GrantedBy: e.owner.ID}).Error)
+		require.NoError(t, e.db.Create(&model.AssetAuthorization{UserID: &e.agent.ID, AssetID: &asset.ID, Permission: model.PermissionConnect, GrantedBy: e.owner.ID}).Error)
 		credential := model.Credential{Username: "app", Scope: model.CredentialScopeDedicated, SecretType: "password", ProtocolFamily: model.ProtocolFamilySSH}
 		require.NoError(t, e.db.Create(&credential).Error)
 		require.NoError(t, e.db.Create(&model.AssetAccount{AssetID: asset.ID, CredentialID: credential.ID, Username: "app"}).Error)

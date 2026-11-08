@@ -433,6 +433,51 @@ describe('SshTerminal', () => {
     wrapper.unmount()
   })
 
+  it('多行輸入整段被攔的 notice 以紅字呈現整段未送出的譯文並帶規則名', async () => {
+    const wrapper = mountTerminal()
+    await layoutReady(wrapper)
+    const ws = WebSocketMock.instances[0]
+    ws.receive({ type: 'connected' })
+    terminalMock.write.mockClear()
+
+    ws.receive({
+      type: 'notice',
+      code: 'RULE_COMMAND_BLOCKED_MULTILINE',
+      data: 'zh fallback 原文',
+      params: { rule: '禁止讀取系統版本資訊' },
+    })
+    await wrapper.vm.$nextTick()
+
+    const written = terminalMock.write.mock.calls[0][0]
+    expect(written).toContain('\x1b[31m')
+    expect(written).toContain('整段都沒有送出')
+    expect(written).toContain('其餘各行也不會執行')
+    expect(written).toContain('規則：禁止讀取系統版本資訊')
+    expect(written).not.toContain('zh fallback 原文')
+    wrapper.unmount()
+  })
+
+  it('資料庫改連被攔的 notice 以紅字呈現完整譯文，無法確定整行的 notice 以黃字呈現', async () => {
+    const wrapper = mountTerminal()
+    await layoutReady(wrapper)
+    const ws = WebSocketMock.instances[0]
+    ws.receive({ type: 'connected' })
+    terminalMock.write.mockClear()
+
+    ws.receive({ type: 'notice', code: 'RULE_DB_RECONNECT_BLOCKED', data: 'zh fallback' })
+    ws.receive({ type: 'notice', code: 'RULE_DB_LINE_UNCERTAIN', data: 'zh fallback' })
+    await wrapper.vm.$nextTick()
+
+    const [blocked, uncertain] = terminalMock.write.mock.calls.map((c) => c[0])
+    expect(blocked).toContain('\x1b[31m')
+    expect(blocked).toContain('請由資產列表開新連線')
+    expect(blocked).toContain('規則：內建・改連目標')
+    expect(uncertain).toContain('\x1b[33m')
+    expect(uncertain).not.toContain('\x1b[31m')
+    expect(uncertain).toContain('請重新輸入')
+    wrapper.unmount()
+  })
+
   it('notice 幀未知 code 退回後端 data 文案', async () => {
     const wrapper = mountTerminal()
     await layoutReady(wrapper)

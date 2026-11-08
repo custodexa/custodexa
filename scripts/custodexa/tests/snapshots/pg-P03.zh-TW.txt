@@ -1,0 +1,12 @@
+[FAIL] 資料庫裡有自動轉換不支援的設定，升級不會開始。
+       沒有停止任何服務，也沒有做任何變更。
+  擴充套件：pg_stat_statements, pgcrypto
+  自訂表空間：archive_ts
+  其他角色：report_reader（被授予物件的權限）
+  Custodexa 不會建立這些設定，表示資料庫曾被手動調整過。
+  自動轉換只搬 Custodexa 自己的資料，帶著這些設定轉換會不完整，所以先停下。
+  請照「升級 SOP」的「資料庫含額外設定時」一節處理：
+  移除這些設定後重新執行同一個指令，不想移除的改用外接資料庫。
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+
+沒有做任何變更。

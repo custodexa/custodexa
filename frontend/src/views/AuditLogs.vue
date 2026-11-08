@@ -198,7 +198,7 @@
                   :type="getActionTagType(row.action)"
                   size="small"
                 >
-                  {{ translateAction(row.action) }}
+                  {{ actionText(row) }}
                 </el-tag>
                 <el-tag
                   v-for="tag in grantMarkTags(row)"
@@ -230,10 +230,10 @@
             >
               <template #default="{ row }">
                 <el-tag
-                  :type="getStatusTagType(row.status)"
+                  :type="statusTagType(row)"
                   size="small"
                 >
-                  {{ translateStatus(row.status) }}
+                  {{ statusText(row) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -578,7 +578,7 @@
 
         <el-descriptions-item :label="$t('auditLogs.action')">
           <el-tag :type="getActionTagType(selectedLog.action)">
-            {{ translateAction(selectedLog.action) }}
+            {{ actionText(selectedLog) }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item :label="$t('auditLogs.resource')">
@@ -587,9 +587,16 @@
         </el-descriptions-item>
 
         <el-descriptions-item :label="$t('common.status')">
-          <el-tag :type="getStatusTagType(selectedLog.status)">
-            {{ translateStatus(selectedLog.status) }}
+          <el-tag :type="statusTagType(selectedLog)">
+            {{ statusText(selectedLog) }}
           </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="uploadPhase(selectedLog)"
+          :label="$t('auditLogs.uploadPhase.label')"
+          :span="2"
+        >
+          <span data-test="log-upload-phase">{{ $t(`auditLogs.uploadPhase.hint.${uploadPhase(selectedLog)}`) }}</span>
         </el-descriptions-item>
         <el-descriptions-item
           v-if="selectedLog.status_code"
@@ -1044,6 +1051,33 @@ const translateStatus = (status) =>
   AUDIT_STATUS_VALUES.includes(status) ? t(`enum.auditStatus.${status}`) : status
 
 const getActionTagType = auditActionTagType
+
+// 圖形通道的檔案上傳留有三種階段紀錄（details.phase：開始、完成、未完成）。
+// 資料上「開始」列的狀態仍是 success，畫面改顯示中性的「已開始」，免得被讀成上傳成功；
+// 沒有 phase 的舊紀錄與其他通道的上傳維持原顯示
+const UPLOAD_PHASES = ['started', 'completed', 'incomplete']
+const uploadPhase = (log) => {
+  if (!log || log.action !== 'file_upload' || !log.details) return ''
+  try {
+    const phase = JSON.parse(log.details)?.phase
+    return UPLOAD_PHASES.includes(phase) ? phase : ''
+  } catch {
+    return ''
+  }
+}
+const actionText = (log) => {
+  const phase = uploadPhase(log)
+  const base = translateAction(log.action)
+  return phase
+    ? t('auditLogs.uploadPhase.actionFmt', { action: base, phase: t(`auditLogs.uploadPhase.tag.${phase}`) })
+    : base
+}
+const statusTagType = (log) =>
+  uploadPhase(log) === 'started' ? 'info' : getStatusTagType(log.status)
+const statusText = (log) =>
+  uploadPhase(log) === 'started'
+    ? t('auditLogs.uploadPhase.startedStatus')
+    : translateStatus(log.status)
 
 // 成功的操作：訊息欄的標籤與樣式由它決定（失敗與拒絕仍是錯誤訊息）
 const isSuccessLog = (log) => log?.status === 'success'

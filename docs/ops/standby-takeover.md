@@ -4,12 +4,12 @@
 
 > Applies to: the rehearsed 1.13.3 source-tree layout. This is not a current package-deployment command sequence. For package deployments, use `custodexa.sh` for each host's installation and upgrade, with the external database backup boundary in §8; validate the full two-host sequence in your environment before relying on it.
 >
-> **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record.
+> **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record. The command blocks of §2.1, §2.2, §3 and §5 were also run in an automated test on a single machine, in the external database shape with the built-in proxy (two deployment folders with the same secrets and one database server; the first deployment started and written to, its containers removed, the second started from the copied files and reading the first one's data). The copy in §2.2 was done locally in place of rsync to another host, and the placeholders were filled in. That checks the commands, not the guard's confirmation path, and it is not a rehearsal across two physical hosts.
 >
 > Related documents: [Deployment Topology Limits](./deployment-topology-limits.md), [Backup and Restore](./backup-and-restore.md),
 > [Deployment and Upgrade SOP](./upgrade-sop.md) (§2.6b for the guard message, §3.4 for the runtime lock states).
 >
-> Every `docker compose` command in this document runs on an application host in the external database shape, so it needs both files (`-f docker-compose.yml -f docker-compose.external-database.yml`) or a `COMPOSE_FILE` in `.env` that lists them; with your own ingress in front, that list has three files. The commands below write only `docker compose` for brevity.
+> Every `docker compose` command in this document runs in the deployment folder of an application host, the folder that holds `docker-compose.yml` and `.env`. There is one compose file for every shape, and the shape comes from `.env`: filling in `EXTERNAL_DB_HOST` leaves the bundled postgres out, and `TLS_MODE` decides between the built-in proxy and your own ingress. `bash scripts/quickstart.sh` derives the shape from those two keys and keeps it as `COMPOSE_PROFILES` in a managed block at the end of `.env`, where `docker compose` reads it. No `-f` option and no `COMPOSE_FILE` line are needed; the commands below write only `docker compose`.
 
 ---
 
@@ -34,11 +34,10 @@ Everything the two hosts share lives in the database. What each host keeps for i
 
 ### 2.1 Put the database outside the application host
 
-The stack's bundled postgres lives on the application host, so with the default shape the host and the data go down together. The external database overlay leaves the bundled postgres out and points the backend at a server you name:
+The stack's bundled postgres lives on the application host, so with the default shape the host and the data go down together. Filling in `EXTERNAL_DB_HOST` leaves the bundled postgres out and points the backend at a server you name. After editing `.env`, run `bash scripts/quickstart.sh`: it checks the address and records the shape (§2.2 step 2).
 
 ```env
 # .env on every application host (the same values on the primary and the standby)
-COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
 EXTERNAL_DB_HOST=db.example.internal
 EXTERNAL_DB_PORT=5432
 DB_NAME=custodexa
@@ -102,7 +101,7 @@ The certificate's name has to match `EXTERNAL_DB_HOST` for `verify-full` to pass
 The standby is a second application host prepared from the same files, kept **down** until it is needed. Prepare it at the same time as the primary and repeat the preparation after every change to the primary, because a standby that lags behind takes over with the wrong version or the wrong settings.
 
 1. **The same images, at the same version.** Build or load the production images on the standby exactly as on the primary (Deployment and Upgrade SOP §2.2). Every upgrade of the primary is an upgrade of the standby too (§8): a standby left on the previous version starts against a newer schema and refuses to start (SOP §2.6), and a standby on a newer version would migrate the schema under the primary's feet.
-2. **The same compose files and the same `.env`.** Copy `docker-compose.yml`, `docker-compose.external-database.yml` (and the ingress overlay if you use it), `docker/`, and `.env` from the primary. The values that differ between the two hosts are the few in the table below; everything else, secrets included, has to be identical, or the standby cannot read what the primary wrote.
+2. **The same files and the same `.env`.** Copy `docker-compose.yml`, `docker/`, `scripts/`, `VERSION` and `.env` from the primary. The one compose file serves every shape, so there is nothing else to copy for the external database or for your own ingress. The values that differ between the two hosts are the few in the table below; everything else, secrets included, has to be identical, or the standby cannot read what the primary wrote.
 
    | Key | On the standby |
    |---|---|
@@ -114,11 +113,22 @@ The standby is a second application host prepared from the same files, kept **do
    ```bash
    # on the primary: the deployment files the standby needs, .env and tls/ included
    rsync -a --relative \
-     docker-compose.yml docker-compose.external-database.yml docker/ .env tls/ \
+     docker-compose.yml docker/ scripts/ VERSION .env tls/ \
      standby:/opt/custodexa/
    ```
 
+   With `TLS_MODE=external` there is no `tls/` folder; leave it out of the list.
+
    `.env` carries the database password and, in `KEK_PROVIDER=env` mode, the KEK material; `tls/ca-private/` carries the local CA's private key. Move them the way you move secrets, and keep the `0600` permission on the standby.
+
+   On the standby, in the deployment folder, check the copied `.env` and record the shape. Nothing is started:
+
+   ```bash
+   # on the standby, in the deployment folder
+   bash scripts/quickstart.sh
+   ```
+
+   The script derives the shape from `EXTERNAL_DB_HOST` and `TLS_MODE`, and the `COMPOSE_PROFILES` line it reports has to read the same as on the primary. From then on a takeover needs no option and no compose file name: `docker compose up -d` on the standby starts the same services as on the primary.
 3. **The same TLS material.** With `TLS_MODE=selfsigned`, copy `tls/` so the standby serves the same CA and certificate; a standby that generates its own CA at first start is a new, untrusted site to every browser and every SSO callback. With `TLS_MODE=provided`, put the same certificate files in place.
 4. **The KEK material has to be available on the standby**, or the standby starts and stays sealed with nothing readable:
 
@@ -279,7 +289,7 @@ Run on the standby after §3 or §4; every row has to hold before the takeover i
 
 | # | Check | How | Expected |
 |---|---|---|---|
-| 1 | Services up | `docker compose ps` | backend, frontend, guacd, tls-proxy running; no postgres (it is not part of this shape) |
+| 1 | Services up | `docker compose ps` | backend, frontend and guacd running, plus tls-proxy with the built-in proxy; no postgres (it is not part of this shape) |
 | 2 | Backend healthy | `docker compose exec backend wget -qO- http://localhost:8080/health` | A normal response |
 | 3 | Lock state | `curl -sk https://<address>/api/v1/seal/status`; while `overridden`, also `GET /api/v1/instance-guard` as an administrator, or the holder in the banner | `instance_guard.state` is `held` after §3; after §4.3, `held`, or `overridden` with the holder's `backend_start` unchanged from the §4.2 message. `reason` is `ack_page` when the confirmation was made on the halt page and `ack_startup` when it came from `INSTANCE_GUARD_ACK`; the `overridden` audit row carries the confirming account for the first and `operator via env` for the second. A holder with a newer `backend_start` means another backend took the lock (§4.4) |
 | 4 | Sign-in works | Sign in with an account whose password you know | The sign-in succeeds; users' accounts, roles and assets are all there, since they are in the database |
@@ -354,7 +364,7 @@ Compatibility is one-way: this release verifies old checkpoints, but old release
 
 Create an agent principal with an active human owner. As that owner or an administrator, create a named, expiring agent token; save the one-time plaintext in the operator's secret store. The agent has only the user role and explicitly scoped asset/account grants. Install the `custodexa-mcp` stdio client on the agent's machine from https://github.com/custodexa/custodexa-mcp, either with `go install github.com/custodexa/custodexa-mcp@latest` or as a release binary verified against the `checksums.txt` published with that release. Supply `CUSTODEXA_AGENT_TOKEN` to `custodexa-mcp` through its environment and set `CUSTODEXA_MCP_URL` to the HTTPS `/api/v1/mcp` endpoint. Human JWTs and cookies cannot authenticate this endpoint. The stdio client forwards tool calls; all decisions and evidence writes happen in the service. Never put the token in command arguments or reports.
 
-Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
+Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Automatic approval never goes beyond the standing accounts of the principal that will connect: an item that names an account outside that scope stays pending for an approver whose scope covers the asset. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
 
 Rotate by issuing a new named token, updating the operator's secret, starting a new MCP connection and verifying asset visibility, then revoking the old token. There is no in-place token secret rotation or automatic token recovery from backup. Revocation closes sessions created with the old token; a session handle cannot move to a new token or MCP connection. After restore or standby takeover, create new MCP connections and tasks as needed; old in-memory handles and the 60-second idempotency cache do not survive restart. Inspect retained token state and task state before resuming work.
 

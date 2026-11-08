@@ -198,15 +198,17 @@ interrupted_at() {
   printf '%s\n' "$output" | grep -qxF '      start backend guacd frontend' || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF "    sudo $ROOT/custodexa.sh upgrade 1.13.2" || { echo "$output"; return 1; }
   [[ $output != *"upgrade preview"* ]] || { echo "$output"; return 1; }
-  # Step 8 of a package deployment reorganizes nothing: the same as stopped and not switched.
+  # Step 8 is the database conversion: stopped and still stopped is judged by the proof that the
+  # application never started again (nothing recorded here, so a new run from the start), with the
+  # preview again and no refusal.
   interrupted_at 8 'false 2026-09-30T02:15:30Z' || return 1
-  printf '%s\n' "$output" | grep -qxF '      start backend guacd frontend' || { echo "$output"; return 1; }
-  [[ $output != *"upgrade preview"* ]] || { echo "$output"; return 1; }
+  [[ $output == "[WARN] The last upgrade was interrupted at step 8"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"upgrade preview"* ]] || { echo "$output"; return 1; }
   # Switched to the new version, running or not: the log, the backup and how to restore it by
   # hand; never over again.
   interrupted_at 10 || return 1
   [[ $output == "[FAIL] The last upgrade run was interrupted at step 10."* ]] || { echo "$output"; return 1; }
-  printf '%s\n' "$output" | grep -qxF "    sudo docker compose -p custodexa -f $ROOT/current/compose.yml logs --tail 50 backend" || { echo "$output"; return 1; }
+  printf '%s\n' "$output" | grep -qxF "    sudo docker logs --tail 50 custodexa-backend" || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF "  Pre-upgrade backup: $ROOT/backups/20260930-021504/" || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF '  To go back to 1.12.4, restore the backup above by hand as described' || { echo "$output"; return 1; }
   [[ $output != *"custodexa.sh rollback"* ]] || { echo "$output"; return 1; }

@@ -1,0 +1,29 @@
+撤回回到上一版：預覽（還沒有做任何變更）
+
+  目前狀態   上一次「回到上一版」沒有完成：已改用 PostgreSQL 16，
+             但 1.16.1 啟動之後的核對沒有通過
+  撤回到     1.16.2（PostgreSQL 18）
+  資料庫     把指回前保留的 18 資料改回使用：
+             /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+             改名回 /opt/custodexa/data/postgresql
+             內容停在指回當時；指回前寫入 18 的資料都還在
+
+[WARN] 1.16.1 已經用 PostgreSQL 16 運作過一段時間。指回期間寫進 16 的資料，
+       不會出現在撤回後的資料庫裡：
+         - 稽核紀錄
+         - 連線紀錄
+         - 錄影索引：錄影檔仍在磁碟上，但撤回到 1.16.2 後在系統裡查不到
+         - 設定與帳號異動（新增、修改、刪除的使用者、資產、授權、政策）
+  這些資料仍留在舊資料目錄，不會刪除，也不會合併回來：
+    /opt/custodexa/data/postgres
+
+確定撤回，回到 1.16.2，並放棄指回期間寫入 16 的資料嗎？[y/N] y
+
+[ OK ] 1/4  停止服務                                        0 秒
+[ OK ] 2/4  把 18 的資料改回 /opt/custodexa/data/postgresql
+[ OK ] 3/4  啟動服務                                        0 秒
+[ OK ] 4/4  核對：後端回報 1.16.2，資料庫是 PostgreSQL 18   0 秒
+
+[ OK ] 已撤回，回到 1.16.2。系統已封存，請到 https://10.0.0.12/unseal 解封。
+  指回期間寫入 16 的資料仍在 /opt/custodexa/data/postgres，沒有被刪除。
+  紀錄檔 /opt/custodexa/logs/rollback-20261120-021502-0.log

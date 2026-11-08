@@ -1,0 +1,19 @@
+Remove old database folders (cannot be undone)
+
+  To remove
+    /opt/custodexa/data/postgres
+        PostgreSQL 16    17.4 GB
+  After removal
+    - this data cannot be recovered
+    - rollback can no longer go back to 1.22.0; to go back to 1.22.0, only the
+      pre-upgrade backup can be restored, and data written after the
+      upgrade is lost
+  [WARN] The pre-upgrade backup /opt/custodexa/backups/custodexa-backup-1.22.0-20261120-021502.tar was not found.
+         After removal there is no way back to 1.22.0 on this host.
+  The PostgreSQL 18 in use (/opt/custodexa/data/postgresql) is not affected
+  and the service is not stopped.
+
+To confirm, type the PostgreSQL version being removed (16):
+> 16
+
+[ OK ] Removed /opt/custodexa/data/postgres, freed 17.4 GB

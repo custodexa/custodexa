@@ -42,10 +42,7 @@ func agedTrimmableChain(t *testing.T, f *purgeFixture) int64 {
 		}
 	}
 	f.sealInterval(t, 1, time.Now())
-	if err := f.db.Exec("UPDATE audit_checkpoints SET sealed_at = ? WHERE seq = 1",
-		aged.Add(-time.Hour)).Error; err != nil {
-		t.Fatalf("age genesis: %v", err)
-	}
+	f.ageGenesis(t, aged.Add(-time.Hour))
 	var n int64
 	if err := f.db.Model(&model.AuditCheckpoint{}).Count(&n).Error; err != nil {
 		t.Fatalf("count: %v", err)

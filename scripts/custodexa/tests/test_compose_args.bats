@@ -21,6 +21,7 @@ setup() {
 
 @test "overlays are added with -f in the recorded order" {
   CX_OVERLAYS="external-ingress external-database" cx_compose up -d
+  # The overlays layout (a release before 1.23): the base file plus the overlay files of the form.
   grep -qF -- "-f $ROOT/current/compose.yml -f $ROOT/current/compose.external-ingress.yml -f $ROOT/current/compose.external-database.yml up -d" "$FAKE_DOCKER_LOG"
 }
 
@@ -68,12 +69,6 @@ service_block() {
   [ "$env" = /var/lib/custodexa/exports ] || return 1
   # Only backend holds the artifacts (they include decrypted evidence).
   [ "$(grep -c '/exports:' "$PKG/compose.yml")" -eq 1 ] || return 1
-  # The overlays add to compose.yml; none may drop the mount or move the path of backend.
-  for f in "$PKG"/compose.external-*.yml; do
-    b=$(service_block "$f" backend)
-    if grep -Eq '^    volumes: *!(override|reset)|EXPORT_ARTIFACT_PATH' <<<"$b"; then
-      echo "${f##*/} replaces the volumes or the export path of backend"
-      return 1
-    fi
-  done
+  # One compose file serves every form: no overlay file is left to drop the mount.
+  [ -z "$(ls "$PKG"/compose.external-*.yml 2>/dev/null)" ] || return 1
 }

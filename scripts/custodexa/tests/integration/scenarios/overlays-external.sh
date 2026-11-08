@@ -5,14 +5,14 @@
 
 readonly OE_PORT=15417
 
-# oe_form <label> <COMPOSE_FILE> <overlays> <database>
+# oe_form <label> <TLS_MODE, or - for the default> <overlays> <database>
 oe_form() {
   local label=$1 root=/opt/custodexa from to id
   from=$(jq -r .version /it-run/pkg-from/MANIFEST.json)
   to=$(jq -r .version /it-run/pkg/MANIFEST.json)
   it_step "$label: install $from, external database PostgreSQL 17 at $(ex_addr):$OE_PORT/$4"
   ex_db_create pg17 "$4"
-  EX_CF=$2 ex_install "$root" from "$OE_PORT" "DB_NAME=$4"
+  EX_TLS=${2#-} ex_install "$root" from "$OE_PORT" "DB_NAME=$4"
   it_same "install recorded as succeeded" succeeded "$(ex_st "$root" install.result)"
   it_same "the overlays" "$3" "$(ex_st "$root" current.overlays)"
   id=$(ex_st "$root" current.tool_image_ids)
@@ -41,8 +41,7 @@ oe_form() {
 
 scenario() {
   ex_pg_start pg17 17 "$OE_PORT"
-  oe_form "external database" current/compose.yml:current/compose.external-database.yml external-database custodexa
-  oe_form "external database + external ingress" \
-    current/compose.yml:current/compose.external-ingress.yml:current/compose.external-database.yml \
+  oe_form "external database" - external-database custodexa
+  oe_form "external database + external ingress" external \
     "external-ingress external-database" custodexa_ingress
 }

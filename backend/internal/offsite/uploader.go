@@ -291,6 +291,16 @@ func (u *Uploader) reapLeases() {
 	}
 }
 
+// clientBuildErrCode 建構客戶端失敗時的帳冊原因碼：憑證設定不符合要求者歸
+// ErrCodeCredentialConfigInvalid（管理員可自行修正），其餘維持泛稱的上傳失敗。
+func clientBuildErrCode(err error) string {
+	switch ReasonOf(err) {
+	case ReasonGCSCredentialInvalid, ReasonGCSEndpointNeedsCredential:
+		return ErrCodeCredentialConfigInvalid
+	}
+	return ErrCodeUploadFailed
+}
+
 // processOne 單件上傳（含一層 recover——一件的 panic 不得中斷整輪）。
 func (u *Uploader) processOne(ctx context.Context, obj model.OffsiteObject) {
 	defer func() {
@@ -334,7 +344,7 @@ func (u *Uploader) processOne(ctx context.Context, obj model.OffsiteObject) {
 
 	client, err := u.profiles.ClientFor(ctx, obj.StorageGenerationID)
 	if err != nil {
-		u.fail(obj, attempts, ErrCodeUploadFailed, err)
+		u.fail(obj, attempts, clientBuildErrCode(err), err)
 		return
 	}
 	ext, err := adapter.Extension(obj.OwnerID)

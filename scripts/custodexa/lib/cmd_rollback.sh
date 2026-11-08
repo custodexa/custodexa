@@ -88,6 +88,7 @@ cmd_rollback() {
   [ "$(cx_state_get current.kind)" = package ] || cx_die "$CX_EXIT_REFUSED" svc_not_installed
   CX_OVERLAYS=$(cx_state_get current.overlays)
   cx_compose_files >/dev/null || return "$CX_EXIT_REFUSED"
+  cx_form_guard rollback || return "$CX_EXIT_REFUSED"
   cx_bk_vars
   CX_RB_FRESH=1
   if [ "${CX_RESUME:-0}" = 1 ] || [ "${CX_REVERT:-0}" = 1 ]; then
@@ -95,14 +96,28 @@ cmd_rollback() {
     [ "$(cx_state_get last_rollback.result)" = in_progress ] || {
       cx_line FAIL "$(cx_msg rb_no_pending)"; cx_rb_status_hint; return "$CX_EXIT_REFUSED";
     }
+    # An unfinished .env conversion of the upgrade: going back to the new version would start the
+    # wrong services. Refused before the direction or any step changes.
+    if [ "${CX_REVERT:-0}" = 1 ] && cx_fg_pending; then
+      cx_rb_revert_refused
+      return "$CX_EXIT_REFUSED"
+    fi
     cx_rb_pending || return "$CX_EXIT_REFUSED"
     CX_RB_TARGET=$(cx_state_get last_rollback.target)
     CX_RB_DIRECTION=$(cx_state_get last_rollback.direction)
     if [ "${CX_REVERT:-0}" = 1 ]; then
-      CX_RB_TARGET=$(cx_state_get last_rollback.from)
+      # Across the database major the way back has its own preview and, when the version before
+      # already ran, the warning; it is decided on the record before the direction changes.
+      if cx_rb_pg_saved && [ "$CX_RB_DIRECTION" != revert ]; then
+        cx_rb_pg_revert_preview
+        CX_RB_TARGET=$(cx_state_get last_rollback.from)
+        cx_rb_pg_revert_confirm || return "$CX_EXIT_REFUSED"
+      else
+        CX_RB_TARGET=$(cx_state_get last_rollback.from)
+        cx_up_par "$(cx_msg rb_revert_title "$CX_RB_TARGET")"
+        cx_confirm rb_confirm || return "$CX_EXIT_REFUSED"
+      fi
       CX_RB_DIRECTION=revert
-      cx_up_par "$(cx_msg rb_revert_title "$CX_RB_TARGET")"
-      cx_confirm rb_confirm || return "$CX_EXIT_REFUSED"
     fi
   else
     if [ "$(cx_state_get last_rollback.result)" = in_progress ]; then
@@ -116,7 +131,11 @@ cmd_rollback() {
     if ! cx_rb_judge; then cx_rb_refused 0; return "$CX_EXIT_REFUSED"; fi
     if ! cx_rb_images; then cx_rb_images_screen; return "$CX_EXIT_REFUSED"; fi
     cx_rb_preview
-    cx_confirm rb_confirm || { printf '%s\n' "$(cx_msg pre_nothing_changed)"; return "$CX_EXIT_REFUSED"; }
+    if [ "$CX_RB_CROSSED" = 1 ]; then
+      cx_rb_pg_confirm || return "$CX_EXIT_REFUSED"
+    else
+      cx_confirm rb_confirm || { printf '%s\n' "$(cx_msg pre_nothing_changed)"; return "$CX_EXIT_REFUSED"; }
+    fi
   fi
   cx_rb_open || return "$CX_EXIT_FAILED"
   cx_rb_main

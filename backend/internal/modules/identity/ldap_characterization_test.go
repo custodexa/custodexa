@@ -1,10 +1,12 @@
 package identity
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/custodexa/backend/internal/model"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -60,65 +62,37 @@ func TestCharacterization_LocalAccountNeverReachesLDAPPath(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 不變式二：username 查詢大小寫敏感 -> 目錄側大小寫變體供應獨立影子帳號
+// 不變式二：帳號名稱不分大小寫對應既有帳號，目錄登入不因大小寫另建帳號
 // ---------------------------------------------------------------------------
 //
-// verifyCredentials 以 `Where("username = ?", req.Username)` 查詢（既有行為，
-// 非本 change 引入），未對輸入做大小寫正規化（不 lower()/upper()、不用
-// ILIKE），故若本地已有帳號「admin」，目錄側存在「Admin」時查詢視為查無
-// 此帳號 -> 落入 LDAP 分支 -> 供應一個獨立影子帳號，而非合併/接管既有
-// 本地 admin。影子帳號預設 user 角色、無提權，本身不構成安全問題；
-// 這條測試釘住的是「現況如此」，防日後有人為了「大小寫不敏感更友善」
-// 把查詢改成 LOWER()/ILIKE，從而讓分支序（不變式一）的前提被破壞。
-func TestCharacterization_CaseVariantUsernameGetsIndependentShadowAccount(t *testing.T) {
-	_, mock, _ := setupAuthMockDB(t)
-	authService := NewAuthService("secret", 15*time.Minute)
-
-	fake := &fakeLDAPAuthenticator{info: &LDAPUserInfo{
-		Username: "Admin", // 目錄端回報的帳號名與本地既有的 "admin" 大小寫不同
-		Email:    "directory-admin@example.org",
-		FullName: "Directory Admin",
-	}}
-	authService.SetLDAPResolver(staticLDAPResolver(fake))
-
-	// 大小寫敏感查詢：查 "Admin" 對不到本地既有的 "admin" 列 -> 視為查無帳號
-	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE username`).
-		WillReturnError(gorm.ErrRecordNotFound)
-
-	mock.ExpectQuery(`SELECT count\(\*\) FROM "users"`).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-
-	mock.ExpectBegin()
-	mock.ExpectQuery(`INSERT INTO "users"`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
-	// 主體投影 create 與供應帳號同交易。
-	mock.ExpectQuery(`INSERT INTO "audit_logs"`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
-	mock.ExpectQuery(`SELECT .+ FROM "roles" WHERE name`).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
-	mock.ExpectExec(`INSERT INTO user_roles`).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	// 角色指派的同交易留痕（role-assignment-integrity）
-	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// 權限版本推進：與角色指派同交易，置於提交之前
-	mock.ExpectExec(`UPDATE authz_state SET version = version \+ 1`).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
-
-	expectFinishLoginUpdate(mock)
-
-	resp, err := authService.Login(&LoginRequest{Username: "Admin", Password: "directory-password"})
-
-	assert.NoError(t, err)
-	if assert.NotNil(t, resp) {
-		// 帳號名原樣保留大小寫，不與本地 "admin" 合併為同一身分
-		assert.Equal(t, "Admin", resp.User.Username)
-		// 影子帳號只拿預設 user 角色，不因帳號名撞近本地 admin 而提權
-		assert.Equal(t, []string{"user"}, resp.User.Roles)
-		assert.Equal(t, "ldap", resp.AuthSource)
+// verifyCredentials 精確查詢後，對目錄登入（精確命中目錄帳號或精確查無）以
+// 目錄端的同名規則（去前後空白、相容正規化、不分大小寫）取同名帳號組：
+// 組內有目錄帳號就沿用該帳號、帳號數不變；組內只有本地或外部身分帳號時拒絕
+// 且不打目錄。本地帳號名的比對仍是精確的
+// （精確命中本地帳號恆走本地密碼路徑，不變式一）。
+func TestCharacterization_CaseVariantUsernameResolvesToExistingAccount(t *testing.T) {
+	auth, _, db := setupRoleMappingEnv(t)
+	existing := roleMappingUser(t, db, "alice")
+	local := &model.User{Username: "Admin", Password: "irrelevant", Active: true}
+	if err := db.Create(local).Error; err != nil {
+		t.Fatal(err)
 	}
-	assert.Equal(t, 1, fake.calls)
-	assert.NoError(t, mock.ExpectationsWereMet())
+	before := caseVariantUserCount(t, db)
+
+	// 目錄帳號：變體登入沿用既有帳號
+	resp, err, calls, after := caseVariantLogin(t, auth, db, "ALICE")
+	if err != nil || resp == nil || resp.User.ID != existing.ID || resp.User.Username != "alice" {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	if calls != 1 || after != before {
+		t.Fatalf("calls=%d 帳號數 %d -> %d", calls, before, after)
+	}
+
+	// 與本地帳號只差大小寫：拒絕、不打目錄、不新增帳號
+	_, err, calls, after = caseVariantLogin(t, auth, db, "admin")
+	if !errors.Is(err, ErrInvalidCredentials) || calls != 0 || after != before {
+		t.Fatalf("err=%v calls=%d 帳號數 %d -> %d", err, calls, before, after)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -133,10 +107,11 @@ func TestCharacterization_CaseVariantUsernameGetsIndependentShadowAccount(t *tes
 // `Username: username`——這個 username 是登入請求的原始輸入參數，
 // 不是從目錄 entry 讀出的屬性（entry 只貢獻 Email/FullName）。
 //
-// 本測試在 AuthService 這一端釘住「provisionShadowUser 信任 info.Username
-// 原樣入庫，不受 Email/FullName 影響」；配合上述 ldap_authenticator.go 的
-// 既有事實（未變、非本測試檔可驗證範圍），完整鏈路即為「影子帳號名＝
-// 請求端輸入」。這是已知殘留（filter 驗證只是縱深防禦而非完整封閉），
+// 本測試在 AuthService 這一端釘住「provisionShadowUser 以 info.Username
+// 入庫，不受 Email/FullName 影響」；入庫前只做名稱的保存形（去前後空白、
+// 相容正規化，大小寫保留），本測試的輸入已是保存形。配合上述
+// ldap_authenticator.go 的既有事實（未變、非本測試檔可驗證範圍），完整鏈路
+// 即為「影子帳號名＝請求端輸入的保存形」。這是已知殘留（filter 驗證只是縱深防禦而非完整封閉），
 // 根本修法（以 entry 穩定屬性回填帳號名）另列待辦、
 // 不在本 change 範圍——測試釘住的是「現況如此」，供未來變更時能明確
 // 看到行為改變。
@@ -157,6 +132,9 @@ func TestCharacterization_ShadowUsernameComesFromRequestInputNotDirectoryAttribu
 
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE username`).
 		WillReturnError(gorm.ErrRecordNotFound)
+	// 精確查無後的同名帳號組查詢：組為空，沿用首次登入供應
+	mock.ExpectQuery(`SELECT "id","username" FROM "users"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}))
 
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))

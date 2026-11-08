@@ -1,0 +1,7 @@
+[FAIL] 無法確認空間夠不夠，升級不會開始。沒有停止任何服務，
+       也沒有做任何變更。
+  無法判定的位置   Docker 映像儲存區（讀不到它的路徑）
+  腳本不會在沒有確認的情況下假設空間足夠。確認 Docker 運作正常之後，
+  重新執行同一個指令：
+    sudo docker info
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

@@ -3,5 +3,5 @@
   服務仍在運作，沒有做任何變更。
   通常代表資料庫忙碌或寫入變慢。請在使用量較低時再執行升級。
   想自己看目前的數字：
-    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml exec -T backend \
+    sudo docker exec custodexa-backend \
       wget -qO- http://localhost:8080/metrics | grep custodexa_audit_queue_depth

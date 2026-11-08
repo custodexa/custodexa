@@ -1,0 +1,7 @@
+Database upgrade
+
+  Now           PostgreSQL 18, data in /opt/custodexa/data/postgresql
+  This release  PostgreSQL 18
+  [ OK ] Already the newest PostgreSQL this release supports; no upgrade needed.
+
+Nothing was changed.

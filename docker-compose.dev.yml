@@ -1,11 +1,11 @@
 services:
   # PostgreSQL 資料庫
   #
-  # 與正式版 compose 同版（16.15-alpine3.24）：開發期若跑在不同 PG patch 上，
+  # 與正式版 compose 同版（18.6-alpine3.24，同 digest）：開發期若跑在不同 PG patch 上，
   # 「開發全綠、部署才炸」的舊型缺陷會在資料庫層重演。釘版理由與 digest 查證
   # （2026-08-17）見 docker-compose.yml 的同名服務註解。
   postgres:
-    image: postgres:16.15-alpine3.24
+    image: postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     container_name: custodexa-postgres-dev
     environment:
       # 與 backend 同源：由專案根 .env 的 DB_* 驅動（未設則 dev 預設值）
@@ -16,7 +16,8 @@ services:
       - "5432:5432"
     volumes:
       # DATA_PATH 資料夾根（預設 ./data）：DB 資料落於專案內可檢視目錄
-      - ${DATA_PATH:-./data}/postgres:/var/lib/postgresql/data
+      # 18 的映像把資料放在其下的 18/docker，不設 PGDATA；舊的 16 資料留在 ./data/postgres，開發者重建一次
+      - ${DATA_PATH:-./data}/postgresql:/var/lib/postgresql
     networks:
       - custodexa-network
     healthcheck:

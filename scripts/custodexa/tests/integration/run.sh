@@ -94,7 +94,9 @@ host_start() {
   docker volume create --label "$LABEL" "$name-docker" >/dev/null
   started="$started $name"
   docker run -d --privileged --name "$name" --hostname "$hostname" --label "$LABEL" \
-    --network "$net" -e DOCKER_TLS_CERTDIR= -v "$name-docker:/var/lib/docker" -v "$repo:/src:ro" "$@" \
+    --network "$net" -e DOCKER_TLS_CERTDIR= -e CX_IT_PG_BULK_ROWS="${CX_IT_PG_BULK_ROWS:-}" -e CX_IT_PG_SECTIONS="${CX_IT_PG_SECTIONS:-}" \
+    -e CX_IT_PUBLISHED_VERSION="${CX_IT_PUBLISHED_VERSION:-}" \
+    -v "$name-docker:/var/lib/docker" -v "$repo:/src:ro" "$@" \
     "$HOST_IMAGE" dockerd --host=unix:///var/run/docker.sock ${store[@]+"${store[@]}"} >/dev/null
   for ((i = 0; i < READY_TRIES; i++)); do
     docker exec "$name" docker info >/dev/null 2>&1 && return 0
@@ -156,7 +158,7 @@ img_tar() { # <key>: the cached tar's file name for this architecture
 # PostgreSQL clients of the release build.
 check_pins() {
   local k ref
-  for k in pg16 openssl-3.5.4; do
+  for k in pg18 openssl-3.5.4; do
     ref=$(catalogue "$k" | awk '{print $3}')
     grep -qF ":-$ref}" "$repo/packaging/compose.yml" || die "images.txt $k ($ref) is not the pin in packaging/compose.yml"
   done
@@ -256,7 +258,7 @@ scenario_phase() { # <scenario>: prints the scenario's own PASS/FAIL line, retur
   say "== $s ($name, network ${net:-none})"
   host_start "$name" "${net:-none}" "${CX_IT_STORE:-default}" it-host "${mounts[@]}"
   set +e
-  docker exec -e IT_IMAGES="$images" "$name" bash /src/scripts/custodexa/tests/integration/inside.sh scenario "$s" 2>&1 |
+  docker exec -e IT_IMAGES="$images" -e CX_IT_PG_SECTIONS="${CX_IT_PG_SECTIONS:-}" "$name" bash /src/scripts/custodexa/tests/integration/inside.sh scenario "$s" 2>&1 |
     tee "$run/$s.log"
   rc=${PIPESTATUS[0]}
   set -e
@@ -301,6 +303,9 @@ hosts_phase() {
     rc=${PIPESTATUS[0]}
     set -e
     [ "$rc" -eq 0 ] || break
+    # "# free-hosts: yes": a host whose part passed is not needed again (the parts share only the
+    # transfer volume); its engine and images go now, so many hosts fit the disk of the Docker VM.
+    if [ "$last" = 0 ] && [ "$(meta "$s" free-hosts)" = yes ]; then host_stop "$PREFIX-$runid-$s-$h"; fi
   done
   if [ "$rc" -ne 0 ] && [ "${CX_IT_KEEP:-0}" = 1 ]; then
     for h in $names; do

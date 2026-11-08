@@ -148,9 +148,12 @@ describe('Assets 入口成因與延遲呈現', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    // 只有檢視權且無申請狀態：明說既不能連線也不能申請（成因仍是權限，不是停用）
     const tip = wrapper.vm.connectTooltipContent({ active: true, permission: 'view' })
-    expect(tip).toBe(wrapper.vm.$t('assets.noPermTooltip'))
+    expect(tip).toBe(wrapper.vm.$t('assets.viewOnlyTooltip'))
     expect(tip).not.toContain('停用')
+    // 有申請狀態者（待審等）維持一般權限不足說明
+    expect(wrapper.vm.connectTooltipContent({ active: true, permission: 'view', access_state: 'pending' })).toBe(wrapper.vm.$t('assets.noPermTooltip'))
   })
 
   it('可連資產提示為連線引導（三態不互相汙染）', async () => {
@@ -450,6 +453,19 @@ describe('Assets 申請深連結 ?apply=', () => {
     expect(infoSpy.mock.calls[0][0]).toContain(text)
     expect(lastReplaceQuery()).not.toHaveProperty('apply')
     infoSpy.mockRestore()
+  })
+
+  it('只有檢視權（列資料無 access_state）：不開對話框，警示說明不能申請；參數被清除', async () => {
+    routeQuery.apply = '32'
+    listWith({ ...DETAIL, permission: 'view' })
+    const warnSpy = vi.spyOn(ElMessage, 'warning').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.applyVisible).toBe(false)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy.mock.calls[0][0]).toContain('只有檢視權限')
+    expect(lastReplaceQuery()).not.toHaveProperty('apply')
+    warnSpy.mockRestore()
   })
 
   it('資產不存在或不可視（getAsset 拒絕）：不開對話框、不拋未處理例外；參數被清除', async () => {

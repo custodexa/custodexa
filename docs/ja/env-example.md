@@ -24,17 +24,24 @@
 1. `cp .env.example .env`
 2. 編集します。すべてのシークレットを変更したうえで、必要に応じて `DB_SSLMODE` / LDAP / `DATA_PATH` を
    設定します。
-3. `docker compose up -d`
+3. `bash scripts/quickstart.sh --up`
 
-一括で行う場合は `bash scripts/quickstart.sh --up` を実行します。このコマンドは `.env` を作成し、
+手順 1 は省略できます。`bash scripts/quickstart.sh --up` は、`.env` が無ければ作成し、
 テンプレート値のまま残っているシークレットを生成したうえで、スタックを起動します。すでに記入済みの値は
-変更されません。
+変更されません。素の `docker compose up -d` ではなく、スクリプトから起動してください。
+スクリプトが、`.env` の内容からスタックのどの部分が必要かを判断します（下の「デプロイ形態」を参照）。
 
 ### 本番スタックと開発スタック
 
 既定の `docker-compose.yml` は本番スタックです。nginx がビルド済みのフロントエンドを配信し、バックエンドは
 スリムなバイナリで、TLS プロキシが 443 番ポートで https を公開し、テスト用ターゲットは含まれません。自分の環境で Custodexa を運用することが目的であれば、
 ここまでで完了です。
+
+**デプロイ形態。** すべての形態を 1 つの compose ファイルで賄い、本ファイルの 2 つのキーが形態を決めます。
+`EXTERNAL_DB_HOST`（データベース）と `TLS_MODE`（Web の入口）が唯一のスイッチで、形態を切り替える
+`COMPOSE_FILE` の行はありません（下の開発スタックだけが例外です）。`quickstart.sh` がこの 2 つのキーを読んで
+compose の profiles を導き出し、結果をファイルの末尾にある管理ブロック（「managed by custodexa.sh」の印付き）に
+書き込みます。管理ブロックはスクリプトのものです。そのままにして、形態を変えるときは 2 つのキーを変更してください。
 
 開発者の方は、下記の `COMPOSE_FILE` のコメントを外してください。これにより、すべての `docker compose`
 コマンド（`exec ... go test` を含む）が `-f` を付けずに開発スタックを対象とします。開発スタックでは
@@ -43,6 +50,8 @@
 上書きできるため、開発マシンからでも本番構成を検証できます。あわせて `KEK_PROVIDER=env` と
 `ENCRYPTION_KEY` も設定してください。ホットリロードはリビルドのたびにプロセスを再起動するため、`ui` のままでは
 保存のたびにアンシール（unseal）操作が必要になります。
+開発スタックは独自のデータベースと入口を持ちます。`EXTERNAL_DB_HOST` を記入したり `TLS_MODE=external` に
+したりすると、`quickstart.sh` は黙って無視するのではなく、実行を拒否して理由を説明します。
 
 ### `COMPOSE_FILE`
 
@@ -66,7 +75,7 @@ docker compose CLI が解釈するため、env ドリフトガードのキー集
 
 トポロジとモードの定数（`DB_HOST=postgres`、`GUACD_HOST=guacd`、`DB_DRIVER`、`GIN_MODE`、コンテナ内のパス）は
 compose の `environment:` ブロックから与えられます。このブロックは `env_file` より優先されるため、本ファイルで
-設定しても効果はありません。`DB_HOST` を変える唯一の形態である external database overlay は、本ファイルの後半にある
+設定しても効果はありません。`DB_HOST` を変える唯一の形態である外部データベースは、本ファイルの後半にある
 専用のキー `EXTERNAL_DB_HOST` から値を取り、ここに `DB_HOST` の行を書いても読みません。`DB_DRIVER` には出荷時の既定値がなく、値がなければバックエンドは起動を拒否します。
 両方の compose ファイルはこれを供給しますが、バイナリ単体または自前ビルドによるデプロイ（k8s マニフェスト、
 systemd ユニットなど）では、その側で供給する必要があります。サポート対象は PostgreSQL のみです。sqlite の分岐は
@@ -365,6 +374,9 @@ TLS_MODE=selfsigned
   配布前はブラウザが警告し、外部 ID プロバイダもコールバックを拒否します。
 - **`provided`** — 自身の `tls/fullchain.pem` と `tls/privkey.pem` を使います。公開 CA でも
   組織内 CA でも構いません。ファイルが無い場合、起動はその名前を示して停止します。
+- **`external`** — 自前のロードバランサーまたはリバースプロキシが https を担います。内蔵プロキシは
+  起動せず、フロントエンドが平文 http を公開して自前の ingress から到達できるようになります
+  （下の「自前の ingress があるデプロイ」を参照）。
 
 `tls/` にある証明書は常にそのまま使われ、再生成されません。差し替えるにはファイルを削除して
 起動し直します。
@@ -390,11 +402,10 @@ TLS_IP_SAN=
 
 ### 自前の ingress があるデプロイ
 
-前段にロードバランサーやリバースプロキシが既にある場合は、`COMPOSE_FILE` の行の
-コメントを外します。内蔵プロキシは起動せず、フロントエンドが平文 http を公開して
-あなたの ingress から到達できるようになります。有効にできる `COMPOSE_FILE` は同時に
-一行だけなので、この形態を使うときはファイル冒頭の開発用の行をコメントのままにしてください。
-`HTTP_PORT` はこの形態でフロントエンドが公開するポートです。
+前段にロードバランサーやリバースプロキシが既にある場合は、上の `TLS_MODE` を `external` にします。
+内蔵プロキシは起動せず、フロントエンドが平文 http を公開して
+あなたの ingress から到達できるようになります。
+下の `HTTP_PORT` はこの形態でフロントエンドが公開するポートです。
 
 TLS を終端するのはお使いの ingress なので、ブラウザから何がどう見えるかもその ingress が決めます。
 Host ヘッダーは、利用者が実際に接続するポートを含めて転送してください（ポートが 443 でないときは
@@ -404,25 +415,28 @@ Host ヘッダーは、利用者が実際に接続するポートを含めて転
 なります。
 
 ```env
-# COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml
 # HTTP_PORT=80
 ```
 
-### 自前のデータベースがあるデプロイ（external database overlay）
+### 自前のデータベースがあるデプロイ
 
 PostgreSQL をこのホスト以外の場所（組織が既に運用しているデータベースサーバー、マネージドサービス、
 または自前の 2 台目のマシン）に置くと、このアプリケーションホストはデータの唯一の置き場ではなくなります。
 事前に用意し、同じデータベースへ向けたスタンバイホストが、このホストの停止中に引き継げます。
-この overlay は同梱の postgres をスタックから外し、バックエンドを下で指定するサーバーへ向けます。そのとき上の
+`EXTERNAL_DB_HOST` を記入するだけで済みます。同梱の postgres は起動せず、バックエンドは下で指定するサーバーへ
+接続します。そのとき上の
 `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE` はそのサーバー上のデータベースとアカウントを表し
-（ネットワーク越しなら `require` か `verify-full`）、`${DATA_PATH}/postgres` は使われなくなります。
+（ネットワーク越しなら `require` か `verify-full`）、同梱データベースのデータフォルダーは使われなくなります。
+値はホスト名または IP アドレスだけです。スキーム、ポート、アカウント、空白は含められず、このホスト自身や
+このスタックのサービスを指すアドレスも使えません（スクリプトが拒否し、理由を示します）。ポートは別の行に書きます。
 データベースとアカウントは初回起動の前に作成しておきます。スキーマはバックエンドが作成します。
 `scripts/quickstart.sh` を実行する前に `DB_PASSWORD` を自分で記入してください。`EXTERNAL_DB_HOST` を設定した場合、スクリプトはこの値を生成せず、未記入なら停止して記入を求めます。
-下の 3 行のコメントを外します。ingress overlay と組み合わせるには、2 つのファイルを 1 つの `COMPOSE_FILE` の値に並べます。
+上の `TLS_MODE=external` とは自由に組み合わせられます。空のままにすると同梱データベースを使います。
+同梱データベースにすでにデータがある場合、この値を記入してもデータは移動しません。スクリプトは拒否し、
+`docs/ja/ops/backup-and-restore.md` の「外部データベースへの切り替え」の節を案内します。先にデータを移してください。
 切り替えの手順、スタンバイホストに事前に必要なもの、切り替えで保たれないものは `docs/ja/ops/standby-takeover.md` を参照してください。
 
 ```env
-# COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
 # EXTERNAL_DB_HOST=
 # EXTERNAL_DB_PORT=5432
 ```
@@ -895,7 +909,7 @@ TRUSTED_PROXIES=
 します。合意されたプロキシチェーンがなければ、レート制限のキーが転送ヘッダによって汚染され得るためであり、迂回できる
 防御は大雑把な防御よりも悪いからです。
 既定の形態ではスタックが自前のプロキシを持ち、quickstart が上の `DOCKER_SUBNET` で指定された Docker サブネットを
-ここに記入します。自前の ingress を運用する場合（`docker-compose.external-ingress.yml`）は、代わりにその ingress の
+ここに記入します。自前の ingress を運用する場合（`TLS_MODE=external`）は、代わりにその ingress の
 アドレスをここに設定してください。
 
 ### `SEAL_UNSEAL_BIND_ADDR`
@@ -915,3 +929,21 @@ SEAL_UNSEAL_ALLOWED_CIDRS=
 アンシールエンドポイントへの到達を許可する送信元の範囲です（CIDR または素の IP、カンマ区切り）。空欄の場合は制限しません。
 管理ネットワークと組み合わせて指定してください。認証のないエンドポイントでは、どのようなレート制限の仕組みをもってしても
 管理者が必ず通過できることを保証できないためです。
+
+---
+
+## 管理ブロック（`scripts/quickstart.sh` が書き込む）
+
+スクリプトを一度実行すると、本ファイルの末尾に次の 2 行に挟まれたブロックができます。
+
+```env
+# >>> managed by custodexa.sh: derived from EXTERNAL_DB_HOST and TLS_MODE; do not edit
+# <<< managed by custodexa.sh
+```
+
+ブロックの中には `COMPOSE_PROFILES` の行が 1 つあり、`EXTERNAL_DB_HOST` と `TLS_MODE` が求めるスタックの部分を表します。
+このテンプレートには含まれず、テンプレートのどの設定もこれを必要としません。docker compose はこれを読むので、
+このフォルダーで素の `docker compose stop` や `docker compose ps` を実行しても、`quickstart.sh` が起動したのと同じ
+サービスが対象になります。手で編集しないでください。形態を変えるときは `EXTERNAL_DB_HOST` または `TLS_MODE` を変更して、
+`bash scripts/quickstart.sh --up` をもう一度実行します。古いリリースの `.env` に 2 つの旧 overlay ファイルを並べた
+`COMPOSE_FILE` の行が残っている場合、スクリプトは次の実行時にそれを変換し、変更点をすべて表示します。

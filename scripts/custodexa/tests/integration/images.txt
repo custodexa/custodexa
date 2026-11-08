@@ -1,7 +1,7 @@
 # Images a scenario can ask for with its "# images:" line, loaded into its integration host.
 #   <key> registry <ref:tag@digest>   pulled once by digest for this architecture, then kept as a tar
 #   <key> build <tag> <Dockerfile>    built on this machine (path relative to this folder)
-# pg16 and openssl-3.5.4 must be the pins of packaging/compose.yml; run.sh refuses a drift.
+# pg18 and openssl-3.5.4 must be the pins of packaging/compose.yml; run.sh refuses a drift.
 # A server of a major the release has no client for (a restore must refuse it before any stop).
 pg15          registry postgres:15.19-alpine3.24@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
 pg16          registry postgres:16.15-alpine3.24@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea

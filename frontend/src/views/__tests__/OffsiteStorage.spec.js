@@ -520,6 +520,34 @@ describe('失敗清單與重試', () => {
     expect(failuresMock).toHaveBeenCalledTimes(2)
   })
 
+  it('憑證設定不合規的失敗列：顯示專屬原因、操作指引與前往設定的動作', async () => {
+    const page = failureRows(1)
+    page.data[0].error_code = 'offsite.credential_config_invalid'
+    failuresMock.mockResolvedValue(page)
+    const wrapper = await mountPage()
+
+    const table = at(wrapper, 'offsite-failures')
+    expect(table.text()).toContain('目前的憑證設定不符合新的要求')
+    expect(table.text()).not.toContain('原因未記錄')
+    const hint = at(wrapper, 'offsite-credential-config-11')
+    expect(hint.text()).toContain('服務帳戶 JSON')
+    expect(hint.text()).toContain('Google 官方網域')
+    expect(hint.text()).toContain('測試連線')
+
+    const goto = at(wrapper, 'offsite-goto-settings-11')
+    expect(goto.text()).toContain('前往離機儲存設定')
+    await goto.trigger('click')
+    await flushPromises()
+    // 動作只捲動與聚焦，不送出任何請求
+    expect(retryObjectMock).not.toHaveBeenCalled()
+  })
+
+  it('其他失敗原因不顯示前往設定的動作', async () => {
+    failuresMock.mockResolvedValue(failureRows(1))
+    const wrapper = await mountPage()
+    expect(at(wrapper, 'offsite-goto-settings-11').exists()).toBe(false)
+  })
+
   it('「重試失敗項」先確認再批次放回佇列', async () => {
     retryFailedMock.mockResolvedValue({ retried: 3 })
     const wrapper = await mountPage()

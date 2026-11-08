@@ -69,6 +69,7 @@ var (
 	CodeAccessRequestSelfApproval     = register("RULE_ACCESS_REQUEST_SELF_APPROVAL", Descriptor{ZhFallback: "不得核准或拒絕自己的申請"})
 	CodeNotEligibleApprover           = register("RULE_ACCESS_REQUEST_NOT_ELIGIBLE_APPROVER", Descriptor{ZhFallback: "申請資產不在您的審核範圍內"})
 	CodeRequesterExempt               = register("RULE_ACCESS_REQUEST_REQUESTER_EXEMPT", Descriptor{ZhFallback: "此角色不需或不得提出連線申請"})
+	CodeAccessRequestConnectRequired  = register("RULE_ACCESS_REQUEST_CONNECT_REQUIRED", Descriptor{ZhFallback: "你目前沒有這台資產的連線權限，不能提出申請。請聯絡管理員授予連線權限。"})
 	CodeNotRevokeEligible             = register("RULE_ACCESS_TICKET_NOT_REVOKE_ELIGIBLE", Descriptor{ZhFallback: "你沒有撤銷這筆臨時授權的資格"})
 
 	// 破窗開關關閉＝封 API；前端據此碼隱藏入口自癒（原 legacy 小寫碼

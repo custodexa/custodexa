@@ -590,3 +590,37 @@ func TestUploaderSkipsUnknownKind(t *testing.T) {
 		t.Fatalf("無 adapter 不是該件的錯，attempts 不得遞增，實得 %d", got.Attempts)
 	}
 }
+
+// TestUploaderCredentialConfigInvalidRecordsDedicatedCode 現行世代的憑證設定不符合
+// 建構要求時，帳冊記專屬原因碼；其他建構失敗仍歸泛稱的上傳失敗。
+func TestUploaderCredentialConfigInvalidRecordsDedicatedCode(t *testing.T) {
+	cases := []struct {
+		name    string
+		buildEr error
+		want    string
+	}{
+		{"憑證不是服務帳戶 JSON", fmt.Errorf("offsite: gcs 客戶端建構被拒: %w", rejectWith(ReasonGCSCredentialInvalid, "type")), ErrCodeCredentialConfigInvalid},
+		{"無顯式憑證且端點非官方網域", fmt.Errorf("offsite: gcs 客戶端建構被拒: %w", reject(ReasonGCSEndpointNeedsCredential)), ErrCodeCredentialConfigInvalid},
+		{"其他建構失敗維持泛稱", errors.New("offsite: 建構 GCS 客戶端失敗"), ErrCodeUploadFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rig := newUploaderRig(t)
+			rig.svc.SetClientFactoryForTest(func(context.Context, ClientBuildSpec) (Client, error) {
+				return nil, tc.buildEr
+			})
+			rig.adapter.put(1, &fakeFile{content: []byte("cast"), mtime: rig.clk.Now()})
+			row, _ := enqueue(t, rig.offsiteTestRig, KindRecording, 1, OriginLive)
+
+			rig.uploader.RunCycle(context.Background())
+
+			got, _ := rig.ledger.Get(row.ID)
+			if got.ErrorCode != tc.want {
+				t.Fatalf("error_code = %q, want %q", got.ErrorCode, tc.want)
+			}
+			if got.State != StatePending {
+				t.Fatalf("未達上限應退避重試，實得 %q", got.State)
+			}
+		})
+	}
+}

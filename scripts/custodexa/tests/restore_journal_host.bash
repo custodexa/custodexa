@@ -6,7 +6,7 @@ rs_journal_host() {
   backup_strict
   fake sleep ':'
   mkdir -p "$ROOT/data/postgres"
-  printf 'original database\n' >"$ROOT/data/postgres/PG_VERSION"
+  printf '16\noriginal database\n' >"$ROOT/data/postgres/PG_VERSION"
   printf 'original leaf\n' >"$ROOT/tls/fullchain.pem"
   printf 'original key\n' >"$ROOT/tls/privkey.pem"
   export RS_J_STAGE=$ROOT/restore/journal-test

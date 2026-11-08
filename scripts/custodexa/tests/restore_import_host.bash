@@ -8,7 +8,7 @@ rs_import_host() {
   mkdir -p "$ROOT/data/postgres" "$RS_I_STAGE/pass2"
   cp "$ROOT/.env" "$RS_I_STAGE/env.merged"
   printf 'PGDMP source archive\n' >"$RS_I_STAGE/pass2/db.dump"
-  printf 'original cluster\n' >"$ROOT/data/postgres/PG_VERSION"
+  printf '16\noriginal cluster\n' >"$ROOT/data/postgres/PG_VERSION"
   cp -a "$ROOT/releases/1.16.0" "$ROOT/releases/1.16.1"
   printf '1.16.1\n' >"$ROOT/releases/1.16.1/VERSION"
   touch "$ROOT/releases/1.16.1/compose.yml"
@@ -37,7 +37,7 @@ case " $* " in
   *' up -d postgres '*)
     n=$(cat "$DB/import-attempts" 2>/dev/null || echo 0); n=$((n + 1))
     printf '%s\n' "$n" >"$DB/import-attempts"
-    printf 'cluster %s\n' "$n" >"$ROOT/data/postgres/PG_VERSION"
+    printf '16\ncluster %s\n' "$n" >"$ROOT/data/postgres/PG_VERSION"
     printf 'up postgres\n' >>"$DB/events"
     printf 'running\n' >"$DB/ctr/postgres"
     exit 0 ;;

@@ -1189,6 +1189,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		return fail("scopedTemplateSeed", err)
 	}
 	checkpointPurger := audit.NewCheckpointPurger(database.DB, checkpointSigning)
+	checkpointPurger.SetFailureAlerter(auditFailureService)
 	checkpointService := audit.NewCheckpointService(database.DB, checkpointSigning, syslogForwarder,
 		func(mechanism, causeCode string, params map[string]string, recovered bool) {
 			if recovered {

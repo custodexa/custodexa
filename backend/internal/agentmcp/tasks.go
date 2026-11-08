@@ -151,6 +151,8 @@ func requestError(err error) *mcp.CallToolResult {
 		return codeResult(string(apierror.CodeBadParams))
 	case errors.Is(err, authz.ErrAccessRequestNotFound):
 		return codeResult(string(apierror.CodeAccessRequestNotFound))
+	case errors.Is(err, authz.ErrRequestConnectRequired):
+		return codeResult(string(apierror.CodeAccessRequestConnectRequired))
 	case errors.Is(err, authz.ErrStartInPast):
 		return codeResult(string(apierror.CodeAccessRequestStartInPast))
 	case errors.Is(err, authz.ErrAccountScopeInvalid):

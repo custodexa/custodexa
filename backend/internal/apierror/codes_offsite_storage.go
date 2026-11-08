@@ -75,6 +75,16 @@ var (
 		Descriptor{ZhFallback: "找不到指定的離機儲存設定世代"})
 	CodeConflictOffsiteCredentialsAlreadyRevoked = register("CONFLICT_OFFSITE_CREDENTIALS_ALREADY_REVOKED",
 		Descriptor{ZhFallback: "該世代的憑證已撤銷"})
+	// gcs 憑證須為服務帳號金鑰 JSON：{field} 只指名不符的欄位（type／client_email／
+	// private_key／token_uri／json），不回顯值
+	CodeValidationOffsiteGCSCredentialInvalid = register("VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID",
+		Descriptor{
+			ZhFallback: "服務帳戶 JSON 的「{field}」欄位不符合要求，請重新下載服務帳戶金鑰檔後貼上。",
+			Params:     []ParamSpec{{Key: "field", Kind: ParamOpaque}},
+		})
+	// 沒有顯式服務帳號憑證時，端點只能為空或 Google 官方網域
+	CodeValidationOffsiteGCSEndpointNeedsCredential = register("VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL",
+		Descriptor{ZhFallback: "沒有填入服務帳戶 JSON 時，端點只能留空或使用 Google 官方網域（googleapis.com）。要使用其他端點，請填入服務帳戶 JSON。"})
 	CodeInternalOffsiteCredentialEncrypt = register("INTERNAL_OFFSITE_CREDENTIAL_ENCRYPT",
 		Descriptor{ZhFallback: "離機儲存憑證加密失敗，請檢查金鑰狀態"})
 	CodeInternalOffsiteCredentialDecrypt = register("INTERNAL_OFFSITE_CREDENTIAL_DECRYPT",

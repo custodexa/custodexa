@@ -213,7 +213,7 @@ func TestAuthorizationSelfSubjectGuard(t *testing.T) {
 }
 
 // ownAgentEnv 在既有申請流夾具上加：agent 7（owner=approver 2）、user 5 另一具資格審核者
-// （直配 asset 1）；asset 1 為需核准段位。
+// （直配 asset 1）；asset 1 為需核准段位；agent 持三資產的常設 connect（申請資格）。
 func ownAgentEnv(t *testing.T) (*AccessRequestService, *gorm.DB) {
 	t.Helper()
 	svc, _, db := setupAccessRequestEnv(t)
@@ -235,7 +235,7 @@ func ownAgentEnv(t *testing.T) (*AccessRequestService, *gorm.DB) {
 	}
 	for aid := uint(1); aid <= 3; aid++ {
 		u, a := uint(7), aid
-		if err := db.Create(&model.AssetAuthorization{UserID: &u, AssetID: &a, Permission: model.PermissionView, GrantedBy: 3}).Error; err != nil {
+		if err := db.Create(&model.AssetAuthorization{UserID: &u, AssetID: &a, Permission: model.PermissionConnect, GrantedBy: 3}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -1,0 +1,18 @@
+清除舊資料庫目錄（刪除後無法復原）
+
+  要刪除
+    /opt/custodexa/data/postgres
+        PostgreSQL 16    17.4 GB
+  刪除之後
+    - 這份資料無法復原
+    - 不能再用回到上一版（rollback）回到 1.22.0；要回到 1.22.0，
+      只能用升級前的備份還原，升級之後寫入的資料會遺失
+  [WARN] 找不到升級前的備份 /opt/custodexa/backups/custodexa-backup-1.22.0-20261120-021502.tar。
+         清除之後，這台將沒有任何方式回到 1.22.0。
+  目前使用中的 PostgreSQL 18（/opt/custodexa/data/postgresql）不受影響，
+  服務不會停止。
+
+確認請輸入要清除的資料庫版本 16：
+> 16
+
+[ OK ] 已清除 /opt/custodexa/data/postgres，釋放 17.4 GB

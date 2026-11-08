@@ -107,7 +107,7 @@ cx_rs_continue() {
 }
 cx_rs_new() {
   cx_rs_flow
-  cx_rs_read_setup && cx_rs_open "$1" && cx_rs_checks && cx_rs_release "$CX_RS_VERSION" &&
+  cx_rs_read_setup && { [ "$CX_RS_FLOW" != same ] || cx_form_guard restore; } && cx_rs_open "$1" && cx_rs_checks && cx_rs_release "$CX_RS_VERSION" &&
     cx_rs_migrations && cx_rs_env_merge && cx_rs_external && cx_rs_space || return 3
   if [ "$CX_RS_FLOW" = same ]; then
     cx_rs_safety_preflight || true

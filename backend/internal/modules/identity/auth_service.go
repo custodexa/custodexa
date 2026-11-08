@@ -64,6 +64,10 @@ type AuthService struct {
 	// **沒有** Encrypt(plaintext)，故持有者在**建構上**不可能寫出無 AAD 的 enc:v 密文。
 	// **建構時注入**（無 SetMFACodec 事後覆寫）
 	mfaCrypto crypto.ColumnCodec
+	// mfaNow TOTP 驗證的時間來源；nil＝系統時間（僅測試注入）
+	mfaNow func() time.Time
+	// mfaStageHook 密鑰覆寫與啟用在「讀取狀態之後、寫入之前」的觀測點；nil＝不觸發（僅測試注入）
+	mfaStageHook func(stage string)
 	// ldapResolver LDAP 登入路徑的單次設定解析。
 	// nil 表示本組裝完全不接目錄，登入流程跳過 LDAP 路徑；
 	// 「有接但未設定／已停用」由解析結果的 unavailable 態表達，兩者不混用
@@ -472,6 +476,57 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 	if !notFound && user.Kind == model.KindAgent {
 		return nil, "", ErrInvalidCredentials
 	}
+
+	// 目錄登入的同名帳號組：精確命中目錄帳號或精確查無時，依目錄端的同名規則（去前後空白、
+	// 相容正規化、不分大小寫）取同名帳號組，狀態判定套用整組；精確命中本地／外部帳號者不經此處
+	var variants *directoryVariantSet
+	rejectLooseKey := false
+	if s.ldapResolver != nil && (notFound || user.IsLDAP) {
+		vs, err := s.loadDirectoryVariants(req.Username)
+		if err != nil {
+			return nil, "", err
+		}
+		variants = vs
+		if notFound {
+			if vs.hasNonDirectory {
+				// 同名不同來源：不打目錄、不建帳號，回應與憑證錯誤同形
+				return nil, "", ErrInvalidCredentials
+			}
+			switch len(vs.directory) {
+			case 0:
+				// 組為空：維持首次登入供應
+			case 1:
+				if !asciiEqualFold(req.Username, vs.directory[0].Username) {
+					// 寬鍵命中但非 ASCII 大小寫差異：不沿用，鎖定判定後拒絕
+					rejectLooseKey = true
+					break
+				}
+				// 沿用唯一的目錄帳號（含其停用與鎖定判定），不另建帳號
+				var adopted model.User
+				if err := database.DB.Preload("Roles").First(&adopted, vs.directory[0].ID).Error; err != nil {
+					return nil, "", err
+				}
+				user = adopted
+				notFound = false
+			default:
+				log.Printf("[AuthService] 目錄登入的名稱對應到多個帳號，拒絕登入，請管理員整併 (username=%s, count=%d)",
+					req.Username, len(vs.directory))
+				return nil, "", ErrInvalidCredentials
+			}
+		}
+		// 組內任一目錄帳號鎖定即在目錄認證前拒絕
+		for i := range vs.directory {
+			if err := s.gateLockout(&vs.directory[i]); err != nil {
+				return nil, "", err
+			}
+		}
+		if rejectLooseKey {
+			log.Printf("[AuthService] 目錄登入的名稱與既有帳號僅在寬鬆比對下相符，拒絕登入，請管理員處理 (username=%s)",
+				req.Username)
+			return nil, "", ErrInvalidCredentials
+		}
+	}
+
 	// 鎖定 gate 先於密碼驗證（判定順序）；查無帳號者無計數對象、直接走驗證失敗路徑
 	if !notFound {
 		if err := s.gateLockout(&user); err != nil {
@@ -546,7 +601,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 			s.auditLDAPResolveFailure(&user, req.Username, notFound)
 			return nil, "", ErrInvalidCredentials
 		}
-		ldapUser, err := s.authenticateLDAP(req, &user, notFound, resolution)
+		ldapUser, err := s.authenticateLDAP(req, &user, notFound, resolution, variants)
 		if err != nil {
 			// LDAP 帳戶納入應用層計數（兩層並行）；影子用戶尚未供應（查無）時無計數對象
 			if !notFound && errors.Is(err, ErrInvalidCredentials) {
@@ -784,6 +839,7 @@ func (s *AuthService) finishLogin(user *model.User, violation *policy.PasswordPo
 // （例外：傳輸政策 strict 拒絕回明確原因——spec 要求，否則使用者誤判密碼錯誤）
 func (s *AuthService) authenticateLDAP(
 	req *LoginRequest, existing *model.User, notFound bool, resolution LDAPLoginResolution,
+	variants *directoryVariantSet,
 ) (*model.User, error) {
 	// LDAP 登入傳輸閘：檢查撥號當下最終參數。
 	// strict＝通道不安全即拒絕，撥號前擋下（密碼不出門）；本地帳號路徑不經此處。
@@ -809,6 +865,9 @@ func (s *AuthService) authenticateLDAP(
 	// 請求，代價是未認證者送任意密碼即可分辨「此帳號存在但已停用」與「此帳號不存在」
 	// ——同一個枚舉 oracle 的 LDAP 側。一次目錄請求換掉存在性洩漏，值得
 	if !notFound && !existing.Active {
+		return nil, ErrUserInactive
+	}
+	if variants.anyInactive() {
 		return nil, ErrUserInactive
 	}
 
@@ -975,7 +1034,8 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	}
 
 	user := &model.User{
-		Username: info.Username,
+		// 存保存形（去前後空白、相容正規化，大小寫保留），與目錄端認得的名稱一致
+		Username: directoryLoginName(info.Username),
 		Password: string(hashed),
 		Email:    emailPtr,
 		FullName: info.FullName,
@@ -1414,4 +1474,63 @@ func validateDisplayName(raw *string) (*string, error) {
 		}
 	}
 	return &trimmed, nil
+}
+
+// directoryVariantSet 與登入名稱在目錄端視為同名（見 directoryLoginNameKey）的
+// 未刪除帳號組，依來源分開。
+type directoryVariantSet struct {
+	// directory 目錄供應的人類帳號
+	directory []model.User
+	// hasNonDirectory 組內是否有本地、外部身分或 agent 主體
+	hasNonDirectory bool
+}
+
+// anyInactive 組內任一目錄帳號停用。nil 安全（未取組者視為無）。
+func (v *directoryVariantSet) anyInactive() bool {
+	if v == nil {
+		return false
+	}
+	for i := range v.directory {
+		if !v.directory[i].Active {
+			return true
+		}
+	}
+	return false
+}
+
+// loadDirectoryVariants 以目錄端的同名規則取同名帳號組（未刪除）：
+// 登入名稱先去前後空白並做相容正規化，再不分大小寫比對，與目錄端比對一致。
+//
+// 正規化無法在資料庫兩種方言上一致表達，故先只取 id 與名稱在程式端比對鍵，
+// 再載入命中的完整列。
+func (s *AuthService) loadDirectoryVariants(username string) (*directoryVariantSet, error) {
+	// agent 主體也納入比對：同名的 agent 視同非目錄來源，不打目錄、不建帳號。
+	// 否則供應的保存形可能與 agent 名稱完全相同而撞唯一索引，或留下難以分辨的同名主體
+	var names []model.User
+	if err := database.DB.Select("id", "username").Find(&names).Error; err != nil {
+		return nil, err
+	}
+	key := directoryLoginNameKey(username)
+	var ids []uint
+	for _, n := range names {
+		if directoryLoginNameKey(n.Username) == key {
+			ids = append(ids, n.ID)
+		}
+	}
+	set := &directoryVariantSet{}
+	if len(ids) == 0 {
+		return set, nil
+	}
+	var rows []model.User
+	if err := database.DB.Where("id IN ?", ids).Order("id").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		if r.IsLDAP && r.Kind != model.KindAgent {
+			set.directory = append(set.directory, r)
+		} else {
+			set.hasNonDirectory = true
+		}
+	}
+	return set, nil
 }

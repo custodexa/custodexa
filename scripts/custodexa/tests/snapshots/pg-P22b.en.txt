@@ -1,0 +1,39 @@
+Return to the new version: preview (nothing has been changed yet)
+
+  Current state  the last "go back" did not finish: it already uses
+                 PostgreSQL 16, but the check after 1.16.1
+                 started did not pass
+  Return to      1.16.2 (PostgreSQL 18)
+  Database       put the PostgreSQL 18 data kept before going back in
+                 use again:
+                 /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+                 rename it back to /opt/custodexa/data/postgresql
+                 its content stops at the moment of going back; the data
+                 written to PostgreSQL 18 before then is all still there
+
+[WARN] 1.16.1 has run on PostgreSQL 16 for a while. Data written to
+       PostgreSQL 16 while going back will not be in the database after
+       returning to 1.16.2:
+         - audit records
+         - connection records
+         - recording index: the recording files stay on disk, but after
+           returning the system cannot find them
+         - setting and account changes (users, assets, grants and
+           policies added, changed or deleted)
+  This data stays in the old data folder; it is not deleted and
+  not merged back:
+    /opt/custodexa/data/postgres
+
+Return to 1.16.2 and give up the data written to PostgreSQL 16
+while going back? [y/N] y
+
+[ OK ] 1/4  Stop the services                               0s
+[ OK ] 2/4  Rename the PostgreSQL 18 data back to /opt/custodexa/data/postgresql
+[ OK ] 3/4  Start the services                              0s
+[ OK ] 4/4  Check: the backend reports 1.16.2 and the database is PostgreSQL 18  0s
+
+[ OK ] Returned to 1.16.2. The system is sealed; unseal it at
+       https://10.0.0.12/unseal
+  The data written to PostgreSQL 16 while going back is still in
+  /opt/custodexa/data/postgres; it was not deleted.
+  Log file /opt/custodexa/logs/rollback-20261120-021502-0.log

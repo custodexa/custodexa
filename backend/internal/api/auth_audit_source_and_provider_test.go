@@ -167,7 +167,7 @@ func (e *authSrcEnv) rows(t *testing.T) []model.AuditLog {
 // enableTOTP 讓測試使用者完成 TOTP 綁定（走服務層真流程，不手工塞欄位）
 func (e *authSrcEnv) enableTOTP(t *testing.T) {
 	t.Helper()
-	setup, err := e.auth.GenerateMFASetup(e.uid)
+	setup, err := e.auth.GenerateMFASetup(e.uid, "")
 	if err != nil {
 		t.Fatalf("GenerateMFASetup: %v", err)
 	}

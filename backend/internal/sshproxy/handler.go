@@ -408,6 +408,16 @@ func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
 		}
 	}
 
+	// 資料庫命令列（mysql／redis／mssql）的改連目標守衛：固定行為，不依指令規則設定，
+	// 指令阻斷器缺席（比對器未初始化）時同樣生效；其他協議 newReconnectGuard 回 nil＝直通
+	if !k8sLogsMode {
+		var guardSessionID uint
+		if sess != nil {
+			guardSessionID = sess.ID
+		}
+		bridge.attachReconnectGuard(newReconnectGuard(string(assetRow.Protocol), h.AlertSink, guardSessionID, userID, assetID))
+	}
+
 	// 轉發啟動前最後一次複查：
 	// 收緊「連線授權通過後、bridge 掛上 Registry 前」窗口——會話列以 active 寫入 DB 早於
 	// Register，若 admin 停用或撤銷即斷線恰落此窗，Terminate 的 registry.Close 會 no-op、

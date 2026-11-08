@@ -1,0 +1,12 @@
+[FAIL] Cannot go straight back to 1.16.1: the PostgreSQL 16 data kept at the
+       upgrade is no longer there.
+       Nothing was changed; the services are still running.
+  Reason         1.16.1 can only use PostgreSQL 16 data, and
+                 /opt/custodexa/data/postgres is not there any more
+  To go back to 1.16.1, restore the backup taken before the upgrade.
+  The data returns to 2026-11-20 02:15, when the upgrade began; data
+  written afterwards is lost: audit records, connection records,
+  the recording index, and setting and account changes. If nobody
+  used the system after the upgrade, the restore loses nothing.
+  The restore asks you to confirm first:
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

@@ -5,9 +5,7 @@
 剪貼簿與檔案傳輸的資料進出控管：五個全域安全政策鍵、四類強制點（guacd 連線參數、SFTP HTTP 端點、guac tunnel 指令流、K8s 檔案端點）與其生效時機、被拒動作的審計語義，以及本控管的誠實邊界。
 
 **交付範圍（期別）**：本規格只描述已交付的全域政策鍵層。per-authorization 傳輸放寬（`authorization_transfer_grants` 子表、`全域值 OR 匹配授權放寬` 的解析、接入通道維度的寫入面、授權放寬偏離計數與鑽取）**尚未實作**，其條文不收於本規格；「有效能力」的解析結果因此恆等於全域鍵值。
-
 ## Requirements
-
 ### Requirement: 資料傳輸控管政策鍵
 
 系統 SHALL 提供五個資料傳輸控管政策鍵（皆為 bool，`true`＝允許、`false`＝禁止），出廠預設一律 `true`（沿安全政策既有易用取向通則）：
@@ -230,3 +228,37 @@ SSH、所有受支援的資料庫 CLI 與資料庫查詢主控台 SHALL 在成�
 #### Scenario: 建立失敗不留下成功快照
 - **WHEN** 連線流程被拒、連線資源建立失敗或會話記錄無法建立
 - **THEN** 不產生宣稱已成功建立該會話的傳輸快照，既有失敗回應與審計保持原語義
+
+### Requirement: 圖形通道所有客戶端上傳串流指令受同一控管與留痕
+圖形通道中，客戶端開啟上傳串流的每一種指令（`put` 與 `file`）SHALL 於 tunnel 指令流層受同一套檔案傳輸控管：每次開啟串流時 SHALL 以當下有效的 `file_upload_enabled` 判定；拒絕時 SHALL NOT 轉送該指令及其後續資料區塊，SHALL 回送帶非零狀態碼的 `ack`，並 SHALL 留下 status=denied 的 `file_upload` 審計紀錄。SHALL NOT 存在任何客戶端上傳串流指令在未經判定與留痕的情況下轉送至 guacd。政策變更 SHALL 對其後開啟的串流即時生效，SHALL NOT 依賴連線建立時注入的 guacd 參數。
+
+允許時 SHALL 登記該串流並累計其後的資料區塊，且留痕 SHALL NOT 依賴客戶端送出結束指令：
+
+- 串流開啟時 SHALL 留下一筆 `file_upload` 開始紀錄（`details.phase=started`，含資產與檔名）。
+- 收到結束指令時 SHALL 另留一筆 `file_upload` 成功紀錄（`details.phase=completed`，含資產、檔名與大小）。
+- 連線關閉時仍未收到結束指令的串流 SHALL 各留一筆 status=failure 的 `file_upload` 未完成紀錄（`details.phase=incomplete`，含資產、檔名與已轉送大小），SHALL NOT 標為成功。
+
+#### Scenario: file 指令上傳留痕
+- **GIVEN** `file_upload_enabled=true`
+- **WHEN** 客戶端在 RDP 會話中以 `file` 指令開串流並送出資料區塊與結束指令
+- **THEN** 檔案寫入重導磁碟，且 audit_logs 產生一筆 `details.phase=started` 的開始紀錄與一筆 action=file_upload、status=success、`details.phase=completed` 的紀錄，後者含檔名與大小
+
+#### Scenario: 未送結束指令即斷線仍留痕
+- **GIVEN** `file_upload_enabled=true`
+- **WHEN** 客戶端以 `file` 或 `put` 指令開串流並送出若干資料區塊後，未送結束指令即關閉連線
+- **THEN** audit_logs 有該串流的開始紀錄，以及一筆 status=failure、`details.phase=incomplete`、含已轉送大小的 file_upload 紀錄，且無該串流的 success 完成紀錄
+
+#### Scenario: file 指令上傳被拒
+- **GIVEN** `file_upload_enabled=false`
+- **WHEN** 客戶端以 `file` 指令開串流
+- **THEN** 指令與其後資料區塊未轉發至 guacd、遠端未收到檔案，客戶端收到帶非零狀態碼的 `ack`，audit_logs 產生 status=denied 的 file_upload 紀錄
+
+#### Scenario: 會話中途關閉上傳即時生效
+- **GIVEN** 連線建立時允許上傳
+- **WHEN** 會話進行中管理員把 `file_upload_enabled` 改為 `false`，政策快取窗口過後客戶端以 `file` 指令開串流
+- **THEN** 該串流被拒並留下 denied 紀錄
+
+#### Scenario: put 與 file 行為一致
+- **WHEN** 客戶端以 `put` 指令上傳
+- **THEN** 判定、拒絕回應與留痕（開始、完成、未完成三種紀錄）與 `file` 指令相同；被拒時的回應與 denied 紀錄與先前一致
+

@@ -1,0 +1,13 @@
+[FAIL] Not enough space, so the upgrade will not start. No service was
+       stopped and nothing was changed.
+  /opt    the backup and the new database are both here
+          needs 7.5 GB (backup before the upgrade 3.5 GB,
+          new database 1.0 GB, export scratch 1.0 GB, margin 2 GB),
+          only 4.7 GB free, 2.8 GB short
+  /var    Docker image storage /var/lib/docker
+          needs 5.6 GB (new images), 60.0 GB free
+  You can move old backup files elsewhere and delete them, or add
+  space to /opt.
+  Current backup files: ls -l /opt/custodexa/backups/
+  Then run the same command again:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

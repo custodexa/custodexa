@@ -9,7 +9,7 @@
 - Docker 20.10+
 - Docker Compose 2.0+
 - Git (only for running from source)
-- Disk: at least 40 GB free, of which about 10 GB is the Docker data folder (the images of the current and the previous version, plus room for an upgrade). Recordings and backups are counted on top of that; see [Capacity and storage planning](#6-capacity-and-storage-planning) for the growth estimate.
+- Disk: at least 40 GB free, of which about 10 GB is the Docker data folder (the images of the current and the previous version, plus room for an upgrade). Recordings and backups are counted on top of that; see [Capacity and storage planning](#6-capacity-and-storage-planning) for the growth estimate. Upgrading to 1.23.0 also converts the bundled database and needs extra free space of about twice the size of the database, plus 2 GiB ([Upgrade SOP](ops/upgrade-sop.md#converting-the-bundled-database-to-postgresql-18)).
 
 Verify the installation:
 ```bash
@@ -213,6 +213,17 @@ the backend is a slim binary, and there are no test targets). Developers can tak
 targets the development stack (Vite HMR for the frontend, Air hot reload for the backend, plus
 test targets for each protocol) without `-f`.
 
+**Which form you deploy is decided by two lines in `.env`.** One `docker-compose.yml` serves every
+form of the production stack: `EXTERNAL_DB_HOST` empty means the bundled database and a value
+means your own database server (section 7), and `TLS_MODE` picks the certificate source
+(`selfsigned`, `provided`) or hands HTTPS to your own ingress (`external`, see "Leaving it to your
+own ingress"). `bash scripts/quickstart.sh` reads the two lines, works out which parts of the stack
+that means, and records the result in a managed block at the end of `.env`; start the stack with
+`bash scripts/quickstart.sh --up` rather than a bare `docker compose up -d`. The development stack
+is not one of these forms: it always uses the database and entry point in
+`docker-compose.dev.yml`, and the script refuses to run it with `EXTERNAL_DB_HOST` filled in or
+`TLS_MODE=external` instead of ignoring them.
+
 ### 1. Get the source
 
 ```bash
@@ -308,9 +319,10 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ```bash
 # In the background (with no existing images it builds first -- building the production images is step one of deployment)
-docker compose up -d
+bash scripts/quickstart.sh --up
 
-# In the foreground (logs on screen)
+# In the foreground (logs on screen): the first command prepares .env and its managed block without starting anything
+bash scripts/quickstart.sh
 docker compose up
 ```
 
@@ -322,7 +334,7 @@ The first startup builds the images and downloads dependencies, which takes abou
 ```bash
 docker compose ps
 # Production (default): backend, frontend, postgres, guacd, tls-proxy
-#   (tls-init exits once the certificates are ready; a status of exited(0) is normal)
+#   (tls-init exits once the certificates are ready, so ps does not list it; ps -a shows it as exited(0), which is normal)
 # Development (COMPOSE_FILE enabled) also brings up test targets:
 #   ssh-test, ssh-multi-test, mssql-test, mysql-test, rdp-test, vnc-test, k3s-test
 #   (plus ldap-test / dex / localstack for the LDAP, OIDC and S3 features)
@@ -522,7 +534,7 @@ Release mode is **fail-close** on these values: it refuses to start rather than 
 ```bash
 # Prepare the recordings directory first (the command is under "3. Start the services" above).
 # With no existing images, up builds the production images first (building is step one of deployment).
-docker compose up -d
+bash scripts/quickstart.sh --up
 ```
 
 > The production and development images have separate names (`custodexa/*:latest` and
@@ -552,6 +564,9 @@ docker compose logs backend | tail -30
 
 > Verifying the production stack from a development machine means adding an explicit
 > `-f docker-compose.yml` to every command above (which overrides `COMPOSE_FILE` from `.env`).
+> The production stack's own parts come from the managed block at the end of `.env`, which
+> `scripts/quickstart.sh` writes; a bare `docker compose up -d` in a folder where the script has
+> never run starts no database and no proxy.
 
 Under the shipped `ui` mode, (4) is stopped by the seal gate **until the initialization unseal is
 done**; complete the initialization in the browser first (see "First use"), or check the state
@@ -737,31 +752,130 @@ decided by guacd.**
 - To reduce usage, use the **retention window** (System Settings → Security Policies) and delete
   expired recordings by age.
 
-### 7. The database on a separate server (external database overlay)
+### 7. The database on a separate server (external database)
 
 By default the stack brings its own postgres, on the same host as the application. To run
 PostgreSQL elsewhere (a database server the institution already operates, a managed service, or a
-second machine of your own), the external database overlay leaves the bundled postgres out and
-points the backend at that server:
+second machine of your own), fill in `EXTERNAL_DB_HOST`: the bundled postgres stays out of the
+stack and the backend connects to that server:
 
 ```bash
-# .env: uncomment the three lines of the "Deployments with their own database" section and fill them in
-#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+# .env: uncomment EXTERNAL_DB_HOST in the "Deployments with their own database" section and fill it in
 #   EXTERNAL_DB_HOST=db.example.internal
-#   EXTERNAL_DB_PORT=5432
+#   EXTERNAL_DB_PORT=5432          (its own line; only needed for a port other than 5432)
 # DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE now describe that server (use require or verify-full across a network)
-docker compose up -d
+bash scripts/quickstart.sh --up
 docker compose ps        # backend, frontend, guacd, tls-proxy; no postgres
 ```
 
 Fill `DB_PASSWORD` in by hand before running `scripts/quickstart.sh`: with `EXTERNAL_DB_HOST` set,
 the script never generates it and stops when it is missing. The database and the account must exist on that server
-before the first start; the backend creates the schema.
+before the first start; the backend creates the schema. `EXTERNAL_DB_HOST` takes a host name or an
+IP address only (no scheme, port, account or blanks), and not a name that points back at this host
+or at a service of this stack; the script refuses such a value, says why, and changes nothing.
+It combines with `TLS_MODE=external`.
+
+Two cases the script stops on instead of guessing:
+
+- **The bundled database already holds data and you fill in `EXTERNAL_DB_HOST`.** Filling it in
+  does not move the data; the stack would start against a database that has none of it. The script
+  prints the data folder it found and points to
+  [Switching to an external database](ops/backup-and-restore.md#54-switching-to-an-external-database),
+  which moves the data first.
+- **The deployment last started with an external database and you empty `EXTERNAL_DB_HOST`.** The
+  script would start a bundled database with no data in it, so it refuses. Put the original value
+  back, or follow the rollback steps of the same section to return to the bundled database on
+  purpose.
+
+**A `.env` from 1.22 or earlier** may carry a `COMPOSE_FILE` line that lists the
+external database overlay file, the external ingress overlay file, or both; those two files are no
+longer shipped. The next time the script runs it translates the line: it removes that
+`COMPOSE_FILE` line, sets `TLS_MODE=external` when the ingress file was listed, writes the managed
+block, and prints each change. Nothing else in `.env` is touched, and a second run changes
+nothing.
 
 What this shape buys is a replaceable application host: a second host prepared from the same
 files and pointed at the same database takes over when the first one is down. That procedure,
 what the standby host needs in advance, what a takeover does not preserve, and what changes for
 backups in this shape are in [Application Host Standby Takeover](ops/standby-takeover.md).
+
+### 8. Moving a source deployment to PostgreSQL 18
+
+From 1.23.0 the bundled database of the source tree is PostgreSQL 18 and keeps its data in `${DATA_PATH:-./data}/postgresql`. Earlier trees ran PostgreSQL 16 in `${DATA_PATH:-./data}/postgres`. The new image cannot open the old folder, so `scripts/quickstart.sh` stops before it starts anything when `postgres` holds data and `postgresql` is empty. It does not convert the data; this section is the manual procedure its message points to. It applies to the production form (`docker-compose.yml`) with the bundled database. The development stack starts on a new database instead (see [CONTRIBUTING](../CONTRIBUTING.md)), and a deployment installed from the release package is converted by `upgrade` ([Upgrade SOP](ops/upgrade-sop.md#converting-the-bundled-database-to-postgresql-18)).
+
+The idea: a temporary PostgreSQL 16 container opens the old folder just long enough to export it, the new database is created empty, and the export is loaded into it. The old folder is not deleted, and nothing in it is rewritten except what any PostgreSQL 16 start touches. Before you start, take a backup you can restore ([Backup and Restore §3](ops/backup-and-restore.md#3-backup-procedure)), choose a time when nobody is connected, and make sure the disk has free space of about twice the size of the database, plus 2 GiB. The commands read `.env` the way [Backup and Restore §2.3](ops/backup-and-restore.md#23-how-the-shell-commands-in-this-document-obtain-deployment-variables-read-before-you-start) explains: literally, and failing when a value is missing.
+
+**1. Stop the stack and read the settings.** Work in the source tree. The services must be stopped before the old folder is opened again.
+
+```bash
+docker compose --profile bundled-db down
+ENV_FILE="${ENV_FILE:-./.env}"
+env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
+DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
+DB_USER="${DB_USER:-$(env_get DB_USER)}"
+DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
+DATA_PATH="$(cd "${DATA_PATH:?DATA_PATH is empty in .env}" && pwd)"
+printf 'DATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' "$DATA_PATH" "${DB_USER:?}" "${DB_NAME:?}"   # check these three lines by eye
+ls "${DATA_PATH}/postgres/PG_VERSION" && cat "${DATA_PATH}/postgres/PG_VERSION"          # the old folder holds PostgreSQL 16
+```
+
+**2. Open the old folder with a temporary PostgreSQL 16 and write down what it holds.** Use the image the earlier release ran, `postgres:16.15-alpine3.24` for 1.22.x.
+
+```bash
+docker run -d --name custodexa-pg16-export -v "${DATA_PATH}/postgres:/var/lib/postgresql/data" postgres:16.15-alpine3.24
+for i in $(seq 1 60); do docker exec custodexa-pg16-export pg_isready -U "${DB_USER}" && break; sleep 2; done
+q16() { docker exec -i custodexa-pg16-export psql -U "${DB_USER}" -d "${DB_NAME}" -Atq -c "$1"; }
+ENC_Q="select pg_encoding_to_char(encoding) || ' ' || datcollate || ' ' || datctype from pg_database where datname = current_database()"
+COUNT_Q="select table_name || ' ' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by 1"
+MIG_Q="select * from schema_migrations order by 1"
+SEQ_Q="select sequencename || ' ' || coalesce(last_value::text, '') from pg_sequences order by 1"
+q16 "${ENC_Q}" | tee "${DATA_PATH}/pg16-encoding.txt"          # for example: UTF8 en_US.utf8 en_US.utf8
+q16 "${COUNT_Q}" >"${DATA_PATH}/pg16-counts.txt"
+q16 "${MIG_Q}" >"${DATA_PATH}/pg16-migrations.txt"
+q16 "${SEQ_Q}" >"${DATA_PATH}/pg16-sequences.txt"
+```
+
+**3. Export, then stop the temporary container.** The export holds the whole database in plain form: keep it on this host and delete it in step 6.
+
+```bash
+( umask 077; docker exec custodexa-pg16-export pg_dump -U "${DB_USER}" -Fc "${DB_NAME}" >"${DATA_PATH}/pg16-export.dump" ) && echo exported
+ls -l "${DATA_PATH}/pg16-export.dump"
+docker stop custodexa-pg16-export && docker rm custodexa-pg16-export
+```
+
+**4. Create the new database and check its settings.** The new compose file creates an empty PostgreSQL 18 database in `postgresql/18/docker`, with the user, database name and password from `.env`.
+
+```bash
+docker compose --profile bundled-db up -d postgres
+for i in $(seq 1 60); do docker compose exec -T postgres pg_isready -U "${DB_USER}" && break; sleep 2; done
+dq() { docker compose exec -T postgres psql -U "${DB_USER}" -d "${DB_NAME}" -Atq -c "$1"; }
+dq "${ENC_Q}" | diff "${DATA_PATH}/pg16-encoding.txt" - && echo "encoding and collation equal"   # must print this line
+dq "show data_checksums"                                                                       # must print on
+```
+
+If the encoding line differs, do not go on: stop with `docker compose --profile bundled-db down`, delete the folder `${DATA_PATH}/postgresql` (this procedure created it), and ask for help before you try again. The shipped images of both versions use the same defaults, so a difference means the old database was created with other settings, and this section does not cover that case.
+
+**5. Load the export and compare.** The load is one transaction that stops at the first error, so a failure leaves the new database empty. To try again after a failure, run `docker compose --profile bundled-db down`, delete `${DATA_PATH}/postgresql`, and start from step 4.
+
+```bash
+docker compose exec -T postgres pg_restore -U "${DB_USER}" -d "${DB_NAME}" --single-transaction --exit-on-error <"${DATA_PATH}/pg16-export.dump" && echo loaded
+dq "${COUNT_Q}" | diff "${DATA_PATH}/pg16-counts.txt" - && echo "row counts equal"
+dq "${MIG_Q}" | diff "${DATA_PATH}/pg16-migrations.txt" - && echo "migrations equal"
+dq "${SEQ_Q}" | diff "${DATA_PATH}/pg16-sequences.txt" - && echo "sequences equal"
+docker compose exec -T postgres vacuumdb -U "${DB_USER}" --all --analyze-in-stages
+```
+
+Do not go on unless every comparison printed its "equal" line.
+
+**6. Remove the temporary files and start the stack.** Delete the export and the notes, stop the lone database, and start everything with the script. The script sees the new folder holding data, starts the stack and tells you the old folder is still there.
+
+```bash
+rm -f "${DATA_PATH}/pg16-export.dump" "${DATA_PATH}/pg16-encoding.txt" "${DATA_PATH}/pg16-counts.txt" "${DATA_PATH}/pg16-migrations.txt" "${DATA_PATH}/pg16-sequences.txt"
+docker compose --profile bundled-db down
+bash scripts/quickstart.sh --up
+```
+
+Then follow [4. Verify the services](#4-verify-the-services) and sign in to check your data. Keep `${DATA_PATH}/postgres` until you are sure. It is your way back: stopping the stack and starting the earlier tree again uses it, but what was written after the move is not in it. Delete it by hand once you no longer need that way back.
 
 ## Source-tree operator responsibilities and behavioral limits
 
@@ -783,7 +897,7 @@ proxy itself.
 Where the certificate comes from is decided by `TLS_MODE` in `.env`, whose two values match the
 first two subsections below: `selfsigned` (the default, a local CA the product signs itself) and
 `provided` (your own certificate). Deployments that already have an ingress of their own take a
-third path and switch the built-in proxy off with an overlay.
+third path and switch the built-in proxy off with `TLS_MODE=external`.
 
 Whichever path you take, two things hold. The external edge has to provide TLS 1.2+, an
 HTTP-to-HTTPS redirect, HSTS and WebSocket upgrade forwarding; and if the hop from the edge to
@@ -856,7 +970,7 @@ chain of trust is established by you distributing the CA to the machines that co
    PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
-2. `docker compose up -d`. The certificates are generated on the first start.
+2. `bash scripts/quickstart.sh --up`. The certificates are generated on the first start.
 
 3. Download the CA certificate and distribute it to the machines that will connect:
 
@@ -907,7 +1021,7 @@ When you already have a certificate from a public or institutional CA:
 1. Put the certificate chain and the private key at `tls/fullchain.pem` and `tls/privkey.pem`.
 2. Set `TLS_MODE=provided`, `TLS_DOMAIN` (matching the host name on the certificate) and
    `PUBLIC_BASE_URL=https://<host name>` in `.env`.
-3. `docker compose up -d`.
+3. `bash scripts/quickstart.sh --up`.
 
 With any file missing, the start stops at the certificate preparation step and names the missing
 one; the proxy does not come up with half a configuration:
@@ -946,7 +1060,7 @@ serve the system under a host name of your own afterwards:
 3. Apply the change:
 
    ```bash
-   docker compose up -d                                       # applies the .env change
+   bash scripts/quickstart.sh --up                            # applies the .env change
    docker compose up -d --force-recreate tls-init tls-proxy   # re-runs the certificate step, restarts the proxy on the new files
    ```
 
@@ -974,19 +1088,23 @@ serve the system under a host name of your own afterwards:
    prints the same certificate details during the handshake (add
    `--cacert tls/ca-public/custodexa-ca.crt` in self-signed mode).
 
-#### Leaving it to your own ingress (external ingress overlay)
+#### Leaving it to your own ingress (`TLS_MODE=external`)
 
-When a cloud load balancer or an existing nginx or Traefik ingress already sits in front, use the
-overlay to switch the built-in proxy off and let the frontend publish an HTTP port for your ingress
-to reach:
+When a cloud load balancer or an existing nginx or Traefik ingress already sits in front, set
+`TLS_MODE=external` to switch the built-in proxy off and let the frontend publish an HTTP port for
+your ingress to reach:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.external-ingress.yml up -d
+# .env
+#   TLS_MODE=external
+#   HTTP_PORT=80              (optional; the port the frontend publishes, 80 by default)
+bash scripts/quickstart.sh --up
 ```
 
-Once you uncomment `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml` in
-`.env`, the everyday `docker compose up -d`, `ps` and `down` no longer need `-f`.
-In this shape the frontend publishes `80` (changeable through `HTTP_PORT` in `.env`), external
+The everyday `docker compose ps` and `down` in this folder then cover the same services, because
+`docker compose` reads the managed block that `quickstart.sh` wrote. In this form the script's
+closing screen gives `http://localhost:<HTTP_PORT>/` as the address to open on this host. The
+frontend publishes `80` (changeable through `HTTP_PORT` in `.env`), external
 TLS is carried by your ingress under the contract listed at the start of this section, and
 `PUBLIC_BASE_URL` takes the https address your users actually see.
 
@@ -1018,9 +1136,10 @@ Apply the change with `docker compose up -d tls-proxy`.
 
 #### The variant with nginx installed on the host
 
-To skip the proxy container and use the nginx already on the host: use the external ingress overlay
-so the frontend publishes an HTTP port (binding it to loopback is a good idea, changing the mapping
-in the overlay to `127.0.0.1:8088:80`), reuse the same template for the configuration, point the
+To skip the proxy container and use the nginx already on the host: set `TLS_MODE=external`
+so the frontend publishes an HTTP port (binding it to loopback is a good idea: `HTTP_PORT` cannot
+choose the interface, so change the `ports` line of the `frontend-published` service in
+`docker-compose.yml` to `127.0.0.1:8088:80`), reuse the same template for the configuration, point the
 upstream at `127.0.0.1:8088`, and replace `server_name` and the certificate paths with yours.
 nginx below 1.25.1 does not support the `http2 on;` directive; write it as `listen 443 ssl http2;`
 instead. Any other reverse proxy (Caddy, Traefik, a cloud load balancer) works as long as it meets
@@ -1030,7 +1149,7 @@ equivalent Caddy version.
 #### Verifying that TLS works
 
 ```bash
-docker compose ps                                  # tls-proxy is Up (tls-init is exited(0))
+docker compose ps -a                               # tls-proxy is Up (tls-init is exited(0))
 curl -sI http://localhost/ | head -1          # 301, redirecting to https
 curl -skI https://localhost/ | head -1        # 200
 curl --cacert tls/ca-public/custodexa-ca.crt -sI https://<TLS_DOMAIN>/ | head -1   # self-signed mode: 200
@@ -1247,11 +1366,11 @@ docker compose up -d --force-recreate frontend
 
 
 ### macOS: postgres refuses to start with `wrong ownership` (Docker Desktop file sharing)
-Symptom: the postgres log shows `data directory ... has wrong ownership`, and this data directory has never started successfully. The database folder is a bind mount (`${DATA_PATH:-./data}/postgres`). On macOS this has been seen to depend on the Docker Desktop file sharing implementation.
+Symptom: the postgres log shows `data directory ... has wrong ownership`, and this data directory has never started successfully. The database folder is a bind mount (`${DATA_PATH:-./data}/postgresql` from 1.23.0, `postgres` before). On macOS this has been seen to depend on the Docker Desktop file sharing implementation.
 
 1. Open the Docker Desktop settings (the Docker menu, then Settings), General tab, and set "Choose file sharing implementation for your containers" to VirtioFS. Apply the change and restart Docker Desktop.
 2. Clear the half-initialized data folder only when both of these hold: this data folder has never started successfully, and it holds no data you need. If you are not sure where the folder came from or what is in it, do not clear it; back it up or ask for help first.
-3. If both conditions hold, first confirm the actual path: it is the `postgres` folder under the `DATA_PATH` set in `.env` (`./data/postgres` when `DATA_PATH` is not set). Then remove that folder and start again with `docker compose up -d`.
+3. If both conditions hold, first confirm the actual path: it is the `postgresql` folder (`postgres` before 1.23.0) under the `DATA_PATH` set in `.env` (`./data/postgresql` when `DATA_PATH` is not set). Then remove that folder and start again with `bash scripts/quickstart.sh --up`.
 
 On the development stack, the first start can also fail with `outside of rootfs` while Docker sets up a single-file mount. Run `docker compose up -d` again; `scripts/quickstart.sh --up` creates those mount points beforehand.
 

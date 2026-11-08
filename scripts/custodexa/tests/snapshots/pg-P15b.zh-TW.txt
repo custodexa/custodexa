@@ -1,0 +1,2 @@
+資料庫
+  [ OK ] 外接資料庫 db01.example.internal:5432（由你自行管理）

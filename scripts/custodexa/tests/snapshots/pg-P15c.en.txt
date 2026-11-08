@@ -1,0 +1,7 @@
+Database
+  [ OK ] PostgreSQL 18 (bundled), data in /opt/custodexa/data/postgresql, 18.2 GB
+         Data checksums are on
+  [WARN] The last removal of an old database folder did not finish:
+         /opt/custodexa/data/postgres.removing-20261120-021502 is still there (9.1 GB).
+         Run the removal again:
+           sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old

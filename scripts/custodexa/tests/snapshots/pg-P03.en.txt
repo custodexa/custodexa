@@ -1,0 +1,15 @@
+[FAIL] The database holds settings that cannot be converted
+       automatically, so the upgrade will not start. No service was stopped
+       and nothing was changed.
+  Extensions:   pg_stat_statements, pgcrypto
+  Tablespaces:  archive_ts
+  Other roles:   report_reader (granted privileges on objects)
+  Custodexa does not create these, so the database was changed by
+  hand. The automatic conversion moves only Custodexa's own data, and
+  would be incomplete with them, so it stops here. Follow "When the
+  database holds extra settings" in the upgrade SOP: remove these
+  settings and run the same command again, or move to an external
+  database if you want to keep them:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+
+Nothing was changed.

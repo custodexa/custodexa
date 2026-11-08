@@ -55,7 +55,7 @@ MSG_help_cmd_install='  install              第一次安裝：檢查主機、�
 MSG_help_cmd_upgrade='  upgrade              查詢有沒有新版（不做任何變更）
   upgrade <版本>        下載並升級到指定版本（會停機、會先備份）
   upgrade <安裝包路徑>  用已下載的安裝包升級（離線可用）'
-MSG_help_cmd_status='  status               顯示版本、服務、備份與上次升級的狀態（不做任何變更）'
+MSG_help_cmd_status='  status               顯示版本、部署型態、服務、備份與上次升級（不做任何變更）'
 MSG_help_cmd_backup='  backup               備份成單一檔案（會暫停服務；檔案可搬到其他主機）'
 MSG_help_cmd_load='  load <離線包>         載入離線映像包（不啟動服務）'
 MSG_help_options='選項'
@@ -136,11 +136,152 @@ MSG_text_pre_existing='這台主機已有部署，install 不會覆蓋它。查�
 
 # ---- 設定檔 .env ----
 MSG_env_compose_file_bad='.env 的 COMPOSE_FILE=%s 不是這個安裝包的部署形態。
-請改成 current/compose.yml（外部入口或外部資料庫再以 : 接上對應的檔）。'
+請刪除這一行：部署形態只看 EXTERNAL_DB_HOST 與 TLS_MODE，
+這一行由腳本自己維護。'
 MSG_env_project_bad='.env 的 COMPOSE_PROJECT_NAME=%s，這個部署固定用 %s。請改回後重跑。'
 MSG_env_kek_bad='.env 的 KEK_PROVIDER=%s 不是 env、ui、kms、hsm 之一。請先修正。'
 MSG_env_db_external='已設定外部資料庫（EXTERNAL_DB_HOST），DB_PASSWORD 卻是空的或範本值。
 請在 %s 填入該資料庫帳號的密碼後重跑（沒有產生任何值）。'
+
+# ---- 部署形態：安裝預覽 ----
+MSG_fi_section='部署型態'
+MSG_fi_db_builtin='  資料庫     內建：這台會啟動自己的 PostgreSQL，
+             資料放在 %s
+             由 .env 的 EXTERNAL_DB_HOST 決定：留空＝內建'
+MSG_fi_db_external='  資料庫     外接：%s
+             這台不會啟動內建資料庫；資料庫伺服器本身（含大版本升級）
+             由你自行管理
+             由 .env 的 EXTERNAL_DB_HOST 與 EXTERNAL_DB_PORT 決定'
+MSG_fi_web_builtin='  網頁入口   內建 HTTPS：使用者連 %s，
+             對外埠 %s（HTTPS）與 %s（自動轉到 HTTPS）
+             由 .env 的 TLS_MODE 決定：目前是 %s'
+MSG_fi_tls_selfsigned='selfsigned（自己產生的憑證）'
+MSG_fi_tls_provided='provided（你提供的憑證）'
+MSG_fi_web_own='  網頁入口   你的反向代理：網頁服務發布在這台的埠 %s（HTTP），
+             請把反向代理指向 http://%s:%s
+             由 .env 的 TLS_MODE=external 決定；埠由 HTTP_PORT 決定'
+MSG_fi_note='  這兩項要在安裝前決定。安裝完成後改這兩行不會切換部署型態，
+  之後的啟動、升級、備份會被擋下並說明。'
+MSG_fi_ask='開始安裝嗎？[y/N]'
+MSG_fm_rerun='  改好後重新執行同一個指令：'
+MSG_fm_moved_note='.env 裡舊寫法的 %s 已移入腳本管理區，之後由腳本維護。'
+MSG_fm_tls_bad='.env 的 TLS_MODE=%s 不是合法值。沒有做任何變更。'
+MSG_fm_tls_valid='  合法值：selfsigned、provided、external（留空視同 selfsigned）。'
+MSG_fm_host_head='.env 的 EXTERNAL_DB_HOST=%s 不能用。沒有做任何變更。'
+MSG_fm_host_head_wrap='.env 的 EXTERNAL_DB_HOST=%s 不能用。
+沒有做任何變更。'
+MSG_fm_host_why_service='  原因     %s 是 Custodexa 自己的服務名稱，填了等於連回內建資料庫，
+           不是你另外準備的資料庫伺服器'
+MSG_fm_host_fill_service='  應該填   你的資料庫伺服器的主機名或 IP，例如：
+             EXTERNAL_DB_HOST=db01.example.internal
+             EXTERNAL_DB_HOST=10.0.0.40'
+MSG_fm_host_why_loopback='  原因     在容器裡，%s 指的是後端容器自己，不是這台主機'
+MSG_fm_host_fill_loopback='  應該填   資料庫在另一台主機：填那台的主機名或 IP
+           資料庫就裝在這台主機：填這台主機的網路位址（例如 10.0.0.12）'
+MSG_fm_host_why_syntax='  原因     這一行只填主機名或 IP，不含協定、埠號、帳號或空白'
+MSG_fm_host_fill_syntax='  應該填   EXTERNAL_DB_HOST=%s
+           EXTERNAL_DB_PORT=%s        （埠另填這一行，預設 5432）
+           帳號與密碼填在 DB_USER、DB_PASSWORD'
+MSG_fm_host_empty='  要用內建資料庫，把 EXTERNAL_DB_HOST 那一行留空或刪除。'
+MSG_fm_port_head='.env 填了 EXTERNAL_DB_PORT=%s，但 EXTERNAL_DB_HOST 是空的。
+沒有做任何變更，服務照常運作。'
+MSG_fm_port_body='  只填埠時，系統會用這個埠去連內建資料庫，會連不上。請選一種：
+  - 要用外接資料庫：補上 EXTERNAL_DB_HOST（資料庫伺服器的主機名或 IP）
+  - 要用內建資料庫：把 EXTERNAL_DB_PORT 那一行刪除'
+MSG_fm_n2_head='這台已有內建資料庫的資料，不會改用外接資料庫安裝。
+沒有做任何變更。'
+MSG_fm_n2_found='  .env 填了 EXTERNAL_DB_HOST=%s，表示要用外接資料庫；
+  但這個部署目錄已有內建資料庫的資料：'
+MSG_fm_n2_paths='  外接安裝不會使用、也不會刪除這份資料。請先確認它是什麼：
+  - 確定不要了：自行把整個目錄移到別處，再重新執行安裝，例如：
+      sudo mv %s %s
+      %s
+  - 要沿用這份資料：不要直接安裝。改用「從備份檔還原」，
+    以這份資料當時做的備份檔還原，再依「備份與還原」的
+    搬遷程序換到外接資料庫。'
+MSG_fm_e2_head='.env 填了外接資料庫，但你的資料在內建資料庫。
+沒有做任何變更，服務照常運作。'
+MSG_fm_e2_body='
+  你的資料在     內建資料庫 %s
+  .env 寫的是    EXTERNAL_DB_HOST=%s
+                 這一行從來沒有生效：系統一直在用內建資料庫。
+                 照這一行換過去，會接到另一個資料庫，
+                 原本的資料不會跟著過去。
+
+  請選一條路：
+  1. 繼續用內建資料庫：把 .env 的 EXTERNAL_DB_HOST 那一行刪除或留空，
+     再重新執行同一個指令：
+       %s
+  2. 把資料搬到外接資料庫：照「備份與還原」的「換到外接資料庫」程序，
+     先備份，再還原到外接資料庫。只改 .env 不會搬資料。'
+MSG_fm_e3_head='.env 的 EXTERNAL_DB_HOST 是空的，但這台一直使用外接資料庫。
+沒有做任何變更，服務照常運作。'
+MSG_fm_e3_body='  這台原本連的   %s
+  清空這一行，系統會改啟動一個沒有任何資料的內建資料庫，
+  看起來就像全新安裝，使用者、資產與稽核紀錄都不在裡面。
+  要繼續用外接資料庫，把這一行填回原值：
+    EXTERNAL_DB_HOST=%s
+  改好後重新執行同一個指令：
+    %s'
+MSG_fm_e3_unknown='（部署紀錄沒有記下位址）'
+MSG_fm_e3_placeholder='<外接資料庫的主機名或 IP>'
+MSG_fm_e4_head='.env 的網頁入口設定和安裝時不同。沒有做任何變更，服務照常運作。'
+MSG_fm_e4_was_own='你的反向代理（TLS_MODE=external），網頁服務在埠 %s'
+MSG_fm_e4_was_builtin='內建 HTTPS（TLS_MODE=%s）'
+MSG_fm_e4_now_own='你的反向代理'
+MSG_fm_e4_now_builtin='內建 HTTPS'
+MSG_fm_e4_body='  安裝時      %s
+  現在 .env   TLS_MODE=%s（%s）
+  安裝後在「內建 HTTPS」與「你的反向代理」之間切換，這個版本還不支援：
+  對外埠、憑證與反向代理設定要一起改，目前沒有提供這個流程。
+  把 .env 改回原值即可繼續：
+    TLS_MODE=%s
+  改好後重新執行同一個指令：
+    %s'
+MSG_fm_legacy_db='.env 的 COMPOSE_FILE 列了外接資料庫，但 EXTERNAL_DB_HOST 是空的。
+沒有做任何變更。
+  COMPOSE_FILE=%s
+  請補上 EXTERNAL_DB_HOST（資料庫伺服器的主機名或 IP），
+  或把 COMPOSE_FILE 那一行刪除，再重新執行。'
+MSG_fm_legacy_ingress='.env 的 COMPOSE_FILE 列了外部入口，但 TLS_MODE 不是 external。
+沒有做任何變更。
+  COMPOSE_FILE=%s
+  TLS_MODE=%s
+  外部入口現在只由 TLS_MODE=external 表示：請把 TLS_MODE 改成
+  external，並刪除 COMPOSE_FILE 那一行，再重新執行。'
+
+# ---- 升級時 .env 的轉換 ----
+MSG_fm_f09_head='目前的設定在 %s 就無法啟動，要先修正才能升級。
+沒有停止任何服務，也沒有做任何變更。'
+MSG_fm_f09_body='  .env 的 COMPOSE_FILE 列了外接資料庫（compose.external-database.yml），
+  但 EXTERNAL_DB_HOST 是空的。
+  這台目前   %s
+  請補上     EXTERNAL_DB_HOST=%s'
+MSG_fm_f09_rec='部署紀錄為外接資料庫 %s'
+MSG_fm_f09_rec_none='部署紀錄沒有記下位址'
+MSG_uc_head='.env 將調整（第 9 步換版時改寫；其他設定一行都不動）'
+MSG_uc_remove='  - 移除   %s'
+MSG_uc_tls='  ~ 改     TLS_MODE=%s  →  TLS_MODE=external
+           （網頁入口改由這一行表示，部署型態不變）'
+MSG_uc_add='  + 加入   檔案末尾的腳本管理區（前後各一行標記）：'
+MSG_uc_foot='  從 %s 起，部署型態只看兩行：EXTERNAL_DB_HOST（資料庫）
+  與 TLS_MODE（網頁入口）。管理區由腳本維護，請不要手動修改。'
+MSG_uc_env_failed='  第 9 步沒能改寫 .env，.env 維持升級前的內容。'
+MSG_pc_form_bad='部署型態       .env 現在推導出「%s」，升級前紀錄的是「%s」'
+MSG_pc_form_none='內建資料庫、內建 HTTPS'
+MSG_rb_env_back='.env       腳本管理區改回 %s 的寫法，其他每一行都不動：'
+MSG_rb_env_fwd='.env       腳本管理區改成 %s 的寫法，其他每一行都不動：'
+MSG_rb_env_noprofiles='（%s 不使用 COMPOSE_PROFILES，這一行移除）'
+MSG_rv_pending_head='不能撤回到 %s：上次升級的 .env 轉換還沒有完成。
+沒有做任何變更。'
+MSG_rv_pending_body='  上次升級在調整 .env 之前停下，%s 從來沒有以新的 .env 啟動過；
+  現在的 .env 仍是升級前（%s）的寫法，用它啟動 %s
+  會啟動錯的服務。
+  可以走的兩條路：
+    - 接續回到 %s（升級前一直在執行的版本）：'
+MSG_rv_pending_restore='    - 用升級前的備份還原，步驟見：'
+MSG_rs_env_form_bad='備份裡的 .env 推導出的部署型態是「%s」，備份清單記的是「%s」。
+這份備份已損壞，沒有做任何變更。'
 
 # ---- 第 3 步：取得程式映像 ----
 MSG_step_images='取得程式映像'
@@ -322,6 +463,31 @@ MSG_load_next_upgrade='或升級：'
 # status。各段下的行在執行時以 56 欄換行；這裡的換行照樣保留。
 MSG_status_title='Custodexa 狀態    %s    %s'
 MSG_status_sec_version='版本'
+MSG_status_sec_form='部署型態'
+MSG_status_form_db_builtin='資料庫 內建'
+MSG_status_form_db_external='資料庫 外接 %s'
+MSG_status_form_web_builtin='網頁入口 內建 HTTPS（對外埠 %s、%s）'
+MSG_status_form_web_own='網頁入口 你的反向代理（網頁服務在埠 %s）'
+MSG_status_form_join='%s；%s'
+MSG_status_form_db_added='.env 和目前的部署不一致：EXTERNAL_DB_HOST=%s
+系統仍在用內建資料庫，這一行沒有生效。
+下一次啟動、升級、備份、還原或回到上一版會被擋下。
+繼續用內建資料庫：刪除這一行。
+要搬到外接資料庫：照「備份與還原」的「換到外接資料庫」程序。'
+MSG_status_form_db_emptied='.env 和目前的部署不一致：EXTERNAL_DB_HOST 是空的
+系統仍在用外接資料庫 %s。
+下一次啟動、升級、備份、還原或回到上一版會被擋下。
+把這一行填回原值：EXTERNAL_DB_HOST=%s'
+MSG_status_form_tls_changed='.env 和目前的部署不一致：TLS_MODE=%s
+系統仍在用安裝時的入口，不是「%s」。
+下一次啟動、升級、備份、還原或回到上一版會被擋下。
+改回安裝時的值：TLS_MODE=%s'
+MSG_status_form_bad_host='.env 的 EXTERNAL_DB_HOST=%s 不能用。
+下一次啟動、升級、備份、還原或回到上一版會被擋下，
+並說明原因。要用內建資料庫就把這一行留空。'
+MSG_status_form_bad_tls='.env 的 TLS_MODE=%s 不是有效的值。
+下一次啟動、升級、備份、還原或回到上一版會被擋下。
+可用的值：selfsigned、provided、external。'
 MSG_status_sec_services='服務'
 MSG_status_sec_images='映像'
 MSG_status_sec_backup='備份'
@@ -859,6 +1025,7 @@ MSG_menu_help='說明'
 MSG_menu_quit='離開'
 MSG_menu_choose='請選擇 [0-%s]：'
 MSG_menu_choose_sub='請選擇 [1-%s]，直接按 Enter 回到主選單：'
+MSG_menu_choose_remove='請選擇要清除的項目 [1-%s]，直接按 Enter 回到主選單：'
 MSG_menu_invalid='沒有這個選項，請輸入方括號裡的數字。'
 MSG_menu_other_path='輸入其他路徑'
 MSG_menu_bundle_found='載入離線映像包。目前目錄 %s 有這些離線包：'
@@ -1494,6 +1661,11 @@ MSG_rs_provider_ui='網頁輸入'
 MSG_rs_provider_env='設定檔提供'
 
 MSG_rs_provider_kms='金鑰託管'
+
+MSG_rs_form_keep='備份時的部署型態，還原後沿用'
+
+MSG_rs_form_keep_new='備份時的部署型態，還原後沿用；這台只會問下面
+「主機值」那幾行的值'
 
 MSG_rs_restores_new='資料庫 %s、稽核檔 %s、設定檔 .env'
 
@@ -2341,3 +2513,430 @@ MSG_rs_ext_finish_export='安全匯出 外接資料庫還原前的內容（明�
 # 1 argument: when the restore settled it
 MSG_status_upgrade_settled='這次升級失敗已由 %s 的還原處理，
 可以再次升級'
+
+# ---------- compose 呼叫：網頁容器移交 ----------
+MSG_compose_frontend_running='網頁容器 custodexa-frontend 仍在執行，不能換成另一個版本的定義。
+請先停止服務再重試。'
+
+# ---------- 資料目錄改名日誌（內建資料庫） ----------
+MSG_dirop_ambiguous_title='資料目錄的改名上次沒有做完，現在無法判斷哪一份才是正確的資料。
+沒有啟動任何資料庫服務，也沒有改動任何目錄。'
+MSG_dirop_ambiguous_body='  腳本不會猜哪一份才是對的。選錯就啟動，可能在空目錄初始化新資料庫，
+  或讓服務接到不完整的資料。
+  請人工確認兩個目錄的內容。確認之前不要手動改名、移動或刪除。
+  步驟見「升級 SOP」的「資料目錄改名中斷時」一節。
+  要放棄這個狀態、回到升級當時的資料，可以用升級前的備份還原：
+    %s'
+MSG_dirop_intent_failed='未完成的改名（%s 改為 %s）這次也沒有完成。
+沒有啟動任何資料庫服務，也沒有做其他變更。'
+MSG_dirop_no_version='資料目錄不完整，不會啟動資料庫。沒有做任何變更。'
+MSG_dirop_not_empty='資料夾 %s 已經有資料。
+不能在那裡建立新的資料庫。沒有做任何變更。'
+MSG_dirop_wrong_version='資料目錄 %s 是 PostgreSQL %s，這個版本需要 %s。
+不會啟動資料庫。沒有做任何變更。'
+
+# ---------- 內建資料庫轉換（升級第 8 步） ----------
+MSG_pgc_unsupported_head='資料庫裡有自動轉換不支援的設定，升級不會開始。
+沒有停止任何服務，也沒有做任何變更。'
+MSG_pgc_unsupported_ext='擴充套件：%s'
+MSG_pgc_unsupported_ts='自訂表空間：%s'
+MSG_pgc_unsupported_role='其他角色：%s（被授予物件的權限）'
+MSG_pgc_unsupported_foot='Custodexa 不會建立這些設定，表示資料庫曾被手動調整過。
+自動轉換只搬 Custodexa 自己的資料，帶著這些設定轉換會不完整，所以先停下。
+請照「升級 SOP」的「資料庫含額外設定時」一節處理：
+移除這些設定後重新執行同一個指令，不想移除的改用外接資料庫。
+  %s'
+MSG_pgc_where_backups='備份資料夾'
+MSG_pgc_where_images='Docker 映像儲存區'
+MSG_pgc_where_newdb='新資料庫的資料夾'
+MSG_pgc_where_dump='匯出暫存資料夾'
+MSG_pgc_space_unknown_head='無法確認空間夠不夠，升級不會開始。沒有停止任何服務，
+也沒有做任何變更。'
+MSG_pgc_space_unknown='無法判定的位置   %s（讀不到它的路徑）
+腳本不會在沒有確認的情況下假設空間足夠。確認 Docker 運作正常之後，
+重新執行同一個指令：
+  sudo docker info
+  %s'
+MSG_pgc_space_head='空間不夠，升級不會開始。沒有停止任何服務，也沒有做任何變更。'
+MSG_pgc_space_foot='釋放或擴充 %s 的空間後，重新執行同一個指令：
+  %s'
+MSG_pgc_space_art='前次轉換失敗留下的資料（只供診斷，從來沒有被系統使用）佔了空間：'
+MSG_pgc_space_art_hint='要清除它們，請在終端機重新執行同一個升級指令，對清除的詢問回答 y
+（非互動執行不會清除任何東西）：
+  %s
+也可以自行釋放或擴充 %s 的空間後再重跑。'
+MSG_pgc_art_head='前次轉換失敗留下的資料（可以清除，釋放空間）'
+MSG_pgc_art_desc='  上次升級在第 8 步失敗時留下的半成品，只供診斷，從來沒有被系統使用：'
+MSG_pgc_art_ver='PostgreSQL %s'
+MSG_pgc_art_ver_unknown='版本不明'
+MSG_pgc_art_ni='  非互動執行不會清除這些目錄。'
+MSG_pgc_art_after_head='  清除之後'
+MSG_pgc_art_after_1='這些資料無法復原'
+MSG_pgc_art_after_2='不影響目前運作的 %s，也不影響它的資料
+%s'
+MSG_pgc_art_after_3='清除後會重新計算升級所需的空間'
+MSG_pgc_art_ask='先清除這 %s 個目錄，再檢查空間嗎？[y/N]'
+MSG_pgc_art_cleared='已清除 %s，釋放 %s'
+MSG_pgc_art_recount='重新計算空間：%s 需要 %s，還有 %s'
+MSG_pgc_art_untouched='%s 沒有被改動'
+MSG_pgc_art_kept='保留這 %s 個目錄。'
+MSG_pgc_prev_head='資料庫轉換：PostgreSQL %s → %s'
+MSG_pgc_prev_why='  為什麼     %s 起內建資料庫改用 PostgreSQL %s（社群支援到 %s 年）；
+             PostgreSQL %s 的社群支援到 %s 年。這是升級的一部分，
+             不能略過。'
+MSG_pgc_prev_how='  怎麼做     把資料匯出，再匯入一個全新的 PostgreSQL %s 資料庫'
+MSG_pgc_prev_old='  舊資料     原樣保留在 %s，不會被改動'
+MSG_pgc_prev_new='  新資料     %s'
+MSG_pgc_prev_time='  時間       轉換約 %s 到 %s 分鐘，磁碟慢時可能更久；已算進下方的停機時間'
+MSG_pgc_prev_fail='  失敗時     停在換版之前：%s 重新啟動、照常運作，舊資料沒有被改動'
+MSG_pgc_prev_back='  之後要回到 %s，有兩條路，都回到升級當時的資料：
+    - 回到上一版（rollback）：使用上面原樣保留的舊資料
+    - 用升級前的備份還原（restore）
+    兩條路都一樣：新版啟動後寫入的資料（稽核紀錄、連線紀錄、錄影索引、
+    設定與帳號異動）不會帶回去。'
+MSG_up_will_conv='  3. 把資料庫從 PostgreSQL %s 轉換成 %s（見下方「資料庫轉換」）'
+MSG_up_will_conv_switch='  4. 換成 %s 並啟動'
+MSG_up_will_conv_check='  5. 核對：版本、資料是不是原本那一份、金鑰有沒有變'
+MSG_pgr_head='上次的升級在第 8 步「轉換資料庫」時中斷。'
+MSG_pgr_state_stopped='服務目前停止，版本仍是 %s；舊資料 %s 完整、沒有被改動。'
+MSG_pgr_state_running='服務目前執行中，版本仍是 %s；舊資料 %s 完整、沒有被改動。'
+MSG_pgr_a_proof='已確認自上次停機以來，應用服務沒有再啟動過，所以升級前的備份仍然有效。
+這次會從第 8 步重新開始轉換：'
+MSG_pgr_a_reuse='沿用上次已完成的備份 %s'
+MSG_pgr_b_unknown='無法確認上次停機之後應用服務沒有再啟動過：停機後寫入的資料不在上次
+的備份裡，所以上次的備份不再沿用（備份檔會留著，不刪除）：
+  %s'
+MSG_pgr_b_failed='上次的轉換已經失敗，舊版服務正在恢復：恢復後寫入的資料
+不在上次的備份裡，所以上次的備份不再沿用（備份檔會留著，不刪除）：
+  %s'
+MSG_pgr_b_again='這次整個升級會重跑：重新檢查與預覽，接著排空稽核紀錄、停止服務、
+重新備份，然後再轉換。會再停機一次。'
+MSG_pgr_aside='轉換到一半的資料先移到下面的位置（不刪除）：
+%s'
+MSG_pgr_step_kept='沿用上次的結果'
+MSG_pgr_step_kept_backup='沿用上次的備份 %s'
+MSG_pgr_c_head='上次的升級在第 8 步「轉換資料庫」時中斷，要先完成升級。
+沒有做任何變更。'
+MSG_pgr_c_state='版本仍是 %s；舊資料 %s 完整、沒有被改動。'
+MSG_pgr_c_again='再執行一次升級即可接續（轉換到一半的資料先移到
+%s/postgresql.partial-convert-<時間>，不刪除）：'
+MSG_pgr_c_start='接續的起點依實況：能確認停機後應用沒有再啟動過時沿用備份、從第 8 步
+重來，否則整個升級重跑、重新停機並備份；執行 upgrade 時會先說明是哪一種。'
+MSG_pgr_c_status='查看這個部署的狀態：'
+MSG_pgc_fail_head_stopped='升級停在第 8/13 步：資料庫轉換在「%s」時失敗，舊版也沒有重新啟動'
+MSG_pgc_fail_no_auto='腳本不會自動處理'
+MSG_pc_db_ok='資料庫         PostgreSQL %s，資料在 %s'
+MSG_pc_db_bad='資料庫         應為 PostgreSQL %s；資料夾是 %s，執行中的伺服器是 %s，
+               資料位置在 %s'
+MSG_pgc_done_head='資料庫'
+MSG_pgc_done_old='舊的 PostgreSQL %s 資料仍保留在 %s（%s）。
+確認系統正常運作一段時間後，可以從選單「資料庫升級」清除它。'
+MSG_pgc_done_back='從現在起若要回到 %s，不論用回到上一版或升級前的備份還原，
+之後寫入的資料都不會帶回去。'
+MSG_pgc_done_gone='清除舊資料後，就不能再用回到上一版，只能用升級前的備份還原。'
+MSG_pgc_p18_converted='資料庫已轉換成 PostgreSQL %s；%s 的舊資料原樣保留在 %s'
+MSG_pgc_p18_both='決定回到 %s 時，有兩條路，都回到升級當時的資料：'
+MSG_pgc_p18_roll='1. 回到上一版，使用保留的 %s 舊資料（停機前會先問你）：'
+MSG_pgc_p18_roll_note='   新版啟動後寫入的資料不會在退回後的資料庫中。'
+MSG_pgc_p18_restore='2. 用升級前的備份還原：'
+MSG_pgc_p18_gone='決定回到 %s 時，請用升級前的備份還原。升級時保留的 PostgreSQL %s
+資料 %s 已經不在，無法直接回到上一版：'
+# 跨資料庫大版本的指回與撤回。
+MSG_pgrb_versions='目前版本   %s（PostgreSQL %s）
+回到       %s（升級前的版本，PostgreSQL %s）'
+MSG_pgrb_db_untouched='資料庫     新版沒有啟動過，資料沒有變動。改用升級時原樣保留的
+           PostgreSQL %s 資料：%s
+           轉換出的 PostgreSQL %s 資料改名保留，不刪除：
+           %s'
+MSG_pgrb_no_loss='所以不會遺失資料，不需要還原備份。'
+MSG_pgrb_db_started='資料庫     改用升級時原樣保留的 PostgreSQL %s 資料：
+           %s
+           內容停在 %s 升級當時'
+MSG_pgrb_db_started_nostamp='資料庫     改用升級時原樣保留的 PostgreSQL %s 資料：
+           %s
+           內容停在升級當時'
+MSG_pgrb_warn='新版 %s 已經啟動過（%s 起）。升級之後寫入的資料，
+不會出現在回到 %s 後的資料庫裡：
+  - 稽核紀錄
+  - 連線紀錄
+  - 錄影索引：錄影檔仍在磁碟上，但回到 %s 後在系統裡查不到
+  - 設定與帳號異動（新增、修改、刪除的使用者、資產、授權、政策）'
+MSG_pgrb_warn_kept='目前的 PostgreSQL %s 資料不會刪除，改名保留在：
+  %s
+之後再升級到 %s，會從 %s 的資料重新轉換；保留的 %s 資料不會合併回來。'
+MSG_pgrb_warn_restore='另一條路是用升級前的備份還原，同樣回到升級當時的資料：'
+MSG_pgrb_warn_restore_own='另一條路是用升級前你自己的備份還原，同樣回到升級當時的資料。
+備份紀錄在 %s，
+照你登記的還原程序手動還原。'
+MSG_pgrb_steps='會做的事：停止服務 → 確認 PostgreSQL %s 資料仍在，把 %s 的資料改名保留 →
+換回 %s → 啟動 → 核對版本與執行中的映像'
+MSG_pgrb_ask='確定回到 %s，並放棄升級之後寫入的資料嗎？[y/N]'
+MSG_pgrb_need_yes='回到 %s 會放棄升級之後寫入的資料。這次是非互動執行（沒有終端機），
+要帶 --yes 才會執行。沒有做任何變更。'
+MSG_pgrb_step_switch='PostgreSQL %s 資料仍在，%s 的資料已改名保留，換回 %s'
+MSG_pgrb_upgrade_later='之後要再升級，照常執行 upgrade，會重新轉換資料庫。'
+MSG_pgrb_gone='不能直接回到 %s：升級時保留的 PostgreSQL %s 資料已經不在。
+沒有做任何變更，%s。'
+MSG_pgrb_gone_why='原因       %s 只能使用 PostgreSQL %s 的資料，而
+           %s 已經不在'
+MSG_pgrb_gone_why_at='原因       %s 只能使用 PostgreSQL %s 的資料，而
+           %s 已在 %s 清除'
+MSG_pgrb_wrong='不能直接回到 %s：%s 不是 PostgreSQL %s 的資料。
+沒有做任何變更，%s。'
+MSG_pgrb_wrong_why='原因       這個目錄記錄的資料庫版本是 %s，%s 無法使用'
+MSG_pgrb_restore='要回到 %s，請用升級前的備份還原。資料會回到備份當時
+（%s，升級開始時）；之後寫入的資料會遺失，包括稽核紀錄、
+連線紀錄、錄影索引、設定與帳號異動。升級後如果還沒有人使用過系統，
+還原不會遺失資料。還原會先讓你確認：'
+MSG_pgrb_restore_same='要回到 %s，請用升級前的備份還原（說明同上）：'
+MSG_pgrb_when_backup='備份當時'
+MSG_pgrb_rename_blocked='不能把 %s 改名為 %s：
+來源不在，或目的地已經存在。沒有啟動任何服務。'
+MSG_pgrv_preview='撤回回到上一版：預覽（還沒有做任何變更）'
+MSG_pgrv_state_started='目前狀態   上一次「回到上一版」沒有完成：已改用 PostgreSQL %s，
+           但 %s 啟動之後的核對沒有通過'
+MSG_pgrv_state_early='目前狀態   上一次「回到上一版」在啟動 %s 之前中斷'
+MSG_pgrv_to='撤回到     %s（PostgreSQL %s）'
+MSG_pgrv_db='資料庫     把指回前保留的 %s 資料改回使用：
+           %s
+           改名回 %s
+           內容停在指回當時；指回前寫入 %s 的資料都還在'
+MSG_pgrv_warn='%s 已經用 PostgreSQL %s 運作過一段時間。指回期間寫進 %s 的資料，
+不會出現在撤回後的資料庫裡：
+  - 稽核紀錄
+  - 連線紀錄
+  - 錄影索引：錄影檔仍在磁碟上，但撤回到 %s 後在系統裡查不到
+  - 設定與帳號異動（新增、修改、刪除的使用者、資產、授權、政策）'
+MSG_pgrv_warn_kept='這些資料仍留在舊資料目錄，不會刪除，也不會合併回來：
+  %s'
+MSG_pgrv_early_none='%s 沒有用 PostgreSQL %s 啟動過，%s 的資料沒有變動，不會遺失任何資料。'
+MSG_pgrv_ask='確定撤回，回到 %s，並放棄指回期間寫入 %s 的資料嗎？[y/N]'
+MSG_pgrv_need_yes='撤回會放棄指回期間寫入 %s 的資料。這次是非互動執行（沒有終端機），
+要帶 --yes 才會執行。沒有做任何變更，指回紀錄維持原狀。'
+MSG_pgrv_step_switch='把 %s 的資料改回 %s'
+MSG_pgrv_step_check='核對：後端回報 %s，資料庫是 PostgreSQL %s'
+MSG_pgrv_done='已撤回，回到 %s。'
+MSG_pgrv_done_kept='指回期間寫入 %s 的資料仍在 %s，沒有被刪除。'
+MSG_pgc_mh_backup='升級前備份的位置 %s'
+MSG_pgc_mh_images='Docker 映像儲存區 %s'
+MSG_pgc_mh_newdb='新資料庫的位置 %s'
+MSG_pgc_mh_dump='匯出暫存的位置 %s'
+MSG_pgc_mh_newdb_dump='新資料庫的位置 %s，與匯出暫存 %s'
+MSG_pgc_mh_mixed='Docker 映像儲存區 %s，與其他寫入位置'
+MSG_pgc_mh_shared='備份位置與新資料庫的位置都在這裡'
+MSG_pgc_c_backup='備份 %s'
+MSG_pgc_c_images='新版映像 %s'
+MSG_pgc_c_newdb='新資料庫 %s'
+MSG_pgc_c_dump='匯出暫存 %s'
+MSG_pgc_c_margin='餘裕 %s'
+MSG_pgc_cl_backup='升級前備份 %s'
+MSG_pgc_cl_images='新版映像 %s'
+MSG_pgc_cl_newdb='新資料庫 %s'
+MSG_pgc_cl_dump='匯出暫存 %s'
+MSG_pgc_cl_margin='餘裕 %s'
+MSG_pgc_sp_item_sep='、'
+MSG_pgc_sp_sep='，'
+MSG_pgc_sp_list_sep='、'
+MSG_pgc_sp_open='（'
+MSG_pgc_sp_close='）'
+MSG_pgc_sp_need='需要 %s'
+MSG_pgc_sp_free='還有 %s'
+MSG_pgc_sp_only='只有 %s'
+MSG_pgc_sp_short='還差 %s'
+MSG_pgc_sp_one_images='（新版映像）'
+MSG_pgc_ok_both='備份位置 %s 與新資料庫的位置 %s 的空間都夠。'
+MSG_pgc_ok_new='新資料庫的位置 %s 的空間夠。'
+MSG_pgc_space_foot_backup='可以：把舊的備份檔搬到別處後刪除，或擴充 %s。
+目前的備份檔：ls -l %s/
+處理後重新執行同一個指令：
+  %s'
+MSG_pgc_prev_space_lead='  空間       '
+MSG_pgc_prev_why_plain='  為什麼     %s 起內建資料庫改用 PostgreSQL %s。這是升級的一部分，
+             不能略過。'
+MSG_up_know_pause_conv='  - 預計停機 %s 到 %s 分鐘（含資料庫轉換）。停機期間無法連線，
+    進行中的連線會中斷（目前有 %s 條連線正在進行）'
+MSG_up_know_pause_unknown_conv='  - 預計停機 %s 到 %s 分鐘（含資料庫轉換）。停機期間無法連線，
+    進行中的連線會中斷'
+MSG_up_step_pgconvert_done='轉換資料庫：PostgreSQL %s → %s'
+MSG_pgc_subf_verify='核對：新舊資料庫的資料是否相同'
+MSG_pgc_fail_reason_lab='  原因       '
+MSG_pgc_fail_summary='（摘要；完整訊息在紀錄檔）'
+MSG_pgc_why_prepare='準備時讀不到舊資料庫的編碼設定'
+MSG_pgc_why_dump='匯出時連不上舊資料庫'
+MSG_pgc_why_init='建立新資料庫時，暫時的資料庫容器沒有啟動成功'
+MSG_pgc_why_restore='匯入沒有完成'
+MSG_pgc_why_restore_d='資料庫回報：%s'
+MSG_pgc_why_verify='核對時讀不到資料，或資料庫設定與預期不同'
+MSG_pgc_why_verify_d='核對時發現新舊資料庫不一致：%s'
+MSG_pgc_why_analyze='整理查詢統計沒有完成'
+MSG_pgc_why_done='收尾沒有完成'
+MSG_pgc_fail_again_b='恢復之後，再執行一次升級：'
+MSG_up_step_pgconvert_external='轉換資料庫（外接資料庫由你自行管理，不轉換）'
+MSG_dirop_lost_title='資料目錄的改名上次沒有做完，現在找不到相關的資料目錄。
+沒有啟動任何資料庫服務，也沒有改動任何目錄。'
+MSG_dirop_op_rolled_back='  上次的操作   回到上一版：把 %s
+               改名保留為 %s'
+MSG_dirop_op_revert='  上次的操作   撤回上一次的指回：把 %s
+               改名保留為 %s'
+MSG_dirop_op_before_convert='  上次的操作   轉換資料庫之前：把 %s
+               改名保留為 %s'
+MSG_dirop_op_failed_convert='  上次的操作   轉換失敗之後：把 %s
+               改名保留為 %s'
+MSG_dirop_op_removing='  上次的操作   清除舊資料：把 %s
+               改名為 %s，再刪除'
+MSG_dirop_op_other='  上次的操作   改名資料目錄：把 %s
+               改名為 %s'
+MSG_dirop_both_head='  兩個目錄都在（版本檔 = 該目錄下 PG_VERSION 的內容）'
+MSG_dirop_none_head='  兩個目錄都不在'
+MSG_dirop_dir_row='    %s'
+MSG_dirop_dir_ver='        版本檔：%s    %s'
+MSG_dirop_dir_gone='        不存在'
+MSG_dirop_ver_none='沒有'
+MSG_dirop_backup_file='<備份檔>'
+MSG_dirop_lost_body='  資料可能被移到別處，或被誤刪。請先找到它。確認之前不要手動改名、
+  移動或刪除任何目錄。步驟見「升級 SOP」的「資料目錄改名中斷時」一節。
+  找不到資料時，只能用升級前的備份還原：
+    %s'
+MSG_dirop_missing_body='  %s 不存在，或裡面沒有版本檔 PG_VERSION。
+  這時若直接啟動，PostgreSQL %s 會在空目錄初始化一個沒有任何資料的
+  新資料庫。
+  請先找回資料（例如從 %s.* 的保留目錄確認），
+  或用升級前的備份還原：
+    %s
+  查看這個部署的狀態：
+    sudo %s/custodexa.sh status%s'
+MSG_up_step_pgconvert='轉換資料庫：PostgreSQL %s → %s（資料 %s）'
+MSG_pgc_run_note='請不要中斷。萬一中斷，舊資料也不會損壞，重跑升級會從轉換重新開始。'
+MSG_pgc_tick='已經過 %s，預估還要 %s 到 %s 分鐘'
+MSG_pgc_tick_over='已經過 %s，已超過預估的時間，還需要一些時間'
+MSG_pgc_tick_bare='已經過 %s'
+MSG_pgc_sub_dump='匯出舊資料庫'
+MSG_pgc_sub_init='建立新的 PostgreSQL %s 資料庫'
+MSG_pgc_sub_restore='匯入到新資料庫'
+MSG_pgc_sub_verify='核對：%s 張資料表筆數、結構版本、序號、編碼都相同'
+MSG_pgc_sub_analyze='整理查詢統計'
+MSG_pgc_sub_done='完成'
+MSG_pgc_old_kept='舊資料原樣保留在 %s'
+MSG_pgc_ph_prepare='準備'
+MSG_pgc_ph_dump='匯出'
+MSG_pgc_ph_init='建立新資料庫'
+MSG_pgc_ph_restore='匯入'
+MSG_pgc_ph_verify='核對'
+MSG_pgc_ph_analyze='整理統計'
+MSG_pgc_ph_done='收尾'
+MSG_pgc_fail_phase='資料庫轉換失敗在：%s'
+MSG_pgc_fail_head='升級停在第 8/13 步：資料庫轉換在「%s」時失敗'
+MSG_pgc_fail_reason='原因  %s（摘要；完整訊息在紀錄檔）'
+MSG_pgc_fail_state_title='目前狀態'
+MSG_pgc_fail_running='沒有換版：%s 已重新啟動並照常運作'
+MSG_pgc_fail_stopped='沒有換版：版本仍是 %s，但服務目前停止'
+MSG_pgc_fail_old_kept='舊資料 %s 沒有被改動'
+MSG_pgc_fail_kept='轉換到一半的新資料庫移到下面的位置，保留給你或支援人員診斷，
+不會自動刪除：
+%s'
+MSG_pgc_fail_again='處理原因後，重新執行同一個升級指令即可（會重新備份、重新轉換）：'
+MSG_pgc_fail_restart='恢復舊版服務：'
+
+# 內建資料庫跨大版本還原。
+MSG_rs_db_major_mismatch='備份清單記載 PostgreSQL %s，但 %s 內建的是 PostgreSQL %s，
+清單和發行版不一致。'
+MSG_rs_db_major_guide='備份檔可能被改動或不完整，請使用原本產生的檔案。'
+MSG_rs_db_init_stage='新的資料庫只在建立它的階段才能建立；目前還原停在「%s」。
+沒有啟動任何東西。'
+MSG_rs_db_init_unknown='讀不到要還原的發行版的資料庫配置，沒有啟動任何東西。'
+MSG_rs_db_same='備份裡是 PostgreSQL %s；以 PostgreSQL %s 還原'
+MSG_rs_db_other='備份裡是 PostgreSQL %s（%s 的備份）；以 PostgreSQL %s 還原'
+MSG_rs_db_differs='和目前的 PostgreSQL %s 不同：'
+MSG_rs_db_back='- 還原後這台回到 %s 與 PostgreSQL %s'
+MSG_rs_db_kept_cur='- 目前的 PostgreSQL %s 資料先改名保留，不刪除：
+  %s'
+MSG_rs_db_kept_old='- 還留著的 PostgreSQL %s 舊目錄也一併改名保留：
+  %s'
+MSG_rs_db_again='- 之後要再用 %s，照常執行 upgrade，會重新轉換成 PostgreSQL %s'
+
+# 資料庫升級、舊資料庫目錄、選單項與 status 資料庫段（db-upgrade）。
+MSG_usage_db_upgrade_only='選項 %s 只適用於 db-upgrade。請見：custodexa.sh --help'
+MSG_help_cmd_db_upgrade='  db-upgrade           顯示內建資料庫的 PostgreSQL 版本與保留中的舊資料目錄
+                       （不做任何變更）
+  db-upgrade --remove-old  確認後清除那些舊資料目錄，清除後無法復原'
+MSG_help_opt_remove_old='  --remove-old         （db-upgrade）清除舊資料庫目錄'
+MSG_menu_db_upgrade='資料庫升級'
+MSG_menu_db_upgrade_cur='資料庫升級（目前 PostgreSQL %s；清除舊版資料庫目錄）'
+MSG_menu_db_upgrade_to='資料庫升級（目前 PostgreSQL %s；可升級到 PostgreSQL %s）'
+MSG_dbo_kind_previous='回到上一版要用它'
+MSG_dbo_kind_previous_up='%s 升級時原樣保留；回到上一版要用它'
+MSG_dbo_kind_before_convert='轉換前原樣保留的資料'
+MSG_dbo_kind_rolled_back='回到上一版之前的新版資料，沒有帶回'
+MSG_dbo_kind_before_restore='還原前原樣保留的資料'
+MSG_dbo_kind_failed_convert='轉換失敗留下的半成品，供診斷用'
+MSG_dbo_kind_partial_convert='轉換中斷留下的半成品，供診斷用'
+MSG_dbo_kind_removing='開始清除但沒有做完'
+MSG_status_sec_db='資料庫'
+MSG_status_db_external='外接資料庫 %s（由你自行管理）'
+MSG_status_db_unknown='讀不出這一版內建資料庫的版本。'
+MSG_status_db_no_version='%s 沒有可讀的 PostgreSQL 版本檔。'
+MSG_status_db_main='PostgreSQL %s（內建），資料在 %s，%s'
+MSG_status_db_checksums_on='資料校驗（data checksums）已開啟'
+MSG_status_db_checksums_off='資料校驗（data checksums）未開啟'
+MSG_status_db_old_head='保留中的舊目錄 %s 個，可從選單「資料庫升級」清除：'
+MSG_status_db_removing='上次清除舊資料庫目錄沒有完成：
+%s 仍在（%s）
+再執行一次清除：
+  sudo %s/custodexa.sh db-upgrade --remove-old'
+MSG_dbu_title='資料庫升級'
+MSG_dbu_row_current='  目前         PostgreSQL %s，資料在 %s'
+MSG_dbu_row_supported='  這一版支援   PostgreSQL %s'
+MSG_dbu_latest='已是這一版支援的最新版本，不需要升級。'
+MSG_dbu_old_head='保留中的舊資料庫目錄（可以清除，釋放空間）'
+MSG_dbu_old_remove='清除（會先列出內容並要求確認）：'
+MSG_dbu_old_all='全部清除'
+MSG_dbu_query_only='這個指令只查詢，沒有做任何變更。'
+MSG_dbu_nothing='沒有做任何變更。'
+MSG_dbu_external='這台使用外接資料庫 %s:%s。
+外接資料庫由你自行管理，Custodexa 不會升級它；
+它的大版本升級請依你的資料庫維運程序進行。'
+MSG_dbu_newer='資料是 PostgreSQL %s，比這一版支援的 PostgreSQL %s 新。
+請先升級程式。沒有做任何變更。'
+MSG_dbu_mismatch='資料目錄是 PostgreSQL %s，執行中的伺服器卻是 PostgreSQL %s。
+沒有做任何變更。'
+MSG_dbu_unreadable='讀不出 %s 的 PostgreSQL 版本。沒有做任何變更。'
+MSG_dbu_release_unreadable='從 MANIFEST 讀不出這一版內建的資料庫。'
+MSG_dbu_remove_before_convert='資料比這一版內建的資料庫舊，請先轉換
+（執行 db-upgrade，不帶 --remove-old）。沒有清除任何目錄。'
+MSG_dbu_convert_note='資料是 PostgreSQL %s，這一版內建 PostgreSQL %s；開始轉換。'
+MSG_dbu_rm_head='清除舊資料庫目錄（刪除後無法復原）'
+MSG_dbu_rm_what='要刪除'
+MSG_dbu_rm_after='刪除之後'
+MSG_dbu_rm_b_lost='- 這份資料無法復原'
+MSG_dbu_rm_b_rollback='- 不能再用回到上一版（rollback）回到 %s；要回到 %s，
+  只能用升級前的備份還原，升級之後寫入的資料會遺失'
+MSG_dbu_rm_b_backup='- 升級前的備份：%s
+  （%s 建立，%s，檔案在）'
+MSG_dbu_rm_nobackup='找不到升級前的備份 %s。
+清除之後，這台將沒有任何方式回到 %s。'
+MSG_dbu_rm_unaffected='目前使用中的 PostgreSQL %s（%s）不受影響，
+服務不會停止。'
+MSG_dbu_rm_ask_one='確認請輸入要清除的資料庫版本 %s：'
+MSG_dbu_rm_ask_all='確認請輸入 %s：'
+MSG_dbu_rm_cancel='已取消，沒有清除任何目錄。'
+MSG_dbu_rm_done='已清除 %s，釋放 %s'
+MSG_dbu_rm_failed='%s 沒有清除完整，請再執行一次清除。'
+MSG_dbu_rm_needs_yes='清除舊資料庫目錄無法復原，這次是非互動執行（沒有終端機），
+要帶 --yes 才會執行。沒有做任何變更。'
+MSG_dbu_rm_none='沒有需要清除的舊資料庫目錄。'
+MSG_dbu_rm_not_listed='%s 不是舊資料庫目錄。沒有清除任何目錄。'
+MSG_dbu_blocked_head='下列目錄現在不能清除，原因如下：'
+MSG_dbu_ref_head='現在還不能清除舊資料庫目錄。沒有做任何變更。'
+MSG_dbu_chk_db_ok='目前資料庫是 PostgreSQL %s，運作正常'
+MSG_dbu_chk_db_bad='目前的資料庫沒有回應，無法確認 PostgreSQL %s 正常'
+MSG_dbu_chk_up_ok='上一次升級已完成'
+MSG_dbu_chk_up_bad='上一次升級沒有完成（停在第 %s/13 步）'
+MSG_dbu_chk_new_bad='新版還沒有正式啟動過'
+MSG_dbu_chk_idle_ok='沒有進行中的升級、回到上一版或還原'
+MSG_dbu_chk_up_started='上一次升級已完成，新版已啟動過'
+MSG_dbu_chk_idle_short='沒有進行中的回到上一版或還原'
+MSG_dbu_chk_idle_bad='有沒做完的升級、回到上一版或還原'
+MSG_dbu_chk_mount_bad='%s 正被執行中的容器使用'
+MSG_dbu_ref_keep='舊目錄 %s 是目前唯一能回到 %s 的資料，先保留。'
+MSG_dbu_ref_start='先啟動服務並確認狀態正常，再試一次：'
+MSG_dbu_ref_later='完成升級（或決定回到上一版）之後再試。查看狀態：'

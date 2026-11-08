@@ -96,6 +96,7 @@ ingress_too() {
   bk_state_set current.tool_image_ids "openssl=$RS_X_OSSL $(jq -r '."current.tool_image_ids"' "$ROOT/state.json")"
   printf '%s\n' "$RS_X_OSSL" >>"$DB/images"
   rm -rf "$ROOT/tls"
+  # A backup of an overlays-layout release (1.22 and before): its overlay files and COMPOSE_FILE notation.
   touch "$ROOT/current/compose.external-ingress.yml"
   bk_env_set COMPOSE_FILE current/compose.yml:current/compose.external-ingress.yml:current/compose.external-database.yml
 }

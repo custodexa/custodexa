@@ -1,5 +1,17 @@
 Custodexa 1.13.0 install    Deployment directory /opt/custodexa
 
+Deployment form
+  Database   Built-in: this host starts its own PostgreSQL,
+             data in /opt/custodexa/data/postgres
+             Set by EXTERNAL_DB_HOST in .env: empty = built-in
+  Web entry  Built-in HTTPS: users open https://10.0.0.12,
+             ports 443 (HTTPS) and 80 (redirects to HTTPS)
+             Set by TLS_MODE in .env: currently selfsigned (a certificate it generates)
+
+  Decide both before installing. Changing these two lines after the
+  install does not switch the form; start, upgrade and backup will stop
+  and explain.
+
 [ OK ] 1/7  Check this host                                 2s
 [ OK ] 2/7  Create the settings file .env
        Sign-in signing key, database password and initial admin

@@ -26,6 +26,19 @@ docker compose exec backend go test ./...      # backend tests
 docker compose exec frontend npm run test      # frontend tests
 ```
 
+The development stack has its own database and entry point. `quickstart.sh` refuses to run it with
+`EXTERNAL_DB_HOST` filled in or `TLS_MODE=external`, because the development compose file would not
+apply them; the production form's parts come from those two keys instead
+([`docs/QUICKSTART.md`](docs/QUICKSTART.md)).
+
+**One-time rebuild of the development data (1.23.0).** The development stack's platform database moved from PostgreSQL 16 to 18, and its data folder from `${DATA_PATH:-./data}/postgres` to `${DATA_PATH:-./data}/postgresql`; the production form moved with it, because the two share that folder by default. The development stack does not convert old data, so rebuild it once after you pull this change. The accounts, assets and settings you created in the development stack are gone after that, so note down what you need first. The `postgres-test` target stays on PostgreSQL 16 and is not affected.
+
+```bash
+docker compose down                  # stop the development stack
+rm -rf ./data/postgres               # the old PostgreSQL 16 data (use your DATA_PATH if it is not ./data)
+bash scripts/quickstart.sh --up      # creates the PostgreSQL 18 data in ./data/postgresql
+```
+
 All verification runs inside docker compose. For more commands, environment
 pitfalls, and guard-test discipline, see [`docs/dev/testing.md`](docs/dev/testing.md).
 

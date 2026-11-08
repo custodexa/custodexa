@@ -10,8 +10,12 @@
 #   - Generated values are exactly equivalent to hand-filled ones — no product behavior
 #     changes, and the first login still forces a password change.
 #   - An explicit KEK_PROVIDER of ui / kms / hsm is respected: no local key is generated.
-#   - DB_PASSWORD is never changed once the postgres data directory has been initialized
+#   - DB_PASSWORD is never changed once a postgres data directory (postgres or postgresql) has been initialized
 #     (changing it afterwards would lock the backend out of the existing database).
+#   - The deployment form (bundled or external database, built-in HTTPS or your own reverse proxy)
+#     comes from EXTERNAL_DB_HOST and TLS_MODE in .env. The script derives the compose profiles
+#     from them, keeps them in a managed block at the end of .env and passes them to docker
+#     compose; COMPOSE_FILE=docker-compose.dev.yml selects the development stack instead.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -28,6 +32,259 @@ command -v openssl >/dev/null 2>&1 || fail "openssl is required to generate secr
 RUN_UP=0
 [ "${1:-}" = "--up" ] && RUN_UP=1
 TOTAL=1; [ "${RUN_UP}" = 1 ] && TOTAL=4
+
+# ---------- deployment form ----------
+# The rules that turn .env into a deployment form live in scripts/custodexa/lib (form.sh derives it
+# from EXTERNAL_DB_HOST and TLS_MODE and checks the address; form_guard.sh finds the data folders):
+# the files the installed management script uses, so both ways to deploy decide alike.
+LIB_DIR=scripts/custodexa/lib
+for lib_file in common env form form_guard; do
+  [ -f "${LIB_DIR}/${lib_file}.sh" ] || fail "${LIB_DIR}/${lib_file}.sh not found (run this from a complete checkout)"
+  # shellcheck source=/dev/null
+  . "${LIB_DIR}/${lib_file}.sh"
+done
+CX_ROOT=${PWD}
+
+# refuse <text>: print it to stderr and stop. Nothing was written.
+refuse() { printf '%s\n' "$*" >&2; exit 1; }
+
+DEV=0 LEGACY_DB=0 LEGACY_ING=0 COMPOSE_FILE_RAW="" TLS_FLIP=0 TLS_WAS=""
+classify_compose_file() {
+  COMPOSE_FILE_RAW=$(cx_form_trim "$(cx_env_get "${ENV_FILE}" COMPOSE_FILE)")
+  DEV=0 LEGACY_DB=0 LEGACY_ING=0
+  [ "${COMPOSE_FILE_RAW}" != "docker-compose.dev.yml" ] || DEV=1
+  [[ ${COMPOSE_FILE_RAW} != *docker-compose.external-database.yml* ]] || LEGACY_DB=1
+  [[ ${COMPOSE_FILE_RAW} != *docker-compose.external-ingress.yml* ]] || LEGACY_ING=1
+}
+
+# Refusals that need nothing but .env: they come before anything is printed or written.
+refuse_unusable_settings() {
+  local host tls port what
+  classify_compose_file
+  host=$(cx_form_db_host "${ENV_FILE}")
+  tls=$(cx_form_tls_mode "${ENV_FILE}")
+  if [ "${DEV}" = 1 ]; then
+    if [ -n "${host}" ] || [ "${tls}" = external ]; then
+      what="EXTERNAL_DB_HOST=${host}"
+      [ -n "${host}" ] || what="TLS_MODE=external"
+      refuse "ERROR: ${what} cannot be used with
+COMPOSE_FILE=docker-compose.dev.yml (the development stack). Nothing was changed.
+The development stack always uses the database and entry point defined in
+docker-compose.dev.yml; an external database or TLS_MODE=external is not applied.
+  - to keep developing: empty EXTERNAL_DB_HOST (and undo any TLS_MODE change)
+  - to run the production form with an external database: comment out the
+    COMPOSE_FILE line and run this again"
+    fi
+    return 0
+  fi
+  if ! cx_form_derive "${ENV_FILE}" >/dev/null; then
+    refuse "ERROR: TLS_MODE=${tls} in .env is not a valid value. Nothing was changed.
+  Valid values: selfsigned, provided, external (empty means selfsigned)."
+  fi
+  if [ -n "${host}" ] && ! cx_form_check_host "${host}"; then
+    case ${CX_FORM_REASON} in
+      service)
+        refuse "ERROR: EXTERNAL_DB_HOST=${host} cannot be used. Nothing was changed.
+  why            ${host} is a service name of Custodexa itself; it would connect
+                 back to the bundled database, not to a database server of your own
+  what to put    the host name or IP of your database server, for example
+                 db01.example.internal or 10.0.0.40
+To use the bundled database, leave EXTERNAL_DB_HOST empty or remove the line." ;;
+      loopback)
+        refuse "ERROR: EXTERNAL_DB_HOST=${host} cannot be used. Nothing was changed.
+  why            inside a container, ${host} is the backend container itself,
+                 not this host
+  what to put    the database server's host name or IP; if the database runs on
+                 this host, this host's network address (for example 10.0.0.12)
+To use the bundled database, leave EXTERNAL_DB_HOST empty or remove the line." ;;
+      *)
+        refuse "ERROR: EXTERNAL_DB_HOST=${host} cannot be used. Nothing was changed.
+  why            this line takes a host name or IP only: no scheme, port,
+                 account or blanks
+  what to put    EXTERNAL_DB_HOST=db01.example.internal
+                 EXTERNAL_DB_PORT=5432   (own line, default 5432)
+                 account and password go in DB_USER and DB_PASSWORD
+To use the bundled database, leave EXTERNAL_DB_HOST empty or remove the line." ;;
+    esac
+  fi
+  port=$(cx_form_trim "$(cx_env_get "${ENV_FILE}" EXTERNAL_DB_PORT)")
+  if [ -z "${host}" ] && [ -n "${port}" ] && [ "${port}" != 5432 ]; then
+    refuse "ERROR: EXTERNAL_DB_PORT=${port} is set but EXTERNAL_DB_HOST is empty.
+Nothing was changed.
+  - for an external database: add EXTERNAL_DB_HOST (host name or IP)
+  - for the bundled database: remove the EXTERNAL_DB_PORT line"
+  fi
+}
+[ ! -f "${ENV_FILE}" ] || refuse_unusable_settings
+
+# The managed block at the end of .env holds the profiles this script derived last time.
+block_profiles() {
+  awk -v b="${CX_FORM_MARK_BEGIN}" -v e="${CX_FORM_MARK_END}" '
+    $0 == b { inb = 1; next }
+    inb && $0 == e { exit }
+    inb && index($0, "COMPOSE_PROFILES=") == 1 { sub("^COMPOSE_PROFILES=", ""); print; exit }' "${ENV_FILE}"
+}
+
+# rel_path <path>: a path under the project folder written the way .env writes it (./data/...).
+rel_path() { case $1 in "${PWD}"/*) printf './%s' "${1#"${PWD}"/}" ;; *) printf '%s' "$1" ;; esac; }
+
+# db_password_line: what the secrets step reports for DB_PASSWORD, printed before a refusal so the
+# screen reads like the run it interrupted. Nothing is written.
+db_password_line() {
+  local first v
+  first=$(cx_fg_data_dirs | head -n1)
+  v=$(cx_env_get "${ENV_FILE}" DB_PASSWORD)
+  if [ -n "${first}" ]; then
+    report DB_PASSWORD "left as is ($(rel_path "${first}") holds data; changing it would lock the backend out)"
+  elif [ -n "${v}" ] && [ "${v}" != "postgres" ]; then
+    report DB_PASSWORD "already set, left as is"
+  fi
+}
+
+# Refusals that need the state of this folder: what the last run started, and where the data is.
+refuse_form_mismatch() {
+  local host last_ext=0 bp was dirs d ver size container=""
+  host=$(cx_form_db_host "${ENV_FILE}")
+  bp=$(block_profiles)
+  if [ "${LEGACY_DB}" = 1 ] || { [ -n "${bp}" ] && [[ ",${bp}," != *,bundled-db,* ]]; }; then last_ext=1; fi
+  if [ -z "${host}" ] && [ "${last_ext}" = 1 ]; then
+    if [ "${LEGACY_DB}" = 1 ]; then
+      was="with an external database (COMPOSE_FILE in .env lists
+                 docker-compose.external-database.yml)"
+    else
+      was="with an external database (the managed block at the end of
+                 .env has COMPOSE_PROFILES=${bp}, no bundled-db)"
+    fi
+    db_password_line
+    refuse "
+ERROR: EXTERNAL_DB_HOST is empty, but this deployment last started with an
+external database. Nothing was changed and nothing was started.
+  last started   ${was}
+  why            with the line empty, this script would start a bundled
+                 database that has no data. It would look like a fresh
+                 install: your users, assets and audit records are not in it.
+  - to keep using the external database: put EXTERNAL_DB_HOST back to its
+    original value (this script does not record the address)
+  - to go back to the bundled database on purpose: follow the rollback steps
+    in the \"Switching to an external database\" section of
+    docs/ops/backup-and-restore.md"
+  fi
+  if [ -n "${host}" ] && [ "${last_ext}" = 0 ]; then
+    dirs=$(cx_fg_data_dirs)
+    if [ -z "${dirs}" ] && command -v docker >/dev/null 2>&1; then
+      container=$(docker ps -a --filter "name=^custodexa-postgres$" --format '{{.Names}}' 2>/dev/null || true)
+    fi
+    if [ -n "${dirs}" ] || [ -n "${container}" ]; then
+      db_password_line
+      printf '\nERROR: EXTERNAL_DB_HOST=%s cannot be used: this deployment\nalready has bundled database data. Nothing was changed and nothing was started.\n' "${host}" >&2
+      if [ -n "${dirs}" ]; then
+        while IFS= read -r d; do
+          [ -n "${d}" ] || continue
+          ver=""
+          [ ! -f "${d}/PG_VERSION" ] || ver="PostgreSQL $(tr -d '[:space:]' <"${d}/PG_VERSION")"
+          size=$(cx_size_human "$(du -sk "${d}" 2>/dev/null | cut -f1 | awk '{print $1 * 1024}')")
+          printf '  data in use    %s    %s    %s\n' "$(rel_path "${d}")" "${ver}" "${size}" >&2
+        done <<<"${dirs}"
+      else
+        printf '  data in use    container %s\n' "${container}" >&2
+      fi
+      refuse "  why            the bundled database is the one holding your data. Pointing
+                 at an external database does not move it; the system would
+                 start against a different database that has none of it.
+  - to keep using the bundled database: empty EXTERNAL_DB_HOST (or remove the
+    line), then run this again
+  - to move the data to an external database: follow \"Switching to an external
+    database\" in docs/ops/backup-and-restore.md, then run this again"
+    fi
+  fi
+  refuse_old_major_data "${host}"
+}
+
+# refuse_old_major_data <external host>: the bundled database keeps its data in data/postgresql
+# since PostgreSQL 18. Data left in data/postgres by an older release is not read by the new image,
+# which would initialize an empty database next to it, so stop before anything starts. Nothing
+# converts it here: the manual steps are in docs/QUICKSTART.md.
+refuse_old_major_data() {
+  local root old ver size
+  [ -z "$1" ] || return 0
+  root=$(cx_fg_data_root)
+  old=${root}/postgres
+  [ -d "${old}" ] && [ -n "$(ls -A "${old}" 2>/dev/null)" ] || return 0
+  [ ! -d "${root}/postgresql" ] || [ -z "$(ls -A "${root}/postgresql" 2>/dev/null)" ] || return 0
+  ver="PostgreSQL"
+  [ ! -f "${old}/PG_VERSION" ] || ver="PostgreSQL $(tr -d '[:space:]' <"${old}/PG_VERSION")"
+  size=$(cx_size_human "$(du -sk "${old}" 2>/dev/null | cut -f1 | awk '{print $1 * 1024}')")
+  db_password_line
+  refuse "
+ERROR: $(rel_path "${old}") holds ${ver} data (${size}). This version runs
+PostgreSQL 18 from $(rel_path "${root}/postgresql"), which is empty, so it would start with
+no data. Nothing was started and $(rel_path "${old}") was not touched.
+This script does not convert the data. Follow \"Moving a source deployment to
+PostgreSQL 18\" in docs/QUICKSTART.md, then run this again."
+}
+
+# commit_form <profiles>: the one write of the form. The new .env is built in full next to the old
+# one and takes its place in a single rename, so a failure before the rename leaves the old file
+# as it was. Outside the managed block only two edits are allowed: the COMPOSE_FILE line that lists
+# an old overlay file goes, and TLS_MODE becomes external when that line listed the ingress.
+FORM_BLOCK="" # "", added or updated
+commit_form() {
+  local tmp t2 old_block=0
+  FORM_BLOCK=""
+  if grep -qxF "${CX_FORM_MARK_BEGIN}" "${ENV_FILE}"; then old_block=1; fi
+  tmp=$(umask 077 && mktemp "${ENV_FILE}.tmp-XXXXXX") || return 1
+  cat "${ENV_FILE}" >"${tmp}" || { rm -f "${tmp}"; return 1; }
+  if [ "${TLS_FLIP}" = 1 ]; then
+    cx_env_set "${tmp}" TLS_MODE external || { rm -f "${tmp}" "${tmp}".tmp-*; return 1; }
+  fi
+  t2=$(umask 077 && mktemp "${ENV_FILE}.tmp-XXXXXX") || { rm -f "${tmp}"; return 1; }
+  awk -v b="${CX_FORM_MARK_BEGIN}" -v e="${CX_FORM_MARK_END}" -v legacy="${LEGACY_DB}${LEGACY_ING}" '
+    $0 == b { skip = 1; next }
+    skip { if ($0 == e) skip = 0; next }
+    legacy != "00" && /^[[:space:]]*COMPOSE_FILE=.*docker-compose\.external-(database|ingress)\.yml/ { next }
+    { print }' "${tmp}" >"${t2}" || { rm -f "${tmp}" "${t2}"; return 1; }
+  printf '%s\nCOMPOSE_PROFILES=%s\n%s\n' "${CX_FORM_MARK_BEGIN}" "$1" "${CX_FORM_MARK_END}" >>"${t2}" || { rm -f "${tmp}" "${t2}"; return 1; }
+  rm -f "${tmp}"
+  if cmp -s "${t2}" "${ENV_FILE}"; then
+    rm -f "${t2}"
+    return 0
+  fi
+  if ! { chmod 600 "${t2}" && mv -f "${t2}" "${ENV_FILE}"; }; then
+    rm -f "${t2}"
+    return 1
+  fi
+  FORM_BLOCK=added
+  if [ "${old_block}" = 1 ]; then FORM_BLOCK=updated; fi
+}
+
+PROFILES="" FORM_WORDS="" TRANSLATION=""
+# settle_form: derive the form, write the managed block (and translate an old COMPOSE_FILE) once.
+settle_form() {
+  local host tls
+  [ "${DEV}" = 0 ] || return 0
+  host=$(cx_form_db_host "${ENV_FILE}")
+  tls=$(cx_form_tls_mode "${ENV_FILE}")
+  TLS_WAS=${tls}
+  TLS_FLIP=0
+  if [ "${LEGACY_ING}" = 1 ] && [ "${tls}" != external ]; then TLS_FLIP=1; fi
+  FORM_WORDS=""
+  if [ "${tls}" = external ] || [ "${LEGACY_ING}" = 1 ]; then FORM_WORDS=external-ingress; fi
+  [ -z "${host}" ] || FORM_WORDS="${FORM_WORDS:+${FORM_WORDS} }external-database"
+  PROFILES=$(cx_form_profiles "${FORM_WORDS}")
+  commit_form "${PROFILES}" ||
+    fail "could not write ${ENV_FILE}: a temporary file next to it could not be created or renamed; ${ENV_FILE} was not changed"
+  if [ "${LEGACY_DB}" = 1 ] || [ "${LEGACY_ING}" = 1 ]; then
+    TRANSLATION="  COMPOSE_FILE             old setting translated, each change below:
+                           removed  COMPOSE_FILE=${COMPOSE_FILE_RAW}"
+    if [ "${TLS_FLIP}" = 1 ]; then
+      TRANSLATION="${TRANSLATION}
+                           changed  TLS_MODE=${TLS_WAS:-selfsigned} -> external"
+    fi
+    TRANSLATION="${TRANSLATION}
+                           ${FORM_BLOCK:-added}    managed block at the end of .env:
+                                    COMPOSE_PROFILES=${PROFILES}"
+  fi
+}
 
 # ---------- step 1: secrets ----------
 say ""
@@ -78,6 +335,21 @@ gen_password() {
 GENERATED_ADMIN=""
 report() { printf '  %-24s %s\n' "$1" "$2"; }
 
+# ---------- deployment form: refusals, then the one write ----------
+# Everything that can refuse runs before the first secret is written, so a refusal leaves .env as
+# it was.
+classify_compose_file
+if [ "${DEV}" = 0 ]; then
+  refuse_form_mismatch
+  if [ -n "$(cx_form_db_host "${ENV_FILE}")" ] && [ -z "$(cx_fg_data_dirs)" ]; then
+    v=$(cx_env_get "${ENV_FILE}" DB_PASSWORD)
+    if [ -z "${v}" ] || [ "${v}" = "postgres" ]; then
+      fail "DB_PASSWORD is empty or still the template value while EXTERNAL_DB_HOST=$(cx_form_db_host "${ENV_FILE}") is set: put the password of the database account on that server into ${ENV_FILE} and run this again (nothing was generated)"
+    fi
+  fi
+fi
+settle_form
+
 # ---------- JWT_SECRET ----------
 v=$(current JWT_SECRET)
 if [ -z "${v}" ] || [ "${v}" = "change-me-in-production-dev-secret" ]; then
@@ -124,13 +396,18 @@ fi
 data_path=$(current DATA_PATH); data_path=${data_path:-./data}
 v=$(current DB_PASSWORD)
 external_db=$(current EXTERNAL_DB_HOST)
-if [ -d "${data_path}/postgres" ] && [ -n "$(ls -A "${data_path}/postgres" 2>/dev/null)" ]; then
-  report DB_PASSWORD "left as is (${data_path}/postgres is already initialized; changing it would lock the backend out)"
-elif [ -n "${external_db}" ]; then
-  # An external database decides its own password; a value generated here would never match it.
-  if [ -z "${v}" ] || [ "${v}" = "postgres" ]; then
-    fail "DB_PASSWORD is empty or still the template value while EXTERNAL_DB_HOST=${external_db} is set: put the password of the database account on that server into ${ENV_FILE} and run this again (nothing was generated)"
+db_data_dir=""
+for d in postgresql postgres; do
+  if [ -d "${data_path}/${d}" ] && [ -n "$(ls -A "${data_path}/${d}" 2>/dev/null)" ]; then db_data_dir=${data_path}/${d}; break; fi
+done
+if [ -n "${db_data_dir}" ]; then
+  report DB_PASSWORD "left as is (${db_data_dir} is already initialized; changing it would lock the backend out)"
+  if [ -z "${external_db}" ] && [ "${db_data_dir}" = "${data_path}/postgresql" ] && [ -d "${data_path}/postgres" ] && [ -n "$(ls -A "${data_path}/postgres" 2>/dev/null)" ]; then
+    say "  ${data_path}/postgres is not used any more and was left in place; remove it yourself once you no longer need it."
   fi
+elif [ -n "${external_db}" ]; then
+  # An external database decides its own password; a value generated here would never match it
+  # (an empty or template value was refused above, before anything was written).
   report DB_PASSWORD "left as is (EXTERNAL_DB_HOST is set; the password belongs to that server)"
 elif [ -z "${v}" ] || [ "${v}" = "postgres" ]; then
   set_kv DB_PASSWORD "$(gen_alnum 32)"
@@ -200,7 +477,9 @@ TLS_HOST="${v}"
 
 v=$(current TLS_IP_SAN)
 if [ -z "${v}" ]; then
-  v=$(host_ipv4s)
+  # A host with no global IPv4 address makes the grep in host_ipv4s find nothing, which pipefail
+  # turns into a failure: that is the "left empty" case below, not an error.
+  v=$(host_ipv4s || true)
   if [ -n "${v}" ]; then
     set_kv TLS_IP_SAN "${v}"
     report TLS_IP_SAN "set to ${v}"
@@ -242,21 +521,17 @@ PUBLIC_URL="${v}"
 #
 # Only the built-in form is filled in automatically. Run your own ingress and its address is the
 # one that belongs here, which is a decision about your network rather than about this stack.
-compose_file=$(current COMPOSE_FILE)
+OWN_INGRESS=0
+[[ " ${FORM_WORDS} " != *" external-ingress "* ]] || OWN_INGRESS=1
 v=$(current TRUSTED_PROXIES)
 if [ -n "${v}" ]; then
   report TRUSTED_PROXIES "already set, left as is"
+elif [ "${DEV}" = 1 ] || [ "${OWN_INGRESS}" = 1 ]; then
+  report TRUSTED_PROXIES "left empty (this form has no built-in proxy; set it to your ingress address)"
 else
-  case "${compose_file}" in
-    docker-compose.dev.yml|*external-ingress*)
-      report TRUSTED_PROXIES "left empty (this form has no built-in proxy; set it to your ingress address)"
-      ;;
-    *)
-      subnet=$(current DOCKER_SUBNET); subnet=${subnet:-172.28.100.0/24}
-      set_kv TRUSTED_PROXIES "${subnet}"
-      report TRUSTED_PROXIES "set to ${subnet} (the built-in proxy speaks for the clients behind it)"
-      ;;
-  esac
+  subnet=$(current DOCKER_SUBNET); subnet=${subnet:-172.28.100.0/24}
+  set_kv TRUSTED_PROXIES "${subnet}"
+  report TRUSTED_PROXIES "set to ${subnet} (the built-in proxy speaks for the clients behind it)"
 fi
 
 # ---------- VAULT_DEV_ROOT_TOKEN_ID (development stack only) ----------
@@ -264,7 +539,7 @@ fi
 # set, and it checks that even when another service is the one being started. The value is a
 # throwaway for the bundled test target, so it is generated here but never printed. Other forms
 # neither need it nor get it written; a value already present there is left alone.
-if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+if [ "${DEV}" = 1 ]; then
   if [ -z "$(current VAULT_DEV_ROOT_TOKEN_ID)" ]; then
     set_kv VAULT_DEV_ROOT_TOKEN_ID "$(gen_alnum 32)"
     report VAULT_DEV_ROOT_TOKEN_ID "generated (development stack only)"
@@ -275,20 +550,48 @@ fi
 
 chmod 600 "${ENV_FILE}" 2>/dev/null || true
 
+# ---------- deployment form report ----------
+own_port=$(cx_form_trim "$(current HTTP_PORT)"); own_port=${own_port:-80}
+if [ "${DEV}" = 0 ]; then
+  tls_now=$(cx_form_tls_mode "${ENV_FILE}"); tls_now=${tls_now:-selfsigned}
+  db_now=$(cx_form_db_host "${ENV_FILE}")
+  if [ -n "${db_now}" ]; then
+    db_port_now=$(cx_form_trim "$(current EXTERNAL_DB_PORT)")
+    form_db="external database at ${db_now}:${db_port_now:-5432}"
+  else
+    form_db="bundled database"
+  fi
+  if [ "${OWN_INGRESS}" = 1 ]; then
+    form_web="your reverse proxy (port ${own_port})"
+  else
+    form_web="built-in HTTPS (ports ${https_port} and ${http_port})"
+  fi
+  if [ -n "${TRANSLATION}" ]; then
+    say "${TRANSLATION}"
+    report "deployment form" "${form_db}; ${form_web}"
+    say "                           now decided by EXTERNAL_DB_HOST and TLS_MODE only"
+  else
+    report "deployment form" "${form_db}; ${form_web}"
+    say "                           from EXTERNAL_DB_HOST (${db_now:-empty}), TLS_MODE (${tls_now})"
+    if [ -n "${FORM_BLOCK}" ]; then
+      report COMPOSE_PROFILES "written to the managed block at the end of ${ENV_FILE}:"
+      say "                           COMPOSE_PROFILES=${PROFILES}"
+    else
+      report COMPOSE_PROFILES "${PROFILES} (in the managed block, left as is)"
+    fi
+  fi
+fi
+
 # ---------- login target ----------
 CA_URL=""
-case "${compose_file}" in
-  docker-compose.dev.yml)
-    APP_URL="http://localhost:3000"
-    ;;
-  *external-ingress*)
-    APP_URL="http://localhost:${http_port}/"
-    ;;
-  *)
-    APP_URL="${PUBLIC_URL}/"
-    [ "$(current TLS_MODE)" = "provided" ] || CA_URL="${PUBLIC_URL}/custodexa-ca.crt"
-    ;;
-esac
+if [ "${DEV}" = 1 ]; then
+  APP_URL="http://localhost:3000"
+elif [ "${OWN_INGRESS}" = 1 ]; then
+  APP_URL="http://localhost:${own_port}/"
+else
+  APP_URL="${PUBLIC_URL}/"
+  [ "$(current TLS_MODE)" = "provided" ] || CA_URL="${PUBLIC_URL}/custodexa-ca.crt"
+fi
 
 print_login_info() {
   say ""
@@ -365,8 +668,8 @@ port_listener() {
 #
 # A throwaway container does the work as root, so the result is the same whether a docker
 # group member or sudo runs this script. It uses the image of the tls-init service in
-# docker-compose.yml; the default form pulls that image anyway, while with the external
-# ingress overlay tls-init does not run and this is one extra image to pull. Safe to repeat:
+# docker-compose.yml; the built-in HTTPS form pulls that image anyway, while with your own
+# reverse proxy tls-init does not run and this is one extra image to pull. Safe to repeat:
 # files guacd left in group 1000 move to group 0, and the directory change takes effect on a
 # running stack without restarting it.
 RECORDINGS_PREP_IMAGE=alpine/openssl:3.5.4
@@ -380,14 +683,16 @@ prepare_recordings_dir() {
     'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} + && stat -c "%u:%g %a" /r'
 }
 
-# published_by_this_stack succeeds when service $1 of this compose project is running and
+# published_by_this_stack succeeds when this stack's container for service $1 is running and
 # publishes its container port $2 on host port $3. Re-running the script on a deployment that is
 # up finds the stack's own proxy on the public ports; that is not a conflict. The answer comes
-# from compose itself (this project, this compose file), not from the listener's process name:
-# every published container port shows up as docker-proxy, whichever project it belongs to.
+# from the container (docker-compose.yml fixes the container names), not from the listener's
+# process name: every published container port shows up as docker-proxy, whichever project it
+# belongs to. The container, not the compose service: a deployment started by the 1.22 files
+# publishes the port from the same frontend container that is the service frontend-published now.
 published_by_this_stack() {
   local service="$1" target="$2" port="$3" bound
-  bound=$(docker compose port "${service}" "${target}" 2>/dev/null) || return 1
+  bound=$(docker port "custodexa-${service}" "${target}" 2>/dev/null) || return 1
   printf '%s\n' "${bound}" | grep -q ":${port}\$"
 }
 
@@ -421,14 +726,17 @@ require_port_free() {
 # ---------- start & wait (--up) ----------
 if [ "${RUN_UP}" = 1 ]; then
   command -v docker >/dev/null 2>&1 || fail "docker is required for --up"
-  case "${compose_file}" in
-    docker-compose.dev.yml) ;;
-    *external-ingress*) require_port_free "${http_port}" "http, published by the frontend" frontend 80 ;;
-    *)
-      require_port_free "${https_port}" "https" tls-proxy 443
-      require_port_free "${http_port}" "http, redirected to https" tls-proxy 80
-      ;;
-  esac
+  # The profiles derived above reach every docker compose call below through the environment
+  # (the managed block of .env says the same; the environment wins if the two ever differ).
+  if [ "${DEV}" = 0 ]; then export COMPOSE_PROFILES="${PROFILES}"; fi
+  if [ "${DEV}" = 1 ]; then
+    :
+  elif [ "${OWN_INGRESS}" = 1 ]; then
+    require_port_free "${own_port}" "http, published by the frontend" frontend 80
+  else
+    require_port_free "${https_port}" "https" tls-proxy 443
+    require_port_free "${http_port}" "http, redirected to https" tls-proxy 80
+  fi
   if [ "${PORTS_UNCHECKED}" = 1 ]; then
     say ""
     say "  (neither ss nor lsof is installed, so the public ports were not checked; docker will"
@@ -439,11 +747,11 @@ if [ "${RUN_UP}" = 1 ]; then
   docker compose build
   say ""
   say "[3/${TOTAL}] Starting containers"
-  if [ "${compose_file}" != "docker-compose.dev.yml" ]; then
+  if [ "${DEV}" = 0 ]; then
     perms=$(prepare_recordings_dir) || fail "could not prepare ${data_path}/recordings (the docker error is shown above)"
     report "recordings directory" "${data_path}/recordings is ${perms} (uid:gid mode)"
   fi
-  if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+  if [ "${DEV}" = 1 ]; then
     # The development stack mounts single files under the backend source directory. When the
     # host-side path is missing, Docker has to create it while setting up the mount, which can
     # fail on the first start. Create the paths first; an existing file is left untouched.
@@ -454,16 +762,28 @@ if [ "${RUN_UP}" = 1 ]; then
       [ -e "${placeholder}" ] || : >"${placeholder}"
     done
   fi
+  if [ "${DEV}" = 0 ]; then
+    # Both frontend services share one container name. A deployment started with the 1.22 files
+    # (or in the other web form) holds that name under the other service, and compose would stop at
+    # the name conflict. The frontend keeps no data, so the old container is replaced.
+    want_front=frontend
+    [ "${OWN_INGRESS}" = 0 ] || want_front=frontend-published
+    have_front=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' custodexa-frontend 2>/dev/null || true)
+    if [ -n "${have_front}" ] && [ "${have_front}" != "${want_front}" ]; then
+      docker rm -f custodexa-frontend >/dev/null
+      report "frontend container" "replaced (it ran as service ${have_front}; this form runs ${want_front})"
+    fi
+  fi
   docker compose up -d
   say ""
   health_timeout=${HEALTH_TIMEOUT}
-  if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+  if [ "${DEV}" = 1 ]; then
     # The first start of the development stack downloads Go modules and compiles the backend
     # inside the container (about 13-14 minutes measured), so it needs a much longer wait.
     health_timeout=${DEV_HEALTH_TIMEOUT}
   fi
   say "[4/${TOTAL}] Waiting for the backend to become healthy (up to ${health_timeout}s)"
-  if [ "${compose_file}" = "docker-compose.dev.yml" ]; then
+  if [ "${DEV}" = 1 ]; then
     say "The first start of the development stack downloads modules and compiles the backend inside the container,"
     say "which can take 10 to 15 minutes. Later starts are much faster."
   fi
@@ -488,10 +808,11 @@ if [ "${RUN_UP}" = 1 ]; then
 else
   say ""
   say "Preparation complete. Next:"
-  say "    docker compose up -d     # first run builds the images (5-10 minutes)"
-  if [ "${compose_file}" != "docker-compose.dev.yml" ]; then
-    say "  Before the first start, prepare the recordings directory with the command under"
-    say "  \"Start the services\" in docs/QUICKSTART.md, or run this script with --up, which does it."
+  if [ "${DEV}" = 1 ]; then
+    say "    docker compose up -d     # first run builds the images (5-10 minutes)"
+  else
+    say "    bash scripts/quickstart.sh --up   # builds the images (5-10 minutes), prepares the"
+    say "                                      # recordings directory and starts the services"
   fi
   print_login_info
 fi

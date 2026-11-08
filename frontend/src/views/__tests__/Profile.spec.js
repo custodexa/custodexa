@@ -204,6 +204,96 @@ describe('Profile 個人資料頁', () => {
     expect(wrapper.text()).toContain('已啟用')
   })
 
+  // —— 已啟用 MFA 時重新設定驗證器 ——
+
+  const enrolledInfo = { ...accountInfo, totp_enabled: true }
+  const apiRejection = (code, status = 400) => ({ response: { status, data: { code } } })
+
+  it('已啟用時重設驗證器：送出帶現行驗證碼，成功後回到啟用步驟並顯示舊驗證器失效警示', async () => {
+    getCurrentUserMock.mockResolvedValue(enrolledInfo)
+    getMFASetupMock.mockResolvedValue({
+      secret: 'NEWSECRET234567',
+      otpauth_url: 'otpauth://totp/Custodexa:carol?secret=NEWSECRET234567',
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.vm.mfaEnabled).toBe(true)
+
+    await wrapper.find('[data-test="mfa-reset-open"]').trigger('click')
+    wrapper.vm.resetCode = '482915'
+    await wrapper.vm.handleResetMFA()
+    await flushPromises()
+
+    expect(getMFASetupMock).toHaveBeenCalledTimes(1)
+    expect(getMFASetupMock.mock.calls[0][0]).toEqual({ code: '482915' })
+    expect(wrapper.vm.mfaEnabled).toBe(false)
+    expect(wrapper.text()).toContain('NEWSECRET234567')
+    expect(wrapper.find('[data-test="mfa-reset-warning"]').exists()).toBe(true)
+  })
+
+  it('已啟用時重設驗證器：未輸入完整驗證碼就在欄位下方提示、不送出請求', async () => {
+    getCurrentUserMock.mockResolvedValue(enrolledInfo)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="mfa-reset-open"]').trigger('click')
+    wrapper.vm.resetCode = '48'
+    await wrapper.vm.handleResetMFA()
+    await flushPromises()
+
+    expect(getMFASetupMock).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="mfa-reset-error"]').text()).toContain('6 位數驗證碼')
+  })
+
+  it('已啟用時重設驗證器：驗證碼錯誤就地顯示，仍維持已啟用且不顯示新密鑰', async () => {
+    getCurrentUserMock.mockResolvedValue(enrolledInfo)
+    getMFASetupMock.mockRejectedValue(apiRejection('RULE_MFA_INVALID_CODE'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="mfa-reset-open"]').trigger('click')
+    wrapper.vm.resetCode = '000000'
+    await wrapper.vm.handleResetMFA()
+    await flushPromises()
+
+    expect(wrapper.vm.mfaEnabled).toBe(true)
+    expect(wrapper.vm.mfaSetup).toBeNull()
+    expect(wrapper.find('[data-test="mfa-reset-error"]').exists()).toBe(true)
+  })
+
+  it('重設後啟用收到 RULE_MFA_REPLAY：顯示等待提示、保留密鑰、不重新產生', async () => {
+    getCurrentUserMock.mockResolvedValue(enrolledInfo)
+    getMFASetupMock.mockResolvedValue({
+      secret: 'NEWSECRET234567',
+      otpauth_url: 'otpauth://totp/Custodexa:carol?secret=NEWSECRET234567',
+    })
+    enableMFAMock.mockRejectedValueOnce(apiRejection('RULE_MFA_REPLAY'))
+    enableMFAMock.mockResolvedValueOnce({})
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="mfa-reset-open"]').trigger('click')
+    wrapper.vm.resetCode = '482915'
+    await wrapper.vm.handleResetMFA()
+    await flushPromises()
+
+    wrapper.vm.enableCode = '739204'
+    await wrapper.vm.handleEnableMFA()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="mfa-reset-wait"]').exists()).toBe(true)
+    expect(wrapper.vm.mfaSetup.secret).toBe('NEWSECRET234567')
+    expect(wrapper.vm.mfaEnabled).toBe(false)
+    expect(getMFASetupMock).toHaveBeenCalledTimes(1)
+
+    // 等下一組碼後再輸入即可完成啟用
+    wrapper.vm.enableCode = '118833'
+    await wrapper.vm.handleEnableMFA()
+    await flushPromises()
+    expect(wrapper.vm.mfaEnabled).toBe(true)
+    expect(wrapper.find('[data-test="mfa-reset-wait"]').exists()).toBe(false)
+  })
+
   // —— 自助顯示名——
 
   it('基本資料露出 full_name 並標示身分權威唯讀', async () => {

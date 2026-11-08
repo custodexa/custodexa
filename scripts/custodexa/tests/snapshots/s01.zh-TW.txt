@@ -1,5 +1,16 @@
 Custodexa 1.13.0 安裝    部署目錄 /opt/custodexa
 
+部署型態
+  資料庫     內建：這台會啟動自己的 PostgreSQL，
+             資料放在 /opt/custodexa/data/postgres
+             由 .env 的 EXTERNAL_DB_HOST 決定：留空＝內建
+  網頁入口   內建 HTTPS：使用者連 https://10.0.0.12，
+             對外埠 443（HTTPS）與 80（自動轉到 HTTPS）
+             由 .env 的 TLS_MODE 決定：目前是 selfsigned（自己產生的憑證）
+
+  這兩項要在安裝前決定。安裝完成後改這兩行不會切換部署型態，
+  之後的啟動、升級、備份會被擋下並說明。
+
 [ OK ] 1/7  檢查這台主機                                    2 秒
 [ OK ] 2/7  產生設定檔 .env
        登入簽章金鑰、資料庫密碼、初始管理者密碼已產生

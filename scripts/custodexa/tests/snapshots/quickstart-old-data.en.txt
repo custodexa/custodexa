@@ -1,0 +1,8 @@
+[1/4] Checking required secrets in .env
+  DB_PASSWORD              left as is (./data/postgres holds data; changing it would lock the backend out)
+
+ERROR: ./data/postgres holds PostgreSQL 16 data (<size>). This version runs
+PostgreSQL 18 from ./data/postgresql, which is empty, so it would start with
+no data. Nothing was started and ./data/postgres was not touched.
+This script does not convert the data. Follow "Moving a source deployment to
+PostgreSQL 18" in docs/QUICKSTART.md, then run this again.

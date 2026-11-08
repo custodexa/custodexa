@@ -18,8 +18,8 @@ Commands
   rollback --resume    Finish an unfinished rollback
   rollback --revert    Abandon an unfinished rollback and return to the
                        version after the upgrade
-  status                 Show version, services, backups and the last
-                         upgrade (changes nothing)
+  status                 Show version, deployment form, services, backups
+                         and the last upgrade (changes nothing)
   start                  Start all services and wait for backend readiness
   stop                   Confirm and stop all services
   backup                 Back up to a single file (pauses the service;
@@ -35,6 +35,10 @@ Commands
                           restore
   restore --abandon       Give up on an unfinished restore on a new host and
                           return to not installed
+  db-upgrade             Show the bundled database's PostgreSQL version and
+                         the old data folders kept (changes nothing)
+  db-upgrade --remove-old  Remove those old data folders after you confirm;
+                         they cannot be restored
 
 Options
   --yes                  Do not ask for confirmation (for automation)
@@ -58,6 +62,7 @@ Options
                          auto is the default, source builds own images locally
   --keep-images          (upgrade) Keep the old images; by default only the
                          images of this version and the previous one stay
+  --remove-old           (db-upgrade) Remove the old database folders
   --lang <language>      zh-TW, ja or en; see Language below
   --no-color             No colors
   --version              Show the script version

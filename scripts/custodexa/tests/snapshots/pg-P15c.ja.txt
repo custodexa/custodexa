@@ -1,0 +1,7 @@
+データベース
+  [ OK ] PostgreSQL 18（内蔵）、データは /opt/custodexa/data/postgresql、18.2 GB
+         データチェックサム（data checksums）は有効
+  [WARN] 前回の古いデータベースフォルダの削除が終わっていません：
+         /opt/custodexa/data/postgres.removing-20261120-021502 が残っています（9.1 GB）。
+         もう一度削除を実行してください：
+           sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old

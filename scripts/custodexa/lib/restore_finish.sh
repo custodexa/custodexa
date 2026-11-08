@@ -22,7 +22,7 @@ cx_rs_kept_number() {
 }
 cx_rs_kept_paths() {
   local path
-  for path in "$CX_RS_DATA/postgres.before-restore-$CX_RS_TS" "$CX_RS_DATA/audit.before-restore-$CX_RS_TS" "$CX_ROOT/tls.before-restore-$CX_RS_TS"; do
+  for path in "$CX_RS_DATA/postgres.before-restore-$CX_RS_TS" "$CX_RS_DATA/postgresql.before-restore-$CX_RS_TS" "$CX_RS_DATA/audit.before-restore-$CX_RS_TS" "$CX_ROOT/tls.before-restore-$CX_RS_TS"; do
     [ ! -d "$path" ] || printf '%s\n' "$path"
   done
 }

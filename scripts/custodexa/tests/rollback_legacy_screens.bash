@@ -11,7 +11,7 @@ cx_up_fail_switched() {
   cx_up_bullet_backup
   cx_up_bullet "$(cx_msg up_state_no_auto)"
   printf '\n%s\n' "$(cx_up_par "$(cx_msg up_logs_first)")"
-  cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
+  cx_cmd "sudo docker logs --tail 50 custodexa-backend"
   cx_up_par "$(cx_msg up_logs_more)"
   printf '\n%s\n' "$(cx_up_par "$(cx_msg up_restore_guide "$CX_UP_CURRENT")")"
   printf '\n%s\n' "$(cx_up_par "$(cx_msg bk_log "$CX_LOG_FILE")")"
@@ -32,7 +32,7 @@ cx_up_recovery_hint() {
     cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade $CX_UP_TARGET"
   else
     cx_up_par "$(cx_msg up_hint_switched)"
-    cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
+    cx_cmd "sudo docker logs --tail 50 custodexa-backend"
     if [ -n "$(cx_state_get last_backup.file)" ]; then
       cx_up_par "$(cx_msg up_hint_backup "$CX_ROOT/$(cx_state_get last_backup.file)")"
     elif [ -n "$(cx_state_get last_backup.dir)" ]; then

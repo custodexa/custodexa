@@ -1,0 +1,7 @@
+[FAIL] 今は古いデータベースフォルダを削除できません。何も変更していません。
+  [FAIL] 現在のデータベースが応答せず、PostgreSQL 18 が正常か確認できません
+  [ OK ] 前回のアップグレードは完了し、新しいバージョンは起動済みです
+  [ OK ] 進行中のアップグレード、ロールバック、リストアはありません
+  サービスを起動して状態を確認してから、もう一度実行してください：
+    sudo /opt/custodexa/custodexa.sh start
+    sudo /opt/custodexa/custodexa.sh status

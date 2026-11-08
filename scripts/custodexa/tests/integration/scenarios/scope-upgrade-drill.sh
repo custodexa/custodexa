@@ -1,22 +1,41 @@
 # shellcheck shell=bash
-# about: the upgrade of a deployment that already has the permission model, once with the built-in database (host builtin) and once with an external PostgreSQL 17 (host external): the published 1.18.1 installed, a node, a user holding a role over that node, a user holding a role globally and a group holding a role over a node made through its API; upgraded offline to 1.18.90 of the working tree (no migration runs and schema_migrations is the same; every assignment and its node scope is the same; the backup the upgrade took and a new one are usable with their references intact); stop and start keep everything
+# about: the upgrade of a deployment that already has the permission model, once with the built-in database (host builtin) and once with an external PostgreSQL 17 (host external): the published release before the working tree (1.22.0) installed, a node, a user holding a role over that node, a user holding a role globally and a group holding a role over a node made through its API; upgraded offline to the version built from the working tree (no migration runs and schema_migrations is the same; every assignment and its node scope is the same; the backup the upgrade took and a new one are usable with their references intact); stop and start keep everything
 # hosts: builtin external
 # needs: package local-versions published
 # images: pg17
 #
-# Run with CX_IT_LOCAL_VERSIONS=1.18.90 CX_IT_PUBLISHED_VERSION=1.18.1. The reports, the HTTP and
-# database helpers and the backup checks are those of permission-recovery-drill (this file loads
-# it and replaces only the starting version and the steps). Output follows its conventions:
+# Run with CX_IT_LOCAL_VERSIONS=1.23.90 CX_IT_PUBLISHED_VERSION=1.22.0: the published release
+# before the working tree, and one version built from it. The starting version is SC_OLD below
+# (move it with each release); the version upgraded to is the one CX_IT_LOCAL_VERSIONS built.
+# The reports, the HTTP and database helpers and the backup checks are those of
+# permission-recovery-drill: this file loads it with its two versions (DR_OLD, DR_NEW) replaced by
+# these while loading, so that scenario keeps its own (it starts before the permission model), and
+# replaces the steps. Output follows its conventions:
 #   DRILL <form> step=<n> begin=<UTC> name=<name> / end=<UTC> result=PASS
 #   EVID <form> step=<n> ...     evidence lines
 #   REPORT <form> <R> <key>=<value>   the shared reports (R0 before, R1 after the upgrade, R2 after a restart)
 #   SCOPE <form> <S> <key>=<value>    the reports of the assignments and their node scope (scope_before, scope_after, scope_restart)
 # Nothing secret is printed.
 
-# shellcheck source=scripts/custodexa/tests/integration/scenarios/permission-recovery-drill.sh
-. "$IT_DIR/scenarios/permission-recovery-drill.sh"
+readonly SC_OLD=1.22.0
+SC_NEW=$(cat /it-run/local-versions 2>/dev/null || true)
+case $SC_NEW in
+  '' | *' '*) it_die "scope-upgrade-drill builds one version from the working tree (CX_IT_LOCAL_VERSIONS), not '$SC_NEW'" ;;
+esac
+readonly SC_NEW
+[ -e "/published/custodexa-$SC_OLD.tar.gz" ] ||
+  it_die "scope-upgrade-drill starts from the published $SC_OLD: run it with CX_IT_PUBLISHED_VERSION=$SC_OLD"
 
-readonly SC_OLD=1.18.1
+# permission-recovery-drill.sh as it is, with its version line naming SC_OLD and SC_NEW.
+sc_lib=$(sed -E "s/^readonly DR_OLD=[0-9.]+ DR_NEW=[0-9.]+ /readonly DR_OLD=$SC_OLD DR_NEW=$SC_NEW /" \
+  "$IT_DIR/scenarios/permission-recovery-drill.sh")
+grep -qx "readonly DR_OLD=$SC_OLD DR_NEW=$SC_NEW .*" <<<"$sc_lib" ||
+  it_die "the version line of permission-recovery-drill.sh is not 'readonly DR_OLD=<v> DR_NEW=<v> ...' any more"
+# shellcheck source=scripts/custodexa/tests/integration/scenarios/permission-recovery-drill.sh
+. /dev/stdin <<<"$sc_lib"
+unset sc_lib
+[ "$DR_OLD $DR_NEW" = "$SC_OLD $SC_NEW" ] || it_die "permission-recovery-drill.sh loaded with $DR_OLD $DR_NEW"
+
 SC_NODE_A="" SC_NODE_B="" SC_ROLE="" SC_GROUP="" SC_SCOPED_USER="" SC_GLOBAL_USER=""
 
 # ---- step 1: install the published release ----
@@ -35,6 +54,8 @@ sc_install() {
   if [ "$DR_FORM" = external ]; then
     ex_pg_start "$DR_SERVER" 17 "$DR_EXT_PORT"
     ex_db_create "$DR_SERVER"
+    # The published release installed here reads its external database as a COMPOSE_FILE overlay
+    # (overlays layout); the upgrade to the working tree converts it.
     ex_preset "$LV_ROOT" "COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml" \
       "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$DR_EXT_PORT" "DB_NAME=$EX_DB" "DB_USER=$EX_USER" \
       "DB_PASSWORD=$EX_PASS" KEK_PROVIDER=env
@@ -94,7 +115,8 @@ sc_fixtures() {
   it_check "the asset administrator template exists" test -n "$SC_ROLE"
   u1=$(dr_user it-user1 '["user"]')
   u2=$(dr_user it-user2 '["auditor"]')
-  ap=$(dr_user it-approver '["approver"]')
+  # Since 1.21.0 an account holding the approver role alone is refused; it also holds user.
+  ap=$(dr_user it-approver '["approver","user"]')
   nr=$(dr_user it-norole '[]')
   SC_SCOPED_USER=$(dr_user it-scoped '[]')
   SC_GLOBAL_USER=$(dr_user it-global '[]')
@@ -110,7 +132,7 @@ sc_fixtures() {
   dr_ev "fixtures nodes=$SC_NODE_A,$SC_NODE_B asset_admin_role=$SC_ROLE scoped_user=$SC_SCOPED_USER global_user=$SC_GLOBAL_USER group=$SC_GROUP others=$u1,$u2,$ap,$nr"
   dr_report R0
   sc_scope_report scope_before
-  it_same "R0: it-approver holds approver only" "approver/manual" "$(dr_get R0 approver_only)"
+  it_same "R0: it-approver holds approver and user" "approver/manual,user/manual" "$(dr_get R0 approver_only)"
   it_check "R0: at least one local administrator" test "$(dr_get R0 local_admins.api)" -ge 1
   it_check "scope_before: a direct assignment over nodes exists (user_roles.nodes >= 1)" test "$(sed -n 's/^user_roles.nodes=//p' "$IT_WORK/scope_before.scope")" -ge 1
   it_check "scope_before: a group assignment over nodes exists (user_group_roles.nodes >= 1)" test "$(sed -n 's/^user_group_roles.nodes=//p' "$IT_WORK/scope_before.scope")" -ge 1

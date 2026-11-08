@@ -8,7 +8,7 @@
     - 執行中的服務：無
     - 資料、設定檔與憑證都沒有被改動
   先查看後端日誌找原因：
-    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+    sudo docker logs --tail 50 custodexa-backend
   接續回到升級後的 1.16.2：
-    sudo /opt/custodexa/custodexa.sh rollback --resume --lang zh-TW
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh rollback --resume --lang zh-TW
   紀錄檔 /opt/custodexa/logs/rollback-20260930-101502-0.log

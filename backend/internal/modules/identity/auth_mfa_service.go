@@ -46,6 +46,9 @@ var (
 	// ErrMFAAlreadyEnrolled 帳號已註冊 TOTP，不得再走強制註冊流程：
 	// enrollment token 洩漏後不得用以重置/改綁已註冊帳號的第二因子
 	ErrMFAAlreadyEnrolled = errors.New("此帳號已完成 MFA 註冊")
+	// ErrMFACurrentCodeRequired 已啟用 MFA 的帳號重新產生密鑰時未附現行驗證碼，
+	// 或讀取後狀態已被另一請求改變而不得覆寫
+	ErrMFACurrentCodeRequired = errors.New("重新產生驗證器密鑰須附上現行驗證碼")
 )
 
 // matchTOTPStep 在 skew 窗內逐 step 驗證 TOTP，回傳命中的 step 索引（⌊unix/30⌋）。
@@ -73,7 +76,7 @@ func matchTOTPStep(code, secret string, now time.Time) (uint64, bool) {
 // 回傳：nil=通過且 step 已推進；ErrMFAInvalidCode=碼錯；ErrMFAReplay=step 已被消耗
 // （並發或跨 skew 窗同碼重放）。涵蓋登入驗證與綁定確認兩路徑
 func (s *AuthService) consumeTOTP(userID uint, secret, code string) error {
-	step, ok := matchTOTPStep(code, secret, time.Now())
+	step, ok := matchTOTPStep(code, secret, s.mfaClock())
 	if !ok {
 		return ErrMFAInvalidCode
 	}
@@ -90,10 +93,27 @@ func (s *AuthService) consumeTOTP(userID uint, secret, code string) error {
 	return nil
 }
 
+// mfaClock TOTP 驗證使用的時間來源；未注入時取系統時間。
+func (s *AuthService) mfaClock() time.Time {
+	if s.mfaNow != nil {
+		return s.mfaNow()
+	}
+	return time.Now()
+}
+
+// mfaStage 在讀取狀態與寫入之間的固定位置通知觀測掛勾；未注入時不做事。
+func (s *AuthService) mfaStage(stage string) {
+	if s.mfaStageHook != nil {
+		s.mfaStageHook(stage)
+	}
+}
+
 // MFASetupResponse MFA 設定回應（secret 僅在 setup 當下回傳一次）
 type MFASetupResponse struct {
 	Secret     string `json:"secret"`
 	OTPAuthURL string `json:"otpauth_url"`
+	// Reset 本次是已啟用帳號的驗證器重設（供審計標示，不出現在回應本文）
+	Reset bool `json:"-"`
 }
 
 // MFAVerifyRequest MFA 第二階段驗證請求
@@ -103,8 +123,15 @@ type MFAVerifyRequest struct {
 }
 
 // GenerateMFASetup 產生 TOTP secret 並以密文暫存（enabled 維持 false）。
+//
+// 已啟用 MFA 的帳號須附上現行驗證器的有效驗證碼（沿用登入驗證的防重放）：
+// 缺碼回 ErrMFACurrentCodeRequired，碼錯或重放回 ErrMFAInvalidCode，皆不改動儲存的密文與啟用狀態。
+// 未啟用者（首次註冊、管理員救援後重註冊）免碼。
+//
+// 覆寫為條件式更新，條件綁讀取當下看到的狀態與密文：兩次讀寫之間若被另一請求改動，
+// 不覆寫並回 ErrMFACurrentCodeRequired，由前端重新讀取狀態後依新狀態重送。
 // 為什麼直接落 DB 而非快取：避免引入 server-side 狀態，重做 setup 即覆蓋舊 secret
-func (s *AuthService) GenerateMFASetup(userID uint) (*MFASetupResponse, error) {
+func (s *AuthService) GenerateMFASetup(userID uint, code string) (*MFASetupResponse, error) {
 	if s.mfaCrypto == nil {
 		return nil, ErrMFACryptoUnavailable
 	}
@@ -112,6 +139,33 @@ func (s *AuthService) GenerateMFASetup(userID uint) (*MFASetupResponse, error) {
 	user, err := s.findUserByID(userID)
 	if err != nil {
 		return nil, err
+	}
+	readEnabled := user.TOTPEnabled
+	readEnc := user.TOTPSecretEnc
+
+	if readEnabled {
+		if code == "" {
+			return nil, ErrMFACurrentCodeRequired
+		}
+		current, err := s.mfaCrypto.DecryptFor(context.Background(), keyvault.RefUserTOTPSecret, readEnc)
+		if err != nil {
+			return nil, err
+		}
+		// 鎖定 gate 與失敗計數沿用登入第二階段的同一套（共用計數），
+		// 避免重設入口成為不受次數限制的驗證碼試誤途徑
+		if err := s.gateLockout(user); err != nil {
+			return nil, err
+		}
+		if err := s.consumeTOTP(userID, current, code); err != nil {
+			// 重放與碼錯皆計入鎖定，並各自回原錯（與登入第二階段、啟用步驟同一組回應碼）
+			if errors.Is(err, ErrMFAInvalidCode) || errors.Is(err, ErrMFAReplay) {
+				if lockErr := s.recordFailedAttempt(userID); errors.Is(lockErr, ErrAccountLocked) {
+					return nil, lockErr
+				}
+				return nil, err
+			}
+			return nil, err
+		}
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
@@ -129,22 +183,35 @@ func (s *AuthService) GenerateMFASetup(userID uint) (*MFASetupResponse, error) {
 		return nil, err
 	}
 
+	s.mfaStage("setup-before-write")
 	// enabled 強制重設為 false：重新 setup 後舊驗證器立即失效，需重新驗碼啟用
-	if err := database.DB.Model(&model.User{}).Where("id = ?", userID).
-		Updates(map[string]interface{}{
-			"totp_secret_enc": encSecret,
-			"totp_enabled":    false,
-		}).Error; err != nil {
-		return nil, err
+	q := database.DB.Model(&model.User{})
+	if readEnabled {
+		q = q.Where("id = ? AND totp_enabled = ? AND totp_secret_enc = ?", userID, true, readEnc)
+	} else {
+		// 從未註冊者的密文可能為 NULL 或空字串，以 COALESCE 對齊後比對
+		q = q.Where("id = ? AND totp_enabled = ? AND COALESCE(totp_secret_enc, '') = ?", userID, false, readEnc)
+	}
+	res := q.Updates(map[string]interface{}{
+		"totp_secret_enc": encSecret,
+		"totp_enabled":    false,
+	})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrMFACurrentCodeRequired
 	}
 
 	return &MFASetupResponse{
 		Secret:     key.Secret(),
 		OTPAuthURL: key.URL(),
+		Reset:      readEnabled,
 	}, nil
 }
 
-// EnableMFA 驗證 TOTP 碼成功後才啟用 MFA（證明用戶已正確設定驗證器）
+// EnableMFA 驗證 TOTP 碼成功後才啟用 MFA（證明用戶已正確設定驗證器）。
+// 啟用只對驗碼所用的那把密鑰生效：驗碼後密鑰若被另一請求換掉，回 ErrMFASetupRequired
 func (s *AuthService) EnableMFA(userID uint, code string) error {
 	user, secret, err := s.loadTOTPSecret(userID)
 	if err != nil {
@@ -159,8 +226,17 @@ func (s *AuthService) EnableMFA(userID uint, code string) error {
 		return err
 	}
 
-	return database.DB.Model(&model.User{}).Where("id = ?", user.ID).
-		Updates(map[string]interface{}{"totp_enabled": true}).Error
+	s.mfaStage("enable-before-write")
+	res := database.DB.Model(&model.User{}).
+		Where("id = ? AND totp_secret_enc = ?", user.ID, user.TOTPSecretEnc).
+		Updates(map[string]interface{}{"totp_enabled": true})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrMFASetupRequired
+	}
+	return nil
 }
 
 // VerifyMFACode 驗證已啟用 MFA 用戶的 TOTP 碼（登入第二階段使用）
@@ -353,7 +429,12 @@ func (s *AuthService) EnrollmentSetup(enrollmentToken string) (*MFASetupResponse
 	if err := s.requireNotEnrolled(claims.UserID); err != nil {
 		return nil, err
 	}
-	return s.GenerateMFASetup(claims.UserID)
+	resp, err := s.GenerateMFASetup(claims.UserID, "")
+	if errors.Is(err, ErrMFACurrentCodeRequired) {
+		// 檢查後帳號已被他處完成註冊：與已註冊同處置
+		return nil, ErrMFAAlreadyEnrolled
+	}
+	return resp, err
 }
 
 // CompleteEnrollment 以 enrollment token + TOTP 碼完成綁定並直接換發正式會話。

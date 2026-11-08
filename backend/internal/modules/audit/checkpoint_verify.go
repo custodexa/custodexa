@@ -45,6 +45,9 @@ const (
 	// 驗簽，兩者在報表上同形會讓「欄位被清空」與「簽章被換掉」無法分辨，
 	// 而前者往往是升級或回滾出了錯、後者是竄改
 	IntervalStatusPayloadInvalid = "payload_invalid"
+	// IntervalStatusRowsHidden 區間內有軟刪欄位非空的列。操作日誌不具軟刪語意，此欄非空即異常：
+	// 即使筆數與聚合雜湊仍相符也不得判通過
+	IntervalStatusRowsHidden = "rows_hidden"
 	// IntervalStatusAttestationInvalid 檢查點本身驗得過，但其權限附證缺漏、被改或簽章驗不過
 	// （附證啟用之後的每一點都必須帶可驗的附證）。與簽章無效分開：檢查點的區間主張仍可信，
 	// 失去的是該點對權限狀態的證明
@@ -71,6 +74,8 @@ type IntervalContentResult struct {
 	RemainRows int64 `json:"remain_rows"`
 	// InvalidHMACIDs 列級 HMAC 驗不過的列 id 樣本（研判用；上限見整合服務）
 	InvalidHMACIDs []uint `json:"invalid_hmac_ids,omitempty"`
+	// HiddenRows 區間內軟刪欄位非空的列數（rows_hidden 的依據）
+	HiddenRows int64 `json:"hidden_rows,omitempty"`
 }
 
 // VerifyIntervalContent 單一檢查點區間的內容層驗證。
@@ -104,6 +109,10 @@ func (p *CheckpointPurger) VerifyIntervalContent(cp *model.AuditCheckpoint,
 		return res, fmt.Errorf("計數區間 [%d,%d] 失敗: %w", cp.IDFrom, cp.IDTo, err)
 	}
 	res.RemainRows = remain
+	if err := p.db.Raw("SELECT COUNT(*) FROM audit_logs WHERE id >= ? AND id <= ? AND deleted_at IS NOT NULL",
+		cp.IDFrom, cp.IDTo).Scan(&res.HiddenRows).Error; err != nil {
+		return res, fmt.Errorf("計數區間 [%d,%d] 的隱藏列失敗: %w", cp.IDFrom, cp.IDTo, err)
+	}
 
 	if cp.PurgedAt != nil {
 		valid, err := p.VerifyPurgeTombstone(cp, policyDays)
@@ -154,6 +163,10 @@ func (p *CheckpointPurger) VerifyIntervalContent(cp *model.AuditCheckpoint,
 	}
 	if count != cp.RowCount || hash != cp.AggHash {
 		res.Status = IntervalStatusHashMismatch
+		return res, nil
+	}
+	if res.HiddenRows > 0 {
+		res.Status = IntervalStatusRowsHidden
 		return res, nil
 	}
 	res.Status = IntervalStatusPassed

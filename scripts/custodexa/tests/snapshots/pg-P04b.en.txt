@@ -1,0 +1,10 @@
+[ .. ]  8/13  Convert the database: PostgreSQL 16 -> 18 (data 1.0 GB)
+        Do not interrupt. If it is interrupted the old data is not damaged,
+        and running the upgrade again starts the conversion over.
+        [ OK ] 1/5  Export the old database                 0s
+        [ OK ] 2/5  Create the new PostgreSQL 18 database   0s
+        [ OK ] 3/5  Import into the new database            0s
+        [ OK ] 4/5  Check: 0 tables, migrations, sequences, encoding all equal
+        [ OK ] 5/5  Collect query statistics                0s
+[ OK ]  8/13  Convert the database: PostgreSQL 16 -> 18     0s
+        The old data stays as it is in /opt/custodexa/data/postgres

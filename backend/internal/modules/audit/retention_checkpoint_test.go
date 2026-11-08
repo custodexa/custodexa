@@ -110,6 +110,33 @@ func (f *purgeFixture) sealAt(t *testing.T, n int, createdAt, sealedAt time.Time
 	return cp
 }
 
+// ageGenesis 把 genesis 的封章時間改到 at，並依序重算其後各點的鏈接雜湊與簽章，
+// 使整條鏈維持合法簽章（只有時間變老，不引入任何竄改）。
+func (f *purgeFixture) ageGenesis(t *testing.T, at time.Time) {
+	t.Helper()
+	var chain []model.AuditCheckpoint
+	if err := f.db.Order("seq ASC").Find(&chain).Error; err != nil {
+		t.Fatalf("load chain: %v", err)
+	}
+	chain[0].SealedAt = at.UTC()
+	for i := range chain {
+		if i > 0 {
+			link, err := CheckpointLinkHash(&chain[i-1])
+			if err != nil {
+				t.Fatalf("link hash: %v", err)
+			}
+			chain[i].PrevCheckpointHash = link
+		}
+		payload, err := CheckpointSignBytes(&chain[i])
+		if err != nil {
+			t.Fatalf("sign bytes: %v", err)
+		}
+		_, chain[i].Signature = f.signer.Sign(payload)
+		f.mustExecSQL(t, "UPDATE audit_checkpoints SET sealed_at = ?, prev_checkpoint_hash = ?, signature = ? WHERE seq = ?",
+			chain[i].SealedAt, chain[i].PrevCheckpointHash, chain[i].Signature, chain[i].Seq)
+	}
+}
+
 // mustExecSQL 原生 SQL（模擬 DB 直寫；ORM 守衛不適用於此路徑）
 func (f *purgeFixture) mustExecSQL(t *testing.T, sql string, args ...any) {
 	t.Helper()
@@ -715,10 +742,7 @@ func TestCheckpointTrimFromHeadOnly(t *testing.T) {
 	newest := f.sealInterval(t, 1, time.Now())
 	// genesis（seq=1）也必須是舊的才會被修剪：它由 EnsureGenesis 以真實時鐘封章，
 	// 故以 sealed_at 早於 cutoff 的四個區間夾在其後，genesis 自身另行催老
-	if err := f.db.Exec("UPDATE audit_checkpoints SET sealed_at = ? WHERE seq = 1",
-		aged.Add(-time.Hour)).Error; err != nil {
-		t.Fatalf("age genesis: %v", err)
-	}
+	f.ageGenesis(t, aged.Add(-time.Hour))
 	genesisBefore, err := f.purger.GenesisIDFrom()
 	if err != nil {
 		t.Fatalf("genesis before: %v", err)
@@ -766,10 +790,7 @@ func TestCheckpointTrimStopsAtLiveCoverage(t *testing.T) {
 	aged := time.Now().Add(-4000 * 24 * time.Hour)
 	live := f.sealAt(t, 2, old, aged) // 未清除，仍有列
 	f.sealInterval(t, 1, time.Now())
-	if err := f.db.Exec("UPDATE audit_checkpoints SET sealed_at = ? WHERE seq = 1",
-		aged.Add(-time.Hour)).Error; err != nil {
-		t.Fatalf("age genesis: %v", err)
-	}
+	f.ageGenesis(t, aged.Add(-time.Hour))
 
 	trimmed, trim, err := f.purger.TrimChain(3650)
 	if err != nil {
@@ -793,10 +814,7 @@ func TestCheckpointTrimStopsAtLiveCoverage(t *testing.T) {
 func TestCheckpointTrimNeverEmptiesChain(t *testing.T) {
 	f := setupPurgeFixture(t)
 	f.sealAt(t, 0, time.Now(), time.Now().Add(-4000*24*time.Hour))
-	if err := f.db.Exec("UPDATE audit_checkpoints SET sealed_at = ? WHERE seq = 1",
-		time.Now().Add(-4001*24*time.Hour)).Error; err != nil {
-		t.Fatalf("age genesis: %v", err)
-	}
+	f.ageGenesis(t, time.Now().Add(-4001*24*time.Hour))
 	if _, _, err := f.purger.TrimChain(3650); err != nil {
 		t.Fatalf("TrimChain: %v", err)
 	}
@@ -814,10 +832,7 @@ func TestCheckpointTrimNeverEmptiesChain(t *testing.T) {
 func TestCheckpointTrimRecordIsImmutable(t *testing.T) {
 	f := setupPurgeFixture(t)
 	f.sealInterval(t, 1, time.Now())
-	if err := f.db.Exec("UPDATE audit_checkpoints SET sealed_at = ? WHERE seq = 1",
-		time.Now().Add(-4000*24*time.Hour)).Error; err != nil {
-		t.Fatalf("age genesis: %v", err)
-	}
+	f.ageGenesis(t, time.Now().Add(-4000*24*time.Hour))
 	_, trim, err := f.purger.TrimChain(3650)
 	if err != nil || trim == nil {
 		t.Fatalf("TrimChain: %v", err)

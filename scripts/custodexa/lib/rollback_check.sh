@@ -158,7 +158,10 @@ cx_rb_crosses_model() {
 # CX_RB_ADDED and returns 1. Starts nothing.
 cx_rb_judge() {
   local step res snap now before compat to
-  CX_RB_BASIS="" CX_RB_REASON="" CX_RB_ADDED=() CX_RB_READ=0
+  CX_RB_BASIS="" CX_RB_REASON="" CX_RB_ADDED=() CX_RB_READ=0 CX_RB_CROSSED=0
+  # Across the database major the data the version before needs is the folder the upgrade kept; the
+  # migrations of the new database and the list of compatible versions do not enter (lib/rollback_pg.sh).
+  if cx_pgc_crossed; then cx_rb_pg_judge; return; fi
   step=$(cx_state_get last_upgrade.step) res=$(cx_state_get last_upgrade.result)
   if [ "$step" = 9 ] && [[ $res == failed || $res == in_progress ]] \
     && [ -z "$(cx_state_get last_upgrade.new_started_at)" ]; then
@@ -246,6 +249,12 @@ cx_rb_images() {
 # current points at the version the upgrade went to, that is when going back to it); when it cannot
 # be written nothing starts.
 cx_rb_start() {
+  # Before any database starts: no unfinished folder rename, and the folder it mounts is the major
+  # the version about to start expects (lib/dirop.sh).
+  cx_dirop_start_guard "$CX_ROOT/releases/$CX_RB_TARGET" || return 1
   cx_new_started_mark || return 1
   cx_log_run cx_compose up -d --remove-orphans >/dev/null 2>&1
 }
+
+# shellcheck source=lib/rollback_pg.sh
+. "${BASH_SOURCE[0]%/*}/rollback_pg.sh"

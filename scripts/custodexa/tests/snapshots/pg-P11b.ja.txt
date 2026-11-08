@@ -1,0 +1,14 @@
+データベースのアップグレード
+
+  現在         PostgreSQL 18、データは /opt/custodexa/data/postgresql
+  このバージョンの対応   PostgreSQL 18
+  [ OK ] このバージョンが対応する最新の PostgreSQL です。
+         アップグレードは不要です。
+
+残してある古いデータベースフォルダ（削除して容量を空けられます）
+  /opt/custodexa/data/postgres
+      PostgreSQL 16    17.4 GB    1.23.0 へのアップグレード時のまま保管。前のバージョンに戻すのに必要
+  削除する（対象を表示し、確認を求めます）：
+    sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old
+
+このコマンドは確認のみで、何も変更していません。

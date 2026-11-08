@@ -1,0 +1,17 @@
+[FAIL] データフォルダの名前変更が前回完了しておらず、関係するフォルダが
+       見つかりません。データベースのサービスは起動せず、フォルダも
+       変更していません。
+  前回の操作   前のバージョンへ戻す：/opt/custodexa/data/postgresql を
+               /opt/custodexa/data/postgresql.rolled-back-20261120-021502 に名前を変えて残す
+  どちらのフォルダもありません
+    /opt/custodexa/data/postgresql
+        ありません
+    /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+        ありません
+  データが別の場所へ移されたか、誤って削除された可能性があります。
+  まず探してください。確認するまで、フォルダの名前変更、移動、削除は
+  しないでください。手順は「アップグレード手順書」の「データフォルダの
+  名前変更が中断したとき」の節にあります。
+  データが見つからない場合は、アップグレード前のバックアップから
+  復元するしかありません：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

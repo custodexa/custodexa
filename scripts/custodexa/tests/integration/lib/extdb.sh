@@ -18,9 +18,10 @@
 #                                            (each replaces the template's line, as an operator
 #                                            edits it), before install
 #   ex_install <root> <now|from> <port> [KEY=VALUE...]
-#       unpack the package (or the older one), .env for the external database form (COMPOSE_FILE
-#       is EX_CF when set; master key mode env, so the services come up unsealed and the key
-#       fingerprints can be taken) plus these values, install from the offline bundle
+#       unpack the package (or the older one), .env for the external database form (the
+#       form comes from EXTERNAL_DB_HOST; EX_TLS, when set, is written as TLS_MODE, for example
+#       external; master key mode env, so the services come up unsealed and the key fingerprints
+#       can be taken) plus these values, install from the offline bundle
 #   ex_upgrade <root> <online|offline> [from]
 #       upgrade to the package's release (with "from": to the older package, from the oldest);
 #       offline with --images (no image from a registry), online without, the images pulled from
@@ -96,7 +97,7 @@ ex_db_sql() {
 }
 
 ex_install() {
-  local root=$1 which=$2 port=$3 b cf=${EX_CF:-current/compose.yml:current/compose.external-database.yml}
+  local root=$1 which=$2 port=$3 b tls=${EX_TLS:-}
   shift 3
   if [ "$which" = from ]; then
     it_unpack "${root%/*}" from
@@ -105,7 +106,7 @@ ex_install() {
     it_unpack "${root%/*}"
     b=$(it_bundle_file)
   fi
-  ex_preset "$root" "COMPOSE_FILE=$cf" "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$port" \
+  ex_preset "$root" ${tls:+"TLS_MODE=$tls"} "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$port" \
     "DB_NAME=$EX_DB" "DB_USER=$EX_USER" "DB_PASSWORD=$EX_PASS" KEK_PROVIDER=env "$@"
   it_cx "$root" install --images "$b"
 }

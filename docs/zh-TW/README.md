@@ -30,7 +30,7 @@
 
 受支援的 Linux 伺服器以安裝包與 `custodexa.sh` 安裝、備份及升級；`scripts/quickstart.sh` 用於開發和 macOS／Windows 試用。
 
-磁碟：至少 40 GB 可用空間，其中 Docker 資料目錄約需 10 GB。錄影與備份另外計算，增長估算見[容量與儲存規劃](./QUICKSTART.md#6-容量與儲存規劃)。
+磁碟：至少 40 GB 可用空間，其中 Docker 資料目錄約需 10 GB。錄影與備份另外計算，增長估算見[容量與儲存規劃](./QUICKSTART.md#6-容量與儲存規劃)。升級到 1.23.0 需要額外的可用空間來轉換資料庫：約資料庫大小的兩倍，再加 2 GiB（[細節](./ops/upgrade-sop.md#把內建資料庫轉換到-postgresql-18)）。
 
 從 1.14.0 起，發行版的下載引導腳本會取得最新版安裝包與 `SHA256SUMS`、核對安裝包 SHA-256、解壓到 `/opt/custodexa`，再開啟管理選單：
 
@@ -100,14 +100,15 @@ bash scripts/quickstart.sh --up
 出貨預設下，平台自身的根金鑰**永不落地**。首次造訪會先進入**主金鑰初始化頁**，
 金鑰在你的瀏覽器本地生成。務必保存好：之後每次重啟都停在已封存狀態，要再輸入才解封。
 接著才是登入與強制改密。無人值守的部署可在 `.env` 改用 env 或 KMS 金鑰模式。想手動設定？照
-`.env.example` 內的逐項說明複製編輯後 `docker compose up -d` 即可。
-Linux 主機在第一次 `up` 之前要先準備錄影目錄，做法見[啟動服務](QUICKSTART.md#3-啟動服務)。
+`.env.example` 內的逐項說明複製編輯後，用 `bash scripts/quickstart.sh --up` 啟動即可。
+Linux 主機在第一次啟動之前要先準備錄影目錄，做法見[啟動服務](QUICKSTART.md#3-啟動服務)。
 Windows 請在 WSL 內執行腳本。
 
 服務對外走 https，埠為 443（80 會導向它），網址不必帶埠號；主機上這兩個埠已經有別的
 服務時，在 `.env` 以 `TLS_HTTPS_PORT` 與 `TLS_HTTP_PORT` 改成另一組。出貨預設用產品自己產生的憑證，
 故在你安裝隨附的憑證授權單位之前，瀏覽器會顯示警告：從 `/custodexa-ca.crt` 下載它，
-派發到會連進來的機器即可。要把 TLS 交給既有的負載平衡器，做法見 [docs/QUICKSTART.md](../QUICKSTART.md)。
+派發到會連進來的機器即可。要把 TLS 交給既有的負載平衡器，做法見 [docs/QUICKSTART.md](../QUICKSTART.md)：在 `.env` 設 `TLS_MODE=external`。同樣地，
+PostgreSQL 放在你自己的伺服器上只要一行 `EXTERNAL_DB_HOST`，其餘由腳本推導，細節見同一份指南。
 
 要改用自己的主機名，把它寫進 `.env`，代理設定會在啟動時帶入。首次啟動產生的憑證會留在 `tls/`，
 直到你刪除或換掉它；做法與套用指令見[改用自己的網域或憑證](QUICKSTART.md#改用自己的網域或憑證)。
@@ -128,7 +129,8 @@ TLS_MODE=provided
 完整設定選項、開發模式與故障排除見 [docs/QUICKSTART.md](../QUICKSTART.md)。
 
 **想參與開發？** 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解即切到開發版
-（前後端熱重載，並附可供連線測試的靶機），入口見 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+（前後端熱重載，並附可供連線測試的靶機）。開發版有自己的資料庫與入口，所以腳本會拒絕它與
+`EXTERNAL_DB_HOST` 或 `TLS_MODE=external` 並用。入口見 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 
 ## 為什麼需要它
 
@@ -187,7 +189,7 @@ TLS_MODE=provided
 
 ## 技術架構
 
-**後端** Go · Gin · GORM · PostgreSQL 16　**前端** Vue 3 · Element Plus · Vite
+**後端** Go · Gin · GORM · PostgreSQL 18　**前端** Vue 3 · Element Plus · Vite
 **文字終端** xterm.js ＋ 後端原生代理　**圖形協議** Apache Guacamole（guacd，僅 RDP/VNC）
 
 兩個貫穿全系統的架構決策：

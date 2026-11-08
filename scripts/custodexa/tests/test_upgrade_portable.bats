@@ -747,7 +747,7 @@ tpl_env() { printf 'TLS_NGINX_TEMPLATE=%s\n' "$1" >>"$ROOT/.env"; }
   compose project, or its connection is not reclaimed yet. The
   upgrade stopped here; the services stay stopped. Find it and stop
   it until the query below reads 0:
-    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml exec -T postgres \
+    sudo docker exec custodexa-postgres \
       psql -U postgres -d custodexa -tAc "SELECT count(*) FROM pg_stat_activity
       WHERE datname = current_database() AND usename = current_user
       AND pid <> pg_backend_pid()"

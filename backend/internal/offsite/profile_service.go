@@ -152,6 +152,9 @@ type ClientBuildSpec struct {
 	AccessKeyID        string
 	SecretAccessKey    string
 	ServiceAccountJSON string
+
+	// SkipEndpointCredentialCheck 見 GCSParams：只用於已非現行世代的歷史取回
+	SkipEndpointCredentialCheck bool
 }
 
 // ClientFactory 由建構參數產出 driver。**可注入**——測試以計數器實作證明
@@ -165,6 +168,8 @@ func DefaultClientFactory(ctx context.Context, spec ClientBuildSpec) (Client, er
 			Bucket:          spec.Bucket,
 			CredentialsJSON: spec.ServiceAccountJSON,
 			Endpoint:        spec.Endpoint,
+
+			SkipEndpointCredentialCheck: spec.SkipEndpointCredentialCheck,
 		})
 	}
 	return NewS3Client(ctx, S3Params{
@@ -183,7 +188,21 @@ type cachedClient struct {
 	// revision 建構當下該世代的 credential_revision；每次取用前與現值核對，
 	// 不等即丟棄重建——沿用被撤銷憑證的窗口因此收斂到「同一次呼叫內」
 	revision int64
+	// endpointExempt 建構時是否略過了端點檢查（歷史世代取回）。
+	// 取用時須與當次判定相同，否則丟棄重建：略過檢查建出的 client 不得被上傳路徑沿用
+	endpointExempt bool
 }
+
+// clientPurpose 取 client 的用途：決定無顯式憑證時的端點檢查是否套用。
+type clientPurpose int
+
+const (
+	// purposeUpload 上傳、連線探測與現行世代的取回：一律套用端點檢查
+	purposeUpload clientPurpose = iota
+	// purposeRetrieval 取回；世代已非現行時略過端點檢查，使過去合法設定的世代
+	// 仍可取回既有離機證據
+	purposeRetrieval
+)
 
 // OffsiteProfileService 離機儲存設定世代服務。
 type OffsiteProfileService struct {
@@ -472,12 +491,13 @@ func (s *OffsiteProfileService) Save(ctx context.Context, in SettingsInput, acto
 	}
 	var out SaveResult
 	err := WithOffsiteProfileLock(s.db, func(tx *gorm.DB) error {
-		norm, err := validateAndNormalizeOffsiteSettings(in)
+		// 鎖內重讀：現行世代、既存憑證與落點比較全部以本次讀到的值為準；
+		// 驗證核心需要既存世代的憑證來源，故先讀列再驗
+		current, err := currentOffsiteRow(tx)
 		if err != nil {
 			return err
 		}
-		// 鎖內重讀：現行世代、既存憑證與落點比較全部以本次讀到的值為準
-		current, err := currentOffsiteRow(tx)
+		norm, err := validateAndNormalizeOffsiteSettings(in, existingStateOf(current))
 		if err != nil {
 			return err
 		}
@@ -564,7 +584,7 @@ func (s *OffsiteProfileService) ConfirmGenerationSwitch(ctx context.Context, req
 			return reject(ReasonStaleConfirmation)
 		}
 		// (3) 與 Save 共用的**單一驗證核心**（先驗才有 digest 可比）
-		norm, err := validateAndNormalizeOffsiteSettings(req.Settings)
+		norm, err := validateAndNormalizeOffsiteSettings(req.Settings, existingStateOf(current))
 		if err != nil {
 			return err
 		}
@@ -955,7 +975,20 @@ func (s *OffsiteProfileService) auditSaveInTxWith(tx *gorm.DB, row *model.Offsit
 // per-generation cache 於**每次取用前**核對 `credential_revision` 與該列現值，
 // 不等即丟棄重建——沿用被撤銷憑證的窗口因此收斂到「同一次呼叫內」，
 // 而不是某個 cache TTL。
+//
+// 本函式用於上傳與現行世代的探測，端點檢查一律套用；歷史取回走 ClientForRetrieval。
 func (s *OffsiteProfileService) ClientFor(ctx context.Context, generationID uint) (Client, error) {
+	return s.clientFor(ctx, generationID, purposeUpload)
+}
+
+// ClientForRetrieval 取回用途的 ClientFor：世代已非現行（退役）時，
+// 略過「無顯式憑證時端點須為官方網域」的建構檢查；憑證內容檢查與其他條件照舊。
+// 現行世代的取回與上傳同樣套用完整檢查。
+func (s *OffsiteProfileService) ClientForRetrieval(ctx context.Context, generationID uint) (Client, error) {
+	return s.clientFor(ctx, generationID, purposeRetrieval)
+}
+
+func (s *OffsiteProfileService) clientFor(ctx context.Context, generationID uint, purpose clientPurpose) (Client, error) {
 	var row model.OffsiteProfile
 	if err := s.db.Where("generation_id = ?", generationID).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -973,8 +1006,11 @@ func (s *OffsiteProfileService) ClientFor(ctx context.Context, generationID uint
 			ErrCodeForeignCredentialsMissing, generationID, row.Provider)
 	}
 
+	exempt := purpose == purposeRetrieval && row.RetiredAt != nil
+
 	s.mu.Lock()
-	if hit, ok := s.clients[generationID]; ok && hit.revision == row.CredentialRevision {
+	if hit, ok := s.clients[generationID]; ok && hit.revision == row.CredentialRevision &&
+		hit.endpointExempt == exempt {
 		s.mu.Unlock()
 		return hit.client, nil
 	}
@@ -986,6 +1022,8 @@ func (s *OffsiteProfileService) ClientFor(ctx context.Context, generationID uint
 		Bucket:    row.Bucket,
 		Region:    row.Region,
 		PathStyle: row.PathStyle,
+
+		SkipEndpointCredentialCheck: exempt,
 	}
 	if row.CredentialMode == model.OffsiteCredentialStored {
 		plain, err := s.decryptCredentials(ctx, &row)
@@ -1007,7 +1045,7 @@ func (s *OffsiteProfileService) ClientFor(ctx context.Context, generationID uint
 		return nil, err
 	}
 	s.mu.Lock()
-	s.clients[generationID] = cachedClient{client: c, revision: row.CredentialRevision}
+	s.clients[generationID] = cachedClient{client: c, revision: row.CredentialRevision, endpointExempt: exempt}
 	s.mu.Unlock()
 	return c, nil
 }
@@ -1084,7 +1122,7 @@ func (s *OffsiteProfileService) TestSettings(ctx context.Context, in SettingsInp
 	if err != nil {
 		return TestResult{}, err
 	}
-	norm, err := validateAndNormalizeOffsiteSettings(in)
+	norm, err := validateAndNormalizeOffsiteSettings(in, existingStateOf(current))
 	if err != nil {
 		return TestResult{}, err
 	}

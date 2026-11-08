@@ -129,8 +129,10 @@ var (
 
 // --- RULE_MFA_* (TOTP verification rule violations) ---
 var (
-	CodeMFAInvalidCode = register("RULE_MFA_INVALID_CODE", Descriptor{ZhFallback: "MFA 驗證碼錯誤"})
-	CodeMFAReplay      = register("RULE_MFA_REPLAY", Descriptor{ZhFallback: "MFA 驗證碼已使用過"})
+	CodeMFAInvalidCode = register("RULE_MFA_INVALID_CODE", Descriptor{ZhFallback: "驗證碼不正確，請輸入驗證器目前顯示的 6 位數驗證碼。"})
+	CodeMFAReplay      = register("RULE_MFA_REPLAY", Descriptor{ZhFallback: "這組驗證碼已經用過，請等驗證器換下一組後再輸入。"})
+	// CodeMFACurrentCodeRequired 已啟用 MFA 的帳號重新產生驗證器密鑰時未附現行驗證碼
+	CodeMFACurrentCodeRequired = register("RULE_MFA_CURRENT_CODE_REQUIRED", Descriptor{ZhFallback: "請輸入目前驗證器的 6 位數驗證碼。"})
 )
 
 // --- CONFLICT_* (uniqueness / already-in-state) ---

@@ -2,6 +2,133 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.23.0 — bundled database on PostgreSQL 18, and the deployment form set in `.env` (2026-11-09)
+
+No schema change. On a package deployment with the bundled database, the upgrade converts the
+database from PostgreSQL 16 to PostgreSQL 18 while the services are stopped, so the downtime
+includes the conversion and the host needs more free space than for earlier upgrades. A 1.17.x
+to 1.22.x package deployment upgrades with `custodexa.sh upgrade 1.23.0`. An older deployment is
+refused with nothing changed; upgrade it to 1.17.0 or later first. Coming from 1.21.x or
+earlier, the upgrade also runs the migrations of the releases in between, so read "What you need
+to do" in each of those releases' notes below before you start, and on 1.17.x also [Upgrading to
+1.18.0][1180-sop] in the upgrade SOP. With the bundled database, `custodexa.sh rollback` goes
+back to the version you upgraded from on the PostgreSQL 16 data folder the upgrade kept, as long
+as that folder is still there; what 1.23.0 wrote after it started is not in the database it goes
+back to, and restoring the backup taken before the upgrade loses the same ([going back across a
+database major version][1230-br-major]). With an external database, `rollback` goes back and
+keeps the data when the database holds the same migrations as before the upgrade, as it does
+coming from 1.22.x; otherwise it prints the `restore` command.
+
+### What you need to do
+
+- On a package deployment with the bundled database, plan the window for the conversion. The
+  preview, shown before anything stops, gives the estimated time as a range of minutes and the
+  space needed and available on each file system. With everything on one file system, the
+  conversion needs about twice the size of the database plus 2 GiB on top of the backup and the
+  new images ([Converting the bundled database to PostgreSQL 18][1230-pg18]).
+- The upgrade refuses a bundled database that holds an extension other than `plpgsql`, a custom
+  tablespace, or privileges granted to other database roles, before anything stops. Remove the
+  setting it names ([When the database holds extra settings][1230-extra]), or move the
+  deployment to an external database first ([Switching to an external database][1230-br-ext]).
+- The old PostgreSQL 16 data folder stays in place after the conversion, and the final screen of
+  the upgrade says where it is and how much space it takes. `rollback` needs it, and the script
+  never removes it on its own. Once you no longer need to go back, remove it with `custodexa.sh
+  db-upgrade --remove-old` or the new Database upgrade menu item; from then on only the backup
+  taken before the upgrade returns you to the previous version.
+- Package deployments: the upgrade rewrites `.env` once, and the preview lists the change before
+  anything stops. `COMPOSE_FILE` and `COMPOSE_PROFILES` lines are removed, a deployment that ran
+  with its own ingress gets `TLS_MODE=external`, and a block managed by the script is written at
+  the end of the file. Other lines stay as they are, and the deployment keeps its form and its
+  container names. Leave the managed block to the script; `rollback` puts it back to the layout
+  of the version you return to.
+- A deployment with an external database installed with 1.22 or earlier whose `EXTERNAL_DB_HOST`
+  line in `.env` is empty: the upgrade stops before anything is stopped. Put the address of your
+  database server in `EXTERNAL_DB_HOST` before you upgrade.
+- Source deployments: the bundled database is PostgreSQL 18 with its data in `data/postgresql`,
+  and `scripts/quickstart.sh` starts nothing while `data/postgres` still holds older data and
+  the new folder is empty. Move the data once by hand ([Quickstart §8][1230-qs-pg18]). The two
+  overlay compose files are gone; `scripts/quickstart.sh` translates a `COMPOSE_FILE` line that
+  lists them and prints each change ([Quickstart §7][1230-qs-ext]). Start with `bash
+  scripts/quickstart.sh --up` instead of a bare `docker compose up -d`.
+- This release tightens several security checks. Read [Upgrading to 1.23.0][1230-sop] in the
+  upgrade SOP before you upgrade and act on the items that apply to your deployment.
+- Submitting a connection request needs a standing connect permission on every requested asset,
+  for the requester and for the executor the request names. Grant that permission first to
+  anyone who reached an asset only through requests.
+- Some requests that used to be approved automatically now wait for manual review. Configure
+  approver scopes for the assets whose policy segment approves requests automatically and for
+  the assets agents connect to, assets in no node included, and check that enough approvers
+  remain once the people tied to the request are excluded. A request nobody can decide expires
+  after the pending timeout.
+- Registering a new authenticator on an account that already uses MFA asks for the current
+  verification code. A user who has lost the authenticator asks an administrator to disable MFA
+  for the account and then registers again.
+- A directory user whose sign-in name differs from the stored one only in English letter case
+  now reaches the existing account. If one directory user exists as several accounts that differ
+  only in letter case, merge them into one before the user signs in again ([Upgrading to
+  1.23.0][1230-sop]).
+- Offsite storage keys and agent command calls are checked more strictly.
+
+### New capabilities
+
+#### The bundled database on PostgreSQL 18
+
+- The bundled database is PostgreSQL 18.6. The upgrade converts an older one at step 8, after
+  the backup and before the new version is put in place. It loads a fresh export of the old
+  database into a new one with the same encoding and collation and with data checksums on, and
+  compares the two databases table by table before the new version starts.
+- While the conversion runs, the screen shows the current stage, the time elapsed and the time
+  estimated.
+- When the conversion fails, the script starts the old version again, and the upgrade ends with
+  the version unchanged and the old data untouched. The half-built database is kept as
+  `postgresql.failed-convert-<time>` for diagnosis. Running the same upgrade again starts over
+  from step 1, and after an interruption the next `upgrade` says how it continues.
+- A `rollback` after the conversion keeps the PostgreSQL 18 folder under a new name, and its
+  preview warns about the lost writes before you confirm.
+- `restore` takes the database version from the backup. A 1.22.x backup restored on a 1.23.0
+  host returns the deployment to 1.22.x on PostgreSQL 16, after the current data folders are set
+  aside ([Restoring a backup made on another database major version][1230-br-restore]).
+- With the bundled database, the main menu has a Database upgrade item, which runs the new
+  `custodexa.sh db-upgrade`. It shows the database version and removes kept database folders
+  after a confirmation.
+- `status` shows the database version, where the data is, whether data checksums are on, and the
+  kept database folders with their sizes.
+
+#### The deployment form set in `.env`
+
+- The package ships one compose file. A value in `EXTERNAL_DB_HOST` selects your own PostgreSQL
+  server and an empty one the bundled database; `TLS_MODE=external` selects your own ingress,
+  and `selfsigned` or `provided` the built-in TLS proxy.
+- `install`, `upgrade`, `start`, `backup`, `restore` and `rollback` compare `.env` with the
+  deployment before they stop anything, and refuse with exit code 3 and nothing changed when the
+  two disagree: a bundled database with data while `.env` names an external server, an external
+  database whose address was cleared, a switch between the built-in TLS proxy and your own
+  ingress after installation, or an address that names a service of this stack or a loopback
+  address, or carries a port or protocol. The screen says what is wrong and how to fix it.
+- `status` shows the form the deployment runs in and warns about any line of `.env` that
+  disagrees with it.
+- `install` shows the form it derived and the `.env` lines that decided it, and at a terminal
+  asks for confirmation before it writes anything.
+- From the deployment folder, `docker compose ps` and `docker compose logs` without `-f` reach
+  the same services as the script.
+- Source deployments follow the same rules: the root `docker-compose.yml` is one file, and
+  `scripts/quickstart.sh` derives the form from `.env`.
+
+### Fixes
+
+- On a Redis asset with a stored password, a CLI session failed to authenticate at the first
+  line the user entered, because the client took that line as part of the password. The platform
+  now ends the password the way that client reads it.
+
+[1230-sop]: docs/ops/upgrade-sop.md#upgrading-to-1230
+[1230-pg18]: docs/ops/upgrade-sop.md#converting-the-bundled-database-to-postgresql-18
+[1230-extra]: docs/ops/upgrade-sop.md#when-the-database-holds-extra-settings
+[1230-br-major]: docs/ops/backup-and-restore.md#going-back-across-a-database-major-version
+[1230-br-restore]: docs/ops/backup-and-restore.md#restoring-a-backup-made-on-another-database-major-version
+[1230-br-ext]: docs/ops/backup-and-restore.md#54-switching-to-an-external-database
+[1230-qs-ext]: docs/QUICKSTART.md#7-the-database-on-a-separate-server-external-database
+[1230-qs-pg18]: docs/QUICKSTART.md#8-moving-a-source-deployment-to-postgresql-18
+
 ## 1.22.0 — keystroke records, and command audit when the echo is cut off (2026-11-06)
 
 Schema change. Upgrading runs one migration. It adds one table with its indexes, with no data

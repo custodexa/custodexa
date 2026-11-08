@@ -46,10 +46,12 @@ cx_rs_db_import() {
     cx_compose_release "$CX_DB_RELEASE" stop postgres >/dev/null 2>&1 || return 1
     active=$(cx_compose_release "$CX_DB_RELEASE" ps --status running --services) || return 1
     ! grep -qx postgres <<<"$active" || return 1
-    cx_rs_journal "postgres-partial-$attempt" move "$CX_RS_DATA/postgres" \
-      "$CX_RS_DATA/postgres.partial-restore-$CX_RS_TS-$((attempt - 1))" &&
-      cx_rs_journal "postgres-empty-$attempt" mkdir "$CX_RS_DATA/postgres" 0700 || return 1
+    cx_rs_journal "postgres-partial-$attempt" move "$CX_RS_DATA/$(cx_rs_db_dir)" \
+      "$CX_RS_DATA/$(cx_rs_db_dir).partial-restore-$CX_RS_TS-$((attempt - 1))" &&
+      cx_rs_journal "postgres-empty-$attempt" mkdir "$CX_RS_DATA/$(cx_rs_db_dir)" "$(cx_rs_db_dir_mode)" || return 1
   fi
+  # The one start on an empty folder: the cluster of the data release is created here.
+  cx_rs_dirop_init_guard || return 1
   cx_rs_import_mark "$attempt" running && cx_rs_services app-stopped || return 1
   cx_compose_release "$CX_DB_RELEASE" up -d postgres >/dev/null 2>&1 || { cx_rs_import_fail start; return 1; }
   max=$(cx_ready_tries)

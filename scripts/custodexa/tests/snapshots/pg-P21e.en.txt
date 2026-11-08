@@ -1,0 +1,20 @@
+
+Data left by an earlier failed conversion (can be removed to free space)
+  What the last upgrade left when step 8 failed, kept only for
+  diagnosis and never used by the system:
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+  After removing
+    - They cannot be recovered
+    - The running 1.13.0 is not affected, nor is its data
+      /opt/custodexa/data/postgres
+    - The space the upgrade needs is counted again
+
+Remove these 2 folders before checking the space? [y/N] y
+
+[ OK ] Removed /opt/custodexa/data/postgresql.failed-convert-20261120-021502, 0.0 KB freed
+[ OK ] Removed /opt/custodexa/data/postgresql.partial-convert-20261120-021502, 0.0 KB freed
+[ OK ] Space counted again: /opt/custodexa/data/postgresql needs 3.0 GB, 858 GB free
+       /opt/custodexa/data/postgres was not changed

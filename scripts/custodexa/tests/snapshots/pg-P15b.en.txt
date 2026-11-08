@@ -1,0 +1,2 @@
+Database
+  [ OK ] External database db01.example.internal:5432 (managed by you)

@@ -1,0 +1,8 @@
+[FAIL] 現在還不能清除舊資料庫目錄。沒有做任何變更。
+  [ OK ] 目前資料庫是 PostgreSQL 18，運作正常
+  [FAIL] 上一次升級沒有完成（停在第 11/13 步）
+  [FAIL] 新版還沒有正式啟動過
+  [ OK ] 沒有進行中的回到上一版或還原
+  舊目錄 /opt/custodexa/data/postgres 是目前唯一能回到 1.22.0 的資料，先保留。
+  完成升級（或決定回到上一版）之後再試。查看狀態：
+    sudo /opt/custodexa/custodexa.sh status

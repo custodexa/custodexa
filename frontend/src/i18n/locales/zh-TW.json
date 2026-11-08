@@ -1368,6 +1368,7 @@
     "applyConnect": "申請連線",
     "connectTooltip": "連線到資產",
     "noPermTooltip": "權限不足，請聯絡管理員",
+    "viewOnlyTooltip": "你目前只有這台主機的檢視權限，無法連線，也不能提出申請。需要連線請聯絡管理員授予連線權限。",
     "testConnection": "測試連線",
     "emptyTitle": "目前沒有資產",
     "emptyHintAdmin": "點擊右上角「新增資產」以建立第一筆資產",
@@ -1480,6 +1481,7 @@
     "applyHintReason": "「{name}」只需填寫理由即可連線，送出後馬上開啟連線。",
     "applyHintApproval": "「{name}」需要審核人核准後才能連線，送出後請等候通知（可在「我的申請」檢視進度）。",
     "applyApproved": "已核准，正在開啟連線",
+    "applyApprovedWithAccounts": "已核准，正在開啟連線（可用帳號：{accounts}）",
     "applySubmitted": "申請已送出，核准後就可以連線（進度見「我的申請」）",
     "breakGlassStarted": "緊急連線已開啟，正在連線（事後需補審）",
     "pendingInfo": "你對「{name}」的連線申請還在等候審核，核准後這裡會變成「連線」。",
@@ -1656,6 +1658,7 @@
     "applyLinkPending": "「{name}」的連線申請正在審核中，不需要再送一次。",
     "applyLinkConnectable": "「{name}」目前已可連線，不需要申請。",
     "applyLinkUnavailable": "「{name}」目前無法從這裡申請連線。",
+    "applyLinkViewOnly": "「{name}」你目前只有檢視權限，不能提出連線申請。需要連線請聯絡管理員授予連線權限。",
     "noAssetViewTitle": "你的角色沒有資產檢視權限",
     "noAssetViewHint": "這裡不會列出資產。需要經平台連線時，請聯絡管理員為你加上「{role}」角色。",
     "dbRotation": {
@@ -1797,6 +1800,21 @@
     "emptyHint": "從資產管理發起連線後，紀錄會顯示在這裡"
   },
   "auditLogs": {
+    "uploadPhase": {
+      "label": "上傳階段",
+      "actionFmt": "{action}（{phase}）",
+      "startedStatus": "已開始",
+      "tag": {
+        "started": "開始上傳",
+        "completed": "上傳完成",
+        "incomplete": "上傳未完成（連線中斷）"
+      },
+      "hint": {
+        "started": "這筆只表示上傳已經開始，不代表檔案已完整送達。是否完成，請看同一串流的「上傳完成」紀錄。",
+        "completed": "上傳已完成，大小為累計轉送量。",
+        "incomplete": "連線關閉時，這個上傳還沒有收到結束指令，只能確認已轉送「大小」欄的部分。遠端檔案可能不完整，是否存在請到目標主機確認。"
+      }
+    },
     "headerDesc": "查詢與匯出系統稽核日誌",
     "exportEvidence": "匯出證據包",
     "tabReviews": "每日簽核",
@@ -2444,7 +2462,10 @@
     "deleted": "已刪除",
     "accountSession": "檔案操作使用連線帳號 {username}",
     "accountDefault": "檔案操作使用此資產的預設帳號",
-    "identityChanged": "連線帳號已就緒，檔案清單已重新載入，請確認後再操作"
+    "identityChanged": "連線帳號已就緒，檔案清單已重新載入，請確認後再操作",
+    "sourceDeniedTitle": "無法使用檔案功能",
+    "sourceDeniedDesc": "目前的來源位址不在你的允許範圍內，請聯絡管理員。",
+    "sourceDeniedReload": "重新載入"
   },
   "snippets": {
     "searchPlaceholder": "搜尋片段名稱",
@@ -3133,7 +3154,16 @@
     "ldapIdentityNote": "身分欄位由目錄服務管理，唯讀。",
     "externalPasswordTitle": "此帳號由外部身分提供者管理",
     "externalPasswordDesc": "密碼變更請至身分提供者進行；本系統不儲存也無法修改此帳號的密碼。",
-    "externalIdentityNote": "身分欄位由外部身分提供者管理，唯讀。"
+    "externalIdentityNote": "身分欄位由外部身分提供者管理，唯讀。",
+    "mfaResetTitle": "重新設定驗證器",
+    "mfaResetDesc": "換了手機，或要改用別的驗證器應用程式時使用。需要先輸入目前驗證器顯示的驗證碼。",
+    "mfaResetCodeLabel": "輸入目前驗證器顯示的 6 位數驗證碼，才能重新設定",
+    "mfaResetLostHint": "驗證器遺失、拿不到驗證碼時，請聯絡管理員協助重設。",
+    "mfaResetContinue": "繼續",
+    "mfaResetWarnTitle": "新的密鑰已產生",
+    "mfaResetWarnDesc": "舊的驗證器已經失效。完成下面的啟用步驟之前，這個帳號登入時不會要求驗證碼。",
+    "mfaResetWaitTitle": "這組驗證碼剛用過",
+    "mfaResetWaitDesc": "請等待驗證器顯示下一組驗證碼後再輸入。這不是設定失敗，密鑰沒有改變。"
   },
   "approverScope": {
     "semantics1": "審核方可為個人或使用者群組：群組成員自動具審核資格（入組即可審、離組即失效），個人則須具審核人員角色。",
@@ -3260,6 +3290,7 @@
       "rejectedWith": "被拒：{reason}",
       "notEligible": "有資產不在你的審核範圍，整張未生效",
       "selfApproval": "這張是你自己申請或由你執行的，請由其他審核人處理",
+      "connectRequired": "申請人目前沒有這台資產的連線權限，整張未生效；你仍可以拒絕這張申請",
       "handledByOther": "已由其他審核人處理",
       "unconfirmedCheckHistory": "待確認：請到「歷史」分頁確認這張的結果",
       "checking": "正在向伺服器查詢實際狀態",
@@ -5184,6 +5215,7 @@
     "POLICY_GROUP_NOT_FOUND": "找不到指定的政策組",
     "RULE_ACCESS_APPROVAL_REQUIRED": "本資產的存取政策要求申請核准後連線",
     "RULE_ACCESS_REASON_REQUIRED": "本資產的存取政策要求填寫事由後連線",
+    "RULE_ACCESS_REQUEST_CONNECT_REQUIRED": "你目前沒有這台資產的連線權限，不能提出申請。請聯絡管理員授予連線權限。",
     "RULE_ACCESS_REQUEST_DECISION_INCREASE": "核准值不得優於申請值（時長僅可下修、起始僅可推遲）",
     "RULE_ACCESS_REQUEST_DURATION_EXCEEDS": "申請時長超過政策上限（上限 {minutes} 分鐘）",
     "RULE_ACCESS_REQUEST_DURATION_EXCEEDS_POLICY": "申請時長超過政策上限",
@@ -5224,6 +5256,7 @@
     "RULE_BREAK_GLASS_NOT_ELIGIBLE": "無破窗資格（需持有該資產的常設連線授權）",
     "RULE_BREAK_GLASS_SELF_REVIEW": "不得補審自己的破窗連線",
     "RULE_COMMAND_BLOCKED": "指令命中阻斷規則，已阻止送往目標主機",
+    "RULE_COMMAND_BLOCKED_MULTILINE": "這次輸入中有一行命中阻斷規則，整段都沒有送出（其餘各行也不會執行）。請移除該行後再送出。",
     "RULE_COMMAND_BLOCK_CLEAR_FAILED": "阻斷後無法清除遠端輸入，連線已中止",
     "RULE_CONNECT_TARGET_PARAMS_REJECTED": "不接受連線目標參數：連線一律以資產為入口，請經由簽發端點建立連線",
     "RULE_CONNECT_TOKEN_CAPACITY": "連線簽發暫時達到上限，請稍後再試",
@@ -5261,6 +5294,8 @@
     "RULE_DB_CONSOLE_LIMIT_REACHED": "查詢主控台的同時連線數已達上限。若您另有開啟中的主控台，關閉後即可再試；否則請稍後再試或聯絡管理員",
     "RULE_DB_CONSOLE_STATEMENT_BLOCKED": "語句命中阻斷規則，未送往目標資料庫",
     "RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL": "查詢主控台僅支援 mysql、postgres、mssql 資產",
+    "RULE_DB_LINE_UNCERTAIN": "無法確認剛才輸入的完整內容，為安全起見這一行沒有送出。請重新輸入。",
+    "RULE_DB_RECONNECT_BLOCKED": "不能在連線中改連其他主機，這一行沒有送出。請由資產列表開新連線。（規則：內建・改連目標）",
     "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "匯出產物目前不可下載",
     "RULE_EXPORT_JOB_BUNDLE_ONLY": "匯出 job 僅受理證據包，事件報告請走同步匯出端點",
     "RULE_K8S_FORBIDDEN": "無權限（403）：Token 缺少該 namespace 的 list pods 權限",
@@ -5274,8 +5309,9 @@
     "RULE_K8S_UNREACHABLE": "無法連到 API server：請確認位址/連接埠與網路可達性",
     "RULE_KEYSTROKE_UNAVAILABLE": "鍵盤紀錄儲存異常，暫停新連線，請聯絡管理員",
     "RULE_LDAP_TEST_RATE_LIMITED": "LDAP 連線測試過於頻繁，請稍後再試",
-    "RULE_MFA_INVALID_CODE": "MFA 驗證碼錯誤",
-    "RULE_MFA_REPLAY": "MFA 驗證碼已使用過",
+    "RULE_MFA_INVALID_CODE": "驗證碼不正確，請輸入驗證器目前顯示的 6 位數驗證碼。",
+    "RULE_MFA_CURRENT_CODE_REQUIRED": "請輸入目前驗證器的 6 位數驗證碼。",
+    "RULE_MFA_REPLAY": "這組驗證碼已經用過，請等驗證器換下一組後再輸入。",
     "RULE_MY_CONNECTION_ENDED": "連線已結束",
     "RULE_NODE_CYCLE": "不可搬移到自身或其子孫節點",
     "RULE_NODE_DEPTH_EXCEEDED": "節點深度超過上限（10 層）",
@@ -5466,6 +5502,8 @@
     "VALIDATION_OFFSITE_CREDENTIAL_HALF_SET": "存取金鑰與私密金鑰須同時填寫，或同時留空以使用預設憑證鏈",
     "VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS": "端點不可包含帳號密碼、查詢字串或片段，請改填於憑證欄位",
     "VALIDATION_OFFSITE_ENDPOINT_INVALID": "端點格式不正確，須為 http:// 或 https:// 起始且含主機名稱",
+    "VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID": "服務帳戶 JSON 的「{field}」欄位不符合要求，請重新下載服務帳戶金鑰檔後貼上。",
+    "VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL": "沒有填入服務帳戶 JSON 時，端點只能留空或使用 Google 官方網域（googleapis.com）。要使用其他端點，請填入服務帳戶 JSON。",
     "VALIDATION_OFFSITE_PROVIDER_INVALID": "儲存類型僅接受 s3 或 gcs",
     "VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED": "使用 S3 時，端點與區域至少須填一項",
     "VALIDATION_OIDC_ADMISSION_RULES": "准入規則不合法：請確認規則鍵有效、非空，且共用身分提供者須包含租戶或網域歸屬條件",
@@ -6685,6 +6723,8 @@
       "oldestSeq": "最舊序號",
       "passedFailed": "通過 / 失敗",
       "trimmedThrough": "（已依保留政策清除至序號 {seq}）",
+      "trimRecord": "修剪紀錄",
+      "trimSegments": "{count} 段",
       "unsealed": "尚未存證的紀錄筆數",
       "unsealedHint": "（自紀錄編號 {id} 起；此段尚未納入鏈保護，見下方邊界 R5）"
     },
@@ -6790,7 +6830,9 @@
       "signature_invalid": "簽章無效",
       "chain_broken": "連結斷裂",
       "seq_gap": "序號不連續",
-      "attestation_invalid": "權限狀態證明無效"
+      "attestation_invalid": "權限狀態證明無效",
+      "rows_hidden": "有隱藏的紀錄",
+      "trim_unverified": "修剪時未驗章"
     },
     "statusHint": {
       "purged_legal": "依保留政策清除，且清除主張本身已通過驗證——不是異常。要核對清除依據，可在「系統設定 → 安全政策」頁查該類資料的保留期限；不需另行追查。",
@@ -6801,7 +6843,13 @@
       "signature_invalid": "這個檢查點自身的簽章驗不過，其中的一切主張都不可信。不要用它的結果推論該區間：改以前後仍通過驗證的檢查點界定可信範圍，確認該時段是否更換過簽章金鑰或重建過系統，並與離機備份的副本比對。",
       "chain_broken": "與前一個檢查點的連結校驗值或區間銜接對不上。斷點前後那兩個檢查點之間就是可疑時段：請確認該時段有無系統還原或資料庫回滾，並與離機備份的副本比對這段區間。",
       "seq_gap": "序號不連續，且找不到對應的合法清除紀錄。請確認缺號的那段是否執行過保留政策的清除；找不到對應紀錄時，視同檢查點被移除，改以離機備份留存的副本核對該段。",
-      "attestation_invalid": "這個檢查點本身驗得過，但與它一起封存的權限狀態紀錄缺漏、被改過，或簽章驗不過。它對區間的主張仍可信，失去的是它對當時權限狀態的證明。請確認這份紀錄是否被直接在資料庫清空或改寫，並與離機備份的副本比對。"
+      "attestation_invalid": "這個檢查點本身驗得過，但與它一起封存的權限狀態紀錄缺漏、被改過，或簽章驗不過。它對區間的主張仍可信，失去的是它對當時權限狀態的證明。請確認這份紀錄是否被直接在資料庫清空或改寫，並與離機備份的副本比對。",
+      "rows_hidden": "這個區間內有操作日誌被標記為已刪除，但本系統從不刪除操作日誌。這些紀錄會照常顯示在「操作日誌」頁。請保留離機備份的副本，並依異常處理程序調查；查清之前，本區間的內容不可作為稽核依據。",
+      "trim_unverified": "這是升級前的修剪紀錄：當時被修剪的 {count} 段沒有先驗證簽章，之後也無法補驗。本頁只揭露，不判為失敗，也不會開立失效事件；升級後的修剪一律先驗證簽章，驗不過就不修剪。這項揭露會一直顯示。"
+    },
+    "trimPause": {
+      "title": "檢查點修剪已暫停",
+      "desc": "有檢查點的簽章或清除證明驗證不過，這一輪沒有修剪任何檢查點。請先查明該檢查點的狀態，再等下一輪排程。"
     },
     "limits": {
       "title": "本機制的保護範圍與邊界",
@@ -7535,8 +7583,11 @@
       "integrity_mismatch": "取回內容與上傳當下不符",
       "profile_missing": "找不到所屬的儲存設定世代",
       "foreign_credentials_missing": "該世代的憑證已撤銷或缺席",
-      "credentials_unavailable": "憑證目前無法使用"
+      "credentials_unavailable": "憑證目前無法使用",
+      "credential_config_invalid": "目前的憑證設定不符合新的要求"
     },
+    "credentialConfigInvalidHint": "請到「離機儲存」重新填入服務帳戶 JSON，或把端點改回 Google 官方網域，再按「測試連線」。",
+    "goToSettings": "前往離機儲存設定",
     "errorCodeUnknown": "原因未記錄",
     "queueTitle": "保管佇列",
     "retryFailed": "重試失敗項",
@@ -8603,6 +8654,7 @@
     "submit": "送出已選的逐項決定",
     "invalid": "請檢查原因、帳號範圍與時窗；核准值只能下修。",
     "voteRecorded": "此項核准票已記錄，仍待其他審核者。",
+    "connectRequired": "申請人目前沒有這台資產的連線權限，無法核准。你仍可以拒絕這張申請。",
     "saved": "此項決定已儲存",
     "action": {
       "approve": "核准／下修",

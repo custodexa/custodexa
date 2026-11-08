@@ -28,7 +28,7 @@ cx_size_human() {
 # cx_load_libs <script dir>: source the other libraries next to this one.
 cx_load_libs() {
   local dir=$1 f
-  for f in i18n compose state run log help manifest env preflight verify images trust; do
+  for f in i18n form form_guard compose state run log help manifest pgmajor dirop db_old env preflight verify images trust; do
     # shellcheck source=/dev/null
     . "$dir/lib/$f.sh"
   done

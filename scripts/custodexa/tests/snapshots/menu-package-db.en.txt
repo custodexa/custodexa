@@ -1,0 +1,17 @@
+Custodexa management script 1.16.0    Deployment directory /opt/custodexa
+Status: installed 1.16.0 (package deployment)
+Language: --lang zh-TW 繁體中文, --lang ja 日本語
+
+  [1] Show status
+  [2] Start services
+  [3] Stop services
+  [4] Upgrade
+  [5] Back up to a single file (portable; pauses the service)
+  [6] Restore from a backup file (replaces this host's data; stops
+      the service)
+  [7] Load an offline image bundle
+  [8] Database upgrade (now PostgreSQL 18; remove old database folders)
+  [9] Help
+  [0] Quit
+
+Choose [0-9]: 

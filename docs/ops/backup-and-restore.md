@@ -35,6 +35,8 @@ In a `docker compose` deployment, all persistent data lives under a **single dat
 > **The last row is not part of the data root, and the backup procedure does not cover it.** Once offsite storage is enabled, copies of recordings and evidence packages are uploaded to the deployment's own object storage bucket, and the backup, retention, and recovery of that copy **belong entirely to the deployment's storage governance**; neither `tar` nor `pg_dump` can reach it. The converse is worth remembering too: **offsite is not the same as backed up.** It is a second copy that shortens the exposure window, not a replacement for the backup procedure (see §3.3).
 > The custody ledger in the database (which copy of which recording is in which bucket, under which key, with what hash at upload time) **travels with the database backup**, so whether the ledger matches the remote objects depends on whether the two points in time line up (see §3.1).
 
+> **Where the bundled database keeps its data depends on the release.** Releases up to 1.22.x use `${DATA_PATH}/postgres`, mounted at `/var/lib/postgresql/data`, as the table shows. From 1.23.0 the database is PostgreSQL 18 and the folder is `${DATA_PATH}/postgresql`, mounted at `/var/lib/postgresql`, with the data in `18/docker` under it. When an upgrade moves a deployment to 1.23.0, it leaves the old `postgres` folder in place. The by-hand restore commands in section 5 and §5.1 that name the `postgres` folder are written for the first layout; for a deployment of 1.23.0 or later use `restore` and `rollback`, which know which folder a release uses.
+
 **The first four rows above are all bind mounts; there are no named volumes.** Two direct consequences:
 
 - `docker compose down -v` **does not** clear the data (`-v` only clears named volumes).
@@ -136,7 +138,7 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 > - If any of the three prints empty, `ENV_FILE` points at the wrong file. **Do not continue.**
 > - The `docker compose` commands in this document all assume they run in the deployment project directory (for a production deployment, `docker-compose.yml`). On a machine that also has the development compose file, always add an explicit `-f docker-compose.yml`.
 > - In a package deployment (§3.8), run them in the deployment folder. Its `.env` names the compose files under `current/` in `COMPOSE_FILE`, so no `-f` is needed, but `up` and `down` need `--project-directory .`, as written in section 5; §5.1 says what else to set first.
-> - For a deployment where your own ingress terminates TLS (`docker-compose.external-ingress.yml`): every `docker compose` command in this document needs both `-f` flags (`-f docker-compose.yml -f docker-compose.external-ingress.yml`), or set `COMPOSE_FILE` in `.env` so that becomes the default. With only one of them the stack starts in the built-in TLS proxy shape.
+> - In a source deployment, the parts of the stack come from the managed block at the end of `.env`, which `scripts/quickstart.sh` writes from `EXTERNAL_DB_HOST` and `TLS_MODE`. Run the script once before you type the commands of this document (`bash scripts/quickstart.sh` prepares `.env` without starting anything); after that no `-f` flag is needed, with the built-in TLS proxy or with your own ingress (`TLS_MODE=external`) alike. In a folder where the script has never run, `docker compose` starts no database and no proxy.
 
 ---
 
@@ -334,7 +336,7 @@ When a backup was interrupted in the second or third case, `state.json` still ho
 
 #### Deployments with an external database
 
-In the external database shape (`compose.external-database.yml`), `backup` and the backup at step 7 of an upgrade dump the database from the server that `.env` names (`EXTERNAL_DB_HOST`, `EXTERNAL_DB_PORT`, `DB_NAME`, `DB_USER`, `DB_SSLMODE`). The steps, the file, its members and the questions are those above; step 1 stops backend, guacd and frontend and does not touch the database.
+In the external database form (`EXTERNAL_DB_HOST` is filled in `.env`), `backup` and the backup at step 7 of an upgrade dump the database from the server that `.env` names (`EXTERNAL_DB_HOST`, `EXTERNAL_DB_PORT`, `DB_NAME`, `DB_USER`, `DB_SSLMODE`). The steps, the file, its members and the questions are those above; step 1 stops backend, guacd and frontend and does not touch the database.
 
 - **The export tool.** The release ships PostgreSQL 16, 17 and 18 clients as images pinned in its manifest. In this shape `install`, `upgrade` and `load` obtain them and check them against the manifest; they are tools the script runs, not services, so `status` does not list them as containers. Before anything stops, the script asks the server for its version and then uses only the client of the server's own major version, for the dump and for `snapshot.txt`. A server of any other major version, such as 15 or 19, is refused, even where another client could read it. The manifest records the client in `tool.dump_image` (`pgclient16`, `pgclient17` or `pgclient18`) and its digest, as listed in `tool-MANIFEST.json`.
 - **Checked before anything stops**, besides the checks above, each with its own message: that the client images are on this host (if not, load the release's offline image bundle with `load`), that the server can be reached and accepts the sign-in (the reason for a failure is in the log file), that the release has a client of the server's major version, and the settings the items below describe. A refusal stops nothing.
@@ -612,7 +614,7 @@ Instead, you can use your own backup taken after the services stop, a storage sn
 
 **What is replaced and what is kept.**
 
-- The current `postgres` and `audit` under `DATA_PATH`, and `tls/` in the deployment folder, are renamed `*.before-restore-<STAMP>` and kept. They are not deleted: remove them yourself once section 6 has passed.
+- The current database folder (`postgres`, or `postgresql` from 1.23.0; see [Restoring a backup made on another database major version](#restoring-a-backup-made-on-another-database-major-version)) and `audit` under `DATA_PATH`, and `tls/` in the deployment folder, are renamed `*.before-restore-<STAMP>` and kept. They are not deleted: once section 6 has passed, remove the database folder with `db-upgrade --remove-old` (it lists the `postgres*.before-restore-*` folders) and the others yourself.
 - Recordings: when the backup has none, the `recordings` folder is not touched. On an installed host the recordings may then not match the backup's point in time: recordings made after the backup stay on disk but are no longer listed, and recordings cleared after the backup do not come back. On a new host, the final screen gives the number of recordings the restored database knows about whose file is not on this host, and the list is in `missing-recordings.txt` in the working folder; copy them over from `recordings` under the source host's `DATA_PATH`. A recording already uploaded to offsite storage is fetched from there when played. When the backup has recordings, they are put back, and a file already there with the same name is kept, not overwritten.
 - The version goes back with the data: on an installed host the version after the restore is the backup's, even when the host runs a newer one.
 
@@ -653,6 +655,18 @@ What it does not do:
 - **When the ID does not match**, the script stops the services and the restore is not finished. Check the key inventory as §6 item 6 describes, then either carry on (in mode A the key in `.env` is checked again first, and the services are not started while it still does not match; in modes B and C the services start again and the check runs once someone unseals with the right key), or go back or give up as described below.
 
 **When it has finished**, the final screen gives the backup it came from, the folders kept and the safety backup, the address, the master key check, the recordings and any warning, and points to section 6, which is still to be done (below). The working folder under `restore/` in the deployment folder (mode `0700`) loses its plaintext copies of the database, `.env` and the archives; it keeps the list of missing recordings and the copies of `state.json` and `.env` from before the restore (`state-before.json`, `env-before-restore`, mode `0600`, secrets included). At a terminal the script then looks up the latest version as the menu does and asks whether to upgrade, no by default; without a terminal it prints the commands only. When the backup was the one an upgrade took (`trigger` is `upgrade`), it neither looks up nor asks: it says the deployment is back on the version from before the upgrade and prints the upgrade command.
+
+#### Restoring a backup made on another database major version
+
+From 1.23.0 the bundled database is PostgreSQL 18; the releases before it used PostgreSQL 16. `restore` takes the database version from the backup, not from the version the host runs:
+
+- The backup file records the database's major version (`db.server_major`). For a backup of a bundled database it has to equal the major version of the bundled database in the release the backup belongs to: 18 for 1.23.0, 16 for 1.22.x and earlier. When they differ, the file is inconsistent, and `restore` refuses before it stops any service and changes nothing.
+- The database is imported with the PostgreSQL image of the backup's release, into the data folder that release uses: `postgresql` for 1.23.0, `postgres` for earlier releases.
+- When the folder the current deployment uses differs from the one the backup's release uses, for example when a 1.22.x backup is restored on a host that runs 1.23.0, both folders are renamed to `<name>.before-restore-<STAMP>` and kept, not deleted, after the safety backup is made. The restored deployment keeps only the folder its release uses.
+- The preview states the database version of the backup, the version the restore uses, and the version the deployment returns to. In the example above it says that the deployment goes back to 1.22.x and PostgreSQL 16 and that the current PostgreSQL 18 data is moved aside first. Before the services start, the script checks that the folder it built holds the database version of the backup's release.
+- An upgrade to 1.23.0 afterwards converts the data again from PostgreSQL 16. The PostgreSQL 18 data in the kept folder is not merged back.
+
+Once section 6 has passed, remove the kept database folders (`postgres*.before-restore-<STAMP>`) with `db-upgrade --remove-old`, which lists them with the other kept database folders. Remove the rest of what `restore` kept (`audit`, `tls/`) yourself.
 
 #### When `restore` stops partway
 
@@ -719,6 +733,8 @@ When the backup's manifest has `db.location` `external` (§3.8), `restore` empti
 The script deletes `safety-db.dump` only when `restore --revert` has finished. In every other case it stays in the working folder, including after a restore that finished, and holds the database in plaintext: delete it yourself once section 6 has passed.
 
 #### Restoring by hand
+
+**The folder name.** The commands below name the `postgres` folder of releases up to 1.22.x. A deployment of 1.23.0 or later keeps its database in `postgresql` (see the note in section 2) and needs PostgreSQL 18 to load it; use `restore` and `rollback` there, which know which folder a release uses.
 
 **Going back after an upgrade by the management script** (its screens point here): read §5.1 first. It says what to do before and after the steps below, and how to fill them in from a folder under `backups/`.
 
@@ -843,9 +859,9 @@ A KEK mode B deployment is still sealed after step 6, and only starts serving on
 
 ### 5.1 Going back to the previous version after an upgrade by the management script
 
-From 1.16.0, start with the `rollback` command. Before it stops anything, it decides whether it can go straight back to the version before the upgrade. When it can, it switches back only the version and keeps the data. When it cannot, it changes nothing and prints the next step. It never restores a backup by itself.
+From 1.16.0, start with the `rollback` command. Before it stops anything, it decides whether it can go straight back to the version before the upgrade. When it can, it switches back only the version and keeps the data; after the bundled database moved to another major version, it also sets the new data folder aside and what the new version wrote is not kept (see [Going back across a database major version](#going-back-across-a-database-major-version)). When it cannot, it changes nothing and prints the next step. It never restores a backup by itself.
 
-A failure before the version switch does not require going back. At steps 1 to 7 the screen prints the command for restarting the old version; step 8 is reserved and performs no conversion. Run in that state, `rollback` says the upgrade stopped before the switch and prints the same commands.
+A failure before the version switch does not require going back. At steps 1 to 7 the screen prints the command for restarting the old version; a database conversion that fails at step 8 restarts the old version itself ([Upgrade SOP](./upgrade-sop.md#converting-the-bundled-database-to-postgresql-18)). Run in that state, `rollback` says the upgrade stopped before the switch and prints the same commands.
 
 #### When `rollback` can go straight back
 
@@ -871,7 +887,7 @@ It first shows a preview: the installed version, the version it goes back to, wh
 3. **Start the services** with the images of the previous version.
 4. **Check** that the backend reports the previous version and that the running images are the ones recorded before the upgrade.
 
-The data, `.env` and the certificates are not touched and no backup is restored, so everything recorded since the upgrade is kept. When the deployment comes up sealed (KEK mode B or C, §4.2 and §4.3), the closing line gives the `/unseal` address. From then on the `custodexa.sh` in the deployment folder is the script of the previous version, and `status` shows that the last upgrade was rolled back. Each run writes its own log file, `logs/rollback-<time>.log`.
+The data, `.env` and the certificates are not touched and no backup is restored, so everything recorded since the upgrade is kept (except after a database major version change, where what the new version wrote is not kept; see the section below). When the deployment comes up sealed (KEK mode B or C, §4.2 and §4.3), the closing line gives the `/unseal` address. From then on the `custodexa.sh` in the deployment folder is the script of the previous version, and `status` shows that the last upgrade was rolled back. Each run writes its own log file, `logs/rollback-<time>.log`.
 
 #### When `rollback` stops partway
 
@@ -879,13 +895,27 @@ When a step fails or the run is interrupted, the rollback stays unfinished. The 
 
 ```bash
 sudo /opt/custodexa/custodexa.sh rollback --resume   # once the cause is fixed, finish going back
-sudo /opt/custodexa/custodexa.sh rollback --revert   # or return to the version after the upgrade
+sudo /opt/custodexa/releases/<version-after-upgrade>/custodexa.sh rollback --revert   # or return to the version after the upgrade
 ```
 
 - `--resume` carries on from the step where the run stopped. Steps whose result is already in place are passed over.
-- `--revert` abandons the rollback and returns to the version after the upgrade with the same four steps, without the database check. When the run stopped at step 1, nothing has been switched yet and the screen prints only `--resume`.
-- Once a `--revert` has started, the unfinished run is a return to the version after the upgrade. Its screens print only `rollback --resume`, which finishes that return. To go back to the previous version after it completes, run `rollback` again.
+- `--revert` abandons the rollback and returns to the version after the upgrade with the same four steps, without the database check. It runs the script kept under `releases/` for the version after the upgrade, because the rollback has already put the previous version's script at the top of the installation directory; the screen prints the full path. When the run stopped at step 1, nothing has been switched yet and the screen prints only `--resume`.
+- Once a `--revert` has started, the unfinished run is a return to the version after the upgrade. Its screens print only `rollback --resume` with the same `releases/` path, which finishes that return. To go back to the previous version after it completes, run `rollback` again.
 - While a rollback is unfinished, `upgrade`, `backup` and `restore` refuse to run and print the same commands. `start`, `stop` and `status` still work.
+
+#### Going back across a database major version
+
+This applies only to a deployment with the bundled database that the upgrade actually moved to another major version: the previous release's database major version differs from the current one, and the conversion at step 8 finished. A deployment with an external database, and an upgrade whose step 8 was skipped, follow the rules above: no database folder is renamed and the warning below is not shown.
+
+In that case the condition "the new version has not changed the database" does not apply. `rollback` decides on the previous version's data folder instead, because the conversion never writes to it and the new version writes only to the new one. It goes back when all of these hold: the previous version's data folder (`postgres/` for 1.22.x) is still there and holds the previous version's database major version (16), the previous version is 1.16.0 or later, and the other conditions above hold (one version back only, images present). The migrations of the new database and the list of versions the new release can go straight back to are not read for this decision. It checks the folder again right before the version is switched.
+
+- **The new version never started** (the upgrade stopped at step 9, before it started). The PostgreSQL 18 database was never written by the application, and the old folder holds the complete data as of the upgrade. The preview says that nothing is lost and asks you to confirm.
+- **The new version may have started.** `rollback` still goes back. Before the question, the preview warns that what the new version wrote is not in the database after going back: audit records, connection records, the index of recordings (the recording files stay on disk, but the database no longer knows them), and changes to settings and accounts. It names the path the PostgreSQL 18 folder is renamed to and says it is not deleted, and it shows the other way back: restoring the backup the upgrade took, with its path and the `restore` command, which returns to the moment of the upgrade with the same loss. The question defaults to no; without a terminal `--yes` is required, and the same warning is printed.
+- **What the run does.** After the database stops and before the previous version starts, the PostgreSQL 18 folder is renamed to `postgresql.rolled-back-<time>`. The script writes down the rename before it makes it, and finishes or checks it when a run is interrupted. The old `postgres/` folder is used as it is: the script does not rename, move or delete it. This rename is the only case in which a rollback changes a data folder.
+- **`rollback --revert`** goes back to 1.23.0 and renames the folder back before the services start. When the previous version had already been started on the old data (the run reached its start step) and the health check did not pass, it may have accepted writes in PostgreSQL 16. Before the question, the preview then says that what was written in PostgreSQL 16 in the meantime is not carried back to PostgreSQL 18, that it stays in the old folder (path shown; not renamed or deleted, so a later rollback can use it or you can export it), and that 1.23.0 continues on the PostgreSQL 18 data from before the rollback. The confirmation is the same as above. When the previous version was not started yet, there is no such warning.
+- **After a rollback**, a later upgrade to 1.23.0 converts the old data again; `postgresql.rolled-back-<time>` is not merged in. `status` lists it among the kept folders, without a warning line.
+- **When the old folder is gone** (removed with `db-upgrade --remove-old`, or its version does not match), `rollback` refuses before it stops any service, changes nothing, and says why: the previous version's data folder is no longer there. When the folder is found missing only at the last check, made after the services have stopped, the refusal comes with the services stopped, and the screen prints the `start` command to bring the current version back. It prints the `restore` command with the backup the upgrade took. That restores the data of the upgrade, so everything recorded after it is lost; nothing is lost if nobody used the deployment after the upgrade.
+- **When the upgrade fails after the version switch** (steps 9 to 12) on such a deployment, the screen prints the `rollback` command and, as the other way, the `restore` command with the backup. When the new version may have started, it adds a sentence that what the new version wrote will not be in the database after going back. When the old folder is gone, it prints only `restore`.
 
 #### One version back only
 
@@ -902,6 +932,7 @@ The next step follows what the screen says:
 | The new version has changed the database, or it could not be read, and it prints a `restore` command. With an external database the screen may say only that the database could not be read, not which migrations were added | Run that command as printed. It names the backup file the upgrade took, for example `sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-<STAMP>.tar`. Everything recorded after that backup is replaced. Once the restore finishes, the failed upgrade no longer stands in the way: `upgrade` runs again as usual. Restoring is described in section 5. |
 | The script can only go back to 1.16.0 or later, or it points to the manual restore in section 5 | Go back by hand as below. The screen shows where the backup is. This is the case when the version before the upgrade is older than 1.16.0, or when you chose your own backup at step 7. |
 | Images of the previous version are not on this host, or differ from the record | Load the offline image bundle of the previous version with the `load` command it prints, then run `rollback` again. |
+| The screen says that the previous version's database folder is no longer there (only after the bundled database moved to another major version) | Nothing was changed. Run the `restore` command it prints, with the backup the upgrade took; it returns to the moment of the upgrade, and what was recorded after it is lost. See [Going back across a database major version](#going-back-across-a-database-major-version) |
 | There is no previous version to go back to | There is nothing to go back from: the deployment was not upgraded by the script, the last change was already a rollback, the version record has changed since the upgrade, or the running version does not match the record. Check the state with `status`. |
 
 #### From 1.18.0 or later to a version before it
@@ -917,6 +948,8 @@ That restore is run by the scripts of the installed version, which know the perm
 If no new secret can be made, the restore refuses before anything stops. If the settings to put back still hold the backup's secret, or the revocation does not complete, the restore stops at the database check, with the services stopped, and is not finished. Issue new agent tokens afterwards. Going back by hand instead (below) needs the same two steps, done by you, at the stop point of section 5 (step 5a): after the database is loaded and before any service starts. [Rotating the Platform's Own Privileged Credentials §7](./privileged-credential-rotation.md#revoking-long-lived-sign-ins-going-back-to-an-older-version) has the statements.
 
 #### Going back by hand
+
+**The folder name.** The commands below name the `postgres` folder of releases up to 1.22.x. A deployment of 1.23.0 or later keeps its database in `postgresql` (see the note in section 2) and needs PostgreSQL 18 to load it; use `restore` and `rollback` there, which know which folder a release uses.
 
 This procedure restores the backup the upgrade took at its step 7. The upgrade screens name it: a backup file, `backups/custodexa-backup-<version>-<STAMP>.tar`, when the script took it; a folder `backups/<STAMP>/` when the upgrade was to a release before 1.16.0 (§3.8). **Everything recorded after that backup is lost**, which is why the backup was taken with the services stopped.
 
@@ -1120,6 +1153,197 @@ docker run --rm -it --network host \
 echo "pg_restore exit code: $?"
 ```
 
+### 5.4 Switching to an external database
+
+This moves a deployment that runs the stack's own postgres onto a database server of your own: a server the institution operates, a managed service, or a second machine. `scripts/quickstart.sh` and the management script refuse to start when `EXTERNAL_DB_HOST` is filled in while the bundled database still holds data, and point here. Nothing in this section is scripted: it is the manual backup and restore of §3.2 and §5.3, in an order that keeps the original deployment untouched until the new one takes writes. It covers a source deployment (a clone run with `scripts/quickstart.sh`) and a package deployment (`custodexa.sh`); where they differ, the block tells them apart by `state.json`, which only a package deployment has. Rehearse it on a copy before you use it on production data. An automated rehearsal ran the blocks of this section as written, for a source deployment and a package deployment (each starting with the bundled database and its data, and switching to a PostgreSQL 16 server that requires TLS), including going back before and after step 6 and a comparison that does not match.
+
+What it does not do: it deletes nothing, it does not move a database back automatically, and it is not for a deployment that already uses an external database (§5.3 moves that one to another server).
+
+Run every block of this section as root in one shell, in order; later blocks use the variables and functions of the first. The services are down from step 2 until step 6 starts the new deployment.
+
+**Step 1. Check before you start (the service keeps running).** Fill in the three `X_` lines with the external server; `DB_SSLMODE`, `EXTERNAL_DB_HOST` and `EXTERNAL_DB_PORT` get these values in step 6.
+
+```bash
+sudo -s
+# the deployment folder; in a source deployment, the project folder (where .env is)
+cd /opt/custodexa
+[ ! -f current/images.env ] || { set -a; . ./current/images.env; set +a; }
+ENV_FILE="${ENV_FILE:-./.env}"
+env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
+DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
+DB_USER="${DB_USER:-$(env_get DB_USER)}"
+DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
+DB_PASSWORD="${DB_PASSWORD:-$(env_get DB_PASSWORD)}"
+printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' "$ENV_FILE" "$DATA_PATH" "$DB_USER" "$DB_NAME"
+X_HOST=db.example.internal
+X_PORT=5432
+X_SSLMODE=require
+X_ROOT=""
+case "$X_SSLMODE" in verify-ca | verify-full) X_ROOT=" sslrootcert=system" ;; esac
+X_CONN="host=${X_HOST} port=${X_PORT} dbname=${DB_NAME:?} user=${DB_USER:?} sslmode=${X_SSLMODE}${X_ROOT}"
+CX_PGIMG="$(docker compose --project-directory . --profile bundled-db config --images | grep -E '(^|/)postgres:' | head -n 1)"
+CX_PGPASS="$(mktemp)"
+printf '%s:%s:%s:%s:%s\n' "$X_HOST" "$X_PORT" "$DB_NAME" "$DB_USER" "$(printf '%s' "${DB_PASSWORD:?}" | sed 's/[\\:]/\\&/g')" > "$CX_PGPASS"
+cx_in() { docker compose --project-directory . exec -T postgres "$@"; }
+cx_ext() { docker run --rm -i --pull never -e PGPASSFILE=/cx.pgpass -v "${CX_PGPASS}:/cx.pgpass:ro" "${CX_PGIMG:?}" "$@"; }
+CX_Q="SELECT 'migrations', count(*), md5(string_agg(version::text, ',' ORDER BY version::text)) FROM schema_migrations UNION ALL SELECT 'users', count(*), '' FROM users UNION ALL SELECT 'sessions', count(*), '' FROM sessions UNION ALL SELECT 'audit_logs', count(*), '' FROM audit_logs"
+cx_check_in() { cx_in psql -U "$DB_USER" -d "$DB_NAME" -AtX -v ON_ERROR_STOP=1 -c "$CX_Q"; }
+cx_check_ext() { cx_ext psql "$X_CONN" -AtX -v ON_ERROR_STOP=1 -c "$CX_Q"; }
+cx_in psql -U "$DB_USER" -d postgres -AtX -c "SELECT version()"
+cx_in psql -U "$DB_USER" -d postgres -AtX -c "SELECT pg_encoding_to_char(encoding), datcollate, datctype FROM pg_database WHERE datname = '${DB_NAME}'"
+cx_in psql -U "$DB_USER" -d "$DB_NAME" -AtX -c "SELECT pg_size_pretty(pg_database_size(current_database()))"
+df -h "${DATA_PATH:?}" .
+cx_ext psql "$X_CONN" -AtX -c "SELECT version()"
+cx_ext psql "$X_CONN" -AtX -c "SELECT pg_encoding_to_char(encoding), datcollate, datctype FROM pg_database WHERE datname = current_database()"
+cx_ext psql "$X_CONN" -AtX -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')"
+```
+
+All of these have to hold before you go on:
+
+- The database server's administrator has created an empty database named `DB_NAME`, owned by `DB_USER`, with the password in `.env`. This procedure keeps `DB_NAME`, `DB_USER` and `DB_PASSWORD` as they are; only `EXTERNAL_DB_HOST`, `EXTERNAL_DB_PORT` and `DB_SSLMODE` change. The last command prints `0`: the database is empty.
+- The two encoding, collation and character type lines are equal, and the external server's `version()` is PostgreSQL 16, 17 or 18, at least the major version of the bundled one. The load in step 4 runs `pg_restore` from a throwaway container of the bundled postgres image (the `X_` commands above do the same), so this host has to reach the external server and have that image, which it does when the stack has run here.
+- The commands run from the deployment folder (the folder of `.env`; the project folder in a source deployment), and `df` shows more free space there than the size printed above (the dump and the file copies are written there). The external server's own capacity is for its administrator to confirm: neither the scripts nor this procedure can see its disk.
+- `X_SSLMODE` `verify-ca` and `verify-full` check the server against the postgres container's system certificate authorities. For a server whose certificate comes from your own authority, use `require` for steps 1 and 4, and set `DB_SSLMODE` and `PGSSLROOTCERT` in `.env` before the start in step 6, as the table in §3.8 describes.
+
+**Step 2. Stop everything that writes (postgres stays up).** In a source deployment, confirm that the audit queue has drained before you stop ([Upgrade SOP §2.4](./upgrade-sop.md#24-confirm-the-audit-queue-has-drained-before-stopping)); in a package deployment `stop` does that itself. The last lines must print `running: postgres`.
+
+```bash
+if [ -f state.json ] && [ -x ./custodexa.sh ]; then
+  ./custodexa.sh stop --yes
+else
+  docker compose --project-directory . stop
+fi
+docker compose --project-directory . start postgres
+for _ in $(seq 1 60); do cx_in pg_isready -h 127.0.0.1 -U "$DB_USER" >/dev/null 2>&1 && break; sleep 2; done
+cx_in psql -U "$DB_USER" -d "$DB_NAME" -AtX -c 'select 1'
+CX_RUN="$(docker compose --project-directory . ps --status running --services)"
+echo "running: ${CX_RUN}"
+```
+
+From here until step 6 starts the new deployment, nothing writes to either database.
+
+**Step 3. Take the final backup and write down the check numbers.** This is §3.2 steps 0 to 4 and 6, and not its step 5: the services stay stopped. Keep the files; they hold the master key material of mode A and the database, so protect them as §3.5 says.
+
+```bash
+STAMP="$(date +%Y%m%d-%H%M%S)"
+cx_in pg_dump -U "$DB_USER" -d "$DB_NAME" -Fc > "custodexa-db-${STAMP}.dump"
+tar -czf "custodexa-files-${STAMP}.tar.gz" -C "${DATA_PATH:?}" recordings audit
+cp "$ENV_FILE" "custodexa-env-${STAMP}.bak"
+[ ! -d tls ] || tar -czf "custodexa-tls-${STAMP}.tar.gz" tls
+cx_check_in > "custodexa-check-${STAMP}.txt"
+cat "custodexa-check-${STAMP}.txt"
+cx_in pg_restore --list < "custodexa-db-${STAMP}.dump" | head
+tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
+```
+
+The check file holds the number of applied migrations with a hash of their list, and the row counts of `users`, `sessions` and `audit_logs`. With offsite storage enabled the copies in the bucket are not part of this backup (§3.2 step 3).
+
+**Step 4. Load the dump into the external database and compare.** `pg_restore` stops at the first error and the check files have to be equal. If either is not, stop here: the original deployment has not been changed, so use "Going back before step 6" below, and have the database administrator empty the external database.
+
+```bash
+cx_ext pg_restore --dbname="$X_CONN" --exit-on-error < "custodexa-db-${STAMP}.dump"
+echo "pg_restore exit code: $?"
+cx_check_ext > "custodexa-check-external-${STAMP}.txt"
+diff "custodexa-check-${STAMP}.txt" "custodexa-check-external-${STAMP}.txt" && echo "check numbers are equal"
+```
+
+**Step 5. Keep the old data.** The original database is not deleted or emptied; it is only put aside, so that it can start again. The block records the number of files and the size of the old data folder, which have to read the same when you look at them later.
+
+```bash
+docker compose --project-directory . down
+( cd "${DATA_PATH:?}" && find postgres | wc -l && du -sk postgres ) | tee "custodexa-olddata-${STAMP}.txt"
+if [ ! -f state.json ]; then
+  mv "${DATA_PATH:?}/postgres" "${DATA_PATH:?}/postgres.before-external-${STAMP}"
+fi
+```
+
+In a source deployment the data folder is renamed to `postgres.before-external-<time>`, with its contents unchanged. In a package deployment the whole deployment folder stays as it is (state file, `.env`, data folder), and only its containers are removed, because `install` refuses to start where containers of the same names exist.
+
+**Step 6. Switch.** From the moment the services of this step run, they accept writes into the external database, and the original deployment must never be started again alongside it. `set_env` fills `.env`: it replaces the line when it is there, takes over the template's commented line otherwise, and appends it as a last resort.
+
+For a **source deployment**, in the project folder:
+
+```bash
+set_env() {
+  awk -v k="$1" -v v="$2" 'BEGIN { d = 0 } !d && ($0 ~ "^" k "=" || $0 ~ "^# *" k "=") { print k "=" v; d = 1; next } { print } END { if (!d) print k "=" v }' "$ENV_FILE" > "$ENV_FILE.new" &&
+    cat "$ENV_FILE.new" > "$ENV_FILE" && rm -f "$ENV_FILE.new"
+}
+set_env EXTERNAL_DB_HOST "$X_HOST"
+set_env EXTERNAL_DB_PORT "$X_PORT"
+set_env DB_SSLMODE "$X_SSLMODE"
+bash scripts/quickstart.sh --up
+```
+
+`quickstart.sh` is not asked to skip its check: the data folder was renamed in step 5 and no postgres container exists, so the deployment no longer has bundled database data and the form is accepted.
+
+For a **package deployment**, in a new deployment folder. On a new host, install the same release package there first as "Install from the release package" in the [Quickstart](../QUICKSTART.md#install-from-the-release-package) describes, without running `install`, and copy the files of step 3 over. On the same host, unpack it under another folder, as below; the block expects the release package file `custodexa-<version>.tar.gz` in the current folder, so copy it there first if you keep it elsewhere. The new `.env` is the one from step 3 with `DATA_PATH` and the managed block taken out (so `install` writes them for the new folder), and with the three keys filled in. The files of step 3 go into the new data folder before `install`, so that the new deployment starts with the recordings and audit files of the old one; `install` itself finds the database already loaded and does not create or overwrite any account.
+
+```bash
+OLD_ROOT="$PWD"
+VERSION="$(tr -d '[:space:]' < current/VERSION)"
+NEW_PARENT=/srv/custodexa-b
+mkdir -p "${NEW_PARENT:?}"
+tar -xzf "custodexa-${VERSION}.tar.gz" -C "$NEW_PARENT"
+NEW_ROOT="${NEW_PARENT}/custodexa"
+cd "$NEW_ROOT"
+cp "${OLD_ROOT}/custodexa-env-${STAMP}.bak" .env
+chmod 600 .env
+ENV_FILE="$NEW_ROOT/.env"
+awk '/^# >>> managed by custodexa.sh/ { skip = 1; next } skip { if ($0 ~ /^# <<< managed by custodexa.sh/) skip = 0; next } /^[[:space:]]*DATA_PATH=/ { next } { print }' .env > .env.new &&
+  cat .env.new > .env && rm -f .env.new
+set_env() {
+  awk -v k="$1" -v v="$2" 'BEGIN { d = 0 } !d && ($0 ~ "^" k "=" || $0 ~ "^# *" k "=") { print k "=" v; d = 1; next } { print } END { if (!d) print k "=" v }' "$ENV_FILE" > "$ENV_FILE.new" &&
+    cat "$ENV_FILE.new" > "$ENV_FILE" && rm -f "$ENV_FILE.new"
+}
+set_env EXTERNAL_DB_HOST "$X_HOST"
+set_env EXTERNAL_DB_PORT "$X_PORT"
+set_env DB_SSLMODE "$X_SSLMODE"
+mkdir -p data
+tar -xzf "${OLD_ROOT}/custodexa-files-${STAMP}.tar.gz" -C data
+[ ! -e "${OLD_ROOT}/custodexa-tls-${STAMP}.tar.gz" ] || tar -xzf "${OLD_ROOT}/custodexa-tls-${STAMP}.tar.gz"
+./custodexa.sh install --yes
+```
+
+`install` here is the case of a new deployment with an external database and an empty bundled data folder, so it is accepted. With no registry access add `--images <bundle>`, as in the Quickstart. A deployment in KEK mode B or C comes up sealed, as after any start (§4.2, §4.3).
+
+**Step 7. Verify.** The new deployment is the first one to take writes, so check it before people use it. Run the check once more: the `migrations` and `users` lines have to print `equal` against the file of step 3. `sessions` and `audit_logs` are expected to be larger than in step 3, because the new deployment writes audit rows while it starts and a session for every sign-in; the last command prints those two lines of both files so you can see by how much. Then go through §6 and sign in with an existing administrator account.
+
+```bash
+cx_check_ext > "custodexa-check-after-${STAMP}.txt"
+for k in migrations users; do
+  [ "$(grep "^$k|" "${OLD_ROOT:-.}/custodexa-check-${STAMP}.txt")" = "$(grep "^$k|" "custodexa-check-after-${STAMP}.txt")" ] && echo "$k: equal" || echo "$k: DIFFERENT"
+done
+grep -E '^(sessions|audit_logs)\|' "${OLD_ROOT:-.}/custodexa-check-${STAMP}.txt" "custodexa-check-after-${STAMP}.txt"
+```
+
+Never start the original deployment again after this point. Deleting the old data is a separate decision, made only after §6 has passed and you have taken another final backup of the new deployment; this section gives no command for it. The file `$CX_PGPASS` from step 1 holds the database password; once you no longer need the external-database commands of this section, delete it with `rm -f "$CX_PGPASS"`.
+
+**Going back before step 6.** Nothing has been written anywhere new, so the original deployment simply starts again. Undo step 5 first, then start it. This block is for a failure in steps 1 to 5. If step 6 itself fails or stops partway, use "Going back after step 6" below, because `.env` has already been changed.
+
+```bash
+cd "${OLD_ROOT:-.}"
+[ ! -d "${DATA_PATH:?}/postgres.before-external-${STAMP}" ] || mv "${DATA_PATH:?}/postgres.before-external-${STAMP}" "${DATA_PATH:?}/postgres"
+if [ -f state.json ] && [ -x ./custodexa.sh ]; then
+  ./custodexa.sh start
+else
+  bash scripts/quickstart.sh --up
+fi
+```
+
+**Going back after step 6.** Everything the new deployment accepted from the start in step 6 on is only in the external database, and **going back does not bring it along**: the original deployment has the data of step 3. Stop the new deployment, put the original `.env` back (a source deployment) and start the original deployment, which `quickstart.sh` and `start` accept as the form it was. The block assumes the old and the new folder are on the same host; with a new host, stop the services of the new host first, then run `start` in the old folder.
+
+```bash
+if [ -f "${OLD_ROOT:-.}/state.json" ]; then
+  ( cd "${NEW_ROOT:?}" && ./custodexa.sh stop --yes; docker compose --project-directory "${NEW_ROOT:?}" down )
+  cd "${OLD_ROOT:?}" && ./custodexa.sh start
+else
+  docker compose --project-directory . down
+  mv "${DATA_PATH:?}/postgres.before-external-${STAMP}" "${DATA_PATH:?}/postgres"
+  cp "custodexa-env-${STAMP}.bak" "$ENV_FILE"
+  bash scripts/quickstart.sh --up
+fi
+```
+
 ---
 
 ## 6. Post-restore verification checklist
@@ -1206,7 +1430,7 @@ Compatibility is one-way: this release verifies old checkpoints, but old release
 
 Create an agent principal with an active human owner. As that owner or an administrator, create a named, expiring agent token; save the one-time plaintext in the operator's secret store. The agent has only the user role and explicitly scoped asset/account grants. Install the `custodexa-mcp` stdio client on the agent's machine from https://github.com/custodexa/custodexa-mcp, either with `go install github.com/custodexa/custodexa-mcp@latest` or as a release binary verified against the `checksums.txt` published with that release. Supply `CUSTODEXA_AGENT_TOKEN` to `custodexa-mcp` through its environment and set `CUSTODEXA_MCP_URL` to the HTTPS `/api/v1/mcp` endpoint. Human JWTs and cookies cannot authenticate this endpoint. The stdio client forwards tool calls; all decisions and evidence writes happen in the service. Never put the token in command arguments or reports.
 
-Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
+Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Automatic approval never goes beyond the standing accounts of the principal that will connect: an item that names an account outside that scope stays pending for an approver whose scope covers the asset. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
 
 Rotate by issuing a new named token, updating the operator's secret, starting a new MCP connection and verifying asset visibility, then revoking the old token. There is no in-place token secret rotation or automatic token recovery from backup. Revocation closes sessions created with the old token; a session handle cannot move to a new token or MCP connection. After restore or standby takeover, create new MCP connections and tasks as needed; old in-memory handles and the 60-second idempotency cache do not survive restart. Inspect retained token state and task state before resuming work.
 

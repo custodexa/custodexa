@@ -158,7 +158,7 @@ func (f *Fetcher) fetchOnce(ctx context.Context, objectID uint) (*FetchedObject,
 		return out, nil
 	}
 
-	client, err := f.profiles.ClientFor(ctx, row.StorageGenerationID)
+	client, err := f.profiles.ClientForRetrieval(ctx, row.StorageGenerationID)
 	if err != nil {
 		return nil, err
 	}

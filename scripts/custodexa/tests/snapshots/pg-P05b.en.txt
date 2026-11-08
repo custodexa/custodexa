@@ -1,0 +1,22 @@
+[ .. ]  8/13  Convert the database: PostgreSQL 16 -> 18 (data 0.0 KB)
+        Do not interrupt. If it is interrupted the old data is not damaged,
+        and running the upgrade again starts the conversion over.
+        [FAIL] 1/5  Export the old database
+
+[FAIL] The upgrade stopped at step 8/13: the database conversion failed
+       at "export", and the old version did not start again
+  Cause      the old database could not be reached while exporting
+             (a summary; the full message is in the log)
+
+  Current state
+    - The version did not change (still 1.13.0), but the services are stopped now
+    - The old data /opt/custodexa/data/postgres was not changed
+    - The pre-upgrade backup is complete:
+      /opt/custodexa/backups/custodexa-backup-1.13.0-20261120-021502.tar
+    - The script does not handle this on its own
+  Start the old version again:
+    sudo /opt/custodexa/custodexa.sh start
+  After that, run the upgrade once more:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+
+  Log file /tmp/log

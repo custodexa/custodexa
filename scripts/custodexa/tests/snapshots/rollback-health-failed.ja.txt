@@ -24,9 +24,9 @@
     - 実行中のサービス：postgres guacd backend frontend
     - データ、設定ファイル、証明書は変更していません
   まずバックエンドのログで原因を確認してください：
-    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+    sudo docker logs --tail 50 custodexa-backend
   原因を解消したら、前のバージョンに戻す処理を再開してください：
     sudo /opt/custodexa/custodexa.sh rollback --resume --lang ja
   または、アップグレード後のバージョン 1.16.2 に戻してください：
-    sudo /opt/custodexa/custodexa.sh rollback --revert --lang ja
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh rollback --revert --lang ja
   ログファイル /opt/custodexa/logs/rollback-20260930-101502.log

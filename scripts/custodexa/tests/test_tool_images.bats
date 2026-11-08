@@ -11,6 +11,7 @@ load install_host
 load backup_host
 load upgrade_host
 
+# Old notation: the overlays-layout release these cases install reads its form from COMPOSE_FILE overlays.
 INGRESS=current/compose.yml:current/compose.external-ingress.yml
 
 st() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
@@ -45,7 +46,7 @@ prepare_form() {
   : >"$SIM/images"
   if [ "$1" = ingress ]; then
     cp "$ROOT/current/.env.example" "$ROOT/.env"
-    printf 'COMPOSE_FILE=%s\n' "$INGRESS" >>"$ROOT/.env"
+    printf 'COMPOSE_FILE=%s\nTLS_MODE=external\n' "$INGRESS" >>"$ROOT/.env"
   fi
   clock 0 2 0 48 0 9 0 21
   : >"$FAKE_DOCKER_LOG"
@@ -155,6 +156,7 @@ upgrade_form() {
 # The three clients that export an external database are tool images of that form only: obtained
 # and checked at install and upgrade, recorded, never run as a service, never on the status list.
 
+# Old notation, as above.
 EXTDB=current/compose.yml:current/compose.external-database.yml
 
 # install_ext: a fresh install on an external database, behind the built-in proxy.

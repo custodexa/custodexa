@@ -108,6 +108,7 @@ export const OFFSITE_ERROR_CODES = [
   'offsite.profile_missing',
   'offsite.foreign_credentials_missing',
   'offsite.credentials_unavailable',
+  'offsite.credential_config_invalid',
 ]
 
 // 排入來源（`offsite_objects.origin`）：雙佇列配額的判準

@@ -482,6 +482,9 @@ var offsiteReasonCodes = map[string]apierror.ErrCode{
 	offsite.ReasonCredentialsAlreadyRevoked: apierror.CodeConflictOffsiteCredentialsAlreadyRevoked,
 	offsite.ReasonEncryptFailed:             apierror.CodeInternalOffsiteCredentialEncrypt,
 	offsite.ReasonDecryptFailed:             apierror.CodeInternalOffsiteCredentialDecrypt,
+
+	offsite.ReasonGCSCredentialInvalid:       apierror.CodeValidationOffsiteGCSCredentialInvalid,
+	offsite.ReasonGCSEndpointNeedsCredential: apierror.CodeValidationOffsiteGCSEndpointNeedsCredential,
 }
 
 // offsiteReasonStatus 拒因的 HTTP 狀態（未列者預設 400）。
@@ -516,7 +519,12 @@ func respondOffsiteError(c *gin.Context, err error, fallback apierror.ErrCode) {
 			apierror.RespondInternal(c, status, code, err)
 			return
 		}
-		apierror.Respond(c, status, code, nil)
+		var params map[string]any
+		if reason == offsite.ReasonGCSCredentialInvalid {
+			// 只指名欄位，值不外送
+			params = map[string]any{"field": offsite.DetailOf(err)}
+		}
+		apierror.Respond(c, status, code, params)
 		return
 	}
 	switch {

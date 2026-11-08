@@ -136,10 +136,11 @@ cx_preflight() {
 
 # Public ports: the https and http ports of the built-in proxy, or HTTP_PORT behind your own ingress.
 cx_preflight_ports() {
-  local root=$1 env=$1/.env cf p who busy=0 checked=""
+  local root=$1 env=$1/.env words p who busy=0 checked=""
   local -a ports=()
-  cf=$(cx_env_get "$env" COMPOSE_FILE)
-  if [[ $cf == *external-ingress* ]]; then
+  # The form comes from the two keys (lib/form.sh); a value it refuses is the install's to report.
+  words=$(cx_form_derive "$env" 2>/dev/null) || words=""
+  if [[ " $words " == *" external-ingress "* ]]; then
     p=$(cx_env_get "$env" HTTP_PORT)
     ports=("${p:-80}")
   else
@@ -247,7 +248,7 @@ cx_pre_hint_port() {
   local p=$1 var="CX_PRE_WHO_$1" ip
   printf '%s\n' "$(cx_msg text_pre_port "$p" "${!var:-?}")"
   cx_cmd "sudo $CX_ROOT/custodexa.sh install"
-  if [[ $(cx_env_get "$CX_ROOT/.env" COMPOSE_FILE) == *external-ingress* ]]; then
+  if [[ " $(cx_form_derive "$CX_ROOT/.env" 2>/dev/null) " == *" external-ingress "* ]]; then
     printf '%s\n' "$(cx_msg text_pre_port_change_ingress "$CX_ROOT")"
     return 0
   fi

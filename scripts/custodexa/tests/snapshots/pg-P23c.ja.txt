@@ -1,0 +1,10 @@
+[FAIL] データフォルダが不完全なため、データベースは起動しません。
+       何も変更していません。
+  /opt/custodexa/data/postgresql/18/docker がないか、中に PG_VERSION ファイルがありません。
+  このまま起動すると、PostgreSQL 18 が空のフォルダにデータのない
+  新しいデータベースを作ってしまいます。
+  まずデータを探してください（例：残してあるフォルダ /opt/custodexa/data/postgresql.* で確認）。
+  または、アップグレード前のバックアップから復元します：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar
+  この配置の状態を見るには：
+    sudo /opt/custodexa/custodexa.sh status

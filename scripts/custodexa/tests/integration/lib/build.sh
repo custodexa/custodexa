@@ -176,10 +176,14 @@ it_package() {
   rm -rf "$IT_WORK/out"
   PATH=$IT_WORK/bin:$PATH bash /src/scripts/release/build-package.sh --digests "$IT_WORK/image-digests.json" \
     --source "$IT_WORK/source" --out "$IT_WORK/out" --min-source "$min" --released-at "$at" ${args[@]+"${args[@]}"}
-  # The PostgreSQL clients are tool images a release before them does not list; the rest must match.
-  [ "$(jq -cS '.images | with_entries(select(.key | test("^pgclient[0-9]+$") | not))' "$IT_WORK/out/MANIFEST.json")" \
-    = "$(jq -cS '.images | with_entries(select(.key | test("^pgclient[0-9]+$") | not))' "$mf")" ] ||
+  # The PostgreSQL clients are tool images a release before them does not list, and the bundled
+  # database image is the working tree's (PostgreSQL 18 from the conversion on, the same pin as the
+  # pgclient18 tool image); the rest must match.
+  [ "$(jq -cS '.images | with_entries(select(.key | test("^pgclient[0-9]+$|^postgres$") | not))' "$IT_WORK/out/MANIFEST.json")" \
+    = "$(jq -cS '.images | with_entries(select(.key | test("^pgclient[0-9]+$|^postgres$") | not))' "$mf")" ] ||
     it_die "the package's image list differs from the v$v release's"
+  [ "$(jq -c '.images.postgres' "$IT_WORK/out/MANIFEST.json")" = "$(jq -c '.images.pgclient18' "$IT_WORK/out/MANIFEST.json")" ] ||
+    it_die "the package's bundled database image is not its pgclient18 pin"
   rm -rf "$out"
   mkdir -p "$out"
   cp "$IT_WORK/out/custodexa-$v.tar.gz" "$IT_WORK/out/MANIFEST.json" "$out/"

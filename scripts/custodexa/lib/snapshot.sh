@@ -19,6 +19,9 @@
 # A data set without the permission-model migration is written as authz.model=legacy and its
 # tables are never asked for. A set with the migration needs every key; one missing is no backup.
 
+# Sourced by more than one command library: a second load must not touch the readonly settings.
+[ -z "${CX_LIB_LOADED_snapshot:-}" ] || return 0
+CX_LIB_LOADED_snapshot=1
 # shellcheck source=lib/dbclient.sh
 . "${BASH_SOURCE[0]%/*}/dbclient.sh"
 

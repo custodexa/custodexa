@@ -72,31 +72,39 @@ var sourceGateEnforcementPoints = []struct {
 		"管理者對他人的密碼寫入（依操作者清單）"},
 	{"#19", "internal/api/user_handler.go", "Unlock", sourceGateHelperName,
 		"管理者解鎖他人（依操作者清單）"},
+	{"SFTP", "internal/api/sftp_handler.go", "requireConnectAsset", "SourceOutcome",
+		"檔案端點與傳輸能力查詢端點共用的前置閘：在授權判定之前套用使用者的來源網段限制"},
 	{"#9", "internal/modules/identity/auth_refresh_service.go", "RefreshSession", "Evaluate",
 		"refresh 輪替：**服務層**判定（交易內、世代複查之後、CAS 撤舊之前），" +
 			"形狀與其餘十七點不同——拒絕時零寫入、不消耗憑證，故不走 handler helper"},
 }
 
 // minSourceGateEnforcementPoints 下限：表被整批清空時逐項比對恆滿足
-const minSourceGateEnforcementPoints = 13
+const minSourceGateEnforcementPoints = 14
 
 // sourceGateJudged 「判」的閉集合：這些路由的 handler 必須有來源判定。
 //
 // 鍵為 `METHOD PATH`（`r.Routes()` 的形狀）。
 var sourceGateJudged = map[string]string{
-	"POST /api/v1/auth/login":              "盤點表 #1／#3／#4",
-	"POST /api/v1/auth/mfa/verify":         "盤點表 #5／#13",
-	"POST /api/v1/auth/mfa/enroll/setup":   "盤點表 #11",
-	"POST /api/v1/auth/mfa/enroll/confirm": "盤點表 #6／#12",
-	"POST /api/v1/auth/change-password":    "盤點表 #7／#10",
-	"POST /api/v1/auth/mfa/setup":          "盤點表 #14",
-	"POST /api/v1/auth/mfa/enable":         "盤點表 #15",
-	"POST /api/v1/auth/mfa/disable":        "盤點表 #16",
-	"POST /api/v1/auth/refresh":            "盤點表 #9（服務層交易內判定）",
-	"POST /api/v1/auth/oidc/exchange":      "盤點表 #8（正式與 enrollment 判、pending 不判）",
-	"POST /api/v1/users/:id/mfa/disable":   "盤點表 #17（依操作者清單）",
-	"PUT /api/v1/users/:id/password":       "盤點表 #18（依操作者清單）",
-	"POST /api/v1/users/:id/unlock":        "盤點表 #19（依操作者清單）",
+	"POST /api/v1/auth/login":                      "盤點表 #1／#3／#4",
+	"POST /api/v1/auth/mfa/verify":                 "盤點表 #5／#13",
+	"POST /api/v1/auth/mfa/enroll/setup":           "盤點表 #11",
+	"POST /api/v1/auth/mfa/enroll/confirm":         "盤點表 #6／#12",
+	"POST /api/v1/auth/change-password":            "盤點表 #7／#10",
+	"POST /api/v1/auth/mfa/setup":                  "盤點表 #14",
+	"POST /api/v1/auth/mfa/enable":                 "盤點表 #15",
+	"POST /api/v1/auth/mfa/disable":                "盤點表 #16",
+	"POST /api/v1/auth/refresh":                    "盤點表 #9（服務層交易內判定）",
+	"GET /api/v1/assets/:id/files":                 "檔案面：列目錄（共用資產層前置閘，來源判定在授權之前）",
+	"GET /api/v1/assets/:id/files/download":        "檔案面：下載",
+	"POST /api/v1/assets/:id/files/upload":         "檔案面：上傳",
+	"POST /api/v1/assets/:id/files/mkdir":          "檔案面：建立目錄",
+	"DELETE /api/v1/assets/:id/files":              "檔案面：刪除",
+	"GET /api/v1/assets/:id/transfer-capabilities": "檔案面：傳輸能力查詢（與檔案端點同一把尺）",
+	"POST /api/v1/auth/oidc/exchange":              "盤點表 #8（正式與 enrollment 判、pending 不判）",
+	"POST /api/v1/users/:id/mfa/disable":           "盤點表 #17（依操作者清單）",
+	"PUT /api/v1/users/:id/password":               "盤點表 #18（依操作者清單）",
+	"POST /api/v1/users/:id/unlock":                "盤點表 #19（依操作者清單）",
 }
 
 // sourceGateNotJudged 「明列不判」的閉集合：每條都必須附理由。
@@ -113,7 +121,7 @@ var sourceGateNotJudged = map[string]string{
 		"範圍止於認證因子，擴到一般寫入等於每請求判一次（規格明列的非目標）",
 	"POST /api/v1/auth/logout": "撤銷自己的憑證。擋掉它只會讓清單外的人**無法登出**，" +
 		"安全方向相反",
-	"GET /api/v1/auth/banner": "登入前告示讀取，使用者尚未解析（與登入方式列舉同理：無身分可判、亦不寫任何認證狀態）",
+	"GET /api/v1/auth/banner":  "登入前告示讀取，使用者尚未解析（與登入方式列舉同理：無身分可判、亦不寫任何認證狀態）",
 	"GET /api/v1/auth/methods": "登入方式列舉，使用者尚未解析（盤點表 #21，明列不判）",
 	"GET /api/v1/auth/oidc/:id/begin": "OIDC 授權起點，使用者尚未解析" +
 		"（判定在 exchange；盤點表 #21，明列不判）",
@@ -132,6 +140,12 @@ var sourceGateExplicitRoutes = []string{
 	"POST /api/v1/users/:id/mfa/disable",
 	"PUT /api/v1/users/:id/password",
 	"POST /api/v1/users/:id/unlock",
+	"GET /api/v1/assets/:id/files",
+	"GET /api/v1/assets/:id/files/download",
+	"POST /api/v1/assets/:id/files/upload",
+	"POST /api/v1/assets/:id/files/mkdir",
+	"DELETE /api/v1/assets/:id/files",
+	"GET /api/v1/assets/:id/transfer-capabilities",
 }
 
 // TestSourceGateEnforcementPointsAllWired 方向 (1)：登記的判定點都真的有呼叫。

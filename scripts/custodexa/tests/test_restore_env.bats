@@ -20,6 +20,7 @@ CX_LANG_FLAG=en
 cx_load_libs "$1"
 . "$1/lib/cmd_restore.sh"
 CX_DIR=$2/current CX_ROOT=$2 CX_RS_DIR=$3 CX_RS_FLOW=$4 CX_RS_TS=20261012-093015
+[ -z "${TEST_RS_RELEASE:-}" ] || CX_RS_RELEASE=$TEST_RS_RELEASE
 cx_flat_parse "$CX_RS_DIR/pass2/backup-manifest.json" CX_RS_MAP CX_RS_KEYS || exit 3
 cx_rs_env_merge || exit 3
 printf 'template=%s\nchanged=%s\nkept=%s\n' "$CX_RS_TEMPLATE" "$CX_RS_TEMPLATE_CHANGED" "$CX_RS_TEMPLATE_KEEP"
@@ -137,4 +138,25 @@ $ROOT/custom.conf.template
   merge_tty $'\n\n\n\n'
   [ "$status" -eq 0 ] && [[ $output != *'Custom nginx template'* && $output == *"kept=$ROOT/conf/nginx-tls.conf.template.before-restore-20261012-093015"* ]] || { echo "$output"; return 1; }
   only_host_keys_differ
+}
+
+@test "restore env.bak of a release with the profiles layout: the form derived from it must be the manifest's, and the block is written" {
+  local rel=$BATS_TEST_TMPDIR/rel
+  mkdir -p "$rel"
+  printf '{"compose_layout": "profiles"}\n' >"$rel/MANIFEST.json"
+  export TEST_RS_RELEASE=$rel
+  merge same
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(grep -c '^COMPOSE_FILE=' "$W/env.merged")" = 1 ]
+  grep -qx 'COMPOSE_PROFILES=bundled-db,builtin-tls' "$W/env.merged"
+  # The backup's .env carried an external ingress the manifest does not record: damaged, refused.
+  prepare plain
+  printf 'TLS_MODE=external\n' >>"$W/pass2/env.bak"
+  merge same
+  [ "$status" -eq 3 ] && [[ $output == *'"external-ingress"'* && $output == *'The backup is damaged'* ]] || { echo "$output"; return 1; }
+  # An older release (no compose_layout) keeps the COMPOSE_FILE check, as before.
+  printf '{"format": 1}\n' >"$rel/MANIFEST.json"
+  prepare plain
+  merge same
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }

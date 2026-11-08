@@ -91,6 +91,9 @@ cx_rs_flow() {
 # shellcheck source=lib/restore_journal.sh
 . "${BASH_SOURCE[0]%/*}/restore_journal.sh"
 
+# shellcheck source=lib/restore_db.sh
+. "${BASH_SOURCE[0]%/*}/restore_db.sh"
+
 # shellcheck source=lib/restore_import.sh
 . "${BASH_SOURCE[0]%/*}/restore_import.sh"
 

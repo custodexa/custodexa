@@ -2,7 +2,6 @@
 
 ## Purpose
 規範安裝包部署的管理腳本 `custodexa.sh`：發行附檔組的完整性驗證、部署根目錄與 compose 呼叫的固定方式、映像取得順序與啟動後核對、狀態檔格式、改狀態子命令的互斥，以及 install／status／load 子命令、三語輸出與終端機下的互動主選單。
-
 ## Requirements
 
 ### Requirement: 發行附檔為同一組可驗證附檔
@@ -21,7 +20,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 部署根目錄與 compose 呼叫固定
 
-管理腳本 SHALL 以自身實際路徑（追符號連結）或 `CUSTODEXA_HOME` 解析安裝包部署根，並確認根目錄含 `state.json` 或 `releases/`。每一次 compose 呼叫 SHALL 顯式帶固定專案名、`--project-directory <根>` 與 `-f <根>/current/compose.yml`（加上部署形態的 overlay）。部署根的絕對路徑 SHALL 只含 `[A-Za-z0-9._/-]`，不合即拒絕執行。管理腳本 SHALL 只支援 Linux；其他作業系統拒絕並指向開發者與本機試用文件。辨識到舊的 git clone 部署時，所有入口 SHALL 在寫入鎖、狀態、備份或變更服務之前拒絕，說明手動遷移或在另一個乾淨目錄安裝後手動還原的文件路徑；SHALL NOT 進行首次轉換。
+管理腳本 SHALL 以自身實際路徑（追符號連結）或 `CUSTODEXA_HOME` 解析安裝包部署根，並確認根目錄含 `state.json` 或 `releases/`。每一次 compose 呼叫 SHALL 顯式帶固定專案名、`--project-directory <根>` 與 `-f <release>/compose.yml`，並依該 release 的 compose 佈局帶上部署形態：發行清單記載單一 compose 佈局的 release SHALL 以環境變數 `COMPOSE_PROFILES` 帶入推導出的 profiles，SHALL NOT 帶疊加檔；沒有該記載的舊版 release SHALL 照舊依形態加上該版的疊加檔、不帶 profiles。以服務名操作網頁服務時，服務名 SHALL 依該次呼叫所用 release 的佈局與形態解析：單一 compose 佈局且為外部入口形態時為 `frontend-published`，其餘為 `frontend`。以某個 release 執行 `up` 之前，若容器 `custodexa-frontend` 已停止且其 compose 服務標籤不等於該 release 解析出的網頁服務名，SHALL 先移除該容器；該容器仍在執行時 SHALL NOT 移除，依該步失敗處理。compose 呼叫 SHALL 在只取部署根 `.env` 的受控環境中執行（deployment-configuration「部署形態由 .env 推導」）。部署根的絕對路徑 SHALL 只含 `[A-Za-z0-9._/-]`，不合即拒絕執行。管理腳本 SHALL 只支援 Linux；其他作業系統拒絕並指向開發者與本機試用文件。辨識到舊的 git clone 部署時，所有入口 SHALL 在寫入鎖、狀態、備份或變更服務之前拒絕，說明手動遷移或在另一個乾淨目錄安裝後手動還原的文件路徑；SHALL NOT 進行首次轉換。
 
 #### Scenario: 由符號連結呼叫
 - **WHEN** 維運經 `/usr/local/bin/custodexa.sh` 這類符號連結執行腳本
@@ -34,6 +33,22 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 #### Scenario: 舊 git clone 部署拒絕
 - **WHEN** 腳本在含 `.git`、`VERSION` 與根目錄 `docker-compose.yml` 的舊部署樹執行 install、upgrade、status 或不帶子命令
 - **THEN** 以拒絕結束碼 3 說明人工處理路徑，沒有建立鎖、備份、狀態檔或更動服務
+
+#### Scenario: 單一 compose 的 release
+- **WHEN** 外接資料庫、內建代理形態的部署以 1.23.0 執行 `start`
+- **THEN** compose 呼叫只帶一個 `-f`（`current/compose.yml`），環境變數 `COMPOSE_PROFILES` 為 `builtin-tls`
+
+#### Scenario: 指回舊版 release
+- **WHEN** 外接資料庫部署由 1.22.0 升到 1.23.0 後以 `rollback` 回到 1.22.0
+- **THEN** 啟動 1.22.0 的 compose 呼叫帶 `-f releases/1.22.0/compose.yml -f releases/1.22.0/compose.external-database.yml`，不帶 `COMPOSE_PROFILES`
+
+#### Scenario: 外部入口形態升級時移交網頁容器
+- **WHEN** 1.22.0 的外部入口部署（`custodexa-frontend` 的服務標籤為 `frontend`）升級到 1.23.0
+- **THEN** 第 10 步 `up` 之前移除已停止的 `custodexa-frontend`，`up` 啟動的是 `frontend-published`；完成後 `custodexa-frontend` 的服務標籤為 `frontend-published`，`docker port custodexa-frontend` 為 `HTTP_PORT`
+
+#### Scenario: 外部入口形態指回與撤回時的網頁服務
+- **WHEN** 上一情境的部署（升級已完成、`.env` 轉換為完成）執行 `rollback --yes` 回到 1.22.0，指回在 1.22.0 已啟動、最終版本與 image ID 核對完成前被注入失敗，之後執行 `rollback --revert --yes` 回到 1.23.0
+- **THEN** 指回時停止的是 `frontend-published`、啟動的是 1.22.0 的 `frontend`，失敗當下容器服務標籤為 `frontend`；撤回停止的是 `frontend`、啟動的是 `frontend-published`，完成後服務標籤再回到 `frontend-published`、後端回報 1.23.0；兩次都沒有出現容器名衝突
 
 ### Requirement: 映像取得順序與啟動後核對
 
@@ -117,7 +132,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: install 冪等並拒絕覆蓋既有部署
 
-`install` SHALL 在任何寫入前完成前置檢查；發現既有部署（狀態檔、同名容器或 git 工作樹）SHALL 拒絕並指向 `status` 或 `upgrade`。`.env` 產生 SHALL 沿用快速啟動腳本的逐鍵規則，已設定的值不變，並寫入絕對路徑的 `DATA_PATH`、`COMPOSE_FILE` 與 `COMPOSE_PROJECT_NAME`；只回顯本次產生的初始管理者密碼。任一步失敗只停下、不清除，重跑從頭冪等執行。
+`install` SHALL 在任何寫入前完成前置檢查；發現既有部署（狀態檔、同名容器或 git 工作樹）SHALL 拒絕並指向 `status` 或 `upgrade`。部署形態 SHALL 依「部署形態由 .env 推導」決定並經「部署形態的意圖與實況一致才動作」檢查；`.env` 中若有舊寫法的 `COMPOSE_FILE`（列出疊加檔），SHALL 依其內容核對 `EXTERNAL_DB_HOST` 與 `TLS_MODE`，相符者移除該行並報告，矛盾者（例如列了外接疊加但未填位址）SHALL 拒絕。`.env` 產生 SHALL 沿用快速啟動腳本的逐鍵規則，已設定的值不變，並寫入絕對路徑的 `DATA_PATH`、`COMPOSE_PROJECT_NAME` 與管理區；只回顯本次產生的初始管理者密碼。安裝預覽 SHALL 列出推導出的部署形態及決定它的 `.env` 行；stdin 是終端時 SHALL 在預覽後以 y/N（預設否）確認，答否即結束且沒有任何變更；stdin 不是終端時 SHALL NOT 顯示提問、照舊直接安裝，且 SHALL NOT 要求 `--yes`（「改狀態的子命令互斥且不在中斷時自行復原」中非互動確認點以拒絕結束的規則，對安裝預覽不適用）。任一步失敗只停下、不清除，重跑從頭冪等執行。
 
 #### Scenario: 已有部署時執行 install
 - **WHEN** 在已有 `state.json` 或 `custodexa-backend` 容器的主機執行 install
@@ -126,6 +141,18 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 #### Scenario: 中斷後重跑
 - **WHEN** install 在取得映像時被中斷後再次執行
 - **THEN** 已產生的 `.env` 值不變，流程完成且結果與一次跑完相同
+
+#### Scenario: 新安裝只填外接位址
+- **WHEN** 乾淨主機的 `.env` 只設 `EXTERNAL_DB_HOST=db.example.internal` 與 `DB_PASSWORD`，未設 `COMPOSE_FILE`，執行 install
+- **THEN** 預覽顯示資料庫為外接 `db.example.internal:5432`；安裝完成後狀態檔 `current.overlays` 含 `external-database`，沒有建立內建資料目錄，backend 連到該位址
+
+#### Scenario: 互動安裝預覽答否
+- **WHEN** 在終端機執行 install，於安裝預覽的 y/N 提問直接按 Enter
+- **THEN** 腳本結束並說明沒有做任何變更；沒有建立狀態檔、沒有任何 compose 呼叫
+
+#### Scenario: 非互動安裝不提問
+- **WHEN** 以 `install < /dev/null` 在乾淨主機執行，未帶 `--yes`
+- **THEN** 預覽照常印出但不出現 y/N 提問，安裝照常完成，結束碼與互動答 y 時相同
 
 ### Requirement: status 與 load 不改變服務
 
@@ -145,7 +172,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 終端機下不帶子命令顯示主選單
 
-stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、從備份檔還原到這台新主機、載入離線包、說明、離開；已安裝時依序列查看狀態、啟動服務、停止服務、升級、備份、從備份檔還原、載入離線包、說明、離開；有未完成的還原時，改列接續還原、查看狀態、（服務已由還原啟動時）啟動服務、停止服務、用安全備份還原回去（新主機為放棄這次還原）、說明、離開；還原回去或放棄做到一半時，第一項改為把它做完。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。選還原項時，選單 SHALL 列出部署根 `backups/` 與目前目錄中檔名符合可攜備份檔的檔案供選擇，並可輸入其他路徑。
+stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、從備份檔還原到這台新主機、載入離線包、說明、離開；已安裝時依序列查看狀態、啟動服務、停止服務、升級、備份、從備份檔還原、載入離線包、資料庫升級（僅內建資料庫形態）、說明、離開，其中查看狀態到載入離線包的編號 SHALL 為 1 到 7、離開 SHALL 為 0，兩種資料庫形態都相同，加入資料庫升級 SHALL NOT 改變這些項目的編號；有未完成的還原時，改列接續還原、查看狀態、（服務已由還原啟動時）啟動服務、停止服務、用安全備份還原回去（新主機為放棄這次還原）、說明、離開；還原回去或放棄做到一半時，第一項改為把它做完。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。選還原項時，選單 SHALL 列出部署根 `backups/` 與目前目錄中檔名符合可攜備份檔的檔案供選擇，並可輸入其他路徑。
 
 選單選「升級到最新版」SHALL 只顯示版本、可否升級及必要的驗證與資料變更警告，不顯示唯讀查詢專用的執行指令或「只查詢」尾段；同一次查詢的已核對目標用於後續升級。校驗和不符 SHALL 不給升級結論。任一端不是終端機或部署目錄判定不出時，SHALL 印出說明並以結束碼 2 結束；舊 git clone 部署 SHALL 依「部署根目錄與 compose 呼叫固定」拒絕。
 
@@ -176,6 +203,14 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 #### Scenario: 還原未完成時的選單
 - **WHEN** 還原停在待解封核對時，維運在終端機不帶子命令執行腳本
 - **THEN** 主選單顯示還原未完成的狀態與接續還原項，不列升級與備份
+
+#### Scenario: 外接資料庫部署的選單
+- **WHEN** 外接資料庫形態的已安裝部署在終端機不帶子命令執行腳本
+- **THEN** 主選單不列「資料庫升級」，其餘項目與順序照常
+
+#### Scenario: 加入資料庫升級後既有編號不變
+- **WHEN** 內建資料庫形態與外接資料庫形態的已安裝部署各在終端機不帶子命令執行腳本
+- **THEN** 兩者的 [1] 查看狀態、[2] 啟動服務、[3] 停止服務、[4] 升級、[5] 備份、[6] 從備份檔還原、[7] 載入離線映像包、[0] 離開完全相同；內建形態的 [8] 為資料庫升級、[9] 為說明，外接形態的 [8] 為說明；在內建形態輸入 5 執行的是 `backup`
 
 ### Requirement: 發行版下載引導腳本核對安裝包後交棒
 
@@ -241,7 +276,7 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 
 ### Requirement: 已安裝部署可控制整組服務
 
-已安裝的安裝包部署 SHALL 提供 `start` 與 `stop` 子命令，只作用於目前版本的整組服務，使用固定專案名、專案目錄、目前 compose 與部署 overlays。`stop` SHALL 先提示現有連線會中斷並要求確認；確認後沿用升級的稽核佇列排空判定，未知或逾時 SHALL 不停止服務。排空後 SHALL 停止整組服務並確認結果。`start` SHALL 啟動目前整組服務，最多等待 180 秒確認後端 `/health` 可回應；失敗 SHALL 提示查 `status` 與後端 log，不自動回退。已全部停止／已全部執行且後端就緒時，重複指令 SHALL 提示現狀並成功結束。兩者 SHALL 不切換版本、不執行備份、不變更容量門檻。
+已安裝的安裝包部署 SHALL 提供 `start` 與 `stop` 子命令，只作用於目前版本的整組服務，使用固定專案名、專案目錄、目前 compose，並依目前 release 的 compose 佈局帶入部署形態（見「部署根目錄與 compose 呼叫固定」：單一 compose 佈局以 `COMPOSE_PROFILES` 帶入推導出的 profiles，沒有單一 compose 的舊版 release 照舊加上該版的疊加檔）。`stop` SHALL 先提示現有連線會中斷並要求確認；確認後沿用升級的稽核佇列排空判定，未知或逾時 SHALL 不停止服務。排空後 SHALL 停止整組服務並確認結果。`start` SHALL 啟動目前整組服務，最多等待 180 秒確認後端 `/health` 可回應；失敗 SHALL 提示查 `status` 與後端 log，不自動回退。已全部停止／已全部執行且後端就緒時，重複指令 SHALL 提示現狀並成功結束。兩者 SHALL 不切換版本、不執行備份、不變更容量門檻。
 
 #### Scenario: stop 前稽核佇列未知
 - **WHEN** 維運確認 `stop`，但無法判定仍在執行的後端之稽核佇列是否排空
@@ -282,3 +317,89 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 #### Scenario: 待解封時可以重啟服務
 - **WHEN** 還原停在待解封核對時執行 `stop` 再執行 `start`
 - **THEN** 兩者照常完成，還原狀態仍是待解封核對
+
+### Requirement: 部署形態的意圖與實況一致才動作
+
+會啟動、停止或改變部署的入口（`install`、`upgrade`、`start`、`backup`、`restore` 的同機流程、`rollback`，及選單的對應項）SHALL 在取得部署鎖之後、停止任何服務或寫入任何部署檔案之前，以「部署形態由 .env 推導」（deployment-configuration）的結果檢查下列條件，任一不成立 SHALL 以拒絕碼 3 結束且沒有任何變更，畫面 SHALL 說明填了什麼、為什麼不行與下一步：
+
+- `EXTERNAL_DB_HOST` 的值不是本產品堆疊內的服務名或容器名（`postgres`、`backend`、`frontend`、`guacd`、`tls-proxy`、`custodexa-` 開頭者），不是 loopback 或萬用位址（`localhost`、`127.0.0.0/8`、`::1`、`0.0.0.0`、`::`），且不含埠、協定前綴、空白或引號。
+- `EXTERNAL_DB_PORT` 有值且不是 5432 時，`EXTERNAL_DB_HOST` 有值。
+- 新安裝要外接資料庫時，內建資料目錄沒有資料。
+- 既有部署推導出的資料庫形態等於狀態檔 `current.overlays` 記錄的形態：內建且內建資料目錄有資料、`.env` 卻填了 `EXTERNAL_DB_HOST` 時，畫面 SHALL 說明資料目前在內建資料庫、該位址從未生效，並指向保留內建（刪除該行）與經備份還原搬遷兩條路；外接、`.env` 卻清空 `EXTERNAL_DB_HOST` 時，畫面 SHALL 說明會啟動沒有資料的內建資料庫並印出原本記錄的位址。
+- 既有部署推導出的入口形態等於狀態檔記錄的形態；不同時畫面 SHALL 印出安裝時的 `TLS_MODE` 應填值。唯一的例外是舊版的入口表示法：狀態檔記錄外部入口而 `TLS_MODE` 不是 `external`，且 `current` 指向的 release 沒有單一 compose 佈局（發行清單無 `compose_layout: "profiles"`），或狀態檔有未完成的 `.env` 轉換紀錄且 `.env` 的 sha256 等於該紀錄的改寫前雜湊時，視為一致；其餘情形（`current` 指向單一 compose 佈局的 release 且沒有符合的未完成轉換紀錄）同一組合 SHALL 依本條拒絕，SHALL NOT 自動改寫 `TLS_MODE`。
+
+拒絕畫面給的 `EXTERNAL_DB_HOST` 建議值 SHALL 只用主機名或 IP 的例子與「這台主機的網路位址」，SHALL NOT 出現 `host.docker.internal`。
+
+上述入口 SHALL 依序：讀取 `.env` 與狀態檔；推導形態並檢查值；核對意圖與實況；全部通過後才同步 `.env` 管理區，再做該入口本來的動作。任一檢查不成立而拒絕時 SHALL NOT 同步管理區；核對是依舊版入口表示法的例外而通過時，該次執行 SHALL NOT 同步管理區，`.env` 維持原內容。`upgrade` 例外：第 1 步核對通過時 SHALL NOT 同步管理區，管理區同步 SHALL 延到第 9 步切換連結之後（deployment-upgrade「升級時轉換舊的疊加設定」）。
+
+`status` 與 `load` SHALL NOT 因上述條件拒絕，SHALL NOT 同步管理區；`status` SHALL 顯示目前的部署形態（資料庫內建或外接主機與埠、入口為內建代理或外部入口與埠），不一致時 SHALL 以 WARN 指出哪一行、下一個會改變部署的動作將被擋下與如何改回。
+
+#### Scenario: 只填了外接位址的既有內建部署
+- **WHEN** 內建資料庫部署已有資料，維運在 `.env` 加上 `EXTERNAL_DB_HOST=db.example.internal` 後執行 `start`
+- **THEN** 以拒絕碼 3 結束，服務與 `.env` 沒有任何變更；畫面說明資料在內建資料庫、該位址從未生效，並列出刪除該行與備份還原搬遷兩條路
+
+#### Scenario: 外接部署清空了位址
+- **WHEN** 外接資料庫部署的 `.env` 把 `EXTERNAL_DB_HOST` 改為空白後執行 `upgrade 1.23.0`
+- **THEN** 在停止任何服務前以拒絕碼 3 結束，畫面說明會啟動沒有資料的內建資料庫，並印出狀態檔記錄的原位址
+
+#### Scenario: 外接位址指回本機
+- **WHEN** 新安裝的 `.env` 設 `EXTERNAL_DB_HOST=127.0.0.1`
+- **THEN** `install` 在寫入任何檔案前拒絕，說明容器內的 127.0.0.1 是 backend 容器自己，資料庫在同一台主機時應填主機的網路位址
+
+#### Scenario: 位址帶了埠
+- **WHEN** `.env` 設 `EXTERNAL_DB_HOST=db.example.internal:6432`
+- **THEN** 腳本拒絕，說明埠應填在 `EXTERNAL_DB_PORT`
+
+#### Scenario: 只填了埠
+- **WHEN** `.env` 的 `EXTERNAL_DB_HOST` 空白、`EXTERNAL_DB_PORT=6432`，執行 `start`
+- **THEN** 以拒絕碼 3 結束，畫面說明只填了埠沒有填主機
+
+#### Scenario: 新安裝在殘留資料目錄上要外接
+- **WHEN** 主機沒有狀態檔，但 `${DATA_PATH}/postgres` 非空，`.env` 設了 `EXTERNAL_DB_HOST`，執行 `install`
+- **THEN** 腳本拒絕並列出該目錄與大小，說明外接安裝不會使用它
+
+#### Scenario: status 顯示不一致
+- **WHEN** 內建資料庫部署的 `.env` 填了 `EXTERNAL_DB_HOST`，維運執行 `status`
+- **THEN** 結束碼不因此改變，畫面顯示部署形態為內建資料庫並以 WARN 指出 `EXTERNAL_DB_HOST` 與實際不一致、下一次會改變部署的動作會被擋下；`.env` 的 sha256 與執行前相同，管理區的 `COMPOSE_PROFILES` 仍含 `bundled-db`
+
+#### Scenario: 拒絕時不同步管理區
+- **WHEN** 1.23.0 內建資料庫部署的 `.env` 管理區外多了一行 `COMPOSE_FILE=current/compose.yml`，同時填了 `EXTERNAL_DB_HOST=db.example.internal`，維運執行 `start`
+- **THEN** 以拒絕碼 3 結束；`.env` 與 `state.json` 的 sha256 與執行前相同，管理區外的 `COMPOSE_FILE` 行仍在原位；沒有任何 compose 呼叫
+
+#### Scenario: 單一 compose 部署改錯 TLS_MODE
+- **WHEN** 以 1.23.0 安裝的外部入口部署（狀態檔記錄 `external-ingress`），維運把 `.env` 的 `TLS_MODE` 改為 `selfsigned` 後執行 `start`
+- **THEN** 以拒絕碼 3 結束，`.env` 的 `TLS_MODE` 仍為 `selfsigned`、sha256 不變；畫面說明安裝後不支援切換入口形態並印出 `TLS_MODE=external`
+
+#### Scenario: 舊佈局的入口表示法放行
+- **WHEN** `current` 指向 1.22.0（沒有 `compose_layout`），狀態檔記錄 `external-ingress`、`.env` 的 `TLS_MODE=selfsigned`，以 1.23.0 執行 `upgrade 1.23.0`
+- **THEN** 第 1 步預檢不因入口形態拒絕，預覽列出 `TLS_MODE` 由 `selfsigned` 改為 `external`
+
+### Requirement: 資料庫升級子命令
+
+`custodexa.sh db-upgrade` SHALL 偵測目前內建資料庫資料目錄的大版本（讀資料目錄的版本檔，服務運作時另以伺服器版本交叉確認，兩者不符即停下）並與目前版本發行清單記載的內建資料庫大版本比較：相等時 SHALL 告知已是最新、不需升級並以 0 結束；較低時 SHALL 以與升級第 8 步相同的轉換模組執行轉換，前後沿用升級的排空、停止、備份、啟動與核對；較高時 SHALL 拒絕並說明須升級程式。外接資料庫形態 SHALL 只說明外接資料庫由使用者自行管理並以 0 結束，SHALL NOT 連線變更外接伺服器。
+
+`db-upgrade --remove-old`（及選單在已是最新時提供的清除項）SHALL 列出保留中的舊資料目錄（原大版本目錄與轉換、指回、還原留下的改名目錄）的完整路徑、大版本與大小，並分兩類決定能否刪除。上一版的資料目錄與可能含應用寫入的保留目錄（轉換前保留、指回後保留）只在下列全部成立時提供刪除：目前資料目錄為發行清單記載的大版本且資料庫健康、上一次升級已成功結算、新版已啟動過、沒有未完成的升級、指回或還原。轉換失敗或中斷留下的產物目錄（只被轉換用的暫時容器寫過、從未供應用使用）在下列全部成立時即提供刪除，不要求上一次升級已成功或新版已啟動過：目前使用中的資料庫與後端健康、除已記為失敗的第 8 步轉換外沒有未完成的升級、指回或還原、該目錄不是目前或上一版的資料目錄也不是任何執行中容器的掛載來源。確認畫面 SHALL 說明刪除後無法復原、清除上一版的資料目錄後不能再以 `rollback` 回到上一版（只能以升級前備份還原），並列出升級前備份的位置。刪除 SHALL 經確認（互動輸入確認字、非互動需 `--yes`），先改名再刪，並記入狀態檔；前提不成立時 SHALL 說明缺哪一項且不刪除任何目錄。腳本 SHALL NOT 在任何其他流程自動刪除這些目錄。`status` SHALL 顯示資料庫大版本、資料位置、data checksums 是否開啟，以及保留中的舊資料目錄與大小。
+
+#### Scenario: 已是最新
+- **WHEN** 內建資料庫為 18 的 1.23.0 部署執行 `db-upgrade`
+- **THEN** 畫面顯示目前為 18、已是最新、不需升級，結束碼 0，沒有停止任何服務
+
+#### Scenario: 外接資料庫部署
+- **WHEN** 外接資料庫形態的部署執行 `db-upgrade`
+- **THEN** 畫面說明外接資料庫由使用者自行管理，結束碼 0，沒有任何資料庫連線變更
+
+#### Scenario: 清除舊目錄
+- **WHEN** 升級到 1.23.0 已成功且新版已啟動過，維運執行 `db-upgrade --remove-old` 並輸入確認字
+- **THEN** 確認前畫面說明清除後不能再以 `rollback` 回到 1.22.0 並列出升級前備份的位置；舊 `postgres/` 目錄被刪除，狀態檔記下清除；`status` 不再列出它
+
+#### Scenario: 新版尚未啟動時要清除
+- **WHEN** 升級停在第 9 步、新版從未啟動，維運執行 `db-upgrade --remove-old`
+- **THEN** 以拒絕結束，說明舊目錄仍是回到上一版所需，沒有刪除任何目錄
+
+#### Scenario: 失敗產物不受升級成功前提限制
+- **WHEN** 1.23.0 部署健康，留有前一次轉換中斷的 `postgresql.partial-convert-<ts>`，`last_upgrade` 不是成功結算，維運執行 `db-upgrade --remove-old` 並對該目錄確認
+- **THEN** 該目錄被刪除並記入狀態檔；同一清單中的舊 `postgres/` 目錄因前提不成立而不提供刪除，畫面說明缺哪一項
+
+#### Scenario: 指回後保留的 18 目錄列在狀態中
+- **WHEN** 跨大版本指回完成後（留有 `postgresql.rolled-back-<ts>`），維運執行 `status`
+- **THEN** 資料庫段的保留中舊目錄清單列出該目錄的路徑與大小，輸出沒有針對它的 `WARN` 行

@@ -6,8 +6,8 @@
 #   1.16.91  the same source, only the version differs (the same migrations)
 #   1.16.92  the working tree with fixtures/rollback-probe-migration.patch: one more migration
 #            (it_rollback_probe, which changes nothing), so going to it is an upgrade that changed
-#            the database. The patch fails to apply once migrations.go moves on: the build stops
-#            and names it.
+#            the database. The patch anchors on the end of the migrations list, so appending
+#            migrations keeps it applying; if that end changes shape the build stops and names it.
 # For each: the backend and frontend images built from docker/<component>/Dockerfile (target
 # production, the backend with the build argument VERSION, so it reports that version), the install
 # package by build-package.sh and the offline bundle by build-package.sh offline, both unchanged.
@@ -23,11 +23,12 @@
 #
 # IT_LV_VERSIONS_SET (run.sh passes CX_IT_LOCAL_VERSIONS) replaces the three versions above with
 # its own list, e.g. "1.18.90" for a drill that upgrades a published release to the working tree.
-# Each is built from the working tree as it is; the probe patch applies only to 1.16.92, so a list
-# without it builds no probe. Empty: the three versions above, as before.
+# Each is built from the working tree as it is; the probe patch applies only to a version ending in
+# .92 (1.16.92 by default), so a list without one builds no probe. Empty: the three versions above.
 
 readonly IT_LV_VERSIONS="${IT_LV_VERSIONS_SET:-1.16.90 1.16.91 1.16.92}"
-readonly IT_LV_PROBE=1.16.92
+IT_LV_PROBE=$(tr ' ' '\n' <<<"$IT_LV_VERSIONS" | grep -m1 '\.92$' || true)
+readonly IT_LV_PROBE
 readonly IT_LV_REPO=ghcr.io/custodexa-it
 readonly IT_LV_PATCH=/src/scripts/custodexa/tests/integration/fixtures/rollback-probe-migration.patch
 readonly IT_LV_RELEASED_AT=2026-10-01T00:00:00+00:00

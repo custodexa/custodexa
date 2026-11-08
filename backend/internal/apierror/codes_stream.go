@@ -57,12 +57,27 @@ var (
 	CodeCommandBlocked = register("RULE_COMMAND_BLOCKED", Descriptor{
 		ZhFallback: "指令命中阻斷規則，已阻止送往目標主機"})
 
+	// CodeCommandBlockedMultiLine 一次輸入含多行，其中某行命中阻斷規則，整段都未轉送。
+	// 與單行命中分開成碼：使用者要知道沒命中的其餘各行同樣沒有執行。規則名同樣走 params。
+	CodeCommandBlockedMultiLine = register("RULE_COMMAND_BLOCKED_MULTILINE", Descriptor{
+		ZhFallback: "這次輸入中有一行命中阻斷規則，整段都沒有送出（其餘各行也不會執行）。請移除該行後再送出。"})
+
 	// CodeCommandBlockClearFailed 阻斷後送 Ctrl+C 清遠端行緩衝失敗（fail-close）。
 	// 清行失敗代表遠端行緩衝可能殘留被阻斷指令的前綴，使用者下次按 Enter 即送出
 	// 殘句——阻斷等於沒發生。故清行失敗一律終止會話（end_reason=block_clear_failed），
 	// 本碼即該終止的對使用者說明。
 	CodeCommandBlockClearFailed = register("RULE_COMMAND_BLOCK_CLEAR_FAILED", Descriptor{
 		ZhFallback: "阻斷後無法清除遠端輸入，連線已中止"})
+
+	// CodeDBReconnectBlocked 資料庫命令列會話送出改連其他主機的指令，該行未轉送。
+	// 內建的固定守衛（不是可 CRUD 的規則），規則名「內建・改連目標」直接寫在譯文裡，
+	// 不走 params。文案寫明改由資產列表開新連線。
+	CodeDBReconnectBlocked = register("RULE_DB_RECONNECT_BLOCKED", Descriptor{
+		ZhFallback: "不能在連線中改連其他主機，這一行沒有送出。請由資產列表開新連線。（規則：內建・改連目標）"})
+	// CodeDBLineUncertain 資料庫命令列會話無法確定送出整行的內容，該行未轉送。
+	// 不是命中規則，所以不帶規則名。
+	CodeDBLineUncertain = register("RULE_DB_LINE_UNCERTAIN", Descriptor{
+		ZhFallback: "無法確認剛才輸入的完整內容，為安全起見這一行沒有送出。請重新輸入。"})
 
 	// --- 連線決策閘（HTTP，reason/policy 走 Meta）---
 
@@ -95,4 +110,13 @@ var (
 func CommandBlockedAuditMarker(ruleName string) string {
 	return fmt.Sprintf("[%s] 指令命中阻斷規則「%s」，已阻止送往目標主機",
 		CodeCommandBlocked, ruleName)
+}
+
+// DBReconnectRuleName 改連守衛在阻斷標記與告警上的規則名（內建、固定，不在規則管理頁）。
+const DBReconnectRuleName = "內建・改連目標"
+
+// DBLineUncertainAuditMarker 產生「無法確定整行內容而未轉送」的稽核標記文字，
+// 格式與 CommandBlockedAuditMarker 同型：伺服端固定 zh 格式＋機器碼前綴，寫入錄影與監看。
+func DBLineUncertainAuditMarker() string {
+	return fmt.Sprintf("[%s] 無法確認輸入的完整內容，該行未送往目標主機", CodeDBLineUncertain)
 }

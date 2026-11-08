@@ -751,6 +751,32 @@ describe('Assets 資訊分層', () => {
     expect(wrapper.vm.isPendingRequest({ active: false, access_state: 'pending' })).toBe(false)
   })
 
+  const APPLY_LABEL = '申請連線'
+  it('只有檢視權的列：無申請按鈕、不顯示可申請狀態，連線入口提示只有檢視權限', async () => {
+    setUserRoles(['user'])
+    getAssetListMock.mockResolvedValue({
+      data: [
+        { id: 1, name: 'view-only-a', protocol: 'ssh', host: 'h', port: 22, active: true, permission: 'view' },
+        { id: 2, name: 'needs-request-a', protocol: 'ssh', host: 'h', port: 22, active: true, permission: 'connect', access_state: 'approval_required' },
+      ],
+      total: 2, page: 1, page_size: 20,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const viewOnly = { id: 1, active: true, permission: 'view' }
+    expect(wrapper.vm.needsRequest(viewOnly)).toBe(false)
+    expect(wrapper.vm.isPendingRequest(viewOnly)).toBe(false)
+    expect(wrapper.vm.canConnect(viewOnly)).toBe(false)
+    expect(wrapper.vm.connectTooltipContent(viewOnly)).toContain('只有這台主機的檢視權限')
+
+    // 兩列都渲染，申請入口只出現在需申請的那一列（整頁恰一個）
+    const text = wrapper.text()
+    expect(text).toContain('view-only-a')
+    expect(text).toContain('needs-request-a')
+    expect(text.split(APPLY_LABEL).length - 1).toBe(1)
+  })
+
   it('傳輸風險常駐行內標記：任何角色、不受欄位自訂影響', async () => {
     setUserRoles(['user'])
     getAssetListMock.mockResolvedValue({

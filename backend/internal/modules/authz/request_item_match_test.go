@@ -66,7 +66,7 @@ func TestAccountScopeTicketIsolation(t *testing.T) {
 	for _, mode := range []string{"other-source-all", "two-tickets", "tie", "standing-preserved"} {
 		t.Run(mode, func(t *testing.T) {
 			s, _, db, _ := setupItemRequestEnv(t)
-			// Human @ALL -> app historical tasks, no standing connect: exact drill shape.
+			// Human @ALL -> app historical tasks, standing connect revoked after issue: exact drill shape.
 			old, err := s.Submit(1, "human", false, SubmitAccessRequestInput{AssetID: 2, Reason: "older", DurationMinutes: 60})
 			if err != nil {
 				t.Fatal(err)
@@ -74,6 +74,13 @@ func TestAccountScopeTicketIsolation(t *testing.T) {
 			newer, err := s.Submit(1, "human", false, itemInput(2))
 			if err != nil {
 				t.Fatal(err)
+			}
+			// 申請需先持常設連線權；核發兩張票後撤掉常設授權，只剩臨時授權（無常設 connect 的形狀）。
+			if mode != "standing-preserved" {
+				if err := db.Unscoped().Where("user_id = 1 AND asset_id = 2 AND permission = ? AND source <> ?", model.PermissionConnect, model.AuthorizationSourceTicket).
+					Delete(&model.AssetAuthorization{}).Error; err != nil {
+					t.Fatal(err)
+				}
 			}
 			if mode == "other-source-all" {
 				db.Delete(&model.AssetAuthorization{}, *old.AuthorizationID)

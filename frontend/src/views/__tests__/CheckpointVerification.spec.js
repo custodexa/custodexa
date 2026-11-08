@@ -131,6 +131,29 @@ describe('檢查點驗證頁', () => {
     )
   })
 
+  it('既有修剪記錄載有未驗證段時只揭露、不改總狀態；修剪暫停時顯示警示條', async () => {
+    verifyChainMock.mockResolvedValue(
+      chainFixture({ trim_disclosure: 'trim_unverified', trim_unverified_segments: 3, trim_paused: true })
+    )
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="trim-unverified"]').text()).toContain('3')
+    expect(wrapper.find('[data-test="trim-unverified-hint"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="chain-status"]').text()).toBe(
+      zhTW.checkpointVerification.status.passed
+    )
+    const paused = wrapper.find('[data-test="trim-paused"]')
+    expect(paused.exists()).toBe(true)
+    expect(paused.text()).toContain(zhTW.checkpointVerification.trimPause.title)
+  })
+
+  it('沒有揭露與暫停時不顯示修剪相關區塊', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="trim-unverified"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="trim-paused"]').exists()).toBe(false)
+  })
+
   it('未啟用離機錨定時顯示降級橫幅，且不可關閉', async () => {
     verifyChainMock.mockResolvedValue(chainFixture({ anchor_disabled: true }))
     const wrapper = mountPage()
@@ -546,6 +569,8 @@ describe('十態文案與視覺分級', () => {
     'chain_broken',
     'seq_gap',
     'attestation_invalid',
+    'rows_hidden',
+    'trim_unverified',
   ]
 
   it('十態在三語皆有狀態名，且彼此不重複（可辨識）', () => {

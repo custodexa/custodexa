@@ -61,6 +61,20 @@ func expectEmptyRolesPreload(mock sqlmock.Sqlmock) {
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "role_id"}))
 }
 
+// expectVariantQuery 目錄登入在精確查詢後的同名帳號組查詢：先取 id 與名稱，
+// 名稱比對鍵命中者再載入完整列（load 為 nil 表示無命中、不載入）
+func expectVariantQuery(mock sqlmock.Sqlmock, names *sqlmock.Rows, load *sqlmock.Rows) {
+	mock.ExpectQuery(`SELECT "id","username" FROM "users"`).WillReturnRows(names)
+	if load != nil {
+		mock.ExpectQuery(`SELECT .+ FROM "users" WHERE id IN`).WillReturnRows(load)
+	}
+}
+
+// variantNameRows 同名帳號組第一段查詢的回傳列（id、名稱）
+func variantNameRows(id int, username string) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"id", "username"}).AddRow(id, username)
+}
+
 // TestLoginLDAP_FirstLoginProvisionsShadowUser 首次 LDAP 登入：
 // 驗證通過後供應影子用戶（is_ldap=true、user 角色）並核發 token
 func TestLoginLDAP_FirstLoginProvisionsShadowUser(t *testing.T) {
@@ -76,6 +90,7 @@ func TestLoginLDAP_FirstLoginProvisionsShadowUser(t *testing.T) {
 	// 本地查無用戶
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE username`).
 		WillReturnError(gorm.ErrRecordNotFound)
+	expectVariantQuery(mock, sqlmock.NewRows([]string{"id", "username"}), nil)
 
 	// email 衝突檢查：無衝突
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "users"`).
@@ -131,6 +146,7 @@ func TestLoginLDAP_SecondLoginDoesNotReprovision(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "role_id"}).AddRow(42, 2))
 	mock.ExpectQuery(`SELECT .+ FROM "roles"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
+	expectVariantQuery(mock, variantNameRows(42, "testldap"), ldapUserRows(42, "testldap", "testldap@example.org", true, true, false, "random-bcrypt"))
 
 	expectFinishLoginUpdate(mock)
 
@@ -155,6 +171,7 @@ func TestLoginLDAP_WrongPassword(t *testing.T) {
 
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE username`).
 		WillReturnError(gorm.ErrRecordNotFound)
+	expectVariantQuery(mock, sqlmock.NewRows([]string{"id", "username"}), nil)
 
 	resp, err := authService.Login(&LoginRequest{Username: "testldap", Password: "wrongpass"})
 
@@ -222,6 +239,7 @@ func TestLoginLDAP_MFARequired(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "role_id"}).AddRow(42, 2))
 	mock.ExpectQuery(`SELECT .+ FROM "roles"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
+	expectVariantQuery(mock, variantNameRows(42, "testldap"), ldapUserRows(42, "testldap", "testldap@example.org", true, true, true, "random-bcrypt"))
 
 	resp, err := authService.Login(&LoginRequest{Username: "testldap", Password: "ldappass123"})
 
@@ -254,6 +272,7 @@ func TestLoginLDAP_InactiveShadowUserRejectedAfterDirectoryAuth(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE username`).
 		WillReturnRows(ldapUserRows(42, "testldap", "", false, true, false, "random-bcrypt"))
 	expectEmptyRolesPreload(mock)
+	expectVariantQuery(mock, variantNameRows(42, "testldap"), ldapUserRows(42, "testldap", "", false, true, false, "random-bcrypt"))
 
 	resp, err := authService.Login(&LoginRequest{Username: "testldap", Password: "ldappass123"})
 

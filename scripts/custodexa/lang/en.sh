@@ -65,8 +65,8 @@ MSG_help_cmd_upgrade='  upgrade                Check for a newer version (change
                          service and backs up first)
   upgrade <package>      Upgrade from a package you downloaded (works
                          offline)'
-MSG_help_cmd_status='  status                 Show version, services, backups and the last
-                         upgrade (changes nothing)'
+MSG_help_cmd_status='  status                 Show version, deployment form, services, backups
+                         and the last upgrade (changes nothing)'
 MSG_help_cmd_backup='  backup                 Back up to a single file (pauses the service;
                          the file can be moved to another host)'
 MSG_help_cmd_load='  load <bundle>          Load an offline image bundle (starts nothing)'
@@ -164,14 +164,176 @@ To see its state or upgrade it:'
 
 # ---- settings file .env ----
 MSG_env_compose_file_bad='COMPOSE_FILE=%s in .env is not a form of this package.
-Set it to current/compose.yml (append the external ingress or database
-file with : when used).'
+Delete the line: the form comes from EXTERNAL_DB_HOST and TLS_MODE alone,
+and the script keeps this line itself.'
 MSG_env_project_bad='COMPOSE_PROJECT_NAME=%s in .env; this deployment always uses %s.
 Change it back and run again.'
 MSG_env_kek_bad='KEK_PROVIDER=%s in .env is not one of env, ui, kms, hsm. Fix it first.'
 MSG_env_db_external='An external database is set (EXTERNAL_DB_HOST) but DB_PASSWORD is
 empty or the template value. Put the password of that database account
 into %s and run again (nothing was generated).'
+
+# ---- deployment form: install preview ----
+MSG_fi_section='Deployment form'
+MSG_fi_db_builtin='  Database   Built-in: this host starts its own PostgreSQL,
+             data in %s
+             Set by EXTERNAL_DB_HOST in .env: empty = built-in'
+MSG_fi_db_external='  Database   External: %s
+             This host does not start a built-in database; you manage the
+             database server yourself (major upgrades included)
+             Set by EXTERNAL_DB_HOST and EXTERNAL_DB_PORT in .env'
+MSG_fi_web_builtin='  Web entry  Built-in HTTPS: users open %s,
+             ports %s (HTTPS) and %s (redirects to HTTPS)
+             Set by TLS_MODE in .env: currently %s'
+MSG_fi_tls_selfsigned='selfsigned (a certificate it generates)'
+MSG_fi_tls_provided='provided (your own certificate)'
+MSG_fi_web_own='  Web entry  Your reverse proxy: the web service publishes port %s
+             (HTTP) on this host; point your proxy at http://%s:%s
+             Set by TLS_MODE=external in .env; the port by HTTP_PORT'
+MSG_fi_note='  Decide both before installing. Changing these two lines after the
+  install does not switch the form; start, upgrade and backup will stop
+  and explain.'
+MSG_fi_ask='Install now? [y/N]'
+MSG_fm_rerun='  After fixing it, run the same command again:'
+MSG_fm_moved_note='The old %s in .env moved into the managed block; the script keeps it.'
+MSG_fm_tls_bad='TLS_MODE=%s in .env is not a valid value. Nothing was changed.'
+MSG_fm_tls_valid='  Valid values: selfsigned, provided, external (empty means selfsigned).'
+MSG_fm_host_head='EXTERNAL_DB_HOST=%s in .env cannot be used. Nothing was changed.'
+MSG_fm_host_head_wrap='EXTERNAL_DB_HOST=%s in .env cannot be used.
+Nothing was changed.'
+MSG_fm_host_why_service='  Why      %s is a service name of Custodexa itself; it would connect
+           back to the built-in database, not to a database server of
+           your own'
+MSG_fm_host_fill_service='  Enter    the host name or IP of your database server, for example:
+             EXTERNAL_DB_HOST=db01.example.internal
+             EXTERNAL_DB_HOST=10.0.0.40'
+MSG_fm_host_why_loopback='  Why      Inside a container, %s is the backend container itself,
+           not this host'
+MSG_fm_host_fill_loopback='  Enter    database on another host: that host name or IP
+           database on this host: the network address of this host
+           (for example 10.0.0.12)'
+MSG_fm_host_why_syntax='  Why      This line takes a host name or IP only: no scheme, port,
+           account or blanks'
+MSG_fm_host_fill_syntax='  Enter    EXTERNAL_DB_HOST=%s
+           EXTERNAL_DB_PORT=%s   (own line, default 5432)
+           account and password go in DB_USER and DB_PASSWORD'
+MSG_fm_host_empty='  To use the built-in database, leave EXTERNAL_DB_HOST empty or delete
+  it.'
+MSG_fm_port_head='.env sets EXTERNAL_DB_PORT=%s, but EXTERNAL_DB_HOST is empty.
+Nothing was changed; the services keep running.'
+MSG_fm_port_body='  With only a port, the built-in database would be reached on that port
+  and the connection fails. Choose one:
+  - external database: add EXTERNAL_DB_HOST (host name or IP of the
+    server)
+  - built-in database: delete the EXTERNAL_DB_PORT line'
+MSG_fm_n2_head='This host already holds built-in database data; an install with an
+external database will not use it. Nothing was changed.'
+MSG_fm_n2_found='  .env sets EXTERNAL_DB_HOST=%s, meaning an external database,
+  but this deployment folder already has built-in database data:'
+MSG_fm_n2_paths='  An external install neither uses nor deletes this data. Find out
+  what it is first:
+  - not needed any more: move the whole folder away yourself, then
+    install again, for example:
+      sudo mv %s %s
+      %s
+  - to keep this data: do not install over it. Use "restore from a backup
+    file" with the backup made from this data, then move to the external
+    database with the migration steps of "backup and restore".'
+MSG_fm_e2_head='.env names an external database, but your data is in the built-in one.
+Nothing was changed; the services keep running.'
+MSG_fm_e2_body='
+  Your data is in   built-in database %s
+  .env says         EXTERNAL_DB_HOST=%s
+                    This line never took effect: the system has
+                    always used the built-in database. Switching to it
+                    would connect to another database and your data
+                    would not follow.
+
+  Choose one:
+  1. Keep the built-in database: delete the EXTERNAL_DB_HOST line in .env
+     or leave it empty, then run the same command again:
+       %s
+  2. Move the data to the external database: follow "Switching to an
+     external database" in "backup and restore": back up first, then
+     restore into the external database. Editing .env alone moves
+     nothing.'
+MSG_fm_e3_head='EXTERNAL_DB_HOST in .env is empty, but this host has always used an
+external database. Nothing was changed; the services keep running.'
+MSG_fm_e3_body='  This host was connected to   %s
+  With the line empty, the system would start a built-in database with no
+  data in it. It looks like a fresh install: users, assets and audit
+  records are not there. To keep using the external database, put the
+  old value back:
+    EXTERNAL_DB_HOST=%s
+  After fixing it, run the same command again:
+    %s'
+MSG_fm_e3_unknown='(the deployment record has no address)'
+MSG_fm_e3_placeholder='<host name or IP of the external database>'
+MSG_fm_e4_head='The web entry in .env differs from the one chosen at install.
+Nothing was changed; the services keep running.'
+MSG_fm_e4_was_own='your reverse proxy (TLS_MODE=external), web service on port %s'
+MSG_fm_e4_was_builtin='built-in HTTPS (TLS_MODE=%s)'
+MSG_fm_e4_now_own='your reverse proxy'
+MSG_fm_e4_now_builtin='built-in HTTPS'
+MSG_fm_e4_body='  At install   %s
+  .env now     TLS_MODE=%s (%s)
+  Switching between "built-in HTTPS" and "your reverse proxy" after the
+  install is not supported in this version: ports, certificates and the
+  proxy setup have to change together, and there is no procedure for
+  it yet.
+  Put .env back to the original value to go on:
+    TLS_MODE=%s
+  After fixing it, run the same command again:
+    %s'
+MSG_fm_legacy_db='COMPOSE_FILE in .env lists an external database, but
+EXTERNAL_DB_HOST is empty. Nothing was changed.
+  COMPOSE_FILE=%s
+  Add EXTERNAL_DB_HOST (host name or IP of the database server), or
+  delete the COMPOSE_FILE line, then run again.'
+MSG_fm_legacy_ingress='COMPOSE_FILE in .env lists an external ingress, but TLS_MODE is not
+external. Nothing was changed.
+  COMPOSE_FILE=%s
+  TLS_MODE=%s
+  An external ingress is now set by TLS_MODE=external alone: change
+  TLS_MODE to external and delete the COMPOSE_FILE line, then run again.'
+
+# ---- .env conversion at upgrade ----
+MSG_fm_f09_head='The current configuration cannot start %s, so it has to be fixed
+before upgrading. Nothing was stopped and nothing was changed.'
+MSG_fm_f09_body='  COMPOSE_FILE in .env lists the external database
+  (compose.external-database.yml), but EXTERNAL_DB_HOST is empty.
+  This host now   %s
+  Please set      EXTERNAL_DB_HOST=%s'
+MSG_fm_f09_rec='the deployment record has an external database at %s'
+MSG_fm_f09_rec_none='the deployment record has no address'
+MSG_uc_head='.env will change (rewritten in step 9; no other setting is touched)'
+MSG_uc_remove='  - remove   %s'
+MSG_uc_tls='  ~ change   TLS_MODE=%s  ->  TLS_MODE=external
+             (this line now says how the web entry works; the form
+             of the deployment stays the same)'
+MSG_uc_add='  + add      the managed block at the end of the file (one marker
+             line before and after):'
+MSG_uc_foot='  From %s on, the form of the deployment comes from two lines:
+  EXTERNAL_DB_HOST (database) and TLS_MODE (web entry). The script
+  maintains the managed block; do not edit it by hand.'
+MSG_uc_env_failed='  Step 9 could not rewrite .env; it stays as it was before the upgrade.'
+MSG_pc_form_bad='Form            .env gives "%s"; before the upgrade it was "%s"'
+MSG_pc_form_none='built-in database, built-in HTTPS'
+MSG_rb_env_back='.env       the managed block goes back to the layout of %s; every other
+           line stays as it is:'
+MSG_rb_env_fwd='.env       the managed block changes to the layout of %s; every other
+           line stays as it is:'
+MSG_rb_env_noprofiles='(%s does not use COMPOSE_PROFILES, so that line is removed)'
+MSG_rv_pending_head='Cannot revert to %s: the .env conversion of the last upgrade is not
+finished. Nothing was changed.'
+MSG_rv_pending_body='  The last upgrade stopped before it rewrote .env. %s has never started
+  with the new .env, and the current .env still uses the %s layout;
+  starting %s with it would bring up the wrong services.
+  Two ways forward:
+    - keep going back to %s (the version that ran before the upgrade):'
+MSG_rv_pending_restore='    - restore the pre-upgrade backup, see:'
+MSG_rs_env_form_bad='The .env in the backup gives the form "%s", the backup list says
+"%s". The backup is damaged. Nothing was changed.'
 
 # ---- step 3: program images ----
 MSG_step_images='Get the program images'
@@ -370,6 +532,33 @@ MSG_load_next_upgrade='or, to upgrade:'
 # status. Lines under a section are wrapped to 56 columns at run time; a line break here stays one.
 MSG_status_title='Custodexa status    %s    %s'
 MSG_status_sec_version='Version'
+MSG_status_sec_form='Deployment form'
+MSG_status_form_db_builtin='Database: built-in'
+MSG_status_form_db_external='Database: external %s'
+MSG_status_form_web_builtin='Web entry: built-in HTTPS (ports %s, %s)'
+MSG_status_form_web_own='Web entry: your reverse proxy (web service on port %s)'
+MSG_status_form_join='%s; %s'
+MSG_status_form_db_added='.env does not match the deployment: EXTERNAL_DB_HOST=%s
+The system still uses the built-in database; this line has no effect.
+The next start, upgrade, backup, restore or rollback will stop.
+To keep the built-in database: delete this line.
+To move to an external database: follow "Switching to an external
+database" in "backup and restore".'
+MSG_status_form_db_emptied='.env does not match the deployment: EXTERNAL_DB_HOST is empty
+The system still uses the external database %s.
+The next start, upgrade, backup, restore or rollback will stop.
+Put the original value back: EXTERNAL_DB_HOST=%s'
+MSG_status_form_tls_changed='.env does not match the deployment: TLS_MODE=%s
+The system still uses the entry chosen at install,
+not "%s".
+The next start, upgrade, backup, restore or rollback will stop.
+Put the install-time value back: TLS_MODE=%s'
+MSG_status_form_bad_host='EXTERNAL_DB_HOST=%s in .env cannot be used.
+The next start, upgrade, backup, restore or rollback will stop and
+say why. To use the built-in database, leave this line empty.'
+MSG_status_form_bad_tls='TLS_MODE=%s in .env is not a valid value.
+The next start, upgrade, backup, restore or rollback will stop.
+Valid values: selfsigned, provided, external.'
 MSG_status_sec_services='Services'
 MSG_status_sec_images='Images'
 MSG_status_sec_backup='Backup'
@@ -1048,6 +1237,7 @@ MSG_menu_help='Help'
 MSG_menu_quit='Quit'
 MSG_menu_choose='Choose [0-%s]: '
 MSG_menu_choose_sub='Choose [1-%s], or press Enter for the main menu: '
+MSG_menu_choose_remove='Choose what to remove [1-%s], or press Enter for the main menu: '
 MSG_menu_invalid='No such choice; type one of the numbers in brackets.'
 MSG_menu_other_path='Enter another path'
 MSG_menu_bundle_found='Load an offline image bundle. Bundles in the current directory %s:'
@@ -1821,6 +2011,11 @@ MSG_rs_provider_ui='entered in the browser'
 MSG_rs_provider_env='in the settings file'
 
 MSG_rs_provider_kms='held by a key service'
+
+MSG_rs_form_keep='the form at backup time; the restore keeps it'
+
+MSG_rs_form_keep_new='the form at backup time; the restore keeps it. This host
+is asked only for the values of the host values rows below'
 
 MSG_rs_restores_new='database %s, audit files %s, settings file
 .env'
@@ -2842,3 +3037,560 @@ MSG_rs_ext_finish_export='Export       the safety export (the external database 
 # 1 argument: when the restore settled it
 MSG_status_upgrade_settled='The restore on %s dealt with this failure;
 you can upgrade again'
+
+# ---------- compose call: web container hand-over ----------
+MSG_compose_frontend_running='The web container custodexa-frontend is still running and cannot
+be replaced by the definition of another version.
+Stop the services and retry.'
+
+# ---------- data folder rename log (bundled database) ----------
+MSG_dirop_ambiguous_title='The rename of a data folder was left unfinished, and now it cannot
+be told which one holds the right data. No database service was
+started and no folder was changed.'
+MSG_dirop_ambiguous_body='  The script will not guess which one is right. Starting with the wrong
+  one can create a new, empty database in an empty folder, or connect
+  the services to incomplete data.
+  Check the content of both folders yourself. Until then do not
+  rename, move or delete anything.
+  The steps are in the upgrade guide, section "When a data folder
+  rename was interrupted".
+  To give this state up and return to the data of the upgrade, restore
+  the backup taken before the upgrade:
+    %s'
+MSG_dirop_intent_failed='The unfinished rename of %s to %s could not be completed.
+No database service was started. Nothing else was changed.'
+MSG_dirop_no_version='The data folder is incomplete, so the database will not start.
+Nothing was changed.'
+MSG_dirop_not_empty='The folder %s already holds data.
+A new database cannot be created there. Nothing was changed.'
+MSG_dirop_wrong_version='The data folder %s is PostgreSQL %s, this release needs %s.
+The database was not started. Nothing was changed.'
+
+# ---------- bundled database conversion (upgrade step 8) ----------
+MSG_pgc_unsupported_head='The database holds settings that cannot be converted
+automatically, so the upgrade will not start. No service was stopped
+and nothing was changed.'
+MSG_pgc_unsupported_ext='Extensions:   %s'
+MSG_pgc_unsupported_ts='Tablespaces:  %s'
+MSG_pgc_unsupported_role='Other roles:   %s (granted privileges on objects)'
+MSG_pgc_unsupported_foot='Custodexa does not create these, so the database was changed by
+hand. The automatic conversion moves only Custodexa'\''s own data, and
+would be incomplete with them, so it stops here. Follow "When the
+database holds extra settings" in the upgrade SOP: remove these
+settings and run the same command again, or move to an external
+database if you want to keep them:
+  %s'
+MSG_pgc_where_backups='the backup folder'
+MSG_pgc_where_images='the Docker image storage'
+MSG_pgc_where_newdb='the new database folder'
+MSG_pgc_where_dump='the export scratch folder'
+MSG_pgc_space_unknown_head='Cannot tell whether the space is enough, so the upgrade will not
+start. No service was stopped and nothing was changed.'
+MSG_pgc_space_unknown='Place that cannot be found   %s (its path cannot be read)
+The script does not assume the space is enough. Once Docker works,
+run the same command again:
+  sudo docker info
+  %s'
+MSG_pgc_space_head='Not enough space, so the upgrade will not start. No service was
+stopped and nothing was changed.'
+MSG_pgc_space_foot='Free or add space on %s, then run the same command again:
+  %s'
+MSG_pgc_space_art='Data left by an earlier failed conversion (kept only for diagnosis,
+never used by the system) takes space:'
+MSG_pgc_space_art_hint='To remove it, run the same upgrade command in a terminal and answer
+y when it asks to remove it (a run without a terminal removes nothing):
+  %s
+You can also free or add space on %s yourself and run it again.'
+MSG_pgc_art_head='Data left by an earlier failed conversion (can be removed to free space)'
+MSG_pgc_art_desc='  What the last upgrade left when step 8 failed, kept only for
+  diagnosis and never used by the system:'
+MSG_pgc_art_ver='PostgreSQL %s'
+MSG_pgc_art_ver_unknown='version unknown'
+MSG_pgc_art_ni='  A run without a terminal does not remove these folders.'
+MSG_pgc_art_after_head='  After removing'
+MSG_pgc_art_after_1='They cannot be recovered'
+MSG_pgc_art_after_2='The running %s is not affected, nor is its data
+%s'
+MSG_pgc_art_after_3='The space the upgrade needs is counted again'
+MSG_pgc_art_ask='Remove these %s folders before checking the space? [y/N]'
+MSG_pgc_art_cleared='Removed %s, %s freed'
+MSG_pgc_art_recount='Space counted again: %s needs %s, %s free'
+MSG_pgc_art_untouched='%s was not changed'
+MSG_pgc_art_kept='Kept these %s folders.'
+MSG_pgc_prev_head='Database conversion: PostgreSQL %s -> %s'
+MSG_pgc_prev_why='  Why                %s moves the bundled database to
+                     PostgreSQL %s (community support until %s);
+                     PostgreSQL %s is supported until %s. This is
+                     part of the upgrade and cannot be skipped.'
+MSG_pgc_prev_how='  How                The data is exported, then imported into a
+                     new PostgreSQL %s database'
+MSG_pgc_prev_old='  Old data           kept as it is in %s, not changed'
+MSG_pgc_prev_new='  New data           %s'
+MSG_pgc_prev_time='  Time               about %s to %s minutes, longer on a slow disk;
+                     counted in the downtime below'
+MSG_pgc_prev_fail='  If it fails        stops before the version changes: %s
+                     starts again and works as before; the old data
+                     is not changed'
+MSG_pgc_prev_back='  To go back to %s later there are two ways, and both return to
+  the data of the upgrade:
+    - rollback: uses the old data kept above
+    - restore of the backup taken before the upgrade
+    Both are the same in one respect: data written after the new
+    version starts (audit records, connection records, recording
+    index, setting and account changes) is not brought back.'
+MSG_up_will_conv='  3. Convert the database from PostgreSQL %s to %s (see "Database
+     conversion" below)'
+MSG_up_will_conv_switch='  4. Switch to %s and start it'
+MSG_up_will_conv_check='  5. Check the version, that it is the same data as before, and that
+     the keys did not change'
+MSG_pgr_head='The last upgrade was interrupted at step 8, "convert the database".'
+MSG_pgr_state_stopped='The services are stopped, the version is still %s; the old data
+%s is complete and was not changed.'
+MSG_pgr_state_running='The services are running, the version is still %s; the old data
+%s is complete and was not changed.'
+MSG_pgr_a_proof='It is confirmed that the application services were not started
+again since the last stop, so the backup made before the upgrade is still
+valid. This time the run starts again at step 8 and converts again:'
+MSG_pgr_a_reuse='the backup the last run completed is used again: %s'
+MSG_pgr_b_unknown='It cannot be confirmed that the application services were not
+started again after the last stop. Data written after it is not in the
+last backup, so that backup is not used again (the file stays, it is not
+deleted):
+  %s'
+MSG_pgr_b_failed='The last conversion had already failed and the old services were being
+brought back. Data written after that is not in the last backup, so that
+backup is not used again (the file stays, it is not deleted):
+  %s'
+MSG_pgr_b_again='This time the whole upgrade runs again: the checks and the preview, then
+the audit records are drained, the services stop and a new backup is
+taken, then the database is converted. The services stop once more.'
+MSG_pgr_aside='the half-converted data is moved first (not deleted):
+%s'
+MSG_pgr_step_kept='Kept from the last run'
+MSG_pgr_step_kept_backup='Kept from the last run: the backup %s'
+MSG_pgr_c_head='The last upgrade was interrupted at step 8, "convert the database"; it
+has to be finished first. Nothing was changed.'
+MSG_pgr_c_state='The version is still %s; the old data %s is complete and was
+not changed.'
+MSG_pgr_c_again='Run the upgrade again to continue (the half-converted data is moved to
+%s/postgresql.partial-convert-<time> first, not deleted):'
+MSG_pgr_c_start='Where the run continues depends on the facts: when it can be confirmed
+that the application did not start again after the stop, the backup is
+kept and the run starts again at step 8; otherwise the whole
+upgrade runs again, with a new stop and a new backup. The upgrade command
+says which one before it does anything.'
+MSG_pgr_c_status='To see the state of this deployment:'
+MSG_pgc_fail_head_stopped='The upgrade stopped at step 8/13: the database conversion failed
+at "%s", and the old version did not start again'
+MSG_pgc_fail_no_auto='The script does not handle this on its own'
+MSG_pc_db_ok='Database        PostgreSQL %s, the data is in %s'
+MSG_pc_db_bad='Database        expected PostgreSQL %s; the data folder holds %s, the
+                running server %s, the data location is %s'
+MSG_pgc_done_head='Database'
+MSG_pgc_done_old='The old PostgreSQL %s data is still kept in %s (%s).
+After the system has run well for a while, remove it from the menu item
+"Database upgrade".'
+MSG_pgc_done_back='From now on, going back to %s, by rollback or by restoring the
+backup taken before the upgrade, does not bring back the data written
+afterwards.'
+MSG_pgc_done_gone='Once the old data is removed, rollback is no longer possible; only the
+backup taken before the upgrade can be restored.'
+MSG_pgc_p18_converted='The database was converted to PostgreSQL %s; the old PostgreSQL %s
+data is kept as it was in %s'
+MSG_pgc_p18_both='To go back to %s there are two ways, both to the data of the upgrade:'
+MSG_pgc_p18_roll='1. Go back to the previous version with the kept PostgreSQL %s data
+   (it asks you before anything stops):'
+MSG_pgc_p18_roll_note='   Data written after the new version started is not in the database
+   after going back.'
+MSG_pgc_p18_restore='2. Restore the backup taken before the upgrade:'
+MSG_pgc_p18_gone='To go back to %s, restore the backup taken before the upgrade. The
+PostgreSQL %s data kept at the upgrade, %s,
+is no longer there, so going back directly is not possible:'
+# Going back, and returning, across the database major.
+MSG_pgrb_versions='Installed      %s (PostgreSQL %s)
+Go back to     %s (before the upgrade, PostgreSQL %s)'
+MSG_pgrb_db_untouched='Database       the new version never started, so the data did not
+               change. Use the PostgreSQL %s data kept as it was
+               at the upgrade:
+               %s
+               The PostgreSQL %s data it converted is renamed and
+               kept, not deleted:
+               %s'
+MSG_pgrb_no_loss='So no data is lost and no restore is needed.'
+MSG_pgrb_db_started='Database       use the PostgreSQL %s data kept as it was at the
+               upgrade:
+               %s
+               its content stops at %s, when the upgrade ran'
+MSG_pgrb_db_started_nostamp='Database       use the PostgreSQL %s data kept as it was at the
+               upgrade:
+               %s
+               its content stops at the time of the upgrade'
+MSG_pgrb_warn='%s has already started (since %s). Data written after the
+upgrade will not be in the database after going back to %s:
+  - audit records
+  - connection records
+  - recording index: the recording files stay on disk, but after
+    going back to %s the system cannot find them
+  - setting and account changes (users, assets, grants and
+    policies added, changed or deleted)'
+MSG_pgrb_warn_kept='The current PostgreSQL %s data is not deleted; it is renamed
+and kept at:
+  %s
+Upgrading to %s again later converts the PostgreSQL %s data
+again; the kept PostgreSQL %s data is not merged back.'
+MSG_pgrb_warn_restore='The other way is to restore the backup taken before the
+upgrade, which also goes back to the data of the upgrade:'
+MSG_pgrb_warn_restore_own='The other way is to restore your own backup taken before the
+upgrade, which also goes back to the data of the upgrade.
+The backup record is %s;
+restore it by hand with the procedure you registered.'
+MSG_pgrb_steps='Steps: stop the services -> check that the PostgreSQL %s data
+is still there and rename the PostgreSQL %s data to keep it ->
+switch back to %s -> start -> check the version and the running
+images'
+MSG_pgrb_ask='Go back to %s and give up the data written after the upgrade? [y/N]'
+MSG_pgrb_need_yes='Going back to %s gives up the data written after the
+upgrade. This run is non-interactive (no terminal), so it only
+runs with --yes. Nothing was changed.'
+MSG_pgrb_step_switch='The PostgreSQL %s data is still there and the PostgreSQL %s
+data is renamed and kept; switch back to %s'
+MSG_pgrb_upgrade_later='To upgrade again later, run upgrade as usual; it converts the
+database again.'
+MSG_pgrb_gone='Cannot go straight back to %s: the PostgreSQL %s data kept at the
+upgrade is no longer there.
+Nothing was changed; %s.'
+MSG_pgrb_gone_why='Reason         %s can only use PostgreSQL %s data, and
+               %s is not there any more'
+MSG_pgrb_gone_why_at='Reason         %s can only use PostgreSQL %s data, and
+               %s was removed at %s'
+MSG_pgrb_wrong='Cannot go straight back to %s: %s is not
+PostgreSQL %s data.
+Nothing was changed; %s.'
+MSG_pgrb_wrong_why='Reason         the database version recorded in this folder is %s,
+               which %s cannot use'
+MSG_pgrb_restore='To go back to %s, restore the backup taken before the upgrade.
+The data returns to %s, when the upgrade began; data
+written afterwards is lost: audit records, connection records,
+the recording index, and setting and account changes. If nobody
+used the system after the upgrade, the restore loses nothing.
+The restore asks you to confirm first:'
+MSG_pgrb_restore_same='To go back to %s, restore the backup taken before the upgrade
+(as above):'
+MSG_pgrb_when_backup='the time of the backup'
+MSG_pgrb_rename_blocked='Cannot rename %s to %s: the source is missing
+or the destination is already there. Nothing was started.'
+MSG_pgrv_preview='Return to the new version: preview (nothing has been changed yet)'
+MSG_pgrv_state_started='Current state  the last "go back" did not finish: it already uses
+               PostgreSQL %s, but the check after %s
+               started did not pass'
+MSG_pgrv_state_early='Current state  the last "go back" stopped before %s started'
+MSG_pgrv_to='Return to      %s (PostgreSQL %s)'
+MSG_pgrv_db='Database       put the PostgreSQL %s data kept before going back in
+               use again:
+               %s
+               rename it back to %s
+               its content stops at the moment of going back; the data
+               written to PostgreSQL %s before then is all still there'
+MSG_pgrv_warn='%s has run on PostgreSQL %s for a while. Data written to
+PostgreSQL %s while going back will not be in the database after
+returning to %s:
+  - audit records
+  - connection records
+  - recording index: the recording files stay on disk, but after
+    returning the system cannot find them
+  - setting and account changes (users, assets, grants and
+    policies added, changed or deleted)'
+MSG_pgrv_warn_kept='This data stays in the old data folder; it is not deleted and
+not merged back:
+  %s'
+MSG_pgrv_early_none='%s never started on PostgreSQL %s, so the PostgreSQL %s data
+did not change and nothing is lost.'
+MSG_pgrv_ask='Return to %s and give up the data written to PostgreSQL %s
+while going back? [y/N]'
+MSG_pgrv_need_yes='Returning gives up the data written to PostgreSQL %s while
+going back. This run is non-interactive (no terminal), so it
+only runs with --yes. Nothing was changed; the record of going
+back stays as it was.'
+MSG_pgrv_step_switch='Rename the PostgreSQL %s data back to %s'
+MSG_pgrv_step_check='Check: the backend reports %s and the database is PostgreSQL %s'
+MSG_pgrv_done='Returned to %s.'
+MSG_pgrv_done_kept='The data written to PostgreSQL %s while going back is still in
+%s; it was not deleted.'
+MSG_pgc_mh_backup='backup before the upgrade, at %s'
+MSG_pgc_mh_images='Docker image storage %s'
+MSG_pgc_mh_newdb='new database, at %s'
+MSG_pgc_mh_dump='export scratch space, at %s'
+MSG_pgc_mh_newdb_dump='new database at %s, and export scratch at %s'
+MSG_pgc_mh_mixed='Docker image storage %s, and other writes'
+MSG_pgc_mh_shared='the backup and the new database are both here'
+MSG_pgc_c_backup='backup %s'
+MSG_pgc_c_images='new images %s'
+MSG_pgc_c_newdb='new database %s'
+MSG_pgc_c_dump='export scratch %s'
+MSG_pgc_c_margin='margin %s'
+MSG_pgc_cl_backup='backup before the upgrade %s'
+MSG_pgc_cl_images='new images %s'
+MSG_pgc_cl_newdb='new database %s'
+MSG_pgc_cl_dump='export scratch %s'
+MSG_pgc_cl_margin='margin %s'
+MSG_pgc_sp_item_sep=', '
+MSG_pgc_sp_sep=', '
+MSG_pgc_sp_list_sep=', '
+MSG_pgc_sp_open=' ('
+MSG_pgc_sp_close=')'
+MSG_pgc_sp_need='needs %s'
+MSG_pgc_sp_free='%s free'
+MSG_pgc_sp_only='only %s free'
+MSG_pgc_sp_short='%s short'
+MSG_pgc_sp_one_images=' (new images)'
+MSG_pgc_ok_both='The backup location %s and the new database location %s
+have enough space.'
+MSG_pgc_ok_new='The new database location %s has enough space.'
+MSG_pgc_space_foot_backup='You can move old backup files elsewhere and delete them, or add
+space to %s.
+Current backup files: ls -l %s/
+Then run the same command again:
+  %s'
+MSG_pgc_prev_space_lead='  Space              '
+MSG_pgc_prev_why_plain='  Why                %s moves the bundled database to
+                     PostgreSQL %s. This is part of the upgrade and
+                     cannot be skipped.'
+MSG_up_know_pause_conv='  - Expect %s to %s minutes of downtime (the database conversion
+    included). Nobody can connect meanwhile, and open connections
+    will be cut (%s are open now)'
+MSG_up_know_pause_unknown_conv='  - Expect %s to %s minutes of downtime (the database conversion
+    included). Nobody can connect meanwhile, and open connections
+    will be cut'
+MSG_up_step_pgconvert_done='Convert the database: PostgreSQL %s -> %s'
+MSG_pgc_subf_verify='Check: whether the old and new databases hold the same data'
+MSG_pgc_fail_reason_lab='  Cause      '
+MSG_pgc_fail_summary=' (a summary; the full message is in the log)'
+MSG_pgc_why_prepare='the old database settings could not be read while preparing'
+MSG_pgc_why_dump='the old database could not be reached while exporting'
+MSG_pgc_why_init='the temporary database did not start while creating the new one'
+MSG_pgc_why_restore='the import did not finish'
+MSG_pgc_why_restore_d='reported by the database: %s'
+MSG_pgc_why_verify='the data could not be read for the check, or a setting differs'
+MSG_pgc_why_verify_d='the check found the old and new databases differ: %s'
+MSG_pgc_why_analyze='collecting query statistics did not finish'
+MSG_pgc_why_done='the final clean-up did not finish'
+MSG_pgc_fail_again_b='After that, run the upgrade once more:'
+MSG_up_step_pgconvert_external='Convert the database (an external database is yours to
+manage, so it is not converted)'
+MSG_dirop_lost_title='The rename of a data folder was left unfinished, and now the folders
+involved cannot be found. No database service was started and no
+folder was changed.'
+MSG_dirop_op_rolled_back='  Last action   going back to the previous version: rename %s
+                to %s and keep it'
+MSG_dirop_op_revert='  Last action   undoing the last go-back: rename %s
+                to %s and keep it'
+MSG_dirop_op_before_convert='  Last action   before the database conversion: rename %s
+                to %s and keep it'
+MSG_dirop_op_failed_convert='  Last action   after a failed conversion: rename %s
+                to %s and keep it'
+MSG_dirop_op_removing='  Last action   removing old data: rename %s
+                to %s, then delete it'
+MSG_dirop_op_other='  Last action   renaming a data folder: rename %s
+                to %s'
+MSG_dirop_both_head='  Both folders are there (version = what PG_VERSION in the folder says)'
+MSG_dirop_none_head='  Neither folder is there'
+MSG_dirop_dir_row='    %s'
+MSG_dirop_dir_ver='        version: %s    %s'
+MSG_dirop_dir_gone='        not there'
+MSG_dirop_ver_none='none'
+MSG_dirop_backup_file='<backup file>'
+MSG_dirop_lost_body='  The data may have been moved elsewhere or deleted by mistake. Find it
+  first. Until then do not rename, move or delete any folder. The
+  steps are in the upgrade guide, section "When a data folder rename
+  was interrupted".
+  When the data cannot be found, the only way is to restore the backup
+  taken before the upgrade:
+    %s'
+MSG_dirop_missing_body='  %s is missing, or holds no PG_VERSION file.
+  Starting now would make PostgreSQL %s create a new database with no
+  data in an empty folder.
+  Find the data first (for example among the kept folders %s.*),
+  or restore the backup taken before the upgrade:
+    %s
+  To see the state of this deployment:
+    sudo %s/custodexa.sh status%s'
+MSG_up_step_pgconvert='Convert the database: PostgreSQL %s -> %s (data %s)'
+MSG_pgc_run_note='Do not interrupt. If it is interrupted the old data is not damaged,
+        and running the upgrade again starts the conversion over.'
+MSG_pgc_tick='%s elapsed, about %s to %s more minutes'
+MSG_pgc_tick_over='%s elapsed, past the estimate, it needs a little longer'
+MSG_pgc_tick_bare='%s elapsed'
+MSG_pgc_sub_dump='Export the old database'
+MSG_pgc_sub_init='Create the new PostgreSQL %s database'
+MSG_pgc_sub_restore='Import into the new database'
+MSG_pgc_sub_verify='Check: %s tables, migrations, sequences, encoding all equal'
+MSG_pgc_sub_analyze='Collect query statistics'
+MSG_pgc_sub_done='Done'
+MSG_pgc_old_kept='The old data stays as it is in %s'
+MSG_pgc_ph_prepare='preparation'
+MSG_pgc_ph_dump='export'
+MSG_pgc_ph_init='creating the new database'
+MSG_pgc_ph_restore='import'
+MSG_pgc_ph_verify='check'
+MSG_pgc_ph_analyze='statistics'
+MSG_pgc_ph_done='finishing'
+MSG_pgc_fail_phase='Database conversion failed at: %s'
+MSG_pgc_fail_head='The upgrade stopped at step 8/13: the database conversion failed at "%s"'
+MSG_pgc_fail_reason='Reason  %s (a summary; the full message is in the log)'
+MSG_pgc_fail_state_title='Current state'
+MSG_pgc_fail_running='The version did not change: %s was started again and works'
+MSG_pgc_fail_stopped='The version did not change (still %s), but the services are stopped now'
+MSG_pgc_fail_old_kept='The old data %s was not changed'
+MSG_pgc_fail_kept='The half-converted new database was moved to the place below. It is
+kept for you or support to diagnose and is not deleted automatically:
+%s'
+MSG_pgc_fail_again='After fixing the cause, run the same upgrade command again (it backs
+up and converts again):'
+MSG_pgc_fail_restart='Start the old version again:'
+
+# Restore of a bundled database across PostgreSQL majors.
+# 3 arguments: the major the backup list names, the release version, the major that release bundles
+MSG_rs_db_major_mismatch='The backup list names PostgreSQL %s, but %s bundles PostgreSQL %s, so
+the list and the release do not agree.'
+MSG_rs_db_major_guide='The backup file may have been changed or may not be whole. Use the file
+as it was made.'
+# 1 argument: the restore stage that was found
+MSG_rs_db_init_stage='The new database is created only at the stage that creates it;
+the restore is at "%s". Nothing was started.'
+MSG_rs_db_init_unknown='The database layout of the release to restore cannot be read. Nothing
+was started.'
+# 2 arguments: backup major, restore major
+MSG_rs_db_same='the backup holds PostgreSQL %s; restored with PostgreSQL %s'
+# 3 arguments: backup major, release version, restore major
+MSG_rs_db_other='the backup holds PostgreSQL %s (a backup of %s); restored with
+PostgreSQL %s'
+# 1 argument: current major
+MSG_rs_db_differs='this differs from the current PostgreSQL %s:'
+# 2 arguments: version after the restore, its major
+MSG_rs_db_back='- after the restore this host is back on %s with PostgreSQL %s'
+# 2 arguments: current major, the folder that is renamed
+MSG_rs_db_kept_cur='- the current PostgreSQL %s data is renamed and kept, not deleted:
+  %s'
+# 2 arguments: major of the folder, the folder that is renamed
+MSG_rs_db_kept_old='- the PostgreSQL %s folder that is still there is renamed and kept as
+  well:
+  %s'
+# 1 argument: the current version'\''s major
+MSG_rs_db_again='- to use %s again, run upgrade as usual; the data is
+  converted to PostgreSQL %s again'
+
+# Database upgrade, the old database folders, the menu entry and the status section (db-upgrade).
+MSG_usage_db_upgrade_only='Option %s is only for db-upgrade. See: custodexa.sh --help'
+MSG_help_cmd_db_upgrade='  db-upgrade             Show the bundled database'\''s PostgreSQL version and
+                         the old data folders kept (changes nothing)
+  db-upgrade --remove-old  Remove those old data folders after you confirm;
+                         they cannot be restored'
+MSG_help_opt_remove_old='  --remove-old           (db-upgrade) Remove the old database folders'
+MSG_menu_db_upgrade='Database upgrade'
+# 1 argument: the PostgreSQL major of the data
+MSG_menu_db_upgrade_cur='Database upgrade (now PostgreSQL %s; remove old database folders)'
+# 2 arguments: the major of the data, the major this release bundles
+MSG_menu_db_upgrade_to='Database upgrade (now PostgreSQL %s; can upgrade to PostgreSQL %s)'
+MSG_dbo_kind_previous='the previous version needs it'
+MSG_dbo_kind_previous_up='kept as at the upgrade to %s; the previous version needs it'
+MSG_dbo_kind_before_convert='kept as it was before the conversion'
+MSG_dbo_kind_rolled_back='the newer version'\''s data from before going back; not carried back'
+MSG_dbo_kind_before_restore='kept as it was before a restore'
+MSG_dbo_kind_failed_convert='left by a failed conversion, kept for diagnosis'
+MSG_dbo_kind_partial_convert='left by an interrupted conversion, kept for diagnosis'
+MSG_dbo_kind_removing='a removal that was started and not finished'
+MSG_status_sec_db='Database'
+# 1 argument: host:port
+MSG_status_db_external='External database %s (managed by you)'
+MSG_status_db_unknown='The bundled database'\''s version cannot be read from this release.'
+# 1 argument: the data folder
+MSG_status_db_no_version='No readable PostgreSQL version file in %s.'
+# 3 arguments: major, data folder, size
+MSG_status_db_main='PostgreSQL %s (bundled), data in %s, %s'
+MSG_status_db_checksums_on='Data checksums are on'
+MSG_status_db_checksums_off='Data checksums are off'
+# 1 argument: number of folders
+MSG_status_db_old_head='Old folders kept: %s. Remove them from the menu "Database upgrade":'
+# 3 arguments: folder, size, deployment folder
+MSG_status_db_removing='The last removal of an old database folder did not finish:
+%s is still there (%s).
+Run the removal again:
+  sudo %s/custodexa.sh db-upgrade --remove-old'
+MSG_dbu_title='Database upgrade'
+# 2 arguments: major, data folder
+MSG_dbu_row_current='  Now           PostgreSQL %s, data in %s'
+# 1 argument: major
+MSG_dbu_row_supported='  This release  PostgreSQL %s'
+MSG_dbu_latest='Already the newest PostgreSQL this release supports; no upgrade needed.'
+MSG_dbu_old_head='Old database folders kept (they can be removed to free space)'
+MSG_dbu_old_remove='Remove them (lists what goes and asks you to confirm):'
+MSG_dbu_old_all='Remove all'
+MSG_dbu_query_only='This command only queries; nothing was changed.'
+MSG_dbu_nothing='Nothing was changed.'
+# 2 arguments: host, port
+MSG_dbu_external='This deployment uses the external database %s:%s.
+The external database is yours to manage; Custodexa does not upgrade it.
+Upgrade its major version with your own database procedure.'
+# 2 arguments: major of the data, major this release supports
+MSG_dbu_newer='The data is PostgreSQL %s, newer than the PostgreSQL %s this
+release supports. Upgrade the program first. Nothing was changed.'
+# 2 arguments: major of the data folder, major of the server
+MSG_dbu_mismatch='The data folder is PostgreSQL %s but the running server is PostgreSQL %s.
+Nothing was changed.'
+# 1 argument: the data folder
+MSG_dbu_unreadable='The PostgreSQL version of %s cannot be read. Nothing was changed.'
+MSG_dbu_release_unreadable='The bundled database of this release cannot be read from its MANIFEST.'
+MSG_dbu_remove_before_convert='The data is older than what this release bundles; convert it first
+(db-upgrade without --remove-old). Nothing was removed.'
+# 2 arguments: major of the data, major this release bundles
+MSG_dbu_convert_note='The data is PostgreSQL %s and this release bundles PostgreSQL %s;
+converting.'
+MSG_dbu_rm_head='Remove old database folders (cannot be undone)'
+MSG_dbu_rm_what='To remove'
+MSG_dbu_rm_after='After removal'
+MSG_dbu_rm_b_lost='- this data cannot be recovered'
+# 2 arguments: the previous version (twice)
+MSG_dbu_rm_b_rollback='- rollback can no longer go back to %s; to go back to %s, only the
+  pre-upgrade backup can be restored, and data written after the
+  upgrade is lost'
+# 2 arguments: the backup file, its time and size
+MSG_dbu_rm_b_backup='- the pre-upgrade backup: %s
+  (made %s, %s, file present)'
+# 2 arguments: the backup file, the previous version
+MSG_dbu_rm_nobackup='The pre-upgrade backup %s was not found.
+After removal there is no way back to %s on this host.'
+# 2 arguments: major, data folder
+MSG_dbu_rm_unaffected='The PostgreSQL %s in use (%s) is not affected
+and the service is not stopped.'
+# 1 argument: what to type
+MSG_dbu_rm_ask_one='To confirm, type the PostgreSQL version being removed (%s):'
+MSG_dbu_rm_ask_all='To confirm, type %s:'
+MSG_dbu_rm_cancel='Cancelled. Nothing was removed.'
+# 2 arguments: folder, size
+MSG_dbu_rm_done='Removed %s, freed %s'
+MSG_dbu_rm_failed='Could not remove %s completely; run the removal again.'
+MSG_dbu_rm_needs_yes='Removing old database folders cannot be undone and this run is not
+interactive (no terminal); --yes is needed. Nothing was changed.'
+MSG_dbu_rm_none='There are no old database folders to remove.'
+MSG_dbu_rm_not_listed='%s is not one of the old database folders. Nothing was removed.'
+MSG_dbu_blocked_head='These folders cannot be removed now, for the reasons below:'
+MSG_dbu_ref_head='Old database folders cannot be removed now. Nothing was changed.'
+# 1 argument: major
+MSG_dbu_chk_db_ok='the current database is PostgreSQL %s and works'
+MSG_dbu_chk_db_bad='the current database does not answer, so PostgreSQL %s
+cannot be confirmed to work'
+MSG_dbu_chk_up_ok='the last upgrade finished'
+# 1 argument: step
+MSG_dbu_chk_up_bad='the last upgrade did not finish (stopped at step %s/13)'
+MSG_dbu_chk_new_bad='the new version has not been started yet'
+MSG_dbu_chk_idle_ok='no upgrade, rollback or restore is in progress'
+MSG_dbu_chk_up_started='the last upgrade finished and the new version has started'
+MSG_dbu_chk_idle_short='no rollback or restore is in progress'
+MSG_dbu_chk_idle_bad='an upgrade, rollback or restore is not finished'
+# 1 argument: folder
+MSG_dbu_chk_mount_bad='%s is used by a running container'
+# 2 arguments: folder, version
+MSG_dbu_ref_keep='%s is the only data that can go back to %s; keep it.'
+MSG_dbu_ref_start='Start the service and check the status, then try again:'
+MSG_dbu_ref_later='Finish the upgrade (or decide to go back), then try again.
+Check the status:'

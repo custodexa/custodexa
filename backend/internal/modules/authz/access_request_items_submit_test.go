@@ -36,7 +36,7 @@ func setupItemRequestEnv(t *testing.T) (*AccessRequestService, *policy.SecurityP
 	}
 	for _, id := range []uint{1, 2, 3} {
 		a := id
-		if err := db.Create(&model.AssetAuthorization{UserID: &agent.ID, AssetID: &a, Permission: model.PermissionView, GrantedBy: 1}).Error; err != nil {
+		if err := db.Create(&model.AssetAuthorization{UserID: &agent.ID, AssetID: &a, Permission: model.PermissionConnect, GrantedBy: 1}).Error; err != nil {
 			t.Fatal(err)
 		}
 		c := model.Credential{Username: "app", Scope: model.CredentialScopeDedicated, SecretType: "password", ProtocolFamily: model.ProtocolFamilySSH}

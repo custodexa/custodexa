@@ -1,3 +1,25 @@
+# 兩個入口形態的 frontend 共用同一份定義（同映像、同容器名、同建置），只差 profile 與是否發布埠。
+# 任一時間只會啟用其一：profiles 互斥，同容器名也使 compose 拒絕兩者並存。
+x-frontend: &frontend
+  image: custodexa/frontend:latest
+  pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
+  build:
+    context: .
+    dockerfile: docker/frontend/Dockerfile
+    target: production
+  container_name: custodexa-frontend
+  depends_on:
+    - backend
+  networks:
+    - custodexa-network
+  restart: always
+
+# 部署形態由 .env 的 EXTERNAL_DB_HOST 與 TLS_MODE 決定，由 scripts/quickstart.sh 推導成
+# COMPOSE_PROFILES 並寫進 .env 末尾的管理區（規則見 docs/QUICKSTART.md）。profiles：
+#   bundled-db   內建 postgres（EXTERNAL_DB_HOST 空白時）
+#   builtin-tls  內建 TLS 代理與憑證初始化（TLS_MODE 為 selfsigned 或 provided 時）
+#   own-ingress  只發布 HTTP 埠給你自己的反向代理（TLS_MODE=external 時）
+# 沒有跑過 quickstart.sh 時沒有任何 profile，不會有 postgres、代理與 frontend 啟動。
 services:
   # PostgreSQL 資料庫
   #
@@ -7,21 +29,24 @@ services:
   # 使 X 連自己都不知道。不釘版，這三件事都無法履行。
   # **postgres 是唯一同時「會出貨」且「原本未釘版」的基底**（node 只在建置階段），
   # 故優先序最高：這顆容器帶著使用者的全部資料跑在他們的機房裡。
-  # 釘 16.15-alpine3.24：查證當日 postgres:16-alpine ＝ 16.15-alpine ＝ 16.15-alpine3.24
-  # （digest 皆 sha256:cf78e766…），故本次釘版不改變任何交付內容，只是把「當時碰巧拉到
-  # 什麼」變成「指名拉什麼」。**同時釘 alpine3.24 而非只釘 PG 版本**：這是執行階段映像，
-  # OS 套件層 CVE 直接落在使用者的執行環境，故基底 minor 也需可指名（與 frontend 的
-  # nginx stage 同理，見 docker/frontend/Dockerfile）。
-  # 續期提醒：PostgreSQL 16 的社群支援至 2028-11；升 major 需要 pg_upgrade，不是換 tag。
+  # 釘 18.6-alpine3.24（1.23.0 起；之前為 16.15-alpine3.24），digest 與安裝包 compose 相同。
+  # **同時釘 alpine3.24 而非只釘 PG 版本**：這是執行階段映像，OS 套件層 CVE 直接落在使用者
+  # 的執行環境，故基底 minor 也需可指名（與 frontend 的 nginx stage 同理，見
+  # docker/frontend/Dockerfile）。
+  # 資料目錄：18 的官方映像把資料放在 /var/lib/postgresql/18/docker，VOLUME 是上一層
+  # /var/lib/postgresql，故主機的 ${DATA_PATH}/postgresql 掛到該處、不設 PGDATA。既有部署留在
+  # ${DATA_PATH}/postgres 的 16 資料不會被讀到：quickstart.sh 在啟動前擋下並指向手動轉換程序。
+  # 續期提醒：PostgreSQL 18 的社群支援至 2030-11；大版本不能靠換 tag 升級。
   postgres:
-    image: postgres:16.15-alpine3.24
+    profiles: ["bundled-db"]
+    image: postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     container_name: custodexa-postgres
     environment:
       POSTGRES_DB: ${DB_NAME:-custodexa}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ${DATA_PATH:-./data}/postgres:/var/lib/postgresql/data
+      - ${DATA_PATH:-./data}/postgresql:/var/lib/postgresql
     networks:
       - custodexa-network
     restart: always
@@ -140,8 +165,10 @@ services:
       PORT: 8080
       GIN_MODE: release
       DB_DRIVER: postgres
-      DB_HOST: postgres
-      DB_PORT: 5432
+      # 內建資料庫形態下 EXTERNAL_DB_HOST 空白，連到服務名 postgres；填了位址即連到你自己的伺服器。
+      # 不直接讀 .env 的 DB_HOST：environment: 優先於 env_file，那個鍵填了也不生效。
+      DB_HOST: ${EXTERNAL_DB_HOST:-postgres}
+      DB_PORT: ${EXTERNAL_DB_PORT:-5432}
       GUACD_HOST: guacd
       GUACD_PORT: 4822
       AUDIT_LOG_PATH: /var/log/custodexa/audit
@@ -161,35 +188,41 @@ services:
       # 明文，故這個目錄不列入備份指令的預設範圍（見 docs/ops/backup-and-restore.md §2）。
       - ${DATA_PATH:-./data}/exports:/var/lib/custodexa/exports
     depends_on:
+      # required: false：外接資料庫形態不啟用 postgres 服務，backend 仍照常啟動；
+      # 內建形態下 postgres 在堆疊內，仍等它通過健康檢查。
       postgres:
         condition: service_healthy
+        required: false
       guacd:
         condition: service_healthy
     networks:
       - custodexa-network
     restart: always
 
-  # Nginx + Vue 前端服務（生產模式）
+  # Nginx + Vue 前端服務（生產模式），內建 TLS 代理形態：不發布 host 埠，
+  # 對外由下面的 tls-proxy 持有 80 與 443，前端只在內部網路上聽 80。
   frontend:
-    image: custodexa/frontend:latest
-    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
-    build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
-      target: production
-    container_name: custodexa-frontend
-    # 不發布 host 埠：對外由下面的 tls-proxy 持有 80 與 443，前端只在內部網路上聽 80。
-    # 自帶 ingress 的部署疊上 docker-compose.external-ingress.yml，該檔會關掉內建代理
-    # 並把 80 還給前端；見 docs/QUICKSTART.md。
-    depends_on:
-      - backend
-    networks:
-      - custodexa-network
-    restart: always
+    <<: *frontend
+    profiles: ["builtin-tls"]
+
+  # 同一個前端，自帶入口形態（TLS_MODE=external）：內建代理不啟動，由前端發布 HTTP 埠給你的 ingress。
+  # 預設 80，改埠設 .env 的 HTTP_PORT；只讓本機的 ingress 連時建議綁 loopback
+  # （HTTP_PORT 改不了介面，直接寫 127.0.0.1:8088:80）。
+  #
+  # 你的 ingress 轉過來的 Host 標頭要帶上使用者實際連的對外埠（不是 443 時就要有埠號）：
+  # 後端以 Origin 對 Host 判同源，Host 少了埠會讓帶憑證的請求被判成跨源。
+  # 另外把 .env 的 TRUSTED_PROXIES 設成你的 ingress 位址，來源位址才會歸因到客戶端。
+  # 契約與範例設定見 docs/QUICKSTART.md 與 docker/reverse-proxy/nginx-tls.conf.template。
+  frontend-published:
+    <<: *frontend
+    profiles: ["own-ingress"]
+    ports:
+      - "${HTTP_PORT:-80}:80"
 
   # 憑證前置步驟：檢查（TLS_MODE=provided）或產生（selfsigned）憑證後結束，代理才啟動。
   # 這一步也保證代理啟動時憑證檔已經在，bind mount 不會把缺檔變成一個空目錄。
   tls-init:
+    profiles: ["builtin-tls"]
     image: alpine/openssl:3.5.4
     container_name: custodexa-tls-init
     entrypoint: ["/bin/sh", "/tls-init.sh"]
@@ -209,6 +242,7 @@ services:
   # 對外的 TLS 終止點：443 走 TLS、80 一律 301 導向 https。
   # 網域取自 .env 的 TLS_DOMAIN，啟動時以 envsubst 展開範本，設定檔不必動手改。
   tls-proxy:
+    profiles: ["builtin-tls"]
     # 需要可指名的版本時，把 tag 換成具體版本（例：nginx:1.29.1-alpine）。
     image: nginx:stable-alpine
     container_name: custodexa-tls-proxy

@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+
+	"github.com/custodexa/backend/internal/model"
 )
 
 // 離機儲存設定的**單一驗證核心**與其拒因值域。
@@ -57,6 +60,12 @@ const (
 	ReasonEncryptFailed = "offsite.credential_encrypt_failed"
 	// ReasonDecryptFailed 憑證解密失敗（金鑰事故，非設定錯誤）。同上不 %w
 	ReasonDecryptFailed = "offsite.credential_decrypt_failed"
+	// ReasonGCSCredentialInvalid gcs 憑證不是可用的服務帳號金鑰 JSON
+	// （type、必要欄位或 token_uri 不符）。Detail 只帶欄位名，**不回顯值**
+	ReasonGCSCredentialInvalid = "offsite.gcs_credential_invalid"
+	// ReasonGCSEndpointNeedsCredential gcs 本次結果不帶顯式服務帳號憑證，
+	// 而端點不是空值或 Google 官方網域。**訊息不回顯端點值**
+	ReasonGCSEndpointNeedsCredential = "offsite.gcs_endpoint_needs_credential"
 )
 
 // AllSettingsReasons 全部靜態拒因（供 apierror 對照表的雙向 Exhaustive 守衛）。
@@ -67,6 +76,7 @@ func AllSettingsReasons() []string {
 		ReasonCredentialHalfSet, ReasonCredentialReuseOnMove, ReasonStaleConfirmation,
 		ReasonDigestMismatch, ReasonNoCurrentGeneration, ReasonGenerationNotFound,
 		ReasonCredentialsAlreadyRevoked, ReasonEncryptFailed, ReasonDecryptFailed,
+		ReasonGCSCredentialInvalid, ReasonGCSEndpointNeedsCredential,
 	}
 }
 
@@ -96,6 +106,15 @@ func ReasonOf(err error) string {
 	var se *SettingsError
 	if errors.As(err, &se) {
 		return se.Reason
+	}
+	return ""
+}
+
+// DetailOf 取錯誤的次級靜態原因（如被拒的欄位名）；非設定錯誤或無次級原因回空字串。
+func DetailOf(err error) string {
+	var se *SettingsError
+	if errors.As(err, &se) {
+		return se.Detail
 	}
 	return ""
 }
@@ -146,12 +165,51 @@ const (
 	credIntentReuse = "reuse"
 )
 
+// existingCredentialState 驗證核心需要的既存現行世代資訊：只帶「是否存在、provider、
+// 憑證來源模式」，**不帶憑證明文**。
+//
+// 表單的「憑證欄留空」有三種意義（沿用保存型憑證、沿用預設憑證鏈、首次設定），
+// 光看表單值分不出來；「本次結果是否帶顯式服務帳號憑證」要靠這份狀態判定。
+// 呼叫端在鎖內讀到現行列後以 existingStateOf 轉出；seed 傳零值＝無既存世代。
+type existingCredentialState struct {
+	// exists 現行世代是否存在
+	exists bool
+	// provider 現行世代的 provider
+	provider string
+	// mode 現行世代的憑證來源模式（model.OffsiteCredential*）
+	mode string
+}
+
+// existingStateOf 由現行世代列取出驗證核心需要的狀態（row 為 nil＝無現行世代）。
+func existingStateOf(row *model.OffsiteProfile) existingCredentialState {
+	if row == nil {
+		return existingCredentialState{}
+	}
+	return existingCredentialState{exists: true, provider: row.Provider, mode: row.CredentialMode}
+}
+
+// carriesExplicitCredential 本次結果是否會帶顯式憑證。
+//
+// 新填入憑證＝是；清除旗標＝否；留空沿用時，只有既存現行世代為保存型才有憑證可沿用
+// （同落點由 checkCredentialReuse 另行保證），其餘（預設憑證鏈、已撤銷、無世代）
+// 沿用到的都不是顯式憑證。
+func (e existingCredentialState) carriesExplicitCredential(intent string) bool {
+	switch intent {
+	case credIntentNew:
+		return true
+	case credIntentReuse:
+		return e.exists && e.mode == model.OffsiteCredentialStored
+	default:
+		return false
+	}
+}
+
 // validateAndNormalizeOffsiteSettings 設定的**單一驗證與正規化核心**。
 //
 // `Save` 與 `ConfirmGenerationSwitch` 兩條路徑都呼叫本函式，confirm **不得**有
 // 簡化路徑（AST 守衛釘住）。落點變更拒沿用憑證的判定不在此處——它需要既存列，
-// 屬鎖內步驟 (3)。
-func validateAndNormalizeOffsiteSettings(in SettingsInput) (normalizedSettings, error) {
+// 屬鎖內步驟 (3)。existing 為既存現行世代的憑證狀態（見 existingCredentialState）。
+func validateAndNormalizeOffsiteSettings(in SettingsInput, existing existingCredentialState) (normalizedSettings, error) {
 	var out normalizedSettings
 
 	// (1) 憑證輸入衝突：兩個互斥意圖同時出現
@@ -225,7 +283,70 @@ func validateAndNormalizeOffsiteSettings(in SettingsInput) (normalizedSettings, 
 	default:
 		out.credentialIntent = credIntentReuse
 	}
+
+	// (7) gcs 憑證內容與端點邊界：受管憑證與平台自身的雲端身分只用在設定所指的目標上
+	if provider == ProviderGCS {
+		if out.credentialIntent == credIntentNew {
+			if err := validateGCSServiceAccountJSON(out.credentialPlain); err != nil {
+				return out, err
+			}
+		}
+		if !existing.carriesExplicitCredential(out.credentialIntent) &&
+			!gcsEndpointIsEmptyOrOfficial(out.EndpointFull) {
+			return out, reject(ReasonGCSEndpointNeedsCredential)
+		}
+	}
 	return out, nil
+}
+
+// gcsOfficialTokenURI 服務帳號金鑰 JSON 允許的權杖端點（唯一值）。
+const gcsOfficialTokenURI = "https://oauth2.googleapis.com/token"
+
+// validateGCSServiceAccountJSON gcs 憑證內容檢查（驗證核心與客戶端建構共用）。
+//
+// 只接受 Google 服務帳號金鑰：`type` 為 service_account，`client_email`、
+// `private_key`、`token_uri` 皆存在，且 `token_uri` 等於官方權杖端點。
+// 其他型別的憑證一律拒絕。
+// **回傳的錯誤只帶欄位名，不含任何值。**
+func validateGCSServiceAccountJSON(plain string) error {
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(plain), &doc); err != nil {
+		return rejectWith(ReasonGCSCredentialInvalid, "json")
+	}
+	str := func(k string) string {
+		v, _ := doc[k].(string)
+		return strings.TrimSpace(v)
+	}
+	if str("type") != "service_account" {
+		return rejectWith(ReasonGCSCredentialInvalid, "type")
+	}
+	for _, k := range []string{"client_email", "private_key", "token_uri"} {
+		if str(k) == "" {
+			return rejectWith(ReasonGCSCredentialInvalid, k)
+		}
+	}
+	if str("token_uri") != gcsOfficialTokenURI {
+		return rejectWith(ReasonGCSCredentialInvalid, "token_uri")
+	}
+	return nil
+}
+
+// gcsEndpointIsEmptyOrOfficial 端點為空，或主機屬 googleapis.com 及其子網域。
+func gcsEndpointIsEmptyOrOfficial(endpoint string) bool {
+	if endpoint == "" {
+		return true
+	}
+	return gcsHostIsOfficial(endpoint)
+}
+
+// gcsHostIsOfficial 端點的主機是否屬 googleapis.com 及其子網域（解析失敗視為否）。
+func gcsHostIsOfficial(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "googleapis.com" || strings.HasSuffix(host, ".googleapis.com")
 }
 
 // storedCredentials s3 憑證的密文內容形狀（gcs 直接存 SA JSON 原文，不套本結構）。

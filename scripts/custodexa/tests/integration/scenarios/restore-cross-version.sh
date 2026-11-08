@@ -1,10 +1,14 @@
 # shellcheck shell=bash
-# about: a real 1.15.2 deployment (its published package and offline bundle) upgraded to 1.16.90 by the 1.16.90 script: the upgrade's backup (data of 1.15.2) is refused before anything stops on that host and on a fresh host, with no download; with 1.16.90 data, a release whose VERSION alone claims a newer version, a snapshot that disagrees with the dump (member checksums recomputed) and a snapshot naming a migration the engine does not know are each refused, and no backend is ever started on the fresh host
+# about: a real 1.22.0 deployment (PostgreSQL 16; its published package and offline bundle) upgraded to the working tree's 1.23.90 (PostgreSQL 18) by the 1.23.90 script; the upgrade's backup, its manifests and state rewritten to say the data belongs to 1.15.2 (member checksums recomputed), is refused before anything stops on that host and on a fresh host, with no download; with 1.23.90 data, a release whose VERSION alone claims a newer version, a snapshot that disagrees with the dump (member checksums recomputed) and a snapshot naming a migration the engine does not know are each refused, and no backend is ever started on the fresh host
+# run with: CX_IT_PUBLISHED_VERSION=1.22.0 CX_IT_LOCAL_VERSIONS=1.23.90
 # hosts: a b
 # needs: package local-versions published
 # images:
 
-readonly CV_OLD=1.15.2 CV_NEW=1.16.90 CV_SPOOF=1.16.99
+# CV_OLD is the published release (CX_IT_PUBLISHED_VERSION); CV_ANCIENT is the version the old
+# backup is made to claim: the restore reads the data's version from the manifest, and an upgrade
+# from a release older than 1.17.9 is not accepted any more, so no real 1.15.x data reaches 1.23.
+readonly CV_OLD=1.22.0 CV_NEW=1.23.90 CV_SPOOF=1.23.99 CV_ANCIENT=1.15.2
 readonly CV_T=/transfer
 
 # cv_restore <label> <file> <arguments...>: restore of that file, as an operator without a terminal.
@@ -77,7 +81,7 @@ cv_manifest_set() {
 }
 
 scenario_a() {
-  local b0 b1 ps0 state0 counts0 x d migs
+  local a0 b0 b1 ps0 state0 counts0 x d migs
   it_step "the published $CV_OLD package and offline bundle"
   it_check "the published files match their SHA256SUMS" bash -c 'cd /published && sha256sum -c --quiet SHA256SUMS'
   mkdir -p /opt
@@ -97,13 +101,30 @@ scenario_a() {
   it_same "its manifest: product.version, trigger" "$CV_OLD upgrade" \
     "$(tar -xOf "$b0" backup-manifest.json | jq -r '."product.version" + " " + .trigger')"
 
-  it_step "restore the upgrade's backup on this host (now $CV_NEW)"
+  # The upgrade's backup with a manifest that says the data belongs to $CV_ANCIENT.
+  x=$IT_WORK/ancient
+  cv_unpack_backup "$b0" "$x"
+  # The restore cross-checks the version in the backup manifest against the release manifest (and
+  # its hash) and, for an upgrade's backup, against the version in state.json; all three say
+  # $CV_ANCIENT, so the age check is what stops the file.
+  sed -E -i "s/^(  \"version\": *\")$CV_OLD\"/\1$CV_ANCIENT\"/" "$x/release-MANIFEST.json"
+  it_same "ancient: release-MANIFEST.json version" "$CV_ANCIENT" "$(jq -r '.version' "$x/release-MANIFEST.json")"
+  sed -E -i "s/^(  \"current\\.version\": *\")$CV_OLD\"/\1$CV_ANCIENT\"/" "$x/state.json"
+  it_same "ancient: state.json current.version" "$CV_ANCIENT" "$(jq -r '."current.version"' "$x/state.json")"
+  cv_manifest_set "$x/backup-manifest.json" product.version "$CV_ANCIENT"
+  cv_manifest_set "$x/backup-manifest.json" product.manifest_sha256 "$(sha256sum "$x/release-MANIFEST.json" | cut -c1-64)"
+  cv_repack "$b0" "$x"
+  it_same "ancient: only the manifests, state.json and SHA256SUMS differ from the upgrade's backup" \
+    "SHA256SUMS backup-manifest.json release-MANIFEST.json state.json" "$(cv_changed "$b0" "$CV_T/ancient/${b0##*/}")"
+  a0=$CV_T/ancient/${b0##*/}
+
+  it_step "restore the old-data backup on this host (now $CV_NEW)"
   ps0=$(lv_ps)
   state0=$(cv_host_state)
   counts0=$(cv_counts)
-  cv_restore same "$b0" --same-host --confirm-data-loss
+  cv_restore same "$a0" --same-host --confirm-data-loss
   it_same "same: restore exits 3" 3 "$LV_RC"
-  cv_said same "The data in this backup belongs to $CV_OLD, which is older than 1.16.0" "Nothing has been changed."
+  cv_said same "The data in this backup belongs to $CV_ANCIENT, which is older than 1.16.0" "Nothing has been changed."
   it_same "same: the services still run, the same containers" "$ps0" "$(lv_ps)"
   it_same "same: the backend still reports $CV_NEW" "$CV_NEW" "$(lv_version)"
   it_same "same: .env, state.json, the data folders, releases and the current link are unchanged" "$state0" "$(cv_host_state)"
@@ -116,8 +137,7 @@ scenario_a() {
   it_same "backup exits 0" 0 "$LV_RC"
   b1=$LV_ROOT/$(lv_st last_backup.file)
   it_same "its manifest: product.version" "$CV_NEW" "$(tar -xOf "$b1" backup-manifest.json | jq -r '."product.version"')"
-  mkdir -p "$CV_T/upgrade" "$CV_T/new"
-  cp "$b0" "$b0.sha256" "$CV_T/upgrade/"
+  mkdir -p "$CV_T/new"
   cp "$b1" "$b1.sha256" "$CV_T/new/"
 
   # A snapshot that disagrees with the dump: one more user in snapshot.txt than the dump holds.
@@ -169,11 +189,11 @@ scenario_b() {
   bundle=$(it_bundle_file "$CV_NEW")
   cv_fresh_state fresh
 
-  it_step "restore the $CV_OLD upgrade backup on the fresh host"
-  f=$(find "$CV_T/upgrade" -name '*.tar' | head -n1)
+  it_step "restore the old-data backup on the fresh host"
+  f=$(find "$CV_T/ancient" -name '*.tar' | head -n1)
   cv_restore new "$f" --new-host
   it_same "new: restore exits 3" 3 "$LV_RC"
-  cv_said new "The data in this backup belongs to $CV_OLD, which is older than 1.16.0" "Nothing has been changed."
+  cv_said new "The data in this backup belongs to $CV_ANCIENT, which is older than 1.16.0" "Nothing has been changed."
   cv_fresh_state new
   cv_no_download new
 

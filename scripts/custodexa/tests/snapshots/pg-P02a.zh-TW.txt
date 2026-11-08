@@ -1,0 +1,10 @@
+[FAIL] 空間不夠，升級不會開始。沒有停止任何服務，也沒有做任何變更。
+  /opt    升級前備份的位置 /opt/custodexa/backups
+          需要 3.5 GB，還有 211 GB
+  /var    Docker 映像儲存區 /var/lib/docker
+          需要 5.6 GB（新版映像），還有 60.0 GB
+  /data   新資料庫的位置 /opt/custodexa/data/postgresql，與匯出暫存 /opt/custodexa/data/.pg-convert
+          需要 4.0 GB（新資料庫 1.0 GB、匯出暫存 1.0 GB、餘裕 2 GB），
+          只有 1.0 GB，還差 3.0 GB
+  釋放或擴充 /data 的空間後，重新執行同一個指令：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

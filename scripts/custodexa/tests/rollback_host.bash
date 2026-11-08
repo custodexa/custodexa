@@ -50,7 +50,7 @@ rollback_host() {
     own=(--backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc)
   fi
   # The deployment of the version before with the new release fetched: the same for every outcome.
-  host_cache "rb-fetched $mode $old $RB_NEW" rb_fetched "$mode" "$old" || return 1
+  host_cache "rb-fetched $mode $old $RB_NEW layout=${UP_LAYOUT:-}" rb_fetched "$mode" "$old" || return 1
   if [ -n "${RB_BASELINE:-}" ]; then
     cat "$RB_BASELINE" >>"$ROOT/releases/$RB_NEW/lib/upgrade_steps.sh"
   fi
@@ -197,5 +197,5 @@ rb_identity() {
 # once per test file for each outcome, versions, language and baseline.
 rb_cached() {
   rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  host_cache "rb $* lang=${RB_LANG:-en} baseline=${RB_BASELINE:-}" rollback_host "$@"
+  host_cache "rb $* lang=${RB_LANG:-en} baseline=${RB_BASELINE:-} layout=${UP_LAYOUT:-}" rollback_host "$@"
 }

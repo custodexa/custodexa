@@ -53,6 +53,7 @@ cx_rs_checks() {
     cx_rs_unchanged
     return 1
   fi
+  cx_rs_db_major_check || return 1
   if [ "$(cx_rs_get kek.fingerprint_status)" != ok ]; then
     cx_line FAIL "$(cx_msg rs_fp_missing)"
     cx_rs_par "$(cx_msg rs_fp_manual)"

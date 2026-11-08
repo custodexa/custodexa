@@ -27,6 +27,18 @@ docker compose exec backend go test ./...      # バックエンドのテスト
 docker compose exec frontend npm run test      # フロントエンドのテスト
 ```
 
+開発スタックは独自のデータベースと入口を持ちます。`EXTERNAL_DB_HOST` を記入したり `TLS_MODE=external` に
+したりすると、開発用の compose ファイルはそれらを適用しないため、`quickstart.sh` は開発スタックの実行を拒否します。
+本番の形態の構成は、この 2 つのキーで決まります（[`docs/QUICKSTART.md`](QUICKSTART.md) を参照）。
+
+**開発データの 1 回限りの再構築（1.23.0）。** 開発スタックのプラットフォームのデータベースは PostgreSQL 16 から 18 に、データフォルダーは `${DATA_PATH:-./data}/postgres` から `${DATA_PATH:-./data}/postgresql` に変わりました。本番の形態も一緒に変わっています。両者が既定でそのフォルダーを共有するためです。開発スタックは古いデータを変換しないので、この変更を取り込んだ後に一度だけ作り直してください。作り直すと、開発スタックで作成したアカウント、資産、設定は失われるので、必要なものを先に控えてください。`postgres-test` のターゲットは PostgreSQL 16 のままで、影響を受けません。
+
+```bash
+docker compose down                  # 開発スタックを止める
+rm -rf ./data/postgres               # 古い PostgreSQL 16 のデータ（DATA_PATH が ./data でなければ自分のパスを使う）
+bash scripts/quickstart.sh --up      # ./data/postgresql に PostgreSQL 18 のデータを作る
+```
+
 検証はすべて docker compose の中で行います。その他のコマンド、環境まわりの落とし穴、
 ガードテストの規律は [`docs/dev/testing.md`](../dev/testing.md) にあります。
 

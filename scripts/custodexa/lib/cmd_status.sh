@@ -10,9 +10,13 @@
 # backup and upgrade commands; status reads whatever of them is there.
 
 readonly CX_STATUS_WRAP=56        # text columns of a line under a section (65 with its indent)
+# The deployment form section prints its messages line by line as written (each template line is
+# at most 73 columns, the message rule); a line only breaks when a value put into it makes it wider
+# than an 80-column terminal holds after the 9 columns of indent and mark.
+readonly CX_STATUS_FORM_MAX=71
 readonly CX_STATUS_BACKUP_DAYS=30 # an older latest backup is a warning
 readonly CX_STATUS_MIN_FREE=5     # GB free on the deployment's file system, as install requires
-readonly CX_STATUS_SERVICES="postgres guacd backend frontend tls-init tls-proxy"
+readonly CX_STATUS_SERVICES="postgres guacd backend frontend tls-init tls-proxy" # container names
 readonly CX_STATUS_BACKEND=custodexa-backend
 CX_STATUS_WARNED=0
 
@@ -37,6 +41,26 @@ cmd_status_line() {
     text=$(cmd_status_text "$text")
   fi
   cx_line "$1" "$text" | sed 's/^/  /'
+}
+# cmd_status_form_line <mark> <text>: a line of the deployment form section. Each line of the text
+# stays as written while it fits CX_STATUS_FORM_MAX; a wider one that ends in a .env line
+# ("…：KEY=value", "…: KEY=value") breaks after that colon, so the .env line stands whole on the
+# next line; any other wider line breaks between words.
+cmd_status_form_line() {
+  local line out="" sep="" re='^(.*)(：|: )([A-Z_]+=.*)$'
+  case $1 in OK | SKIP) ;; *) CX_STATUS_WARNED=1 ;; esac
+  while IFS= read -r line; do
+    if [ "$(cx_width "$line")" -gt "$CX_STATUS_FORM_MAX" ]; then
+      if [[ $line =~ $re ]]; then
+        line=${BASH_REMATCH[1]}${BASH_REMATCH[2]% }$'\n'${BASH_REMATCH[3]}
+      else
+        line=$(cx_wrap "$CX_STATUS_FORM_MAX" "$line")
+      fi
+    fi
+    out+=$sep$line
+    sep=$'\n'
+  done <<<"$2"
+  cx_line "$1" "$out" | sed 's/^/  /'
 }
 cmd_status_under() { printf '         %s\n' "$1"; } # a line under the text of the line above
 cmd_status_section() { printf '%s\n' "$(cx_msg "status_sec_$1")"; }
@@ -111,6 +135,96 @@ cmd_status_version() {
   if [ -n "$prev" ] && [ -d "$CX_ROOT/releases/$prev" ]; then
     cmd_status_row status_label_previous "$prev" "$(cx_msg status_previous_kept)"
   fi
+}
+
+# ---------- deployment form ----------
+# The form the deployment runs in, then whatever in .env says otherwise. Read only: the entries that
+# change the deployment refuse (lib/form_guard.sh); status only says which of them would.
+cmd_status_form_text() { # the one line: database; web entry
+  local env=$CX_ROOT/.env db web host port hp sw="" line
+  sw=$(cx_state_get current.overlays)
+  if [[ " $sw " == *" external-database "* ]]; then
+    host=$(cx_state_get current.external_db_host)
+    port=$(cx_state_get current.external_db_port)
+    [ -n "$host" ] || host=$(cx_form_db_host "$env")
+    [ -n "$port" ] || port=$(cx_form_trim "$(cx_env_get "$env" EXTERNAL_DB_PORT)")
+    db=$(cx_msg status_form_db_external "$host:${port:-5432}")
+  else
+    db=$(cx_msg status_form_db_builtin)
+  fi
+  if [[ " $sw " == *" external-ingress "* ]]; then
+    hp=$(cx_form_trim "$(cx_env_get "$env" HTTP_PORT)")
+    web=$(cx_msg status_form_web_own "${hp:-80}")
+  else
+    hp=$(cx_form_trim "$(cx_env_get "$env" TLS_HTTPS_PORT)")
+    port=$(cx_form_trim "$(cx_env_get "$env" TLS_HTTP_PORT)")
+    web=$(cx_msg status_form_web_builtin "${hp:-443}" "${port:-80}")
+  fi
+  line=$(cx_msg status_form_join "$db" "$web")
+  if [ "$(cx_width "$line")" -gt "$CX_STATUS_WRAP" ]; then
+    line=$(cx_msg status_form_join "$db" $'\n'"$web")
+    line=${line//" "$'\n'/$'\n'}
+  fi
+  printf '%s' "$line"
+}
+
+# cmd_status_form_warn: print the WARN lines for what .env says against what runs (none when they
+# agree). Returns 1 when something was printed.
+cmd_status_form_warn() {
+  local env=$CX_ROOT/.env words host sw tls s_db=0 s_ing=0 i_db=0 i_ing=0 rec port
+  [ -r "$env" ] || return 0
+  sw=$(cx_state_get current.overlays)
+  [[ " $sw " != *" external-database "* ]] || s_db=1
+  [[ " $sw " != *" external-ingress "* ]] || s_ing=1
+  tls=$(cx_form_tls_mode "$env")
+  if ! words=$(cx_form_derive "$env"); then
+    cmd_status_form_line WARN "$(cx_msg status_form_bad_tls "$tls")"
+    return 1
+  fi
+  host=$(cx_form_db_host "$env")
+  if [ -n "$host" ] && ! cx_form_check_host "$host"; then
+    cmd_status_form_line WARN "$(cx_msg status_form_bad_host "$host")"
+    return 1
+  fi
+  [[ " $words " != *" external-database "* ]] || i_db=1
+  [[ " $words " != *" external-ingress "* ]] || i_ing=1
+  if [ "$s_db" = 0 ] && [ "$i_db" = 1 ]; then
+    cmd_status_form_line WARN "$(cx_msg status_form_db_added "$host")"
+    return 1
+  fi
+  if [ "$s_db" = 1 ] && [ "$i_db" = 0 ]; then
+    rec=$(cx_state_get current.external_db_host)
+    if [ -n "$rec" ]; then
+      port=$(cx_state_get current.external_db_port)
+      cmd_status_form_line WARN "$(cx_msg status_form_db_emptied "$rec:${port:-5432}" "$rec")"
+    else
+      rec=$(cx_msg fm_e3_placeholder)
+      cmd_status_form_line WARN "$(cx_msg status_form_db_emptied "$rec" "$rec")"
+    fi
+    return 1
+  fi
+  if [ "$s_ing" != "$i_ing" ]; then
+    # The old notation of an external ingress on an older layout is the upgrade's to convert.
+    if [ "$s_ing" = 1 ] && { [ "$(cx_form_layout "$CX_ROOT/current")" = overlays ] || cx_fg_pending; }; then
+      return 0
+    fi
+    [ -n "$tls" ] || tls=selfsigned
+    if [ "$s_ing" = 1 ]; then
+      cmd_status_form_line WARN "$(cx_msg status_form_tls_changed "$tls" "$(cx_msg fm_e4_now_own)" external)"
+    else
+      rec=$(cx_state_get current.tls_mode)
+      [ -n "$rec" ] && [ "$rec" != external ] || rec=selfsigned
+      cmd_status_form_line WARN "$(cx_msg status_form_tls_changed "$tls" "$(cx_msg fm_e4_now_builtin)" "$rec")"
+    fi
+    return 1
+  fi
+}
+
+cmd_status_form() {
+  [ "$CX_STATUS_KIND" = package ] || return 0
+  cmd_status_section form
+  cmd_status_form_line OK "$(cmd_status_form_text)"
+  cmd_status_form_warn || true
 }
 
 # ---------- services ----------
@@ -396,6 +510,64 @@ cmd_status_reminders() {
   printf '%s\n' "$out"
 }
 
+# ---------- database ----------
+# The bundled database's major, where its data is, whether data checksums are on, and the old folders
+# kept next to it (rolled-back ones are listed like any other, with no WARN). An unfinished removal
+# is the one thing here that warns. Read only: the checksums are asked of the running container.
+cmd_status_database() {
+  local ov host port data d major size sums n p kind bytes w
+  [ "$CX_STATUS_KIND" = package ] || return 0
+  ov=$(cx_state_get current.overlays)
+  if [[ " $ov " == *" external-database "* ]]; then
+    host=$(cx_state_get current.external_db_host)
+    port=$(cx_state_get current.external_db_port)
+    [ -n "$host" ] || host=$(cx_form_db_host "$CX_ROOT/.env")
+    cmd_status_section db
+    cmd_status_line OK "$(cx_msg status_db_external "$host:${port:-5432}")" keep
+    return 0
+  fi
+  cx_dbo_current || return 0
+  data=$(cx_dbo_data_path)
+  d=$data/$CX_DBO_DIR${CX_DBO_PGDATA:+/$CX_DBO_PGDATA}
+  major=$(cx_pgm_dir_major "$data" "$CX_DBO_DIR" "$CX_DBO_PGDATA") || major=""
+  cx_dbo_list "$data"
+  # A release from before the bundled database had a version of its own says nothing here.
+  if [ -z "$major" ] && [ "${#CX_DBO_ROWS[@]}" -eq 0 ] && ! grep -q '"bundled_db"' "$CX_ROOT/current/MANIFEST.json" 2>/dev/null; then
+    return 0
+  fi
+  cmd_status_section db
+  if [ -z "$major" ]; then
+    cmd_status_line WARN "$(cx_msg status_db_no_version "$d")" keep
+  else
+    size=$(cx_size_human "$(cx_dbo_du "$data/$CX_DBO_DIR")")
+    cmd_status_line OK "$(cx_msg status_db_main "$major" "$data/$CX_DBO_DIR" "$size")" keep
+    sums=$(timeout 10 docker exec custodexa-postgres psql -U "$(cmd_status_env DB_USER)" -d "$(cmd_status_env DB_NAME)" \
+      -AtX -c 'SHOW data_checksums' 2>/dev/null | head -n 1) || sums=""
+    case $sums in
+      on) cmd_status_under "$(cx_msg status_db_checksums_on)" ;;
+      off) cmd_status_under "$(cx_msg status_db_checksums_off)" ;;
+    esac
+  fi
+  n=0
+  for p in "${CX_DBO_ROWS[@]}"; do [[ $p == removing\|* ]] || n=$((n + 1)); done
+  if [ "$n" -gt 0 ]; then
+    w=$(cx_dbo_size_width)
+    printf '  %s\n' "$(cx_msg status_db_old_head "$n")"
+    for p in "${CX_DBO_ROWS[@]}"; do
+      [[ $p != removing\|* ]] || continue
+      IFS='|' read -r kind p major bytes <<<"$p"
+      printf '         %s\n             PostgreSQL %s    %s    %s\n' "$p" "$(cx_dbo_major_text "$major")" \
+        "$(cx_dbo_size_text "$bytes" "$w")" "$(cx_dbo_kind_text "$kind")"
+    done
+  fi
+  for p in "${CX_DBO_ROWS[@]}"; do
+    [[ $p == removing\|* ]] || continue
+    IFS='|' read -r _ p _ bytes <<<"$p"
+    CX_STATUS_WARNED=1
+    cx_line WARN "$(cx_msg status_db_removing "$p" "$(cx_size_human "$bytes")" "$CX_ROOT")" | sed 's/^/  /'
+  done
+}
+
 # shellcheck source=lib/restore_status.sh
 . "${BASH_SOURCE[0]%/*}/restore_status.sh"
 
@@ -405,6 +577,8 @@ cmd_status() {
   CX_STATUS_NOW=$(cx_now)
   printf '%s\n\n' "$(cx_msg status_title "$CX_ROOT" "$(date -d "@$CX_STATUS_NOW" '+%Y-%m-%d %H:%M')")"
   cmd_status_version
+  cmd_status_form
+  cmd_status_database
   cmd_status_services
   cmd_status_images
   cmd_status_backup

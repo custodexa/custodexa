@@ -75,7 +75,7 @@ func (e *sessionLockEnv) newAgentSessionFixture(t *testing.T, withPending bool) 
 		require.NoError(t, e.dbA.Create(&cred).Error)
 		require.NoError(t, e.dbA.Create(&model.AssetAccount{AssetID: a.ID, CredentialID: cred.ID, Username: "app"}).Error)
 		aa, uu := a.ID, f.agent
-		require.NoError(t, e.dbA.Create(&model.AssetAuthorization{UserID: &uu, AssetID: &aa, Permission: model.PermissionView, GrantedBy: e.root}).Error)
+		require.NoError(t, e.dbA.Create(&model.AssetAuthorization{UserID: &uu, AssetID: &aa, Permission: model.PermissionConnect, GrantedBy: e.root}).Error)
 		return a
 	}
 	open := mkAsset("slo-open", nil)

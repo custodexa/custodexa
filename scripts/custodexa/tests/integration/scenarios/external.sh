@@ -65,7 +65,7 @@ scenario() {
   install -m 600 "$IT_PKI/test/$EX_USER.crt" "$exp/$EX_USER.crt"
   install -m 600 "$IT_PKI/test/$EX_USER.key" "$exp/$EX_USER.key"
   # The backend's system trust (Go reads SSL_CERT_FILE): the test CA, as the client's sysca mount.
-  ex_preset "$XT_ROOT" "COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml" \
+  ex_preset "$XT_ROOT" \
     "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$XT_TLS_PORT" "DB_NAME=$EX_DB" "DB_USER=$EX_USER" \
     "DB_PASSWORD=$EX_PASS" DB_SSLMODE=verify-full "PGSSLROOTCERT=$XT_AUD_CTR/ca.crt" \
     "SSL_CERT_FILE=$XT_AUD_CTR/ca.crt" KEK_PROVIDER=env

@@ -19,7 +19,7 @@ cx_svc_resume() {
   printf '  sudo %s/custodexa.sh start%s\n' "$CX_ROOT" "$(cx_status_lang_arg)"
 }
 cx_svc_log_hint() {
-  cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
+  cx_cmd "sudo docker logs --tail 50 custodexa-backend"
 }
 # cx_svc_signal: the handler may run inside a command's redirection (stderr to /dev/null), so it
 # writes to the terminal as it was when the command began.
@@ -40,6 +40,11 @@ cx_svc_pending() {
   local key cmd
   for key in install.result last_upgrade.result; do
     [ "$(cx_state_get "$key")" = in_progress ] || continue
+    # The conversion of the bundled database was cut short: its own screen (the upgrade judges it).
+    if [ "$key" = last_upgrade.result ] && [ "$(cx_state_get last_upgrade.step)" = 8 ]; then
+      cx_run_conversion_screen
+      return 1
+    fi
     cmd=$(cx_run_command_of "${key%.result}")
     cx_line FAIL "$(cx_msg svc_pending_run "$cmd")"
     cx_recovery_hint "$cmd"
@@ -63,6 +68,8 @@ cx_svc_prepare() {
   fi
   CX_OVERLAYS=$(cx_state_get current.overlays)
   cx_compose_files >/dev/null || return "$CX_EXIT_REFUSED"
+  # What .env says the deployment is must be what it is, before anything starts.
+  [ "$1" != start ] || cx_form_guard start || return "$CX_EXIT_REFUSED"
   cx_svc_pending || return "$CX_EXIT_REFUSED"
   cx_secrets_from_env "$CX_ROOT/.env"
   cx_log_open "$1" || return "$CX_EXIT_FAILED"

@@ -3,15 +3,35 @@
 ## Purpose
 
 連線申請與核准流：申請提出/去重/撤回/超時作廢、核准於同一交易產生時窗內臨時授權、`reason` 段位自動核准、approver 可疊加角色與審核範圍（審核方個人 XOR 群組 × 客體四維、群組即資格、自核硬擋、admin 非審核者）、最少核准人數 quorum（逐票記錄、兼具 admin 身分者不單票繞過）、審核範圍矩陣總覽頁、「我的申請」自助頁與審核中心事件通知。
-
 ## Requirements
-
 ### Requirement: 申請提出與去重
-使用者 SHALL 能對政策段位非 `open` 且可視的資產提出連線申請：事由必填、時長必填且 SHALL NOT 超過政策上限、可預約起始時間（空＝立即）。同一申請人對同一資產 SHALL 僅允許一張 pending 在途單，重複申請 SHALL 被拒（409）並回在途單識別。申請動作 SHALL 入審計。
+使用者 SHALL 能對政策段位非 `open`、可視且本人持有該資產時窗內常設連線權的資產提出連線申請：事由必填、時長必填且 SHALL NOT 超過政策上限、可預約起始時間（空＝立即）。常設連線權指來源不是核准流（`source<>'ticket'`）、時效窗內的 connect 授權，含經使用者群組與資產節點取得者；核准流產生的臨時授權 SHALL NOT 計入。對資產只有檢視權（或只因審核範圍而可見）的使用者 SHALL NOT 能提出申請：系統 SHALL 以 403 與機器碼 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED` 拒絕（多項申請時帶不符項的序號與資產識別），不建單；不可視的資產仍 SHALL 回不存在語義（404），判定順序為可視在前、常設連線權在後。資產列表對只有檢視權者 SHALL NOT 標示可申請狀態，前端據此不呈現申請入口（伺服端為單一事實源）。同一申請人對同一資產 SHALL 僅允許一張 pending 在途單，重複申請 SHALL 被拒（409）並回在途單識別。申請動作 SHALL 入審計。
+
+依上述資格檢查新建的申請，SHALL 都代表申請人提出時即持該資產的常設連線權、此單是在常設授權之上加一道核准。
 
 #### Scenario: 提出申請
-- **WHEN** 使用者對 `approval` 段位資產提交事由與時長（≤上限）
+- **WHEN** 持常設連線權的使用者對 `approval` 段位資產提交事由與時長（≤上限）
 - **THEN** 建立 pending 申請單，審核範圍命中的 approver 於審核中心可見
+
+#### Scenario: 只有檢視權者不得申請
+- **WHEN** 只對 `approval` 或 `reason` 段位資產持 view 授權的使用者直呼申請 API
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，不建單、不產生任何臨時授權、審核中心不出現該單
+
+#### Scenario: 只因審核範圍而可見者不得申請
+- **WHEN** 某資產只因審核範圍而對使用者可見，該使用者對其提出申請
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，不建單
+
+#### Scenario: 臨時授權不構成申請資格
+- **WHEN** 使用者對資產只持一張仍在時效內的臨時授權（無常設 connect），再次提出申請
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`
+
+#### Scenario: 不可視資產維持不存在語義
+- **WHEN** 使用者對其不可視的資產提出申請
+- **THEN** 回 404 不存在語義，不回 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`
+
+#### Scenario: 只有檢視權者在資產列表看不到申請入口
+- **WHEN** 只有檢視權的使用者開啟資產列表，資產為 `reason` 或 `approval` 段位
+- **THEN** 該資產列不帶可申請狀態，頁面不呈現申請入口
 
 #### Scenario: 超過時長上限
 - **WHEN** 申請時長超過政策上限
@@ -73,10 +93,10 @@
 - **THEN** 臨時授權僅產生一次；後到者收到明確衝突或冪等回應，SHALL NOT 出現雙授權
 
 ### Requirement: 填理由即過自動核准
-政策段位 `reason` 之資產，申請 SHALL 走與強制審核相同的表單與資料軌，並 SHALL 被即時自動核准（決定者記 system、帶自動核准標記），當場產生臨時授權；審核中心與申請歷史 SHALL 可辨識自動核准單。
+政策段位 `reason` 之資產，申請 SHALL 走與強制審核相同的表單與資料軌，並 SHALL 被即時自動核准（決定者記 system、帶自動核准標記），當場產生臨時授權；審核中心與申請歷史 SHALL 可辨識自動核准單。自動核准產生的臨時授權帳號範圍 SHALL NOT 超過申請人（輔助模式為執行者）對該資產的常設連線帳號範圍，依「自動核准的帳號範圍上界」處理；申請的具名帳號超出常設範圍時，該項 SHALL 轉為人工審核，SHALL NOT 自動核准。
 
 #### Scenario: 填理由即連
-- **WHEN** 使用者對 `reason` 段位資產提交事由與時長
+- **WHEN** 持常設連線權的使用者對 `reason` 段位資產提交事由與時長，起始時間為立即，且未帶帳號範圍或所帶具名帳號全屬其常設帳號範圍
 - **THEN** 申請即時轉 approved（決定者 system）、臨時授權立即生效，使用者當場可連線
 
 #### Scenario: 自動核准可辨識
@@ -427,14 +447,14 @@
 
 輔助模式的任務項 SHALL 同時受申請人與執行者兩側的可視範圍約束（取交集）；任一側不可視即該項不成立。此交集 SHALL 為**即時交集**：每次判定現查兩側的當前可視範圍，SHALL NOT 以核准當時的快照為準——申請人事後失去可視時，該項 SHALL 即刻不再命中，與撤權的即時性一致。`executor_user_id` SHALL NOT 於單建立後變更——換執行者 SHALL 開新單。agent 主體 SHALL NOT 核准任何申請單（含自己的）。
 
-由 agent 執行的任務項 SHALL 對**任何段位**的資產都存在——`open` 段位不構成免單的例外，系統 SHALL 視同 `reason` 段位即時自動核准（決定者記 system、帶自動核准標記），使每一條 agent 連線都可回溯到一個任務 id。輔助模式下人類為 agent 執行者對 `open` 段位資產建立的項 SHALL 同樣建立並自動核准。
+由 agent 執行的任務項 SHALL 對**任何段位**的資產都存在——`open` 段位不構成免單的例外，系統 SHALL 視同 `reason` 段位即時自動核准（決定者記 system、帶自動核准標記），使每一條 agent 連線都可回溯到一個任務 id；具名帳號超出受授權主體常設帳號範圍的項 SHALL 依「自動核准的帳號範圍上界」轉人工審核，不自動核准。輔助模式下人類為 agent 執行者對 `open` 段位資產建立的項 SHALL 同樣建立並自動核准。
 
-建立時指定的 `executor_user_id` SHALL 為正整數並指向啟用中的 agent；省略或 null SHALL 保留原自行執行語義。系統 SHALL 先檢查純請求形狀，再檢查全部項目的申請人可視，繼而判定 executor 與全部項目的雙方可視交集，全部資格成立才進入帳號、政策及建單業務判斷。executor 不存在、停用、非 agent，或任一項不可委派時 SHALL 回相同 404 `{"code":"NOTFOUND_ACCESS_REQUEST","error":"申請單不存在"}`；資產不存在或申請人不可視亦 SHALL 使用此封套。狀態、機器碼、訊息、完整欄位及相關標頭 SHALL 相同，SHALL NOT 增加 executor 或項目原因資料。系統 SHALL NOT 以 agent owner 關係新增委派限制。
+建立時指定的 `executor_user_id` SHALL 為正整數並指向啟用中的 agent；省略或 null SHALL 保留原自行執行語義。系統 SHALL 先檢查純請求形狀，再檢查全部項目的申請人可視，繼而檢查全部項目的申請人常設連線權（見「申請提出與去重」），再判定 executor 與全部項目的雙方可視交集及 executor 的常設連線權，全部資格成立才進入帳號、政策及建單業務判斷。executor 不存在、停用、非 agent，或任一項不可委派（含 executor 對該項資產未持常設連線權）時 SHALL 回相同 404 `{"code":"NOTFOUND_ACCESS_REQUEST","error":"申請單不存在"}`；資產不存在或申請人不可視亦 SHALL 使用此封套。狀態、機器碼、訊息、完整欄位及相關標頭 SHALL 相同，SHALL NOT 增加 executor 或項目原因資料。系統 SHALL NOT 以 agent owner 關係新增委派限制。
 
 純形狀錯誤 SHALL 保持 400，SHALL NOT 依 executor 是否存在而改變。明示 executor 為 0 SHALL 在查庫前回 400 `VALIDATION_BAD_PARAMS`；不符合整數型別或無法綁定的本文 SHALL 沿用 400 `VALIDATION_ACCESS_REQUEST_FIELDS`；混用單資產／items、重複或非法項集合 SHALL 沿用既有 400。資源資格不成立時 SHALL NOT 建立任何申請單、項或票證。非缺列的內部查詢錯誤 SHALL 保留原 500 語義，不當成 executor 無效。
 
 #### Scenario: agent 自主開單
-- **WHEN** agent 主體對其可視、`approval` 段位的資產提交申請
+- **WHEN** agent 主體對其持常設連線權、`approval` 段位的資產提交申請
 - **THEN** 建立 pending 單，`executor_user_id` 為 NULL，審核範圍命中的 approver 於審核中心可見該單並可辨識申請人為 agent
 
 #### Scenario: 人類委派 agent 執行
@@ -450,8 +470,8 @@
 - **THEN** 該項的後續判定即刻不命中（擋新連線），系統不以核准當時的快照放行
 
 #### Scenario: agent 對 open 段位資產仍須開單
-- **WHEN** agent 主體對 `open` 段位資產請求連線而無任何申請單
-- **THEN** 連線被拒；其提交申請後單即時轉 approved（決定者 system）並帶任務 id，連線方可建立
+- **WHEN** agent 主體對 `open` 段位資產請求連線而無任何申請單，其後對該資產提交起始時間為立即、帳號範圍在其常設帳號範圍內的申請
+- **THEN** 無單時連線被拒；提交後單即時轉 approved（決定者 system）並帶任務 id，連線方可建立
 
 #### Scenario: agent 不得核准
 - **WHEN** agent 主體對任一 pending 單執行核准或拒絕
@@ -474,8 +494,12 @@
 - **THEN** 在資源查詢前依對應形狀錯誤回 400，而不是 404 或候選狀態資訊
 
 #### Scenario: 非擁有者的合法委派
-- **WHEN** 人類申請人指定由另一人擁有的啟用 agent，所有項目均在申請人與 executor 的當前可視交集，且其他業務條件成立
+- **WHEN** 人類申請人指定由另一人擁有的啟用 agent，所有項目均在申請人與 executor 的當前可視交集、雙方皆持各項資產的常設連線權，且其他業務條件成立
 - **THEN** 申請照常建立，on_behalf_of 仍為申請人，不能因申請人不是 agent owner 而拒絕
+
+#### Scenario: executor 只有檢視時與其他無效執行者回應等價
+- **WHEN** 人類申請人持資產常設連線權，指定的啟用 agent 執行者對該資產只有檢視權
+- **THEN** 回與其他無效執行者相同的 404 `NOTFOUND_ACCESS_REQUEST`，不建單或項
 
 ### Requirement: 任務關閉的時點與其效力
 
@@ -770,3 +794,80 @@ agent 主體的開單 SHALL 受兩個政策鍵約束：`agent_request_rate_per_h
 #### Scenario: 總覽樹的可操作節點依審核範圍管理權限
 - **WHEN** 某使用者經節點範圍 prod 持有審核範圍管理，另經節點範圍 sit 持有節點管理，開啟審核範圍總覽頁
 - **THEN** 節點樹中 prod 子樹的節點可新增與移除審核範圍，sit 不出現在樹上，也沒有任何審核範圍操作
+
+### Requirement: 自動核准的帳號範圍上界
+自動核准（`reason` 段位，以及 agent 執行的任務項於 `open` 段位視同 `reason` 的即時核准）產生的臨時授權帳號範圍 SHALL 以受授權主體（自行執行為申請人、輔助模式為執行者）對該資產的常設連線帳號範圍為上界。常設連線帳號範圍為該主體時效窗內、來源不是核准流的全部 connect 授權帳號範圍之聯集（含經使用者群組與資產節點取得者）；任一常設授權為全部帳號（`@ALL`）時上界即為全部帳號。
+
+- 申請未帶帳號範圍（`@ALL`）時，臨時授權範圍 SHALL 寫為常設上界本身，SHALL NOT 寫為全部帳號（除非上界即為全部帳號）。
+- 申請帶具名帳號且全部屬於上界時，臨時授權範圍 SHALL 為申請的具名帳號。
+- 申請帶具名帳號而有任一不屬於上界時，該項 SHALL NOT 自動核准，SHALL 以 pending 狀態轉交人工審核（與 `approval` 段位同一審核流程），SHALL NOT 拒絕建單。
+- 上界 SHALL 於自動核准的寫入交易內現查，SHALL NOT 使用快取或交易外的判定結果。
+- 受授權主體於寫入交易內查無任何常設連線授權（上界為空）時，系統 SHALL 以 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`（輔助模式執行者側為既有 404 封套）拒絕整張申請，SHALL NOT 把空上界當成全部帳號或任何帳號範圍寫入。
+- 申請人與執行者的常設連線權資格 SHALL 於建單寫入交易內重判一次；任一項不成立時整張申請不建立，SHALL NOT 建立申請單、項或臨時授權。
+
+#### Scenario: 常設只限單一帳號者經 reason 段取得的範圍不擴張
+- **WHEN** 使用者對 `reason` 段位資產的常設 connect 只限帳號 `app`，提交未帶帳號範圍的申請
+- **THEN** 申請自動核准，臨時授權範圍為 `["app"]`；之後以 `root` 申請連線簽發被拒
+
+#### Scenario: 具名帳號超出常設範圍轉人工審核
+- **WHEN** 同一使用者提交帳號範圍 `["root"]` 的申請
+- **THEN** 該項為 pending、不產生臨時授權，審核範圍命中的 approver 於審核中心可見並可決定
+
+#### Scenario: 常設為全部帳號者不受影響
+- **WHEN** 使用者對 `reason` 段位資產持全部帳號的常設 connect，提交未帶帳號範圍的申請
+- **THEN** 申請自動核准，臨時授權範圍為全部帳號
+
+#### Scenario: agent 在 open 段位的即時核准受同一上界
+- **WHEN** agent 對 `open` 段位資產的常設 connect 只限帳號 `deploy`，提交帳號範圍 `["root"]` 的任務項
+- **THEN** 該項不自動核准，轉為 pending 交人工審核
+
+#### Scenario: 送單期間申請人失去常設連線權
+- **WHEN** 輔助模式申請通過交易外資格檢查後、寫入交易重判前，人類申請人對該資產的最後一筆常設 connect 被撤，執行者仍持有
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，不建單、不產生臨時授權
+
+#### Scenario: 寫入時上界為空不視為全部帳號
+- **WHEN** 自行執行的申請通過交易外資格檢查後、寫入交易重判前，申請人對該 `reason` 段位資產的最後一筆常設 connect 被撤
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，不建單，不產生任何帳號範圍（含全部帳號）的臨時授權
+
+#### Scenario: 多項申請逐項判定
+- **WHEN** 一張申請含兩項 `reason` 段位資產，一項的具名帳號屬常設範圍、另一項超出
+- **THEN** 前者自動核准並產生臨時授權，後者為 pending；整張單狀態依既有規則呈現待審
+
+### Requirement: 申請決定時重判申請資格
+人工核准一個項目時，系統 SHALL 於核准寫入交易內、記錄該票之前，重判申請人（輔助模式另含執行者）對該項資產是否仍持常設連線權；此重判 SHALL 對每一票進行，不論該票是否使項目達到核准門檻。不再持有時核准 SHALL 以 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED` 拒絕，SHALL NOT 記錄票、SHALL NOT 計票、SHALL NOT 產生臨時授權。拒絕與刪除項目 SHALL NOT 受此重判影響，使審核人仍能結束這類單。
+
+#### Scenario: 送單後失去常設連線權的單不可核准
+- **WHEN** 使用者提交 `approval` 段位資產的申請後，其常設 connect 被撤，approver 執行核准
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，不計票、不產生臨時授權；approver 仍可拒絕該項
+
+#### Scenario: 未達門檻的一票同樣重判
+- **WHEN** 核准門檻為 2，輔助模式申請的執行者於送單後失去該資產的常設 connect，第一位 approver 執行核准
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，該 approver 的票不被記錄，項目維持 pending（0/2）
+
+#### Scenario: 核准時不符合當前申請資格的既有在途單
+- **WHEN** 一張既有 pending 單，申請人於核准當下未持該項資產的常設連線權，approver 執行核准
+- **THEN** 回 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`；拒絕、撤回與超時作廢照常運作
+
+### Requirement: 自核禁止擴及以自有 agent 為執行者的申請
+自核禁止 SHALL 擴及執行者為操作者本人擁有之 agent 主體的申請（輔助模式）：操作者對這類申請的核准與拒絕 SHALL 一律以自核禁止的既有機器碼拒絕，擁有關係以決定當下於寫入交易內現查為準；待審列表與待審計數 SHALL 一併排除這些申請，使列表與單筆判定一致。計票的獨立性判定 SHALL 同時涵蓋申請人與執行者兩側：投票者為申請人或執行者所屬 agent 之擁有者時，其票 SHALL NOT 計入門檻（票列保留供稽核）。agent 擁有者轉移的防自我授權檢查 SHALL 同時涵蓋以該 agent 為執行者之申請上仍有效的核准票。送單端 SHALL NOT 因此新增委派限制（維持「系統 SHALL NOT 以 agent owner 關係新增委派限制」）。
+
+#### Scenario: 執行者 agent 的擁有者不可核准
+- **WHEN** 人類 X 建立申請並指定執行者為 agent A，A 的擁有者 Y 是涵蓋該資產的 approver，Y 執行核准
+- **THEN** 回自核禁止的既有機器碼，不計票、不產生臨時授權
+
+#### Scenario: 待審列表排除
+- **WHEN** Y 開啟審核中心待審列表
+- **THEN** 列表與待審計數不含執行者為 Y 所擁有 agent 的申請；其他具資格者可正常決定
+
+#### Scenario: 擁有關係變更後投下的舊票不計入
+- **WHEN** 門檻 2，approver Z 對執行者為 agent A 的申請投下一票，其後 A 的擁有者改為 Z，另一位 approver 再投票
+- **THEN** Z 的票不計入門檻，單維持 pending（1/2）；Z 的票列保留
+
+#### Scenario: 擁有者轉移受執行者側票阻擋
+- **WHEN** approver Z 已對執行者為 agent A、仍待審的申請投下有效核准票，管理員把 A 的擁有者改為 Z
+- **THEN** 轉移以既有可辨識機器碼拒絕，擁有者不變
+
+#### Scenario: 送單不受擁有者限制
+- **WHEN** 人類 X 指定由 Y 擁有的 agent A 為執行者建立申請，且其他條件成立
+- **THEN** 申請照常建立
+

@@ -24,10 +24,11 @@
 
 1. `cp .env.example .env`
 2. 編輯：更換掉每一個密鑰，然後依需要設定 `DB_SSLMODE` / `LDAP` / `DATA_PATH`
-3. `docker compose up -d`
+3. `bash scripts/quickstart.sh --up`
 
-或者用一行指令完成：`bash scripts/quickstart.sh --up` 會建立 `.env`、為仍停留在範本值的那些密鑰生成新值，
-並啟動整套服務；你已經自己填好的值不會被動到。
+第 1 步可省略：`bash scripts/quickstart.sh --up` 會在 `.env` 不存在時建立它、為仍停留在範本值的那些密鑰生成新值，
+並啟動整套服務；你已經自己填好的值不會被動到。請從腳本啟動，不要直接跑 `docker compose up -d`：
+腳本會判斷你的 `.env` 要求堆疊包含哪些部分（見下面的「部署形態」）。
 
 ### 正式版堆疊與開發版堆疊
 
@@ -35,12 +36,19 @@
 由一層 TLS 代理在 443 埠對外提供 https、沒有測試靶機。
 只是要把 Custodexa 部署起來自己用？看到這裡就夠了。
 
+**部署形態**：一份 compose 檔涵蓋所有形態，由本檔的兩個鍵決定：`EXTERNAL_DB_HOST`（資料庫）與
+`TLS_MODE`（網頁入口）是僅有的開關，沒有任何 `COMPOSE_FILE` 行負責切換形態（下面的開發版堆疊是唯一例外）。
+`quickstart.sh` 讀這兩個鍵、推導出 compose profiles，並把結果寫在本檔最末端的管理區（標記為
+「managed by custodexa.sh」）。管理區屬於腳本：維持原樣，要改形態就改那兩個鍵。
+
 開發者：把下面的 `COMPOSE_FILE` 取消註解，之後每一條 `docker compose` 指令
 （包含 `exec ... go test`）不必加 `-f` 就會指向開發版堆疊——前後端熱重載、完整的 Go 工具鏈、
 六個測試靶機（ssh、rdp、vnc、ldap、mysql、k3s）。顯式寫出的 `-f docker-compose.yml` 仍然會覆蓋它，
 所以在開發機上依然驗證得了正式版。
 同時也要設 `KEK_PROVIDER=env` 並給一把 `ENCRYPTION_KEY`：熱重載每次重建都會重啟行程，
 用 `ui` 的話你每存一次檔就得解封一次。
+開發版堆疊有自己的資料庫與入口：填了 `EXTERNAL_DB_HOST` 或設了 `TLS_MODE=external` 時，
+`quickstart.sh` 會拒絕執行並說明原因，不會默默忽略。
 
 ```env
 # COMPOSE_FILE=docker-compose.dev.yml
@@ -61,7 +69,7 @@
 
 拓撲與模式常數（`DB_HOST=postgres`、`GUACD_HOST=guacd`、`DB_DRIVER`、`GIN_MODE`、容器內路徑）
 來自 compose 的 `environment:` 區塊，該區塊的優先序高於 `env_file`；在這裡設定它們不會有任何作用。
-唯一會改動 `DB_HOST` 的形態是 external database overlay，它取的是本檔後面自己的鍵 `EXTERNAL_DB_HOST`，
+唯一會改動 `DB_HOST` 的形態是外接資料庫，它取的是本檔後面自己的鍵 `EXTERNAL_DB_HOST`，
 不是這裡的某一行 `DB_HOST`。
 
 `DB_DRIVER` 沒有出廠預設值，後端缺了它就拒絕啟動：兩份 compose 檔都會提供它，
@@ -358,6 +366,8 @@ TLS_DOMAIN=
   外部識別提供者也會拒絕回呼。
 - **`provided`** — 用你自己的 `tls/fullchain.pem` 與 `tls/privkey.pem`，
   公開 CA 或機構 CA 簽的都可以。缺檔時啟動會停下並指名缺哪一個。
+- **`external`** — 你自己的負載平衡器或反向代理承載 https：內建代理讓開，
+  前端發布明文 http 給你的 ingress 連（見下面的「自帶 ingress 的部署」）。
 
 `tls/` 內已有的憑證一律沿用，不會被重新產生。要換就把檔案刪掉再啟動。
 
@@ -386,10 +396,9 @@ TLS_IP_SAN=
 
 ### 自帶 ingress 的部署
 
-前面已經有負載平衡器或反向代理時，取消 `COMPOSE_FILE` 那行的註解，內建代理就會讓開，
-改由前端發布明文 http 給你的 ingress 連。同時只能有一行 `COMPOSE_FILE` 生效，
-所以用這個形態時，請讓檔案開頭那行開發版的維持註解。
-`HTTP_PORT` 決定該形態下前端發布的埠。
+前面已經有負載平衡器或反向代理時，把上面的 `TLS_MODE` 設為 `external`，內建代理就會讓開，
+改由前端發布明文 http 給你的 ingress 連。
+下面的 `HTTP_PORT` 決定該形態下前端發布的埠。
 
 TLS 由你的 ingress 終結，瀏覽器看到什麼因此也由它決定。轉發的 Host 標頭要帶上使用者實際
 連的那個埠（不是 443 就要帶）：後端以 Origin 對 Host 判定同源請求，`Host` 少了埠，
@@ -397,23 +406,25 @@ TLS 由你的 ingress 終結，瀏覽器看到什麼因此也由它決定。轉�
 請求才會算在使用者端而不是 ingress 頭上。
 
 ```env
-# COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml
 # HTTP_PORT=80
 ```
 
-### 自備資料庫的部署（external database overlay）
+### 自備資料庫的部署
 
 把 PostgreSQL 放在這台主機以外的地方，不論是機構既有的資料庫伺服器、代管服務，還是你自己的第二台機器，
 這台應用主機就不再是資料唯一所在：事先準備好、指向同一個資料庫的備援主機，可以在這台停機時接手。
-這個 overlay 讓堆疊不起自帶的 postgres，改讓後端連向下面指定的伺服器；此時上面的
+只要填 `EXTERNAL_DB_HOST` 就行：內建的 postgres 不會啟動，後端改連向下面指定的伺服器；此時上面的
 `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE` 描述的是那台伺服器上的資料庫與帳號
-（跨網路請用 `require` 或 `verify-full`），`${DATA_PATH}/postgres` 不再使用。資料庫與帳號要在首次啟動前建好；
-schema 由後端建立。執行 `scripts/quickstart.sh` 之前先自己填好 `DB_PASSWORD`：設了 `EXTERNAL_DB_HOST` 之後，腳本不會生成這個值，缺值時會停下來要求填入。
-把下面三行取消註解；要與 ingress overlay 併用，把兩個檔案列在同一個 `COMPOSE_FILE` 值裡。
+（跨網路請用 `require` 或 `verify-full`），內建資料庫的資料目錄不再使用。這個值只能是主機名或 IP 位址：
+不含協定、埠、帳號或空白，也不能是指回這台主機或這套堆疊內某個服務的位址（腳本會拒絕並說明原因）。
+埠另寫一行。資料庫與帳號要在首次啟動前建好；schema 由後端建立。執行 `scripts/quickstart.sh`
+之前先自己填好 `DB_PASSWORD`：設了 `EXTERNAL_DB_HOST` 之後，腳本不會生成這個值，缺值時會停下來要求填入。
+它可以與上面的 `TLS_MODE=external` 任意組合。留空就是使用內建資料庫。
+內建資料庫已有資料時，填這個值不會搬動資料：腳本會拒絕，並指向 `docs/zh-TW/ops/backup-and-restore.md`
+的「換到外接資料庫」一節，先把資料搬過去。
 接手程序、備援主機事先要備妥的東西、接手保不住的東西，見 `docs/zh-TW/ops/standby-takeover.md`。
 
 ```env
-# COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
 # EXTERNAL_DB_HOST=
 # EXTERNAL_DB_PORT=5432
 ```
@@ -911,7 +922,7 @@ SEAL_UNSEAL_COOLDOWN_MAX_SECONDS=
 沒有一個約定好的代理鏈，限速鍵就可能被轉送標頭污染，
 而一道可被繞過的防線比一道笨拙的防線更糟。
 預設形態下這套堆疊自帶代理，quickstart 會把上面 `DOCKER_SUBNET` 指定的 Docker 子網填進來。
-自己跑 ingress 時（`docker-compose.external-ingress.yml`），改填你自己的 ingress 位址。
+自己跑 ingress 時（`TLS_MODE=external`），改填你自己的 ingress 位址。
 
 ```env
 TRUSTED_PROXIES=
@@ -934,3 +945,20 @@ SEAL_UNSEAL_BIND_ADDR=
 ```env
 SEAL_UNSEAL_ALLOWED_CIDRS=
 ```
+
+---
+
+## 管理區（由 `scripts/quickstart.sh` 寫入）
+
+執行過一次腳本之後，本檔最末端會有一段夾在下面兩行之間的區塊：
+
+```env
+# >>> managed by custodexa.sh: derived from EXTERNAL_DB_HOST and TLS_MODE; do not edit
+# <<< managed by custodexa.sh
+```
+
+區塊內有一行 `COMPOSE_PROFILES`：`EXTERNAL_DB_HOST` 與 `TLS_MODE` 要求堆疊包含的部分。
+它不屬於本範本，本範本的任何設定也不需要它。docker compose 會讀它，所以在這個資料夾裡直接跑
+`docker compose stop` 或 `docker compose ps`，涵蓋的就是 `quickstart.sh` 啟動的那些服務。
+不要手動編輯；要改形態就改 `EXTERNAL_DB_HOST` 或 `TLS_MODE`，再執行一次 `bash scripts/quickstart.sh --up`。
+舊版 `.env` 若仍有列出兩個舊疊加檔的 `COMPOSE_FILE` 行，腳本下次執行時會翻譯它，並印出每一項改動。

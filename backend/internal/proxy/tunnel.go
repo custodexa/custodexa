@@ -443,6 +443,9 @@ func (t *Tunnel) Close() error {
 
 		close(t.stopChan)
 
+		// 仍未收到 end 的上傳串流在收線時結算為未完成紀錄
+		t.fileTap.FinishOpenStreams()
+
 		// 關閉 WebSocket
 		if t.ws != nil {
 			t.ws.Close()

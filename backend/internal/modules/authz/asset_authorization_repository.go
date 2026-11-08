@@ -396,6 +396,44 @@ func (r *assetAuthorizationRepository) StandingConnectAssetIDs(userID uint, asse
 	return result, nil
 }
 
+// StandingScopeRow 單一（主體、資產）命中的一筆常設 connect 授權列的帳號範圍。
+type StandingScopeRow struct {
+	SubjectID uint
+	AssetID   uint
+	Accounts  model.AccountScope
+}
+
+// StandingAccountScopesWithDB 以指定 db/tx 在單一 SQL 語句內回傳每個（主體、資產）命中的
+// 常設 connect 授權列（source<>'ticket'、時效窗內、軟刪排除；主體含所屬使用者群組，
+// 客體含資產節點含子樹）。申請資格（有無任何命中列）與帳號範圍上界（各列聯集）
+// 都由這一份結果導出，兩者因此讀自同一個快照。
+// 零命中的（主體、資產）不會出現在結果中；呼叫端不得把「查無」當成任何帳號範圍。
+func (r *assetAuthorizationRepository) StandingAccountScopesWithDB(tx *gorm.DB, subjectIDs, assetIDs []uint, now time.Time) ([]StandingScopeRow, error) {
+	if len(subjectIDs) == 0 || len(assetIDs) == 0 {
+		return nil, nil
+	}
+	var rows []StandingScopeRow
+	err := tx.Raw(`SELECT u.id AS subject_id, a.id AS asset_id, aa.accounts AS accounts
+		FROM (SELECT id FROM users WHERE id IN ?) u
+		CROSS JOIN (SELECT id FROM assets WHERE id IN ? AND deleted_at IS NULL) a
+		JOIN asset_authorizations aa ON aa.deleted_at IS NULL
+		  AND aa.source <> 'ticket'
+		  AND aa.permission = ?
+		  AND (aa.user_id = u.id OR aa.user_group_id IN (SELECT user_group_id FROM user_group_members WHERE user_id = u.id))
+		  AND (aa.asset_id = a.id OR aa.asset_group_id IN (WITH RECURSIVE ana(id) AS (
+			SELECT node_id FROM asset_nodes WHERE asset_id = a.id
+			UNION
+			SELECT g.parent_id FROM asset_groups g JOIN ana ON g.id = ana.id
+			WHERE g.parent_id IS NOT NULL AND g.deleted_at IS NULL
+		  ) SELECT id FROM ana))
+		  AND (aa.date_start IS NULL OR aa.date_start <= ?) AND (aa.date_expired IS NULL OR aa.date_expired > ?)`,
+		subjectIDs, assetIDs, model.PermissionConnect, now, now).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("查詢常設連線帳號範圍失敗: %w", err)
+	}
+	return rows, nil
+}
+
 // approverScopeActorCondition 審核方命中條件：
 // 個人直配 OR 屬於審核方群組（群組即資格，成員異動即時反映）。
 // 佔位符：user_id, user_id

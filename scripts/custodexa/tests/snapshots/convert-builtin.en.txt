@@ -1,0 +1,10 @@
+
+.env will change (rewritten in step 9; no other setting is touched)
+  - remove   COMPOSE_FILE=current/compose.yml
+  + add      the managed block at the end of the file (one marker
+             line before and after):
+             COMPOSE_FILE=current/compose.yml
+             COMPOSE_PROFILES=bundled-db,builtin-tls
+  From 9.9.9 on, the form of the deployment comes from two lines:
+  EXTERNAL_DB_HOST (database) and TLS_MODE (web entry). The script
+  maintains the managed block; do not edit it by hand.

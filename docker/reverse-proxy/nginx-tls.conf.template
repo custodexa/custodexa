@@ -1,5 +1,5 @@
 # Custodexa 對外 TLS termination 反向代理範本（nginx）
-# 對應 openspec/specs/deployment-hardening 的 external-ingress TLS 契約。
+# 對應 openspec/specs/deployment-hardening 中外部入口形態（`TLS_MODE=external`）的 TLS 契約。
 #
 # 本檔由 nginx 映像啟動時以 envsubst 展開：`${TLS_DOMAIN}` 與 `${TLS_HTTPS_PORT}`
 # 取自 .env 的同名變數，展開結果落在 /etc/nginx/conf.d/default.conf。用 docker-compose.tls.yml 啟動時

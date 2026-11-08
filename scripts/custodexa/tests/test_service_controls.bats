@@ -88,6 +88,7 @@ svc_run() { run bash "$ROOT/custodexa.sh" "$@" --lang zh-TW </dev/null; }
   ! grep -q $'\tcompose .* stop\tIMG_BACKEND=' "$FAKE_DOCKER_LOG"
   svc_run start
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  # An overlays-layout release: the base file plus the overlay file of the form (no profiles).
   grep -qF -- "-p custodexa --project-directory $ROOT -f $ROOT/current/compose.yml -f $ROOT/current/compose.external-ingress.yml up -d --remove-orphans" "$FAKE_DOCKER_LOG"
   ! grep -q ' stop backend\| start backend' "$FAKE_DOCKER_LOG"
   [ "$(cat "$ROOT/state.json")" = "$before" ]

@@ -122,7 +122,7 @@ scenario() {
   it_unpack /opt
   mkdir -p "$aud"
   cp "$IT_PKI/test/ca.crt" "$aud/ca.crt"
-  ex_preset "$root" "COMPOSE_FILE=current/compose.yml:current/compose.external-database.yml" \
+  ex_preset "$root" \
     "EXTERNAL_DB_HOST=$(ex_addr)" "EXTERNAL_DB_PORT=$DX_SRC_PORT" "DB_NAME=$EX_DB" "DB_USER=$EX_USER" \
     "DB_PASSWORD=$EX_PASS" DB_SSLMODE=verify-full "PGSSLROOTCERT=$DX_AUD_CTR/ca.crt" KEK_PROVIDER=env
   it_cx "$root" install --images "$(it_bundle_file)" >/dev/null

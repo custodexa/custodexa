@@ -51,7 +51,7 @@
 
 ### Requirement: 以備份當時的版本還原且引擎不舊於資料
 
-要裝的版本 SHALL 是備份清單的 `product.version`；執行還原的管理腳本版本 SHALL NOT 低於它，否則拒絕。該版本的發行版不在本機時，腳本 SHALL 以 `--package` 指定的安裝包或下載同版附檔取得，校驗和 SHALL 通過，安裝包內的發行清單 SHALL 與備份內的發行清單逐位元組相同。該版本沒有發行附檔時 SHALL 明確拒絕，SHALL NOT 改裝其他版本。以上 SHALL 在停止服務前完成。預覽 SHALL 分別列出備份檔內部完整性、安裝包校驗和、發行者簽章的結果。還原 SHALL NOT 套用升級的版本方向規則；同機還原後版本與目前不同時預覽 SHALL 寫明版本變化。
+要裝的版本 SHALL 是備份清單的 `product.version`；執行還原的管理腳本版本 SHALL NOT 低於它，否則拒絕。該版本的發行版不在本機時，腳本 SHALL 以 `--package` 指定的安裝包或下載同版附檔取得，校驗和 SHALL 通過，安裝包內的發行清單 SHALL 與備份內的發行清單逐位元組相同。該版本沒有發行附檔時 SHALL 明確拒絕，SHALL NOT 改裝其他版本。內建資料庫形態的備份，清單的 `db.server_major` SHALL 等於該版本發行清單記載的內建資料庫大版本（沒有記載的舊版依其 postgres 映像的主版本），不等即判為不一致並拒絕；匯入 SHALL 使用該版本的 postgres 映像，並建立在該版本記載的資料目錄。目前部署的資料目錄與該版本不同時，兩者 SHALL 都依安全備份前的規則改名保留，SHALL NOT 刪除。以上檢查 SHALL 在停止服務前完成。預覽 SHALL 分別列出備份檔內部完整性、安裝包校驗和、發行者簽章的結果。還原 SHALL NOT 套用升級的版本方向規則；同機還原後版本或內建資料庫大版本與目前不同時預覽 SHALL 寫明版本變化。
 
 #### Scenario: 備份版本沒有發行附檔
 - **WHEN** 備份清單的版本是沒有發行附檔的版本，且未帶 `--package`
@@ -64,6 +64,14 @@
 #### Scenario: 安裝包的發行清單與備份不同
 - **WHEN** `--package` 指定的安裝包校驗和正確，但其中的 `MANIFEST.json` 與備份內的 `release-MANIFEST.json` 不同
 - **THEN** 腳本拒絕，部署沒有任何變更
+
+#### Scenario: 在 1.23 主機還原 1.22 的備份
+- **WHEN** 內建資料庫已轉為 18 的 1.23.0 部署，以 1.23.0 的管理腳本還原 1.22.0（`db.server_major` 為 16）的備份
+- **THEN** 預覽寫明部署回到 1.22.0 與 PostgreSQL 16；還原以 1.22.0 的 postgres 在 `postgres/` 建立新叢集，原本的 `postgresql/` 被改名保留；建立新叢集時 `postgres/` 尚無版本檔也不被啟動前檢查擋下（deployment-upgrade「資料目錄改名的中斷恢復」的還原初始化例外），匯入後啟動服務前核對 `postgres/` 版本檔為 16
+
+#### Scenario: 清單的資料庫大版本與版本不符
+- **WHEN** 內建資料庫形態備份的 `product.version` 為 1.23.0，但 `db.server_major` 為 16
+- **THEN** 腳本在停止服務前拒絕並說明清單不一致，部署沒有任何變更
 
 ### Requirement: 還原式安裝不產生新密鑰也不初始化空庫
 

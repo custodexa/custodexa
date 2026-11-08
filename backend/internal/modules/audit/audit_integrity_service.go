@@ -290,6 +290,14 @@ func (s *AuditIntegrityService) VerifyIDRange(db *gorm.DB, idFrom, idTo uint) (*
 			l := &batch[i]
 			lastID = l.ID
 			report.Checked++
+			if l.DeletedAt != nil {
+				// 操作日誌不具軟刪語意：此欄非空一律計為異常，不論 HMAC 是否仍相符
+				report.Mismatched++
+				if len(report.MismatchedIDs) < integrityMismatchIDCap {
+					report.MismatchedIDs = append(report.MismatchedIDs, l.ID)
+				}
+				continue
+			}
 			if l.IntegrityHMAC == "" && l.ID <= s.baselineMaxID {
 				report.Legacy++
 				continue
@@ -326,6 +334,14 @@ func (s *AuditIntegrityService) Verify(db *gorm.DB, from, to time.Time) (*Integr
 			l := &batch[i]
 			lastID = l.ID
 			report.Checked++
+			if l.DeletedAt != nil {
+				// 操作日誌不具軟刪語意：此欄非空一律計為異常，不論 HMAC 是否仍相符
+				report.Mismatched++
+				if len(report.MismatchedIDs) < integrityMismatchIDCap {
+					report.MismatchedIDs = append(report.MismatchedIDs, l.ID)
+				}
+				continue
+			}
 			// 空 HMAC：基準前（id 不大於基準 max_log_id）=歷史列（誠實獨立
 			// 計數）；基準後=可疑——上線後所有寫入路徑必經 BeforeCreate
 			// 蓋章，空值即異常。判 id 不判 created_at：新插列必拿更大的

@@ -29,6 +29,10 @@
 . "${BASH_SOURCE[0]%/*}/backup_ref.sh"
 # shellcheck source=lib/portable.sh
 . "${BASH_SOURCE[0]%/*}/portable.sh"
+# shellcheck source=lib/pgconvert.sh
+. "${BASH_SOURCE[0]%/*}/pgconvert.sh"
+# shellcheck source=lib/pgresume.sh
+. "${BASH_SOURCE[0]%/*}/pgresume.sh"
 
 CX_UP_PRE_BACKEND=""     # running | stopped <time> | absent
 CX_UP_PRE_HEALTH_VER=""  # the version /health reported, when it answered
@@ -47,8 +51,8 @@ CX_UP_OWN_ONLY=0 # the script cannot back up the external database this time (CX
 # and to back up again.
 CX_UP_RERUN=0
 cx_up_pre_unfinished() {
-  local key prefix step
-  CX_UP_RERUN=0
+  local key prefix step rc
+  CX_UP_RERUN=0 CX_UP_RESUME=none
   for key in "${CX_STATE_KEYS[@]+"${CX_STATE_KEYS[@]}"}"; do
     [[ $key == *.result ]] || continue
     prefix=${key%.result}
@@ -56,7 +60,8 @@ cx_up_pre_unfinished() {
     # An upgrade that failed after the backup changed the deployment: the same as interrupted,
     # until a restore that finished settled it (lib/run.sh).
     if [ "$key" = last_upgrade.result ] && [ "${CX_STATE[$key]}" = failed ] && [[ $step =~ ^[0-9]+$ ]] \
-      && [ "$step" -ge 8 ] && [ "${CX_STATE[last_upgrade.settled_by]:-}" != restore ]; then
+      && { [ "$step" -ge 9 ] || { [ "$step" = 8 ] && [ "${CX_STATE[last_upgrade.db_convert.result]:-}" != failed ]; }; } \
+      && [ "${CX_STATE[last_upgrade.settled_by]:-}" != restore ]; then
       cx_line FAIL "$(cx_msg up_failed_at "$step")"
       cx_up_recovery_hint "$prefix" "$step"
       printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
@@ -65,6 +70,14 @@ cx_up_pre_unfinished() {
     [ "${CX_STATE[$key]}" = in_progress ] || continue
     # An interrupted backup: below, with a backup that was interrupted earlier.
     [ "$prefix" != last_backup ] || continue
+    # Cut short in the database conversion: judged on the proof of an unbroken stop (lib/pgresume.sh).
+    if [ "$prefix" = last_upgrade ] && [ "$step" = 8 ]; then
+      rc=0
+      cx_pgr_judge || rc=$?
+      [ "$rc" = 0 ] || return "$rc"
+      CX_UP_RERUN=1
+      continue
+    fi
     if [ "$prefix" = last_upgrade ] && cx_up_rerun_ok "$step"; then
       cx_line WARN "$(cx_msg run_interrupted upgrade "$step")"
       if [ "$step" -le 4 ]; then
@@ -116,7 +129,7 @@ cx_up_recovery_hint() {
     cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade $CX_UP_TARGET"
   else
     cx_up_par "$(cx_msg up_hint_switched)"
-    cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
+    cx_cmd "sudo docker logs --tail 50 custodexa-backend"
     if [ -n "$(cx_state_get last_upgrade.backup)" ]; then
       cx_up_par "$(cx_msg up_hint_backup "$CX_ROOT/$(cx_state_get last_upgrade.backup)")"
     elif [ -n "$(cx_state_get last_backup.file)" ]; then
@@ -171,6 +184,18 @@ cx_up_pre_old_images() {
 # disk; counting them here only ever asks for more. With --backup-ref the script makes no backup
 # (cx_up_backup), so only the new images are counted and nothing is estimated, whatever the
 # database. An external database the script cannot reach this time has nothing to estimate.
+cx_up_pre_space_backup() {
+  # The backup's own estimate, without comparing it: lib/pgconvert.sh groups every write by file system.
+  cx_br_flags_given && return 0
+  cx_db_ready || return 0
+  if ! cx_bk_estimate; then
+    cx_line FAIL "$(cx_msg bk_db_unreachable)"
+    printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
+    return "$CX_EXIT_FAILED"
+  fi
+  cx_pb_space 1
+}
+
 cx_up_pre_space() {
   local images free
   if cx_br_flags_given; then
@@ -363,6 +388,7 @@ cx_up_preflight() {
 cx_up_preflight_checks() {
   local rc=0
   # cx_up_pre_unfinished runs first of all, in cx_up_run.
+  cx_form_guard upgrade || return "$CX_EXIT_REFUSED"
   CX_OVERLAYS=$(cx_state_get current.overlays)
   case " $CX_OVERLAYS " in *" external-database "*) CX_UP_PRE_EXTERNAL_DB=1 ;; esac
   cx_bk_vars
@@ -381,7 +407,18 @@ cx_up_preflight_checks() {
     fi
   fi
   cx_up_pre_old_images
-  cx_up_pre_space || rc=$?
+  # The bundled database changes major in this upgrade: what cannot be converted stops the run first,
+  # and the space counts every place the conversion writes to (lib/pgconvert.sh).
+  cx_pgc_plan
+  cx_pgc_precheck || return "$?"
+  if [ "$CX_PGC_ACTIVE" = 1 ]; then
+    if cx_br_flags_given || cx_db_ready; then
+      cx_up_pre_space_backup || rc=$?
+      [ "$rc" -ne 0 ] || cx_pgc_space || rc=$?
+    fi
+  else
+    cx_up_pre_space || rc=$?
+  fi
   [ "$rc" -eq 0 ] || return "$rc"
   cx_up_pre_counts
 }
@@ -408,18 +445,30 @@ cx_up_preview_body() {
     printf '%s\n' "$(cx_msg up_will_2 "$(cx_size_human "$CX_BK_NEED")" "$(cx_size_human "$CX_BK_FREE")")"
     m=$(cx_bk_minutes)
   fi
-  printf '%s\n%s\n' "$(cx_msg up_will_3 "$CX_UP_TARGET")" "$(cx_msg up_will_4)"
+  if [ "$CX_PGC_ACTIVE" = 1 ]; then
+    # The conversion is item 3 of the list; the rest follow it.
+    printf '%s\n%s\n%s\n' "$(cx_msg up_will_conv "$CX_PGC_FROM" "$CX_PGC_TO")" \
+      "$(cx_msg up_will_conv_switch "$CX_UP_TARGET")" "$(cx_msg up_will_conv_check)"
+  else
+    printf '%s\n%s\n' "$(cx_msg up_will_3 "$CX_UP_TARGET")" "$(cx_msg up_will_4)"
+  fi
+  cx_pgc_preview
+  [ "$CX_PGC_ACTIVE" != 1 ] || m=$((m + CX_PGC_MINUTES))
   # The backup (taking the data, then packing and reading back the file), then switching,
   # starting and checking (a few minutes); up to twice that.
   low=$((m + 3)) high=$(((m + 3) * 2))
   printf '\n%s\n' "$(cx_msg up_know)"
+  local conv=""
+  [ "$CX_PGC_ACTIVE" != 1 ] || conv=_conv
   if [ -n "$CX_UP_PRE_ACTIVE" ]; then
-    printf '%s\n' "$(cx_msg up_know_pause "$low" "$high" "$CX_UP_PRE_ACTIVE")"
+    printf '%s\n' "$(cx_msg "up_know_pause$conv" "$low" "$high" "$CX_UP_PRE_ACTIVE")"
   else
-    printf '%s\n' "$(cx_msg up_know_pause_unknown "$low" "$high")"
+    printf '%s\n' "$(cx_msg "up_know_pause_unknown$conv" "$low" "$high")"
   fi
   [ "$CX_UP_PRE_BACKEND" = running ] || printf '%s\n' "$(cx_msg up_know_backend_down)"
-  case $CX_UP_PRE_PENDING in
+  # A conversion brings the data to the new database whole, so the count of schema changes (and the
+  # advice to restore the backup to go back) does not apply.
+  [ "$CX_PGC_ACTIVE" = 1 ] || case $CX_UP_PRE_PENDING in
     "") ! cx_db_ready || printf '%s\n' "$(cx_msg up_know_mig_unknown)" ;;
     0) printf '%s\n' "$(cx_msg up_know_mig_none)" ;;
     1) printf '%s\n' "$(cx_msg up_know_mig_one)" ;;
@@ -432,5 +481,6 @@ cx_up_preview_body() {
   [ "$CX_TRUST_SIG $CX_TRUST_PROV" != "ok ok" ] || printf '%s\n' "$(cx_msg up_know_verified)"
   [ "$CX_UP_PRE_OLD_MISSING" = 0 ] || printf '%s\n' "$(cx_msg up_know_old_images)"
   printf '%s\n' "$(cx_msg up_know_tmux)"
+  cx_up_conv_preview
   [ "$CX_UP_OWN_ONLY" != 1 ] || cx_up_ext_own_only
 }

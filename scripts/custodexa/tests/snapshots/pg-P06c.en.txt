@@ -1,0 +1,14 @@
+[FAIL] The last upgrade was interrupted at step 8, "convert the database"; it
+       has to be finished first. Nothing was changed.
+  The version is still 1.13.0; the old data /opt/custodexa/data/postgres is complete and was
+  not changed.
+  Run the upgrade again to continue (the half-converted data is moved to
+  /opt/custodexa/data/postgresql.partial-convert-<time> first, not deleted):
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+  Where the run continues depends on the facts: when it can be confirmed
+  that the application did not start again after the stop, the backup is
+  kept and the run starts again at step 8; otherwise the whole
+  upgrade runs again, with a new stop and a new backup. The upgrade command
+  says which one before it does anything.
+  To see the state of this deployment:
+    sudo /opt/custodexa/custodexa.sh status

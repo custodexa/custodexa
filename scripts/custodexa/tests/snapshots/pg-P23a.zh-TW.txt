@@ -1,0 +1,15 @@
+[FAIL] 資料目錄的改名上次沒有做完，現在無法判斷哪一份才是正確的資料。
+       沒有啟動任何資料庫服務，也沒有改動任何目錄。
+  上次的操作   回到上一版：把 /opt/custodexa/data/postgresql
+               改名保留為 /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+  兩個目錄都在（版本檔 = 該目錄下 PG_VERSION 的內容）
+    /opt/custodexa/data/postgresql
+        版本檔：18    17.9 GB
+    /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+        版本檔：18    17.4 GB
+  腳本不會猜哪一份才是對的。選錯就啟動，可能在空目錄初始化新資料庫，
+  或讓服務接到不完整的資料。
+  請人工確認兩個目錄的內容。確認之前不要手動改名、移動或刪除。
+  步驟見「升級 SOP」的「資料目錄改名中斷時」一節。
+  要放棄這個狀態、回到升級當時的資料，可以用升級前的備份還原：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

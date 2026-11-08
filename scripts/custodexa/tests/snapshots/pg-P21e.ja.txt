@@ -1,0 +1,21 @@
+
+前回の変換の失敗で残ったデータ（削除して空きを増やせます）
+  前回のアップグレードが第 8 ステップで失敗したときに残った
+  途中のデータです。診断のためだけに残してあり、
+  システムが使ったことはありません：
+    /opt/custodexa/data/postgresql.failed-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+    /opt/custodexa/data/postgresql.partial-convert-20261120-021502
+        PostgreSQL 18     0.0 KB
+  削除後
+    - 元に戻せません
+    - 動作中の 1.13.0 とそのデータ
+      /opt/custodexa/data/postgres には影響しません
+    - アップグレードに必要な空き容量を計算し直します
+
+この 2 個のフォルダを削除してから空きを確認しますか？[y/N] y
+
+[ OK ] /opt/custodexa/data/postgresql.failed-convert-20261120-021502 を削除しました（0.0 KB 解放）
+[ OK ] /opt/custodexa/data/postgresql.partial-convert-20261120-021502 を削除しました（0.0 KB 解放）
+[ OK ] 空き容量の再計算：/opt/custodexa/data/postgresql に 3.0 GB 必要、空き 858 GB
+       /opt/custodexa/data/postgres は変更していません

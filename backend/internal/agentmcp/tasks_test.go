@@ -76,6 +76,11 @@ func TestToolRequestAccess(t *testing.T) {
 			in := map[string]any{"items": []any{map[string]any{"asset_id": f.asset, "accounts": []string{"testuser"}}}, "reason": "maintenance", "duration_minutes": 10}
 			var before int64
 			f.db.Model(&model.AccessRequest{}).Count(&before)
+			if mode == "open_without_item" || mode == "missing_accounts" {
+				// 申請資格：agent 對該資產持常設 connect（帳號範圍 testuser）；fixture 預設只有臨時授權
+				agent, asset := f.agent, f.asset
+				require.NoError(t, f.db.Create(&model.AssetAuthorization{UserID: &agent, AssetID: &asset, Permission: model.PermissionConnect, GrantedBy: agent, Accounts: model.AccountScope{"testuser"}}).Error)
+			}
 			switch mode {
 			case "open_without_item":
 				require.NoError(t, f.db.Model(&model.AccessRequest{}).Where("id=?", f.task).Update("closed_at", time.Now()).Error)

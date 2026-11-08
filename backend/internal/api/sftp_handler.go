@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
@@ -117,7 +118,7 @@ func (h *SFTPHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 // 解析失敗時回**全禁**（fail-close）而非 500：呼叫端是 UI，拿到全禁只會多顯示
 // 不可用與原因，拿到 500 則會退回「全部當可用」的預設呈現。
 func (h *SFTPHandler) TransferCapabilities(c *gin.Context) {
-	userID, assetID, _, ok := h.requireConnectAsset(c)
+	userID, assetID, _, ok := h.requireConnectAsset(c, model.ActionFileList)
 	if !ok {
 		return
 	}
@@ -158,7 +159,7 @@ func (h *SFTPHandler) TransferCapabilities(c *gin.Context) {
 // 需要同一組資產層判定，但**不需要**其後的 SSH 連線帳號解析（那段以
 // `model.ProtocolSSH` 判定帳號授權，對 RDP／VNC 資產不適用）。抽出而非複製——
 // 安全前置條件複製一份即是日後兩邊分岔的起點。
-func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, *authz.Principal, bool) {
+func (h *SFTPHandler) requireConnectAsset(c *gin.Context, action model.AuditAction) (uint, uint, *authz.Principal, bool) {
 	assetID64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil || assetID64 == 0 {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "asset"})
@@ -177,10 +178,19 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, *authz.Pr
 	// 不以 DB 現查角色覆蓋，其後所有 admin 短路（授權判定、帳號範圍全量）都會憑
 	// JWT 角色快照放行——降權的前 admin 在 token 效期內仍可存取任意帳號的檔案面。
 	// 順帶完成 AUTH-1 可連線複查（停用／鎖定），與連線面同一事實源
-	principal, connErr := h.authService.CurrentConnectPrincipal(userID)
+	principal, allowedCIDRs, connErr := h.authService.CurrentConnectPrincipalAndSourcePolicy(userID)
 	if connErr != nil {
 		status, code := sftpConnectionAuthCode(connErr)
 		apierror.Respond(c, status, code, nil)
+		return 0, 0, nil, false
+	}
+
+	// 來源網段限制：依使用者本人的清單判定，不依資產，故放在授權判定之前，
+	// 對存在與不存在的資產回應相同、不洩漏資產存在性。與連線簽發同一個判定函式與拒絕碼
+	if out, cause := connectgate.SourceOutcome(allowedCIDRs, sourceip.Of(c)); out != nil {
+		h.auditSourceDenied(c, userID, assetID, action, cause)
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthSourceNotAllowed,
+			map[string]any{"reason": sourceip.ReasonSourceNotAllowed})
 		return 0, 0, nil, false
 	}
 
@@ -248,8 +258,8 @@ func sftpPrincipalContext(c *gin.Context, p *authz.Principal) context.Context {
 
 // requireConnectPermission 資產層前置閘（requireConnectAsset）＋SSH 連線帳號解析；
 // 失敗時已寫入回應。回傳 (userID, assetID, accountID, ok)，accountID=0＝預設帳號
-func (h *SFTPHandler) requireConnectPermission(c *gin.Context) (uint, uint, uint, bool) {
-	userID, assetID, principal, ok := h.requireConnectAsset(c)
+func (h *SFTPHandler) requireConnectPermission(c *gin.Context, action model.AuditAction) (uint, uint, uint, bool) {
+	userID, assetID, principal, ok := h.requireConnectAsset(c, action)
 	if !ok {
 		return 0, 0, 0, false
 	}
@@ -394,6 +404,30 @@ func (h *SFTPHandler) auditDenied(c *gin.Context, userID, assetID uint, action m
 	})
 }
 
+// auditSourceDenied 記錄來源網段限制拒絕的檔案請求（status=denied）。
+// 位址只進審計，不進回應；cause 為政策不可用的成因類別（單純不在清單內時為空）
+func (h *SFTPHandler) auditSourceDenied(c *gin.Context, userID, assetID uint, action model.AuditAction, cause string) {
+	if h.auditService == nil {
+		return
+	}
+	username, _ := middleware.GetCurrentUsername(c)
+	aid := assetID
+	h.auditService.Log(&audit.AuditLogEntry{
+		UserID:      userID,
+		Username:    username,
+		Action:      action,
+		Resource:    model.ResourceFile,
+		ResourceID:  &aid,
+		AssetID:     &aid,
+		Status:      model.StatusDenied,
+		Method:      c.Request.Method,
+		Path:        c.FullPath(),
+		ClientIP:    sourceip.Of(c),
+		StatusCode:  http.StatusForbidden,
+		RequestBody: fmt.Sprintf(`{"reason":"source_not_allowed","cause":%q}`, cause),
+	})
+}
+
 // fileOpContext 檔案操作的連線脈絡：使用者、可選的會話主鍵（自會話分頁進入時的 session_id）
 // 與來源位址，供主機金鑰不符的審計與告警引用。session_id 的授權複查在 requireConnectPermission。
 func (h *SFTPHandler) fileOpContext(c *gin.Context, userID uint) session.FileOpContext {
@@ -431,7 +465,7 @@ func (h *SFTPHandler) audit(c *gin.Context, userID, assetID uint, action model.A
 
 // List 目錄列表
 func (h *SFTPHandler) List(c *gin.Context) {
-	userID, assetID, accountID, ok := h.requireConnectPermission(c)
+	userID, assetID, accountID, ok := h.requireConnectPermission(c, model.ActionFileList)
 	if !ok {
 		return
 	}
@@ -454,7 +488,7 @@ func (h *SFTPHandler) List(c *gin.Context) {
 
 // Download 串流下載
 func (h *SFTPHandler) Download(c *gin.Context) {
-	userID, assetID, accountID, ok := h.requireConnectPermission(c)
+	userID, assetID, accountID, ok := h.requireConnectPermission(c, model.ActionFileDownload)
 	if !ok {
 		return
 	}
@@ -488,7 +522,7 @@ func (h *SFTPHandler) Download(c *gin.Context) {
 
 // Upload 串流上傳（multipart: path + file）
 func (h *SFTPHandler) Upload(c *gin.Context) {
-	userID, assetID, accountID, ok := h.requireConnectPermission(c)
+	userID, assetID, accountID, ok := h.requireConnectPermission(c, model.ActionFileUpload)
 	if !ok {
 		return
 	}
@@ -525,7 +559,7 @@ func (h *SFTPHandler) Upload(c *gin.Context) {
 
 // Mkdir 建立目錄
 func (h *SFTPHandler) Mkdir(c *gin.Context) {
-	userID, assetID, accountID, ok := h.requireConnectPermission(c)
+	userID, assetID, accountID, ok := h.requireConnectPermission(c, model.ActionFileMkdir)
 	if !ok {
 		return
 	}
@@ -560,7 +594,7 @@ func (h *SFTPHandler) Mkdir(c *gin.Context) {
 
 // Delete 刪除檔案或空目錄
 func (h *SFTPHandler) Delete(c *gin.Context) {
-	userID, assetID, accountID, ok := h.requireConnectPermission(c)
+	userID, assetID, accountID, ok := h.requireConnectPermission(c, model.ActionFileDelete)
 	if !ok {
 		return
 	}

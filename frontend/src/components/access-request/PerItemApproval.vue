@@ -359,7 +359,9 @@ async function submit() {
       }
     } catch (e) {
       if (!disposed) {
-        results.value[item.id] = { ok: false, text: resolveApiError(e?.response?.data, e?.response?.status) }
+        // 申請人（或執行者）已不持有常設連線權：核准被擋、仍可拒絕，說明以審核人的角度寫
+        const connectRequired = e?.response?.data?.code === 'RULE_ACCESS_REQUEST_CONNECT_REQUIRED'
+        results.value[item.id] = { ok: false, text: connectRequired ? t('itemReview.connectRequired') : resolveApiError(e?.response?.data, e?.response?.status) }
         if (e?.response?.data?.code === 'RULE_ACCESS_REQUEST_NOT_ELIGIBLE_APPROVER') f.blocked = true
       }
     }

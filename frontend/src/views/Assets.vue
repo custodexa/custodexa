@@ -1815,7 +1815,13 @@ const connectTooltipContent = (asset) => {
   if (asset.active === false) {
     return t('assets.disabledTooltip')
   }
-  return canConnect(asset) ? t('assets.connectTooltip') : t('assets.noPermTooltip')
+  if (canConnect(asset)) {
+    return t('assets.connectTooltip')
+  }
+  // 只有檢視權：說明這台既不能連線也不能申請（申請入口由伺服端狀態決定，這裡只補提示）
+  return asset.permission === 'view' && !asset.access_state
+    ? t('assets.viewOnlyTooltip')
+    : t('assets.noPermTooltip')
 }
 
 // 重置表單
@@ -2498,13 +2504,20 @@ const submitApply = async () => {
     applyVisible.value = false
     if (created.status === 'approved') {
       // 填理由段：自動核准，直接開工作區連線（重跑標準連線流程）
-      ElMessage.success(t('assets.applyApproved'))
+      const granted = (created.items?.[0]?.accounts || []).filter((a) => a && a !== '@ALL')
+      ElMessage.success(
+        granted.length
+          ? t('assets.applyApprovedWithAccounts', { accounts: granted.join(', ') })
+          : t('assets.applyApproved'),
+      )
       window.open(`/workspace?asset=${applyTarget.value.id}`, '_blank')
     } else {
       ElMessage.success(t('assets.applySubmitted'))
     }
   } catch (error) {
     const data = error?.response?.data
+    // 申請人在送出前已失去連線權（頁面沒重新整理）：就近在對話框內說明
+    if (data?.code === 'RULE_ACCESS_REQUEST_CONNECT_REQUIRED') applyError.value = resolveApiError(data, error.response.status)
     if (data?.code === 'VALIDATION_ACCOUNT_NOT_ON_ASSET' && data.details?.item_index === 0 && data.details?.asset_id === applyTarget.value.id) applyError.value = resolveApiError(data, error.response.status)
     // Existing request inputs remain intact on failure.
     console.error('送出申請失敗:', error)
@@ -2680,6 +2693,8 @@ async function openApplyFromQuery() {
       ElMessage.info(t('assets.applyLinkPending', { name: row.name }))
     } else if (row.access_state === 'connectable') {
       ElMessage.info(t('assets.applyLinkConnectable', { name: row.name }))
+    } else if (row.permission === 'view' && !row.access_state) {
+      ElMessage.warning(t('assets.applyLinkViewOnly', { name: row.name }))
     } else {
       ElMessage.info(t('assets.applyLinkUnavailable', { name: row.name }))
     }

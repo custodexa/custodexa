@@ -1,0 +1,9 @@
+[FAIL] Old database folders cannot be removed now. Nothing was changed.
+  [ OK ] the current database is PostgreSQL 18 and works
+  [FAIL] the last upgrade did not finish (stopped at step 11/13)
+  [FAIL] the new version has not been started yet
+  [ OK ] no rollback or restore is in progress
+  /opt/custodexa/data/postgres is the only data that can go back to 1.22.0; keep it.
+  Finish the upgrade (or decide to go back), then try again.
+  Check the status:
+    sudo /opt/custodexa/custodexa.sh status

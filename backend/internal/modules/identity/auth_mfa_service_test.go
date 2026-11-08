@@ -74,7 +74,7 @@ func TestGenerateMFASetup_Success(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	resp, err := svc.GenerateMFASetup(1)
+	resp, err := svc.GenerateMFASetup(1, "")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -88,7 +88,7 @@ func TestGenerateMFASetup_Success(t *testing.T) {
 func TestGenerateMFASetup_NoCrypto(t *testing.T) {
 	svc := NewAuthService("secret", 15*time.Minute)
 
-	resp, err := svc.GenerateMFASetup(1)
+	resp, err := svc.GenerateMFASetup(1, "")
 
 	assert.ErrorIs(t, err, ErrMFACryptoUnavailable)
 	assert.Nil(t, resp)

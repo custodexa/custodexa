@@ -362,7 +362,7 @@ GNU Lesser General Public License（LGPL）授權的元件。
 （例如隨離線包交付），本節與 3.4 的義務即適用**。表中列出它的版本與套件數，
 是為了讓後一種情形的對應源碼可以指名。
 
-`postgres:16.15-alpine3.24` 由使用者自 Docker Hub 直接拉取，不經本專案重新散布，
+`postgres:18.6-alpine3.24` 由使用者自 Docker Hub 直接拉取，不經本專案重新散布，
 故不在本節義務範圍內（見 `docker-compose.yml` 的 `postgres` 服務：只有 `image:`，沒有 `build:`）。
 
 自 1.13.0 起，本專案發佈的每一版 backend／frontend 映像另附 SBOM attestation（SPDX 格式），

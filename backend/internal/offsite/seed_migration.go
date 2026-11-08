@@ -187,7 +187,8 @@ func RunOffsiteEnvSeed(db *gorm.DB, codec crypto.ColumnCodec, journal CustodyJou
 		}
 		settings.ServiceAccountJSON = string(content)
 	}
-	norm, err := validateAndNormalizeOffsiteSettings(settings)
+	// seed 只在無任何世代時執行：既存現行世代狀態為零值
+	norm, err := validateAndNormalizeOffsiteSettings(settings, existingCredentialState{})
 	if err != nil {
 		log.Printf("[OffsiteSeed] env 的離機儲存設定有矛盾（%s）：不寫入設定、不寫標記，"+
 			"下次啟動重試；離機設定亦可直接於管理介面完成", ReasonOf(err))

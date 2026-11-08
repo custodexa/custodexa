@@ -1,0 +1,9 @@
+[FAIL] 資料目錄不完整，不會啟動資料庫。沒有做任何變更。
+  /opt/custodexa/data/postgresql/18/docker 不存在，或裡面沒有版本檔 PG_VERSION。
+  這時若直接啟動，PostgreSQL 18 會在空目錄初始化一個沒有任何資料的
+  新資料庫。
+  請先找回資料（例如從 /opt/custodexa/data/postgresql.* 的保留目錄確認），
+  或用升級前的備份還原：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar
+  查看這個部署的狀態：
+    sudo /opt/custodexa/custodexa.sh status

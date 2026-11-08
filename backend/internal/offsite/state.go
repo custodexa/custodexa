@@ -97,4 +97,8 @@ const (
 	// ErrCodeCredentialsUnavailable 憑證解密失敗（金鑰事故）：三態的 failed，
 	// **不得併吞為未設定**
 	ErrCodeCredentialsUnavailable = "offsite.credentials_unavailable"
+	// ErrCodeCredentialConfigInvalid 現行世代的憑證設定不符合建構要求
+	// （GCS 憑證不是服務帳戶 JSON，或沒有顯式憑證而端點不是留空／Google 官方網域）：
+	// 重新填入服務帳戶 JSON 或把端點改回官方網域後即可恢復上傳
+	ErrCodeCredentialConfigInvalid = "offsite.credential_config_invalid"
 )

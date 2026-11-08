@@ -40,6 +40,38 @@ cx_rb_endpoints() {
     fi
   done
   cx_state_set last_rollback.preswitch "$CX_RB_PRESWITCH"
+  # Across the database major (decided by the judgment before this record began): where the folders
+  # are and where the new one is kept; the rename's destination is fixed here, never made again.
+  cx_state_set last_rollback.db_crossed "$CX_RB_CROSSED"
+  [ "$CX_RB_CROSSED" = 1 ] || return 0
+  cx_state_set last_rollback.db_old_major "$CX_RB_OLD_MAJOR"
+  cx_state_set last_rollback.db_new_major "$CX_RB_NEW_MAJOR"
+  cx_state_set last_rollback.db_old_path "$CX_RB_OLD_PATH"
+  cx_state_set last_rollback.db_new_path "$CX_RB_NEW_PATH"
+  cx_state_set last_rollback.db_aside "$CX_RB_ASIDE"
+}
+
+# cx_rb_env_plan <target version>: the managed block of .env follows the layout of the release that
+# becomes current; sets CX_RB_ENV_LAYOUT and succeeds when that changes .env. Not while .env
+# is still the one from before an unfinished conversion of the upgrade: it is already right for
+# the version before, so nothing is written, not even the block.
+CX_RB_ENV_LAYOUT=""
+cx_rb_env_plan() {
+  local tmp rc=0
+  CX_RB_ENV_LAYOUT=$(cx_form_layout "$CX_ROOT/releases/$1")
+  [ -f "$CX_ROOT/.env" ] || return 1
+  ! cx_fg_pending || return 1
+  tmp=$(mktemp) || return 1
+  cx_form_managed_rewrite "$CX_ROOT/.env" "$CX_RB_ENV_LAYOUT" "${CX_OVERLAYS:-}" >"$tmp" || rc=1
+  if [ "$rc" = 0 ] && cmp -s "$tmp" "$CX_ROOT/.env"; then rc=1; fi
+  rm -f "$tmp"
+  return "$rc"
+}
+
+# cx_rb_env_sync <target version>: write the block (atomically); every other line stays as it is.
+cx_rb_env_sync() {
+  cx_rb_env_plan "$1" || return 0
+  cx_env_sync_managed "$CX_ROOT/.env" "$CX_RB_ENV_LAYOUT" "${CX_OVERLAYS:-}" || cx_log WARN ".env managed block not written"
 }
 
 cx_rb_stop_apps() {
@@ -63,6 +95,7 @@ cx_rb_switch() {
   if [ "$(cx_state_get current.version)" = "$target" ] &&
     [ "$(readlink "$CX_ROOT/current")" = "releases/$target" ]; then
     cx_rb_link "$CX_ROOT/custodexa.sh" current/custodexa.sh
+    cx_rb_env_sync "$target"
     return
   fi
   if [ "$CX_RB_DIRECTION" = rollback ]; then
@@ -93,6 +126,9 @@ cx_rb_switch() {
     cx_log_run cx_compose stop postgres >/dev/null 2>&1 || return 1
     running=$(cx_svc_running) || return 1
     [ -z "$running" ] || return 1
+    # The database is down: the folder of the other major is put aside (or back) before any link or
+    # record changes, so a start of either version finds only its own data.
+    if cx_rb_pg_saved; then cx_rb_pg_rename || return 1; fi
   fi
   # Writing both records is one state save. The saved endpoints make retrying either
   # link operation independent of which rename succeeded before an interruption.
@@ -107,6 +143,7 @@ cx_rb_switch() {
   cx_rb_link "$CX_ROOT/current" "releases/$target" || return 1
   cx_rb_link "$CX_ROOT/custodexa.sh" current/custodexa.sh || return 1
   CX_OVERLAYS=$(cx_state_get current.overlays)
+  cx_rb_env_sync "$target"
 }
 
 cx_rb_check() {
@@ -119,11 +156,18 @@ cx_rb_check() {
     got=$(docker inspect --format '{{.Image}}' "$(cx_img_container "$name")" 2>/dev/null) || got=""
     [ "$got" = "$want" ] || CX_RB_CHECK_ERROR+="${CX_RB_CHECK_ERROR:+ }$name"
   done
+  if cx_rb_pg_saved; then cx_rb_pg_check || true; fi
   [ -z "$CX_RB_CHECK_ERROR" ]
 }
 
+# cx_rb_dur <start>: the duration of a step, for the screens of a rollback across the database
+# major (the others do not show durations); empty otherwise.
+cx_rb_dur() {
+  if cx_rb_pg_saved; then cx_duration $(($(cx_now) - $1)); fi
+}
+
 cx_rb_main() {
-  local drain rc=0 text result
+  local drain rc=0 text result t0 dur
   # Do not change the recorded step before the drain passes: a resumed attempt can have
   # switched already, and an unconfirmed drain must keep that recovery information.
   if ! drain=$(cx_dg_wait 0 service); then
@@ -137,21 +181,32 @@ cx_rb_main() {
     return "$CX_EXIT_FAILED"
   fi
   cx_rb_at 1 stop || return 1
+  t0=$(cx_now)
   if ! cx_rb_stop_apps; then cx_step_line FAIL 1/4 "$(cx_msg rb_step_stop)"; cx_rb_failed; return 1; fi
-  text=$(cx_msg rb_step_stop)
-  [ "$CX_RB_STOPPED" = 0 ] || text=$(cx_msg rb_step_stopped)
-  cx_step_line OK 1/4 "$text"
+  text=$(cx_msg rb_step_stop) dur=$(cx_rb_dur "$t0")
+  [ "$CX_RB_STOPPED" = 0 ] || { text=$(cx_msg rb_step_stopped); dur=""; }
+  cx_step_line OK 1/4 "$text" "$dur"
   cx_rb_at 2 switch || return 1
   cx_rb_switch || rc=$?
   [ "$rc" != 2 ] || { trap - INT TERM HUP; return 1; }
   text=$(cx_msg rb_step_switch "$CX_RB_TARGET")
   [ "$CX_RB_DIRECTION" != revert ] || text=$(cx_msg rb_step_revert "$CX_RB_TARGET")
+  if cx_rb_pg_saved; then
+    if [ "$CX_RB_DIRECTION" = revert ]; then
+      text=$(cx_msg pgrv_step_switch "$(cx_state_get last_rollback.db_new_major)" "$(cx_state_get last_rollback.db_new_path)")
+    else
+      text=$(cx_msg pgrb_step_switch "$(cx_state_get last_rollback.db_old_major)" \
+        "$(cx_state_get last_rollback.db_new_major)" "$CX_RB_TARGET")
+    fi
+  fi
   if [ "$rc" != 0 ]; then cx_step_line FAIL 2/4 "$text"; cx_rb_failed; return 1; fi
   cx_step_line OK 2/4 "$text"
   cx_rb_at 3 start || return 1
+  t0=$(cx_now)
   if ! cx_rb_start; then cx_step_line FAIL 3/4 "$(cx_msg rb_step_start)"; cx_rb_failed; return 1; fi
-  cx_step_line OK 3/4 "$(cx_msg rb_step_start)"
+  cx_step_line OK 3/4 "$(cx_msg rb_step_start)" "$(cx_rb_dur "$t0")"
   cx_rb_at 4 check || return 1
+  t0=$(cx_now)
   if ! cx_rb_check; then
     case $CX_RB_CHECK_ERROR in
       health) text=$(cx_msg rb_check_health "$(cx_ready_seconds)") ;;
@@ -163,7 +218,10 @@ cx_rb_main() {
   fi
   text=$(cx_msg rb_step_check "$CX_RB_TARGET")
   [ "$CX_RB_DIRECTION" != revert ] || text=$(cx_msg rb_step_check_revert "$CX_RB_TARGET")
-  cx_step_line OK 4/4 "$text"
+  if cx_rb_pg_saved && [ "$CX_RB_DIRECTION" = revert ]; then
+    text=$(cx_msg pgrv_step_check "$CX_RB_TARGET" "$(cx_state_get last_rollback.db_new_major)")
+  fi
+  cx_step_line OK 4/4 "$text" "$(cx_rb_dur "$t0")"
   result=succeeded
   if [ "$CX_RB_DIRECTION" = revert ]; then
     result=reverted

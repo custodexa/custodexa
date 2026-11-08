@@ -1,0 +1,3 @@
+[FAIL] 古いデータベースフォルダの削除は元に戻せません。今回は対話ではない実行
+       （端末なし）のため、--yes が必要です。何も変更していません。
+    sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old --yes

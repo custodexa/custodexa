@@ -1,5 +1,8 @@
 # shellcheck shell=bash
 # Shared backend readiness poll. The upgrade caller records the returned version.
+# Sourced by more than one command library: a second load must not touch the readonly settings.
+[ -z "${CX_LIB_LOADED_health:-}" ] || return 0
+CX_LIB_LOADED_health=1
 readonly CX_UP_READY_TRIES=60 CX_UP_READY_WAIT=3
 CX_UP_HEALTH_VER=""
 cx_backend_healthy_once() {

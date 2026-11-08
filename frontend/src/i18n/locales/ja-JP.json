@@ -1368,6 +1368,7 @@
     "applyConnect": "接続申請",
     "connectTooltip": "資産に接続",
     "noPermTooltip": "権限が不足しています。管理者にお問い合わせください",
+    "viewOnlyTooltip": "このホストには閲覧権限しかないため、接続も申請もできません。接続が必要な場合は管理者に接続権限の付与を依頼してください。",
     "testConnection": "接続テスト",
     "emptyTitle": "資産がありません",
     "emptyHintAdmin": "右上の「資産を追加」から最初の資産を作成してください",
@@ -1480,6 +1481,7 @@
     "applyHintReason": "「{name}」は理由の入力のみで接続できます。送信後すぐに接続が開きます。",
     "applyHintApproval": "「{name}」への接続には承認者の承認が必要です。送信後は通知をお待ちください（進捗は「マイ申請」で確認できます）。",
     "applyApproved": "承認されました。接続を開いています",
+    "applyApprovedWithAccounts": "承認されました。接続を開いています（利用可能なアカウント: {accounts}）",
     "applySubmitted": "申請を送信しました。承認後に接続できます（進捗は「マイ申請」を参照）",
     "breakGlassStarted": "緊急接続を開始しました。接続中です（事後審査が必要）",
     "pendingInfo": "「{name}」への接続申請は審査待ちです。承認されるとここが「接続」に変わります。",
@@ -1656,6 +1658,7 @@
     "applyLinkPending": "「{name}」の接続申請は審査中です。再度申請する必要はありません。",
     "applyLinkConnectable": "「{name}」はすでに接続できます。申請は不要です。",
     "applyLinkUnavailable": "「{name}」はここから接続を申請できません。",
+    "applyLinkViewOnly": "「{name}」には閲覧権限しかないため、接続申請はできません。接続が必要な場合は管理者に接続権限の付与を依頼してください。",
     "noAssetViewTitle": "あなたのロールには資産の閲覧権限がありません",
     "noAssetViewHint": "ここには資産が表示されません。プラットフォーム経由で接続する必要がある場合は、管理者に「{role}」ロールの追加を依頼してください。",
     "dbRotation": {
@@ -1797,6 +1800,21 @@
     "emptyHint": "資産管理から接続すると、ここに記録が表示されます"
   },
   "auditLogs": {
+    "uploadPhase": {
+      "label": "アップロードの段階",
+      "actionFmt": "{action}（{phase}）",
+      "startedStatus": "開始済み",
+      "tag": {
+        "started": "アップロード開始",
+        "completed": "アップロード完了",
+        "incomplete": "アップロード未完了（接続切断）"
+      },
+      "hint": {
+        "started": "アップロードが開始されたことのみを示し、ファイルが完全に届いたことを意味しません。同じストリームの「アップロード完了」記録を確認してください。",
+        "completed": "アップロードが完了しました。サイズは累計の転送量です。",
+        "incomplete": "接続が閉じられた時点でこのアップロードは終了コマンドを受け取っておらず、転送が確認できたのはサイズ欄の分のみです。リモートのファイルは不完全な可能性があります。対象ホストで確認してください。"
+      }
+    },
     "headerDesc": "システム監査ログの検索とエクスポート",
     "exportEvidence": "証拠パッケージをエクスポート",
     "tabReviews": "日次レビュー",
@@ -2444,7 +2462,10 @@
     "deleted": "削除しました",
     "accountSession": "ファイル操作は接続アカウント {username} を使用します",
     "accountDefault": "ファイル操作はこの資産の既定アカウントを使用します",
-    "identityChanged": "接続アカウントが確定したためファイル一覧を再読み込みしました。確認してから操作してください"
+    "identityChanged": "接続アカウントが確定したためファイル一覧を再読み込みしました。確認してから操作してください",
+    "sourceDeniedTitle": "ファイル機能を利用できません",
+    "sourceDeniedDesc": "現在の送信元アドレスは許可範囲外です。管理者にお問い合わせください。",
+    "sourceDeniedReload": "再読み込み"
   },
   "snippets": {
     "searchPlaceholder": "スニペット名を検索",
@@ -3133,7 +3154,16 @@
     "ldapIdentityNote": "本人性フィールドはディレクトリサービスによって管理され、読み取り専用です。",
     "externalPasswordTitle": "このアカウントは外部 ID プロバイダーが管理しています",
     "externalPasswordDesc": "パスワードの変更は ID プロバイダー側で行ってください。本システムはこのアカウントのパスワードを保存も変更もできません。",
-    "externalIdentityNote": "ID 項目は外部 ID プロバイダーが管理しており、読み取り専用です。"
+    "externalIdentityNote": "ID 項目は外部 ID プロバイダーが管理しており、読み取り専用です。",
+    "mfaResetTitle": "認証アプリを再設定",
+    "mfaResetDesc": "機種変更や認証アプリの変更時に使用します。現在の認証アプリに表示されているコードの入力が必要です。",
+    "mfaResetCodeLabel": "現在の認証アプリに表示されている 6 桁のコードを入力してください",
+    "mfaResetLostHint": "認証アプリを紛失してコードを取得できない場合は、管理者にリセットを依頼してください。",
+    "mfaResetContinue": "続ける",
+    "mfaResetWarnTitle": "新しいシークレットを生成しました",
+    "mfaResetWarnDesc": "以前の認証アプリは無効になりました。下の有効化を完了するまで、サインイン時にコードは求められません。",
+    "mfaResetWaitTitle": "このコードはたった今使用されました",
+    "mfaResetWaitDesc": "認証アプリに次のコードが表示されるまで待ってから入力してください。設定の失敗ではなく、シークレットは変更されていません。"
   },
   "approverScope": {
     "semantics1": "承認側は個人またはユーザーグループを指定できます：グループのメンバーは自動的に承認資格を持ちます（加入で有効、脱退で失効）。個人の場合は承認者ロールが必要です。",
@@ -3260,6 +3290,7 @@
       "rejectedWith": "拒否：{reason}",
       "notEligible": "承認範囲外のアセットが含まれるため、この申請は反映されていません",
       "selfApproval": "自分の申請または自分が実行する申請です。他の承認者が処理してください",
+      "connectRequired": "申請者にこのアセットへの接続権限がないため、この申請は反映されませんでした。却下することはできます",
       "handledByOther": "他の承認者が処理済みです",
       "unconfirmedCheckHistory": "確認待ち：「履歴」タブでこの申請の結果を確認してください",
       "checking": "サーバーで実際の状態を確認しています",
@@ -5184,6 +5215,7 @@
     "POLICY_GROUP_NOT_FOUND": "指定されたポリシーグループが見つかりません",
     "RULE_ACCESS_APPROVAL_REQUIRED": "この資産のアクセスポリシーでは、接続前に申請の承認が必要です",
     "RULE_ACCESS_REASON_REQUIRED": "この資産のアクセスポリシーでは、接続前に理由の入力が必要です",
+    "RULE_ACCESS_REQUEST_CONNECT_REQUIRED": "このアセットへの接続権限がないため、申請できません。管理者に接続権限の付与を依頼してください。",
     "RULE_ACCESS_REQUEST_DECISION_INCREASE": "承認値は申請値を上回れません（時間は短縮のみ、開始は延期のみ可能）",
     "RULE_ACCESS_REQUEST_DURATION_EXCEEDS": "申請時間がポリシーの上限（最大 {minutes} 分）を超えています",
     "RULE_ACCESS_REQUEST_DURATION_EXCEEDS_POLICY": "申請時間がポリシー上限を超えています",
@@ -5224,6 +5256,7 @@
     "RULE_BREAK_GLASS_NOT_ELIGIBLE": "緊急接続の資格がありません（当該アセットの常設接続権限が必要です）",
     "RULE_BREAK_GLASS_SELF_REVIEW": "自分の緊急接続を事後レビューすることはできません",
     "RULE_COMMAND_BLOCKED": "コマンドがブロックルールに一致したため、対象ホストへ送信されませんでした",
+    "RULE_COMMAND_BLOCKED_MULTILINE": "入力のうち 1 行がブロックルールに一致したため、入力全体が送信されませんでした（ほかの行も実行されません）。その行を取り除いて再送信してください。",
     "RULE_COMMAND_BLOCK_CLEAR_FAILED": "ブロック後にリモートの入力行を消去できなかったため、接続を終了しました",
     "RULE_CONNECT_TARGET_PARAMS_REJECTED": "接続先パラメータは受け付けません：接続は必ず資産を入口とし、発行エンドポイント経由で開始してください",
     "RULE_CONNECT_TOKEN_CAPACITY": "接続の発行が一時的に上限に達しています。しばらくしてからお試しください。",
@@ -5261,6 +5294,8 @@
     "RULE_DB_CONSOLE_LIMIT_REACHED": "クエリコンソールの同時接続数が上限に達しました。ご自身のコンソールが開いていれば閉じて再試行、なければ時間をおくか管理者へご連絡ください",
     "RULE_DB_CONSOLE_STATEMENT_BLOCKED": "ステートメントがブロックルールに一致したため、対象データベースへ送信されませんでした",
     "RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL": "クエリコンソールは mysql、postgres、mssql の資産のみ対応しています",
+    "RULE_DB_LINE_UNCERTAIN": "入力内容の全体を確認できなかったため、この行は送信されませんでした。もう一度入力してください。",
+    "RULE_DB_RECONNECT_BLOCKED": "セッション中に別のホストへ接続先を切り替えることはできないため、この行は送信されませんでした。アセット一覧から新しく接続してください。（ルール: 組み込み・接続先変更）",
     "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "エクスポート成果物は現在ダウンロードできません",
     "RULE_EXPORT_JOB_BUNDLE_ONLY": "エクスポートジョブは証拠パッケージのみ受け付けます。イベントレポートは同期エクスポートをご利用ください",
     "RULE_K8S_FORBIDDEN": "権限がありません（403）：トークンに当該 namespace の list pods 権限がありません",
@@ -5274,8 +5309,9 @@
     "RULE_K8S_UNREACHABLE": "API server に接続できません：アドレス／ポートとネットワーク到達性をご確認ください",
     "RULE_KEYSTROKE_UNAVAILABLE": "キー入力記録のストレージに異常があるため新規接続を停止しています。管理者に連絡してください",
     "RULE_LDAP_TEST_RATE_LIMITED": "LDAP 接続テストの実行が頻繁すぎます。しばらくしてから再試行してください",
-    "RULE_MFA_INVALID_CODE": "MFA 検証コードが正しくありません",
-    "RULE_MFA_REPLAY": "MFA 検証コードは既に使用されています",
+    "RULE_MFA_INVALID_CODE": "コードが正しくありません。認証アプリに現在表示されている 6 桁のコードを入力してください。",
+    "RULE_MFA_CURRENT_CODE_REQUIRED": "現在の認証アプリの 6 桁のコードを入力してください。",
+    "RULE_MFA_REPLAY": "このコードは使用済みです。次のコードに切り替わるのを待って、もう一度入力してください。",
     "RULE_MY_CONNECTION_ENDED": "接続はすでに終了しています",
     "RULE_NODE_CYCLE": "自身または配下のノードへ移動することはできません",
     "RULE_NODE_DEPTH_EXCEEDED": "ノードの階層が上限を超えています（10 階層）",
@@ -5466,6 +5502,8 @@
     "VALIDATION_OFFSITE_CREDENTIAL_HALF_SET": "アクセスキーとシークレットキーは両方入力するか、両方空欄にして既定の資格情報チェーンを使用してください",
     "VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS": "エンドポイントに資格情報・クエリ文字列・フラグメントを含めることはできません。資格情報欄に入力してください",
     "VALIDATION_OFFSITE_ENDPOINT_INVALID": "エンドポイントは http:// または https:// で始まり、ホスト名を含む必要があります",
+    "VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID": "サービスアカウント JSON の「{field}」フィールドが要件を満たしていません。キーファイルを再ダウンロードして貼り付けてください。",
+    "VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL": "サービスアカウント JSON を入力しない場合、エンドポイントは空欄か Google のドメイン（googleapis.com）のみ指定できます。ほかのエンドポイントを使うには、サービスアカウント JSON を入力してください。",
     "VALIDATION_OFFSITE_PROVIDER_INVALID": "ストレージ種別は s3 または gcs のみです",
     "VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED": "S3 を使用する場合、エンドポイントまたはリージョンのいずれかが必要です",
     "VALIDATION_OIDC_ADMISSION_RULES": "受け入れルールが不正です：ルールキーが有効かつ空でないこと、共有 ID プロバイダーにはテナントまたはドメイン条件が必要です",
@@ -6685,6 +6723,8 @@
       "oldestSeq": "最古の番号",
       "passedFailed": "成功 / 失敗",
       "trimmedThrough": "（保持ポリシーに従い番号 {seq} まで削除済み）",
+      "trimRecord": "トリム記録",
+      "trimSegments": "{count} 区間",
       "unsealed": "未保全の記録件数",
       "unsealedHint": "（記録番号 {id} 以降。この区間はまだ連鎖の保護下になく、下記の限界 R5 を参照）"
     },
@@ -6790,7 +6830,9 @@
       "signature_invalid": "署名無効",
       "chain_broken": "連鎖の断絶",
       "seq_gap": "番号が不連続",
-      "attestation_invalid": "権限状態の証明が無効"
+      "attestation_invalid": "権限状態の証明が無効",
+      "rows_hidden": "非表示の記録あり",
+      "trim_unverified": "署名未検証でトリム"
     },
     "statusHint": {
       "purged_legal": "保持ポリシーに従う削除であり、削除の主張自体も検証を通過しています。異常ではありません。削除の根拠を確かめる場合は「システム設定 → セキュリティポリシー」ページでこの種類のデータの保持期間をご確認ください。追加の調査は不要です。",
@@ -6801,7 +6843,13 @@
       "signature_invalid": "このチェックポイント自身の署名が検証を通らないため、そこに書かれた主張は一切信頼できません。この結果からこの区間を推論しないでください。前後にある検証を通過したチェックポイントで信頼できる範囲を画定し、その期間に署名鍵の交換やシステムの再構築がなかったかを確認したうえで、外部保管の控えと突き合わせてください。",
       "chain_broken": "直前のチェックポイントとの連結値、または区間の接続が一致しません。その 2 つのチェックポイントに挟まれた期間が疑わしい範囲です。その期間にシステムの復元やデータベースの巻き戻しがなかったかを確認し、外部保管の控えと突き合わせてください。",
       "seq_gap": "番号が不連続で、対応する正当な削除の記録も見当たりません。欠けている範囲に保持ポリシーによる削除が実施されたかを確認してください。該当する記録がない場合は、チェックポイントが取り除かれたものとして扱い、外部保管の控えでその範囲を照合してください。",
-      "attestation_invalid": "このチェックポイント自体は検証を通りますが、一緒に封印された権限状態の記録が欠けている、改変されている、または署名が検証を通りません。区間についての主張は引き続き信頼できますが、当時の権限状態の証明は失われています。その記録がデータベース上で直接消去・書き換えされていないかを確認し、外部保管の控えと突き合わせてください。"
+      "attestation_invalid": "このチェックポイント自体は検証を通りますが、一緒に封印された権限状態の記録が欠けている、改変されている、または署名が検証を通りません。区間についての主張は引き続き信頼できますが、当時の権限状態の証明は失われています。その記録がデータベース上で直接消去・書き換えされていないかを確認し、外部保管の控えと突き合わせてください。",
+      "rows_hidden": "この範囲に削除済みとマークされた操作ログがありますが、本システムは操作ログを削除しません。これらは操作ログ画面に表示されます。外部コピーを保管し、通常の手順で調査してください。調査が終わるまで、この範囲の内容を監査の根拠にしないでください。",
+      "trim_unverified": "これはアップグレード前のトリム記録です。トリムされた {count} 区間は当時署名検証されておらず、後から検証することもできません。開示のみで、失敗とは判定されず、イベントも作成されません。アップグレード後のトリムは必ず署名を先に検証し、検証に失敗した場合は実行されません。"
+    },
+    "trimPause": {
+      "title": "チェックポイントのトリムを一時停止しました",
+      "desc": "署名またはパージ証明の検証に失敗したため、今回はトリムしていません。該当チェックポイントを調査してから、次回の定期実行をお待ちください。"
     },
     "limits": {
       "title": "本機能が守る範囲と、その限界",
@@ -7535,8 +7583,11 @@
       "integrity_mismatch": "取得した内容がアップロード時と一致しません",
       "profile_missing": "このオブジェクトが属する保管設定世代が見つかりません",
       "foreign_credentials_missing": "その世代の資格情報は失効または不在です",
-      "credentials_unavailable": "資格情報を現在利用できません"
+      "credentials_unavailable": "資格情報を現在利用できません",
+      "credential_config_invalid": "現在の資格情報の設定が新しい要件を満たしていません"
     },
+    "credentialConfigInvalidHint": "「オフサイト保管」でサービスアカウント JSON を入力し直すか、エンドポイントを Google の公式ドメインに戻してから、「接続テスト」を押してください。",
+    "goToSettings": "オフサイト保管の設定へ移動",
     "errorCodeUnknown": "理由は記録されていません",
     "queueTitle": "保管キュー",
     "retryFailed": "失敗分を再試行",
@@ -8603,6 +8654,7 @@
     "submit": "選択した判断を送信",
     "invalid": "理由、アカウント範囲、時間枠を確認してください。申請範囲は縮小のみ可能です。",
     "voteRecorded": "承認票を記録しました。他の審査者を待っています。",
+    "connectRequired": "申請者にこのアセットへの接続権限がないため、承認できません。却下することはできます。",
     "saved": "この項目の判断を保存しました",
     "action": {
       "approve": "承認・範囲縮小",

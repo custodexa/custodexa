@@ -722,3 +722,89 @@ worker 每輪 SHALL 以固定配額分配即時佇列與回填佇列（即時多
 - **WHEN** 存在多於一頁的失敗項，管理員開啟設定頁
 - **THEN** 失敗清單分頁呈現，每列可跳轉至對象、顯示失敗時刻、原因與距保留到期天數，管理員可對單列重試且該動作入審計
 
+### Requirement: GCS 憑證內容的型別驗證
+
+gcs 世代的憑證內容 SHALL 為 Google 服務帳號金鑰 JSON：系統 SHALL 解析該 JSON，並要求 `type` 等於
+`service_account`、`client_email`、`private_key` 與 `token_uri` 皆存在，且 `token_uri` 等於
+`https://oauth2.googleapis.com/token`。新填入的憑證任一不符 SHALL 以靜態拒因 `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID`
+拒絕，拒絕訊息 SHALL 只指名欄位，SHALL NOT 回顯憑證內容。
+
+此驗證 SHALL 由設定驗證的單一核心執行，使儲存設定、世代切換確認、測試連線與初次 seed 四條路徑一致受檢；
+SHALL NOT 只在其中部分路徑檢查。
+
+物件儲存客戶端建構時 SHALL 對所用憑證（新值、沿用值與資料庫中任一世代的已存值）執行同一套內容檢查，
+並 SHALL 以服務帳號型別載入憑證；不符時建構 SHALL 失敗，上傳以既有的上傳失敗狀態呈現、取回以既有的取回失敗呈現，
+該次 SHALL NOT 發出任何對外請求。
+
+#### Scenario: 非服務帳號型別在測試連線被拒
+- **WHEN** 持離機儲存管理權限者以 `type` 不是 `service_account` 的 JSON 呼叫測試連線
+- **THEN** 回 `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID`，測試連線未對外發出任何請求，回應不含憑證內容
+
+#### Scenario: 非服務帳號型別在儲存與確認被拒
+- **WHEN** 同一 JSON 經儲存設定或世代切換確認送出
+- **THEN** 同樣以 `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID` 拒絕，未產生新世代，現行世代的憑證版號不變
+
+#### Scenario: 權杖端點不是官方值被拒
+- **WHEN** 服務帳號 JSON 的 `token_uri` 為非官方位址
+- **THEN** 以 `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID` 拒絕並指名 `token_uri` 欄位
+
+#### Scenario: seed 檔案受同一驗證
+- **WHEN** 初次 seed 指定的 GCS 憑證檔不是服務帳號型別
+- **THEN** seed 以同一拒因失敗，未寫入世代
+
+#### Scenario: 已存的非服務帳號憑證不會被使用
+- **WHEN** 資料庫中的現行 gcs 世代憑證為非服務帳號型別，之後觸發上傳
+- **THEN** 客戶端建構失敗、上傳以既有失敗狀態呈現，該次未發出任何對外請求
+
+#### Scenario: 已存的服務帳號憑證權杖端點不合規
+- **WHEN** 資料庫中某 gcs 世代的憑證型別為 `service_account` 但 `token_uri` 不是官方值，之後以沿用該憑證執行測試連線、觸發上傳或取回該世代物件
+- **THEN** 客戶端建構失敗，該次未發出任何對外請求，失敗以各路徑既有的失敗狀態呈現
+
+#### Scenario: 合法服務帳號不受影響
+- **WHEN** 管理員填入合法的服務帳號 JSON 並執行測試連線
+- **THEN** 驗證通過，測試照常執行
+
+### Requirement: GCS 無顯式憑證時的端點限制
+
+gcs 設定的結果不會帶顯式服務帳號憑證時，端點 SHALL 為空或主機屬 Google 官方網域（`googleapis.com` 及其子網域）。
+「不會帶顯式服務帳號憑證」包括：帶清除憑證旗標、憑證欄留空而既存現行世代的憑證來源不是保存型、以及無既存世代且未填憑證。
+憑證欄留空而既存現行世代為保存型且落點不變時，視為帶顯式憑證，不受本條限制。
+不符時 SHALL 以靜態拒因 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL` 拒絕，訊息只指名欄位，SHALL NOT 回顯端點值。
+此檢查 SHALL 由設定驗證的單一核心執行，核心 SHALL 取得表單值與既存現行世代的憑證來源模式兩項輸入，
+儲存、確認、測試連線與 seed 一致受檢；儲存與確認 SHALL 以鎖內讀到的現行世代為準。
+
+物件儲存客戶端為上傳、測試連線或現行世代的取回而建構時，無顯式憑證且端點為非官方網域的 https 位址 SHALL 拒絕建構（fail-close）。
+已非現行的歷史世代為取回而建構時，本條的端點限制 SHALL NOT 套用，使既有離機證據維持可取回；其餘建構檢查照常。
+
+#### Scenario: 清除憑證並改指外部端點被拒
+- **WHEN** 管理員帶清除憑證旗標，並把端點設為 `https://storage.example.net` 後呼叫測試連線
+- **THEN** 回 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL`，測試連線未對該端點發出任何請求
+
+#### Scenario: 預設憑證鏈世代改端點被拒
+- **WHEN** 既存世代的憑證來源為預設憑證鏈，管理員憑證欄留空並把端點改為非官方網域後儲存
+- **THEN** 以 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL` 拒絕，現行世代不變
+
+#### Scenario: 首次設定未填憑證指向外部端點被拒
+- **WHEN** 尚無任何世代，管理員未填憑證並把端點設為非官方網域
+- **THEN** 以 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL` 拒絕，未寫入世代
+
+#### Scenario: 保存型世代沿用憑證搭配自訂端點不受影響
+- **WHEN** 既存現行世代的憑證來源為保存型、端點為非官方網域的 https 位址，管理員憑證欄留空、落點不變並儲存
+- **THEN** 驗證通過，不回 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL`
+
+#### Scenario: 預設憑證鏈搭配官方端點不受影響
+- **WHEN** 憑證來源為預設憑證鏈、端點為空或 `https://storage.googleapis.com`
+- **THEN** 驗證通過，行為與先前一致
+
+#### Scenario: 已存的不合規現行世代在建構時拒絕
+- **WHEN** 資料庫中的現行世代為預設憑證鏈搭配非官方 https 端點，之後觸發上傳
+- **THEN** 客戶端建構失敗、上傳以既有失敗狀態呈現，該次未對該端點發出任何請求
+
+#### Scenario: 歷史世代的取回不套端點限制
+- **WHEN** 某已非現行的歷史世代為預設憑證鏈搭配非官方 https 端點，稽核員播放該世代上傳、本機已清除的錄影
+- **THEN** 系統以該世代的設定建構客戶端並照常取回、驗證後播放，不回 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL`
+
+#### Scenario: 帶顯式服務帳號憑證時端點維持既有規則
+- **WHEN** 管理員填入合法服務帳號 JSON，並指定非官方網域的 https 端點
+- **THEN** 本條不阻擋，端點依既有覆寫與淨化規則處理
+

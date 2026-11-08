@@ -101,6 +101,10 @@ it_run_scenario() {
   . "$IT_DIR/lib/restore.sh"
   # shellcheck source=scripts/custodexa/tests/integration/lib/extrestore.sh
   . "$IT_DIR/lib/extrestore.sh"
+  # shellcheck source=scripts/custodexa/tests/integration/lib/formup.sh
+  . "$IT_DIR/lib/formup.sh"
+  # shellcheck source=scripts/custodexa/tests/integration/lib/qsrc.sh
+  . "$IT_DIR/lib/qsrc.sh"
   # shellcheck disable=SC1090
   . "$file"
   declare -F "$fn" >/dev/null || it_die "scenario $name defines no $fn()"

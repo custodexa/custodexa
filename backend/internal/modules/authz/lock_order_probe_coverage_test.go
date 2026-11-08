@@ -39,7 +39,6 @@ type requiredLockSite struct {
 var lockSitesRequiringProbe = map[string]requiredLockSite{
 	"internal/modules/authz/self_grant_guard.go:lockUserRows":                                    {1, probeBeforeLock, "R01 users 列（規則主體、核決申請人）"},
 	"internal/modules/authz/access_request_service.go:AccessRequestService.BreakGlass":           {1, probeBeforeLock, "R04 users 列（破窗申請人）"},
-	"internal/modules/authz/access_request_submit_items.go:AccessRequestService.submitItems":     {1, probeBeforeLock, "R05 users 列（逐項申請人）"},
 	"internal/modules/identity/user_service.go:UserService.guardOwnerTransfer":                   {1, probeBeforeLock, "R07 users 列（擁有者轉移的 agent）"},
 	"internal/modules/identity/agent_self_service.go:agentSelfCreation.check":                    {1, probeBeforeLock, "R08 users 列（agent 自建的擁有者）"},
 	"internal/modules/identity/agent_breaker.go:LockProbePrincipal":                              {1, probeBeforeLock, "R09 users 列（熔斷探測）"},

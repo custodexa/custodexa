@@ -1,6 +1,7 @@
 # Hosts for the upgrade tests. Needs helper.bash, install_host.bash and backup_host.bash loaded.
 #   package_release <dir> <version> [min_source_version] [migrations...]
 #       a release tree as the package holds it: the script, VERSION and a MANIFEST.json
+#       (UP_LAYOUT=profiles adds compose_layout)
 #   publish <version> [min] [migrations...]
 #       that release as GitHub serves it ($REL/v<ver>/: package, SHA256SUMS, signature bundle,
 #       MANIFEST.json); `latest` points at the last one published
@@ -15,9 +16,12 @@ package_release() {
   cp -R "$SRC/custodexa.sh" "$SRC/lib" "$SRC/lang" "$dir/"
   printf '%s\n' "$ver" >"$dir/VERSION"
   mig=$(printf '%s\n' "$@" | jq -R . | jq -s 'map(select(. != ""))')
-  jq -n --arg v "$ver" --arg m "$min" --argjson mig "$mig" --argjson img "$(up_images_json "$ver")" \
+  # UP_LAYOUT=profiles: the release is one compose file with profiles (MANIFEST compose_layout).
+  jq -n --arg v "$ver" --arg m "$min" --argjson mig "$mig" --argjson img "$(up_images_json "$ver")" --arg l "${UP_LAYOUT:-}" \
     '{format: 1, version: $v, min_source_version: $m, released_at: "2026-10-20T20:00:00+08:00",
-      images: $img, migrations: $mig, rollback_compatible: []}' >"$dir/MANIFEST.json"
+      images: $img, migrations: $mig, rollback_compatible: [],
+      bundled_db: {major: 16, data_dir: "postgres", pgdata: ""}}
+      + (if $l == "" then {} else {compose_layout: $l} end)' >"$dir/MANIFEST.json"
   [ -z "${FAKE_DOCKER_REPLAY:-}" ] || up_images_here
 }
 

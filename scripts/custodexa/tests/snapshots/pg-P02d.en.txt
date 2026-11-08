@@ -1,0 +1,7 @@
+[FAIL] Cannot tell whether the space is enough, so the upgrade will not
+       start. No service was stopped and nothing was changed.
+  Place that cannot be found   the Docker image storage (its path cannot be read)
+  The script does not assume the space is enough. Once Docker works,
+  run the same command again:
+    sudo docker info
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

@@ -2,9 +2,7 @@
 
 ## Purpose
 規範部署與環境設定的一致性與正確性：環境變數範本的完備性守衛、dev 與正式版 compose 對範本的一致消費、應用資料落點可設定、預設 compose 指令產出正式版部署、測試專用掛載不外溢正式版，以及首次部署指示與實際啟動路徑的一致。
-
 ## Requirements
-
 ### Requirement: 環境變數範本完備性
 系統所有後端**產品碼**消費中的環境變數 SHALL 全數記載於**專案根 `.env.example`（唯一環境變數範本）**或屬明確 allowlist。自動化漂移守衛測試 SHALL 掃描後端產品原始碼（排除 `_test.go`、vendor、testdata，以及 `//go:build ignore` 的獨立開發/smoke 工具 `scripts/`）中傳給已知讀取函式（`os.Getenv`/`os.LookupEnv`、config helper `getEnv`/`getEnvInt`/`getEnvBool`、`SeedFromEnv`）的字面 key 集合，並斷言其為範本記載集合 ∪ allowlist 的子集。allowlist 兩類：系統/測試專用變數（HOME/PATH、`APIERROR_LOCALE_DIR`、`SSH_TEST_HOST`）；以及 **compose 提供的拓撲/模式常數**（`DB_HOST`/`GIN_MODE`/`DB_DRIVER`/`GUACD_HOST` 等，由 compose `environment:` 提供、不入使用者範本）。無法字面掃描的純動態讀取（key 傳入區域閉包而非上述函式，如逾時退路）SHALL 由測試維護的 `knownIndirectKeys` 靜態清單併入核對。新增未記載的產品消費變數 SHALL 使守衛測試失敗。守衛測試在 backend 容器內執行，範本 SHALL 唯讀掛入容器（`/opt/custodexa/.env.example`，掛在 `/app` bind mount 之外以免污染 host）。
 
@@ -66,14 +64,14 @@
 
 未帶 `-f` 的 `docker compose` 指令 SHALL 作用於正式版定義，該定義 SHALL 位於慣例檔名 `docker-compose.yml`。開發版 SHALL 為具名檔 `docker-compose.dev.yml`，僅在顯式指定或透過 `COMPOSE_FILE` 選用時生效。
 
-`.env.example` SHALL 以註解形式提供 `COMPOSE_FILE=docker-compose.dev.yml` 並說明其用途；該行 SHALL NOT 為生效狀態——若範本帶生效值，複製範本者將取得開發版，與本要求相反。
+`.env.example` SHALL 以註解形式提供 `COMPOSE_FILE=docker-compose.dev.yml` 並說明其用途；該行 SHALL NOT 為生效狀態——若範本帶生效值，複製範本者將取得開發版，與本要求相反。原始碼部署正式版的部署形態由「部署形態由 .env 推導」的同一規則決定，SHALL NOT 以 `COMPOSE_FILE` 選擇；正式版的 profiles 由 `scripts/quickstart.sh` 推導並寫入 `.env` 的管理區（只含 `COMPOSE_PROFILES`），文件 SHALL 以 `quickstart.sh` 作為原始碼部署的啟動入口。
 
-**安裝包部署根**（`custodexa.sh` 建立的部署，其根目錄沒有 `docker-compose.yml`）：管理腳本 SHALL 在根目錄 `.env` 寫入生效的 `COMPOSE_FILE`（`current/compose.yml`，依部署形態以 `:` 接上 overlay）與 `COMPOSE_PROJECT_NAME`（固定值），使維運在根目錄執行、不帶 `-f` 的 `docker compose ps`、`logs`、`exec`、`restart` 作用於現行版本的正式版定義與固定專案。需要重新解析整份定義的指令（`up`、`config`）在根目錄手動執行時須另帶 `--project-directory .`；文件 SHALL 如此標明，SHALL NOT 主張它們不帶該選項即可使用。腳本自身的每次呼叫仍 SHALL 顯式帶 `-p`、`--project-directory` 與 `-f`。`.env.example` 的 `COMPOSE_FILE` 仍 SHALL 為註解狀態——生效值只由腳本寫進部署端 `.env`。
+**安裝包部署根**（`custodexa.sh` 建立的部署，其根目錄沒有 `docker-compose.yml`）：管理腳本 SHALL 在根目錄 `.env` 的管理區（見「部署形態由 .env 推導」）寫入 `COMPOSE_FILE`（固定為 `current/compose.yml`；`current` 指向沒有單一 compose 的舊版 release 時，依部署形態以 `:` 接上該版的疊加檔，且不寫 `COMPOSE_PROFILES`）與推導出的 `COMPOSE_PROFILES`，`COMPOSE_PROJECT_NAME`（固定值）維持在原位，使維運在根目錄執行、不帶 `-f` 的 `docker compose ps`、`logs`、`exec`、`restart` 作用於現行版本的正式版定義、該部署的服務組成與固定專案。安裝包部署的形態 SHALL 由「部署形態由 .env 推導」決定，SHALL NOT 以客戶填寫的 `COMPOSE_FILE` 選擇。需要重新解析整份定義的指令（`up`、`config`）在根目錄手動執行時須另帶 `--project-directory .`；文件 SHALL 如此標明，SHALL NOT 主張它們不帶該選項即可使用。腳本自身的每次呼叫仍 SHALL 顯式帶 `-p`、`--project-directory` 與 `-f`。`.env.example` 的 `COMPOSE_FILE` 仍 SHALL 為註解狀態——生效值只由腳本寫進部署端 `.env`。
 
-註：`COMPOSE_FILE` 由 compose CLI 消費而非應用程式讀取；env 漂移守衛為單向（僅斷言程式碼消費的 key 皆記載於範本），故此變數不影響守衛結果，註解狀態的理由純為上述部署語義。
+註：`COMPOSE_FILE`、`COMPOSE_PROFILES` 由 compose CLI 消費而非應用程式讀取；env 漂移守衛為單向（僅斷言程式碼消費的 key 皆記載於範本），故這兩個變數不影響守衛結果，註解狀態的理由純為上述部署語義。
 
 #### Scenario: 複製範本後預設取得正式版
-- **WHEN** 於乾淨 clone 執行 `cp .env.example .env`、填入必要值後執行 `docker compose up -d`
+- **WHEN** 於乾淨 clone 執行 `cp .env.example .env`、填入必要值後執行 `bash scripts/quickstart.sh --up`
 - **THEN** 起用的是正式版服務組成（應用與其依賴，不含測試靶機），前端以正式版對外埠提供編譯產物而非開發伺服器
 
 #### Scenario: 開發者啟用 COMPOSE_FILE 後日常指令指向開發版
@@ -85,8 +83,12 @@
 - **THEN** 指令作用於正式版定義，使正式版仍可於開發機驗證
 
 #### Scenario: 安裝包部署根的手動指令
-- **WHEN** 維運在 `custodexa.sh install` 建立的部署根目錄執行不帶 `-f` 的 `docker compose ps` 或 `docker compose logs backend`
-- **THEN** 指令作用於 `current/compose.yml`（含該部署的 overlay）與固定專案名的容器；升級切換 `current` 後同一指令自動指向新版定義，`.env` 不需修改
+- **WHEN** 維運在 `custodexa.sh install` 建立的外接資料庫部署根目錄執行不帶 `-f` 的 `docker compose ps` 或 `docker compose logs backend`
+- **THEN** 指令作用於 `current/compose.yml`、該部署的 profiles 與固定專案名的容器；升級切換 `current` 後同一指令自動指向新版定義，維運不需修改 `.env`
+
+#### Scenario: 原始碼部署根的手動指令
+- **WHEN** 開發者在已跑過 `quickstart.sh` 的原始碼部署根執行不帶 `-f` 的 `docker compose ps`
+- **THEN** 指令作用於 `docker-compose.yml` 與管理區 `COMPOSE_PROFILES` 選出的服務組成
 
 ### Requirement: 測試專用掛載不入正式版 compose
 
@@ -194,30 +196,50 @@
 
 ### Requirement: 外接資料庫部署形態
 
-專案 SHALL 提供 compose overlay `docker-compose.external-database.yml`，使正式版堆疊不啟動自帶的 postgres 服務、
-後端改連部署方指定的外部 PostgreSQL 伺服器。overlay SHALL 以未啟用的 profile 關閉自帶 postgres（`config` 輸出不含該服務），
-SHALL 將 backend 的啟動依賴收斂為不含 postgres，並 SHALL 以 `.env` 的 `EXTERNAL_DB_HOST`（缺值即拒絕啟動，訊息指名該鍵）
-與 `EXTERNAL_DB_PORT`（預設 5432）供給 backend 的 `DB_HOST`／`DB_PORT`。`DB_NAME`／`DB_USER`／`DB_PASSWORD`／`DB_SSLMODE`
-在此形態下 SHALL 沿用既有鍵，描述外部伺服器上的資料庫與帳號。overlay SHALL 可與 `docker-compose.external-ingress.yml` 併用。
+原始碼部署的正式版 compose（根目錄 `docker-compose.yml`）SHALL 為單一檔，SHALL NOT 依賴疊加檔表達部署形態，形態 SHALL 依「部署形態由 .env 推導」的同一規則（鍵、合法值、profiles 名稱與形態詞彙）決定。該檔 SHALL 在單一檔內提供外接資料庫形態：內建 postgres 服務 SHALL 屬 profile `bundled-db`，外接形態不啟用該 profile 時 `config` 輸出不含該服務；backend 對 postgres 的啟動依賴 SHALL 標為非必要（`required: false`），使 postgres 不在堆疊內時 backend 仍照常啟動；backend 的 `DB_HOST` SHALL 取 `.env` 的 `EXTERNAL_DB_HOST`、空白時為 `postgres`，`DB_PORT` SHALL 取 `EXTERNAL_DB_PORT`（預設 5432）。`EXTERNAL_DB_HOST` 有值而內容不可用（見 quickstart-bootstrap「原始碼部署依 .env 推導形態」與 management-script「部署形態的意圖與實況一致才動作」的外接位址檢查）時，SHALL 由腳本在呼叫 compose 前拒絕並指名該鍵，SHALL NOT 以任何預設位址啟動。`DB_NAME`／`DB_USER`／`DB_PASSWORD`／`DB_SSLMODE` 在此形態下 SHALL 沿用既有鍵，描述外部伺服器上的資料庫與帳號。外接資料庫形態 SHALL 可與外部入口形態併用。
 
-`.env.example` SHALL 以註解形式提供該形態的 `COMPOSE_FILE`、`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 三鍵並說明其用途、
-`${DATA_PATH}/postgres` 於此形態不再使用、跨網路連線應設 `DB_SSLMODE=require` 或 `verify-full`，以及快速安裝腳本會替換
-仍為範本值的 `DB_PASSWORD` 故須先自行填入。`DB_HOST` SHALL 維持不入範本（見「拓撲綁定值不入範本」）：外接位址由獨立鍵承載，
-不在主檔形態下製造填了不生效的鍵。
+`.env.example` SHALL 以註解形式提供 `EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 兩鍵並說明：填了位址即為外接形態、不需要也不應設定 `COMPOSE_FILE`；內建資料庫的資料目錄於此形態不再使用；跨網路連線應設 `DB_SSLMODE=require` 或 `verify-full`；外接形態下快速安裝腳本不產生 `DB_PASSWORD`，仍為空白或範本值時停下要求先填入外部伺服器上該帳號的密碼；已有內建資料庫資料的部署不能靠填這一行改用外接，須照營運文件「換到外接資料庫」一節以備份還原搬遷。`.env.example` SHALL NOT 再提供疊加檔名的 `COMPOSE_FILE` 範例。`DB_HOST` SHALL 維持不入範本（見「拓撲綁定值不入範本」）：外接位址由獨立鍵承載，不在主檔形態下製造填了不生效的鍵。
 
-#### Scenario: overlay 下堆疊不含 postgres 且後端指向外部伺服器
-- **WHEN** `.env` 設 `EXTERNAL_DB_HOST=db.example.internal` 並執行 `docker compose -f docker-compose.yml -f docker-compose.external-database.yml config`
-- **THEN** 輸出的服務集合不含 `postgres`；backend 的 `depends_on` 不含 `postgres`；backend 的 `DB_HOST` 為 `db.example.internal`、`DB_PORT` 為 `5432`
+#### Scenario: 外接形態下堆疊不含 postgres 且後端指向外部伺服器
+- **WHEN** `.env` 設 `EXTERNAL_DB_HOST=db.example.internal` 並以推導出的 profiles 執行 `docker compose config`
+- **THEN** 輸出的服務集合不含 `postgres`；backend 的 `depends_on` 中 postgres 標為非必要；backend 的 `DB_HOST` 為 `db.example.internal`、`DB_PORT` 為 `5432`
 
-#### Scenario: 缺外部位址時拒絕啟動
-- **WHEN** `.env` 未設 `EXTERNAL_DB_HOST` 而套用 overlay
-- **THEN** compose 以非零狀態結束，訊息指名 `EXTERNAL_DB_HOST` 須設為 PostgreSQL 伺服器位址；不以任何預設位址啟動
+#### Scenario: 外接位址不可用時拒絕啟動
+- **WHEN** `.env` 設 `EXTERNAL_DB_HOST=localhost` 或 `EXTERNAL_DB_HOST=postgres` 後執行 `bash scripts/quickstart.sh --up`
+- **THEN** 腳本在呼叫 compose 前以非零狀態結束，訊息指名 `EXTERNAL_DB_HOST` 並說明應填外部 PostgreSQL 伺服器位址；沒有服務被啟動
 
-#### Scenario: 與外部 ingress overlay 併用
-- **WHEN** `COMPOSE_FILE` 同時列出主檔、外接資料庫 overlay 與外部 ingress overlay
+#### Scenario: 與外部入口形態併用
+- **WHEN** `.env` 同時設 `EXTERNAL_DB_HOST=db.example.internal` 與 `TLS_MODE=external`
 - **THEN** `config` 成功：無 `postgres`、內建代理不啟動、frontend 發布 HTTP 埠、backend 指向外部資料庫
 
 #### Scenario: 範本記載外接資料庫鍵而漂移守衛仍綠
 - **WHEN** 檢視 `.env.example` 並執行環境變數守衛測試
-- **THEN** 範本含註解狀態的 `COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml`、`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 與上述說明；
+- **THEN** 範本含註解狀態的 `EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 與上述說明，不含疊加檔名的 `COMPOSE_FILE` 範例；
   範本不含 `DB_HOST` 行；`TestEnvExampleNoDrift` 等守衛通過
+
+### Requirement: 部署形態由 .env 推導
+
+安裝包的正式版 compose（發行目錄內的 `compose.yml`）SHALL 為單一檔，SHALL NOT 依賴疊加檔表達部署形態。部署形態 SHALL 只由 `.env` 的兩個鍵推導：`EXTERNAL_DB_HOST` 去除前後空白後有值為外接資料庫、空白或沒有此行為內建資料庫；`TLS_MODE` 為 `external` 為外部入口、空白或 `selfsigned`、`provided` 為內建代理，其他值 SHALL 被拒絕並列出合法值。推導結果 SHALL 以 compose profiles 套用：內建資料庫啟用 `bundled-db`，內建代理啟用 `builtin-tls`，外部入口啟用 `own-ingress`。內建代理與外部入口兩種形態的 frontend 服務 SHALL 使用同一映像與同一容器名，任一時間只啟用其一，內建代理形態下 frontend 與 backend SHALL NOT 發布 host port。形態詞彙 SHALL 沿用 `external-database`、`external-ingress`，供狀態檔與備份清單記錄。
+
+管理腳本 SHALL 在每次呼叫 compose 時以環境變數帶入推導出的 `COMPOSE_PROFILES`；compose 插值所用的部署設定（該次所用 compose 檔中插值的每個變數，含 `EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT`、`TLS_MODE`、`HTTP_PORT`）SHALL 只取自部署根 `.env`，呼叫者 shell 環境中的同名變數與 `COMPOSE_FILE` SHALL NOT 進入 compose，使形態推導、一致性檢查與 compose 實際採用的連線設定為同一份值；並 SHALL 在部署根 `.env` 末尾維護一段以標記包住、註明由腳本維護的管理區，其中為固定值 `COMPOSE_FILE=current/compose.yml` 與 `COMPOSE_PROFILES`，使維運在部署根手動執行的 `docker compose ps`、`logs`、`exec` 與腳本作用於同一組服務。管理區以外的行 SHALL 逐位元組保持不變；管理區外出現的 `COMPOSE_FILE`、`COMPOSE_PROFILES` 行 SHALL 移入管理區並在畫面說明。
+
+#### Scenario: 只填外接位址即生效
+- **WHEN** `.env` 設 `EXTERNAL_DB_HOST=db.example.internal`、`TLS_MODE=selfsigned`，以推導出的 profiles 對安裝包的 `compose.yml` 執行 `docker compose config`
+- **THEN** 服務集合不含 `postgres`，含 `tls-init`、`tls-proxy` 與 `frontend`；backend 的 `DB_HOST` 為 `db.example.internal`、`DB_PORT` 為 `5432`，`depends_on` 中 postgres 標為非必要
+
+#### Scenario: 預設為內建資料庫與內建代理
+- **WHEN** `.env` 的 `EXTERNAL_DB_HOST` 空白、`TLS_MODE=selfsigned`
+- **THEN** 推導出的 profiles 為 `bundled-db` 與 `builtin-tls`；`config` 含 `postgres`，backend 的 `DB_HOST` 為 `postgres`；frontend 沒有 host 埠映射
+
+#### Scenario: 外部入口形態
+- **WHEN** `.env` 設 `TLS_MODE=external`、`HTTP_PORT=8080`，以推導出的 profiles 對安裝包的 `compose.yml` 執行 `docker compose config`
+- **THEN** 不含 `tls-init`、`tls-proxy`；只有一個 frontend 服務啟用，發布 `8080`，容器名與內建代理形態的 frontend 相同；backend 沒有 host 埠映射
+
+#### Scenario: shell 環境變數不覆寫 .env 的連線設定
+- **WHEN** 內建資料庫部署的 `.env` 的 `EXTERNAL_DB_HOST` 空白，維運在 shell 中 `export EXTERNAL_DB_HOST=db.other.internal` 後以 `sudo -E` 執行 `start`
+- **THEN** 一致性檢查判為內建並放行；compose 收到的環境不含 `EXTERNAL_DB_HOST`，啟動後 backend 容器的 `DB_HOST` 為 `postgres`
+
+#### Scenario: TLS_MODE 為未知值
+- **WHEN** `.env` 設 `TLS_MODE=letsencrypt`
+- **THEN** 腳本在呼叫 compose 前拒絕，列出 `selfsigned`、`provided`、`external` 三個合法值
+

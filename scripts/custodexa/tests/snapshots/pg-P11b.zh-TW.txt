@@ -1,0 +1,13 @@
+資料庫升級
+
+  目前         PostgreSQL 18，資料在 /opt/custodexa/data/postgresql
+  這一版支援   PostgreSQL 18
+  [ OK ] 已是這一版支援的最新版本，不需要升級。
+
+保留中的舊資料庫目錄（可以清除，釋放空間）
+  /opt/custodexa/data/postgres
+      PostgreSQL 16    17.4 GB    1.23.0 升級時原樣保留；回到上一版要用它
+  清除（會先列出內容並要求確認）：
+    sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old
+
+這個指令只查詢，沒有做任何變更。

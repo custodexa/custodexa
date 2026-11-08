@@ -133,6 +133,19 @@ func inputPrompt(s string) bool {
 	s = strings.ToLower(strings.TrimSpace(cleanOutput(s)))
 	return strings.HasSuffix(s, "password:") || strings.HasSuffix(s, "password: ") || strings.HasSuffix(s, "[y/n]") || strings.HasSuffix(s, "(yes/no)?")
 }
+// singleLineCommand 去除尾端換行後的命令必須是單行純文字：不含換行、回車、跳脫字元、tab 與其他控制字元。
+// 一個輸入幀只承載一行命令，使每一行都經過逐行判定。
+func singleLineCommand(command string) bool {
+	if command == "" {
+		return false
+	}
+	for _, r := range command {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
 func (e *ownedSession) write(data string) error {
 	raw, _ := sshproxy.EncodeMessage(sshproxy.MsgData, data)
 	return e.connection.Transport.WriteMessage(1, raw)
@@ -209,7 +222,7 @@ func (e *ownedSession) operation(ctx context.Context, name string, raw json.RawM
 		}
 		return result
 	case "run_command":
-		if console || a.Command == "" {
+		if console || a.Command == "" || !singleLineCommand(strings.TrimRight(a.Command, "\r\n")) {
 			return codeResult("VALIDATION_BAD_REQUEST")
 		}
 		for k, v := range e.cache {

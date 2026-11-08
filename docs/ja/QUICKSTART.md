@@ -9,7 +9,7 @@
 - Docker 20.10+
 - Docker Compose 2.0+
 - Git（ソースから実行する場合のみ）
-- ディスク：空き容量 40 GB 以上。そのうち Docker データフォルダーに約 10 GB が必要です（現行バージョンと前のバージョンのイメージと、アップグレードに要する余裕）。録画とバックアップは別に見込みます。増加の見積もりは[キャパシティとストレージの計画](#6-キャパシティとストレージの計画)を参照してください。
+- ディスク：空き容量 40 GB 以上。そのうち Docker データフォルダーに約 10 GB が必要です（現行バージョンと前のバージョンのイメージと、アップグレードに要する余裕）。録画とバックアップは別に見込みます。増加の見積もりは[キャパシティとストレージの計画](#6-キャパシティとストレージの計画)を参照してください。1.23.0 へのアップグレードでは同梱データベースも変換するため、データベースのサイズの約 2 倍に 2 GiB を足した追加の空き容量が必要です（[アップグレード SOP](ops/upgrade-sop.md#同梱データベースを-postgresql-18-に変換する)）。
 
 インストールの確認：
 ```bash
@@ -199,6 +199,15 @@ sudo /opt/custodexa/custodexa.sh status
 `COMPOSE_FILE=docker-compose.dev.yml` のコメントを外します。以降すべての `docker compose` コマンドが
 開発スタック（フロントエンドは Vite HMR、バックエンドは Air のホットリロード、各プロトコルのテストターゲット付き）を対象とし、毎回 `-f` を付ける必要はありません。
 
+**デプロイ形態は `.env` の 2 行で決まります。** 1 つの `docker-compose.yml` が本番スタックのすべての形態を賄います。
+`EXTERNAL_DB_HOST` が空なら同梱データベース、値があれば自前のデータベースサーバー（第 7 節）です。
+`TLS_MODE` は証明書の出どころ（`selfsigned`、`provided`）を選ぶか、HTTPS を自前の ingress に任せます
+（`external`、「自前の ingress に任せる」を参照）。`bash scripts/quickstart.sh` はこの 2 行を読み、スタックのどの部分が
+必要かを導き出して、結果を `.env` 末尾の管理ブロックに記録します。素の `docker compose up -d` ではなく
+`bash scripts/quickstart.sh --up` で起動してください。開発スタックはこれらの形態に含まれません。常に
+`docker-compose.dev.yml` のデータベースと入口を使い、`EXTERNAL_DB_HOST` を記入したり `TLS_MODE=external` に
+したりすると、スクリプトは黙って無視するのではなく、実行を拒否して理由を説明します。
+
 ### 1. ソースコードの取得
 
 ```bash
@@ -283,9 +292,10 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ```bash
 # バックグラウンドで実行（既存イメージが無い場合はまずビルドされます——本番スタックではビルドがデプロイ手順の第一歩です）
-docker compose up -d
+bash scripts/quickstart.sh --up
 
-# フォアグラウンドで実行（ログを確認できます）
+# フォアグラウンドで実行（ログを確認できます）：1 行目は何も起動せず、.env とその管理ブロックだけを準備します
+bash scripts/quickstart.sh
 docker compose up
 ```
 
@@ -297,7 +307,7 @@ docker compose up
 ```bash
 docker compose ps
 # 本番スタック（既定）：backend, frontend, postgres, guacd, tls-proxy
-#   （tls-init は証明書を準備したら終了するため、状態が exited(0) になるのは正常です）
+#   （tls-init は証明書を準備したら終了するため ps には表示されません。ps -a では exited(0) と表示され、これは正常です）
 # 開発スタック（COMPOSE_FILE を有効化した場合）には、さらにテストターゲットがあります：
 #   ssh-test, ssh-multi-test, mssql-test, mysql-test, rdp-test, vnc-test, k3s-test
 #   （加えて ldap-test / dex / localstack の 3 サービスが LDAP、OIDC、S3 関連機能のために用意されています）
@@ -479,7 +489,7 @@ release モードはこれらの値に対して **fail-close** です（適格�
 ```bash
 # 先に録画ディレクトリを準備します（コマンドは上記「3. サービスの起動」にあります）。
 # 既存イメージが無い場合、up はまず本番イメージをビルドします（ビルドがデプロイ手順の第一歩です）。
-docker compose up -d
+bash scripts/quickstart.sh --up
 ```
 
 > 本番と開発のイメージは名前が分かれています（`custodexa/*:latest` と `custodexa/*:dev`）。
@@ -508,6 +518,8 @@ docker compose logs backend | tail -30
 ```
 
 > 開発マシンで本番スタックを検証するときは、上のコマンドすべてに明示的な `-f docker-compose.yml` を付けます（`.env` の `COMPOSE_FILE` を上書きします）。
+> 本番スタックにどの部分が含まれるかは、`scripts/quickstart.sh` が `.env` 末尾に書き込む管理ブロックから決まります。
+> スクリプトを一度も実行していないフォルダーで素の `docker compose up -d` を実行しても、データベースとプロキシは起動しません。
 
 出荷時の既定である `ui` モードでは、(4) は**初期化アンシールが完了する前**はシールゲートに阻まれます。先にブラウザで
 初期化を済ませるか（「初回利用」を参照）、`curl -k https://localhost/api/v1/seal/status` で状態を確認してください。
@@ -643,28 +655,121 @@ loopback アドレスで接続する必要がある特殊な場面では、`LDAP
   `custodexa_recording_storage_bytes` に増加率か容量のしきい値でアラートを設定してください。
 - 使用量を減らす必要があるときは**保持期間**（システム設定 → セキュリティポリシー）で行い、期限切れの録画を時間に基づいて削除します。
 
-### 7. データベースを別のサーバーに置く（external database overlay）
+### 7. データベースを別のサーバーに置く（外部データベース）
 
 既定のスタックは postgres を同梱し、アプリケーションと同じホストで動かします。PostgreSQL を別の場所
 （組織が既に運用しているデータベースサーバー、マネージドサービス、または自前の 2 台目のマシン）に置くには、
-external database overlay を使います。同梱の postgres は起動せず、バックエンドはそのサーバーへ接続します：
+`EXTERNAL_DB_HOST` を記入します。同梱の postgres は起動せず、バックエンドはそのサーバーへ接続します：
 
 ```bash
-# .env：「自前のデータベースがあるデプロイ」の節にある 3 行のコメントを外して値を記入します
-#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+# .env：「自前のデータベースがあるデプロイ」の節にある EXTERNAL_DB_HOST のコメントを外して値を記入します
 #   EXTERNAL_DB_HOST=db.example.internal
-#   EXTERNAL_DB_PORT=5432
+#   EXTERNAL_DB_PORT=5432          （独立した行。5432 以外のポートのときだけ必要）
 # DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE はそのサーバーの値になります（ネットワーク越しなら require か verify-full）
-docker compose up -d
+bash scripts/quickstart.sh --up
 docker compose ps        # backend、frontend、guacd、tls-proxy。postgres はありません
 ```
 
 `scripts/quickstart.sh` を実行する前に `DB_PASSWORD` を自分で記入してください。`EXTERNAL_DB_HOST` を設定した場合、
 スクリプトはこの値を生成せず、未記入なら停止して記入を求めます。そのサーバー上のデータベースとアカウントは初回起動の前に作成しておきます。スキーマはバックエンドが作成します。
+`EXTERNAL_DB_HOST` にはホスト名または IP アドレスだけを書きます（スキーム、ポート、アカウント、空白は不可）。
+このホスト自身やこのスタックのサービスを指す名前も使えません。スクリプトはそのような値を拒否し、理由を示して、何も変更しません。
+`TLS_MODE=external` と併用できます。
+
+スクリプトが推測せずに停止するケースが 2 つあります。
+
+- **同梱データベースにすでにデータがあるのに `EXTERNAL_DB_HOST` を記入した場合。** 記入してもデータは移動せず、
+  スタックはデータが 1 件もないデータベースへ接続することになります。スクリプトは見つけたデータフォルダーを表示し、
+  先にデータを移す[外部データベースへの切り替え](ops/backup-and-restore.md#54-外部データベースへの切り替え)の節を案内します。
+- **前回は外部データベースで起動したデプロイで `EXTERNAL_DB_HOST` を空にした場合。** データのない同梱データベースを
+  起動してしまうため、スクリプトは拒否します。元の値に戻すか、同じ節の戻し手順に従って、意図して同梱データベースへ戻してください。
+
+**1.22 以前の `.env`** には、外部データベースの overlay ファイル、外部 ingress の overlay ファイル、またはその両方を並べた
+`COMPOSE_FILE` の行が残っていることがあります。この 2 つのファイルはもう同梱されません。スクリプトは次の実行時にその行を変換します。
+該当する `COMPOSE_FILE` の行を削除し、外部 ingress のファイルが並んでいた場合は `TLS_MODE` を `external` にし、管理ブロックを書き込み、
+変更点をすべて表示します。`.env` のそれ以外の部分には触れず、もう一度実行しても何も変わりません。
 
 この形態で得られるのは、置き換え可能なアプリケーションホストです。同じファイルから用意し、同じデータベースへ向けた 2 台目のホストが、
 1 台目の停止時に引き継ぎます。その手順、スタンバイホストに事前に必要なもの、切り替えで保たれないもの、この形態でバックアップの対象がどう変わるかは
 [アプリケーションホストのスタンバイ切り替え](ops/standby-takeover.md)を参照してください。
+
+### 8. ソースデプロイを PostgreSQL 18 に移す (Moving a source deployment to PostgreSQL 18)
+
+1.23.0 から、ソースツリーの同梱データベースは PostgreSQL 18 で、データは `${DATA_PATH:-./data}/postgresql` に置かれます。それ以前のソースツリーは `${DATA_PATH:-./data}/postgres` で PostgreSQL 16 を動かしていました。新しいイメージは古いフォルダーを開けないため、`postgres` にデータがあり `postgresql` が空のとき、`scripts/quickstart.sh` は何かを起動する前に止まります。データは変換しません。この節は、そのメッセージが指す手作業の手順です。同梱データベースを使う本番の形態（`docker-compose.yml`）に当てはまります。開発用スタックは新しいデータベースで起動し（[CONTRIBUTING](CONTRIBUTING.md) を参照）、リリースパッケージからインストールしたデプロイは `upgrade` が変換します（[アップグレード SOP](ops/upgrade-sop.md#同梱データベースを-postgresql-18-に変換する)）。
+
+方法は次のとおりです。一時的な PostgreSQL 16 のコンテナーで古いフォルダーを開き、エクスポートするあいだだけ起動します。次に空の新しいデータベースを作り、エクスポートを読み込みます。古いフォルダーは削除されず、中身も、PostgreSQL 16 を起動すれば必ず触れる部分を除いて書き換えられません。始める前に、リストアできると確信できるバックアップを取り（[バックアップとリストア §3](ops/backup-and-restore.md#3-バックアップの手順)）、誰も接続していない時間帯を選び、ディスクにデータベースのサイズの約 2 倍に 2 GiB を足した空き容量があることを確認してください。以下のコマンドは、[バックアップとリストア §2.3](ops/backup-and-restore.md#23-本書の-shell-コマンドがデプロイの変数をどう取得するか作業の前に読んでください)の説明どおりに `.env` を読みます。文字どおりに読み、値がなければ失敗します。
+
+**1. スタックを止めて設定を読む。** ソースツリーで作業します。古いフォルダーをもう一度開く前に、サービスが止まっている必要があります。
+
+```bash
+docker compose --profile bundled-db down
+ENV_FILE="${ENV_FILE:-./.env}"
+env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
+DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
+DB_USER="${DB_USER:-$(env_get DB_USER)}"
+DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
+DATA_PATH="$(cd "${DATA_PATH:?DATA_PATH is empty in .env}" && pwd)"
+printf 'DATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' "$DATA_PATH" "${DB_USER:?}" "${DB_NAME:?}"   # この 3 行を目で確認する
+ls "${DATA_PATH}/postgres/PG_VERSION" && cat "${DATA_PATH}/postgres/PG_VERSION"          # 古いフォルダーは PostgreSQL 16
+```
+
+**2. 一時的な PostgreSQL 16 で古いフォルダーを開き、中身を記録する。** 以前のリリースが動かしていたイメージを使います。1.22.x では `postgres:16.15-alpine3.24` です。
+
+```bash
+docker run -d --name custodexa-pg16-export -v "${DATA_PATH}/postgres:/var/lib/postgresql/data" postgres:16.15-alpine3.24
+for i in $(seq 1 60); do docker exec custodexa-pg16-export pg_isready -U "${DB_USER}" && break; sleep 2; done
+q16() { docker exec -i custodexa-pg16-export psql -U "${DB_USER}" -d "${DB_NAME}" -Atq -c "$1"; }
+ENC_Q="select pg_encoding_to_char(encoding) || ' ' || datcollate || ' ' || datctype from pg_database where datname = current_database()"
+COUNT_Q="select table_name || ' ' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by 1"
+MIG_Q="select * from schema_migrations order by 1"
+SEQ_Q="select sequencename || ' ' || coalesce(last_value::text, '') from pg_sequences order by 1"
+q16 "${ENC_Q}" | tee "${DATA_PATH}/pg16-encoding.txt"          # 例：UTF8 en_US.utf8 en_US.utf8
+q16 "${COUNT_Q}" >"${DATA_PATH}/pg16-counts.txt"
+q16 "${MIG_Q}" >"${DATA_PATH}/pg16-migrations.txt"
+q16 "${SEQ_Q}" >"${DATA_PATH}/pg16-sequences.txt"
+```
+
+**3. エクスポートして、一時コンテナーを止める。** エクスポートにはデータベース全体が平文の形で入っています。このホストの中だけに置き、手順 6 で削除してください。
+
+```bash
+( umask 077; docker exec custodexa-pg16-export pg_dump -U "${DB_USER}" -Fc "${DB_NAME}" >"${DATA_PATH}/pg16-export.dump" ) && echo exported
+ls -l "${DATA_PATH}/pg16-export.dump"
+docker stop custodexa-pg16-export && docker rm custodexa-pg16-export
+```
+
+**4. 新しいデータベースを作り、設定を確認する。** 新しい compose ファイルが、`postgresql/18/docker` に空の PostgreSQL 18 のデータベースを作ります。ユーザー、データベース名、パスワードは `.env` のものです。
+
+```bash
+docker compose --profile bundled-db up -d postgres
+for i in $(seq 1 60); do docker compose exec -T postgres pg_isready -U "${DB_USER}" && break; sleep 2; done
+dq() { docker compose exec -T postgres psql -U "${DB_USER}" -d "${DB_NAME}" -Atq -c "$1"; }
+dq "${ENC_Q}" | diff "${DATA_PATH}/pg16-encoding.txt" - && echo "encoding and collation equal"   # この行が表示されること
+dq "show data_checksums"                                                                       # on と表示されること
+```
+
+エンコーディングの行が異なる場合は、先へ進まないでください。`docker compose --profile bundled-db down` で止め、フォルダー `${DATA_PATH}/postgresql`（この手順が作ったもの）を削除し、やり直す前に相談してください。両方のバージョンの同梱イメージは既定値が同じなので、異なる場合は古いデータベースが別の設定で作られていたことを意味し、この節はその場合を扱いません。
+
+**5. エクスポートを読み込んで照合する。** 読み込みは 1 つのトランザクションで、最初のエラーで中止するため、失敗しても新しいデータベースは空のままです。失敗の後でやり直すには、`docker compose --profile bundled-db down` を実行し、`${DATA_PATH}/postgresql` を削除して、手順 4 から始めます。
+
+```bash
+docker compose exec -T postgres pg_restore -U "${DB_USER}" -d "${DB_NAME}" --single-transaction --exit-on-error <"${DATA_PATH}/pg16-export.dump" && echo loaded
+dq "${COUNT_Q}" | diff "${DATA_PATH}/pg16-counts.txt" - && echo "row counts equal"
+dq "${MIG_Q}" | diff "${DATA_PATH}/pg16-migrations.txt" - && echo "migrations equal"
+dq "${SEQ_Q}" | diff "${DATA_PATH}/pg16-sequences.txt" - && echo "sequences equal"
+docker compose exec -T postgres vacuumdb -U "${DB_USER}" --all --analyze-in-stages
+```
+
+すべての照合が「equal」の行を表示するまで、先へ進まないでください。
+
+**6. 一時ファイルを削除してスタックを起動する。** エクスポートと記録を削除し、単独で動いているデータベースを止めてから、スクリプトで全体を起動します。スクリプトは新しいフォルダーにデータがあることを確認してスタックを起動し、古いフォルダーがまだあることを知らせます。
+
+```bash
+rm -f "${DATA_PATH}/pg16-export.dump" "${DATA_PATH}/pg16-encoding.txt" "${DATA_PATH}/pg16-counts.txt" "${DATA_PATH}/pg16-migrations.txt" "${DATA_PATH}/pg16-sequences.txt"
+docker compose --profile bundled-db down
+bash scripts/quickstart.sh --up
+```
+
+そのあと[4. サービスの確認](#4-サービスの確認)に従い、サインインしてデータを確認してください。確信が持てるまで `${DATA_PATH}/postgres` は残してください。これが戻り先です。スタックを止めて以前のソースツリーをもう一度起動するときに使われますが、移した後に書き込まれたデータはそこにありません。この戻り先が不要になったら、手作業で削除してください。
 
 ## ソースツリーのデプロイ担当者の責任と挙動の境界
 
@@ -682,7 +787,7 @@ frontend も backend もホストのポートを公開しません。プロキ�
 
 証明書の出どころは `.env` の `TLS_MODE` が決め、2 つの値が下の最初の 2 つの小節に対応します。`selfsigned`（既定、
 製品が自己署名するローカル CA）と `provided`（自分の証明書）です。すでに自前の ingress があるデプロイは 3 つ目の道を通り、
-overlay で内蔵プロキシを止めます。
+`TLS_MODE=external` で内蔵プロキシを止めます。
 
 どの道を通っても、次の 2 点は変わりません。外部のエッジは TLS 1.2+、HTTP→HTTPS の転送、HSTS、WebSocket upgrade の転送を提供すること。
 エッジから本ホストまでの hop が信頼できないネットワークをまたぐ場合、その hop も暗号化すること（re-encrypt）。
@@ -744,7 +849,7 @@ docker compose logs backend | grep "refresh cookie"
    PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
-2. `docker compose up -d`。証明書は初回起動時に生成されます。
+2. `bash scripts/quickstart.sh --up`。証明書は初回起動時に生成されます。
 
 3. CA 証明書をダウンロードし、接続してくるマシンへ配布します：
 
@@ -790,7 +895,7 @@ CA 証明書をバックエンドのコンテナのトラストストアに追�
 1. 証明書チェーンと秘密鍵を `tls/fullchain.pem` と `tls/privkey.pem` に置きます。
 2. `.env` に `TLS_MODE=provided`、`TLS_DOMAIN`（証明書のホスト名と一致させます）、
    `PUBLIC_BASE_URL=https://<ホスト名>` を設定します。
-3. `docker compose up -d`。
+3. `bash scripts/quickstart.sh --up`。
 
 どちらかのファイルが欠けていると、起動は証明書の準備手順で停止し、どちらが欠けているかを名指しします。プロキシが中途半端な設定のまま起動することはありません：
 
@@ -828,7 +933,7 @@ docker compose logs tls-init
 3. 変更を反映します：
 
    ```bash
-   docker compose up -d                                       # .env の変更を反映
+   bash scripts/quickstart.sh --up                            # .env の変更を反映
    docker compose up -d --force-recreate tls-init tls-proxy   # 証明書の手順を再実行し、新しいファイルでプロキシを起動し直す
    ```
 
@@ -854,18 +959,21 @@ docker compose logs tls-init
    `Custodexa Internal CA` になります。`curl -vI https://bastion.example.com` でも、ハンドシェイクの
    出力に同じ証明書の情報が表示されます（自己署名モードでは `--cacert tls/ca-public/custodexa-ca.crt` を付けます）。
 
-#### 自前の ingress に任せる（external ingress overlay）
+#### 自前の ingress に任せる（`TLS_MODE=external`）
 
-前段にすでにクラウドの LB や既存の nginx／Traefik のような ingress がある場合は、overlay で内蔵プロキシを止め、
+前段にすでにクラウドの LB や既存の nginx／Traefik のような ingress がある場合は、`TLS_MODE=external` で内蔵プロキシを止め、
 フロントエンド自身が HTTP ポートを公開して、そこへ ingress から接続させます：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.external-ingress.yml up -d
+# .env
+#   TLS_MODE=external
+#   HTTP_PORT=80              （任意。フロントエンドが公開するポート。既定は 80）
+bash scripts/quickstart.sh --up
 ```
 
-`.env` の `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml`
-のコメントを外しておけば、日常の `docker compose up -d`／`ps`／`down` に毎回 `-f` を付ける必要はありません。
-この形態ではフロントエンドが `80` を公開し（`.env` の `HTTP_PORT` で変更できます）、外部向けの TLS はお使いの ingress が担います。
+その後、このフォルダーでの日常の `docker compose ps`／`down` は同じサービスが対象になります。`docker compose` が
+`quickstart.sh` の書き込んだ管理ブロックを読むためです。この形態では、スクリプトの最後の画面が、このホストで開くアドレスとして
+`http://localhost:<HTTP_PORT>/` を示します。フロントエンドが `80` を公開し（`.env` の `HTTP_PORT` で変更できます）、外部向けの TLS はお使いの ingress が担います。
 その契約は本節の冒頭に挙げたとおりです。`PUBLIC_BASE_URL` には利用者が実際に目にする https のアドレスを記入してください。
 
 次の 2 つの設定は、このスタックではなくお使いの ingress 側の担当です。**Host ヘッダーは、利用者が実際に接続する
@@ -893,8 +1001,9 @@ TLS_NGINX_TEMPLATE=./tls/custodexa.conf.template
 
 #### ホストに導入した nginx を使う場合
 
-プロキシのコンテナを動かさず、ホスト上の既存の nginx を使いたい場合：external ingress overlay でフロントエンドに HTTP ポートを公開させ
-（loopback へのバインドを推奨します。overlay 内のマッピングを `127.0.0.1:8088:80` に変更してください）、設定は同じテンプレートを流用し、
+プロキシのコンテナを動かさず、ホスト上の既存の nginx を使いたい場合：`TLS_MODE=external` でフロントエンドに HTTP ポートを公開させ
+（loopback へのバインドを推奨します。`HTTP_PORT` ではインターフェースを選べないため、`docker-compose.yml` の
+`frontend-published` サービスの `ports` の行を `127.0.0.1:8088:80` に変更してください）、設定は同じテンプレートを流用し、
 upstream を `127.0.0.1:8088` に向け、`server_name` と証明書のパスを自分のものに置き換えます。
 nginx 1.25.1 未満は `http2 on;` ディレクティブに対応していないため、`listen 443 ssl http2;` と書き換えれば動きます。
 その他のリバースプロキシ（Caddy、Traefik、クラウドの LB）も、本節の冒頭に挙げた契約を満たせば構いません。
@@ -903,7 +1012,7 @@ nginx 1.25.1 未満は `http2 on;` ディレクティブに対応していない
 #### TLS が有効になったことの確認
 
 ```bash
-docker compose ps                                  # tls-proxy が Up（tls-init は exited(0)）
+docker compose ps -a                               # tls-proxy が Up（tls-init は exited(0)）
 curl -sI http://localhost/ | head -1          # 301、https へ転送
 curl -skI https://localhost/ | head -1        # 200
 curl --cacert tls/ca-public/custodexa-ca.crt -sI https://<TLS_DOMAIN>/ | head -1   # 自己署名モード：200
@@ -1092,11 +1201,11 @@ docker compose up -d --force-recreate frontend
 
 
 ### macOS：postgres が `wrong ownership` で起動しない（Docker Desktop のファイル共有）
-症状：postgres のログに `data directory ... has wrong ownership` と出力され、このデータディレクトリは一度も正常に起動したことがない。データベースのフォルダーは bind mount（`${DATA_PATH:-./data}/postgres`）です。macOS では、Docker Desktop が使うファイル共有の実装に左右されることがあります。
+症状：postgres のログに `data directory ... has wrong ownership` と出力され、このデータディレクトリは一度も正常に起動したことがない。データベースのフォルダーは bind mount（1.23.0 からは `${DATA_PATH:-./data}/postgresql`、それ以前は `postgres`）です。macOS では、Docker Desktop が使うファイル共有の実装に左右されることがあります。
 
 1. Docker Desktop の設定（Docker メニューから Settings）の General タブで、"Choose file sharing implementation for your containers" を VirtioFS にします。適用して Docker Desktop を再起動します。
 2. 中途半端に初期化されたデータフォルダーを空にするのは、次の 2 つが両方成り立つときだけです。このデータフォルダーが一度も正常に起動したことがなく、かつ残す必要のあるデータが入っていないこと。出どころや中身が分からない場合は空にせず、先にバックアップを取るか相談してください。
-3. 両方の条件を満たす場合は、まず実際のパスを確認します。`.env` の `DATA_PATH` の下にある `postgres` フォルダーです（`DATA_PATH` が未設定なら `./data/postgres`）。そのフォルダーを削除し、`docker compose up -d` をやり直します。
+3. 両方の条件を満たす場合は、まず実際のパスを確認します。`.env` の `DATA_PATH` の下にある `postgresql` フォルダー（1.23.0 より前は `postgres`）です（`DATA_PATH` が未設定なら `./data/postgresql`）。そのフォルダーを削除し、`bash scripts/quickstart.sh --up` をやり直します。
 
 開発用スタックでは、Docker が単一ファイルのマウントを準備する途中で、初回起動が `outside of rootfs` で失敗することもあります。`docker compose up -d` をもう一度実行してください。`scripts/quickstart.sh --up` は、これらのマウント先を事前に作成します。
 

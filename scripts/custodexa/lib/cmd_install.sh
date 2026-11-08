@@ -22,7 +22,7 @@ cmd_install_elapsed() { cx_duration $(($(cx_now) - $1)); }
 cmd_install_note() { printf '%s\n' "$1" | sed 's/^/       /'; }
 
 # cmd_install_stop <step> <step message id> [file with the lines to show under the step]:
-# the FAIL step line, what went wrong, how to go on; the run is recorded as failed.
+# The FAIL step line, what went wrong, how to go on; the run is recorded as failed.
 cmd_install_stop() {
   local n=$1 id=$2 detail=${3:-}
   cx_step_line FAIL "$n/$CX_INSTALL_STEPS" "$(cx_msg "$id")"
@@ -63,7 +63,7 @@ cmd_install_generated() {
 
 # Step 4. The folder is prepared by a throw-away container running as root, so the result is the
 # same whether sudo or a docker group member runs the script: guacd writes recordings as uid 1000,
-# the backend reads them as group 0, and the setgid bit gives new files group 0. The image is the
+# The backend reads them as group 0, and the setgid bit gives new files group 0. The image is the
 # one tls-init runs (already obtained), or guacd's when this deployment has no built-in proxy.
 cmd_install_recordings() {
   local dir img out
@@ -124,6 +124,9 @@ cmd_install_record() {
   cx_state_set current.since "$(date '+%Y-%m-%dT%H:%M:%S%z')"
   cx_state_set current.release_dir "releases/$ver"
   cx_state_set current.overlays "$CX_ENV_OVERLAYS"
+  cx_state_set current.external_db_host "$(cx_form_db_host "$CX_ROOT/.env")"
+  cx_state_set current.external_db_port "$(cx_form_trim "$(cx_env_get "$CX_ROOT/.env" EXTERNAL_DB_PORT)")"
+  cx_state_set current.tls_mode "$(cx_form_tls_mode "$CX_ROOT/.env")"
   cx_state_set current.images_env "releases/$ver/images.env"
   cx_state_set current.image_ids "$(cx_images_ids_text)"
   cx_tools_record current
@@ -169,6 +172,65 @@ cmd_install_guide() {
   printf '%s\n' "$CX_RULE"
 }
 
+# The deployment form the two keys of .env give, before anything is written. Without a .env
+# yet, the template's values are shown. On a terminal the preview ends with a y/N question (default
+# no); without one it is printed and the install goes on, and --yes answers the question.
+cmd_install_preview() {
+  local src=$CX_ROOT/.env words host port tls data addr hp url mode
+  [ -f "$src" ] || src=$CX_ROOT/current/.env.example
+  words=$(cx_form_derive "$src") || words=""
+  host=$(cx_form_db_host "$src")
+  tls=$(cx_form_tls_mode "$src")
+  # A host without a global address (an isolated lab host) has none to show: the helpers fail
+  # under pipefail then, and the preview must not end the install there.
+  addr=$(cx_env_host_ipv4s) || addr=""
+  addr=${addr%%,*}
+  [ -n "$addr" ] || addr=$(cx_env_host_fqdn) || addr=""
+  [ -n "$addr" ] || addr=localhost
+  printf '%s\n' "$(cx_msg fi_section)"
+  if [[ " $words " == *" external-database "* ]]; then
+    port=$(cx_form_trim "$(cx_env_get "$src" EXTERNAL_DB_PORT)")
+    cx_msg fi_db_external "$host:${port:-5432}"
+  else
+    data=$(cx_form_trim "$(cx_env_get "$src" DATA_PATH)")
+    if [ -z "$data" ] || [ "$data" = ./data ]; then data=$CX_ROOT/data; fi
+    cx_msg fi_db_builtin "$data/postgres"
+  fi
+  printf '\n'
+  if [[ " $words " == *" external-ingress "* ]]; then
+    hp=$(cx_form_trim "$(cx_env_get "$src" HTTP_PORT)")
+    cx_msg fi_web_own "${hp:-80}" "$addr" "${hp:-80}"
+  else
+    url=$(cx_env_get "$src" PUBLIC_BASE_URL)
+    [ -n "$url" ] || url=https://$addr
+    mode=$(cx_msg fi_tls_selfsigned)
+    [ "$tls" != provided ] || mode=$(cx_msg fi_tls_provided)
+    hp=$(cx_form_trim "$(cx_env_get "$src" TLS_HTTPS_PORT)")
+    port=$(cx_form_trim "$(cx_env_get "$src" TLS_HTTP_PORT)")
+    cx_msg fi_web_builtin "$url" "${hp:-443}" "${port:-80}" "$mode"
+  fi
+  printf '\n\n%s\n' "$(cx_msg fi_note)"
+}
+
+cmd_install_confirm() {
+  local answer
+  if [ "${CX_YES:-0}" = 1 ]; then
+    printf '\n%s y\n\n' "$(cx_msg fi_ask)"
+  elif [ -t 0 ]; then
+    printf '\n%s ' "$(cx_msg fi_ask)"
+    read -r answer || answer=""
+    case $answer in
+      y | Y | yes | YES) printf '\n' ;;
+      *)
+        printf '%s\n' "$(cx_msg pre_nothing_changed)"
+        exit "$CX_EXIT_REFUSED"
+        ;;
+    esac
+  else
+    printf '\n'
+  fi
+}
+
 cmd_install() {
   local root=$CX_ROOT t0 i tmp
   [ $# -eq 0 ] || cx_die "$CX_EXIT_USAGE" usage_extra_args "$1"
@@ -183,6 +245,10 @@ cmd_install() {
     cx_preflight_report "$root"
     exit "$CX_PRE_EXIT"
   fi
+  # The deployment form .env describes must be one this host can install; nothing is written yet.
+  cx_form_guard install || exit "$?"
+  cmd_install_preview
+  cmd_install_confirm
   cx_begin install
   cx_step 1 "$CX_INSTALL_STEPS" preflight
   for i in "${!CX_PRE_MARK[@]}"; do cx_log CHECK "${CX_PRE_MARK[i]} ${CX_PRE_TEXT[i]}"; done
@@ -207,6 +273,9 @@ cmd_install() {
   cmd_install_note "$(cmd_install_generated)"
   cmd_install_note "$(cx_msg "env_kek_$CX_ENV_KEK")"
   cmd_install_note "$(cx_msg env_url "$CX_ENV_URL")"
+  if [ -n "$CX_FORM_MOVED" ]; then
+    cmd_install_note "$(cx_msg fm_moved_note "$(printf '%s' "$CX_FORM_MOVED" | paste -sd, - | sed 's/,/, /g')")"
+  fi
 
   # 3: images, then who published them.
   cx_step 3 "$CX_INSTALL_STEPS" images

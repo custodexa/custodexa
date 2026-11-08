@@ -18,6 +18,8 @@
 . "${BASH_SOURCE[0]%/*}/upgrade_query.sh"
 # shellcheck source=lib/upgrade_preflight.sh
 . "${BASH_SOURCE[0]%/*}/upgrade_preflight.sh"
+# shellcheck source=lib/upgrade_convert.sh
+. "${BASH_SOURCE[0]%/*}/upgrade_convert.sh"
 # shellcheck source=lib/upgrade_output.sh
 . "${BASH_SOURCE[0]%/*}/upgrade_output.sh"
 # shellcheck source=lib/drain_gate.sh
@@ -266,13 +268,6 @@ cx_up_verify_package() {
 
 # ---------- the upgrade in this script ----------
 
-# cx_up_preview_head: the top of the preview.
-cx_up_preview_head() {
-  printf '%s\n\n' "$(cx_msg up_title)"
-  printf '%s\n' "$(cx_msg up_row_installed "$CX_UP_CURRENT")" "$(cx_msg up_row_target "$CX_UP_TARGET")" \
-    "$(cx_msg up_row_root "$CX_ROOT")"
-}
-
 # cx_up_run: the upgrade to CX_UP_TARGET by this script. Steps 1 (checks) and 2 (images) run
 # before the preview (step 3); the rest after it is answered (lib/upgrade_steps.sh).
 cx_up_run() {
@@ -281,9 +276,9 @@ cx_up_run() {
   # target, and its recovery commands matter more than the version rules.
   cx_up_pre_unfinished || exit "$?"
   # Older and same version need no MANIFEST to be refused.
-  cx_vr_check "$CX_UP_CURRENT" "$CX_UP_TARGET" || exit "$?"
+  [ "${CX_DBU_SAME:-0}" = 1 ] || cx_vr_check "$CX_UP_CURRENT" "$CX_UP_TARGET" || exit "$?"
   cx_manifest_load "$CX_DIR/MANIFEST.json" || exit "$CX_EXIT_FAILED"
-  cx_vr_check "$CX_UP_CURRENT" "$CX_UP_TARGET" "$(cx_mf min_source_version)" || rc=$?
+  [ "${CX_DBU_SAME:-0}" = 1 ] || cx_vr_check "$CX_UP_CURRENT" "$CX_UP_TARGET" "$(cx_mf min_source_version)" || rc=$?
   [ "$rc" -eq 0 ] || exit "$rc"
   t0=$(cx_now)
   cx_up_preflight || exit "$?"

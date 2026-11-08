@@ -1,0 +1,6 @@
+[FAIL] 空間不夠，升級不會開始。沒有停止任何服務，也沒有做任何變更。
+  /var    Docker 映像儲存區 /var/lib/docker
+          需要 5.6 GB（新版映像），只有 2.1 GB，還差 3.5 GB
+  備份位置 /opt 與新資料庫的位置 /data 的空間都夠。
+  釋放或擴充 /var 的空間後，重新執行同一個指令：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.23.0

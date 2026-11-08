@@ -11,10 +11,8 @@
 > Related documents: [Backup and Restore](./backup-and-restore.md), [Deployment Topology Limits](./deployment-topology-limits.md),
 > [Rotating the Platform's Own Privileged Credentials](./privileged-credential-rotation.md).
 >
-> The `docker compose` commands in this document assume the production shape (`docker-compose.yml`, with the built-in TLS reverse proxy).
-> For a deployment where your own ingress terminates TLS (`docker-compose.external-ingress.yml`), always pass both `-f` flags
-> (`-f docker-compose.yml -f docker-compose.external-ingress.yml`), or set `COMPOSE_FILE` in `.env` so that becomes the
-> default; with only one of them the stack starts in the built-in TLS proxy shape.
+> The `docker compose` commands in this document assume a source deployment started with `scripts/quickstart.sh`: the parts of the stack come from the managed block at the end of `.env`, which the script writes from `EXTERNAL_DB_HOST` and `TLS_MODE`. No `-f` flag is needed, whether TLS is built in or carried by your own ingress (`TLS_MODE=external`).
+> Run the script once in a folder before you type these commands there; where it has never run, `docker compose` starts no database and no proxy.
 > A package deployment is upgraded by its management script (§2, first subsection); for compose commands typed by hand in its folder, see [Backup and Restore §2.3](./backup-and-restore.md#23-how-the-shell-commands-in-this-document-obtain-deployment-variables-read-before-you-start).
 
 ---
@@ -174,14 +172,14 @@ For the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 
 
 | Step | What happens | Manual counterpart |
 |---|---|---|
-| 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the new images and for the backup (with `--backup-ref` the script takes no backup, so only the images count). With an external database, first the database itself (below) | §2.0 |
+| 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the new images, for the backup and, when the database is converted, for the conversion (with `--backup-ref` the script takes no backup, so the backup is not counted); when the database is converted, also that it can be converted (below). With an external database, first the database itself (below) | §2.0 |
 | 2 | Obtains and verifies the new images | §2.2 |
 | 3 | Preview and confirmation; the running services have not been stopped yet | |
 | 4 | Waits up to 120 seconds for the audit queue to reach 0. When the queue cannot be read, it passes only a system that reports itself sealed and was not unsealed since its container started; anything else stops the run with the service still running and nothing changed | §2.3 step 3, §2.4 |
 | 5 | Stops backend, guacd and frontend (the database keeps running) and reads the backend log for a drain timeout | §2.3 step 4, §3.1 |
 | 6 | Confirms the old instance is gone: 0 connections of the application account. With an external database and no client this time, a warning instead (below) | §2.3 step 5 |
 | 7 | Records the snapshot and takes the backup (below) | §2.1 |
-| 8 | Reserved for historical step numbering; no conversion or file move is performed | |
+| 8 | Converts the bundled database to PostgreSQL 18 when its data is on an older major version; otherwise marked as skipped (external database, or already on 18). See [Converting the bundled database to PostgreSQL 18](#converting-the-bundled-database-to-postgresql-18) | |
 | 9 | Points `current` at the new release and prepares the recordings folder | §1.3, §2.5 |
 | 10 | Starts the services | §2.5 |
 | 11 | Waits up to 180 seconds for the backend to answer its health check | §2.5 |
@@ -223,12 +221,185 @@ Step 6 counts the connections of the application account through the same client
 |---|---|---|
 | Steps 1 to 4 | The old version runs; nothing changed | Fix the cause the screen names and run the upgrade again |
 | Steps 5 to 7 | The services are stopped; version and data unchanged | Start the old version with the command on the screen, or fix the cause and run the upgrade again |
-| Step 8 | No conversion action runs in this release | Continue according to the result shown by the script |
+| Step 8 | The database conversion failed or was interrupted | After a failure the old version runs again, nothing was switched and the old data is unchanged: fix the cause the screen names and run the upgrade again. After an interruption, the next `upgrade` says how it continues. Both are described in [Converting the bundled database to PostgreSQL 18](#converting-the-bundled-database-to-postgresql-18) |
 | Steps 9 to 12 | The new version is in place | Read the backend log with the command on the screen. To go back, run `sudo /opt/custodexa/custodexa.sh rollback`, as described in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script); another upgrade is refused, with the same instructions, until the deployment is back on the previous version: a `rollback` that finished, or a `restore` that finished (the one a refused rollback prints, for example). Abandoning a rollback with `rollback --revert` returns to the new version, and the upgrade stays refused |
 
 An upgrade interrupted by Ctrl-C or a dropped connection is handled the same way: the next run prints the instructions for the step it had reached. Interrupted at steps 1 to 4, or at steps 5 to 7 once the old version runs again, the next upgrade starts over with a warning. Every command on these screens carries the full path, the project name and the compose files, so it works from any directory.
 
-**Going back.** To return to the version before an upgrade, start with `sudo /opt/custodexa/custodexa.sh rollback`. When the new version has not changed the database, it points the deployment back to the previous version and keeps the data. When it has, or when the database cannot be read, `rollback` changes nothing and the screen prints the `restore` command or the manual procedure to run instead. Only a restore of the backup the upgrade took loses what was recorded after that backup. Details are in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script).
+**Going back.** To return to the version before an upgrade, start with `sudo /opt/custodexa/custodexa.sh rollback`. When the new version has not changed the database, it points the deployment back to the previous version and keeps the data. When the upgrade moved the bundled database to another major version (from 1.23.0, see [Converting the bundled database to PostgreSQL 18](#converting-the-bundled-database-to-postgresql-18)), `rollback` can also go back, but what the new version wrote after it started is not in the database it goes back to. When the new version has changed the database in any other way, or when the database cannot be read, `rollback` changes nothing and the screen prints the `restore` command or the manual procedure to run instead. A restore of the backup the upgrade took loses what was recorded after that backup, and so does a `rollback` after the conversion to PostgreSQL 18. Details are in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script).
+
+#### Converting the bundled database to PostgreSQL 18
+
+> Applies to package deployments that use the bundled database, when upgrading to 1.23.0 or later from a release that runs PostgreSQL 16. A deployment with an external database is not touched: the script does not connect to change an external server, and step 8 is marked as skipped for it.
+
+From 1.23.0 the bundled database is PostgreSQL 18.6; earlier releases ran PostgreSQL 16, whose community support ends in November 2028. A major version cannot be changed by swapping the image, so the upgrade converts the data at step 8. You run the same `upgrade` as always, from the menu or the command line; nothing about the database has to be done by hand. A deployment on a version before 1.17.0 is refused at the start (exit code 3, nothing changed) and the screen names the version to upgrade to first (`upgrade 1.17.0`); upgrade it to 1.17.0 or later, then to 1.23.0.
+
+**What happens at step 8**
+
+- Step 8 runs after the backup of step 7 and before the new version is put in place at step 9, and only when the release being upgraded to carries a newer database major version than the one running now. When the data is already on that version, or the database is external, step 8 is skipped. The services stay stopped through all of it, so the downtime of the upgrade includes the conversion.
+- The script takes a new, separate export from the old database server, which is still running, with the PostgreSQL 18 export tool. It does not reuse the database inside the step 7 backup file, so the conversion works the same way with `--backup-ref`.
+- It creates a new database in `${DATA_PATH}/postgresql/18/docker`, with the same encoding and collation as the old one and with data checksums turned on, and loads the export in a single transaction that stops at the first error.
+- Before the new version starts, it compares the two databases: the row count of every table, the rows of `schema_migrations`, the current value of every sequence, and the encoding and collation must all be equal, and data checksums must report `on`. Then it refreshes the statistics the query planner uses.
+- The old database folder `${DATA_PATH}/postgres` is not written to, renamed or deleted by the conversion, including when the conversion fails. The old database server keeps running during the conversion and changes its own files as any running PostgreSQL does; that is not a conversion action.
+- The screen shows the current sub-step (export, creating the new database, loading, checking, statistics), the time elapsed and the time estimated, and the size of the data. Do not interrupt it. Interrupting does not damage the old data.
+
+**Space and content checks, before anything stops**
+
+Step 1 makes both checks before any service is stopped. A refusal changes nothing.
+
+- **Free space.** Each write is counted on the file system it lands on, and items on the same file system add up: the backup in `backups/`, the new images in the Docker image storage folder, the new database (the size of the database plus 2 GiB) and the temporary export (the size of the database). When they share a file system, the conversion needs about twice the size of the database plus 2 GiB beyond the backup and the images. With `--backup-ref` the backup is not counted, but the conversion is. When the file system or the free space of any of these places cannot be determined, the upgrade refuses and names the place. The refusal lists, for every file system, what is needed and what is available.
+- **Content the script cannot convert.** The upgrade refuses, and names it, when the database has an extension other than `plpgsql`, a custom tablespace, or privileges granted to a role other than the application account, `PUBLIC` and the built-in roles whose names start with `pg_`. The script does not convert such a database; remove the named setting as described in [When the database holds extra settings](#when-the-database-holds-extra-settings), then run the upgrade again.
+
+**Reading the preview.** The preview, shown before anything stops, has a database conversion section. It says that the database goes from PostgreSQL 16 to 18 and why; where the old data stays; the space needed and available on each file system; the estimated time as a range of minutes (the lower figure is the estimate, the upper figure is twice that, and a slow disk can take longer), which is added to the expected downtime; that a failed conversion leaves the version unchanged and the old version running; and the two ways back after the conversion (below). Read the downtime and the space before you announce the window.
+
+**When the conversion fails**
+
+When any sub-step fails, the script does these, in this order: it removes the temporary container; it renames the new database folder to `postgresql.failed-convert-<time>` and keeps it for diagnosis; it deletes the temporary export; it records that the conversion failed and that the stop confirmation, the backup and the snapshot of this run may not be reused; and then it starts the application services of the old version again and waits until they are healthy. The upgrade is recorded as failed at step 8. The screen names the sub-step that failed and why, says that the old version is running again, that the version was not switched and that the old data was not changed, and gives the location of the kept folder and of the log.
+
+It is then safe to run the upgrade again. After fixing the cause, run the same command:
+
+```bash
+sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+```
+
+The new run is a fresh upgrade from step 1: it drains the audit queue, stops the services, confirms 0 connections and takes a new backup and snapshot. Nothing from the failed run is reused, because the old version may have accepted writes after it came back. With `--backup-ref`, your own backup has to start after the stop of this new run; the backup of the failed run is refused. When the old services cannot be started again, the script prints the commands to recover them and does nothing by itself.
+
+**When the conversion is interrupted**
+
+A power loss or a killed process during step 8 can leave the temporary container and a half-built folder behind. The next `upgrade` first completes or checks any unfinished folder rename (the script records each rename before it makes it), then decides how to go on, and the screen says which case applies:
+
+- The old services are running, or it cannot be shown that they have stayed stopped since step 5: the whole upgrade runs again: the checks and the preview, then step 4 drains the audit queue, step 5 stops the services and step 7 takes a new backup. The services stop once more.
+- The services are stopped and it can be shown that none of them was started since step 5: the upgrade removes the temporary container, renames the half-built folder to `postgresql.partial-convert-<time>`, and runs step 8 again with the backup of step 7.
+- The interruption came during the clean-up of a failed conversion: handled like a failed conversion above, as a fresh upgrade from step 1.
+
+Other subcommands refuse while such an upgrade is unfinished and print the same notice. When the script cannot tell which of two folders a rename left in place, it starts no database, shows both paths with their version files and waits for you to check; see [When a data folder rename was interrupted](#when-a-data-folder-rename-was-interrupted).
+
+**What a failed conversion leaves behind.** The `postgresql.failed-convert-*` and `postgresql.partial-convert-*` folders were written only by the temporary conversion container and were never used by the application. They take space, and the space check of the next run counts that space again. While the deployment is on the old version and healthy, the next `upgrade` handles them only when its space check at step 1 comes out short: it lists each with its path and size and, at a terminal, asks whether to remove them first (the default is no), then counts the space again. When the space is enough they are not mentioned and stay where they are. Without a terminal it removes nothing; a refusal for space then lists them and says to run the upgrade again at a terminal to be offered their removal. Once 1.23.0 is running, the same folders can be removed with `db-upgrade --remove-old` (below).
+
+**After the upgrade.** Step 12 also checks that the data folder is PostgreSQL 18, that the server reports version 18 and that the data is in the folder the release names; the checks on migrations, counts and key fingerprints are as before. The final screen says where the old PostgreSQL 16 data is kept and how much space it takes. It stays until you remove it: the script never removes it on its own.
+
+**Going back after the conversion.** There are two ways:
+
+- `rollback` goes back across the database version as long as the old PostgreSQL 16 data folder is still there. It starts the previous version on that folder, exactly as the upgrade left it, and renames the PostgreSQL 18 folder to `postgresql.rolled-back-<time>` and keeps it. When the new version never started, nothing is lost. When it did start, **what it wrote is not in the database after the rollback**: audit records, connection records, the index of recordings (the recording files stay on disk, but the database no longer knows them), and changes to settings and accounts. The preview says so before you confirm; the question defaults to no, and without a terminal `--yes` is required (the warning is still printed).
+- `restore` of the backup the upgrade took (the screen gives its path) returns to the same moment, with the same loss.
+
+Upgrading again later converts the old data again; the data kept in `postgresql.rolled-back-<time>` is not merged back. When the old folder has been removed, `rollback` refuses, changes nothing and prints the `restore` command; what that restores is the data of the upgrade, so what was recorded after it is lost. The rules and commands are in [Backup and Restore: Going back across a database major version](./backup-and-restore.md#going-back-across-a-database-major-version).
+
+**Removing the old database folders.** Only you remove them, from the menu (**Database upgrade**) or with these commands:
+
+```bash
+sudo /opt/custodexa/custodexa.sh db-upgrade               # shows the database version; offers the removal of kept folders
+sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old  # lists the kept folders and removes the ones you confirm
+sudo /opt/custodexa/custodexa.sh status                   # database version, data location, checksums, kept folders
+```
+
+The list shows the full path, version and size of each kept folder: the old `postgres/` (when it is not the current data folder), `postgresql.before-convert-*`, `postgresql.rolled-back-*`, `postgres*.before-restore-*` (kept by a restore), `postgresql.failed-convert-*`, `postgresql.partial-convert-*` and a `*.removing-*` folder whose removal was not finished. A kept old database is offered for removal only when all of these hold: the current data is on the release's database version and the database is healthy; the last upgrade was settled as successful; the new version has started at least once; and no upgrade, rollback or restore is unfinished. When one does not hold, the screen says which and removes nothing. Removal asks for a confirmation word at a terminal and `--yes` without one. Before you confirm, the screen states that removal cannot be undone, that once the previous version's data is removed `rollback` can no longer go back to the previous version (only the backup the upgrade took can), and where that backup is. The folder is renamed to `<name>.removing-<time>` and then deleted; an interrupted removal shows in the next `status` and can be run again. The failed-conversion folders have lighter conditions: the deployment is healthy, nothing is unfinished except a step 8 recorded as failed, and the folder is not the data folder of the current or the previous version.
+
+**The menu.** With the bundled database, the main menu has **Database upgrade** as item 8, between loading an offline image bundle and Help (Help moves to 9). Items 1 to 7 and 0 keep their numbers, and with an external database the menu has no such item. The item runs `db-upgrade`. On 1.23.0 it says the database is already the newest version this release supports, because the conversion already ran as step 8; the entry is there for later releases. With an external database it only says that the database is yours to manage and ends with exit code 0. When the data is newer than the program, it refuses and says to upgrade the program.
+
+##### When a data folder rename was interrupted
+
+The script renames a whole database data folder in a few places: it sets the new database aside after a failed conversion, keeps the PostgreSQL 18 folder as `postgresql.rolled-back-<time>` on a rollback, and renames a folder before it is removed. Each rename is written to `state.json` before it is made and marked done after it. When a run is cut off between the two, the next command that starts the database (`upgrade`, `rollback --resume`, `rollback --revert`, `start`, a restore) reads that record first. When exactly one of the two folders exists, the script finishes the record itself: with the source still in place it makes the rename, with only the target there it marks the rename done. You see nothing and nothing is asked.
+
+When both folders exist, or neither does, the script cannot tell what happened. It starts no database service, changes no folder, and prints the operation it was doing, both paths, the PostgreSQL version each folder holds (the content of its `PG_VERSION` file) and its size. Starting anyway could create an empty new database in an empty folder, or connect the services to incomplete data. To settle it:
+
+1. Do not rename, move or delete anything yet. Look at the two folders with `ls -ld` and `du -sh`, and read the `PG_VERSION` file in each (in the PostgreSQL 18 layout it is under `18/docker/`). The operation line tells what the folders were for. The complete folder is the one with the expected PostgreSQL version, the plausible size and the newer modification time.
+2. When **both** exist: keep the complete one at one of the two paths, and move the other one out of the data folder under a name of your own (do not delete it until you are sure). With exactly one of the two paths left, run the same command again: it makes the recorded rename when the source path is the one left, or marks it done when the target path is.
+3. When **neither** exists: the data was moved elsewhere or deleted. Search for a folder holding `PG_VERSION` (for example `sudo find / -maxdepth 9 -name PG_VERSION -not -path '/proc/*' -not -path '/var/lib/docker/*' -not -path '*/base/*' 2>/dev/null`; the data may sit on another disk), put it back at the source or target path of the screen, and run the same command again.
+4. When you cannot find complete data, or cannot tell which folder is right, do not guess: restore the backup the upgrade took. The screen prints the command (`sudo /opt/custodexa/custodexa.sh restore <that backup>`); see [Backup and Restore](./backup-and-restore.md).
+
+When the data folder simply has no `PG_VERSION` and no rename is recorded, the same commands refuse with a shorter screen ("The data folder is incomplete"): find the data among the kept `postgresql.*` folders, or restore the backup as above. A new installation, where the folder does not exist yet, is not affected.
+
+##### When the database holds extra settings
+
+This applies when step 1 of the upgrade refused and named an extension, a custom tablespace or a role. The script does not convert such a database, and nothing in this section is done by it: the commands below are run by you, as the database administrator, against the old database, which keeps running while the old version is in place. Run them from the deployment folder; `DB_USER` and `DB_NAME` come from `.env` (see [Backup and Restore §2.3](./backup-and-restore.md#23-how-the-shell-commands-in-this-document-obtain-deployment-variables-read-before-you-start)). Replace the names in angle brackets with the ones the refusal printed.
+
+**Back up first.** Removing these settings changes the database, so take a backup you can go back to before the first command:
+
+```bash
+sudo /opt/custodexa/custodexa.sh backup
+```
+
+**An extension.** List the extensions other than `plpgsql`:
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "SELECT extname, extversion FROM pg_extension WHERE extname <> 'plpgsql'"
+```
+
+Remove each one the refusal named. The command refuses when an object of yours depends on the extension, and lists what depends on it; deal with those objects first rather than adding `CASCADE`, which deletes them. When the list above returns no rows, no extension is left.
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "DROP EXTENSION <extension name>"
+```
+
+**A custom tablespace.** List the tablespaces other than the two built-in ones, and the objects stored in them:
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace
+   WHERE spcname NOT IN ('pg_default', 'pg_global')" -c \
+  "SELECT n.nspname, c.relname, c.relkind FROM pg_class c
+   JOIN pg_namespace n ON n.oid = c.relnamespace
+   JOIN pg_tablespace t ON t.oid = c.reltablespace
+   WHERE t.spcname NOT IN ('pg_default', 'pg_global')"
+```
+
+Move everything in the tablespace to the default one, then drop the tablespace. Moving rewrites the files of each table and locks it while it runs, so choose a quiet period. When both lists above return no rows, no custom tablespace is left.
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "ALTER TABLE ALL IN TABLESPACE <tablespace name> SET TABLESPACE pg_default" -c \
+  "ALTER INDEX ALL IN TABLESPACE <tablespace name> SET TABLESPACE pg_default" -c \
+  "ALTER MATERIALIZED VIEW ALL IN TABLESPACE <tablespace name> SET TABLESPACE pg_default" -c \
+  "DROP TABLESPACE <tablespace name>"
+```
+
+**A role other than the application account.** List the roles, other than the application account and the built-in roles whose names start with `pg_`, that hold a privilege on an object of the application's schemas (a table or sequence, a column, a schema, a function, a type, a large object, a foreign server), a default privilege (`ALTER DEFAULT PRIVILEGES`) or the database. This is the same test the upgrade applies:
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "WITH us AS (SELECT oid FROM pg_namespace
+     WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg\_toast%')
+   SELECT DISTINCT r.rolname FROM (
+     SELECT relacl AS acl FROM pg_class WHERE relnamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT a.attacl FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+       WHERE c.relnamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT nspacl FROM pg_namespace WHERE oid IN (SELECT oid FROM us)
+     UNION ALL SELECT proacl FROM pg_proc WHERE pronamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT typacl FROM pg_type WHERE typnamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT defaclacl FROM pg_default_acl
+     UNION ALL SELECT lomacl FROM pg_largeobject_metadata
+     UNION ALL SELECT srvacl FROM pg_foreign_server
+     UNION ALL SELECT datacl FROM pg_database WHERE datname = current_database()
+   ) s CROSS JOIN LATERAL aclexplode(s.acl) a
+   JOIN pg_roles r ON r.oid = a.grantee
+   WHERE a.grantee <> 0 AND r.rolname !~ '^pg_' AND r.rolname <> current_user"
+```
+
+For each role, make sure nothing still signs in with it, then hand the objects it owns to the application account, revoke its privileges and drop it. `DROP OWNED` also removes the role's default privileges and revokes its privileges in the current database only; when `DROP ROLE` reports that the role still holds privileges in another database, run the same two statements before it against that database (change `-d`). When the list above returns no rows, no such role is left.
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "REASSIGN OWNED BY <role name> TO CURRENT_USER" -c \
+  "DROP OWNED BY <role name>" -c \
+  "DROP ROLE <role name>"
+```
+
+**Run the upgrade again.** Once the three lists are empty, run the same command as before:
+
+```bash
+sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+```
+
+**If you do not want to remove them.** Keep the settings on a database server you manage yourself: move the deployment to an external database with [Backup and Restore §5.4, Switching to an external database](./backup-and-restore.md#54-switching-to-an-external-database), then upgrade as a deployment with an external database, which the script does not touch (step 8 is skipped).
 
 ### Manual migration of an older source deployment
 
@@ -258,6 +429,29 @@ The guacd service is not built by this project: from 1.13.0 the compose files re
 > Confirm your source version before planning the upgrade.
 
 > **What the single-instance guard guarantees**: as of this release, a second application instance started against the same database is stopped and asked to confirm (§2.6b). That mutual exclusion **only holds between guard-bearing releases**: older releases without the guard hold no lock, so on the first upgrade from a release without the guard, the new release acquiring the lock **does not mean** the old one has stopped. Step 5 of §2.3 is the first-upgrade check that exists for exactly this, and it must not be skipped.
+
+#### Upgrading to 1.23.0
+
+Several features validate their input more strictly in this release, and some actions need a permission they did not need before. Read the items below before you upgrade and act on the ones that apply to your deployment.
+
+- **The bundled database moves from PostgreSQL 16 to 18 (package deployments with the bundled database).** The upgrade converts the data at step 8 and keeps the old data folder. Plan for the downtime of the conversion and for extra free space of about twice the size of the database plus 2 GiB; the preview shows both before anything stops. The old data stays until you remove it, and `rollback` can still go back to 1.22.x on it, losing what the new version wrote. A deployment older than 1.17.0 has to be upgraded to 1.17.0 or later first. The procedure, the failure cases and the removal are in [Converting the bundled database to PostgreSQL 18](#converting-the-bundled-database-to-postgresql-18). A deployment with an external database is not affected.
+- **Source deployments and the database.** The bundled database of a source deployment is PostgreSQL 18 from this release, kept in `data/postgresql`. `scripts/quickstart.sh` stops and starts nothing when `data/postgres` still holds older data and the new folder is empty. Move the data once by hand with [Quickstart §8](../QUICKSTART.md#8-moving-a-source-deployment-to-postgresql-18).
+- **The upgrade adjusts `.env` once (package deployments).** From 1.23.0 the form of a deployment comes from two lines of `.env`: `EXTERNAL_DB_HOST` for the database and `TLS_MODE` for the web entry. When you upgrade from 1.22 or earlier, step 9 rewrites `.env` once, and the preview of the upgrade lists the change before anything stops. The `COMPOSE_FILE` and `COMPOSE_PROFILES` lines outside the managed block are removed, `TLS_MODE` becomes `external` for a deployment that ran with its own ingress, and the managed block at the end of the file is written. Nothing else in `.env` changes. The form of the deployment stays the same: the same containers keep running by name, a database on an external server keeps being used, and the bundled data folder is not touched. This was exercised for upgrades from 1.22.0 in each of the four forms (bundled or external database, built-in TLS or your own ingress) and from 1.17.9 with an external database and its own ingress. The file is rewritten through a temporary file and a single rename, so an interrupted upgrade leaves `.env` either as it was or fully rewritten.
+- **When the upgrade stops for the form.** If `.env` lists the external database but `EXTERNAL_DB_HOST` is empty, the upgrade stops before anything is stopped. It prints the address recorded for the deployment when the record holds one; a deployment installed with 1.22 or earlier has no recorded address, so the screen says so and you put the address of your database server in `EXTERNAL_DB_HOST`. If `.env` names an external database while the deployment runs the bundled one, or the reverse, it stops with exit code 3 and changes nothing. Fix the line and run the upgrade again.
+- **Going back to 1.22.x.** `rollback` puts the managed block back to the layout of the version you return to; every other line of `.env` stays as it is, and the services keep their names.
+- **A backup taken by 1.22.x restores with the 1.23 script.** After a restore of the backup of a deployment that ran with its own ingress, `start`, `backup` and `upgrade` work, and `TLS_MODE` is `external`.
+- **Source deployments.** The two overlay files are no longer shipped. `scripts/quickstart.sh` translates a `COMPOSE_FILE` line that lists them the next time it runs, and prints every change ([Quickstart §7](../QUICKSTART.md#7-the-database-on-a-separate-server-external-database)). Start with `bash scripts/quickstart.sh --up` instead of a bare `docker compose up -d`.
+
+- **Offsite storage on Google Cloud Storage: key and endpoint rules.** A key entered for the GCS provider must be a service account key: `type` is `service_account`, `client_email`, `private_key` and `token_uri` are present, and `token_uri` is `https://oauth2.googleapis.com/token`. The connection test, saving, confirming a generation switch and the first-time configuration from the environment all apply this rule, and a key that does not meet it is refused with `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID`, which names the field and never the value. When a configuration carries no explicit key (the key field is left empty and the current generation does not hold a stored key, or the key is cleared), the endpoint must be empty or a host under `googleapis.com`; otherwise the same four entries refuse it with `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL`. A deployment that reaches GCS through a non-Google address has to enter a service account key.
+- **What to do for offsite storage before you upgrade.** Open the current offsite storage generation. If it stores a key that is not a service account key, or whose `token_uri` is not the value above, enter a valid service account key. If it relies on the default credential chain and sets an endpoint outside `googleapis.com`, either enter a service account key or set the endpoint back to empty. Until then, uploads and retrievals on the current generation fail, and uploads appear through the existing upload failure status. Retrieval from a retired generation is not subject to the new endpoint rule; the key rule and the other access conditions still apply to it, so a retired generation whose stored key does not meet the key rule cannot be retrieved.
+- **Connection requests need a standing connect permission.** To submit a connection request, the requester must already hold a standing connect permission on every requested asset, and when the request names an executor, the executor must hold it too. A standing permission is a connect permission within its validity window that was not issued by an approved request; permissions held through a user group or an asset node count. A request that does not meet this is refused with 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`, and the asset list shows no request entry for such an asset. Under the `reason` and `approval` policy segments a standing connect permission still does not connect without a request; it only qualifies the holder to request. Before you upgrade, grant connect permission to the users and agents that still need to connect through requests.
+- **Requests that are open or approved at upgrade time.** Temporary grants issued before the upgrade stay valid until they expire, and you can end one earlier with the existing early revocation of a request. A pending request whose requester or executor holds no standing connect permission can still be rejected, withdrawn or left to time out, but approving it is refused with the same error code.
+- **Automatic approval stays within the standing accounts.** An item approved automatically in the `reason` segment, and an agent item in the `open` segment, is limited to the accounts that the connecting principal holds through its standing connect permissions. An item that names no accounts is approved for those accounts only. An item that names an account outside them is not approved automatically: it stays pending for manual review, so the response to a request in the `reason` segment can now be `pending`. Break-glass tickets are limited to the same accounts. An approver also cannot approve or reject a request whose executor is an agent that approver owns, in addition to the existing rule for requests submitted by an agent they own.
+- **Configure approvers for those assets.** Manual review needs an approver whose scope covers the asset. For assets in the `reason` segment, and for assets in the `open` segment that agents connect to, including assets that belong to no node, configure approver scopes, and confirm that the number of approvers is still at least `access_request_min_approvals` after the requester, the executor and the owner of an executing agent are excluded. If no approver can decide an item, the request stays pending until `access_request_pending_timeout_hours` passes and then expires.
+- **Resetting an authenticator needs the current code.** `POST /auth/mfa/setup` on an account that already has MFA enabled now needs the current verification code in `code`. A missing code is refused with `RULE_MFA_CURRENT_CODE_REQUIRED` and a wrong code with `RULE_MFA_INVALID_CODE`. First-time registration is unchanged. A user who no longer has the authenticator asks an administrator who holds `user:manage` to disable MFA for the account (`POST /users/:id/mfa/disable`) and then registers a new one. After a reset with the current code, the new authenticator's first code has to be a later one than the code just used, so wait for its next code before enabling it.
+- **Directory sign-in matches existing accounts regardless of English letter case.** A directory user who signs in with a user name that differs from the stored one only in English (ASCII) letter case now reaches the existing account, and no second account is created. A sign-in that differs in any other way, such as extra spaces or full-width characters, is refused; the user should sign in with the name as it appears in the directory. If one directory user exists as more than one account whose names differ only in letter case, consolidate them in three steps. First, pick one account to keep and confirm that it is enabled. Second, move the direct grants and the user group memberships that are still needed from the other accounts to the kept account (directory group mappings are recomputed for the kept account at its next sign-in). Third, delete the other accounts. Disabling them is not enough: while another account of the same name is disabled or locked, the user cannot sign in, and when several directory accounts exist and none matches the letters typed, sign-in is refused. Deleting an account keeps its audit history and recordings. A local or external-identity account whose name differs from a directory user's only in letter case also stops that directory user's first sign-in.
+- **Two new results on the checkpoint verification page.** `rows_hidden` (shown as "Hidden records") appears for an interval when audit log rows inside it are marked as deleted. The system never deletes audit log rows, so such rows are shown on the Audit Logs page. Keep an off-site copy of the data, investigate through your usual process, and do not rely on that range as audit evidence until it is explained. Scheduled content verification opens an event for it like any other content failure. `trim_unverified` (shown as "Trimmed without signature check") appears in the chain report when earlier trim records state that segments were trimmed without a signature check, and the number of segments is shown. It is a disclosure only: the overall status can still be `passed`, no event is opened, and it stays displayed. From this release, a trim first verifies the checkpoint signatures, the purge proofs and the anchor at the chain head, and does nothing in that round when one of them fails to verify; the page then shows that trimming is paused. Investigate the checkpoint it points to; trimming resumes at the next scheduled run once verification passes.
+- **Agent commands go one line at a time.** `run_command` accepts one command line per call. A command that contains a line break or another control character (a tab included) is refused with `VALIDATION_BAD_REQUEST`, so an agent that sent several commands in one call has to send them as separate calls. When a person pastes several lines into a terminal and one of them matches an enabled blocking rule, none of the lines are sent, and the terminal shows `RULE_COMMAND_BLOCKED_MULTILINE`.
 
 #### Upgrading to 1.22.0
 
@@ -410,7 +604,7 @@ The production compose of 1.4.0 has a built-in TLS-terminating reverse proxy (th
 - **The http port only redirects**: anything arriving on the http port gets a 301 to the external https port, and no content is served there.
 - **`TRUSTED_PROXIES` covers the built-in proxy**: with it unset, every request is attributed to the proxy's own address, which is what the audit log records and what the sign-in rate limit counts against. The source-tree `bash scripts/quickstart.sh` and package `custodexa.sh install` fill it in with the Docker subnet for the built-in form; deployments with their own ingress put that ingress address here instead.
 - **Stop the proxy container you started yourself first**: a reverse proxy started by hand per the older guide is not in the compose lifecycle, `docker compose down` does not stop it, and leaving it up makes it contend with the built-in proxy for ports and certificate files. Stop and remove it before the upgrade.
-- **Deployments with their own ingress switch to the overlay**: add `-f docker-compose.yml -f docker-compose.external-ingress.yml` to every compose command after the upgrade (or set `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml` in `.env`); the built-in proxy does not start and frontend gets its external http port back (80 by default, changed via `HTTP_PORT` in `.env`). Two settings then belong to your ingress: forward the Host header with the port people actually connect to (the backend compares `Origin` against `Host` to recognise a same-origin request, and a `Host` without the port makes an authenticated request look cross-origin), and set `TRUSTED_PROXIES` to the ingress address.
+- **Deployments with their own ingress set `TLS_MODE=external`** in `.env` before the upgrade (a release before 1.23.0 took an overlay file for this) and start with `bash scripts/quickstart.sh --up`; the built-in proxy does not start and frontend gets its external http port back (80 by default, changed via `HTTP_PORT` in `.env`). Two settings then belong to your ingress: forward the Host header with the port people actually connect to (the backend compares `Origin` against `Host` to recognise a same-origin request, and a `Host` without the port makes an authenticated request look cross-origin), and set `TRUSTED_PROXIES` to the ingress address.
 
 The certificate source is decided by `TLS_MODE` in `.env`: `selfsigned` (the default) generates a local CA and a server certificate at first startup, landing in `tls/` under the project directory; `provided` requires `tls/fullchain.pem` and `tls/privkey.pem` to be in place first, and a missing file fails explicitly at the initialization step with the proxy not starting. `tls/` holds private keys and the local CA and is within backup scope (see [Backup and Restore §2.1](./backup-and-restore.md)).
 
@@ -485,10 +679,10 @@ Confirm at the same time:
 From the project root, run one real build of every build target of the production compose file. If any target fails, do not deploy:
 
 ```bash
-docker compose -f docker-compose.yml build
+docker compose -f docker-compose.yml --profile bundled-db --profile builtin-tls build
 ```
 
-**Always pass `-f docker-compose.yml` explicitly**: if the local `.env` sets `COMPOSE_FILE`, without the flag you may build something other than the production targets. The production and development image names are separate (`custodexa/*:latest` versus `custodexa/*:dev`), so building the production images does not overwrite the development ones.
+**Always pass `-f docker-compose.yml` explicitly**: if the local `.env` sets `COMPOSE_FILE`, without the flag you may build something other than the production targets. The two profiles are named because the frontend belongs to a profile and is not built without one. The production and development image names are separate (`custodexa/*:latest` versus `custodexa/*:dev`), so building the production images does not overwrite the development ones.
 
 After a successful build, check one more property that only the production images have: **no executable shell interpreter exists inside the backend image** (which structurally closes the escape surface of the database CLI):
 
@@ -1703,7 +1897,7 @@ Visibility exposures begin at this upgrade; they do not reconstruct older visibi
 
 Create an agent principal with an active human owner. As that owner or an administrator, create a named, expiring agent token; save the one-time plaintext in the operator's secret store. The agent has only the user role and explicitly scoped asset/account grants. Install the `custodexa-mcp` stdio client on the agent's machine from https://github.com/custodexa/custodexa-mcp, either with `go install github.com/custodexa/custodexa-mcp@latest` or as a release binary verified against the `checksums.txt` published with that release. Supply `CUSTODEXA_AGENT_TOKEN` to `custodexa-mcp` through its environment and set `CUSTODEXA_MCP_URL` to the HTTPS `/api/v1/mcp` endpoint. Human JWTs and cookies cannot authenticate this endpoint. The stdio client forwards tool calls; all decisions and evidence writes happen in the service. Never put the token in command arguments or reports.
 
-Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
+Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Automatic approval never goes beyond the standing accounts of the principal that will connect: an item that names an account outside that scope stays pending for an approver whose scope covers the asset. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
 
 Rotate by issuing a new named token, updating the operator's secret, starting a new MCP connection and verifying asset visibility, then revoking the old token. There is no in-place token secret rotation or automatic token recovery from backup. Revocation closes sessions created with the old token; a session handle cannot move to a new token or MCP connection. After restore or standby takeover, create new MCP connections and tasks as needed; old in-memory handles and the 60-second idempotency cache do not survive restart. Inspect retained token state and task state before resuming work.
 

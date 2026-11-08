@@ -2,9 +2,7 @@
 
 ## Purpose
 規範正式版部署的安全加固底線：無內建公開 bootstrap 憑證與首登強制改密、DB-aware 分階段啟動、正式版映像移除固定 shell 入口並使 CLI 子程序降權面可實跑核對、對外 ingress 的 TLS termination 契約，以及這些安全底線不得由 feature flag 關閉。
-
 ## Requirements
-
 ### Requirement: 無內建公開 bootstrap 憑證，seed 一律需部署方提供合格初始密碼
 
 系統 SHALL NOT 以任何內建、硬編碼或公開的固定密碼建立初始管理員（移除 `admin123`）。任何會執行 seed 的模式（使用者表為空）SHALL 要求部署方經 `.env` 提供 `ADMIN_INITIAL_PASSWORD`。該值為缺失、空字串、等於出貨 placeholder、短於長度下限，或含前後空白／CR-LF／控制字元時，系統 SHALL 拒絕（fail-close，不執行 seed）。密碼的驗證與**雜湊產生** SHALL 使用完全相同的 bytes，SHALL NOT 靜默 `TrimSpace` 後再使用。
@@ -289,10 +287,10 @@ release 模式下，屬於安全紅線的 feature flag SHALL 由系統於啟動�
 
 ### Requirement: stock production edge 內建真實 TLS 並於明文時告警
 
-stock production compose（`docker-compose.yml`，正式版即專案預設 compose 定義）SHALL 內建 TLS 終止的反向代理：對外 https 埠 SHALL 提供 TLS 1.2 以上、對外 http 埠 SHALL 以 301 導向 https（對外 https 埠非 443 時導向目標含埠）；兩個對外埠 SHALL 可由部署組態設定，預設為 443 與 80，使預設安裝的網址不必帶埠；快速安裝腳本 SHALL 在啟動前檢查兩個對外埠是否已被占用，占用時指名占用程序並停止，SHALL NOT 進入 `docker compose up`。frontend 與 backend SHALL NOT 發布 host port，僅存在於單主機專用 bridge；該 bridge SHALL 使用固定子網（`DOCKER_SUBNET`，預設 `172.28.100.0/24`），供 `TRUSTED_PROXIES` 引用。內建代理轉發給應用的 `Host` SHALL 保留對外 https 埠（443 時省略），使應用的同源判定在任何對外埠下皆成立；此不變式 SHALL 由正式版建置檢查與測試守衛。憑證來源由 `TLS_MODE` 決定，預設 `selfsigned`（本地 CA，見「外部 ingress TLS termination 契約與可用範例」的自簽模式條文），`provided` 為部署方自備。stock SHALL NOT 對外映射一個未實際提供 TLS 服務的埠。自帶 ingress 的部署 SHALL 經 `docker-compose.external-ingress.yml` overlay 停用內建代理並恢復 frontend 的 HTTP 對外埠；該形態下 release 模式以明文 HTTP 提供服務時，系統 SHALL 於啟動發出告警，指引於前端部署 TLS-terminating ingress。
+stock production compose（`docker-compose.yml`，正式版即專案預設 compose 定義）SHALL 內建 TLS 終止的反向代理：對外 https 埠 SHALL 提供 TLS 1.2 以上、對外 http 埠 SHALL 以 301 導向 https（對外 https 埠非 443 時導向目標含埠）；兩個對外埠 SHALL 可由部署組態設定，預設為 443 與 80，使預設安裝的網址不必帶埠；快速安裝腳本 SHALL 在啟動前檢查兩個對外埠是否已被占用，占用時指名占用程序並停止，SHALL NOT 進入 `docker compose up`。frontend 與 backend SHALL NOT 發布 host port，僅存在於單主機專用 bridge；該 bridge SHALL 使用固定子網（`DOCKER_SUBNET`，預設 `172.28.100.0/24`），供 `TRUSTED_PROXIES` 引用。內建代理轉發給應用的 `Host` SHALL 保留對外 https 埠（443 時省略），使應用的同源判定在任何對外埠下皆成立；此不變式 SHALL 由正式版建置檢查與測試守衛。憑證來源由 `TLS_MODE` 決定，預設 `selfsigned`（本地 CA，見「外部 ingress TLS termination 契約與可用範例」的自簽模式條文），`provided` 為部署方自備。stock SHALL NOT 對外映射一個未實際提供 TLS 服務的埠。自帶 ingress 的部署 SHALL 以 `.env` 的 `TLS_MODE=external` 選用外部入口形態：同一份 compose 不啟用內建代理與憑證初始化服務（profile `builtin-tls`），改啟用只發布 frontend HTTP 對外埠（`HTTP_PORT`，預設 80）的 frontend 服務（profile `own-ingress`），兩種形態的 frontend 服務 SHALL 使用同一映像與同一容器名，且任一時間只啟用其一；該形態下 release 模式以明文 HTTP 提供服務時，系統 SHALL 於啟動發出告警，指引於前端部署 TLS-terminating ingress。
 
 #### Scenario: 預設啟動即為 https
-- **WHEN** 部署者以 `docker compose up -d` 啟動 stock 正式版且未提供憑證
+- **WHEN** 部署者以預設 `.env`（`TLS_MODE=selfsigned`）啟動 stock 正式版且未提供憑證
 - **THEN** 443 以本地 CA 簽發的憑證提供 TLS 服務、80 回 301 至 `https://<host>/`；frontend 與 backend 無 host 埠映射；改 `.env` 兩個埠值即可換到其他埠，此時 301 目標與網址帶埠
 
 #### Scenario: 對外埠被占用時安裝腳本停止
@@ -304,8 +302,8 @@ stock production compose（`docker-compose.yml`，正式版即專案預設 compo
 - **THEN** 應用收到的 `Host` 為 `<host>:8443`，請求依業務規則處理而非以跨源拒絕；來自其他來源的請求仍被拒
 
 #### Scenario: 外部 ingress 形態停用內建代理
-- **WHEN** 以 `docker-compose.external-ingress.yml` overlay 啟動
-- **THEN** 內建代理與憑證初始化服務不啟動、frontend 映射預設 80（可由組態改為其他埠）；backend 仍無 host 映射
+- **WHEN** `.env` 設 `TLS_MODE=external` 後以推導出的 profiles 啟動
+- **THEN** 內建代理與憑證初始化服務不啟動、frontend 映射預設 80（可由 `HTTP_PORT` 改為其他埠）；backend 仍無 host 映射；同一部署中只有一個 frontend 容器
 
 #### Scenario: release 明文提供服務時告警
 - **WHEN** 外部 ingress 形態、release 模式、`PUBLIC_BASE_URL` 為 http
@@ -480,3 +478,4 @@ SHALL NOT 使用「container hardened」或「最小權限 runtime」等未逐�
 
 - **WHEN** 前端站台設定的入口頁 `no-cache` 規則或 `/assets/` 長快取規則被移除，或不帶雜湊的根目錄檔被改回不可變長快取
 - **THEN** 守衛測試 MUST 失敗並指出缺少或錯誤的規則
+

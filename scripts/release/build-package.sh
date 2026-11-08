@@ -2,7 +2,7 @@
 # build-package.sh: assemble the install package and its MANIFEST.json for one release.
 #
 #   build-package.sh --digests image-digests.json --source <public tree> --out <dir>
-#                    [--min-source 1.12.4] [--released-at <ISO time>] [--mirror-namespace <ns>]
+#                    [--min-source 1.17.0] [--released-at <ISO time>] [--mirror-namespace <ns>]
 #                    [--notes <json file>]
 #                    [--rollback-compatible <version>[,<version>...] --rehearsals-dir <dir>]
 #   build-package.sh offline --manifest MANIFEST.json --arch <amd64|arm64> --out <dir>
@@ -12,7 +12,7 @@
 #
 #   custodexa/custodexa.sh -> current/custodexa.sh
 #   custodexa/current      -> releases/<version>
-#   custodexa/releases/<version>/  custodexa.sh lib/ lang/ VERSION MANIFEST.json compose*.yml
+#   custodexa/releases/<version>/  custodexa.sh lib/ lang/ VERSION MANIFEST.json compose.yml
 #                                  .env.example reverse-proxy/ source/
 #
 # image-digests.json comes from the publish job of the release workflow. Platform config digests
@@ -114,7 +114,7 @@ if [ "${1:-}" = offline ]; then
   exit 0
 fi
 
-digests="" source="" out="" min_source=1.12.4 released_at="" mirror_ns="" notes="" rollback_compat="" rehearsals_dir=""
+digests="" source="" out="" min_source=1.17.0 released_at="" mirror_ns="" notes="" rollback_compat="" rehearsals_dir=""
 while [ $# -gt 0 ]; do
   case $1 in
     --digests) digests=${2:-} ;;
@@ -177,6 +177,28 @@ frontend_digest=$(own_digest frontend)
 backend_repo=$(own_repo backend)
 frontend_repo=$(own_repo frontend)
 
+# ---- the bundled database: its image must be alpine, its major is in the MANIFEST ----
+# Read from the compose file the package ships. alpine is required because the conversion of the data
+# between majors relies on the same uid/gid (70) and the same musl collation on both sides.
+postgres_pin=$(sed -n 's/.*CUSTODEXA_IMAGE_POSTGRES:-\([^}]*\)}.*/\1/p' "$repo/packaging/compose.yml" | head -n 1)
+[[ $postgres_pin =~ ^[^@]+:([0-9]+)\.[0-9]+(-[a-z0-9.]+)?@sha256:[0-9a-f]{64}$ ]] \
+  || die "packaging/compose.yml: the bundled database image is not <repo>:<major>.<minor>[-suffix]@sha256:<digest>: $postgres_pin"
+bundled_major=${BASH_REMATCH[1]}
+[[ $postgres_pin == *-alpine* ]] || die "the bundled database image is not alpine ($postgres_pin): the conversion between majors needs the same uid/gid and musl collation on both sides"
+# The first release that carries each bundled major, one row per major, oldest first. A release that
+# lists an earlier version in rollback_compatible must have the same bundled major as that version:
+# the data folder of another major is not read by it, so the way back is the rollback command's own.
+bundled_major_first_versions='16 0.0.0
+18 1.23.0'
+bundled_major_of() { # <version>: the bundled major a release of that version carries
+  local m f r=""
+  while read -r m f; do
+    [ -n "$m" ] || continue
+    if [ "$1" = "$f" ] || version_lt "$f" "$1"; then r=$m; fi
+  done <<<"$bundled_major_first_versions"
+  printf '%s' "$r"
+}
+
 # ---- rollback_compatible: earlier versions this release may go straight back to ----
 # Each one needs the record of a rehearsal of exactly these images (<this>-from-<earlier>.txt in the
 # folder --rehearsals-dir names; without that folder no version is listed): the first line PASS, then one "key: value" per line, each key
@@ -223,6 +245,8 @@ if [ -n "$rollback_compat" ]; then
   for v in "${compat_list[@]}"; do
     [[ $v =~ $semver ]] || die "--rollback-compatible: not a version: $v"
     version_lt "$v" "$version" || die "--rollback-compatible: $v is not older than $version"
+    [ "$(bundled_major_of "$v")" = "$(bundled_major_of "$version")" ] \
+      || die "--rollback-compatible $v: its bundled database is PostgreSQL $(bundled_major_of "$v") and this release's is PostgreSQL $(bundled_major_of "$version"); a version across a database major is reached by the rollback command, which keeps the old data folder, not by this list"
     check_rehearsal "$v"
     compat_json=$(jq -c --arg v "$v" '. + [$v] | unique' <<<"$compat_json")
   done
@@ -243,9 +267,8 @@ fill() { # <template> <destination>
       -e "s|ghcr.io/custodexa/frontend:|$frontend_repo:|g" "$1" >"$2"
   if grep -nE '@@[A-Z_]+@@' "$2"; then die "unfilled placeholder in $2"; fi
 }
-for f in compose.yml compose.external-ingress.yml compose.external-database.yml; do
-  fill "$repo/packaging/$f" "$rel/$f"
-done
+# One compose file serves every deployment form (the form comes from .env as compose profiles).
+fill "$repo/packaging/compose.yml" "$rel/compose.yml"
 
 # ---- script, product files, source ----
 cp -R "$repo/scripts/custodexa/custodexa.sh" "$repo/scripts/custodexa/lib" "$repo/scripts/custodexa/lang" "$rel/"
@@ -387,6 +410,9 @@ while read -r name ref; do
     --argjson p "$plat" '{ref: $ref, tag: $tag, index_digest: $d, upstream: true, platforms: $p}')
   images=$(jq --arg c "$name" --argjson e "$entry" '.[$c] = $e' <<<"$images")
 done <<<"$tool_pins"
+# The bundled database image is the PostgreSQL client of its own major: one pin, one content.
+[ "$(jq -r '.postgres.index_digest' <<<"$images")" = "$(jq -r --arg k "pgclient$bundled_major" '.[$k].index_digest // ""' <<<"$images")" ] \
+  || die "the bundled database image (postgres:$bundled_major) is not the pgclient$bundled_major pin of this build"
 [ "$(jq 'length' <<<"$images")" -eq 9 ] || die "expected 9 images, found: $(jq -c 'keys' <<<"$images")"
 # One reference, one content: names that share an image must pin the same digest.
 shared=$(jq -r 'to_entries | group_by("\(.value.ref):\(.value.tag)")[] | select(map(.value.index_digest) | unique | length > 1)
@@ -415,9 +441,11 @@ markers=$(runtime_markers_json "$source")
 src_sha=$(cx_tree_sha256 "$rel/source")
 jq -n --arg v "$version" --arg min "$min_source" --arg at "$released_at" \
   --argjson mig "$mig" --argjson markers "$markers" --argjson img "$images" \
-  --arg src "$src_sha" --argjson notes "$notes_json" --argjson compat "$compat_json" \
+  --arg src "$src_sha" --argjson notes "$notes_json" --argjson compat "$compat_json" --argjson bmajor "$bundled_major" \
   '{format: 1, version: $v, min_source_version: $min, released_at: $at, migrations: $mig,
-    runtime_markers: $markers, images: $img, rollback_compatible: $compat, source: {path: "source/", sha256: $src}, notes: $notes}' \
+    runtime_markers: $markers, images: $img, rollback_compatible: $compat, source: {path: "source/", sha256: $src}, notes: $notes,
+    compose_layout: "profiles",
+    bundled_db: {major: $bmajor, data_dir: "postgresql", pgdata: (($bmajor | tostring) + "/docker")}}' \
   >"$rel/MANIFEST.json"
 
 # ---- tarball: fixed order, owner and times, so the same inputs give the same bytes ----

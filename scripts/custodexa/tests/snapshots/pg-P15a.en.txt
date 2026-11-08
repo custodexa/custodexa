@@ -1,0 +1,8 @@
+Database
+  [ OK ] PostgreSQL 18 (bundled), data in /opt/custodexa/data/postgresql, 18.2 GB
+         Data checksums are on
+  Old folders kept: 2. Remove them from the menu "Database upgrade":
+         /opt/custodexa/data/postgres
+             PostgreSQL 16    17.4 GB    the previous version needs it
+         /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+             PostgreSQL 18    18.0 GB    the newer version's data from before going back; not carried back

@@ -1,0 +1,11 @@
+
+.env を調整します（手順 9 で書き換え。ほかの設定は変更しません）
+  - 削除   COMPOSE_FILE=current/compose.yml:current/compose.external-ingress.yml:current/compose.external-database.yml
+  ~ 変更   TLS_MODE=selfsigned  →  TLS_MODE=external
+           （Web 入口はこの行で表します。配置の形態は変わりません）
+  + 追加   ファイル末尾のスクリプト管理ブロック（前後に印の行）：
+             COMPOSE_FILE=current/compose.yml
+             COMPOSE_PROFILES=own-ingress
+  9.9.9 以降、配置の形態は 2 行だけで決まります：
+  EXTERNAL_DB_HOST（データベース）と TLS_MODE（Web 入口）。
+  管理ブロックはスクリプトが管理します。手で編集しないでください。

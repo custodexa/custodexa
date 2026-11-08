@@ -29,7 +29,7 @@ func baseFingerprintInput() SettingsInput {
 // fingerprintOfInput 走正規化核心算指紋；驗證失敗即 t.Fatal（案例本身寫壞了）。
 func fingerprintOfInput(t *testing.T, in SettingsInput) string {
 	t.Helper()
-	norm, err := validateAndNormalizeOffsiteSettings(in)
+	norm, err := validateAndNormalizeOffsiteSettings(in, existingCredentialState{})
 	if err != nil {
 		t.Fatalf("基準設定應通過驗證: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestProfileIDComposition(t *testing.T) {
 			in.Provider = ProviderGCS
 			in.Endpoint, in.Region = "", ""
 			in.AccessKeyID, in.SecretAccessKey = "", ""
-			in.ServiceAccountJSON = `{"type":"service_account"}`
+			in.ServiceAccountJSON = minimalServiceAccountJSON
 		},
 	}
 	for name, mutate := range diff {

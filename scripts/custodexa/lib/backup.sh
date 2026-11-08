@@ -4,9 +4,14 @@
 # What the backup command and step 7 of upgrade share (both make one portable file, lib/portable.sh):
 # the deployment values, the size estimate and the free space, and the steps in order (cx_bk_take).
 # Within an upgrade the services are not started again (the next step changes the version).
+# Sourced by more than one command library: a second load must not touch the readonly settings.
+[ -z "${CX_LIB_LOADED_backup:-}" ] || return 0
+CX_LIB_LOADED_backup=1
 # shellcheck source=lib/snapshot.sh
 . "${BASH_SOURCE[0]%/*}/snapshot.sh"
 
+# The application containers (container names; the compose service of the web container depends on
+# the form: cx_bk_services).
 readonly CX_BK_SERVICES="backend guacd frontend"
 # Bytes per second assumed for the time shown in the preview: slow disks, compressed on one core.
 readonly CX_BK_RATE=$((25 * 1048576))
@@ -83,9 +88,13 @@ cx_bk_quiet() {
 
 # The steps. Each returns non-zero on failure and leaves the files it wrote.
 # shellcheck disable=SC2086
-cx_bk_stop() { cx_compose stop $CX_BK_SERVICES >/dev/null 2>&1; }
+# cx_bk_services: the compose services a backup stops and starts, for the form of this deployment.
+cx_bk_services() { cx_form_app_services "$(cx_form_layout "$CX_ROOT/current")" "${CX_OVERLAYS:-}"; }
+# shellcheck disable=SC2046 # one service name per word
+cx_bk_stop() { cx_compose stop $(cx_bk_services) >/dev/null 2>&1; }
 # shellcheck disable=SC2086
-cx_bk_start() { cx_compose start $CX_BK_SERVICES >/dev/null 2>&1; }
+# shellcheck disable=SC2046
+cx_bk_start() { cx_compose start $(cx_bk_services) >/dev/null 2>&1; }
 
 # cx_bk_take <upgrade|portable|restore-safety> <step callback>: run the steps (lib/portable.sh,
 # cx_pb_open first, with restore-safety for a safety backup).

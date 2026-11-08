@@ -19,6 +19,7 @@ rs_ext_flow_host() {
   cp "$BATS_TEST_TMPDIR/full-mf" "$ROOT/current/MANIFEST.json"
   bk_state_set current.image_ids "guacd=$RS_X_SVC backend=$RS_X_SVC frontend=$RS_X_SVC openssl=$BK_OPENSSL_ID"
   printf '%s\n' "$RS_X_SVC" >>"$DB/images"
+# The overlay file of an overlays-layout release (1.22 and before); a profiles-layout release has none.
   touch "$ROOT/current/compose.yml" "$ROOT/current/compose.external-database.yml"
   rm -f "$DB/ctr/postgres"
   /usr/bin/mv "$FAKE_DOCKER_REPLAY/hook" "$FAKE_DOCKER_REPLAY/ext-base"

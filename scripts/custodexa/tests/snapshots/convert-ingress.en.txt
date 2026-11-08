@@ -1,0 +1,13 @@
+
+.env will change (rewritten in step 9; no other setting is touched)
+  - remove   COMPOSE_FILE=current/compose.yml:current/compose.external-ingress.yml
+  ~ change   TLS_MODE=selfsigned  ->  TLS_MODE=external
+             (this line now says how the web entry works; the form
+             of the deployment stays the same)
+  + add      the managed block at the end of the file (one marker
+             line before and after):
+             COMPOSE_FILE=current/compose.yml
+             COMPOSE_PROFILES=bundled-db,own-ingress
+  From 9.9.9 on, the form of the deployment comes from two lines:
+  EXTERNAL_DB_HOST (database) and TLS_MODE (web entry). The script
+  maintains the managed block; do not edit it by hand.

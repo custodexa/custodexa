@@ -25,6 +25,8 @@ const (
 	ChainStatusChainBroken = "chain_broken"
 	// ChainStatusSeqGap seq 不連續（中段檢查點被刪、或鏈頭缺修剪記錄）
 	ChainStatusSeqGap = "seq_gap"
+	// ChainDisclosureTrimUnverified 既有修剪記錄載有未驗證段數：只揭露，不使總狀態失敗
+	ChainDisclosureTrimUnverified = "trim_unverified"
 )
 
 // ErrCheckpointRangeRequired 內容層未帶範圍（8.2：不得啟動全歷史掃描）
@@ -110,6 +112,12 @@ type ChainReport struct {
 	SealRowThreshold    int64 `json:"seal_row_threshold"`
 	// TrimmedThroughSeq 鏈頭曾被修剪至此 seq（含）；nil＝未修剪過
 	TrimmedThroughSeq *uint `json:"trimmed_through_seq,omitempty"`
+	// TrimDisclosure 修剪記錄揭露狀態（`trim_unverified`；空＝無揭露）。只揭露，不參與總狀態。
+	TrimDisclosure string `json:"trim_disclosure,omitempty"`
+	// TrimUnverifiedSegments 全部既有修剪記錄所載未驗證段數之和（新記錄恆為 0；升級前記錄各載本輪實數）。
+	TrimUnverifiedSegments int64 `json:"trim_unverified_segments,omitempty"`
+	// TrimPaused 依現況下一輪修剪會暫停（簽章、清除簽章或鏈頭錨定驗不過）；驗證頁據此顯示警示。
+	TrimPaused bool `json:"trim_paused,omitempty"`
 	// AutoVerify 兩層自動驗證的營運狀態。
 	//
 	// **掛在本報告上而非另開端點**：狀態的讀者與結構層報告完全相同（驗證頁），
@@ -169,6 +177,22 @@ func (v *CheckpointVerifier) VerifyChain() (*ChainReport, error) {
 		return nil, err
 	}
 	report.TrimmedPermHistory = structure.HeadHistory
+	if v.purger != nil {
+		segments, err := v.purger.TrimUnverifiedSegments()
+		if err != nil {
+			return nil, err
+		}
+		if segments > 0 {
+			report.TrimDisclosure, report.TrimUnverifiedSegments = ChainDisclosureTrimUnverified, segments
+		}
+		if v.policy != nil {
+			if reason, err := v.purger.TrimPauseReason(v.policy.GetInt(policy.PolicyRetentionCheckpointDays)); err != nil {
+				log.Printf("[Checkpoint] 判定修剪暫停狀態失敗: %v", err)
+			} else if reason != "" {
+				report.TrimPaused = true
+			}
+		}
+	}
 	for _, res := range structure.Points {
 		if res.Status == IntervalStatusPassed {
 			report.Passed++

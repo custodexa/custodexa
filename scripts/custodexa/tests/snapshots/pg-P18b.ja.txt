@@ -1,0 +1,21 @@
+
+[FAIL] アップグレードはステップ 11/13 で停止しました：バックエンドが
+       180 秒以内に準備完了を報告しませんでした
+
+  現在の状態
+    - 1.23.0 に切り替え済み。サービスは起動しましたが、バックエンドが
+      準備完了になっていません
+    - アップグレード前のバックアップは完全です：/opt/custodexa/backups/custodexa-backup-1.22.0-20261120-021502.tar
+    - スクリプトは自動でロールバックしません
+
+  まずバックエンドのログで原因を確認してください：
+    sudo docker logs --tail 50 custodexa-backend
+  それでも判断できない場合は、このログとアップグレードのログ
+  ファイルを運用担当者に渡してください。
+
+  1.13.0 に戻すには、アップグレード前のバックアップから restore してください。
+  アップグレード時に残した PostgreSQL 16 のデータ /opt/custodexa/data/postgres は
+  もうないため、直接は戻せません：
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.22.0-20261120-021502.tar
+
+  ログファイル /opt/custodexa/logs/upgrade-20261120-021502.log

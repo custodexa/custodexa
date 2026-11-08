@@ -1,0 +1,7 @@
+Database upgrade
+
+  This deployment uses the external database db01.example.internal:5432.
+  The external database is yours to manage; Custodexa does not upgrade it.
+  Upgrade its major version with your own database procedure.
+
+Nothing was changed.

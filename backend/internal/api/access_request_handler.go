@@ -72,6 +72,11 @@ func respondAccessRequestError(c *gin.Context, internalCode apierror.ErrCode, er
 		apierror.Write(c, 400, apierror.ErrorResponse{Code: apierror.CodeValidationAccountNotOnAsset, Meta: map[string]any{"details": map[string]any{"item_index": account.ItemIndex, "asset_id": account.AssetID}}})
 		return
 	}
+	var connect *authz.RequestConnectRequiredError
+	if errors.As(err, &connect) {
+		apierror.Write(c, http.StatusForbidden, apierror.ErrorResponse{Code: apierror.CodeAccessRequestConnectRequired, Meta: map[string]any{"details": map[string]any{"item_index": connect.ItemIndex, "asset_id": connect.AssetID}}})
+		return
+	}
 	var duplicate *authz.DuplicatePendingItemError
 	if errors.As(err, &duplicate) {
 		apierror.Write(c, http.StatusConflict, apierror.ErrorResponse{Code: apierror.CodeDuplicatePendingRequest, Meta: map[string]any{"request_id": duplicate.RequestID, "item_id": duplicate.ItemID}})
@@ -131,6 +136,8 @@ func respondAccessRequestError(c *gin.Context, internalCode apierror.ErrCode, er
 	case errors.Is(err, authz.ErrBreakGlassDisabled):
 		// 開關關閉＝封 API，前端據此碼隱藏入口自癒
 		apierror.Respond(c, http.StatusForbidden, apierror.CodeBreakGlassDisabled, nil)
+	case errors.Is(err, authz.ErrRequestConnectRequired):
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAccessRequestConnectRequired, nil)
 	case errors.Is(err, authz.ErrSelfApproval):
 		apierror.Respond(c, http.StatusForbidden, apierror.CodeAccessRequestSelfApproval, nil)
 	case errors.Is(err, authz.ErrSelfReview):

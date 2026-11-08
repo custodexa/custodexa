@@ -3,9 +3,7 @@
 ## Purpose
 
 TOTP 雙因素認證的綁定、驗證與恢復流程，涵蓋自願啟用與依安全政策強制註冊（PCI 8.4.2）的閘門，以及防止已消耗驗證碼被重放的 time-step 防護（PCI 8.5.1）。
-
 ## Requirements
-
 ### Requirement: TOTP enrollment
 An authenticated user SHALL be able to generate a TOTP secret (otpauth URL + base32 secret) and enable MFA by proving possession with a valid code. The secret MUST be stored encrypted; enabling MUST be rejected for an invalid code. Both enrollment surfaces (the profile self-service panel and the forced-enrollment login step) SHALL render the otpauth URL as a scannable QR code (locally generated in the browser — the secret SHALL NOT be sent to any third-party or additional endpoint for rendering), with the base32 secret retained as the manual-entry fallback; if QR rendering is unavailable the manual path SHALL remain fully functional.
 
@@ -102,3 +100,48 @@ The admin confirmation SHALL describe the effect according to how the target acc
 #### Scenario: 下一 step 新碼正常
 - **WHEN** time-step 前進後使用者提交新產生的碼（step > 已消耗索引）
 - **THEN** 驗證正常通過
+
+### Requirement: Replacing the authenticator secret of an enrolled account requires the current code
+When an account already has MFA enabled, a request to generate a new TOTP secret SHALL include a valid code from the currently enrolled authenticator; the code SHALL be verified against the current secret with the same replay protection as sign-in verification. Without a code the request SHALL be rejected with `RULE_MFA_CURRENT_CODE_REQUIRED`; with an incorrect code it SHALL be rejected with `RULE_MFA_INVALID_CODE`, and with an already-used code with `RULE_MFA_REPLAY`. On rejection the stored secret and the enabled state SHALL remain unchanged. Successful and failed attempts SHALL be audit-logged, and a successful replacement for an enrolled account SHALL be distinguishable in the audit record as an authenticator reset.
+
+The stored secret and enabled state SHALL only be written if they are still the state that was checked when the request was evaluated; if another request changed them in between, the write SHALL NOT happen and the request SHALL be rejected with `RULE_MFA_CURRENT_CODE_REQUIRED`. Likewise, enabling MFA SHALL only take effect for the secret the submitted code was verified against.
+
+The time step consumed by a verified code is tracked per account across secrets, so a code from the new authenticator in the same time step as the code used for the reset is treated as a replay; a code from a later time step SHALL be accepted. The UI SHALL tell the user to wait for the next code in that case.
+
+Accounts without MFA enabled (first enrollment, or re-enrollment after an admin rescue) SHALL NOT be asked for a code; the forced-enrollment step at sign-in SHALL be unaffected.
+
+#### Scenario: Enrolled account without a code keeps its authenticator
+- **GIVEN** an account with MFA enabled
+- **WHEN** a secret replacement is requested without a code
+- **THEN** it is rejected with `RULE_MFA_CURRENT_CODE_REQUIRED`, MFA stays enabled, the stored secret is unchanged, a failed attempt is audit-logged, and the next password sign-in still requires the current authenticator
+
+#### Scenario: Wrong current code rejected
+- **GIVEN** an account with MFA enabled
+- **WHEN** a secret replacement supplies an incorrect code, or a code already used for sign-in in the same time step
+- **THEN** it is rejected with `RULE_MFA_INVALID_CODE` for an incorrect code and `RULE_MFA_REPLAY` for an already-used code, the stored secret and enabled state are unchanged, and the failure is audit-logged
+
+#### Scenario: Owner resets with the current code
+- **GIVEN** an account with MFA enabled
+- **WHEN** the owner supplies a valid current code
+- **THEN** a new secret is issued, the audit record marks it as an authenticator reset, the owner enables MFA with a code from the new secret in a later time step, and the next sign-in requires the new authenticator
+
+#### Scenario: Same time step code from the new authenticator
+- **GIVEN** the owner has just reset with a valid current code
+- **WHEN** the owner submits a code from the new authenticator in the same time step
+- **THEN** it is rejected as a replay and MFA is not yet enabled, and a code from the next time step enables MFA
+
+#### Scenario: State changed by another request before the write
+- **GIVEN** a secret request was evaluated while MFA was not enabled
+- **WHEN** another request enables MFA before the first request writes
+- **THEN** the first request does not overwrite the secret, MFA stays enabled with the enabled secret, and the first request is rejected with `RULE_MFA_CURRENT_CODE_REQUIRED`
+
+#### Scenario: First enrollment needs no code
+- **GIVEN** an account without MFA enabled
+- **WHEN** it requests setup
+- **THEN** a secret is issued without asking for a code, as before
+
+#### Scenario: Directory account resets with the current code
+- **GIVEN** an MFA-enabled directory account, which has no usable local password
+- **WHEN** it supplies a valid current code
+- **THEN** the reset succeeds
+

@@ -1,0 +1,3 @@
+[FAIL] Removing old database folders cannot be undone and this run is not
+       interactive (no terminal); --yes is needed. Nothing was changed.
+    sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old --yes

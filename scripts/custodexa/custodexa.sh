@@ -17,7 +17,7 @@ CX_DIR=${CX_SELF%/*}
 . "$CX_DIR/lib/common.sh"
 
 # Commands the script knows. The ones without lib/cmd_<name>.sh in this build say so and stop.
-readonly CX_COMMANDS="install upgrade rollback status start stop backup load restore"
+readonly CX_COMMANDS="install upgrade rollback status start stop backup load restore db-upgrade"
 # Recognize an older tree so every command can refuse it before writing anything.
 CX_ROOT_LEGACY_OK=1
 
@@ -34,6 +34,7 @@ CX_BACKUP_REF=""
 CX_BACKUP_TIME=""
 CX_BACKUP_RESTORE=""
 CX_WITH_RECORDINGS=0
+CX_REMOVE_OLD=0 # db-upgrade: remove the old database folders
 CX_KEEP_IMAGES=0 # upgrade: leave the old images in place (lib/image_retention.sh)
 CX_PASSPHRASE_FILE=""
 CX_LANG_FLAG=""
@@ -62,6 +63,7 @@ cx_parse_args() {
       --version) CX_SHOW_VERSION=1 ;;
       --with-recordings) CX_WITH_RECORDINGS=1 ;;
       --keep-images) CX_KEEP_IMAGES=1 ;;
+      --remove-old) CX_REMOVE_OLD=1 ;;
       --same-host) CX_RS_SAME=1 CX_RS_GIVEN+=" $1" ;;
       --new-host) CX_RS_NEW=1 CX_RS_GIVEN+=" $1" ;;
       --confirm-data-loss) CX_RS_CONFIRM_LOSS=1 CX_RS_GIVEN+=" $1" ;;
@@ -240,6 +242,7 @@ cx_main() {
     [ -z "$CX_PASSPHRASE_FILE" ] || [ "$CX_COMMAND" = restore ] || cx_die "$CX_EXIT_USAGE" usage_backup_restore_only --passphrase-file
   fi
   [ "$CX_KEEP_IMAGES" = 0 ] || [ "$CX_COMMAND" = upgrade ] || cx_die "$CX_EXIT_USAGE" usage_upgrade_only --keep-images
+  [ "$CX_REMOVE_OLD" = 0 ] || [ "$CX_COMMAND" = db-upgrade ] || cx_die "$CX_EXIT_USAGE" usage_db_upgrade_only --remove-old
   if [ "$CX_COMMAND" != restore ] && [ -n "$CX_RS_GIVEN" ]; then
     local first=${CX_RS_GIVEN# }
     cx_die "$CX_EXIT_USAGE" usage_restore_only "${first%% *}"
@@ -262,13 +265,15 @@ cx_main() {
   cx_state_load "$CX_ROOT/state.json"
   cx_run_restore_guard "$CX_COMMAND" "$CX_RS_ACTION" || exit "$CX_EXIT_REFUSED"
 
-  if [ ! -f "$CX_DIR/lib/cmd_$CX_COMMAND.sh" ]; then
+  # The file and the function of a command carry its name with the hyphen as an underscore.
+  local name=${CX_COMMAND//-/_}
+  if [ ! -f "$CX_DIR/lib/cmd_$name.sh" ]; then
     cx_line FAIL "$(cx_msg command_not_in_build "$CX_COMMAND")" >&2
     exit "$CX_EXIT_USAGE"
   fi
   # shellcheck source=/dev/null
-  . "$CX_DIR/lib/cmd_$CX_COMMAND.sh"
-  "cmd_$CX_COMMAND" "${CX_ARGS[@]+"${CX_ARGS[@]}"}"
+  . "$CX_DIR/lib/cmd_$name.sh"
+  "cmd_$name" "${CX_ARGS[@]+"${CX_ARGS[@]}"}"
 }
 
 # cx_help [command]: the full help, or one command's section (lib/help.sh).

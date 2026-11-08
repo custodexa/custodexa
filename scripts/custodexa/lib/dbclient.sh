@@ -19,6 +19,9 @@
 #   - host network: the address is reached the way this host reaches it; no log of its output.
 
 # cx_db_external: the deployment's overlays (CX_OVERLAYS) include the external database.
+# Sourced by more than one command library: a second load must not touch the readonly settings.
+[ -z "${CX_LIB_LOADED_dbclient:-}" ] || return 0
+CX_LIB_LOADED_dbclient=1
 cx_db_external() { [[ " ${CX_OVERLAYS:-} " == *" external-database "* ]]; }
 
 # The client image (an image ID) and its major version; set by lib/dbext.sh.

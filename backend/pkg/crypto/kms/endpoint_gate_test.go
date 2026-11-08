@@ -56,7 +56,7 @@ var endpointWriteAllowlist = map[string][]string{
 	// 設定全 UI 化後端點的來源是 `offsite_profiles` 的欄位，
 	// env 只在初次 seed 供給一次。放行的六個函式各自的角色：
 	//   DefaultClientFactory     依世代參數建 driver（Endpoint 來自該世代設定列）
-	//   ClientFor                組出建構參數（同上）
+	//   clientFor                組出建構參數（同上；ClientFor／ClientForRetrieval 依用途呼叫它）
 	//   switchGenerationLocked   把已淨化的端點寫進新世代列
 	//   readOffsiteSeedEnv／RunOffsiteEnvSeed  初次 seed 的 env 讀取與正規化
 	//   toInput                  設定頁請求體→SettingsInput 的欄位搬運（尚未淨化，
@@ -71,7 +71,7 @@ var endpointWriteAllowlist = map[string][]string{
 	"internal/api/offsite_storage_handler.go": {"toInput"},
 	"internal/offsite/gcs_client.go":          {"resolveGCSBuildParams"},
 	"internal/offsite/profile_service.go": {
-		"DefaultClientFactory", "ClientFor", "switchGenerationLocked", "TestSettings",
+		"DefaultClientFactory", "clientFor", "switchGenerationLocked", "TestSettings",
 	},
 	"internal/offsite/seed_migration.go": {"readOffsiteSeedEnv", "RunOffsiteEnvSeed"},
 }

@@ -1,0 +1,9 @@
+[WARN] The last upgrade was interrupted at step 8, "convert the database".
+  The services are stopped, the version is still 1.13.0; the old data
+  /opt/custodexa/data/postgres is complete and was not changed.
+  It is confirmed that the application services were not started
+  again since the last stop, so the backup made before the upgrade is still
+  valid. This time the run starts again at step 8 and converts again:
+    - the backup the last run completed is used again: custodexa-backup-1.13.0-20261120-021502.tar
+    - the half-converted data is moved first (not deleted):
+      /opt/custodexa/data/postgresql.partial-convert-20261120-021502

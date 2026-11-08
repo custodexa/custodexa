@@ -113,7 +113,7 @@ func (l *lifeEnv) directWriteAgain() {
 
 func (l *lifeEnv) trimDays(days int) *model.AuditCheckpointTrim {
 	l.t.Helper()
-	_, tr, err := l.p.TrimChain(days)
+	_, tr, err := audit.LegacyTrimForTest(l.p, days)
 	require.NoError(l.t, err)
 	require.NotNil(l.t, tr)
 	ok, err := l.p.VerifyTrim(tr)

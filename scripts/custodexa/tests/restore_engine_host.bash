@@ -63,16 +63,18 @@ rs_engine_host() {
   BK_KEK=ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
   bk_dotenv env
   bk_env_set COMPOSE_PROJECT_NAME custodexa
+# An overlays-layout release (1.22 and before) reads its external ingress from COMPOSE_FILE overlays; the fixture is such a release.
   bk_env_set COMPOSE_FILE current/compose.yml:current/compose.external-ingress.yml
   bk_state_set current.overlays external-ingress
   awk '$1 == "fill5a" {print $3}' /src/backend/pkg/crypto/testdata/kek-fingerprint-vectors.txt >"$DB/kek"
   jq '.images |= with_entries(.value.platforms = {amd64: {config_digest: .value.index_digest}, arm64: {config_digest: .value.index_digest}}) | .images.guacd = .images.postgres | .images.backend = .images.postgres | .images.frontend = .images.postgres' \
     "$ROOT/current/MANIFEST.json" >"$BATS_TEST_TMPDIR/full-mf"
   cp "$BATS_TEST_TMPDIR/full-mf" "$ROOT/current/MANIFEST.json"
+  # The fixture release has the old layout (1.22 and before), so it carries the ingress overlay file.
   touch "$ROOT/current/compose.yml" "$ROOT/current/compose.external-ingress.yml"
   bk_state_set current.image_ids "postgres=$BK_PG_DIGEST guacd=$BK_PG_DIGEST backend=$BK_PG_DIGEST frontend=$BK_PG_DIGEST"
   mkdir -p "$ROOT/data/postgres"
-  printf 'original cluster\n' >"$ROOT/data/postgres/PG_VERSION"
+  printf '16\noriginal cluster\n' >"$ROOT/data/postgres/PG_VERSION"
   # The fake database has a real import marker; retaining it proves which data was imported.
   /usr/bin/mv "$FAKE_DOCKER_REPLAY/hook" "$FAKE_DOCKER_REPLAY/engine-base"
   cat >"$FAKE_DOCKER_REPLAY/hook" <<'HOOK'
@@ -98,7 +100,7 @@ case " $* " in
   *' up -d postgres '*)
     echo 'up postgres' >>"$DB/events"
     echo running >"$DB/ctr/postgres"
-    echo cluster >"$ROOT/data/postgres/PG_VERSION"; exit 0 ;;
+    printf '16\ncluster\n' >"$ROOT/data/postgres/PG_VERSION"; exit 0 ;;
   *' up -d '*)
     echo up >>"$DB/events"
     for c in postgres guacd backend frontend; do echo running >"$DB/ctr/$c"; done

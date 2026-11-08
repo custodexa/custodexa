@@ -1,0 +1,40 @@
+Back to the previous version: preview (nothing has been changed yet)
+
+  Installed      1.16.2 (PostgreSQL 18)
+  Go back to     1.16.1 (before the upgrade, PostgreSQL 16)
+  Database       use the PostgreSQL 16 data kept as it was at the
+                 upgrade:
+                 /opt/custodexa/data/postgres
+                 its content stops at 2026-11-20 02:15, when the upgrade ran
+  Old images     all 4 are on this host; the running containers are
+                 checked against them after the start
+
+[WARN] 1.16.2 has already started (since 2026-11-20 02:15). Data written after the
+       upgrade will not be in the database after going back to 1.16.1:
+         - audit records
+         - connection records
+         - recording index: the recording files stay on disk, but after
+           going back to 1.16.1 the system cannot find them
+         - setting and account changes (users, assets, grants and
+           policies added, changed or deleted)
+  The current PostgreSQL 18 data is not deleted; it is renamed
+  and kept at:
+    /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+  Upgrading to 1.16.2 again later converts the PostgreSQL 16 data
+  again; the kept PostgreSQL 18 data is not merged back.
+
+  The other way is to restore the backup taken before the
+  upgrade, which also goes back to the data of the upgrade:
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar
+
+  Steps: stop the services -> check that the PostgreSQL 16 data
+  is still there and rename the PostgreSQL 18 data to keep it ->
+  switch back to 1.16.1 -> start -> check the version and the running
+  images
+  .env       the managed block goes back to the layout of 1.16.1; every other
+             line stays as it is
+
+[FAIL] Going back to 1.16.1 gives up the data written after the
+       upgrade. This run is non-interactive (no terminal), so it only
+       runs with --yes. Nothing was changed.
+    sudo /opt/custodexa/custodexa.sh rollback --yes

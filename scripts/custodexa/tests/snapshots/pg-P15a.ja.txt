@@ -1,0 +1,4 @@
+データベース
+  [ OK ] PostgreSQL 18（内蔵）、データは /opt/custodexa/data/postgresql、18.2 GB
+         データチェックサム（data checksums）は有効
+  残してある古いフォルダ 2 件。メニューの

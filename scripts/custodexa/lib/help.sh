@@ -5,7 +5,7 @@
 
 # Options each command accepts, in the order of the full help. Kept next to the parser's list
 # so the test suite can check both against each other.
-readonly CX_HELP_OPTIONS="yes resume revert with_recordings passphrase_file backup_ref backup_time backup_restore images images_from keep_images lang no_color version help"
+readonly CX_HELP_OPTIONS="yes resume revert with_recordings passphrase_file backup_ref backup_time backup_restore images images_from keep_images remove_old lang no_color version help"
 cx_help_options_for() {
   case $1 in
     install) printf '%s' "yes images images_from lang no_color version help" ;;
@@ -18,6 +18,7 @@ cx_help_options_for() {
     load) printf '%s' "yes lang no_color version help" ;;
     # The rest of what restore takes is in its own block (help_restore_options).
     restore) printf '%s' "yes lang no_color version help" ;;
+    db-upgrade) printf '%s' "yes remove_old lang no_color help" ;;
     *) printf '%s' "$CX_HELP_OPTIONS" ;;
   esac
 }
@@ -33,7 +34,7 @@ cx_help_print() {
   printf '%s\n\n%s\n\n%s\n' "$(cx_msg help_title "$(cx_script_version)")" \
     "$(cx_msg help_usage)" "$(cx_msg help_commands)"
   for c in $cmds; do
-    printf '%s\n' "$(cx_msg "help_cmd_$c")"
+    printf '%s\n' "$(cx_msg "help_cmd_${c//-/_}")"
   done
   printf '\n%s\n' "$(cx_msg help_options)"
   for o in $opts; do

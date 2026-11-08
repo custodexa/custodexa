@@ -5,9 +5,11 @@
 cx_rs_abandon_paths() {
   local path
   [ "$(cx_state_get last_restore.covering)" = 1 ] || return 0
-  for path in "$CX_RS_DATA/postgres" "$CX_RS_DATA/audit"; do
+  local db_dir
+  db_dir=$(cx_rs_db_dir)
+  for path in "$CX_RS_DATA/$db_dir" "$CX_RS_DATA/audit"; do
     # An external database keeps no folder on this host.
-    [ "$path" != "$CX_RS_DATA/postgres" ] || ! cx_db_external || continue
+    [ "$path" != "$CX_RS_DATA/$db_dir" ] || ! cx_db_external || continue
     [ ! -d "$path" ] || printf '%s\n' "$path"
   done
   if [ "$(cx_rs_get contents.tls)" = true ] || [ -d "$CX_ROOT/tls.before-restore-$CX_RS_TS" ]; then

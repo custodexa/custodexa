@@ -102,7 +102,7 @@ func (e *trimEnv) ageAll(t *testing.T) {
 }
 
 func TestCheckpointTrimPermHistory(t *testing.T) {
-	t.Run("累計單調：舊鏈段 none → 含附證段 attested → 含驗不過點 unverified → 之後全有效段仍 unverified 且本次計數 0", func(t *testing.T) {
+	t.Run("累計單調：舊鏈段 none → 含附證段 attested → 之後全有效段仍 attested 且本次計數 0；候選含驗不過的點時暫停", func(t *testing.T) {
 		e := newTrimEnv(t)
 		e.sealV3(t, 3)
 		e.sealV4(t, 1, false)
@@ -119,20 +119,24 @@ func TestCheckpointTrimPermHistory(t *testing.T) {
 
 		e.sealV4(t, 2, false)
 		e.ageAll(t)
+		e.sealV4(t, 1, false)
+		tr = e.trim(t)
+		require.Equal(t, model.TrimPermHistoryAttested, *tr.PermHistory, "承接前錨，不回退")
+		require.Zero(t, *tr.UnverifiedCount, "只計本次")
+
+		// 候選範圍含驗不過的點：整輪暫停，不簽修剪記錄
+		e.sealV4(t, 2, false)
+		e.ageAll(t)
 		var head model.AuditCheckpoint
 		require.NoError(t, e.db.Order("seq ASC").First(&head).Error)
 		require.NoError(t, e.db.Exec(`UPDATE audit_checkpoints SET perm_reconciled = false WHERE seq = ?`, head.Seq+1).Error)
 		e.sealV4(t, 1, false)
-		tr = e.trim(t)
-		require.Equal(t, model.TrimPermHistoryUnverified, *tr.PermHistory, "被剪段有驗不過的點")
-		require.EqualValues(t, 1, *tr.UnverifiedCount)
-
-		e.sealV4(t, 2, false)
-		e.ageAll(t)
-		e.sealV4(t, 1, false)
-		tr = e.trim(t)
-		require.Equal(t, model.TrimPermHistoryUnverified, *tr.PermHistory, "承接前錨，不回退")
-		require.Zero(t, *tr.UnverifiedCount, "只計本次")
+		before := e.count(t, "audit_checkpoints")
+		n, none, err := e.p.TrimChain(1)
+		require.NoError(t, err)
+		require.Zero(t, n)
+		require.Nil(t, none)
+		require.Equal(t, before, e.count(t, "audit_checkpoints"))
 	})
 
 	// 前錨被動過：錨記載的歷史證明不了，新錨一律帶 unverified
@@ -157,7 +161,7 @@ func TestCheckpointTrimPermHistory(t *testing.T) {
 		},
 	}
 	for name, tamper := range tamperPrev {
-		t.Run("前錨承接："+name+"→新錨 unverified", func(t *testing.T) {
+		t.Run("前錨驗不過或不接鏈頭："+name+"→本輪不修剪", func(t *testing.T) {
 			e := newTrimEnv(t)
 			e.sealV4(t, 3, true)
 			e.sealV4(t, 1, false)
@@ -167,31 +171,27 @@ func TestCheckpointTrimPermHistory(t *testing.T) {
 			e.sealV4(t, 1, false)
 			e.ageAll(t)
 			e.sealV4(t, 1, false)
-			tr = e.trim(t)
-			require.Equal(t, model.TrimPermHistoryUnverified, *tr.PermHistory, "證明不了前一段歷史")
-			require.Zero(t, *tr.UnverifiedCount, "本段全有效")
+			before, trimsBefore := e.count(t, "audit_checkpoints"), e.count(t, "audit_checkpoint_trims")
+			n, tr2, err := e.p.TrimChain(1)
+			require.NoError(t, err)
+			require.Zero(t, n, "鏈頭錨定不成立：不修剪")
+			require.Nil(t, tr2)
+			require.Equal(t, before, e.count(t, "audit_checkpoints"))
+			require.Equal(t, trimsBefore, e.count(t, "audit_checkpoint_trims"), "不簽新修剪記錄")
 		})
 	}
 
-	t.Run("最後被剪點驗不過、新鏈頭驗得過：錨值取新鏈頭簽章內的 prev、計數 1", func(t *testing.T) {
+	t.Run("最後被剪點驗不過、新鏈頭驗得過：本輪不修剪", func(t *testing.T) {
 		e := newTrimEnv(t)
 		e.sealV4(t, 3, true)
 		e.sealV4(t, 1, false)
-		var cps []model.AuditCheckpoint
-		require.NoError(t, e.db.Order("seq").Find(&cps).Error)
 		require.NoError(t, e.db.Exec(`UPDATE audit_checkpoints SET perm_reconciled = false WHERE seq = 3`).Error)
-		tr := e.trim(t)
-		require.EqualValues(t, 3, tr.LastTrimmedSeq)
-		require.Equal(t, cps[3].PrevCheckpointHash, tr.LastTrimmedLinkHash, "錨值取新鏈頭簽章內的 prev")
-		require.EqualValues(t, 1, *tr.UnverifiedCount)
-		require.Equal(t, model.TrimPermHistoryUnverified, *tr.PermHistory)
-		rec, _ := permRec(e.permEnv)
-		v := audit.NewCheckpointVerifier(e.db, e.svc, e.p, nil, nil)
-		v.SetRoleStateReconciler(rec)
-		rep, err := v.VerifyChain()
+		n, tr, err := e.p.TrimChain(1)
 		require.NoError(t, err)
-		require.Equal(t, audit.IntervalStatusPassed, rep.Status, "殘鏈接在有效錨後")
-		require.Equal(t, model.TrimPermHistoryUnverified, rep.TrimmedPermHistory)
+		require.Zero(t, n)
+		require.Nil(t, tr)
+		require.EqualValues(t, 4, e.count(t, "audit_checkpoints"), "檢查點仍在")
+		require.Zero(t, e.count(t, "audit_checkpoint_trims"))
 	})
 
 	t.Run("最後被剪點與新鏈頭皆驗不過：本輪不剪", func(t *testing.T) {

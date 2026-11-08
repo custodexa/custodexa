@@ -1,0 +1,17 @@
+[FAIL] The rename of a data folder was left unfinished, and now the folders
+       involved cannot be found. No database service was started and no
+       folder was changed.
+  Last action   going back to the previous version: rename /opt/custodexa/data/postgresql
+                to /opt/custodexa/data/postgresql.rolled-back-20261120-021502 and keep it
+  Neither folder is there
+    /opt/custodexa/data/postgresql
+        not there
+    /opt/custodexa/data/postgresql.rolled-back-20261120-021502
+        not there
+  The data may have been moved elsewhere or deleted by mistake. Find it
+  first. Until then do not rename, move or delete any folder. The
+  steps are in the upgrade guide, section "When a data folder rename
+  was interrupted".
+  When the data cannot be found, the only way is to restore the backup
+  taken before the upgrade:
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20261120-021502.tar

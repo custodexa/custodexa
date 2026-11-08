@@ -200,7 +200,7 @@ func TestAgentPrincipalCannotLogin(t *testing.T) {
 		}{
 			{"admin password", func() error { return users.ChangePassword(agent.ID, "NewPassword12345") }},
 			{"self password", func() error { return users.SelfChangePassword(agent.ID, "old", "NewPassword12345") }},
-			{"MFA registration", func() error { _, err := auth.GenerateMFASetup(agent.ID); return err }},
+			{"MFA registration", func() error { _, err := auth.GenerateMFASetup(agent.ID, ""); return err }},
 			{"MFA verification", func() error { return auth.VerifyMFACode(agent.ID, "123456") }},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

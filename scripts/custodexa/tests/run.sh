@@ -45,7 +45,7 @@ versions='echo "== versions: $(bats --version); shellcheck $(shellcheck --versio
 
 if [ $single = 1 ]; then
   [ "$paths" -gt 0 ] || set -- "$@" scripts/custodexa/tests/
-  docker run --rm -v "$repo:/src:ro" ${extra[@]+"${extra[@]}"} "$img" bash -c "
+  docker run --rm -v "$repo:/src:ro" -e CX_PGX_RED="${CX_PGX_RED:-0}" ${extra[@]+"${extra[@]}"} "$img" bash -c "
     set -u
     $versions
     bats --print-output-on-failure \"\$@\"; b=\$?
@@ -61,7 +61,7 @@ trap 'rm -rf "$q"' EXIT
 # The largest files first, so a long one does not start last.
 pids=()
 for _ in $(seq "$jobs"); do
-  docker run --rm -v "$repo:/src:ro" -v "$q:/q" ${extra[@]+"${extra[@]}"} -e CX_BATS_OPTS="${opts[*]:-}" "$img" bash -c '
+  docker run --rm -v "$repo:/src:ro" -v "$q:/q" ${extra[@]+"${extra[@]}"} -e CX_PGX_RED="${CX_PGX_RED:-0}" -e CX_BATS_OPTS="${opts[*]:-}" "$img" bash -c '
     set -u
     for f in "$@"; do
       n=$(printf %s "$f" | tr / _)

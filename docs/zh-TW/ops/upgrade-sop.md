@@ -11,10 +11,9 @@
 > 相關文件：[備份與還原](./backup-and-restore.md)、[部署形態限制](./deployment-topology-limits.md)、
 > [平台自身特權憑證輪替](./privileged-credential-rotation.md)。
 >
-> 本文的 `docker compose` 指令假定正式版形態（`docker-compose.yml`，內建 TLS 反向代理）。
-> 交由自家 ingress 承載 TLS 的部署（`docker-compose.external-ingress.yml`）一律帶兩個 `-f`
-> （`-f docker-compose.yml -f docker-compose.external-ingress.yml`），或在 `.env` 設
-> `COMPOSE_FILE` 讓它成為預設；只帶一個會以內建 TLS 代理的形態啟動。
+> 本文的 `docker compose` 指令假定原始碼部署由 `scripts/quickstart.sh` 啟動：堆疊包含哪些部分，來自 `.env` 末端的管理區，
+> 那是腳本依 `EXTERNAL_DB_HOST` 與 `TLS_MODE` 寫入的。不論 TLS 是內建或由你自己的 ingress 承載（`TLS_MODE=external`），
+> 都不需要 `-f`。在某個資料夾裡手打這些指令之前，先在那裡跑一次腳本；腳本從未跑過的地方，`docker compose` 不會啟動資料庫與代理。
 > 安裝包部署由管理腳本升級（第 2 節第一小節）；在其部署目錄下手打 compose 指令時，見
 > [備份與還原 §2.3](./backup-and-restore.md#23-本文-shell-指令如何取得部署變數動手前先讀)。
 
@@ -223,14 +222,14 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-X.Y.Z.tar.gz    # SH
 
 | 步 | 內容 | 對應的手動步驟 |
 |---|---|---|
-| 1 | 檢查：上述版本規則、上次沒有完成的升級、新映像與備份所需的空間（帶 `--backup-ref` 時腳本不做備份，只計新映像）；外接資料庫時，先檢查資料庫本身（見下） | §2.0 |
+| 1 | 檢查：上述版本規則、上次沒有完成的升級、新映像、備份與（需要轉換資料庫時）轉換所需的空間（帶 `--backup-ref` 時腳本不做備份，不計備份）；需要轉換資料庫時，另檢查它能不能轉換（見下）；外接資料庫時，先檢查資料庫本身（見下） | §2.0 |
 | 2 | 取得並驗證新版映像 | §2.2 |
 | 3 | 預覽與確認；在此之前尚未停止執行中的服務 | |
 | 4 | 最多等 120 秒讓稽核佇列歸 0。讀不到佇列時，只有系統回報已封存、且這個容器啟動後從未解封過才放行；其他情形一律停下，服務照常運作、沒有任何變更 | §2.3 步驟 3、§2.4 |
 | 5 | 停止 backend、guacd、frontend（資料庫保持運作），並從後端日誌檢查有無排空逾時 | §2.3 步驟 4、§3.1 |
 | 6 | 確認舊實例已完全停止：應用帳號的連線數為 0；外接資料庫而這次沒有用戶端時，改為警告（見下） | §2.3 步驟 5 |
 | 7 | 記下快照並備份（見下） | §2.1 |
-| 8 | 為舊版狀態保留步驟編號；不執行轉換或搬移檔案 | |
+| 8 | 內建資料庫的資料在較舊的大版本時，把它轉換到 PostgreSQL 18；否則記為略過（外接資料庫，或已是 18）。見[把內建資料庫轉換到 PostgreSQL 18](#把內建資料庫轉換到-postgresql-18) | |
 | 9 | 把 `current` 指到新版，準備錄影目錄 | §1.3、§2.5 |
 | 10 | 啟動服務 | §2.5 |
 | 11 | 最多等 180 秒，直到後端回應健康檢查 | §2.5 |
@@ -281,7 +280,7 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-X.Y.Z.tar.gz    # SH
 |---|---|---|
 | 第 1 到 4 步 | 舊版照常運作，沒有任何變更 | 排除畫面指出的原因後再執行一次升級 |
 | 第 5 到 7 步 | 服務已停止；版本與資料都沒變 | 用畫面上的指令啟動舊版，或排除原因後再執行一次升級 |
-| 第 8 步 | 本版不執行轉換動作 | 依腳本顯示的結果繼續 |
+| 第 8 步 | 資料庫轉換失敗或被中斷 | 失敗後舊版已重新運作、沒有換版、舊資料沒有被改動：排除畫面指出的原因後再執行一次升級。中斷後，下一次 `upgrade` 會說明怎麼接續。兩種情形都寫在[把內建資料庫轉換到 PostgreSQL 18](#把內建資料庫轉換到-postgresql-18) |
 | 第 9 到 12 步 | 新版已經換上 | 用畫面上的指令查看後端日誌。要回到舊版，請依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)執行 `sudo /opt/custodexa/custodexa.sh rollback`；部署回到上一版之前，腳本會拒絕再次升級並重印同樣的指引；回到上一版指的是 `rollback` 完成，或 `restore` 完成（例如回退被拒時畫面印出的那一條）。以 `rollback --revert` 放棄回退會回到新版，升級仍然被拒 |
 
 被 Ctrl-C 或斷線中斷的升級也照此處理：下次執行時會印出它停下那一步的指引。中斷在第 1 到 4 步，
@@ -289,9 +288,182 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-X.Y.Z.tar.gz    # SH
 專案名稱與 compose 檔，在任何目錄下都能執行。
 
 **回到舊版。** 要回到升級前的版本，先執行 `sudo /opt/custodexa/custodexa.sh rollback`。
-新版沒有改動過資料庫時，它會把部署指回上一版並保留資料；改動過，或讀不到資料庫時，`rollback` 不做任何變更，
-畫面會印出要改執行的 `restore` 指令或手動程序。只有還原該次升級所做的備份，備份之後記錄的一切才會遺失。
+新版沒有改動過資料庫時，它會把部署指回上一版並保留資料。升級把內建資料庫換了大版本時（自 1.23.0 起，見[把內建資料庫轉換到 PostgreSQL 18](#把內建資料庫轉換到-postgresql-18)），`rollback` 同樣能指回，但新版啟動後寫入的資料不在退回後的資料庫裡；新版以其他方式改動過資料庫，或讀不到資料庫時，`rollback` 不做任何變更，
+畫面會印出要改執行的 `restore` 指令或手動程序。還原該次升級所做的備份，備份之後記錄的一切會遺失；換成 PostgreSQL 18 之後的 `rollback` 也一樣。
 細節見[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)。
+
+#### 把內建資料庫轉換到 PostgreSQL 18
+
+> 適用於使用內建資料庫的安裝包部署，從執行 PostgreSQL 16 的版本升到 1.23.0 或更新版時。使用外接資料庫的部署不受影響：腳本不會連上外接伺服器去變更它，第 8 步對它記為略過。
+
+自 1.23.0 起，內建資料庫是 PostgreSQL 18.6；更早的版本執行 PostgreSQL 16，其社群支援在 2028 年 11 月結束。大版本不能靠換映像來變更，所以升級在第 8 步轉換資料。你照常執行 `upgrade`（從選單或指令列都可以），資料庫的部分不需要手動做任何事。低於 1.17.0 的部署一開始就會被拒絕（結束碼 3，沒有任何變更），畫面會指出要先升到哪個版本（`upgrade 1.17.0`）；請先升到 1.17.0 或更新的版本，再升到 1.23.0。
+
+**第 8 步做了什麼**
+
+- 第 8 步在第 7 步備份之後、第 9 步換上新版之前執行，且只在要升上去的版本所帶的資料庫大版本比目前執行的新時執行。資料已在該版本，或資料庫是外接的，第 8 步就略過。服務在這整段期間保持停止，所以升級的停機時間包含轉換。
+- 腳本用 PostgreSQL 18 的匯出工具，從仍在運作的舊資料庫伺服器另做一次獨立的匯出。它不取用第 7 步備份檔裡的資料庫，所以帶 `--backup-ref` 時轉換的做法相同。
+- 它在 `${DATA_PATH}/postgresql/18/docker` 建立新資料庫，編碼與定序和舊的相同，並開啟資料校驗碼（data checksums），再以單一交易匯入，遇到第一個錯誤就中止。
+- 新版啟動之前，它比對兩邊的資料庫：每個資料表的筆數、`schema_migrations` 的每一列、每個序列的目前值、編碼與定序都必須相等，資料校驗碼（data checksums）必須回報 `on`。然後更新查詢規劃器使用的統計資訊。
+- 舊的資料庫資料夾 `${DATA_PATH}/postgres` 不會被轉換寫入、改名或刪除，轉換失敗時也一樣。舊資料庫伺服器在轉換期間持續運作，會像任何運作中的 PostgreSQL 一樣更動自己的檔案，那不算轉換動作。
+- 畫面顯示目前的子步驟（匯出、建立新資料庫、匯入、核對、統計資訊）、已經過時間與預估時間，以及資料大小。請不要中斷；中斷也不會損壞舊資料。
+
+**停機之前的空間與內容檢查**
+
+第 1 步在停止任何服務之前做這兩項檢查。被拒絕時沒有任何變更。
+
+- **可用空間。** 每一筆寫入都算在它實際落到的檔案系統上，落在同一個檔案系統的項目合計：`backups/` 裡的備份、Docker 映像儲存區裡的新映像、新資料庫（資料庫大小加 2 GiB）與暫時匯出檔（資料庫大小）。它們在同一個檔案系統時，除了備份與映像之外，轉換約需資料庫大小的兩倍再加 2 GiB。帶 `--backup-ref` 時不計備份，但仍計轉換。這些位置中任一處判定不出所在的檔案系統或可用空間時，升級會拒絕並指出是哪個位置。拒絕畫面會逐個檔案系統列出需要量與可用量。
+- **腳本無法轉換的內容。** 資料庫有 `plpgsql` 以外的擴充、有自訂 tablespace，或有授權給應用帳號、`PUBLIC` 與 `pg_` 開頭的內建角色之外的角色時，升級會拒絕並指出名稱。腳本不轉換這樣的資料庫；請依[資料庫含額外設定時](#資料庫含額外設定時)移除指出的設定，再執行一次升級。
+
+**怎麼看預覽。** 在任何東西停止之前顯示的預覽有一段資料庫轉換。它說明資料庫會從 PostgreSQL 16 換成 18 以及原因；舊資料保留在哪裡；每個檔案系統所需與可用的空間；預估時間，以分鐘範圍表示（下限是估計值，上限是兩倍，磁碟慢時可能更久），這個時間會加進預計停機時間；轉換失敗時版本不變、舊版照常運作；以及轉換之後回到舊版的兩條路（見下）。公告停機時段之前，請先讀停機時間與空間。
+
+**轉換失敗時**
+
+任一子步驟失敗時，腳本依序做這些事：移除暫時容器；把新資料庫資料夾改名為 `postgresql.failed-convert-<時間>` 並保留供診斷；刪除暫時匯出檔；記下轉換失敗，以及這次的停機確認、備份與快照不得再沿用；然後重新啟動舊版的應用服務並等到健康。升級記為失敗在第 8 步。畫面會指出失敗的子步驟與原因，說明舊版已重新運作、沒有換版、舊資料沒有被改動，並給出保留資料夾與日誌的位置。
+
+這之後可以放心再執行一次升級。排除原因後，執行同一個指令：
+
+```bash
+sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+```
+
+新的一次是從第 1 步開始的全新升級：排空稽核佇列、停止服務、確認連線數為 0，並做新的備份與快照。失敗那次的任何東西都不沿用，因為舊版回來之後可能已經接受過寫入。帶 `--backup-ref` 時，你自備的備份必須在這次新停機之後開始；失敗那次的備份會被拒絕。舊服務無法重新啟動時，腳本會印出恢復它們的指令，不會自行處理。
+
+**轉換被中斷時**
+
+第 8 步期間斷電或行程被強制結束，可能留下暫時容器與建到一半的資料夾。下一次 `upgrade` 先完成或核對任何未完成的資料夾改名（腳本在改名之前就先記下每一次改名），再決定怎麼接續，畫面會說明適用哪一種情形：
+
+- 舊服務正在執行，或無法證明它們自第 5 步以來一直停著：整個升級重跑：先檢查與預覽，第 4 步排空稽核佇列、第 5 步停止服務、第 7 步做新的備份。服務會再停一次。
+- 服務停著，且能證明自第 5 步以來沒有任何服務被啟動過：升級移除暫時容器，把建到一半的資料夾改名為 `postgresql.partial-convert-<時間>`，並沿用第 7 步的備份重新執行第 8 步。
+- 中斷發生在失敗轉換的收尾期間：視同上述的轉換失敗，從第 1 步全新升級。
+
+這樣的升級未完成時，其他子命令會拒絕並印出同一則提示。腳本無法判斷改名讓兩個資料夾中的哪一個留在原位時，不會啟動任何資料庫，而是列出兩個路徑與各自的版本檔，等你確認；見[資料目錄改名中斷時](#資料目錄改名中斷時)。
+
+**失敗的轉換留下什麼。** `postgresql.failed-convert-*` 與 `postgresql.partial-convert-*` 資料夾只被暫時的轉換容器寫過，應用從未使用。它們佔用空間，下一次的空間檢查會把這些空間再算一次。部署仍在舊版且健康時，下一次 `upgrade` 只在第 1 步的空間檢查不足時處理它們：逐一列出路徑與大小，在終端機下詢問是否先清除（預設為否），然後重新計算空間；空間足夠時不會提到它們，資料夾留在原處。沒有終端機時什麼都不清除；因空間被拒絕時會列出它們，並說明在終端機下重跑升級就能選擇清除。1.23.0 運作之後，同樣的資料夾可用 `db-upgrade --remove-old` 清除（見下）。
+
+**升級之後。** 第 12 步另外核對資料夾是 PostgreSQL 18、伺服器回報版本 18，且資料位於該版本指定的資料夾；migration、筆數與金鑰指紋的核對照舊。完成畫面說明舊的 PostgreSQL 16 資料保留在哪裡、佔多少空間。它會一直保留到你清除為止：腳本從不自行清除。
+
+**轉換之後回到舊版。** 有兩條路：
+
+- 只要舊的 PostgreSQL 16 資料夾還在，`rollback` 就可以跨資料庫版本回到上一版。它以升級時原樣保留的那個資料夾啟動上一版，並把 PostgreSQL 18 資料夾改名為 `postgresql.rolled-back-<時間>` 保留。新版從未啟動過時，不會遺失任何資料。新版啟動過時，**它寫入的資料不在回退後的資料庫中**：稽核紀錄、連線紀錄、錄影索引（錄影檔留在磁碟上，但資料庫已不認得它們），以及設定與帳號的異動。預覽在你確認之前就說明這些；確認的預設為否，沒有終端機時需要 `--yes`（警告照樣印出）。
+- 以升級所做的備份執行 `restore`（畫面會給出路徑）會回到同一個時間點，遺失的範圍也相同。
+
+之後再升級，會重新轉換舊資料；保留在 `postgresql.rolled-back-<時間>` 的資料不會合併回來。舊資料夾已被清除時，`rollback` 會拒絕、不做任何變更並印出 `restore` 指令；它還原的是升級當時的資料，所以之後記錄的一切都會遺失。規則與指令見[備份與還原：跨資料庫大版本回到上一版](./backup-and-restore.md#跨資料庫大版本回到上一版)。
+
+**清除舊的資料庫資料夾。** 只有你能清除，從選單（**資料庫升級**）或用下列指令：
+
+```bash
+sudo /opt/custodexa/custodexa.sh db-upgrade               # 顯示資料庫版本；提供清除保留的資料夾
+sudo /opt/custodexa/custodexa.sh db-upgrade --remove-old  # 列出保留的資料夾，清除你確認的那些
+sudo /opt/custodexa/custodexa.sh status                   # 資料庫版本、資料位置、校驗碼、保留的資料夾
+```
+
+清單列出每個保留資料夾的完整路徑、版本與大小：舊的 `postgres/`（目前資料夾不是它時）、`postgresql.before-convert-*`、`postgresql.rolled-back-*`、`postgres*.before-restore-*`（`restore` 保留的）、`postgresql.failed-convert-*`、`postgresql.partial-convert-*`，以及清除到一半的 `*.removing-*`。保留的舊資料庫只有在下列全部成立時才提供清除：目前資料位於該版本的資料庫版本且資料庫健康；上一次升級已結算為成功；新版至少啟動過一次；沒有未完成的升級、指回或還原。有一項不成立時，畫面會說明是哪一項，並且不清除任何東西。清除在終端機下要求輸入確認字，沒有終端機時要 `--yes`。確認之前，畫面會說明清除無法復原、上一版的資料清除之後 `rollback` 就不能再回到上一版（只能用升級所做的備份），以及該備份在哪裡。資料夾會先改名為 `<名稱>.removing-<時間>` 再刪除；被中斷的清除會在下一次 `status` 看到，可以重跑。失敗轉換的資料夾條件較寬：部署健康、除了記為失敗的第 8 步之外沒有未完成的操作，且該資料夾不是目前或上一版的資料目錄。
+
+**選單。** 使用內建資料庫時，主選單的第 8 項是**資料庫升級**，位於載入離線映像包與說明之間（說明移為第 9 項）。第 1 到 7 項與 0 的編號不變，外接資料庫時選單沒有這一項。這一項執行 `db-upgrade`。在 1.23.0 上它會說資料庫已是這個版本支援的最新版，因為轉換已在第 8 步做過；這個入口是為之後的版本保留的。外接資料庫時它只說明資料庫由你自己管理，並以結束碼 0 結束。資料比程式新時，它會拒絕並說明要升級程式。
+
+##### 資料目錄改名中斷時
+
+腳本在幾個地方會改名整個資料庫資料目錄：轉換失敗後把新資料庫移到一旁、回到上一版時把 PostgreSQL 18 的目錄保留為 `postgresql.rolled-back-<時間>`、清除前先改名。每一次改名在動手前先寫進 `state.json`，改完再標為完成。執行在兩者之間被切斷時，下一個會啟動資料庫的指令（`upgrade`、`rollback --resume`、`rollback --revert`、`start`、還原）會先讀這筆紀錄。兩個目錄剛好只有一個存在時，腳本自己把紀錄補完：來源還在就做完改名，只剩目的地就標為已完成，你不會看到任何畫面，也不會被詢問。
+
+兩個目錄都在、或都不在時，腳本無法判斷發生了什麼。它不啟動任何資料庫服務、不改動任何目錄，並印出它當時在做的操作、兩個路徑、各目錄的 PostgreSQL 版本（該目錄 `PG_VERSION` 檔的內容）與大小。硬要啟動，可能在空目錄初始化一個沒有資料的新資料庫，或讓服務接到不完整的資料。處理方式：
+
+1. 先不要改名、移動或刪除任何東西。用 `ls -ld` 與 `du -sh` 看兩個目錄，並讀各自的 `PG_VERSION`（PostgreSQL 18 的配置在 `18/docker/` 之下）。「上次的操作」那一行說明這兩個目錄原本的用途。完整的那一份，是版本符合預期、大小合理、修改時間較新的那一份。
+2. **兩個都在**：把完整的那一份留在兩個路徑之一，另一份用你自己的名稱搬出資料目錄（確定之前不要刪除）。兩個路徑剛好只剩一個後，重新執行同一個指令：留下的是來源路徑，腳本做完紀錄中的改名；留下的是目的地路徑，腳本把它標為已完成。
+3. **兩個都不在**：資料被移到別處，或被刪除。找找看有 `PG_VERSION` 的目錄（例如 `sudo find / -maxdepth 9 -name PG_VERSION -not -path '/proc/*' -not -path '/var/lib/docker/*' -not -path '*/base/*' 2>/dev/null`；資料可能在另一顆磁碟上），放回畫面上的來源或目的地路徑，再重新執行同一個指令。
+4. 找不到完整的資料、或無法判斷哪一份才對時，不要猜：用升級時做的備份還原。畫面會印出指令（`sudo /opt/custodexa/custodexa.sh restore <那份備份>`），見[備份與還原](./backup-and-restore.md)。
+
+資料目錄只是沒有 `PG_VERSION`、也沒有改名紀錄時，同樣的指令會以較短的畫面拒絕（「資料目錄不完整」）：到保留下來的 `postgresql.*` 目錄中找回資料，或照上面的方式用備份還原。尚未建立資料目錄的全新安裝不受影響。
+
+##### 資料庫含額外設定時
+
+升級第 1 步拒絕並指出擴充套件、自訂 tablespace 或角色時，適用本節。腳本不轉換這樣的資料庫，本節的操作也不由腳本代勞：以下指令由你以資料庫管理者的身分，對舊資料庫執行；舊版仍在原處時，舊資料庫持續運作。請在部署資料夾中執行；`DB_USER` 與 `DB_NAME` 來自 `.env`（取得方式見[備份與還原 §2.3](./backup-and-restore.md#23-本文-shell-指令如何取得部署變數動手前先讀)）。把角括號中的名稱換成拒絕畫面印出的名稱。
+
+**先備份。** 移除這些設定會改動資料庫，所以在第一個指令之前先做一份可以退回的備份：
+
+```bash
+sudo /opt/custodexa/custodexa.sh backup
+```
+
+**擴充套件。** 列出 `plpgsql` 以外的擴充套件：
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "SELECT extname, extversion FROM pg_extension WHERE extname <> 'plpgsql'"
+```
+
+逐一移除拒絕畫面指出的擴充套件。若有你的物件依賴該擴充套件，指令會拒絕並列出依賴它的項目；請先處理那些物件，不要加 `CASCADE`，因為 `CASCADE` 會把它們一併刪除。上面的查詢不再回傳任何列，就表示已沒有擴充套件。
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "DROP EXTENSION <extension name>"
+```
+
+**自訂 tablespace。** 列出兩個內建 tablespace 以外的 tablespace，以及存放在其中的物件：
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace
+   WHERE spcname NOT IN ('pg_default', 'pg_global')" -c \
+  "SELECT n.nspname, c.relname, c.relkind FROM pg_class c
+   JOIN pg_namespace n ON n.oid = c.relnamespace
+   JOIN pg_tablespace t ON t.oid = c.reltablespace
+   WHERE t.spcname NOT IN ('pg_default', 'pg_global')"
+```
+
+把該 tablespace 中的全部物件移到預設 tablespace，再刪除該 tablespace。搬移會重寫每張表的檔案並在執行期間鎖住該表，請選在離峰時段。上面兩個查詢都不再回傳任何列，就表示已沒有自訂 tablespace。
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "ALTER TABLE ALL IN TABLESPACE <tablespace name> SET TABLESPACE pg_default" -c \
+  "ALTER INDEX ALL IN TABLESPACE <tablespace name> SET TABLESPACE pg_default" -c \
+  "ALTER MATERIALIZED VIEW ALL IN TABLESPACE <tablespace name> SET TABLESPACE pg_default" -c \
+  "DROP TABLESPACE <tablespace name>"
+```
+
+**應用帳號以外的角色。** 列出不是應用帳號與 `pg_` 開頭內建角色、卻在應用 schema 的物件（資料表或序列、欄位、schema、函式、型別、大型物件、外部伺服器）、預設權限（`ALTER DEFAULT PRIVILEGES`）或資料庫上持有權限的角色。這與升級所用的判準相同：
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "WITH us AS (SELECT oid FROM pg_namespace
+     WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg\_toast%')
+   SELECT DISTINCT r.rolname FROM (
+     SELECT relacl AS acl FROM pg_class WHERE relnamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT a.attacl FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+       WHERE c.relnamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT nspacl FROM pg_namespace WHERE oid IN (SELECT oid FROM us)
+     UNION ALL SELECT proacl FROM pg_proc WHERE pronamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT typacl FROM pg_type WHERE typnamespace IN (SELECT oid FROM us)
+     UNION ALL SELECT defaclacl FROM pg_default_acl
+     UNION ALL SELECT lomacl FROM pg_largeobject_metadata
+     UNION ALL SELECT srvacl FROM pg_foreign_server
+     UNION ALL SELECT datacl FROM pg_database WHERE datname = current_database()
+   ) s CROSS JOIN LATERAL aclexplode(s.acl) a
+   JOIN pg_roles r ON r.oid = a.grantee
+   WHERE a.grantee <> 0 AND r.rolname !~ '^pg_' AND r.rolname <> current_user"
+```
+
+對每個角色，先確認沒有任何程式還用它登入，再把它擁有的物件轉給應用帳號、撤銷它的授權並刪除它。`DROP OWNED` 也會移除該角色的預設權限，且只撤銷目前資料庫內的授權；若 `DROP ROLE` 回報該角色在另一個資料庫仍持有權限，請對那個資料庫（改 `-d`）先執行同樣的兩條語句。上面的查詢不再回傳任何列，就表示已沒有這類角色。
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U "${DB_USER:?}" -d "${DB_NAME:?}" -c \
+  "REASSIGN OWNED BY <role name> TO CURRENT_USER" -c \
+  "DROP OWNED BY <role name>" -c \
+  "DROP ROLE <role name>"
+```
+
+**重新執行升級。** 三個查詢都清空後，執行與先前相同的指令：
+
+```bash
+sudo /opt/custodexa/custodexa.sh upgrade 1.23.0
+```
+
+**不想移除時。** 把這些設定留在你自己管理的資料庫伺服器上：依[備份與還原 §5.4，換到外接資料庫](./backup-and-restore.md#54-換到外接資料庫)把部署換到外接資料庫，再以外接資料庫部署的方式升級；腳本不會動外接資料庫（第 8 步會跳過）。
 
 ### 舊原始碼部署的手動遷移
 
@@ -333,6 +505,37 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 > **單實例守衛的保證範圍**：本版起，第二個應用實例對同一資料庫啟動會被攔下並要求確認（§2.6b）。
 > 這道互斥**只在守衛版之間成立**：不含守衛的舊版本不持鎖，首次自無守衛版升級到本版時，
 > 新版能取得鎖**不代表**舊版已停。§2.3 步驟 5 的首次升級檢核就是為此而設，不可略過。
+
+#### 升到 1.23.0
+
+本版有數項功能對輸入的檢查更嚴格，部分操作需要先前不需要的權限。升級前請讀完下列各項，並處理適用於你部署的部分。
+
+- **內建資料庫從 PostgreSQL 16 換成 18（使用內建資料庫的安裝包部署）。** 升級在第 8 步轉換資料，並保留舊的資料夾。請為轉換的停機時間，以及約資料庫大小兩倍再加 2 GiB 的額外可用空間預作安排；預覽在任何東西停止之前就列出這兩項。舊資料會一直保留到你清除為止，`rollback` 仍可用它回到 1.22.x，但新版寫入的資料會遺失。低於 1.17.0 的部署要先升到 1.17.0 或更新的版本。程序、失敗的情形與清除寫在[把內建資料庫轉換到 PostgreSQL 18](#把內建資料庫轉換到-postgresql-18)。使用外接資料庫的部署不受影響。
+- **原始碼部署與資料庫。** 原始碼部署的內建資料庫自本版起是 PostgreSQL 18，放在 `data/postgresql`。`data/postgres` 仍有舊資料而新資料夾是空的時候，`scripts/quickstart.sh` 會停下、不啟動任何東西。請依[快速開始 §8](../QUICKSTART.md#8-原始碼部署換到-postgresql-18-moving-a-source-deployment-to-postgresql-18)手動搬一次資料。
+- **升級會調整一次 `.env`（安裝包部署）。** 自 1.23.0 起，部署形態由 `.env` 的兩行決定：資料庫看 `EXTERNAL_DB_HOST`，網頁入口看 `TLS_MODE`。
+  從 1.22 或更早的版本升上來時，第 9 步會把 `.env` 重寫一次，升級的預覽在任何東西停止之前就列出這項變更。
+  管理區之外的 `COMPOSE_FILE` 與 `COMPOSE_PROFILES` 行會被移除；原本以自家 ingress 運行的部署，`TLS_MODE` 會變成 `external`；
+  檔案末端寫入管理區。`.env` 的其他部分都不變。部署形態維持不變：同名的容器照常運行，外接伺服器上的資料庫繼續使用，內建資料目錄不被動到。
+  這已針對從 1.22.0 升上來的四種形態（內建或外接資料庫、內建 TLS 或自家 ingress）與從 1.17.9 升上來的外接資料庫加自家 ingress 演練過。
+  檔案是經由暫存檔與單次 rename 重寫的，所以中斷的升級會讓 `.env` 維持原樣，或是完整重寫後的樣子。
+- **升級因形態而停下的情況。** `.env` 列出外接資料庫、`EXTERNAL_DB_HOST` 卻是空的，升級會在任何東西停止之前停下。
+  部署紀錄裡有位址時會印出該位址；1.22 或更早安裝的部署沒有記錄位址，畫面會明說，請把資料庫伺服器的位址填進 `EXTERNAL_DB_HOST`。`.env` 指向外接資料庫、部署實際運行的卻是內建資料庫（或相反），
+  則以結束碼 3 停下、什麼都不改。修正那一行後再跑一次升級。
+- **回到 1.22.x。** `rollback` 會把管理區改回你所回到那個版本的寫法；`.env` 的其他行維持原樣，服務名稱也不變。
+- **1.22.x 做的備份可以用 1.23 的腳本還原。** 還原以自家 ingress 運行的部署的備份之後，`start`、`backup`、`upgrade` 都能執行，`TLS_MODE` 是 `external`。
+- **原始碼部署。** 兩個疊加檔已不再隨附。`scripts/quickstart.sh` 在下次執行時會翻譯列出它們的 `COMPOSE_FILE` 行，並印出每一項改動
+  （[快速開始 §7](../QUICKSTART.md#7-資料庫放在另一台伺服器外接資料庫)）。請以 `bash scripts/quickstart.sh --up` 啟動，不要直接跑 `docker compose up -d`。
+
+- **Google Cloud Storage 離機儲存：金鑰與端點規則。** 為 GCS 提供者填入的金鑰必須是服務帳號金鑰：`type` 為 `service_account`，`client_email`、`private_key`、`token_uri` 都存在，且 `token_uri` 為 `https://oauth2.googleapis.com/token`。連線測試、儲存、確認世代切換，以及從環境變數做的首次設定，都套用這條規則；不合規的金鑰會以 `VALIDATION_OFFSITE_GCS_CREDENTIAL_INVALID` 拒絕，回應只指出欄位名，不回顯內容。設定沒有顯式金鑰時（金鑰欄留空而現行世代沒有保存的金鑰，或金鑰被清除），端點必須為空，或主機屬 `googleapis.com` 底下；否則上述四個入口會以 `VALIDATION_OFFSITE_GCS_ENDPOINT_NEEDS_CREDENTIAL` 拒絕。經由非 Google 位址連到 GCS 的部署，必須改填服務帳號金鑰。
+- **升級前離機儲存該做的事。** 打開現行的離機儲存世代。若它保存的金鑰不是服務帳號金鑰，或 `token_uri` 不是上述值，請填入有效的服務帳號金鑰。若它使用預設憑證鏈、端點又設在 `googleapis.com` 之外，請改填服務帳號金鑰，或把端點改回空白。在處理完之前，現行世代的上傳與取回會失敗，上傳以既有的上傳失敗狀態呈現。已退役世代的取回不受新增的端點規則限制；金鑰規則與其他存取條件仍然適用，所以保存的金鑰不符金鑰規則的退役世代無法取回。
+- **連線申請需要常設連線權限。** 提出連線申請時，申請人必須已對每一個被申請的資產持有常設連線權限；申請指定了執行者時，執行者也必須持有。常設權限指時效窗內、並非由已核准申請所核發的連線權限；經使用者群組或資產節點取得的權限也算。不符的申請會以 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED` 拒絕，資產列表也不會對這類資產顯示申請入口。在 `reason` 與 `approval` 政策段位下，常設連線權限仍然不能免申請直接連線，它只是讓持有者具備申請資格。升級前，請為仍需透過申請連線的使用者與 agent 授予連線權限。
+- **升級當下已在途或已核准的申請。** 升級前核發的臨時授權維持有效直到到期，要提前結束可用既有的申請提前撤銷。申請人或執行者沒有常設連線權限的待審申請，仍可被拒絕、撤回或等到逾時，但核准它會以相同的錯誤碼被拒。
+- **自動核准不超出常設帳號範圍。** `reason` 段自動核准的項目，以及 `open` 段的 agent 項目，只限於連線主體靠常設連線權限持有的帳號。沒有指名帳號的項目只就這些帳號核准。指名了範圍之外帳號的項目不會自動核准，而是維持待審交人工審核，所以 `reason` 段申請的回應現在可能是 `pending`。破窗票證限於同一組帳號。除了既有「不得決定自己擁有的 agent 所提的申請」之外，審核者也不能核准或拒絕執行者是自己擁有之 agent 的申請。
+- **為這些資產配置審核者。** 人工審核需要審核範圍涵蓋該資產的審核者。請為 `reason` 段位的資產，以及 agent 會連線的 `open` 段位資產（含未歸入任何節點的資產）配置審核範圍，並確認排除申請人、執行者與執行者 agent 的擁有者之後，可審人數仍不少於 `access_request_min_approvals`。若沒有人能決定某個項目，申請會維持待審，直到 `access_request_pending_timeout_hours` 屆滿後作廢。
+- **重設驗證器須輸入目前驗證碼。** 對已啟用 MFA 的帳號呼叫 `POST /auth/mfa/setup`，現在須在 `code` 帶入目前的驗證碼。缺碼以 `RULE_MFA_CURRENT_CODE_REQUIRED` 拒絕，碼錯以 `RULE_MFA_INVALID_CODE` 拒絕。首次註冊不變。遺失驗證器的使用者，請持有 `user:manage` 的管理員為該帳號停用 MFA（`POST /users/:id/mfa/disable`），再註冊新的驗證器。以目前驗證碼重設後，新驗證器的第一組碼必須比剛用過的那組更晚，所以請等它顯示下一組碼再啟用。
+- **目錄登入的英文字母不分大小寫，對應既有帳號。** 目錄使用者以和已存名稱只差英文字母（ASCII）大小寫的名稱登入時，現在會進入既有帳號，不會另建第二個帳號。差異若是空白、全形等其他寫法，登入會被拒，請以目錄中的名稱登入。若同一位目錄使用者存在多個名稱只差大小寫的帳號，請分三步整併。第一，選定一個保留的帳號，確認它是啟用的。第二，把其他帳號上仍需要的直接授權與使用者群組成員資格移到保留的帳號（目錄群組映射會在保留帳號下次登入時重算）。第三，刪除其他帳號。只停用是不夠的：同名的另一個帳號只要停用或鎖定，該使用者就無法登入；存在多個目錄帳號、而輸入的大小寫與任何一個都不相符時，登入也會被拒。刪除帳號會保留它的審計歷史與錄影。名稱和某位目錄使用者只差大小寫的本地或外部身分帳號，同樣會讓該目錄使用者的首次登入被拒。
+- **檢查點驗證頁的兩個新結果。** 區間內有操作日誌列被標記為已刪除時，該區間會出現 `rows_hidden`（顯示為「有隱藏的紀錄」）。系統從不刪除操作日誌列，所以這些列會照常顯示在「操作日誌」頁。請保留離機的資料副本，依你平常的流程調查，查清之前不要把該範圍當作稽核依據。排程的內容層驗證會像其他內容層失敗一樣為它開立事件。既有修剪記錄載明有段落在修剪時未經簽章驗證時，鏈報告會出現 `trim_unverified`（顯示為「修剪時未驗章」），並顯示段數。它只是揭露：總狀態仍可為 `passed`、不開立事件，且會持續顯示。從本版起，修剪會先驗證檢查點簽章、清除證明與鏈頭的錨定，其中任何一項驗證不過，該輪就不修剪，驗證頁會顯示修剪已暫停。請調查它指出的檢查點；驗證通過後，修剪會在下一輪排程恢復。
+- **agent 指令逐行送出。** `run_command` 每次呼叫只收一行指令。含換行或其他控制字元（包括 tab）的指令會以 `VALIDATION_BAD_REQUEST` 拒絕，所以原本在一次呼叫送出多條指令的 agent，必須改為分次呼叫。真人在終端貼上多行、其中有一行命中已啟用的阻斷規則時，所有行都不會送出，終端會顯示 `RULE_COMMAND_BLOCKED_MULTILINE`。
 
 #### 升到 1.22.0
 
@@ -505,9 +708,8 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
   稽核記到的與登入限流算到的都是那個位址。原始碼樹的 `bash scripts/quickstart.sh` 與安裝包的 `custodexa.sh install` 會填入 Docker 子網；自帶 ingress 的部署改填該 ingress 的位址。
 - **先停掉自己起的代理容器**：依舊版指南手動起的反向代理不在 compose 生命週期內，
   `docker compose down` 不會停它；留著會與內建代理搶埠與憑證檔。升級前先停止並移除它。
-- **自帶 ingress 的部署改用 overlay**：升級後的每一道 compose 指令都加上
-  `-f docker-compose.yml -f docker-compose.external-ingress.yml`（或在 `.env` 設
-  `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml`），內建代理不啟動，
+- **自帶 ingress 的部署在升級前先在 `.env` 設 `TLS_MODE=external`**（1.23.0 以前的版本是用疊加檔做這件事），
+  並以 `bash scripts/quickstart.sh --up` 啟動，內建代理不啟動，
   frontend 恢復對外 http 埠（預設 80，改埠設 `.env` 的 `HTTP_PORT`）。
   另有兩件事屬於你的 ingress：轉發的 Host 標頭要帶上使用者實際連的那個埠
   （後端以 Origin 對 Host 判定同源請求，`Host` 少了埠，已認證的請求會被當成跨來源），
@@ -610,11 +812,11 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
 於專案根對正式版 compose 的全部 build 目標執行一次真實建置，任一目標失敗即不得部署：
 
 ```bash
-docker compose -f docker-compose.yml build
+docker compose -f docker-compose.yml --profile bundled-db --profile builtin-tls build
 ```
 
 **一律顯式帶 `-f docker-compose.yml`**：本機 `.env` 若設有 `COMPOSE_FILE`，不帶旗標時
-建到的可能不是正式版目標。正式版與開發版的映像名已分離（`custodexa/*:latest` 與
+建到的可能不是正式版目標。兩個 profile 要明寫，因為 frontend 屬於某個 profile，沒帶就不會被建置。正式版與開發版的映像名已分離（`custodexa/*:latest` 與
 `custodexa/*:dev`），故建置正式版不會覆蓋開發版映像。
 
 建置成功後，另核對一項正式版才有的性質：**backend 映像內不存在可執行的 shell 解譯器**
@@ -2031,7 +2233,7 @@ exposures 自本次升級起累積，不回推歷史；升級前已獲知、其�
 
 建立 agent 主體並指定有效的人類 owner。由 owner 或管理員建立具名稱及期限的 agent token，將僅顯示一次的明文保存於執行者的秘密儲存處。agent 僅有 user 角色，資產與帳號授權須明確限縮。在 agent 所在的機器安裝 stdio 客戶端 `custodexa-mcp`，取自 https://github.com/custodexa/custodexa-mcp：執行 `go install github.com/custodexa/custodexa-mcp@latest`，或下載 release 二進位並以同一 release 發布的 `checksums.txt` 驗證。以環境變數 `CUSTODEXA_AGENT_TOKEN` 提供給 `custodexa-mcp`，`CUSTODEXA_MCP_URL` 指向 HTTPS 的 `/api/v1/mcp`；該入口不接受人類 JWT 或 cookie。stdio 客戶端只轉送，所有判定及證據寫入均在服務端；不要把 token 放入命令參數或報告。
 
-agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
+agent 送出的任務要不要等人核准，取決於每個被申請資產的存取政策段位：資產本身設了 `access_policy` 就以它為準，否則取全域 `access_policy_default`。落在 `approval` 段的項目會維持待審，直到範圍涵蓋該資產的審核者做出決定；落在 `open` 與 `reason` 段的項目在建單當下即核准，記為 `auto_approved: true` 並保存政策快照，沒有核准票。自動核准不會超出將要連線的主體所持有的常設帳號範圍：項目指名了範圍之外的帳號時，改為維持待審，由範圍涵蓋該資產的審核者決定。出廠預設下多數資產不在 `approval` 段，因此未調整政策的部署會看到 agent 任務全數自動核准。要讓 agent 任務等人決定，請把相關資產的 `access_policy` 設為 `approval`，或把全域 `access_policy_default` 設為 `approval`；`access_request_min_approvals` 再決定這類申請需要幾張核准票。這個選擇請在給 agent 第一份資產授權之前定案並寫進營運手冊：自動核准仍然全程留痕，但它不是人為控制點。
 
 輪替時先發新具名 token、更新執行者秘密、建立新的 MCP 連線並確認可視資產，再撤銷舊 token。沒有原地換 token 秘密或從備份自動找回明文的能力。撤銷會關閉由舊 token 建立的會話；句柄不能轉給新 token 或新 MCP 連線。還原或備機接管後須新建 MCP 連線，按需要重新申請任務；記憶體句柄與 60 秒冪等快取不跨重啟保存。續作前先核對保留的 token 與任務狀態。
 

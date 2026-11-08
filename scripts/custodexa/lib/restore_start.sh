@@ -129,6 +129,8 @@ cx_rs_start() {
   fi
   cx_rs_images_load || return 1
   if [ "$phase" = placed ] || ! cx_rs_all_running; then
+    # The cluster the import made must be there, with the version file of the release's major.
+    cx_rs_dirop_start_guard || return 1
     cx_rs_services starting || return 1
     cx_rs_job cx_rs_compose_quiet "$CX_ROOT/releases/$CX_RS_VERSION" up -d || return 1
   fi
