@@ -455,7 +455,7 @@ async function openFromQuery() {
 }
 
 onMounted(async () => {
-  loadNodePaths()
+  void loadNodePaths()
   await loadList()
   await openFromQuery()
 })

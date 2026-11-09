@@ -753,7 +753,7 @@ const handleUnbindAndDisable = async (row) => {
 }
 
 const handleRowCommand = (command, row) => {
-  if (command === 'unbindAndDisable') handleUnbindAndDisable(row)
+  if (command === 'unbindAndDisable') void handleUnbindAndDisable(row)
 }
 
 const handleBind = async () => {
@@ -876,7 +876,7 @@ watch(
     invalidateGeneration()
     identities.value = []
     loadError.value = false
-    if (id) reload()
+    if (id) void reload()
   }
 )
 

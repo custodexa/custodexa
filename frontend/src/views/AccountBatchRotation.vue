@@ -804,13 +804,13 @@ async function pollBatch(id, tick = 0) {
   }
   if (status === 'completed') {
     stopPolling()
-    loadBatches()
+    void loadBatches()
     return
   }
   if (tick + 1 >= POLL_MAX_TICKS) {
     stopPolling()
     pollExhausted.value = true
-    loadBatches()
+    void loadBatches()
     return
   }
   stopPolling()
@@ -866,7 +866,7 @@ async function submit() {
     pollExhausted.value = false
     activeRecords.value = []
     activeBatch.value = res?.data || null
-    loadBatches()
+    void loadBatches()
     if (activeBatch.value?.id) {
       stopPolling()
       await pollBatch(activeBatch.value.id, 0)
@@ -887,8 +887,8 @@ async function submit() {
 }
 
 onMounted(() => {
-  loadUsernames()
-  loadBatches()
+  void loadUsernames()
+  void loadBatches()
 })
 
 // 離開頁面即停止輪詢：留著的計時器會在元件卸載後繼續打 API

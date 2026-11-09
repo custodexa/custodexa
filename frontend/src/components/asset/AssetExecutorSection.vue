@@ -477,7 +477,7 @@ onMounted(load)
 watch(canManage, load)
 watch(() => [props.assetId, props.protocol, props.openKey], () => {
   resetForReopen()
-  reload()
+  void reload()
 })
 
 const slotProps = computed(() => ({
@@ -537,7 +537,7 @@ async function onApplied() {
 
 // 對話框關閉動畫結束後，若焦點沒有回到任何元素（觸發鈕已因狀態改變而消失），落在區塊標題
 function onDialogClosed() {
-  if (focusLost()) focusTitle()
+  if (focusLost()) void focusTitle()
 }
 
 async function onStateChanged({ action }) {
@@ -562,7 +562,7 @@ function onRotationBlocked() {
   dialogVisible.value = false
   clearNotices()
   pushNotice('rotation', 'warning', t('assetExecutor.error.replaceRotationActive'), { openRotation: true })
-  focusTitle()
+  void focusTitle()
 }
 
 // 清除
@@ -586,7 +586,7 @@ async function onCleared(account) {
 function onClearRotationBlocked() {
   clearVisible.value = false
   pushNotice('rotation', 'warning', t('assetExecutor.error.clearRotationActive'), { openRotation: true })
-  focusTitle()
+  void focusTitle()
 }
 
 // 公鑰彈出框：錨點為觸發的按鈕，未傳時用頂端「取得公鑰」

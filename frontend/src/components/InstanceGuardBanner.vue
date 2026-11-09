@@ -364,7 +364,7 @@ watch(
   () => visible.value && props.canViewDetails,
   (shouldLoad) => {
     if (shouldLoad) {
-      loadDetail()
+      void loadDetail()
     } else {
       // 橫幅消失即丟棄細節：再次出現代表狀態變了，舊指紋不可沿用
       detail.value = null

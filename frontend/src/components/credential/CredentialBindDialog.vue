@@ -142,7 +142,7 @@ watch(() => props.modelValue, (open) => {
   form.privileged = false
   form.note = ''
   formRef.value?.clearValidate?.()
-  loadAssets()
+  void loadAssets()
 })
 
 function close(visible = false) {

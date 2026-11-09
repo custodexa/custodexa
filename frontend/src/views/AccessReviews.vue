@@ -379,7 +379,7 @@ const submitReview = async () => {
     await createAccessReview({ note: reviewForm.value.note })
     ElMessage.success(t('accessReviews.signed'))
     reviewDialogVisible.value = false
-    fetchReviews()
+    void fetchReviews()
   } catch (error) {
     // 全域攔截器已 toast 錯誤（C10：頁內不重複）
     console.error('提交存取複審失敗:', error)
@@ -389,7 +389,7 @@ const submitReview = async () => {
 }
 
 onMounted(() => {
-  fetchReviews()
+  void fetchReviews()
 })
 </script>
 

@@ -992,11 +992,11 @@ const limitText = (selection, key) =>
   selection.atLimit.value || selection.truncated.value ? t(key, { limit: selection.limit }) : ''
 const afterPendingBatch = () => {
   window.dispatchEvent(new CustomEvent('ot-approvals-changed'))
-  fetchPending()
+  void fetchPending()
 }
 const afterReviewBatch = () => {
   window.dispatchEvent(new CustomEvent('ot-approvals-changed'))
-  fetchReviews()
+  void fetchReviews()
 }
 
 // 全量數：與側欄 badge 讀同一個計數端點（count＝待審、review_count＝待補審）。
@@ -1022,7 +1022,7 @@ const fetchTotals = async () => {
 const fetchPending = async () => {
   loading.value = true
   pendingSelection.clear()
-  fetchTotals()
+  void fetchTotals()
   try {
     const res = await getPendingAccessRequests()
     pendingRequests.value = res.data || []
@@ -1053,7 +1053,7 @@ const fetchHistory = async () => {
 
 const handleHistorySizeChange = () => {
   historyPage.value = 1
-  fetchHistory()
+  void fetchHistory()
 }
 
 const fetchTickets = async () => {
@@ -1072,7 +1072,7 @@ const fetchTickets = async () => {
 const fetchReviews = async () => {
   loading.value = true
   reviewSelection.clear()
-  fetchTotals()
+  void fetchTotals()
   try {
     const res = await getPendingReviews()
     pendingReviews.value = res.data || []
@@ -1086,13 +1086,13 @@ const fetchReviews = async () => {
 
 const fetchCurrentTab = () => {
   if (historyOnly.value) {
-    fetchHistory()
+    void fetchHistory()
     return
   }
-  if (activeTab.value === 'pending') fetchPending()
-  else if (activeTab.value === 'history') fetchHistory()
-  else if (activeTab.value === 'tickets') fetchTickets()
-  else if (activeTab.value === 'reviews') fetchReviews()
+  if (activeTab.value === 'pending') void fetchPending()
+  else if (activeTab.value === 'history') void fetchHistory()
+  else if (activeTab.value === 'tickets') void fetchTickets()
+  else if (activeTab.value === 'reviews') void fetchReviews()
 }
 
 // 核准對話框
@@ -1138,7 +1138,7 @@ const submitApprove = async () => {
     console.error('核准失敗:', error)
   } finally {
     deciding.value = false
-    fetchPending()
+    void fetchPending()
   }
 }
 
@@ -1164,7 +1164,7 @@ const submitReject = async () => {
     console.error('拒絕失敗:', error)
   } finally {
     deciding.value = false
-    fetchPending()
+    void fetchPending()
   }
 }
 
@@ -1193,7 +1193,7 @@ const submitRevoke = async () => {
     console.error('撤銷失敗:', error)
   } finally {
     deciding.value = false
-    fetchTickets()
+    void fetchTickets()
   }
 }
 
@@ -1224,7 +1224,7 @@ const submitReview = async () => {
     console.error('補審失敗:', error)
   } finally {
     deciding.value = false
-    fetchReviews()
+    void fetchReviews()
   }
 }
 
@@ -1283,10 +1283,10 @@ onMounted(async () => {
     return
   }
   if (historyOnly.value) {
-    fetchHistory()
+    void fetchHistory()
     return
   }
-  fetchPending()
+  void fetchPending()
 })
 </script>
 

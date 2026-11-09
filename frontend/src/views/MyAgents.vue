@@ -216,7 +216,7 @@ async function load() {
       if (updated) selected.value = updated
       else drawer.value = false
     }
-    loadKeySummaries(version)
+    void loadKeySummaries(version)
   } catch (cause) {
     if (version === epoch) {
       agents.value = []; policy.value = null

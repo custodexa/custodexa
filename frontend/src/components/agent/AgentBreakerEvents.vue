@@ -165,8 +165,8 @@ async function loadTokens() {
   catch (e) { if (version === epoch) tokenError.value = resolveApiError(e?.response?.data, e?.response?.status) }
   finally { if (version === epoch) tokenLoading.value = false }
 }
-function changePage(value) { page.value = value; load() }
-watch(() => props.userId, () => { page.value = 1; load(); loadTokens() }, { immediate: true })
+function changePage(value) { page.value = value; void load() }
+watch(() => props.userId, () => { page.value = 1; void load(); void loadTokens() }, { immediate: true })
 onBeforeUnmount(() => { epoch++ })
 </script>
 <style scoped>

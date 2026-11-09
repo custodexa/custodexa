@@ -517,7 +517,7 @@ const handleCommand = (command) => {
       router.push({ path: '/dashboard', query: { guidance: GUIDANCE_VERSION } })
       break
     case 'logout':
-      handleLogout()
+      void handleLogout()
       break
   }
 }
@@ -557,7 +557,7 @@ const refreshInstanceGuardStatus = async () => {
 }
 
 const startInstanceGuardPolling = () => {
-  refreshInstanceGuardStatus()
+  void refreshInstanceGuardStatus()
   instanceGuardTimer = setInterval(refreshInstanceGuardStatus, INSTANCE_GUARD_POLL_MS)
 }
 
@@ -581,7 +581,7 @@ const startApprovalBadgePolling = () => {
   // badge 端點與審核端點同一守衛，admin 打了必 403——
   // 判定與入口可見性收斂到同一個呈現點，避免對後端做無謂的必敗輪詢
   if (badgeTimer) return
-  refreshApprovalBadge()
+  void refreshApprovalBadge()
   badgeTimer = setInterval(refreshApprovalBadge, BADGE_POLL_MS)
 }
 
@@ -621,7 +621,7 @@ const syncUserFromStorage = () => {
 }
 
 // 審核送出後不必等下一輪輪詢：審核中心派 ot-approvals-changed，badge 立刻重算
-const onApprovalsChanged = () => { if (can('ui:approvals')) refreshApprovalBadge() }
+const onApprovalsChanged = () => { if (can('ui:approvals')) void refreshApprovalBadge() }
 
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)

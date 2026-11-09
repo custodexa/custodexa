@@ -152,7 +152,7 @@ function onOpen() {
     mode.value = 'named'
     usernames.value = [...accounts]
   }
-  loadSuggestions()
+  void loadSuggestions()
 }
 
 // 建議清單＝授權客體範圍內資產的帳號 username 聯集（節點客體取子樹前 N 台）
@@ -181,7 +181,7 @@ async function loadSuggestions() {
       if (r.status !== 'fulfilled') continue
       for (const account of r.value.data || []) names.add(account.username)
     }
-    suggestions.value = [...names].sort()
+    suggestions.value = [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   } catch (err) {
     // 建議清單缺席不擋輸入（allow-create 仍可自由輸入）
     console.warn('[AuthzAccountScopeDialog] 帳號建議清單載入失敗:', err)

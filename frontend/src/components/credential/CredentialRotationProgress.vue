@@ -478,7 +478,7 @@ function onVisibilityChange() {
   }
   if (pausedByVisibility.value) {
     pausedByVisibility.value = false
-    poll()
+    void poll()
   }
 }
 
@@ -521,7 +521,7 @@ function handleConfirmConflict(err) {
   // API 層已關閉此請求的全域錯誤 toast，只由這裡顯示一則（error 等級）
   ElMessage.error(t(CONFLICT_DETAIL_KEY[detail] || 'hostIdentityConfirm.result.moved'))
   closeHostIdentityDialog()
-  poll()
+  void poll()
 }
 
 // quiet：整批補跑時逐台跳成功訊息只是噪音，由呼叫端在結束後報一次
@@ -648,7 +648,7 @@ async function abandon() {
 
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
-  poll()
+  void poll()
 })
 
 // 卸載後留著的計時器會繼續打 API，而畫面上已經沒有任何東西在等它

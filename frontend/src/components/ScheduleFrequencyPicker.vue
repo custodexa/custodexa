@@ -391,7 +391,7 @@ watch(
       emit('update:modelValue', currentCron.value)
     }
     emit('update:valid', isValid.value)
-    refreshPreview()
+    void refreshPreview()
   },
   { immediate: true }
 )

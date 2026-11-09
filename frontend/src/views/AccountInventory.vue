@@ -343,7 +343,7 @@ async function load() {
     rows.value = res?.findings || []
     total.value = Number(res?.total) || 0
     loaded.value = true
-    fetchAssetInfo([...new Set(rows.value.map((f) => f.asset_id))])
+    void fetchAssetInfo([...new Set(rows.value.map((f) => f.asset_id))])
   } catch {
     if (seq !== loadSeq) return
     loadError.value = true
@@ -391,7 +391,7 @@ function openDrawer(id) {
   drawerOpen.value = true
 }
 watch(drawerOpen, (open, was) => {
-  if (was && !open) load()
+  if (was && !open) void load()
 })
 function onDrawerGoto({ id }) {
   drawerOpen.value = false
@@ -410,7 +410,7 @@ function onIgnored() {
   ElMessage.success(t('hostInventory.ignore.success', { name: visibleText(f?.username || '') }))
   rows.value = rows.value.filter((r) => r.id !== f?.id)
   total.value = Math.max(0, total.value - 1)
-  if (!rows.value.length && total.value > 0) load()
+  if (!rows.value.length && total.value > 0) void load()
 }
 
 // --- 納管：先讀詳情確認「管理帳號」可做，再寫一次性暫存並前往資產頁 ---
@@ -434,7 +434,7 @@ async function manage(f) {
 }
 function onDrawerManage({ finding, asset }) {
   drawerOpen.value = false
-  goManage({ ...finding, asset_id: finding.asset_id ?? asset?.id })
+  void goManage({ ...finding, asset_id: finding.asset_id ?? asset?.id })
 }
 </script>
 

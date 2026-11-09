@@ -133,7 +133,7 @@ const search = async (keyword) => {
 }
 
 onMounted(() => {
-  if (canViewAssets.value) search('')
+  if (canViewAssets.value) void search('')
 })
 
 const errorCode = (e) => {

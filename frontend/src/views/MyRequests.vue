@@ -289,7 +289,7 @@ const created = ref(null)
 function requestCreated(result) {
   createVisible.value = false
   created.value = result?.data ?? result ?? null
-  fetchAll()
+  void fetchAll()
 }
 
 // 主旨取申請理由（過長截斷）：編號本身不說明任何事，讀者記得的是自己寫的理由
@@ -386,7 +386,7 @@ const handleCancel = async (row) => {
   } catch (error) {
     console.error('撤回申請失敗:', error)
   } finally {
-    fetchAll()
+    void fetchAll()
   }
 }
 

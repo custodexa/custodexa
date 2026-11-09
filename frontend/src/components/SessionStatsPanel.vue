@@ -130,7 +130,7 @@ function start() {
   stats.value = null
   prev.value = null
   error.value = ''
-  poll()
+  void poll()
   timer = setInterval(poll, POLL_MS)
 }
 

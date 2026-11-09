@@ -273,7 +273,7 @@ const targetText = computed(() => {
 const paramEntries = computed(() => {
   const p = (detail.value && detail.value.params) || {}
   return Object.keys(p)
-    .sort()
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     .map((key) => ({ key, value: p[key] }))
 })
 

@@ -101,7 +101,7 @@ watch(
   () => props.sections.map((s) => s.id).join('|'),
   () => {
     if (!props.sections.some((s) => s.id === current.value)) current.value = props.sections[0]?.id || ''
-    observeCards()
+    void observeCards()
   },
   { immediate: true }
 )

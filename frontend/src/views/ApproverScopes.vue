@@ -615,7 +615,7 @@ const openAdd = (actor = null, type = '', targetId = null) => {
 
 const handleCreated = () => {
   addVisible.value = false
-  fetchAll()
+  void fetchAll()
 }
 
 const handleRemove = async (scope) => {
@@ -634,7 +634,7 @@ const handleRemove = async (scope) => {
   try {
     await deleteApproverScope(scope.id)
     ElMessage.success(t('approverScopes.removed'))
-    fetchAll()
+    void fetchAll()
   } catch (error) {
     console.error('移除審核範圍失敗:', error)
   }

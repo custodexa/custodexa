@@ -277,7 +277,7 @@ function openDay(date) {
 
 // 別處（例如側欄）造成的變動也同步；自己派的事件已由 changed 處理，重複無害
 const onExternalChange = () => {
-  if (!drawerOpen.value) loadPending()
+  if (!drawerOpen.value) void loadPending()
 }
 
 watch(
@@ -289,8 +289,8 @@ watch(
 )
 
 onMounted(() => {
-  loadStatus()
-  loadPending()
+  void loadStatus()
+  void loadPending()
   if (isReviewDate(props.openDate)) openDay(props.openDate)
   window.addEventListener(DAILY_REVIEWS_CHANGED, onExternalChange)
 })

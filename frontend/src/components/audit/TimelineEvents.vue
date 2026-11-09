@@ -467,7 +467,7 @@ const revealMore = async (startIndex) => {
 const onLoadMore = () => {
   if (props.loadingMore) return
   if (renderCount.value < props.events.length) {
-    revealMore(renderCount.value)
+    void revealMore(renderCount.value)
     return
   }
   if (!props.hasMore) return
@@ -542,7 +542,7 @@ watch(
     }
     if (!props.focusId) return
     await nextTick()
-    scrollToEvent(props.focusId)
+    void scrollToEvent(props.focusId)
   },
   { immediate: true }
 )
@@ -552,7 +552,7 @@ watch(
   async (id) => {
     if (!id) return
     await nextTick()
-    scrollToEvent(id)
+    void scrollToEvent(id)
   }
 )
 

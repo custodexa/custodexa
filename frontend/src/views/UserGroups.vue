@@ -465,7 +465,7 @@ const fetchGroups = async () => {
   try {
     const res = await getUserGroups()
     groupList.value = res.data || []
-    loadProtection(groupList.value)
+    void loadProtection(groupList.value)
   } catch (err) {
     console.error('取得使用者群組失敗:', err)
   } finally {
@@ -515,7 +515,7 @@ const submitForm = async () => {
       ElMessage.success(t('userGroups.created'))
     }
     formDialogVisible.value = false
-    fetchGroups()
+    void fetchGroups()
   } catch (err) {
     console.error('儲存群組失敗:', err)
   } finally {
@@ -539,7 +539,7 @@ const sendMembers = async (attempt) => {
     if (!(await attempt())?.ok) return
     ElMessage.success(t('userGroups.membersUpdated'))
     membersDialogVisible.value = false
-    fetchGroups()
+    void fetchGroups()
   } catch (err) {
     console.error('更新成員失敗:', err)
   } finally {
@@ -568,7 +568,7 @@ const sendDelete = async (attempt) => {
     }
     deleteBlockedVisible.value = false
     ElMessage.success(t('userGroups.deleted', { count: result.res?.revoked_authorizations ?? 0 }))
-    fetchGroups()
+    void fetchGroups()
   } catch (err) {
     console.error('刪除群組失敗:', err)
   }
@@ -607,8 +607,8 @@ const handleDelete = async (row) => {
 }
 
 onMounted(() => {
-  fetchGroups()
-  fetchUsers()
+  void fetchGroups()
+  void fetchUsers()
 })
 </script>
 

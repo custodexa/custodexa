@@ -503,7 +503,7 @@ const removeCidr = (index) => {
 // 另由 commitCidrDraft 收攏
 const onCidrBlur = () => {
   if (cidrDraft.value.trim()) addCidr()
-  else if (cidrTouched.value) flushSourcePolicyCheck()
+  else if (cidrTouched.value) void flushSourcePolicyCheck()
 }
 
 // 送出前收攏還停在輸入框裡的那一項。回 false＝那一項被擋下（紅字已就地顯示），
@@ -630,18 +630,18 @@ const fillFromUser = (row) => {
   form.full_name = row.full_name || ''
   // 現值進表單但**不標記為已編輯**：沒動過就不送該欄（presence 語義）
   form.allowed_cidrs = [...(row.allowed_cidrs || [])]
-  loadCurrentSource()
+  void loadCurrentSource()
 }
 
 const openCreate = () => {
   emit('opening')
   createdAgent.value = null
   createKind.value = 'human'
-  loadAssignableRoles()
+  void loadAssignableRoles()
   resetForm()
   isEdit.value = false
   dialogVisible.value = true
-  loadCurrentSource()
+  void loadCurrentSource()
 }
 
 const openEdit = (row) => {

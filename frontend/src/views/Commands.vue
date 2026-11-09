@@ -424,13 +424,13 @@ const fetchCommands = async () => {
 // 搜尋（重置頁碼）
 const handleSearch = () => {
   pagination.value.page = 1
-  fetchCommands()
+  void fetchCommands()
 }
 
 // 變更每頁大小
 const handleSizeChange = () => {
   pagination.value.page = 1
-  fetchCommands()
+  void fetchCommands()
 }
 
 // 重置過濾器
@@ -472,7 +472,7 @@ defineExpose({ filters, timeRange, handleSearch, handleReset })
 
 
 onMounted(() => {
-  fetchCommands()
+  void fetchCommands()
 })
 </script>
 

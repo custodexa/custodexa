@@ -118,13 +118,13 @@ async function preselect() {
 }
 
 function onOpen() {
-  preselect()
+  void preselect()
 }
 
 watch(
   () => props.modelValue,
   (visible) => {
-    if (visible) preselect()
+    if (visible) void preselect()
   },
   { immediate: true }
 )

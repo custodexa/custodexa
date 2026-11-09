@@ -1538,8 +1538,8 @@ const loadTopology = async () => {
 }
 
 const refreshInventoryAndTopology = () => {
-  loadInventory()
-  loadTopology()
+  void loadInventory()
+  void loadTopology()
 }
 
 const startTopologyEdit = () => {
@@ -1784,8 +1784,8 @@ const resetRewrapTarget = () => {
 const onRewrapDialogClosed = () => {
   clearRewrapSecret()
   resetRewrapTarget()
-  loadInventory()
-  loadTopology()
+  void loadInventory()
+  void loadTopology()
 }
 
 // 換目標即回到第一步並清掉前一個目標的輸入：不同服務商的鍵集互斥，
@@ -1959,13 +1959,13 @@ const handleCleanupRetired = async () => {
 
 const handleSavePolicies = async () => {
   await save()
-  loadInventory()
+  void loadInventory()
 }
 
 onMounted(() => {
   if (canEditKeyPolicy.value) loadPolicies()
-  loadInventory()
-  loadTopology()
+  void loadInventory()
+  void loadTopology()
 })
 </script>
 

@@ -236,7 +236,7 @@ const {
 
 const handleSavePolicies = async () => {
   await save()
-  fetchInventory()
+  void fetchInventory()
 }
 
 const loading = ref(false)
@@ -303,7 +303,7 @@ const downloadJSON = (data) => {
 
 onMounted(() => {
   loadPolicies()
-  fetchInventory()
+  void fetchInventory()
 })
 </script>
 

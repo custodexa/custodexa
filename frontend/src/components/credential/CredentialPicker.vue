@@ -145,7 +145,7 @@ watch(
   () => [props.protocol, props.windowsOpenssh],
   () => {
     if (props.modelValue) emit('update:modelValue', null)
-    load()
+    void load()
   }
 )
 

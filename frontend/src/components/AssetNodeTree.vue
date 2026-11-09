@@ -444,18 +444,18 @@ const loadCounts = async () => {
   }
 }
 onMounted(() => {
-  loadCounts()
-  loadAuthorizableNodes()
+  void loadCounts()
+  void loadAuthorizableNodes()
 })
 // 直接開啟或重新整理頁面時，掛載早於能力載入：能力到齊後再取一次候選
 watch(canAuthorizeNodes, (on) => {
-  if (on) loadAuthorizableNodes()
+  if (on) void loadAuthorizableNodes()
 })
 
 const reloadTree = () => {
   treeKey.value += 1
-  loadCounts()
-  loadAuthorizableNodes()
+  void loadCounts()
+  void loadAuthorizableNodes()
 }
 // 整樹重載並等根層載入結束（定位用）
 const reloadTreeAndWait = () => {
@@ -706,13 +706,13 @@ const handleMenu = (cmd, data) => {
       openRename(data)
       break
     case 'move':
-      openMove(data)
+      void openMove(data)
       break
     case 'authorize':
       emit('authorize', data)
       break
     case 'delete':
-      handleDelete(data)
+      void handleDelete(data)
       break
   }
 }

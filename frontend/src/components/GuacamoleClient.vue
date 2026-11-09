@@ -374,7 +374,7 @@ function setupResizeObserver() {
       // 連線前按下連線鈕但尺寸未就緒：此刻補發起連線
       if (pendingConnect.value) {
         pendingConnect.value = false
-        doConnect(width, height)
+        void doConnect(width, height)
         continue
       }
 
@@ -514,7 +514,7 @@ function connect() {
     return
   }
 
-  doConnect(containerWidth, containerHeight)
+  void doConnect(containerWidth, containerHeight)
 }
 
 async function doConnect(containerWidth, containerHeight) {
@@ -620,7 +620,7 @@ async function doConnect(containerWidth, containerHeight) {
 
         // 本機 → 遠端剪貼簿：視窗回焦時同步
         window.addEventListener('focus', syncClipboardOnFocus)
-        syncClipboardOnFocus()
+        void syncClipboardOnFocus()
         startPolicyObservation()
         console.log('[GuacamoleClient v6.1] 連線成功')
 
@@ -709,7 +709,7 @@ async function copyRemoteToLocal() {
 // 上傳本機檔案到遠端（RDP 走 guacd "file" 串流→重導磁碟）
 function triggerFilePicker() {
   // Refresh only file presentation; clipboard observation has its own schedule.
-  loadCapabilities(connectionEpoch)
+  void loadCapabilities(connectionEpoch)
   fileInputRef.value?.click()
 }
 

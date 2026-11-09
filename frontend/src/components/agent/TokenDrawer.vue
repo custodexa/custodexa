@@ -354,7 +354,7 @@ watch(() => `${props.modelValue}|${props.principal.id ?? ''}`, () => {
     emit('open')
     now.value = Date.now()
     refreshTimer = setInterval(() => { now.value = Date.now() }, 60000)
-    loadTokens()
+    void loadTokens()
     if (props.focusIssue) nextTick(() => { nameInput.value?.focus?.() })
   }
 }, { immediate: true })

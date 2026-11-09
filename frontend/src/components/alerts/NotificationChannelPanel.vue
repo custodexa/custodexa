@@ -490,7 +490,7 @@ const handleSaveChannel = async () => {
     }
     ElMessage.success(editingChannelId.value ? t('alerts.channelUpdated') : t('alerts.channelCreated'))
     channelDialogVisible.value = false
-    fetchChannels()
+    void fetchChannels()
   } catch (error) {
     // 使用者取消同意（cancel）或錯誤已呈現；對話框保持開啟供修正
     console.error('儲存通道失敗:', error)
@@ -506,7 +506,7 @@ const handleChannelToggle = async (row, val) => {
     row.enabled = val
   } catch (error) {
     console.error('切換通道狀態失敗:', error)
-    fetchChannels()
+    void fetchChannels()
   }
 }
 
@@ -541,7 +541,7 @@ const handleDeleteChannel = async (row) => {
   try {
     await deleteChannel(row.id)
     ElMessage.success(t('alerts.channelDeleted'))
-    fetchChannels()
+    void fetchChannels()
   } catch (error) {
     console.error('刪除通道失敗:', error)
   }

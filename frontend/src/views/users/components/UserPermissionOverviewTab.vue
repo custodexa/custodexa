@@ -91,8 +91,8 @@ const load = async () => {
 
 watch(() => props.userId, load)
 onMounted(() => {
-  loadRoleDefs()
-  load()
+  void loadRoleDefs()
+  void load()
 })
 </script>
 

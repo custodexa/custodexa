@@ -922,7 +922,7 @@ const onGroupPicked = (value) => {
     openGroupSetupFromDialog('groupRuleMenu')
     return
   }
-  loadUsage()
+  void loadUsage()
 }
 const openNote = (row) => { noteRow.value = row; noteDraft.value = row.note || ''; noteOpen.value = true }
 
@@ -1076,7 +1076,7 @@ watch(tab, () => { targetFilter.value = '' })
 watch(() => draft.value.match_value, () => {
   if (matchingExternalGroup.value) draft.value.note = matchingExternalGroup.value.note || ''
 })
-onMounted(() => { loadAll() })
+onMounted(() => { void loadAll() })
 </script>
 
 <style scoped>

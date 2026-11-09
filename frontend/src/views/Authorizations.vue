@@ -708,12 +708,12 @@ const loadFilterOptions = async () => {
 // 空的第 N 頁，重現偽空狀態）
 const handleFilter = () => {
   pagination.page = 1
-  fetchAuthorizationList()
+  void fetchAuthorizationList()
 }
 
 const handleQuickFilterChange = () => {
   pagination.page = 1
-  fetchAuthorizationList()
+  void fetchAuthorizationList()
 }
 
 const handleResetFilter = () => {
@@ -723,7 +723,7 @@ const handleResetFilter = () => {
   filterForm.node_id = ''
   quickFilter.value = 'all'
   pagination.page = 1
-  fetchAuthorizationList()
+  void fetchAuthorizationList()
 }
 
 const handleRefresh = () => {
@@ -731,16 +731,16 @@ const handleRefresh = () => {
     policyTableRef.value?.reload?.()
     return
   }
-  fetchAuthorizationList()
+  void fetchAuthorizationList()
 }
 
 const handleSizeChange = () => {
   pagination.page = 1
-  fetchAuthorizationList()
+  void fetchAuthorizationList()
 }
 
 const handlePageChange = () => {
-  fetchAuthorizationList()
+  void fetchAuthorizationList()
 }
 
 
@@ -796,7 +796,7 @@ const handleDelete = async (row) => {
   try {
     await deleteAuthorization(row.id)
     ElMessage.success(t('authorizations.deleted'))
-    fetchAuthorizationList()
+    void fetchAuthorizationList()
   } catch (error) {
     // 409＝ticket 裸刪守門：提示走撤銷流
     if (error?.response?.status === 409) {
@@ -881,7 +881,7 @@ const submitRevoke = async () => {
     await revokeAccessRequest(revokeTarget.value.request_id, revokeNote.value.trim())
     ElMessage.success(t('authorizations.revoked'))
     revokeDialogVisible.value = false
-    fetchAuthorizationList()
+    void fetchAuthorizationList()
   } catch (error) {
     // 全域攔截器已 toast 錯誤（C10：頁內不重複）
     console.error('撤銷失敗:', error)
@@ -904,9 +904,9 @@ const handleBatchAuthorize = () => {
 
 // 掛載時取得資料
 onMounted(() => {
-  loadSelfSubjects()
-  fetchAuthorizationList()
-  loadFilterOptions()
+  void loadSelfSubjects()
+  void fetchAuthorizationList()
+  void loadFilterOptions()
 
   // 資產/節點視角授權入口：自資產頁樹「授權此節點」
   // 跳轉預填——開精靈並經 prop 傳入節點 id，由精靈於清單落地後預勾

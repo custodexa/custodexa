@@ -277,7 +277,7 @@ function initTerminal() {
       const selection = terminal.getSelection()
       if (selection) {
         event.preventDefault()
-        copyToClipboard(selection)
+        void copyToClipboard(selection)
         return false
       }
       return true // 無選取則放行，不吞鍵
@@ -286,7 +286,7 @@ function initTerminal() {
     // Ctrl+Shift+V：貼上（terminal.paste 自動套 bracketed-paste，避免多行被逐行執行）
     if (event.ctrlKey && event.shiftKey && (event.key === 'V' || event.key === 'v')) {
       event.preventDefault()
-      pasteFromClipboard()
+      void pasteFromClipboard()
       return false
     }
 
@@ -321,7 +321,7 @@ function waitForSizeAndConnect() {
 
     if (status.value === 'waiting') {
       safeFit()
-      connect()
+      void connect()
     } else if (status.value === 'connected') {
       scheduleResize()
     }
@@ -490,7 +490,7 @@ function reconnect() {
   const el = containerRef.value
   if (el && el.clientWidth > 0 && el.clientHeight > 0) {
     safeFit()
-    connect()
+    void connect()
   }
   // 尺寸為零時維持 waiting，ResizeObserver 會在尺寸就緒後接手連線
 }

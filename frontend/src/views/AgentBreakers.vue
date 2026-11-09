@@ -217,7 +217,7 @@ const keysHref = computed(() => manageAny.value ? `/users?open=${principal.value
 const reissueHref = computed(() => manageAny.value ? '/users' : '/my-agents')
 function choose(id) { chosenId.value = id }
 function openSelected() { if (Number.isSafeInteger(selectedId.value) && selectedId.value > 0) choose(selectedId.value) }
-function changeChoices(page) { choicePage.value = page; load() }
+function changeChoices(page) { choicePage.value = page; void load() }
 function setPending(value) { if (principal.value && value !== undefined && !released.value) principal.value.breaker_pending_at = value }
 function onReleased() { released.value = true; principal.value = { ...principal.value, breaker_pending_at: null } }
 watch(targetId, load, { immediate: true })

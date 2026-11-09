@@ -169,7 +169,7 @@ async function load() {
 
 const onFilterChange = () => {
   page.value = 1
-  load()
+  void load()
 }
 
 const countsLine = (row) => {

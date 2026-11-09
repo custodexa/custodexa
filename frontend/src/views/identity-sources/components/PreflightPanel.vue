@@ -294,13 +294,13 @@ const autoRefresh = () => {
   const wait = lastAuto + AUTO_REFRESH_MS - Date.now()
   if (wait <= 0) {
     lastAuto = Date.now()
-    fetchStatus()
+    void fetchStatus()
     return
   }
   trailing = setTimeout(() => {
     trailing = null
     lastAuto = Date.now()
-    fetchStatus()
+    void fetchStatus()
   }, wait)
 }
 // 複製過測試連結之後切回：由等待流程接手（短暫輪詢直到看到這次登入），否則照一般節流重抓
@@ -324,11 +324,11 @@ const copy = async (value) => {
 
 watch(() => props.sourceId, () => {
   waiting.reset()
-  fetchStatus()
+  void fetchStatus()
 })
 onMounted(() => {
-  fetchStatus()
-  loadListRedirect()
+  void fetchStatus()
+  void loadListRedirect()
   window.addEventListener('focus', onReturn)
   document.addEventListener('visibilitychange', onVisibility)
 })

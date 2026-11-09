@@ -500,7 +500,7 @@ watch(
   () => props.modelValue,
   (opened) => {
     if (opened) {
-      reset()
+      void reset()
       return
     }
     // 關掉之後不再去問結果：對話框已經不在畫面上，那趟往返沒有讀者

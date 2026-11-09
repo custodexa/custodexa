@@ -259,7 +259,7 @@ const changePolicy = async (asset, value) => {
     console.error('更新資產政策失敗:', error)
   } finally {
     savingId.value = null
-    loadAssets()
+    void loadAssets()
     candidates.value = candidates.value.filter((a) => a.id !== asset.id)
   }
 }

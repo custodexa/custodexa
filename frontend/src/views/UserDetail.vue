@@ -185,7 +185,7 @@ const goList = () => router?.push('/users')
 
 watch(userId, () => {
   user.value = null
-  load()
+  void load()
 })
 onMounted(load)
 onBeforeUnmount(clearDetailSubject)

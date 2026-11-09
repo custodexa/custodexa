@@ -291,7 +291,7 @@ const blockers = computed(() => {
   if (executorId.value && items.value.some(i => i.accounts.includes('@ALL'))) list.push('agentAllAccounts')
   return list
 })
-const formSignature = computed(() => JSON.stringify({ reason: reason.value.trim(), duration: duration.value, executor: executorId.value, items: items.value.map(item => [item.assetId, [...item.accounts].sort()]) }))
+const formSignature = computed(() => JSON.stringify({ reason: reason.value.trim(), duration: duration.value, executor: executorId.value, items: items.value.map(item => [item.assetId, [...item.accounts].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))]) }))
 const serverRejected = computed(() => !!rejectedSignature.value && rejectedSignature.value === formSignature.value)
 const valid = computed(() => !busy.value && !!reason.value.trim() && Number.isInteger(duration.value) && duration.value > 0 && items.value.length > 0 && new Set(items.value.map(i => i.assetId).filter(Boolean)).size === items.value.length && items.value.every(i => i.assetId && !i.loading && !i.loadError && i.options.length && i.accounts.length && (!executorId.value || !i.accounts.includes('@ALL'))))
 function addItem(focusNew = false) {
@@ -367,7 +367,7 @@ function defaultExecutor() {
 }
 addItem()
 onMounted(async () => {
-  searchAssets()
+  void searchAssets()
   // 自助建立關閉時仍可代名下既有 agent 開單：清單照列，只是沒有建立入口
   try {
     const result = await getMyAgents()

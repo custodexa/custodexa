@@ -862,8 +862,8 @@ const load = async () => {
 }
 
 onMounted(() => {
-  load()
-  loadRecentReports()
+  void load()
+  void loadRecentReports()
 })
 </script>
 

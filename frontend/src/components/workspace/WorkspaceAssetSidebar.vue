@@ -399,7 +399,7 @@ const canViewAssets = computed(() => can('asset:view') && !selfCannotSee.value)
 const { ready: capsReady } = useCapabilities()
 const showNoAssetView = computed(() => capsReady.value && !can('asset:view'))
 watch(canViewAssets, (allowed) => {
-  if (allowed) loadAssets()
+  if (allowed) void loadAssets()
 })
 
 const listNotices = computed(() => [

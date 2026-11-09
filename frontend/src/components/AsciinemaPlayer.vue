@@ -438,7 +438,7 @@ const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       playerRef.value.parentElement.requestFullscreen()
     } else {
-      document.exitFullscreen()
+      void document.exitFullscreen()
     }
   } catch (err) {
     console.error('[AsciinemaPlayer] 全螢幕切換失敗:', err)
@@ -461,7 +461,7 @@ const formatTime = (seconds) => {
 // Retry loading（重新取得內容）
 const retryLoad = () => {
   recordingData = null
-  initPlayer()
+  void initPlayer()
 }
 
 // Watch for URL changes：initPlayer 內會先 dispose 舊實例再重建（不在此處只置 null，
@@ -471,7 +471,7 @@ watch(() => props.recordingUrl, () => {
     clearInterval(updateInterval)
   }
   startAtReported = false // 換錄影＝換一份時長，定位須重新套用與重新回報
-  initPlayer()
+  void initPlayer()
 })
 
 // 定位請求變更（同一頁換不同錨點）：重播一次定位意圖
@@ -485,7 +485,7 @@ watch(() => props.startAt, async () => {
 onMounted(async () => {
   // Wait for the next tick to ensure the DOM is fully rendered
   await nextTick()
-  initPlayer()
+  void initPlayer()
 })
 
 onBeforeUnmount(() => {

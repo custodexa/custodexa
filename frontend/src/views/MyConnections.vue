@@ -159,13 +159,13 @@ const fetchConnections = async () => {
 
 const handlePageChange = (page) => {
   pagination.page = page
-  fetchConnections()
+  void fetchConnections()
 }
 
 const handleSizeChange = (size) => {
   pagination.page_size = size
   pagination.page = 1
-  fetchConnections()
+  void fetchConnections()
 }
 
 // 自助終止（owner-scoped）：二次確認採既有 ElMessageBox 慣例（與 admin 終止一致）。
@@ -191,7 +191,7 @@ const handleTerminate = async (row) => {
   } catch (error) {
     console.error('終止連線失敗:', error)
   } finally {
-    fetchConnections()
+    void fetchConnections()
   }
 }
 

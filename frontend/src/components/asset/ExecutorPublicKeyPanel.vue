@@ -150,12 +150,12 @@ watch(() => props.visible, async (v) => {
     return
   }
   if (props.inline) return
-  fetchKey()
+  void fetchKey()
   await nextTick()
   bodyRef.value?.titleRef?.focus?.()
 })
 onMounted(() => {
-  if (props.inline) fetchKey()
+  if (props.inline) void fetchKey()
 })
 
 defineExpose({ text, fetchKey, downloadKey, close })

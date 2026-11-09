@@ -992,7 +992,7 @@ const runContentVerify = async () => {
 
 const onPageChange = (p) => {
   page.value = p
-  fetchList()
+  void fetchList()
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,9 +1040,9 @@ const applyRangeFromQuery = (query) => {
 }
 
 const loadAll = () => {
-  fetchChain()
-  fetchList()
-  fetchPublicKey()
+  void fetchChain()
+  void fetchList()
+  void fetchPublicKey()
 }
 
 const route = useRoute()

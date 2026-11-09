@@ -1380,7 +1380,7 @@ const fetchProfiles = async () => {
 
 const handleFailuresPage = (page) => {
   failuresPage.value = page
-  fetchFailures()
+  void fetchFailures()
 }
 
 const refreshPage = async () => {
@@ -1574,7 +1574,7 @@ const handleTest = async () => {
     logFailure('offsite_test_failed', error)
   } finally {
     testing.value = false
-    if (testResult.value || testError.value) revealTestResult()
+    if (testResult.value || testError.value) void revealTestResult()
   }
 }
 
@@ -1633,9 +1633,9 @@ const focusFirstInvalid = async (fields) => {
 
 onMounted(() => {
   // 四路獨立：任一方失敗不得吞掉另一方
-  fetchStatus()
-  fetchFailures()
-  fetchProfiles()
+  void fetchStatus()
+  void fetchFailures()
+  void fetchProfiles()
   loadPolicies()
 })
 </script>

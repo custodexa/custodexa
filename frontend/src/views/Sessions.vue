@@ -806,8 +806,8 @@ const fetchSessionList = async () => {
     const response = await getSessionList(params)
     sessionList.value = response.data
     pagination.total = response.total
-    loadCallCounts(sessionList.value)
-    loadTaskReasons(sessionList.value)
+    void loadCallCounts(sessionList.value)
+    void loadTaskReasons(sessionList.value)
   } catch (error) {
     console.error('取得 Session 列表失敗:', error)
   } finally {
@@ -818,18 +818,18 @@ const fetchSessionList = async () => {
 // 處理 Tab 切換
 const handleTabChange = (tabName) => {
   if (tabName === 'active') {
-    fetchActiveSessions()
+    void fetchActiveSessions()
   } else {
-    fetchSessionList()
+    void fetchSessionList()
   }
 }
 
 // 處理刷新
 const handleRefresh = () => {
   if (activeTab.value === 'active') {
-    fetchActiveSessions()
+    void fetchActiveSessions()
   } else {
-    fetchSessionList()
+    void fetchSessionList()
   }
 }
 
@@ -847,7 +847,7 @@ const startAutoRefresh = () => {
   if (refreshTimer) return
   refreshTimer = setInterval(() => {
     if (activeTab.value === 'active') {
-      fetchActiveSessions()
+      void fetchActiveSessions()
     }
   }, 5000) // 每 5 秒刷新一次
 }
@@ -863,7 +863,7 @@ const stopAutoRefresh = () => {
 // 處理過濾
 const handleFilter = () => {
   pagination.page = 1
-  fetchSessionList()
+  void fetchSessionList()
 }
 
 // 使用者自己改時間：不再沿用儀表板帶入的原字串
@@ -880,17 +880,17 @@ const handleResetFilter = () => {
   dateRange.value = null
   clearCarriedRange()
   pagination.page = 1
-  fetchSessionList()
+  void fetchSessionList()
 }
 
 // 處理分頁大小變更
 const handleSizeChange = () => {
-  fetchSessionList()
+  void fetchSessionList()
 }
 
 // 處理頁碼變更
 const handlePageChange = () => {
-  fetchSessionList()
+  void fetchSessionList()
 }
 
 // 處理強制斷線
@@ -918,7 +918,7 @@ const handleTerminate = async (row) => {
   try {
     await terminateSession(row.id)
     ElMessage.success(t('sessions.terminated'))
-    fetchActiveSessions()
+    void fetchActiveSessions()
   } catch (error) {
     console.error('強制斷線失敗:', error)
   }
@@ -958,8 +958,8 @@ const formatDuration = (startTime) => {
 // 掛載時取得資料
 onMounted(() => {
   applyDashboardQuery()
-  if (activeTab.value === 'history') fetchSessionList()
-  else fetchActiveSessions()
+  if (activeTab.value === 'history') void fetchSessionList()
+  else void fetchActiveSessions()
   if (autoRefresh.value) {
     startAutoRefresh()
   }

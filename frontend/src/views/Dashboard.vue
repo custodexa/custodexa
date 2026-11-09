@@ -697,10 +697,10 @@ const loadReviewStatus = () =>
 // 重新整理：每張卡、每個面板各自重載，互不等待
 const handleRefresh = () => {
   CARD_DEFS.forEach(loadCard)
-  loadActiveSessions()
-  loadMyConnections()
-  loadRecentAlerts()
-  loadReviewStatus()
+  void loadActiveSessions()
+  void loadMyConnections()
+  void loadRecentAlerts()
+  void loadReviewStatus()
 }
 
 // 能力由後端 /auth/me 取得，可能在掛載之後才就緒（登入即可的入口不等能力）：

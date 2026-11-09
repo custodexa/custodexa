@@ -1377,7 +1377,7 @@ const fetchSessionDetail = async () => {
 
     console.log('[SessionDetail] Session 載入成功:', session.value)
 
-    fetchTaskReason()
+    void fetchTaskReason()
 
     if (!session.value.has_recording) {
       ElMessage.warning(t('sessionDetail.noRecordingContent'))
@@ -1385,14 +1385,14 @@ const fetchSessionDetail = async () => {
 
     // 文字終端會話載入指令記錄（失敗不影響詳情頁）
     if (isTextTerminal(session.value.protocol)) {
-      fetchCommands()
-      fetchBlockedAlerts()
-      loadRecordingUrl()
+      void fetchCommands()
+      void fetchBlockedAlerts()
+      void loadRecordingUrl()
     }
 
     // 剪貼簿事實列表：不分協議一律查（卡片以資料驅動——有事件才渲染；
     // 綁協議判斷會在後端擴協議時靜默漏卡）
-    fetchClipboardEvents()
+    void fetchClipboardEvents()
   } catch (err) {
     console.error('[SessionDetail] 載入失敗:', err)
 
@@ -1510,9 +1510,9 @@ const getStatusText = (status) =>
 
 // Lifecycle
 onMounted(() => {
-  fetchSessionDetail()
+  void fetchSessionDetail()
   // 與會話讀取獨立：離機設定讀不到不得吞掉會話詳情
-  fetchOffsiteConfigured()
+  void fetchOffsiteConfigured()
 })
 </script>
 

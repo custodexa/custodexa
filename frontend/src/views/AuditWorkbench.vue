@@ -644,7 +644,7 @@ const load = async (force = false) => {
     clientIp.value,
     from.value,
     to.value,
-    [...types.value].sort(),
+    [...types.value].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
   ])
   if (!force && key === lastKey) {
     // 查詢條件沒變、只換了 focus（同窗深連結再次跳入）：不重查，
@@ -741,7 +741,7 @@ watch(subject, () => {
 
 watch([subject, subjectId, subjectIp, clientIp, timeRange, types, view, focus], () => {
   syncUrl()
-  load()
+  void load()
 })
 
 // 外部導覽（六頁深連結、上一頁／下一頁）→ 還原畫面
@@ -760,14 +760,14 @@ watch(
     types.value = parsed.types
     focus.value = parsed.focus
     view.value = parsed.view
-    load()
+    void load()
   }
 )
 
 onMounted(() => {
   // 預設時間窗（今天）也要寫回 URL，否則首屏的畫面複製出去無法還原
   syncUrl()
-  load()
+  void load()
 })
 </script>
 

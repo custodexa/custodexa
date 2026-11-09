@@ -316,7 +316,7 @@ watch(
     if (next === prev) return
     entries.value = []
     loadedSessionId.value = undefined
-    if (props.modelValue) refresh()
+    if (props.modelValue) void refresh()
   }
 )
 
@@ -326,13 +326,13 @@ function ensureFreshIdentity() {
   if (!identityStale.value) return true
   ElMessage.warning(t('fileManager.identityChanged'))
   // 已有重載在途就不再疊一次（watcher 通常已觸發），避免連點堆出多筆請求
-  if (!loading.value) refresh()
+  if (!loading.value) void refresh()
   return false
 }
 
 function navigateTo(path) {
   currentPath.value = path
-  refresh()
+  void refresh()
 }
 
 function enterDir(row) {
@@ -348,7 +348,7 @@ async function handleUpload({ file }) {
   try {
     await uploadFile(props.assetId, currentPath.value, file, props.sessionId)
     ElMessage.success(t('fileManager.uploaded', { name: file.name }))
-    refresh()
+    void refresh()
   } catch (err) {
     noteSourceDenied(err)
     console.error('[FileManager] 上傳失敗:', err)
@@ -380,7 +380,7 @@ async function handleMkdir() {
     })
     await mkdir(props.assetId, joinPath(currentPath.value, value), props.sessionId)
     ElMessage.success(t('fileManager.mkdirDone'))
-    refresh()
+    void refresh()
   } catch (err) {
     if (err !== 'cancel' && err?.message !== 'cancel') {
       noteSourceDenied(err)
@@ -405,7 +405,7 @@ async function handleDelete(row) {
     )
     await deleteFile(props.assetId, joinPath(currentPath.value, row.name), props.sessionId)
     ElMessage.success(t('fileManager.deleted'))
-    refresh()
+    void refresh()
   } catch (err) {
     if (err !== 'cancel') {
       noteSourceDenied(err)

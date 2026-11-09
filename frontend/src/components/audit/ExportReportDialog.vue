@@ -435,7 +435,7 @@ watch(
     // 每次開啟回到**這一次的入口所指定的包型**：上一次在對話框內切過證據包
     // 就一直停在證據包，下一次從「匯出事件報告」進來的「按下即下載」預期會落空
     packType.value = props.pack
-    probeSigning()
+    void probeSigning()
   },
   { immediate: true }
 )

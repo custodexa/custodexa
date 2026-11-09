@@ -229,7 +229,7 @@ const reload = async () => {
 const init = async () => {
   group.value = null
   await reload()
-  if (group.value) loadSupport()
+  if (group.value) void loadSupport()
 }
 watch(groupId, init)
 onMounted(init)

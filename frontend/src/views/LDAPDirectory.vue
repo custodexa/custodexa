@@ -828,8 +828,8 @@ const refreshPage = async () => {
       return
     }
   }
-  fetchDirectory()
-  fetchLocalAdminState()
+  void fetchDirectory()
+  void fetchLocalAdminState()
 }
 
 // 測試與存檔共用的表單值（測的就是未儲存的當下值：先測後存）
@@ -1008,7 +1008,7 @@ const handleTest = async () => {
   } finally {
     testing.value = false
     // 成敗都要捲：測試「未執行」（傳輸閘、限流）同樣是使用者在等的答案
-    if (testResult.value || testError.value) revealTestResult()
+    if (testResult.value || testError.value) void revealTestResult()
   }
 }
 
@@ -1042,9 +1042,9 @@ const handleDelete = async () => {
 }
 
 onMounted(() => {
-  fetchDirectory()
+  void fetchDirectory()
   // 與設定讀取獨立：任一方失敗不得吞掉另一方
-  fetchLocalAdminState()
+  void fetchLocalAdminState()
 })
 </script>
 

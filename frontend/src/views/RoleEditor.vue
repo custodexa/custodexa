@@ -755,7 +755,7 @@ const sharedWithLabel = (e, d) => {
   return other ? t('roles.editor.detailSharedKey', { other: detailLabel(other.id) }) : ''
 }
 
-const permsArray = () => [...perms.value].sort()
+const permsArray = () => [...perms.value].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 
 // 摘要與缺依賴：伺服器產生
 const summary = ref(null)
@@ -1019,7 +1019,7 @@ const onPreviewClick = () => {
     unsavedOpen.value = true
     return
   }
-  startPreview()
+  void startPreview()
 }
 
 const showExitedTip = () => {
@@ -1092,7 +1092,7 @@ const reloadLatest = () => loadAll()
 
 onMounted(() => {
   showExitedTip()
-  loadAll()
+  void loadAll()
 })
 onBeforeUnmount(() => {
   clearDetailSubject()

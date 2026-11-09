@@ -821,7 +821,7 @@ const handleSSOLogin = async (provider) => {
 // 重新發起：provider 唯一時直接走，否則收起錯誤讓使用者自行挑選（按鈕就在下方）
 const handleSSORestart = () => {
   if (ssoProviders.value.length === 1) {
-    handleSSOLogin(ssoProviders.value[0])
+    void handleSSOLogin(ssoProviders.value[0])
     return
   }
   clearSSOError()
@@ -893,8 +893,8 @@ onMounted(() => {
     consumeReloginContext() === RELOGIN_INSECURE_TRANSPORT
 
   // 兩個登入前讀取彼此不阻塞：任一失敗不影響另一個，也不影響登入表單
-  loadAuthMethods()
-  loadLoginBanner()
+  void loadAuthMethods()
+  void loadLoginBanner()
 
   if (handoff.error) {
     clearBrowserSecret()
@@ -902,7 +902,7 @@ onMounted(() => {
     return
   }
   if (handoff.ticket) {
-    exchangeSSOLogin(handoff.ticket)
+    void exchangeSSOLogin(handoff.ticket)
   }
 })
 </script>

@@ -271,7 +271,7 @@ const loadOptions = async () => {
     console.error('載入範圍選項失敗:', error)
   }
 }
-loadOptions()
+void loadOptions()
 
 const fieldByType = {
   asset: 'asset_id',

@@ -930,7 +930,7 @@ const submitReview = async () => {
     })
     ElMessage.success(t('alerts.reviewed'))
     reviewDialogVisible.value = false
-    fetchAlerts()
+    void fetchAlerts()
   } catch (error) {
     console.error('審閱告警失敗:', error)
   } finally {
@@ -957,7 +957,7 @@ const alertBatchLimitText = computed(() =>
 const alertBatchLabel = (row) => `${alertRuleText(row)} · ${formatDateTime(row.triggered_at)}`
 const handleAlertBatchFinished = () => {
   alertSelection.clear()
-  fetchAlerts()
+  void fetchAlerts()
 }
 
 const pagination = ref({
@@ -1001,12 +1001,12 @@ const fetchAlerts = async () => {
 
 const handleSearch = () => {
   pagination.value.page = 1
-  fetchAlerts()
+  void fetchAlerts()
 }
 
 const handleSizeChange = () => {
   pagination.value.page = 1
-  fetchAlerts()
+  void fetchAlerts()
 }
 
 const handleReset = () => {
@@ -1018,9 +1018,9 @@ const handleReset = () => {
 
 // 重新整理：依目前頁籤重載對應資料（C4）
 const handleRefresh = () => {
-  if (activeTab.value === 'rules') fetchRules()
+  if (activeTab.value === 'rules') void fetchRules()
   else if (activeTab.value === 'systemAlerts') return
-  else fetchAlerts()
+  else void fetchAlerts()
 }
 
 const goToSession = (row) => {
@@ -1132,7 +1132,7 @@ const handleSaveRule = async () => {
       ElMessage.success(t('alerts.ruleCreated'))
     }
     ruleDialogVisible.value = false
-    fetchRules()
+    void fetchRules()
   } catch (error) {
     // 400（無效 regex 等）錯誤訊息已由 axios 攔截器直接顯示，保持對話框開啟
     console.error('儲存告警規則失敗:', error)
@@ -1153,10 +1153,10 @@ const handleToggleEnabled = async (row, value) => {
       action: row.action || 'alert',
     })
     ElMessage.success(value ? t('alerts.ruleEnabled') : t('alerts.ruleDisabled'))
-    fetchRules()
+    void fetchRules()
   } catch (error) {
     console.error('切換規則狀態失敗:', error)
-    fetchRules()
+    void fetchRules()
   }
 }
 
@@ -1178,7 +1178,7 @@ const handleDeleteRule = async (row) => {
   try {
     await deleteAlertRule(row.id)
     ElMessage.success(t('alerts.ruleDeleted'))
-    fetchRules()
+    void fetchRules()
   } catch (error) {
     console.error('刪除告警規則失敗:', error)
   }
@@ -1194,16 +1194,16 @@ const severityLabel = (severity) =>
 
 onMounted(() => {
   applyDashboardQuery()
-  fetchAlerts()
+  void fetchAlerts()
   if (canManageRules.value) {
-    fetchRules()
+    void fetchRules()
   }
 })
 
 // tab 切換即 refetch（C8：資料新鮮優先，對齊 Sessions 模式）
 const handleTabChange = (tab) => {
-  if (tab === 'rules') fetchRules()
-  else fetchAlerts()
+  if (tab === 'rules') void fetchRules()
+  else void fetchAlerts()
 }
 </script>
 

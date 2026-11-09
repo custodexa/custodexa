@@ -528,7 +528,7 @@ const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       playerRef.value.parentElement.requestFullscreen()
     } else {
-      document.exitFullscreen()
+      void document.exitFullscreen()
     }
   } catch (err) {
     console.error('[GuacamolePlayer] 全螢幕切換失敗:', err)
@@ -549,7 +549,7 @@ const formatTime = (seconds) => {
 
 // Retry loading
 const retryLoad = () => {
-  initPlayer()
+  void initPlayer()
 }
 
 // 定位請求變更：整檔已解析完，可直接落地（frames 已備，seek 不會是 no-op）
@@ -570,13 +570,13 @@ watch(() => props.recordingUrl, () => {
     }
     recording.value = null
   }
-  initPlayer()
+  void initPlayer()
 })
 
 // Lifecycle hooks
 onMounted(async () => {
   await nextTick()
-  initPlayer()
+  void initPlayer()
 })
 
 onBeforeUnmount(() => {

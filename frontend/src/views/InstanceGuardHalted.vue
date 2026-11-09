@@ -451,7 +451,7 @@ const beginStartup = () => {
   statusError.value = ''
   stopHaltPolling()
   startupDelay = STARTUP_POLL_INITIAL_MS
-  probeStartup()
+  void probeStartup()
 }
 
 const scheduleStartupProbe = () => {

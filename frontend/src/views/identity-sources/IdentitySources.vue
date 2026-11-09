@@ -364,7 +364,7 @@ const handleDelete = async (row) => {
       await deleteOIDCProvider(row.id)
     }
     ElMessage.success(t('identitySources.deleted'))
-    fetchAll()
+    void fetchAll()
   } catch (error) {
     // 仍有映射規則或仍有外部身分關聯時後端回 409，由全域攔截器譯文提示
     logFailure('identity_source_delete_failed', error)
@@ -372,8 +372,8 @@ const handleDelete = async (row) => {
 }
 
 onMounted(() => {
-  fetchAll()
-  fetchLocalAdminState()
+  void fetchAll()
+  void fetchLocalAdminState()
 })
 </script>
 

@@ -90,7 +90,7 @@ onMounted(() => {
   terminal.loadAddon(fitAddon)
   terminal.open(containerRef.value)
 
-  connect()
+  void connect()
 })
 
 onBeforeUnmount(() => {

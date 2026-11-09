@@ -665,8 +665,8 @@ const optionGroups = computed(() => {
 })
 
 const rolesDirty = computed(() => {
-  const a = [...selected.value].sort()
-  const b = [...initial.value].sort()
+  const a = [...selected.value].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  const b = [...initial.value].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   return a.length !== b.length || a.some((v, i) => v !== b[i])
 })
 
@@ -923,7 +923,7 @@ const persist = async (extraNodes = {}) => {
     }
     ranges.value = {}
     preview.cancel()
-    loadBindings()
+    void loadBindings()
     return true
   } catch (error) {
     // 只有審核者角色：草稿原樣保留，在儲存鈕下方說明並提供修正鈕
@@ -1080,10 +1080,10 @@ const loadOptions = async () => {
 watch(canAssign, loadOptions)
 
 onMounted(() => {
-  loadDefinitions()
-  loadGroups()
-  loadBindings()
-  loadOptions()
+  void loadDefinitions()
+  void loadGroups()
+  void loadBindings()
+  void loadOptions()
 })
 </script>
 

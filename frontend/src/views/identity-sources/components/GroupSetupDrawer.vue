@@ -525,7 +525,7 @@ const focusIntoDrawer = async () => {
   focusAnchor.value?.focus({ preventScroll: true })
 }
 watch([step, phase, running], () => {
-  if (visible.value) focusIntoDrawer()
+  if (visible.value) void focusIntoDrawer()
 })
 const drawerHasFocus = () => {
   const a = document.activeElement
@@ -537,7 +537,7 @@ watch(
     if (!visible.value || !(prev[0] || prev[1]) || now[0] || now[1]) return
     // 確認框自己的焦點歸還完成後，若仍不在抽屜內才拉回
     setTimeout(() => {
-      if (visible.value && !drawerHasFocus()) focusIntoDrawer()
+      if (visible.value && !drawerHasFocus()) void focusIntoDrawer()
     }, 50)
   }
 )

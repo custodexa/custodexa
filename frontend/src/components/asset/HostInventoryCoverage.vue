@@ -82,7 +82,7 @@ const groupsText = computed(() => {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-    .map(visibleText)
+    .map((s) => visibleText(s))
   return names.length
     ? t('hostInventory.coverage.groups', { groups: names.join('、') })
     : t('hostInventory.coverage.groupsEmpty')

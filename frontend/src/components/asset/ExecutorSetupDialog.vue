@@ -675,20 +675,20 @@ function runFix(which) {
   const e = err.value
   if (!e) return
   if (which === 'recheck') {
-    submit()
+    void submit()
     return
   }
   switch (e.fixAction) {
     case 'useConvert': {
       const name = username.value.trim()
-      goConvert(name)
+      void goConvert(name)
       break
     }
     case 'confirmCount':
       ackCount.value = e.count
       ack.value = true
       err.value = null
-      submit(e.count)
+      void submit(e.count)
       break
     case 'useGenerate':
       pickSource(props.windowsFamily ? 'inline' : 'generate')

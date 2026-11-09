@@ -1080,7 +1080,7 @@ function handleConfirmConflict(err) {
   // API 層已關閉此請求的全域錯誤 toast，只由這裡顯示一則（error 等級）
   ElMessage.error(t(CONFLICT_DETAIL_KEY[detail] || 'hostIdentityConfirm.result.moved'))
   closeHostIdentityDialog()
-  loadCandidates()
+  void loadCandidates()
 }
 
 // confirmBody 為空：一般重試；有值：帶主機身分確認重送
@@ -1094,7 +1094,7 @@ async function retryCandidate(row, confirmBody) {
       // 主機身分變更而停下：交給使用者確認，不當成已排入重試
       if (confirming) ElMessage.error(t('hostIdentityConfirm.result.moved'))
       openHostIdentityDialog(row, res.host_identity)
-      loadCandidates()
+      void loadCandidates()
       return
     }
     if (confirming) {
@@ -1116,7 +1116,7 @@ async function retryCandidate(row, confirmBody) {
           : t('changeSecretPlans.retryStillFailing')
       )
     }
-    loadCandidates()
+    void loadCandidates()
   } catch (err) {
     if (confirming && err?.response?.status === 409 &&
         err.response.data?.code === 'CONFLICT_HOST_IDENTITY_MOVED') {
@@ -1155,7 +1155,7 @@ async function discardCandidate(row) {
   try {
     await discardChangeSecretCandidate(row.id)
     ElMessage.success(t('changeSecretPlans.discarded'))
-    loadCandidates()
+    void loadCandidates()
   } catch (err) {
     console.error('[ChangeSecret] 清除候選憑證失敗:', err)
   }
@@ -1357,7 +1357,7 @@ async function removePlan(row) {
   try {
     await deleteChangeSecretPlan(row.id)
     ElMessage.success(t('changeSecretPlans.deleted'))
-    load()
+    void load()
   } catch (err) {
     console.error('[ChangeSecret] 刪除計劃失敗:', err)
   }
@@ -1396,9 +1396,9 @@ function recordStatusText(status) {
 }
 
 onMounted(() => {
-  load()
-  loadAssets()
-  loadCandidates()
+  void load()
+  void loadAssets()
+  void loadCandidates()
 })
 </script>
 

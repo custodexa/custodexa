@@ -269,7 +269,7 @@ async function loadImpact() {
 
 const rootRef = ref(null)
 onMounted(() => {
-  loadImpact()
+  void loadImpact()
   // 焦點落在密碼欄：帶入的是帳號名，接下來要補的是秘密
   if (props.prefill && canNameAccount.value) {
     nextTick(() => rootRef.value?.querySelector('input[type="password"]')?.focus())

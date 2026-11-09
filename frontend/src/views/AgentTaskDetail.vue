@@ -411,7 +411,7 @@ const visibleReports = computed(() => showVersions.value ? reports.value.version
 const scopeText = accounts => accounts?.length ? accounts.join(t('common.listSeparator')) : t('multiRequest.allAccounts')
 // An approval overwrites the item account scope; requested_accounts is the pre-decision
 // scope preserved in the snapshot, and null means it was never preserved, not empty.
-const sameScope = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort())
+const sameScope = (a, b) => JSON.stringify([...(a || [])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) === JSON.stringify([...(b || [])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
 const compareItems = computed(() => (task.value?.items || []).map(item => {
   const approved = item.status === 'approved', decided = item.status !== 'pending'
   const requestedMinutes = task.value?.requested_duration_minutes ?? null
@@ -473,7 +473,7 @@ async function load() {
     task.value = response.request; approvalTotal.value = response.approval_total || 0; reports.value = response.reports; latest.value = response.reports.versions[0] || null
     setDetailSubject(task.value?.reason)
     await loadSessions()
-    loadStats()
+    void loadStats()
   } catch (e) { if (version === epoch) error.value = resolveApiError(e?.response?.data, e?.response?.status) }
   finally { if (version === epoch) loading.value = false }
 }
@@ -482,7 +482,7 @@ async function changeApprovals(page) {
   try { const response = await getAgentTask(taskId.value, { limit: 20, approval_offset: (page - 1) * 20 }); if (version === approvalEpoch) { task.value.approvals = response.request.approvals; approvalPage.value = page } }
   catch (e) { if (version === approvalEpoch) error.value = resolveApiError(e?.response?.data, e?.response?.status) }
 }
-function changeSessions(page) { sessionPage.value = page; loadSessions() }
+function changeSessions(page) { sessionPage.value = page; void loadSessions() }
 async function changeReports(page) {
   const version = ++reportEpoch
   try { const response = await getAgentTask(taskId.value, { limit: 20, offset: (page - 1) * 20 }); if (version === reportEpoch) { reports.value = response.reports; reportPage.value = page } }

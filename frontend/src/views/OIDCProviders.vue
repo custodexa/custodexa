@@ -761,8 +761,8 @@ const fetchLocalAdminState = async () => {
 // 手動重新整理同時重讀警示狀態：管理者在他處補建本地 admin 後回本頁按重新整理，
 // 警示必須跟著消失，否則會被當成「修了也不會好」的假警報
 const refreshPage = () => {
-  fetchProviders()
-  fetchLocalAdminState()
+  void fetchProviders()
+  void fetchLocalAdminState()
 }
 
 const resetForm = () => {
@@ -888,7 +888,7 @@ const submitForm = async () => {
       ElMessage.success(t('oidcProviders.created'))
     }
     dialogVisible.value = false
-    fetchProviders()
+    void fetchProviders()
   } catch (error) {
     logFailure('oidc_provider_save_failed', error)
   } finally {
@@ -918,7 +918,7 @@ const handleEnabledChange = async (row) => {
   try {
     await updateOIDCProvider(row.id, { name: row.name, enabled: next })
     ElMessage.success(next ? t('oidcProviders.enabled') : t('oidcProviders.disabled'))
-    fetchProviders()
+    void fetchProviders()
   } catch (error) {
     row.enabled = !next
     logFailure('oidc_provider_toggle_failed', error)
@@ -943,7 +943,7 @@ const handleDelete = async (row) => {
   try {
     await deleteOIDCProvider(row.id)
     ElMessage.success(t('oidcProviders.deleted'))
-    fetchProviders()
+    void fetchProviders()
   } catch (error) {
     // 409（仍有外部身分關聯）由全域攔截器以 apiError 譯文提示
     logFailure('oidc_provider_delete_failed', error)
@@ -951,9 +951,9 @@ const handleDelete = async (row) => {
 }
 
 onMounted(() => {
-  fetchProviders()
+  void fetchProviders()
   // 與 provider 清單獨立：任一方失敗不得吞掉另一方（警示的可靠性不依賴清單載入）
-  fetchLocalAdminState()
+  void fetchLocalAdminState()
 })
 </script>
 

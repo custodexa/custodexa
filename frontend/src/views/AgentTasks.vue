@@ -229,10 +229,10 @@ async function load() {
   catch (e) { if (version === epoch) error.value = resolveApiError(e?.response?.data, e?.response?.status) }
   finally { if (version === epoch) loading.value = false }
 }
-function search() { page.value = 1; const query = {}; for (const key of ['subject', 'owner', 'report_status']) if (filters[key]) query[key] = String(filters[key]); if (range.value?.length === 2) { query.from = new Date(range.value[0]).toISOString(); query.to = new Date(range.value[1]).toISOString() } if (JSON.stringify(query) === JSON.stringify(route.query)) load(); else router.replace({ query }) }
+function search() { page.value = 1; const query = {}; for (const key of ['subject', 'owner', 'report_status']) if (filters[key]) query[key] = String(filters[key]); if (range.value?.length === 2) { query.from = new Date(range.value[0]).toISOString(); query.to = new Date(range.value[1]).toISOString() } if (JSON.stringify(query) === JSON.stringify(route.query)) void load(); else void router.replace({ query }) }
 function reset() { filters.subject = undefined; filters.owner = undefined; filters.report_status = ''; range.value = null; search() }
-function changePage(value) { page.value = value; load() }
-watch(() => route.query, query => { filters.subject = Number(query.subject) || undefined; filters.owner = Number(query.owner) || undefined; ensurePrincipalOption('agent', filters.subject); ensurePrincipalOption('owner', filters.owner); filters.report_status = statuses.includes(query.report_status) ? query.report_status : ''; range.value = query.from && query.to && Number.isFinite(Date.parse(query.from)) && Number.isFinite(Date.parse(query.to)) ? [new Date(query.from), new Date(query.to)] : null; page.value = 1; load() }, { immediate: true })
+function changePage(value) { page.value = value; void load() }
+watch(() => route.query, query => { filters.subject = Number(query.subject) || undefined; filters.owner = Number(query.owner) || undefined; void ensurePrincipalOption('agent', filters.subject); void ensurePrincipalOption('owner', filters.owner); filters.report_status = statuses.includes(query.report_status) ? query.report_status : ''; range.value = query.from && query.to && Number.isFinite(Date.parse(query.from)) && Number.isFinite(Date.parse(query.to)) ? [new Date(query.from), new Date(query.to)] : null; page.value = 1; void load() }, { immediate: true })
 onBeforeUnmount(() => { epoch++ })
 </script>
 <style scoped>

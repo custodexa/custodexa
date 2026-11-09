@@ -493,15 +493,15 @@ async function load() {
 function setFilter(f) {
   filter.value = f
   page.value = 1
-  load()
+  void load()
 }
 function onPage(p) {
   page.value = p
-  load()
+  void load()
 }
 function refresh() {
   pollState.value = 'idle'
-  load()
+  void load()
 }
 
 // 輪詢 -------------------------------------------------------------
@@ -568,7 +568,7 @@ function openIgnore(f) {
   ignoreOpen.value = true
 }
 function onIgnored() {
-  load()
+  void load()
 }
 async function reopen(f) {
   try {
@@ -596,7 +596,7 @@ function goto(target) {
 watch(
   () => [props.modelValue, props.assetId],
   ([open]) => {
-    if (open && props.assetId) init()
+    if (open && props.assetId) void init()
     else stopPolling()
   },
   { immediate: true }

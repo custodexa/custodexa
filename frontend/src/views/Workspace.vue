@@ -311,7 +311,7 @@ function menuDuplicate() {
     const asset = { id: tab.assetId, name: tab.name, protocol: tab.protocol }
     if (tab.protocol === 'k8s') {
       // k8s 仍走 pod 選擇器（pod 短命，沿用原 pod 未必還在）
-      openTab(asset)
+      void openTab(asset)
     } else {
       // 沿用原分頁的帳號：再問一次帳號等於把「複製分頁」降級成「重新開啟」
       createTab(
@@ -447,7 +447,7 @@ onMounted(async () => {
   if (initialAssetId) {
     try {
       const asset = await getAsset(initialAssetId)
-      openTab(asset)
+      void openTab(asset)
     } catch (err) {
       console.error('[Workspace] 開啟指定資產失敗:', err)
     }

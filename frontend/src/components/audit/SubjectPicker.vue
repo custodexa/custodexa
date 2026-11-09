@@ -148,19 +148,19 @@ const onSelect = (value) => {
 }
 
 const onVisible = (visible) => {
-  if (visible && options.value.length === 0) search('')
+  if (visible && options.value.length === 0) void search('')
 }
 
 watch(
   () => props.subjectType,
   () => {
     options.value = []
-    search('')
+    void search('')
   }
 )
 
 onMounted(() => {
-  search('').then(() => {
+  void search('').then(() => {
     // 深連結帶入的主體可能不在預設清單裡（大量主體、或位址只出現在拒絕紀錄）：
     // 補一個佔位項，讓選擇器至少顯示得出它而不是空白
     if (!props.modelValue) return

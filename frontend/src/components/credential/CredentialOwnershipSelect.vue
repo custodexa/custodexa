@@ -156,7 +156,7 @@ async function load() {
   }
 }
 
-watch(() => props.active, (open) => { if (open) load() }, { immediate: true })
+watch(() => props.active, (open) => { if (open) void load() }, { immediate: true })
 
 // 呼叫端靠這個狀態決定能不能送出：節點模式下沒有選到可選節點、或根本沒有可選節點
 watch(

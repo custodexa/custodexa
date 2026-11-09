@@ -714,7 +714,7 @@ onMounted(() => {
   } else {
     phase.value = 'needReason'
   }
-  loadSupport()
+  void loadSupport()
 })
 onBeforeUnmount(wipe)
 </script>

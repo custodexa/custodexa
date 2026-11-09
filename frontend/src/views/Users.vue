@@ -700,7 +700,7 @@ const fetchUserList = async () => {
     pagination.total = response.total || 0
     // 角色來源另讀（列表端點不帶 role_sets）。不擋列表顯示：
     // 讀不到只是少了來源標示，把整頁卡在這裡是拿次要資訊換主要資訊
-    loadRoleSetsForRows(userList.value)
+    void loadRoleSetsForRows(userList.value)
     return true
   } catch (error) {
     logFailure('user_list_failed', error)
@@ -713,7 +713,7 @@ const fetchUserList = async () => {
 // 處理過濾
 const handleFilter = () => {
   pagination.page = 1
-  fetchUserList()
+  void fetchUserList()
 }
 
 // 類型改由頁內下拉切換時把網址一併改掉，否則側欄仍亮在「AI agent 主體」
@@ -748,22 +748,22 @@ const handleResetFilter = () => {
   filterForm.active = ''
   filterForm.provisioningOrigin = ''
   pagination.page = 1
-  fetchUserList()
+  void fetchUserList()
 }
 
 // 處理刷新
 const handleRefresh = () => {
-  fetchUserList()
+  void fetchUserList()
 }
 
 // 處理分頁大小變更
 const handleSizeChange = () => {
-  fetchUserList()
+  void fetchUserList()
 }
 
 // 處理頁碼變更
 const handlePageChange = () => {
-  fetchUserList()
+  void fetchUserList()
 }
 
 // 切換閒置停用豁免：失敗回滾 switch，避免顯示與後端不一致
@@ -841,8 +841,8 @@ const handleManageScopes = (row) => {
   scopeUser.id = row.id
   scopeUser.username = row.username
   scopeDialogVisible.value = true
-  loadScopes()
-  loadScopeGroupPaths()
+  void loadScopes()
+  void loadScopeGroupPaths()
 }
 
 const handleRemoveScope = async (row) => {
@@ -963,7 +963,7 @@ async function openFromQuery() {
 }
 onMounted(async () => {
   await fetchUserList()
-  openFromQuery()
+  void openFromQuery()
 })
 </script>
 

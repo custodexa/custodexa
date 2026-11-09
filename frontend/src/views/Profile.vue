@@ -732,7 +732,7 @@ const copyToClipboard = async (text) => {
 }
 
 onMounted(() => {
-  loadAccount()
+  void loadAccount()
 })
 </script>
 

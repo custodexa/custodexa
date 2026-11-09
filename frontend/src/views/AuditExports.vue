@@ -576,7 +576,7 @@ const fetchReportJobs = async () => {
 // 報告清單**只在使用者真的切過去時才載**：多數進到本頁的人是來取自己剛發起的
 // 證據包，替他先打一支他不會看的查詢沒有意義
 const onTabChange = (name) => {
-  if (name === 'reports' && !reportLoaded.value) fetchReportJobs()
+  if (name === 'reports' && !reportLoaded.value) void fetchReportJobs()
 }
 
 // 換種類＝換一份清單：頁碼回第一頁，舊種類的列不留在畫面上等新結果
@@ -584,7 +584,7 @@ const onReportKindChange = () => {
   reportPage.value = 1
   reportJobs.value = []
   reportTotal.value = 0
-  fetchReportJobs()
+  void fetchReportJobs()
 }
 
 const refreshActive = () => (activeTab.value === 'reports' ? fetchReportJobs() : fetchJobs())
@@ -622,18 +622,18 @@ const onTick = () => {
     stopTimer()
     return
   }
-  if (hasActive.value && !loading.value) fetchJobs({ silent: true })
+  if (hasActive.value && !loading.value) void fetchJobs({ silent: true })
 }
 
 onMounted(() => {
-  fetchJobs()
+  void fetchJobs()
   // 深連結 ?tab=reports：輪替證據頁發起產出後把人帶到取件的地方，
   // 落地即在報告分頁上，而不是讓他自己再點一次。
   // 再帶 kind（例：合規對照頁的 &kind=compliance_report）即直達該種類
   if (route?.query?.tab === 'reports') {
     activeTab.value = 'reports'
     if (REPORT_KINDS.includes(route.query.kind)) reportKind.value = route.query.kind
-    fetchReportJobs()
+    void fetchReportJobs()
   }
   timer = setInterval(onTick, POLL_MS)
 })
@@ -749,7 +749,7 @@ const scopeLines = (row) => {
   const codes = scopeTypeCodes(f)
   lines.push(
     t('auditExports.scopeTypes', {
-      types: codes.map(typeLabel).join(t('common.listSeparator')),
+      types: codes.map((code) => typeLabel(code)).join(t('common.listSeparator')),
       count: codes.length,
     })
   )

@@ -153,7 +153,7 @@ async function load() {
 }
 
 const onPeriodChange = () => {
-  if (period.value !== 'custom') load()
+  if (period.value !== 'custom') void load()
 }
 
 onMounted(load)

@@ -287,7 +287,7 @@ const handleTestSyslog = async () => {
 }
 
 onMounted(() => {
-  loadSyslogSettings()
+  void loadSyslogSettings()
 })
 </script>
 

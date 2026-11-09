@@ -1257,8 +1257,8 @@ const loadTagOptions = async () => {
 
 // 治理操作後：標籤清單與資產列表都可能變
 const handleTagsChanged = () => {
-  loadTagOptions()
-  fetchAssetList()
+  void loadTagOptions()
+  void fetchAssetList()
 }
 
 // 建立新標籤前相似確認：canonical 相等或互為包含 → 引導用既有；
@@ -1333,19 +1333,19 @@ function applyPreviewRange() {
   if (!node) return
   nodeTreeRef.value?.highlight?.(node, ancestorChain(node))
   selectedNode.value = node
-  fetchAssetList()
+  void fetchAssetList()
 }
 
 const handleNodeSelect = (node) => {
   selectedNode.value = node
   pagination.page = 1
-  fetchAssetList()
+  void fetchAssetList()
 }
 
 watch(includeSubtree, () => {
   if (selectedNode.value && selectedNode.value !== 'ungrouped') {
     pagination.page = 1
-    fetchAssetList()
+    void fetchAssetList()
   }
 })
 
@@ -1388,9 +1388,9 @@ const { ready: capsReady } = useCapabilities()
 const showNoAssetView = computed(() => capsReady.value && !can('asset:view'))
 watch(canViewAssets, (allowed) => {
   if (!allowed) return
-  fetchAssetList()
-  loadGroups()
-  loadTagOptions()
+  void fetchAssetList()
+  void loadGroups()
+  void loadTagOptions()
 })
 const headerDescription = computed(() => {
   if (!canViewAssets.value) return ''
@@ -1677,8 +1677,8 @@ const clearSelection = () => {
 }
 // 批次成功：列表、標籤字典與節點樹（搬移、刪除會改計數）都重載
 const onBatchDone = () => {
-  fetchAssetList()
-  loadTagOptions()
+  void fetchAssetList()
+  void loadTagOptions()
   nodeTreeRef.value?.reloadTree()
 }
 
@@ -1726,7 +1726,7 @@ const fetchAssetList = async () => {
 // 處理過濾
 const handleFilter = () => {
   pagination.page = 1
-  fetchAssetList()
+  void fetchAssetList()
 }
 
 // 重置過濾
@@ -1737,17 +1737,17 @@ const handleResetFilter = () => {
   filterForm.tags = []
   filterForm.credential_pending = false
   pagination.page = 1
-  fetchAssetList()
+  void fetchAssetList()
 }
 
 // 處理分頁大小變更
 const handleSizeChange = () => {
-  fetchAssetList()
+  void fetchAssetList()
 }
 
 // 處理頁碼變更
 const handlePageChange = () => {
-  fetchAssetList()
+  void fetchAssetList()
 }
 
 // 權限標籤類型
@@ -1866,8 +1866,8 @@ const resetForm = () => {
 // 批次新增：完成後重整列表與標籤（匯入可能帶進新標籤）
 const bulkVisible = ref(false)
 const onBulkImported = () => {
-  fetchAssetList()
-  loadTagOptions()
+  void fetchAssetList()
+  void loadTagOptions()
 }
 // 完成畫面「查看未指定憑證的資產」：直接套上待配憑證篩選
 const showCredentialPending = () => {
@@ -1949,12 +1949,12 @@ const assetScopeLine = computed(() => lineFromManagementScope(managementScope.va
 
 // 範圍化檢視者要等第一份列表回來才知道自己是範圍化的：此時才取（投影後的）標籤字典
 watch(scopedViewer, (on) => {
-  if (on) loadTagOptions()
+  if (on) void loadTagOptions()
 })
 
 // 直接開啟或重新整理頁面時，掛載早於能力載入：全域檢視能力到齊後補取字典
 watch(showsGlobalAssets, (on) => {
-  if (on) loadTagOptions()
+  if (on) void loadTagOptions()
 })
 
 // 對話框與抽屜都關了就結束範圍化表單狀態，免得批次匯入沿用舊的選項
@@ -2119,9 +2119,9 @@ function handleRowCommand(command, row) {
   if (command === 'inventory') {
     openInventory(row.id)
   } else if (command === 'test') {
-    handleTest(row)
+    void handleTest(row)
   } else if (command === 'delete') {
-    handleDelete(row)
+    void handleDelete(row)
   }
 }
 
@@ -2347,10 +2347,10 @@ const handleSubmit = async () => {
 
     dialogVisible.value = false
     drawerVisible.value = false
-    fetchAssetList()
+    void fetchAssetList()
     nodeTreeRef.value?.reloadTree()
     // 儲存可能引入新標籤：刷新清單供下拉/治理即時取用
-    loadTagOptions()
+    void loadTagOptions()
   } catch (error) {
     if (error?.errors) {
       // 驗證錯誤，不需要處理
@@ -2425,7 +2425,7 @@ const handleDelete = async (row) => {
   try {
     await deleteAsset(row.id)
     ElMessage.success(t('assets.deleted'))
-    fetchAssetList()
+    void fetchAssetList()
     nodeTreeRef.value?.reloadTree()
   } catch (error) {
     console.error('刪除失敗:', error)
@@ -2523,7 +2523,7 @@ const submitApply = async () => {
     console.error('送出申請失敗:', error)
   } finally {
     applying.value = false
-    fetchAssetList()
+    void fetchAssetList()
   }
 }
 
@@ -2558,7 +2558,7 @@ const submitBreakGlass = async () => {
     console.error('緊急連線失敗:', error)
   } finally {
     breakGlassing.value = false
-    fetchAssetList()
+    void fetchAssetList()
   }
 }
 
@@ -2596,7 +2596,7 @@ const loadGlobalAccessPolicy = async () => {
   }
 }
 watch([dialogVisible, drawerVisible], ([dialogOpen, drawerOpen]) => {
-  if (dialogOpen || drawerOpen) loadGlobalAccessPolicy()
+  if (dialogOpen || drawerOpen) void loadGlobalAccessPolicy()
 })
 
 const inheritPolicyLabel = computed(() => {
@@ -2608,16 +2608,16 @@ const inheritPolicyLabel = computed(() => {
 
 // 掛載時取得資料
 onMounted(() => {
-  fetchAssetList()
+  void fetchAssetList()
   // 分組選項與分組管理對話框共用：掛載即載入（原本只在增刪組後載入，
   // 新 session 開頁分組下拉恆空、對話框誤顯「尚無分組」）
-  loadGroups()
+  void loadGroups()
   // 標籤清單（篩選下拉/表單自動完成/治理共用；僅 admin/auditor 端點可達）
-  loadTagOptions()
+  void loadTagOptions()
   // 欄位偏好：角色解析之後載入（key 角色分域）
   loadColumnPrefs()
-  openEditFromQuery()
-  openApplyFromQuery()
+  void openEditFromQuery()
+  void openApplyFromQuery()
   openInventoryFromQuery()
 })
 

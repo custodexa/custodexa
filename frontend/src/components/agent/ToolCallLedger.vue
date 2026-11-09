@@ -98,8 +98,8 @@ async function load() {
   catch (e) { if (version === epoch) error.value = resolveApiError(e?.response?.data, e?.response?.status) }
   finally { if (version === epoch) loading.value = false }
 }
-function resetPage() { page.value = 1; load() }
-function changePage(value) { page.value = value; load() }
+function resetPage() { page.value = 1; void load() }
+function changePage(value) { page.value = value; void load() }
 watch(() => props.query, () => { decision.value = props.query.decision || ''; resetPage() }, { deep: true, immediate: true })
 onBeforeUnmount(() => { epoch++ })
 </script>

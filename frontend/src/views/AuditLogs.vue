@@ -936,7 +936,7 @@ const fetchLogs = async () => {
 // 搜尋處理
 const handleSearch = () => {
   pagination.value.page = 1
-  fetchLogs()
+  void fetchLogs()
 }
 
 // 重設過濾器
@@ -984,8 +984,8 @@ const clearKeyFilter = () => {
 // 重新整理：依目前頁籤重載對應資料（C4）
 const handleRefresh = () => {
   if (activeTab.value === 'reviews') workspaceRef.value?.refresh()
-  else if (activeTab.value === 'failures') fetchFailures()
-  else fetchLogs()
+  else if (activeTab.value === 'failures') void fetchFailures()
+  else void fetchLogs()
 }
 
 // 顯示詳情
@@ -1192,8 +1192,8 @@ const runIntegrityVerify = async () => {
 const handleTabChange = (tab) => {
   // 工作區首次掛載時自己取數；之後切回來才由這裡重取
   if (tab === 'reviews') workspaceRef.value?.refresh()
-  else if (tab === 'failures') fetchFailures()
-  else fetchLogs()
+  else if (tab === 'failures') void fetchFailures()
+  else void fetchLogs()
 }
 
 // 初始化。
