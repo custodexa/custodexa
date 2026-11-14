@@ -19,7 +19,7 @@ describe('API token 撤銷確認', () => {
     expect(w.get('[data-test="revoke-question"]').text()).toBe('確定要撤銷「terraform-prod-apply」嗎？此操作無法復原。')
     const box = w.get('[data-test="revoke-consequence-used"]').text()
     expect(box).toContain('用這把的工具會立即無法呼叫管理 API')
-    expect(box).toContain('來自 10.20.30.15')
+    expect(box).toContain('來自 203.0.113.15')
     expect(w.text()).toContain('撤銷原因（選填，會留在紀錄裡）')
     expect(w.get('[data-test="revoke-note"]').attributes('placeholder')).toBe('例如：CI 流程已改用新的 API token')
   })

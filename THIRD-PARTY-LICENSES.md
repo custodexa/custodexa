@@ -119,7 +119,7 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | go | golang.org/x/net | v0.56.0 | BSD-3-Clause |
 | go | golang.org/x/oauth2 | v0.30.0 | BSD-3-Clause |
 | go | golang.org/x/sync | v0.21.0 | BSD-3-Clause |
-| go | golang.org/x/sys | v0.46.0 | BSD-3-Clause |
+| go | golang.org/x/sys | v0.48.0 | BSD-3-Clause |
 | go | golang.org/x/term | v0.44.0 | BSD-3-Clause |
 | go | golang.org/x/text | v0.39.0 | BSD-3-Clause |
 | go | golang.org/x/time | v0.3.0 | BSD-3-Clause |

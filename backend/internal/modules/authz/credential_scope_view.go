@@ -106,7 +106,7 @@ func (e *ScopeEvaluator) DecideCredentialManagement(ctx context.Context, tx *gor
 	if err != nil {
 		return "", nil, err
 	}
-	targets := make([]ScopeTarget, 0, len(credentialIDs)+len(targetAssetIDs))
+	var targets []ScopeTarget
 	for _, id := range credentialIDs {
 		targets = append(targets, CredentialTarget(id))
 	}

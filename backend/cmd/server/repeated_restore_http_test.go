@@ -30,6 +30,27 @@ func backgroundWorkers() map[string]int {
 	}
 	return counts
 }
+// settledWorkers 等一次性的背景工作收尾後再取樣：解封後啟動、做完即結束的工作
+// （封印期日誌回灌）在解封回應返回的當下可能還在執行，立刻取樣會把它算成增長。
+// 真正殘留的工作不會在期限內消失，期限到時回傳的取樣仍高於基準，照樣被判為增長。
+func settledWorkers(baseline map[string]int, limit time.Duration) map[string]int {
+	deadline := time.Now().Add(limit)
+	for {
+		sample := backgroundWorkers()
+		grown := false
+		for name, count := range sample {
+			if count > baseline[name] {
+				grown = true
+				break
+			}
+		}
+		if !grown || time.Now().After(deadline) {
+			return sample
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestRepeatedSealRestoreHTTP(t *testing.T) {
 	for _, mode := range []string{"ui", "env", "delegated"} {
 		t.Run(mode, func(t *testing.T) {
@@ -126,7 +147,7 @@ func TestRepeatedSealRestoreHTTP(t *testing.T) {
 				if err = g.Release(context.Background()); err != nil {
 					t.Fatal(err)
 				}
-				after := backgroundWorkers()
+				after := settledWorkers(baseline, 5*time.Second)
 				for name, count := range after {
 					if count > baseline[name] {
 						t.Fatalf("worker count increased for %s: before=%d after=%d", name, baseline[name], count)

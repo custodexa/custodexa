@@ -25,7 +25,7 @@ const event = (over = {}) => ({
   params: { action: 'create', resource: 'asset' },
   refs: {},
   actor: { id: 57, name: 'ops-chen' },
-  client_ip: '10.20.30.15',
+  client_ip: '203.0.113.15',
   ...over,
 })
 

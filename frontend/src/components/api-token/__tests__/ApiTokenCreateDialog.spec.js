@@ -52,7 +52,7 @@ describe('建立 API token 對話框', () => {
     expect(summary).toContain('你選了：資產管理員（研發三處、研發四處）、授權管理員（全系統）。')
     expect(summary).toContain('角色指派回來時一併恢復')
     expect(summary).toContain('只限管理與設定 API')
-    expect(w.get('[data-test="summary-cidr"]').text()).toContain('10.20.0.0/16、10.30.5.0/24')
+    expect(w.get('[data-test="summary-cidr"]').text()).toContain('203.0.113.0/24、198.51.100.0/24')
     expect(w.get('[data-test="roles-hint"]').text()).toContain('你另外持有的「一般使用者」不屬於管理類角色')
   })
 

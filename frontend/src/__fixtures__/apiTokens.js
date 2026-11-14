@@ -60,7 +60,7 @@ export const tokenPlanCi = (extra = {}) =>
     created_at: '2026-08-18T07:20:33Z',
     expires_at: isoIn(3),
     last_used_at: '2026-11-12T18:00:09Z',
-    last_used_ip: '10.20.30.21',
+    last_used_ip: '203.0.113.21',
     ...extra,
   })
 
@@ -72,7 +72,7 @@ export const tokenProdApply = (extra = {}) =>
     granted_roles: [roleAsset(), roleAuthz()],
     expires_at: isoIn(90),
     last_used_at: '2026-11-13T05:58:02Z',
-    last_used_ip: '10.20.30.15',
+    last_used_ip: '203.0.113.15',
     ...extra,
   })
 
@@ -95,7 +95,7 @@ export const tokenExpired = (extra = {}) =>
     created_at: '2025-08-15T02:05:12Z',
     expires_at: '2026-08-15T15:59:59Z',
     last_used_at: '2026-08-15T13:40:02Z',
-    last_used_ip: '10.20.30.15',
+    last_used_ip: '203.0.113.15',
     ...extra,
   })
 
@@ -108,7 +108,7 @@ export const tokenRevoked = (extra = {}) =>
     created_at: '2025-03-02T03:00:45Z',
     expires_at: '2026-03-02T15:59:59Z',
     last_used_at: '2025-09-29T00:12:19Z',
-    last_used_ip: '10.20.40.9',
+    last_used_ip: '198.51.100.9',
     revoked_at: '2025-09-30T09:02:44Z',
     revoked_by: { user_id: 57, username: 'ops-chen' },
     ...extra,
@@ -121,7 +121,7 @@ export const eligibility = (extra = {}) => ({
   reason: '',
   grantable_roles: [roleAsset(), roleAuthz()],
   non_grantable_roles: [{ role_id: 4, name: '一般使用者', builtin_key: 'user' }],
-  allowed_cidrs: ['10.20.0.0/16', '10.30.5.0/24'],
+  allowed_cidrs: ['203.0.113.0/24', '198.51.100.0/24'],
   ...extra,
 })
 

@@ -67,7 +67,7 @@ describe('API token 清單', () => {
     const drift = w.get('[data-test="token-row-3"]')
     expect(drift.get('[data-test="never-expires"]').text()).toBe('永不到期')
     expect(drift.text()).toContain('尚未使用')
-    expect(w.get('[data-test="token-row-2"]').text()).toContain('來自 10.20.30.15')
+    expect(w.get('[data-test="token-row-2"]').text()).toContain('來自 203.0.113.15')
   })
 
   it('授權角色列出角色與範圍', () => {
