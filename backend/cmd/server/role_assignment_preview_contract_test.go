@@ -46,7 +46,7 @@ func newContractWorld(t *testing.T) *contractWorld {
 	groups.SetAssignmentGuard(guard)
 	groups.SetGrantGrader(grader)
 	return &contractWorld{t: t, f: f, env: env, users: users, groups: groups,
-		op: identity.Operator{UserID: f.sup, Username: env.subjects["S01"].Username}}
+		op: identity.Operator{Principal: testSessionPrincipal(f.sup), UserID: f.sup, Username: env.subjects["S01"].Username}}
 }
 
 // counts 預覽前後必須相同的資料量與授權變更痕跡的累計。
@@ -389,7 +389,7 @@ func TestRoleAssignmentPreviewContract(t *testing.T) {
 			f.hold(id, adminID)
 			subj := "SELF-" + name
 			w.env.subjects[subj] = &baselineSubject{ID: subj, Username: name, UserID: id, Kind: "session", Token: w.env.issueSessionToken(id)}
-			return id, subj, identity.Operator{UserID: id, Username: name}
+			return id, subj, identity.Operator{Principal: testSessionPrincipal(id), UserID: id, Username: name}
 		}
 		// summaryDirection 以寫入前後的有效指派摘要求本人方向（與寫入關卡同一個分類器）。
 		summaryDirection := func(id uint, write func()) (authz.GrantDirection, authz.GrantClassification) {

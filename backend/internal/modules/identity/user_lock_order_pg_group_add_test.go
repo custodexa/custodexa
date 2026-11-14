@@ -90,7 +90,7 @@ func runOwnerTransferVsGroupAdd(t *testing.T) {
 			}},
 			b: lockActor{name: "transfer", stop: transferStop, app: e.appB, start: func() error {
 				no := o
-				_, _, err := e.users.Update(e.agent, &UpdateUserRequest{OwnerUserID: &no})
+				_, _, err := e.users.Update(Operator{}, e.agent, &UpdateUserRequest{OwnerUserID: &no})
 				return err
 			}},
 			plans: map[string]cyclePlan{

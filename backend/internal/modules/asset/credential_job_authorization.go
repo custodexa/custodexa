@@ -113,7 +113,7 @@ func loadJobAuthorization(db *gorm.DB, id *uint) (*model.CredentialJobAuthorizat
 
 // initiatorContext 以授權脈絡的發起者建立背景脈絡（不繼承呼叫端的取消與主體）。
 func initiatorContext(auth *model.CredentialJobAuthorization) context.Context {
-	return contextWithInitiator(context.Background(), auth.ActorID, auth.ActorName)
+	return backgroundInitiatorContext(auth.ActorID, auth.ActorName)
 }
 
 // jobAuthReason 把脈絡載入錯誤對應到使用者可見的原因碼。
@@ -346,7 +346,7 @@ func (s *CredentialRotationService) revalidateRequeuer(ctx context.Context, db *
 	}
 	req.Operation = CredOpRun
 	req.Capabilities = authorizationCapabilities(auth, []string{CredCapRotate})
-	requeuer := contextWithInitiator(context.Background(), member.RequeuedBy, member.RequeuedByName)
+	requeuer := backgroundInitiatorContext(member.RequeuedBy, member.RequeuedByName)
 	if _, err := s.mgmt.require(requeuer, db, req); err != nil {
 		return revalidationReason(err)
 	}
@@ -397,7 +397,7 @@ func (s *CredentialRotationService) reauthorizeRotationByClicker(ctx context.Con
 	var row *model.CredentialJobAuthorization
 	// 承接與它的審計同一交易：審計寫不進去即整筆回滾（授權列與輪替引用都不留），
 	// 呼叫端照停止路徑處理（成員停止、候選保留、告警），遠端不開始
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		var ierr error
 		row, ierr = insertJobAuthorization(s.mgmt, tx, jobAuthInput{
 			kind: model.JobAuthSourceRotation, sourceID: rot.ID, revision: revision,

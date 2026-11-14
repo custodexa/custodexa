@@ -312,7 +312,7 @@ func (s *ChangeSecretCandidateService) promote(ctx context.Context, cand *model.
 	}
 	// 主機身分比對、版本新增、就位、鏡像、審計與刪候選同一交易：比對通過到寫入之間，
 	// 主機身分不可能再被換掉而仍提交
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, cand.AssetID); err != nil {
 			return err
 		}
@@ -372,7 +372,7 @@ func (s *ChangeSecretCandidateService) promoteToCredential(ctx context.Context,
 	cand *model.ChangeSecretCandidate, confirm *model.CredentialHostIdentityConfirmation) error {
 
 	userID, operator := model.UserFromContext(ctx)
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, cand.AssetID); err != nil {
 			return err
 		}

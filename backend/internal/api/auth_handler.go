@@ -365,7 +365,7 @@ func (h *AuthHandler) auditPasswordNoncompliant(c *gin.Context, resp *identity.L
 	}
 	userID := resp.PendingUserID
 	username := resp.PendingUsername
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     model.ActionPasswordNoncompliant,
@@ -376,7 +376,7 @@ func (h *AuthHandler) auditPasswordNoncompliant(c *gin.Context, resp *identity.L
 		ClientIP:   h.auditSourceIP(c),
 		StatusCode: http.StatusOK,
 		Details:    fmt.Sprintf(`{"category":%q}`, resp.PolicyNoncompliantCategory),
-	})
+	}))
 }
 
 // auditLogin 記錄登入事件（成功與失敗）
@@ -384,7 +384,7 @@ func (h *AuthHandler) auditLogin(c *gin.Context, userID uint, username string, s
 	if h.auditService == nil {
 		return
 	}
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     model.ActionLogin,
@@ -395,7 +395,7 @@ func (h *AuthHandler) auditLogin(c *gin.Context, userID uint, username string, s
 		ClientIP:   h.auditSourceIP(c),
 		StatusCode: statusCode,
 		ErrorMsg:   errMsg,
-	})
+	}))
 }
 
 // Logout 登出 API。
@@ -507,7 +507,7 @@ func (h *AuthHandler) auditRefreshEvent(c *gin.Context, userID uint, username st
 	if h.auditService == nil {
 		return
 	}
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     model.ActionLogin,
@@ -518,7 +518,7 @@ func (h *AuthHandler) auditRefreshEvent(c *gin.Context, userID uint, username st
 		ClientIP:   h.auditSourceIP(c),
 		StatusCode: statusCode,
 		ErrorMsg:   errMsg,
-	})
+	}))
 }
 
 // Me 取得目前使用者資訊
@@ -768,7 +768,7 @@ func (h *AuthHandler) auditPasswordChange(c *gin.Context, claims *crypto.Claims,
 		return
 	}
 	userID := claims.UserID
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   claims.Username,
 		Action:     model.ActionUpdate,
@@ -780,7 +780,7 @@ func (h *AuthHandler) auditPasswordChange(c *gin.Context, claims *crypto.Claims,
 		ClientIP:   h.auditSourceIP(c),
 		StatusCode: statusCode,
 		ErrorMsg:   annotateAuthSource(errMsg, "self_change_password"),
-	})
+	}))
 }
 
 // RegisterRoutes 註冊認證相關路由

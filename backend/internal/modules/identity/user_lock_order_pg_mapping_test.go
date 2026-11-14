@@ -215,7 +215,7 @@ func runMappingCreator(t *testing.T, sub string) {
 			shared:  fmt.Sprintf("users:%d", u),
 			a: lockActor{name: "mapping", stop: mapStop, app: e.appA, start: func() error {
 				svc := e.mappingService(e.dbA)
-				actor := GroupRoleMappingActor{ID: u, Name: "lo-n1-admin", IP: "127.0.0.1"}
+				actor := GroupRoleMappingActor{Principal: testSessionPrincipal(u), ID: u, Name: "lo-n1-admin", IP: "127.0.0.1"}
 				if isRole {
 					_, err := svc.UpdateMapping(model.RoleMappingChannelKindProvider, p.ID, oldRuleID, GroupRoleMappingInput{MatchValue: "new", Role: model.RoleUser, Actor: actor})
 					return err
@@ -326,7 +326,7 @@ func runMappingReplacementSameCreator(t *testing.T) {
 			replace := func(db *gorm.DB, s src) func() error {
 				return func() error {
 					_, err := e.mappingService(db).UpdateMapping(model.RoleMappingChannelKindProvider, s.p.ID, s.rule,
-						GroupRoleMappingInput{MatchValue: "new", Role: model.RoleUser, Actor: GroupRoleMappingActor{ID: u, Name: "lo-n1p-admin", IP: "127.0.0.1"}})
+						GroupRoleMappingInput{MatchValue: "new", Role: model.RoleUser, Actor: GroupRoleMappingActor{Principal: testSessionPrincipal(u), ID: u, Name: "lo-n1p-admin", IP: "127.0.0.1"}})
 					return err
 				}
 			}

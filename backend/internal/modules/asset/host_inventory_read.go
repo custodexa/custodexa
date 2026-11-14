@@ -293,7 +293,7 @@ func (s *HostAccountInventoryService) writeFindingAudit(tx *gorm.DB, action mode
 		ResourceID: &id,
 		AssetID:    &assetID,
 		Status:     string(model.StatusSuccess),
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.ClientIP},
+		Request:    actor.requestMeta(),
 		Details:    string(b),
 	})
 }

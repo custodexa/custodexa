@@ -216,7 +216,7 @@ func (h *ComplianceHandler) auditReport(c *gin.Context, status model.AuditStatus
 	}
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     model.ActionCreate,
@@ -228,5 +228,5 @@ func (h *ComplianceHandler) auditReport(c *gin.Context, status model.AuditStatus
 		ClientIP:   sourceip.Of(c),
 		StatusCode: c.Writer.Status(),
 		ErrorMsg:   msg,
-	})
+	}))
 }

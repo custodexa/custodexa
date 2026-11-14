@@ -147,7 +147,7 @@ func (r *pgRace) pauseAssignAfterInsert(t *testing.T) {
 func (r *pgRace) startUpdate(ctx context.Context, restricted string) <-chan error {
 	ch := make(chan error, 1)
 	go func() {
-		_, err := r.e.svc.Update(ctx, r.e.admin, r.role.ID, r.ver0, RoleInput{Name: r.role.Name, Permissions: []string{"asset:view", restricted}})
+		_, err := r.e.svc.Update(asSession(ctx, r.e.admin), r.e.admin, r.role.ID, r.ver0, RoleInput{Name: r.role.Name, Permissions: []string{"asset:view", restricted}})
 		ch <- err
 	}()
 	return ch

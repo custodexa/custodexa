@@ -91,7 +91,7 @@ func TestPrincipalKindImmutable(t *testing.T) {
 		if u.Kind == model.KindAgent {
 			next = model.KindHuman
 		}
-		_, _, err := users.Update(u.ID, &UpdateUserRequest{Kind: &next})
+		_, _, err := users.Update(Operator{}, u.ID, &UpdateUserRequest{Kind: &next})
 		if !errors.Is(err, ErrPrincipalKindImmutable) {
 			t.Fatalf("change %s: %v", u.Kind, err)
 		}
@@ -107,11 +107,11 @@ func TestPrincipalKindImmutable(t *testing.T) {
 	if err := db.Create(other).Error; err != nil {
 		t.Fatal(err)
 	}
-	updated, _, err := users.Update(agent.ID, &UpdateUserRequest{OwnerUserID: &other.ID})
+	updated, _, err := users.Update(Operator{}, agent.ID, &UpdateUserRequest{OwnerUserID: &other.ID})
 	if err != nil || updated.OwnerUserID == nil || *updated.OwnerUserID != other.ID {
 		t.Fatalf("owner update: %v", err)
 	}
-	if _, _, err = users.Update(owner.ID, &UpdateUserRequest{OwnerUserID: &other.ID}); !errors.Is(err, ErrAgentOwnerRequired) {
+	if _, _, err = users.Update(Operator{}, owner.ID, &UpdateUserRequest{OwnerUserID: &other.ID}); !errors.Is(err, ErrAgentOwnerRequired) {
 		t.Fatalf("human owner update: %v", err)
 	}
 }

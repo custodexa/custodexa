@@ -287,7 +287,7 @@ func (s *UserGroupService) deleteGroup(id uint, actorID uint, actorName, clientI
 			ResourceID: &groupID,
 			Status:     string(model.StatusSuccess),
 			Actor:      gatewayapi.Actor{UserID: actorID, Username: actorName},
-			Request:    gatewayapi.RequestMeta{ClientIP: clientIP},
+			Request:    operatorRequestMeta(op, clientIP),
 			Details:    fmt.Sprintf(`{"group_name":%q,"revoked_authorizations":%d}`, group.Name, revoked),
 		}); err != nil {
 			return fmt.Errorf("稽核留痕失敗: %w", err)
@@ -401,7 +401,7 @@ func (s *UserGroupService) replaceMembers(id uint, manualIDs, legacyIDs *[]uint,
 		var addedOthers int
 		if op != nil && (plan.ManualRemoved || len(plan.Added) > 0) {
 			if err := s.assignmentGuard().Check(tx, *op, AssignmentChange{
-				Path: PathGroupMember, GroupID: id, AddedMemberIDs: plan.Added}); err != nil {
+				Path: PathGroupMember, GroupID: id, AddedMemberIDs: plan.Added, RemovedMemberIDs: plan.Removed}); err != nil {
 				return err
 			}
 			var gerr error
@@ -451,14 +451,14 @@ func (s *UserGroupService) replaceMembers(id uint, manualIDs, legacyIDs *[]uint,
 						if err := locked.Exec("INSERT INTO user_group_members(user_group_id,user_id,manual) VALUES (?,?,true)", id, uid).Error; err != nil {
 							return err
 						}
-						return s.writeMemberAddedAudit(locked, id, uid, actorID, actorName, clientIP)
+						return s.writeMemberAddedAudit(locked, id, uid, actorID, actorName, clientIP, op)
 					}
 					if !rows[0].Manual {
 						membersChanged = true
 						if err := locked.Exec("UPDATE user_group_members SET manual=true WHERE user_group_id=? AND user_id=?", id, uid).Error; err != nil {
 							return err
 						}
-						return s.writeMemberAddedAudit(locked, id, uid, actorID, actorName, clientIP)
+						return s.writeMemberAddedAudit(locked, id, uid, actorID, actorName, clientIP, op)
 					}
 					return nil
 				}
@@ -479,7 +479,7 @@ func (s *UserGroupService) replaceMembers(id uint, manualIDs, legacyIDs *[]uint,
 					return err
 				}
 				payload := fmt.Sprintf(`{"event":"user_group_manual_member_removed","user_group_id":%d,"user_id":%d}`, id, uid)
-				if err := port.WriteInTx(s.auditTx, locked, port.AuditEvent{Action: string(model.ActionUpdate), Resource: string(model.ResourceUserGroup), ResourceID: &id, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actorID, Username: actorName}, Request: gatewayapi.RequestMeta{ClientIP: clientIP}, Details: payload}); err != nil {
+				if err := port.WriteInTx(s.auditTx, locked, port.AuditEvent{Action: string(model.ActionUpdate), Resource: string(model.ResourceUserGroup), ResourceID: &id, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actorID, Username: actorName}, Request: operatorRequestMeta(op, clientIP), Details: payload}); err != nil {
 					return err
 				}
 				return nil
@@ -525,6 +525,8 @@ type manualMemberPlan struct {
 	Added []uint
 	// ManualRemoved 有手動成員被移出手動集。
 	ManualRemoved bool
+	// Removed 被移出手動集的帳號（升冪）。
+	Removed []uint
 	// Effective 變更後的有效成員（升冪）：手動集，加上目前非手動者與仍受映射規則支持的被移出者。
 	Effective []uint
 }
@@ -572,6 +574,7 @@ func manualMembersAfter(tx *gorm.DB, groupID uint, ids []uint, legacy bool) (man
 		}
 		if m.Manual {
 			plan.ManualRemoved = true
+			plan.Removed = append(plan.Removed, m.UserID)
 		}
 		if !m.Manual || supportedSet[m.UserID] {
 			eff[m.UserID] = true
@@ -595,11 +598,21 @@ func PlanManualMembers(tx *gorm.DB, groupID uint, manualIDs []uint) (authz.Group
 }
 
 // writeMemberAddedAudit 手動成員加入的同交易服務審計（形狀比照既有移除）。
-func (s *UserGroupService) writeMemberAddedAudit(tx *gorm.DB, groupID, userID, actorID uint, actorName, clientIP string) error {
+func (s *UserGroupService) writeMemberAddedAudit(tx *gorm.DB, groupID, userID, actorID uint, actorName, clientIP string, op *Operator) error {
 	gid := groupID
 	payload := fmt.Sprintf(`{"event":"user_group_manual_member_added","user_group_id":%d,"user_id":%d}`, groupID, userID)
-	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{Action: string(model.ActionUpdate), Resource: string(model.ResourceUserGroup), ResourceID: &gid, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actorID, Username: actorName}, Request: gatewayapi.RequestMeta{ClientIP: clientIP}, Details: payload}); err != nil {
+	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{Action: string(model.ActionUpdate), Resource: string(model.ResourceUserGroup), ResourceID: &gid, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actorID, Username: actorName}, Request: operatorRequestMeta(op, clientIP), Details: payload}); err != nil {
 		return fmt.Errorf("稽核留痕失敗: %w", err)
 	}
 	return nil
+}
+
+// operatorRequestMeta 稽核列的請求欄位：來源位址，經 API token 的請求另帶 token 標示。
+// 操作者為 nil（內部呼叫）時只帶來源位址。
+func operatorRequestMeta(op *Operator, clientIP string) gatewayapi.RequestMeta {
+	m := gatewayapi.RequestMeta{ClientIP: clientIP}
+	if op == nil {
+		return m
+	}
+	return op.AttributedMeta(m)
 }

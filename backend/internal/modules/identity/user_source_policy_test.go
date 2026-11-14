@@ -122,7 +122,7 @@ func TestUserSourcePolicyUpdatePresenceSemantics(t *testing.T) {
 	}
 
 	// 態 1：舊形狀 payload（只帶 email／full_name）→ 清單不變、diff 無該欄
-	_, diff, err := svc.Update(u.ID, &UpdateUserRequest{Email: "alice2@example.com", FullName: "Alice"})
+	_, diff, err := svc.Update(Operator{}, u.ID, &UpdateUserRequest{Email: "alice2@example.com", FullName: "Alice"})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestUserSourcePolicyUpdatePresenceSemantics(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"allowed_cidrs":null}`), &reqNull); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	_, diff, err = svc.Update(u.ID, &reqNull)
+	_, diff, err = svc.Update(Operator{}, u.ID, &reqNull)
 	if err != nil {
 		t.Fatalf("Update(null): %v", err)
 	}
@@ -148,7 +148,7 @@ func TestUserSourcePolicyUpdatePresenceSemantics(t *testing.T) {
 
 	// 態 3：[] → 清空且 diff 記前後
 	empty := []string{}
-	updated, diff, err := svc.Update(u.ID, &UpdateUserRequest{AllowedCIDRs: &empty})
+	updated, diff, err := svc.Update(Operator{}, u.ID, &UpdateUserRequest{AllowedCIDRs: &empty})
 	if err != nil {
 		t.Fatalf("Update([]): %v", err)
 	}
@@ -164,7 +164,7 @@ func TestUserSourcePolicyUpdatePresenceSemantics(t *testing.T) {
 
 	// 取代：非空清單整體取代＋diff；同值更新零 diff
 	repl := []string{"192.0.2.0/24", "10.9.9.9/8"}
-	updated, diff, err = svc.Update(u.ID, &UpdateUserRequest{AllowedCIDRs: &repl})
+	updated, diff, err = svc.Update(Operator{}, u.ID, &UpdateUserRequest{AllowedCIDRs: &repl})
 	if err != nil {
 		t.Fatalf("Update(replace): %v", err)
 	}
@@ -175,7 +175,7 @@ func TestUserSourcePolicyUpdatePresenceSemantics(t *testing.T) {
 		t.Errorf("取代的 diff 不符: %v", diff)
 	}
 	same := []string{"10.0.0.0/8", "192.0.2.0/24"}
-	_, diff, err = svc.Update(u.ID, &UpdateUserRequest{AllowedCIDRs: &same})
+	_, diff, err = svc.Update(Operator{}, u.ID, &UpdateUserRequest{AllowedCIDRs: &same})
 	if err != nil {
 		t.Fatalf("Update(same): %v", err)
 	}
@@ -186,7 +186,7 @@ func TestUserSourcePolicyUpdatePresenceSemantics(t *testing.T) {
 
 	// 非法項：整體拒、狀態未變
 	badList := []string{"10.0.0.0/33"}
-	if _, _, err := svc.Update(u.ID, &UpdateUserRequest{AllowedCIDRs: &badList}); !errors.Is(err, sourceip.ErrPrefixInvalid) {
+	if _, _, err := svc.Update(Operator{}, u.ID, &UpdateUserRequest{AllowedCIDRs: &badList}); !errors.Is(err, sourceip.ErrPrefixInvalid) {
 		t.Errorf("非法項應回 ErrPrefixInvalid，實得: %v", err)
 	}
 	if storedCIDRs() != "10.0.0.0/8,192.0.2.0/24" {

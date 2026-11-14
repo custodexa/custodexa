@@ -140,11 +140,13 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 主機帳號盤點增 2 表（host_account_scans、host_account_findings）、6 索引（兩張 pkey、
 	// 盤點的資產索引與未結束部分唯一索引、結果的（資產, 帳號名）唯一索引與全域清單部分索引）、4 CHECK。
 	// 鍵盤紀錄增 1 表（keystroke_records）、4 索引（pkey、record_uuid 唯一、session_id 唯一、status），無 CHECK、無外鍵。
-	if got.Tables != 94 {
-		t.Errorf("表數 = %d, want 94（鍵盤紀錄 1 表 ＋ 堡壘機專用帳號測試登入結果 1 表 ＋ 主機帳號盤點 2 表 ＋ 憑證影響確認 1 表 ＋ 憑證主機身分承接紀錄 1 表 ＋ 使用者版本說明關閉狀態 1 表 ＋ 保留下限抬升紀錄 1 表 ＋ 主機金鑰不符觀察 1 表 ＋ 憑證工作授權表 ＋ 系統安全告警 3 表、通道觀測時間 1 表 ＋ 既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表 ＋ 政策變更歷史 ＋ 權限模型三表 ＋ 權限狀態事件 ＋ 角色權限）", got.Tables)
+	// 個人 API token 增 2 表（api_tokens、api_token_roles）、5 索引（兩張 pkey、摘要唯一、(user_id, revoked_at)、
+	// audit_logs 的 (api_token_id, created_at)），無 CHECK。
+	if got.Tables != 96 {
+		t.Errorf("表數 = %d, want 96（個人 API token 2 表 ＋ 鍵盤紀錄 1 表 ＋ 堡壘機專用帳號測試登入結果 1 表 ＋ 主機帳號盤點 2 表 ＋ 憑證影響確認 1 表 ＋ 憑證主機身分承接紀錄 1 表 ＋ 使用者版本說明關閉狀態 1 表 ＋ 保留下限抬升紀錄 1 表 ＋ 主機金鑰不符觀察 1 表 ＋ 憑證工作授權表 ＋ 系統安全告警 3 表、通道觀測時間 1 表 ＋ 既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表 ＋ 政策變更歷史 ＋ 權限模型三表 ＋ 權限狀態事件 ＋ 角色權限）", got.Tables)
 	}
-	if got.Indexes != 293 {
-		t.Errorf("索引數 = %d, want 293（鍵盤紀錄 pkey、record_uuid 唯一、session_id 唯一與 status 4 ＋ 測試登入結果 pkey 與資產索引 2 ＋ 資產帳號執行身分部分唯一索引 1 ＋ 主機帳號盤點 6 ＋ 憑證影響確認 pkey 與唯一索引、憑證歸屬複合索引 3、憑證主機身分承接紀錄 pkey、唯一索引與消耗索引 3、使用者版本說明關閉狀態 pkey 1、保留下限抬升紀錄 pkey 1、主機金鑰不符觀察 pkey 與唯一索引 2、系統告警投遞識別唯一索引 1、檢查點附證痕跡部分索引 1、憑證工作授權表 pkey 與來源索引 ＋ 系統安全告警 7、通道觀測時間 pkey 1、資產主機指紋撥號位址 1 ＋ 角色權限表主鍵 ＋ 權限狀態事件 pkey 與 seq 唯一索引 ＋ 既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4 ＋ 政策變更歷史 2）", got.Indexes)
+	if got.Indexes != 298 {
+		t.Errorf("索引數 = %d, want 298（個人 API token 5 ＋ 鍵盤紀錄 pkey、record_uuid 唯一、session_id 唯一與 status 4 ＋ 測試登入結果 pkey 與資產索引 2 ＋ 資產帳號執行身分部分唯一索引 1 ＋ 主機帳號盤點 6 ＋ 憑證影響確認 pkey 與唯一索引、憑證歸屬複合索引 3、憑證主機身分承接紀錄 pkey、唯一索引與消耗索引 3、使用者版本說明關閉狀態 pkey 1、保留下限抬升紀錄 pkey 1、主機金鑰不符觀察 pkey 與唯一索引 2、系統告警投遞識別唯一索引 1、檢查點附證痕跡部分索引 1、憑證工作授權表 pkey 與來源索引 ＋ 系統安全告警 7、通道觀測時間 pkey 1、資產主機指紋撥號位址 1 ＋ 角色權限表主鍵 ＋ 權限狀態事件 pkey 與 seq 唯一索引 ＋ 既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4 ＋ 政策變更歷史 2）", got.Indexes)
 	}
 	if got.Checks != 53 {
 		t.Errorf("CHECK 約束數 = %d, want 53（主機帳號盤點 4 ＋ 憑證影響確認動作值域 ＋ 憑證工作授權來源種類 ＋ 系統安全告警 4 ＋ 權限狀態事件種類 ＋ 既有 34 ＋ 外部群組來源、備註長度、使用者群組規則來源）", got.Checks)

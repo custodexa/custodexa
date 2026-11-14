@@ -3770,6 +3770,80 @@
    "subject_hint": "S03",
    "body_mode": "full",
    "note": "Reason is carried in the request body; the fixture session has no keystroke content, so authorized callers get the not-viewable shape and no attempt row."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/my/api-tokens",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Lists the caller's own API tokens and creation eligibility; the baseline seeds none, so the list is empty."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/my/api-tokens",
+   "body": {
+    "name": "baseline-api-token",
+    "role_ids": [
+     "{role.admin}"
+    ],
+    "never_expires": true
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Only holders of the granted management role succeed; the one-time plaintext is masked by the normalizer and the token rows are projected."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/my/api-tokens/:id",
+   "params": {
+    "id": "999999"
+   },
+   "subject_hint": "S01",
+   "body_mode": "minimal",
+   "reason": "The baseline seeds no API token, and a token created by another route cannot be addressed here; the call ends in not-found for every subject the route lets through.",
+   "note": "Send no body."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/users/:id/api-tokens",
+   "params": {
+    "id": "{user.target}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Account management capability; the target holds no tokens."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/users/:id/api-tokens/:tokenId",
+   "params": {
+    "id": "{user.target}",
+    "tokenId": "999999"
+   },
+   "subject_hint": "S01",
+   "body_mode": "minimal",
+   "reason": "The target holds no API token, so authorized subjects reach not-found; the authorization decision is still observed.",
+   "note": "Send no body."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:id/api-tokens/revoke-all",
+   "params": {
+    "id": "{user.target}"
+   },
+   "body": {
+    "note": "baseline"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "The target holds no tokens, so authorized subjects revoke zero."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/api-tokens/verify",
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Accepts only API token authentication; session and agent subjects are refused."
   }
  ]
 }

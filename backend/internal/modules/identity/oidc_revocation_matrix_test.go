@@ -49,7 +49,7 @@ func revMatrixDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
+	if err := db.AutoMigrate(&model.APIToken{}, &model.APITokenRole{}, &model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.ApproverScope{}, &model.SecurityPolicy{}, &model.PasswordHistory{},
 		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.Session{},

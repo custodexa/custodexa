@@ -76,7 +76,9 @@ func newLifecycleRaceEnv(t *testing.T, targetActive bool) *lifecycleRaceEnv {
 		&model.ExternalGroup{}, &model.GroupRoleMapping{}, &model.AuditLog{}, &model.AssetGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserRoleMappingRuleSupport{},
 		&model.UserChannelObservation{}, &model.PermissionStateEvent{}, &model.PasswordHistory{},
-		&model.RefreshToken{}, &model.UserRoleMapping{}, &model.UserExternalIdentity{}))
+		&model.RefreshToken{}, &model.UserRoleMapping{}, &model.UserExternalIdentity{},
+		// 刪除帳號會在同一交易標記其 API token，缺表則刪除失敗
+		&model.APIToken{}, &model.APITokenRole{}))
 	seedAuthzState(t, dbA)
 	oldDB := database.DB
 	database.DB = dbA
@@ -123,7 +125,7 @@ func newLifecycleRaceEnv(t *testing.T, targetActive bool) *lifecycleRaceEnv {
 }
 
 func (e *lifecycleRaceEnv) op(id uint) Operator {
-	return Operator{UserID: id, Username: "op", ClientIP: "127.0.0.1"}
+	return Operator{Principal: testSessionPrincipal(id), UserID: id, Username: "op", ClientIP: "127.0.0.1"}
 }
 
 func (e *lifecycleRaceEnv) targetUser(t *testing.T) (model.User, bool) {

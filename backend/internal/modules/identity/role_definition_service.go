@@ -142,8 +142,28 @@ func validateRoleText(name, desc string) (string, string, error) {
 	return name, desc, nil
 }
 
-// requireSuperAdmin 在交易內重驗操作者：存在、啟用、人類主體、且全域生效的內建超管身分。
-func requireSuperAdmin(tx *gorm.DB, actorID uint) (*model.User, error) {
+// requireSuperAdmin 在交易內重驗角色定義寫入的操作者：存在、啟用、人類主體、且全域生效的內建超管身分。
+//
+// 操作者的事實取自 ctx 內的請求主體（含角色限定，與路由閘同一判定來源），主體須與 actorID 相同。
+// 角色定義只經請求寫入，沒有系統路徑：ctx 沒有請求主體一律拒絕（不論是否帶請求憑證種類），
+// 不以帳號完整身分重驗。
+func requireSuperAdmin(ctx context.Context, tx *gorm.DB, actorID uint) (*model.User, error) {
+	p := authz.PrincipalFromContext(ctx)
+	if p == nil {
+		// 請求路徑缺主體即拒絕；不存在不經請求寫入角色定義的呼叫者，
+		// 因此也沒有可放行的系統標示：沒有主體就沒有可據以判定的操作者事實。
+		// 帳號完整身分只用於背景作業與目標保護資格，不用於角色定義寫入的操作者。
+		return nil, ErrRoleDefinitionForbidden
+	}
+	facts, ok := principalFacts(p, model.KindHuman)
+	if !ok || p.UserID != actorID {
+		return nil, ErrRoleDefinitionForbidden
+	}
+	return requireSuperAdminWith(tx, actorID, facts)
+}
+
+// requireSuperAdminWith 以給定事實重驗超管身分（共用判定本體）。
+func requireSuperAdminWith(tx *gorm.DB, actorID uint, facts authz.TokenFacts) (*model.User, error) {
 	var u model.User
 	if err := tx.First(&u, actorID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -154,7 +174,7 @@ func requireSuperAdmin(tx *gorm.DB, actorID uint) (*model.User, error) {
 	if !u.Active || u.Kind == model.KindAgent {
 		return nil, ErrRoleDefinitionForbidden
 	}
-	p, err := authz.ResolveUserOn(tx, actorID, authz.TokenFacts{SubjectKind: model.KindHuman})
+	p, err := authz.ResolveUserOn(tx, actorID, facts)
 	if err != nil {
 		return nil, err
 	}
@@ -162,6 +182,17 @@ func requireSuperAdmin(tx *gorm.DB, actorID uint) (*model.User, error) {
 		return nil, ErrRoleDefinitionForbidden
 	}
 	return &u, nil
+}
+
+// principalFacts 以請求主體重解操作者時所用的事實：沿用主體的事實（含角色限定），主體種類以呼叫端給定
+// 的值為準。主體為 nil 或沒有帳號時回 false。
+func principalFacts(p *authz.Principal, subjectKind string) (authz.TokenFacts, bool) {
+	if p == nil || p.UserID == 0 {
+		return authz.TokenFacts{}, false
+	}
+	facts := p.Facts
+	facts.SubjectKind = subjectKind
+	return facts, true
 }
 
 // permissionsOf 角色的權限鍵集合：內建與範本取程式中的集合，自訂取 role_permissions。
@@ -409,7 +440,7 @@ func (s *RoleDefinitionService) Delete(ctx context.Context, actorID, roleID uint
 			return nil, fmt.Errorf("清除範本來源參照失敗: %w", err)
 		}
 		// 軟刪並釋出名稱（roles.name 唯一索引含已刪列）；歷史以角色 ID 對應審計。
-		suffix := fmt.Sprintf("~del%d", role.ID)
+		suffix := deletedRoleNameSuffix(role.ID)
 		base := []rune(role.Name)
 		if len(base)+len(suffix) > roleNameMaxRunes {
 			base = base[:roleNameMaxRunes-len(suffix)]
@@ -538,11 +569,11 @@ func (s *RoleDefinitionService) write(ctx context.Context, actorID uint, action 
 	var committed *writeResult
 	var committedActor Operator
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		actor, err := requireSuperAdmin(tx, actorID)
+		actor, err := requireSuperAdmin(ctx, tx, actorID)
 		if err != nil {
 			return err
 		}
-		committedActor = Operator{UserID: actor.ID, Username: actor.Username}
+		committedActor = Operator{UserID: actor.ID, Username: actor.Username, APIToken: requestAPIToken(ctx)}
 		// 先比對事件鏈鏈頭與目前狀態，繞過應用層的直寫記成無來源變動，不混進本次合法事件的差集。
 		if err := authz.BeginPermissionChange(tx); err != nil {
 			return err
@@ -574,7 +605,7 @@ func (s *RoleDefinitionService) write(ctx context.Context, actorID uint, action 
 		}); err != nil {
 			return fmt.Errorf("角色定義留痕失敗: %w", err)
 		}
-		if err := s.grader.raiseRoleContent(tx, Operator{UserID: actor.ID, Username: actor.Username}, res); err != nil {
+		if err := s.grader.raiseRoleContent(tx, committedActor, res); err != nil {
 			return err
 		}
 		if s.events == nil {

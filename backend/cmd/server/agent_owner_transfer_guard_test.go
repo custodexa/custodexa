@@ -93,7 +93,7 @@ func newOwnerTransferEnv(t *testing.T) *ownerTransferEnv {
 }
 
 func (e *ownerTransferEnv) transfer(agentID, newOwner uint) error {
-	_, _, err := e.users.Update(agentID, &identity.UpdateUserRequest{OwnerUserID: &newOwner})
+	_, _, err := e.users.Update(identity.Operator{}, agentID, &identity.UpdateUserRequest{OwnerUserID: &newOwner})
 	return err
 }
 

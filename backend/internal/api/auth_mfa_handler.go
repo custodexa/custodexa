@@ -419,7 +419,7 @@ func (h *AuthHandler) auditAuthEventFull(c *gin.Context, userID uint, username s
 	if h.auditService == nil {
 		return
 	}
-	entry := &audit.AuditLogEntry{
+	entry := middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     action,
@@ -431,7 +431,7 @@ func (h *AuthHandler) auditAuthEventFull(c *gin.Context, userID uint, username s
 		StatusCode: statusCode,
 		ErrorMsg:   errMsg,
 		Details:    details,
-	}
+	})
 	if resourceID != 0 {
 		entry.ResourceID = &resourceID
 	}

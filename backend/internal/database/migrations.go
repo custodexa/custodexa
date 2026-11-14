@@ -432,6 +432,14 @@ var migrations = []Migration{
 		Up:      applyKeystrokeRecords,
 		Down:    rollbackKeystrokeRecords,
 	},
+	{
+		// 個人 API token：新表 api_tokens、api_token_roles，audit_logs 加 api_token_id、api_token_name
+		// 兩個可為 NULL 的欄位與一條索引。純新增，不回填。**不提供 Down**：回退只走還原升級前備份。
+		Version: "20261113_api_tokens",
+		Name:    "api_tokens",
+		Up:      applyAPITokens,
+		Down:    rollbackAPITokens,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -502,7 +510,8 @@ func schemaDDLStatements() []string {
 	out = append(out, assetAccountExecutorSourceDDL()...)
 	out = append(out, changeSecretExecutionMethodDDL()...)
 	out = append(out, executorLoginChecksDDL()...)
-	return append(out, keystrokeRecordsDDL()...)
+	out = append(out, keystrokeRecordsDDL()...)
+	return append(out, apiTokensDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

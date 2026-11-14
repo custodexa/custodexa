@@ -255,6 +255,28 @@ describe('狀態與 query string', () => {
   })
 })
 
+describe('深連結的對象名', () => {
+  it('選擇器載入後對上的選項補成對象名，不只顯示 id', async () => {
+    routeState.query = { ...baseQuery, id: '84' }
+    const wrapper = await mountPage()
+    const events = () => wrapper.findComponent(TimelineEvents)
+    expect(events().props('subjectName')).toBe('#84')
+    wrapper.findComponent({ name: 'SubjectPicker' }).vm.$emit('resolve', { id: 84, name: 'operator-a' })
+    await flushPromises()
+    expect(events().props('subjectName')).toBe('operator-a')
+  })
+
+  it('使用者已挑選的對象不被後到的對上結果覆蓋', async () => {
+    routeState.query = { ...baseQuery, id: '84' }
+    const wrapper = await mountPage()
+    const picker = wrapper.findComponent({ name: 'SubjectPicker' })
+    picker.vm.$emit('change', { id: 84, name: 'picked-name' })
+    picker.vm.$emit('resolve', { id: 84, name: 'resolved-name' })
+    await flushPromises()
+    expect(wrapper.findComponent(TimelineEvents).props('subjectName')).toBe('picked-name')
+  })
+})
+
 describe('類別開關', () => {
   it('預設六類全開，types 帶滿', async () => {
     await mountPage()

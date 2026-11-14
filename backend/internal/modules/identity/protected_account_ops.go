@@ -77,6 +77,12 @@ func (o *ProtectedAccountOps) Gate(db *gorm.DB, op Operator, targetID uint, acti
 	if op.UserID == 0 {
 		return false, ErrProtectedAccountOperation
 	}
+	// 以 API token 改動所屬帳號本人：先於超級管理者的豁免判定，授權了超級管理者角色的 token 同樣受限
+	if accountOpAlwaysChanges(action) {
+		if err := apiTokenSelfChange(op, targetID, true); err != nil {
+			return false, err
+		}
+	}
 	var operator model.User
 	if err := db.First(&operator, op.UserID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -84,7 +90,12 @@ func (o *ProtectedAccountOps) Gate(db *gorm.DB, op Operator, targetID uint, acti
 		}
 		return false, fmt.Errorf("查詢操作者失敗: %w", err)
 	}
-	opPrincipal, err := authz.ResolveUserOn(db, op.UserID, authz.TokenFacts{SubjectKind: operator.Kind})
+	// 操作者帶請求主體的事實重解；目標的重解在下方維持帳號完整身分
+	facts, ok := op.RequestFacts(operator.Kind)
+	if !ok {
+		return false, ErrProtectedAccountOperation
+	}
+	opPrincipal, err := authz.ResolveUserOn(db, op.UserID, facts)
 	if err != nil {
 		return false, err
 	}
@@ -143,7 +154,7 @@ func (o *ProtectedAccountOps) Record(tx *gorm.DB, op Operator, targetID uint, ac
 	if err := port.WriteInTx(o.auditTx, tx, port.AuditEvent{
 		Action: string(auditActionOf(action)), Resource: string(model.ResourceUser), ResourceID: &tid,
 		Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: op.UserID, Username: op.Username},
-		Request: gatewayapi.RequestMeta{ClientIP: op.ClientIP}, Details: details,
+		Request: op.AttributedMeta(gatewayapi.RequestMeta{ClientIP: op.ClientIP}), Details: details,
 	}); err != nil {
 		return fmt.Errorf("稽核留痕失敗: %w", err)
 	}
@@ -191,13 +202,17 @@ func (o *ProtectedAccountOps) gateAndRecord(tx *gorm.DB, op Operator, targetID u
 	return func() error { return o.Record(tx, op, targetID, action) }, nil
 }
 
-// gateLifecycle 停用、刪除與啟用帳號的關卡：op 為 nil 是無操作者的系統路徑（閒置自動停用），不經關卡；
-// 帶操作者時持保護角色的目標只有超管能處置。這三類操作不產生系統安全管理員操作事件。
+// gateLifecycle 停用、刪除與啟用帳號的關卡：系統操作者（systemOperator，只由受列管的系統專用入口建立）
+// 不經關卡；請求操作者時持保護角色的目標只有超管能處置；nil 一律拒絕（不把空操作者當成系統）。
+// 這三類操作不產生系統安全管理員操作事件。
 //
 // 呼叫端 SHALL 已持目標的使用者憑證鎖並在寫入交易內呼叫：判定讀的是鎖內的現行角色，而所有
 // 會改變該使用者有效角色集的寫入都持同一把鎖，判定與寫入之間不會有角色變動插隊。
 func (s *UserService) gateLifecycle(db *gorm.DB, op *Operator, targetID uint, action AccountOperation) error {
 	if op == nil {
+		return ErrProtectedAccountOperation
+	}
+	if op.IsSystem() {
 		return nil
 	}
 	_, err := accountOpsOrDefault(s.acctOps).Gate(db, *op, targetID, action)
@@ -234,9 +249,24 @@ func (s *AuthService) AdminDisableMFABy(op Operator, targetUserID uint) error {
 		if user.Kind == model.KindAgent {
 			return ErrAgentHumanOnly
 		}
+		// 本人沒有啟用兩步驟驗證時，清除不是實際變更
+		enrolled := user.TOTPEnabled || user.TOTPSecretEnc != ""
+		if err := apiTokenSelfChange(op, targetUserID, enrolled); err != nil {
+			return err
+		}
+		tokenSelf := op.ViaAPIToken() && targetUserID == op.UserID
+		if tokenSelf {
+			if h := loadLockOrderHook(); h != nil {
+				h("mfa_disable_token_self_checked", tx, targetUserID)
+			}
+		}
 		record, err := ops.gateAndRecord(tx, op, targetUserID, AccountOpMFADisabled)
 		if err != nil {
 			return err
+		}
+		if tokenSelf && !enrolled {
+			// 不是實際變更就不寫入：清除語句會把讀取之後才完成的兩步驟驗證註冊一併清掉
+			return record()
 		}
 		if err := tx.Model(&model.User{}).Where("id = ?", targetUserID).
 			Updates(map[string]interface{}{"totp_secret_enc": "", "totp_enabled": false}).Error; err != nil {

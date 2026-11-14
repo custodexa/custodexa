@@ -105,7 +105,7 @@ func (e *revocationEnv) bind(t *testing.T, userID, roleID uint) {
 // customViewer 建一個持錄影檢視權（audit:view）的自訂角色並指派給使用者，回傳角色。
 func (e *revocationEnv) customViewer(t *testing.T, name string, userID uint) *identity.RoleDefinition {
 	t.Helper()
-	def, err := e.roles.Create(context.Background(), e.adminID, identity.RoleInput{Name: name, Permissions: []string{string(authz.PermAuditView), string(authz.PermSessionView)}})
+	def, err := e.roles.Create(roleWriterSession(e.adminID), e.adminID, identity.RoleInput{Name: name, Permissions: []string{string(authz.PermAuditView), string(authz.PermSessionView)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func (e *revocationEnv) revokeView(t *testing.T, def *identity.RoleDefinition) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.roles.Update(context.Background(), e.adminID, def.ID, cur.DefinitionVersion,
+	if _, err := e.roles.Update(roleWriterSession(e.adminID), e.adminID, def.ID, cur.DefinitionVersion,
 		identity.RoleInput{Name: cur.Name, Permissions: []string{string(authz.PermSessionView)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestRecordingTokenActiveRevocation(t *testing.T) {
 			t.Fatal(err)
 		}
 		bump := func(name string) {
-			if _, err := e.roles.Create(context.Background(), e.adminID, identity.RoleInput{Name: name, Permissions: []string{string(authz.PermSessionView)}}); err != nil {
+			if _, err := e.roles.Create(roleWriterSession(e.adminID), e.adminID, identity.RoleInput{Name: name, Permissions: []string{string(authz.PermSessionView)}}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -460,7 +460,7 @@ func TestRecordingTokenActiveRevocation(t *testing.T) {
 		e.mgr.decide = func(*gorm.DB, uint, authz.TokenFacts) (authz.Decision, error) {
 			return authz.Decision{}, errors.New("注入資料庫讀取失敗")
 		}
-		if _, err := e.roles.Create(context.Background(), e.adminID, identity.RoleInput{Name: "rev-bump-g", Permissions: []string{string(authz.PermSessionView)}}); err != nil {
+		if _, err := e.roles.Create(roleWriterSession(e.adminID), e.adminID, identity.RoleInput{Name: "rev-bump-g", Permissions: []string{string(authz.PermSessionView)}}); err != nil {
 			t.Fatal(err)
 		}
 		if code := e.stream(t, tok); code != http.StatusUnauthorized {
@@ -534,7 +534,7 @@ func TestRecordingTokenActiveRevocation(t *testing.T) {
 		e.mgr.hooks.afterVersionRead = func() {
 			done := make(chan struct{})
 			go func() {
-				_, _ = e.roles.Create(context.Background(), e.adminID, identity.RoleInput{Name: "rev-bump-j", Permissions: []string{string(authz.PermSessionView)}})
+				_, _ = e.roles.Create(roleWriterSession(e.adminID), e.adminID, identity.RoleInput{Name: "rev-bump-j", Permissions: []string{string(authz.PermSessionView)}})
 				close(done)
 			}()
 			select {
@@ -738,3 +738,10 @@ func TestRecordingTokenActiveRevocation(t *testing.T) {
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func bytesContains(b []byte, sub string) bool { return strings.Contains(string(b), sub) }
+
+// roleWriterSession 角色定義寫入的請求脈絡：人類工作階段標示加該帳號的請求主體（寫入交易內以帳號當下的指派重解）。
+// 角色定義寫入沒有系統路徑，缺請求主體一律拒絕。
+func roleWriterSession(userID uint) context.Context {
+	p := authz.NewPrincipal(userID, authz.TokenFacts{SubjectKind: model.KindHuman}, nil)
+	return authz.ContextWithPrincipal(model.WithRequestCredential(context.Background(), model.RequestCredentialHumanSession), p)
+}

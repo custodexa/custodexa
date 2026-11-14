@@ -36,6 +36,8 @@ func newRoleWriteHarness(t *testing.T, h *api.RoleDefinitionHandler) *roleWriteH
 			id, err := strconv.ParseUint(v, 10, 32)
 			if err == nil {
 				c.Set("userID", uint(id))
+				// 角色定義寫入要求請求主體（與認證中介層放入的人類工作階段同形）
+				c.Request = c.Request.WithContext(roleWriterSession(c.Request.Context(), uint(id)))
 			}
 		}
 		c.Next()

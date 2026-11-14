@@ -165,7 +165,7 @@ func lingeringBackends(admin *gorm.DB) string {
 }
 
 func (e *lockOrderEnv) op() Operator {
-	return Operator{UserID: e.root, Username: "lo-root", ClientIP: "127.0.0.1"}
+	return Operator{Principal: testSessionPrincipal(e.root), UserID: e.root, Username: "lo-root", ClientIP: "127.0.0.1"}
 }
 
 // lockStop 一個停點：交易走到時回報自己的 backend pid，然後等待放行。
@@ -686,7 +686,7 @@ func runM1(t *testing.T) {
 			}},
 			b: lockActor{name: "transfer", stop: stops["owner_transfer_after_guard"], app: e.appB, start: func() error {
 				no := e.newOwner
-				_, _, err := e.users.Update(e.agent, &UpdateUserRequest{OwnerUserID: &no})
+				_, _, err := e.users.Update(Operator{}, e.agent, &UpdateUserRequest{OwnerUserID: &no})
 				return err
 			}},
 			plans: map[string]cyclePlan{

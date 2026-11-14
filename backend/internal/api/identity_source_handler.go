@@ -200,7 +200,8 @@ func (h *IdentitySourceHandler) UpdateExternalGroupNote(c *gin.Context) {
 func currentMappingActor(c *gin.Context) identity.GroupRoleMappingActor {
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	return identity.GroupRoleMappingActor{ID: userID, Name: username, IP: sourceip.Of(c)}
+	return identity.GroupRoleMappingActor{ID: userID, Name: username, IP: sourceip.Of(c),
+		Principal: middleware.PrincipalFrom(c), APIToken: middleware.APITokenRefOf(c)}
 }
 
 // List 合併列表（目錄至多一列，其餘為提供者）

@@ -78,7 +78,7 @@ func (e *roleDefEnv) update(t *testing.T, d *RoleDefinition, name string, perms 
 	t.Helper()
 	cur, err := e.svc.GetDefinition(context.Background(), d.ID)
 	require.NoError(t, err)
-	return e.svc.Update(context.Background(), e.admin, d.ID, cur.DefinitionVersion, RoleInput{Name: name, Description: cur.Description, Permissions: perms})
+	return e.svc.Update(asSession(context.Background(), e.admin), e.admin, d.ID, cur.DefinitionVersion, RoleInput{Name: name, Description: cur.Description, Permissions: perms})
 }
 
 // updateWithDescription 同 update，但說明改成給定值。
@@ -86,7 +86,7 @@ func (e *roleDefEnv) updateWithDescription(t *testing.T, d *RoleDefinition, name
 	t.Helper()
 	cur, err := e.svc.GetDefinition(context.Background(), d.ID)
 	require.NoError(t, err)
-	return e.svc.Update(context.Background(), e.admin, d.ID, cur.DefinitionVersion, RoleInput{Name: name, Description: desc, Permissions: perms})
+	return e.svc.Update(asSession(context.Background(), e.admin), e.admin, d.ID, cur.DefinitionVersion, RoleInput{Name: name, Description: desc, Permissions: perms})
 }
 
 func (e *roleDefEnv) alertRows(t *testing.T) int64 {

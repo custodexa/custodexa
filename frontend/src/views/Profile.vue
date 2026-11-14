@@ -396,6 +396,12 @@
           </template>
         </template>
       </div>
+
+      <!-- API token：全寬放在最下方，與密碼、兩步驟驗證同屬「本人的登入與存取設定」 -->
+      <ApiTokenSection
+        class="profile-wide"
+        :account="account"
+      />
     </div>
   </div>
 </template>
@@ -405,6 +411,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import MfaQrCode from '@/components/MfaQrCode.vue'
+import ApiTokenSection from '@/components/api-token/ApiTokenSection.vue'
 import { roleLabel } from '@/constants/roles'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
@@ -742,6 +749,10 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: var(--ot-space-md);
   align-items: start;
+}
+
+.profile-wide {
+  grid-column: 1 / -1;
 }
 
 .profile-card {

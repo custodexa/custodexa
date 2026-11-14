@@ -107,7 +107,7 @@ func (s *ReleaseGuidanceService) Dismiss(op Operator, version string) error {
 			ResourceID: &id,
 			Status:     string(model.StatusSuccess),
 			Actor:      gatewayapi.Actor{UserID: op.UserID, Username: op.Username},
-			Request:    gatewayapi.RequestMeta{ClientIP: op.ClientIP},
+			Request:    op.AttributedMeta(gatewayapi.RequestMeta{ClientIP: op.ClientIP}),
 			Details:    string(payload),
 		}); err != nil {
 			return fmt.Errorf("寫入版本說明審計失敗: %w", err)

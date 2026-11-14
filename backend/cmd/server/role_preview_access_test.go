@@ -206,7 +206,7 @@ func TestRolePreviewAccess(t *testing.T) {
 	super := env.subjects["S01"].UserID
 
 	mkRole := func(name string, perms ...string) *identity.RoleDefinition {
-		d, err := defs.Create(ctx, super, identity.RoleInput{Name: name, Permissions: perms})
+		d, err := defs.Create(roleWriterSession(ctx, super), super, identity.RoleInput{Name: name, Permissions: perms})
 		require.NoError(t, err)
 		return d
 	}
@@ -332,7 +332,7 @@ func TestRolePreviewAccess(t *testing.T) {
 
 	t.Run("不存在與已刪除角色的回應與單筆讀取逐位元組相同；非數字 ID 回 VALIDATION_INVALID_ID", func(t *testing.T) {
 		gone := mkRole("pv-gone", "asset:view")
-		require.NoError(t, defs.Delete(ctx, super, gone.ID, gone.DefinitionVersion))
+		require.NoError(t, defs.Delete(roleWriterSession(ctx, super), super, gone.ID, gone.DefinitionVersion))
 		for _, id := range []any{999999, gone.ID} {
 			pc, pb := do(idaTok, "GET", previewPath(id), nil)
 			gc, gb := do(idaTok, "GET", fmt.Sprintf("/api/v1/role-definitions/%v", id), nil)
@@ -364,7 +364,7 @@ func TestRolePreviewAccess(t *testing.T) {
 
 	t.Run("無寫入：五個分支的寫入計數為 0、全部資料表內容與權限版本不變", func(t *testing.T) {
 		gone := mkRole("pv-gone2", "asset:view")
-		require.NoError(t, defs.Delete(ctx, super, gone.ID, gone.DefinitionVersion))
+		require.NoError(t, defs.Delete(roleWriterSession(ctx, super), super, gone.ID, gone.DefinitionVersion))
 		branches := []struct {
 			name  string
 			tok   string

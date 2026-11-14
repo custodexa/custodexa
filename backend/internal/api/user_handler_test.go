@@ -45,7 +45,7 @@ func (m *MockUserService) Create(req *identity.CreateUserRequest) (*model.User, 
 	return args.Get(0).(*model.User), args.Error(1)
 }
 
-func (m *MockUserService) Update(id uint, req *identity.UpdateUserRequest) (*model.User, map[string]string, error) {
+func (m *MockUserService) Update(_ identity.Operator, id uint, req *identity.UpdateUserRequest) (*model.User, map[string]string, error) {
 	args := m.Called(id, req)
 	if args.Get(0) == nil {
 		return nil, nil, args.Error(2)

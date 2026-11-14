@@ -238,6 +238,8 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		return
 	}
 	switch {
+	case errors.Is(err, asset.ErrAPITokenCredentialReference):
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAPITokenCredentialReferenceForbidden, nil)
 	case errors.Is(err, asset.ErrAssetNotFound):
 		middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)
 	case errors.Is(err, asset.ErrFieldCapabilityDenied),
@@ -1029,13 +1031,13 @@ func (h *AssetHandler) auditK8sFile(c *gin.Context, userID, assetID uint, action
 		AssetID: &aid,
 		Status:  string(model.StatusSuccess),
 		Actor:   gatewayapi.Actor{UserID: userID, Username: username},
-		Request: gatewayapi.RequestMeta{
+		Request: middleware.AttributeAuditMeta(c, gatewayapi.RequestMeta{
 			Method:     c.Request.Method,
 			Path:       c.FullPath(),
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusOK,
 			Body:       detail,
-		},
+		}),
 	})
 }
 
@@ -1056,13 +1058,13 @@ func (h *AssetHandler) auditK8sFileDenied(c *gin.Context, userID, assetID uint, 
 		AssetID: &aid,
 		Status:  string(model.StatusDenied),
 		Actor:   gatewayapi.Actor{UserID: userID, Username: username},
-		Request: gatewayapi.RequestMeta{
+		Request: middleware.AttributeAuditMeta(c, gatewayapi.RequestMeta{
 			Method:     c.Request.Method,
 			Path:       c.FullPath(),
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusForbidden,
 			Body:       detail,
-		},
+		}),
 	})
 }
 

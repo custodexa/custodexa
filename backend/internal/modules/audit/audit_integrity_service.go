@@ -121,17 +121,21 @@ type integrityPayload struct {
 	// 既有已蓋章列不會集體誤判為竄改；有值的列則納入涵蓋，把「事件被改掛到
 	// 另一台資產」納入逐列偵測——資產樞紐的正確性正是靠這個鍵，不涵蓋等於
 	// 樞紐的主鍵無防護
-	AssetID     *uint  `json:"asset_id,omitempty"`
-	Status      string `json:"status"`
-	UserID      uint   `json:"user_id"`
-	Username    string `json:"username"`
-	ClientIP    string `json:"client_ip"`
-	Method      string `json:"method"`
-	Path        string `json:"path"`
-	ErrorMsg    string `json:"error_msg"`
-	Details     string `json:"details"`
-	RequestBody string `json:"request_body"`
-	RequestID   string `json:"request_id"`
+	AssetID *uint `json:"asset_id,omitempty"`
+	// APITokenID、APITokenName 經 API token 認證的列的 token 識別與名稱快照。同樣以 omitempty 納入：
+	// 兩欄為空的列（既有列與親自操作的列）鍵不出現，涵蓋內容位元組不變；有值的列被改值或清空即重算不符
+	APITokenID   *uint  `json:"api_token_id,omitempty"`
+	APITokenName string `json:"api_token_name,omitempty"`
+	Status       string `json:"status"`
+	UserID       uint   `json:"user_id"`
+	Username     string `json:"username"`
+	ClientIP     string `json:"client_ip"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	ErrorMsg     string `json:"error_msg"`
+	Details      string `json:"details"`
+	RequestBody  string `json:"request_body"`
+	RequestID    string `json:"request_id"`
 }
 
 // ComputeHMAC 依列的 key_version 取鑰計算完整性驗證碼（hex）；
@@ -162,21 +166,23 @@ func (s *AuditIntegrityService) ComputeHMAC(l *model.AuditLog) (result string) {
 
 func (s *AuditIntegrityService) computeWith(key []byte, l *model.AuditLog) string {
 	payload, err := json.Marshal(integrityPayload{
-		CreatedAtUs: l.CreatedAt.UnixMicro(),
-		Action:      string(l.Action),
-		Resource:    string(l.Resource),
-		ResourceID:  l.ResourceID,
-		AssetID:     l.AssetID,
-		Status:      string(l.Status),
-		UserID:      l.UserID,
-		Username:    l.Username,
-		ClientIP:    l.ClientIP,
-		Method:      l.Method,
-		Path:        l.Path,
-		ErrorMsg:    l.ErrorMsg,
-		Details:     l.Details,
-		RequestBody: l.RequestBody,
-		RequestID:   l.RequestID,
+		CreatedAtUs:  l.CreatedAt.UnixMicro(),
+		Action:       string(l.Action),
+		Resource:     string(l.Resource),
+		ResourceID:   l.ResourceID,
+		AssetID:      l.AssetID,
+		APITokenID:   l.APITokenID,
+		APITokenName: derefIntegrityString(l.APITokenName),
+		Status:       string(l.Status),
+		UserID:       l.UserID,
+		Username:     l.Username,
+		ClientIP:     l.ClientIP,
+		Method:       l.Method,
+		Path:         l.Path,
+		ErrorMsg:     l.ErrorMsg,
+		Details:      l.Details,
+		RequestBody:  l.RequestBody,
+		RequestID:    l.RequestID,
 	})
 	if err != nil {
 		return ""
@@ -184,6 +190,14 @@ func (s *AuditIntegrityService) computeWith(key []byte, l *model.AuditLog) strin
 	mac := hmac.New(sha256.New, key)
 	mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// derefIntegrityString 可為 NULL 的字串欄在涵蓋內容中的值：NULL 與空字串同樣不出現。
+func derefIntegrityString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // Stamp 為一批待寫入列填 HMAC（以現行蓋章鑰，並記 key_version）

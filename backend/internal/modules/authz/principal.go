@@ -22,6 +22,60 @@ type TokenFacts struct {
 	SubjectKind string // model.KindHuman／model.KindAgent；空值視為 human
 	AuthMethod  string
 	CredEpoch   int
+	// RoleFilter 角色限定：nil＝不限定（行為與未帶此欄完全相同）；非 nil 時只保留角色在集合內的指派
+	// （直接與經群組皆同），內建身分與能力只由保留下來的指派算出，過濾後沒有指派即沒有任何能力，
+	// 不套用零指派的相容規則。放在事實內而非主體上，是為了讓以「編號＋事實」重解的路徑一併帶上。
+	RoleFilter *RoleFilter
+}
+
+// RoleFilter 不可變的角色識別集合（以角色識別為準，不以名稱）。零值與空集合都表示「限定為無」。
+type RoleFilter struct {
+	ids map[uint]struct{}
+}
+
+// NewRoleFilter 以角色識別建立限定；ids 為空時回非 nil 的空集合（限定為無，不是不限定）。
+func NewRoleFilter(ids []uint) *RoleFilter {
+	f := &RoleFilter{ids: make(map[uint]struct{}, len(ids))}
+	for _, id := range ids {
+		f.ids[id] = struct{}{}
+	}
+	return f
+}
+
+// Allows 角色是否在限定內；nil 限定放行一切。
+func (f *RoleFilter) Allows(roleID uint) bool {
+	if f == nil {
+		return true
+	}
+	_, ok := f.ids[roleID]
+	return ok
+}
+
+// RoleIDs 限定內的角色識別（排序副本）；nil 限定回 nil。
+func (f *RoleFilter) RoleIDs() []uint {
+	if f == nil {
+		return nil
+	}
+	out := make([]uint, 0, len(f.ids))
+	for id := range f.ids {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// filterAssignments 依限定保留指派；nil 限定原樣回傳。
+func filterAssignments(f *RoleFilter, assignments []Assignment) []Assignment {
+	if f == nil {
+		return assignments
+	}
+	out := make([]Assignment, 0, len(assignments))
+	for _, a := range assignments {
+		if f.Allows(a.RoleID) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // Assignment 一筆有效指派（角色已刪除者不會出現）。
@@ -87,6 +141,9 @@ func NewPrincipal(userID uint, facts TokenFacts, assignments []Assignment) *Prin
 
 // NewPrincipalOn 以指定目錄計算有效能力；NewPrincipal 即正式目錄版。
 func NewPrincipalOn(cat Catalogue, userID uint, facts TokenFacts, assignments []Assignment) *Principal {
+	assignments = filterAssignments(facts.RoleFilter, assignments)
+	// 限定後沒有任何指派：沒有能力與內建身分，不套用下方給零指派帳號的相容範本
+	restrictedEmpty := facts.RoleFilter != nil && len(assignments) == 0
 	p := &Principal{UserID: userID, Facts: facts, Assignments: assignments, cat: cat,
 		builtins: map[string]bool{}, caps: map[Permission]bool{}, srcs: map[Permission][]int{}}
 	if facts.SubjectKind != model.KindAgent { // agent 不因角色列取得任何內建身分（含超管、審核者）
@@ -97,6 +154,8 @@ func NewPrincipalOn(cat Catalogue, userID uint, facts TokenFacts, assignments []
 		}
 	}
 	switch {
+	case restrictedEmpty:
+		p.legacyRole = LegacyRoleNone
 	case facts.SubjectKind == model.KindAgent:
 		// agent 主體：能力固定為一般使用者範本（method＋path allowlist 由既有中介層處理），
 		// 不受其角色列影響。

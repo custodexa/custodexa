@@ -7,7 +7,7 @@
 
 ## 1. 驗證一律在 docker-compose 內
 
-本專案的測試、build、lint 全部在容器內執行；docker 未啟動時不改 code。
+本專案的測試、build、lint 全部在容器內執行。
 開發版 compose（`.env` 設 `COMPOSE_FILE=docker-compose.dev.yml` 後，
 日常指令不帶 `-f` 即指向它）含熱重載與全部測試靶機。
 
@@ -35,7 +35,7 @@ docker compose exec -T frontend npm run lint
   `docker compose exec -T backend sh -c "strings /app/tmp/main | grep <新函式名>"`。
 - **改前端後看不到效果：`docker compose up -d --force-recreate frontend`**。
   macOS bind-mount 的 fsnotify 不可靠，Vite HMR 可能不觸發；
-  **勿用 `restart frontend`**（會撞 bind-mount race 導致 `/app/package.json` ENOENT 崩潰）。
+  `restart frontend` 會撞 bind-mount race 導致 `/app/package.json` ENOENT 崩潰。
   驗證 Vite 真的 serve 新碼：`curl -s localhost:3000/src/components/X.vue | grep <新符號>`。
 - **改 `.env` 或 compose 環境變數必須 `up -d --force-recreate`**：
   `restart` 不重載 env（症狀：加了變數仍報未設定）。
@@ -44,24 +44,22 @@ docker compose exec -T frontend npm run lint
   若見 `exec: "go": executable file not found`，是容器吃錯 image，force-recreate 即復原。
 - **單檔 bind mount 綁 inode**：host 端以 atomic-rename 方式改寫被單檔掛載的檔案後，
   容器內可能讀到「帶部分新內容、缺尾端數行」的中間快照——症狀是「殘檔」而非「舊檔」。
-  確診法＝容器內外 `md5sum` ＋行數比對；解法＝force-recreate 該容器，
-  **不要去改程式碼找 bug**。
+  確診法＝容器內外 `md5sum` ＋行數比對；解法＝force-recreate 該容器，程式碼本身沒有問題。
 - **改 `vite.config.js` 後必須重啟 frontend**（HMR 不涵蓋它自己）。
 - **新增 WebSocket 端點時**，`frontend/vite.config.js` 的 proxy 要加對應 `ws: true` 條目。
 - **測試靶機認證失敗（SSH 502）多半是密碼漂移**：靶機容器重建後，DB 內測試資產密碼
   與 compose 設定值對不上。解法：`PUT /api/v1/assets/{id}` 重設密碼。
   注意 `last_test_status=reachable` 只代表 TCP 通，不代表認證通。
-- **驗證改密功能勿用共用測試資產**：改密計劃「立即執行」是真輪換，會把靶機帳號
+- **驗證改密功能會動到共用測試資產**：改密計劃「立即執行」是真輪換，會把靶機帳號
   密碼真的改掉，導致依賴固定密碼的整合測試失敗。測完立即還原：
   `docker compose exec -T ssh-test sh -c "echo 'testuser:testpass123' | chpasswd"`。
 - **多帳號功能用 `ssh-multi-test` 靶機**（rootful sshd，root＋testuser 兩帳號可切換）；
   `ssh-test` 是 rootless、**只支援 testuser**，第二帳號建線必失敗
   （channel open error）——這是靶機限制，不是產品 bug。
-- **跑前端測試前先停十個協議靶機**：它們是常駐固定成本，而前端測試一個都用不到。
-  指令與判準見下方「當它真的是負載：判準與清場程序」。同理，任何重建映像的操作
-  （`docker compose build`、`up -d --build`）之後不要立刻跑測試，先看 `uptime`。
+- **跑前端測試前先停測試靶機**：它們是常駐固定成本，而前端測試一個都用不到。
+  指令與判準見下方「當它真的是負載：判準與清場程序」。
 - **整合測試突然全紅、錯誤是泛用的 `FAILURE`／`permission denied`／寫入失敗時，
-  第一步查磁碟**，不要先讀程式碼：`docker compose exec <靶機> df -h /`、`docker system df`。
+  第一步查磁碟**：`docker compose exec <靶機> df -h /`、`docker system df`。
   磁碟耗盡會偽裝成泛用錯誤——`docker builder prune -af` 清出空間後，
   往往不改任何一行程式碼即自行轉綠。
 
@@ -98,11 +96,8 @@ docker compose exec backend go test ./cmd/server -run '^TestRoutesMatchGolden$' 
 golden 的 diff 須在 commit 中**逐條審視**——它是快照而非不可竄改基準，
 盲目 `-update` 等於讓守衛替錯誤背書。`docs/API_SPEC.md` 的散文章節仍為人工維護。
 
-**驗「零 diff」要比 SHA256，不是只看 PASS**：測試 PASS 只代表這次跑的時候一致，
-`-update` 會讓 golden 跟著改。正確口徑＝跑完全量測試後**重新雜湊**
-`backend/cmd/server/testdata/route-golden/` 下的 4 個 golden 檔
-（`dev-auditon`／`dev-auditoff`／`release-auditon`／`release-auditoff`）
-與 `docs/API_SPEC.md` 的索引區塊，逐檔與基線比對。
+測試 PASS 只代表這次跑的時候一致，`-update` 會讓 golden 跟著改；要確認路由沒變，
+看 `backend/cmd/server/testdata/route-golden/` 與 `docs/API_SPEC.md` 索引區塊的 `git diff`。
 
 ## 3. Go 測試陷阱
 
@@ -126,8 +121,7 @@ golden 的 diff 須在 commit 中**逐條審視**——它是快照而非不可�
 - **套件級鎖 ＋ `GOMAXPROCS=1` 會製造「整包恆紅」**：測試以 `defer close(hold)`
   收尾但不等持鎖 goroutine 執行 `defer Unlock()` 時，單核排程下後續每格取鎖皆失敗。
   修法＝加 `released` channel，離場前等 goroutine 確實返回。
-  **本專案的驗收口徑是以 `GOMAXPROCS=1 -p 1` 跑全量**（單核序列化最容易逼出這類缺陷），
-  故此型缺陷會直接癱瘓整輪驗收，不是偶發。
+  以 `GOMAXPROCS=1 -p 1` 單核序列化跑時必現，多核下則表現為偶發。
 - **整合測試的 gating 用 `internal/testgate`**（單一入口）：`TEST_PG_DSN`／
   `TEST_KMS_ENDPOINT` 未設時 `t.Skip`；**設 `REQUIRE_INTEGRATION=1` 可讓 skip 轉 fail**。
   本地驗收「由資料庫層保證」類規格時必須顯式跑 gated 測試。
@@ -179,7 +173,7 @@ vitest 的偶發 `Test timed out` **極易被誤判為本機並行負載**——
 否則會拿錯藥：元件沒卸載的症狀是**單檔內耗時單調上升**，負載的症狀是
 **多個不相干的檔一起紅、且各自單獨跑全綠**。
 
-**判準先看這兩個數字，不要先讀程式碼**：
+**判準是這兩個數字**：
 
 ```bash
 uptime                      # load average 對照核心數（sysctl -n hw.ncpu）
@@ -191,13 +185,13 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 
 **負載有三個來源，前兩個是自己製造的**：
 
-- **測試靶機常駐**。開發版編排檔有十個協議靶機（dex／k3s／ldap／localstack／
-  mssql／mysql／rdp／ssh／ssh-multi／vnc），`up -d` 會全部帶起來並**一直開著**。
+- **測試靶機常駐**。開發版編排檔的測試靶機（dex／fake-gcs／k3s／ldap／localstack／
+  mssql／mysql／postgres-test／rdp／ssh／ssh-multi／vault／vnc），`up -d` 會全部帶起來並**一直開著**。
   前端測試是 happy-dom 單元測試，一個靶機都不需要。跑前端測試前先停：
 
   ```bash
-  docker compose stop dex k3s-test ldap-test localstack mssql-test \
-    mysql-test rdp-test ssh-multi-test ssh-test vnc-test
+  docker compose stop dex fake-gcs k3s-test ldap-test localstack mssql-test \
+    mysql-test postgres-test rdp-test ssh-multi-test ssh-test vault vnc-test
   ```
 
   只留 postgres／backend／frontend／guacd 四個。要跑協議整合測試時再個別起回來。
@@ -235,10 +229,10 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 
 - 元件在 module 層讀全域物件（如 `window.Guacamole`）時，
   mock 必須用 `vi.hoisted()` 在 import 前注入；`vi.mock` 工廠回傳 class 時
-  不可用箭頭函數（不能 new）。
-- locale 檔對齊測試要**讀磁碟**，不可 import 物件（會被 `mergeLocaleMessage` 污染）；
+  要用一般函式（箭頭函數不能 new）。
+- locale 檔對齊測試要**讀磁碟**（import 進來的物件會被 `mergeLocaleMessage` 污染）；
   happy-dom 的 `navigator` 預設 en-US，初始語言會漂移，
-  在 `beforeEach`／`afterEach` 重設。完備性測試的 id 清單由 exports 導出，勿手抄。
+  在 `beforeEach`／`afterEach` 重設。完備性測試的 id 清單由 exports 導出。
 - vitest fake timers 預設不假 `performance.now`——量 RTT 的測試可混用
   fake setInterval ＋真 performance。
 
@@ -289,7 +283,7 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 13. **gated 測試的 skip 不算驗過**：見第 3 節的 `REQUIRE_INTEGRATION`。
 14. **歸零反轉**：「掃到 0 個違規即紅」的 tripwire 在大掃除歸零後語義反轉。
     偵測器健康改由**樣本正向控制**保證（fixture 掃不出必紅），
-    不要拿生產碼殘量當偵測器健康指標。
+    生產碼殘量歸零後就不再反映偵測器是否健康。
 15. **file:line allowlist 的移位假綠**：行號漂移使豁免落到別的 sink 上。
     解法＝`檔名 + AST 節點經 go/printer 正規化後 hash` 的 multiset。
 16. **Go 具名字串型別擋不住字面量**：untyped 常數隱式轉換不產生轉換節點，
@@ -366,9 +360,8 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 （授權繞過，安全紅線）。故改以「實跑段 2 後反射檢查介面欄位非 nil」把關：
 插入一個回 `nil` 的中性名稱 helper 並保留原呼叫點時，語法掃描照綠而該 oracle 轉紅。
 
-**這張表本身就是交付物**：它讓「哪些守衛是相關失效」從隱性變成明寫。
-新增關鍵效果類別時 SHALL 同步加一列，並在「無名稱無關 oracle」時寫明
-後果與是否接受——不寫等於默認它有覆蓋。
+這張表讓「哪些守衛是相關失效」從隱性變成明寫。表內的檔案位置是撰寫當時的快照，
+引用前以程式碼現況為準。
 
 ## 6. 突變自檢（mutation self-check）的操作紀律
 
@@ -394,7 +387,7 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 - 收到針對「正在驗收中檔案」的自動化告警（安全掃描、CI、他人正在建立的基線）時，
   先 `grep MUTATION` 確認是否為暫時態再判真偽。
   判準：告警建議的修法若與既有修復方向一致，多半是掃到還原狀態。
-- **量測行為基線時不要並行跑其他全量測試**：基線會採到破壞態的結果，
+- **量測行為基線時並行跑其他全量測試會失真**：基線會採到破壞態的結果，
   且共用 docker 容器會造成過載，實測數字嚴重失真。
 - **e2e 不可退讓**：走真實 SSH／WebSocket 與 90s 級時序，超賣下紅字無法歸因。
 
@@ -423,18 +416,18 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 3. **每格必須配「無故障對照」**：三條回滾斷言在「查詢條件寫錯」「夾具沒建起業務列」
    「多點共用一格而第一個點先失敗使後續永不可達」時也全成立。
    對照組機械斷言：無故障時業務入口成功、業務列落到預期筆數、且確實抵達本格指定的稽核點。
-4. **為防呆自己加突變自檢**：把某格改成不觸及被測路徑，該格必須因防呆而紅。
+4. 安全紅線類（稽核、憑證、授權）的防呆再加一次突變自檢：把某格改成不觸及被測路徑，該格要因防呆而紅。
 5. **驗收 fault-injection 測試的唯一有效指標是：把生產碼的保護移除後該格會轉紅。**
    只跑「測試通過」不構成證據。
 6. **共享狀態才是平行化風險**（不是 Cleanup 被跳過）：每格自建 DB 句柄、
-   callback 成對註冊／解除、計數原子且綁定測試身分、**禁用 `t.Parallel`**、`-race` 驗過。
-   本專案以原始碼掃描機器化該禁令（含格數下限防自身縮水）。
+   callback 成對註冊／解除、計數原子且綁定測試身分、`-race` 驗過。
+   這類測試不用 `t.Parallel`，由原始碼掃描守衛把關（含格數下限防自身縮水）。
 7. **射程與盲區必須明載**：GORM Create callback 注入器看不見 `db.Exec` 原生 SQL、
    Update callback 路徑、另行 `gorm.Open` 的新句柄、非 GORM 寫入——
    已用三格邊界測試把盲區釘成**可見**而非隱形。措辭一律寫
    「**GORM callback 路徑上的**最終權威」，不得無條件稱「每個 fail-close 點的最終權威」。
-8. **同型不可折抵 runtime case**：「這幾點語法同型，一格代表就好」只證明當下的人工比對，
-   擋不住日後獨立漂移。每個 fail-close 點都要有自己的格。
+8. **同型折抵有代價**：「這幾點語法同型，一格代表就好」只證明當下的人工比對，
+   擋不住日後獨立漂移。安全紅線類（稽核、憑證、授權）的 fail-close 點各有自己的格；其餘依風險決定。
 9. 同型風險：mock 沒被呼叫、spy 計數為零、`t.Cleanup` 內的斷言因 panic 跳過、
    前置條件早退（nil 參數、feature flag 關閉、權限不足、空集合）。
 10. **既有的 fail-close backstop 不會自動涵蓋新加的 fail-close 點**：backstop 的
@@ -451,16 +444,11 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 - **單獨重跑穩定 ＝ 非本次改動引入**——這是初步排除口徑，不是結案。
 - **「單獨跑綠、整包跑紅」是共享狀態的訊號，不是計時問題的訊號**：
   先查 sqlite `:memory:` 連線池（第 3 節）與元件不卸載（第 4 節），
-  再考慮歸類 flaky。**一個看似合理的解釋（「本機負載」）會讓人停止追查**——
-  本專案有兩個長期「flaky」最後都查出確定性真因。
-- 判定「既有 flake、非我引入」的完整口徑（四條全過才成立）：
-  1. 敗檔單獨跑綠；
-  2. 失敗全為 timeout 而非斷言錯誤；
-  3. `git stash` 乾淨樹同口徑對照仍敗（**注意：同一棵工作樹上還有別人在動時禁用 stash，
-     改用 `git worktree add` 在副本上量**）；
-  4. 失敗檔與本次改動交集分析為空。
-- 診斷通則：先寫下「我的假設」與「什麼會推翻它」，挑**需要對端參與才會變化**的判準
-  （客戶端本地渲染的現象不能當存活證據），並先讀現成的 log。
+  再考慮歸類 flaky。本專案有兩個長期「flaky」最後都查出確定性真因。
+- 判定「既有 flake、非我引入」：敗檔單獨跑綠，且失敗檔與本次改動沒有交集。
+  失敗是斷言錯誤而非 timeout 時多半不是 flake。需要乾淨樹對照時用 `git worktree add` 在副本上量
+  （同一棵工作樹上還有別人在動時，`git stash` 會把對方的修改一併收走）。
+- 客戶端本地渲染的現象不能當對端存活的證據；判準要挑**需要對端參與才會變化**的。
 
 ## 9. e2e 煙霧測試
 
@@ -498,7 +486,7 @@ ADMIN_PASS='<現行 admin 密碼>' bash scripts/e2e_smoke.sh
 
 開發目錄以 Compose inline configs 掛載自訂 LDIF，先載入 OpenLDAP `memberof`
 overlay，再建立使用者與群組；`LDAP_GROUP` 只能建立單一共用群組，無法區分以下成員。
-修改資料後使用 `docker compose up -d --force-recreate ldap-test`，不要只 restart。
+修改資料後使用 `docker compose up -d --force-recreate ldap-test`（只 restart 不會套用）。
 
 | 靶機 | 帳號 | 開發密碼 | 群組屬性／宣告與預期值 |
 | --- | --- | --- | --- |
@@ -555,21 +543,18 @@ curl -s --resolve dex.localhost:5556:127.0.0.1 \
 
 ## 10. 覆蓋率與結果導向
 
-- 產品程式碼以 80% 覆蓋率為目標；實驗腳本、文檔、一次性工具不受此限。
+- 覆蓋率以持續整合的門檻為準，不另設數字目標；看的是關鍵行為有沒有被測到。實驗腳本、文檔、一次性工具不受此限。
 - TDD 採**結果導向**：測試必須存在且全綠、覆蓋關鍵行為；先測後寫的順序不強制。
 - **不自驗**：安全相關或宣稱「已修好」的改動，須由**未參與該改動的人** review，
   且 review 者自己跑測試／突變自檢並貼輸出。無證據的 PASS 視為未驗收；
   措辭上，驗過的說「已完成並驗證」，沒驗的只能說「已寫入，尚未驗證」。
-- **加測試／加守衛的判準有上限**，三條原則：
+- **加測試／加守衛的判準有上限**：
   1. 守衛擋的是「**正常開發／重構中會意外發生**的錯誤」（漏接一行注入、搬檔後守衛掃空、
      fail-close 被順手改成 log-and-continue），且用**最簡形式**；
      「**要刻意繞才會發生**的路徑」（指標間接賦值、改 import alias、自造同名結構繞過白名單）
      記為 backlog，不修。
-  2. **不做通用框架**：單一案例用單一檢查解決，不為「後續可能重複」預先建可擴充登記表
-     ——真的重複第三次再抽象。
-  3. **審查意見的處置分兩類**：誠實性問題（宣稱強度大於實際）立即改措辭；
-     守衛強化建議依上面兩條過濾，不照單全收。修完即收斂，
-     第三輪起須警惕「修訂本身在製造新問題」。
+  2. **審查意見的處置分兩類**：誠實性問題（宣稱強度大於實際）立即改措辭；
+     守衛強化建議依上一條過濾。
 
 ## 11. 搬檔／改 package 的三項必查
 
@@ -623,9 +608,7 @@ curl -s --resolve dex.localhost:5556:127.0.0.1 \
 **「搬包所需」不等於「匯出改名」。** 機械式大寫化會把原 private 的實作細節
 **永久固化成跨包 API**——檔案分開了，耦合面反而擴大且再也收不回。
 
-- 每次搬包三件事：(a) 逐一列出新增匯出符號及其**唯一消費者**；
-  (b) 優先窄 façade／消費者側宣告的介面／組裝根 adapter；
-  (c) 驗收時列出清單並說明每個匯出為何不可避免，同時列「刻意不匯出」的節流清單。
+- 每個新增的匯出符號都要說得出**唯一消費者**；優先窄 façade／消費者側宣告的介面／組裝根 adapter。
 - **不計入 budget**：既有已是匯出識別字的符號（只是跨了包界）、
   既有匯出符號的簽名加寬。
 - 量級供校準：一次搬包新增 12 個匯出，回溯發現 **3 個只被測試消費、1 個零消費者**；
@@ -638,7 +621,7 @@ Windows 本機帳號改密的 WinRM 傳輸層是自建的 NTLM 訊息層加密�
 **唯一的真機證據是持續整合環境的 Windows loopback 回歸**：在 Windows Server runner 上
 把 runner 自己同時當客戶端與目標機（`127.0.0.1`），以**產品的**執行器跑完整 Rotate＋Verify。
 發版驗收附該次執行記錄的連結。
-開發版編排檔不提供 Windows 靶機（Linux 主機跑不了 Windows 容器，§3 列的十個協議靶機沒有一個是 Windows），
+開發版編排檔不提供 Windows 靶機（Linux 主機跑不了 Windows 容器，§4 列的測試靶機沒有一個是 Windows），
 Windows 路徑的自動化證據只來自這個持續整合的單機回歸，本機只能建置、不能跑。
 
 ### 怎麼跑
@@ -700,7 +683,7 @@ Windows 路徑的自動化證據只來自這個持續整合的單機回歸，本
 
 「資訊性」＝失敗不擋整體結果，每輪照記在執行記錄，但不構成驗收。
 
-### 限制（未涵蓋，別拿它當證據）
+### 限制（未涵蓋）
 
 - https 5986 只驗自簽 listener：`insecure` 與 `ca` 兩模式跑完整改密＋驗證，`system` 模式只能觀察它拒絕自簽憑證。
   `system` 模式對機構 CA 簽發的憑證能否通過驗證需要真實憑證鏈，不在射程；probe step 逐段記錄兩個埠的交握狀態碼，

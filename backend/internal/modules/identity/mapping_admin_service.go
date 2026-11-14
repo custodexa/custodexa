@@ -214,7 +214,7 @@ func (s *IdentitySourceService) UpdateExternalGroupNote(kind string, sourceID, g
 		if err != nil {
 			return err
 		}
-		return port.WriteInTx(s.auditTx, tx, port.AuditEvent{Action: string(model.ActionUpdate), Resource: string(model.ResourceUserGroup), ResourceID: &groupID, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actor.ID, Username: actor.Name}, Request: gatewayapi.RequestMeta{ClientIP: actor.IP}, Details: string(details)})
+		return port.WriteInTx(s.auditTx, tx, port.AuditEvent{Action: string(model.ActionUpdate), Resource: string(model.ResourceUserGroup), ResourceID: &groupID, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actor.ID, Username: actor.Name}, Request: actor.requestMeta(), Details: string(details)})
 	})
 }
 

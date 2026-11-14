@@ -64,6 +64,8 @@ type NotificationChannelRequest struct {
 	ActorID   uint   `json:"-"`
 	ActorName string `json:"-"`
 	ActorIP   string `json:"-"`
+	// APIToken 該次請求經由的 API token（親自操作時為零值），供稽核歸因。
+	APIToken model.APITokenRef `json:"-"`
 }
 
 // ChannelInventoryProvider 的實作在 audit 側（環相依拆解）：介面由 policy
@@ -98,10 +100,12 @@ type ChannelActor struct {
 	ID   uint
 	Name string
 	IP   string
+	// APIToken 該次請求經由的 API token（親自操作時為零值），供稽核歸因。
+	APIToken model.APITokenRef
 }
 
 func (r *NotificationChannelRequest) actor() ChannelActor {
-	return ChannelActor{ID: r.ActorID, Name: r.ActorName, IP: r.ActorIP}
+	return ChannelActor{ID: r.ActorID, Name: r.ActorName, IP: r.ActorIP, APIToken: r.APIToken}
 }
 
 // SetAuditTxSink 注入交易內審計落地面（組裝根）。
@@ -335,7 +339,7 @@ func (s *NotificationChannelService) recordChannelChange(tx *gorm.DB, actor Chan
 		Resource:   string(model.ResourceNotifyChannel),
 		ResourceID: &id,
 		Status:     string(model.StatusSuccess),
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
+		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name),
 		Details:    string(raw),
 	}); err != nil {
 		return fmt.Errorf("通道變更審計留痕失敗: %w", err)

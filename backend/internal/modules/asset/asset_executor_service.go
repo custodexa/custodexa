@@ -226,6 +226,7 @@ func (s *AssetExecutorService) requireSourceCaps(ctx context.Context, db *gorm.D
 		r.Operation, r.Capabilities = CredOpCreate, []string{CredCapCreate}
 	case ExecutorSourceShared:
 		r.Operation, r.Capabilities, r.CredentialIDs = CredOpBind, []string{CredCapBind}, []uint{req.CredentialID}
+		r.AttachesExisting = true
 	case ExecutorSourceConvert:
 		r.Operation, r.Capabilities = CredOpUpdate, []string{CredCapUpdate}
 		if convertCredentialID != 0 {
@@ -309,7 +310,7 @@ func (s *AssetExecutorService) Set(ctx context.Context, assetID uint, req *SetEx
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.AssetAccount
-	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.authorizeTx(ctx, tx, assetID); err != nil {
 			return err
 		}
@@ -657,7 +658,7 @@ func (s *AssetExecutorService) Clear(ctx context.Context, assetID uint, expected
 		return err
 	}
 	userID, operator := model.UserFromContext(ctx)
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.authorizeTx(ctx, tx, assetID); err != nil {
 			return err
 		}

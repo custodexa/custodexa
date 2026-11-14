@@ -25,6 +25,14 @@ vi.mock('@/api/auth', () => ({
   updateProfileDisplayName: (...a) => updateProfileDisplayNameMock(...a),
 }))
 
+// API token 區塊另有專屬測試；此處給空清單，讓本檔只驗其他卡片
+vi.mock('@/api/apiTokens', () => ({
+  getMyApiTokens: vi.fn().mockResolvedValue({ data: [], eligibility: { can_create: false }, restore: {} }),
+  createMyApiToken: vi.fn(),
+  revokeMyApiToken: vi.fn(),
+  API_TOKEN_VERIFY_PATH: '/api/v1/api-tokens/verify',
+}))
+
 // happy-dom 無 canvas 2d context——mock qrcode 讓 MfaQrCode 渲染成功路徑可測
 const toCanvasMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('qrcode', () => ({

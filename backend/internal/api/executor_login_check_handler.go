@@ -71,7 +71,7 @@ func (h *ExecutorLoginCheckHandler) Run(c *gin.Context) {
 	}
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	res, err := h.svc.Run(c.Request.Context(), assetID, asset.InventoryActor{UserID: userID, Username: username, ClientIP: sourceip.Of(c)})
+	res, err := h.svc.Run(c.Request.Context(), assetID, asset.InventoryActor{UserID: userID, Username: username, ClientIP: sourceip.Of(c), APIToken: middleware.APITokenRefOf(c)})
 	if err != nil {
 		respondExecutorCheckError(c, err)
 		return

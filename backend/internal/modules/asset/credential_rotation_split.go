@@ -202,7 +202,7 @@ func (s *CredentialRotationService) startSplitRotation(ctx context.Context, cred
 
 	userID, operator := model.UserFromContext(ctx)
 	var out *model.CredentialRotation
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 第一個動作取拓撲序列化鎖，其後才取來源憑證列鎖（不新增資產列鎖）
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err
@@ -391,7 +391,7 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 		return err
 	}
 
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, member.AssetID); err != nil {
 			return err
 		}

@@ -27,6 +27,19 @@ type RequestMeta struct {
 	RequestID  string
 	// Body 已脫敏的請求內容（對應 model.AuditLog.RequestBody）。
 	Body string
+	// APITokenID、APITokenName 這次請求經由的 API token 識別與認證當下的名稱快照
+	// （對應 model.AuditLog 的同名兩欄）。親自操作的請求、系統與排程工作留零值。
+	APITokenID   *uint
+	APITokenName string
+}
+
+// WithAPIToken 回傳帶 API token 標示的複本；識別為零或名稱為空時原樣回傳。
+func (m RequestMeta) WithAPIToken(id uint, name string) RequestMeta {
+	if id == 0 || name == "" {
+		return m
+	}
+	m.APITokenID, m.APITokenName = &id, name
+	return m
 }
 
 // AuditEvent 是 audit_logs 一列的傳輸形狀，AsyncSink 與 TxSink 共用。

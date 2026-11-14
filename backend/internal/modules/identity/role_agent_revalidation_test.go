@@ -108,7 +108,7 @@ func newRevalEnv(t *testing.T, auditSink port.TxSink, alerts port.SystemAlertSin
 }
 
 func (e *revalEnv) op() Operator {
-	return Operator{UserID: e.admin, Username: "root", ClientIP: "127.0.0.1"}
+	return Operator{Principal: testSessionPrincipal(e.admin), UserID: e.admin, Username: "root", ClientIP: "127.0.0.1"}
 }
 
 func (e *revalEnv) mkAgent(t *testing.T, name string) uint {
@@ -253,7 +253,7 @@ func TestRoleUpdateAgentRevalidation(t *testing.T) {
 			dh0, gh0 := e.holdings(t)
 			a0 := e.auditCount(t)
 
-			_, err := e.svc.Update(ctx, e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
+			_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
 			require.Error(t, err, src)
 			assert.ErrorIs(t, err, ErrAgentRoleForbidden, src)
 			assert.Equal(t, AssignmentDenyReason(refErr), AssignmentDenyReason(err), src)
@@ -286,7 +286,7 @@ func TestRoleUpdateAgentRevalidation(t *testing.T) {
 		d := e.create(t, "human-only", "asset:view")
 		e.holdDirect(t, e.mkUser(t, "human"), d.ID, model.RoleSourceManual)
 		_, ver0 := e.roleState(t, d.ID)
-		up, err := e.svc.Update(ctx, e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
+		up, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
 		require.NoError(t, err)
 		assert.Equal(t, ver0+1, up.DefinitionVersion)
 		perms, ver := e.roleState(t, d.ID)
@@ -301,7 +301,7 @@ func TestRoleUpdateAgentRevalidation(t *testing.T) {
 		d := e.create(t, "agent-plain", "asset:view")
 		e.holdDirect(t, e.mkAgent(t, "ag-plain"), d.ID, model.RoleSourceManual)
 		_, ver0 := e.roleState(t, d.ID)
-		up, err := e.svc.Update(ctx, e.admin, d.ID, ver0, RoleInput{Name: d.Name + "-renamed", Description: "x", Permissions: []string{"asset:view"}})
+		up, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, ver0, RoleInput{Name: d.Name + "-renamed", Description: "x", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		assert.Equal(t, ver0+1, up.DefinitionVersion)
 		assert.Empty(t, e.deniedRows(t, d.ID))
@@ -315,7 +315,7 @@ func TestRoleUpdateAgentRevalidation(t *testing.T) {
 		e.holdDirect(t, e.mkAgent(t, "ag-tx"), d.ID, model.RoleSourceManual)
 		perms0, ver0 := e.roleState(t, d.ID)
 		e.events.fail = errors.New("injected event failure")
-		_, err := e.svc.Update(ctx, e.admin, d.ID, ver0, RoleInput{Name: d.Name + "-renamed", Description: "x", Permissions: []string{"asset:view"}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, ver0, RoleInput{Name: d.Name + "-renamed", Description: "x", Permissions: []string{"asset:view"}})
 		require.Error(t, err)
 		e.events.fail = nil
 		perms1, ver1 := e.roleState(t, d.ID)
@@ -331,7 +331,7 @@ func TestRoleUpdateAgentRevalidation(t *testing.T) {
 		ag := e.mkAgent(t, "ag-late")
 		before, ver0 := e.roleState(t, d.ID)
 		e.svc.afterCommitHook = func() { e.holdDirect(t, ag, d.ID, model.RoleSourceManual) }
-		_, err := e.svc.Update(ctx, e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
 		require.NoError(t, err)
 		after, _ := e.roleState(t, d.ID)
 
@@ -386,7 +386,7 @@ func TestRoleUpdateAgentRevalidation(t *testing.T) {
 		ag := e.mkAgent(t, "ag-alert-role")
 		_, ver0 := e.roleState(t, d.ID)
 		e.svc.afterCommitHook = func() { e.holdDirect(t, ag, d.ID, model.RoleSourceManual) }
-		_, err := e.svc.Update(ctx, e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, ver0, RoleInput{Name: d.Name, Permissions: []string{"asset:view", restricted}})
 		require.NoError(t, err)
 		perms, ver := e.roleState(t, d.ID)
 		assert.Equal(t, ver0+1, ver, "修改仍為已提交")

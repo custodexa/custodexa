@@ -97,7 +97,7 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 
 ## 5. 錄影與媒體存取的三條獨立路徑
 
-三條路徑各自獨立，勿依註解推斷「媒體走長效 JWT」：
+三條路徑各自獨立（程式碼註解的說法與下列不符時，以下列為準）：
 
 1. **WS 連線**：一次性 connect token，60s TTL、記憶體存放、解析即焚。
 2. **圖形錄影（RDP/VNC）**：Bearer header ＋一次抓取完整 Blob，不走 query 參數。
@@ -163,6 +163,8 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 
 - **LIKE 整詞比對必須跳脫並明寫 `ESCAPE '\'`**：SQLite 的 LIKE 預設沒有跳脫字元，
   缺了就是「測試綠、生產誤中」（`db_prod` 會誤中 `dbxprod`）。跳脫 `\`、`%`、`_` 三者。
+- **已發布版本的 schema 變更一律新增 migration**，不回頭改 baseline 或既有 migration 的 DDL：
+  既有部署的 `schema_migrations` 已記錄該版本而會跳過，欄位不存在卻沒有任何錯誤。
 - **欄位改 nullable 時，raw SQL 的 select 與 scan 目標同屬盤查面**：
   raw select 把 nullable 欄掃進非 nullable struct 會導致整頁 500。
   盤查不能只看 GORM model。
@@ -173,7 +175,7 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 - **GORM `Pluck` 的 dest 必須是 slice**：純量 dest 恆回
   `Scan called without calling Next`；若呼叫端是 fail-close 守門（讀不到即拒），
   就會演成「所有請求被拒」級事故，而單測仍全綠
-  （見 `docs/dev/testing.md` 守衛假綠章節形態十）。
+  （見 `docs/dev/testing.md` 守衛假綠章節形態 11）。
 
 ## 9. i18n 強制規範
 
@@ -237,7 +239,7 @@ vue-i18n 把 `@` 視為 linked message 起手（`@:key`／`@.modifier:key`）。
 
 - 前端枚舉的顯示中繼資料一律走 `frontend/src/constants/` 單一事實源，並附
   「值域硬拷後端（註記後端 file:line）＋完備性單測」。已有多組現成範例可循。
-- **勿在元件內手寫 option 陣列或本地 map**——後端新增枚舉值時不會有任何訊號。
+- 元件內手寫的 option 陣列或本地 map，在後端新增枚舉值時不會有任何訊號。
   完備性測試要鎖**後端全集**，不是鎖前端目前已映射的值。
 - 可指派角色一律走 `/roles` API，不硬編碼。
 - 動態枚舉的 i18n 用模板字串 `` $t(`prefix.${var}`) ``，不用字串拼接
@@ -249,8 +251,8 @@ vue-i18n 把 `@` 視為 linked message 起手（`@:key`／`@.modifier:key`）。
   解法 `:empty-values="[null, undefined]"`（EP 2.7+）。
 - **表格佈局首選「常見可視寬（1280px）內總寬收斂」**；`fixed="right"` 是
   溢寬不可免時的備案——fixed 欄在溢寬時會**蓋住**相鄰資料欄，比「藏在卷軸外」更糟。
-  正解＝欄寬收斂＋次要欄移入展開列，讓表格根本不橫捲；真收不下才用 fixed，
-  且須以 `getBoundingClientRect` ＋`elementFromPoint` 驗證目標寬度下每欄可見。
+  正解＝欄寬收斂＋次要欄移入展開列，讓表格根本不橫捲；真收不下才用 fixed
+  （可用 `getBoundingClientRect` ＋`elementFromPoint` 確認目標寬度下每欄可見）。
 - **欄寬不等於內容寬**：`.cell` 預設左右 padding 各 12px，文字被截斷時只調
   `width` 無效，要同時調該欄 padding。（1366 寬螢幕的表格可用寬約 842px。）
 - `el-radio-button` 綁 `:value` 而非 `:label`。
@@ -262,9 +264,9 @@ vue-i18n 把 `@` 視為 linked message 起手（`@:key`／`@.modifier:key`）。
 - `el-dropdown` 的包裝元素會破壞相鄰按鈕的 margin（gap 歸零、基線錯位），
   按鈕列混用 dropdown 時要自行補 `margin-left` 與 `vertical-align`。
 - **破壞性確認框一律 `autofocus: false`**（否則 Enter 反射直接執行危險操作）。
-  本專案已有 `frontend/src/utils/confirm.js:27` 的 `confirmDestructive` 收口，勿繞過。
+  由 `frontend/src/utils/confirm.js:27` 的 `confirmDestructive` 收口。
 - `popper-options` 傳入 `preventOverflow` 會**整組取代**內建 modifiers 而破壞 flip
-  （選單越出視窗下緣）——要自訂就完整重述所有 modifiers，否則別動。
+  （選單越出視窗下緣）——要自訂就得完整重述所有 modifiers。
 - 抽屜型功能把內容抽成獨立元件、`el-drawer` 只當殼——單測直接掛內容元件
   （teleport 在測試環境不友善，見 `docs/dev/testing.md`）。
 
@@ -275,8 +277,8 @@ vue-i18n 把 `@` 視為 linked message 起手（`@:key`／`@.modifier:key`）。
 ### 同型缺陷換條路徑
 
 修法若綁在「觸發缺陷的那個具體狀態」而非「該不變式應涵蓋的狀態集合」，就必然漏。
-UI／互動類修正的驗收要做「**動作 × 狀態**」矩陣掃描（例：`儲存／刪除／測試`
-× `loading／loadFailed／正常` 九格逐格實測），不要只驗原路徑。
+UI／互動類修正容易漏的是「**動作 × 狀態**」的其他格（例：`儲存／刪除／測試`
+× `loading／loadFailed／正常`），驗收時依風險挑格。
 
 ### 視覺與品牌
 
@@ -293,9 +295,7 @@ UI／互動類修正的驗收要做「**動作 × 狀態**」矩陣掃描（例�
 
 ## 11. 通用程式碼風格
 
-- **不可變資料優先**；早退出（guard clause）勝過深巢狀。
-- **小檔案**：典型 200-400 行，上限 800 行；超過就拆（守衛測試檔亦同）。
-- **匯出面是預算**：搬包／重構時不要把「搬包所需」等同「機械大寫化」。
+- **匯出面是預算**：搬包／重構時，「搬包所需」不等於「機械大寫化」。
   每新增一個匯出符號都要說得出唯一消費者；優先窄 façade、消費者側宣告的介面、
   或組裝根 adapter（詳見 `docs/dev/testing.md` §11.3 export budget）。
 - 產品程式碼須有測試覆蓋關鍵行為（詳見 `docs/dev/testing.md`）。

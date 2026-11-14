@@ -117,6 +117,17 @@ describe('確認框內容渲染（實際文案）', () => {
     expect(wrapper.find('.account-action-tip').text()).toContain('身分提供者端移除此人')
   })
 
+  it('有可用的 API token：紅框寫出幾把會一併失效，原本的提示保留', () => {
+    const wrapper = mount({ render: () => renderDeleteConfirm(ROWS.local, t, 'zh-TW', { apiTokenCount: 3 }) })
+    expect(wrapper.find('.account-action-api-tokens').text()).toContain('這個帳號的 3 個可用 API token 會一併失效')
+    expect(wrapper.find('.account-action-tip').exists()).toBe(true)
+  })
+
+  it('沒有可用的 API token：不出現 API token 段', () => {
+    const wrapper = mount({ render: () => renderDeleteConfirm(ROWS.local, t, 'zh-TW', { apiTokenCount: 0 }) })
+    expect(wrapper.find('.account-action-api-tokens').exists()).toBe(false)
+  })
+
   it('本地帳號的刪除框沒有後果段，只有主句與提示', () => {
     const wrapper = mount({ render: () => renderDeleteConfirm(ROWS.local, t, 'zh-TW') })
     expect(wrapper.find('.account-action-impact').exists()).toBe(false)

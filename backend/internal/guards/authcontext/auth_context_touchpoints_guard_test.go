@@ -235,6 +235,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/change_secret_handler.go", fn: "ChangeSecretHandler.RegisterRoutes", count: 3},
 	{symbol: "AuthMiddleware", file: "internal/api/clipboard_event_handler.go", fn: "ClipboardEventHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/keystroke_view_handler.go", fn: "KeystrokeViewHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/api_token_handler.go", fn: "APITokenHandler.RegisterRoutes", count: 3},
 	// 憑證庫兩個路由群組各掛一次：/credentials 全族，以及掛在資產帳號路徑下的
 	// 「更換掛載憑證」。兩者都動登入秘密的歸屬，漏掛即等於未認證者改得掉
 	// 「哪台機器用哪一組秘密登入」
@@ -803,6 +804,11 @@ var authContextWriterSites = map[string]string{
 	"internal/middleware/auth.go|authenticateAgent": "agent token 路徑：ValidateAgentToken 現查通過後，" +
 		"以同一查詢讀出的主體現行憑證世代寫入（本地方法、無 provider 維度）；" +
 		"不寫則下游簽發的連線授權恆帶世代 0，主體世代推進過即在兌換閘被恆拒",
+	// API token 分支：與上兩列同屬認證中介層。API token 不是 JWT、沒有 claims 可沿用，其有效性由每次請求
+	// 對 token 列、所屬帳號與來源網段的現查決定；寫入值同 agent 分支（本地方法、無 provider 維度、
+	// 同一次查詢讀出的所屬帳號現行憑證世代）。
+	"internal/middleware/auth.go|authenticateAPIToken": "API token 路徑：ValidateAPIToken 現查通過後，" +
+		"以同一查詢讀出的所屬帳號現行憑證世代寫入（本地方法、無 provider 維度）",
 	// 原有一列 `internal/sshproxy/handler.go|Handler.authenticate`（WS `?token=` 旁路）。
 	// 唯讀觀看的兩條 WS 改收一次性觀看票後，`authenticate` 不再自 query 取 JWT，
 	// 該處已無寫入——雙向判定當場打出「登記了但程式碼找不到」，故下架。

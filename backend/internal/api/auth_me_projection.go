@@ -30,10 +30,14 @@ type currentUserResponse struct {
 //
 // 優先用 AuthMiddleware 已解析並放入請求脈絡的主體（經認證中介層的請求都走此路徑，不重複查詢）；
 // 尚未接線時才在此以 Resolver 逐請求解析，**不快取、不讀 JWT 角色**。解析失敗回 error，
-// 呼叫端一律拒絕，不以舊角色推估值兜底。
+// 呼叫端一律拒絕，不以舊角色推估值兜底。認證入口已標示請求憑證種類卻沒有主體時拒絕，
+// 不以帳號完整身分回報能力（帶角色限定的請求在此退回完整身分會誤導讀者）。
 func resolveProjectionPrincipal(c *gin.Context, userID uint) (*authz.Principal, error) {
 	if p := middleware.PrincipalFrom(c); p != nil {
 		return p, nil
+	}
+	if _, isRequest := middleware.GetRequestCredential(c); isRequest {
+		return nil, errProjectionPrincipalMissing
 	}
 	kind, ok := middleware.GetPrincipalKind(c)
 	if !ok {
@@ -41,6 +45,9 @@ func resolveProjectionPrincipal(c *gin.Context, userID uint) (*authz.Principal, 
 	}
 	return authz.NewResolver(database.DB).ResolveUser(userID, authz.TokenFacts{SubjectKind: kind})
 }
+
+// errProjectionPrincipalMissing 已認證的請求缺請求主體。
+var errProjectionPrincipalMissing = errors.New("已認證的請求缺少請求主體")
 
 // scopeNodePathReader 節點名稱路徑的拓撲唯讀介面（asset 的拓撲讀取器實作）：只回未刪除的節點。
 type scopeNodePathReader interface {

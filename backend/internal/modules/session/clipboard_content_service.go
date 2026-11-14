@@ -125,7 +125,7 @@ func (s *ClipboardContentService) ReadContent(ctx context.Context, sessionID, ev
 		return nil, fmt.Errorf("組裝調閱稽核欄位失敗: %w", err)
 	}
 	sessionRef := ev.SessionID
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		return port.WriteInTx(s.auditTx, tx, port.AuditEvent{
 			Action:     string(model.ActionRead),
 			Resource:   string(model.ResourceClipboardEvent),

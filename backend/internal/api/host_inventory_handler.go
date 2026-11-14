@@ -50,7 +50,7 @@ func NewHostInventoryHandler(svc HostInventoryServiceInterface, auth AssetAuthor
 func inventoryActor(c *gin.Context) asset.InventoryActor {
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	return asset.InventoryActor{UserID: userID, Username: username, ClientIP: sourceip.Of(c)}
+	return asset.InventoryActor{UserID: userID, Username: username, ClientIP: sourceip.Of(c), APIToken: middleware.APITokenRefOf(c)}
 }
 
 func inventoryAssetID(c *gin.Context) (uint, bool) {

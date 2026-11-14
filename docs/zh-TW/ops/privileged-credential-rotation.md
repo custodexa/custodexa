@@ -273,7 +273,7 @@ KEK 退役是軟退役：只變更狀態欄位，包裹材料不清空。因此*
 
 **`JWT_SECRET` 與還原世代**（1.18.0 起）。簽登入 token 的金鑰由 `JWT_SECRET` 與資料庫裡的還原世代派生。第一次還原之前世代是空的，金鑰就是 `JWT_SECRET` 本身。兩者各自變動：
 
-- 以管理腳本還原 1.18.0 起的備份時，會換上新世代，`.env` 照備份原樣放回。`JWT_SECRET` 與它在金鑰管理頁的指紋都不變，還原前簽出的 token 全部驗不過，備份裡的續期權杖與 agent 憑證一律拒絕（[備份與還原 §5](./backup-and-restore.md#以-restore-還原)）。
+- 以管理腳本還原 1.18.0 起的備份時，會換上新世代，`.env` 照備份原樣放回。`JWT_SECRET` 與它在金鑰管理頁的指紋都不變，還原前簽出的 token 全部驗不過，備份裡的續期權杖、agent 憑證與 API token 一律拒絕（[備份與還原 §5](./backup-and-restore.md#以-restore-還原)）。
 - 照上述程序更換 `JWT_SECRET`，不會改變世代。
 - 重啟，或由另一台主機接手同一個資料庫，世代都不變。
 
@@ -291,7 +291,13 @@ UPDATE asset_authorizations SET date_expired = now()
  WHERE source = 'ticket' AND deleted_at IS NULL AND (date_expired IS NULL OR date_expired > now());
 ```
 
-之後所有人需重新登入；agent 憑證要重新簽發、臨時授權要重新申請，常設授權不變。用新版腳本還原升級前的備份時，還原會在舊版啟動之前自行完成這兩步，只記錄新秘密的指紋（[備份與還原 §5.1](./backup-and-restore.md#從-1180-以後回到更早的版本)）。手動還原的任何備份都不會換上新的還原世代，同樣在同一個停止點以這兩步關閉備份帶回的登入。新的 `JWT_SECRET` 要留著：[備份與還原 §6](./backup-and-restore.md#6-還原後的驗證清單)的指紋核對是對照它，而不是對照備份。這無法防範控制主機的人。
+1.24.0 起的備份（資料庫裡有 `api_tokens` 資料表），在同一個連線中再執行這一條：
+
+```sql
+UPDATE api_tokens SET revoked_at = now(), revoke_note = 'restore' WHERE revoked_at IS NULL;
+```
+
+之後所有人需重新登入；agent 憑證要重新簽發、API token 要重新建立、臨時授權要重新申請，常設授權不變。用新版腳本還原升級前的備份時，還原會在舊版啟動之前自行完成這兩步，只記錄新秘密的指紋（[備份與還原 §5.1](./backup-and-restore.md#從-1180-以後回到更早的版本)）。手動還原的任何備份都不會換上新的還原世代，同樣在同一個停止點以這兩步關閉備份帶回的登入。新的 `JWT_SECRET` 要留著：[備份與還原 §6](./backup-and-restore.md#6-還原後的驗證清單)的指紋核對是對照它，而不是對照備份。這無法防範控制主機的人。
 
 ---
 

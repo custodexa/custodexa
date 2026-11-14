@@ -47,6 +47,13 @@ type InventoryActor struct {
 	UserID   uint
 	Username string
 	ClientIP string
+	// APIToken 該次請求經由的 API token（親自操作與背景執行時為零值），供稽核歸因。
+	APIToken model.APITokenRef
+}
+
+// requestMeta 稽核列的請求欄位：來源位址與經由的 API token。
+func (a InventoryActor) requestMeta() gatewayapi.RequestMeta {
+	return gatewayapi.RequestMeta{ClientIP: a.ClientIP}.WithAPIToken(a.APIToken.ID, a.APIToken.Name)
 }
 
 // InventoryPolicyReader 讀取政策鍵現值的窄介面（*policy.SecurityPolicyService 實作）。
@@ -439,7 +446,7 @@ func (s *HostAccountInventoryService) writeScanAudit(tx *gorm.DB, action model.A
 		ResourceID: &scanID,
 		AssetID:    &assetID,
 		Status:     string(model.StatusSuccess),
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.ClientIP},
+		Request:    actor.requestMeta(),
 		Details:    details,
 	})
 }

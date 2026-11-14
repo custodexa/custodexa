@@ -581,6 +581,7 @@ type routeDeps struct {
 	executorLoginCheck    *api.ExecutorLoginCheckHandler
 	clipboard             *api.ClipboardEventHandler
 	keystrokeView         *api.KeystrokeViewHandler
+	apiToken              *api.APITokenHandler
 	auditTimeline         *api.AuditTimelineHandler
 	changeSecret          *api.ChangeSecretHandler
 	// credential 帳號憑證庫：憑證 CRUD、掛載／卸載、範圍轉換、改密與脫離共用
@@ -606,7 +607,7 @@ type routeDeps struct {
 //
 // 全域中間件順序為契約：Logger → Recovery（來自 newEngine，前者為
 // middleware.AccessLogger()，見該處說明）→ **SealGate**
-// → Metrics → CORS → audit。gin 於**註冊當下**由 combineHandlers 定鏈，其後的
+// → Metrics → CORS → audit → agent 閘門 → API token 閘門。gin 於**註冊當下**由 combineHandlers 定鏈，其後的
 // Use 不回溯既有路由——故本函式內不得有先於自訂全域中間件註冊的路由，否則該
 // 路由的鏈會僅含 Logger → Recovery。此不變式由鏈比對迴歸保護。
 //
@@ -622,6 +623,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 	}
 
 	r.Use(middleware.AgentRouteAllowlist(d.authService))
+	// API token 閘門：緊接 agent 閘門之後、任何路由之前（公開路由與 WebSocket 入口同樣經過）
+	r.Use(middleware.APITokenGate(d.authService))
 
 	// Health check endpoint
 	// 同時接受 POST：webhook 測試發送（alert-notifications E2E）需要一個
@@ -755,6 +758,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.executorLoginCheck.RegisterRoutes(v1, d.authService)
 		d.clipboard.RegisterRoutes(v1, d.authService)
 		d.keystrokeView.RegisterRoutes(v1, d.authService)
+		d.apiToken.RegisterRoutes(v1, d.authService)
 		// 稽核調查工作台（auditor-workbench）：唯讀聚合端點兩支。
 		// **不掛在 auditLogEnabled 條件內**——它聚合的是六類資料，
 		// 關閉操作日誌不代表會話、指令、告警的調查面也該消失

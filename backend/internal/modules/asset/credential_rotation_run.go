@@ -221,7 +221,7 @@ func (s *CredentialRotationService) requeueMember(ctx context.Context, rot *mode
 	}
 	unlock := lockRotationAccount(member.AccountID)
 	defer unlock()
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		m, err := loadRotationMember(tx, rot.ID, memberID)
 		if err != nil {
 			return err
@@ -1223,7 +1223,7 @@ func (s *CredentialRotationService) commitGroupApplied(ctx context.Context,
 	confirm *model.CredentialHostIdentityConfirmation, applied memberTransition) error {
 
 	userID, operator := model.UserFromContext(ctx)
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, member.AssetID); err != nil {
 			return err
 		}

@@ -77,5 +77,8 @@ func auditRowOf(ev port.AuditEvent) *model.AuditLog {
 	if !ev.OccurredAt.IsZero() {
 		row.CreatedAt = ev.OccurredAt
 	}
+	if ref, ok := model.APITokenRefOf(ev.Request.APITokenID, ev.Request.APITokenName); ok {
+		row.AttributeToAPIToken(ref)
+	}
 	return row
 }

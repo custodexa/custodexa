@@ -112,7 +112,7 @@ func (h *SystemAlertHandler) UpdateSeverity(c *gin.Context) {
 	actorID, _ := middleware.GetCurrentUserID(c)
 	actorName, _ := middleware.GetCurrentUsername(c)
 	change, err := h.service.SetSeverity(key, severity, audit.SystemAlertSeverityActor{
-		ID: actorID, Name: actorName, IP: sourceip.Of(c),
+		ID: actorID, Name: actorName, IP: sourceip.Of(c), APIToken: middleware.APITokenRefOf(c),
 	})
 	switch {
 	case err == nil:

@@ -153,7 +153,7 @@ func (s *AssetService) runAssetBatchTx(ctx context.Context, structural bool, fn 
 	if hooks != nil && hooks.BeforeTx != nil {
 		hooks.BeforeTx()
 	}
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err
 		}

@@ -54,12 +54,12 @@ type bumpEnv struct {
 	beginInTx bool
 }
 
-var bumpActor = GroupRoleMappingActor{ID: 1, Name: "admin", IP: "10.0.0.1"}
+var bumpActor = GroupRoleMappingActor{Principal: testSessionPrincipal(1), ID: 1, Name: "admin", IP: "10.0.0.1"}
 
 func newBumpEnv(t *testing.T) *bumpEnv {
 	t.Helper()
 	db := extIdentityDB(t)
-	if err := migrateWithAuthz(db, &model.UserGroup{}, &model.PasswordHistory{}, &model.SecurityPolicy{},
+	if err := migrateWithAuthz(db, &model.APIToken{}, &model.APITokenRole{}, &model.UserGroup{}, &model.PasswordHistory{}, &model.SecurityPolicy{},
 		&model.LDAPDirectory{}, &model.GroupRoleMapping{}, &model.ExternalGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserRoleMapping{},
 		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},
@@ -344,7 +344,7 @@ func bumpPaths() []bumpPath {
 				e.t.Fatalf("seed agent: %v", err)
 			}
 			return func() error {
-				_, _, err := e.users.Update(agent.ID, &UpdateUserRequest{OwnerUserID: &e.bob.ID})
+				_, _, err := e.users.Update(Operator{}, agent.ID, &UpdateUserRequest{OwnerUserID: &e.bob.ID})
 				return err
 			}
 		}},
@@ -615,7 +615,7 @@ func TestAuthzStateVersionBump(t *testing.T) {
 			}},
 			{"UserService.Update_非擁有者欄位", func(e *bumpEnv) func() error {
 				return func() error {
-					_, _, err := e.users.Update(e.alice.ID, &UpdateUserRequest{FullName: "Alice Renamed"})
+					_, _, err := e.users.Update(Operator{}, e.alice.ID, &UpdateUserRequest{FullName: "Alice Renamed"})
 					return err
 				}
 			}},

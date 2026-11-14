@@ -107,6 +107,30 @@ func planRunCapabilities(targetKind string) []string {
 	return []string{CredCapAccountRotate}
 }
 
+// PlanRunAuthorizationError 以 API token 建立或更新計畫時，請求對計畫最新的目標不具執行所需的能力或範圍。
+// Err 為執行授權判定的原始拒絕（能力拒絕或範圍拒絕）。
+type PlanRunAuthorizationError struct{ Err error }
+
+func (e *PlanRunAuthorizationError) Error() string {
+	return "plan run not authorized: " + e.Err.Error()
+}
+func (e *PlanRunAuthorizationError) Unwrap() error { return e.Err }
+
+// requireAPITokenPlanRunTx 以 API token 認證的請求建立計畫或保存新版計畫時，在同一交易內以背景執行前重驗所用的
+// 執行授權判定，對計畫最新的目標檢查執行所需的能力與範圍；未通過即拒絕、不寫入。每一次保存都會寫入新的發起者
+// 授權脈絡，所以不論改了哪些欄位都檢查。其他請求（人類工作階段等）維持既有行為，不在此判定。
+func (s *ChangeSecretPlanService) requireAPITokenPlanRunTx(ctx context.Context, tx *gorm.DB, plan *model.ChangeSecretPlan) error {
+	if kind, ok := model.RequestCredentialFrom(ctx); !ok || kind != model.RequestCredentialAPIToken {
+		return nil
+	}
+	credentialIDs, assetIDs := planRunTargets(plan)
+	if _, err := requirePlanRunErr(credentialManagementGate{authorizer: s.versions}, ctx, tx, plan.TargetKind,
+		credentialIDs, assetIDs, nil); err != nil {
+		return &PlanRunAuthorizationError{Err: err}
+	}
+	return nil
+}
+
 // recordPlanAuthorization 為計畫新增一列授權脈絡（修訂號遞增）並指向它。
 // ctx 沒有伺服器端主體時不動既有脈絡（回 false）：不以空主體或系統身分替代。
 func (s *ChangeSecretPlanService) recordPlanAuthorization(ctx context.Context, tx *gorm.DB,
@@ -177,7 +201,7 @@ func (s *ChangeSecretPlanService) ReauthorizePending(ctx context.Context) (done,
 	for i := range plans {
 		var plan model.ChangeSecretPlan
 		skipReason := ""
-		if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 			if err := s.lockTopology(tx); err != nil {
 				return err
 			}
@@ -550,9 +574,12 @@ func (s *ChangeSecretPlanService) Create(ctx context.Context, req *ChangeSecretP
 		"password_include_symbol":    plan.PasswordIncludeSymbol,
 		"password_exclude_ambiguous": plan.PasswordExcludeAmbiguous,
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		mountBound, err := s.scopePlanTargetsTx(ctx, tx, req)
 		if err != nil {
+			return err
+		}
+		if err := s.requireAPITokenPlanRunTx(ctx, tx, plan); err != nil {
 			return err
 		}
 		if err := tx.Create(plan).Error; err != nil {
@@ -618,7 +645,7 @@ func (s *ChangeSecretPlanService) Update(ctx context.Context, id uint, req *Chan
 	if s.preTxHook != nil {
 		s.preTxHook()
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.lockTopology(tx); err != nil {
 			return err
 		}
@@ -637,6 +664,9 @@ func (s *ChangeSecretPlanService) Update(ctx context.Context, id uint, req *Chan
 		applyPlanFields(latest, req, fields)
 		if req.Enabled != nil {
 			latest.Enabled = *req.Enabled
+		}
+		if err := s.requireAPITokenPlanRunTx(ctx, tx, latest); err != nil {
+			return err
 		}
 		// 保存新版計畫採修改者為發起者：新增一列脈絡，舊列不被覆寫；修訂由最新列遞增
 		if _, err := s.recordPlanAuthorization(ctx, tx, latest, model.JobAuthViaRequest, mountBound); err != nil {

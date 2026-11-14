@@ -204,6 +204,14 @@ func respondCandidateError(c *gin.Context, internalCode apierror.ErrCode, err er
 // respondPlanError 映射 service 錯誤：輸入問題 400、名稱衝突 409、不存在 404，
 // 其餘走呼叫端指定的 internalCode（各端點的 action 不同，訊息不同、碼各自獨立）
 func respondPlanError(c *gin.Context, internalCode apierror.ErrCode, err error) {
+	// 以 API token 保存計畫而對最新目標不具執行能力或範圍：範圍拒絕走共用出口，能力拒絕回單一 forbidden
+	var runDenied *asset.PlanRunAuthorizationError
+	if errors.As(err, &runDenied) {
+		if !respondTxScopeError(c, runDenied.Err) {
+			respondAssetCapabilityDenial(c, runDenied.Err)
+		}
+		return
+	}
 	// 明列資產中有不存在或範圍外者：整份拒絕，只帶筆數（兩種原因同形）
 	var unavailable *asset.BatchItemsUnavailableError
 	if errors.As(err, &unavailable) {

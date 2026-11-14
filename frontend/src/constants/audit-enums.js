@@ -15,6 +15,8 @@ const ACTION_TAG_TYPES = {
   suspend: 'warning',
   agent_token_revoked: 'danger',
   agent_token_suspended: 'warning',
+  // 個人 API token 被撤銷（resource=api_token；建立沿用 create）
+  api_token_revoked: 'danger',
   agent_sessions_terminated: 'info',
   agent_sessions_terminate_late: 'warning',
   permission_state_accepted: 'warning',
@@ -71,6 +73,8 @@ export const AUDIT_ACTION_VALUES = Object.keys(ACTION_TAG_TYPES)
 
 export const AUDIT_RESOURCE_VALUES = [
   'agent_token',
+  // 個人 API token：resource_id 指向 token 本身，所屬帳號與名稱記在 details
+  'api_token',
   'agent_tool_call',
   'asset',
   'session',

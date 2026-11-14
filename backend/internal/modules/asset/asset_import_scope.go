@@ -53,7 +53,7 @@ func (s *AssetService) importCredentialScope(ctx context.Context, db *gorm.DB, s
 		return nil
 	}
 	_, err := s.mgmt.require(ctx, db, CredentialManagementRequest{
-		Operation: CredOpBind, Capabilities: []string{CredCapBind},
+		Operation: CredOpBind, Capabilities: []string{CredCapBind}, AttachesExisting: true,
 	})
 	if err == nil {
 		return requireCreateCredentialCaps(s.mgmt, ctx, db, credentialIDs, 0, false, false, s.writeScope != nil)
@@ -64,7 +64,7 @@ func (s *AssetService) importCredentialScope(ctx context.Context, db *gorm.DB, s
 	}
 	for _, id := range credentialIDs {
 		d, err := s.mgmt.require(ctx, db, CredentialManagementRequest{
-			Operation: CredOpBind, Capabilities: []string{CredCapBind}, CredentialIDs: []uint{id},
+			Operation: CredOpBind, Capabilities: []string{CredCapBind}, CredentialIDs: []uint{id}, AttachesExisting: true,
 		})
 		switch {
 		case err == nil:

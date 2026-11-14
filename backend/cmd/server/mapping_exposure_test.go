@@ -65,7 +65,7 @@ func TestMappingExposureBoundary(t *testing.T) {
 		p := model.OIDCProvider{Name: "idp", Issuer: "https://idp.example.com", ClientID: "c", GroupsClaim: "groups",
 			Enabled: true, AdmissionMode: model.AdmissionPreboundOnly, ClientSecretEnc: "enc"}
 		require.NoError(t, db.Create(&p).Error)
-		actor := identity.GroupRoleMappingActor{ID: rootID, Name: "root", IP: "10.0.0.1"}
+		actor := identity.GroupRoleMappingActor{Principal: testSessionPrincipal(rootID), ID: rootID, Name: "root", IP: "10.0.0.1"}
 		kind := model.RoleMappingChannelKindProvider
 
 		// 超級管理者本人也不能經映射寫入尚未放行的新範本
@@ -87,7 +87,7 @@ func TestMappingExposureBoundary(t *testing.T) {
 		require.NoError(t, db.Create(&victim).Error)
 		for _, name := range []string{"identity_admin", "security_admin"} {
 			require.NoError(t, db.Create(&model.UserRole{UserID: victim.ID, RoleID: ids[name], Source: model.RoleSourceMapped, ScopeKind: model.ScopeKindGlobal}).Error)
-			_, err := us.PinMappedRoleBy(identity.Operator{UserID: rootID, Username: "root"}, victim.ID, name)
+			_, err := us.PinMappedRoleBy(identity.Operator{Principal: testSessionPrincipal(rootID), UserID: rootID, Username: "root"}, victim.ID, name)
 			assert.ErrorIs(t, err, identity.ErrRoleNotFound, name)
 			s, _, err := model.UserRoleSourceOf(db, victim.ID, ids[name])
 			require.NoError(t, err)
@@ -106,9 +106,9 @@ func TestMappingExposureBoundary(t *testing.T) {
 		p := model.OIDCProvider{Name: "idp", Issuer: "https://idp.example.com", ClientID: "c", GroupsClaim: "groups",
 			Enabled: true, AdmissionMode: model.AdmissionPreboundOnly, ClientSecretEnc: "enc"}
 		require.NoError(t, db.Create(&p).Error)
-		actor := identity.GroupRoleMappingActor{ID: rootID, Name: "root", IP: "10.0.0.1"}
+		actor := identity.GroupRoleMappingActor{Principal: testSessionPrincipal(rootID), ID: rootID, Name: "root", IP: "10.0.0.1"}
 		kind := model.RoleMappingChannelKindProvider
-		root := identity.Operator{UserID: rootID, Username: "root"}
+		root := identity.Operator{Principal: testSessionPrincipal(rootID), UserID: rootID, Username: "root"}
 
 		// 映射：兩個新範本的規則都寫入
 		for _, name := range []string{"identity_admin", "security_admin"} {
@@ -151,7 +151,7 @@ func TestMappingExposureBoundary(t *testing.T) {
 		require.NoError(t, db.Create(&model.UserRole{UserID: ida.ID, RoleID: ids["identity_admin"], Source: model.RoleSourceManual, ScopeKind: model.ScopeKindGlobal}).Error)
 		plain := model.User{Username: "plain", Active: true}
 		require.NoError(t, db.Create(&plain).Error)
-		assert.ErrorIs(t, us.AddRoleBy(identity.Operator{UserID: ida.ID, Username: "ida"}, plain.ID, "security_admin"), identity.ErrProtectedRoleAssignment)
+		assert.ErrorIs(t, us.AddRoleBy(identity.Operator{Principal: testSessionPrincipal(ida.ID), UserID: ida.ID, Username: "ida"}, plain.ID, "security_admin"), identity.ErrProtectedRoleAssignment)
 		owner := rootID
 		bot := model.User{Username: "bot", Kind: model.KindAgent, OwnerUserID: &owner, Active: true}
 		require.NoError(t, db.Create(&bot).Error)

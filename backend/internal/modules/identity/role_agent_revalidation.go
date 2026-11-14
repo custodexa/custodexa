@@ -194,7 +194,7 @@ func (g *GrantGrader) detectInNewTx(db *gorm.DB, in agentDetection) error {
 		if err := port.WriteInTx(g.auditTx, tx, port.AuditEvent{
 			Action: string(in.action), Resource: in.resource, ResourceID: &rid,
 			Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: in.op.UserID, Username: in.op.Username},
-			Request: gatewayapi.RequestMeta{ClientIP: in.op.ClientIP}, Details: string(raw),
+			Request: in.op.AttributedMeta(gatewayapi.RequestMeta{ClientIP: in.op.ClientIP}), Details: string(raw),
 		}); err != nil {
 			return fmt.Errorf("偵測審計寫入失敗: %w", err)
 		}

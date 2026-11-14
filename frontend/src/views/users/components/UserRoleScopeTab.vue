@@ -253,7 +253,46 @@
             {{ $t('users.remove') }}
           </el-button>
         </li>
+        <li
+          v-for="name in pendingRemoval"
+          :key="`pending-${name}`"
+          class="role-card is-pending-remove"
+          :data-test="`pending-remove-${name}`"
+        >
+          <el-tag
+            :type="roleTagType(name)"
+            size="small"
+          >
+            {{ roleLabel(name) }}
+          </el-tag>
+          <el-tag
+            size="small"
+            type="warning"
+            effect="plain"
+          >
+            {{ $t('userDetail.roles.pendingRemove') }}
+          </el-tag>
+          <el-button
+            size="small"
+            link
+            type="primary"
+            :data-test="`undo-remove-${name}`"
+            @click.stop="undoRemove(name)"
+          >
+            {{ $t('userDetail.roles.undoRemove') }}
+          </el-button>
+        </li>
       </ul>
+      <el-alert
+        v-for="alert in apiTokenAlerts"
+        :key="alert.kind"
+        :type="alert.type"
+        :closable="false"
+        show-icon
+        :title="alert.title"
+        :description="alert.body"
+        :data-test="`api-token-impact-${alert.kind}`"
+      />
       <section
         v-if="activeRole && isAssignable(activeRole)"
         class="range-panel"
@@ -344,6 +383,24 @@
           data-test="change-managed-assets-all"
         >{{ $t('roleNodePicker.changeAssetsAll') }}</span>
         <span v-else>{{ $t('roleNodePicker.changeAssetsValue', { after: managedAssets.after, before: managedAssets.before }) }}</span>
+      </div>
+      <div
+        v-if="apiTokenRow"
+        class="change-row"
+        data-test="change-api-token"
+      >
+        <span class="change-label">{{ $t('userDetail.change.apiToken') }}</span>
+        <span data-test="change-api-token-value">{{ apiTokenRow }}</span>
+        <el-button
+          v-if="apiTokenImpact?.total_usable > 0 || regain.entries.length"
+          link
+          type="primary"
+          size="small"
+          data-test="change-view-api-tokens"
+          @click="emit('view-api-tokens')"
+        >
+          {{ $t('userDetail.change.viewApiTokens') }}
+        </el-button>
       </div>
       <div class="change-row">
         <span class="change-label">{{ $t('userDetail.change.connection') }}</span>
@@ -571,6 +628,8 @@ import { getUserGroups, getUserGroupRoleBindings } from '@/api/userGroups'
 import { useAssignmentPreview } from '@/composables/useAssignmentPreview'
 import { needsDangerConfirm } from '@/utils/dangerCombo'
 import { roleLabel, roleTagType } from '@/constants/roles'
+import { grantedRoleLabel, isInactive } from '@/constants/apiTokens'
+import { getUserApiTokens } from '@/api/apiTokens'
 import { formatDateTime } from '@/utils/format'
 import { apiErrorSummary } from '@/api/redact'
 import { MENU_GROUPS } from '@/components/sidebarMenu'
@@ -600,7 +659,7 @@ const props = defineProps({
   // GET /users/:id 的 approver_only：帳號只有審核者角色時頂端顯示說明條
   approverOnly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['changed'])
+const emit = defineEmits(['changed', 'view-api-tokens'])
 
 const router = useRouter()
 const logFailure = (event, error) => console.error(...apiErrorSummary(event, error))
@@ -798,6 +857,13 @@ const addPicked = (name) => {
   if (name && !selected.value.includes(name)) selected.value = [...selected.value, name]
   pick.value = ''
 }
+// 「將移除」的角色就地放回：回到原本的位置，本次新加入的仍排在後面；先前調整過的範圍草稿保留
+const undoRemove = (name) => {
+  if (selected.value.includes(name) || !initial.value.includes(name)) return
+  const kept = initial.value.filter((n) => n === name || selected.value.includes(n))
+  const added = selected.value.filter((n) => !initial.value.includes(n))
+  selected.value = [...kept, ...added]
+}
 const removeRole = (name) => {
   selected.value = selected.value.filter((n) => n !== name)
   if (activeRole.value === name) activeRole.value = ''
@@ -841,6 +907,172 @@ const countsOf = (name) => {
   return r ? { direct: r.direct, from_groups_extra: r.from_groups_extra, total: r.total } : null
 }
 const managedAssets = computed(() => preview.result.value?.managed_assets || null)
+
+// 原本有、這次取消勾選的角色：儲存前以「將移除」列出，讓管理者看清楚要收回哪些
+const pendingRemoval = computed(() => initial.value.filter((n) => !selected.value.includes(n)))
+
+// API token 受影響的情形取自預覽回應；前端不自行推算哪把會暫停
+const apiTokenImpact = computed(() => preview.result.value?.api_tokens || null)
+const joinLabels = (roles) => {
+  const names = []
+  for (const r of roles || []) {
+    const label = grantedRoleLabel(r)
+    if (!names.includes(label)) names.push(label)
+  }
+  return names.join(t('common.listSeparator'))
+}
+const addedManagementRoles = computed(() =>
+  selected.value
+    .filter((n) => !initial.value.includes(n))
+    .filter((n) => definitions.value.find((d) => d.name === n)?.management_class)
+)
+// 這個帳號的 API token 清單：只用來判斷「加回的角色有沒有 token 授權過」。
+// 讀不到時為 null（＝無法確認），不當成「沒有」
+const tokenList = ref(null)
+const loadTokenList = async () => {
+  try {
+    const res = await getUserApiTokens(props.userId)
+    tokenList.value = Array.isArray(res?.data) ? res.data : []
+  } catch (error) {
+    tokenList.value = null
+    logFailure('user_api_token_list_failed', error)
+  }
+}
+
+// 會失去角色的 token：預覽回應裡失去任何角色、或將暫停者（只恢復角色的不算）
+const loseEntries = computed(() =>
+  (apiTokenImpact.value?.affected || []).filter((a) => (a.loses_roles || []).length > 0 || a.becomes_suspended)
+)
+// 會恢復角色的 token。以預覽回應的 regains_roles 為準；回應沒有這項資訊時，
+// 改以 token 清單判斷：授權了這次加回的角色、而該角色目前不生效的，儲存後就會恢復。
+// known＝能確定有沒有（回應有資訊或清單讀得到）；becomes_active 只採用預覽回應
+const regain = computed(() => {
+  const fromPreview = (apiTokenImpact.value?.affected || []).filter((a) => (a.regains_roles || []).length > 0)
+  if (fromPreview.length) {
+    return {
+      known: true,
+      entries: fromPreview.map((a) => ({ name: a.name, roles: a.regains_roles, becomesActive: a.becomes_active === true })),
+    }
+  }
+  const addedIds = new Set(addedManagementRoles.value.map(idOf).filter((id) => id !== undefined))
+  if (!addedIds.size) return { known: true, entries: [] }
+  if (!tokenList.value) return { known: false, entries: [] }
+  const entries = tokenList.value
+    .filter((tk) => !isInactive(tk))
+    .map((tk) => ({
+      name: tk.name,
+      roles: (tk.granted_roles || []).filter((r) => addedIds.has(r.role_id) && r.effective === false),
+      becomesActive: false,
+    }))
+    .filter((e) => e.roles.length)
+  return { known: true, entries }
+})
+
+const apiTokenAlerts = computed(() => {
+  if (!dirty.value) return []
+  const api = apiTokenImpact.value
+  const user = props.username
+  const sep = t('common.listSeparator')
+  const out = []
+  if (api && api.total_usable > 0) {
+    if (api.eligible_after === false && api.suspended_count > 0) {
+      out.push({
+        kind: 'all-lost',
+        type: 'warning',
+        title: t('userDetail.roles.apiTokenAllLostTitle', { user, n: api.suspended_count }),
+        body: t('userDetail.roles.apiTokenAllLostBody', { user, n: api.suspended_count }),
+      })
+    } else if (loseEntries.value.length) {
+      const lose = loseEntries.value
+      const role = joinLabels(lose.flatMap((a) => a.loses_roles || []))
+      const names = lose.map((a) => a.name).join(sep)
+      const body = api.suspended_count > 0
+        ? t('userDetail.roles.apiTokenLoseBodyMixed', { n: lose.length, names, m: api.suspended_count })
+        : t('userDetail.roles.apiTokenLoseBody', {
+            n: lose.length,
+            names,
+            role,
+            remaining: joinLabels(lose.flatMap((a) => a.remaining_roles || [])),
+          })
+      out.push({ kind: 'lose', type: 'warning', title: t('userDetail.roles.apiTokenLoseTitle', { user, role }), body })
+    }
+  }
+  const { known, entries } = regain.value
+  if (entries.length) {
+    // 工具的權限會因這次變更擴大：以警示色呈現，並點名哪幾把、恢復哪些角色、哪幾把恢復可用
+    const role = joinLabels(entries.flatMap((e) => e.roles))
+    const active = entries.filter((e) => e.becomesActive)
+    let body = t('userDetail.roles.apiTokenRegainBody', {
+      n: entries.length,
+      names: entries.map((e) => e.name).join(sep),
+      role,
+    })
+    if (active.length) {
+      body += t('userDetail.roles.apiTokenRegainActive', { m: active.length, names: active.map((e) => e.name).join(sep) })
+    }
+    out.push({ kind: 'regain', type: 'warning', title: t('userDetail.roles.apiTokenRegainTitle', { user, role }), body })
+  } else if (addedManagementRoles.value.length && !(known && hasNoTokens.value)) {
+    // 名下沒有任何 token 時兩種說法都不需要（變化列另有「目前沒有…」）
+    const role = addedManagementRoles.value.map(roleLabel).join(sep)
+    // 「現有 token 不會取得」只在確定沒有任何一把授權過這個角色時才說
+    out.push(known
+      ? { kind: 'no-grow', type: 'info', title: t('userDetail.roles.apiTokenNoGrowTitle', { user, role }), body: t('userDetail.roles.apiTokenNoGrowBody', { user }) }
+      : { kind: 'regain-unknown', type: 'info', title: t('userDetail.roles.apiTokenRegainUnknownTitle', { user, role }), body: t('userDetail.roles.apiTokenRegainUnknownBody', { user }) })
+  }
+  return out
+})
+// 「第一個管理角色」要把經群組取得的角色算進去：本人早已能建立 API token 時，
+// 再提「儲存後可以自己建立」是錯的
+const isManagementRole = (n) => definitions.value.find((d) => d.name === n)?.management_class === true
+const groupRoleNames = computed(() =>
+  groups.value.flatMap((g) => (g.bindings || []).map((b) => b.role_name).filter(Boolean))
+)
+const apiTokenRow = computed(() => {
+  const parts = [apiTokenLoseRow.value, apiTokenRegainRow.value].filter(Boolean)
+  return parts.join(t('userDetail.change.apiTokenPartsSeparator'))
+})
+// 恢復的部分：有恢復者寫幾把（與幾把恢復可用）；無法確認時請儲存後查看
+// 「目前沒有」只在清單讀得到、且沒有任何未失效的 token 時才說（暫停中的也算有）
+const hasNoTokens = computed(() =>
+  !regain.value.entries.length &&
+  !(apiTokenImpact.value?.total_usable > 0) &&
+  Array.isArray(tokenList.value) &&
+  !tokenList.value.some((tk) => !isInactive(tk))
+)
+const apiTokenRegainRow = computed(() => {
+  const { known, entries } = regain.value
+  if (entries.length) {
+    const m = entries.filter((e) => e.becomesActive).length
+    return m
+      ? t('userDetail.change.apiTokenRegainActive', { n: entries.length, m })
+      : t('userDetail.change.apiTokenRegain', { n: entries.length })
+  }
+  if (!known && addedManagementRoles.value.length) return t('userDetail.change.apiTokenCheckAfterSave')
+  return ''
+})
+const apiTokenLoseRow = computed(() => {
+  const api = apiTokenImpact.value
+  if (!api) {
+    // 預覽回應只在對象有尚可使用的 token 時才帶 api_tokens；預覽成功但沒有這個鍵＝目前沒有可用的 token。
+    // 此時只在這次才得到第一個管理角色時提一句本人之後可以自己建立（映射帶來的角色儲存後仍在）
+    if (!preview.result.value || preview.status.value === 'unavailable') return ''
+    const hadManagement = [...initial.value, ...mapped.value, ...groupRoleNames.value].some(isManagementRole)
+    const hasManagementAfter = [...selected.value, ...mapped.value].some(isManagementRole)
+    return hasManagementAfter && !hadManagement && hasNoTokens.value ? t('userDetail.change.apiTokenFirst', { user: props.username }) : ''
+  }
+  const total = api.total_usable || 0
+  // 沒有 token：只在這次才得到第一個管理角色時提一句本人之後可以自己建立
+  if (total === 0) {
+    const hadManagement = [...initial.value, ...mapped.value, ...groupRoleNames.value].some(isManagementRole)
+    return api.eligible_after && !hadManagement && hasNoTokens.value ? t('userDetail.change.apiTokenFirst', { user: props.username }) : ''
+  }
+  if (api.eligible_after === false && api.suspended_count > 0) return t('userDetail.change.apiTokenAllLost', { n: api.suspended_count })
+  if (loseEntries.value.length) return t('userDetail.change.apiTokenLose', { n: loseEntries.value.length, m: api.suspended_count || 0 })
+  // 「不變」只在確定沒有任何一把會恢復角色時才說
+  const { known, entries } = regain.value
+  if (entries.length || !known) return ''
+  return t('userDetail.change.apiTokenUnchanged', { n: total })
+})
 // 以全系統持有可限範圍角色：預覽台數不計全域指派，直接寫「全部資產」，以範圍判定、不看角色名稱
 const holdsAllScope = computed(() =>
   selected.value.some((n) => classOf(n) === SCOPE_CLASS.EFFECTIVE && draftOf(n).mode === 'all')
@@ -913,6 +1145,7 @@ const persist = async (extraNodes = {}) => {
       initial.value = [...selected.value]
       emit('changed', null)
     }
+    void loadTokenList()
     // 儲存成功的草稿即新的原值；隨後以伺服器讀回為準
     if (canAssign.value) {
       bindings.value = bindings.value.filter((b) => !selected.value.includes(b.role_name))
@@ -1082,6 +1315,7 @@ watch(canAssign, loadOptions)
 onMounted(() => {
   void loadDefinitions()
   void loadGroups()
+  void loadTokenList()
   void loadBindings()
   void loadOptions()
 })
@@ -1204,6 +1438,10 @@ onMounted(() => {
 }
 .role-card.is-openable {
   cursor: pointer;
+}
+.role-card.is-pending-remove :deep(.el-tag:first-child) {
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 .role-card.is-active {
   background: var(--ot-bg-hover);

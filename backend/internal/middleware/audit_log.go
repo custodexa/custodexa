@@ -289,6 +289,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			RequestID:   requestID,
 			Details:     details,
 		}
+		AttributeAuditEntry(c, entry)
 
 		// 異步記錄（不阻塞主請求）
 		auditService.Log(entry)
@@ -415,6 +416,10 @@ func extractResource(path string) model.AuditResource {
 			return model.ResourceAuditIntegrity
 		case "clipboard-events":
 			return model.ResourceClipboardEvent
+		// 個人 API token（`/my/api-tokens*`、`/users/:id/api-tokens*`、`/api-tokens/verify`）：先於容器段
+		// users 判定。管理者端點的路徑 `:id` 是帳號識別，handler 以 audit_resource／audit_resource_id 訂正
+		case "api-tokens":
+			return model.ResourceAPIToken
 		// 鍵盤紀錄（`/sessions/:id/keystrokes{,/view}`）：同為會話內取證，先於 sessions 判定
 		case "keystrokes":
 			return model.ResourceKeystrokeRecord

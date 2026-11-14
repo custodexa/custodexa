@@ -432,7 +432,7 @@ func (s *ExecutorLoginCheckService) writeStartAudit(tx *gorm.DB, a *model.Asset,
 		ResourceID: &mountID,
 		AssetID:    &assetID,
 		Status:     string(model.StatusSuccess),
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.ClientIP},
+		Request:    actor.requestMeta(),
 		Details:    string(body),
 	})
 }
@@ -451,7 +451,7 @@ func (s *ExecutorLoginCheckService) writeEndAudit(tx *gorm.DB, assetID uint, pin
 		ResourceID: &mountID,
 		AssetID:    &assetID,
 		Status:     string(model.StatusSuccess),
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.ClientIP},
+		Request:    actor.requestMeta(),
 		Details:    string(body),
 	})
 }

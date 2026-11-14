@@ -264,7 +264,7 @@ func (s *KeystrokeViewService) View(ctx context.Context, sessionID uint, req Key
 		return nil, fmt.Errorf("組裝查看稽核欄位失敗: %w", err)
 	}
 	sessionRef := sess.ID
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		return port.WriteInTx(s.auditTx, tx, port.AuditEvent{
 			Action:     string(model.ActionRead),
 			Resource:   string(model.ResourceKeystrokeRecord),

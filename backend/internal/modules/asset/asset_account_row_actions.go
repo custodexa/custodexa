@@ -54,7 +54,7 @@ func (j *AccountRowActionJudge) AccountRowChecks(ctx context.Context, assetID, a
 	c := j.credentials
 	return AccountRowChecks{
 		// 與 Rebind 同一關卡；目標憑證未選定，只帶所屬資產
-		Rebind: c.requireManagement(ctx, db, CredOpBind, []string{CredCapBind}, nil, []uint{assetID}),
+		Rebind: c.requireAttachManagement(ctx, db, nil, []uint{assetID}),
 		// 與帳號刪除同一個範圍判定
 		Remove: j.accounts.checkAccountWrite(ctx, db, assetID, accountID),
 		// 與宣告新秘密同一關卡（能力加全部掛載）

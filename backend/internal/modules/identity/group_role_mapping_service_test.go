@@ -29,7 +29,7 @@ func (failingTxSink) WriteInTx(*gorm.DB, port.AuditEvent) error {
 }
 
 // mappingTestActor 規則 CRUD 的操作者
-var mappingTestActor = identity.GroupRoleMappingActor{ID: 1, Name: "admin", IP: "10.0.0.1"}
+var mappingTestActor = identity.GroupRoleMappingActor{Principal: testSessionPrincipal(1), ID: 1, Name: "admin", IP: "10.0.0.1"}
 
 // mappingService 以指定的落地面組出服務（故障注入用同一支）
 func mappingService(db *gorm.DB, sink port.TxSink) *identity.IdentitySourceService {

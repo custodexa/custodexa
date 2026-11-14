@@ -46,5 +46,5 @@ func fixtureOperator(t testing.TB, db *gorm.DB) GroupRoleMappingActor {
 		t.Fatalf("seed operator: %v", err)
 	}
 	ensureFixtureSuperAdmin(t, db, u.ID)
-	return GroupRoleMappingActor{ID: u.ID, Name: u.Username}
+	return GroupRoleMappingActor{Principal: testSessionPrincipal(u.ID), ID: u.ID, Name: u.Username}
 }

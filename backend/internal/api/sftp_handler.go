@@ -389,7 +389,7 @@ func transferAuditAction(action string) model.AuditAction {
 func (h *SFTPHandler) auditDenied(c *gin.Context, userID, assetID uint, action model.AuditAction, remotePath, transferAction string) {
 	username, _ := middleware.GetCurrentUsername(c)
 	aid := assetID
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:      userID,
 		Username:    username,
 		Action:      action,
@@ -401,7 +401,7 @@ func (h *SFTPHandler) auditDenied(c *gin.Context, userID, assetID uint, action m
 		ClientIP:    sourceip.Of(c),
 		StatusCode:  http.StatusForbidden,
 		RequestBody: fmt.Sprintf(`{"remote_path":%q,"transfer_action":%q,"reason":"global_policy"}`, remotePath, transferAction),
-	})
+	}))
 }
 
 // auditSourceDenied 記錄來源網段限制拒絕的檔案請求（status=denied）。
@@ -412,7 +412,7 @@ func (h *SFTPHandler) auditSourceDenied(c *gin.Context, userID, assetID uint, ac
 	}
 	username, _ := middleware.GetCurrentUsername(c)
 	aid := assetID
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:      userID,
 		Username:    username,
 		Action:      action,
@@ -425,7 +425,7 @@ func (h *SFTPHandler) auditSourceDenied(c *gin.Context, userID, assetID uint, ac
 		ClientIP:    sourceip.Of(c),
 		StatusCode:  http.StatusForbidden,
 		RequestBody: fmt.Sprintf(`{"reason":"source_not_allowed","cause":%q}`, cause),
-	})
+	}))
 }
 
 // fileOpContext 檔案操作的連線脈絡：使用者、可選的會話主鍵（自會話分頁進入時的 session_id）
@@ -445,7 +445,7 @@ func (h *SFTPHandler) fileOpContext(c *gin.Context, userID uint) session.FileOpC
 func (h *SFTPHandler) audit(c *gin.Context, userID, assetID uint, action model.AuditAction, remotePath string, detail string) {
 	username, _ := middleware.GetCurrentUsername(c)
 	aid := assetID
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     action,
@@ -460,7 +460,7 @@ func (h *SFTPHandler) audit(c *gin.Context, userID, assetID uint, action model.A
 		ClientIP:    sourceip.Of(c),
 		StatusCode:  http.StatusOK,
 		RequestBody: fmt.Sprintf(`{"remote_path":%q%s}`, remotePath, detail),
-	})
+	}))
 }
 
 // List 目錄列表

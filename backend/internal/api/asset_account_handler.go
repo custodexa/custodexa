@@ -92,6 +92,8 @@ func respondAccountError(c *gin.Context, internalCode apierror.ErrCode, err erro
 		return
 	}
 	switch {
+	case errors.Is(err, asset.ErrAPITokenCredentialReference):
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAPITokenCredentialReferenceForbidden, nil)
 	case errors.Is(err, asset.ErrAssetNotFound):
 		middleware.RespondTargetNotFound(c, authz.ScopeTargetAssetAccount, authz.ScopeLayerAsset)
 	case errors.Is(err, asset.ErrAssetAccountNotFound):
@@ -285,7 +287,8 @@ func accountRowAction(err error) (asset.CredentialAction, error) {
 		return asset.CredentialAction{Reason: asset.CredentialActionOutOfScope}, nil
 	}
 	var write *authz.AssetWriteCapabilityError
-	if errors.As(err, &write) || errors.Is(err, asset.ErrCredentialBindForbidden) {
+	if errors.As(err, &write) || errors.Is(err, asset.ErrCredentialBindForbidden) ||
+		errors.Is(err, asset.ErrAPITokenCredentialReference) {
 		return asset.CredentialAction{Reason: asset.CredentialActionNoCapability}, nil
 	}
 	return asset.CredentialAction{}, err

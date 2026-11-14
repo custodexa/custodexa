@@ -31,15 +31,15 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 		r := e.create(t, "r", "asset:view")
 		d1 := digest(t, e)
 		assert.NotEqual(t, d0, d1, "新增自訂角色")
-		_, err := e.svc.Update(ctx, e.admin, r.ID, 1, RoleInput{Name: "renamed", Description: "new text", Permissions: []string{"asset:view"}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, r.ID, 1, RoleInput{Name: "renamed", Description: "new text", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		d2 := digest(t, e)
 		assert.NotEqual(t, d1, d2, "定義版本推進即改變")
-		_, err = e.svc.Update(ctx, e.admin, r.ID, 2, RoleInput{Name: "renamed again", Description: "other", Permissions: []string{"asset:view"}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, r.ID, 2, RoleInput{Name: "renamed again", Description: "other", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		require.NoError(t, e.db.Model(&model.Role{}).Where("id = ?", r.ID).Update("definition_version", 2).Error) // 版本還原到同值，只剩名稱說明不同
 		assert.Equal(t, d2, digest(t, e), "名稱與說明不進附證")
-		_, err = e.svc.Copy(ctx, e.admin, e.roles["user"], "from-user", "")
+		_, err = e.svc.Copy(asSession(ctx, e.admin), e.admin, e.roles["user"], "from-user", "")
 		require.NoError(t, err)
 		d3 := digest(t, e)
 		require.NoError(t, e.db.Where("role_id = ?", r.ID).Delete(&model.RolePermission{}).Error)
@@ -52,12 +52,12 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 	t.Run("合法的四種事件可重放為現況；直改集合被指出", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		a := e.create(t, "a", "asset:view")
-		cp, err := e.svc.Copy(ctx, e.admin, a.ID, "b", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, a.ID, "b", "")
 		require.NoError(t, err)
-		_, err = e.svc.Update(ctx, e.admin, a.ID, 1, RoleInput{Name: "a", Permissions: []string{"asset:view", "session:view"}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, a.ID, 1, RoleInput{Name: "a", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
 		gone := e.create(t, "gone", "audit:view")
-		require.NoError(t, e.svc.Delete(ctx, e.admin, gone.ID, 1))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, gone.ID, 1))
 		var evs []authz.RoleDefinitionStateEvent
 		for _, ev := range e.events.events {
 			evs = append(evs, authz.RoleDefinitionStateEvent{Action: ev.Action, RoleID: ev.RoleID, DefinitionVersion: ev.DefinitionVersion, Before: ev.Before, After: ev.After})
@@ -107,7 +107,7 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 	})
 	t.Run("狀態不含角色名稱說明或自由文字", func(t *testing.T) {
 		e := newRoleDefEnv(t)
-		_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "secret-looking-name", Description: "free text here", Permissions: []string{"asset:view"}})
+		_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "secret-looking-name", Description: "free text here", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		st, err := e.svc.State(ctx)
 		require.NoError(t, err)

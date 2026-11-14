@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"github.com/custodexa/backend/internal/api"
 	"github.com/custodexa/backend/internal/apierror"
@@ -26,6 +27,14 @@ import (
 
 // 背景工作與候選的範圍重驗。候選：候選 → 帳號 → 資產，以帳號改密的讀取範圍判定；
 // 範圍化檢視者的列表只列範圍內候選，對範圍外候選重試與不存在同形。
+
+// rwRequestCtx 服務層直接呼叫時的請求脈絡：人類工作階段的請求主體（未帶角色限定），與經 HTTP 認證入口時相同。
+func rwRequestCtx(t *testing.T, db *gorm.DB, userID uint) context.Context {
+	t.Helper()
+	p, err := authz.ResolveUserOn(db, userID, authz.TokenFacts{SubjectKind: model.KindHuman})
+	require.NoError(t, err)
+	return authz.ContextWithPrincipal(model.WithRequestCredential(context.Background(), model.RequestCredentialHumanSession), p)
+}
 
 // rwNoCodec 候選列表與單筆讀取不解封秘密；任何加解密呼叫都是測試錯誤
 type rwNoCodec struct{}
@@ -103,10 +112,10 @@ func TestRotationWorkScopeRecheck(t *testing.T) {
 		require.Equal(t, 2, after.AttemptCount)
 
 		// 範圍內候選：單筆存取放行（經候選 → 帳號 → 資產解析，不是不限範圍）
-		got, err := cands.GetFor(context.Background(), e.users["scoped"], in.ID)
+		got, err := cands.GetFor(rwRequestCtx(t, e.db, e.users["scoped"]), e.users["scoped"], in.ID)
 		require.NoError(t, err)
 		require.Equal(t, in.ID, got.ID)
-		_, err = cands.GetFor(context.Background(), e.users["scoped"], out.ID)
+		_, err = cands.GetFor(rwRequestCtx(t, e.db, e.users["scoped"]), e.users["scoped"], out.ID)
 		require.Error(t, err)
 		require.False(t, errors.Is(err, asset.ErrCandidateNotFound), "範圍外回範圍拒絕值，由出口轉成候選不存在")
 
@@ -242,7 +251,7 @@ func TestRotationWorkScopeRecheck(t *testing.T) {
 			return ids
 		}
 
-		sc, err := e.scope.ViewScope(context.Background(), e.db, e.users["emptynode"], asset.CredCapAccountRotate)
+		sc, err := e.scope.ViewScope(rwRequestCtx(t, e.db, e.users["emptynode"]), e.db, e.users["emptynode"], asset.CredCapAccountRotate)
 		require.NoError(t, err)
 		require.True(t, sc.Limited, "有效節點已空：不是不限範圍")
 		require.Empty(t, listed("emptynode", h.ListCandidates, "/api/v1/change-secret-candidates"), "候選列表為空")

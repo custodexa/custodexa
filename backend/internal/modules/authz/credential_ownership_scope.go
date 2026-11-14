@@ -56,12 +56,28 @@ func credentialOwnershipPerm(capability string) (Permission, bool) {
 	return "", false
 }
 
-// ownershipPrincipal ctx 內同一使用者的主體只提供伺服器端脈絡；背景工作（批次）沒有請求主體，以發起者識別重解。
+// ownershipPrincipal 見 CredentialActorPrincipal；取不到時回 nil（呼叫端以能力拒絕處理）。
 func ownershipPrincipal(ctx context.Context, actorUserID uint) *Principal {
-	if p := PrincipalFromContext(ctx); p != nil && p.UserID == actorUserID {
-		return p
+	p, _ := CredentialActorPrincipal(ctx, actorUserID)
+	return p
+}
+
+// CredentialActorPrincipal 憑證管理判定該用的操作者主體，依路徑分流：
+//   - ctx 帶同一帳號的請求主體：取它（帶其事實與角色限定），交易內以它的事實重解；
+//   - ctx 帶同一帳號的背景發起者標示（且不是請求脈絡）：以帳號編號重解完整身分（零值事實）；
+//   - 其餘（請求脈絡缺主體、主體與操作者不符、沒有任何標示）：回 (nil, false)，呼叫端一律拒絕，
+//     不退回完整身分。
+func CredentialActorPrincipal(ctx context.Context, actorUserID uint) (*Principal, bool) {
+	if actorUserID == 0 {
+		return nil, false
 	}
-	return &Principal{UserID: actorUserID}
+	if p := PrincipalFromContext(ctx); p != nil && p.UserID == actorUserID {
+		return p, true
+	}
+	if id, ok := model.BackgroundInitiatorFrom(ctx); ok && id == actorUserID {
+		return &Principal{UserID: actorUserID}, true
+	}
+	return nil, false
 }
 
 // AuthorizeSharedOwnership 見檔頭規則。

@@ -16,7 +16,9 @@ const h = vi.hoisted(() => ({
   probe: vi.fn(),
   assets: vi.fn(),
   roleDefs: vi.fn(),
+  apiTokens: vi.fn(),
 }))
+vi.mock('@/api/apiTokens', () => ({ getUserApiTokens: (...a) => h.apiTokens(...a) }))
 
 vi.mock('@/api/permissionOverview', () => ({
   getPermissionOverview: (...a) => h.overview(...a),
@@ -78,6 +80,34 @@ beforeEach(() => {
   i18n.global.locale.value = 'zh-TW'
   h.assets.mockResolvedValue({ data: [{ id: 5, name: 'db-prod-01' }], total: 1 })
   h.roleDefs.mockResolvedValue({ data: [] })
+  h.apiTokens.mockResolvedValue({ data: [] })
+})
+
+describe('權限一覽：API token', () => {
+  const tk = (status) => ({ status, granted_roles: [] })
+
+  it('有可用的 API token：能管理什麼一欄底部寫出把數，連結通知上層切換分頁', async () => {
+    h.overview.mockResolvedValue(overview())
+    h.apiTokens.mockResolvedValue({ data: [tk('active'), tk('expiring_soon'), tk('revoked')] })
+    const w = await mountTab()
+    expect(h.apiTokens).toHaveBeenCalledWith(9)
+    expect(w.get('[data-test="po-api-tokens"]').text()).toContain('target 有 2 把可用的 API token')
+    await w.get('[data-test="po-api-tokens-link"]').trigger('click')
+    expect(w.emitted('view-api-tokens')).toHaveLength(1)
+  })
+
+  it('沒有可用的或讀不到：不顯示那一句', async () => {
+    h.overview.mockResolvedValue(overview())
+    h.apiTokens.mockResolvedValue({ data: [tk('expired')] })
+    const w = await mountTab()
+    expect(w.find('[data-test="po-api-tokens"]').exists()).toBe(false)
+
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    h.apiTokens.mockRejectedValue(new Error('403'))
+    const w2 = await mountTab()
+    expect(w2.find('[data-test="po-api-tokens"]').exists()).toBe(false)
+    expect(w2.find('[data-test="po-load-failed"]').exists()).toBe(false)
+  })
 })
 
 describe('權限一覽：能管理什麼', () => {

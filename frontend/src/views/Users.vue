@@ -130,6 +130,7 @@
         style="width: 100%"
         stripe
         :default-sort="{ prop: 'id', order: 'ascending' }"
+        @expand-change="onExpandChange"
       >
         <!-- 展開列承載次要欄位：留在主表會把總寬推到 1890（1280 下需橫捲近一倍），
              而 macOS 覆蓋式捲軸不提示右邊還有欄位 -->
@@ -180,6 +181,28 @@
                       {{ $t('users.exempt') }}
                     </el-tag>
                   </el-space>
+                </span>
+              </div>
+              <!-- 本人建立的 API token：展開時才讀，讀不到就不顯示這一項 -->
+              <div
+                v-if="tokenInfo[row.id]?.state === 'ok'"
+                class="row-detail__item row-detail__item--wide"
+                data-test="row-api-tokens"
+              >
+                <span class="row-detail__label">{{ $t('users.expand.apiTokens') }}</span>
+                <span class="row-detail__value">
+                  <template v-if="tokenInfo[row.id].total === 0">{{ $t('users.expand.apiTokensNone') }}</template>
+                  <template v-else>
+                    <span data-test="row-api-tokens-value">{{ tokenInfo[row.id].lastUsed
+                      ? $t('users.expand.apiTokensValue', { n: tokenInfo[row.id].usable, time: formatDateTime(tokenInfo[row.id].lastUsed) })
+                      : $t('users.expand.apiTokensValueNeverUsed', { n: tokenInfo[row.id].usable }) }}</span>
+                    <a
+                      class="row-detail__link"
+                      :href="`/users/${row.id}?tab=apiTokens`"
+                      data-test="row-api-tokens-link"
+                      @click.prevent="goApiTokens(row)"
+                    >{{ $t('users.expand.apiTokensLink') }}</a>
+                  </template>
                 </span>
               </div>
             </div>
@@ -594,6 +617,8 @@ import {
   CircleCheck,
 } from 'lucide-vue-next'
 import { getUserList, getUserDetail, setInactivityExempt } from '@/api/user'
+import { getUserApiTokens } from '@/api/apiTokens'
+import { latestUse, summarize } from '@/constants/apiTokens'
 import PageHeader from '@/components/PageHeader.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
 import TokenDrawer from '@/components/agent/TokenDrawer.vue'
@@ -646,6 +671,31 @@ const kindFromQuery = () => {
   const value = route?.query?.kind ?? new URLSearchParams(window.location.search).get('kind')
   return ['agent', 'human'].includes(value) ? value : ''
 }
+// 展開列的 API token 摘要：每列第一次展開時讀一次，讀取失敗的下次展開再讀；AI agent 不建立 API token，不讀
+const tokenInfo = reactive({})
+const onExpandChange = (row, expanded) => {
+  const open = Array.isArray(expanded) ? expanded.includes(row) : Boolean(expanded)
+  if (!open || !row || row.kind === 'agent') return
+  const known = tokenInfo[row.id]
+  if (known && known.state !== 'failed') return
+  tokenInfo[row.id] = { state: 'loading' }
+  void loadRowTokens(row.id)
+}
+const loadRowTokens = async (id) => {
+  try {
+    const res = await getUserApiTokens(id)
+    const list = Array.isArray(res?.data) ? res.data : []
+    tokenInfo[id] = { state: 'ok', total: list.length, usable: summarize(list).usable, lastUsed: latestUse(list) }
+  } catch (error) {
+    tokenInfo[id] = { state: 'failed' }
+    console.error(...apiErrorSummary('user_api_token_list_failed', error))
+  }
+}
+const goApiTokens = (row) => {
+  if (router) void router.push({ path: `/users/${row.id}`, query: { tab: 'apiTokens' } })
+  else window.location.assign(`/users/${row.id}?tab=apiTokens`)
+}
+
 const filterForm = reactive({
   provisioningOrigin: '',
   kind: kindFromQuery(),
@@ -1142,5 +1192,20 @@ onMounted(async () => {
   margin-top: var(--ot-space-md);
   display: flex;
   justify-content: flex-end;
+}
+/* 句子較長的項目（API token 摘要＋連結）佔滿一整列，避免在窄格裡把時間與連結拆行 */
+.row-detail__item--wide {
+  grid-column: 1 / -1;
+}
+
+.row-detail__item--wide .row-detail__value {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.row-detail__link {
+  margin-left: var(--ot-space-sm);
+  color: var(--ot-primary);
+  white-space: nowrap;
 }
 </style>

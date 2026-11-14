@@ -97,13 +97,19 @@ const STYLE = {
   secondary:
     'margin:0;color:var(--ot-text-secondary);font-size:var(--ot-font-size-sm)',
   list: 'margin:2px 0 0;padding-left:1.2em',
+  warn:
+    'margin:0;padding:var(--ot-space-sm) 12px;border-radius:var(--ot-radius-md);' +
+    'border:1px solid var(--ot-danger);color:var(--ot-text-primary);font-size:var(--ot-font-size-sm)',
   tip:
     'margin:0;padding:var(--ot-space-sm) 12px;border-radius:var(--ot-radius-md);' +
     'background:var(--ot-primary-dim);font-size:var(--ot-font-size-sm)',
 }
 
-/** 刪除確認框內容（VNode）：主句、後果（次要色小字）、改用可逆操作的提示（淺藍底）。 */
-export function renderDeleteConfirm(row, t, locale) {
+/**
+ * 刪除確認框內容（VNode）：主句、後果（次要色小字）、會一併失效的 API token（紅框，有可用的才出現）、
+ * 改用可逆操作的提示（淺藍底）。`extra.apiTokenCount` 為刪除前讀到的可用 API token 數。
+ */
+export function renderDeleteConfirm(row, t, locale, extra = {}) {
   const copy = deleteConfirmCopy(row, locale)
   const children = [
     h('p', { class: 'account-action-main', style: STYLE.main }, t(copy.main.key, copy.main.params)),
@@ -121,6 +127,10 @@ export function renderDeleteConfirm(row, t, locale) {
     children.push(
       h('div', { class: 'account-action-impact', style: STYLE.secondary }, impactChildren)
     )
+  }
+  const n = Number(extra.apiTokenCount) || 0
+  if (n > 0) {
+    children.push(h('p', { class: 'account-action-api-tokens', style: STYLE.warn }, t('users.deleteApiTokens', { n })))
   }
   children.push(h('p', { class: 'account-action-tip', style: STYLE.tip }, t(copy.tip)))
   return h('div', { class: 'account-action-confirm', style: STYLE.body }, children)

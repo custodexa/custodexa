@@ -25,7 +25,7 @@ import (
 const pwloClientIP = "127.0.0.1"
 
 func (e *pwloEnv) op() identity.Operator {
-	return identity.Operator{UserID: e.root, Username: "pwlo-root", ClientIP: pwloClientIP}
+	return identity.Operator{Principal: testSessionPrincipal(e.root), UserID: e.root, Username: "pwlo-root", ClientIP: pwloClientIP}
 }
 
 func (e *pwloEnv) userDeleteParty() pwloParty {
@@ -122,7 +122,7 @@ func (e *pwloEnv) mappingDeleteParty(t *testing.T) pwloParty {
 		}
 	})
 	t.Cleanup(restore)
-	actor := identity.GroupRoleMappingActor{ID: e.root, Name: "pwlo-root", IP: pwloClientIP}
+	actor := identity.GroupRoleMappingActor{Principal: testSessionPrincipal(e.root), ID: e.root, Name: "pwlo-root", IP: pwloClientIP}
 	return pwloParty{name: "mapping_rule_delete", actor: "mapping", stopSite: "mapping_revoke_after_user", run: func(fx *pwloFixture) error {
 		return svc.DeleteMapping(model.RoleMappingChannelKindProvider, fx.provider, fx.rule, actor)
 	}}

@@ -130,7 +130,7 @@ func TestUsersEmptyPasswordImpliesExternalAcrossWritePaths(t *testing.T) {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	assertNoOrphanEmptyPassword(t, env.db, "UpdateStatus")
-	if _, _, err := env.users.Update(other.ID, &UpdateUserRequest{FullName: "Renamed"}); err != nil {
+	if _, _, err := env.users.Update(Operator{}, other.ID, &UpdateUserRequest{FullName: "Renamed"}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	assertNoOrphanEmptyPassword(t, env.db, "UserService.Update")

@@ -352,7 +352,7 @@ func (s *AssetAuthorizationService) Grant(ctx context.Context, spec GrantSpec) (
 		GrantedBy:    spec.GrantedBy,
 		Accounts:     accounts,
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 鎖序：主體 users 列鎖（升冪）→ 拓撲序列化鎖 → 同交易重讀並判定客體範圍 → 引用驗證
 		// → 防自我授權 → 寫入。拓撲鎖之後不再取新的使用者或群組鎖
 		if s.writeScope != nil {
@@ -483,7 +483,7 @@ func (s *AssetAuthorizationService) GrantBatch(
 		// ON CONFLICT DO NOTHING：既有組合（partial 唯一索引命中）原子跳過。
 		// 先查後寫在並發下無法序列化（兩交易先讀不存在、之一撞索引整批回滾回 500），
 		// 交由 DB 唯一索引兜底才是並發安全的去重。created=實插筆數、skipped=展開數−created
-		if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 			// 鎖序同 Grant：主體 users 列鎖（升冪，一次取齊）→ 拓撲序列化鎖 → 判定客體 → 引用驗證 → 守衛 → 寫入
 			if s.writeScope != nil {
 				if _, err := trustedOperator(ctx, grantedBy); err != nil {
@@ -604,7 +604,7 @@ func (s *AssetAuthorizationService) UpdateAccountScope(
 		return nil, err
 	}
 	var auth *model.AssetAuthorization
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 鎖序：（不加鎖讀規則取得主體）→ 主體 users 列鎖 → 拓撲序列化鎖 → 重讀規則並判定範圍
 		// → 臨時授權帳號範圍不可調整 → 防自我授權 → 窄化 → 寫入
 		scoped := s.writeScope != nil
@@ -685,7 +685,7 @@ func (s *AssetAuthorizationService) RevokePermission(
 	authorizationID uint,
 ) error {
 	var auth model.AssetAuthorization
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 鎖序：拓撲序列化鎖 → 讀規則並判定範圍 → 臨時授權裸刪守門 → 軟刪（不鎖主體列）
 		if s.writeScope != nil {
 			if _, err := trustedOperator(ctx, operatorIDOf(ctx)); err != nil {

@@ -169,7 +169,7 @@ func (s *CredentialRotationService) revalidateAssetBound(ctx context.Context, db
 		}
 	}
 	if member.RequeuedBy != 0 && member.RequeuedBy != auth.ActorID && member.RequeuedBy != callerID {
-		actors = append(actors, contextWithInitiator(context.Background(), member.RequeuedBy, member.RequeuedByName))
+		actors = append(actors, backgroundInitiatorContext(member.RequeuedBy, member.RequeuedByName))
 	}
 	var version int64
 	for i, actor := range actors {

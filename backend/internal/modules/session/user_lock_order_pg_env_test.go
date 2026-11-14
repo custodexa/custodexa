@@ -160,7 +160,7 @@ func sessionLingeringBackends(admin *gorm.DB) string {
 }
 
 func (e *sessionLockEnv) op() identity.Operator {
-	return identity.Operator{UserID: e.root, Username: "slo-root", ClientIP: "127.0.0.1"}
+	return identity.Operator{Principal: testSessionPrincipal(e.root), UserID: e.root, Username: "slo-root", ClientIP: "127.0.0.1"}
 }
 
 // installAppHooks 以「停點名稱@連線池名稱」分派的通用停點（身分與授權兩個套件的掛點都設）；

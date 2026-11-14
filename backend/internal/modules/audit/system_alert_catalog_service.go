@@ -38,6 +38,8 @@ type SystemAlertSeverityActor struct {
 	ID   uint
 	Name string
 	IP   string
+	// APIToken 該次請求經由的 API token（親自操作時為零值），供稽核歸因。
+	APIToken model.APITokenRef
 }
 
 // SystemAlertCatalogService 目錄與明細服務。
@@ -136,7 +138,7 @@ func (s *SystemAlertCatalogService) SetSeverity(key, severity string, actor Syst
 			Action:   string(model.ActionUpdate),
 			Resource: string(model.ResourceSystemAlertType),
 			Status:   string(model.StatusSuccess),
-			Request:  gatewayapi.RequestMeta{ClientIP: actor.IP},
+			Request:  gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name),
 			Details:  string(raw),
 		}); err != nil {
 			return fmt.Errorf("分級調整審計留痕失敗: %w", err)

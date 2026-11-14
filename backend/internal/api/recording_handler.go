@@ -298,7 +298,7 @@ func (h *RecordingHandler) auditRecordingRetrieval(c *gin.Context, rtoken string
 		status = model.StatusFailure
 	}
 	sessionID := grant.SessionID
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     grant.UserID,
 		Username:   grant.Username,
 		Action:     model.ActionRead,
@@ -317,7 +317,7 @@ func (h *RecordingHandler) auditRecordingRetrieval(c *gin.Context, rtoken string
 		// ——本機檔被清除或被改動之後，稽核員要能回答
 		// 「我看到的這份是誰、什麼時候、從哪裡拿出來的」
 		Details: recordingRetrievalDetails(c, sessionID),
-	})
+	}))
 }
 
 // recordingRetrievalDetails 取證審計列的 Details。
@@ -528,7 +528,7 @@ func (h *RecordingHandler) DeleteRecording(c *gin.Context) {
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
 	err = h.recordingService.DeleteRecording(uint(id), session.RecordingDeleteActor{
-		ID: userID, Name: username, ClientIP: sourceip.Of(c),
+		ID: userID, Name: username, ClientIP: sourceip.Of(c), APIToken: middleware.APITokenRefOf(c),
 	})
 	if err != nil {
 		switch {

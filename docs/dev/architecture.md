@@ -19,7 +19,7 @@
 | `identity` | 本地／OIDC／LDAP 三登入路徑、MFA、refresh 輪替、認證世代閘、使用者主檔、local admin 不變式 |
 | `session` | 會話生命週期與狀態機、對帳與逾時終結、錄影管理與播放、自助連線視圖、SFTP、命令片段 |
 
-**刻意不模組化（勿順手改）**：共用資料模型包 `backend/internal/model`、
+**刻意不模組化**：共用資料模型包 `backend/internal/model`、
 錯誤出口 `backend/internal/apierror`、基礎設施層 `backend/internal/database`、
 handler 層，以及六個協議接入包（`sshproxy`／`proxy`／`dbproxy`／`k8sproxy`／`localpty`／`recorder`）。
 i18n 維持橫切。

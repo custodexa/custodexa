@@ -149,6 +149,7 @@ func TestDeleteOwnerWithAgentsRejectedAPI(t *testing.T) {
 	router.Use(func(c *gin.Context) {
 		c.Set("userID", operator.ID)
 		c.Set("username", operator.Username)
+		middleware.BindRequestPrincipal(c, requestPrincipalForTest(t, db, operator.ID), model.RequestCredentialHumanSession)
 		c.Next()
 	})
 	router.DELETE("/users/:id", h.Delete)

@@ -12,6 +12,8 @@
       "count": 1,
       "row": {
         "action": "update",
+        "api_token_id": null,
+        "api_token_name": null,
         "asset_id": null,
         "client_ip": "192.0.2.1",
         "created_at": "<time>",
@@ -40,6 +42,8 @@
       "count": 1,
       "row": {
         "action": "create",
+        "api_token_id": null,
+        "api_token_name": null,
         "asset_id": null,
         "client_ip": "192.0.2.1",
         "created_at": "<time>",
@@ -68,6 +72,8 @@
       "count": 1,
       "row": {
         "action": "create",
+        "api_token_id": null,
+        "api_token_name": null,
         "asset_id": null,
         "client_ip": "192.0.2.1",
         "created_at": "<time>",
@@ -96,6 +102,8 @@
       "count": 1,
       "row": {
         "action": "create",
+        "api_token_id": null,
+        "api_token_name": null,
         "asset_id": null,
         "client_ip": "192.0.2.1",
         "created_at": "<time>",

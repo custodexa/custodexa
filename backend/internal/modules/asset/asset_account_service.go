@@ -614,7 +614,7 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 
 	userID, operator := model.UserFromContext(ctx)
 
-	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
 		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, 0); err != nil {
 			return err
@@ -837,7 +837,7 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.AssetAccount
 
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
 		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, accountID); err != nil {
 			return err
@@ -1018,7 +1018,7 @@ func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uin
 	}
 
 	userID, operator := model.UserFromContext(ctx)
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
 		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, accountID); err != nil {
 			return err
@@ -1095,7 +1095,7 @@ func (s *AssetAccountService) SetDefault(ctx context.Context, assetID, accountID
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.AssetAccount
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
 		if err := s.authorizeAccountWriteTx(ctx, tx, assetID, accountID); err != nil {
 			return err

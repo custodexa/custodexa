@@ -112,6 +112,14 @@
           >
             {{ detailText(event) }}
           </div>
+          <!-- 經由 API token 的操作：註明是哪一把，與本人親自操作區分 -->
+          <div
+            v-if="event.api_token_name && !isIPPivot"
+            class="event-detail"
+            data-test="event-via"
+          >
+            {{ viaText(event) }}
+          </div>
           <!--
             剪貼簿：內容刻意不入時間軸（跨場彙總畫面攤內容＝機密再擴散），
             SHALL NOT 嘗試顯示內容。取而代之給「檢視內容」入口——一鍵抵達
@@ -300,6 +308,8 @@ const props = defineProps({
   // 當前樞紐與開啟中的類別：位址深連結要把這一段調查範圍原樣帶走
   subject: { type: String, default: 'user' },
   types: { type: Array, default: () => [] },
+  // 調查對象的呈現名：以人調查時事件不帶行為人（行為人就是對象本人），「經由 API token」一行取這個名字
+  subjectName: { type: String, default: '' },
 })
 const emit = defineEmits(['load-more', 'open-session'])
 
@@ -402,8 +412,21 @@ const isIPPivot = computed(() => props.subject === 'ip')
 // 位址樞紐的對造是「誰 · 哪台」：actor 與 counterpart 兩者。
 // **未認證的列沒有 actor**（登入失敗、偽造票證兌換），那是位址樞紐才看得到
 // 的一批列，顯示為「未認證來源」而不是留白——留白會被讀成「還沒載入」
+// 操作者：位址樞紐取 actor；資產樞紐的對造就是操作者；人樞紐兩者皆無，操作者即調查對象本人
+const operatorName = (event) => {
+  if (event.actor) return event.actor.name || `#${event.actor.id}`
+  const cp = event.counterpart
+  if (cp && cp.kind === 'user') return cp.name || `#${cp.id}`
+  return props.subject === 'user' ? props.subjectName : ''
+}
+const viaText = (event) =>
+  t('auditorWorkbench.events.operatorVia', {
+    user: operatorName(event),
+    name: event.api_token_name,
+  })
 const actorText = (event) => {
   if (!event?.actor) return t('auditorWorkbench.events.actorUnauthenticated')
+  if (event.api_token_name) return viaText(event)
   return t('auditorWorkbench.events.actorUser', {
     name: event.actor.name || `#${event.actor.id}`,
   })

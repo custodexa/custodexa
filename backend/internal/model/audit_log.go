@@ -80,6 +80,8 @@ const (
 	ActionAgentToolCallArgsViewed    AuditAction = "agent_tool_call_args_viewed"
 	ActionAgentTokenRevoked          AuditAction = "agent_token_revoked"
 	ActionAgentTokenSuspended        AuditAction = "agent_token_suspended"
+	// ActionAPITokenRevoked 個人 API token 被撤銷（resource=api_token）；建立沿用 ActionCreate
+	ActionAPITokenRevoked AuditAction = "api_token_revoked"
 	ActionAgentSessionsTerminated    AuditAction = "agent_sessions_terminated"
 	ActionAgentSessionsTerminateLate AuditAction = "agent_sessions_terminate_late"
 	ActionReview                     AuditAction = "review" // 破窗事後補審
@@ -148,6 +150,8 @@ const (
 	ResourceRecording     AuditResource = "recording"
 	ResourceUser          AuditResource = "user"
 	ResourceAgentToken    AuditResource = "agent_token"
+	// ResourceAPIToken 個人 API token（resource_id＝token 識別；所屬帳號與名稱記在 details）
+	ResourceAPIToken      AuditResource = "api_token"
 	ResourceAgentToolCall AuditResource = "agent_tool_call"
 	ResourceAuth          AuditResource = "auth"
 	ResourceFile          AuditResource = "file"
@@ -402,7 +406,7 @@ const (
 // AuditLog 審計日誌模型
 type AuditLog struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time      `gorm:"index:idx_audit_created_at;index:idx_audit_asset_created,priority:2;index:idx_audit_user_created,priority:2" json:"created_at"`
+	CreatedAt time.Time      `gorm:"index:idx_audit_created_at;index:idx_audit_asset_created,priority:2;index:idx_audit_user_created,priority:2;index:idx_audit_api_token_created,priority:2" json:"created_at"`
 	UpdatedAt time.Time      `json:"-"` // 審計日誌不應被更新
 	// DeletedAt 保留欄位映射但不具軟刪語意：型別刻意不是 gorm.DeletedAt，GORM 不會自動附加
 	// deleted_at IS NULL 範圍，因此此欄非空的列仍出現在所有讀取面；非空本身是異常，
@@ -430,6 +434,12 @@ type AuditLog struct {
 	// 使用者資訊
 	UserID   uint   `gorm:"not null;index:idx_audit_user_created,priority:1" json:"user_id"`
 	Username string `gorm:"type:varchar(100);not null" json:"username"` // 反正規化，避免 JOIN
+
+	// APITokenID、APITokenName 經個人 API token 認證的操作所寫的列：token 識別與寫入當下的名稱快照。
+	// 親自操作（登入工作階段）的列兩欄皆為 NULL，回應不出現這兩個鍵。兩欄納入逐列完整性
+	// （值為空時鍵不出現，既有列的涵蓋內容不變）。
+	APITokenID   *uint   `gorm:"index:idx_audit_api_token_created,priority:1" json:"api_token_id,omitempty"`
+	APITokenName *string `gorm:"type:varchar(100)" json:"api_token_name,omitempty"`
 
 	// 請求資訊
 	Method   string `gorm:"type:varchar(10)" json:"method"`                              // HTTP Method (GET, POST, etc.)
@@ -515,6 +525,7 @@ func (a *AuditLog) BeforeCreate(tx *gorm.DB) error {
 	// 不收口的後果不只是這一列寫不進去：多列 INSERT 是單一語句，一列違約
 	// 全批回滾，一個零憑證的超長路徑請求即可把同批的真實攻擊記錄一起沖掉
 	//（見 audit_log_bounds.go 檔頭）
+	attributeAuditFromContext(a, tx.Statement.Context)
 	BoundAuditLogFields(a)
 	if reservation, ok := tx.Statement.Context.Value(auditStampReservationKey{}).(AuditStampReservation); ok {
 		return reservation.Stamp(a)

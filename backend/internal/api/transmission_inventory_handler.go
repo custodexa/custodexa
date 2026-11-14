@@ -34,13 +34,13 @@ func (h *TransmissionInventoryHandler) audit(c *gin.Context, event string) {
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
 	details, _ := json.Marshal(gin.H{"event": event})
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID: userID, Username: username,
 		Action: model.ActionRead, Resource: model.ResourceTransmission,
 		Status: model.StatusSuccess, Method: c.Request.Method,
 		Path: c.Request.URL.Path, ClientIP: sourceip.Of(c),
 		StatusCode: http.StatusOK, Details: string(details),
-	})
+	}))
 }
 
 // Get 取得通道加密清冊

@@ -107,6 +107,10 @@ type LDAPDirectoryActor struct {
 	ID   uint
 	Name string
 	IP   string
+	// Principal 該次請求的主體（與 GroupRoleMappingActor 同形）
+	Principal *authz.Principal
+	// APIToken 該次請求經由的 API token（親自操作時為零值），供稽核歸因。
+	APIToken model.APITokenRef
 }
 
 // LDAPDirectoryRequest PUT upsert 的請求形狀。
@@ -829,7 +833,7 @@ func (s *LDAPDirectoryService) ldapDirectoryAuditLog(db *gorm.DB, actor LDAPDire
 		ResourceID: resourceID,
 		Status:     string(status),
 		Actor:      gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
+		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name),
 		Details:    string(payload),
 	}); err != nil {
 		return fmt.Errorf("寫入 LDAP 目錄設定稽核失敗: %w", err)

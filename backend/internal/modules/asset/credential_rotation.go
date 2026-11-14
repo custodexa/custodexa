@@ -300,7 +300,7 @@ func (s *CredentialRotationService) startGroupRotation(ctx context.Context, cred
 	}
 	userID, operator := model.UserFromContext(ctx)
 	var out *model.CredentialRotation
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 第一個動作取拓撲序列化鎖，其後才取憑證列鎖（與宣告新秘密同一次序）
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err
@@ -754,7 +754,7 @@ func assertRotationTargetStillPending(db *gorm.DB, rot *model.CredentialRotation
 //   - 否則：保留待生效版本與成員證據，憑證進入 out_of_sync，後續只能逐台補跑至收斂。
 func (s *CredentialRotationService) Abandon(ctx context.Context, rotationID uint) error {
 	userID, operator := model.UserFromContext(ctx)
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		rot, err := loadRotation(tx, rotationID)
 		if err != nil {
 			return err

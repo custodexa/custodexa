@@ -98,7 +98,7 @@ func TestDeletedAccountAssignmentsDoNotBlock(t *testing.T) {
 		_, err = e.users.DeleteWithSummaryBy(e.op(e.admin), a)
 		require.NoError(t, err)
 
-		set, err := NewRoleProjector(e.db, nil).ProjectRoles(e.admin)
+		set, err := NewRoleProjector(e.db, nil).ProjectRoles(principalOf(t, e.db, e.admin))
 		require.NoError(t, err)
 		assert.Equal(t, RoleReferenceCounts{}, set.ByRole[assetmgr].References, "已刪除帳號的直接指派不計入引用")
 		assert.Equal(t, RoleReferenceCounts{}, set.ByRole[globalRole].References)
@@ -110,10 +110,10 @@ func TestDeletedAccountAssignmentsDoNotBlock(t *testing.T) {
 
 		k0 := eventKinds(t, e.db)
 		auditBefore := userRoleAuditRows(t, e.db)
-		require.NoError(t, defs.Delete(ctx, e.admin, assetmgr, def.DefinitionVersion))
+		require.NoError(t, defs.Delete(asSession(ctx, e.admin), e.admin, assetmgr, def.DefinitionVersion))
 		globalDef, err := defs.GetDefinition(ctx, globalRole)
 		require.NoError(t, err)
-		require.NoError(t, defs.Delete(ctx, e.admin, globalRole, globalDef.DefinitionVersion))
+		require.NoError(t, defs.Delete(asSession(ctx, e.admin), e.admin, globalRole, globalDef.DefinitionVersion))
 
 		assert.Equal(t, before, heldAssignments(t, e.db, a), "刪除角色不動已刪除帳號的指派列")
 		assert.Equal(t, auditBefore, userRoleAuditRows(t, e.db), "刪除角色不寫 user_role 審計列")
@@ -145,13 +145,13 @@ func TestDeletedAccountAssignmentsDoNotBlock(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, e.db.Model(&model.User{}).Where("id = ?", b).Update("active", false).Error)
 
-		set, err := NewRoleProjector(e.db, nil).ProjectRoles(e.admin)
+		set, err := NewRoleProjector(e.db, nil).ProjectRoles(principalOf(t, e.db, e.admin))
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, set.ByRole[assetmgr].References.Direct)
 		def, err := e.roleDefEnv.svc.GetDefinition(ctx, assetmgr)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, def.NodeScopedBindingCount)
-		assert.ErrorIs(t, e.roleDefEnv.svc.Delete(ctx, e.admin, assetmgr, def.DefinitionVersion), ErrRoleDefinitionInUse)
+		assert.ErrorIs(t, e.roleDefEnv.svc.Delete(asSession(ctx, e.admin), e.admin, assetmgr, def.DefinitionVersion), ErrRoleDefinitionInUse)
 
 		require.NotContains(t, restoreFindingCodes(t, e.db), "empty_user_nodes")
 		require.NoError(t, authz.ClearBindingNodes(e.db, model.BindingSubjectUser, b, assetmgr))

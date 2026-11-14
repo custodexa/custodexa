@@ -350,7 +350,8 @@
       "role_definition_create": "Role definition created",
       "role_definition_copy": "Role definition copied",
       "role_definition_update": "Role definition updated",
-      "role_definition_delete": "Role definition deleted"
+      "role_definition_delete": "Role definition deleted",
+      "api_token_revoked": "API token revoked"
     },
     "auditResource": {
       "agent_token": "Agent token",
@@ -400,7 +401,8 @@
       "compliance_map": "Compliance Map",
       "schedule": "Schedule Preview",
       "unclassified": "Unclassified",
-      "credential": "Credential"
+      "credential": "Credential",
+      "api_token": "API token"
     },
     "mechanism": {
       "audit_write": "Audit Write",
@@ -1889,7 +1891,18 @@
     "reason": "Reason",
     "sameRequest": "View all records from this request",
     "requestFilterChip": "Same request: {id}",
-    "detailsRaw": "Details"
+    "detailsRaw": "Details",
+    "viaBadge": "API token",
+    "viaLabel": "Via",
+    "viaToken": "API token \"{name}\"",
+    "viaTokenId": "API token #{id}",
+    "viaTokenRoles": "Granted roles: {roles}",
+    "viaTokenExpires": "Expires {expires}",
+    "viaTokenNeverExpires": "Never expires",
+    "viaTokenDeleted": "Name as recorded at the time; account deleted",
+    "viaSession": "Web console (signed-in session)",
+    "resourceApiToken": "API token · {user} / {name}",
+    "resourceApiTokenOwn": "API token · {name}"
   },
   "commands": {
     "headerDesc": "Search command and statement records across connections. Command-line entries are reconstructed from keystrokes and recordings are authoritative; query console statements are recorded when submitted.",
@@ -2753,7 +2766,15 @@
       "createBody": "This account can only handle approvals and cannot see assets or connect. Usually the User role is given as well.",
       "createFix": "Also select User and create",
       "goRoleTab": "Go to Roles & Scope for {username}"
-    }
+    },
+    "expand": {
+      "apiTokens": "API token",
+      "apiTokensValue": "{n} usable · last used {time}",
+      "apiTokensValueNeverUsed": "{n} usable · never used",
+      "apiTokensNone": "None",
+      "apiTokensLink": "View and revoke"
+    },
+    "deleteApiTokens": "The {n} usable API token(s) of this account will stop working as well, and tools using them (such as Terraform) will immediately lose access to the management API. Changes already made are not undone."
   },
   "userGroups": {
     "roleScopeColumn": "Roles and management scope",
@@ -3115,7 +3136,7 @@
     }
   },
   "profile": {
-    "headerDesc": "Account information, password, and two-step verification management",
+    "headerDesc": "Account information, password, two-step verification, and API token management",
     "basicInfo": "Basic Information",
     "mfaLabel": "Two-Step Verification",
     "statusEnabled": "Enabled",
@@ -5608,7 +5629,18 @@
     "NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY": "This bastion service account has no public key to export.",
     "VALIDATION_EXECUTOR_SOURCE_INVALID": "The bastion service account settings are incomplete or the source is invalid.",
     "INTERNAL_ASSET_EXECUTOR_READ": "Failed to read the bastion service account.",
-    "INTERNAL_ASSET_EXECUTOR_WRITE": "Failed to save the bastion service account."
+    "INTERNAL_ASSET_EXECUTOR_WRITE": "Failed to save the bastion service account.",
+    "API_TOKEN_NAME_INVALID": "The API token name is required and must be at most 100 characters",
+    "API_TOKEN_ROLE_REQUIRED": "Select at least one role",
+    "API_TOKEN_ROLE_NOT_GRANTABLE": "One of the selected roles is no longer a management role you hold. Choose again.",
+    "API_TOKEN_EXPIRY_REQUIRED": "Choose an expiry",
+    "API_TOKEN_EXPIRY_INVALID": "The expiry must be in the future, and cannot be combined with no expiry",
+    "API_TOKEN_NOT_ELIGIBLE": "You do not have management permissions, so you cannot create an API token",
+    "CONFLICT_API_TOKEN_NAME": "You already have an API token with this name. Choose another name.",
+    "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API tokens cannot use this function",
+    "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "An API token cannot change this setting of the account it belongs to",
+    "AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN": "An API token cannot reference a credential already stored in the system. Include the password or key in the request instead.",
+    "NOTFOUND_API_TOKEN": "API token does not exist"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "This provider has a groups claim name set, but the groups scope is not requested. Most providers will not emit group claims, so no mapping rule will match and roles already granted by rules are revoked.",
@@ -7118,7 +7150,8 @@
       "pivotLink": "Investigate this address (keeps the current time range and categories)",
       "emptyHint": "Try widening the time range, or turning on more record categories above.",
       "emptyIpTitle": "No records from this address in this period",
-      "emptyIpHint": "Candidates cover only addresses that have signed in or connected successfully. Any address can be typed in directly, including ones that appear only in denial records."
+      "emptyIpHint": "Candidates cover only addresses that have signed in or connected successfully. Any address can be typed in directly, including ones that appear only in denial records.",
+      "operatorVia": "Operator: {user} (via API token {name})"
     },
     "table": {
       "time": "Time",
@@ -7160,6 +7193,7 @@
         "recording_failed": "Recording failed",
         "output_scan_disabled": "Output scanning disabled",
         "agent_token_revoked": "Agent token revoked",
+        "api_token_revoked": "API token revoked",
         "agent_token_suspended": "Agent token suspended",
         "agent_sessions_terminated": "Agent session termination result",
         "agent_sessions_terminate_late": "Agent session termination exceeded the target",
@@ -8863,6 +8897,10 @@
       "unmanaged_privileged_account": {
         "name": "Unmanaged privileged account",
         "description": "A host account inventory found accounts that can log in, hold privileges, and are not yet managed"
+      },
+      "privileged_api_token_created": {
+        "name": "High-privilege API token created",
+        "description": "An API token was created with the super administrator or system security administrator role"
       }
     },
     "groups": {
@@ -8934,7 +8972,19 @@
       "scopeNodeDeleted": "Node #{id} (deleted)",
       "targetNamed": "{name} ({kind} #{id})",
       "viewPermissionOverview": "View {name}'s permission overview",
-      "viewHostInventory": "View this host's account inventory"
+      "viewHostInventory": "View this host's account inventory",
+      "createdSummary": "{actor} created an API token whose roles include {roles}",
+      "createdTitle": "What was created",
+      "createdCreator": "Created by (owner)",
+      "createdCreatorValue": "{name} (user #{id})",
+      "createdPrivRoles": "High-privilege roles granted",
+      "createdTokenName": "API token name",
+      "createdGrantedRoles": "Granted roles",
+      "createdExpiry": "Expiry",
+      "createdNeverExpires": "Never expires",
+      "createdNeverExpiresHint": "Never stops working on its own",
+      "createdSuperRole": "{role} (super administrator)",
+      "viewTokens": "View {user}'s API tokens"
     },
     "targetKinds": {
       "asset": "Asset",
@@ -9013,7 +9063,8 @@
     "tabs": {
       "basic": "Basic info",
       "roles": "Roles and scope",
-      "permissions": "Permission overview"
+      "permissions": "Permission overview",
+      "apiTokens": "API token"
     },
     "header": {
       "protectedSuper": "Super administrator",
@@ -9092,7 +9143,21 @@
       "groupUnavailable": "You do not have permission to view user groups, so roles from groups cannot be listed.",
       "groupUnavailableHint": "This person may still receive roles through groups; the other two sections work as usual.",
       "goGroup": "Edit in group",
-      "mappedFromMapping": "From mapping"
+      "mappedFromMapping": "From mapping",
+      "pendingRemove": "To be removed",
+      "undoRemove": "Undo removal",
+      "apiTokenLoseTitle": "Not saved yet: {user}'s API tokens will also lose \"{role}\"",
+      "apiTokenLoseBody": "{n} API token(s) are granted this role: {names}. After saving, only \"{remaining}\" remains and they still work. None is granted only \"{role}\", so no API token will be suspended. If the role is assigned again later, they get \"{role}\" back automatically.",
+      "apiTokenLoseBodyMixed": "{n} API token(s) are granted this role: {names}. After saving, {m} of them will be suspended (they recover when the role is assigned again); the rest still work.",
+      "apiTokenAllLostTitle": "Not saved yet: {user} will have no management permissions, and all {n} of their API tokens will be suspended",
+      "apiTokenAllLostBody": "Every role granted to these {n} tokens will be removed. After saving their status becomes \"Suspended (roles removed)\" and every call is rejected; if the roles are assigned again later, they recover automatically. To stop them permanently, revoke them on the \"API token\" tab. {user} also will not be able to create new ones.",
+      "apiTokenNoGrowTitle": "{user}'s existing API tokens will not get \"{role}\" automatically",
+      "apiTokenNoGrowBody": "Each API token can only use the roles selected when it was created; when the owner gains a new role, existing tokens do not get it. To use the new role, {user} has to create another token; creating an API token granted \"Administrator\" raises a system alert.",
+      "apiTokenRegainTitle": "Not saved yet: {user}'s API tokens will get \"{role}\" back",
+      "apiTokenRegainBody": "{n} API token(s) are granted this role but it is not in effect now: {names}. After saving they get \"{role}\" back immediately, and tools using them can again do what this role allows. To keep any of them from recovering, revoke it on the \"API token\" tab first.",
+      "apiTokenRegainActive": " {m} of them are suspended now and will work again after saving: {names}.",
+      "apiTokenRegainUnknownTitle": "Not saved yet: cannot confirm whether {user}'s existing API tokens will get \"{role}\" back",
+      "apiTokenRegainUnknownBody": "An API token gets a granted role back automatically when the role is assigned again. {user}'s API token list could not be read, so this cannot be checked now; after saving, check the \"API token\" tab."
     },
     "change": {
       "title": "Changes after saving",
@@ -9105,9 +9170,30 @@
       "connectionFixed": "General management abilities do not bring connection rights by themselves; which hosts can be connected is decided by asset authorization, and super administrators follow their existing reserved identity",
       "connectionUnchanged": "Unchanged",
       "effectiveNow": "Takes effect immediately after saving and is recorded in the operation log.",
-      "unavailable": "Preview is temporarily unavailable"
+      "unavailable": "Preview is temporarily unavailable",
+      "apiToken": "API token",
+      "apiTokenLose": "{n} will lose this role, {m} suspended",
+      "apiTokenAllLost": "{n} will be suspended (they recover when the roles are assigned again)",
+      "apiTokenUnchanged": "Unchanged (none of the {n} existing tokens is granted this role)",
+      "apiTokenFirst": "None yet. After saving, {user} can create one on their profile page",
+      "apiTokenRegain": "{n} will get this role back",
+      "apiTokenRegainActive": "{n} will get this role back, {m} of them will work again",
+      "apiTokenCheckAfterSave": "Cannot be confirmed in advance; check the \"API token\" tab after saving",
+      "apiTokenPartsSeparator": "; ",
+      "viewApiTokens": "View API tokens"
     },
-    "loadFailed": "Could not load this user"
+    "loadFailed": "Could not load this user",
+    "apiTokens": {
+      "desc": "These API tokens were created by {user}. Each can only do what its \"Granted roles\" column lists (never more than {user}'s current roles), and only through the management and settings API. Only {user} can create them; you can revoke them, and tools using a revoked token immediately lose access.",
+      "descProtected": "These API tokens were created by {user}. Each can only do what its \"Granted roles\" column lists, and only through the management and settings API. Only {user} can create them.",
+      "protectedTitle": "Only a super administrator can revoke {user}'s API tokens",
+      "protectedBody": "{user} holds the super administrator role. Revoking their API tokens follows the same rule as disabling or deleting a protected account. If you need to stop them urgently, contact another super administrator.",
+      "protectedBodySecurity": "{user} holds the system security administrator role. Revoking their API tokens follows the same rule as disabling or deleting a protected account. If you need to stop them urgently, contact a super administrator.",
+      "disabledTitle": "Account disabled: none of {user}'s API tokens can be used right now",
+      "disabledBody": "While the account is disabled, every call with these API tokens is rejected. When the account is enabled again, tokens that have not expired or been revoked work again; to stop one permanently, revoke it.",
+      "empty": "{user} has not created any API tokens",
+      "loadFailed": "The API token list could not be loaded. Refresh the page; if it keeps happening, contact your system administrator."
+    }
   },
   "permissionOverview": {
     "switchUser": "Switch user",
@@ -9211,7 +9297,9 @@
       "approverLink": "Go to approver scopes",
       "compatDefault": "Ordinary user (the default when no role is assigned)",
       "agent": "An AI agent has fixed permissions that roles do not change"
-    }
+    },
+    "apiTokens": "{user} has {n} usable API token(s), each granted some or all of the roles above, limited to the management and settings API.",
+    "apiTokensLink": "View API tokens"
   },
   "roleNodePicker": {
     "tagScopable": "Scope can be limited",
@@ -10170,6 +10258,191 @@
         "unicode": "{char} ({code})",
         "unknown": "Unknown key"
       }
+    }
+  },
+  "apiTokens": {
+    "title": "API token",
+    "desc": "Lets tools such as Terraform call the management API on your behalf. When you create one, you choose which of your own management roles it gets, so it can never do more than you can. It is limited to management and settings: it cannot open connections, view recordings, retrieve sensitive content, unseal, or operate keys. The token value is shown only once, when it is created.",
+    "create": "Create API token",
+    "summary": {
+      "active": "Usable",
+      "activeWhileDisabled": "Usable (account disabled)",
+      "expiringSoon": "Expiring within 7 days",
+      "inactive": "No longer valid"
+    },
+    "col": {
+      "name": "Name",
+      "grantedRoles": "Granted roles",
+      "status": "Status",
+      "expiresAt": "Expires",
+      "lastUsed": "Last used",
+      "actions": "Actions"
+    },
+    "createdAt": "Created {time}",
+    "fromIp": "From {ip}",
+    "neverUsed": "Never used",
+    "neverExpires": "Never expires",
+    "roleRevoked": "Removed",
+    "revokedBy": "Revoked by {user}",
+    "justCreated": "Just created",
+    "inactiveSection": "API tokens no longer valid ({n})",
+    "inactiveHint": "Expired, revoked, or invalidated by a restore. Kept for the record and cannot be used again.",
+    "editHint": "The name, granted roles, and expiry cannot be changed after creation. To change them, create a new token, switch your tool to it, confirm it works, then revoke the old one.",
+    "roleWithScope": "{role} ({scope})",
+    "empty": {
+      "title": "You have no API tokens yet",
+      "desc": "Create one and give it to a tool such as Terraform so it can call the management API on your behalf."
+    },
+    "howToChange": {
+      "title": "Want to change the roles or expiry?",
+      "body": "They cannot be changed after creation. Use \"Create API token\" at the top right of this card, choose the new roles and expiry, switch your tool to the new token and confirm it works, then come back and revoke this one."
+    },
+    "revokeAction": "Revoke",
+    "status": {
+      "active": "Valid",
+      "expiring_soon": "Expiring soon",
+      "expiresInDays": "Expires in {n} days",
+      "expiresToday": "Expires today",
+      "expiresTomorrow": "Expires tomorrow",
+      "expired": "Expired",
+      "revoked": "Revoked",
+      "invalidated_by_restore": "Invalidated by restore",
+      "suspended_account_disabled": "Suspended (account disabled)",
+      "suspended_roles_revoked": "Suspended (roles removed)"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. terraform-prod-apply",
+      "nameHint": "Name the tool and environment that will use it, e.g. terraform-prod-apply. The audit log records which token each call used.",
+      "roles": "Granted roles",
+      "rolesAll": "All ({n} management roles)",
+      "rolesSelected": "{n} selected",
+      "scope": "Scope: {scope}",
+      "scopeAll": "Entire system",
+      "rolesHint": "You can only choose from your own management roles. The scope follows your roles and never exceeds yours.",
+      "rolesHintNonGrantable": "Your other role \"{roles}\" is not a management role and cannot be granted to an API token.",
+      "singleRole": "This is your only management role, so it will be granted",
+      "expiry": "Expiry",
+      "expiryOption": {
+        "never": "Never expires",
+        "d7": "7 days",
+        "d30": "30 days",
+        "d90": "90 days",
+        "y1": "1 year",
+        "custom": "Custom date"
+      },
+      "expiryHint": "Choose a period, pick a date, or choose \"Never expires\".",
+      "expiresOn": "Expires at {time} ({rel}) and stops working automatically after that.",
+      "expiresRel": {
+        "days": "in {n} days",
+        "years": "in about {n} years"
+      },
+      "customDateHint": "Expires at 23:59:59 on that day",
+      "datePlaceholder": "Pick a date",
+      "neverHint": "This API token never stops working on its own. Revoke it yourself when it is no longer needed.",
+      "summaryTitle": "What this API token can do",
+      "summaryRoles": "You selected: {roles}.",
+      "summaryRolesSuper": "You selected: Administrator (entire system), which means every management and settings action a super administrator can take.",
+      "summarySync": "If one of your roles is later removed, the token loses that role too, and gets it back when the role is assigned to you again.",
+      "summaryNone": "No role selected yet, so this API token cannot do anything.",
+      "summaryScope": "Management and settings API only: it cannot open connections, view recordings, retrieve sensitive content, unseal, or operate keys.",
+      "summaryCidr": "Source restriction: it uses your account's allowed source networks ({cidrs}); only calls from these addresses are accepted.",
+      "summaryNoCidr": "Source restriction: your account has no allowed source networks, so it can be used from any address. To restrict it, ask an identity administrator to set them for your account.",
+      "summaryAudit": "Everything a tool does with it is recorded in the audit log under your name, together with which token was used.",
+      "err": {
+        "name": "Enter a name for the API token",
+        "roles": "Select at least one role",
+        "expiry": "Choose an expiry",
+        "customDate": "Pick today or a later date",
+        "duplicate": "You already have an API token with this name. Choose another name.",
+        "serverTitle": "Server error, please try again later",
+        "server": "The API token was not created. What you entered is still here, so you can try again."
+      },
+      "privSuper": {
+        "title": "This API token is granted the super administrator role",
+        "body": "It can do every management and settings action you can. Because its roles include super administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log."
+      },
+      "privSec": {
+        "title": "This API token is granted the system security administrator role",
+        "body": "It can change system-wide security policies, notifications, and alert settings. Because its roles include system security administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log."
+      }
+    },
+    "reveal": {
+      "title": "API token created",
+      "onceTitle": "This API token is shown only this once",
+      "onceBody": "Copy it now and store it in the tool that will use it (for example, a CI secret variable). It cannot be retrieved again after you close this; if you did not save it, revoke it and create a new one. Do not paste it into chats or documents: anyone who has it can perform management actions as you.",
+      "testTitle": "Test this API token",
+      "testBody": "To check that it works, paste the command below into a terminal. The response lists the account it represents, its granted roles, and its expiry.",
+      "represents": "Acts as",
+      "self": "{user} (you)",
+      "neverExpires": "Never stops working on its own; revoke it yourself when no longer needed",
+      "close": "I have saved it, close",
+      "copied": "Copied",
+      "copyFailed": "Could not copy. Save it manually before leaving.",
+      "commandCopyFailed": "Could not copy automatically. The box above now shows the full command and has selected it; copy it manually. Also save the token before leaving.",
+      "tokenLabel": "API token value",
+      "commandLabel": "Test command"
+    },
+    "msg": {
+      "created": "API token \"{name}\" created",
+      "revoked": "API token \"{name}\" revoked",
+      "revokedAll": "{n} API tokens revoked"
+    },
+    "revoke": {
+      "confirm": "Revoke \"{name}\"? This cannot be undone.",
+      "confirmOther": "Revoke \"{name}\" belonging to {user}? This cannot be undone.",
+      "usedTitle": "Tools using this token will immediately lose access to the management API",
+      "usedTitleOther": "Tools {user} set up with this token will immediately lose access to the management API",
+      "usedBody": "This API token was last used at {time} from {ip}, so a tool may still be using it. After it is revoked, every call made with it is rejected; to keep working, create a new one and switch to it first.",
+      "usedBodyNoIp": "This API token was last used at {time}, so a tool may still be using it. After it is revoked, every call made with it is rejected; to keep working, create a new one and switch to it first.",
+      "usedBodyOther": "This API token was last used at {time} from {ip}. {user} will see on their profile page that you revoked it; to keep working, they need to create a new one themselves.",
+      "usedBodyOtherNoIp": "This API token was last used at {time}. {user} will see on their profile page that you revoked it; to keep working, they need to create a new one themselves.",
+      "unusedTitle": "This API token has never been used",
+      "unusedBody": "Once revoked it cannot be used. If a tool was just set up with it and has not run yet, its first call will be rejected.",
+      "reason": "Reason (optional, kept in the record)",
+      "reasonOther": "Reason (optional, visible to {user} and in the audit record)",
+      "reasonPlaceholder": "e.g. The CI pipeline now uses a new API token",
+      "reasonPlaceholderOther": "e.g. Unusual source address, revoking first to investigate",
+      "submit": "Revoke API token",
+      "failedTitle": "Server error, please try again later",
+      "failedKept": "This API token was not revoked and can still be used.",
+      "failedRefreshed": "The list has been refreshed. Check the current status of this API token."
+    },
+    "revokeAll": {
+      "button": "Revoke all API tokens",
+      "confirm": "Revoke all {n} usable API tokens belonging to {user}? This cannot be undone.",
+      "title": "Every tool {user} set up with these API tokens will stop immediately",
+      "body": "{names}. Expired or revoked tokens are not affected. {user} can still sign in and create new ones; to stop sign-in as well, disable the account.",
+      "neverNote": " ({names} never expires)",
+      "reasonPlaceholder": "e.g. Suspected leak, revoking all",
+      "failedKept": "The API tokens were not revoked and can still be used.",
+      "failedRefreshed": "The list has been refreshed. Check the current status of each API token."
+    },
+    "noPerm": {
+      "intro": "An API token lets tools such as Terraform call the management API on the owner's behalf. It is available only to people with management permissions (for example asset administrators, authorization administrators, and identity administrators).",
+      "title": "You do not have management permissions, so you cannot create an API token",
+      "body": "Your role is \"{role}\". If your work requires a tool to perform management actions on your behalf, ask an identity administrator or a super administrator for a management role; once you have one, \"Create API token\" appears here."
+    },
+    "agentOwner": {
+      "hint": "AI agents do not use API tokens: they use their own keys, managed in \"My agents\". An API token represents only you.",
+      "link": "Go to My agents"
+    },
+    "rolesRevoked": {
+      "title": "Your management roles were removed, so your API tokens are suspended",
+      "body": "{roles} were removed from your account. None of the roles granted to the {n} API tokens below remain, so they cannot do anything for now, and you cannot create new ones. When you get the roles back, they regain them automatically and work again; revoke any you no longer need. If your work still requires them, ask an identity administrator or a super administrator to restore your roles."
+    },
+    "restored": {
+      "title": "The system was restored from a backup, so every API token created before the restore is no longer valid",
+      "body": "Restored at {time}. Tools still using an old API token will have their calls rejected. Create a new API token and update the tools that use it.",
+      "bodyNoTime": "Tools still using an old API token will have their calls rejected. Create a new API token and update the tools that use it."
+    },
+    "allInactive": {
+      "title": "You have no usable API tokens",
+      "body": "Tools that used them can no longer call the management API. To restore access, create a new API token and switch your tools to it."
+    },
+    "loadFailed": {
+      "title": "The API token list could not be loaded",
+      "body": "This does not mean you have no API tokens. Refresh the page; if it keeps happening, contact your system administrator."
     }
   }
 }

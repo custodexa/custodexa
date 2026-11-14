@@ -12,7 +12,9 @@ import (
 // credentialManagementAdapter 把 asset 的憑證管理授權 port 接到 authz 的能力檢核。
 //
 // 放在組裝根而非任一模組內：asset 不匯入 authz（避免出向邊），authz 也不認識 asset 的型別。
-// 判定以資料庫現況重新解析主體，不讀 context 內的快取主體。
+// 判定以資料庫現況重新解析主體；解析用的事實依路徑分流（authz.CredentialActorPrincipal）：
+// 請求路徑取 context 內請求主體的事實（含角色限定），背景作業只在帶背景發起者標示時以帳號完整身分
+// 重驗，其餘一律拒絕，不退回只有編號的完整身分。
 type credentialManagementAdapter struct {
 	resolver *authz.Resolver
 	// scope 範圍交集（憑證歸屬與目標資產）；未注入時只驗能力（全域口徑）
@@ -33,7 +35,12 @@ func newCredentialManagementAdapter(resolver *authz.Resolver) *credentialManagem
 func (a *credentialManagementAdapter) AuthorizeCredentialManagement(ctx context.Context, db *gorm.DB,
 	actor asset.CredentialManagementActor, req asset.CredentialManagementRequest) (asset.CredentialManagementDecision, error) {
 
-	d, err := a.resolver.HasAllCapabilities(db, actor.UserID, req.Capabilities)
+	actorPrincipal, ok := authz.CredentialActorPrincipal(ctx, actor.UserID)
+	if !ok {
+		// 請求路徑缺主體（或主體與操作者不符）且沒有背景標示：拒絕，缺漏記為主體
+		return asset.CredentialManagementDecision{Missing: capabilityMissingPrincipal}, nil
+	}
+	d, err := a.resolver.HasAllCapabilitiesFiltered(db, actor.UserID, actorPrincipal.Facts.RoleFilter, req.Capabilities)
 	if err != nil {
 		return asset.CredentialManagementDecision{}, err
 	}

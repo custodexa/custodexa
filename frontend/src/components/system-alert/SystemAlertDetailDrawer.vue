@@ -37,7 +37,16 @@
         <!-- 第一層：發生了什麼（型別名稱＋說明＋操作者），技術細節收在下面 -->
         <section>
           <h4>{{ $t('systemAlerts.detail.happened') }}</h4>
-          <p data-test="sa-first-layer">
+          <p
+            v-if="tokenCreated"
+            data-test="sa-first-layer"
+          >
+            {{ tokenCreated.summary }}
+          </p>
+          <p
+            v-else
+            data-test="sa-first-layer"
+          >
             <template v-if="detail.actor">
               {{ detail.actor }}：
             </template>{{ typeDescription }}
@@ -77,6 +86,49 @@
               </dd>
             </template>
           </dl>
+        </section>
+
+        <!-- 建立高權限 API token：建立者就是 token 的持有者，列出名稱、授權角色與到期 -->
+        <section
+          v-if="tokenCreated"
+          data-test="sa-token-created"
+        >
+          <h4>{{ $t('systemAlerts.detail.createdTitle') }}</h4>
+          <dl class="sa-dl">
+            <dt>{{ $t('systemAlerts.detail.createdCreator') }}</dt>
+            <dd data-test="sa-token-creator">
+              {{ tokenCreated.creator }}
+            </dd>
+            <dt>{{ $t('systemAlerts.detail.createdPrivRoles') }}</dt>
+            <dd data-test="sa-token-priv-roles">
+              {{ tokenCreated.privRoles }}
+            </dd>
+            <dt>{{ $t('systemAlerts.detail.createdTokenName') }}</dt>
+            <dd data-test="sa-token-name">
+              {{ tokenCreated.name }}
+            </dd>
+            <dt>{{ $t('systemAlerts.detail.createdGrantedRoles') }}</dt>
+            <dd data-test="sa-token-granted-roles">
+              {{ tokenCreated.grantedRoles }}
+            </dd>
+            <dt>{{ $t('systemAlerts.detail.createdExpiry') }}</dt>
+            <dd data-test="sa-token-expiry">
+              <template v-if="tokenCreated.expires">
+                {{ tokenCreated.expires }}
+              </template>
+              <template v-else>
+                <strong>{{ $t('systemAlerts.detail.createdNeverExpires') }}</strong>
+                <span class="sa-muted">（{{ $t('systemAlerts.detail.createdNeverExpiresHint') }}）</span>
+              </template>
+            </dd>
+          </dl>
+          <router-link
+            v-if="tokenCreated.link"
+            :to="tokenCreated.link"
+            data-test="sa-view-api-tokens"
+          >
+            {{ $t('systemAlerts.detail.viewTokens', { user: tokenCreated.actor }) }}
+          </router-link>
         </section>
 
         <!-- 自我授權兩型：操作者自己的前後差異 -->
@@ -224,6 +276,7 @@ import { ref, computed, watch } from 'vue'
 import { getSystemAlertDetail } from '@/api/systemAlerts'
 import { formatDateTime } from '@/utils/format'
 import { roleLabel } from '@/constants/roles'
+import { roleValueLabel, SUPER_ROLE_KEY } from '@/constants/apiTokens'
 import { canEnter, ENTRY_RULES } from '@/router/entryRules'
 import { t } from '@/i18n'
 
@@ -253,6 +306,7 @@ const targetName = (d) => {
   if (!['user', 'user_group'].includes(d.target_kind)) return ''
   if (d.alert_type === 'management_role_granted') return d.params?.recipient || ''
   if (d.target_kind === 'user' && PRIVILEGE_TYPES.includes(d.alert_type)) return d.actor || ''
+  if (d.target_kind === 'user' && d.alert_type === 'privileged_api_token_created') return d.actor || d.params?.actor || ''
   return ''
 }
 
@@ -292,6 +346,20 @@ const roleListText = (csv) =>
   csv
     .split(',')
     .map((name) => roleLabel(name.trim()))
+    .join(t('common.listSeparator'))
+// 超級管理者的內建角色顯示名是「管理員」，不熟角色名稱的人讀不出它就是超級管理者：
+// 在告警裡補註一句
+const tokenRoleLabel = (value) => {
+  const label = roleValueLabel(value)
+  return label && String(value).trim() === SUPER_ROLE_KEY
+    ? t('systemAlerts.detail.createdSuperRole', { role: label })
+    : label
+}
+const tokenRoleListText = (csv) =>
+  csv
+    .split(',')
+    .map(tokenRoleLabel)
+    .filter(Boolean)
     .join(t('common.listSeparator'))
 const listText = (csv) => (csv ? roleListText(csv) : t('systemAlerts.detail.none'))
 const countText = (n) => (n === undefined || n === '' ? '' : t('systemAlerts.detail.count', { count: n }))
@@ -338,6 +406,31 @@ const grant = computed(() => {
     recipient: d.target_kind === 'user_group' ? t('systemAlerts.detail.recipientGroup', { name }) : name,
     roles: p.role_name ? roleListText(p.role_name) : t('systemAlerts.detail.none'),
     scopes: grantScopes(d),
+  }
+})
+
+// 建立高權限 API token：參數為 privileged_roles、granted_roles（內建角色為範本識別、自訂角色為名稱，
+// 逗號分隔）、token_name、expiry（at＝有到期時刻，另帶 expires_at；never＝永不到期）；
+// 較早的告警沒有 expiry 鍵，以有無 expires_at 判斷。建立者取明細的 actor，
+// 使用者編號取 target_id。連到該使用者的 API token 分頁需能進使用者管理
+const tokenCreated = computed(() => {
+  const d = detail.value
+  if (!d || d.alert_type !== 'privileged_api_token_created') return null
+  const p = d.params || {}
+  const actor = d.actor || p.actor || ''
+  const privRoles = p.privileged_roles ? tokenRoleListText(String(p.privileged_roles)) : t('systemAlerts.detail.none')
+  const validId = d.target_kind === 'user' && /^[1-9][0-9]*$/.test(String(d.target_id ?? ''))
+  const neverExpires = p.expiry === 'never' || (p.expiry !== 'at' && !p.expires_at)
+  const expiresAt = !neverExpires && p.expires_at ? formatDateTime(p.expires_at) : ''
+  return {
+    actor,
+    summary: t('systemAlerts.detail.createdSummary', { actor, roles: privRoles }),
+    creator: validId ? t('systemAlerts.detail.createdCreatorValue', { name: actor, id: d.target_id }) : actor,
+    privRoles,
+    name: p.token_name || '',
+    grantedRoles: p.granted_roles ? tokenRoleListText(String(p.granted_roles)) : t('systemAlerts.detail.none'),
+    expires: expiresAt,
+    link: validId && canEnter(ENTRY_RULES['/users']) ? { path: `/users/${d.target_id}`, query: { tab: 'apiTokens' } } : null,
   }
 })
 
@@ -442,5 +535,8 @@ watch(() => [props.modelValue, props.alertId], load, { immediate: true })
   margin-left: var(--ot-space-xs);
   color: var(--ot-text-secondary);
   font-size: 12px;
+}
+.sa-muted {
+  color: var(--ot-text-secondary);
 }
 </style>

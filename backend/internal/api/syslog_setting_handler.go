@@ -221,8 +221,8 @@ func (h *SyslogSettingHandler) Update(c *gin.Context) {
 	}
 
 	actor := gatewayapi.Actor{UserID: userID, Username: username}
-	meta := gatewayapi.RequestMeta{Method: c.Request.Method, Path: c.Request.URL.Path,
-		ClientIP: sourceip.Of(c), StatusCode: http.StatusOK}
+	meta := middleware.AttributeAuditMeta(c, gatewayapi.RequestMeta{Method: c.Request.Method, Path: c.Request.URL.Path,
+		ClientIP: sourceip.Of(c), StatusCode: http.StatusOK})
 	row := model.SyslogSetting{
 		ID: 1, Enabled: req.Enabled, Host: req.Host, Port: req.Port,
 		Protocol: req.Protocol, TLSCA: req.TLSCA, UpdatedBy: username,
@@ -356,13 +356,13 @@ func (h *SyslogSettingHandler) Test(c *gin.Context) {
 				"event": "test_ack", "channel": policy.TransportChannelSyslog,
 				"host": req.Host, "port": req.Port, "protocol": req.Protocol, "risks": risks,
 			})
-			h.auditService.Log(&audit.AuditLogEntry{
+			h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 				UserID: userID, Username: username,
 				Action: model.ActionUpdate, Resource: model.ResourceTransmission,
 				Status: model.StatusSuccess, Method: c.Request.Method,
 				Path: c.Request.URL.Path, ClientIP: sourceip.Of(c),
 				StatusCode: http.StatusOK, Details: string(details),
-			})
+			}))
 		}
 	}
 

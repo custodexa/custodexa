@@ -301,8 +301,8 @@ func TestInstanceGuardStartupPeerAlert(t *testing.T) {
 		db := startupAlertDB(t)
 		sink := audit.NewSystemAlertSink(nil)
 		cat := audit.SystemAlertCatalog()
-		if len(cat) != 20 {
-			t.Fatalf("目錄應 20 型，實有 %d", len(cat))
+		if len(cat) != 21 {
+			t.Fatalf("目錄應 21 型，實有 %d", len(cat))
 		}
 		rejected := 0
 		for _, def := range cat {
@@ -339,8 +339,8 @@ func TestInstanceGuardStartupPeerAlert(t *testing.T) {
 				t.Errorf("%s 不帶旗標，以系統主體產生應回錯", def.Type)
 			}
 		}
-		if rejected != 19 {
-			t.Errorf("應有 19 型拒絕系統主體，實有 %d", rejected)
+		if rejected != 20 {
+			t.Errorf("應有 20 型拒絕系統主體，實有 %d", rejected)
 		}
 		var n int64
 		db.Model(&model.CommandAlert{}).Count(&n)

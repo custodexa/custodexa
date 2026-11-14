@@ -15,7 +15,7 @@ import (
 
 // RoleDefinitionReader 角色定義的唯讀服務（由 identity.RoleDefinitionReader 實作）。
 type RoleDefinitionReader interface {
-	List(ctx context.Context, operatorID uint) (*identity.RoleDefinitionList, error)
+	List(ctx context.Context, operator *authz.Principal) (*identity.RoleDefinitionList, error)
 	Get(ctx context.Context, roleID uint) (*identity.RoleDefinitionDetail, error)
 	DraftSummary(keys []string) (*identity.RoleDraftSummary, error)
 }
@@ -36,8 +36,7 @@ func NewRoleDefinitionHandler(r RoleDefinitionReader, w RoleDefinitionWriter) *R
 
 // List 角色列表：每列含摘要與唯讀判定，頂層帶 can_define。
 func (h *RoleDefinitionHandler) List(c *gin.Context) {
-	operatorID, _ := middleware.GetCurrentUserID(c)
-	out, err := h.reader.List(c.Request.Context(), operatorID)
+	out, err := h.reader.List(c.Request.Context(), middleware.PrincipalFrom(c))
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleQuery, err)
 		return

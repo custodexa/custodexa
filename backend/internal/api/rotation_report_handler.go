@@ -371,7 +371,7 @@ func (h *RotationReportHandler) auditReport(c *gin.Context, action model.AuditAc
 	}
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     action,
@@ -383,5 +383,5 @@ func (h *RotationReportHandler) auditReport(c *gin.Context, action model.AuditAc
 		ClientIP:   sourceip.Of(c),
 		StatusCode: c.Writer.Status(),
 		ErrorMsg:   msg,
-	})
+	}))
 }

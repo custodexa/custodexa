@@ -220,5 +220,15 @@
       "title": "Unmanaged privileged accounts on a host",
       "text": "The host account inventory started by {actor} found {new_count} new unmanaged privileged accounts (login identity: {identity_mode}) (severity: {severity})."
     }
+  },
+  "privileged_api_token_created": {
+    "at": {
+      "title": "Privileged API token created",
+      "text": "{actor} created API token \"{token_name}\" granting privileged roles ({privileged_roles}); all granted roles: {granted_roles}; expires at {expires_at} (severity: {severity})."
+    },
+    "never": {
+      "title": "Privileged API token created",
+      "text": "{actor} created API token \"{token_name}\" granting privileged roles ({privileged_roles}); all granted roles: {granted_roles}; never expires (severity: {severity})."
+    }
   }
 }

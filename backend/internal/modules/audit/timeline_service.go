@@ -145,6 +145,9 @@ type TimelineEvent struct {
 	ClientIPReason string       `json:"client_ip_reason,omitempty"`
 	Refs           TimelineRefs `json:"refs"`
 	Severity       string       `json:"severity,omitempty"`
+	// APITokenID、APITokenName 操作日誌類：經 API token 進行的操作帶 token 識別與名稱快照，其餘不出現
+	APITokenID   *uint  `json:"api_token_id,omitempty"`
+	APITokenName string `json:"api_token_name,omitempty"`
 
 	// SourceID 來源表主鍵，游標與排序用（不出站——它在跨類別間沒有意義，
 	// 暴露只會誘導客戶端自行拼游標）
@@ -526,6 +529,9 @@ func (s *TimelineService) fetchAuditLogs(t TimelineEventType, q TimelineQuery, f
 			Refs: TimelineRefs{AssetID: r.AssetID},
 		}
 		ev.ClientIP, ev.ClientIPReason = eventClientIP(r.ClientIP, auditLogReason(r.UserID))
+		if r.APITokenID != nil && r.APITokenName != nil && *r.APITokenName != "" {
+			ev.APITokenID, ev.APITokenName = r.APITokenID, *r.APITokenName
+		}
 		switch {
 		case q.Subject == SubjectAsset:
 			ev.Counterpart = &Counterpart{Kind: "user", ID: r.UserID, Name: r.Username}

@@ -165,7 +165,7 @@ func (s *IdentitySourceService) auditDiscoveryPreview(actor GroupRoleMappingActo
 			Resource: string(model.ResourceOIDCProvider),
 			Status:   string(status),
 			Actor:    gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
-			Request:  gatewayapi.RequestMeta{ClientIP: actor.IP},
+			Request:  actor.requestMeta(),
 			Details:  string(payload),
 		})
 	}); err != nil {

@@ -22,6 +22,10 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/my/agents", "POST /api/v1/my/agents":
 		return false, true
+	case "GET /api/v1/my/api-tokens", "POST /api/v1/my/api-tokens", "DELETE /api/v1/my/api-tokens/:id",
+		"GET /api/v1/users/:id/api-tokens", "DELETE /api/v1/users/:id/api-tokens/:tokenId",
+		"POST /api/v1/users/:id/api-tokens/revoke-all", "GET /api/v1/api-tokens/verify":
+		return false, true
 	case "GET /api/v1/access-requests/mine":
 		return true, true
 	case "GET /api/v1/access-requests/mine/tickets":

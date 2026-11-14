@@ -69,7 +69,7 @@ func (s *AssetService) earlyUpdateScopeCheck(ctx context.Context, id uint, req *
 // 判定範圍（與更新交易同一個取鎖位置與判定），範圍外與不存在同形；範圍內才由呼叫方回驗證錯誤。
 // 交易不寫任何東西。
 func (s *AssetService) accessPolicyScopeBeforeValidation(ctx context.Context, id uint, req *UpdateAssetRequest) error {
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err
 		}

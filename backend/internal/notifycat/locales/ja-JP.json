@@ -220,5 +220,15 @@
       "title": "ホストに未管理の特権アカウントがあります",
       "text": "{actor} が開始したホストアカウント棚卸で、未管理の特権アカウントが新たに {new_count} 件見つかりました（ログイン ID：{identity_mode}）（レベル：{severity}）。"
     }
+  },
+  "privileged_api_token_created": {
+    "at": {
+      "title": "高権限 API トークンの作成",
+      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロール（{privileged_roles}）を付与しました。付与したロール：{granted_roles}；有効期限：{expires_at}（レベル：{severity}）。"
+    },
+    "never": {
+      "title": "高権限 API トークンの作成",
+      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロール（{privileged_roles}）を付与しました。付与したロール：{granted_roles}；有効期限なし（レベル：{severity}）。"
+    }
   }
 }

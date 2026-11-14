@@ -30067,6 +30067,53 @@
       },
       "require_all_keys": true,
       "reason": "The compliance snapshot counts the keystroke record retention period as one more key with no mapped clause in every group; every other verdict and clause is unchanged apart from the changes already approved for this record."
+    },
+    {
+      "id": "AD-49t-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "GET /api/v1/system-alert-types"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body_edit": {
+          "added_items": [
+            {
+              "path": "types",
+              "match": {
+                "key": "concurrent_instance_detected"
+              },
+              "count": 1
+            },
+            {
+              "path": "types",
+              "match": {
+                "key": "unmanaged_privileged_account"
+              },
+              "count": 1
+            },
+            {
+              "path": "types",
+              "match": {
+                "key": "privileged_api_token_created"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The system alert type list gains one type for an access token created with privileged roles; every existing type is unchanged apart from the types already approved for this record."
     }
   ]
 }

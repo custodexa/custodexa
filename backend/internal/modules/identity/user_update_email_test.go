@@ -32,7 +32,7 @@ func TestUpdateEmailConflict(t *testing.T) {
 	b := &model.User{Username: "b", Email: strPtr("b@x.com"), Active: true}
 	db.Create(b)
 
-	if _, _, err := svc.Update(b.ID, &UpdateUserRequest{Email: "a@x.com"}); !errors.Is(err, ErrEmailConflict) {
+	if _, _, err := svc.Update(Operator{}, b.ID, &UpdateUserRequest{Email: "a@x.com"}); !errors.Is(err, ErrEmailConflict) {
 		t.Fatalf("want ErrEmailConflict, got %v", err)
 	}
 }
@@ -45,7 +45,7 @@ func TestUpdateEmailConflictCaseInsensitive(t *testing.T) {
 	b := &model.User{Username: "b", Email: strPtr("b@x.com"), Active: true}
 	db.Create(b)
 
-	if _, _, err := svc.Update(b.ID, &UpdateUserRequest{Email: "  A@X.com  "}); !errors.Is(err, ErrEmailConflict) {
+	if _, _, err := svc.Update(Operator{}, b.ID, &UpdateUserRequest{Email: "  A@X.com  "}); !errors.Is(err, ErrEmailConflict) {
 		t.Fatalf("want ErrEmailConflict for case/space variant, got %v", err)
 	}
 }
@@ -57,7 +57,7 @@ func TestUpdateInvalidEmail(t *testing.T) {
 	db.Create(u)
 
 	for _, bad := range []string{"notanemail", "no@dot", "  spaced garbage  "} {
-		if _, _, err := svc.Update(u.ID, &UpdateUserRequest{Email: bad}); !errors.Is(err, ErrInvalidEmail) {
+		if _, _, err := svc.Update(Operator{}, u.ID, &UpdateUserRequest{Email: bad}); !errors.Is(err, ErrInvalidEmail) {
 			t.Fatalf("email=%q want ErrInvalidEmail, got %v", bad, err)
 		}
 	}
@@ -69,7 +69,7 @@ func TestUpdateAuditDiff(t *testing.T) {
 	u := &model.User{Username: "u", Email: strPtr("old@x.com"), FullName: "Old Name", Active: true}
 	db.Create(u)
 
-	_, diff, err := svc.Update(u.ID, &UpdateUserRequest{Email: "new@x.com", FullName: "New Name"})
+	_, diff, err := svc.Update(Operator{}, u.ID, &UpdateUserRequest{Email: "new@x.com", FullName: "New Name"})
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestUpdateAuditDiff(t *testing.T) {
 	}
 
 	// 再次以相同值更新 → 無變更，diff 為空
-	_, diff2, err := svc.Update(u.ID, &UpdateUserRequest{Email: "new@x.com", FullName: "New Name"})
+	_, diff2, err := svc.Update(Operator{}, u.ID, &UpdateUserRequest{Email: "new@x.com", FullName: "New Name"})
 	if err != nil {
 		t.Fatalf("noop update: %v", err)
 	}

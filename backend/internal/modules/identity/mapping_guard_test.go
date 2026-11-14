@@ -48,7 +48,7 @@ func newMappingGuardEnv(t *testing.T, full bool) *mappingGuardEnv {
 }
 
 func (e *mappingGuardEnv) actor(id uint, name string) GroupRoleMappingActor {
-	return GroupRoleMappingActor{ID: id, Name: name, IP: "10.0.0.1"}
+	return GroupRoleMappingActor{Principal: testSessionPrincipal(id), ID: id, Name: name, IP: "10.0.0.1"}
 }
 
 func (e *mappingGuardEnv) roleRule(t *testing.T, actor GroupRoleMappingActor, match, role string) *GroupRoleMappingView {
@@ -406,7 +406,7 @@ func TestMappingProtectedTargetGuard(t *testing.T) {
 	t.Run("釘住：非超管釘住保護角色被拒且仍為 mapped，超管成功", func(t *testing.T) {
 		e, actors := setup(t)
 		for _, who := range []string{"idadmin", "custom"} {
-			op := Operator{UserID: actors[who].ID, Username: who}
+			op := Operator{Principal: testSessionPrincipal(actors[who].ID), UserID: actors[who].ID, Username: who}
 			for _, role := range []string{"admin", "security_admin"} {
 				victim := mapped(t, e, "v-"+who+"-"+role, role)
 				v0 := e.version(t)
@@ -423,7 +423,7 @@ func TestMappingProtectedTargetGuard(t *testing.T) {
 		}
 		assert.Zero(t, pinAudits(t, e))
 		victim := mapped(t, e, "v-super", "security_admin")
-		_, err := e.users.PinMappedRoleBy(Operator{UserID: e.admin, Username: "root"}, victim, "security_admin")
+		_, err := e.users.PinMappedRoleBy(Operator{Principal: testSessionPrincipal(e.admin), UserID: e.admin, Username: "root"}, victim, "security_admin")
 		require.NoError(t, err)
 		assert.Equal(t, model.RoleSourceBoth, srcOf(t, e, victim, "security_admin"))
 		assert.EqualValues(t, 1, pinAudits(t, e))
@@ -434,7 +434,7 @@ func TestMappingProtectedTargetGuard(t *testing.T) {
 		for _, who := range []string{"idadmin", "custom"} {
 			victim := mapped(t, e, "v-"+who, "auditor")
 			epoch0 := e.epoch(t, victim)
-			_, err := e.users.PinMappedRoleBy(Operator{UserID: actors[who].ID, Username: who, ClientIP: "10.0.0.1"}, victim, "auditor")
+			_, err := e.users.PinMappedRoleBy(Operator{Principal: testSessionPrincipal(actors[who].ID), UserID: actors[who].ID, Username: who, ClientIP: "10.0.0.1"}, victim, "auditor")
 			require.NoError(t, err, who)
 			assert.Equal(t, model.RoleSourceBoth, srcOf(t, e, victim, "auditor"))
 			assert.Equal(t, epoch0, e.epoch(t, victim), "釘住不推進憑證世代")
@@ -442,7 +442,7 @@ func TestMappingProtectedTargetGuard(t *testing.T) {
 		assert.EqualValues(t, 2, pinAudits(t, e))
 		// 已是 both 的重複釘住是 no-op，不再留列
 		victim := mapped(t, e, "v-again", "auditor")
-		op := Operator{UserID: e.admin, Username: "root"}
+		op := Operator{Principal: testSessionPrincipal(e.admin), UserID: e.admin, Username: "root"}
 		_, err := e.users.PinMappedRoleBy(op, victim, "auditor")
 		require.NoError(t, err)
 		_, err = e.users.PinMappedRoleBy(op, victim, "auditor")
@@ -450,10 +450,10 @@ func TestMappingProtectedTargetGuard(t *testing.T) {
 		assert.EqualValues(t, 3, pinAudits(t, e))
 		// 不持指派能力者被拒；對超管帳號的釘住由非超管發起被拒
 		v2 := mapped(t, e, "v-noassign", "auditor")
-		_, err = e.users.PinMappedRoleBy(Operator{UserID: actors["noassign"].ID, Username: "plain"}, v2, "auditor")
+		_, err = e.users.PinMappedRoleBy(Operator{Principal: testSessionPrincipal(actors["noassign"].ID), UserID: actors["noassign"].ID, Username: "plain"}, v2, "auditor")
 		assertAssignForbidden(t, err)
 		assert.Equal(t, model.RoleSourceMapped, srcOf(t, e, v2, "auditor"))
-		_, err = e.users.PinMappedRoleBy(Operator{UserID: actors["idadmin"].ID, Username: "ida"}, e.admin, "auditor")
+		_, err = e.users.PinMappedRoleBy(Operator{Principal: testSessionPrincipal(actors["idadmin"].ID), UserID: actors["idadmin"].ID, Username: "ida"}, e.admin, "auditor")
 		assertCode(t, err, apierror.CodeAuthProtectedAccountOperation)
 	})
 
@@ -461,12 +461,12 @@ func TestMappingProtectedTargetGuard(t *testing.T) {
 		e, actors := setup(t)
 		e.users.SetPinAuditSink(failingPinSink{})
 		victim := mapped(t, e, "v-fail", "auditor")
-		_, err := e.users.PinMappedRoleBy(Operator{UserID: actors["idadmin"].ID, Username: "ida"}, victim, "auditor")
+		_, err := e.users.PinMappedRoleBy(Operator{Principal: testSessionPrincipal(actors["idadmin"].ID), UserID: actors["idadmin"].ID, Username: "ida"}, victim, "auditor")
 		require.Error(t, err)
 		assert.Equal(t, model.RoleSourceMapped, srcOf(t, e, victim, "auditor"))
 		// 未注入審計落地面時 fail-close
 		e.users.SetPinAuditSink(nil)
-		_, err = e.users.PinMappedRoleBy(Operator{UserID: e.admin, Username: "root"}, victim, "auditor")
+		_, err = e.users.PinMappedRoleBy(Operator{Principal: testSessionPrincipal(e.admin), UserID: e.admin, Username: "root"}, victim, "auditor")
 		assert.ErrorIs(t, err, ErrPinAuditUnavailable)
 		assert.Equal(t, model.RoleSourceMapped, srcOf(t, e, victim, "auditor"))
 	})

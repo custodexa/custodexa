@@ -392,12 +392,12 @@ func (h *SecurityPolicyHandler) auditPolicyChange(tx *gorm.DB, c *gin.Context, u
 		Action:   string(model.ActionUpdate),
 		Resource: string(model.ResourceSecurityPolicy),
 		Status:   string(model.StatusSuccess),
-		Request: gatewayapi.RequestMeta{
+		Request: middleware.AttributeAuditMeta(c, gatewayapi.RequestMeta{
 			Method:     c.Request.Method,
 			Path:       c.Request.URL.Path,
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusOK,
-		},
+		}),
 		ErrorMsg: errorMsg,
 		Details:  details,
 	})

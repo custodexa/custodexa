@@ -197,7 +197,7 @@ func (s *CredentialService) ConfirmImpact(ctx context.Context, id uint, req *Con
 	}
 	userID, operator := model.UserFromContext(ctx)
 	var result *ConfirmCredentialImpactResult
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
+	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		cred, err := lockCredentialRow(tx, id)
 		if err != nil {
 			return err

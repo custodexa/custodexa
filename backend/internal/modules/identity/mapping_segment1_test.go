@@ -649,5 +649,5 @@ func TestMappingLargeRevocationAtomicRollback(t *testing.T) {
 
 // act 映射規則寫入的操作者（持有內建超級管理者身分，與被映射的 f.user 分開）。
 func (f *mappingSegmentFixture) act() GroupRoleMappingActor {
-	return GroupRoleMappingActor{ID: f.operator.ID, Name: f.operator.Username}
+	return GroupRoleMappingActor{Principal: testSessionPrincipal(f.operator.ID), ID: f.operator.ID, Name: f.operator.Username}
 }

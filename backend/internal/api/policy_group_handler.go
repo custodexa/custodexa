@@ -524,7 +524,7 @@ func (h *PolicyGroupHandler) writeAudit(c *gin.Context, action model.AuditAction
 		// 編碼不可能失敗（全是字串欄）。真的失敗時寧可少一份詳情也不能少一列審計
 		details = nil
 	}
-	h.audit.Log(&audit.AuditLogEntry{
+	h.audit.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     action,
@@ -536,7 +536,7 @@ func (h *PolicyGroupHandler) writeAudit(c *gin.Context, action model.AuditAction
 		StatusCode: http.StatusOK,
 		ErrorMsg:   fmt.Sprintf("policy_group=%s clause=%s op=%s", groupCode, clauseNo, op),
 		Details:    string(details),
-	})
+	}))
 }
 
 // ---- 錯誤對應 ----

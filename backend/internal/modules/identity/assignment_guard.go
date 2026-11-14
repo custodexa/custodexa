@@ -110,6 +110,10 @@ const (
 )
 
 // Operator 寫入的操作者。UserID 為 0 代表沒有可指認的操作者，關卡一律拒絕（fail-close）。
+//
+// 兩種來源可區分：由請求建構者必帶 Principal（該次請求的主體，含其事實與角色限定），關卡對操作者的
+// 重解一律取用它的事實，不以操作者編號自行重建；未帶主體即拒絕，不退回完整身分。沒有請求操作者的
+// 系統工作只能經 systemOperator 建立（不經操作者關卡），任意的零值操作者不會被當成系統。
 type Operator struct {
 	UserID   uint
 	Username string
@@ -118,11 +122,51 @@ type Operator struct {
 	Method    string
 	Path      string
 	RequestID string
+	// Principal 該次請求的主體；由請求建構的操作者必帶。
+	Principal *authz.Principal
+	// APIToken 該次請求經由的 API token（親自操作的請求為零值）；只用於稽核列的歸因。
+	APIToken model.APITokenRef
+
+	system bool
+}
+
+// systemOperator 沒有請求操作者的系統工作（例如閒置自動停用）。只有本套件內受列管的專用入口可建立。
+func systemOperator() Operator { return Operator{Username: "system", system: true} }
+
+// IsSystem 是否為系統操作者。
+func (o Operator) IsSystem() bool { return o.system }
+
+// RequestFacts 操作者重解所用的事實：取請求主體的事實（含角色限定），主體種類以資料庫的帳號種類為準。
+// 系統操作者、未帶主體、主體與操作者編號不符時回 false，呼叫端一律拒絕。
+func (o Operator) RequestFacts(subjectKind string) (authz.TokenFacts, bool) {
+	if o.system || o.UserID == 0 || o.Principal == nil || o.Principal.UserID != o.UserID {
+		return authz.TokenFacts{}, false
+	}
+	return principalFacts(o.Principal, subjectKind)
 }
 
 // RequestMeta 服務層審計列的請求欄位（操作者所屬的那次請求）。
 func (o Operator) RequestMeta() gatewayapi.RequestMeta {
-	return gatewayapi.RequestMeta{ClientIP: o.ClientIP, Method: o.Method, Path: o.Path, RequestID: o.RequestID}
+	return gatewayapi.RequestMeta{ClientIP: o.ClientIP, Method: o.Method, Path: o.Path, RequestID: o.RequestID}.
+		WithAPIToken(o.APIToken.ID, o.APIToken.Name)
+}
+
+// identityAdminActor 帶操作者的外部身分入口轉成留痕所用的操作者結構。操作者結構之間的轉換一律經
+// 這類轉換函式，API token 標示與身分欄位一起搬，不在呼叫端逐欄複製。
+func (o Operator) identityAdminActor() IdentityAdminActor {
+	return IdentityAdminActor{UserID: o.UserID, Username: o.Username, ClientIP: o.ClientIP, APIToken: o.APIToken}
+}
+
+// requestAPIToken 只收 context 與使用者編號的服務入口，由請求 context 取這次請求經由的 API token；
+// 非 API token 請求回零值。
+func requestAPIToken(ctx context.Context) model.APITokenRef {
+	ref, _ := model.APITokenRefFrom(ctx)
+	return ref
+}
+
+// AttributedMeta 在呼叫端自組的請求欄位上補這次請求經由的 API token（只補歸因，不改其他欄位）。
+func (o Operator) AttributedMeta(m gatewayapi.RequestMeta) gatewayapi.RequestMeta {
+	return m.WithAPIToken(o.APIToken.ID, o.APIToken.Name)
 }
 
 // AuditContext 回傳帶有請求脈絡的 context，供資料層在交易內寫審計列時指認操作者。
@@ -130,6 +174,7 @@ func (o Operator) AuditContext() context.Context {
 	return model.WithAuditRequest(context.Background(), model.AuditRequest{
 		UserID: o.UserID, Username: o.Username, ClientIP: o.ClientIP,
 		Method: o.Method, Path: o.Path, RequestID: o.RequestID,
+		APITokenID: o.APIToken.ID, APITokenName: o.APIToken.Name,
 	})
 }
 
@@ -173,6 +218,12 @@ type AssignmentChange struct {
 	// 取得拓撲序列化鎖之後判定。
 	NodeScopes     map[uint][]uint
 	AddedMemberIDs []uint // 成員加入：新加入的成員
+	// RemovedMemberIDs 成員異動：被移出手動成員的帳號。
+	RemovedMemberIDs []uint
+	// IgnoredRoleIDs 直接替換時請求帶了、但因只由映射取得而不寫入的角色（不構成實際變更）。
+	IgnoredRoleIDs []uint
+	// RescopedRoleIDs 保留的角色中節點範圍會改變者（直接替換與群組角色替換）。
+	RescopedRoleIDs []uint
 }
 
 // AssignmentGuard 共用指派關卡。無狀態，可共用。
@@ -306,7 +357,11 @@ func (g *AssignmentGuard) Check(tx *gorm.DB, op Operator, ch AssignmentChange) e
 		}
 		return fmt.Errorf("查詢操作者失敗: %w", err)
 	}
-	facts := authz.TokenFacts{SubjectKind: operator.Kind}
+	// 操作者帶請求主體的事實重解（角色限定隨之生效）；目標的重解在下方維持帳號完整身分
+	facts, ok := op.RequestFacts(operator.Kind)
+	if !ok {
+		return deny(DenyReasonOperatorMissing, ErrRoleAssignmentForbidden)
+	}
 	opPrincipal, err := authz.ResolveUserOn(tx, op.UserID, facts)
 	if err != nil {
 		return err
@@ -324,6 +379,13 @@ func (g *AssignmentGuard) Check(tx *gorm.DB, op Operator, ch AssignmentChange) e
 		oldIDs = cur
 		if ch.Path != PathGroupRoles {
 			newIDs = cur
+		}
+	}
+
+	// 以 API token 改動所屬帳號本人的角色：先於其他規則，授權了超級管理者角色的 token 同樣受限
+	if op.ViaAPIToken() {
+		if err := checkAPITokenSelfRoles(tx, op, ch, direct, oldIDs, newIDs); err != nil {
+			return err
 		}
 	}
 
@@ -534,4 +596,53 @@ func subtractIDs(a, b []uint) []uint {
 
 func symmetricDiff(a, b []uint) []uint {
 	return unionIDs(subtractIDs(a, b), subtractIDs(b, a))
+}
+
+// checkAPITokenSelfRoles 以 API token 對所屬帳號本人的有效角色做出實際變更時拒絕：直接增減、改節點範圍、
+// 把映射角色釘選為手動（含以追加把只由映射取得的角色升為並存），以及經群組的途徑（本人加入或移出帶角色的群組、
+// 本人所屬群組的角色或範圍改變、刪除本人所屬且帶角色的群組）。值與現況相同時不拒絕。
+func checkAPITokenSelfRoles(tx *gorm.DB, op Operator, ch AssignmentChange, direct bool, oldIDs, newIDs []uint) error {
+	self := op.UserID
+	if direct {
+		if ch.TargetUserID != self {
+			return nil
+		}
+		changed := false
+		switch ch.Path {
+		case PathPin:
+			for _, id := range ch.NewRoleIDs {
+				source, exists, err := model.UserRoleSourceOf(tx, self, id)
+				if err != nil {
+					return err
+				}
+				if exists && source == model.RoleSourceMapped {
+					changed = true
+				}
+			}
+		case PathReplace, PathAdd:
+			changed = len(symmetricDiff(oldIDs, subtractIDs(newIDs, ch.IgnoredRoleIDs))) > 0 || len(ch.RescopedRoleIDs) > 0
+		}
+		if changed {
+			return deny(DenyReasonAPITokenSelf, ErrAPITokenSelfChange)
+		}
+		return nil
+	}
+	var member int64
+	if err := tx.Table("user_group_members").Where("user_group_id = ? AND user_id = ?", ch.GroupID, self).
+		Count(&member).Error; err != nil {
+		return fmt.Errorf("讀取群組成員失敗: %w", err)
+	}
+	changed := false
+	switch ch.Path {
+	case PathGroupMember:
+		changed = len(oldIDs) > 0 && (containsID(ch.AddedMemberIDs, self) || containsID(ch.RemovedMemberIDs, self))
+	case PathGroupRoles:
+		changed = member > 0 && (len(symmetricDiff(oldIDs, newIDs)) > 0 || len(ch.RescopedRoleIDs) > 0)
+	case PathGroupDelete:
+		changed = member > 0 && len(oldIDs) > 0
+	}
+	if changed {
+		return deny(DenyReasonAPITokenSelf, ErrAPITokenSelfChange)
+	}
+	return nil
 }

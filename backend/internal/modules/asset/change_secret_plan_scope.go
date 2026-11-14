@@ -102,7 +102,7 @@ func (s *ChangeSecretPlanService) DeleteFor(ctx context.Context, id uint) error 
 	if s.scope == nil {
 		return s.Delete(id)
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.lockTopology(tx); err != nil {
 			return err
 		}

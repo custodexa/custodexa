@@ -65,6 +65,8 @@ var lockSitesOtherLayers = map[string]struct {
 	"internal/modules/identity/role_definition_service.go:lockCustomRole":                      {1, "roles 列（角色定義）"},
 	"internal/modules/identity/oidc_provider_lock.go:var oidcProviderRowLockSQL":               {1, "oidc_providers 列（provider 層）"},
 	"internal/modules/identity/agent_token_service.go:AgentTokenService.changeState":           {1, "agent_tokens 列"},
+	"internal/modules/identity/api_token_service.go:APITokenService.revoke":                    {1, "api_tokens 列（帳號層級鎖之內）"},
+	"internal/modules/identity/api_token_service.go:APITokenService.RevokeAllForUser":          {1, "api_tokens 列（帳號層級鎖之內）"},
 	"internal/modules/identity/ldap_directory_lock.go:WithLDAPDirectoryLock":                   {1, "LDAP 目錄 advisory 鎖（provider 層）"},
 	"internal/modules/asset/asset_account_service.go:lockAssetForAccountMutation":              {1, "assets 列（業務列）"},
 	"internal/modules/asset/credential_resolver.go:lockCredentialRow":                          {1, "credentials 列（業務列）"},

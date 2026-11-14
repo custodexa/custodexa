@@ -23,7 +23,7 @@ type UserServiceInterface interface {
 	List(req *identity.ListUsersRequest) (*identity.UserListResponse, error)
 	GetByID(id uint) (*model.User, error)
 	Create(req *identity.CreateUserRequest) (*model.User, error)
-	Update(id uint, req *identity.UpdateUserRequest) (*model.User, map[string]string, error)
+	Update(op identity.Operator, id uint, req *identity.UpdateUserRequest) (*model.User, map[string]string, error)
 	// DeleteWithSummary 刪除帳號並回傳被刪帳號名與作廢的外部身分綁定數（刪除審計用）
 	DeleteWithSummary(id uint) (identity.DeletedUserSummary, error)
 	AssignRoles(userID uint, roleNames []string) (*identity.RoleAssignResult, error)
@@ -55,10 +55,23 @@ type guardedUserWrites interface {
 	AssignRolesBy(op identity.Operator, userID uint, roleNames []string, opts ...identity.DirectAssignOptions) (*identity.RoleAssignResult, error)
 }
 
+// 生產組裝的服務必定實作：少了任何一個方法時編譯失敗，不會靜默退回不帶操作者的入口。
+var _ guardedUserWrites = (*identity.UserService)(nil)
+
+// 閒置豁免與改為僅外部登入的帶操作者入口（同樣只在服務實作時走；生產組裝的服務都有）。
+type guardedAccountSettings interface {
+	SetInactivityExemptBy(op identity.Operator, userID uint, exempt bool) error
+	ConvertToExternalOnlyBy(op identity.Operator, userID uint) error
+}
+
+var _ guardedAccountSettings = (*identity.UserService)(nil)
+
 // 釘住的帶操作者入口（同樣只在服務實作時走關卡；生產組裝的服務都有）。
 type guardedPin interface {
 	PinMappedRoleBy(op identity.Operator, userID uint, roleName string) (*identity.RoleSets, error)
 }
+
+var _ guardedPin = (*identity.UserService)(nil)
 
 // 單筆讀取的「只有審核者角色」標示（服務實作了才填；生產組裝的服務都有）。
 type approverOnlyMarker interface {
@@ -72,6 +85,8 @@ type guardedAccountOps interface {
 	UnbindExternalIdentityBy(op identity.Operator, userID, identityID uint) error
 	UnbindExternalIdentityAndDisableBy(op identity.Operator, userID, identityID uint) error
 }
+
+var _ guardedAccountOps = (*identity.UserService)(nil)
 
 // 停用、啟用與刪除帳號的帶操作者入口：持保護角色的帳號只有超管能處置（關卡在服務邊界）。
 // 生產組裝的服務必定實作（下方編譯期斷言）；只有不帶這組方法的測試替身會退回原入口。
@@ -93,11 +108,13 @@ func markProtectedAccountRefusal(c *gin.Context, err error, event string) {
 	}
 }
 
-// operatorFromRequest 由目前請求組出帶操作者的服務入口所需的操作者：身分、來源 IP，
-// 以及這次請求的方法、路徑與 request_id（同一次請求寫下的各筆審計列靠它串起來）。
+// operatorFromRequest 由目前請求組出帶操作者的服務入口所需的操作者：身分、來源 IP、請求主體
+// （關卡對操作者的重解取用它的事實），以及這次請求的方法、路徑與 request_id（同一次請求寫下的
+// 各筆審計列靠它串起來）。
 func operatorFromRequest(c *gin.Context) identity.Operator {
 	a := identityActor(c)
-	op := identity.Operator{UserID: a.UserID, Username: a.Username, ClientIP: a.ClientIP}
+	op := identity.Operator{UserID: a.UserID, Username: a.Username, ClientIP: a.ClientIP,
+		Principal: middleware.PrincipalFrom(c), APIToken: middleware.APITokenRefOf(c)}
 	if c.Request != nil {
 		op.Method = c.Request.Method
 		if c.Request.URL != nil {
@@ -159,7 +176,7 @@ type UserHandler struct {
 
 // accountOpsProjector 目標帳號對操作者的帳號操作保護分類（唯讀）。
 type accountOpsProjector interface {
-	AccountOps(operatorID, targetID uint) (map[string]string, error)
+	AccountOps(operator *authz.Principal, targetID uint) (map[string]string, error)
 }
 
 // NewUserHandler 創建用戶 handler
@@ -323,8 +340,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 	}
 	// account_ops：只在單筆回應，對目前操作者的保護身分分類，不是完整的可執行性
 	if h.accountOps != nil {
-		operatorID, _ := middleware.GetCurrentUserID(c)
-		ops, err := h.accountOps.AccountOps(operatorID, uint(id))
+		ops, err := h.accountOps.AccountOps(middleware.PrincipalFrom(c), uint(id))
 		if err != nil {
 			if errors.Is(err, identity.ErrUserNotFound) {
 				apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
@@ -355,7 +371,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	// 調用服務
-	user, diff, err := h.userService.Update(uint(id), &req)
+	user, diff, err := h.userService.Update(operatorFromRequest(c), uint(id), &req)
 	if err != nil {
 		if respondPrincipalError(c, err) {
 			return
@@ -775,7 +791,7 @@ func (h *UserHandler) Unlock(c *gin.Context) {
 		adminID, _ := middleware.GetCurrentUserID(c)
 		adminName, _ := middleware.GetCurrentUsername(c)
 		targetID := uint(id)
-		h.auditService.Log(&audit.AuditLogEntry{
+		h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 			UserID:     adminID,
 			Username:   adminName,
 			Action:     model.ActionUnlock,
@@ -786,7 +802,7 @@ func (h *UserHandler) Unlock(c *gin.Context) {
 			Path:       c.Request.URL.Path,
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusOK,
-		})
+		}))
 	}
 
 	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
@@ -809,7 +825,15 @@ func (h *UserHandler) SetInactivityExempt(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.SetInactivityExempt(uint(id), *req.Exempt); err != nil {
+	setExempt := h.userService.SetInactivityExempt
+	if g, ok := h.userService.(guardedAccountSettings); ok {
+		op := operatorFromRequest(c)
+		setExempt = func(userID uint, exempt bool) error { return g.SetInactivityExemptBy(op, userID, exempt) }
+	}
+	if err := setExempt(uint(id), *req.Exempt); err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -823,7 +847,7 @@ func (h *UserHandler) SetInactivityExempt(c *gin.Context) {
 		adminID, _ := middleware.GetCurrentUserID(c)
 		adminName, _ := middleware.GetCurrentUsername(c)
 		targetID := uint(id)
-		h.auditService.Log(&audit.AuditLogEntry{
+		h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 			UserID:     adminID,
 			Username:   adminName,
 			Action:     model.ActionUpdate,
@@ -835,7 +859,7 @@ func (h *UserHandler) SetInactivityExempt(c *gin.Context) {
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusOK,
 			ErrorMsg:   inactivityExemptAuditMsg(*req.Exempt),
-		})
+		}))
 	}
 
 	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
@@ -865,6 +889,7 @@ func identityActor(c *gin.Context) identity.IdentityAdminActor {
 		UserID:   adminID,
 		Username: adminName,
 		ClientIP: sourceip.Of(c),
+		APIToken: middleware.APITokenRefOf(c),
 	}
 }
 
@@ -1013,7 +1038,11 @@ func (h *UserHandler) ConvertToExternalOnly(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "user"})
 		return
 	}
-	if err := h.userService.ConvertToExternalOnly(uint(id), identityActor(c)); err != nil {
+	convert := func() error { return h.userService.ConvertToExternalOnly(uint(id), identityActor(c)) }
+	if g, ok := h.userService.(guardedAccountSettings); ok {
+		convert = func() error { return g.ConvertToExternalOnlyBy(operatorFromRequest(c), uint(id)) }
+	}
+	if err := convert(); err != nil {
 		respondIdentityError(c, err, apierror.CodeInternalUserExternalOnly)
 		return
 	}

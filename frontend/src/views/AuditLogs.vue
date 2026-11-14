@@ -185,8 +185,26 @@
             <el-table-column
               prop="username"
               :label="$t('common.user')"
-              width="120"
-            />
+              width="170"
+            >
+              <template #default="{ row }">
+                <span>{{ row.username }}</span>
+                <span
+                  v-if="row.api_token_name"
+                  class="via-token"
+                  data-test="audit-via-token"
+                >
+                  <el-tag
+                    size="small"
+                    effect="plain"
+                  >{{ $t('auditLogs.viaBadge') }}</el-tag>
+                  <span
+                    class="via-token__name"
+                    data-test="audit-via-token-name"
+                  >{{ row.api_token_name }}</span>
+                </span>
+              </template>
+            </el-table-column>
 
             <el-table-column
               prop="action"
@@ -216,10 +234,10 @@
             <el-table-column
               prop="resource"
               :label="$t('auditLogs.resource')"
-              width="100"
+              width="160"
             >
               <template #default="{ row }">
-                {{ translateResource(row.resource) }}
+                <span data-test="audit-resource">{{ resourceText(row) }}</span>
               </template>
             </el-table-column>
 
@@ -575,6 +593,28 @@
         <el-descriptions-item :label="$t('common.username')">
           {{ selectedLog.username }}
         </el-descriptions-item>
+        <el-descriptions-item
+          v-if="selectedLog.api_token_id || selectedLog.user_id"
+          :label="$t('auditLogs.viaLabel')"
+          :span="2"
+        >
+          <div
+            v-if="selectedLog.api_token_id"
+            data-test="audit-detail-via-token"
+          >
+            <div>{{ $t('auditLogs.viaToken', { name: selectedLog.api_token_name || '' }) }}</div>
+            <div
+              class="via-token__meta"
+              data-test="audit-detail-via-token-meta"
+            >
+              {{ viaTokenMeta }}
+            </div>
+          </div>
+          <span
+            v-else
+            data-test="audit-detail-via-session"
+          >{{ $t('auditLogs.viaSession') }}</span>
+        </el-descriptions-item>
 
         <el-descriptions-item :label="$t('auditLogs.action')">
           <el-tag :type="getActionTagType(selectedLog.action)">
@@ -582,7 +622,7 @@
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item :label="$t('auditLogs.resource')">
-          {{ translateResource(selectedLog.resource) }}
+          <span data-test="audit-detail-resource">{{ resourceText(selectedLog) }}</span>
           <span v-if="selectedLog.resource_id"> (ID: {{ selectedLog.resource_id }})</span>
         </el-descriptions-item>
 
@@ -827,7 +867,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download, RefreshCw } from 'lucide-vue-next'
-import { getAuditLogs } from '@/api/audit'
+import { getAuditLog, getAuditLogs } from '@/api/audit'
 import { buildBundleScope, submitEvidenceBundle } from '@/components/audit/evidenceBundleSubmit'
 import { acceptPermissionState, getAuditFailures } from '@/api/auditFailures'
 import { verifyAuditIntegrity } from '@/api/auditIntegrity'
@@ -836,6 +876,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import DailyReviewWorkspace from '@/components/daily-review/DailyReviewWorkspace.vue'
 import { useDailyReviewBadge } from '@/composables/useDailyReviewBadge'
 import { formatDateTime } from '@/utils/format'
+import { apiErrorSummary } from '@/api/redact'
 import { logDetailBlocks, reasonText } from '@/components/daily-review/auditReason'
 import { grantMarkTags } from '@/components/audit/grantMarks'
 import { requestFilterChipText, requestIdFromQuery, withRequestId } from '@/components/audit/requestFilter'
@@ -851,6 +892,7 @@ import {
 import { can } from '@/composables/useCapabilities'
 import { settingLabel } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
+import { roleLabel } from '@/constants/roles'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const route = useRoute()
@@ -992,7 +1034,41 @@ const handleRefresh = () => {
 const showDetails = (log) => {
   selectedLog.value = log
   detailsVisible.value = true
+  selectedToken.value = null
+  if (log?.api_token_id) void loadTokenDetail(log.id)
 }
+
+// 經由 API token 的紀錄：詳情另取 token 的授權角色與到期（建立後不變）。讀不到時只顯示名稱與編號
+const selectedToken = ref(null)
+const loadTokenDetail = async (id) => {
+  try {
+    const res = await getAuditLog(id)
+    if (selectedLog.value?.id !== id) return
+    selectedToken.value = res?.api_token || res?.data?.api_token || null
+  } catch (error) {
+    console.error(...apiErrorSummary('audit_log_detail_failed', error))
+  }
+}
+const viaTokenMeta = computed(() => {
+  const log = selectedLog.value
+  if (!log?.api_token_id) return ''
+  const sep = ' · '
+  const parts = [t('auditLogs.viaTokenId', { id: log.api_token_id })]
+  const tk = selectedToken.value
+  if (tk) {
+    // 授權角色只有識別與名稱：內建角色的名稱轉成當前語言的譯名，自訂角色原樣
+    const granted = Array.isArray(tk.granted_roles) ? tk.granted_roles : []
+    const roles = granted.map((r) => (r?.name ? roleLabel(r.name) : '')).filter(Boolean)
+    if (roles.length) parts.push(t('auditLogs.viaTokenRoles', { roles: roles.join(t('common.listSeparator')) }))
+    // token 列已不存在時授權角色為空陣列、到期為 null，無從得知到期，不寫「永不到期」
+    const tokenRowGone = tk.owner_deleted === true && granted.length === 0
+    if (!tokenRowGone) {
+      parts.push(tk.expires_at ? t('auditLogs.viaTokenExpires', { expires: formatDateTime(tk.expires_at) }) : t('auditLogs.viaTokenNeverExpires'))
+    }
+    if (tk.owner_deleted) parts.push(t('auditLogs.viaTokenDeleted'))
+  }
+  return parts.join(sep)
+})
 
 // 稽核證據匯出（audit-workflows）：證據包只走非同步 job
 const exportDialogVisible = ref(false)
@@ -1043,6 +1119,28 @@ const formatValue = (value) => {
 // 翻譯操作/資源：constants/audit-enums 唯一事實源
 const translateAction = auditActionLabel
 const translateResource = auditResourceLabel
+
+// 資源就是 API token 本身的列（建立、單把撤銷）：所屬帳號與 token 名稱記在該列細節的
+// owner_username、token_name。本人的 token 只寫名稱，他人的寫「所屬帳號／名稱」；細節讀不到時只寫資源類型
+const parseDetailsObject = (log) => {
+  if (!log?.details) return null
+  try {
+    const v = JSON.parse(log.details)
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null
+  } catch {
+    return null
+  }
+}
+const resourceText = (log) => {
+  const base = translateResource(log?.resource)
+  if (log?.resource !== 'api_token') return base
+  const d = parseDetailsObject(log)
+  const name = typeof d?.token_name === 'string' ? d.token_name : ''
+  if (!name) return base
+  const owner = typeof d.owner_username === 'string' ? d.owner_username : ''
+  if (!owner || owner === log.username) return t('auditLogs.resourceApiTokenOwn', { name })
+  return t('auditLogs.resourceApiToken', { user: owner, name })
+}
 
 // 翻譯狀態（i18n：閉集走 enum.auditStatus、未知值原樣顯示）；
 // 篩選下拉與表格同走本閉集，勿手寫選項
@@ -1419,5 +1517,23 @@ watch(() => route?.query, (query) => applyQuery(query || {}), { immediate: true 
   font-family: var(--ot-font-mono);
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-primary);
+}
+/* token 名稱是辨認「哪一把」的唯一線索，不截成省略號：放不下就換行 */
+.via-token {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.via-token__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+}
+.via-token__meta {
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
 }
 </style>

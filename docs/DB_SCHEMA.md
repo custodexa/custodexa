@@ -1,6 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-11-06（政策鍵表補 `retention_keystroke_days` 一列，無 schema 變更）
+> **最後更新**：2026-11-13（`20261113_api_tokens`：新表 `api_tokens`（個人 API 憑證，只存明文摘要，見第 80 節）與 `api_token_roles`（建立時授權的角色，見第 81 節）；`audit_logs` 加可為 NULL 的 `api_token_id`、`api_token_name` 兩欄與複合索引 `idx_audit_api_token_created`，兩欄納入逐列完整性驗證碼的涵蓋範圍（值為 NULL 時不進入簽章內容，既有列的驗證碼不變）。純新增、無資料步驟；不提供 Down。同步更正正文的總數：migration 共五十八條（baseline 加五十七條增量）、應用資料表 93 張、全庫 96 張表）
+> 前次更新：2026-11-06（政策鍵表補 `retention_keystroke_days` 一列，無 schema 變更）
 > 前次更新：2026-11-05（`20261105_keystroke_records`：新表 `keystroke_records`（鍵盤紀錄中繼資料，一個會話一列，見第 79 節），只建表與三條索引、不回填、不改既有表、不設外鍵；不提供 Down；檔案金鑰欄 `file_key_enc` 登記於信封加密的欄位登記表。新增保留天數政策鍵 `retention_keystroke_days`（出廠 0，不受檢查點跨鍵約束）。migration 總數 +1、應用資料表 +1）
 > 前次更新：2026-11-05（指令稽核降級原因新增 `echo_incomplete_at_close`：會話結束時該輪已收到部分回顯、但 Enter 的回顯換行未抵達，記為無文字的降級列；無 migration，表數不變）
 > 前次更新：2026-11-03（`20261103_executor_login_checks`：新表 `executor_login_checks`（堡壘機專用帳號最近一次測試登入的結果，每個專用帳號掛載一列，見第 78 節），只建表與一條索引、不回填、不改既有表、不設外鍵；不提供 Down；執行順序在 `20261103_change_secret_execution_method` 之後。同日 `host_account_scans.identity_mode` 開始寫入 `executor`（以專用帳號登入的盤點）、`failure_reason` 值域由 13 個增為 16 個，欄位定義不變。migration 總數 56（含 baseline）、應用資料表 90 張、全庫 93 張表）
@@ -89,6 +90,8 @@
 |------|------|----------|------|
 | User | `users` | baseline（`idx_users_username`／`idx_users_email` 兩條 partial unique）＋增量 `20260826_source_ip_forensics` 加 `allowed_cidrs` 欄＋增量 `20260908_group_role_mapping` 加群組觀測快照三欄 | 系統用戶（含 LDAP 標記、MFA/TOTP、帳號鎖定/強制改密/閒置停用豁免、允許來源網段、群組觀測快照） |
 | AgentToken | `agent_tokens` | 增量 `20260921_identity_agent_principal`；token_hash 唯一索引＋增量 `20261017_permission_state_attestation` 加 `restore_generation` 欄 | agent 憑證雜湊、失效狀態與簽發時的還原世代 |
+| APIToken | `api_tokens` | 增量 `20261113_api_tokens`；`token_hash` 唯一索引、`(user_id, revoked_at)` 索引，外鍵指向 `users` | 人類帳號為自己建立的管理 API 憑證；只存明文摘要（見第 80 節） |
+| APITokenRole | `api_token_roles` | 增量 `20261113_api_tokens`，複合主鍵，token 刪除時 cascade | 建立時授權的角色集合（見第 81 節） |
 | AgentToolCall | `agent_tool_calls` | 增量 `20260921_agent_audit_ledger`，UNIQUE user_id/seq 與五項 CHECK | 兩階段呼叫帳本、列級 HMAC 與 v3 聚合 |
 | AgentTaskReport | `agent_task_reports` | 同上，UNIQUE request/version | 不可變報告版本 |
 | AgentProbeEvent | `agent_probe_events` | 同上，class CHECK | 三分類範圍外引用 |
@@ -177,8 +180,8 @@
 | UserGroupMappingRuleSupport | `user_group_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 使用者群組逐規則支持 |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **90 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **46 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **93 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **49 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
 `credential_job_authorizations`，`credential_impact_confirmations`，
@@ -189,12 +192,12 @@ agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_even
 權限模型三表 `user_group_roles`／`role_binding_nodes`／`authz_state`，
 `permission_state_events`、`role_permissions`，`security_policy_history`、`security_policy_floor_raises`，
 系統安全告警三表 `system_alert_outbox`／`system_alert_details`／`system_alert_severity_overrides`，
-`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，`user_release_guidance`，主機帳號盤點兩表 `host_account_scans`／`host_account_findings`，與堡壘機專用帳號測試登入結果 `executor_login_checks`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **93 張**表
+`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，`user_release_guidance`，主機帳號盤點兩表 `host_account_scans`／`host_account_findings`，堡壘機專用帳號測試登入結果 `executor_login_checks`，鍵盤紀錄中繼資料 `keystroke_records`，與個人 API 憑證兩表 `api_tokens`／`api_token_roles`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **96 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含五十四條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含五十七條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -205,7 +208,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共五十五條：baseline 加五十四條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共五十八條：baseline 加五十七條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -1311,7 +1314,7 @@ const (
 **表名**: `audit_logs`
 **檔案**: `backend/internal/model/audit_log.go`
 **建表方式**: baseline（`baseline_schema_audit.go`），含 `idx_audit_idempotency`＝`UNIQUE (idempotency_uuid)`
-（冪等寫入的衝突目標）與 8 條查詢索引；本表不建任何外鍵
+（冪等寫入的衝突目標）與 8 條查詢索引，另由增量 `20261113_api_tokens` 加 `idx_audit_api_token_created`；本表不建任何外鍵
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -1324,6 +1327,8 @@ const (
 | `ResourceID` | *uint | `index:idx_audit_resource` | `resource_id` | 資源 ID |
 | `Status` | AuditStatus | `type:varchar(20);not null;index:idx_*` | `status` | 操作狀態 |
 | `AssetID` | *uint | `index:idx_audit_asset_created,priority:1` | `asset_id,omitempty` | 資產主體鍵。調查工作台的資產樞紐**只認本欄**，SHALL NOT 以 `(resource, resource_id)` 冒充——`(resource, resource_id)` 對改密計畫、授權列等實體會記成 `resource=asset` 而 `resource_id` 是計畫 id／授權列 id，據此反查會把別的實體的事件掛到這台資產上（假事件比遺漏更糟）。主體在**寫入期**釘在來源列上，與 sessions／session_commands／command_alerts 既有的 `user_id`＋`asset_id` 冗餘慣例一致。指標型可為 NULL：非資產類動作留空，**不得以 0 冒充「無資產」**。納入 HMAC 蓋章 payload 但走 `omitempty`——nil 時位元組與加欄前相同，既有已蓋章列零誤判。寫入端由 `cmd/server/audit_points_asset_pivot_guard_test.go` 逐產生點登記守衛 |
+| `APITokenID` | *uint | `index:idx_audit_api_token_created,priority:1` | `api_token_id,omitempty` | 經 API token 認證的操作所寫的列帶該 token 的識別，其他列為 NULL。與 `CreatedAt` 的 priority 2 合成複合索引 `(api_token_id, created_at)`，供依 token 查詢操作紀錄。納入逐列完整性驗證碼的涵蓋範圍；NULL 時不進入簽章內容，故既有列的驗證碼不變（增量 `20261113_api_tokens`） |
+| `APITokenName` | *string | `type:varchar(100)` | `api_token_name,omitempty` | 寫入當下的 token 名稱快照（token 撤銷或改名不影響歷史列）；NULL 規則與完整性涵蓋同上 |
 | `UserID` | uint | `not null;index:idx_audit_user_created,priority:1` | `user_id` | 操作者 ID。與 `CreatedAt` 的 priority 2 合成複合索引 `(user_id, created_at)` |
 | `Username` | string | `type:varchar(100);not null` | `username` | 操作者名稱（反正規化） |
 | `Method` | string | `type:varchar(10)` | `method` | HTTP 方法 |
@@ -2686,7 +2691,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共五十五條**：baseline 一條，其後的增量五十四條
+**現行 migration 共五十八條**：baseline 一條，其後的增量五十七條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2748,10 +2753,11 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20261103_change_secret_execution_method` | 改密紀錄的執行方式：`change_secret_records` 加 `execution_method character varying(32) NOT NULL DEFAULT 'self'`、`executor_account_id bigint NOT NULL DEFAULT 0`、`executor_username character varying(100) NOT NULL DEFAULT ''`、`executor_credential_id bigint NOT NULL DEFAULT 0` 四欄，記代改當下堡壘機專用帳號的快照，共 **4 條 DDL**；純加法、無資料步驟、不回填，既有紀錄經預設值為 `self`（帳號自行改密） | `rollbackChangeSecretExecutionMethod`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 | `20261103_executor_login_checks` | 堡壘機專用帳號測試登入結果：建 `executor_login_checks`（第 78 節），共 **2 條 DDL**（1 建表＋1 一般索引 `idx_executor_login_checks_asset`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackExecutorLoginChecks`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 | `20261105_keystroke_records` | 鍵盤紀錄中繼資料：建 `keystroke_records`（第 79 節），共 **4 條 DDL**（1 建表＋2 唯一索引 `idx_keystroke_records_record_uuid`／`idx_keystroke_records_session_id`＋1 一般索引 `idx_keystroke_records_status`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackKeystrokeRecords`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新目錄 |
+| `20261113_api_tokens` | 個人 API 憑證：建 `api_tokens`（第 80 節，主鍵、`fk_api_tokens_user`／`fk_api_tokens_revoker` 兩條外鍵、唯一索引 `idx_api_tokens_token_hash`、一般索引 `idx_api_tokens_user_revoked`）與 `api_token_roles`（第 81 節，複合主鍵、`fk_api_token_roles_token`（ON DELETE CASCADE）／`fk_api_token_roles_role` 兩條外鍵）；`audit_logs` 加 `api_token_id bigint`、`api_token_name character varying(100)` 兩個可為 NULL 的欄位與索引 `idx_audit_api_token_created`＝`(api_token_id, created_at)`，共 **7 條 DDL**（2 建表＋2 索引＋2 加欄＋1 稽核索引）。純新增、無資料步驟、既有列不變（新欄為 NULL）；無 CHECK。稽核索引建在既有的 `audit_logs` 上，依 PostgreSQL 的一般行為需掃描該表的既有列，耗時可能隨其列數增加 | `rollbackAPITokens`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新欄 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的五十四條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的五十七條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
 > - **讀寫存量資料列，耗時隨對應表的列數成長（12 條）**：
@@ -4331,6 +4337,37 @@ pending → uploading → uploaded → local_purged
 | `ended_at`／`purged_at` | timestamptz | |
 
 值域由寫入端檢查，資料層不設 CHECK。對帳：啟動時與每 10 分鐘一次，把 `status = recording`、不在本行程活躍集合、且 `COALESCE(last_write_at, started_at)` 早於 5 分鐘前者改為 `incomplete`。保留期清除以 `COALESCE(ended_at, last_write_at, started_at)` 判定到期，`recording` 一律跳過。
+
+### 80. api_tokens（個人 API 憑證）
+
+**表名**: `api_tokens`；**檔案**: `backend/internal/model/api_token.go`（`model.APIToken`）。**建表方式**: 增量 migration `20261113_api_tokens`。
+
+人類帳號為自己建立的管理 API 憑證，一把一列。**只存明文的 SHA-256 摘要**，明文只在建立回應中出現一次、不入庫。有效權限＝建立時授權的角色（第 81 節）與帳號當下的指派取交集，每次請求重新解析。名稱占用（未撤銷、未到期、還原世代與目前相同）的唯一性**不以索引表達**——是否到期隨時間改變，由建立流程在帳號層級鎖內判定。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial，主鍵 `api_tokens_pkey` | |
+| `user_id` | bigint NOT NULL，外鍵 `fk_api_tokens_user` → `users(id)`；索引 `idx_api_tokens_user_revoked`＝`(user_id, revoked_at)` | 擁有者 |
+| `name` | varchar(100) NOT NULL | 擁有者自訂名稱 |
+| `token_hash` | varchar(64) NOT NULL，唯一索引 `idx_api_tokens_token_hash` | 明文的 SHA-256 摘要（hex）；不出現在任何回應 |
+| `created_at` | timestamptz | |
+| `expires_at` | timestamptz | NULL＝永不到期 |
+| `last_used_at`／`last_used_ip` | timestamptz／varchar(50) NOT NULL DEFAULT '' | 最近一次成功認證的時間與來源；屬遙測，不作為閘門 |
+| `revoked_at` | timestamptz | 撤銷時間；NULL＝未撤銷 |
+| `revoked_by` | bigint，外鍵 `fk_api_tokens_revoker` → `users(id)` | 撤銷者 |
+| `revoke_note` | text NOT NULL DEFAULT '' | 撤銷說明 |
+| `restore_generation` | varchar(64) NOT NULL DEFAULT '' | 建立當下的還原世代；與目前世代不同即視為已因還原失效 |
+
+### 81. api_token_roles（API 憑證授權的角色）
+
+**表名**: `api_token_roles`；**檔案**: `backend/internal/model/api_token.go`（`model.APITokenRole`）。**建表方式**: 增量 migration `20261113_api_tokens`。
+
+一把 API token 建立時授權的角色集合，以角色識別為準（不以名稱）。角色被刪除或帳號不再持有該角色時列仍保留，解析器取交集後自然不產生權限。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `api_token_id` | bigint NOT NULL，複合主鍵 `api_token_roles_pkey` 第一欄；外鍵 `fk_api_token_roles_token` → `api_tokens(id)` ON DELETE CASCADE | |
+| `role_id` | bigint NOT NULL，複合主鍵第二欄；外鍵 `fk_api_token_roles_role` → `roles(id)` | |
 
 ---
 

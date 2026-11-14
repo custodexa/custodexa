@@ -200,6 +200,10 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"POST", "/api/v1/mcp"}:                           {classResource, model.ResourceAgentToolCall, "MCP 傳輸請求（含初始化與工具清單）；HTTP 稽核列非逐工具帳本，無 resource_id，建線拒絕另沿 AP-69"},
 	{"GET", "/api/v1/my/agents"}:                      {classResource, model.ResourceUser, "本人名下 agent 清單，分類為 user"},
 	{"POST", "/api/v1/my/agents"}:                     {classResource, model.ResourceUser, "自助建立 agent 帳號；用途另由同交易活動列保存"},
+	{"GET", "/api/v1/my/api-tokens"}:                  {classResource, model.ResourceAPIToken, "本人的 API token 清單與建立資格；回應不含明文與雜湊"},
+	{"POST", "/api/v1/my/api-tokens"}:                 {classResource, model.ResourceAPIToken, "本人建立 API token；建立另由交易內寫入面同交易留痕，本列為請求層結果列，resource_id 由 handler 訂正為新 token"},
+	{"DELETE", "/api/v1/my/api-tokens/:id"}:           {classResource, model.ResourceAPIToken, "本人撤銷；`:id` 即 token 識別，撤銷另由交易內寫入面同交易留痕"},
+	{"GET", "/api/v1/api-tokens/verify"}:              {classResource, model.ResourceAPIToken, "以 API token 認證的自我查驗；只回授權角色與有效角色"},
 
 	// ── classResource：主機金鑰採用（host-key-verification 新增路由；獨立對齊群組）──
 	{"POST", "/api/v1/assets/:id/host-key/adopt"}: {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
@@ -215,6 +219,9 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/access-requests/:id/reports"}:                 {classResource, model.ResourceAccessRequest, "任務報告唯讀查詢，id 為任務"},
 	{"POST", "/api/v1/access-requests/:id/reports"}:                {classResource, model.ResourceAccessRequest, "提交任務報告，版本內容另由交易審計留摘要"},
 	{"POST", "/api/v1/users/:id/agent-breaker/release"}:            {classResource, model.ResourceUser, "解除主體未處置事件；不復權 token"},
+	{"GET", "/api/v1/users/:id/api-tokens"}:                        {classResource, model.ResourceAPIToken, "命中分類器段 `api-tokens`（先於 users）；handler 以 audit_resource 訂正為 user，resource_id 為帳號識別"},
+	{"DELETE", "/api/v1/users/:id/api-tokens/:tokenId"}:            {classResource, model.ResourceAPIToken, "管理者撤銷一把；handler 以 audit_resource_id 訂正為 token 識別，撤銷另由交易內寫入面同交易留痕"},
+	{"POST", "/api/v1/users/:id/api-tokens/revoke-all"}:            {classResource, model.ResourceAPIToken, "管理者撤銷全部；handler 以 audit_resource 訂正為 user，每把撤銷另由交易內寫入面逐筆留痕"},
 	{"GET", "/api/v1/agent-tool-calls"}:                            {classResource, model.ResourceAgentToolCall, "帳本查詢既有實碼分類；session_id query，同為審計資源讀取，AP-21 記查詢範圍"},
 	{"POST", "/api/v1/access-requests"}:                            {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
 	{"POST", "/api/v1/access-requests/:id/approve"}:                {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},

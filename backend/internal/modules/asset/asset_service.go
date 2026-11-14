@@ -557,7 +557,7 @@ func (s *AssetService) Create(ctx context.Context, req *CreateAssetRequest) (*mo
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
 	accountCreated := false
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
+	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於能力判定的讀取與任何憑證列鎖
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err
@@ -1482,7 +1482,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		treeStructMu.Lock()
 		defer treeStructMu.Unlock()
 	}
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
+	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：涉節點掛載、停用候選（請求帶 active=false）或需範圍判定的更新時是交易第一個動作，
 		// 早於資產列鎖。條件取較寬者（可能多取，不可漏取）；只有集合改變才推進版本
 		mountChanged := false
@@ -1925,7 +1925,7 @@ func (s *AssetService) Delete(ctx context.Context, id uint) error {
 		return err
 	}
 
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於範圍判定的讀取、removeAssetBindings 的憑證列鎖與資產列鎖
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err

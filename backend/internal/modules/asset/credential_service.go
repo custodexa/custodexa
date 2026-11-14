@@ -299,7 +299,7 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 		ProtocolFamily: req.ProtocolFamily,
 		Note:           req.Note,
 	}
-	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 第一個動作取拓撲序列化鎖：歸屬節點不得在判定之後、寫入之前被刪
 		if err := s.beginOwnershipTx(tx); err != nil {
 			return err
@@ -373,7 +373,7 @@ func (s *CredentialService) Update(ctx context.Context, id uint, req *UpdateCred
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.Credential
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 帶改歸時第一個動作取拓撲序列化鎖（其後 Begin），早於資產列與憑證列鎖
 		if req.Ownership != nil {
 			if err := s.beginOwnershipTx(tx); err != nil {
@@ -697,7 +697,7 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.Credential
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖在憑證列鎖之前（歸屬寫入與節點刪除同一序列化點）
 		if err := s.beginOwnershipTx(tx); err != nil {
 			return err
@@ -843,7 +843,7 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 		return nil, cerr
 	}
 	var result *model.Credential
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 第一個動作取拓撲序列化鎖，其後才取憑證列鎖：與改歸、節點刪除承接同一序列化點，
 		// 範圍外影響集合的重算不會與歸屬或拓撲變更交錯
 		if err := s.assets.lockTopologyTx(tx); err != nil {
@@ -949,7 +949,7 @@ func (s *CredentialService) Delete(ctx context.Context, id uint) error {
 	// 不在持有憑證列鎖的交易內另開連線
 	var inUse *CredentialInUseError
 	var bound []boundAsset
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
+	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		cred, err := lockCredentialRow(tx, id)
 		if err != nil {
 			return err

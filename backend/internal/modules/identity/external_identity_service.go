@@ -104,6 +104,8 @@ type IdentityAdminActor struct {
 	UserID   uint
 	Username string
 	ClientIP string
+	// APIToken 該次請求經由的 API token（親自操作時為零值），供稽核歸因。
+	APIToken model.APITokenRef
 }
 
 // ExternalIdentityDTO 外部身分的管理端呈現。
@@ -171,7 +173,7 @@ func (s *UserService) BindExternalIdentity(userID, providerID uint, subject stri
 // BindExternalIdentityBy 帶操作者的綁定：經帳號身分操作關卡，建立與留痕同交易。
 func (s *UserService) BindExternalIdentityBy(op Operator, userID, providerID uint, subject string) (*ExternalIdentityDTO, error) {
 	return s.bindExternalIdentity(userID, providerID, subject,
-		IdentityAdminActor{UserID: op.UserID, Username: op.Username, ClientIP: op.ClientIP}, &op)
+		op.identityAdminActor(), &op)
 }
 
 func (s *UserService) bindExternalIdentity(userID, providerID uint, subject string,
@@ -330,7 +332,7 @@ func (s *UserService) UnbindExternalIdentity(userID, identityID uint, actor Iden
 // UnbindExternalIdentityBy 帶操作者的解綁：經帳號身分操作關卡，留痕同交易。
 func (s *UserService) UnbindExternalIdentityBy(op Operator, userID, identityID uint) error {
 	return s.unbindExternalIdentity(userID, identityID,
-		IdentityAdminActor{UserID: op.UserID, Username: op.Username, ClientIP: op.ClientIP}, &op)
+		op.identityAdminActor(), &op)
 }
 
 func (s *UserService) unbindExternalIdentity(userID, identityID uint, actor IdentityAdminActor, op *Operator) error {
@@ -370,20 +372,21 @@ func (s *UserService) unbindExternalIdentity(userID, identityID uint, actor Iden
 // 停用會移除該帳號的本地 admin 資格，故外層經系統級的本地 admin 不變式鎖；
 // 取鎖順序 system → user。
 func (s *UserService) UnbindExternalIdentityAndDisable(userID, identityID uint, actor IdentityAdminActor) error {
-	return s.unbindExternalIdentityAndDisable(userID, identityID, actor, nil)
+	op := systemOperator()
+	return s.unbindExternalIdentityAndDisable(userID, identityID, actor, &op)
 }
 
 // UnbindExternalIdentityAndDisableBy 帶操作者的解綁並停用：經帳號身分操作關卡，留痕同交易。
 func (s *UserService) UnbindExternalIdentityAndDisableBy(op Operator, userID, identityID uint) error {
 	return s.unbindExternalIdentityAndDisable(userID, identityID,
-		IdentityAdminActor{UserID: op.UserID, Username: op.Username, ClientIP: op.ClientIP}, &op)
+		op.identityAdminActor(), &op)
 }
 
 func (s *UserService) unbindExternalIdentityAndDisable(userID, identityID uint, actor IdentityAdminActor, op *Operator) error {
 	err := WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
 			record := func() error { return nil }
-			if op != nil {
+			if op != nil && !op.IsSystem() {
 				// 停用部分先判：持保護角色的帳號只有超管能停用（解綁本身不在受控清單）
 				if err := s.gateLifecycle(tx, op, userID, AccountOpDisable); err != nil {
 					return err
@@ -438,6 +441,17 @@ func (s *UserService) unbindExternalIdentityAndDisable(userID, identityID uint, 
 // 是以本地密碼啟動的，若不失效，其持有者可於轉換後完成 MFA 驗證，且 finishLogin
 // 會因帳號此時已外部化而跳過密碼 gate，直接取得正式會話（spec 明列的失效情境）。
 func (s *UserService) ConvertToExternalOnly(userID uint, actor IdentityAdminActor) error {
+	return s.convertToExternalOnly(userID, actor, nil)
+}
+
+// ConvertToExternalOnlyBy 帶操作者的改為僅外部登入：以 API token 認證的請求不能改動所屬帳號本人的登入方式
+// （鎖內判定；帳號已是僅外部登入時照既有規則回錯）。
+func (s *UserService) ConvertToExternalOnlyBy(op Operator, userID uint) error {
+	return s.convertToExternalOnly(userID,
+		op.identityAdminActor(), &op)
+}
+
+func (s *UserService) convertToExternalOnly(userID uint, actor IdentityAdminActor, op *Operator) error {
 	err := WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
 			user, err := s.loadUser(tx, userID)
@@ -446,6 +460,11 @@ func (s *UserService) ConvertToExternalOnly(userID uint, actor IdentityAdminActo
 			}
 			if user.IsExternal() {
 				return ErrUserAlreadyExternal
+			}
+			if op != nil {
+				if err := apiTokenSelfChange(*op, userID, true); err != nil {
+					return err
+				}
 			}
 			// 前提於鎖內重讀：並發解綁最後一筆身分與本轉換若各自預讀，
 			// 兩者皆會通過而使帳號歸零登入途徑
@@ -670,7 +689,7 @@ func (s *UserService) writeIdentityAudit(actor IdentityAdminActor, targetUserID 
 	}
 	target := targetUserID
 	details["target_user_id"] = targetUserID
-	s.audit.Log(&audit.AuditLogEntry{
+	s.audit.Log((&audit.AuditLogEntry{
 		UserID:     actor.UserID,
 		Username:   actor.Username,
 		Action:     action,
@@ -679,7 +698,7 @@ func (s *UserService) writeIdentityAudit(actor IdentityAdminActor, targetUserID 
 		Status:     status,
 		ClientIP:   actor.ClientIP,
 		Details:    mustJSON(details),
-	})
+	}).WithAPIToken(actor.APIToken.ID, actor.APIToken.Name))
 }
 
 // auditIdentityFailure 拒絕與失敗一律留痕（規則拒絕是稽核關注的事件本身，
@@ -705,6 +724,8 @@ func identityFailureReason(err error) string {
 		return "no_external_identity"
 	case errors.Is(err, ErrUserAlreadyExternal):
 		return "already_external"
+	case errors.Is(err, ErrAPITokenSelfChange):
+		return DenyReasonAPITokenSelf
 	case isAccountOpRefusal(err):
 		return "protected_account_operation"
 	case errors.Is(err, ErrUserNotFound):
@@ -715,4 +736,6 @@ func identityFailureReason(err error) string {
 }
 
 // isAccountOpRefusal 帳號身分操作關卡的拒絕。
-func isAccountOpRefusal(err error) bool { return errors.Is(err, ErrProtectedAccountOperation) }
+func isAccountOpRefusal(err error) bool {
+	return errors.Is(err, ErrProtectedAccountOperation) || errors.Is(err, ErrAPITokenSelfChange)
+}

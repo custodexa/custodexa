@@ -42,7 +42,8 @@ func TestHostKeyAddressMigration(t *testing.T) {
 		mk := func(a *model.Asset) uint {
 			t.Helper()
 			a.CreatedBy = 1
-			if err := db.Create(a).Error; err != nil {
+			// 不觸發審計 hook：以歷史結構建表，審計列的形狀以目前的 model 為準
+			if err := db.Session(&gorm.Session{SkipHooks: true}).Create(a).Error; err != nil {
 				t.Fatal(err)
 			}
 			return a.ID
@@ -56,7 +57,7 @@ func TestHostKeyAddressMigration(t *testing.T) {
 		wants[id] = want{"::1", 2200}
 		deleted := &model.Asset{Name: "ssh-deleted", Protocol: model.ProtocolSSH, Host: "10.0.0.9", Port: 22}
 		id = mk(deleted)
-		if err := db.Delete(deleted).Error; err != nil {
+		if err := db.Session(&gorm.Session{SkipHooks: true}).Delete(deleted).Error; err != nil {
 			t.Fatal(err)
 		}
 		wants[id] = want{"10.0.0.9", 22}

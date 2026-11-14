@@ -225,6 +225,10 @@ var schemaParityModels = []interface{}{
 	// 鍵盤紀錄中繼資料。由增量 migration 20261105_keystroke_records 建表，
 	// 走 schemaDDLStatements() 受兩層 parity 守衛；無外鍵
 	&model.KeystrokeRecord{},
+	// 個人 API token 兩張表。由增量 migration 20261113_api_tokens 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛；外鍵只在 DDL
+	&model.APIToken{},
+	&model.APITokenRole{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

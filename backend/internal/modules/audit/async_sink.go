@@ -44,7 +44,7 @@ func (s *AuditLogService) Submit(_ context.Context, ev gatewayapi.AuditEvent) er
 
 // entryOf 由傳輸形狀組出 AuditLogEntry（欄位對應同 tx_sink.go 的 auditRowOf）。
 func entryOf(ev gatewayapi.AuditEvent) *AuditLogEntry {
-	return &AuditLogEntry{
+	e := &AuditLogEntry{
 		UserID:      ev.Actor.UserID,
 		Username:    ev.Actor.Username,
 		Action:      model.AuditAction(ev.Action),
@@ -65,6 +65,8 @@ func entryOf(ev gatewayapi.AuditEvent) *AuditLogEntry {
 		ErrorMsg:    ev.ErrorMsg,
 		Details:     ev.Details,
 	}
+	e.APITokenID, e.APITokenName = ev.Request.APITokenID, ev.Request.APITokenName
+	return e
 }
 
 // directSink 不受 AuditLogEnabled 管制的直寫落地面（C-plain 兩點專用）。

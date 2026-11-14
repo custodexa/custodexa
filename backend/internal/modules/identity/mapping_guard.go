@@ -89,8 +89,10 @@ func (s *IdentitySourceService) assignmentGuard() *AssignmentGuard {
 	return s.guard
 }
 
+// mappingOperator 映射操作者結構轉成關卡與分級所用的操作者；API token 標示一併帶過去，
+// 分級寫下的交易內稽核與告警才能歸到經由的 token。
 func mappingOperator(a GroupRoleMappingActor) Operator {
-	return Operator{UserID: a.ID, Username: a.Name, ClientIP: a.IP}
+	return Operator{UserID: a.ID, Username: a.Name, ClientIP: a.IP, Principal: a.Principal, APIToken: a.APIToken}
 }
 
 // mappingDirectRole 以名稱取直接映射的目標角色。
@@ -125,9 +127,14 @@ func (s *IdentitySourceService) mappingDirectRole(tx *gorm.DB, name string) (*mo
 // oldRoleIDs 是被取代或收回的舊目標（收回方向，不做目錄檢查，既有規則不因目錄收斂被擋）；
 // newRoleIDs 是新目標（授予方向）。兩者任一為保護目標，非超級管理者即被關卡拒絕；
 // 兩者都為空時仍會檢查指派能力（不持有者一律拒絕）。
-func (s *IdentitySourceService) guardMappingTargets(tx *gorm.DB, actor GroupRoleMappingActor, oldRoleIDs, newRoleIDs []uint) error {
+//
+// 以 API token 認證的請求，所屬帳號在該來源有外部身分時一律拒絕（kind／sourceID 為規則所屬的來源）。
+func (s *IdentitySourceService) guardMappingTargets(tx *gorm.DB, actor GroupRoleMappingActor, kind string, sourceID uint, oldRoleIDs, newRoleIDs []uint) error {
 	g := s.assignmentGuard()
 	op := mappingOperator(actor)
+	if err := apiTokenSourceSelfGate(tx, op, kind, sourceID); err != nil {
+		return err
+	}
 	checked := false
 	if len(oldRoleIDs) > 0 {
 		checked = true

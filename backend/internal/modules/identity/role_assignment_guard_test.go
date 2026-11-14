@@ -35,7 +35,7 @@ func newGuardEnv(t *testing.T, full bool) *guardEnv {
 }
 
 func (e *guardEnv) op(id uint) Operator {
-	return Operator{UserID: id, Username: "op", ClientIP: "127.0.0.1"}
+	return Operator{Principal: testSessionPrincipal(id), UserID: id, Username: "op", ClientIP: "127.0.0.1"}
 }
 
 func (e *guardEnv) version(t *testing.T) int64 {
@@ -311,13 +311,13 @@ func TestRoleAssignmentGuard(t *testing.T) {
 		}
 		// 投影與關卡同一判定：非超管看到受保護，超管看到可指派
 		proj := NewRoleProjector(e.db, guard)
-		s, err := proj.ProjectRoles(idAdmin)
+		s, err := proj.ProjectRoles(principalOf(t, e.db, idAdmin))
 		require.NoError(t, err)
 		assert.Equal(t, AssignmentStateProtected, s.ByRole[e.roles["secequiv"]].AssignmentState)
 		assert.Equal(t, AssignmentStateProtected, s.ByRole[e.roles["secpart"]].AssignmentState)
 		assert.Equal(t, AssignmentStateOpen, s.ByRole[e.roles["pgviewer"]].AssignmentState)
 		assert.Equal(t, AssignmentStateOpen, s.ByRole[e.roles["guardview"]].AssignmentState)
-		s, err = proj.ProjectRoles(e.admin)
+		s, err = proj.ProjectRoles(principalOf(t, e.db, e.admin))
 		require.NoError(t, err)
 		assert.Equal(t, AssignmentStateOpen, s.ByRole[e.roles["secequiv"]].AssignmentState)
 		// 超管放行

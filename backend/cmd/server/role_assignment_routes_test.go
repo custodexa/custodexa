@@ -82,7 +82,7 @@ func TestRoleAssignmentRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, c)
 		svc := identity.NewUserGroupService(env.db, audit.NewTxSink(), nil)
 		svc.SetAssignmentGuard(newMappingAssignmentGuard()) // 與路由同一個正式組裝的關卡
-		_, direct := svc.ReplaceRoleBindings(identity.Operator{UserID: ida}, group.ID, identity.GroupRoleBindingsRequest{RoleIDs: []uint{rid(model.RoleAdmin)}})
+		_, direct := svc.ReplaceRoleBindings(identity.Operator{Principal: testSessionPrincipal(ida), UserID: ida}, group.ID, identity.GroupRoleBindingsRequest{RoleIDs: []uint{rid(model.RoleAdmin)}})
 		var pe *identity.PrincipalError
 		require.ErrorAs(t, direct, &pe)
 		assert.Equal(t, string(pe.Code), code(out))
@@ -99,7 +99,7 @@ func TestRoleAssignmentRoutes(t *testing.T) {
 			}
 			compat := identity.NewUserGroupService(env.db, audit.NewTxSink(), nil)
 			compat.SetAssignmentGuard(identity.NewAssignmentGuard(identity.CompatCatalog()))
-			_, err := compat.ReplaceRoleBindings(identity.Operator{UserID: ida}, group.ID, identity.GroupRoleBindingsRequest{RoleIDs: []uint{idRole.ID}})
+			_, err := compat.ReplaceRoleBindings(identity.Operator{Principal: testSessionPrincipal(ida), UserID: ida}, group.ID, identity.GroupRoleBindingsRequest{RoleIDs: []uint{idRole.ID}})
 			assert.ErrorIs(t, err, identity.ErrRoleNotFound)
 		})
 		t.Run("完整目錄（"+catalogVia(true)+"）：新範本放行", func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestRoleAssignmentRoutes(t *testing.T) {
 			} else {
 				full := identity.NewUserGroupService(env.db, audit.NewTxSink(), nil)
 				full.SetAssignmentGuard(identity.NewAssignmentGuard(identity.FullCatalog()))
-				_, err := full.ReplaceRoleBindings(identity.Operator{UserID: ida}, group.ID, identity.GroupRoleBindingsRequest{RoleIDs: []uint{idRole.ID}})
+				_, err := full.ReplaceRoleBindings(identity.Operator{Principal: testSessionPrincipal(ida), UserID: ida}, group.ID, identity.GroupRoleBindingsRequest{RoleIDs: []uint{idRole.ID}})
 				require.NoError(t, err)
 			}
 			now, err := authz.UserGroupRoleIDs(env.db, group.ID)

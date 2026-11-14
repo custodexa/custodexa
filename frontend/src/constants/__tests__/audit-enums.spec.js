@@ -19,6 +19,8 @@ import {
 // AuditAction: backend/internal/model/audit_log.go:13-42
 const BACKEND_ACTIONS = [
   'suspend', 'agent_token_revoked', 'agent_token_suspended',
+  // 個人 API token 被撤銷（建立沿用 create）
+  'api_token_revoked',
   'agent_sessions_terminated', 'agent_sessions_terminate_late', 'permission_state_accepted',
   'create', 'read', 'update', 'delete', 'execute', 'login', 'logout',
   'unlock', 'pw_noncompliant', 'recording_failed',
@@ -42,6 +44,7 @@ const BACKEND_ACTIONS = [
 // AuditResource: backend/internal/model/audit_log.go 的 Resource* 常數區
 const BACKEND_RESOURCES = [
   'agent_token',
+  'api_token',
   'agent_tool_call',
   'asset', 'session', 'recording', 'user', 'auth', 'file',
   'security_policy', 'command_alert', 'audit_export', 'access_review',

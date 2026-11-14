@@ -9,6 +9,7 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
+	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,25 @@ type RoleAssignmentPreviewer interface {
 // RoleAssignmentPreviewHandler 危險組合預覽 API：不寫資料、不推進版本。
 type RoleAssignmentPreviewHandler struct {
 	previewer RoleAssignmentPreviewer
+	// apiTokens 直接指派預覽附帶的 API token 影響摘要；nil 時回應不帶該鍵
+	apiTokens apiTokenImpactReader
+}
+
+// apiTokenImpactReader 直接指派變更對帳號 API token 的影響（唯讀）。
+type apiTokenImpactReader interface {
+	ImpactOfDirectRoles(userID uint, newManualRoleIDs []uint) (*identity.APITokenImpact, error)
+}
+
+// WithAPITokenImpact 注入 API token 影響摘要的讀取（組裝根）。
+func (h *RoleAssignmentPreviewHandler) WithAPITokenImpact(r apiTokenImpactReader) *RoleAssignmentPreviewHandler {
+	h.apiTokens = r
+	return h
+}
+
+// roleAssignmentPreviewResponse 預覽結果加 API token 影響摘要（只有直接指派、且帳號有尚可使用的 token 時出現）。
+type roleAssignmentPreviewResponse struct {
+	authz.PreviewResult
+	APITokens *identity.APITokenImpact `json:"api_tokens,omitempty"`
 }
 
 // NewRoleAssignmentPreviewHandler 建立 handler。
@@ -206,7 +226,24 @@ func (h *RoleAssignmentPreviewHandler) Preview(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleAssignmentPreview, err)
 		return
 	}
-	c.JSON(http.StatusOK, res)
+	resp := roleAssignmentPreviewResponse{PreviewResult: res}
+	// 對象帳號的 token 清單資訊只給人類工作階段：查看他人 token 的端點不對 API token 開放，
+	// 預覽也不得成為以 token 列出他人 token 的途徑。
+	viaAPIToken := false
+	if kind, ok := middleware.GetRequestCredential(c); ok && kind == model.RequestCredentialAPIToken {
+		viaAPIToken = true
+	}
+	if h.apiTokens != nil && !viaAPIToken && body.Kind == authz.PreviewDirectRoles && body.UserID != 0 {
+		impact, err := h.apiTokens.ImpactOfDirectRoles(body.UserID, body.RoleIDs)
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleAssignmentPreview, err)
+			return
+		}
+		if impact.TotalUsable > 0 {
+			resp.APITokens = impact
+		}
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // RegisterRoutes 註冊預覽路由（權限由路由登錄表裁決）。

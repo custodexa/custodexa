@@ -596,7 +596,7 @@ func TestLDAPLoginRecomputesMappedRoles(t *testing.T) {
 		if _, err := admin.CreateMapping(model.RoleMappingChannelKindDirectory, dir.ID,
 			GroupRoleMappingInput{
 				MatchValue: roleMappingInnerGroup, Role: model.RoleAuditor, Enabled: &disabled,
-				RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: user.ID, Name: "admin"},
+				RiskAcknowledged: true, Actor: GroupRoleMappingActor{Principal: testSessionPrincipal(user.ID), ID: user.ID, Name: "admin"},
 			}); err != nil {
 			t.Fatalf("經管理面建規則: %v", err)
 		}

@@ -58,7 +58,7 @@ func (s *IdentitySourceService) auditUserGroupMapping(tx *gorm.DB, actor GroupRo
 		return err
 	}
 	id := row.ID
-	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{Action: string(action), Resource: string(model.ResourceUserGroup), ResourceID: &id, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actor.ID, Username: actor.Name}, Request: gatewayapi.RequestMeta{ClientIP: actor.IP}, Details: string(payload), ErrorMsg: event}); err != nil {
+	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{Action: string(action), Resource: string(model.ResourceUserGroup), ResourceID: &id, Status: string(model.StatusSuccess), Actor: gatewayapi.Actor{UserID: actor.ID, Username: actor.Name}, Request: actor.requestMeta(), Details: string(payload), ErrorMsg: event}); err != nil {
 		return fmt.Errorf("使用者群組映射稽核失敗: %w", err)
 	}
 	return nil
@@ -95,7 +95,7 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 		if err != nil {
 			return err
 		}
-		if err := s.guardMappingTargets(tx, in.Actor, nil, newRoles); err != nil {
+		if err := s.guardMappingTargets(tx, in.Actor, kind, sourceID, nil, newRoles); err != nil {
 			return err
 		}
 		usage, err := usageOfUserGroup(tx, in.UserGroupID)
@@ -195,7 +195,7 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 			if err != nil {
 				return err
 			}
-			if err := s.guardMappingTargets(tx, in.Actor, oldRoles, newRoles); err != nil {
+			if err := s.guardMappingTargets(tx, in.Actor, kind, sourceID, oldRoles, newRoles); err != nil {
 				return err
 			}
 		}
@@ -289,7 +289,7 @@ func (s *IdentitySourceService) DeleteUserGroupMapping(kind string, sourceID, ru
 		if err != nil {
 			return err
 		}
-		if err := s.guardMappingTargets(tx, actor, oldRoles, nil); err != nil {
+		if err := s.guardMappingTargets(tx, actor, kind, sourceID, oldRoles, nil); err != nil {
 			return err
 		}
 		var oldGroup model.ExternalGroup

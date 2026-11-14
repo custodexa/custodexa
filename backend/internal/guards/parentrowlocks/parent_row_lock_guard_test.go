@@ -61,6 +61,8 @@ var nonParentLocks = []nonParentLock{
 	{"internal/modules/identity/agent_breaker.go", "AgentTokenService.TripProbeBreakerInTx", "model:AgentToken", "agent_tokens", "憑證列鎖"},
 	{"internal/modules/identity/agent_token_service.go", "AgentTokenService.changeState", "model:AgentToken", "agent_tokens", "憑證列鎖"},
 	{"internal/modules/identity/agent_session_actor.go", "BindAgentSessionPrincipal", "model:AgentToken", "agent_tokens", "憑證列鎖"},
+	{"internal/modules/identity/api_token_service.go", "APITokenService.revoke", "model:APIToken", "api_tokens", "憑證列鎖"},
+	{"internal/modules/identity/api_token_service.go", "APITokenService.RevokeAllForUser", "model:APIToken", "api_tokens", "憑證列鎖"},
 	{"internal/modules/identity/role_definition_service.go", "lockCustomRole", "model:Role", "roles", "角色定義列鎖"},
 	{"internal/modules/identity/oidc_provider_lock.go", "var oidcProviderRowLockSQL", "oidc_providers", "oidc_providers", "身分提供者列鎖"},
 	{"internal/modules/authz/agent_session_task.go", "BindAgentSessionTask", "model:AccessRequest", "access_requests", "任務（申請單）列鎖"},

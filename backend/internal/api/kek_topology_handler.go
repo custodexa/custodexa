@@ -310,12 +310,12 @@ func (h *KeyManagementHandler) auditTopologyChangeWith(c *gin.Context, provider,
 		status = model.StatusFailure
 		statusCode = http.StatusBadRequest
 	}
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID: topologyActorID(c), Username: currentActorName(c),
 		Action: model.ActionUpdate, Resource: model.ResourceKeyManagement,
 		Status: status, Method: c.Request.Method, Path: c.Request.URL.Path,
 		ClientIP: sourceip.Of(c), StatusCode: statusCode, RequestBody: string(body),
-	})
+	}))
 }
 
 // currentActorName／topologyActorID 取本次請求的操作者（課責欄）。

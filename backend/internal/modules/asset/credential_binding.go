@@ -72,6 +72,8 @@ var (
 	// ErrCredentialBindForbidden 操作者對受影響的資產無權限。
 	// 與「憑證不存在」共用收斂的對外回應：分流即製造存在性探測器
 	ErrCredentialBindForbidden = errors.New("操作者對受影響的資產無管理權限")
+	// ErrAPITokenCredentialReference 以 API token 認證的請求引用系統保存的既有憑證（掛載）。
+	ErrAPITokenCredentialReference = errors.New("API token 不能引用系統保存的既有憑證")
 	// ErrCredentialBindingExists 同一資產已掛載同一憑證（CONFLICT_CREDENTIAL_BINDING）
 	ErrCredentialBindingExists = errors.New("該資產已掛載此憑證")
 	// ErrCredentialBindingNotFound 掛載不存在或不屬於該憑證（NOTFOUND_CREDENTIAL_BINDING）
@@ -111,7 +113,7 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 		return nil, err
 	}
 	// 先驗能力再查資產：無權者不得靠「資產不存在」與「無權」的差別探測存在性
-	if err := s.requireManagement(ctx, nil, CredOpBind, []string{CredCapBind},
+	if err := s.requireAttachManagement(ctx, nil,
 		[]uint{credentialID}, []uint{req.AssetID}); err != nil {
 		return nil, err
 	}
@@ -129,7 +131,7 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 	if s.bindPreTxHook != nil {
 		s.bindPreTxHook()
 	}
-	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於資產列與憑證列鎖，與改歸、節點刪除序列化。
 		// 掛載不是權限資料：不呼叫 Begin、不推進權限版本
 		if err := s.assets.lockTopologyTx(tx); err != nil {
@@ -149,7 +151,7 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 		}
 		// 鎖後重判：與交易外同一道關卡，以鎖後重讀的主體與憑證歸屬判定。交易外判定之後才提交的
 		// 改歸或撤權在此生效；早於任何依憑證狀態的判斷，不讓範圍外憑證的狀態經錯誤分流外露
-		if err := s.requireManagement(ctx, tx, CredOpBind, []string{CredCapBind},
+		if err := s.requireAttachManagement(ctx, tx,
 			[]uint{credentialID}, []uint{asset.ID}); err != nil {
 			return err
 		}
@@ -241,7 +243,7 @@ func (s *CredentialService) Unbind(ctx context.Context, credentialID, accountID 
 		return err
 	}
 	userID, operator := model.UserFromContext(ctx)
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		var binding model.AssetAccount
 		if err := tx.Where("id = ? AND credential_id = ?", accountID, credentialID).
 			First(&binding).Error; err != nil {
@@ -317,7 +319,7 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 	if accountID == 0 {
 		return nil, ErrAssetAccountNotFound
 	}
-	if err := s.requireManagement(ctx, nil, CredOpBind, []string{CredCapBind},
+	if err := s.requireAttachManagement(ctx, nil,
 		[]uint{credentialID}, []uint{assetID}); err != nil {
 		return nil, err
 	}
@@ -328,7 +330,7 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 
 	userID, operator := model.UserFromContext(ctx)
 	var result *model.AssetAccount
-	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於資產列與兩筆憑證列鎖（不呼叫 Begin、不推進權限版本）
 		if err := s.assets.lockTopologyTx(tx); err != nil {
 			return err
@@ -353,7 +355,7 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 		}
 		// 改綁只驗新憑證與目標資產：被換掉的舊憑證不驗歸屬，因為目標資產在操作者範圍內，
 		// 該帳號的掛載本由資產側管理
-		if err := s.requireManagement(ctx, tx, CredOpBind, []string{CredCapBind},
+		if err := s.requireAttachManagement(ctx, tx,
 			[]uint{credentialID}, []uint{asset.ID}); err != nil {
 			return err
 		}
@@ -664,6 +666,16 @@ func (s *CredentialService) requireManagement(ctx context.Context, db *gorm.DB, 
 
 	_, err := s.mgmt.require(ctx, db, CredentialManagementRequest{
 		Operation: op, Capabilities: caps, CredentialIDs: credentialIDs, AssetIDs: assetIDs,
+	})
+	return err
+}
+
+// requireAttachManagement 把既有憑證掛到資產上（掛載、改綁）的判定：同 requireManagement 的掛載能力，
+// 並標示這是掛載既有憑證（以 API token 認證的請求一律不可）。
+func (s *CredentialService) requireAttachManagement(ctx context.Context, db *gorm.DB, credentialIDs, assetIDs []uint) error {
+	_, err := s.mgmt.require(ctx, db, CredentialManagementRequest{
+		Operation: CredOpBind, Capabilities: []string{CredCapBind}, CredentialIDs: credentialIDs, AssetIDs: assetIDs,
+		AttachesExisting: true,
 	})
 	return err
 }

@@ -254,7 +254,7 @@ func TestMappingGrantEvents(t *testing.T) {
 
 	t.Run("釘住：自己為高、他人管理類為中、他人一般角色零事件", func(t *testing.T) {
 		e := newMappingEventEnv(t)
-		root := Operator{UserID: e.admin, Username: "root"}
+		root := Operator{Principal: testSessionPrincipal(e.admin), UserID: e.admin, Username: "root"}
 		other := e.mkUser(t, "other")
 		for _, c := range []struct {
 			uid  uint

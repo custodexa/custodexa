@@ -22,7 +22,7 @@ func TestUserServiceDeleteCascade(t *testing.T) {
 	seedAuthzState(t, db)
 	// RefreshToken 為必要：Delete 於同交易內推進 credential_epoch 並撤銷 refresh
 	//（2.8 起），缺表會讓刪除以「撤銷刷新憑證失敗」整筆回滾
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
+	if err := db.AutoMigrate(&model.APIToken{}, &model.APITokenRole{}, &model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{},
 		&model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserRole{}, &model.UserRoleMapping{},
 		&model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{},

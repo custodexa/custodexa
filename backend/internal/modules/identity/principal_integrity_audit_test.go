@@ -43,7 +43,7 @@ func TestPrincipalAuditTransactionalReplay(t *testing.T) {
 		for _, op := range []string{"create", "owner", "delete"} {
 			t.Run(op+map[bool]string{false: "/success", true: "/rollback"}[fail], func(t *testing.T) {
 				users, _, db, owner, agent := principalEnv(t)
-				if err := db.AutoMigrate(&model.AgentToken{}, &model.UserGroup{}, &model.ApproverScope{}); err != nil {
+				if err := db.AutoMigrate(&model.AgentToken{}, &model.UserGroup{}, &model.ApproverScope{}, &model.APIToken{}, &model.APITokenRole{}); err != nil {
 					t.Fatal(err)
 				}
 				before, err := audit.SnapshotPrincipals(context.Background(), db)
@@ -66,7 +66,7 @@ func TestPrincipalAuditTransactionalReplay(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					_, _, writeErr = users.Update(agent.ID, &UpdateUserRequest{OwnerUserID: &other.ID})
+					_, _, writeErr = users.Update(Operator{}, agent.ID, &UpdateUserRequest{OwnerUserID: &other.ID})
 				case "delete":
 					writeErr = users.Delete(agent.ID)
 				}

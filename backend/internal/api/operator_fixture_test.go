@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 )
 
@@ -30,6 +31,7 @@ func asSuperAdmin(t *testing.T, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("userID", op.ID)
 		c.Set("username", op.Username)
+		middleware.BindRequestPrincipal(c, requestPrincipalForTest(t, db, op.ID), model.RequestCredentialHumanSession)
 		c.Next()
 	}
 }

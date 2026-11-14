@@ -100,7 +100,7 @@ func (h *AccessReviewHandler) Create(c *gin.Context) {
 	// 複審簽核入審計（管理層確認的可稽核留痕，7.2.4）
 	if h.auditService != nil {
 		rid := review.ID
-		h.auditService.Log(&audit.AuditLogEntry{
+		h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 			UserID:     reviewerID,
 			Username:   reviewerName,
 			Action:     model.ActionCreate,
@@ -111,7 +111,7 @@ func (h *AccessReviewHandler) Create(c *gin.Context) {
 			Path:       c.Request.URL.Path,
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusCreated,
-		})
+		}))
 	}
 
 	c.JSON(http.StatusCreated, review)

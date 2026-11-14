@@ -62,7 +62,7 @@ func newRoleDefEnvOn(t *testing.T, db *gorm.DB) *roleDefEnv {
 		&model.UserGroupRole{}, &model.RoleBindingNode{}, &model.RolePermission{}, &model.ExternalGroup{}, &model.GroupRoleMapping{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.PermissionStateEvent{},
 		&model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{}, &model.NotificationChannel{},
-		&model.CommandAlert{}, &model.AssetAuthorization{}))
+		&model.CommandAlert{}, &model.AssetAuthorization{}, &model.APIToken{}, &model.APITokenRole{}))
 	seedAuthzState(t, db)
 	ev := &fakeRoleEvents{}
 	env := &roleDefEnv{db: db, events: ev, roles: map[string]uint{}, svc: NewRoleDefinitionService(db, audit.NewTxSink(), ev,
@@ -104,7 +104,7 @@ func (e *roleDefEnv) snapshot(t *testing.T) (roles, perms int64, authzVer int64,
 
 func (e *roleDefEnv) create(t *testing.T, name string, perms ...string) *RoleDefinition {
 	t.Helper()
-	d, err := e.svc.Create(context.Background(), e.admin, RoleInput{Name: name, Permissions: perms})
+	d, err := e.svc.Create(asSession(context.Background(), e.admin), e.admin, RoleInput{Name: name, Permissions: perms})
 	require.NoError(t, err)
 	return d
 }
@@ -121,20 +121,20 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		assert.Empty(t, d.BuiltinKey)
 		assert.False(t, d.Locked)
 
-		cp, err := e.svc.Copy(ctx, e.admin, e.roles["identity_admin"], "id-copy", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, e.roles["identity_admin"], "id-copy", "")
 		require.NoError(t, err)
 		assert.Empty(t, cp.BuiltinKey, "複製不帶內建身分")
 		assert.Equal(t, sortedStrings(authz.TemplatePermissions(model.BuiltinIdentityAdmin)), cp.Permissions)
 		require.NotNil(t, cp.TemplateRoleID)
 		assert.Equal(t, e.roles["identity_admin"], *cp.TemplateRoleID)
 
-		up, err := e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "viewer2", Description: "x", Permissions: []string{"asset:view"}})
+		up, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "viewer2", Description: "x", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), up.DefinitionVersion)
 		assert.Equal(t, []string{"asset:view"}, up.Permissions)
 		assert.Equal(t, "viewer2", up.Name)
 
-		require.NoError(t, e.svc.Delete(ctx, e.admin, d.ID, 2))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 2))
 		_, err = e.svc.GetDefinition(ctx, d.ID)
 		assert.ErrorIs(t, err, ErrRoleDefinitionNotFound)
 		// 名稱釋出：可重新使用
@@ -155,11 +155,11 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		require.NoError(t, e.db.Model(&model.UserRole{}).Where("user_id = ?", uDeleted).Count(&rowsBefore).Error)
 		require.EqualValues(t, 1, rowsBefore)
 
-		require.NoError(t, e.svc.Delete(ctx, e.admin, gone.ID, 1))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, gone.ID, 1))
 		var rowsAfter int64
 		require.NoError(t, e.db.Model(&model.UserRole{}).Where("user_id = ?", uDeleted).Count(&rowsAfter).Error)
 		assert.Equal(t, rowsBefore, rowsAfter, "角色刪除不動已刪帳號的指派列")
-		assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, kept.ID, 1), ErrRoleDefinitionInUse, "停用中的帳號仍算引用")
+		assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, kept.ID, 1), ErrRoleDefinitionInUse, "停用中的帳號仍算引用")
 	})
 	t.Run("非超管含全可指派能力者四種寫入都拒絕且內容不變", func(t *testing.T) {
 		e := newRoleDefEnv(t)
@@ -171,13 +171,13 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		named := e.mkUser(t, "admin-lookalike") // 顯示名稱像 admin 但沒有內建身分
 		r0, p0, v0, a0 := e.snapshot(t)
 		for _, who := range []uint{holder, idAdmin, named, 99999} {
-			_, err := e.svc.Create(ctx, who, RoleInput{Name: "n", Permissions: []string{"asset:view"}})
+			_, err := e.svc.Create(asSession(ctx, who), who, RoleInput{Name: "n", Permissions: []string{"asset:view"}})
 			assert.ErrorIs(t, err, ErrRoleDefinitionForbidden)
-			_, err = e.svc.Copy(ctx, who, e.roles["user"], "c", "")
+			_, err = e.svc.Copy(asSession(ctx, who), who, e.roles["user"], "c", "")
 			assert.ErrorIs(t, err, ErrRoleDefinitionForbidden)
-			_, err = e.svc.Update(ctx, who, target.ID, 1, RoleInput{Name: "t", Permissions: []string{}})
+			_, err = e.svc.Update(asSession(ctx, who), who, target.ID, 1, RoleInput{Name: "t", Permissions: []string{}})
 			assert.ErrorIs(t, err, ErrRoleDefinitionForbidden)
-			assert.ErrorIs(t, e.svc.Delete(ctx, who, target.ID, 1), ErrRoleDefinitionForbidden)
+			assert.ErrorIs(t, e.svc.Delete(asSession(ctx, who), who, target.ID, 1), ErrRoleDefinitionForbidden)
 		}
 		r1, p1, v1, a1 := e.snapshot(t)
 		assert.Equal(t, []int64{r0, p0, v0, a0}, []int64{r1, p1, v1, a1}, "被拒絕的寫入不改任何狀態、不推進版本、不留成功審計")
@@ -188,7 +188,7 @@ func TestRoleDefinitionMutations(t *testing.T) {
 	t.Run("停用的超管不得寫入", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		require.NoError(t, e.db.Model(&model.User{}).Where("id = ?", e.admin).Update("active", false).Error)
-		_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "n"})
+		_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "n"})
 		assert.ErrorIs(t, err, ErrRoleDefinitionForbidden)
 	})
 	t.Run("不合法集合整筆拒絕：未知、ui:、保留身分、明文鍵", func(t *testing.T) {
@@ -196,14 +196,14 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		r0, p0, v0, a0 := e.snapshot(t)
 		for _, bad := range [][]string{{"asset:view", "nope:key"}, {"asset:view", "ui:nav.users"}, {"asset:view", "superadmin:all"},
 			{"asset:view", "credential:reveal"}, {"connect:bypass"}, {"role:define"}} {
-			_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "n", Permissions: bad})
+			_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "n", Permissions: bad})
 			assert.True(t, authz.IsInvalidRolePermission(err), "%v", bad)
 		}
 		r1, p1, v1, a1 := e.snapshot(t)
 		assert.Equal(t, []int64{r0, p0, v0, a0}, []int64{r1, p1, v1, a1})
 		// 修改時同樣整筆拒絕，原內容保留
 		d := e.create(t, "keep", "asset:view")
-		_, err := e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "keep", Permissions: []string{"asset:view", "nope:key"}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "keep", Permissions: []string{"asset:view", "nope:key"}})
 		assert.True(t, authz.IsInvalidRolePermission(err))
 		got, _ := e.svc.GetDefinition(ctx, d.ID)
 		assert.Equal(t, []string{"asset:view"}, got.Permissions)
@@ -211,7 +211,7 @@ func TestRoleDefinitionMutations(t *testing.T) {
 	})
 	t.Run("缺依賴允許儲存：回應明示缺少的依賴與無法使用的畫面、不補權、寫入審計", func(t *testing.T) {
 		e := newRoleDefEnv(t)
-		d, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "dep", Permissions: []string{"credential:manage"}})
+		d, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "dep", Permissions: []string{"credential:manage"}})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"credential:manage"}, d.Permissions, "不自動補授 asset:view")
 		require.Len(t, d.MissingDependencies, 1)
@@ -231,7 +231,7 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		got, err := e.svc.GetDefinition(ctx, d.ID)
 		require.NoError(t, err)
 		assert.Len(t, got.MissingDependencies, 1)
-		up, err := e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "dep", Permissions: []string{"credential:manage", "asset:view"}})
+		up, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "dep", Permissions: []string{"credential:manage", "asset:view"}})
 		require.NoError(t, err)
 		assert.Empty(t, up.MissingDependencies)
 		assert.Empty(t, up.BlockedScreens)
@@ -247,19 +247,19 @@ func TestRoleDefinitionMutations(t *testing.T) {
 	t.Run("內建與範本不可改刪、超管不可複製、存量角色鎖定", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		for _, name := range []string{"admin", "auditor", "user", "approver", "identity_admin", "security_admin"} {
-			_, err := e.svc.Update(ctx, e.admin, e.roles[name], 0, RoleInput{Name: name})
+			_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, e.roles[name], 0, RoleInput{Name: name})
 			assert.ErrorIs(t, err, ErrRoleDefinitionLocked, name)
-			_, err = e.svc.Update(ctx, e.admin, e.roles[name], 1, RoleInput{Name: name})
+			_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, e.roles[name], 1, RoleInput{Name: name})
 			assert.ErrorIs(t, err, ErrRoleDefinitionLocked, name)
-			assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, e.roles[name], 1), ErrRoleDefinitionLocked, name)
+			assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, e.roles[name], 1), ErrRoleDefinitionLocked, name)
 		}
-		_, err := e.svc.Copy(ctx, e.admin, e.roles["admin"], "super-copy", "")
+		_, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, e.roles["admin"], "super-copy", "")
 		assert.ErrorIs(t, err, ErrRoleDefinitionLocked)
 		legacy := model.Role{Name: "legacy-custom"} // 升級前存量的非內建角色（版本 0）
 		require.NoError(t, e.db.Create(&legacy).Error)
-		assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, legacy.ID, 0), ErrRoleDefinitionLocked)
+		assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, legacy.ID, 0), ErrRoleDefinitionLocked)
 		// 複製審核者：只複製空集合，不取得審核資格
-		cp, err := e.svc.Copy(ctx, e.admin, e.roles["approver"], "ap-copy", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, e.roles["approver"], "ap-copy", "")
 		require.NoError(t, err)
 		assert.Empty(t, cp.BuiltinKey)
 		assert.Empty(t, cp.Permissions)
@@ -268,18 +268,18 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		e := newRoleDefEnv(t)
 		custom := e.create(t, "src-custom", "asset:view")
 		gone := e.create(t, "src-gone", "asset:view")
-		require.NoError(t, e.svc.Delete(ctx, e.admin, gone.ID, 1))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, gone.ID, 1))
 		r0, p0, v0, a0 := e.snapshot(t)
 		for label, src := range map[string]uint{"懸空": 99999, "已刪除": gone.ID, "超管": e.roles["admin"]} {
 			id := src
-			_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "n-" + label, Permissions: []string{"asset:view"}, TemplateRoleID: &id})
+			_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "n-" + label, Permissions: []string{"asset:view"}, TemplateRoleID: &id})
 			assert.ErrorIs(t, err, ErrRoleDefinitionInput, label)
 		}
 		r1, p1, v1, a1 := e.snapshot(t)
 		assert.Equal(t, []int64{r0, p0, v0, a0}, []int64{r1, p1, v1, a1}, "被拒絕的來源不留角色、不推進版本、不留成功審計")
 		for name, src := range map[string]uint{"ok-template": e.roles["identity_admin"], "ok-approver": e.roles["approver"], "ok-custom": custom.ID} {
 			id := src
-			d, err := e.svc.Create(ctx, e.admin, RoleInput{Name: name, Permissions: []string{"asset:view"}, TemplateRoleID: &id})
+			d, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: name, Permissions: []string{"asset:view"}, TemplateRoleID: &id})
 			require.NoError(t, err)
 			require.NotNil(t, d.TemplateRoleID)
 			assert.Equal(t, src, *d.TemplateRoleID)
@@ -291,11 +291,11 @@ func TestRoleDefinitionMutations(t *testing.T) {
 	t.Run("名稱規則：空、過長、已被使用皆拒絕，不覆寫既有角色", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		for _, n := range []string{"", "   ", string(make([]rune, 51))} {
-			_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: n})
+			_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: n})
 			assert.ErrorIs(t, err, ErrRoleDefinitionInput)
 		}
 		for _, n := range []string{"admin", "identity_admin", "security_admin"} {
-			_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: n})
+			_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: n})
 			assert.ErrorIs(t, err, ErrRoleDefinitionConflict, n)
 		}
 		var key *string
@@ -316,11 +316,11 @@ func TestRoleDefinitionMutations(t *testing.T) {
 	t.Run("舊版本提交拒絕，不覆蓋第一筆", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		d := e.create(t, "c", "asset:view")
-		_, err := e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "c", Permissions: []string{"asset:view", "session:view"}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "c", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
-		_, err = e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "c", Permissions: []string{}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "c", Permissions: []string{}})
 		assert.ErrorIs(t, err, ErrRoleDefinitionConflict)
-		assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, d.ID, 1), ErrRoleDefinitionConflict)
+		assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 1), ErrRoleDefinitionConflict)
 		got, _ := e.svc.GetDefinition(ctx, d.ID)
 		assert.Equal(t, []string{"asset:view", "session:view"}, got.Permissions)
 		assert.Equal(t, int64(2), got.DefinitionVersion)
@@ -335,7 +335,7 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		require.NoError(t, authz.SetUserGroupRoles(e.db, grp.ID, []uint{viaGroup.ID}, uid))
 		require.NoError(t, e.db.Create(&model.GroupRoleMapping{RoleID: viaMap.ID, MatchValue: "g1", ExternalGroupID: 1, CreatedBy: uid}).Error)
 		for _, d := range []*RoleDefinition{direct, viaGroup, viaMap} {
-			assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, d.ID, 1), ErrRoleDefinitionInUse, d.Name)
+			assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 1), ErrRoleDefinitionInUse, d.Name)
 		}
 		var n int64
 		e.db.Model(&model.UserRole{}).Where("user_id = ?", uid).Count(&n)
@@ -346,9 +346,9 @@ func TestRoleDefinitionMutations(t *testing.T) {
 	t.Run("刪除範本原件僅清說明參照，複本集合與版本不變", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		src := e.create(t, "src", "asset:view", "session:view")
-		cp, err := e.svc.Copy(ctx, e.admin, src.ID, "cp", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, src.ID, "cp", "")
 		require.NoError(t, err)
-		require.NoError(t, e.svc.Delete(ctx, e.admin, src.ID, 1))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, src.ID, 1))
 		got, err := e.svc.GetDefinition(ctx, cp.ID)
 		require.NoError(t, err)
 		assert.Nil(t, got.TemplateRoleID)
@@ -401,11 +401,11 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 		e := newRoleDefEnv(t)
 		_, _, v0, _ := e.snapshot(t)
 		d := e.create(t, "r", "asset:view")
-		cp, err := e.svc.Copy(ctx, e.admin, d.ID, "r2", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, d.ID, "r2", "")
 		require.NoError(t, err)
-		_, err = e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{"asset:view", "session:view"}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
-		require.NoError(t, e.svc.Delete(ctx, e.admin, cp.ID, 1))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, cp.ID, 1))
 		var rows []model.AuditLog
 		require.NoError(t, e.db.Where("resource = ?", string(model.ResourceRole)).Order("id").Find(&rows).Error)
 		require.Len(t, rows, 4)
@@ -444,13 +444,13 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 		boom := errors.New("audit down")
 		e.svc.audit = failingSink{err: boom}
 		r0, p0, v0, a0 := e.snapshot(t)
-		_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "x", Permissions: []string{"asset:view"}})
+		_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "x", Permissions: []string{"asset:view"}})
 		assert.ErrorIs(t, err, boom)
-		_, err = e.svc.Copy(ctx, e.admin, d.ID, "x", "")
+		_, err = e.svc.Copy(asSession(ctx, e.admin), e.admin, d.ID, "x", "")
 		assert.ErrorIs(t, err, boom)
-		_, err = e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{}})
 		assert.ErrorIs(t, err, boom)
-		assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, d.ID, 1), boom)
+		assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 1), boom)
 		r1, p1, v1, a1 := e.snapshot(t)
 		assert.Equal(t, []int64{r0, p0, v0, a0}, []int64{r1, p1, v1, a1})
 		got, _ := e.svc.GetDefinition(ctx, d.ID)
@@ -463,11 +463,11 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 		r0, p0, v0, a0 := e.snapshot(t)
 		boom := errors.New("event down")
 		e.events.fail = boom
-		_, err := e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{}})
+		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{}})
 		assert.ErrorIs(t, err, boom)
-		assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, d.ID, 1), boom)
+		assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 1), boom)
 		e.svc.events = nil
-		_, err = e.svc.Create(ctx, e.admin, RoleInput{Name: "y"})
+		_, err = e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "y"})
 		assert.ErrorIs(t, err, ErrRoleStateEventWriterMissing)
 		r1, p1, v1, a1 := e.snapshot(t)
 		assert.Equal(t, []int64{r0, p0, v0, a0}, []int64{r1, p1, v1, a1})
@@ -499,11 +499,11 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 		}
 		k0 := kinds()
 		d := e.create(t, "r", "asset:view")
-		cp, err := e.svc.Copy(ctx, e.admin, d.ID, "r2", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, d.ID, "r2", "")
 		require.NoError(t, err)
-		_, err = e.svc.Update(ctx, e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{"asset:view", "session:view"}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "r", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
-		require.NoError(t, e.svc.Delete(ctx, e.admin, cp.ID, 1))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, cp.ID, 1))
 		k1 := kinds()
 		assert.EqualValues(t, 4, k1[model.PermEventChange]-k0[model.PermEventChange], "四種 mutation 各一筆事件")
 		assert.Zero(t, k1[model.PermEventUntraced])
@@ -515,7 +515,7 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 		assert.Contains(t, evs[3].Delta, `"roles"`, "刪除事件的差集含角色軟刪旗標變動")
 		// 兩次合法事件之間有人直改：下一次合法寫入先記無來源變動，差集不混入合法事件
 		require.NoError(t, e.db.Create(&model.RolePermission{RoleID: d.ID, PermissionKey: "audit:view"}).Error)
-		_, err = e.svc.Update(ctx, e.admin, d.ID, 2, RoleInput{Name: "r", Permissions: []string{"asset:view"}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 2, RoleInput{Name: "r", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		k2 := kinds()
 		assert.EqualValues(t, 1, k2[model.PermEventUntraced])
@@ -528,7 +528,7 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 				_ = tx.AddError(errors.New("chain down"))
 			}
 		}))
-		_, err = e.svc.Create(ctx, e.admin, RoleInput{Name: "z", Permissions: []string{"asset:view"}})
+		_, err = e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "z", Permissions: []string{"asset:view"}})
 		assert.ErrorContains(t, err, "chain down")
 		r1, p1, v1, a1 := e.snapshot(t)
 		assert.Equal(t, []int64{r0, p0, v0, a0}, []int64{r1, p1, v1, a1})
@@ -543,8 +543,8 @@ func TestRoleDefinitionAtomicEvidence(t *testing.T) {
 		_, _, v0, a0 := e.snapshot(t)
 		_, _ = e.svc.ListDefinitions(ctx)
 		_, _ = e.svc.GetDefinition(ctx, d.ID)
-		_, _ = e.svc.Update(ctx, e.admin, d.ID, 99, RoleInput{Name: "r"})
-		_, _ = e.svc.Create(ctx, 12345, RoleInput{Name: "z"})
+		_, _ = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 99, RoleInput{Name: "r"})
+		_, _ = e.svc.Create(asSession(ctx, 12345), 12345, RoleInput{Name: "z"})
 		_, _, v1, a1 := e.snapshot(t)
 		assert.Equal(t, v0, v1)
 		assert.Equal(t, a0, a1)

@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"github.com/custodexa/backend/pkg/gatewayapi"
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
@@ -99,6 +101,17 @@ func AuthMiddleware(authService *identity.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		// API token 由全域閘門認證一次，這裡只沿用已建立的主體、不重驗；沒有經過閘門的 API token
+		// 請求不落入人類 JWT 的驗證路徑，直接以未認證拒絕
+		if strings.HasPrefix(tokenString, identity.APITokenPrefix) {
+			if kind, ok := GetRequestCredential(c); ok && kind == model.RequestCredentialAPIToken {
+				c.Next()
+				return
+			}
+			abortUnauthenticated(c, apierror.CodeTokenInvalid, "api_token_gate_absent")
+			return
+		}
+
 		// 驗證 token
 		claims, err := authService.ValidateToken(tokenString)
 		if err != nil {
@@ -146,7 +159,7 @@ func AuthMiddleware(authService *identity.AuthService) gin.HandlerFunc {
 		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
-		SetPrincipal(c, principal)
+		BindRequestPrincipal(c, principal, model.RequestCredentialHumanSession)
 		// 認證脈絡：connect token 簽發點須據此填入 grant，
 		// 使協議連線可回溯其 provider。**不得以「查外部身分表反推」代替**——
 		// 混合帳號（同時有本地密碼與外部身分）會被誤標，導致 provider 停用時
@@ -238,14 +251,111 @@ func authenticateAgent(c *gin.Context, auth *identity.AuthService, token string)
 	c.Set("username", principal.Username)
 	c.Set("email", principal.Email)
 	// agent 主體：能力固定為一般使用者範本（method＋path allowlist 由既有中介層處理）
-	SetPrincipal(c, authz.NewPrincipal(principal.UserID, authz.TokenFacts{
+	BindRequestPrincipal(c, authz.NewPrincipal(principal.UserID, authz.TokenFacts{
 		SubjectKind: model.KindAgent,
 		CredEpoch:   principal.CredentialEpoch,
-	}, nil))
+	}, nil), model.RequestCredentialAgentKey)
 	// Agent tokens carry no claims, so the auth context is built from the live row:
 	// local method (no provider dimension) and the principal's current credential
 	// epoch. Without this, connect grants were issued with CredEpoch 0 and the
 	// redemption recheck rejected every agent whose epoch had ever been bumped.
 	c.Set("authContext", crypto.AuthContext{CredEpoch: principal.CredentialEpoch})
+	return true
+}
+
+// GetAPITokenID 以 API token 認證的請求所經由的 token 識別；其他請求回 (0, false)。
+func GetAPITokenID(c *gin.Context) (uint, bool) {
+	if kind, ok := GetRequestCredential(c); !ok || kind != model.RequestCredentialAPIToken {
+		return 0, false
+	}
+	v, ok := c.Get(apiTokenIDContextKey)
+	id, typed := v.(uint)
+	return id, ok && typed && id != 0
+}
+
+// GetAPITokenName 以 API token 認證的請求所經由的 token 在認證當下的名稱；其他請求回 ("", false)。
+func GetAPITokenName(c *gin.Context) (string, bool) {
+	if _, ok := GetAPITokenID(c); !ok {
+		return "", false
+	}
+	v, ok := c.Get(apiTokenNameContextKey)
+	name, typed := v.(string)
+	return name, ok && typed && name != ""
+}
+
+// APITokenRefOf 以 API token 認證的請求所經由的 token（識別與名稱快照）；其他請求回零值。
+func APITokenRefOf(c *gin.Context) model.APITokenRef {
+	id, ok := GetAPITokenID(c)
+	if !ok {
+		return model.APITokenRef{}
+	}
+	name, ok := GetAPITokenName(c)
+	if !ok {
+		return model.APITokenRef{}
+	}
+	return model.APITokenRef{ID: id, Name: name}
+}
+
+// AttributeAuditEntry 在 handler 自組的稽核條目上補這次請求經由的 API token；其他請求不動。
+func AttributeAuditEntry(c *gin.Context, e *audit.AuditLogEntry) *audit.AuditLogEntry {
+	if e == nil || e.APITokenID != nil {
+		return e
+	}
+	if ref := APITokenRefOf(c); ref.ID != 0 {
+		id := ref.ID
+		e.APITokenID, e.APITokenName = &id, ref.Name
+	}
+	return e
+}
+
+// AttributeAuditMeta 在 handler 自組的請求欄位上補這次請求經由的 API token；其他請求不動。
+func AttributeAuditMeta(c *gin.Context, m gatewayapi.RequestMeta) gatewayapi.RequestMeta {
+	ref := APITokenRefOf(c)
+	return m.WithAPIToken(ref.ID, ref.Name)
+}
+
+// gin 脈絡中 API token 的識別與名稱快照鍵。
+const (
+	apiTokenIDContextKey   = "api_token_id"
+	apiTokenNameContextKey = "api_token_name"
+)
+
+// authenticateAPIToken API token 的認證：現查 token、所屬帳號與來源，以授權角色為限定解析請求主體。
+//
+// 任何失敗都經唯一的未認證出口回同一個錯誤碼，真實原因只進稽核；全部步驟成功之前不在 gin 脈絡或
+// request context 留下任何身分（含已撤銷的 token），失敗請求因此走匿名留痕的有限流分支。
+// 授權角色即使為空集合也以非 nil 的限定傳入：限定為無與未限定是兩種不同的輸入。
+func authenticateAPIToken(c *gin.Context, auth *identity.AuthService, token string) bool {
+	if auth == nil {
+		abortUnauthenticated(c, apierror.CodeTokenInvalid, "api_token_auth_unavailable")
+		return false
+	}
+	id, reason := auth.ValidateAPIToken(token, sourceip.Of(c))
+	if id == nil {
+		abortUnauthenticated(c, apierror.CodeTokenInvalid, reason)
+		return false
+	}
+	principal, err := auth.ResolvePrincipal(id.UserID, authz.TokenFacts{
+		SubjectKind: model.KindHuman,
+		AuthMethod:  identity.APITokenAuthMethod,
+		CredEpoch:   id.CredentialEpoch,
+		RoleFilter:  authz.NewRoleFilter(id.GrantedRoleIDs),
+	})
+	if err != nil || principal == nil {
+		abortUnauthenticated(c, apierror.CodeTokenInvalid, "api_token_principal_unavailable")
+		return false
+	}
+	c.Set("principal_kind", model.KindHuman)
+	c.Set(apiTokenIDContextKey, id.TokenID)
+	c.Set(apiTokenNameContextKey, id.TokenName)
+	c.Set("userID", id.UserID)
+	c.Set("username", id.Username)
+	c.Set("email", id.Email)
+	BindRequestPrincipal(c, principal, model.RequestCredentialAPIToken)
+	if c.Request != nil {
+		c.Request = c.Request.WithContext(model.WithAPITokenRef(c.Request.Context(), model.APITokenRef{ID: id.TokenID, Name: id.TokenName}))
+	}
+	// 認證脈絡：本地方法（不經外部身分來源）與所屬帳號當下的憑證世代，與 agent 鑰匙同一做法
+	c.Set("authContext", crypto.AuthContext{CredEpoch: id.CredentialEpoch})
 	return true
 }

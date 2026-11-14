@@ -149,12 +149,12 @@ func nonNilScreens(b []authz.BlockedScreen) []authz.BlockedScreen {
 }
 
 // List 全部角色（含鎖定範本與自訂角色）及對操作者的判定。
-func (r *RoleDefinitionReader) List(ctx context.Context, operatorID uint) (*RoleDefinitionList, error) {
+func (r *RoleDefinitionReader) List(ctx context.Context, operator *authz.Principal) (*RoleDefinitionList, error) {
 	defs, err := r.defs.ListDefinitions(ctx)
 	if err != nil {
 		return nil, err
 	}
-	set, err := r.proj.ProjectRoles(operatorID)
+	set, err := r.proj.ProjectRoles(operator)
 	if err != nil {
 		return nil, err
 	}

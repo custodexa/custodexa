@@ -41,7 +41,7 @@
     <template v-else>
       <el-option
         v-for="item in options"
-        :key="item.id"
+        :key="`${item.id}:${item.name || ''}`"
         :value="item.id"
         :label="optionLabel(item)"
       >
@@ -79,6 +79,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getAuditSubjects } from '@/api/auditTimeline'
+import { getUserDetail } from '@/api/user'
+import { canEnter, entryRuleFor } from '@/router/entryRules'
+import { loadCapabilities } from '@/composables/useCapabilities'
 import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
@@ -88,7 +91,9 @@ const props = defineProps({
   modelValue: { type: [Number, String], default: null },
   subjectType: { type: String, required: true },
 })
-const emit = defineEmits(['update:modelValue', 'change'])
+// resolve：深連結帶入的主體在首次載入時對上選項，回報給頁面當顯示名；
+// 不走 change，避免被當成使用者重新挑選
+const emit = defineEmits(['update:modelValue', 'change', 'resolve'])
 
 const options = ref([])
 const loading = ref(false)
@@ -159,18 +164,42 @@ watch(
   }
 )
 
+// 候選清單只取前 50 筆：使用者多時，網址帶入的人可能不在其中。能進使用者管理者
+// 以編號查一次補上名稱；查不到或沒有權限就維持「#編號」，不猜
+const resolveUserById = async (id) => {
+  if (props.subjectType !== 'user' || !Number.isInteger(id) || id <= 0) return
+  // 直接開網址時權限可能還在載入：先等它，不把「還不知道」當成「沒有權限」
+  await loadCapabilities()
+  if (!canEnter(entryRuleFor('/users'))) return
+  try {
+    const res = await getUserDetail(id, { quiet: true })
+    const u = res?.data
+    if (!u || u.id !== id || !u.username || props.modelValue !== id) return
+    const option = { id, name: u.username, display_name: u.full_name || '', active: u.active !== false }
+    options.value = [option, ...options.value.filter((o) => keyOf(o) !== id)]
+    emit('resolve', option)
+  } catch (_e) {
+    // 維持佔位項
+  }
+}
+
 onMounted(() => {
   void search('').then(() => {
     // 深連結帶入的主體可能不在預設清單裡（大量主體、或位址只出現在拒絕紀錄）：
     // 補一個佔位項，讓選擇器至少顯示得出它而不是空白
     if (!props.modelValue) return
-    if (options.value.some((o) => keyOf(o) === props.modelValue)) return
+    const found = options.value.find((o) => keyOf(o) === props.modelValue)
+    if (found) {
+      emit('resolve', found)
+      return
+    }
     options.value = [
       isIP.value
         ? { ip: String(props.modelValue) }
         : { id: props.modelValue, name: `#${props.modelValue}` },
       ...options.value,
     ]
+    void resolveUserById(props.modelValue)
   })
 })
 </script>

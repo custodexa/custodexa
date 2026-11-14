@@ -53,9 +53,9 @@ func TestReadOnlyPostNoWrite(t *testing.T) {
 	superTok := env.subjects["S01"].Token
 	userTok := env.subjects["S02"].Token
 
-	custom, err := defs.Create(ctx, super, identity.RoleInput{Name: "nw-custom", Permissions: []string{"asset:view"}})
+	custom, err := defs.Create(roleWriterSession(ctx, super), super, identity.RoleInput{Name: "nw-custom", Permissions: []string{"asset:view"}})
 	require.NoError(t, err)
-	assignOnly, err := defs.Create(ctx, super, identity.RoleInput{Name: "nw-assign-only", Permissions: []string{"role:assign", "role:view"}})
+	assignOnly, err := defs.Create(roleWriterSession(ctx, super), super, identity.RoleInput{Name: "nw-assign-only", Permissions: []string{"role:assign", "role:view"}})
 	require.NoError(t, err)
 	assignHolder := env.createUser("nw-assign-holder", nil)
 	require.NoError(t, model.AssignUserRoleWithSource(env.db, assignHolder, assignOnly.ID, model.RoleSourceManual, model.RoleOriginSystem))

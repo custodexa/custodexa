@@ -176,6 +176,7 @@
         {{ $t('permissionOverview.identity.approverLink') }}
       </router-link>
     </p>
+    <slot name="footer" />
   </section>
 </template>
 

@@ -84,7 +84,7 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 	defer treeStructMu.Unlock()
 
 	result := &ImportResult{AssetIDs: make([]uint, 0, len(prepared))}
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
+	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if s.importTxStartHook != nil {
 			s.importTxStartHook(tx)
 		}

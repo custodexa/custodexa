@@ -38,6 +38,12 @@ var ErrCapabilityEmpty = errors.New("能力檢核未宣告任何權限點")
 // 主體的種類取自資料庫的 users.kind；不存在、已刪除或已停用的主體一律不通過。
 // 這裡沒有判定目標：scoped-enforced 的權限點只認全域來源（見 targetlessGrant）。
 func (r *Resolver) HasAllCapabilities(db *gorm.DB, userID uint, caps []string) (CapabilityDecision, error) {
+	return r.HasAllCapabilitiesFiltered(db, userID, nil, caps)
+}
+
+// HasAllCapabilitiesFiltered 同 HasAllCapabilities，另以角色限定解析主體（filter 為 nil 即不限定）。
+// 請求路徑傳入請求主體事實上的限定；背景作業以帳號完整身分重驗時傳 nil。
+func (r *Resolver) HasAllCapabilitiesFiltered(db *gorm.DB, userID uint, filter *RoleFilter, caps []string) (CapabilityDecision, error) {
 	if db == nil {
 		db = r.db
 	}
@@ -67,7 +73,7 @@ func (r *Resolver) HasAllCapabilities(db *gorm.DB, userID uint, caps []string) (
 	if res.RowsAffected == 0 || !u.Active {
 		return CapabilityDecision{Missing: "principal", Version: version}, nil
 	}
-	p, err := resolveUserWith(db, ProductCatalogue(), userID, TokenFacts{SubjectKind: u.Kind})
+	p, err := resolveUserWith(db, ProductCatalogue(), userID, TokenFacts{SubjectKind: u.Kind, RoleFilter: filter})
 	if err != nil {
 		return CapabilityDecision{}, err
 	}

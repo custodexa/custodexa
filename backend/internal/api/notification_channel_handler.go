@@ -73,6 +73,7 @@ func fillChannelActor(c *gin.Context, req *audit.NotificationChannelRequest) {
 	req.ActorID, _ = middleware.GetCurrentUserID(c)
 	req.ActorName, _ = middleware.GetCurrentUsername(c)
 	req.ActorIP = sourceip.Of(c)
+	req.APIToken = middleware.APITokenRefOf(c)
 }
 
 // List 列出所有通知通道
@@ -138,7 +139,7 @@ func (h *NotificationChannelHandler) Delete(c *gin.Context) {
 
 	actorID, _ := middleware.GetCurrentUserID(c)
 	actorName, _ := middleware.GetCurrentUsername(c)
-	actor := audit.ChannelActor{ID: actorID, Name: actorName, IP: sourceip.Of(c)}
+	actor := audit.ChannelActor{ID: actorID, Name: actorName, IP: sourceip.Of(c), APIToken: middleware.APITokenRefOf(c)}
 	if err := h.channelService.Delete(uint(id), actor); err != nil {
 		respondChannelError(c, err)
 		return

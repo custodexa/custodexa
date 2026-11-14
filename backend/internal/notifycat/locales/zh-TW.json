@@ -220,5 +220,15 @@
       "title": "主機上有未納管的特權帳號",
       "text": "{actor} 發起的主機帳號盤點發現 {new_count} 個新的未納管特權帳號（登入身分：{identity_mode}）（分級：{severity}）。"
     }
+  },
+  "privileged_api_token_created": {
+    "at": {
+      "title": "建立高權限 API token",
+      "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色（{privileged_roles}）；全部授權角色：{granted_roles}；到期時刻：{expires_at}（分級：{severity}）。"
+    },
+    "never": {
+      "title": "建立高權限 API token",
+      "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色（{privileged_roles}）；全部授權角色：{granted_roles}；永不到期（分級：{severity}）。"
+    }
   }
 }

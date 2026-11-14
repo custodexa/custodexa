@@ -55,6 +55,9 @@ var tableOwner = map[string]string{
 	"role_permissions":   "identity",
 	// identity
 	"agent_tokens": "identity",
+	// 個人 API token 兩表：與 agent_tokens 同屬憑證生命週期，建立與撤銷都在帳號層級鎖內，由 identity 維護
+	"api_tokens":      "identity",
+	"api_token_roles": "identity",
 	// 使用者對版本說明的關閉狀態：只存個人偏好，由 identity 的本人服務讀寫
 	"user_release_guidance":    "identity",
 	"users":                    "identity",
@@ -205,6 +208,11 @@ var nonTableModelStructs = map[string]bool{
 	"access_request_decision_bounds": true, // AccessRequestDecisionBounds：審核可決範圍值物件，不是表
 	"audit_requests":                 true, // AuditRequest：請求脈絡值物件（放在交易 context），不是表
 	"audit_request_keys":             true, // auditRequestKey：context 鍵型別，不是表
+	"audit_attribution_keys":         true, // auditAttributionKey：稽核歸因標示的 context 鍵型別，不是表
+	"request_credential_keys":        true, // requestCredentialKey：請求憑證種類的 context 鍵型別，不是表
+	"background_initiator_keys":      true, // backgroundInitiatorKey：背景發起者標示的 context 鍵型別，不是表
+	"api_token_refs":                 true, // APITokenRef：請求所用 API token 的識別值物件（放在 context），不是表
+	"api_token_ref_keys":             true, // apiTokenRefKey：API token 識別的 context 鍵型別，不是表
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。

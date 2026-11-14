@@ -74,7 +74,7 @@ func bumpLockOrderPG(t *testing.T) {
 	// 寫入映射規則的操作者須是超級管理者
 	root := seedAccount(t, db, adminSpec{username: "root-admin", active: true})
 	ensureFixtureSuperAdmin(t, db, root.ID)
-	actor := GroupRoleMappingActor{ID: root.ID, Name: "root-admin", IP: "10.0.0.1"}
+	actor := GroupRoleMappingActor{Principal: testSessionPrincipal(root.ID), ID: root.ID, Name: "root-admin", IP: "10.0.0.1"}
 	provider := seedExtProvider(t, db, "corp", "https://idp.example.com", "cid-1")
 	channel := model.RoleMappingChannel(model.RoleMappingChannelKindProvider, provider.ID)
 	role := &model.Role{Name: "auditor"}
@@ -313,7 +313,7 @@ func untracedVsUserLockDeadlockPG(t *testing.T) {
 
 	root := seedAccount(t, db, adminSpec{username: "root-admin", active: true})
 	ensureFixtureSuperAdmin(t, db, root.ID)
-	actor := GroupRoleMappingActor{ID: root.ID, Name: "root-admin", IP: "10.0.0.1"}
+	actor := GroupRoleMappingActor{Principal: testSessionPrincipal(root.ID), ID: root.ID, Name: "root-admin", IP: "10.0.0.1"}
 	provider := seedExtProvider(t, db, "corp", "https://idp.example.com", "cid-1")
 	channel := model.RoleMappingChannel(model.RoleMappingChannelKindProvider, provider.ID)
 	role := &model.Role{Name: "auditor"}

@@ -61,7 +61,7 @@
             :account-ops="accountOps"
             @open-password="openPassword"
             @open-identities="openIdentities"
-            @changed="load"
+            @changed="onTokensMayChange"
             @deleted="goList"
           />
         </el-tab-pane>
@@ -76,7 +76,8 @@
             :role-sets="roleSets"
             :snapshot="snapshot"
             :approver-only="user.approver_only === true"
-            @changed="load"
+            @changed="onTokensMayChange"
+            @view-api-tokens="changeTab('apiTokens')"
           />
         </el-tab-pane>
         <el-tab-pane
@@ -84,7 +85,23 @@
           name="permissions"
           lazy
         >
-          <UserPermissionOverviewTab :user-id="user.id" />
+          <UserPermissionOverviewTab
+            :user-id="user.id"
+            @view-api-tokens="changeTab('apiTokens')"
+          />
+        </el-tab-pane>
+        <el-tab-pane
+          v-if="showApiTokens"
+          :label="$t('userDetail.tabs.apiTokens')"
+          name="apiTokens"
+          lazy
+        >
+          <UserApiTokensTab
+            ref="apiTokensTabRef"
+            :user-id="user.id"
+            :username="user.username"
+            :holder="holder"
+          />
         </el-tab-pane>
       </el-tabs>
       <UserAccountDialogs
@@ -108,11 +125,12 @@ import UserAccountDialogs from './users/components/UserAccountDialogs.vue'
 import UserRoleScopeTab from './users/components/UserRoleScopeTab.vue'
 import UserPermissionOverviewTab from './users/components/UserPermissionOverviewTab.vue'
 import PermissionOverviewUserSwitch from './users/components/PermissionOverviewUserSwitch.vue'
+import UserApiTokensTab from './users/components/UserApiTokensTab.vue'
 import { protectedIdentity } from './users/accountActionStates'
 
 /**
  * 使用者詳情頁：基本資料（共用列表頁的編輯表單與帳號動作，另疊加伺服器下發的保護分類）、
- * 角色與範圍、權限一覽三個分頁。進入資格與使用者列表相同，由路由的入口規則把關。
+ * 角色與範圍、權限一覽、API token 四個分頁（AI agent 沒有 API token 分頁）。進入資格與使用者列表相同，由路由的入口規則把關。
  */
 const route = useRoute()
 const router = useRouter()
@@ -125,8 +143,10 @@ const loadFailed = ref(false)
 const dialogsRef = ref(null)
 
 const userId = computed(() => Number(route.params.id))
-const TABS = ['basic', 'roles', 'permissions']
-const tab = computed(() => (TABS.includes(route.query.tab) ? route.query.tab : 'basic'))
+// AI agent 用自己的鑰匙，不建立 API token
+const showApiTokens = computed(() => user.value?.kind !== 'agent')
+const tabs = computed(() => (showApiTokens.value ? ['basic', 'roles', 'permissions', 'apiTokens'] : ['basic', 'roles', 'permissions']))
+const tab = computed(() => (tabs.value.includes(route.query.tab) ? route.query.tab : 'basic'))
 const holder = computed(() => protectedIdentity(accountOps.value))
 
 const parseSnapshotGroups = (raw) => {
@@ -164,6 +184,14 @@ const load = async () => {
     if (!user.value) loadFailed.value = true
     return false
   }
+}
+
+// 角色或帳號狀態變了，API token 的狀態（暫停、恢復、已收回的角色）跟著變：
+// 分頁先前開過就已掛載且保有舊資料，這裡一併重讀，切回去看到的才是儲存後的樣子
+const apiTokensTabRef = ref(null)
+const onTokensMayChange = () => {
+  void load()
+  void apiTokensTabRef.value?.load()
 }
 
 const refreshUser = async (id) => {

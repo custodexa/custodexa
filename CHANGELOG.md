@@ -2,6 +2,136 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.24.0 — personal API tokens for the management API (2026-11-14)
+
+Schema change. Upgrading runs one migration. It adds two tables, and two fields with an index to
+the operation log. Nothing is backfilled and existing operation log records are not rewritten,
+but building the index reads every one of them, so the step takes longer the more operation log
+data the deployment holds; count it into the downtime window. A 1.17.x to 1.23.x package
+deployment upgrades with `custodexa.sh upgrade 1.24.0`. Coming from 1.22.x or earlier, the
+upgrade also runs the migrations of the releases in between and, with the bundled database,
+converts it to PostgreSQL 18, so read "What you need to do" in each of those releases' notes
+below before you start, and on 1.17.x also [Upgrading to 1.18.0][1180-sop] in the upgrade SOP.
+Coming from 1.23.x, or with an external database, `custodexa.sh rollback` does not switch back
+once the migration has run, and going back means restoring the backup taken before the upgrade
+([Upgrading to 1.24.0][1240-sop]). With the bundled database coming from 1.22.x or earlier,
+`rollback` goes back on the PostgreSQL 16 data folder the upgrade kept, as described under 1.23.0
+below.
+
+### What you need to do
+
+- Everyone who holds a management role can create API tokens for their own account as soon as
+  the upgrade finishes, and no setting turns this off. A management role is one that carries a
+  management permission on assets, authorization rules, identity or settings; the built-in User,
+  Auditor and Approver roles are not. An administrator sees each account's tokens on its API
+  token tab under Users and can revoke them there.
+- An API token is a long-lived credential. A request that carries one does not go through
+  sign-in or multi-factor authentication, and a token can be created without an expiry. It is
+  accepted only from the allowed source ranges of its account, and from any address when the
+  account has none, so set those ranges on accounts whose tokens are used from fixed hosts.
+- Resetting an account's password does not stop its API tokens, and neither does a lock after
+  failed sign-ins, signing the account out, or disabling the person in an external directory.
+  When you handle an account that may be compromised, or one whose owner has left, revoke its
+  tokens or disable the account in Custodexa ([Personal API tokens and account
+  actions][1240-acct]), and add that step to your incident and offboarding procedures.
+- Calls made with an API token do not count as activity for the security policy "Inactive
+  account auto-disable days". An account that is used only through its tokens counts as
+  inactive, and once that policy disables it, its tokens are refused until it is enabled again.
+  Mark such an account "Inactivity Exempt", or have its owner sign in within the period.
+- Restoring a backup with the management script ends every API token created before the
+  restore, and each owner creates new ones. A restore by hand does the same with one more
+  statement at its stop point ([Restoring by hand][1240-br-hand]).
+- Creating a token whose roles include Super administrator or System security administrator
+  raises a system security alert, high by default, that goes to every enabled notification
+  channel. Check that those channels reach the people who should see it.
+- Grant a token only the roles its tool needs. Within the endpoints open to tokens, a token can
+  do everything each granted role allows its account. With roles that manage accounts and role
+  assignments it can create accounts and assign roles. With roles that manage assets it can
+  change the address of an existing asset, and later connections and scheduled jobs reach the
+  new address with the credentials stored for that asset. With roles that manage settings it can
+  change, disable or delete notification channels and change the log forwarding destination,
+  which is where alerts and forwarded logs go from then on. Address changes and channel changes
+  raise system security alerts.
+- Revoking a token stops further calls and leaves what it already changed in place: the
+  accounts it created stay enabled, and the scheduled jobs it created keep running with the
+  permissions of its account. After revoking a token you no longer trust, filter the operation
+  log by that token and review what it changed.
+
+### New capabilities
+
+#### Personal API tokens
+
+- **Creating a token.** The Profile page has a new API token section. You name the token, choose
+  which of your own management roles it gets, and pick an expiry of 7, 30, 90 days, one year, a
+  date of your own, or no expiry. The token is shown once, with a command that tests it, and the
+  platform keeps only a hash of it. Tokens start with `cxp_`, so secret scanners can tell them
+  from other credentials. Name, roles and expiry cannot be edited afterwards; create a new token
+  and revoke the old one.
+- **What a token can do.** A request with a token has the permissions that its granted roles
+  give the account at that moment, in the scope the account holds them. When a granted role is
+  taken from the account, the token loses it at once and gets it back when the role is assigned
+  again. Roles the account receives later are not added to an existing token.
+- **Which endpoints accept a token.** Tokens are accepted only on the endpoints opened to them
+  one by one, which are those of management and settings, among them accounts and roles, user
+  groups, assets and asset accounts, authorization rules, change-secret plans, security
+  policies, notification channels, log forwarding and identity source mappings. On any other
+  endpoint a valid token gets 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`. That covers opening connections,
+  reading recordings, keystroke records and clipboard content, unsealing and key operations,
+  access requests and their approval, audit sign-off, the sign-in endpoints, agent tokens, the
+  management of API tokens themselves, and every action that makes the platform connect out with
+  a stored credential, such as a connection test or running a change-secret plan now. New
+  endpoints are closed to tokens until they are opened one by one.
+- **What a token cannot change on its own account.** With a token you cannot set the password,
+  disable or reset multi-factor authentication, change the sign-in method, the allowed source
+  ranges or the inactivity exemption, disable or delete the account, or change its roles,
+  whether directly, through its user groups, or through the mappings and provider settings of an
+  identity source the account is linked to. Such a request answers 403
+  `AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN`. For the source ranges, the inactivity exemption, the
+  account status and the role assignments, a request that leaves them as they are is not refused
+  on this ground, so a tool can apply the same configuration again. The limits are on the
+  account itself: a token whose roles allow it can still edit role definitions and system-wide
+  security policies.
+- **Stored credentials.** A request with a token cannot attach a credential already stored in
+  the platform when it creates or imports assets and asset accounts; it sends the password or
+  key in the request instead (403 `AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN` otherwise). To
+  create, update or take over a change-secret plan, the token needs the permission to run it on
+  the plan's targets.
+- **Revoking.** You revoke your own tokens on the Profile page. Whoever can manage accounts
+  revokes one token or all tokens of an account on its API token tab, with an optional reason
+  the owner can read. For an account that holds the Super administrator or System security
+  administrator role, only a super administrator can do that. A revoked token is refused from
+  the next request and cannot be brought back.
+- **Token states.** The list shows each token as active, expiring soon, expired, revoked, ended
+  by a restore, or suspended. A token is suspended while its account is disabled or while the
+  account holds none of its granted roles, and works again when that changes.
+- **Before you change someone's roles.** The preview on the Roles and scope tab lists the API
+  tokens of that account that will lose a role or become suspended.
+- **Checking a token.** `GET /api/v1/api-tokens/verify` accepts only a token and returns its
+  account, the roles it was granted, the ones in effect now and its expiry.
+- **Operation log.** Every record written while a request with a token is handled names the
+  token, in the operation log list and details and in the Audit Workbench, and the list can be
+  filtered by token. The token's identifier and name are covered by the integrity check of the
+  record. A scheduled job that a token created runs later under the account, and its records
+  carry no token.
+- The endpoints are described in the [API reference][1240-api].
+
+### Fixes
+
+- Operation log integrity: stopping the service, as `custodexa.sh backup`, `upgrade` and `stop`
+  do, could write operation log records that were still waiting to be written without their
+  integrity value, and the integrity check then reported those records as mismatched. The
+  service now tries to write the waiting records before it gives up the key that signs them. A
+  record it cannot write in time, or one that arrives later during the stop, can still be
+  reported, and records an earlier version wrote this way are not repaired.
+- Audit Workbench: opening an investigation of a user from a link showed the subject as a number
+  until you picked the user again. It now shows the user name to viewers who can look up
+  accounts.
+
+[1240-sop]: docs/ops/upgrade-sop.md#upgrading-to-1240
+[1240-acct]: docs/ops/deployment-topology-limits.md#personal-api-tokens-and-account-actions
+[1240-br-hand]: docs/ops/backup-and-restore.md#restoring-by-hand
+[1240-api]: docs/API_SPEC.md
+
 ## 1.23.0 — bundled database on PostgreSQL 18, and the deployment form set in `.env` (2026-11-09)
 
 No schema change. On a package deployment with the bundled database, the upgrade converts the

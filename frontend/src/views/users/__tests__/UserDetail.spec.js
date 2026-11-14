@@ -8,6 +8,8 @@ import { ElDialogStub } from '@/__fixtures__/dialogStub'
 import router, { createAuthGuard } from '@/router/index'
 import { resetSessionForTests, setAccessToken } from '@/utils/session'
 import { meBody } from '@/composables/__tests__/capabilityFixtures'
+import { reactive, nextTick } from 'vue'
+import { getUserApiTokens } from '@/api/apiTokens'
 
 enableAutoUnmount(afterEach)
 class ObserverStub { observe() {} disconnect() {} takeRecords() { return [] } }
@@ -58,6 +60,11 @@ vi.mock('@/api/permissionOverview', () => ({
   getPermissionOverview: (...a) => h.overview(...a),
   probePermissionAsset: vi.fn(),
   PROBE_NOT_FOUND: 'NOTFOUND_ASSET',
+}))
+vi.mock('@/api/apiTokens', () => ({
+  getUserApiTokens: vi.fn().mockResolvedValue({ data: [], can_revoke: true, protected: false, account_active: true }),
+  revokeUserApiToken: vi.fn(),
+  revokeAllUserApiTokens: vi.fn(),
 }))
 vi.mock('@/api/roleDefinitions', () => ({ listRoleDefinitions: vi.fn().mockResolvedValue({ data: [] }) }))
 vi.mock('@/api/assets', () => ({
@@ -124,12 +131,68 @@ beforeEach(() => {
 })
 
 describe('使用者詳情頁：分頁與入口', () => {
-  it('依序是基本資料、角色與範圍、權限一覽三個分頁；預設在基本資料', async () => {
+  it('依序是基本資料、角色與範圍、權限一覽、API token 四個分頁；預設在基本資料', async () => {
     const w = await mountDetail(base(), ALL('allowed'))
     const items = w.findAll('.el-tabs__item').map((i) => i.text())
-    expect(items).toEqual([t('userDetail.tabs.basic'), t('userDetail.tabs.roles'), t('userDetail.tabs.permissions')])
+    expect(items).toEqual([t('userDetail.tabs.basic'), t('userDetail.tabs.roles'), t('userDetail.tabs.permissions'), t('userDetail.tabs.apiTokens')])
     expect(h.overview).not.toHaveBeenCalled()
     expect(w.find('.el-tabs__item.is-active').text()).toBe(t('userDetail.tabs.basic'))
+  })
+
+  it('AI agent 沒有 API token 分頁，帶 ?tab=apiTokens 也回到基本資料', async () => {
+    const w = await mountDetail(base({ kind: 'agent' }), ALL('allowed'), { tab: 'apiTokens' })
+    const items = w.findAll('.el-tabs__item').map((i) => i.text())
+    expect(items).not.toContain(t('userDetail.tabs.apiTokens'))
+    expect(w.find('.el-tabs__item.is-active').text()).toBe(t('userDetail.tabs.basic'))
+  })
+
+  it('?tab=apiTokens 直達 API token 分頁', async () => {
+    const w = await mountDetail(base(), ALL('allowed'), { tab: 'apiTokens' })
+    expect(w.find('.el-tabs__item.is-active').text()).toBe(t('userDetail.tabs.apiTokens'))
+    expect(w.find('[data-test="user-api-tokens"]').exists()).toBe(true)
+  })
+
+  it('角色分頁要求查看 API token：切到 API token 分頁', async () => {
+    const w = await mountDetail(base(), ALL('allowed'), { tab: 'roles' })
+    w.findComponent({ name: 'UserRoleScopeTab' }).vm.$emit('view-api-tokens')
+    expect(h.replace).toHaveBeenCalledWith({ query: { tab: 'apiTokens' } })
+  })
+
+  it('先開過 API token 分頁，再到角色分頁儲存：API token 分頁跟著重讀，切回去不是舊資料', async () => {
+    const saved = h.route
+    h.route = reactive({ params: { id: '9' }, query: { tab: 'apiTokens' }, path: '/users/9' })
+    try {
+      h.getUserDetail.mockResolvedValue(detail(base(), ALL('allowed')))
+      const w = mount(UserDetail, { global })
+      await flushPromises()
+      expect(getUserApiTokens).toHaveBeenCalledTimes(1)
+      h.route.query = { tab: 'roles' }
+      await nextTick()
+      await flushPromises()
+      w.findComponent({ name: 'UserRoleScopeTab' }).vm.$emit('changed', { manual: [], mapped: [] })
+      await flushPromises()
+      expect(getUserApiTokens).toHaveBeenCalledTimes(2)
+    } finally {
+      h.route = saved
+    }
+  })
+
+  it('帳號動作（停用、啟用等）完成：已開過的 API token 分頁一併重讀', async () => {
+    const saved = h.route
+    h.route = reactive({ params: { id: '9' }, query: { tab: 'apiTokens' }, path: '/users/9' })
+    try {
+      h.getUserDetail.mockResolvedValue(detail(base(), ALL('allowed')))
+      const w = mount(UserDetail, { global })
+      await flushPromises()
+      h.route.query = { tab: 'basic' }
+      await nextTick()
+      await flushPromises()
+      w.findComponent({ name: 'UserAccountActions' }).vm.$emit('changed')
+      await flushPromises()
+      expect(getUserApiTokens).toHaveBeenCalledTimes(2)
+    } finally {
+      h.route = saved
+    }
   })
 
   it('?tab=roles 直達第二分頁', async () => {

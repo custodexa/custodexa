@@ -130,34 +130,36 @@ func NewRoleProjector(db *gorm.DB, guard *AssignmentGuard) *RoleProjector {
 	return &RoleProjector{db: db, catalog: guard.Catalog()}
 }
 
-// operatorIsSuper 操作者是否為超級管理者（與關卡同一判定）；查無操作者視為不是。
-func operatorIsSuper(db *gorm.DB, operatorID uint) (bool, error) {
-	if operatorID == 0 {
+// operatorIsSuper 操作者是否為超級管理者（與關卡同一判定，取請求主體的事實含角色限定）；
+// 沒有主體或查無操作者視為不是。
+func operatorIsSuper(db *gorm.DB, operator *authz.Principal) (bool, error) {
+	if operator == nil || operator.UserID == 0 {
 		return false, nil
 	}
 	var u model.User
-	if err := db.First(&u, operatorID).Error; err != nil {
+	if err := db.First(&u, operator.UserID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
 		return false, fmt.Errorf("查詢操作者失敗: %w", err)
 	}
-	p, err := authz.ResolveUserOn(db, operatorID, authz.TokenFacts{SubjectKind: u.Kind})
+	facts, _ := principalFacts(operator, u.Kind)
+	p, err := authz.ResolveUserOn(db, operator.UserID, facts)
 	if err != nil {
 		return false, err
 	}
 	return p.IsSuperAdmin(), nil
 }
 
-// ProjectRoles 全部未刪除角色的投影。
-func (p *RoleProjector) ProjectRoles(operatorID uint) (*RoleProjectionSet, error) {
-	opSuper, err := operatorIsSuper(p.db, operatorID)
+// ProjectRoles 全部未刪除角色的投影；operator 為該次請求的主體（nil 視同沒有操作者）。
+func (p *RoleProjector) ProjectRoles(operator *authz.Principal) (*RoleProjectionSet, error) {
+	opSuper, err := operatorIsSuper(p.db, operator)
 	if err != nil {
 		return nil, err
 	}
 	canDefine := false
-	if operatorID != 0 {
-		if _, err := requireSuperAdmin(p.db, operatorID); err == nil {
+	if facts, ok := principalFacts(operator, model.KindHuman); ok {
+		if _, err := requireSuperAdminWith(p.db, operator.UserID, facts); err == nil {
 			canDefine = true
 		} else if !errors.Is(err, ErrRoleDefinitionForbidden) {
 			return nil, err
@@ -279,19 +281,23 @@ func (p *RoleProjector) userCounts() (map[uint]int64, error) {
 // 這不是完整的可執行性：超管操作者在這一層一律放行，而 agent、外部帳號、MFA 是否啟用、
 // 帳號狀態、可用登入途徑等既有條件由各服務自行裁決，伺服器拒絕仍是最終結果。
 // 目標身分以伺服器解析的有效指派（直接、群組、映射任一來源）判定。
-func (p *RoleProjector) AccountOps(operatorID, targetID uint) (map[string]string, error) {
+//
+// operator 為該次請求的主體：操作者的重解取用它的事實（含角色限定），目標的重解維持帳號完整身分。
+func (p *RoleProjector) AccountOps(operatorPrincipal *authz.Principal, targetID uint) (map[string]string, error) {
 	out := make(map[string]string, len(AccountOpKeys))
 	var operator model.User
-	if operatorID == 0 {
+	if operatorPrincipal == nil || operatorPrincipal.UserID == 0 {
 		return fillAccountOps(out, AccountOpClassSuperOnly), nil
 	}
+	operatorID := operatorPrincipal.UserID
 	if err := p.db.First(&operator, operatorID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fillAccountOps(out, AccountOpClassSuperOnly), nil
 		}
 		return nil, fmt.Errorf("查詢操作者失敗: %w", err)
 	}
-	op, err := authz.ResolveUserOn(p.db, operatorID, authz.TokenFacts{SubjectKind: operator.Kind})
+	facts, _ := principalFacts(operatorPrincipal, operator.Kind)
+	op, err := authz.ResolveUserOn(p.db, operatorID, facts)
 	if err != nil {
 		return nil, err
 	}

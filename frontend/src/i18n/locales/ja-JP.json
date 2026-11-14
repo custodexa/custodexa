@@ -350,7 +350,8 @@
       "role_definition_create": "ロール定義の作成",
       "role_definition_copy": "ロール定義の複製",
       "role_definition_update": "ロール定義の変更",
-      "role_definition_delete": "ロール定義の削除"
+      "role_definition_delete": "ロール定義の削除",
+      "api_token_revoked": "API token 取り消し"
     },
     "auditResource": {
       "agent_token": "エージェントトークン",
@@ -400,7 +401,8 @@
       "compliance_map": "コンプライアンス対照",
       "schedule": "スケジュール予定時刻",
       "unclassified": "未分類",
-      "credential": "認証情報"
+      "credential": "認証情報",
+      "api_token": "API token"
     },
     "mechanism": {
       "audit_write": "監査書き込み",
@@ -1889,7 +1891,18 @@
     "reason": "理由",
     "sameRequest": "同じリクエストの記録をすべて表示",
     "requestFilterChip": "同じリクエスト：{id}",
-    "detailsRaw": "詳細情報"
+    "detailsRaw": "詳細情報",
+    "viaBadge": "API token",
+    "viaLabel": "経由",
+    "viaToken": "API token「{name}」",
+    "viaTokenId": "API token 番号 {id}",
+    "viaTokenRoles": "付与ロール：{roles}",
+    "viaTokenExpires": "期限 {expires}",
+    "viaTokenNeverExpires": "期限 無期限",
+    "viaTokenDeleted": "名前は当時の記録。アカウントは削除済み",
+    "viaSession": "画面操作（サインインセッション）",
+    "resourceApiToken": "API token · {user}／{name}",
+    "resourceApiTokenOwn": "API token · {name}"
   },
   "commands": {
     "headerDesc": "接続をまたいでコマンドと文の記録を検索します。コマンドラインの内容はキー入力から再構成され、正確な内容は録画再生を参照します。クエリコンソールの文は送信時に記録されます。",
@@ -2753,7 +2766,15 @@
       "createBody": "承認作業のみ可能で、アセットの閲覧や接続はできません。通常は「一般ユーザー」も付与します。",
       "createFix": "「一般ユーザー」も選択して作成",
       "goRoleTab": "{username} のロールと範囲へ"
-    }
+    },
+    "expand": {
+      "apiTokens": "API token",
+      "apiTokensValue": "使用可能 {n} 個 · 最終使用 {time}",
+      "apiTokensValueNeverUsed": "使用可能 {n} 個 · 未使用",
+      "apiTokensNone": "なし",
+      "apiTokensLink": "表示・取り消し"
+    },
+    "deleteApiTokens": "このアカウントの使用可能な API token {n} 個も同時に失効し、それらを使うツール（Terraform など）は直ちに管理 API を呼び出せなくなります。すでに行われた変更は元に戻りません。"
   },
   "userGroups": {
     "roleScopeColumn": "ロールと管理範囲",
@@ -3115,7 +3136,7 @@
     }
   },
   "profile": {
-    "headerDesc": "アカウント情報、パスワード、二段階認証の管理",
+    "headerDesc": "アカウント情報、パスワード、二段階認証、API token の管理",
     "basicInfo": "基本情報",
     "mfaLabel": "二段階認証",
     "statusEnabled": "有効",
@@ -5608,7 +5629,18 @@
     "NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY": "この踏み台専用アカウントにはエクスポートできる公開鍵がありません。",
     "VALIDATION_EXECUTOR_SOURCE_INVALID": "踏み台専用アカウントの設定内容が不完全か、取得元が正しくありません。",
     "INTERNAL_ASSET_EXECUTOR_READ": "踏み台専用アカウントの読み込みに失敗しました。",
-    "INTERNAL_ASSET_EXECUTOR_WRITE": "踏み台専用アカウントの保存に失敗しました。"
+    "INTERNAL_ASSET_EXECUTOR_WRITE": "踏み台専用アカウントの保存に失敗しました。",
+    "API_TOKEN_NAME_INVALID": "API token の名前は必須で、100 文字以内にしてください",
+    "API_TOKEN_ROLE_REQUIRED": "ロールを 1 つ以上選んでください",
+    "API_TOKEN_ROLE_NOT_GRANTABLE": "選択したロールに、現在あなたが持っていない管理ロールが含まれています。選び直してください",
+    "API_TOKEN_EXPIRY_REQUIRED": "有効期限を選んでください",
+    "API_TOKEN_EXPIRY_INVALID": "有効期限は未来の日時にしてください。有効期限なしと同時には指定できません",
+    "API_TOKEN_NOT_ELIGIBLE": "現在管理権限がないため、API token を作成できません",
+    "CONFLICT_API_TOKEN_NAME": "同じ名前の API token がすでにあります。別の名前にしてください",
+    "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API token ではこの機能を使えません",
+    "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "API token では所属アカウント本人のこの設定を変更できません",
+    "AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN": "API token ではシステムに保存済みの認証情報を参照できません。パスワードまたは鍵をリクエストに含めてください",
+    "NOTFOUND_API_TOKEN": "API token が存在しません"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "このプロバイダーにはグループ claim 名が設定されていますが、groups スコープが要求されていません。多くのプロバイダーはグループクレームを発行しないため、マッピング規則は誰にも一致せず、規則で付与済みのロールも取り消されます。",
@@ -7118,7 +7150,8 @@
       "pivotLink": "このアドレスで調査を開く（現在の期間と種別を引き継ぎます）",
       "emptyHint": "期間を広げるか、上で記録の種別をもう少し選んでみてください。",
       "emptyIpTitle": "この期間にこのアドレスからの記録はありません",
-      "emptyIpHint": "候補にはログインまたは接続に成功したアドレスのみが含まれます。拒否記録にしか現れないアドレスも、直接入力すれば照会できます。"
+      "emptyIpHint": "候補にはログインまたは接続に成功したアドレスのみが含まれます。拒否記録にしか現れないアドレスも、直接入力すれば照会できます。",
+      "operatorVia": "操作者：{user}（API token {name} 経由）"
     },
     "table": {
       "time": "時刻",
@@ -7160,6 +7193,7 @@
         "recording_failed": "録画失敗",
         "output_scan_disabled": "出力走査を無効化",
         "agent_token_revoked": "エージェントトークンを失効",
+        "api_token_revoked": "API token 取り消し",
         "agent_token_suspended": "エージェントトークンを停止",
         "agent_sessions_terminated": "エージェントセッションの終了結果",
         "agent_sessions_terminate_late": "エージェントセッションの終了が目標時間を超過",
@@ -8863,6 +8897,10 @@
       "unmanaged_privileged_account": {
         "name": "未管理の特権アカウント",
         "description": "ホストアカウント棚卸で、ログイン可能・特権あり・未管理のアカウントが見つかりました"
+      },
+      "privileged_api_token_created": {
+        "name": "高権限 API token の作成",
+        "description": "作成された API token の付与ロールにスーパー管理者またはシステムセキュリティ管理者が含まれています"
       }
     },
     "groups": {
@@ -8934,7 +8972,19 @@
       "scopeNodeDeleted": "ノード #{id}（削除済み）",
       "targetNamed": "{name}（{kind} #{id}）",
       "viewPermissionOverview": "{name} の権限一覧を見る",
-      "viewHostInventory": "このホストのアカウント棚卸しを見る"
+      "viewHostInventory": "このホストのアカウント棚卸しを見る",
+      "createdSummary": "{actor} が API token を作成しました。付与ロールに{roles}が含まれます",
+      "createdTitle": "作成内容",
+      "createdCreator": "作成者（本人）",
+      "createdCreatorValue": "{name}（ユーザー #{id}）",
+      "createdPrivRoles": "付与された高権限ロール",
+      "createdTokenName": "API token の名前",
+      "createdGrantedRoles": "付与ロール",
+      "createdExpiry": "有効期限",
+      "createdNeverExpires": "無期限",
+      "createdNeverExpiresHint": "自動的には失効しません",
+      "createdSuperRole": "{role}（スーパー管理者）",
+      "viewTokens": "{user} の API token を表示"
     },
     "targetKinds": {
       "asset": "資産",
@@ -9013,7 +9063,8 @@
     "tabs": {
       "basic": "基本情報",
       "roles": "ロールと範囲",
-      "permissions": "権限一覧"
+      "permissions": "権限一覧",
+      "apiTokens": "API token"
     },
     "header": {
       "protectedSuper": "スーパー管理者",
@@ -9092,7 +9143,21 @@
       "groupUnavailable": "ユーザーグループを表示する権限がないため、グループ由来のロールを一覧できません。",
       "groupUnavailableHint": "この人はグループ経由でロールを持っている可能性があります。他の二つの区画は通常どおり使えます。",
       "goGroup": "グループで変更",
-      "mappedFromMapping": "マッピング由来"
+      "mappedFromMapping": "マッピング由来",
+      "pendingRemove": "削除予定",
+      "undoRemove": "削除を取り消す",
+      "apiTokenLoseTitle": "未保存：{user} の API token も「{role}」を失います",
+      "apiTokenLoseBody": "このロールを付与された API token は {n} 個あります：{names}。保存後は「{remaining}」だけが残り、引き続き使えます。「{role}」だけを付与されたものはないため、一時停止になる API token はありません。後でロールを再び割り当てると、自動的に「{role}」が戻ります。",
+      "apiTokenLoseBodyMixed": "このロールを付与された API token は {n} 個あります：{names}。保存後、そのうち {m} 個は一時停止になり（ロールを再び割り当てると戻ります）、残りは引き続き使えます。",
+      "apiTokenAllLostTitle": "未保存：{user} は管理権限をすべて失い、API token {n} 個はすべて一時停止になります",
+      "apiTokenAllLostBody": "これら {n} 個に付与されたロールはすべて解除されます。保存後の状態は「一時停止（ロール解除）」になり、呼び出しはすべて拒否されます。後でロールを再び割り当てると自動的に戻ります。恒久的に止めるには「API token」タブで取り消してください。{user} は新しいトークンも作成できなくなります。",
+      "apiTokenNoGrowTitle": "{user} の既存の API token に「{role}」が自動で付くことはありません",
+      "apiTokenNoGrowBody": "各 API token は作成時に選んだロールしか使えません。本人に新しいロールが加わっても、既存のトークンには付きません。新しいロールを使うには {user} が別のトークンを作成する必要があります。「管理者」を付与した API token を作成するとシステムアラートが発生します。",
+      "apiTokenRegainTitle": "未保存：{user} の API token に「{role}」が戻ります",
+      "apiTokenRegainBody": "このロールを付与されていて、現在は有効でない API token は {n} 個あります：{names}。保存するとすぐに「{role}」が戻り、それを使うツールはこのロールでできることを再び行えます。戻したくないものは、先に「API token」タブで取り消してください。",
+      "apiTokenRegainActive": "そのうち {m} 個は現在一時停止中で、保存後に使えるようになります：{names}。",
+      "apiTokenRegainUnknownTitle": "未保存：{user} の既存の API token に「{role}」が戻るか確認できません",
+      "apiTokenRegainUnknownBody": "API token に付与されたロールは、再び割り当てると自動的に戻ります。{user} の API token 一覧を読み込めないため、現在は確認できません。保存後に「API token」タブで確認してください。"
     },
     "change": {
       "title": "保存後の変化",
@@ -9105,9 +9170,30 @@
       "connectionFixed": "一般的な管理能力だけでは接続権は得られません。接続できるホストは資産の認可で決まり、スーパー管理者は既存の予約済み身分に従います",
       "connectionUnchanged": "変更なし",
       "effectiveNow": "保存後すぐに有効になり、操作ログに記録されます。",
-      "unavailable": "プレビューを一時的に取得できません"
+      "unavailable": "プレビューを一時的に取得できません",
+      "apiToken": "API token",
+      "apiTokenLose": "{n} 個がこのロールを失い、{m} 個が一時停止",
+      "apiTokenAllLost": "{n} 個が一時停止（ロールを再び割り当てると戻ります）",
+      "apiTokenUnchanged": "変更なし（既存の {n} 個はこのロールを付与されていません）",
+      "apiTokenFirst": "現在はありません。保存後、{user} はプロフィール画面で自分で作成できます",
+      "apiTokenRegain": "{n} 個にこのロールが戻る",
+      "apiTokenRegainActive": "{n} 個にこのロールが戻り、そのうち {m} 個が使えるようになる",
+      "apiTokenCheckAfterSave": "事前に確認できません。保存後に「API token」タブで確認してください",
+      "apiTokenPartsSeparator": "；",
+      "viewApiTokens": "API token を表示"
     },
-    "loadFailed": "このユーザーを読み込めませんでした"
+    "loadFailed": "このユーザーを読み込めませんでした",
+    "apiTokens": {
+      "desc": "これらは {user} 本人が作成した API token です。それぞれ「付与ロール」列に記載された範囲だけを行え（{user} の現在のロールを超えることはありません）、管理と設定の API に限られます。作成できるのは本人だけです。あなたは取り消すことができ、取り消すとそのトークンを使うツールは直ちに呼び出せなくなります。",
+      "descProtected": "これらは {user} 本人が作成した API token です。それぞれ「付与ロール」列に記載された範囲だけを行え、管理と設定の API に限られます。作成できるのは本人だけです。",
+      "protectedTitle": "{user} の API token を取り消せるのはスーパー管理者だけです",
+      "protectedBody": "{user} はスーパー管理者ロールを持っています。その API token の取り消しは、保護対象アカウントの無効化や削除と同じルールに従います。緊急に停止する必要がある場合は、他のスーパー管理者に連絡してください。",
+      "protectedBodySecurity": "{user} はシステムセキュリティ管理者ロールを持っています。その API token の取り消しは、保護対象アカウントの無効化や削除と同じルールに従います。緊急に停止する必要がある場合は、スーパー管理者に連絡してください。",
+      "disabledTitle": "アカウント無効：{user} の API token は現在すべて使用できません",
+      "disabledBody": "無効化されている間、これらの API token による呼び出しはすべて拒否されます。アカウントを再び有効にすると、期限切れでも取り消し済みでもないものは再び使えるようになります。特定のトークンを恒久的に止めるには取り消してください。",
+      "empty": "{user} はまだ API token を作成していません",
+      "loadFailed": "API token の一覧を読み込めませんでした。再読み込みしてください。繰り返し発生する場合はシステム管理者に連絡してください。"
+    }
   },
   "permissionOverview": {
     "switchUser": "ユーザーを切り替え",
@@ -9211,7 +9297,9 @@
       "approverLink": "承認範囲へ移動",
       "compatDefault": "一般ユーザー（ロールが割り当てられていないときの既定）",
       "agent": "AI エージェントの権限は固定で、ロールの影響を受けません"
-    }
+    },
+    "apiTokens": "{user} には使用可能な API token が {n} 個あり、それぞれ上記ロールの一部またはすべてを付与され、管理と設定の API に限られます。",
+    "apiTokensLink": "API token を表示"
   },
   "roleNodePicker": {
     "tagScopable": "管理範囲を限定可",
@@ -10170,6 +10258,191 @@
         "unicode": "{char}（{code}）",
         "unknown": "不明なキー"
       }
+    }
+  },
+  "apiTokens": {
+    "title": "API token",
+    "desc": "Terraform などのツールがあなたの代わりに管理 API を呼び出せるようにします。作成時に自分の管理ロールから付与するものを選ぶため、あなたにできる範囲を超えることはありません。管理と設定に限られ、接続の確立、録画の閲覧、機密内容の閲覧、アンシールや鍵の操作はできません。トークンの値は作成時に一度だけ表示されます。",
+    "create": "API token を作成",
+    "summary": {
+      "active": "使用可能",
+      "activeWhileDisabled": "使用可能（アカウント無効中）",
+      "expiringSoon": "7 日以内に期限切れ",
+      "inactive": "失効済み"
+    },
+    "col": {
+      "name": "名前",
+      "grantedRoles": "付与ロール",
+      "status": "状態",
+      "expiresAt": "有効期限",
+      "lastUsed": "最終使用",
+      "actions": "操作"
+    },
+    "createdAt": "{time} に作成",
+    "fromIp": "{ip} から",
+    "neverUsed": "未使用",
+    "neverExpires": "無期限",
+    "roleRevoked": "解除済み",
+    "revokedBy": "{user} が取り消し",
+    "justCreated": "作成直後",
+    "inactiveSection": "失効した API token（{n}）",
+    "inactiveHint": "期限切れ、取り消し済み、または復元により失効したもの。記録として残り、再び使うことはできません",
+    "editHint": "作成後は名前、付与ロール、有効期限を変更できません。変更したい場合は新しいトークンを作成してツールに設定し、動作を確認してから古いものを取り消してください。",
+    "roleWithScope": "{role}（{scope}）",
+    "empty": {
+      "title": "API token はまだありません",
+      "desc": "作成して Terraform などのツールに渡すと、あなたの代わりに管理 API を呼び出せるようになります。"
+    },
+    "howToChange": {
+      "title": "付与ロールや有効期限を変更したい場合",
+      "body": "作成後は変更できません。カード右上の「API token を作成」から新しいロールと期限を選び、新しいトークンをツールに設定して動作を確認してから、ここに戻ってこのトークンを取り消してください。"
+    },
+    "revokeAction": "取り消す",
+    "status": {
+      "active": "有効",
+      "expiring_soon": "まもなく期限切れ",
+      "expiresInDays": "{n} 日後に期限切れ",
+      "expiresToday": "本日期限切れ",
+      "expiresTomorrow": "明日期限切れ",
+      "expired": "期限切れ",
+      "revoked": "取り消し済み",
+      "invalidated_by_restore": "復元により失効",
+      "suspended_account_disabled": "一時停止（アカウント無効）",
+      "suspended_roles_revoked": "一時停止（ロール解除）"
+    },
+    "form": {
+      "name": "名前",
+      "namePlaceholder": "例：terraform-prod-apply",
+      "nameHint": "使うツールと環境がわかる名前にしてください（例：terraform-prod-apply）。操作ログには呼び出しごとにどのトークンを使ったかが記録されます。",
+      "roles": "付与ロール",
+      "rolesAll": "すべて（管理ロール {n} 個）",
+      "rolesSelected": "{n} 個選択中",
+      "scope": "範囲：{scope}",
+      "scopeAll": "システム全体",
+      "rolesHint": "自分の管理ロールからのみ選べます。範囲はあなたのロールに従い、あなたを超えることはありません。",
+      "rolesHintNonGrantable": "あなたが持つ「{roles}」は管理ロールではないため、API token に付与できません。",
+      "singleRole": "管理ロールはこれだけのため、このロールを付与します",
+      "expiry": "有効期限",
+      "expiryOption": {
+        "never": "無期限",
+        "d7": "7 日",
+        "d30": "30 日",
+        "d90": "90 日",
+        "y1": "1 年",
+        "custom": "日付を指定"
+      },
+      "expiryHint": "期間を選ぶか、日付を指定するか、「無期限」を選んでください。",
+      "expiresOn": "{time} に期限切れになり（{rel}）、その後は自動的に使えなくなります。",
+      "expiresRel": {
+        "days": "{n} 日後",
+        "years": "約 {n} 年後"
+      },
+      "customDateHint": "当日 23:59:59 に期限切れ",
+      "datePlaceholder": "日付を選択",
+      "neverHint": "この API token は自動的に失効しません。使わなくなったら自分で取り消してください。",
+      "summaryTitle": "この API token でできること",
+      "summaryRoles": "選択したロール：{roles}。",
+      "summaryRolesSuper": "選択したロール：管理者（システム全体）。つまりスーパー管理者が行えるすべての管理と設定です。",
+      "summarySync": "今後あなたのロールが解除されると、このトークンもそのロールを失い、ロールが再び割り当てられると元に戻ります。",
+      "summaryNone": "ロールがまだ選ばれていないため、この API token では何もできません。",
+      "summaryScope": "管理と設定の API に限られます。接続の確立、録画の閲覧、機密内容の閲覧、アンシールや鍵の操作はできません。",
+      "summaryCidr": "接続元の制限：アカウントの許可接続元ネットワーク（{cidrs}）を使います。これらのアドレスからの呼び出しだけが受け付けられます。",
+      "summaryNoCidr": "接続元の制限：アカウントに許可接続元ネットワークが設定されていないため、どのアドレスからでも使えます。制限が必要な場合は、ID 管理者にアカウントへの設定を依頼してください。",
+      "summaryAudit": "ツールがこのトークンで行ったことはすべて、あなたの名前で操作ログに記録され、どのトークンを使ったかも記されます。",
+      "err": {
+        "name": "API token の名前を入力してください",
+        "roles": "ロールを 1 つ以上選んでください",
+        "expiry": "有効期限を選んでください",
+        "customDate": "今日以降の日付を選んでください",
+        "duplicate": "同じ名前の API token がすでにあります。別の名前にしてください",
+        "serverTitle": "サーバーエラーが発生しました。しばらくしてから再度お試しください",
+        "server": "API token は作成されませんでした。入力内容は残っているので、そのままもう一度お試しください。"
+      },
+      "privSuper": {
+        "title": "この API token にはスーパー管理者ロールが付与されます",
+        "body": "あなたが行えるすべての管理と設定ができます。付与ロールにスーパー管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。"
+      },
+      "privSec": {
+        "title": "この API token にはシステムセキュリティ管理者ロールが付与されます",
+        "body": "システム全体のセキュリティポリシー、通知、アラート設定を変更できます。付与ロールにシステムセキュリティ管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。"
+      }
+    },
+    "reveal": {
+      "title": "API token を作成しました",
+      "onceTitle": "この API token が表示されるのは今回だけです",
+      "onceBody": "今すぐコピーして、使うツールに保存してください（例：CI のシークレット変数）。閉じると二度と取得できません。保存できなかった場合は取り消して作り直してください。チャットや文書には貼らないでください。これを手に入れた人は、あなたとして管理操作ができます。",
+      "testTitle": "この API token をテストする",
+      "testBody": "使えることを確認するには、次のコマンドをターミナルに貼り付けて実行してください。応答には、代理するアカウント、付与ロール、有効期限が表示されます。",
+      "represents": "代理",
+      "self": "{user}（あなた本人）",
+      "neverExpires": "自動的には失効しません。使わなくなったら自分で取り消してください",
+      "close": "保存しました。閉じる",
+      "copied": "コピーしました",
+      "copyFailed": "コピーできませんでした。閉じる前に手動で保存してください。",
+      "commandCopyFailed": "自動でコピーできませんでした。上の欄に完全なコマンドを表示して選択しました。手動でコピーしてください。閉じる前にトークン本体も保存してください。",
+      "tokenLabel": "API token の値",
+      "commandLabel": "テストコマンド"
+    },
+    "msg": {
+      "created": "API token「{name}」を作成しました",
+      "revoked": "API token「{name}」を取り消しました",
+      "revokedAll": "API token を {n} 個取り消しました"
+    },
+    "revoke": {
+      "confirm": "「{name}」を取り消しますか？この操作は元に戻せません。",
+      "confirmOther": "{user} の「{name}」を取り消しますか？この操作は元に戻せません。",
+      "usedTitle": "このトークンを使うツールは直ちに管理 API を呼び出せなくなります",
+      "usedTitleOther": "{user} がこのトークンで設定したツールは直ちに管理 API を呼び出せなくなります",
+      "usedBody": "この API token の最終使用は {time}、接続元は {ip} です。まだツールが使っている可能性があります。取り消すと、このトークンによる呼び出しはすべて拒否されます。使い続けるには、先に新しいトークンを作成して切り替えてください。",
+      "usedBodyNoIp": "この API token の最終使用は {time} です。まだツールが使っている可能性があります。取り消すと、このトークンによる呼び出しはすべて拒否されます。使い続けるには、先に新しいトークンを作成して切り替えてください。",
+      "usedBodyOther": "この API token の最終使用は {time}、接続元は {ip} です。{user} はプロフィール画面で、あなたが取り消したことを確認できます。使い続けるには本人が作り直す必要があります。",
+      "usedBodyOtherNoIp": "この API token の最終使用は {time} です。{user} はプロフィール画面で、あなたが取り消したことを確認できます。使い続けるには本人が作り直す必要があります。",
+      "unusedTitle": "この API token はまだ使われていません",
+      "unusedBody": "取り消すと使えなくなります。設定したばかりでまだ実行していないツールがあれば、最初の呼び出しが拒否されます。",
+      "reason": "取り消しの理由（任意、記録に残ります）",
+      "reasonOther": "取り消しの理由（任意、{user} と監査記録の両方で見られます）",
+      "reasonPlaceholder": "例：CI のパイプラインは新しい API token に切り替え済み",
+      "reasonPlaceholderOther": "例：接続元が不審なため、先に取り消してから確認",
+      "submit": "API token を取り消す",
+      "failedTitle": "サーバーエラーが発生しました。しばらくしてから再度お試しください",
+      "failedKept": "この API token は取り消されておらず、引き続き使えます。",
+      "failedRefreshed": "一覧を再読み込みしました。この API token の現在の状態を確認してください。"
+    },
+    "revokeAll": {
+      "button": "API token をすべて取り消す",
+      "confirm": "{user} の使用可能な API token {n} 個をすべて取り消しますか？この操作は元に戻せません。",
+      "title": "{user} がこれらの API token で設定したツールはすべて直ちに停止します",
+      "body": "{names}。期限切れや取り消し済みのものには影響しません。{user} は引き続きサインインでき、新しいトークンも作成できます。サインインも止めるにはアカウントを無効にしてください。",
+      "neverNote": "（うち {names} は無期限）",
+      "reasonPlaceholder": "例：流出の疑いがあるためすべて取り消し",
+      "failedKept": "API token は取り消されておらず、引き続き使えます。",
+      "failedRefreshed": "一覧を再読み込みしました。各 API token の現在の状態を確認してください。"
+    },
+    "noPerm": {
+      "intro": "API token を使うと、Terraform などのツールが本人の代わりに管理 API を呼び出せます。管理権限を持つ人（例：資産管理者、認可管理者、ID 管理者）だけが利用できます。",
+      "title": "現在管理権限がないため、API token を作成できません",
+      "body": "あなたのロールは「{role}」です。業務上ツールに管理操作を代行させる必要がある場合は、ID 管理者またはスーパー管理者に管理ロールを申請してください。取得すると、ここに「API token を作成」が表示されます。"
+    },
+    "agentOwner": {
+      "hint": "AI agent は API token を使いません。独自のキーを使い、「マイ agent」で管理します。API token が代理するのはあなた本人だけです。",
+      "link": "マイ agent へ"
+    },
+    "rolesRevoked": {
+      "title": "管理ロールが解除されたため、API token は一時停止中です",
+      "body": "{roles}があなたのアカウントから解除されました。下の API token {n} 個に付与したロールはすべてなくなったため、現在は何もできず、新しいトークンも作成できません。ロールを再取得すると自動的に元に戻り、再び使えます。不要なものは取り消してください。業務上まだ必要な場合は、ID 管理者またはスーパー管理者にロールの復元を申請してください。"
+    },
+    "restored": {
+      "title": "システムがバックアップから復元されたため、復元前に作成した API token はすべて失効しました",
+      "body": "復元日時：{time}。古い API token を使い続けているツールの呼び出しは拒否されます。新しい API token を作成し、使うツールに設定し直してください。",
+      "bodyNoTime": "古い API token を使い続けているツールの呼び出しは拒否されます。新しい API token を作成し、使うツールに設定し直してください。"
+    },
+    "allInactive": {
+      "title": "現在使用できる API token はありません",
+      "body": "これまで使っていたツールは管理 API を呼び出せなくなっています。元に戻すには、新しい API token を作成してツールに設定してください。"
+    },
+    "loadFailed": {
+      "title": "API token の一覧を読み込めませんでした",
+      "body": "API token がないという意味ではありません。再読み込みしてください。繰り返し発生する場合はシステム管理者に連絡してください。"
     }
   }
 }

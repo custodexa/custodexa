@@ -181,7 +181,7 @@ func TestApproverScopeManagementKeys(t *testing.T) {
 		// 管理員經正常寫入路徑撤掉申請人型管理鍵、保留審核範圍管理鍵
 		cur, err := e.svc.GetDefinition(ctx, hit.ID)
 		require.NoError(t, err)
-		_, err = e.svc.Update(ctx, e.admin, hit.ID, cur.DefinitionVersion, RoleInput{Name: "has-k", Permissions: []string{K}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, hit.ID, cur.DefinitionVersion, RoleInput{Name: "has-k", Permissions: []string{K}})
 		require.NoError(t, err)
 		_, _, v0, a0 := e.snapshot(t)
 		ev0 := len(e.events.events)

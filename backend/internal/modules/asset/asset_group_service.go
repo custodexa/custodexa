@@ -416,7 +416,7 @@ func (s *AssetGroupService) Create(ctx context.Context, req *AssetGroupRequest, 
 	defer treeStructMu.Unlock()
 
 	group := &model.AssetGroup{Name: req.Name, Description: req.Description, ParentID: req.ParentID}
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於任何讀寫。「父節點在範圍內」的判定與並行的
 		// 父節點搬移之間不得有競態窗口。新建節點不含資產，不改變任何資產的覆蓋節點集合，
 		// 所以只取鎖、不 Begin、不推進權限版本（與零掛載的資產建立同一口徑）。
@@ -462,7 +462,7 @@ func (s *AssetGroupService) Update(ctx context.Context, id uint, req *AssetGroup
 	defer treeStructMu.Unlock()
 
 	var group model.AssetGroup
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作。改名與改描述不改變任何資產的覆蓋節點集合，只取鎖、不推進
 		// 權限版本；取鎖是為了讓範圍判定讀到取鎖前已提交的拓撲
 		if err := s.lockTopologyTx(tx); err != nil {
@@ -512,7 +512,7 @@ func (s *AssetGroupService) Move(ctx context.Context, id uint, newParentID *uint
 	defer treeStructMu.Unlock()
 
 	var group model.AssetGroup
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於任何讀寫（節點樹形狀改變會改變範圍判定結果）
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err
@@ -634,7 +634,7 @@ func (s *AssetGroupService) Delete(ctx context.Context, id uint, actorID uint, a
 	defer treeStructMu.Unlock()
 
 	var revoked int64
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於任何讀寫
 		if err := s.lockTopologyTx(tx); err != nil {
 			return err

@@ -71,7 +71,7 @@ func (h *LDAPDirectoryHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 func currentLDAPActor(c *gin.Context) identity.LDAPDirectoryActor {
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	return identity.LDAPDirectoryActor{ID: userID, Name: username, IP: sourceip.Of(c)}
+	return identity.LDAPDirectoryActor{ID: userID, Name: username, IP: sourceip.Of(c), Principal: middleware.PrincipalFrom(c), APIToken: middleware.APITokenRefOf(c)}
 }
 
 // Get 讀取現行設定。未設定回 `{"configured": false}` 而非 404——

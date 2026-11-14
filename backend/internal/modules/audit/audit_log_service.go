@@ -38,6 +38,9 @@ type AuditLogEntry struct {
 	ErrorMsg    string
 	RequestID   string
 	Details     string // 變更/操作詳情（JSON），對應 model.AuditLog.Details
+	// APITokenID、APITokenName 這次請求經由的 API token（親自操作的請求留零值）
+	APITokenID   *uint
+	APITokenName string
 }
 
 // AuditLogFilter 審計日誌查詢過濾器
@@ -51,6 +54,8 @@ type AuditLogFilter struct {
 	Resource *model.AuditResource
 	Status   *model.AuditStatus
 	ClientIP *string
+	// APITokenID 只收經該 API token 進行的操作所寫的列。
+	APITokenID *uint
 	// RequestID 精確比對 request_id：同一次 HTTP 請求寫下的各列共用它。空字串視為未設。
 	RequestID *string
 	// PolicyKey 安全政策的設定鍵：只收該鍵的變更列。
@@ -98,6 +103,11 @@ type AuditLogService struct {
 	// 與 stopChan 分開：stopChan 是「開始排空」，drainAbort 是「排空時間用盡」，
 	// 兩者之間正是佇列殘留得以落地的窗口。
 	drainAbort chan struct{}
+
+	// flushReqs 每個 worker 一條的「立即寫出手上批次」請求通道（見 FlushQueued）。
+	// 一個 worker 一條而非共用：共用通道的請求只會被其中一個 worker 收走，
+	// 其餘 worker 手上的批次仍留在記憶體。
+	flushReqs []chan chan struct{}
 
 	// inFlight worker 已自佇列取走、尚未回報處置結果的列數。
 	//
@@ -181,6 +191,10 @@ func NewAuditLogService(cfg *config.FeatureFlags) *AuditLogService {
 
 	// 啟動 worker pool（僅在啟用異步模式時）
 	if cfg.AsyncAuditEnabled {
+		service.flushReqs = make([]chan chan struct{}, service.workerCount)
+		for i := range service.flushReqs {
+			service.flushReqs[i] = make(chan chan struct{})
+		}
 		for i := 0; i < service.workerCount; i++ {
 			service.wg.Add(1)
 			go service.worker(i)
@@ -228,6 +242,9 @@ func (s *AuditLogService) logAt(entry *AuditLogEntry, occurredAt time.Time) {
 		ErrorMsg:    entry.ErrorMsg,
 		RequestID:   entry.RequestID,
 		Details:     entry.Details,
+	}
+	if ref, ok := model.APITokenRefOf(entry.APITokenID, entry.APITokenName); ok {
+		auditLog.AttributeToAPIToken(ref)
 	}
 
 	if s.cfg.AsyncAuditEnabled {
@@ -288,6 +305,11 @@ func (s *AuditLogService) worker(id int) {
 			// 定時 flush（避免小流量時日誌積壓）
 			flushBatch()
 
+		case ack := <-s.flushReq(id):
+			// 呼叫端要求立即寫出手上的批次（見 FlushQueued）
+			flushBatch()
+			close(ack)
+
 		case <-s.stopChan:
 			// 優雅關閉：先把佇列內尚未被取走的列排空，再 flush 手上的批次
 			log.Printf("Worker %d: 收到關閉訊號，排空佇列...", id)
@@ -295,6 +317,55 @@ func (s *AuditLogService) worker(id int) {
 			return
 		}
 	}
+}
+
+// flushReq 回傳指定 worker 的立即寫出請求通道；未配置時回 nil（select 中永不就緒）。
+func (s *AuditLogService) flushReq(id int) chan chan struct{} {
+	if id < 0 || id >= len(s.flushReqs) {
+		return nil
+	}
+	return s.flushReqs[id]
+}
+
+// callerFlushID FlushQueued 在呼叫端直接寫出佇列殘留時，日誌上使用的 worker 編號。
+const callerFlushID = -1
+
+// FlushQueued 把呼叫當下已入列的審計列全數寫出後才返回，**不停止 worker**。
+//
+// 用在「寫入所需的條件即將消失、但服務還沒到關閉順位」的時點：列在寫入時才
+// 蓋完整性章，蓋章所需的金鑰材料一旦收回，之後才寫出的列就沒有章，事後的
+// 完整性驗證會把它們判為不符——而那些列對應的請求早已正常完成。收回材料前
+// 先呼叫本方法，使已入列的列在材料仍可用時落地。
+//
+// 保證範圍：呼叫當下已在佇列內、或已被 worker 取走尚未寫出的列，返回時都已
+// 走完 flushBatch 的處置（入庫、逐列隔離或降級）。呼叫之後才入列的列不在保證內。
+//
+// ctx 到期即返回錯誤，不無限等待停滯的 sink；服務已進入關閉流程時直接返回，
+// 殘留由 Shutdown 的排空接手。
+func (s *AuditLogService) FlushQueued(ctx context.Context) error {
+	if !s.cfg.AsyncAuditEnabled {
+		return nil
+	}
+	if queued := s.takeQueued(); len(queued) > 0 {
+		s.inFlight.Add(int64(len(queued)))
+		s.flushBatch(callerFlushID, queued)
+	}
+	for _, req := range s.flushReqs {
+		ack := make(chan struct{})
+		select {
+		case req <- ack:
+		case <-s.stopChan:
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("稽核佇列寫出未在期限內完成: %w", ctx.Err())
+		}
+		select {
+		case <-ack:
+		case <-ctx.Done():
+			return fmt.Errorf("稽核佇列寫出未在期限內完成: %w", ctx.Err())
+		}
+	}
+	return nil
 }
 
 // drainOnShutdown 收到關閉訊號後，把佇列內尚未被取走的列全部寫出，
@@ -641,6 +712,9 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	}
 	if filter.ClientIP != nil {
 		query = query.Where("client_ip = ?", *filter.ClientIP)
+	}
+	if filter.APITokenID != nil {
+		query = query.Where("api_token_id = ?", *filter.APITokenID)
 	}
 	if filter.RequestID != nil && *filter.RequestID != "" {
 		query = query.Where("request_id = ?", *filter.RequestID)
@@ -1238,6 +1312,9 @@ func endpointAuditFieldSet(endpoint string) map[string]bool {
 	case "POST /api/v1/users/:id/agent-tokens":
 		// 憑證有效期限屬課責事實，明文與雜湊仍不放行。
 		return map[string]bool{"expires_at": true}
+	case "POST /api/v1/my/api-tokens":
+		// 個人 API token 的建立：授權角色與到期屬課責事實；請求本文本就不含明文或雜湊
+		return map[string]bool{"role_ids": true, "expires_at": true, "never_expires": true}
 	// 目錄服務設定：`url` 是 LDAP 伺服器位址（`ldaps://host:636`），非憑證。
 	// **這條登記是「認證來源被改導到哪裡」的唯一課責欄**——改前只能靠
 	// `base_dn`／`user_filter`／`skip_tls_verify`／`enabled` 間接推斷。
@@ -1302,6 +1379,7 @@ func AuditMaskEndpoints() []string {
 		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
 		"POST /api/v1/command-alerts/:id/review",
 		"POST /api/v1/users/:id/agent-tokens",
+		"POST /api/v1/my/api-tokens",
 		"PUT /api/v1/ldap-directory",
 		"PUT /api/v1/user-groups/:id/members",
 		"PUT /api/v1/keys/topology",

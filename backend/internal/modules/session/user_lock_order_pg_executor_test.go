@@ -117,7 +117,7 @@ func (f *executorLockFixture) createSession() error {
 
 func (e *sessionLockEnv) transferOwner(f *executorLockFixture) error {
 	no := f.newOwner
-	_, _, err := e.users.Update(f.agent, &identity.UpdateUserRequest{OwnerUserID: &no})
+	_, _, err := e.users.Update(identity.Operator{}, f.agent, &identity.UpdateUserRequest{OwnerUserID: &no})
 	return err
 }
 

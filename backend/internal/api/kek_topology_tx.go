@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/keyvault"
@@ -128,8 +129,8 @@ func (h *KeyManagementHandler) saveTopologyInTx(c *gin.Context, in keyvault.KEKT
 			Action:   string(model.ActionUpdate),
 			Resource: string(model.ResourceKeyManagement),
 			Status:   string(model.StatusSuccess),
-			Request: gatewayapi.RequestMeta{Method: c.Request.Method, Path: c.Request.URL.Path,
-				ClientIP: clientIP, StatusCode: http.StatusOK, Body: string(body)},
+			Request: middleware.AttributeAuditMeta(c, gatewayapi.RequestMeta{Method: c.Request.Method, Path: c.Request.URL.Path,
+				ClientIP: clientIP, StatusCode: http.StatusOK, Body: string(body)}),
 			Details: string(body),
 		}); err != nil {
 			return fmt.Errorf("寫入拓撲變更審計失敗: %w", err)

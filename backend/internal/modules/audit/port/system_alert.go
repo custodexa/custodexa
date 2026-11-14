@@ -34,6 +34,7 @@ const (
 	SystemAlertNotificationChannelChanged   SystemAlertType = "notification_channel_changed"
 	SystemAlertConcurrentInstanceDetected   SystemAlertType = "concurrent_instance_detected"
 	SystemAlertUnmanagedPrivilegedAccount   SystemAlertType = "unmanaged_privileged_account"
+	SystemAlertPrivilegedAPITokenCreated    SystemAlertType = "privileged_api_token_created"
 )
 
 // SystemAlertTargetKind 告警目標種類。每個類型在目錄中宣告自己允許的目標種類。

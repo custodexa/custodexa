@@ -350,7 +350,8 @@
       "role_definition_create": "角色定義新增",
       "role_definition_copy": "角色定義複製",
       "role_definition_update": "角色定義修改",
-      "role_definition_delete": "角色定義刪除"
+      "role_definition_delete": "角色定義刪除",
+      "api_token_revoked": "API token 已撤銷"
     },
     "auditResource": {
       "agent_token": "自動化權杖",
@@ -400,7 +401,8 @@
       "compliance_map": "合規對照",
       "schedule": "排程時刻預覽",
       "unclassified": "未分類",
-      "credential": "憑證"
+      "credential": "憑證",
+      "api_token": "API token"
     },
     "mechanism": {
       "audit_write": "稽核寫入",
@@ -1889,7 +1891,18 @@
     "reason": "原因",
     "sameRequest": "查看同一請求的全部紀錄",
     "requestFilterChip": "同一請求：{id}",
-    "detailsRaw": "詳細資訊"
+    "detailsRaw": "詳細資訊",
+    "viaBadge": "API token",
+    "viaLabel": "經由",
+    "viaToken": "API token「{name}」",
+    "viaTokenId": "API token 編號 {id}",
+    "viaTokenRoles": "授權角色：{roles}",
+    "viaTokenExpires": "到期 {expires}",
+    "viaTokenNeverExpires": "到期 永不到期",
+    "viaTokenDeleted": "名稱為當時紀錄；帳號已刪除",
+    "viaSession": "畫面操作（登入工作階段）",
+    "resourceApiToken": "API token · {user}／{name}",
+    "resourceApiTokenOwn": "API token · {name}"
   },
   "commands": {
     "headerDesc": "跨連線搜尋指令與語句記錄。命令列的內容重組自按鍵流，以錄影回放為準；查詢主控台的語句於送出時登記。",
@@ -2753,7 +2766,15 @@
       "createBody": "這個帳號只能處理審核，看不到資產，也不能連線。一般會同時給「一般使用者」。",
       "createFix": "同時勾選一般使用者並建立",
       "goRoleTab": "前往 {username} 的角色與範圍"
-    }
+    },
+    "expand": {
+      "apiTokens": "API token",
+      "apiTokensValue": "{n} 把可用 · 最近使用 {time}",
+      "apiTokensValueNeverUsed": "{n} 把可用 · 尚未使用",
+      "apiTokensNone": "無",
+      "apiTokensLink": "查看與撤銷"
+    },
+    "deleteApiTokens": "這個帳號的 {n} 個可用 API token 會一併失效，用它們的工具（例如 Terraform）會立即無法呼叫管理 API。已做過的變更不會被回復。"
   },
   "userGroups": {
     "roleScopeColumn": "角色與管理範圍",
@@ -3115,7 +3136,7 @@
     }
   },
   "profile": {
-    "headerDesc": "帳號資訊、密碼與兩步驟驗證管理",
+    "headerDesc": "帳號資訊、密碼、兩步驟驗證與 API token 管理",
     "basicInfo": "基本資料",
     "mfaLabel": "兩步驟驗證",
     "statusEnabled": "已啟用",
@@ -5608,7 +5629,18 @@
     "NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY": "此堡壘機專用帳號沒有可匯出的公鑰",
     "VALIDATION_EXECUTOR_SOURCE_INVALID": "堡壘機專用帳號的設定內容不完整或來源不正確",
     "INTERNAL_ASSET_EXECUTOR_READ": "讀取堡壘機專用帳號失敗",
-    "INTERNAL_ASSET_EXECUTOR_WRITE": "設定堡壘機專用帳號失敗"
+    "INTERNAL_ASSET_EXECUTOR_WRITE": "設定堡壘機專用帳號失敗",
+    "API_TOKEN_NAME_INVALID": "API token 名稱必填，且不能超過 100 個字",
+    "API_TOKEN_ROLE_REQUIRED": "請至少選擇一個角色",
+    "API_TOKEN_ROLE_NOT_GRANTABLE": "勾選的角色中有你目前已沒有的管理角色，請重新選擇",
+    "API_TOKEN_EXPIRY_REQUIRED": "請選擇到期時間",
+    "API_TOKEN_EXPIRY_INVALID": "到期時間必須在未來，且不能同時選擇永不到期",
+    "API_TOKEN_NOT_ELIGIBLE": "你目前沒有管理權限，不能建立 API token",
+    "CONFLICT_API_TOKEN_NAME": "你已經有同名的 API token，請換一個名稱",
+    "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API token 不能使用這個功能",
+    "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "API token 不能變更所屬帳號本人的這項設定",
+    "AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN": "API token 不能引用系統已保存的憑證，請在請求中自帶密碼或金鑰",
+    "NOTFOUND_API_TOKEN": "API token 不存在"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "此提供者設定了群組 claim 名稱，但授權範圍不含 groups。多數提供者因此不會發出群組宣告，映射規則將無人命中，已依規則取得的角色也會被撤回。",
@@ -7118,7 +7150,8 @@
       "pivotLink": "以這個位址開新調查（保留目前的時間範圍與類別）",
       "emptyHint": "可放寬時間範圍，或在上方多勾幾類紀錄。",
       "emptyIpTitle": "此位址在這段期間沒有紀錄",
-      "emptyIpHint": "候選清單只含成功登入或建線過的位址；任一位址都可以直接輸入查詢，包含只出現在拒絕紀錄裡的位址。"
+      "emptyIpHint": "候選清單只含成功登入或建線過的位址；任一位址都可以直接輸入查詢，包含只出現在拒絕紀錄裡的位址。",
+      "operatorVia": "操作者：{user}（經由 API token {name}）"
     },
     "table": {
       "time": "時間",
@@ -7160,6 +7193,7 @@
         "recording_failed": "錄影失敗",
         "output_scan_disabled": "輸出掃描已停用",
         "agent_token_revoked": "自動化權杖已撤銷",
+        "api_token_revoked": "API token 已撤銷",
         "agent_token_suspended": "自動化權杖已停用",
         "agent_sessions_terminated": "自動化會話終止結果",
         "agent_sessions_terminate_late": "自動化會話終止超過目標時效",
@@ -8863,6 +8897,10 @@
       "unmanaged_privileged_account": {
         "name": "未納管特權帳號",
         "description": "主機帳號盤點發現可登入、具特權且尚未納管的帳號"
+      },
+      "privileged_api_token_created": {
+        "name": "建立高權限 API token",
+        "description": "建立的 API token 授權角色含超級管理者或系統安全管理員"
       }
     },
     "groups": {
@@ -8934,7 +8972,19 @@
       "scopeNodeDeleted": "節點 #{id}（已刪除）",
       "targetNamed": "{name}（{kind} #{id}）",
       "viewPermissionOverview": "查看 {name} 的權限一覽",
-      "viewHostInventory": "查看這台的主機帳號盤點"
+      "viewHostInventory": "查看這台的主機帳號盤點",
+      "createdSummary": "{actor} 建立了一把 API token，授權角色含{roles}",
+      "createdTitle": "建立內容",
+      "createdCreator": "建立者（本人）",
+      "createdCreatorValue": "{name}（使用者 #{id}）",
+      "createdPrivRoles": "授權的高權限角色",
+      "createdTokenName": "API token 名稱",
+      "createdGrantedRoles": "授權角色",
+      "createdExpiry": "到期時間",
+      "createdNeverExpires": "永不到期",
+      "createdNeverExpiresHint": "不會自動失效",
+      "createdSuperRole": "{role}（超級管理者）",
+      "viewTokens": "查看 {user} 的 API token"
     },
     "targetKinds": {
       "asset": "資產",
@@ -9013,7 +9063,8 @@
     "tabs": {
       "basic": "基本資料",
       "roles": "角色與範圍",
-      "permissions": "權限一覽"
+      "permissions": "權限一覽",
+      "apiTokens": "API token"
     },
     "header": {
       "protectedSuper": "超級管理者",
@@ -9092,7 +9143,21 @@
       "groupUnavailable": "沒有檢視使用者群組的權限，無法列出來自群組的角色。",
       "groupUnavailableHint": "此人仍可能經群組取得角色；其他兩區照常可用。",
       "goGroup": "到群組修改",
-      "mappedFromMapping": "來自映射"
+      "mappedFromMapping": "來自映射",
+      "pendingRemove": "將移除",
+      "undoRemove": "取消移除",
+      "apiTokenLoseTitle": "尚未儲存：{user} 的 API token 會同步失去「{role}」",
+      "apiTokenLoseBody": "授權了這個角色的 API token 有 {n} 把：{names}，儲存後只剩「{remaining}」，仍可使用。沒有任何一把只授權了「{role}」，所以不會有 API token 暫停。之後再把角色指派回來，會自動恢復「{role}」。",
+      "apiTokenLoseBodyMixed": "授權了這個角色的 API token 有 {n} 把：{names}。儲存後其中 {m} 把會暫停（角色指派回來即恢復），其餘仍可使用。",
+      "apiTokenAllLostTitle": "尚未儲存：{user} 將沒有任何管理權限，名下 {n} 把 API token 會全部暫停",
+      "apiTokenAllLostBody": "這 {n} 把授權的角色都會被收回，儲存後狀態變成「暫停（角色已收回）」，呼叫一律被拒絕；之後重新指派角色，它們會自動恢復。要永久停止，請到「API token」分頁撤銷。{user} 也不能再建立新的。",
+      "apiTokenNoGrowTitle": "{user} 現有的 API token 不會自動得到「{role}」",
+      "apiTokenNoGrowBody": "每把 API token 只能做建立時勾選的角色；本人多了新角色，現有的 token 不會跟著得到。要用新角色，得由 {user} 另建一把；授權角色含「管理員」的 API token 建立時會發出系統告警。",
+      "apiTokenRegainTitle": "尚未儲存：{user} 的 API token 會恢復「{role}」",
+      "apiTokenRegainBody": "授權過這個角色、目前不生效的 API token 有 {n} 把：{names}。儲存後會立即恢復「{role}」，用到它的工具可以再做這個角色能做的事；不想恢復的，請先到「API token」分頁撤銷。",
+      "apiTokenRegainActive": "其中 {m} 把原本暫停，儲存後恢復為可用：{names}。",
+      "apiTokenRegainUnknownTitle": "尚未儲存：無法確認 {user} 現有的 API token 是否會恢復「{role}」",
+      "apiTokenRegainUnknownBody": "API token 授權過的角色，指派回來時會自動恢復。目前讀不到 {user} 的 API token 清單，無法確認有沒有這種情形；儲存後請到「API token」分頁確認。"
     },
     "change": {
       "title": "儲存後的變化",
@@ -9105,9 +9170,30 @@
       "connectionFixed": "一般管理能力不會自動帶來連線權；能連哪些主機由資產授權決定，超級管理者另依既有的保留身分",
       "connectionUnchanged": "不變",
       "effectiveNow": "儲存後立即生效，並記入操作日誌。",
-      "unavailable": "預覽暫時無法取得"
+      "unavailable": "預覽暫時無法取得",
+      "apiToken": "API token",
+      "apiTokenLose": "{n} 把會失去這個角色，{m} 把暫停",
+      "apiTokenAllLost": "{n} 把將暫停（角色指派回來即恢復）",
+      "apiTokenUnchanged": "不變（現有 {n} 把沒有勾選這個角色）",
+      "apiTokenFirst": "目前沒有。儲存後，{user} 可以在個人資料頁自己建立",
+      "apiTokenRegain": "{n} 把會恢復這個角色",
+      "apiTokenRegainActive": "{n} 把會恢復這個角色，其中 {m} 把恢復可用",
+      "apiTokenCheckAfterSave": "無法預先確認，儲存後請到「API token」分頁查看",
+      "apiTokenPartsSeparator": "；",
+      "viewApiTokens": "查看 API token"
     },
-    "loadFailed": "無法載入這位使用者"
+    "loadFailed": "無法載入這位使用者",
+    "apiTokens": {
+      "desc": "這是 {user} 本人建立的 API token，各自只能做「授權角色」欄列出的事（不會超過 {user} 目前的角色），只限管理與設定 API。只有本人能建立；你可以撤銷，撤銷後用它的工具會立即無法呼叫。",
+      "descProtected": "這是 {user} 本人建立的 API token，各自只能做「授權角色」欄列出的事，只限管理與設定 API。只有本人能建立。",
+      "protectedTitle": "只有超級管理者能撤銷 {user} 的 API token",
+      "protectedBody": "{user} 持有超級管理者角色，撤銷它的 API token 與停用、刪除受保護帳號是同一條規則。需要緊急停用時，請聯絡其他超級管理者。",
+      "protectedBodySecurity": "{user} 持有系統安全管理員角色，撤銷它的 API token 與停用、刪除受保護帳號是同一條規則。需要緊急停用時，請聯絡超級管理者。",
+      "disabledTitle": "帳號已停用：{user} 的 API token 目前都不能使用",
+      "disabledBody": "停用期間這些 API token 的呼叫一律被拒絕。重新啟用帳號後，未到期也未撤銷的會恢復可用；要永久停止某一把，請撤銷。",
+      "empty": "{user} 還沒有建立任何 API token",
+      "loadFailed": "API token 清單暫時無法載入。請重新整理；若持續發生，請聯絡系統管理員。"
+    }
   },
   "permissionOverview": {
     "switchUser": "切換使用者",
@@ -9211,7 +9297,9 @@
       "approverLink": "前往審核範圍",
       "compatDefault": "一般使用者（沒有指派角色時的預設）",
       "agent": "AI agent 的權限固定，不受角色影響"
-    }
+    },
+    "apiTokens": "{user} 有 {n} 把可用的 API token，各自被授權了上面的部分或全部角色，只限管理與設定 API。",
+    "apiTokensLink": "查看 API token"
   },
   "roleNodePicker": {
     "tagScopable": "可限管理範圍",
@@ -10170,6 +10258,191 @@
         "unicode": "{char}（{code}）",
         "unknown": "未知按鍵"
       }
+    }
+  },
+  "apiTokens": {
+    "title": "API token",
+    "desc": "讓 Terraform 等工具代表你呼叫管理 API。建立時從你自己的管理角色中選擇要授權哪些，它能做的事不會超過你；只限管理與設定，不能建立連線、看錄影、調閱機敏內容，也不能解封或操作金鑰。明文只在建立時顯示一次。",
+    "create": "建立 API token",
+    "summary": {
+      "active": "可用",
+      "activeWhileDisabled": "可用（帳號停用中）",
+      "expiringSoon": "7 天內到期",
+      "inactive": "已失效"
+    },
+    "col": {
+      "name": "名稱",
+      "grantedRoles": "授權角色",
+      "status": "狀態",
+      "expiresAt": "到期時間",
+      "lastUsed": "最近使用",
+      "actions": "操作"
+    },
+    "createdAt": "建立於 {time}",
+    "fromIp": "來自 {ip}",
+    "neverUsed": "尚未使用",
+    "neverExpires": "永不到期",
+    "roleRevoked": "已收回",
+    "revokedBy": "{user} 撤銷",
+    "justCreated": "剛建立",
+    "inactiveSection": "已失效的 API token（{n}）",
+    "inactiveHint": "已到期、已撤銷或已因還原失效，留作紀錄，不能再使用",
+    "editHint": "建立後不能修改名稱、授權角色或到期時間。要調整時，請建立一把新的換到工具上，確認可用後再撤銷舊的。",
+    "roleWithScope": "{role}（{scope}）",
+    "empty": {
+      "title": "你還沒有 API token",
+      "desc": "建立一把交給 Terraform 等工具，它就能代表你呼叫管理 API。"
+    },
+    "howToChange": {
+      "title": "想改授權角色或到期時間？",
+      "body": "建立後不能修改。請按卡片右上「建立 API token」，選好新的授權與期限，把新的換到工具上、確認可用後，再回來撤銷舊的這把。"
+    },
+    "revokeAction": "撤銷",
+    "status": {
+      "active": "有效",
+      "expiring_soon": "即將到期",
+      "expiresInDays": "{n} 天後到期",
+      "expiresToday": "今天到期",
+      "expiresTomorrow": "明天到期",
+      "expired": "已到期",
+      "revoked": "已撤銷",
+      "invalidated_by_restore": "已因還原失效",
+      "suspended_account_disabled": "暫停（帳號已停用）",
+      "suspended_roles_revoked": "暫停（角色已收回）"
+    },
+    "form": {
+      "name": "名稱",
+      "namePlaceholder": "例如 terraform-prod-apply",
+      "nameHint": "寫出要用它的工具與環境，例如 terraform-prod-apply。操作日誌會記下每次呼叫用的是哪一把。",
+      "roles": "授權角色",
+      "rolesAll": "全部（{n} 個管理角色）",
+      "rolesSelected": "已選 {n} 個",
+      "scope": "範圍：{scope}",
+      "scopeAll": "全系統",
+      "rolesHint": "只能從你自己的管理角色中選；範圍跟著你的角色走，不會超過你。",
+      "rolesHintNonGrantable": "你另外持有的「{roles}」不屬於管理類角色，不能授權給 API token。",
+      "singleRole": "你只有這一個管理角色，會授權給它",
+      "expiry": "到期時間",
+      "expiryOption": {
+        "never": "永不到期",
+        "d7": "7 天",
+        "d30": "30 天",
+        "d90": "90 天",
+        "y1": "1 年",
+        "custom": "自訂日期"
+      },
+      "expiryHint": "選一個期限、指定日期，或選「永不到期」。",
+      "expiresOn": "將於 {time} 到期（{rel}），到期後自動失效。",
+      "expiresRel": {
+        "days": "{n} 天後",
+        "years": "約 {n} 年後"
+      },
+      "customDateHint": "當天 23:59:59 到期",
+      "datePlaceholder": "選擇日期",
+      "neverHint": "這個 API token 不會自動失效。不再使用時，請自己撤銷。",
+      "summaryTitle": "這個 API token 能做什麼",
+      "summaryRoles": "你選了：{roles}。",
+      "summaryRolesSuper": "你選了：管理員（全系統），也就是超級管理者能做的所有管理與設定。",
+      "summarySync": "之後若你的某個角色被收回，它也會同步失去那個角色；角色指派回來時一併恢復。",
+      "summaryNone": "還沒有選任何角色，這把 API token 什麼都不能做。",
+      "summaryScope": "只限管理與設定 API：不能建立連線、看錄影、調閱機敏內容，也不能解封或操作金鑰。",
+      "summaryCidr": "來源限制：沿用你帳號的允許來源網段（{cidrs}），只有從這些位址發出的呼叫能使用。",
+      "summaryNoCidr": "來源限制：你的帳號沒有設定允許來源網段，任何位址都能使用。需要限制時，請聯絡身分管理員為你的帳號設定。",
+      "summaryAudit": "工具用它做的每一件事，操作日誌都記在你名下，並註明用的是哪一把。",
+      "err": {
+        "name": "請輸入 API token 名稱",
+        "roles": "請至少選擇一個角色",
+        "expiry": "請選擇到期時間",
+        "customDate": "請選擇今天或之後的日期",
+        "duplicate": "你已經有同名的 API token，請換一個名稱",
+        "serverTitle": "伺服器錯誤，請稍後重試",
+        "server": "沒有建立 API token。你填的內容還在，可以直接再按一次。"
+      },
+      "privSuper": {
+        "title": "這把 API token 授權了超級管理者角色",
+        "body": "用它可以做你能做的所有管理與設定。授權角色含超級管理者，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。"
+      },
+      "privSec": {
+        "title": "這把 API token 授權了系統安全管理員角色",
+        "body": "用它可以變更全系統安全政策、通知與告警設定。授權角色含系統安全管理員，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。"
+      }
+    },
+    "reveal": {
+      "title": "API token 已建立",
+      "onceTitle": "這個 API token 只顯示這一次",
+      "onceBody": "請立即複製，交給要用它的工具保存（例如 CI 的機密變數）。關閉後無法再次取得；沒存到的話，請撤銷後重新建立一把。不要貼在聊天或文件裡：拿到它的人能以你的身分做管理操作。",
+      "testTitle": "測試這個 API token",
+      "testBody": "要確認它可用，把下面的指令貼到終端機執行。回應會列出它代表的帳號、授權角色與到期時間。",
+      "represents": "代表",
+      "self": "{user}（你本人）",
+      "neverExpires": "不會自動失效；不再使用時請自己撤銷",
+      "close": "我已保存，關閉",
+      "copied": "已複製",
+      "copyFailed": "無法複製，請在離開前手動保存。",
+      "commandCopyFailed": "無法自動複製。上方已改顯示完整指令並選取，請手動複製；離開前也要保存明文。",
+      "tokenLabel": "API token 明文",
+      "commandLabel": "測試指令"
+    },
+    "msg": {
+      "created": "已建立 API token「{name}」",
+      "revoked": "已撤銷 API token「{name}」",
+      "revokedAll": "已撤銷 {n} 個 API token"
+    },
+    "revoke": {
+      "confirm": "確定要撤銷「{name}」嗎？此操作無法復原。",
+      "confirmOther": "確定要撤銷 {user} 的「{name}」嗎？此操作無法復原。",
+      "usedTitle": "用這把的工具會立即無法呼叫管理 API",
+      "usedTitleOther": "{user} 用這把設定的工具會立即無法呼叫管理 API",
+      "usedBody": "這個 API token 最近使用：{time}，來自 {ip}，可能仍有工具在用。撤銷後，用它發出的呼叫都會被拒絕；要繼續使用，請先建立新的並換上。",
+      "usedBodyNoIp": "這個 API token 最近使用：{time}，可能仍有工具在用。撤銷後，用它發出的呼叫都會被拒絕；要繼續使用，請先建立新的並換上。",
+      "usedBodyOther": "這個 API token 最近使用：{time}，來自 {ip}。{user} 會在個人資料頁看到這把被你撤銷；要繼續使用，得由本人重新建立。",
+      "usedBodyOtherNoIp": "這個 API token 最近使用：{time}。{user} 會在個人資料頁看到這把被你撤銷；要繼續使用，得由本人重新建立。",
+      "unusedTitle": "這個 API token 尚未使用過",
+      "unusedBody": "撤銷後就不能再用；如果某個工具剛設定好還沒執行，它第一次呼叫就會被拒絕。",
+      "reason": "撤銷原因（選填，會留在紀錄裡）",
+      "reasonOther": "撤銷原因（選填，{user} 與稽核紀錄都看得到）",
+      "reasonPlaceholder": "例如：CI 流程已改用新的 API token",
+      "reasonPlaceholderOther": "例如：來源位址異常，先撤銷再確認",
+      "submit": "撤銷 API token",
+      "failedTitle": "伺服器錯誤，請稍後重試",
+      "failedKept": "這個 API token 沒有被撤銷，仍可使用。",
+      "failedRefreshed": "清單已重新整理，請確認這個 API token 目前的狀態。"
+    },
+    "revokeAll": {
+      "button": "撤銷全部 API token",
+      "confirm": "確定要撤銷 {user} 的全部 {n} 個可用 API token 嗎？此操作無法復原。",
+      "title": "{user} 用這些 API token 設定的工具會全部立即停止",
+      "body": "{names}。已到期或已撤銷的不受影響。{user} 仍能登入畫面，也能再建立新的；要連登入一起停，請停用帳號。",
+      "neverNote": "（其中 {names} 永不到期）",
+      "reasonPlaceholder": "例如：疑似外流，全部撤銷",
+      "failedKept": "API token 沒有被撤銷，仍可使用。",
+      "failedRefreshed": "清單已重新整理，請確認各 API token 目前的狀態。"
+    },
+    "noPerm": {
+      "intro": "API token 讓 Terraform 等工具代表本人呼叫管理 API，只開放給有管理權限的人（例如資產管理員、授權管理員、身分管理員）。",
+      "title": "你目前沒有管理權限，不能建立 API token",
+      "body": "你的角色是「{role}」。如果工作上需要讓工具代表你做管理操作，請向身分管理員或超級管理者申請管理角色；取得後，這裡就會出現「建立 API token」。"
+    },
+    "agentOwner": {
+      "hint": "AI agent 不用 API token：它用自己的鑰匙，在「我的 agent」管理。API token 只代表你本人。",
+      "link": "前往我的 agent"
+    },
+    "rolesRevoked": {
+      "title": "你的管理角色已被收回，API token 暫停使用",
+      "body": "{roles}已從你的帳號收回，下列 {n} 把 API token 授權的角色都不在了，目前什麼都不能做，你也不能建立新的。重新取得角色後，它們會自動恢復該角色並可再使用；確定不再需要的，請撤銷。若工作上仍需要，請向身分管理員或超級管理者申請恢復角色。"
+    },
+    "restored": {
+      "title": "系統已從備份還原，還原前建立的 API token 全部失效",
+      "body": "還原時間：{time}。工具若仍在用舊的 API token，呼叫會被拒絕。請建立新的 API token，並更新到要用它的工具。",
+      "bodyNoTime": "工具若仍在用舊的 API token，呼叫會被拒絕。請建立新的 API token，並更新到要用它的工具。"
+    },
+    "allInactive": {
+      "title": "你目前沒有可用的 API token",
+      "body": "用過的工具現在都無法呼叫管理 API。要恢復，請建立新的 API token 並換到工具上。"
+    },
+    "loadFailed": {
+      "title": "API token 清單暫時無法載入",
+      "body": "這不代表你沒有 API token。請重新整理；若持續發生，請聯絡系統管理員。"
     }
   }
 }

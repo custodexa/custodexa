@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-08（`POST /auth/mfa/setup` 新增選填 `code`：已啟用 MFA 時必填，新增錯誤碼 `RULE_MFA_CURRENT_CODE_REQUIRED`；檔案端點與傳輸能力查詢端點新增來源網段限制的 403 `AUTH_SOURCE_NOT_ALLOWED`；連線申請：提出申請須先持有常設連線權限，新增 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，`reason` 段與 agent 的 `open` 段自動核准限於常設帳號範圍、超出者維持 pending，破窗票證帳號範圍同限，核准與拒絕的自核判定擴及執行者 agent 的擁有者；檢查點驗證：區間狀態新增 `rows_hidden`，鏈報告新增 `trim_disclosure`、`trim_unverified_segments`、`trim_paused`；終端新增通知碼 `RULE_COMMAND_BLOCKED_MULTILINE`，`run_command` 只收單行。路由未變）
+> 最後更新：2026-11-14（個人 API token：新增七條路由，本人的列表、建立、撤銷，管理端的列表、單把撤銷、全部撤銷，以及以 token 自我檢查的 `GET /api-tokens/verify`；認證機制新增「個人 API token」一節；新增錯誤碼 `NOTFOUND_API_TOKEN`；審計動作 `api_token_revoked`、審計資源 `api_token`；系統告警類型 `privileged_api_token_created`；稽核列表、詳情與調查工作台的操作日誌事件新增 `api_token_id`、`api_token_name`，詳情另附 `api_token` 物件，列表新增查詢參數 `api_token_id`；角色指派預覽新增 `api_tokens`（以 API token 呼叫時不附；受影響的 token 含恢復角色者，帶 `regains_roles`、`becomes_active`）；高權限告警參數 `expiry`。路由新增七條）
+> 前次更新：2026-11-08（`POST /auth/mfa/setup` 新增選填 `code`：已啟用 MFA 時必填，新增錯誤碼 `RULE_MFA_CURRENT_CODE_REQUIRED`；檔案端點與傳輸能力查詢端點新增來源網段限制的 403 `AUTH_SOURCE_NOT_ALLOWED`；連線申請：提出申請須先持有常設連線權限，新增 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，`reason` 段與 agent 的 `open` 段自動核准限於常設帳號範圍、超出者維持 pending，破窗票證帳號範圍同限，核准與拒絕的自核判定擴及執行者 agent 的擁有者；檢查點驗證：區間狀態新增 `rows_hidden`，鏈報告新增 `trim_disclosure`、`trim_unverified_segments`、`trim_paused`；終端新增通知碼 `RULE_COMMAND_BLOCKED_MULTILINE`，`run_command` 只收單行。路由未變）
 > 前次更新：2026-11-06（連線簽發段補列錄影與鍵盤紀錄前置檢查被拒的錯誤碼 `RULE_RECORDING_UNAVAILABLE`、`RULE_KEYSTROKE_UNAVAILABLE`，不動路由；此前：安全政策段補 `retention_keystroke_days` 並把資料保留鍵的計數由四個改為五個，不動路由）
 > 前次更新：2026-11-05（鍵盤紀錄查看：新增 `GET /sessions/:id/keystrokes`（中繼資料，不解密）與 `POST /sessions/:id/keystrokes/view`（帶理由查看內容），皆需新權限點 `keystroke:view`（稽核組、僅全域指派生效，內建稽核員範本含此權限點）；新增錯誤碼 `VALIDATION_KEYSTROKE_REASON_REQUIRED`、`VALIDATION_KEYSTROKE_REASON_TOO_LONG`、`RESOURCE_KEYSTROKE_NOT_VIEWABLE`、`RULE_KEYSTROKE_VAULT_SEALED`、`RULE_KEYSTROKE_RECORD_REJECTED`、`INTERNAL_KEYSTROKE_VIEW`；審計資源 `keystroke_record`；揭露告警來源類別 `keystroke_record`。路由新增兩條）
 > 前次更新：2026-11-04（盤點的兩條讀取 `GET /assets/:id/account-inventory` 與 `GET /account-inventory/findings` 的可視範圍改與資產詳情、資產列表相同；此前：堡壘機專用帳號的測試登入與盤點接上專用帳號：新增 `POST`／`GET /assets/:id/executor/login-check`，需 `asset:executor-manage`，發起一次登入與改密權限檢查並讀取最近一次結果；新增 9 個結果碼與 4 個 HTTP 錯誤碼、審計動作 `executor_login_check` 與 `executor_login_check_done`；有專用帳號的資產，盤點改以專用帳號登入並在非 root 時經提權讀取 sudo 規則，盤點發起新增 3 個錯誤碼、結束原因碼增為 16 個、檢查範圍原因增為 `via_escalation` 與 `escalation_denied`；`GET /assets/:id/account-inventory` 的回應新增頂層 `next_identity` 與盤點紀錄的 `identity_username`；`host_key_mismatch` 的 `path` 多一個值 `executor_login_check`，`unmanaged_privileged_account` 的 `identity_mode` 多一個值 `executor`。新增資料表 `executor_login_checks`，見資料庫規格。路由新增兩條）
@@ -190,6 +191,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/alert-rules` | always |
 | DELETE | `/api/v1/alert-rules/:id` | always |
 | PUT | `/api/v1/alert-rules/:id` | always |
+| GET | `/api/v1/api-tokens/verify` | always |
 | GET | `/api/v1/approver-scopes` | always |
 | POST | `/api/v1/approver-scopes` | always |
 | DELETE | `/api/v1/approver-scopes/:id` | always |
@@ -373,6 +375,9 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/mcp` | always |
 | GET | `/api/v1/my/agents` | always |
 | POST | `/api/v1/my/agents` | always |
+| GET | `/api/v1/my/api-tokens` | always |
+| POST | `/api/v1/my/api-tokens` | always |
+| DELETE | `/api/v1/my/api-tokens/:id` | always |
 | GET | `/api/v1/my/connections` | always |
 | POST | `/api/v1/my/connections/:id/terminate` | always |
 | GET | `/api/v1/notification-channels` | always |
@@ -495,6 +500,9 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/users/:id/agent-tokens` | always |
 | POST | `/api/v1/users/:id/agent-tokens` | always |
 | DELETE | `/api/v1/users/:id/agent-tokens/:tokenId` | always |
+| GET | `/api/v1/users/:id/api-tokens` | always |
+| DELETE | `/api/v1/users/:id/api-tokens/:tokenId` | always |
+| POST | `/api/v1/users/:id/api-tokens/revoke-all` | always |
 | GET | `/api/v1/users/:id/external-identities` | always |
 | POST | `/api/v1/users/:id/external-identities` | always |
 | DELETE | `/api/v1/users/:id/external-identities/:identityId` | always |
@@ -582,6 +590,19 @@ refresh cookie，重新載入即無從恢復，使用者每次重新載入都要
 細粒度權限檢查（`RequirePermission`）**無條件掛載**——權限檢查沒有開關，於所有模式生效；
 關閉時對應端點僅需登入。各端點所需的權限點以其「權限」說明為準；部分端點在 handler 內另有超級管理者判定，說明中會註明。
 **例外**：session 敏感讀取端點——列表 `GET /sessions`、詳情 `GET /sessions/:id`、活動 `/sessions/active`、統計 `/sessions/statistics`、per-session 指令 `GET /sessions/:id/commands`——無條件要求 `session:view`，不受此開關影響（安全敏感讀取無 debug 旁路；`POST /sessions/:id/terminate` 等寫入維持開關行為）。
+
+
+### 個人 API token
+
+人類帳號可替程式化工具（例如基礎設施即程式碼的工具）建立個人 API token，以本人的部分管理角色呼叫管理 API。
+
+- **Header**：`Authorization: Bearer cxp_...`，與 JWT 共用同一個 header，以前綴區分。
+- **授權**：建立時勾選本人持有的管理類角色；每次請求以「授權角色」與「所屬帳號當下仍持有的角色」的交集為限定解析請求主體，所屬帳號失去某角色後該角色即不再生效，恢復後隨之恢復。
+- **開放範圍**：只有登錄為開放的管理端點可用 token 呼叫；其餘端點（含登入、自助改密、兩步驟驗證、連線入口與 token 自身的管理端點）一律回 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`。以 token 變更所屬帳號本人的受限項目（密碼、兩步驟驗證、來源網段、角色等）回 403 `AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN`。
+- **認證失敗**：不存在、已撤銷、已到期、因備份還原失效、所屬帳號停用或刪除、來源不在所屬帳號允許網段，對外一律回與其他無效 token 相同的 401；真實原因只記在稽核側，沿用未認證請求的有界匿名留痕（同來源大量失敗會限流並聚合成摘要列）。
+- **明文只出現一次**：建立回應（201，帶 `Cache-Control: no-store`）的 `token` 是唯一一次回傳明文；伺服端只存雜湊，任何列表、詳情、稽核與告警都不含明文或雜湊。
+- **稽核歸因**：以 token 進行的操作，該次請求落地的每一筆稽核列都帶 `api_token_id` 與寫入當下的 `api_token_name`，兩欄納入逐列完整性驗證；親自在畫面操作的列不帶這兩個鍵。排程日後執行的工作所產生的列不帶。
+- **高權限告警**：授權角色含超級管理者或系統安全管理員時，建立的同一交易產生系統告警 `privileged_api_token_created`（預設 high，可覆寫分級）。參數為 `actor`、`privileged_roles`、`token_name`、`granted_roles`、`expiry`（`at` 或 `never`），`expiry` 為 `at` 時另帶 `expires_at`（RFC 3339）；通知文案依 `expiry` 寫出到期時刻或「永不到期」。參數不含明文或雜湊。
 
 ---
 
@@ -4411,6 +4432,30 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 - 自助建立在同一交易內鎖 owner、重讀政策與資格、計數並建立主體；主體投影稽核維持 system actor，另以 owner 為 actor 留 self_service=true、purpose 與兩政策值的建立活動列。任何交易失敗均不留下帳號或上述稽核列。管理員建立不帶 self_service 旗標。無 schema 或 migration 變更。
 
 
+
+## 個人 API token API
+
+TokenView：`{id, user_id, name, status, granted_roles, privileged, created_at, expires_at, last_used_at, last_used_ip, revoked_at, revoked_by, revoke_note}`。
+`status` 為 `active`、`expiring_soon`、`expired`、`revoked`、`invalidated_by_restore`、`suspended_account_disabled`、`suspended_roles_revoked` 之一。
+`granted_roles` 每項為 `{role_id, name, builtin_key, effective, scope}`：`effective` 表示所屬帳號目前是否仍持有此角色；`scope` 為 `{"kind": "global"}` 或 `{"kind": "nodes", "nodes": [{"id", "name"}]}`，不生效時為 `null`。`revoked_by` 為 `{user_id, username}` 或 `null`。授權角色已被刪除時仍列出，`effective` 為 `false`；`name` 通常是刪除前的名稱，但原名接近名稱長度上限（50 字）時，刪除當下為了釋出名稱已截去尾端，這時只會顯示原名的前段。
+
+| 端點 | 權限 | 請求 | 成功回應 | 失敗 |
+|---|---|---|---|---|
+| `GET /my/api-tokens` | 登入即可（人類工作階段） | — | 200 `{"data": [TokenView], "eligibility": {...}, "restore": {"invalidated_count", "restored_at"}}` | — |
+| `POST /my/api-tokens` | 同上 | `{"name", "role_ids", "expires_at"}` 或 `{"name", "role_ids", "never_expires": true}`，兩種到期恰擇一 | 201 TokenView 加 `token`（明文，僅此一次） | 400 `API_TOKEN_NAME_INVALID`、`API_TOKEN_ROLE_REQUIRED`、`API_TOKEN_ROLE_NOT_GRANTABLE`、`API_TOKEN_EXPIRY_REQUIRED`、`API_TOKEN_EXPIRY_INVALID`；403 `API_TOKEN_NOT_ELIGIBLE`；409 `CONFLICT_API_TOKEN_NAME` |
+| `DELETE /my/api-tokens/:id` | 同上 | 可帶 `{"note"}`（至多 2000 字元） | 204 | 400 `VALIDATION_BAD_PARAMS`（本文不是合法 JSON）；404 `NOTFOUND_API_TOKEN`（不是自己的、不存在與識別不合法同形） |
+| `GET /users/:id/api-tokens` | `user:manage` | — | 200 `{"data": [TokenView], "can_revoke", "protected", "account_active"}` | 404 `NOTFOUND_USER` |
+| `DELETE /users/:id/api-tokens/:tokenId` | `user:manage` | 可帶 `{"note"}` | 204 | 403 `AUTH_PROTECTED_ACCOUNT_OPERATION`（受保護帳號而操作者不是超級管理者）；404 `NOTFOUND_API_TOKEN`、`NOTFOUND_USER` |
+| `POST /users/:id/api-tokens/revoke-all` | `user:manage` | 可帶 `{"note"}` | 200 `{"revoked": N}` | 同上 |
+| `GET /api-tokens/verify` | 以 API token 認證 | — | 200 `{"valid": true, "token": {"id", "name", "expires_at"}, "user": {"id", "username"}, "granted_roles", "effective_roles"}`，帶 `Cache-Control: no-store`；`granted_roles` 形狀同 TokenView，`effective_roles` 為其中 `effective` 為真者 | 以人類工作階段呼叫回 403 `AUTH_PERMISSION_DENIED`；token 無效回 401（與其他認證失敗相同） |
+
+- `API_TOKEN_EXPIRY_INVALID`：到期時刻不在未來，或同時送出 `expires_at` 與 `never_expires: true`。
+- `eligibility`：`can_create`、`reason`（不能建立時為 `no_management_role` 或 `not_human`）、`grantable_roles`、`non_grantable_roles`（本人持有但不屬管理類、不能授權的角色）、`allowed_cidrs`。
+- `restore`：備份還原後，還原前建立的 token 全部失效；`invalidated_count` 為因此失效的把數，`restored_at` 為最近一次還原完成的時刻（未還原過為 `null`）。
+- 受保護帳號（持有超級管理者或系統安全管理員角色）的 token 只有超級管理者能撤銷；本人一律可撤銷自己的 token。列表的 `can_revoke` 即此判定。
+- 重複撤銷回成功、不改原撤銷時間與原因、不另寫稽核。
+- 建立與撤銷各寫一筆稽核（資源 `api_token`，建立為 `create`、撤銷為 `api_token_revoked`），與建立、撤銷同交易提交，不受稽核開關影響；細節含名稱、所屬帳號、授權角色、到期與撤銷原因。
+
 ## 用戶 API
 
 > 帳號管理端點需 `user:manage`；agent token 三端點允許 human 超級管理者或該 agent 的 owner。
@@ -5651,6 +5696,8 @@ body：`{"kind": "direct_roles" | "group_roles" | "group_members" | "role_defini
 
 回應：`{total, matched, truncated, operation, subjects: [{user_id, self, assign_capable, entries_gained, entries_lost, routes_gained, routes_lost, combos, new_combos, self_direction, management_granted, marks}]}`。頂層 `operation`（`marks`、`self_direction`、`management_granted`、`routes_gained`、`routes_lost`、`entries_gained`、`entries_lost`、`evaluated`）以與寫入相同的分類函式求得，不受逐人列出條件與 100 筆上限影響。每位主體的 `routes_gained`／`routes_lost` 與前端導覽使用同一份入口規則，登入即可與依本人資格的入口不列入。測試：`TestRoleAssignmentPreviewContract`。清單只列操作者本人與變更後新命中危險組合者，上限 100 筆，其餘只計入 `total`。種類不明或對象不存在回 400 `VALIDATION_BAD_PARAMS`，失敗 500 `INTERNAL_ROLE_ASSIGNMENT_PREVIEW`。寫入路徑不要求先預覽。
 
+**個人 API token 的影響**：`direct_roles` 預覽在對象帳號有可用的個人 API token 時，回應另附 `api_tokens`：`{"total_usable", "affected": [{"id", "name", "loses_roles": [{"role_id", "name", "builtin_key"}], "regains_roles": [...], "remaining_roles": [...], "becomes_suspended", "becomes_active"}], "suspended_count", "eligible_after"}`。token 的有效角色是授權角色與帳號當下有效角色的交集，所以 `affected` 列出這次變更後失去或恢復任何授權角色的 token：`loses_roles` 是變更後不再生效的授權角色，`regains_roles` 是變更前不生效、變更後重新生效的授權角色（沒有時為空陣列），`remaining_roles` 是變更後生效的授權角色全集（含重新生效的）。`becomes_suspended` 表示變更後該 token 的授權角色全部不再生效（暫停，角色恢復後隨之恢復）；`becomes_active` 表示該 token 原本因授權角色全部不生效而暫停、變更後恢復可用（帳號停用中的不算）。`suspended_count` 是這次變更使其暫停的 token 數（變更前就已暫停的不計）；`eligible_after` 表示變更後該帳號是否仍有建立資格。失去與恢復都以變更前後帳號實際有效的角色計算：經群組或外部映射取得的角色不受直接指派變更影響，角色原本就經群組或映射有效時，加上直接指派不算恢復；帳號新增沒有任何 token 被授權的角色時，token 不會取得它，不列入。對象沒有可用 token、其他種類的預覽，或以 API token 呼叫時（查看他人 token 的端點不對 API token 開放），不出現此鍵。
+
 ---
 
 ## 授權 API
@@ -6045,6 +6092,7 @@ GET /api/v1/audit-logs
 | `client_ip` | string | 客戶端 IP |
 | `key` | string | 只看某一個安全政策設定鍵的變更列（例：`password_min_length`）；與 `resource` 併用為 AND |
 | `request_id` | string | 精確比對請求識別碼（至多 100 字元），取回同一次請求寫下的全部列；與其他條件併用為 AND |
+| `api_token_id` | uint | 只看經某一把個人 API token 進行的操作所寫的列；不是正整數回 400 `VALIDATION_BAD_PARAMS`；與其他條件併用為 AND |
 | `start_time`, `end_time` | RFC3339 | 時間範圍（含頭尾） |
 | `end_before` | RFC3339／RFC3339Nano | 排他的尾端（`created_at < end_before`），用於以所屬日的 `window_start`／`window_end` 查一整天；與 `end_time` 並存時兩條件都套用 |
 | `page`, `page_size` | int | 分頁 |
@@ -6055,6 +6103,7 @@ GET /api/v1/audit-logs
 
 **AuditLog 欄位**: `id, action, resource, resource_id, status, user_id, username, method, path,
 client_ip, status_code, duration_ms, request_body, error_msg, details, request_id, created_at`，
+經個人 API token 進行的操作另帶 `api_token_id` 與 `api_token_name`（寫入當下的名稱快照；其他列不出現這兩個鍵），
 另加 `reason_code`、`reason_params`（列表與單筆詳情皆有；語意與省略規則同每日審閱單日明細的 Event，
 見〈每日審閱簽核〉）。這兩欄是回應時計算的分類，不是審計列本身的欄位，不進完整性驗證碼，證據包的
 `audit_logs.json` 也不含；資源歷史（`/audit-logs/resource/...`）的 `logs` 不帶這兩欄。
@@ -6067,6 +6116,8 @@ client_ip, status_code, duration_ms, request_body, error_msg, details, request_i
 GET /api/v1/audit-logs/:id                        → AuditLog（不存在回 404）
 GET /api/v1/audit-logs/resource/:resource/:id     → {"resource": "asset", "resource_id": 1, "total": N, "logs": [...]}
 ```
+
+單筆詳情在帶 `api_token_id` 的列上另附 `api_token` 物件：`{"id", "name", "granted_roles": [{"role_id", "name"}], "expires_at", "owner_deleted"}`。名稱取該列的快照；授權角色與到期取自 token（建立後不變）；`owner_deleted` 表示所屬帳號已刪除，token 本身已不存在時授權角色為空陣列、`owner_deleted` 為 true。其他列不出現 `api_token` 鍵。
 
 `:resource` 僅接受 `asset`/`session`/`user`（其餘 400）。
 `recording` **不是合法樞紐型別**：該分類的
@@ -6128,6 +6179,7 @@ GET /api/v1/audit/timeline
 - **`actor`**：`{kind:"user", id, name}`，**只在位址樞紐下出現**，未認證列為缺欄。
   位址軸上多帳號的事件會混在同一軸（NAT 共用出口），每列必須同時標「誰 · 哪台」——
   `counterpart` 在位址樞紐下裝資產，人由本欄承載。
+- **`api_token_id`、`api_token_name`**：操作日誌類事件中，經個人 API token 進行的操作帶 token 識別與寫入當下的名稱快照；其他事件不出現這兩個鍵。
 
 **跨度欄（`spans[]`，僅會話類有跨度）** 同樣帶 `client_ip`（`string | null`、不設 `omitempty`）
 與 `client_ip_reason`，語義同上。

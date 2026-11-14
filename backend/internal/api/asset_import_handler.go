@@ -44,6 +44,8 @@ func respondImportError(c *gin.Context, err error) {
 	var stateErr *asset.ImportStateChangedError
 	var writeCapErr *authz.AssetWriteCapabilityError
 	switch {
+	case errors.Is(err, asset.ErrAPITokenCredentialReference):
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAPITokenCredentialReferenceForbidden, nil)
 	case errors.Is(err, asset.ErrFieldCapabilityDenied),
 		// 掛既有憑證的列缺掛載能力：與欄位能力不足同一出口，不外露缺哪一項
 		errors.Is(err, asset.ErrCredentialBindForbidden):

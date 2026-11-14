@@ -94,7 +94,7 @@ func (h *AuditFailureHandler) AcceptPermissionState(c *gin.Context) {
 	}
 	who := audit.PermissionAcceptActor{
 		Actor:   gatewayapi.Actor{UserID: c.GetUint("userID"), Username: c.GetString("username")},
-		Request: gatewayapi.RequestMeta{Method: c.Request.Method, Path: c.Request.URL.Path, ClientIP: sourceip.Of(c), RequestID: c.GetString("request_id"), StatusCode: http.StatusOK},
+		Request: middleware.AttributeAuditMeta(c, gatewayapi.RequestMeta{Method: c.Request.Method, Path: c.Request.URL.Path, ClientIP: sourceip.Of(c), RequestID: c.GetString("request_id"), StatusCode: http.StatusOK}),
 	}
 	res, err := h.permAccept.Accept(c.Request.Context(), who, req.Reason)
 	if err != nil {

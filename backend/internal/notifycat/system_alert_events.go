@@ -33,6 +33,7 @@ const (
 	EventSystemAlertNotificationChannelChanged   Event = "notification_channel_changed"
 	EventSystemAlertConcurrentInstanceDetected   Event = "concurrent_instance_detected"
 	EventSystemAlertUnmanagedPrivilegedAccount   Event = "unmanaged_privileged_account"
+	EventSystemAlertPrivilegedAPITokenCreated    Event = "privileged_api_token_created"
 )
 
 func systemAlertEventSpecs() map[Event]EventSpec {
@@ -183,6 +184,15 @@ func systemAlertEventSpecs() map[Event]EventSpec {
 			{Name: "new_count", Kind: KindInt, Required: true},
 			{Name: "identity_mode", Kind: KindEnum, Required: true, Enum: []string{"default_account", "executor"}},
 		}},
+		EventSystemAlertPrivilegedAPITokenCreated: {Params: []ParamSpec{
+			{Name: "actor", Kind: KindOpaque, Required: true},
+			{Name: "severity", Kind: KindEnum, Required: true, Enum: systemAlertSeverityEnum(), Lexicon: LexiconSeverity},
+			{Name: "privileged_roles", Kind: KindOpaque, Required: true},
+			{Name: "token_name", Kind: KindOpaque, Required: true},
+			{Name: "granted_roles", Kind: KindOpaque, Required: true},
+			{Name: "expiry", Kind: KindEnum, Required: true, Enum: []string{"at", "never"}},
+			{Name: "expires_at", Kind: KindOpaque},
+		}, VariantParam: "expiry"},
 	}
 }
 

@@ -502,7 +502,7 @@ func (h *OIDCHandler) writeOIDCAudit(c *gin.Context, events []identity.OIDCAudit
 		return
 	}
 	for _, ev := range events {
-		h.audit.Log(&audit.AuditLogEntry{
+		h.audit.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 			UserID:     ev.UserID,
 			Username:   ev.Username,
 			Action:     ev.Action,
@@ -515,7 +515,7 @@ func (h *OIDCHandler) writeOIDCAudit(c *gin.Context, events []identity.OIDCAudit
 			StatusCode: statusCode,
 			ErrorMsg:   annotateAuthSource(oidcAuditReason(ev.Details), crypto.AuthMethodOIDC),
 			Details:    ev.DetailsJSON(),
-		})
+		}))
 	}
 }
 
@@ -634,6 +634,8 @@ func (h *OIDCHandler) respondProviderError(c *gin.Context, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, identity.ErrAPITokenSelfChange):
+		respondPrincipalError(c, err)
 	case errors.Is(err, identity.ErrOIDCProviderHasMappings):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeOIDCProviderHasMappings, nil)
 	case errors.Is(err, identity.ErrOIDCProviderNotFound):

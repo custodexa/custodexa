@@ -14,6 +14,9 @@ type AuditRequest struct {
 	Method    string
 	Path      string
 	RequestID string
+	// APITokenID、APITokenName 這次請求經由的 API token（親自操作的請求為零值與空字串）
+	APITokenID   uint
+	APITokenName string
 }
 
 // auditRequestKey 具型別的 context 鍵（不用字串鍵，避免與其他套件的鍵碰撞）。

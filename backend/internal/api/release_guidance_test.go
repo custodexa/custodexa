@@ -88,7 +88,7 @@ func TestUpgradeGuidanceState(t *testing.T) {
 		b := &model.User{Username: "guid-b", Password: "x", Active: true}
 		require.NoError(t, db.Create(a).Error)
 		require.NoError(t, db.Create(b).Error)
-		op := identity.Operator{UserID: a.ID, Username: a.Username}
+		op := identity.Operator{Principal: testSessionPrincipal(a.ID), UserID: a.ID, Username: a.Username}
 
 		// 未關閉預設 false，且讀取不寫庫
 		got, err := svc.Dismissed(a.ID, identity.ReleaseGuidanceVersion)
@@ -125,7 +125,7 @@ func TestUpgradeGuidanceState(t *testing.T) {
 
 		// 審計失敗：整筆回滾，狀態不變
 		sink.fail = true
-		err = svc.Dismiss(identity.Operator{UserID: b.ID, Username: b.Username}, identity.ReleaseGuidanceVersion)
+		err = svc.Dismiss(identity.Operator{Principal: testSessionPrincipal(b.ID), UserID: b.ID, Username: b.Username}, identity.ReleaseGuidanceVersion)
 		require.Error(t, err)
 		sink.fail = false
 		other, err = svc.Dismissed(b.ID, identity.ReleaseGuidanceVersion)

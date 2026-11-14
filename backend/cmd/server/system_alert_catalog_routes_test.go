@@ -171,14 +171,14 @@ func runSystemAlertCatalogRouteCases(t *testing.T) {
 		}
 	})
 
-	t.Run("目錄得 20 種且與登錄一致，筆數只在具稽核檢視時出現", func(t *testing.T) {
+	t.Run("目錄得 21 種且與登錄一致，筆數只在具稽核檢視時出現", func(t *testing.T) {
 		db, _, h := newEnv(t)
 		var want []string
 		for _, d := range audit.SystemAlertCatalog() {
 			want = append(want, string(d.Type))
 		}
-		if len(want) != 20 {
-			t.Fatalf("登錄應為 20 種，實為 %d", len(want))
+		if len(want) != 21 {
+			t.Fatalf("登錄應為 21 種，實為 %d", len(want))
 		}
 		if err := db.Create(&model.SystemAlertSeverityOverride{AlertType: "management_role_granted", Severity: "low", UpdatedBy: 1}).Error; err != nil {
 			t.Fatal(err)
@@ -201,8 +201,8 @@ func runSystemAlertCatalogRouteCases(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &withAudit); err != nil || w.Code != 200 {
 			t.Fatalf("解析失敗 %d %v", w.Code, err)
 		}
-		if len(withoutAudit.Types) != 20 || len(withAudit.Types) != 20 {
-			t.Fatalf("目錄筆數 %d／%d，應皆為 20", len(withoutAudit.Types), len(withAudit.Types))
+		if len(withoutAudit.Types) != 21 || len(withAudit.Types) != 21 {
+			t.Fatalf("目錄筆數 %d／%d，應皆為 21", len(withoutAudit.Types), len(withAudit.Types))
 		}
 		for i, k := range want {
 			if withoutAudit.Types[i].Key != k || withAudit.Types[i].Key != k {

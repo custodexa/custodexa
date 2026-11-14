@@ -291,6 +291,21 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "identity_mode", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"default_account", "executor"}},
 			},
 		},
+		{
+			// 建立的個人 API token 授權角色含超級管理者或系統安全管理員；目標為建立者本人。
+			// 參數不含明文或雜湊；角色以內建鍵或自訂角色名稱、半形逗號分隔；expiry 為 at（另帶到期時刻）或 never
+			Type:            port.SystemAlertPrivilegedAPITokenCreated,
+			Group:           SystemAlertGroupIdentityPrivilege,
+			DefaultSeverity: model.AlertSeverityHigh,
+			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetUser},
+			Params: []SystemAlertParamSpec{
+				{Name: "privileged_roles", Kind: SystemAlertParamOpaque, Required: true},
+				{Name: "token_name", Kind: SystemAlertParamOpaque, Required: true},
+				{Name: "granted_roles", Kind: SystemAlertParamOpaque, Required: true},
+				{Name: "expiry", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"at", "never"}},
+				{Name: "expires_at", Kind: SystemAlertParamOpaque, Required: false},
+			},
+		},
 	}
 }
 

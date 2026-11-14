@@ -101,6 +101,7 @@
           :subject-type="subject"
           @update:model-value="onSubjectValue"
           @change="onSubjectPicked"
+          @resolve="onSubjectResolved"
         />
 
         <el-date-picker
@@ -284,6 +285,7 @@
           :events="events"
           :spans="spans"
           :subject="subject"
+          :subject-name="subjectName"
           :focus-id="focus"
           :from="from"
           :to="to"
@@ -329,6 +331,7 @@
             :load-error="loadMoreFailed"
             :gutter="GUTTER"
             :subject="subject"
+            :subject-name="subjectName"
             :types="types"
             @load-more="loadMore"
             @open-session="openSessionByEvent"
@@ -588,6 +591,11 @@ const exportDisabledKey = computed(() =>
 const picked = ref(null)
 const onSubjectPicked = (option) => {
   picked.value = option || null
+}
+// 深連結：選擇器載入後對上的選項只補名字，不覆蓋使用者之後的挑選
+const onSubjectResolved = (option) => {
+  if (!option || picked.value) return
+  picked.value = option
 }
 
 // 選擇器對三個樞紐共用，但主體鍵的型別不同：位址是字串、人與資產是整數。

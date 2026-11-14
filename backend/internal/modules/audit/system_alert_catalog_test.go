@@ -34,6 +34,13 @@ var frozenSystemAlertTable = map[port.SystemAlertType][2]string{
 	port.SystemAlertNotificationChannelChanged:   {"notification", "high"},
 	port.SystemAlertConcurrentInstanceDetected:   {"security_settings", "high"},
 	port.SystemAlertUnmanagedPrivilegedAccount:   {"identity_privilege", "high"},
+	port.SystemAlertPrivilegedAPITokenCreated:    {"identity_privilege", "high"},
+}
+
+// nonSecretParamNames 名稱含秘密字樣但值不是秘密的參數：逐一列出並寫明理由，不放寬字樣判準本身。
+var nonSecretParamNames = map[string]bool{
+	// API token 的顯示名稱（使用者自訂的標籤），不是 token 明文或雜湊
+	"token_name": true,
 }
 
 // sampleSystemAlertParams 依宣告為每個參數造一個合法值（可選參數也填，讓模板的可選段都走一遍）。
@@ -85,7 +92,7 @@ func TestSystemAlertCatalogRegistry(t *testing.T) {
 			lower := strings.ToLower(p.Name)
 			for _, bad := range []string{"password", "secret", "token", "private_key"} {
 				isBool := p.Kind == SystemAlertParamEnum && strings.Join(p.Enum, ",") == "true,false"
-				if strings.Contains(lower, bad) && !isBool {
+				if strings.Contains(lower, bad) && !isBool && !nonSecretParamNames[p.Name] {
 					t.Errorf("%s 的參數 %s 看起來是秘密型", d.Type, p.Name)
 				}
 			}
@@ -94,7 +101,7 @@ func TestSystemAlertCatalogRegistry(t *testing.T) {
 			}
 		}
 	}
-	if groups["address_transport"] != 5 || groups["secret"] != 1 || groups["identity_privilege"] != 6 ||
+	if groups["address_transport"] != 5 || groups["secret"] != 1 || groups["identity_privilege"] != 7 ||
 		groups["security_settings"] != 7 || groups["notification"] != 1 {
 		t.Errorf("分組計數不符: %v", groups)
 	}

@@ -305,7 +305,7 @@ func (h *AuditExportHandler) auditJob(c *gin.Context, action model.AuditAction,
 	}
 	userID, _ := middleware.GetCurrentUserID(c)
 	username, _ := middleware.GetCurrentUsername(c)
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     action,
@@ -317,7 +317,7 @@ func (h *AuditExportHandler) auditJob(c *gin.Context, action model.AuditAction,
 		ClientIP:   sourceip.Of(c),
 		StatusCode: c.Writer.Status(),
 		ErrorMsg:   msg,
-	})
+	}))
 }
 
 // exportFilterAuditSnapshot 篩選快照的審計字串（鍵序穩定，兩次發起可比對）

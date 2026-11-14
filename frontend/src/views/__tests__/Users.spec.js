@@ -90,6 +90,11 @@ vi.mock('@/api/user', () => ({
   unbindExternalIdentityAndDisable: vi.fn(),
 }))
 
+const getUserApiTokensMock = vi.fn().mockResolvedValue({ data: [] })
+vi.mock('@/api/apiTokens', () => ({
+  getUserApiTokens: (...a) => getUserApiTokensMock(...a),
+}))
+
 vi.mock('@/api/oidc', () => ({
   getOIDCProviders: vi.fn().mockResolvedValue({ data: [] }),
 }))
@@ -1020,6 +1025,26 @@ describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
     expect(text).toContain('Azure AD')
   })
 
+  it('有可用的 API token：刪除框寫出幾把會一併失效；agent 不查詢', async () => {
+    getUserApiTokensMock.mockResolvedValueOnce({ data: [{ status: 'active' }, { status: 'expiring_soon' }, { status: 'revoked' }] })
+    const text = await confirmText(deleteAccount, { id: 9, username: 'dave', provisioning_origin: 'local', external_credential: false })
+    expect(getUserApiTokensMock).toHaveBeenCalledWith(9)
+    expect(text).toContain('這個帳號的 2 個可用 API token 會一併失效')
+
+    getUserApiTokensMock.mockClear()
+    const agentText = await confirmText(deleteAccount, { id: 8, username: 'bot', kind: 'agent' })
+    expect(getUserApiTokensMock).not.toHaveBeenCalled()
+    expect(agentText).not.toContain('API token')
+  })
+
+  it('讀不到 API token：照原本的刪除框，不擋刪除', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    getUserApiTokensMock.mockRejectedValueOnce(new Error('500'))
+    const text = await confirmText(deleteAccount, { id: 9, username: 'dave', provisioning_origin: 'local', external_credential: false })
+    expect(text).toContain('刪除後無法復原')
+    expect(text).not.toContain('API token')
+  })
+
   it('經身分提供者建立的帳號：停用 MFA 框不說「只需密碼」', async () => {
     const text = await confirmText(disableAccountMfa, {
       id: 10,
@@ -1030,6 +1055,135 @@ describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
     })
     expect(text).toContain('經身分提供者登入')
     expect(text).not.toContain('只需密碼')
+  })
+})
+
+describe('Users 展開列：API token 摘要', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getUserListMock.mockResolvedValue(sampleUsers)
+    getRoleListMock.mockResolvedValue({ data: [] })
+  })
+
+  it('第一次展開時讀一次，列出可用把數與最近使用；再次展開不重讀', async () => {
+    getUserApiTokensMock.mockResolvedValue({
+      data: [
+        { status: 'active', last_used_at: '2026-11-13T05:58:02Z' },
+        { status: 'revoked', last_used_at: '2025-09-29T00:12:19Z' },
+      ],
+    })
+    const w = mountView()
+    await flushPromises()
+    const row = sampleUsers.data[0]
+    w.vm.onExpandChange(row, [row])
+    await flushPromises()
+    w.vm.onExpandChange(row, [row])
+    await flushPromises()
+    expect(getUserApiTokensMock).toHaveBeenCalledTimes(1)
+    expect(w.vm.tokenInfo[7]).toEqual({ state: 'ok', total: 2, usable: 1, lastUsed: '2026-11-13T05:58:02Z' })
+  })
+
+  it('收合、agent 不讀；讀取失敗記為失敗，展開列不顯示這一項', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const w = mountView()
+    await flushPromises()
+    w.vm.onExpandChange({ id: 7 }, [])
+    w.vm.onExpandChange({ id: 8, kind: 'agent' }, [{ id: 8, kind: 'agent' }])
+    expect(getUserApiTokensMock).not.toHaveBeenCalled()
+    getUserApiTokensMock.mockRejectedValueOnce(new Error('500'))
+    const row = { id: 11, kind: 'human' }
+    w.vm.onExpandChange(row, [row])
+    await flushPromises()
+    expect(w.vm.tokenInfo[11]).toEqual({ state: 'failed' })
+  })
+})
+
+// 展開列的畫面層：點開箭頭後摘要真的出現在展開區塊裡，失敗時該項不出現但展開區塊其他內容照常
+describe('Users 展開列：API token 摘要的畫面呈現', () => {
+  const human = { id: 7, username: 'carol', kind: 'human', active: true, roles: [{ name: 'user' }], created_at: '2026-07-01T10:00:00+08:00' }
+  const agent = { id: 8, username: 'bot', kind: 'agent', active: true, roles: [] }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getRoleListMock.mockResolvedValue({ data: [] })
+    getUserApiTokensMock.mockReset()
+    getUserApiTokensMock.mockResolvedValue({ data: [] })
+  })
+  // 本組改過讀取替身的實作，結束時放回預設，避免影響後面的測試組
+  afterEach(() => {
+    getUserApiTokensMock.mockReset()
+    getUserApiTokensMock.mockResolvedValue({ data: [] })
+  })
+
+  const expandFirst = async (w, index = 0) => {
+    await w.findAll('.el-table__expand-icon')[index].trigger('click')
+    await flushPromises()
+  }
+  const squash = (text) => text.replace(/[\s\u00a0\u202f]+/g, ' ').trim()
+
+  it('點開箭頭：展開區塊出現 API token 一行，寫出可用把數、最近使用與查看連結', async () => {
+    getUserListMock.mockResolvedValue({ data: [human], total: 1 })
+    getUserApiTokensMock.mockResolvedValue({
+      data: [
+        { id: 1, status: 'active', last_used_at: '2026-11-13T05:58:02Z' },
+        { id: 2, status: 'expiring_soon', last_used_at: null },
+        { id: 3, status: 'revoked', last_used_at: '2025-09-29T00:12:19Z' },
+      ],
+    })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="row-api-tokens"]').exists()).toBe(false)
+    await expandFirst(w)
+    expect(getUserApiTokensMock).toHaveBeenCalledWith(7)
+    const item = w.get('[data-test="row-api-tokens"]')
+    expect(item.text()).toContain('API token')
+    // 摘要句含時間與連結，佔滿一整列才不會在窄格裡拆行
+    expect(item.classes()).toContain('row-detail__item--wide')
+    const value = squash(w.get('[data-test="row-api-tokens-value"]').text())
+    expect(value).toContain('2 把可用 · 最近使用')
+    expect(value).not.toBe('')
+    const link = w.get('[data-test="row-api-tokens-link"]')
+    expect(link.text()).toBe('查看與撤銷')
+    expect(link.attributes('href')).toBe('/users/7?tab=apiTokens')
+  })
+
+  it('從沒用過：寫尚未使用；沒有任何 token：寫無且不給連結', async () => {
+    getUserListMock.mockResolvedValue({ data: [human, { ...human, id: 9, username: 'dave' }], total: 2 })
+    getUserApiTokensMock.mockImplementation(async (id) =>
+      id === 7 ? { data: [{ id: 1, status: 'active', last_used_at: null }] } : { data: [] })
+    const w = mountView()
+    await flushPromises()
+    await expandFirst(w, 0)
+    await expandFirst(w, 1)
+    const items = w.findAll('[data-test="row-api-tokens"]')
+    expect(items).toHaveLength(2)
+    expect(squash(items[0].text())).toContain('1 把可用 · 尚未使用')
+    expect(squash(items[1].get('.row-detail__value').text())).toBe('無')
+    expect(items[1].find('[data-test="row-api-tokens-link"]').exists()).toBe(false)
+  })
+
+  it('讀取失敗：展開區塊照常顯示其他項，API token 一行不出現；收合再展開會重讀並顯示', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    getUserListMock.mockResolvedValue({ data: [human], total: 1 })
+    getUserApiTokensMock.mockRejectedValueOnce(new Error('500'))
+    const w = mountView()
+    await flushPromises()
+    await expandFirst(w)
+    expect(w.find('.row-detail').exists()).toBe(true)
+    expect(w.find('[data-test="row-api-tokens"]').exists()).toBe(false)
+    getUserApiTokensMock.mockResolvedValueOnce({ data: [{ id: 1, status: 'active', last_used_at: null }] })
+    await expandFirst(w)
+    await expandFirst(w)
+    expect(getUserApiTokensMock).toHaveBeenCalledTimes(2)
+    expect(squash(w.get('[data-test="row-api-tokens-value"]').text())).toBe('1 把可用 · 尚未使用')
+  })
+
+  it('AI agent 列：展開不讀也不顯示 API token 一行', async () => {
+    getUserListMock.mockResolvedValue({ data: [agent], total: 1 })
+    const w = mountView()
+    await flushPromises()
+    await expandFirst(w)
+    expect(getUserApiTokensMock).not.toHaveBeenCalled()
+    expect(w.find('[data-test="row-api-tokens"]').exists()).toBe(false)
   })
 })
 

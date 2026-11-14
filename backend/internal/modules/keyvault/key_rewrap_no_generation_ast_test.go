@@ -595,6 +595,7 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 	{File: "cmd/server/instance_guard_startup_alert.go", Func: "newStartupCorrelationID",
 		Reason: "啟動時並行實例系統告警的關聯識別（16 bytes hex，寫入告警參數供追溯），非加密材料、從不安裝為 KEK。"},
 	{File: "internal/modules/identity/agent_token_service.go", Func: "GenerateAgentToken", Reason: "32 bytes 產生 agent bearer 憑證的隨機值，持久化只存 SHA-256；不參與加解密、從不安裝為 KEK。"},
+	{File: "internal/modules/identity/api_token_service.go", Func: "GenerateAPIToken", Reason: "32 bytes 產生個人 API token 的隨機值，持久化只存 SHA-256；不參與加解密、從不安裝為 KEK。"},
 	{File: "pkg/crypto/gcpkms/provider.go", Func: "newProvider",
 		Reason: "Generates a disposable 32-byte preflight canary to verify remote encrypt/decrypt permissions and integrity; it is never installed as a KEK and both canary buffers are cleared."},
 	{File: "pkg/crypto/vaulttransit/provider.go", Func: "Preflight",

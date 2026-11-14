@@ -236,7 +236,7 @@ func (r *ChangeSecretRunner) runPlan(base context.Context, plan *model.ChangeSec
 		return nil
 	}
 	if manual {
-		if reason := r.recordManualRunAuthorization(&job, plan); reason != "" {
+		if reason := r.recordManualRunAuthorization(base, &job, plan); reason != "" {
 			r.stopJob(job, reason)
 			return nil
 		}
@@ -257,11 +257,14 @@ func (r *ChangeSecretRunner) runPlan(base context.Context, plan *model.ChangeSec
 // 首次判定未通過（失權或無從判定）就以該原因停止，不交給之後的逐台重驗——首次判定出錯不代表
 // 第二次也會出錯，若放行到逐台重驗而那次通過，候選會以零引用送出，背景重試再以缺脈絡停下。
 // 存列失敗同樣停止，不送出無脈絡的候選。
-func (r *ChangeSecretRunner) recordManualRunAuthorization(job *rotationJob, plan *model.ChangeSecretPlan) string {
+//
+// 判定在點擊者的請求脈絡上進行（保留請求主體與請求憑證種類，不取得背景標示）；執行在請求結束後
+// 才完成，故去掉請求的取消。
+func (r *ChangeSecretRunner) recordManualRunAuthorization(base context.Context, job *rotationJob, plan *model.ChangeSecretPlan) string {
 	if job.initiatorID == 0 {
 		return model.ChangeSecretReasonAuthzContextMissing
 	}
-	ctx := contextWithInitiator(context.Background(), job.initiatorID, job.initiatorName)
+	ctx := contextWithRequestActor(context.WithoutCancel(base), job.initiatorID, job.initiatorName)
 	credentialIDs, assetIDs := planRunTargets(plan)
 	decision, reason := requirePlanRun(r.mgmt, ctx, r.db, job.targetKind, credentialIDs, assetIDs, nil)
 	if reason != "" {
@@ -321,7 +324,7 @@ func (r *ChangeSecretRunner) revalidateTarget(job rotationJob, assetIDs, account
 	if job.initiatorID == 0 {
 		return model.ChangeSecretReasonAuthzContextMissing, false
 	}
-	ctx := contextWithInitiator(context.Background(), job.initiatorID, job.initiatorName)
+	ctx := backgroundInitiatorContext(job.initiatorID, job.initiatorName)
 	// 判定短交易（dispatch_judge_tx.go）：拓撲序列化鎖後以交易內視圖判定，提交後呼叫端才做遠端 I/O。
 	// 本路徑沒有領取欄：判定本身即裁決點，與拓撲寫入經同一把鎖排成單一序列
 	targetOnly := false
@@ -384,14 +387,21 @@ func (r *ChangeSecretRunner) lockTopologyTx(tx *gorm.DB) error {
 func requirePlanRun(gate credentialManagementGate, ctx context.Context, db *gorm.DB, targetKind string,
 	credentialIDs, assetIDs, accountIDs []uint) (CredentialManagementDecision, string) {
 
-	d, err := gate.require(ctx, db, CredentialManagementRequest{
-		Operation: CredOpRun, Capabilities: planRunCapabilities(targetKind),
-		CredentialIDs: credentialIDs, AssetIDs: assetIDs, AccountIDs: accountIDs,
-	})
+	d, err := requirePlanRunErr(gate, ctx, db, targetKind, credentialIDs, assetIDs, accountIDs)
 	if err != nil {
 		return d, revalidationReason(err)
 	}
 	return d, ""
+}
+
+// requirePlanRunErr 執行授權判定本體（執行前重驗、承接與以 API token 寫入計畫共用），回傳關卡的原始錯誤。
+func requirePlanRunErr(gate credentialManagementGate, ctx context.Context, db *gorm.DB, targetKind string,
+	credentialIDs, assetIDs, accountIDs []uint) (CredentialManagementDecision, error) {
+
+	return gate.require(ctx, db, CredentialManagementRequest{
+		Operation: CredOpRun, Capabilities: planRunCapabilities(targetKind),
+		CredentialIDs: credentialIDs, AssetIDs: assetIDs, AccountIDs: accountIDs,
+	})
 }
 
 // stopJob 授權重驗失敗：記日誌、審計並推送告警；不觸碰任何遠端。
@@ -451,7 +461,7 @@ func (r *ChangeSecretRunner) runCredentialTarget(job rotationJob) []model.Change
 		log.Printf("[ChangeSecret] 輪替引擎未接線，略過憑證目標計劃 plan=%d", job.planID)
 		return nil
 	}
-	ctx := contextWithInitiator(context.Background(), job.initiatorID, job.initiatorName)
+	ctx := backgroundInitiatorContext(job.initiatorID, job.initiatorName)
 	rot, err := r.rotations.StartForPlan(ctx, job.targetCredentialID, StartRotationRequest{Policy: job.policy},
 		r.planMountBound(job))
 	if errors.Is(err, ErrRotationPlanBoundExceeded) {
@@ -499,7 +509,7 @@ func (r *ChangeSecretRunner) manualBoundRejection(job rotationJob) string {
 	if saver.ActorID == job.initiatorID {
 		return ""
 	}
-	ctx := contextWithInitiator(context.Background(), saver.ActorID, saver.ActorName)
+	ctx := backgroundInitiatorContext(saver.ActorID, saver.ActorName)
 	_, err = r.mgmt.require(ctx, r.db, CredentialManagementRequest{
 		Operation: CredOpRotate, Capabilities: []string{CredCapRotate},
 	})

@@ -39,7 +39,7 @@ func TestRetiredPermissionKeyOnCustomRole(t *testing.T) {
 	t.Run("複製只含可指派集合", func(t *testing.T) {
 		e := newRoleDefEnv(t)
 		id := e.insertLegacyRole(t, "legacy-ops", "session:view", "session:terminate")
-		cp, err := e.svc.Copy(ctx, e.admin, id, "legacy-copy", "")
+		cp, err := e.svc.Copy(asSession(ctx, e.admin), e.admin, id, "legacy-copy", "")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"session:view"}, cp.Permissions)
 		var rows []string
@@ -51,7 +51,7 @@ func TestRetiredPermissionKeyOnCustomRole(t *testing.T) {
 		id := e.insertLegacyRole(t, "legacy-ops", "session:view", "session:terminate")
 		d, err := e.svc.GetDefinition(ctx, id)
 		require.NoError(t, err)
-		up, err := e.svc.Update(ctx, e.admin, id, d.DefinitionVersion, RoleInput{Name: "legacy-ops", Description: "說明", Permissions: d.Permissions})
+		up, err := e.svc.Update(asSession(ctx, e.admin), e.admin, id, d.DefinitionVersion, RoleInput{Name: "legacy-ops", Description: "說明", Permissions: d.Permissions})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"session:view"}, up.Permissions)
 		assert.Empty(t, up.RetiredPermissions)
@@ -70,11 +70,11 @@ func TestRetiredPermissionKeyOnCustomRole(t *testing.T) {
 	})
 	t.Run("含已收回鍵的集合新增或修改一律拒絕", func(t *testing.T) {
 		e := newRoleDefEnv(t)
-		_, err := e.svc.Create(ctx, e.admin, RoleInput{Name: "x", Permissions: []string{"session:view", "session:terminate"}})
+		_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: "x", Permissions: []string{"session:view", "session:terminate"}})
 		var inv *authz.ErrRolePermissionInvalid
 		require.ErrorAs(t, err, &inv)
 		id := e.insertLegacyRole(t, "legacy-ops", "session:view")
-		_, err = e.svc.Update(ctx, e.admin, id, 1, RoleInput{Name: "legacy-ops", Permissions: []string{"session:view", "session:terminate"}})
+		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, id, 1, RoleInput{Name: "legacy-ops", Permissions: []string{"session:view", "session:terminate"}})
 		require.ErrorAs(t, err, &inv)
 	})
 }

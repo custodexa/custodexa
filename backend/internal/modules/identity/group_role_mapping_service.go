@@ -71,6 +71,10 @@ type GroupRoleMappingActor struct {
 	ID   uint
 	Name string
 	IP   string
+	// Principal 該次請求的主體；映射寫入經指派關卡時取用它的事實，未帶即被關卡拒絕。
+	Principal *authz.Principal
+	// APIToken 該次請求經由的 API token（親自操作時為零值），供稽核歸因。
+	APIToken model.APITokenRef
 }
 
 // GroupRoleMappingInput 建立與更新的請求形狀。
@@ -408,7 +412,7 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 			return err
 		}
 		// 守衛先於風險確認：沒有資格寫入的操作者不該被要求確認一件做不了的事
-		if err := s.guardMappingTargets(tx, in.Actor, nil, []uint{role.ID}); err != nil {
+		if err := s.guardMappingTargets(tx, in.Actor, kind, sourceID, nil, []uint{role.ID}); err != nil {
 			return err
 		}
 		if warnings := mappingWarningsOf(role, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
@@ -503,7 +507,7 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 		identityChanged := oldMatch != matchValue || oldRole != role.ID
 		// 沒有任何實際變動的存檔不是授權變更，不做守衛裁決
 		if identityChanged || oldEnabled != row.Enabled {
-			if err := s.guardMappingTargets(tx, in.Actor, []uint{oldRole}, []uint{role.ID}); err != nil {
+			if err := s.guardMappingTargets(tx, in.Actor, kind, sourceID, []uint{oldRole}, []uint{role.ID}); err != nil {
 				return err
 			}
 		}
@@ -613,7 +617,7 @@ func (s *IdentitySourceService) DeleteMapping(kind string, sourceID, ruleID uint
 		if err != nil {
 			return err
 		}
-		if err := s.guardMappingTargets(tx, actor, []uint{current.RoleID}, nil); err != nil {
+		if err := s.guardMappingTargets(tx, actor, kind, sourceID, []uint{current.RoleID}, nil); err != nil {
 			return err
 		}
 		tracker, err := s.beginRoleMappingWrite(tx, actor, kind, sourceID, mappingWrite{
@@ -689,7 +693,7 @@ func (s *IdentitySourceService) auditMapping(tx *gorm.DB, actor GroupRoleMapping
 		ResourceID: &id,
 		Status:     string(model.StatusSuccess),
 		Actor:      gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
+		Request:    actor.requestMeta(),
 		Details:    string(payload),
 	}); err != nil {
 		return fmt.Errorf("寫入群組映射規則稽核失敗: %w", err)
@@ -717,4 +721,9 @@ func CountMappings(tx *gorm.DB, kind string, sourceID uint) (total, enabled int6
 		return 0, 0, fmt.Errorf("計算啟用中的群組映射規則數失敗: %w", err)
 	}
 	return total, enabled, nil
+}
+
+// requestMeta 稽核列的請求欄位：來源位址與經由的 API token。
+func (a GroupRoleMappingActor) requestMeta() gatewayapi.RequestMeta {
+	return gatewayapi.RequestMeta{ClientIP: a.IP}.WithAPIToken(a.APIToken.ID, a.APIToken.Name)
 }

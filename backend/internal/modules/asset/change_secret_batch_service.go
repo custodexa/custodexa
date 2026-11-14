@@ -268,7 +268,7 @@ func matchingAccountsOn(q *gorm.DB, username string) ([]model.AssetAccount, erro
 // Create 以背景脈絡建立批次（見 CreateFor）；供沒有請求脈絡的呼叫端使用。
 func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, requesterID uint,
 	requesterName string) (*model.ChangeSecretBatch, []uint, error) {
-	return s.CreateFor(context.Background(), req, requesterID, requesterName)
+	return s.CreateFor(backgroundInitiatorContext(requesterID, requesterName), req, requesterID, requesterName)
 }
 
 // CreateFor 驗證請求、解析目標並建立批次列（狀態為執行中）。
@@ -296,7 +296,7 @@ func (s *ChangeSecretBatchService) CreateFor(ctx context.Context, req *ChangeSec
 	if err != nil {
 		return nil, nil, err
 	}
-	ctx = contextWithInitiator(ctx, requesterID, requesterName)
+	ctx = contextWithRequestActor(ctx, requesterID, requesterName)
 	modeCaps := batchModeCapabilities(req)
 	if err := s.requireModeCapabilities(ctx, s.db, requesterID, modeCaps); err != nil {
 		return nil, nil, err
@@ -319,7 +319,7 @@ func (s *ChangeSecretBatchService) CreateFor(ctx context.Context, req *ChangeSec
 		"password_exclude_ambiguous": batch.PasswordExcludeAmbiguous,
 	}
 	var targets []model.AssetAccount
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if s.scope != nil {
 			// 拓撲序列化鎖是第一個動作：之後的能力重判與範圍交集看到的是同一份節點樹
 			if err := s.scope.LockTopology(tx); err != nil {

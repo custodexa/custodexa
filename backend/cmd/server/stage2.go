@@ -201,10 +201,25 @@ type appGraph struct {
 	adminUsername string
 }
 
+// auditFlushBeforeDrainBudget 收回金鑰材料前，寫出已入列審計列的時間上限。
+const auditFlushBeforeDrainBudget = 2 * time.Second
+
 // Release 收束段 2 建構的全部資源（LIFO；單項失敗不中斷後續）。
 func (g *appGraph) Release(ctx context.Context) error {
 	if g == nil || g.bag == nil {
 		return nil
+	}
+	if g.auditService != nil {
+		// 審計列在寫入時才蓋完整性章。先把已入列的列寫出，再收回金鑰材料；
+		// 順序反過來，佇列裡的列會不帶章落地，事後被完整性驗證判為不符。
+		// 寫出失敗不中斷收束：材料的收回不得因審計 sink 停滯而被擋住。
+		// 自帶較短的期限：sink 停滯時不得把整段收束預算耗盡，材料的排空仍需時間。
+		fctx, cancel := context.WithTimeout(ctx, auditFlushBeforeDrainBudget)
+		err := g.auditService.FlushQueued(fctx)
+		cancel()
+		if err != nil {
+			log.Printf("警告: 收回金鑰材料前寫出稽核佇列失敗: %v", err)
+		}
 	}
 	if g.keyManager != nil {
 		if err := g.keyManager.DrainMaterial(ctx); err != nil {
@@ -2201,7 +2216,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	s.oidcProviderService.SetRecordingTokenRevoker(recordingHandler.TokenManager())
 	// 審計日誌查詢 handler：建構恆執行，實際是否註冊由 registerRoutes
 	// 依 auditLogEnabled 旗標決定（關閉時整組 3 條 /audit-logs 不存在）
-	auditLogHandler := api.NewAuditLogHandler(s.auditService, auditReasonNamer)
+	auditLogHandler := api.NewAuditLogHandler(s.auditService, auditReasonNamer).WithAPITokenRefs(newAPITokenService(s.auditTxSink, s.systemAlertSink))
 	if cfg.Features.AuditLogEnabled {
 		log.Println("稽核日誌查詢 API 已註冊")
 	}
@@ -2322,7 +2337,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		snippet:               snippetHandler,
 		assetGroup:            assetGroupHandler,
 		userGroup:             userGroupHandler,
-		roleAssignmentPreview: api.NewRoleAssignmentPreviewHandler(authz.NewCapabilityPreviewerWithMappings(database.DB, identity.RoleMappingRuleCount).WithGroupMemberPlanner(identity.PlanManualMembers).WithMappingRulePlanner(identity.PlanMappingRuleChange).WithScopeEvaluator(s.scopeEvaluator)),
+		roleAssignmentPreview: api.NewRoleAssignmentPreviewHandler(authz.NewCapabilityPreviewerWithMappings(database.DB, identity.RoleMappingRuleCount).WithGroupMemberPlanner(identity.PlanManualMembers).WithMappingRulePlanner(identity.PlanMappingRuleChange).WithScopeEvaluator(s.scopeEvaluator)).WithAPITokenImpact(newAPITokenService(s.auditTxSink, s.systemAlertSink)),
 		roleAssignmentOptions: api.NewRoleAssignmentOptionsHandler(assetGroupService, identity.NewRoleNodeScopabilityReader(database.DB)),
 		permissionOverview:    permissionOverview,
 		roleDefinition:        roleDefinitionHandler,
@@ -2341,6 +2356,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		executorLoginCheck:    executorLoginCheckHandler,
 		clipboard:             clipboardHandler,
 		keystrokeView:         keystrokeViewHandler,
+		apiToken:              newAPITokenHandler(s.auditTxSink, s.systemAlertSink),
 		auditTimeline:         auditTimelineHandler,
 		changeSecret:          changeSecretHandler,
 		credential:            credentialHandler,

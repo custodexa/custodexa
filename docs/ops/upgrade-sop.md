@@ -422,13 +422,20 @@ The backup is §2.1; the images are the easy square to miss, because the two ima
 From 1.13.0 these two images are also published to GitHub Container Registry, with a Docker Hub mirror (see "Prebuilt images" in the [README](../../README.md#prebuilt-images)), but the compose files in the repository do not reference the published images: a deployment that follows this SOP still gets them from a build of the source tree or from delivered image files. If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image files.
 The guacd service is not built by this project: from 1.13.0 the compose files reference the official `guacamole/guacd:1.6.0` image by version and digest, so its old image keeps its own name. When images are delivered as files, the delivered set includes that official image as well.
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the fifty-six in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the fifty-seven in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
 > Confirm your source version before planning the upgrade.
 
 > **What the single-instance guard guarantees**: as of this release, a second application instance started against the same database is stopped and asked to confirm (§2.6b). That mutual exclusion **only holds between guard-bearing releases**: older releases without the guard hold no lock, so on the first upgrade from a release without the guard, the new release acquiring the lock **does not mean** the old one has stopped. Step 5 of §2.3 is the first-upgrade check that exists for exactly this, and it must not be skipped.
+
+#### Upgrading to 1.24.0
+
+One new migration runs, `20261113_api_tokens`. It creates the two tables of personal API tokens, `api_tokens` and `api_token_roles`, and adds two columns that may be empty, `api_token_id` and `api_token_name`, to `audit_logs`, with an index on them. It has no data step: nothing is backfilled, existing audit rows keep the two columns empty, and sign-in, agents and connections work as before. Adding the columns does not rewrite `audit_logs`, but building the index reads every row of it, so its duration grows with the audit data held; count it into the downtime window. Its `Down` always returns a refusal error, so once it is applied, going back means restoring the pre-upgrade backup (§4.1). The one other way back is for an upgrade that also converted the bundled database to PostgreSQL 18: `custodexa.sh rollback` then returns to the previous version on the PostgreSQL 16 data folder that upgrade kept and runs no `Down` (see [Converting the bundled database to PostgreSQL 18](#converting-the-bundled-database-to-postgresql-18)). That backup holds no API tokens, so tools set up with tokens after the upgrade need new ones once you upgrade again.
+
+- **API tokens and later restores.** Restoring a backup with the management script ends every API token created before the restore, and its owner creates a new one. Restoring by hand revokes them with one more statement at its stop point ([Backup and Restore §5](./backup-and-restore.md#restoring-by-hand)).
+- **API tokens and account actions.** Resetting a password and a lock after failed sign-ins leave an account's API tokens working; revoking them, or disabling or deleting the account, stops them ([Deployment Topology Limits](./deployment-topology-limits.md#personal-api-tokens-and-account-actions)).
 
 #### Upgrading to 1.23.0
 
@@ -820,7 +827,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's fifty-six increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's fifty-seven increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -879,6 +886,7 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20261103_change_secret_execution_method (change_secret_execution_method)
   執行 migration: 20261103_executor_login_checks (executor_login_checks)
   執行 migration: 20261105_keystroke_records (keystroke_records)
+  執行 migration: 20261113_api_tokens (api_tokens)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -1626,7 +1634,7 @@ A package deployment, including one converted by an earlier release, goes back w
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the fifty-six increments after it.
+This release's database has the schema baseline (`20260816_schema_baseline`) and the fifty-seven increments after it.
 Thirty-one of them are listed here (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
 `20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
@@ -1639,7 +1647,7 @@ Thirty-one of them are listed here (`20260824_audit_export_jobs`, `20260825_evid
 `20260924_agent_tool_call_args_retained`, `20260924_sensitive_reveal_alert`,
 `20260929_notification_channel_min_severity`, `20260930_identity_group_mappings`, `20261012_daily_review_signoff`).
 
-The other twenty-five increments are not in the list above because none of them offers a production downgrade path: the eighteen migrations of 1.18.0 (`20261016_authz_permission_model`, `20261017_permission_state_attestation`, `20261017_permission_state_event_integrity`, `20261017_role_definitions`, `20261018_system_security_alerts`, `20261019_asset_host_key_address`, `20261020_mapping_observation_times`, `20261018_checkpoint_v4_attestation`, `20261022_credential_job_authorization`, `20261023_credential_recovery_alert`, `20261024_system_alert_delivery_key`, `20261025_host_key_mismatch`, `20261026_security_policy_floor_raises`, `20261027_credential_host_identity`, `20261028_user_release_guidance`, `20261029_credential_ownership`, `20261031_change_secret_scope_columns`, `20261101_scoped_template_builtin_keys`) and the six migrations of 1.21.0 (`20261102_db_account_rotation`, `20261102_host_account_inventory`, `20261102_asset_account_purpose`, `20261103_asset_account_executor_source`, `20261103_change_secret_execution_method` and `20261103_executor_login_checks`), and the migration of 1.22.0 (`20261105_keystroke_records`). A database that has applied them cannot be taken back by pointing the management script at the previous version; restore the pre-upgrade backup (see "Upgrading to 1.18.0", "Upgrading to 1.21.0" and "Upgrading to 1.22.0" in §2.0). Going back to a release before 1.18.0 also needs `JWT_SECRET` replaced and long-lived sign-ins revoked, as described there.
+The other twenty-six increments are not in the list above because none of them offers a production downgrade path: the eighteen migrations of 1.18.0 (`20261016_authz_permission_model`, `20261017_permission_state_attestation`, `20261017_permission_state_event_integrity`, `20261017_role_definitions`, `20261018_system_security_alerts`, `20261019_asset_host_key_address`, `20261020_mapping_observation_times`, `20261018_checkpoint_v4_attestation`, `20261022_credential_job_authorization`, `20261023_credential_recovery_alert`, `20261024_system_alert_delivery_key`, `20261025_host_key_mismatch`, `20261026_security_policy_floor_raises`, `20261027_credential_host_identity`, `20261028_user_release_guidance`, `20261029_credential_ownership`, `20261031_change_secret_scope_columns`, `20261101_scoped_template_builtin_keys`), the six migrations of 1.21.0 (`20261102_db_account_rotation`, `20261102_host_account_inventory`, `20261102_asset_account_purpose`, `20261103_asset_account_executor_source`, `20261103_change_secret_execution_method` and `20261103_executor_login_checks`), the migration of 1.22.0 (`20261105_keystroke_records`), and the migration of 1.24.0 (`20261113_api_tokens`). A database that has applied them cannot be taken back by pointing the management script at the previous version; restore the pre-upgrade backup (see "Upgrading to 1.18.0", "Upgrading to 1.21.0", "Upgrading to 1.22.0" and "Upgrading to 1.24.0" in §2.0). Going back to a release before 1.18.0 also needs `JWT_SECRET` replaced and long-lived sign-ins revoked, as described there.
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 

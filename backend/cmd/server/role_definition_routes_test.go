@@ -97,7 +97,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 		identity.NewGrantGrader(audit.NewTxSink(), audit.NewSystemAlertSink(nil)))
 	super := env.subjects["S01"].UserID
 	ctx := context.Background()
-	custom, err := defs.Create(ctx, super, identity.RoleInput{Name: "route-custom", Permissions: []string{"asset:view", "asset:update"}})
+	custom, err := defs.Create(roleWriterSession(ctx, super), super, identity.RoleInput{Name: "route-custom", Permissions: []string{"asset:view", "asset:update"}})
 	require.NoError(t, err)
 
 	t.Run("無角色檢視能力者四條都被拒，未登入為 401", func(t *testing.T) {
@@ -126,7 +126,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 
 		// 對照的投影器與路由同用正式組裝的關卡（目標集合以實際注入為準）
 		proj := identity.NewRoleProjector(env.db, newMappingAssignmentGuard())
-		set, err := proj.ProjectRoles(super)
+		set, err := proj.ProjectRoles(requestPrincipalForTest(t, env.db, super))
 		require.NoError(t, err)
 		require.Equal(t, len(set.ByRole), len(got))
 		for id, want := range set.ByRole {
@@ -163,7 +163,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 		}
 		// 投影器直接取狀態（明示注入的那一種目錄用）
 		projected := func(t *testing.T, g *identity.AssignmentGuard, id uint) string {
-			set, err := identity.NewRoleProjector(env.db, g).ProjectRoles(super)
+			set, err := identity.NewRoleProjector(env.db, g).ProjectRoles(requestPrincipalForTest(t, env.db, super))
 			require.NoError(t, err)
 			p, ok := set.ByRole[id]
 			require.True(t, ok, "投影缺角色 %d", id)
@@ -211,7 +211,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 
 		// 完整目錄：同一個投影器換注入的目標集合，全部開放且超管可定義
 		full := identity.NewRoleProjector(env.db, identity.NewAssignmentGuard(identity.FullCatalog()))
-		set, err := full.ProjectRoles(super)
+		set, err := full.ProjectRoles(requestPrincipalForTest(t, env.db, super))
 		require.NoError(t, err)
 		assert.True(t, set.CanDefine)
 		for id, p := range set.ByRole {
@@ -433,7 +433,7 @@ func TestRoleDefinitionRoutes(t *testing.T) {
 	t.Run("新增自訂角色前後，舊 GET /roles 回應逐位元組相同", func(t *testing.T) {
 		c0, before := raw("S01", "GET", "/api/v1/roles", nil)
 		require.Equal(t, http.StatusOK, c0)
-		_, err := defs.Create(ctx, super, identity.RoleInput{Name: "route-custom-2", Permissions: []string{"asset:view"}})
+		_, err := defs.Create(roleWriterSession(ctx, super), super, identity.RoleInput{Name: "route-custom-2", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		c1, after := raw("S01", "GET", "/api/v1/roles", nil)
 		require.Equal(t, http.StatusOK, c1)

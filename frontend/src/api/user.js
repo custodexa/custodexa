@@ -43,10 +43,11 @@ export function createUser(data) {
  * @param {number} id - 用戶 ID
  * @returns {Promise}
  */
-export function getUserDetail(id) {
+export function getUserDetail(id, { quiet = false } = {}) {
   return request({
     url: `/users/${id}`,
     method: 'get',
+    ...(quiet ? { skipErrorToast: true } : {}),
   })
 }
 

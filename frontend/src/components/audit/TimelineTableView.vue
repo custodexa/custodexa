@@ -119,6 +119,12 @@
               v-if="detailText(row)"
               class="detail"
             >{{ detailText(row) }}</span>
+            <!-- 經由 API token 的操作：與時間軸檢視同一句，複製進報告時不丟歸因 -->
+            <span
+              v-if="row.api_token_name && subject !== 'ip'"
+              class="via"
+              data-test="table-via"
+            >{{ viaText(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column
@@ -127,9 +133,11 @@
           min-width="140"
         >
           <template #default="{ row }">
-            {{ row.actor
-              ? (row.actor.name || `#${row.actor.id}`)
-              : $t('auditorWorkbench.events.actorUnauthenticated') }}
+            {{ !row.actor
+              ? $t('auditorWorkbench.events.actorUnauthenticated')
+              : row.api_token_name
+                ? viaText(row)
+                : (row.actor.name || `#${row.actor.id}`) }}
           </template>
         </el-table-column>
         <el-table-column
@@ -159,6 +167,7 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
 import SourceAddressCell from './SourceAddressCell.vue'
 import { buildAddressPivotLink } from './timelineQuery'
 import { typeLabel, summaryText, detailText } from './timelineSummary'
@@ -170,12 +179,26 @@ const props = defineProps({
   events: { type: Array, default: () => [] },
   spans: { type: Array, default: () => [] },
   subject: { type: String, default: 'user' },
+  // 人樞紐的事件不帶 actor：操作者即調查對象本人，經由 token 的註記要用到這個名字
+  subjectName: { type: String, default: '' },
   focusId: { type: String, default: '' },
   // 深連結要保留的調查範圍（與時間軸檢視同一組）
   from: { type: String, default: '' },
   to: { type: String, default: '' },
   types: { type: Array, default: () => [] },
 })
+
+const { t } = useI18n()
+
+// 操作者取名規則與時間軸檢視一致：actor → 對造為人時取對造 → 人樞紐取調查對象
+const operatorName = (row) => {
+  if (row.actor) return row.actor.name || `#${row.actor.id}`
+  const cp = row.counterpart
+  if (cp && cp.kind === 'user') return cp.name || `#${cp.id}`
+  return props.subject === 'user' ? props.subjectName : ''
+}
+const viaText = (row) =>
+  t('auditorWorkbench.events.operatorVia', { user: operatorName(row), name: row.api_token_name })
 
 const rowClass = ({ row }) => (row.id === props.focusId ? 'focus-row' : '')
 
@@ -209,6 +232,12 @@ const addressLink = (row) => {
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-secondary);
   word-break: break-all;
+}
+
+.via {
+  display: block;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
 }
 
 :deep(.focus-row) {

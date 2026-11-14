@@ -247,6 +247,29 @@ Roles and user group memberships that come from an external directory or identit
 
 A local super administrator still signs in when a source has been taken over, and can set the source back; that is what keeps a takeover of a source from locking the system. The product refuses to take the last local super administrator away (an enabled account that signs in locally with a local password, is not managed by an external source, and holds the super administrator role assigned to it directly; holding the role only through a user group or a group mapping does not count), whether by disabling it, deleting it, removing the role or switching it to external sign-in. It does not create one for a deployment that has none: check that at least one exists, and keep its credentials where the people who may need them can reach them.
 
+## Personal API tokens and account actions
+
+A personal API token belongs to one account and is checked again on every request. The token must not be revoked or expired and must not predate the last restore by the management script; the account must exist, be enabled and be a person's account; and the request must come from within the account's allowed source ranges. A request can do what the roles granted to the token give the account at that moment. Actions on the account therefore affect its existing tokens as follows:
+
+| Action | Existing API tokens of the account |
+|---|---|
+| Revoking a token | That token is refused from the next request. A revoked token cannot be brought back. |
+| A token reaches its expiry | That token is refused. |
+| Disabling the account | Refused while the account is disabled. Enabling the account again brings back every token that has not expired and was not revoked. |
+| Automatic disabling by the security policy "Inactive account auto-disable days" | As for disabling. Only interactive sign-ins count as activity, calls with API tokens do not, so an account used only through its tokens is disabled once the period passes. Mark such an account "Inactivity Exempt", or have its owner sign in within the period. |
+| Deleting the account | Refused, and marked as revoked together with the deletion. |
+| Restoring a backup with the management script | Refused ([Backup and Restore §5](./backup-and-restore.md#restoring-with-restore)). |
+| Narrowing the account's allowed source ranges | Requests from outside the new ranges are refused. |
+| Removing from the account every role granted to a token | The token is still accepted but can do nothing. It can act again once one of those roles is assigned to the account again. |
+| Changing or resetting the password, a lock after failed sign-ins, a password change or multi-factor enrollment required at the next sign-in, signing out, switching the account to external sign-in only | No effect. These act on interactive sign-in only. |
+
+### Handling an account that may be compromised
+
+Resetting the password leaves the account's API tokens working, and so does a lock after failed sign-ins. To stop the tokens as well:
+
+1. Open the account under Users, go to the API token tab and use "Revoke all API tokens". To stop one token, use Revoke on its row. For an account that holds the super administrator or system security administrator role, only a super administrator can revoke its tokens, the same rule as for disabling such an account.
+2. To stop sign-in at the same time, disable the account. Revoke the tokens before you enable it again, because enabling it brings back every token that was neither revoked nor expired.
+
 ## System security alerts and notification channels
 
 The product raises system security alerts about changes to its own security, in the same transaction as the change: among them changes of an identity source, changes to a person's own grants and grants of a management-level role to someone else, operations on a system security administrator's account, changes of an asset's address or a relaxation of its transport verification, secrets set by hand, a longer group mapping revalidation limit, and changes of notification channels. They are shown on the alerts page under their own source category, each with the delivery state per destination and, when one is recorded, the operation log entry it belongs to.

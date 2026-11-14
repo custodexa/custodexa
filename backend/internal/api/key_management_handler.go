@@ -495,13 +495,13 @@ func (h *KeyManagementHandler) CleanupRetired(c *gin.Context) {
 			"purged_count": len(result.Purged), "purged": result.Purged,
 			"skipped_count": len(result.Skipped), "skipped": result.Skipped,
 		})
-		h.auditService.Log(&audit.AuditLogEntry{
+		h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 			UserID: userID, Username: username,
 			Action: model.ActionDelete, Resource: model.ResourceKeyManagement,
 			Status: model.StatusSuccess, Method: c.Request.Method,
 			Path: c.Request.URL.Path, ClientIP: sourceip.Of(c),
 			StatusCode: http.StatusOK, RequestBody: string(detail),
-		})
+		}))
 	}
 	c.JSON(http.StatusOK, result)
 }

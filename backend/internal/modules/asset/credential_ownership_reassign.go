@@ -65,7 +65,7 @@ func (s *CredentialService) ReassignOwnership(ctx context.Context,
 
 	userID, operator := model.UserFromContext(ctx)
 	changed := 0
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if err := s.beginOwnershipTx(tx); err != nil {
 			return err
 		}

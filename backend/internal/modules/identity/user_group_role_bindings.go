@@ -112,7 +112,7 @@ func (s *UserGroupService) ReplaceRoleBindings(op Operator, groupID uint, req Gr
 		}
 		if err := s.assignmentGuard().Check(tx, op, AssignmentChange{
 			Path: PathGroupRoles, GroupID: groupID, NewRoleIDs: want, ScopeRequested: req.ScopeRequested,
-			NodeScopes: newScopes}); err != nil {
+			NodeScopes: newScopes, RescopedRoleIDs: rescopedGroupRoles(want, cur, curNodes, req.RoleNodes)}); err != nil {
 			return err
 		}
 		tr, err := s.grader.begin(tx, op, PathGroupRoles, 0, groupID)
@@ -350,4 +350,23 @@ func containsID(ids []uint, id uint) bool {
 		}
 	}
 	return false
+}
+
+// rescopedGroupRoles 群組保留的角色中，請求帶的節點範圍與現況不同者（與寫入時的重設判定同一口徑）。
+func rescopedGroupRoles(want, cur []uint, curNodes map[uint][]uint, req map[uint]RoleNodesValue) []uint {
+	var out []uint
+	for _, id := range want {
+		if !containsID(cur, id) {
+			continue
+		}
+		v, has := req[id]
+		if !has {
+			continue
+		}
+		wantNodes := !v.Global
+		if wantNodes != (len(curNodes[id]) > 0) || (wantNodes && !authz.SameNodeSet(v.NodeIDs, curNodes[id])) {
+			out = append(out, id)
+		}
+	}
+	return out
 }

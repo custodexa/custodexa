@@ -325,7 +325,7 @@ func (h *AuditExportHandler) auditExport(c *gin.Context, userID uint, username s
 	if h.auditService == nil {
 		return
 	}
-	h.auditService.Log(&audit.AuditLogEntry{
+	h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 		UserID:     userID,
 		Username:   username,
 		Action:     model.ActionRead, // 匯出＝讀取聚合，用 read（無專用 export action，以 resource 區分）
@@ -336,7 +336,7 @@ func (h *AuditExportHandler) auditExport(c *gin.Context, userID uint, username s
 		ClientIP:   sourceip.Of(c),
 		StatusCode: http.StatusOK,
 		ErrorMsg:   msg,
-	})
+	}))
 }
 
 // RegisterRoutes 註冊匯出路由（限稽核角色 audit:view）。

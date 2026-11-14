@@ -140,7 +140,7 @@ func (s *HostIdentityTakeoverService) createConfirmation(ctx context.Context, ki
 	defer unlock()
 
 	var created *model.CredentialHostIdentityConfirmation
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		pinned = false
 		if err := lockAssetHostKey(tx, subject.assetID); err != nil {
 			return fmt.Errorf("%w: %v", ErrCredentialAuthzUnavailable, err)

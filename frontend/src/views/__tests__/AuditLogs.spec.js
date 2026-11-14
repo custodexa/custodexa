@@ -49,8 +49,10 @@ const getAuditFailuresMock = vi.fn()
 const acceptPermissionStateMock = vi.fn()
 const verifyAuditIntegrityMock = vi.fn()
 
+const getAuditLogMock = vi.fn()
 vi.mock('@/api/audit', () => ({
   getAuditLogs: (...args) => getAuditLogsMock(...args),
+  getAuditLog: (...args) => getAuditLogMock(...args),
 }))
 
 vi.mock('@/api/auditExport', () => ({
@@ -218,6 +220,119 @@ describe('AuditLogs', () => {
     expect(labels).toContain('錯誤訊息')
     expect(labels).not.toContain('附註')
     expect(wrapper.find('.el-alert').classes()).toContain('el-alert--error')
+  })
+
+  it('經由 API token 的紀錄：使用者欄第二行標示 token 名稱', async () => {
+    setUserRoles(['auditor'])
+    getAuditLogsMock.mockResolvedValue({
+      data: [
+        { id: 31, username: 'ops-chen', user_id: 57, action: 'create', resource: 'asset', status: 'success', created_at: '2026-11-13T05:58:02Z', api_token_id: 41, api_token_name: 'terraform-prod-apply' },
+        { id: 32, username: 'ops-chen', user_id: 57, action: 'update', resource: 'asset', status: 'success', created_at: '2026-11-13T05:41:00Z' },
+      ],
+      total: 2,
+    })
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    const marks = wrapper.findAll('[data-test="audit-via-token"]')
+    expect(marks).toHaveLength(1)
+    expect(marks[0].text()).toContain('API token')
+    expect(marks[0].text()).toContain('terraform-prod-apply')
+  })
+
+  it('經由 API token 的詳情：列出編號、授權角色、到期；帳號已刪除時註明名稱為當時紀錄', async () => {
+    setUserRoles(['auditor'])
+    // 與後端一致：詳情是列本身的欄位攤平在頂層，另加 api_token 物件（不包在 data 之下）
+    getAuditLogMock.mockResolvedValue({
+      id: 33,
+      action: 'create',
+      resource: 'asset',
+      api_token_id: 9,
+      api_token_name: 'ci-legacy',
+      api_token: { id: 9, name: 'ci-legacy', granted_roles: [{ role_id: 5, name: '資產管理員' }], expires_at: null, owner_deleted: true },
+    })
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.showDetails({ id: 33, status: 'success', action: 'create', resource: 'asset', created_at: '2026-11-13T05:58:02Z', user_id: 0, api_token_id: 9, api_token_name: 'ci-legacy' })
+    await flushPromises()
+    expect(getAuditLogMock).toHaveBeenCalledWith(33)
+    expect(wrapper.find('[data-test="audit-detail-via-token"]').text()).toContain('API token「ci-legacy」')
+    const meta = wrapper.find('[data-test="audit-detail-via-token-meta"]').text()
+    expect(meta).toContain('API token 編號 9')
+    expect(meta).toContain('授權角色：資產管理員')
+    expect(meta).toContain('到期 永不到期')
+    expect(meta).toContain('名稱為當時紀錄；帳號已刪除')
+  })
+
+  it('經由 API token 的詳情：內建角色名轉成譯名；token 列已不存在時不寫「永不到期」', async () => {
+    setUserRoles(['auditor'])
+    getAuditLogMock.mockResolvedValueOnce({
+      id: 36,
+      api_token_id: 41,
+      api_token_name: 'terraform-prod-apply',
+      api_token: { id: 41, name: 'terraform-prod-apply', granted_roles: [{ role_id: 1, name: 'admin' }, { role_id: 12, name: 'ci-reader' }], expires_at: '2027-02-11T15:59:59Z', owner_deleted: false },
+    })
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.showDetails({ id: 36, status: 'success', action: 'create', resource: 'asset', created_at: '2026-11-13T05:58:02Z', user_id: 57, api_token_id: 41, api_token_name: 'terraform-prod-apply' })
+    await flushPromises()
+    expect(wrapper.find('[data-test="audit-detail-via-token-meta"]').text()).toContain('授權角色：管理員、ci-reader')
+
+    getAuditLogMock.mockResolvedValueOnce({
+      id: 37,
+      api_token_id: 9,
+      api_token_name: 'ci-legacy',
+      api_token: { id: 9, name: 'ci-legacy', granted_roles: [], expires_at: null, owner_deleted: true },
+    })
+    wrapper.vm.showDetails({ id: 37, status: 'success', action: 'create', resource: 'asset', created_at: '2026-11-13T05:58:02Z', user_id: 0, api_token_id: 9, api_token_name: 'ci-legacy' })
+    await flushPromises()
+    const meta = wrapper.find('[data-test="audit-detail-via-token-meta"]').text()
+    expect(meta).not.toContain('永不到期')
+    expect(meta).toBe('API token 編號 9 · 名稱為當時紀錄；帳號已刪除')
+  })
+
+  it('資源是 API token 本身的列：本人的寫名稱、他人的寫所屬帳號／名稱；全部撤銷的列資源是使用者', async () => {
+    setUserRoles(['auditor'])
+    getAuditLogsMock.mockResolvedValue({
+      data: [
+        { id: 41, username: 'ops-chen', user_id: 57, action: 'create', resource: 'api_token', resource_id: 12, status: 'success', created_at: '2026-11-13T05:20:44Z', details: JSON.stringify({ token_id: 12, token_name: 'terraform-prod-apply-2', owner_user_id: 57, owner_username: 'ops-chen' }) },
+        { id: 42, username: 'ops-lin', user_id: 3, action: 'api_token_revoked', resource: 'api_token', resource_id: 5, status: 'success', created_at: '2026-11-13T03:05:12Z', details: JSON.stringify({ token_id: 5, token_name: 'jenkins-legacy', owner_user_id: 57, owner_username: 'ops-chen', revoke_note: '' }) },
+        { id: 43, username: 'ops-lin', user_id: 3, action: 'create', resource: 'user', resource_id: 57, status: 'success', created_at: '2026-11-13T03:00:00Z', path: '/api/v1/users/57/api-tokens/revoke-all' },
+        { id: 44, username: 'ops-chen', user_id: 57, action: 'create', resource: 'api_token', status: 'failed', created_at: '2026-11-13T02:00:00Z' },
+      ],
+      total: 4,
+    })
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    const cells = wrapper.findAll('[data-test="audit-resource"]').map((c) => c.text())
+    expect(cells[0]).toBe('API token · terraform-prod-apply-2')
+    expect(cells[1]).toBe('API token · ops-chen／jenkins-legacy')
+    expect(cells[2]).not.toContain('API token')
+    expect(cells[3]).toBe('API token')
+
+    wrapper.vm.showDetails({ id: 42, username: 'ops-lin', user_id: 3, action: 'api_token_revoked', resource: 'api_token', resource_id: 5, status: 'success', created_at: '2026-11-13T03:05:12Z', details: JSON.stringify({ token_name: 'jenkins-legacy', owner_username: 'ops-chen' }) })
+    await flushPromises()
+    expect(wrapper.find('[data-test="audit-detail-resource"]').text()).toBe('API token · ops-chen／jenkins-legacy')
+  })
+
+  it('親自登入操作的詳情：經由寫畫面操作，不另查詳情', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.showDetails({ id: 34, status: 'success', action: 'update', resource: 'asset', created_at: '2026-11-13T05:41:00Z', user_id: 57, username: 'ops-chen' })
+    await flushPromises()
+    expect(getAuditLogMock).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="audit-detail-via-session"]').text()).toBe('畫面操作（登入工作階段）')
+  })
+
+  it('詳情讀取失敗：仍顯示 token 名稱與編號', async () => {
+    setUserRoles(['auditor'])
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    getAuditLogMock.mockRejectedValue(new Error('500'))
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.showDetails({ id: 35, status: 'success', action: 'create', resource: 'asset', created_at: '2026-11-13T05:58:02Z', user_id: 57, api_token_id: 41, api_token_name: 'terraform-prod-apply' })
+    await flushPromises()
+    expect(wrapper.find('[data-test="audit-detail-via-token-meta"]').text()).toBe('API token 編號 41')
   })
 
   it('fetches logs on mount and renders three tabs', async () => {

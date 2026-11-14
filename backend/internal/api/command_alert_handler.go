@@ -188,7 +188,7 @@ func (h *CommandAlertHandler) Review(c *gin.Context) {
 	if h.auditService != nil {
 		reviewerName, _ := middleware.GetCurrentUsername(c)
 		alertID := uint(id)
-		h.auditService.Log(&audit.AuditLogEntry{
+		h.auditService.Log(middleware.AttributeAuditEntry(c, &audit.AuditLogEntry{
 			UserID:     reviewerID,
 			Username:   reviewerName,
 			Action:     model.ActionUpdate,
@@ -200,7 +200,7 @@ func (h *CommandAlertHandler) Review(c *gin.Context) {
 			ClientIP:   sourceip.Of(c),
 			StatusCode: http.StatusOK,
 			ErrorMsg:   "alert_disposition_" + req.Disposition,
-		})
+		}))
 	}
 
 	// 成功訊息不落 payload：前端以自有 $t 文案顯示

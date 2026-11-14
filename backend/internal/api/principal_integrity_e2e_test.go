@@ -60,7 +60,7 @@ func runPrincipalIntegrityHTTP(t *testing.T) {
 	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.AgentToken{}, &model.AuditLog{}, &model.AuditCheckpoint{}, &model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.SecurityPolicy{}, &model.NotificationChannel{}, &model.UserGroup{}, &model.ApproverScope{}, &model.Asset{}, &model.AssetAuthorization{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.PasswordHistory{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.UserExternalIdentity{}, &model.Role{}, &model.UserGroup{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+	if err := db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}, &model.APIToken{}, &model.APITokenRole{}); err != nil {
 		t.Fatal(err)
 	}
 	seedAuthzState(t, db)

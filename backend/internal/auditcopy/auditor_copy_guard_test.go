@@ -140,6 +140,17 @@ var extendedCJKTerms = []string{
 	"キュー投入",
 }
 
+// productNamePat 產品功能的專名：延伸詞表比對前先自文字中移除。
+//
+// 「API token」是這項功能在全產品畫面上的名稱（個人資料頁、使用者詳情、
+// 操作日誌），稽核人員在調查頁看到的必須是同一個名字，換一個說法反而對不上。
+// 與 policyLabel 保留協定專名同理：那是這個東西本來的名字，不是實作術語。
+//
+// **只認這一個完整專名、區分大小寫**：單獨出現的 API（「呼叫 API 失敗」）、
+// 小寫或接續其他字母的形態仍照延伸詞表攔下。專名清單由
+// TestAuditorCopyProductNameAllowanceIsNarrow 釘住，新增專名須同步改該測試。
+var productNamePat = regexp.MustCompile(`\bAPI tokens?\b`)
+
 // policyExtendedKeyPrefix policy 兩族中適用延伸詞表的鍵前綴（封章門檻兩鍵）
 const policyExtendedKeyPrefix = "audit_checkpoint_"
 
@@ -391,7 +402,7 @@ func scanText(ns, path, text string) []hit {
 		}
 	}
 	if extendedApplies(ns, path) {
-		for _, m := range extendedLatinPat.FindAllString(text, -1) {
+		for _, m := range extendedLatinPat.FindAllString(productNamePat.ReplaceAllString(text, ""), -1) {
 			hits = append(hits, hit{kind: "延伸術語", term: strings.ToLower(m)})
 		}
 		for _, term := range extendedCJKTerms {
@@ -505,6 +516,32 @@ func TestAuditorCopyJargonMatcherIsWired(t *testing.T) {
 	// 反向：插值變數剝除後不得成為漏洞（{seq} 是契約，seq 是文案）
 	if hits := scanText("checkpointVerification", "x", placeholderPat.ReplaceAllString("第 {seq} 號", "")); len(hits) > 0 {
 		t.Errorf("插值變數剝除後仍誤報：%+v", hits)
+	}
+}
+
+// TestAuditorCopyProductNameAllowanceIsNarrow 產品專名的放行只及於完整專名本身：
+// 專名放行，其餘含 API 的寫法照舊攔下；專名的樣式字面被釘住，放寬須改本測試。
+func TestAuditorCopyProductNameAllowanceIsNarrow(t *testing.T) {
+	if got, want := productNamePat.String(), `\bAPI tokens?\b`; got != want {
+		t.Fatalf("產品專名樣式已變更（%q，釘定值 %q）：這是放寬守衛的動作，須說明理由並重新釘定", got, want)
+	}
+	hasAPI := func(sample string) bool {
+		for _, h := range scanText("auditorWorkbench", "x.y", sample) {
+			if h.term == "api" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, sample := range []string{"API token 已撤銷", "操作者：（經由 API token ）", "Revoked 2 API tokens"} {
+		if hasAPI(sample) {
+			t.Errorf("產品專名被當成實作術語：%q", sample)
+		}
+	}
+	for _, sample := range []string{"呼叫 API 失敗", "API 端點", "api token", "the API tokenizer", "API token 的 API 回應"} {
+		if !hasAPI(sample) {
+			t.Errorf("專名以外的寫法未被攔下：%q", sample)
+		}
 	}
 }
 

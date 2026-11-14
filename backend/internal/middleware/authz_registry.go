@@ -14,7 +14,13 @@ import (
 const principalContextKey = "authz_principal"
 
 // SetPrincipal 把解析後的主體放入請求脈絡（由 AuthMiddleware 呼叫）。
-func SetPrincipal(c *gin.Context, p *authz.Principal) { c.Set(principalContextKey, p) }
+// 同時放進 c.Request 的 context.Context，服務層以 authz.PrincipalFromContext 取得同一個主體。
+func SetPrincipal(c *gin.Context, p *authz.Principal) {
+	c.Set(principalContextKey, p)
+	if c.Request != nil && p != nil {
+		c.Request = c.Request.WithContext(authz.ContextWithPrincipal(c.Request.Context(), p))
+	}
+}
 
 // PrincipalFrom 取請求脈絡中的主體；未設定回傳 nil。
 func PrincipalFrom(c *gin.Context) *authz.Principal {

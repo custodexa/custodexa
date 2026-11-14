@@ -245,7 +245,7 @@ func TestIdentitySourceChangeAlert(t *testing.T) {
 		sink := &recordingAlertSink{}
 		prov.SetMappingAuditSink(audit.NewTxSink())
 		prov.SetSystemAlertSink(sink)
-		actor := GroupRoleMappingActor{ID: 7, Name: "admin", IP: "10.1.2.3"}
+		actor := GroupRoleMappingActor{Principal: testSessionPrincipal(7), ID: 7, Name: "admin", IP: "10.1.2.3"}
 		migrateSourceAdminTables(t, db)
 		dto, err := prov.Create(providerReq(func(r *OIDCProviderRequest) { r.Actor = actor }))
 		if err != nil {
@@ -326,7 +326,7 @@ func TestIdentitySourceChangeAlert(t *testing.T) {
 		migrateSourceAdminTables(t, db)
 		prov.SetMappingAuditSink(audit.NewTxSink())
 		prov.SetSystemAlertSink(sink)
-		actor := GroupRoleMappingActor{ID: 7, Name: "admin"}
+		actor := GroupRoleMappingActor{Principal: testSessionPrincipal(7), ID: 7, Name: "admin"}
 		dto, err := prov.Create(providerReq(func(r *OIDCProviderRequest) { r.Actor = actor }))
 		if err != nil {
 			t.Fatal(err)
@@ -411,7 +411,9 @@ func TestIdentitySourceChangeAlert(t *testing.T) {
 		if err := prov.SourceChangeSinksReady(); err == nil {
 			t.Fatal("缺審計落地面時自檢應失敗")
 		}
-		if _, err := prov.Create(providerReq(func(r *OIDCProviderRequest) { r.Actor = GroupRoleMappingActor{ID: 7, Name: "admin"} })); err == nil {
+		if _, err := prov.Create(providerReq(func(r *OIDCProviderRequest) {
+			r.Actor = GroupRoleMappingActor{Principal: testSessionPrincipal(7), ID: 7, Name: "admin"}
+		})); err == nil {
 			t.Fatal("缺審計落地面時建立應失敗")
 		}
 		// 身分提供者：零值操作者（系統呼叫）審計與事件照寫，操作者記為系統

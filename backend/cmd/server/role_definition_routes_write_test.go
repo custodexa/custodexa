@@ -308,7 +308,7 @@ func runRoleDefinitionWriteRouteCases(t *testing.T, env *baselineEnv) {
 		c, out := env.api("S01", "POST", "/api/v1/role-definitions", map[string]any{"name": "rw-unassignable", "permissions": []string{"asset:view"}})
 		require.Equal(t, http.StatusCreated, c, "%v", out)
 		full := assembledCatalogIsFull()
-		op := identity.Operator{UserID: f.sup, Username: env.subjects["S01"].Username}
+		op := identity.Operator{Principal: testSessionPrincipal(f.sup), UserID: f.sup, Username: env.subjects["S01"].Username}
 
 		// 正式組裝的路由只代表它實際注入的那一種目錄；另一種以明示注入的服務驗同一個指派
 		t.Run("相容目錄（"+catalogVia(false)+"）", func(t *testing.T) {

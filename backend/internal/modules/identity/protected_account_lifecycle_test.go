@@ -19,7 +19,7 @@ import (
 func newLifecycleEnv(t *testing.T) *acctEnv {
 	t.Helper()
 	e := newAcctEnv(t, nil)
-	require.NoError(t, e.db.AutoMigrate(&model.UserRoleMapping{}))
+	require.NoError(t, e.db.AutoMigrate(&model.UserRoleMapping{}, &model.APIToken{}, &model.APITokenRole{}))
 	e.users.authzRevoker = noopRevoker{}
 	return e
 }

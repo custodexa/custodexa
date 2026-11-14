@@ -17,6 +17,8 @@ import (
 // AuditLogHandler 審計日誌 API Handler
 type AuditLogHandler struct {
 	auditService *audit.AuditLogService
+	// apiTokens 詳情所附 token 資訊的讀取面；未注入時詳情不附 token 物件（列上的識別與名稱照常）
+	apiTokens apiTokenAuditRefReader
 	// namer 原因參數的讀取期換名（角色、對象、節點）；nil 時維持識別碼
 	namer *AuditReasonNamer
 }
@@ -74,6 +76,17 @@ func (h *AuditLogHandler) List(c *gin.Context) {
 
 	if clientIP := c.Query("client_ip"); clientIP != "" {
 		filter.ClientIP = &clientIP
+	}
+
+	// api_token_id：只看經某一把 API token 進行的操作；格式不符回參數錯誤而不是靜默忽略
+	if tokenID := c.Query("api_token_id"); tokenID != "" {
+		id, err := strconv.ParseUint(tokenID, 10, 32)
+		if err != nil || id == 0 {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		tid := uint(id)
+		filter.APITokenID = &tid
 	}
 
 	// request_id：同一次請求寫下的全部列（精確比對；空字串忽略）。
@@ -156,7 +169,12 @@ func (h *AuditLogHandler) Get(c *gin.Context) {
 
 	view := audit.NewAuditLogView(auditLog)
 	h.namer.RenameViews([]audit.AuditLogView{view})
-	c.JSON(http.StatusOK, view)
+	ref, err := h.apiTokenRefOf(auditLog)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuditLogQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, auditLogDetailResponse{AuditLogView: view, APIToken: ref})
 }
 
 // GetByResourceID 查詢特定資源的審計歷史

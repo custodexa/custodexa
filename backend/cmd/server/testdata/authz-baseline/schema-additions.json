@@ -158,6 +158,13 @@
       "migration": "20261103_executor_login_checks",
       "tables": ["executor_login_checks"],
       "columns": {}
+    },
+    {
+      "migration": "20261113_api_tokens",
+      "tables": ["api_tokens", "api_token_roles"],
+      "columns": {
+        "audit_logs": ["api_token_id", "api_token_name"]
+      }
     }
   ]
 }

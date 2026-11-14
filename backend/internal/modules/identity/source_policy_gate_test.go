@@ -316,7 +316,7 @@ func TestUserServiceWriteReevaluatesSourcePolicy(t *testing.T) {
 	users := NewUserService(db, nil)
 	users.SetSecurityPolicies(policies)
 	fixed := []string{srcPolicyInside}
-	if _, _, err := users.Update(user.ID, &UpdateUserRequest{AllowedCIDRs: &fixed}); err != nil {
+	if _, _, err := users.Update(Operator{}, user.ID, &UpdateUserRequest{AllowedCIDRs: &fixed}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	if still := sourcePolicyOpenEvent(t, db); still != nil {

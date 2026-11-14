@@ -9,6 +9,8 @@ import { confirmDestructive } from '@/utils/confirm'
 import { apiErrorSummary } from '@/api/redact'
 import { t, currentLocale } from '@/i18n'
 import { renderDeleteConfirm, renderDisableMFAConfirm } from './accountActionCopy'
+import { getUserApiTokens } from '@/api/apiTokens'
+import { summarize } from '@/constants/apiTokens'
 
 /**
  * 帳號動作的執行（列表頁與詳情頁共用同一組端點與確認框）。
@@ -62,9 +64,22 @@ export async function disableAccountMfa(row) {
   }
 }
 
-export async function deleteAccount(row) {
+// 刪除前讀這個帳號可用的 API token 數，寫進確認框；讀不到就照原本的確認框，不擋刪除
+const usableApiTokenCount = async (row) => {
+  if (!row || row.kind === 'agent') return 0
   try {
-    await confirmDestructive(renderDeleteConfirm(row, t, currentLocale()), t('common.deleteConfirmTitle'), {
+    const res = await getUserApiTokens(row.id)
+    return summarize(Array.isArray(res?.data) ? res.data : []).usable
+  } catch (error) {
+    logFailure('user_api_token_list_failed', error)
+    return 0
+  }
+}
+
+export async function deleteAccount(row) {
+  const apiTokenCount = await usableApiTokenCount(row)
+  try {
+    await confirmDestructive(renderDeleteConfirm(row, t, currentLocale(), { apiTokenCount }), t('common.deleteConfirmTitle'), {
       confirmButtonText: t('common.deleteConfirmButton'),
       cancelButtonText: t('common.cancel'),
     })

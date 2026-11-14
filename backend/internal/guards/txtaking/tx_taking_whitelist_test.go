@@ -77,13 +77,14 @@ var txTakingWhitelist = []txTakingEntry{
 	},
 	{
 		CallerFile: "cmd/server/credential_management_adapter.go",
-		Callee:     "HasAllCapabilities",
+		Callee:     "HasAllCapabilitiesFiltered",
 		OriginalSites: []string{
 			"（新增）憑證管理授權 adapter 在呼叫端交易內重驗能力",
 		},
 		Reason: "憑證管理的授權判定必須在呼叫端的交易內進行：與影響集合、鎖序在同一個一致讀取點，" +
 			"避免「判定通過後、寫入前」權限被撤銷的窗口。該方法只讀（使用者、角色、權限世代），" +
-			"不寫任何 authz 表；交易句柄只用來讓讀取落在同一個交易快照。",
+			"不寫任何 authz 表；交易句柄只用來讓讀取落在同一個交易快照。" +
+			"（原呼叫不帶角色限定的 HasAllCapabilities；改為同一讀取點的帶限定形式，限定取自請求主體、背景作業傳 nil。）",
 	},
 	{
 		CallerFile: "internal/modules/asset/asset_group_service.go",
@@ -627,7 +628,7 @@ var txTakingWhitelist = []txTakingEntry{
 		OriginalSites: []string{
 			"（新增）不帶目標的憑證管理檢核在呼叫端交易內改認任一有效來源（含節點範圍來源）",
 		},
-		Reason: "與同檔 HasAllCapabilities 同一個讀取點：能力重驗在呼叫端交易內進行，" +
+		Reason: "與同檔 HasAllCapabilitiesFiltered 同一個讀取點：能力重驗在呼叫端交易內進行，" +
 			"另開連線會與持有憑證列鎖的交易讀到不同的指派狀態，單連線環境下還會互等。" +
 			"方法只重解主體並讀指派與角色，不取鎖、不寫任何表。",
 	},
@@ -881,6 +882,8 @@ var txTakingCalleeDirs = []string{authzModuleDir, offsiteModuleDir}
 // **本表不是豁免**：登記在此的方法一旦真的被呼叫，A 軸仍要求該呼叫點進
 // txTakingWhitelist。本表只回答「這個方法為什麼可以把交易收進來」。
 var txTakingMethodsWithoutCallers = map[string]string{
+	"HasAllCapabilities": "HasAllCapabilitiesFiltered 不帶角色限定的形式（限定為 nil），讀取點與交易語義相同：" +
+		"只讀使用者、角色與權限世代，不取鎖、不寫表；現況無外部呼叫點（轉接頭改呼叫帶限定的形式）。",
 	"Decide": "節點範圍授權判定，須在呼叫方的寫入交易內現查指派與目標，與寫入同一交易，" +
 		"判定與寫入之間不得有指派或拓撲變動。判定本身不取鎖、不寫表（只讀）；現況為契約骨架，無外部呼叫點。",
 	"ScopeSetFor": "範圍集合述詞（不限／空／條件），須與 Decide 在同一交易內重解主體，" +

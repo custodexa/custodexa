@@ -139,9 +139,9 @@ type UserService struct {
 func (s *UserService) SetGrantGrader(g *GrantGrader) { s.grader = g }
 
 // dbFor 帶操作者的入口開交易用的連線：交易的 context 帶上該次請求的脈絡，
-// 資料層寫角色指派審計列時才指認得出操作者。沒有操作者（登入供應、映射重算等）維持原連線。
+// 資料層寫角色指派審計列時才指認得出操作者。沒有操作者（登入供應、映射重算等）與系統操作者維持原連線。
 func (s *UserService) dbFor(op *Operator) *gorm.DB {
-	if op == nil {
+	if op == nil || op.IsSystem() {
 		return s.db
 	}
 	return s.db.WithContext(op.AuditContext())
@@ -693,8 +693,10 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 
 // Update 更新使用者（基本資訊，不含密碼和角色）。
 // 回傳的 diff 為欄位級 before/after 變更（key 形如 "email.before"/"email.after"，
-// 僅含實際變更的欄位），供 handler 注入審計日誌（稽核可查）
-func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[string]string, error) {
+// 僅含實際變更的欄位），供 handler 注入審計日誌（稽核可查）。
+// op 是這次請求的操作者：以 API token 認證的請求不能改動所屬帳號本人的允許來源網段，
+// 判定在寫入交易內以現值比對；其他操作者的行為不受 op 影響。
+func (s *UserService) Update(op Operator, id uint, req *UpdateUserRequest) (*model.User, map[string]string, error) {
 	// 檢查使用者是否存在
 	var user model.User
 	if err := s.db.First(&user, id).Error; err != nil {
@@ -777,7 +779,30 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 
 	// 執行更新
 	if len(updates) > 0 {
+		if h := loadLockOrderHook(); h != nil {
+			h("user_update_before_tx", s.db, id)
+		}
 		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			if next, has := updates["allowed_cidrs"]; has && op.ViaAPIToken() && id == op.UserID {
+				var cur model.User
+				if err := tx.Select("id", "allowed_cidrs").First(&cur, id).Error; err != nil {
+					return err
+				}
+				if err := apiTokenSelfChange(op, id, cur.AllowedCIDRs != next.(string)); err != nil {
+					return err
+				}
+				// 與交易內現值相同：這次請求不寫這個欄位。寫回讀到的值會在讀與寫之間留下空隙，
+				// 期間其他請求提交的新限制會被蓋回去。
+				delete(updates, "allowed_cidrs")
+				delete(diff, "allowed_cidrs.before")
+				delete(diff, "allowed_cidrs.after")
+				if h := loadLockOrderHook(); h != nil {
+					h("user_update_token_self_cidrs_checked", tx, id)
+				}
+			}
+			if len(updates) == 0 {
+				return nil
+			}
 			if newOwner, changed := updates["owner_user_id"]; changed {
 				// 先鎖 agent 列再判定（與以 agent 為主體建規則同鎖序），判定在任何
 				// 寫入之前：被拒時權限版本與主體狀態事件都不推進
@@ -807,6 +832,9 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 			// 轉成 ErrEmailConflict 回 409（defense in depth，非通用 500）
 			if dberr.IsUniqueViolation(err) {
 				return nil, nil, ErrEmailConflict
+			}
+			if errors.Is(err, ErrAPITokenSelfChange) {
+				return nil, nil, err
 			}
 			log.Printf("[UserService] Update: Update user error: %v", err)
 			return nil, nil, fmt.Errorf("更新使用者失敗: %w", err)
@@ -844,7 +872,8 @@ func (s *UserService) Delete(id uint) error {
 // DeleteWithSummary 刪除使用者（軟刪除），回傳被刪帳號名與作廢的外部身分綁定數。
 // 不經帳號身分操作關卡，只供無操作者的系統路徑；管理端入口一律走 DeleteWithSummaryBy
 func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
-	return s.deleteWithSummary(nil, id)
+	op := systemOperator()
+	return s.deleteWithSummary(&op, id)
 }
 
 // DeleteWithSummaryBy 帶操作者的刪除：經帳號身分操作關卡（持保護角色的帳號只有超管能刪）
@@ -959,6 +988,10 @@ func (s *UserService) deleteWithSummary(op *Operator, id uint) (DeletedUserSumma
 				return fmt.Errorf("作廢外部身分綁定失敗: %w", revoked.Error)
 			}
 			summary.ExternalIdentitiesRevoked = revoked.RowsAffected
+			// 該帳號的 API token 同交易標記撤銷（認證入口另以帳號已刪除拒絕）；與建立持同一把帳號層級鎖
+			if err := markAPITokensRevokedForDeletedUserTx(tx, id, op); err != nil {
+				return err
+			}
 			if err := tx.Delete(&user).Error; err != nil {
 				return fmt.Errorf("刪除使用者失敗: %w", err)
 			}
@@ -1351,12 +1384,17 @@ func (s *UserService) assignRoles(op *Operator, userID uint, roleNames []string,
 				return err
 			}
 			next := make([]uint, 0, len(roles))
+			var ignoredIDs []uint
 			for _, r := range roles {
 				next = append(next, r.ID)
+				if _, only := mappedOnly[r.ID]; only {
+					ignoredIDs = append(ignoredIDs, r.ID)
+				}
 			}
 			if err := s.assignmentGuard().Check(tx, *op, AssignmentChange{
 				Path: PathReplace, TargetUserID: userID, OldRoleIDs: old, NewRoleIDs: next,
-				ScopeRequested: opts.ScopeRequested, NodeScopes: newScopes}); err != nil {
+				ScopeRequested: opts.ScopeRequested, NodeScopes: newScopes,
+				IgnoredRoleIDs: ignoredIDs, RescopedRoleIDs: rescopedUserRoles(manualTarget, old, beforeNodes, opts.RoleNodes)}); err != nil {
 				return err
 			}
 			if err := s.assignmentGuard().CheckNodesLive(tx, newScopes); err != nil {
@@ -1476,7 +1514,8 @@ func (s *UserService) assignRoles(op *Operator, userID uint, roleNames []string,
 // UpdateStatus 更新使用者狀態（啟用/禁用）。
 // 不經帳號身分操作關卡，只供無操作者的系統路徑（閒置自動停用）；管理端入口一律走 UpdateStatusBy
 func (s *UserService) UpdateStatus(userID uint, active bool) error {
-	return s.updateStatus(nil, userID, active)
+	op := systemOperator()
+	return s.updateStatus(&op, userID, active)
 }
 
 // UpdateStatusBy 帶操作者的啟用與停用：兩者都經帳號身分操作關卡（持保護角色的帳號只有超管能停用或啟用）
@@ -1612,6 +1651,35 @@ func (s *UserService) updateStatus(op *Operator, userID uint, active bool) error
 	}
 
 	log.Printf("[UserService] UpdateStatus: Status updated successfully, UserID: %d, Active: %v", userID, active)
+	return nil
+}
+
+// SetInactivityExemptBy 帶操作者的閒置停用豁免設定：以 API token 認證的請求不能變更所屬帳號本人的豁免，
+// 判定在使用者憑證鎖內以現值比對（值未變不拒絕）；其他操作者的行為與 SetInactivityExempt 相同。
+func (s *UserService) SetInactivityExemptBy(op Operator, userID uint, exempt bool) error {
+	if !op.ViaAPIToken() || userID != op.UserID {
+		return s.SetInactivityExempt(userID, exempt)
+	}
+	err := WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
+		var user model.User
+		if err := tx.Select("id", "inactivity_exempt").First(&user, userID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrUserNotFound
+			}
+			return fmt.Errorf("查詢使用者失敗: %w", err)
+		}
+		if err := apiTokenSelfChange(op, userID, user.InactivityExempt != exempt); err != nil {
+			return err
+		}
+		if user.InactivityExempt == exempt {
+			return nil // 值未變：不寫入
+		}
+		return tx.Model(&model.User{}).Where("id = ?", userID).Update("inactivity_exempt", exempt).Error
+	})
+	if err != nil {
+		return err
+	}
+	log.Printf("[UserService] SetInactivityExempt: UserID=%d, exempt=%v", userID, exempt)
 	return nil
 }
 
@@ -1816,4 +1884,24 @@ func (s *UserService) guardOwnerTransfer(tx *gorm.DB, agentID, newOwnerID uint) 
 		return fmt.Errorf("鎖定 agent 帳號失敗: %w", err)
 	}
 	return s.ownerTransferGuard.CheckOwnerTransfer(tx, agentID, newOwnerID)
+}
+
+// rescopedUserRoles 保留的手動角色中，請求帶的節點範圍與現況不同者（新增的角色不算，它本身已是角色集的變更）。
+func rescopedUserRoles(target []model.Role, old []uint, before map[uint][]uint, req map[string]RoleNodesValue) []uint {
+	var out []uint
+	for _, r := range target {
+		if !containsID(old, r.ID) {
+			continue
+		}
+		v, has := req[r.Name]
+		if !has {
+			continue
+		}
+		cur := before[r.ID]
+		wantNodes := !v.Global
+		if wantNodes != (len(cur) > 0) || (wantNodes && !authz.SameNodeSet(v.NodeIDs, cur)) {
+			out = append(out, r.ID)
+		}
+	}
+	return out
 }

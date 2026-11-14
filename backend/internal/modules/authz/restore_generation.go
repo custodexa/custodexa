@@ -179,3 +179,15 @@ func DeriveRestoreJWTKey(secret, generation string) string {
 	mac.Write([]byte(restoreJWTKeyDomain + generation))
 	return hex.EncodeToString(mac.Sum(nil))
 }
+
+// RestoredAt 目前還原世代的還原時刻；從未還原（legacy 世代）或沒有權限模型狀態列時回 nil。
+func RestoredAt(db *gorm.DB) (*time.Time, error) {
+	var rows []model.AuthzState
+	if err := db.Select("restore_generation", "restored_at").Where("id = 1").Limit(1).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("讀取還原時刻失敗: %w", err)
+	}
+	if len(rows) == 0 || rows[0].RestoreGeneration == "" {
+		return nil, nil
+	}
+	return rows[0].RestoredAt, nil
+}

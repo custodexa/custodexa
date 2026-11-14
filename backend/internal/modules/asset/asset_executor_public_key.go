@@ -96,7 +96,7 @@ func (s *AssetExecutorService) ExportPublicKey(ctx context.Context, assetID uint
 	}
 	userID, operator := model.UserFromContext(ctx)
 	var line string
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		exec, err := findExecutor(tx, assetID)
 		if err != nil {
 			return err

@@ -172,7 +172,7 @@ func runMappingRevokeMultiUser(t *testing.T, sub string) {
 					return err
 				}
 				return e.mappingService(e.dbA).DeleteMapping(model.RoleMappingChannelKindProvider, f.provider.ID, f.rule,
-					GroupRoleMappingActor{ID: e.root, Name: "lo-root", IP: "127.0.0.1"})
+					GroupRoleMappingActor{Principal: testSessionPrincipal(e.root), ID: e.root, Name: "lo-root", IP: "127.0.0.1"})
 			}},
 			b: lockActor{name: "disable", stop: disableStop, app: e.appB, start: func() error {
 				return e.users.UpdateStatusBy(e.op(), f.u2, false)
@@ -271,7 +271,7 @@ func runMappingRevokeLockOrder(t *testing.T, sub, kind string) {
 		get, stop := collectSQL(e.dbA, "lock_order_revoke_normal")
 		defer stop()
 		require.NoError(t, e.mappingService(e.dbA).DeleteMapping(model.RoleMappingChannelKindProvider, f.provider.ID, f.rule,
-			GroupRoleMappingActor{ID: e.root, Name: "lo-root", IP: "127.0.0.1"}))
+			GroupRoleMappingActor{Principal: testSessionPrincipal(e.root), ID: e.root, Name: "lo-root", IP: "127.0.0.1"}))
 		stop()
 		require.EqualValues(t, 0, e.scalar(t, "SELECT count(*) FROM user_role_mapping_rule_supports WHERE rule_id = ?", f.rule), "fixture：兩人的支持都被撤銷")
 		requireUserLocksBeforeAdvance(t, get(), kind, []uint{f.u1, f.u2})

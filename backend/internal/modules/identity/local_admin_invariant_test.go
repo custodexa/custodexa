@@ -26,7 +26,7 @@ func localAdminMigrate(t *testing.T, db *gorm.DB) {
 	// 缺表即整筆回滾——生產序由 migration 先建全部表
 	// model.UserRole：計數的來源條件讀 user_roles.source，而 many2many 標籤
 	// 自動建出的關聯表只有兩欄——缺這一個 model，計數會敗在「no such column」
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
+	if err := db.AutoMigrate(&model.APIToken{}, &model.APITokenRole{}, &model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.ApproverScope{}, &model.RefreshToken{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.AuditLog{},
 		&model.UserRole{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{},
 		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{},

@@ -142,7 +142,7 @@ func TestOIDCProviderDeleteIgnoresDeletedUsersBindings(t *testing.T) {
 func TestLDAPShadowUserReprovisionedAfterDelete(t *testing.T) {
 	env := setupRegressionEnv(t)
 	// 刪除路徑的連動清理表，以及與正式庫同語義的 partial 帳號名／email 索引
-	if err := env.db.AutoMigrate(&model.UserGroup{}, &model.UserGroupMember{}, &model.ApproverScope{},
+	if err := env.db.AutoMigrate(&model.APIToken{}, &model.APITokenRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.ApproverScope{},
 		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
 		&model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
 		&model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}); err != nil {

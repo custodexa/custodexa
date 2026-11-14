@@ -42,7 +42,7 @@ func newProjectionEnv(t *testing.T, catalog AssignableCatalog) *projectionEnv {
 
 func (e *projectionEnv) project(t *testing.T, catalog AssignableCatalog, operator uint) *RoleProjectionSet {
 	t.Helper()
-	set, err := NewRoleProjector(e.db, NewAssignmentGuard(catalog)).ProjectRoles(operator)
+	set, err := NewRoleProjector(e.db, NewAssignmentGuard(catalog)).ProjectRoles(principalOf(t, e.db, operator))
 	require.NoError(t, err)
 	return set
 }
@@ -208,11 +208,11 @@ func TestRoleAssignmentProjection(t *testing.T) {
 		for _, id := range []uint{cv, other} {
 			d, err := e.svc.GetDefinition(ctx, id)
 			require.NoError(t, err)
-			assert.ErrorIs(t, e.svc.Delete(ctx, e.admin, id, d.DefinitionVersion), ErrRoleDefinitionInUse)
+			assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, id, d.DefinitionVersion), ErrRoleDefinitionInUse)
 		}
 		d, err := e.svc.GetDefinition(ctx, free)
 		require.NoError(t, err)
-		require.NoError(t, e.svc.Delete(ctx, e.admin, free, d.DefinitionVersion))
+		require.NoError(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, free, d.DefinitionVersion))
 	})
 
 	t.Run("account_ops 與帳號身分操作關卡的裁決逐格一致，投影不寫資料", func(t *testing.T) {
@@ -256,7 +256,7 @@ func TestRoleAssignmentProjection(t *testing.T) {
 		cells := 0
 		for opName, op := range map[string]uint{"超管": e.admin, "非超管": e.ida} {
 			for tName, tid := range targets {
-				got, err := proj.AccountOps(op, tid)
+				got, err := proj.AccountOps(principalOf(t, e.db, op), tid)
 				require.NoError(t, err)
 				require.Len(t, got, len(AccountOpKeys))
 				for _, o := range ops {
@@ -280,19 +280,19 @@ func TestRoleAssignmentProjection(t *testing.T) {
 		assert.Equal(t, 2*len(targets)*8, cells)
 		assert.Equal(t, before, e.auditRows(t), "投影前後審計列數不變")
 		// 已知值：非超管面對超管是 super_only，面對安全管理員改密是 notify
-		ops1, err := proj.AccountOps(e.ida, targets["超管直接"])
+		ops1, err := proj.AccountOps(principalOf(t, e.db, e.ida), targets["超管直接"])
 		require.NoError(t, err)
 		assert.Equal(t, AccountOpClassSuperOnly, ops1["set_password"])
-		ops2, err := proj.AccountOps(e.ida, targets["安全管理員群組"])
+		ops2, err := proj.AccountOps(principalOf(t, e.db, e.ida), targets["安全管理員群組"])
 		require.NoError(t, err)
 		assert.Equal(t, AccountOpClassNotify, ops2["set_password"])
 		assert.Equal(t, AccountOpClassSuperOnly, ops2["disable"])
-		ops3, err := proj.AccountOps(e.ida, targets["一般"])
+		ops3, err := proj.AccountOps(principalOf(t, e.db, e.ida), targets["一般"])
 		require.NoError(t, err)
 		for _, k := range AccountOpKeys {
 			assert.Equal(t, AccountOpClassAllowed, ops3[k], k)
 		}
-		_, err = proj.AccountOps(e.ida, 999999)
+		_, err = proj.AccountOps(principalOf(t, e.db, e.ida), 999999)
 		assert.ErrorIs(t, err, ErrUserNotFound)
 	})
 }

@@ -21,7 +21,22 @@
         <PermissionOverviewManage
           :management="overview.management"
           :role-defs="roleDefs"
-        />
+        >
+          <template #footer>
+            <p
+              v-if="usableTokens > 0"
+              class="po-tab__api-tokens"
+              data-test="po-api-tokens"
+            >
+              {{ $t('permissionOverview.apiTokens', { user: overview.username, n: usableTokens }) }}
+              <a
+                href="#"
+                data-test="po-api-tokens-link"
+                @click.prevent="emit('view-api-tokens')"
+              >{{ $t('permissionOverview.apiTokensLink') }}</a>
+            </p>
+          </template>
+        </PermissionOverviewManage>
         <PermissionOverviewConnect
           :connection="overview.connection"
           :out-of-scope-count="overview.connection?.out_of_scope_asset_count || 0"
@@ -43,6 +58,8 @@ import { onMounted, ref, watch } from 'vue'
 import { getPermissionOverview } from '@/api/permissionOverview'
 import { listRoleDefinitions } from '@/api/roleDefinitions'
 import { apiErrorSummary } from '@/api/redact'
+import { getUserApiTokens } from '@/api/apiTokens'
+import { summarize } from '@/constants/apiTokens'
 import PermissionOverviewProbe from './PermissionOverviewProbe.vue'
 import PermissionOverviewManage from './PermissionOverviewManage.vue'
 import PermissionOverviewConnect from './PermissionOverviewConnect.vue'
@@ -54,6 +71,7 @@ import PermissionOverviewConnect from './PermissionOverviewConnect.vue'
 const props = defineProps({
   userId: { type: Number, required: true },
 })
+const emit = defineEmits(['view-api-tokens'])
 
 const overview = ref(null)
 const roleDefs = ref(new Map())
@@ -89,10 +107,30 @@ const load = async () => {
   }
 }
 
-watch(() => props.userId, load)
+// 這個人可用的 API token 數：讀不到或沒有就不顯示那一句
+const usableTokens = ref(0)
+let tokenSeq = 0
+const loadTokens = async () => {
+  const seq = ++tokenSeq
+  usableTokens.value = 0
+  try {
+    const res = await getUserApiTokens(props.userId)
+    if (seq !== tokenSeq) return
+    usableTokens.value = summarize(Array.isArray(res?.data) ? res.data : []).usable
+  } catch (error) {
+    if (seq !== tokenSeq) return
+    console.error(...apiErrorSummary('user_api_token_list_failed', error))
+  }
+}
+
+watch(() => props.userId, () => {
+  void load()
+  void loadTokens()
+})
 onMounted(() => {
   void loadRoleDefs()
   void load()
+  void loadTokens()
 })
 </script>
 
@@ -115,5 +153,15 @@ onMounted(() => {
   margin: 0;
   color: var(--ot-text-secondary);
   font-size: 13px;
+}
+.po-tab__api-tokens {
+  margin: 0;
+  padding-top: var(--ot-space-sm);
+  border-top: 1px solid var(--ot-border-subtle);
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+.po-tab__api-tokens a {
+  color: var(--ot-primary);
 }
 </style>

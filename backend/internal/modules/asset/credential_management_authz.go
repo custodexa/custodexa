@@ -88,6 +88,9 @@ type CredentialManagementRequest struct {
 	// 範圍內，任一不涵蓋即整筆拒絕；NodeIDs 為空時只認全域來源。是否走節點目標只看這個旗標，不看 NodeIDs 長度
 	NodeTarget bool
 	NodeIDs    []uint
+	// AttachesExisting 這次操作把系統保存的既有憑證掛到資產上（建立資產或帳號時引用、匯入引用、掛載、改綁）。
+	// 卸載與其他憑證管理操作不帶此標示。
+	AttachesExisting bool
 }
 
 // CredentialManagementDecision 判定結果。Missing 為第一個缺少的能力鍵（供日誌，不外露）；
@@ -167,6 +170,14 @@ func (g credentialManagementGate) require(ctx context.Context, db *gorm.DB,
 		// 沒有宣告任何能力的請求是程式錯誤，不能因此當作「不需要授權」
 		return CredentialManagementDecision{}, fmt.Errorf("%w: 管理操作 %s 未宣告能力", ErrCredentialAuthzUnavailable, req.Operation)
 	}
+	// 以 API token 認證的請求不能把系統保存的既有憑證掛到資產上（建立資產、建立資產帳號、匯入、掛載、改綁皆經此判定，見 AttachesExisting）；
+	// 以請求自帶的秘密建立走建立憑證的判定，不受影響。依據是請求脈絡上明確的請求憑證種類。
+	if req.AttachesExisting {
+		if kind, ok := model.RequestCredentialFrom(ctx); ok && kind == model.RequestCredentialAPIToken {
+			log.Printf("[Credential] API token 請求引用既有憑證，拒絕操作: op=%s", req.Operation)
+			return CredentialManagementDecision{}, ErrAPITokenCredentialReference
+		}
+	}
 	userID, username := model.UserFromContext(ctx)
 	if userID == 0 {
 		log.Printf("[Credential] 空主體，拒絕操作: op=%s", req.Operation)
@@ -203,14 +214,21 @@ func deniedCapabilityKeys(required []string, missing string) []string {
 	return required
 }
 
-// contextWithInitiator 以工作的發起者建立授權脈絡（沿既有審計 context 慣例的鍵）。
-// 發起者為零值時原樣回傳 ctx：管理關卡會把空主體當作拒絕，不會變成放行。
-func contextWithInitiator(ctx context.Context, userID uint, username string) context.Context {
+// contextWithRequestActor 請求內記下操作者識別（沿既有審計 context 慣例的鍵），保留 ctx 內的請求主體與
+// 請求憑證種類，不產生背景標示：授權轉接頭照常取請求主體判定，缺主體即拒絕。
+func contextWithRequestActor(ctx context.Context, userID uint, username string) context.Context {
 	if userID == 0 {
 		return ctx
 	}
 	ctx = context.WithValue(ctx, "userID", userID)      //nolint:staticcheck // 沿用既有審計 context 慣例
 	return context.WithValue(ctx, "username", username) //nolint:staticcheck
+}
+
+// backgroundInitiatorContext 背景作業（排程、批次、重試、重驗）以工作的發起者建立授權脈絡，帶背景標示；
+// 不繼承任何呼叫端的取消與主體。授權轉接頭只對這個標示以帳號當下的完整身分重驗（並現查帳號是否啟用）。
+// 發起者為零值時回不帶任何主體的脈絡：管理關卡會把空主體當作拒絕，不會變成放行。
+func backgroundInitiatorContext(userID uint, username string) context.Context {
+	return model.WithBackgroundInitiator(context.Background(), userID, username)
 }
 
 // requireDeclaredSecretOn 內嵌宣告秘密（資產表單或帳號表單帶密碼／私鑰）的共用關卡。
@@ -280,10 +298,11 @@ func requireCreateCredentialCaps(g credentialManagementGate, ctx context.Context
 	}
 	if len(credentialIDs) > 0 {
 		if _, err := g.require(ctx, db, CredentialManagementRequest{
-			Operation:     CredOpBind,
-			Capabilities:  []string{CredCapBind},
-			CredentialIDs: credentialIDs,
-			AssetIDs:      assetIDs,
+			Operation:        CredOpBind,
+			Capabilities:     []string{CredCapBind},
+			CredentialIDs:    credentialIDs,
+			AssetIDs:         assetIDs,
+			AttachesExisting: true,
 		}); err != nil {
 			return err
 		}

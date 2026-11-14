@@ -222,7 +222,7 @@ In release mode the system detects whether `JWT_SECRET` is still the factory pla
 
 **`JWT_SECRET` and the restore generation** (from 1.18.0). The key that signs sign-in tokens is derived from `JWT_SECRET` and the restore generation kept in the database. Until the first restore the generation is empty, and the key is `JWT_SECRET` itself. The two change separately:
 
-- A restore by the management script of a backup of 1.18.0 or later sets a new generation and puts `.env` back as the backup holds it. `JWT_SECRET` and its fingerprint on the Key Management page stay the same, every token signed before the restore stops verifying, and the refresh tokens and agent tokens in the backup are refused ([Backup and Restore §5](./backup-and-restore.md#restoring-with-restore)).
+- A restore by the management script of a backup of 1.18.0 or later sets a new generation and puts `.env` back as the backup holds it. `JWT_SECRET` and its fingerprint on the Key Management page stay the same, every token signed before the restore stops verifying, and the refresh tokens, agent tokens and API tokens in the backup are refused ([Backup and Restore §5](./backup-and-restore.md#restoring-with-restore)).
 - Replacing `JWT_SECRET` as above does not change the generation.
 - A restart, or another host taking over the same database, keeps the generation.
 
@@ -240,7 +240,13 @@ UPDATE asset_authorizations SET date_expired = now()
  WHERE source = 'ticket' AND deleted_at IS NULL AND (date_expired IS NULL OR date_expired > now());
 ```
 
-Everyone signs in again afterwards; agent tokens must be issued anew and temporary grants requested again. Standing authorizations are not changed. When you restore a backup taken before the upgrade with the scripts of the new version, the restore does both steps itself before the older version starts, and records only the fingerprint of the new secret ([Backup and Restore §5.1](./backup-and-restore.md#from-1180-or-later-to-a-version-before-it)). The same two steps, at the same stop point, close the sign-ins of any backup restored by hand, which does not set a new restore generation. The new `JWT_SECRET` stays: the fingerprint check of [Backup and Restore §6](./backup-and-restore.md#6-post-restore-verification-checklist) then compares against it, not against the backup. This does not protect against someone who controls the host.
+With a backup of 1.24.0 or later, whose database has the table `api_tokens`, run this statement in the same session as well:
+
+```sql
+UPDATE api_tokens SET revoked_at = now(), revoke_note = 'restore' WHERE revoked_at IS NULL;
+```
+
+Everyone signs in again afterwards; agent tokens must be issued anew, API tokens created anew and temporary grants requested again. Standing authorizations are not changed. When you restore a backup taken before the upgrade with the scripts of the new version, the restore does both steps itself before the older version starts, and records only the fingerprint of the new secret ([Backup and Restore §5.1](./backup-and-restore.md#from-1180-or-later-to-a-version-before-it)). The same two steps, at the same stop point, close the sign-ins of any backup restored by hand, which does not set a new restore generation. The new `JWT_SECRET` stays: the fingerprint check of [Backup and Restore §6](./backup-and-restore.md#6-post-restore-verification-checklist) then compares against it, not against the backup. This does not protect against someone who controls the host.
 
 ---
 

@@ -1,13 +1,13 @@
 {
  "commit": "daca3314",
  "captured_at": "2026-10-15",
- "routes": 356,
- "routes_sha256": "3c7e52b7439c4c658a7ad4c998f3fe5719e0a677a501299a7927b4feebc46e6a",
+ "routes": 363,
+ "routes_sha256": "b2ae0a96cf7ec931469cbd778e5b2243dd9632541f6572a04bf06e5022a78804",
  "entry_rules": 37,
  "groups": {
   "B": 82,
   "I": 27,
-  "R": 5340,
+  "R": 5445,
   "T": 9
  },
  "schema": {
@@ -1092,6 +1092,8 @@
   "2026-11-02 R: Host account inventory page adds one front-end entry rule (36) and moves its role editor entry to a page, merged after the dedicated bastion account routes (recapture at commit unknown)",
   "2026-11-03 R: Executor test-login adds two routes and the inventory read response gains next_identity (recapture at commit ff2b9edf7)",
   "2026-11-03 R: Host account inventory reads follow the asset detail visibility decision; the single-asset read gains the per-asset visibility guard in the route inventory (recapture at commit unknown)",
-  "2026-11-05 R: Add the keystroke record view routes and the keystroke investigation front-end entry rule (37) (recapture at commit unknown)"
+  "2026-11-05 R: Add the keystroke record view routes and the keystroke investigation front-end entry rule (37) (recapture at commit unknown)",
+  "2026-11-13 R: The global API token gate joins every route middleware chain right after the agent gate; the route set is unchanged and no recorded answer or write changes (recapture at commit 24f4f77c9)",
+  "2026-11-13 R: Add seven API token routes: the caller's own list, create and revoke, the account management list, single revoke and revoke all, and the token self check; no existing record changes (recapture at commit 5dbbcce1f)"
  ]
 }

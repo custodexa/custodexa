@@ -493,6 +493,10 @@ func (s *OIDCProviderService) Create(req *OIDCProviderRequest) (*OIDCProviderDTO
 		p.ClientSecretEnc = enc
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 以 API token 建立與所屬帳號外部身分同身分域的設定（重新接上本人的外部身分）即拒絕
+		if err := apiTokenProviderDomainSelfGate(tx, mappingOperator(req.Actor), issuer, clientID); err != nil {
+			return err
+		}
 		if err := tx.Create(&p).Error; err != nil {
 			return fmt.Errorf("建立 OIDC provider 失敗: %w", err)
 		}
@@ -657,6 +661,12 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 		needsInvalidation = disabling || secretRotated
 		reason = invalidationReason(disabling, secretRotated)
 		changed := oidcChangedFields(&current, updates)
+		// 以 API token 變更所屬帳號外部身分所在來源的設定即拒絕；沒有實際變更的存檔不拒絕
+		if len(changed) > 0 || needsInvalidation {
+			if err := apiTokenProviderDomainSelfGate(tx, mappingOperator(req.Actor), current.Issuer, current.ClientID); err != nil {
+				return err
+			}
+		}
 		if len(updates) > 0 {
 			if err := tx.Model(&model.OIDCProvider{}).Where("id = ?", id).
 				Updates(updates).Error; err != nil {
@@ -769,6 +779,10 @@ func (s *OIDCProviderService) DeleteBy(actor GroupRoleMappingActor, id uint) err
 		}
 		return err
 	}
+	// 以 API token 刪除所屬帳號外部身分所在來源的設定：先於關聯檢查回應，鎖內再判一次
+	if err := apiTokenProviderDomainSelfGate(s.db, mappingOperator(actor), p.Issuer, p.ClientID); err != nil {
+		return err
+	}
 	var linked int64
 	if err := liveProviderIdentities(s.db).
 		Where("user_external_identities.provider_id = ?", id).Count(&linked).Error; err != nil {
@@ -787,6 +801,9 @@ func (s *OIDCProviderService) DeleteBy(actor GroupRoleMappingActor, id uint) err
 	// 而該態下任何殘留的兌換都不再有 provider 列可鎖
 	var plan *providerRevocationPlan
 	err := WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
+		if err := apiTokenProviderDomainSelfGate(tx, mappingOperator(actor), p.Issuer, p.ClientID); err != nil {
+			return err
+		}
 		if err := authz.BeginPermissionChange(tx); err != nil {
 			return err
 		}
@@ -978,7 +995,7 @@ func (s *OIDCProviderService) recordSourceChange(tx *gorm.DB, actor GroupRoleMap
 		ResourceID: &id,
 		Status:     string(model.StatusSuccess),
 		Actor:      gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
+		Request:    actor.requestMeta(),
 		Details:    string(payload),
 	}); err != nil {
 		return fmt.Errorf("寫入身分提供者設定稽核失敗: %w", err)

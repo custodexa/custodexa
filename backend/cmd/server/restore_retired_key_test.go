@@ -97,7 +97,7 @@ func TestUpgradeCompatRetiredKeyRestore(t *testing.T) {
 		def, err := svc.GetDefinition(ctx, id)
 		require.NoError(t, err)
 		require.Equal(t, []string{"session:view"}, def.Permissions)
-		_, err = svc.Update(ctx, admin.ID, id, def.DefinitionVersion, identity.RoleInput{Name: "legacy-ops", Description: "說明", Permissions: def.Permissions})
+		_, err = svc.Update(roleWriterSession(ctx, admin.ID), admin.ID, id, def.DefinitionVersion, identity.RoleInput{Name: "legacy-ops", Description: "說明", Permissions: def.Permissions})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"session:view"}, rolePermissionKeys(t, db, id))
 		last := ev.events[len(ev.events)-1]

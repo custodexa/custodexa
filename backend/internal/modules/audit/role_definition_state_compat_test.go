@@ -45,11 +45,11 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 	t.Run("摘要隨自訂集合、定義版本、相容目錄改變，不隨名稱說明改變", func(t *testing.T) {
 		e, svc := setup(t)
 		d0 := digest(t, e)
-		r, err := svc.Create(ctx, admin, identity.RoleInput{Name: "viewer", Permissions: []string{"asset:view"}})
+		r, err := svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "viewer", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		d1 := digest(t, e)
 		require.NotEqual(t, d0, d1, "新增自訂角色")
-		_, err = svc.Update(ctx, admin, r.ID, 1, identity.RoleInput{Name: "viewer", Permissions: []string{"asset:view", "session:view"}})
+		_, err = svc.Update(roleWriterSession(ctx, admin), admin, r.ID, 1, identity.RoleInput{Name: "viewer", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
 		d2 := digest(t, e)
 		require.NotEqual(t, d1, d2, "集合與定義版本改變")
@@ -70,13 +70,13 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 		require.Equal(t, "match", e.reconcile().State)
 		var n0 int64
 		require.NoError(t, e.db.Model(&model.PermissionStateEvent{}).Count(&n0).Error)
-		a, err := svc.Create(ctx, admin, identity.RoleInput{Name: "a", Permissions: []string{"asset:view"}})
+		a, err := svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "a", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
-		cp, err := svc.Copy(ctx, admin, a.ID, "b", "")
+		cp, err := svc.Copy(roleWriterSession(ctx, admin), admin, a.ID, "b", "")
 		require.NoError(t, err)
-		_, err = svc.Update(ctx, admin, a.ID, 1, identity.RoleInput{Name: "a", Permissions: []string{"asset:view", "session:view"}})
+		_, err = svc.Update(roleWriterSession(ctx, admin), admin, a.ID, 1, identity.RoleInput{Name: "a", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
-		require.NoError(t, svc.Delete(ctx, admin, cp.ID, 1))
+		require.NoError(t, svc.Delete(roleWriterSession(ctx, admin), admin, cp.ID, 1))
 		var n1 int64
 		require.NoError(t, e.db.Model(&model.PermissionStateEvent{}).Count(&n1).Error)
 		require.EqualValues(t, 4, n1-n0, "四種 mutation 各一筆事件（無額外的無來源變動事件）")
@@ -94,7 +94,7 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 
 	t.Run("快照不含角色名稱、說明或自由文字", func(t *testing.T) {
 		e, svc := setup(t)
-		_, err := svc.Create(ctx, admin, identity.RoleInput{Name: "secret-looking-name", Description: "free text here", Permissions: []string{"asset:view"}})
+		_, err := svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "secret-looking-name", Description: "free text here", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		var body string
 		require.NoError(t, e.db.Transaction(func(tx *gorm.DB) error {
@@ -113,7 +113,7 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 
 	t.Run("事件鏈寫入失敗時角色內容與兩個版本整筆回滾", func(t *testing.T) {
 		e, svc := setup(t)
-		a, err := svc.Create(ctx, admin, identity.RoleInput{Name: "a", Permissions: []string{"asset:view"}})
+		a, err := svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "a", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		count := func() []int64 {
 			var roles, perms, ver, evs int64
@@ -129,11 +129,11 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 				_ = tx.AddError(errors.New("event down"))
 			}
 		}))
-		_, err = svc.Create(ctx, admin, identity.RoleInput{Name: "y", Permissions: []string{"asset:view"}})
+		_, err = svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "y", Permissions: []string{"asset:view"}})
 		require.ErrorContains(t, err, "event down")
-		_, err = svc.Update(ctx, admin, a.ID, 1, identity.RoleInput{Name: "a", Permissions: []string{}})
+		_, err = svc.Update(roleWriterSession(ctx, admin), admin, a.ID, 1, identity.RoleInput{Name: "a", Permissions: []string{}})
 		require.ErrorContains(t, err, "event down")
-		require.ErrorContains(t, svc.Delete(ctx, admin, a.ID, 1), "event down")
+		require.ErrorContains(t, svc.Delete(roleWriterSession(ctx, admin), admin, a.ID, 1), "event down")
 		require.Equal(t, before, count(), "角色內容、定義版本、全域版本與事件鏈全回滾")
 	})
 
@@ -195,7 +195,7 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 		require.ErrorIs(t, err, audit.ErrCheckpointPayloadInvalid, "舊快照不得改標新格式")
 
 		// 之後的角色定義寫入：鏈頭仍是舊格式，不誤記無來源變動，且舊基準加新事件重放後與現況相符
-		_, err = svc.Create(ctx, admin, identity.RoleInput{Name: "late", Permissions: []string{"asset:view"}})
+		_, err = svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "late", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		var untraced int64
 		require.NoError(t, e.db.Model(&model.PermissionStateEvent{}).Where("kind = ?", model.PermEventUntraced).Count(&untraced).Error)
@@ -241,7 +241,7 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 	t.Run("還原核對拒絕無效角色定義，不當成空集合", func(t *testing.T) {
 		e, svc := setup(t)
 		require.NoError(t, e.db.AutoMigrate(&model.LDAPDirectory{}, &model.OIDCProvider{}))
-		r, err := svc.Create(ctx, admin, identity.RoleInput{Name: "a", Permissions: []string{"asset:view"}})
+		r, err := svc.Create(roleWriterSession(ctx, admin), admin, identity.RoleInput{Name: "a", Permissions: []string{"asset:view"}})
 		require.NoError(t, err)
 		findings := func() map[string]int {
 			rep, err := authz.CheckRestoreIntegrity(e.db, identity.CountLocalAdmins, identity.RestoreMappingRefChecks())
@@ -273,4 +273,11 @@ func TestRoleDefinitionStateCompatibility(t *testing.T) {
 		require.NoError(t, e.db.Create(&model.RolePermission{RoleID: 1, PermissionKey: "asset:view"}).Error) // 內建超管角色
 		require.Equal(t, 1, findings()["role_permissions_on_locked_role"])
 	})
+}
+
+// roleWriterSession 角色定義寫入的請求脈絡：人類工作階段標示加該帳號的請求主體（寫入交易內以帳號當下的指派重解）。
+// 角色定義寫入沒有系統路徑，缺請求主體一律拒絕。
+func roleWriterSession(ctx context.Context, userID uint) context.Context {
+	p := authz.NewPrincipal(userID, authz.TokenFacts{SubjectKind: model.KindHuman}, nil)
+	return authz.ContextWithPrincipal(model.WithRequestCredential(ctx, model.RequestCredentialHumanSession), p)
 }

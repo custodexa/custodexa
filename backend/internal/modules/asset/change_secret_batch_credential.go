@@ -111,7 +111,7 @@ func (r *ChangeSecretRunner) createBatchSharedCredential(batch *model.ChangeSecr
 		}
 		// 以建立批次時持久化的歸屬，由發起者在交易內重解的範圍再驗一次：建立後被移出範圍的
 		// 節點不再可用（批次在動任何遠端之前失敗）
-		ctx := contextWithInitiator(context.Background(), batch.RequestedBy, batch.RequestedByName)
+		ctx := backgroundInitiatorContext(batch.RequestedBy, batch.RequestedByName)
 		o, oerr := resolveSharedOwnershipTx(ctx, tx, r.ownership, batch.RequestedBy, CredCapCreate,
 			persistedBatchOwnership(batch))
 		if oerr != nil {
@@ -316,7 +316,7 @@ func (r *ChangeSecretRunner) splitOneCredential(job rotationJob, credentialID ui
 		return r.skipRecords(job, bindings, reason)
 	}
 	caps = unionCapabilities(caps, splitGateWhole().caps)
-	ctx := contextWithInitiator(context.Background(), job.initiatorID, job.initiatorName)
+	ctx := backgroundInitiatorContext(job.initiatorID, job.initiatorName)
 	rot, err := r.rotations.startSplitForBatch(ctx, credentialID, accountIDs,
 		StartRotationRequest{Policy: job.policy}, &splitAssetBound{caps: caps})
 	if err != nil {

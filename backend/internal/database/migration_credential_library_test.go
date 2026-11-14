@@ -104,7 +104,9 @@ func newCredentialLibraryKM(t *testing.T, db *gorm.DB) *keyvault.KeyManagerServi
 func seedAsset(t *testing.T, db *gorm.DB, name string, protocol model.ProtocolType) uint {
 	t.Helper()
 	asset := model.Asset{Name: name, Host: "10.0.0.1", Port: 22, Protocol: protocol}
-	if err := db.Create(&asset).Error; err != nil {
+	// 不觸發資產的審計 hook：本 helper 用於以歷史結構建表的升級測試，審計列的形狀以目前的 model 為準，
+	// 寫進歷史結構的 audit_logs 會因後來新增的欄位而失敗，且審計列不是這些測試的觀察對象
+	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(&asset).Error; err != nil {
 		t.Fatalf("seed 資產 %s: %v", name, err)
 	}
 	return asset.ID
