@@ -29,12 +29,26 @@ func TestIdentitySourceMappingRoutes(t *testing.T) {
 		}
 	}
 	for _, key := range []string{
+		"GET /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+		"GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
 		"GET /api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId",
 		"GET /api/v1/identity-sources/:type/:sourceId/external-groups",
 		"PUT /api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId",
 	} {
 		if !got[key] {
 			t.Errorf("missing %s", key)
+		}
+	}
+}
+
+// TestIdentitySourceMappingNoLegacySingleRead 相容路徑 /mappings 不提供單筆讀取。
+func TestIdentitySourceMappingNoLegacySingleRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	NewIdentitySourceHandler(nil).RegisterRoutes(router.Group("/api/v1"), nil)
+	for _, route := range router.Routes() {
+		if route.Method == "GET" && route.Path == "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId" {
+			t.Fatalf("相容路徑不應有單筆讀取：%s %s", route.Method, route.Path)
 		}
 	}
 }

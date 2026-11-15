@@ -7,10 +7,12 @@ package middleware
 func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	switch method + " " + path {
 	case "GET /api/v1/identity-sources/:type/:sourceId/role-mappings",
+		"GET /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
 		"POST /api/v1/identity-sources/:type/:sourceId/role-mappings",
 		"PUT /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
 		"DELETE /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
 		"GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+		"GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
 		"POST /api/v1/identity-sources/:type/:sourceId/user-group-mappings",
 		"PUT /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
 		"DELETE /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",

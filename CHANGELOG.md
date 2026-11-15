@@ -2,6 +2,62 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.25.1 — external group mapping rules for declarative tools (2026-11-15)
+
+No schema change. A 1.25.0 package deployment upgrades with `custodexa.sh upgrade 1.25.1` and
+runs no migration. A 1.17.x to 1.24.x package deployment can upgrade straight to 1.25.1; that
+upgrade runs the migrations of the releases in between, so read "What you need to do" in each of
+those releases' notes below before you start.
+
+### What you need to do
+
+Both items concern scripts of your own that call the mapping rule API.
+
+- The lookup parameters on the mapping rule lists now take effect: `match_value` and `role` on
+  the role rule lists, `match_value` and `user_group_id` on the user group rule list. Earlier
+  versions ignored them and returned every rule of the identity source. Check that a script
+  sends each of them once and with a value.
+- Where a script retries a mapping rule write on a 500, handle the two 409 codes described under
+  Fixes: look up the existing rule on `MAPPING_RULE_EXISTS`, and send the request again later on
+  `CONFLICT_LDAP_DIRECTORY_BUSY`.
+
+### Fixes
+
+- Creating a mapping rule whose external group value and target match another rule of the same
+  identity source returns 409 `MAPPING_RULE_EXISTS`. So does changing a rule into the value and
+  target of another rule of the same source. Both used to return 500. The permission and
+  confirmation checks on the write come before this one, and saving a rule with its own current
+  value and target succeeds as before. This applies to rules that map to a role and to rules
+  that map to a user group. Values that differ only in case are different rules.
+- On an LDAP directory source, a mapping rule write that arrives while the platform is saving
+  that directory's settings, writing another of its mapping rules, or signing in one of its
+  users returns 409 `CONFLICT_LDAP_DIRECTORY_BUSY`. It used to return 500.
+- When one of these two requests is refused as a duplicate, the mapping rule page says that the
+  source already has the same rule. It used to show an unrelated error about saving the
+  directory settings.
+
+### API
+
+- One mapping rule can be read by its ID under its identity source:
+  `GET /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId` and
+  `GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId`. The response is
+  the row the same caller sees in the list. Under an identity source that exists, a rule that
+  does not exist, was deleted, or belongs to another identity source gets 404
+  `MAPPING_RULE_NOT_FOUND`; an identity source that does not exist answers as it does on the
+  lists. The permission is the one the lists require, and API tokens can call both.
+- The lists of mapping rules take an exact lookup. `match_value` matches the stored external
+  group value character for character, after leading and trailing whitespace is removed as it is
+  when a rule is saved. `role` takes a role name on the role rule lists, and
+  `user_group_id` a user group ID on the user group rule list. Several parameters narrow the
+  result together, and a lookup that matches nothing returns an empty list. One of these
+  parameters sent empty or twice, or a `user_group_id` that is not a positive integer, gets 400.
+- The API reference now documents that changing a rule's external group value or target gives
+  the rule a new ID, which the response carries.
+
+The request and response details are in the [API reference][1251-api].
+
+[1251-api]: docs/API_SPEC.md
+
 ## 1.25.0 — API for declarative tools, and API tokens attach stored credentials (2026-11-15)
 
 Schema change. Upgrading runs one migration. It replaces the index that keeps user group names

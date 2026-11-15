@@ -1032,6 +1032,18 @@
   },
   {
    "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{roleMapping.spare}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Single role-mapping rule read: the row as the caller's role-mapping list for the same source shows it; same permission as the list."
+  },
+  {
+   "method": "GET",
    "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
    "params": {
     "type": "oidc",
@@ -1039,6 +1051,18 @@
    },
    "subject_hint": "S01",
    "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+   "params": {
+    "type": "oidc",
+    "sourceId": "{oidcProvider.1}",
+    "ruleId": "{userGroupMapping.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Single user-group-mapping rule read: the row as the caller's user-group-mapping list for the same source shows it; same permission as the list."
   },
   {
    "method": "GET",

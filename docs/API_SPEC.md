@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-15（宣告式管理的契約補強：新增四條單筆讀取路由 `GET /asset-groups/:id`、`GET /user-groups/:id`、`GET /authorizations/:id`、`GET /assets/:id/accounts/:accountId`；資產、節點、使用者群組、共用憑證列表新增精確查找參數 `name`，使用者列表新增 `username`；授權列表的 `page_size` 超過 100 時套用 100，使用者列表與有分頁的共用憑證列表回報實際套用的分頁值；節點與使用者群組的寫入回應補上路徑與成員欄位，資產更新回應的節點歸屬與單筆讀取的待配憑證欄位如實回報；`PUT /assets/:id` 套用建立時的埠號與帳號名稱規則，`POST /assets` 接受選用的 `active`；使用者群組刪除後可用同名重建；節點、資產、資產帳號、使用者、使用者群組、授權規則與共用憑證的建立與更新回應，與讀取共有的時間欄位字串相同。個人 API token 可引用既有憑證：認證機制的「個人 API token」一節補上引用規則與仍只接受登入工作階段的動作；新增系統告警類型 `api_token_credential_attached`，系統告警登錄補至 22 種；系統告警明細回應新增 `request_id` 與 `actor_user_id`；經個人 API token 的請求寫下的每一列稽核帶同一個 `request_id` 與來源位址；`POST /assets/:id/accounts` 對重複掛載同一筆憑證回 409 `CONFLICT_CREDENTIAL_BINDING`。未新增路由與錯誤碼）
+> 最後更新：2026-11-15（外部群組映射規則的宣告式契約：新增兩條單筆讀取路由 `GET /identity-sources/:type/:sourceId/role-mappings/:ruleId`、`GET /identity-sources/:type/:sourceId/user-group-mappings/:ruleId`；兩類規則的列表新增精確查找參數 `match_value`，以及目標參數 `role`、`user_group_id`；同一來源內群組值與目標皆相同的規則，建立與修改改回 409 `MAPPING_RULE_EXISTS`，原為 500）
+> 前次更新：2026-11-15（宣告式管理的契約補強：新增四條單筆讀取路由 `GET /asset-groups/:id`、`GET /user-groups/:id`、`GET /authorizations/:id`、`GET /assets/:id/accounts/:accountId`；資產、節點、使用者群組、共用憑證列表新增精確查找參數 `name`，使用者列表新增 `username`；授權列表的 `page_size` 超過 100 時套用 100，使用者列表與有分頁的共用憑證列表回報實際套用的分頁值；節點與使用者群組的寫入回應補上路徑與成員欄位，資產更新回應的節點歸屬與單筆讀取的待配憑證欄位如實回報；`PUT /assets/:id` 套用建立時的埠號與帳號名稱規則，`POST /assets` 接受選用的 `active`；使用者群組刪除後可用同名重建；節點、資產、資產帳號、使用者、使用者群組、授權規則與共用憑證的建立與更新回應，與讀取共有的時間欄位字串相同。個人 API token 可引用既有憑證：認證機制的「個人 API token」一節補上引用規則與仍只接受登入工作階段的動作；新增系統告警類型 `api_token_credential_attached`，系統告警登錄補至 22 種；系統告警明細回應新增 `request_id` 與 `actor_user_id`；經個人 API token 的請求寫下的每一列稽核帶同一個 `request_id` 與來源位址；`POST /assets/:id/accounts` 對重複掛載同一筆憑證回 409 `CONFLICT_CREDENTIAL_BINDING`。未新增路由與錯誤碼）
 > 前次更新：2026-11-14（個人 API token：新增七條路由，本人的列表、建立、撤銷，管理端的列表、單把撤銷、全部撤銷，以及以 token 自我檢查的 `GET /api-tokens/verify`；認證機制新增「個人 API token」一節；新增錯誤碼 `NOTFOUND_API_TOKEN`；審計動作 `api_token_revoked`、審計資源 `api_token`；系統告警類型 `privileged_api_token_created`；稽核列表、詳情與調查工作台的操作日誌事件新增 `api_token_id`、`api_token_name`，詳情另附 `api_token` 物件，列表新增查詢參數 `api_token_id`；角色指派預覽新增 `api_tokens`（以 API token 呼叫時不附；受影響的 token 含恢復角色者，帶 `regains_roles`、`becomes_active`）；高權限告警參數 `expiry`。路由新增七條）
 > 前次更新：2026-11-08（`POST /auth/mfa/setup` 新增選填 `code`：已啟用 MFA 時必填，新增錯誤碼 `RULE_MFA_CURRENT_CODE_REQUIRED`；檔案端點與傳輸能力查詢端點新增來源網段限制的 403 `AUTH_SOURCE_NOT_ALLOWED`；連線申請：提出申請須先持有常設連線權限，新增 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，`reason` 段與 agent 的 `open` 段自動核准限於常設帳號範圍、超出者維持 pending，破窗票證帳號範圍同限，核准與拒絕的自核判定擴及執行者 agent 的擁有者；檢查點驗證：區間狀態新增 `rows_hidden`，鏈報告新增 `trim_disclosure`、`trim_unverified_segments`、`trim_paused`；終端新增通知碼 `RULE_COMMAND_BLOCKED_MULTILINE`，`run_command` 只收單行。路由未變）
 > 前次更新：2026-11-06（連線簽發段補列錄影與鍵盤紀錄前置檢查被拒的錯誤碼 `RULE_RECORDING_UNAVAILABLE`、`RULE_KEYSTROKE_UNAVAILABLE`，不動路由；此前：安全政策段補 `retention_keystroke_days` 並把資料保留鍵的計數由四個改為五個，不動路由）
@@ -94,7 +95,7 @@
 | OIDC 登入 | 4 | `/api/v1/auth/methods`, `/api/v1/auth/oidc` | 登入方法清單（公開）、SSO 發起／IdP 回呼／交棒憑證兌換 |
 | OIDC provider | 7 | `/api/v1/oidc-providers` | 身分提供者 CRUD＋單筆詳情＋狀態彙總＋探索預覽（`oidc:manage`；secret write-only，身分域建後不可變） |
 | LDAP 目錄 | 5 | `/api/v1/ldap-directory` | 目錄設定 singleton 資源＋連線測試＋狀態彙總（`ldap:manage`；bind 密碼 write-only，設定自 env 遷入 DB） |
-| 身分來源與外部群組映射 | 16 | `/api/v1/identity-sources` | 來源列表、角色映射相容及明確路由、使用者群組映射、字典備註與用途查詢（`identity_source:manage`） |
+| 身分來源與外部群組映射 | 18 | `/api/v1/identity-sources` | 來源列表、角色映射相容及明確路由、使用者群組映射（兩類規則皆含單筆讀取與精確查找）、字典備註與用途查詢（`identity_source:manage`） |
 | 安全政策 | 6 | `/api/v1/security-policies`, `/api/v1/auth/banner` | 安全政策查詢/批次更新、單一設定鍵的定義查詢、草稿判定與套用預覽（`securitypolicy:manage`）＋登入前告示讀取（公開） |
 | 政策組 | 10 | `/api/v1/policy-groups` | 政策組與條文對照的維護：組建立/更名/生效開關/刪除、條文與要求整批取代、機構備註與人工確認（讀 `policygroup:view`，寫 `policygroup:manage`） |
 | 合規對照 | 1 | `/api/v1/compliance` | 設定現值對各生效政策組的判定快照（唯讀，`compliance:view`） |
@@ -355,10 +356,12 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/identity-sources/:type/:sourceId/role-mappings` | always |
 | POST | `/api/v1/identity-sources/:type/:sourceId/role-mappings` | always |
 | DELETE | `/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId` | always |
 | PUT | `/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId` | always |
 | GET | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings` | always |
 | POST | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings` | always |
 | DELETE | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId` | always |
 | PUT | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId` | always |
 | GET | `/api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId` | always |
 | GET | `/api/v1/instance-guard` | always |
@@ -1864,13 +1867,22 @@ Rule:      {"id": 7, "source_type": "oidc", "source_id": 2,
   `AUTH_PROTECTED_ROLE_ASSIGNMENT` 的保護角色規則約束。
 - 請求帶任何範圍或節點欄位（`nodes`、`node_ids`、`scope`、`scope_kind`、`scope_nodes`）時整筆
   回 400 `MAPPING_SCOPE_FIELD_REJECTED`，不寫任何資料；兩類規則皆同。映射規則本身沒有範圍。
-- `match_value` **原樣存、不做正規化**。目錄側須逐字照目錄回傳的辨識名稱填：比對時兩邊
+- `match_value` **去除前後空白後原樣存，不做其他正規化**（大小寫與內部空白都保留；`role` 的角色名稱同樣先去除前後空白）。目錄側須逐字照目錄回傳的辨識名稱填：比對時兩邊
   各自解析成結構再比，**屬性型別不分大小寫、屬性值分大小寫**；解析不了的值回 400
   `VALIDATION_MAPPING_MATCH_VALUE_DN`。提供者側非空即可，比對是**逐字**的、不做任何正規化
   （兩家提供者的官方文件皆未定義比對規則，故取嚴）。
 - `enabled: false` 的規則在登入重算時**視同不存在**，用來暫停一條映射而不必刪掉它。
 - 角色與使用者群組規則新增時皆可帶選填 `note`；若相同來源與群組值已有字典列，新增規則不覆寫既有備註，請用獨立字典 API 修改。
 - 建立成功回 201，更新回 200，刪除回 204。規則不存在回 `MAPPING_RULE_NOT_FOUND`。
+- **重複的規則**：同一來源已有群組值與目標皆相同的未刪除規則時，建立回 409 `MAPPING_RULE_EXISTS`，不寫入任何資料；
+  把一條規則改成與同一來源另一條規則相同的組合時同樣回 409，被修改的規則維持原內容。兩類規則皆同。群組值的相等是
+  去除前後空白後的字串逐字相等（與上面的儲存規則同一個定義，只差大小寫的兩個值是不同的規則）；已刪除的規則不計；以規則現有的內容原樣重送不算重複。
+  寫入關卡與風險確認的判定先於重複判定：無權寫入該目標的呼叫者，對已存在與不存在的組合得到相同的拒絕。
+- **目錄型來源的寫入互斥**：目錄型來源的規則寫入（兩類規則的建立、修改、刪除）與同一目錄的其他寫入共用一把互斥，不排隊；
+  其他寫入包括目錄設定的儲存，以及該目錄的使用者登入時重算角色。其中一項進行中時回 409 `CONFLICT_LDAP_DIRECTORY_BUSY`，不寫入任何資料，稍後重送即可；重送時組合若已存在，回 `MAPPING_RULE_EXISTS`。
+  提供者型來源的寫入會等待前一個完成，不回這個碼。
+- **修改群組值或目標會換發規則識別**：比對值或目標有變動的修改，回應中的 `id` 是新的識別，原識別自此不存在；
+  只改啟用旗標或原樣重送時識別不變。呼叫端要以回應的 `id` 為準。
 
 **警告加確認，不阻擋**：以下情形且 `risk_acknowledged` 為 false 時回 **422**
 `MAPPING_ACK_REQUIRED`，主體帶命中的警告清單：
@@ -1961,6 +1973,10 @@ Rule:      {"id": 7, "source_type": "oidc", "source_id": 2,
 機器碼。留痕失敗即整筆回滾——角色改了而稽核沒記下來，是本系統不接受的結果。
 
 **明確路由與使用者群組規則**：上述 `/mappings` 四條舊路由仍只代表角色；同樣的四個方法可用 `/role-mappings`。`/user-group-mappings` 提供 GET、POST、PUT、DELETE，列表回 `data`，建立回 201、更新回 200、刪除回 204。請求含 `match_value`、`user_group_id`、`enabled`、`risk_acknowledged`、`source_config_acknowledged`，新增字典值時可帶選填 `note`。回應列含來源型別與 ID、`external_group_id`、`note`、`user_group_name`、`usage`、`affected_user_count`、兩種有效權限收回預覽、建立者與時間。來源未設群組欄位時沿用 `MAPPING_ACK_REQUIRED` 警告，須另送 `source_config_acknowledged: true`，用途確認不得代替來源設定確認。目標群組有資產授權、審核方或申請人範圍時，未確認回 409 `MAPPING_USAGE_ACK_REQUIRED`，`meta.usage` 分別列出 `asset_authorizations`、`approver_scopes`、`requester_scopes`；確認後送 `risk_acknowledged: true`。
+
+**單筆讀取**：`GET /role-mappings/:ruleId`、`GET /user-group-mappings/:ruleId` 回 `{"data": 規則}`，內容與同一位呼叫者在該來源對應列表中看到的那一列相同（含執行期計數欄位）。規則不存在、已刪除、或屬於另一個來源，一律 404 `MAPPING_RULE_NOT_FOUND`；兩類規則的識別各自編號、互不相通：拿使用者群組規則的識別去讀角色規則的路徑，讀到的是角色規則中同號的那一條，沒有同號的才是 404；所以引用一條規則要同時帶來源型別、來源識別、規則類別與規則識別。來源不存在或型別不合法時的回應、所需權限、對個人 API token 與自動化主體的決策，皆與對應的列表路由相同。相容路徑 `/mappings` 不提供單筆讀取。
+
+**精確查找**：角色規則的列表（`/role-mappings` 與 `/mappings`）接受 `match_value` 與 `role`（角色名稱）；使用者群組規則的列表接受 `match_value` 與 `user_group_id`。`match_value` 與 `role` 先去除前後空白（與寫入時相同），再與儲存值逐字相等比對，不改寫大小寫，所以「查得到」與「以相同內容建立會回 `MAPPING_RULE_EXISTS`」是同一件事；同時帶多個參數取交集；不帶任何參數時回該來源的全部規則。參數去除空白後為空字串、同一個參數重複出現、或 `user_group_id` 不是正整數，回 400 `VALIDATION_BAD_PARAMS`；查不到（含角色名稱或群組識別不存在）回 200 與空清單。列表不分頁，回應只有 `data`。
 
 `GET /user-group-usage/:userGroupId` 回上述三種用途實數。`GET /external-groups` 回來源內的共用群組字典；`PUT /external-groups/:externalGroupId` 以 `{ "note": "顯示名稱" }` 更新選填的 200 字備註，兩類規則同步顯示。字典不存在回 `EXTERNAL_GROUP_NOT_FOUND`，過長回 `VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG`。備註全文不進通用請求稽核欄，獨立稽核只記前後長度。
 

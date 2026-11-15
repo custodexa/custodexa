@@ -5159,6 +5159,7 @@
     "EXTERNAL_GROUP_NOT_FOUND": "The specified external group was not found",
     "VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG": "The external group note must be at most 200 characters",
     "MAPPING_RULE_NOT_FOUND": "The specified mapping rule was not found",
+    "MAPPING_RULE_EXISTS": "This source already has the same mapping rule",
     "NOTFOUND_ACCESS_REQUEST": "Access request not found",
     "NOTFOUND_ACCESS_REVIEW": "Access review record not found",
     "NOTFOUND_ALERT_RULE": "Alert rule not found",

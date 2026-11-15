@@ -1,13 +1,13 @@
 {
  "commit": "daca3314",
  "captured_at": "2026-10-15",
- "routes": 367,
- "routes_sha256": "b4f33bdbb794e564553dfd132f7853e6ec52dc2855cf92e81cbcb407f6d15ece",
+ "routes": 369,
+ "routes_sha256": "3d814285129123ca320a14ff3fbdf507f4f30c50edd8795c53ae225c06ab818d",
  "entry_rules": 37,
  "groups": {
   "B": 82,
   "I": 27,
-  "R": 5505,
+  "R": 5535,
   "T": 9
  },
  "schema": {
@@ -1095,6 +1095,7 @@
   "2026-11-05 R: Add the keystroke record view routes and the keystroke investigation front-end entry rule (37) (recapture at commit unknown)",
   "2026-11-13 R: The global API token gate joins every route middleware chain right after the agent gate; the route set is unchanged and no recorded answer or write changes (recapture at commit 24f4f77c9)",
   "2026-11-13 R: Add seven API token routes: the caller's own list, create and revoke, the account management list, single revoke and revoke all, and the token self check; no existing record changes (recapture at commit 5dbbcce1f)",
-  "2026-11-14 R: Add four single-read routes: one node, one user group, one authorization rule and one asset account, each answering as the caller's own list shows that item; no existing record changes (recapture at commit 5d174d173-worktree)"
+  "2026-11-14 R: Add four single-read routes: one node, one user group, one authorization rule and one asset account, each answering as the caller's own list shows that item; no existing record changes (recapture at commit 5d174d173-worktree)",
+  "2026-11-15 R: Two single-rule read routes join the external group mapping API, one per rule kind; no existing recorded answer or write changes (recapture at commit 291007cff)"
  ]
 }

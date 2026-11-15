@@ -11,6 +11,7 @@ import (
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
 
+	"github.com/custodexa/backend/internal/kernel/dberr"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -38,6 +39,10 @@ var (
 	ErrMappingSourceNotFound = errors.New("指定的身分來源不存在")
 	// ErrMappingRuleNotFound 指定的映射規則不存在，或不屬於這個來源
 	ErrMappingRuleNotFound = errors.New("映射規則不存在")
+	// ErrMappingRuleExists 同一來源已有群組值與目標皆相同的未刪除規則
+	ErrMappingRuleExists = errors.New("相同的映射規則已存在")
+	// ErrMappingLookupParam 精確查找的參數不合法（空字串）
+	ErrMappingLookupParam = errors.New("查找參數不合法")
 	// ErrMappingRoleUnknown 指定的角色名不存在
 	ErrMappingRoleUnknown = errors.New("指定的角色不存在")
 	// ErrMappingMatchValueEmpty 比對值為空
@@ -256,33 +261,132 @@ const (
 	mappingWarningSourceAttrUnset  = "MAPPING_SOURCE_ATTR_UNSET"
 )
 
+// RoleMappingLookup 角色規則列表的精確查找條件；欄位為 nil 表示不以該欄篩選。
+//
+// 查找值先去除前後空白（寫入時群組值與角色名稱都會去除前後空白後才存、才判重複，
+// 查找用同一個規則，否則會出現「查不到卻建不進去」的值），再與儲存值逐字相等比對；
+// 不改寫大小寫。角色以名稱指定，與寫入時指定角色的方式相同。
+type RoleMappingLookup struct {
+	MatchValue *string
+	Role       *string
+}
+
+// trimLookup 把查找值去除前後空白；去除後為空即不合法。nil 原樣回傳。
+func trimLookup(v *string) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	t := strings.TrimSpace(*v)
+	if t == "" {
+		return nil, ErrMappingLookupParam
+	}
+	return &t, nil
+}
+
 // ListMappings 某來源的全部規則（含停用者；管理端要看得到自己停掉的那條）
 func (s *IdentitySourceService) ListMappings(kind string, sourceID uint) ([]GroupRoleMappingView, error) {
+	return s.LookupMappings(kind, sourceID, RoleMappingLookup{})
+}
+
+// LookupMappings 某來源的規則，依查找條件取交集；條件全空即全部規則。
+// 查不到（含角色名稱不存在）回空清單。
+func (s *IdentitySourceService) LookupMappings(kind string, sourceID uint, lookup RoleMappingLookup) ([]GroupRoleMappingView, error) {
 	if s == nil || s.db == nil {
 		return nil, ErrMappingServiceUnavailable
+	}
+	var err error
+	if lookup.MatchValue, err = trimLookup(lookup.MatchValue); err != nil {
+		return nil, err
+	}
+	if lookup.Role, err = trimLookup(lookup.Role); err != nil {
+		return nil, err
 	}
 	if _, err := resolveSource(s.db, kind, sourceID); err != nil {
 		return nil, err
 	}
-	rows, err := mappingRowsOf(s.db, kind, sourceID)
+	rows, err := mappingRowsOf(s.db, kind, sourceID, lookup)
 	if err != nil {
 		return nil, err
 	}
 	return s.viewsOf(rows)
 }
 
-// mappingRowsOf 讀某來源的規則列（含角色關聯）
-func mappingRowsOf(tx *gorm.DB, kind string, sourceID uint) ([]model.GroupRoleMapping, error) {
+// GetMapping 依（來源，規則識別）讀單條規則，投影與列表相同。
+// 不存在、已刪除、屬於另一個來源皆為 ErrMappingRuleNotFound。
+func (s *IdentitySourceService) GetMapping(kind string, sourceID, ruleID uint) (*GroupRoleMappingView, error) {
+	if s == nil || s.db == nil {
+		return nil, ErrMappingServiceUnavailable
+	}
+	if _, err := resolveSource(s.db, kind, sourceID); err != nil {
+		return nil, err
+	}
 	column, err := roleMappingSourceColumn(kind)
 	if err != nil {
 		return nil, err
 	}
 	var rows []model.GroupRoleMapping
-	if err := tx.Preload("Role").Preload("ExternalGroup").Where(column+" = ?", sourceID).
-		Order("id").Find(&rows).Error; err != nil {
+	if err := s.db.Preload("Role").Preload("ExternalGroup").Where("id = ? AND "+column+" = ?", ruleID, sourceID).
+		Limit(1).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("讀取群組映射規則失敗: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, ErrMappingRuleNotFound
+	}
+	views, err := s.viewsOf(rows)
+	if err != nil {
+		return nil, err
+	}
+	return &views[0], nil
+}
+
+// mappingRowsOf 讀某來源的規則列（含角色關聯），依查找條件篩選
+func mappingRowsOf(tx *gorm.DB, kind string, sourceID uint, lookup RoleMappingLookup) ([]model.GroupRoleMapping, error) {
+	column, err := roleMappingSourceColumn(kind)
+	if err != nil {
+		return nil, err
+	}
+	q := tx.Preload("Role").Preload("ExternalGroup").Where(column+" = ?", sourceID)
+	if lookup.MatchValue != nil {
+		q = q.Where("match_value = ?", *lookup.MatchValue)
+	}
+	if lookup.Role != nil {
+		q = q.Where("role_id IN (?)", tx.Model(&model.Role{}).Select("id").Where("name = ?", *lookup.Role))
+	}
+	var rows []model.GroupRoleMapping
+	if err := q.Order("id").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("讀取群組映射規則失敗: %w", err)
 	}
 	return rows, nil
+}
+
+// roleMappingDuplicate 同一來源是否已有群組值與角色皆相同的未刪除規則。
+// exceptID 為修改中的那一條（建立時為 0）。判定與唯一索引相同：群組值逐字相等。
+func roleMappingDuplicate(tx *gorm.DB, kind string, sourceID uint, matchValue string, roleID, exceptID uint) error {
+	column, err := roleMappingSourceColumn(kind)
+	if err != nil {
+		return err
+	}
+	q := tx.Model(&model.GroupRoleMapping{}).
+		Where(column+" = ? AND match_value = ? AND role_id = ?", sourceID, matchValue, roleID)
+	if exceptID != 0 {
+		q = q.Where("id <> ?", exceptID)
+	}
+	var n int64
+	if err := q.Count(&n).Error; err != nil {
+		return fmt.Errorf("讀取群組映射規則失敗: %w", err)
+	}
+	if n > 0 {
+		return ErrMappingRuleExists
+	}
+	return nil
+}
+
+// mappingInsertError 規則寫入的錯誤轉譯：唯一索引違反即重複（寫入前檢查之外的後備）。
+func mappingInsertError(err error) error {
+	if errors.Is(err, gorm.ErrDuplicatedKey) || dberr.IsUniqueViolation(err) {
+		return ErrMappingRuleExists
+	}
+	return err
 }
 
 // viewsOf 組出對外形狀（建立者以帳號名呈現，查不到即留空）
@@ -418,6 +522,10 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 		if warnings := mappingWarningsOf(role, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
 			return &MappingAckRequiredError{Warnings: warnings}
 		}
+		// 重複判定排在守衛與風險確認之後：無權寫入的操作者不因組合是否存在而得到不同回應
+		if err := roleMappingDuplicate(tx, kind, sourceID, matchValue, role.ID, 0); err != nil {
+			return err
+		}
 		tracker, err := s.beginRoleMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
 			OldMatch: matchValue, NewMatch: matchValue, NewEnabled: enabled, Created: true,
 		}, 0, role.ID)
@@ -430,6 +538,9 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 		}
 		row.ExternalGroupID = groupID
 		if err := tx.Create(row).Error; err != nil {
+			if dup := mappingInsertError(err); errors.Is(dup, ErrMappingRuleExists) {
+				return dup
+			}
 			return fmt.Errorf("建立群組映射規則失敗: %w", err)
 		}
 		if !enabled {
@@ -514,6 +625,11 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 		if warnings := mappingWarningsOf(role, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
 			return &MappingAckRequiredError{Warnings: warnings}
 		}
+		if identityChanged {
+			if err := roleMappingDuplicate(tx, kind, sourceID, matchValue, role.ID, current.ID); err != nil {
+				return err
+			}
+		}
 		var tracker *mappingTracker
 		if identityChanged || oldEnabled != row.Enabled {
 			tracker, err = s.beginRoleMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
@@ -530,7 +646,7 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 			}
 			next := &model.GroupRoleMapping{LDAPDirectoryID: current.LDAPDirectoryID, OIDCProviderID: current.OIDCProviderID, ExternalGroupID: groupID, MatchValue: matchValue, RoleID: role.ID, Enabled: row.Enabled, CreatedBy: in.Actor.ID}
 			if err := tx.Create(next).Error; err != nil {
-				return err
+				return mappingInsertError(err)
 			}
 			if h := loadLockOrderHook(); h != nil {
 				h("mapping_role_after_rule_insert", tx, in.Actor.ID)

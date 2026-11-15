@@ -5159,6 +5159,7 @@
     "EXTERNAL_GROUP_NOT_FOUND": "找不到指定的外部群組",
     "VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG": "外部群組備註不得超過 200 字",
     "MAPPING_RULE_NOT_FOUND": "找不到指定的映射規則",
+    "MAPPING_RULE_EXISTS": "這個來源已經有相同的映射規則",
     "NOTFOUND_ACCESS_REQUEST": "申請單不存在",
     "NOTFOUND_ACCESS_REVIEW": "複審紀錄不存在",
     "NOTFOUND_ALERT_RULE": "告警規則不存在",

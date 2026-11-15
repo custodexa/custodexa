@@ -654,10 +654,12 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 
 func init() {
 	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/role-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射單筆讀取；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"POST", "/api/v1/identity-sources/:type/:sourceId/role-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"PUT", "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"DELETE", "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射單筆讀取；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"POST", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"PUT", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
 	auditRouteRegistry[[2]string{"DELETE", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}

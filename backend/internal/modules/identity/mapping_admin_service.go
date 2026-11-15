@@ -135,9 +135,26 @@ func (s *IdentitySourceService) userGroupMappingView(tx *gorm.DB, row *model.Gro
 	return view, nil
 }
 
+// UserGroupMappingLookup 使用者群組規則列表的精確查找條件；欄位為 nil 表示不以該欄篩選。
+// 群組值先去除前後空白（與寫入時相同），再與儲存值逐字相等比對；不改寫大小寫。
+type UserGroupMappingLookup struct {
+	MatchValue  *string
+	UserGroupID *uint
+}
+
 func (s *IdentitySourceService) ListUserGroupMappings(kind string, sourceID uint) ([]UserGroupMappingView, error) {
+	return s.LookupUserGroupMappings(kind, sourceID, UserGroupMappingLookup{})
+}
+
+// LookupUserGroupMappings 某來源的使用者群組規則，依查找條件取交集；條件全空即全部規則。
+// 查不到（含目標群組不存在）回空清單。
+func (s *IdentitySourceService) LookupUserGroupMappings(kind string, sourceID uint, lookup UserGroupMappingLookup) ([]UserGroupMappingView, error) {
 	if s == nil || s.db == nil {
 		return nil, ErrMappingServiceUnavailable
+	}
+	var err error
+	if lookup.MatchValue, err = trimLookup(lookup.MatchValue); err != nil {
+		return nil, err
 	}
 	if _, err := resolveSource(s.db, kind, sourceID); err != nil {
 		return nil, err
@@ -146,8 +163,16 @@ func (s *IdentitySourceService) ListUserGroupMappings(kind string, sourceID uint
 	if err != nil {
 		return nil, err
 	}
+	q := s.db.Where(column+"=?", sourceID)
+	if lookup.MatchValue != nil {
+		q = q.Where("external_group_id IN (?)", s.db.Model(&model.ExternalGroup{}).Select("id").
+			Where(column+" = ? AND match_value = ?", sourceID, *lookup.MatchValue))
+	}
+	if lookup.UserGroupID != nil {
+		q = q.Where("user_group_id = ?", *lookup.UserGroupID)
+	}
 	var rows []model.GroupUserGroupMapping
-	if err := s.db.Where(column+"=?", sourceID).Order("id").Find(&rows).Error; err != nil {
+	if err := q.Order("id").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]UserGroupMappingView, 0, len(rows))
@@ -159,6 +184,18 @@ func (s *IdentitySourceService) ListUserGroupMappings(kind string, sourceID uint
 		out = append(out, view)
 	}
 	return out, nil
+}
+
+// GetUserGroupMapping 依（來源，規則識別）讀單條使用者群組規則，投影與列表相同。
+// 不存在、已刪除、屬於另一個來源皆為 ErrMappingRuleNotFound；來源不存在與列表同一個錯誤。
+func (s *IdentitySourceService) GetUserGroupMapping(kind string, sourceID, ruleID uint) (UserGroupMappingView, error) {
+	if s == nil || s.db == nil {
+		return UserGroupMappingView{}, ErrMappingServiceUnavailable
+	}
+	if _, err := resolveSource(s.db, kind, sourceID); err != nil {
+		return UserGroupMappingView{}, err
+	}
+	return s.UserGroupMappingView(kind, sourceID, ruleID)
 }
 
 func (s *IdentitySourceService) UserGroupMappingView(kind string, sourceID, ruleID uint) (UserGroupMappingView, error) {

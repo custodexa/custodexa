@@ -72,3 +72,63 @@ func TestFixSeg2MappingRoutesRequireAdmin(t *testing.T) {
 		t.Fatalf("一般使用者 HTTP %d", code)
 	}
 }
+
+// TestMappingContractErrorHTTPShape 重複的規則回 409 與專屬機器碼；查找參數不合法回 400。
+// 兩者都不得落到 500 的預設分支。
+func TestMappingContractErrorHTTPShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, kind := range []string{model.RoleMappingChannelKindProvider, model.RoleMappingChannelKindDirectory} {
+		for _, tc := range []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{"duplicate", identity.ErrMappingRuleExists, http.StatusConflict, "MAPPING_RULE_EXISTS"},
+			{"lookup-param", identity.ErrMappingLookupParam, http.StatusBadRequest, "VALIDATION_BAD_PARAMS"},
+			{"not-found", identity.ErrMappingRuleNotFound, http.StatusNotFound, "MAPPING_RULE_NOT_FOUND"},
+			{"source-busy", identity.ErrLDAPDirectoryBusy, http.StatusConflict, "CONFLICT_LDAP_DIRECTORY_BUSY"},
+		} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				r := gin.New()
+				r.GET("/e", func(c *gin.Context) { respondMappingError(c, kind, tc.err) })
+				w := httptest.NewRecorder()
+				r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/e", nil))
+				var body map[string]any
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if w.Code != tc.status || body["code"] != tc.code {
+					t.Fatalf("HTTP %d body=%v", w.Code, body)
+				}
+			})
+		}
+	}
+}
+
+// TestMappingLookupParam 查找參數：沒帶、帶一次（含空字串）、同名重複三種情形。
+// 重複時不取其中一個，交由呼叫端回 400：取哪一個都會讓結果隨參數順序改變。
+func TestMappingLookupParam(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		query   string
+		present bool
+		value   string
+		ok      bool
+	}{
+		{"", false, "", true},
+		{"match_value=ops", true, "ops", true},
+		{"match_value=", true, "", true},
+		{"match_value=%20ops%20", true, " ops ", true},
+		{"match_value=a&match_value=b", false, "", false},
+		{"match_value=a&match_value=a", false, "", false},
+		{"role=x", false, "", true},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/x?"+tc.query, nil)
+		got, ok := lookupParam(c, "match_value")
+		if ok != tc.ok || (got != nil) != tc.present || (got != nil && *got != tc.value) {
+			t.Errorf("query %q: got=%v ok=%v", tc.query, got, ok)
+		}
+	}
+}

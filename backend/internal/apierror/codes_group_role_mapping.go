@@ -47,6 +47,9 @@ var (
 	// CodeMappingRuleNotFound 指定的映射規則不存在（或不屬於這個來源）
 	CodeMappingRuleNotFound = register("MAPPING_RULE_NOT_FOUND",
 		Descriptor{ZhFallback: "找不到指定的映射規則"})
+	// CodeMappingRuleExists 同一來源已有群組值與目標皆相同的規則（409；建立與修改皆同）
+	CodeMappingRuleExists = register("MAPPING_RULE_EXISTS",
+		Descriptor{ZhFallback: "這個來源已經有相同的映射規則"})
 	CodeMappingUsageAckRequired = register("MAPPING_USAGE_ACK_REQUIRED",
 		Descriptor{ZhFallback: "此映射涉及既有授權或審核用途，請先確認"})
 	CodeExternalGroupNotFound = register("EXTERNAL_GROUP_NOT_FOUND",

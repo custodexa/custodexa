@@ -47,10 +47,12 @@ func (h *IdentitySourceHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 		g.PUT("/:type/:sourceId/mappings/:ruleId", h.UpdateMapping)
 		g.DELETE("/:type/:sourceId/mappings/:ruleId", h.DeleteMapping)
 		g.GET("/:type/:sourceId/role-mappings", h.ListMappings)
+		g.GET("/:type/:sourceId/role-mappings/:ruleId", h.GetMapping)
 		g.POST("/:type/:sourceId/role-mappings", h.CreateMapping)
 		g.PUT("/:type/:sourceId/role-mappings/:ruleId", h.UpdateMapping)
 		g.DELETE("/:type/:sourceId/role-mappings/:ruleId", h.DeleteMapping)
 		g.GET("/:type/:sourceId/user-group-mappings", h.ListUserGroupMappings)
+		g.GET("/:type/:sourceId/user-group-mappings/:ruleId", h.GetUserGroupMapping)
 		g.GET("/:type/:sourceId/user-group-usage/:userGroupId", h.UserGroupMappingUsage)
 		g.POST("/:type/:sourceId/user-group-mappings", h.CreateUserGroupMapping)
 		g.PUT("/:type/:sourceId/user-group-mappings/:ruleId", h.UpdateUserGroupMapping)
@@ -60,17 +62,66 @@ func (h *IdentitySourceHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 	}
 }
 
+// lookupParam 讀一個精確查找參數：沒帶回 (nil, true)；帶一次回其值（含空字串，由 service 判空）；
+// 同名參數重複出現回 (nil, false)。重複時不取其中一個：取哪一個都會讓結果隨參數順序改變。
+func lookupParam(c *gin.Context, name string) (*string, bool) {
+	vals, present := c.GetQueryArray(name)
+	if !present {
+		return nil, true
+	}
+	if len(vals) != 1 {
+		return nil, false
+	}
+	return &vals[0], true
+}
+
+// ListUserGroupMappings 某來源的使用者群組規則；可依群組值（match_value）與目標群組
+// （user_group_id）精確查找，取交集，不帶即全部
 func (h *IdentitySourceHandler) ListUserGroupMappings(c *gin.Context) {
 	kind, sourceID, ok := mappingScope(c)
 	if !ok {
 		return
 	}
-	rows, err := h.sources.ListUserGroupMappings(kind, sourceID)
+	matchValue, okMatch := lookupParam(c, "match_value")
+	raw, okGroup := lookupParam(c, "user_group_id")
+	if !okMatch || !okGroup {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
+	lookup := identity.UserGroupMappingLookup{MatchValue: matchValue}
+	if raw != nil {
+		id, err := strconv.ParseUint(*raw, 10, 32)
+		if err != nil || id == 0 {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		gid := uint(id)
+		lookup.UserGroupID = &gid
+	}
+	rows, err := h.sources.LookupUserGroupMappings(kind, sourceID, lookup)
 	if err != nil {
 		respondMappingError(c, kind, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
+}
+
+// GetUserGroupMapping 依識別讀單條使用者群組規則，內容與列表中的那一列相同
+func (h *IdentitySourceHandler) GetUserGroupMapping(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	ruleID, ok := mappingRuleID(c)
+	if !ok {
+		return
+	}
+	view, err := h.sources.GetUserGroupMapping(kind, sourceID, ruleID)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": view})
 }
 
 func (h *IdentitySourceHandler) UserGroupMappingUsage(c *gin.Context) {
@@ -248,12 +299,36 @@ func (h *IdentitySourceHandler) ListMappings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rows, err := h.sources.ListMappings(kind, sourceID)
+	matchValue, okMatch := lookupParam(c, "match_value")
+	role, okRole := lookupParam(c, "role")
+	if !okMatch || !okRole {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
+	rows, err := h.sources.LookupMappings(kind, sourceID, identity.RoleMappingLookup{MatchValue: matchValue, Role: role})
 	if err != nil {
 		respondMappingError(c, kind, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
+}
+
+// GetMapping 依識別讀單條角色規則，內容與列表中的那一列相同
+func (h *IdentitySourceHandler) GetMapping(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	ruleID, ok := mappingRuleID(c)
+	if !ok {
+		return
+	}
+	view, err := h.sources.GetMapping(kind, sourceID, ruleID)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": view})
 }
 
 // CreateMapping 建立規則（命中風險情形且未確認即 422）
@@ -361,6 +436,14 @@ func respondMappingError(c *gin.Context, kind string, err error) {
 		apierror.Respond(c, http.StatusNotFound, code, nil)
 	case errors.Is(err, identity.ErrMappingRuleNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeMappingRuleNotFound, nil)
+	case errors.Is(err, identity.ErrMappingRuleExists):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeMappingRuleExists, nil)
+	// 目錄型來源的規則寫入與目錄設定共用同一把互斥，取不到時不排隊。
+	// 這是可重試的情形，與目錄設定自己的寫入回同一個碼，不當成系統故障
+	case errors.Is(err, identity.ErrLDAPDirectoryBusy):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeConflictLDAPDirectoryBusy, nil)
+	case errors.Is(err, identity.ErrMappingLookupParam):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 	case errors.Is(err, identity.ErrMappingRoleUnknown):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationMappingRoleUnknown, nil)
 	case errors.Is(err, identity.ErrMappingMatchValueDN):

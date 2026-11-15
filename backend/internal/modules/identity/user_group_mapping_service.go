@@ -2,6 +2,7 @@ package identity
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/custodexa/backend/internal/model"
@@ -29,6 +30,30 @@ type UserGroupMappingInput struct {
 	Actor GroupRoleMappingActor `json:"-"`
 }
 
+// userGroupMappingDuplicate 同一來源是否已有群組值與目標群組皆相同的未刪除規則。
+// exceptID 為修改中的那一條（建立時為 0）。群組值逐字相等，與群組字典的唯一索引同一個定義。
+func userGroupMappingDuplicate(tx *gorm.DB, kind string, sourceID uint, matchValue string, userGroupID, exceptID uint) error {
+	column, err := roleMappingSourceColumn(kind)
+	if err != nil {
+		return err
+	}
+	q := tx.Model(&model.GroupUserGroupMapping{}).
+		Where(column+" = ? AND user_group_id = ?", sourceID, userGroupID).
+		Where("external_group_id IN (?)", tx.Model(&model.ExternalGroup{}).Select("id").
+			Where(column+" = ? AND match_value = ?", sourceID, matchValue))
+	if exceptID != 0 {
+		q = q.Where("id <> ?", exceptID)
+	}
+	var n int64
+	if err := q.Count(&n).Error; err != nil {
+		return fmt.Errorf("讀取使用者群組映射規則失敗: %w", err)
+	}
+	if n > 0 {
+		return ErrMappingRuleExists
+	}
+	return nil
+}
+
 func userGroupMappingRow(tx *gorm.DB, kind string, sourceID, ruleID uint) (*model.GroupUserGroupMapping, error) {
 	column, err := roleMappingSourceColumn(kind)
 	if err != nil {
@@ -36,7 +61,12 @@ func userGroupMappingRow(tx *gorm.DB, kind string, sourceID, ruleID uint) (*mode
 	}
 	var row model.GroupUserGroupMapping
 	if err := tx.Where("id=? AND "+column+"=?", ruleID, sourceID).First(&row).Error; err != nil {
-		return nil, ErrMappingRuleNotFound
+		// 只有「沒有這一列」才是不存在；查詢本身失敗時無法確認，原樣往上報，
+		// 不讓呼叫端把暫時的讀取失敗當成規則已被移除
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrMappingRuleNotFound
+		}
+		return nil, err
 	}
 	return &row, nil
 }
@@ -108,6 +138,10 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 		if !source.attrSet && !in.SourceConfigAcknowledged {
 			return &MappingAckRequiredError{Warnings: []string{mappingWarningSourceAttrUnset}}
 		}
+		// 重複判定排在守衛與兩種確認之後：無權寫入的操作者不因組合是否存在而得到不同回應
+		if err := userGroupMappingDuplicate(tx, kind, sourceID, match, in.UserGroupID, 0); err != nil {
+			return err
+		}
 		tracker, err := s.beginUserGroupMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
 			OldMatch: match, NewMatch: match, NewEnabled: enabled, Created: true,
 		}, 0, in.UserGroupID)
@@ -125,7 +159,7 @@ func (s *IdentitySourceService) CreateUserGroupMapping(kind string, sourceID uin
 			row.OIDCProviderID = &sourceID
 		}
 		if err := tx.Create(row).Error; err != nil {
-			return err
+			return mappingInsertError(err)
 		}
 		if !enabled {
 			if err := tx.Model(row).Update("enabled", false).Error; err != nil {
@@ -211,6 +245,11 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 				return &UserGroupMappingUsageAckError{usage}
 			}
 		}
+		if identityChanged {
+			if err := userGroupMappingDuplicate(tx, kind, sourceID, match, in.UserGroupID, old.ID); err != nil {
+				return err
+			}
+		}
 		var tracker *mappingTracker
 		if identityChanged || enabled != wasEnabled {
 			tracker, err = s.beginUserGroupMappingWrite(tx, in.Actor, kind, sourceID, mappingWrite{
@@ -227,7 +266,7 @@ func (s *IdentitySourceService) UpdateUserGroupMapping(kind string, sourceID, ru
 			}
 			next := &model.GroupUserGroupMapping{LDAPDirectoryID: old.LDAPDirectoryID, OIDCProviderID: old.OIDCProviderID, ExternalGroupID: newGroupID, UserGroupID: in.UserGroupID, Enabled: enabled, CreatedBy: in.Actor.ID}
 			if err := tx.Create(next).Error; err != nil {
-				return err
+				return mappingInsertError(err)
 			}
 			if h := loadLockOrderHook(); h != nil {
 				h("mapping_group_after_rule_insert", tx, in.Actor.ID)

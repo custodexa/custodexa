@@ -189,10 +189,12 @@ POST	/api/v1/identity-sources/:type/:sourceId/mappings	open
 DELETE	/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId	open
 PUT	/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId	open
 GET	/api/v1/identity-sources/:type/:sourceId/role-mappings	open
+GET	/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId	open
 POST	/api/v1/identity-sources/:type/:sourceId/role-mappings	open
 DELETE	/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId	open
 PUT	/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId	open
 GET	/api/v1/identity-sources/:type/:sourceId/user-group-mappings	open
+GET	/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId	open
 POST	/api/v1/identity-sources/:type/:sourceId/user-group-mappings	open
 DELETE	/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId	open
 PUT	/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId	open
