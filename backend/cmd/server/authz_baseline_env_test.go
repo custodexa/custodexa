@@ -340,8 +340,9 @@ func reopenBaselineDB(t testing.TB) {
 	if err := row.Scan(&path); err != nil || path == "" {
 		t.Fatalf("baseline db path: %v", err)
 	}
+	// 與正式啟動同一份 ORM 設定（含自動填入時刻的取值），寫入回應與讀取的對照才反映正式環境
 	db, err := gorm.Open(sqlite.Open("file:"+path+"?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"),
-		&gorm.Config{Logger: logger.Discard})
+		database.NewGormConfig(logger.Discard))
 	if err != nil {
 		t.Fatalf("reopen baseline db: %v", err)
 	}

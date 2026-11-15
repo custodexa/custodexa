@@ -339,7 +339,7 @@ func (s *NotificationChannelService) recordChannelChange(tx *gorm.DB, actor Chan
 		Resource:   string(model.ResourceNotifyChannel),
 		ResourceID: &id,
 		Status:     string(model.StatusSuccess),
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name),
+		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name).WithAPITokenOrigin(actor.APIToken.RequestID, actor.APIToken.ClientIP),
 		Details:    string(raw),
 	}); err != nil {
 		return fmt.Errorf("通道變更審計留痕失敗: %w", err)

@@ -211,6 +211,12 @@ func (h *UserHandler) List(c *gin.Context) {
 		}
 		req.Kind = kind
 	}
+	// 使用者名稱精確查找：與其他篩選交集，計數與分頁之前套用
+	exactUsername, ok := exactNameQuery(c, "username")
+	if !ok {
+		return
+	}
+	req.ExactUsername = exactUsername
 	// 解析頁碼
 	if page, err := strconv.Atoi(c.Query("page")); err == nil && page > 0 {
 		req.Page = page
@@ -252,9 +258,12 @@ func (h *UserHandler) List(c *gin.Context) {
 		return
 	}
 
+	// 回報實際套用的分頁值（不合法的值已套用預設）
 	c.JSON(http.StatusOK, gin.H{
-		"data":  resp.Data,
-		"total": resp.Total,
+		"data":      resp.Data,
+		"total":     resp.Total,
+		"page":      req.Page,
+		"page_size": req.PageSize,
 	})
 }
 

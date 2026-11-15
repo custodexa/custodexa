@@ -416,13 +416,21 @@ git clone をルートとする古いデプロイは `custodexa.sh` でその場
 
 **ロールバックには 2 つのものが要り、どちらが欠けても戻れません。アップグレード前のバックアップと、旧バージョンのイメージです。** バックアップは §2.1 を参照してください。イメージのほうは特に漏れやすい箇所です。本プロジェクトがビルドする backend と frontend の 2 つのイメージの参照はいずれも `custodexa/*:latest` であり、新しいバージョンをビルドするか、受け渡されたイメージファイルを読み込んだ時点で同名の tag が上書きされます。旧バージョンのイメージに別の名前が付いていなければ、取り戻せません。1.13.0 からこの 2 つのイメージは GitHub Container Registry にも公開され、Docker Hub へミラーされます（[README](../README.md#ビルド済みイメージ) の「ビルド済みイメージ」を参照）。ただしリポジトリの compose ファイルは公開イメージを参照しないため、この SOP に従うデプロイでは、イメージは引き続きソースツリーからのビルドか、受け渡されたイメージファイルのどちらかから得られます。自分でビルドする場合は §2.2 の tag の別名保存を参照してください。受け渡されたイメージでデプロイする場合は、旧バージョンのイメージファイルが手元に残っていることを先に確認してください。guacd サービスは本プロジェクトではビルドしません。1.13.0 から compose ファイルは公式イメージ `guacamole/guacd:1.6.0` をバージョンと digest で参照しており、旧バージョンのイメージは自分の名前を保ちます。イメージをファイルで受け渡す場合は、この公式イメージも受け渡すイメージに含まれます。
 
-> **本節が適用される範囲**：`Custodexa 1.0` のデータベースの schema は単一の baseline（`20260816_schema_baseline`）を起点とし、その後は**増分の migration** で進んでいきます（本バージョンの 57 件は下の §2.5 を参照）。したがって本節は、1.0 の baseline の世代に属するバージョンの入れ替え、すなわちデータベースにその baseline が適用済みのデプロイに適用されます。
+> **本節が適用される範囲**：`Custodexa 1.0` のデータベースの schema は単一の baseline（`20260816_schema_baseline`）を起点とし、その後は**増分の migration** で進んでいきます（本バージョンの 58 件は下の §2.5 を参照）。したがって本節は、1.0 の baseline の世代に属するバージョンの入れ替え、すなわちデータベースにその baseline が適用済みのデプロイに適用されます。
 >
 > データベースの `schema_migrations` テーブルに本バージョンのコードが認識しないバージョンの値が含まれ、かつ baseline が未適用の場合、バックエンドは起動を拒否します（§2.6 参照）。この種の baseline の世代をまたぐアップグレードは「新規導入＋データ移行のプロジェクト」として扱ってください。移行の範囲とツールは受け渡し側と別途協議する必要があり、本 SOP の範囲外です。
 >
 > アップグレードを計画する前に、貴組織の元のバージョンを確認してください。
 
 > **単一インスタンスのガードが保証する範囲**：本バージョンから、2 つめのアプリケーションインスタンスが同じデータベースに対して起動すると停止させられ、確認を求められます（§2.6b）。この排他は**ガードを備えたバージョン同士でのみ成立します**。ガードを含まない旧バージョンはロックを保持しないため、ガードのないバージョンから本バージョンへ初めて上げるとき、新しいバージョンがロックを取得できたことは旧バージョンが停止していることを**意味しません**。§2.3 の手順 5 の初回アップグレードのチェックはそのために設けられており、省略できません。
+
+#### 1.25.0 へ上げる場合
+
+新しいマイグレーションが 1 件実行されます（`20261115_user_group_name_live_unique`）。ユーザーグループ名の一意インデックス `idx_user_groups_name` を、削除されていないグループだけを数えるインデックスに置き換えます。データ処理はなく、どの行も書き換えません。削除済みのグループは名前をそのまま保持します。新しいインデックスは置き換え前より緩いため、既存のデータが原因でアップグレードが止まることはありません。ユーザーグループのテーブルは小さく、インデックスの作成はすぐに終わります。適用した後に戻すには、アップグレード前のバックアップをリストアします（§4.1）。`custodexa.sh rollback` は何も停止せず、終了コード 3 で終わり、アップグレード時のバックアップに対する `restore` のコマンドを表示します。同じアップグレードで同梱データベースを PostgreSQL 18 に変換した場合の例外は、「1.24.0 へ上げる場合」に書かれたものです。
+
+- **削除済みユーザーグループの名前。** アップグレード後は、削除済みのグループの名前で新しいグループを作成できます。新しいグループには別の識別子が付き、元のグループの削除時に取り消された権限は取り消されたままです。既存のグループと同じ名前は、引き続き 409 `CONFLICT_USER_GROUP_NAME_EXISTS` で拒否されます。アップグレード時のバックアップで 1.24.0 に戻した後は、削除済みのグループの名前は再び拒否されます。
+- **API token と保存済みの認証情報。** アップグレード後は、付与されたロールに認証情報を割り当てる権限がある API token で、システムに保存済みの認証情報を割り当てられます。1.24.0 で作成した token も、作り直さずにこの機能を持ちます。こうした割り当てのたびにシステムアラートが 1 件発生し、有効な通知チャネルすべてに送られます。アップグレードの前に、既存の token に付与されているロールを確認してください。
+- **リストア後の識別子。** リストアは、識別子の採番もデータとともにバックアップ時点へ戻します。バックアップの後に作成したレコードはリストア後には存在せず、その後に作成する同じ種類のレコードが、同じ識別子を受け取ることがあります（ユーザーグループで確認）。宣言的な構成ツールの状態ファイルなど、システムの外で識別子を保持しているツールがある場合は、リストアの後、その記録とシステムの状態を突き合わせてから変更を適用してください。
 
 #### 1.24.0 へ上げる場合
 
@@ -811,7 +819,7 @@ guacd サービスには build の区画がありません。イメージは公�
 所有 migrations 都已執行，無需更新
 ```
 
-**新しい増分の migration を導入するバージョンへ上げる場合**、1 件適用するごとに `執行 migration: <バージョン> (<名前>)` の行が増えます。その増分は同一のトランザクション内で適用されます。対応する行が見えなければ、その増分は**実行されていない**ということであり（多くは元のバージョンがすでに含んでいるためです）、異常ではありません。本バージョンの 57 件の増分に対応するログの行は、そのまま次のとおりです。
+**新しい増分の migration を導入するバージョンへ上げる場合**、1 件適用するごとに `執行 migration: <バージョン> (<名前>)` の行が増えます。その増分は同一のトランザクション内で適用されます。対応する行が見えなければ、その増分は**実行されていない**ということであり（多くは元のバージョンがすでに含んでいるためです）、異常ではありません。本バージョンの 58 件の増分に対応するログの行は、そのまま次のとおりです。
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -871,6 +879,7 @@ guacd サービスには build の区画がありません。イメージは公�
   執行 migration: 20261103_executor_login_checks (executor_login_checks)
   執行 migration: 20261105_keystroke_records (keystroke_records)
   執行 migration: 20261113_api_tokens (api_tokens)
+  執行 migration: 20261115_user_group_name_live_unique (user_group_name_live_unique)
 ```
 
 `20260825_evidence_offsite` はオフサイト保管の 2 つのテーブル（設定世代のテーブルと保管台帳）を作成し、セッションとエクスポートのジョブにそれぞれ 2 つの列を加えます。**追加のみで、データの埋め戻しも codec への依存もありません。** 所要時間は蓄積量に依存しません。**その Down はデータの追跡が不可逆です。** ロールバックの前に台帳の一覧をエクスポートする必要があります。第 4 節を参照してください。
@@ -1421,7 +1430,7 @@ docker compose logs backend | tail -20   # 「關閉過程有未完成項目」�
 
 アップグレードの後に旧バージョンへ戻す場合、通るのは「旧バージョンのイメージをデプロイし直し、アップグレード前のバックアップをリストアする」経路です。手順は §4.2 を参照してください。
 
-本バージョンのデータベースには schema baseline（`20260816_schema_baseline`）と、その後の 57 件の増分があります。そのうち 31 件をここに挙げます（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、`20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、`20260909_policy_groups`、`20260913_kek_topology`、`20260921_alert_rule_direction`、`20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`）。
+本バージョンのデータベースには schema baseline（`20260816_schema_baseline`）と、その後の 58 件の増分があります。そのうち 32 件をここに挙げます（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、`20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、`20260909_policy_groups`、`20260913_kek_topology`、`20260921_alert_rule_direction`、`20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`、`20261115_user_group_name_live_unique`）。
 
 残りの 26 件の増分は、いずれも本番環境でのダウングレード手段を提供しないため上の一覧には含まれません。1.18.0 の 18 件（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）、1.21.0 の 6 件（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method`、`20261103_executor_login_checks`）、1.22.0 の 1 件（`20261105_keystroke_records`）、および 1.24.0 の 1 件（`20261113_api_tokens`）です。これらを適用済みのデータベースは、管理スクリプトを前のバージョンに向けても戻せません。アップグレード前のバックアップをリストアしてください（§2.0 の「1.18.0 へ上げる場合」、「1.21.0 へ上げる場合」、「1.22.0 へ上げる場合」と「1.24.0 へ上げる場合」を参照）。1.18.0 より前のバージョンへ戻す場合は、そこに書かれたとおり `JWT_SECRET` の入れ替えと長期のサインインの失効も必要です。
 
@@ -1525,6 +1534,8 @@ docker compose -f docker-compose.yml exec -T postgres \
 **次の 10 件の増分の `Down` は実行を拒否し、エラーを返します。** `20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260924_sensitive_reveal_alert` です。これらが保持しているのは証拠（自動化された操作者の主体とその token、ツール呼び出しの台帳、タスクの報告、探索イベント、表示の記録、アクセス申請の項目とその判断、ブレーカーと閲覧のアラート）であり、それを削除することは戻る道筋として用意されていません。本番での戻り方は、旧バージョンのイメージをデプロイし直してアップグレード前のバックアップをリストアすることです（§4.2）。その前に、下の「Agent 監査チェーン：検証とロールバックの境界」に従って、アップグレード後の証拠のバックアップを別に保存してください。
 
 **`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained` の `Down` は何もしません。** schema もデータも変えません。token の名前のスナップショットと暗号化された元の引数はそのまま残り、横方向の移動のルールも現行のパターンのままです。古いパターンに戻せば、置き換えた誤遮断を呼び戻すことになるためです。本番での戻り方は同様に、旧バージョンのイメージをデプロイし直してアップグレード前のバックアップをリストアすることです（§4.2）。
+
+**`20261115_user_group_name_live_unique` の `Down` は元のインデックスを戻すもので、開発用のデータベース専用です。** 本番の手段はなく、単独で実行してもバージョンは戻りません。サービスの次回起動時に、このマイグレーションがもう一度適用されます。同じ名前が複数の行（削除済みの行を含む）にあるテーブルでは元のインデックスを作成できず、`Down` は重複している名前を示すエラーを返し、インデックス、バージョンの記録、行はいずれもそのまま残ります。本番で戻す手段は、これも同じく旧バージョンのイメージをデプロイし、アップグレード前のバックアップをリストアすることです（§4.2）。
 
 **アップグレードの後に設定したログインの告知は、バックアップのリストアとともに失われます。** その文章はアップグレードの後に書き込まれたものであり、アップグレード前のバックアップには入っていません。**バージョンを戻すなら、先にセキュリティポリシーのページで告知の見出しと本文を書き写して保存してください**（プレーンテキストなので、チケットや引き継ぎの文書に写せば十分です）。後日また上げたときにそのまま戻します。
 

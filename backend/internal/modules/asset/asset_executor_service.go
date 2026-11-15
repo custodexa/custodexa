@@ -226,7 +226,6 @@ func (s *AssetExecutorService) requireSourceCaps(ctx context.Context, db *gorm.D
 		r.Operation, r.Capabilities = CredOpCreate, []string{CredCapCreate}
 	case ExecutorSourceShared:
 		r.Operation, r.Capabilities, r.CredentialIDs = CredOpBind, []string{CredCapBind}, []uint{req.CredentialID}
-		r.AttachesExisting = true
 	case ExecutorSourceConvert:
 		r.Operation, r.Capabilities = CredOpUpdate, []string{CredCapUpdate}
 		if convertCredentialID != 0 {

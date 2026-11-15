@@ -440,6 +440,14 @@ var migrations = []Migration{
 		Up:      applyAPITokens,
 		Down:    rollbackAPITokens,
 	},
+	{
+		// 使用者群組名稱的唯一索引改為只計未刪除列（刪除後可同名重建）。只換索引，無資料步驟。
+		// Down 重建涵蓋全部列的唯一索引；已出現同名列時拒絕並維持現狀，回退只走還原升級前備份。
+		Version: "20261115_user_group_name_live_unique",
+		Name:    "user_group_name_live_unique",
+		Up:      applyUserGroupNameLiveUnique,
+		Down:    rollbackUserGroupNameLiveUnique,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -511,7 +519,8 @@ func schemaDDLStatements() []string {
 	out = append(out, changeSecretExecutionMethodDDL()...)
 	out = append(out, executorLoginChecksDDL()...)
 	out = append(out, keystrokeRecordsDDL()...)
-	return append(out, apiTokensDDL()...)
+	out = append(out, apiTokensDDL()...)
+	return append(out, userGroupNameLiveUniqueDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

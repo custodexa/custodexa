@@ -429,6 +429,12 @@ func (h *CredentialHandler) List(c *gin.Context) {
 		return
 	}
 	filter.ProtocolFamily = family
+	// 名稱精確查找：與建立時的名稱判重相同先去頭尾空白；在可見範圍之內、計數與分頁之前生效
+	exactName, ok := trimmedExactNameQuery(c, "name")
+	if !ok {
+		return
+	}
+	filter.ExactName = exactName
 	filter.Ownership = c.Query("ownership")
 	if filter.Ownership != "" && filter.Ownership != model.CredentialOwnerGlobal &&
 		filter.Ownership != model.CredentialOwnerAsset && filter.Ownership != model.CredentialOwnerNode {
@@ -482,7 +488,13 @@ func (h *CredentialHandler) List(c *gin.Context) {
 		respondCredentialError(c, apierror.CodeInternalCredentialList, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": rows, "total": total})
+	resp := gin.H{"data": rows, "total": total}
+	if page > 0 {
+		// 有分頁時回報實際套用的頁碼與每頁筆數（每頁筆數超過上限時為上限）；未分頁時維持回全量、不帶這兩個欄位
+		resp["page"] = page
+		resp["page_size"] = pageSize
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // 列表分頁的預設與上限。上限是為了讓「一次要一萬筆」這種請求不必逐筆投影。

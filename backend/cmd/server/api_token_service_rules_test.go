@@ -13,9 +13,9 @@ import (
 	"github.com/custodexa/backend/internal/modules/authz"
 )
 
-// 服務層的 token 專屬限制（端到端）：
-//   - 引用系統已保存的憑證：建立資產、建立帳號、匯入（預覽與送出）時引用既有憑證一律拒絕，整筆請求不寫入；
-//     自帶密碼照常；卸載不受影響。人類帳號照常。
+// 服務層的 token 規則（端到端）：
+//   - 引用系統已保存的憑證與人類同判定（見 api_token_credential_reference_test.go）；自帶密碼的建立與匯入、
+//     卸載照常。
 //   - 改密計畫：建立與每一次保存都以背景執行前重驗所用的執行授權判定檢查最新目標；token 不持有執行能力、
 //     或目標在 token 範圍外即拒絕、不寫入；承接暫停中的計畫時不承接。持有執行能力的 token 照常。人類帳號照常。
 
@@ -116,64 +116,15 @@ func TestAPITokenServiceRules(t *testing.T) {
 
 	sshAsset := e.object("asset.ssh").(uint)
 	outOfNodeAsset := e.object("asset.approval").(uint)
-	unbound := e.object("credential.unbound").(uint)
 	shared := e.object("credential.shared").(uint)
 	sharedAccount := e.object("account.sshShared").(uint)
 	plan := e.object("changeSecretPlan.1").(uint)
 	port := e.recv.port("ssh")
-	refCode := string(apierror.CodeAuthAPITokenCredentialReferenceForbidden)
 	denyCode := string(apierror.CodePermissionDenied)
 
-	assetWithCredential := func(name string, node uint) map[string]any {
-		return map[string]any{"name": name, "protocol": "ssh", "host": "127.0.0.1", "port": port,
-			"credential_id": unbound, "node_ids": []uint{node}}
-	}
-	importRows := func(withCredential bool) map[string]any {
-		rows := []map[string]any{
-			{"name": "cmp-import-plain", "protocol": "ssh", "host": "127.0.0.1", "port": port, "credential_id": nil, "node_ids": []uint{ag1}},
-		}
-		if withCredential {
-			rows = append(rows, map[string]any{"name": "cmp-import-ref", "protocol": "ssh", "host": "127.0.0.1", "port": port,
-				"credential_id": unbound, "node_ids": []uint{ag1}})
-		}
-		return map[string]any{"source": "form", "rows": rows}
-	}
-
-	// 引用既有憑證的請求：token 一律 403 且資產、帳號皆不增加；人類照常成功。
-	refCases := []struct {
-		name, method, path string
-		body               any
-	}{
-		{"建立資產引用既有憑證", http.MethodPost, "/api/v1/assets", assetWithCredential("cmp-ref-asset", ag1)},
-		{"建立帳號引用既有憑證", http.MethodPost, fmt.Sprintf("/api/v1/assets/%d/accounts", sshAsset),
-			map[string]any{"credential_id": unbound, "note": "cmp"}},
-		{"匯入預覽含引用既有憑證的列", http.MethodPost, "/api/v1/assets/import/preview", importRows(true)},
-		{"匯入送出混合列（一列自帶、一列引用）", http.MethodPost, "/api/v1/assets/import", importRows(true)},
-	}
-	for _, c := range refCases {
-		t.Run("APIToken 引用既有憑證被拒："+c.name, func(t *testing.T) {
-			for _, p := range []*apiTokenPair{super, node} {
-				assets, accounts := e.apiTokenCount("assets", ""), e.apiTokenCount("asset_accounts", "")
-				code, body := e.apiTokenRuleCall(p.token, c.method, c.path, c.body)
-				if code != http.StatusForbidden || apiTokenRuleCode(body) != refCode {
-					t.Errorf("[%s] token 應回 403 %s，得到 %d %v", p.name, refCode, code, body)
-				}
-				if a, n := e.apiTokenCount("assets", ""), e.apiTokenCount("asset_accounts", ""); a != assets || n != accounts {
-					t.Errorf("[%s] token 被拒卻有寫入：資產 %d→%d、帳號 %d→%d", p.name, assets, a, accounts, n)
-				}
-				e.apiTokenRuleRestore()
-			}
-			code, body := e.apiTokenRuleCall(super.human, c.method, c.path, c.body)
-			if !is2xx(code) {
-				t.Errorf("人類帳號應照常成功，得到 %d %v", code, body)
-			}
-			e.apiTokenRuleRestore()
-			if code, body := e.apiTokenRuleCall(node.human, c.method, c.path, c.body); apiTokenRuleCode(body) == refCode {
-				t.Errorf("節點範圍的人類帳號不應以 token 專屬錯誤碼被拒：%d %v", code, body)
-			}
-			e.apiTokenRuleRestore()
-		})
-	}
+	plainImport := map[string]any{"source": "form", "rows": []map[string]any{
+		{"name": "cmp-import-plain", "protocol": "ssh", "host": "127.0.0.1", "port": port, "credential_id": nil, "node_ids": []uint{ag1}},
+	}}
 
 	t.Run("APIToken 自帶密碼的建立與匯入照常", func(t *testing.T) {
 		before := e.apiTokenCount("assets", "")
@@ -184,14 +135,14 @@ func TestAPITokenServiceRules(t *testing.T) {
 			t.Errorf("自帶密碼建立資產應成功並新增一筆，得到 %d %v", code, body)
 		}
 		e.apiTokenRuleRestore()
-		code, body = e.apiTokenRuleCall(super.token, http.MethodPost, "/api/v1/assets/import", importRows(false))
+		code, body = e.apiTokenRuleCall(super.token, http.MethodPost, "/api/v1/assets/import", plainImport)
 		if !is2xx(code) || e.apiTokenCount("assets", "name = ?", "cmp-import-plain") != 1 {
 			t.Errorf("不引用憑證的匯入應成功並寫入，得到 %d %v", code, body)
 		}
 		e.apiTokenRuleRestore()
 	})
 
-	t.Run("APIToken 卸載憑證掛載不受引用限制", func(t *testing.T) {
+	t.Run("APIToken 卸載憑證掛載照常", func(t *testing.T) {
 		path := fmt.Sprintf("/api/v1/credentials/%d/bindings/%d", shared, sharedAccount)
 		code, body := e.apiTokenRuleCall(super.token, http.MethodDelete, path, nil)
 		if !is2xx(code) {

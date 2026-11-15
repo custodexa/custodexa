@@ -110,7 +110,7 @@ func TestAPITokenSelfCIDRsUnchangedDoesNotOverwriteConcurrentChangePG(t *testing
 	_, _, err := e.usersB.Update(admin, e.owner, cidrs("10.0.0.0/8"))
 	require.NoError(t, err)
 	a := e.ownerRow(t).AllowedCIDRs
-	_, _, err = e.usersB.Update(admin, e.owner, cidrs("10.0.0.0/8", "198.51.100.0/24"))
+	_, _, err = e.usersB.Update(admin, e.owner, cidrs("203.0.113.0/24", "198.51.100.0/24"))
 	require.NoError(t, err)
 	b := e.ownerRow(t).AllowedCIDRs
 	_, _, err = e.usersB.Update(admin, e.owner, cidrs("10.0.0.0/8"))
@@ -124,13 +124,13 @@ func TestAPITokenSelfCIDRsUnchangedDoesNotOverwriteConcurrentChangePG(t *testing
 	}
 	done := make(chan result, 1)
 	go func() {
-		bv := []string{"10.0.0.0/8", "198.51.100.0/24"}
+		bv := []string{"203.0.113.0/24", "198.51.100.0/24"}
 		_, diff, err := tokenUsers.Update(e.tokenSelfOp(t), e.owner, &UpdateUserRequest{FullName: "renamed-by-token", AllowedCIDRs: &bv})
 		done <- result{diff, err}
 	}()
 
 	gate.await(t, "user_update_before_tx") // token 已讀到 A、決定送出 B，尚未進交易
-	_, _, err = e.usersB.Update(admin, e.owner, cidrs("10.0.0.0/8", "198.51.100.0/24"))
+	_, _, err = e.usersB.Update(admin, e.owner, cidrs("203.0.113.0/24", "198.51.100.0/24"))
 	require.NoError(t, err)
 	require.Equal(t, b, e.ownerRow(t).AllowedCIDRs)
 	gate.release("user_update_before_tx")

@@ -283,7 +283,8 @@ func GetAPITokenName(c *gin.Context) (string, bool) {
 	return name, ok && typed && name != ""
 }
 
-// APITokenRefOf 以 API token 認證的請求所經由的 token（識別與名稱快照）；其他請求回零值。
+// APITokenRefOf 以 API token 認證的請求所經由的 token（識別與名稱快照），帶這次請求的識別與來源位址；
+// 其他請求回零值。
 func APITokenRefOf(c *gin.Context) model.APITokenRef {
 	id, ok := GetAPITokenID(c)
 	if !ok {
@@ -293,10 +294,25 @@ func APITokenRefOf(c *gin.Context) model.APITokenRef {
 	if !ok {
 		return model.APITokenRef{}
 	}
-	return model.APITokenRef{ID: id, Name: name}
+	return model.APITokenRef{ID: id, Name: name}.WithOrigin(requestOriginOf(c))
 }
 
-// AttributeAuditEntry 在 handler 自組的稽核條目上補這次請求經由的 API token；其他請求不動。
+// requestOriginOf 這次請求的識別與來源位址：取稽核中介層放進請求 context 的值；沒有時取 gin 脈絡的
+// 請求識別與全庫同一取法的來源位址（沒有請求識別時回零值）。
+func requestOriginOf(c *gin.Context) model.RequestOrigin {
+	if c.Request != nil {
+		if o, ok := model.RequestOriginFrom(c.Request.Context()); ok {
+			return o
+		}
+	}
+	if id := c.GetString("request_id"); id != "" {
+		return model.RequestOrigin{RequestID: id, ClientIP: sourceip.Of(c)}
+	}
+	return model.RequestOrigin{}
+}
+
+// AttributeAuditEntry 在 handler 自組的稽核條目上補這次請求經由的 API token，並補這次請求的識別與
+// 來源位址（條目已帶值的欄位不覆寫）；其他請求不動。
 func AttributeAuditEntry(c *gin.Context, e *audit.AuditLogEntry) *audit.AuditLogEntry {
 	if e == nil || e.APITokenID != nil {
 		return e
@@ -304,14 +320,21 @@ func AttributeAuditEntry(c *gin.Context, e *audit.AuditLogEntry) *audit.AuditLog
 	if ref := APITokenRefOf(c); ref.ID != 0 {
 		id := ref.ID
 		e.APITokenID, e.APITokenName = &id, ref.Name
+		if e.RequestID == "" {
+			e.RequestID = ref.RequestID
+		}
+		if e.ClientIP == "" {
+			e.ClientIP = ref.ClientIP
+		}
 	}
 	return e
 }
 
-// AttributeAuditMeta 在 handler 自組的請求欄位上補這次請求經由的 API token；其他請求不動。
+// AttributeAuditMeta 在 handler 自組的請求欄位上補這次請求經由的 API token，並補這次請求的識別與
+// 來源位址（已帶值的欄位不覆寫）；其他請求不動。
 func AttributeAuditMeta(c *gin.Context, m gatewayapi.RequestMeta) gatewayapi.RequestMeta {
 	ref := APITokenRefOf(c)
-	return m.WithAPIToken(ref.ID, ref.Name)
+	return m.WithAPIToken(ref.ID, ref.Name).WithAPITokenOrigin(ref.RequestID, ref.ClientIP)
 }
 
 // gin 脈絡中 API token 的識別與名稱快照鍵。

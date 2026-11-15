@@ -52,6 +52,9 @@ var queryFieldZhLabels = map[string]string{
 	// 清單，選到的憑證要到掛載送出時才被擋，而使用者看不出是哪個條件造成的
 	"protocol":        "協定",
 	"windows_openssh": "Windows OpenSSH",
+	// 列表的名稱精確查找：帶了參數但值為空字串時拒絕，不當作沒帶
+	"name":     "名稱",
+	"username": "使用者名稱",
 }
 
 // --- authorization_handler.go: Create ---

@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-14（個人 API token：新增七條路由，本人的列表、建立、撤銷，管理端的列表、單把撤銷、全部撤銷，以及以 token 自我檢查的 `GET /api-tokens/verify`；認證機制新增「個人 API token」一節；新增錯誤碼 `NOTFOUND_API_TOKEN`；審計動作 `api_token_revoked`、審計資源 `api_token`；系統告警類型 `privileged_api_token_created`；稽核列表、詳情與調查工作台的操作日誌事件新增 `api_token_id`、`api_token_name`，詳情另附 `api_token` 物件，列表新增查詢參數 `api_token_id`；角色指派預覽新增 `api_tokens`（以 API token 呼叫時不附；受影響的 token 含恢復角色者，帶 `regains_roles`、`becomes_active`）；高權限告警參數 `expiry`。路由新增七條）
+> 最後更新：2026-11-15（宣告式管理的契約補強：新增四條單筆讀取路由 `GET /asset-groups/:id`、`GET /user-groups/:id`、`GET /authorizations/:id`、`GET /assets/:id/accounts/:accountId`；資產、節點、使用者群組、共用憑證列表新增精確查找參數 `name`，使用者列表新增 `username`；授權列表的 `page_size` 超過 100 時套用 100，使用者列表與有分頁的共用憑證列表回報實際套用的分頁值；節點與使用者群組的寫入回應補上路徑與成員欄位，資產更新回應的節點歸屬與單筆讀取的待配憑證欄位如實回報；`PUT /assets/:id` 套用建立時的埠號與帳號名稱規則，`POST /assets` 接受選用的 `active`；使用者群組刪除後可用同名重建；節點、資產、資產帳號、使用者、使用者群組、授權規則與共用憑證的建立與更新回應，與讀取共有的時間欄位字串相同。個人 API token 可引用既有憑證：認證機制的「個人 API token」一節補上引用規則與仍只接受登入工作階段的動作；新增系統告警類型 `api_token_credential_attached`，系統告警登錄補至 22 種；系統告警明細回應新增 `request_id` 與 `actor_user_id`；經個人 API token 的請求寫下的每一列稽核帶同一個 `request_id` 與來源位址；`POST /assets/:id/accounts` 對重複掛載同一筆憑證回 409 `CONFLICT_CREDENTIAL_BINDING`。未新增路由與錯誤碼）
+> 前次更新：2026-11-14（個人 API token：新增七條路由，本人的列表、建立、撤銷，管理端的列表、單把撤銷、全部撤銷，以及以 token 自我檢查的 `GET /api-tokens/verify`；認證機制新增「個人 API token」一節；新增錯誤碼 `NOTFOUND_API_TOKEN`；審計動作 `api_token_revoked`、審計資源 `api_token`；系統告警類型 `privileged_api_token_created`；稽核列表、詳情與調查工作台的操作日誌事件新增 `api_token_id`、`api_token_name`，詳情另附 `api_token` 物件，列表新增查詢參數 `api_token_id`；角色指派預覽新增 `api_tokens`（以 API token 呼叫時不附；受影響的 token 含恢復角色者，帶 `regains_roles`、`becomes_active`）；高權限告警參數 `expiry`。路由新增七條）
 > 前次更新：2026-11-08（`POST /auth/mfa/setup` 新增選填 `code`：已啟用 MFA 時必填，新增錯誤碼 `RULE_MFA_CURRENT_CODE_REQUIRED`；檔案端點與傳輸能力查詢端點新增來源網段限制的 403 `AUTH_SOURCE_NOT_ALLOWED`；連線申請：提出申請須先持有常設連線權限，新增 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，`reason` 段與 agent 的 `open` 段自動核准限於常設帳號範圍、超出者維持 pending，破窗票證帳號範圍同限，核准與拒絕的自核判定擴及執行者 agent 的擁有者；檢查點驗證：區間狀態新增 `rows_hidden`，鏈報告新增 `trim_disclosure`、`trim_unverified_segments`、`trim_paused`；終端新增通知碼 `RULE_COMMAND_BLOCKED_MULTILINE`，`run_command` 只收單行。路由未變）
 > 前次更新：2026-11-06（連線簽發段補列錄影與鍵盤紀錄前置檢查被拒的錯誤碼 `RULE_RECORDING_UNAVAILABLE`、`RULE_KEYSTROKE_UNAVAILABLE`，不動路由；此前：安全政策段補 `retention_keystroke_days` 並把資料保留鍵的計數由四個改為五個，不動路由）
 > 前次更新：2026-11-05（鍵盤紀錄查看：新增 `GET /sessions/:id/keystrokes`（中繼資料，不解密）與 `POST /sessions/:id/keystrokes/view`（帶理由查看內容），皆需新權限點 `keystroke:view`（稽核組、僅全域指派生效，內建稽核員範本含此權限點）；新增錯誤碼 `VALIDATION_KEYSTROKE_REASON_REQUIRED`、`VALIDATION_KEYSTROKE_REASON_TOO_LONG`、`RESOURCE_KEYSTROKE_NOT_VIEWABLE`、`RULE_KEYSTROKE_VAULT_SEALED`、`RULE_KEYSTROKE_RECORD_REJECTED`、`INTERNAL_KEYSTROKE_VIEW`；審計資源 `keystroke_record`；揭露告警來源類別 `keystroke_record`。路由新增兩條）
@@ -200,6 +201,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/asset-groups` | always |
 | POST | `/api/v1/asset-groups` | always |
 | DELETE | `/api/v1/asset-groups/:id` | always |
+| GET | `/api/v1/asset-groups/:id` | always |
 | PUT | `/api/v1/asset-groups/:id` | always |
 | PUT | `/api/v1/asset-groups/:id/move` | always |
 | GET | `/api/v1/asset-groups/tree` | always |
@@ -215,6 +217,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/assets/:id/accounts` | always |
 | POST | `/api/v1/assets/:id/accounts` | always |
 | DELETE | `/api/v1/assets/:id/accounts/:accountId` | always |
+| GET | `/api/v1/assets/:id/accounts/:accountId` | always |
 | PUT | `/api/v1/assets/:id/accounts/:accountId` | always |
 | PUT | `/api/v1/assets/:id/accounts/:accountId/credential` | always |
 | POST | `/api/v1/assets/:id/accounts/:accountId/set-default` | always |
@@ -284,6 +287,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/authorizations` | always |
 | POST | `/api/v1/authorizations` | always |
 | DELETE | `/api/v1/authorizations/:id` | always |
+| GET | `/api/v1/authorizations/:id` | always |
 | PUT | `/api/v1/authorizations/:id/accounts` | always |
 | POST | `/api/v1/authorizations/batch` | always |
 | GET | `/api/v1/authorizations/effective-assets` | always |
@@ -484,6 +488,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/user-groups` | always |
 | POST | `/api/v1/user-groups` | always |
 | DELETE | `/api/v1/user-groups/:id` | always |
+| GET | `/api/v1/user-groups/:id` | always |
 | PUT | `/api/v1/user-groups/:id` | always |
 | GET | `/api/v1/user-groups/:id/authorization-count` | always |
 | GET | `/api/v1/user-groups/:id/external-mappings` | always |
@@ -601,8 +606,11 @@ refresh cookie，重新載入即無從恢復，使用者每次重新載入都要
 - **開放範圍**：只有登錄為開放的管理端點可用 token 呼叫；其餘端點（含登入、自助改密、兩步驟驗證、連線入口與 token 自身的管理端點）一律回 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`。以 token 變更所屬帳號本人的受限項目（密碼、兩步驟驗證、來源網段、角色等）回 403 `AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN`。
 - **認證失敗**：不存在、已撤銷、已到期、因備份還原失效、所屬帳號停用或刪除、來源不在所屬帳號允許網段，對外一律回與其他無效 token 相同的 401；真實原因只記在稽核側，沿用未認證請求的有界匿名留痕（同來源大量失敗會限流並聚合成摘要列）。
 - **明文只出現一次**：建立回應（201，帶 `Cache-Control: no-store`）的 `token` 是唯一一次回傳明文；伺服端只存雜湊，任何列表、詳情、稽核與告警都不含明文或雜湊。
-- **稽核歸因**：以 token 進行的操作，該次請求落地的每一筆稽核列都帶 `api_token_id` 與寫入當下的 `api_token_name`，兩欄納入逐列完整性驗證；親自在畫面操作的列不帶這兩個鍵。排程日後執行的工作所產生的列不帶。
+- **稽核歸因**：以 token 進行的操作，該次請求落地的每一筆稽核列都帶 `api_token_id` 與寫入當下的 `api_token_name`，兩欄納入逐列完整性驗證；親自在畫面操作的列不帶這兩個鍵。排程日後執行的工作所產生的列不帶。以 token 進行的請求，帶 token 標示的每一列稽核另帶與該次請求相同的 `request_id` 與來源位址，以操作日誌列表的 `request_id` 篩選可取回同一次請求寫下的每一列。
 - **高權限告警**：授權角色含超級管理者或系統安全管理員時，建立的同一交易產生系統告警 `privileged_api_token_created`（預設 high，可覆寫分級）。參數為 `actor`、`privileged_roles`、`token_name`、`granted_roles`、`expiry`（`at` 或 `never`），`expiry` 為 `at` 時另帶 `expires_at`（RFC 3339）；通知文案依 `expiry` 寫出到期時刻或「永不到期」。參數不含明文或雜湊。
+- **引用既有憑證**：以 token 認證的請求可以引用系統已保存的憑證，入口為建立資產（`POST /assets` 帶 `credential_id`）、匯入資產（預覽與提交）、建立資產帳號、掛到資產（`POST /credentials/:id/bindings`）與更換掛載的憑證（`PUT /assets/:id/accounts/:accountId/credential`）。判定與只持有同一組授權角色的登入工作階段相同：沒有掛載能力（`credential:bind`）時，建立資產、匯入與建立資產帳號回 403 `AUTH_PERMISSION_DENIED`，掛到資產與更換回 404 `NOTFOUND_CREDENTIAL`；憑證在呼叫者的節點範圍外時與憑證不存在同形（404 `NOTFOUND_CREDENTIAL`，匯入以該列的錯誤回報）。
+- **仍只接受登入工作階段的動作**：與憑證有關而會讓系統立即對資產連線的動作，包括單台脫離共用、資產連線測試、改密計畫的立即執行、整組改密與其逐台補跑、堡壘機專用帳號的設定與更換、專用帳號的登入測試，以 token 呼叫回 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`。專用帳號的讀取與清除可用 token 呼叫。
+- **掛載告警**：以 token 每成功引用一筆既有憑證，同一交易產生系統告警 `api_token_credential_attached`（身分與權限組，預設 medium，可覆寫分級）；一次匯入不論幾台只產生一則。單筆的目標是該資產（`target_kind` 為 `asset`），匯入的目標是操作者（`user`）。參數為 `token_name` 與 `entry`（`asset_create`、`account_create`、`bind`、`rebind`、`import`）；單筆另帶 `credential_name`、`asset_name`，匯入另帶 `asset_count`、`credential_count`（只計引用既有憑證的資產與其涉及的憑證）。操作者在明細的 `actor`、`actor_user_id` 與 webhook 的 `alert.actor`，不在參數內。同交易的稽核列在 `details` 帶與告警相同的 `correlation_id`。參數不含憑證內容、token 明文或雜湊，也不含資產的連線位址。下列情形不產生：以登入工作階段掛載、匯入預覽、匯入中沒有任何一列引用既有憑證、更換成原本的同一筆憑證、在請求中自帶密碼或金鑰的新建、寫入失敗。
 
 ---
 
@@ -612,6 +620,7 @@ refresh cookie，重新載入即無從恢復，使用者每次重新載入都要
 - **列表（不分頁）**: `{"data": [...], "total": N}`
 - **錯誤封套**: `{"error": "使用者可讀繁中訊息", "code": "MACHINE_CODE", "params": {...}}`（內部錯誤細節僅留伺服器日誌，不外洩）
 - **操作成功**: 直接回傳資源 JSON 或動作結果欄（如 `{"success": true, "status_code": 200}`）；**不帶 `message` 文案欄**——成功文案由前端 `$t` 自有
+- **寫入回應的時間欄位**: 節點、資產、資產帳號、使用者、使用者群組、授權規則與共用憑證的建立與更新回應中，同時出現在讀取回應的時間欄位，字串與隨後讀取同一筆資源所得相同（精度到微秒）；節點的寫入回應另帶 `created_at`、`updated_at`，節點的讀取與列表不帶這兩個欄位
 
 ### 錯誤封套與 i18n
 
@@ -2049,6 +2058,7 @@ GET /api/v1/assets
 | `search` | string | 名稱/主機搜尋 |
 | `protocol` | string | 協議過濾 |
 | `active` | bool | 啟用狀態 |
+| `name` | string | 名稱精確查找：只回名稱與此值完全相同的資產（區分大小寫、不去頭尾空白，與建立時的名稱重複判定同一規則）。與其他篩選取交集，在可視範圍之內、計數與分頁之前套用；名稱存在但不在呼叫者可視範圍內時，回應與名稱不存在時相同。帶了參數但值為空回 400 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="name"`） |
 | `authorized_only` | bool | 僅顯示已授權資產。admin/auditor 可自查；範圍化主體帶此參數時只回連線可視（不帶時為管理可視與連線可視的聯集）；一般使用者恆強制授權範圍，參數不改變結果 |
 | `node_id` | int | 節點過濾（僅列掛該節點的資產；兩分支皆生效） |
 | `include_subtree` | bool | 含子樹（預設 true；顯式 `false` 僅直掛） |
@@ -2060,9 +2070,9 @@ GET /api/v1/assets
 
 **回應** (200): `{"data": [Asset], "total": N, "page": 1, "page_size": 20}`（兩分支同格式，篩選與分頁在授權分支同樣生效）
 
-**待配憑證**：兩分支的每筆 Asset 皆帶唯讀推導欄 `credential_pending`（bool）——該資產沒有任何未刪除的掛載列時為 `true`，
+**待配憑證**：兩分支的每筆 Asset 皆帶唯讀推導欄 `credential_pending`（bool）——該資產沒有任何未刪除的登入用途掛載列時為 `true`（堡壘機專用帳號不計），
 不落庫、以一次批次存在查詢填入。待配憑證資產的連線、撥測、檔案傳輸一律以既有的「無可用帳號」語義拒絕；
-於資產編輯掛上共用憑證或建立專用帳號後即恢復為 `false`。建立回應同樣帶此欄；`GET /assets/:id` 不填（恆為 `false`）。
+於資產編輯掛上共用憑證或建立專用帳號後即恢復為 `false`。建立與更新的回應、`GET /assets/:id` 都帶此欄，判定與列表相同。
 
 ### 範圍化檢視者的資產回應與寫入
 
@@ -2215,6 +2225,7 @@ POST /api/v1/assets
   "description": "Main production server",
   "tags": "production,linux",
   "node_ids": [1, 4],
+  "active": true,
   "access_policy": "",
   "rdp_security": "",
   "rdp_verify_cert": false,
@@ -2252,6 +2263,8 @@ POST /api/v1/assets
 `PUT /assets/:id` 帶非空 `private_key` 時同樣檢查並回同一碼；未帶或空字串＝沿用現行私鑰，不重驗。
 認證類型 `auth_method` **不在本端點的請求上**，
 要設定它請走資產帳號端點 `POST /assets/:id/accounts`。掛載列的語義見「資產帳號（憑證掛載列）」。
+
+**啟用狀態** `active` 為選用，省略時為啟用；帶 `false` 時資產自建立起即為停用，中間沒有啟用的狀態。
 
 **協議別驗證**:
 - `username`：有登入秘密時必填於 ssh/rdp/mysql/postgres/mssql（缺則 400 `VALIDATION_ASSET_USERNAME_REQUIRED`）；vnc/redis/k8s 僅密碼（K8s 為 Bearer Token，走 `password` 欄加密儲存）。
@@ -2487,6 +2500,13 @@ DELETE /api/v1/assets/:id     （asset:delete；軟刪除）
 
 刪除回應 (200): `{}`（`message` 文案欄已移除；下同）
 
+**更新套用建立時的欄位規則**。每條規則只在它依賴的欄位於本次更新中改變、且更新後的資產違反規則時才拒絕；請求帶了欄位但值與現值相同不算改變，所以編輯其他欄位時原樣重送協定與埠號不會因既有的值被擋：
+
+- 埠號（依賴 `port`）：改成 1 至 65535 以外的值回 400 `VALIDATION_ASSET_IMPORT_PORT`（與批次新增的埠號檢核同一支碼）。
+- 帳號名稱（依賴 `protocol`、`username`、登入秘密的有無）：以帳號名稱登入的協定在有登入秘密時帳號名稱不得為空，違反時回 400 `VALIDATION_ASSET_USERNAME_REQUIRED`。清空帳號名稱、改成需要帳號名稱的協定、或在沒有帳號名稱時帶入密碼或私鑰都適用；預設帳號引用共用憑證時帳號名稱取自憑證，不適用本規則。
+
+被拒時不寫入任何變更。更新的成功回應帶寫入完成後的節點歸屬（`node_ids`、`node_paths`）與 `credential_pending`，與隨後讀取所得相同。
+
 **逐資產可視守門**: `GET /assets/:id`、`GET /assets/:id/k8s/pods`、`GET /assets/:id/host-key` 統一掛 `RequireAssetVisible` 中介層——非 admin/auditor 須對該資產有 view（或更高）授權，未授權回 404「資產不存在」（不洩漏存在性）；守門無條件生效。
 
 ### 資產帳號（憑證掛載列）
@@ -2500,6 +2520,7 @@ DELETE /api/v1/assets/:id     （asset:delete；軟刪除）
 
 ```
 GET    /api/v1/assets/:id/accounts                         （asset:view＋逐資產可視守門）
+GET    /api/v1/assets/:id/accounts/:accountId              （同列表）
 POST   /api/v1/assets/:id/accounts                         （asset:update）
 PUT    /api/v1/assets/:id/accounts/:accountId              （asset:update）
 DELETE /api/v1/assets/:id/accounts/:accountId              （asset:update；204 No Content）
@@ -2507,6 +2528,8 @@ POST   /api/v1/assets/:id/accounts/:accountId/set-default  （asset:update）
 ```
 
 **帳號名稱的欄位能力**：`POST` 以請求帶入的帳號名稱建立帳號（頂層 `username` 或 `credential.username`，不論是否設為預設），需 `credential:create` 或全域 `credential:manage`；`PUT` 把帳號改為與現值不同的名稱，需 `credential:update` 或全域 `credential:manage`。與 `PUT /assets/:id` 的 `username` 同一套規則：持有全域 `credential:manage` 者經相容能力通過，不另判語義能力；未持者經語義能力通過時，以路徑上的資產為目標判定該能力（建立在載入所指憑證之前與寫入交易內各判一次，改名在寫入交易內判定），資產在主體的資產寫入範圍內、卻不在該語義能力的範圍內時，回與資產不存在同形的 404，零寫入。非預設帳號同樣判定：它之後可經 `set-default` 成為預設帳號，名稱隨之成為資產上的帳號名稱。語義能力與全域 `credential:manage` 皆無（含只經節點範圍指派持有 `credential:manage`）即整筆拒絕（403 `AUTH_PERMISSION_DENIED`，不回權限名），帳號、憑證與資產上的帳號名稱皆不寫入，也不產生成功變更的審計；請求層照一般拒絕規則留下一筆 `denied` 的審計紀錄。帶 `credential_id` 掛既有共用憑證時帳號名稱取自該憑證，請求不帶名稱，由 `credential:bind` 判定。`PUT` 帶與現值相同的帳號名稱不算變更。
+
+**重複掛載**：`POST /assets/:id/accounts` 帶 `credential_id` 而該資產已掛載同一筆憑證時回 409 `CONFLICT_CREDENTIAL_BINDING`，與 `POST /credentials/:id/bindings` 對同一情形的回應相同，不寫入。
 
 更換某一掛載所引用的憑證另有一支端點，掛在同一路徑下但授權點不同（路由層需任一憑證語義管理能力，服務層判定 `credential:bind`）：
 `PUT /api/v1/assets/:id/accounts/:accountId/credential`，形狀見「帳號憑證庫 API」。
@@ -2518,7 +2541,9 @@ POST   /api/v1/assets/:id/accounts/:accountId/set-default  （asset:update）
 - 欄位條件成立、且是範圍化檢視者（例如只經節點範圍指派持有 `credential:view`）：完整版，引用其憑證可見集合外憑證的帳號列依下方「引用範圍外憑證的帳號列」收窄。
 - 欄位條件不成立，包括請求進入後最後一筆相關指派被撤銷者：精簡版。
 
-**投影只發生在列表端點**：建立、更新與設預設一律回完整版
+**單筆讀取**回該帳號在列表中的那一列，欄位與投影都和列表相同（回應本文即該列）。只涵蓋登入用途的帳號：不在呼叫者帳號範圍內、已刪除、不存在、屬於另一台資產，或是堡壘機專用帳號的識別，都回與帳號不存在相同的 404；資產本身不可見時，回與列表相同的資產層 404。權限、對個人 API token 與自動化帳號的開放程度與列表相同。
+
+**投影只發生在列表與單筆讀取**：建立、更新與設預設一律回完整版
 （這三支的授權點是 `asset:update`）。
 
 ```json
@@ -2899,6 +2924,7 @@ GET  /api/v1/assets/:id/k8s/download    （已認證；資料面裁決；query: 
 | `windows_openssh` | 布林 | 該台的改密走 Windows OpenSSH，於是 `ssh` 協定推導為 `windows` 族。**與 `protocol` 缺一不擋**：只帶協定＝開關視為 false；只帶開關而無協定不構成篩選條件。非布林或與協定不相容（僅 `ssh`／`rdp` 相容）回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="windows_openssh"`） |
 | `rotation_state` | `overdue`｜`due_soon`｜`unverified`｜`no_record`｜`no_policy`｜`compliant` | 該憑證全部掛載的狀態桶**取最嚴**；零掛載的憑證不屬於任何桶，不會出現在任何一次篩選裡。值域外回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="rotation_state"`） |
 | `username` | 任意 | 帳號名**完全相等**比對，非模糊 |
+| `name` | 任意 | 共用憑證的名稱**完全相等**比對：值先去頭尾空白再比（與建立時的名稱重複判定同一規則），區分大小寫。專用憑證沒有名稱，不會命中。與可見集合及其他篩選取交集，在計數與分頁之前套用。去空白後為空回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="name"`） |
 | `search` | 任意 | 模糊比對三個面：共用憑證的名稱、憑證的帳號名，以及**專用憑證所掛資產的名稱**——專用的顯示名是計算值，搜資產名要找得到它 |
 | `page` | ≥1 | **不帶＝回全部**（既有呼叫端行為不變）；帶了才切頁 |
 | `page_size` | ≥1 | 預設 20、上限 200；只在帶 `page` 時生效 |
@@ -2906,6 +2932,7 @@ GET  /api/v1/assets/:id/k8s/download    （已認證；資料面裁決；query: 
 `page`／`page_size` 非正整數回 400 `VALIDATION_INVALID_QUERY_PARAM` 並以 `params.field` 指出是哪一個。
 翻到超出範圍的頁碼回**空陣列**而非錯誤——那是正常操作。
 **`total` 恆為套用全部篩選後的總筆數**，不是本頁筆數；未帶分頁時即 `data` 的長度。
+帶 `page` 時回應另帶實際套用的 `page` 與 `page_size`（每頁筆數超過上限時為上限值）；未帶 `page` 時回應沒有這兩個欄位。
 
 輪替狀態的篩選在取回清單後於 API 層計算，不下推成 SQL：狀態是逐掛載狀態桶取最嚴的計算值，
 沒有可篩的欄位，下推等於在資料庫裡再實作一次那套優先序，兩份口徑分岔出來的就是同一筆憑證
@@ -3398,6 +3425,7 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 |---|---|---|---|
 | GET | `/asset-groups` | 節點平面列表 → `{data: [{id,name,description,parent_id,path,assets}], total}`（assets＝直掛成員；非 admin/auditor 收斂：每節點僅含該使用者授權的資產，保留「有授權資產的節點＋祖先鏈」——祖先空殼僅結構不洩漏資產；範圍化檢視者的節點與資產為連線可視與管理可視的聯集，見〈範圍化檢視者的回應〉）。選用 `?purpose=`（`asset_create`、`asset_update`、`credential_create`、`credential_update`、`credential_convert_scope`）：見下方〈節點選擇用途參數〉；範圍化檢視者的每個節點另附列級旗標，見〈範圍化檢視者的回應〉 | 登入 |
 | GET | `/asset-groups/tree` | 樹導覽（惰性）：`?parent_id=` 空＝根層 → `{data: [{id,name,description,parent_id,path,asset_count,subtree_asset_count,has_children}]}`；非 admin/auditor 依可視節點鏈收斂（授權資產掛載節點＋全部祖先，無關子樹不洩漏；範圍化檢視者的節點與計數依連線可視與管理可視的聯集，見〈範圍化檢視者的回應〉）。範圍化檢視者的每個節點另附列級旗標，根層請求（無 `parent_id`）頂層另附 `can_create_root`，見〈範圍化檢視者的回應〉 | 登入 |
+| GET | `/asset-groups/:id` | 單一節點 → `{id,name,description,parent_id,path}`（回應本文即該節點，不含直掛資產清單；範圍化檢視者另附與列表相同的列級旗標）。可見性與不帶 `purpose` 的平面列表相同：列表看不到的節點、已刪除與不存在的節點同回 404；本端點不接受 `purpose` | 登入 |
 | POST | `/asset-groups` | 建立節點，body: `{name, description, parent_id}`（parent_id 空＝根節點；深度上限 10、同層同名 409） → 201。節點範圍持有者：父節點在範圍外或不存在 404、根層建立 403（見〈節點寫入的範圍判定〉） | `assetgroup:manage` |
 | PUT | `/asset-groups/:id` | 更新名稱/描述（位置不動；同層同名 409）。節點範圍持有者：目標在範圍外 404、目標是自己的範圍根 403 | `assetgroup:manage` |
 | PUT | `/asset-groups/:id/move` | 搬移，body: `{parent_id}`（null＝搬到根層）；環路（搬到自身/子孫）400、搬移後子樹深度超限 400、目標層同名 409。目的父節點與現行相同時回 200，不寫入、不寫節點審計（授權判定照常）。節點範圍持有者：來源或目的在範圍外 404；來源非嚴格子孫、搬到根層、被搬子樹含任何指派的範圍節點 403 | `assetgroup:manage` |
@@ -3407,6 +3435,10 @@ SSH 首連記錄 host key（SSH 終端、SFTP、SSH 直連測試、改密與輪�
 > 政策不掛節點。
 
 **錯誤**: 409 同層名稱重複、404 不存在、400 深度超限/環路/非空節點、409 `RULE_NODE_SCOPE_REFERENCED` 節點被管理範圍引用。
+
+**寫入回應**：建立、更新與搬移的成功回應都帶寫入後的完整路徑 `path`，與隨後讀取該節點所得相同。
+
+**名稱精確查找**：`GET /asset-groups?name=` 只回名稱與此值完全相同的節點（區分大小寫、不去頭尾空白）。節點名稱只在同一層唯一，不同上層之下的同名節點會全部回傳，以 `parent_id` 與 `path` 區分；回應不另帶名稱不相符的祖先列。篩選在呼叫者的可見節點集合之內進行，看不到的節點與不存在的名稱得到相同回應。帶了參數但值為空回 400 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="name"`）。
 
 ### 節點寫入的範圍判定
 
@@ -3817,7 +3849,7 @@ POST /api/v1/command-alerts/:id/review
 
 系統安全告警（`kind=system_security`）由系統在高風險設定與授權變更、連線時主機金鑰不符、服務啟動時偵測到其他實例的同一交易內產生，
 **不能刪除、不能停用，只能調整分級**；告警記錄只隨告警保留期限（`retention_alert_days`）清除。類型由後端登錄表產生，目錄 API 與介面都讀同一份登錄，
-登錄共 19 種，分五組：位址與傳輸安全、密碼、身分與權限、系統安全設定、通知。每一種都有對應的產生路徑；
+登錄共 22 種，分五組：位址與傳輸安全、密碼、身分與權限、系統安全設定、通知。每一種都有對應的產生路徑；
 `concurrent_instance_detected`（系統安全設定組，預設 high，操作者為系統）在服務啟動時偵測到可能有其他實例同時運行時產生，
 參數為 `signal`（`overridden`／`peers`）、`peers_query`（`ok`／`failed`），並依情形帶 `peers`、`confirm_source`（`env`／`page`）、`confirmed_by`。
 
@@ -3825,7 +3857,7 @@ POST /api/v1/command-alerts/:id/review
 |---|---|---|---|
 | GET | `/system-alert-types` | `systemalert:manage` | 依登錄順序回 `{types: [{key, group, default_severity, effective_severity, adjusted, recent_30d?}]}`；呼叫者另有 `audit:view` 時才帶 `recent_30d`（近 30 天該類型筆數） |
 | PUT | `/system-alert-types/:key` | `systemalert:manage` | 只接受 `{"severity": "high" \| "medium" \| "low"}`，回 `{key, severity_before, severity_after}` |
-| GET | `/command-alerts/:id/system-detail` | `audit:view` | 一筆系統告警的明細：類型、分組、產生當下的分級、操作者、目標、宣告參數、`correlation_id` 對應的操作日誌 `audit_log_id`（找不到為 null）與該筆的來源位址 `client_ip`（找不到為空字串）、各目的地的 `deliveries[]{dest_type, dest_name, state, attempts, delivered_at?, next_attempt_at}`；`management_role_granted` 另帶 `scope_nodes[]{id, path}`（發放含節點範圍時的節點清單，節點已刪除時 `path` 為空字串），其宣告參數新增 `scope_node_ids`（升冪逗號接）與 `scope_node_count`（不重複節點數，清單被截短時仍為實際數量） |
+| GET | `/command-alerts/:id/system-detail` | `audit:view` | 一筆系統告警的明細：類型、分組、產生當下的分級、操作者、目標、宣告參數、`correlation_id` 對應的操作日誌 `audit_log_id`（找不到為 null）、該筆的來源位址 `client_ip` 與請求識別 `request_id`（找不到或該筆沒有時為空字串）、操作者的使用者編號 `actor_user_id`（系統動作為 0）、各目的地的 `deliveries[]{dest_type, dest_name, state, attempts, delivered_at?, next_attempt_at}`；`management_role_granted` 另帶 `scope_nodes[]{id, path}`（發放含節點範圍時的節點清單，節點已刪除時 `path` 為空字串），其宣告參數新增 `scope_node_ids`（升冪逗號接）與 `scope_node_count`（不重複節點數，清單被截短時仍為實際數量） |
 
 - `PUT` 嚴格解碼：主體帶 `severity` 以外的任何欄位（含啟停或刪除意圖）回 400 `VALIDATION_SYSTEM_ALERT_LOCKED`；
   值不在三值內回 400 `VALIDATION_SYSTEM_ALERT_SEVERITY`；未登錄的鍵回 404 `NOTFOUND_SYSTEM_ALERT_TYPE`。
@@ -4462,7 +4494,7 @@ TokenView：`{id, user_id, name, status, granted_roles, privileged, created_at, 
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/users` | 列表 → `{data, total}`；query: `search`（用戶名/郵箱）、`active`、`page`、`page_size`、`include_agents=true`（預設只含 human） |
+| GET | `/users` | 列表 → `{data, total, page, page_size}`（`page`、`page_size` 是實際套用的值；小於 1 或不是數字時套用預設）；query: `search`（用戶名/郵箱）、`username`（精確查找：完全相同才命中，區分大小寫、不去頭尾空白；與其他篩選取交集，例如未帶 `include_agents=true` 時不回自動化帳號；空值回 400 `VALIDATION_INVALID_QUERY_PARAM`，`params.field="username"`）、`active`、`page`、`page_size`、`include_agents=true`（預設只含 human） |
 | POST | `/users` | 創建 → 201 `{data: User}` |
 | GET | `/users/:id` | 詳情 → `{data: User}` |
 | PUT | `/users/:id` | 更新基本資訊（不含密碼/角色） |
@@ -5629,11 +5661,12 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/user-groups` | 群組列表（含成員）→ `{data, total}` |
-| POST | `/user-groups` | 建立 → 201；名稱重複 409 |
-| PUT | `/user-groups/:id` | 更新名稱/描述 |
+| GET | `/user-groups` | 群組列表（含成員）→ `{data, total}`；選用 `?name=`：只回名稱與此值完全相同的群組（區分大小寫、不去頭尾空白；只查未刪除的群組；空值回 400 `VALIDATION_INVALID_QUERY_PARAM`，`params.field="name"`） |
+| GET | `/user-groups/:id` | 單一群組 → 與列表元素同形（含成員與成員來源；回應本文即該群組）；不存在或已刪除 404 |
+| POST | `/user-groups` | 建立 → 201，回應與列表元素同形（含成員欄位）；與現存群組名稱重複 409。名稱的唯一性只計未刪除的群組：群組刪除後可用同一個名稱建立，得到新的識別，原群組連動撤銷的授權不會恢復 |
+| PUT | `/user-groups/:id` | 更新名稱/描述；回應與列表元素同形（含成員欄位） |
 | DELETE | `/user-groups/:id` | 刪除 → `{message, revoked_authorizations}`；同交易軟刪成員關係＋掛該群組的全部授權並寫稽核（含連動撤銷筆數） |
-| PUT | `/user-groups/:id/members` | 成員全量替換（穿梭框語義），body `{"user_ids": [...]}`；成員不存在 400 |
+| PUT | `/user-groups/:id/members` | 成員全量替換（穿梭框語義），body `{"user_ids": [...]}`；成員不存在 400。回應與列表元素同形：`user_ids`、`manual_user_ids`、`mapped_user_ids`、`member_sources` 為替換後的狀態 |
 | GET | `/user-groups/:id/authorization-count` | 群組授權筆數 → `{authorization_count}`（刪除確認 UI「將連動撤銷 N 筆授權」） |
 | GET | `/user-groups/:id/role-bindings` | 群組目前的角色指派 → `{data: [{role_id, role_name, scope}], total}`，`scope` 為 `global` 或 `nodes`，節點範圍的列通常另帶 `node_ids`，判讀以 `scope` 為準；需使用者群組管理能力 |
 | GET | `/user-groups/:id/external-mappings` | 啟用中的外部群組映射摘要 → `{data: [{rule_id, source_type, source_name, source_enabled, external_group_label}], total}`；需使用者群組管理能力；來源已停用的規則仍列出並以 `source_enabled=false` 標示；不含成員名單與成員數；群組不存在 404 |
@@ -5790,11 +5823,12 @@ POST /api/v1/authorizations/batch
 ```
 GET    /api/v1/authorizations                （零篩選＝全量分頁；user_id、user_group_id、asset_id、node_id 至多一個，多於一個 400）
 GET    /api/v1/authorizations?validity=expired&source=ticket  （伺服端篩選，COUNT 與分頁前生效）
+GET    /api/v1/authorizations/:id            → 與列表中的那一列同形（回應本文即該列）
 DELETE /api/v1/authorizations/:id            → {}
 ```
 
 列表回應: `{"data": [...], "total": N, "page": 1, "page_size": 20}`
-（`page_size` 逾 100 或小於 1 一律**重設為 20**，非夾為 100；`/my/connections` 才是夾為 100）。
+（`page_size` 超過 100 時套用 100；小於 1 或不是數字時套用預設 20。回應的 `page_size` 是實際套用的值）。
 篩選參數：`validity` = `active`/`scheduled`/`expired`（三態時窗，白名單否則 400）、
 `source` = `manual`/`ticket`。
 
@@ -5818,6 +5852,8 @@ DELETE /api/v1/authorizations/:id            → {}
 `not_revocable`（無關聯申請單、已不在時窗內或沒有可撤銷的票證）、`revoke_not_eligible`（操作者不具撤銷資格）；
 `limit` 只在可操作時有值，恆為 `narrow_only`，表示操作者不是規則建立者，帳號範圍只能縮小。
 旗標只決定畫面，各端點仍各自裁決，與旗標共用同一組判定。
+
+單筆讀取與列表共用同一個受範圍限制的查詢與列級旗標 `actions`：客體在檢視者管理範圍外、已刪除或不存在的規則同回 404。權限、對個人 API token 的開放程度與列表相同。
 
 DELETE 對 `source='ticket'` 且有關聯申請單的授權回 **409**（撤銷唯一路徑＝`POST /access-requests/:id/revoke`，
 資格/附註/`access_revoke_disconnect` 斷線聯動見連線申請 API）；反查無單的孤兒 ticket 放行刪除並記稽核。

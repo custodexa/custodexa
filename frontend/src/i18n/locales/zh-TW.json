@@ -5639,7 +5639,6 @@
     "CONFLICT_API_TOKEN_NAME": "你已經有同名的 API token，請換一個名稱",
     "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API token 不能使用這個功能",
     "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "API token 不能變更所屬帳號本人的這項設定",
-    "AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN": "API token 不能引用系統已保存的憑證，請在請求中自帶密碼或金鑰",
     "NOTFOUND_API_TOKEN": "API token 不存在"
   },
   "warnings": {
@@ -8901,6 +8900,10 @@
       "privileged_api_token_created": {
         "name": "建立高權限 API token",
         "description": "建立的 API token 授權角色含超級管理者或系統安全管理員"
+      },
+      "api_token_credential_attached": {
+        "name": "API token 掛載既有憑證",
+        "description": "以 API token 把系統已保存的憑證掛到資產"
       }
     },
     "groups": {
@@ -8984,7 +8987,32 @@
       "createdNeverExpires": "永不到期",
       "createdNeverExpiresHint": "不會自動失效",
       "createdSuperRole": "{role}（超級管理者）",
-      "viewTokens": "查看 {user} 的 API token"
+      "viewTokens": "查看 {user} 的 API token",
+      "attachSummary": "{actor} 以 API token「{token_name}」把憑證「{credential_name}」掛到資產「{asset_name}」",
+      "attachImportSummary": "{actor} 以 API token「{token_name}」匯入資產，其中 {asset_count} 台引用了 {credential_count} 筆系統已保存的憑證",
+      "attachWarnTitle": "這筆憑證之後會用來登入這台資產",
+      "attachWarnBody": "排程改密或有人連線時，系統會用它向資產的連線位址登入。請確認位址正確，且這次掛載經過核准。",
+      "attachImportWarnTitle": "這些憑證之後會用來登入這些資產",
+      "attachImportWarnBody": "排程改密或有人連線時，系統會用它們向各台資產的連線位址登入。請確認這次匯入經過核准，並到操作日誌核對每一台的位址。",
+      "attachTitle": "掛載內容",
+      "attachImportTitle": "匯入內容",
+      "attachToken": "經由 API token",
+      "attachCredential": "憑證",
+      "attachAsset": "資產",
+      "attachEntry": "掛載方式",
+      "attachAssetCount": "引用既有憑證的資產",
+      "attachCredentialCount": "涉及的憑證",
+      "attachSharedHint": "（共用憑證）",
+      "attachCredentialCountValue": "{count} 筆",
+      "attachViewAccounts": "查看 {asset_name} 的帳號",
+      "attachViewImportAudit": "在操作日誌查看這次匯入的每一台資產",
+      "attachEntries": {
+        "asset_create": "建立資產時引用",
+        "account_create": "建立資產帳號時引用",
+        "bind": "掛到資產",
+        "rebind": "更換憑證",
+        "import": "匯入資產"
+      }
     },
     "targetKinds": {
       "asset": "資產",

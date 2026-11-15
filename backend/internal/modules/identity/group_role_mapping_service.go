@@ -725,5 +725,5 @@ func CountMappings(tx *gorm.DB, kind string, sourceID uint) (total, enabled int6
 
 // requestMeta 稽核列的請求欄位：來源位址與經由的 API token。
 func (a GroupRoleMappingActor) requestMeta() gatewayapi.RequestMeta {
-	return gatewayapi.RequestMeta{ClientIP: a.IP}.WithAPIToken(a.APIToken.ID, a.APIToken.Name)
+	return gatewayapi.RequestMeta{ClientIP: a.IP}.WithAPIToken(a.APIToken.ID, a.APIToken.Name).WithAPITokenOrigin(a.APIToken.RequestID, a.APIToken.ClientIP)
 }

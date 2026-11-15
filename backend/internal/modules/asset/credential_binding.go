@@ -72,8 +72,6 @@ var (
 	// ErrCredentialBindForbidden 操作者對受影響的資產無權限。
 	// 與「憑證不存在」共用收斂的對外回應：分流即製造存在性探測器
 	ErrCredentialBindForbidden = errors.New("操作者對受影響的資產無管理權限")
-	// ErrAPITokenCredentialReference 以 API token 認證的請求引用系統保存的既有憑證（掛載）。
-	ErrAPITokenCredentialReference = errors.New("API token 不能引用系統保存的既有憑證")
 	// ErrCredentialBindingExists 同一資產已掛載同一憑證（CONFLICT_CREDENTIAL_BINDING）
 	ErrCredentialBindingExists = errors.New("該資產已掛載此憑證")
 	// ErrCredentialBindingNotFound 掛載不存在或不屬於該憑證（NOTFOUND_CREDENTIAL_BINDING）
@@ -123,6 +121,10 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 	}
 
 	userID, operator := model.UserFromContext(ctx)
+	attach, err := newCredentialAttachRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
 	account := &model.AssetAccount{
 		AssetID:    asset.ID,
 		Privileged: req.Privileged,
@@ -204,13 +206,18 @@ func (s *CredentialService) Bind(ctx context.Context, credentialID uint, req *Bi
 				return err
 			}
 		}
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
-			CredentialID: cred.ID,
-			Operation:    credentialOpBind,
-			Scope:        cred.Scope,
-			AssetID:      asset.ID,
-			AccountID:    account.ID,
-		}, userID, operator)
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
+			CredentialID:  cred.ID,
+			Operation:     credentialOpBind,
+			Scope:         cred.Scope,
+			AssetID:       asset.ID,
+			AccountID:     account.ID,
+			CorrelationID: attach.auditCorrelation(),
+		}, userID, operator); err != nil {
+			return err
+		}
+		// 以 API token 掛載：同交易產生告警，落地失敗整筆回滾
+		return attach.raiseSingle(s.alerts, tx, attachEntryBind, userID, operator, asset.ID, asset.Name, cred)
 	})
 	if txErr != nil {
 		return nil, txErr
@@ -329,6 +336,10 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 	}
 
 	userID, operator := model.UserFromContext(ctx)
+	attach, err := newCredentialAttachRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var result *model.AssetAccount
 	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖：交易第一個動作，早於資產列與兩筆憑證列鎖（不呼叫 Begin、不推進權限版本）
@@ -422,15 +433,20 @@ func (s *CredentialService) Rebind(ctx context.Context, assetID, accountID, cred
 			return err
 		}
 		result = binding
-		return writeCredentialAudit(s.auditTx, tx, credentialAudit{
-			CredentialID: cred.ID,
-			Operation:    credentialOpRebind,
-			Scope:        cred.Scope,
-			AssetID:      asset.ID,
-			AccountID:    binding.ID,
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
+			CredentialID:  cred.ID,
+			Operation:     credentialOpRebind,
+			Scope:         cred.Scope,
+			AssetID:       asset.ID,
+			AccountID:     binding.ID,
+			CorrelationID: attach.auditCorrelation(),
 
 			PreviousCredentialID: oldCred.ID,
-		}, userID, operator)
+		}, userID, operator); err != nil {
+			return err
+		}
+		// 以 API token 更換憑證：同交易產生告警（新舊為同一筆時上方已直接回傳，不寫入也不產生）
+		return attach.raiseSingle(s.alerts, tx, attachEntryRebind, userID, operator, asset.ID, asset.Name, cred)
 	})
 	if txErr != nil {
 		return nil, txErr
@@ -670,12 +686,10 @@ func (s *CredentialService) requireManagement(ctx context.Context, db *gorm.DB, 
 	return err
 }
 
-// requireAttachManagement 把既有憑證掛到資產上（掛載、改綁）的判定：同 requireManagement 的掛載能力，
-// 並標示這是掛載既有憑證（以 API token 認證的請求一律不可）。
+// requireAttachManagement 把既有憑證掛到資產上（掛載、改綁）的判定：掛載能力，影響集合為所指憑證與目標資產。
 func (s *CredentialService) requireAttachManagement(ctx context.Context, db *gorm.DB, credentialIDs, assetIDs []uint) error {
 	_, err := s.mgmt.require(ctx, db, CredentialManagementRequest{
 		Operation: CredOpBind, Capabilities: []string{CredCapBind}, CredentialIDs: credentialIDs, AssetIDs: assetIDs,
-		AttachesExisting: true,
 	})
 	return err
 }

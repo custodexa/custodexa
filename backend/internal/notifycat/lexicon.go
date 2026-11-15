@@ -79,6 +79,8 @@ const (
 	LexiconHostKeyOutcome Lexicon = "host_key_outcome"
 	// LexiconHostKeyPath 主機金鑰不符發生的撥號路徑
 	LexiconHostKeyPath Lexicon = "host_key_path"
+	// LexiconCredentialAttachEntry 以 API token 掛載既有憑證的掛載方式（入口）
+	LexiconCredentialAttachEntry Lexicon = "credential_attach_entry"
 )
 
 // DateListKeyMore 「另有 N 天」的詞庫鍵
@@ -204,7 +206,8 @@ func LexiconEntries(lang string, lex Lexicon) map[string]string {
 func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
 		LexiconEntity, LexiconRotationReport, LexiconComplianceReport, LexiconAlertKind,
-		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList, LexiconHostKeyOutcome, LexiconHostKeyPath}
+		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList, LexiconHostKeyOutcome, LexiconHostKeyPath,
+		LexiconCredentialAttachEntry}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

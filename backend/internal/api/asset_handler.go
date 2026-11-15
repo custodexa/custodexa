@@ -238,8 +238,6 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		return
 	}
 	switch {
-	case errors.Is(err, asset.ErrAPITokenCredentialReference):
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAPITokenCredentialReferenceForbidden, nil)
 	case errors.Is(err, asset.ErrAssetNotFound):
 		middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)
 	case errors.Is(err, asset.ErrFieldCapabilityDenied),
@@ -307,6 +305,9 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 	// 建立／更新的欄位規則：原本未映射而落到 500
 	case errors.Is(err, asset.ErrUsernameRequired):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAssetUsernameRequired, nil)
+	case errors.Is(err, asset.ErrAssetPortOutOfRange):
+		// 與批次新增的埠號檢核同一碼（訊息即欄位與值域）
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAssetImportPort, nil)
 	case errors.Is(err, asset.ErrK8sTargetRequired):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAssetK8sNamespaceRequired, nil)
 	case errors.Is(err, asset.ErrSftpUsernameRequired):
@@ -382,6 +383,11 @@ func (h *AssetHandler) List(c *gin.Context) {
 	if ps, err := strconv.Atoi(c.Query("page_size")); err == nil && ps > 0 {
 		pageSize = ps
 	}
+	// 名稱精確查找：三條路徑都在可見範圍收斂之後、計數與分頁之前套用
+	exactName, ok := exactNameQuery(c, "name")
+	if !ok {
+		return
+	}
 
 	// 伺服端強制授權收斂：非 admin/auditor 一律走授權
 	// 資產集合，不信任客戶端 authorized_only 參數；管理角色保留參數自查行為
@@ -451,7 +457,7 @@ func (h *AssetHandler) List(c *gin.Context) {
 		h.scopedList(c, scopeView, scopedListQuery{
 			page: page, pageSize: pageSize, nodeID: nodeID, includeSubtree: includeSubtree,
 			ungrouped: ungrouped, credentialPending: credentialPending, tags: tagFilters,
-			connectionOnly: c.Query("authorized_only") == "true",
+			connectionOnly: c.Query("authorized_only") == "true", exactName: exactName,
 		})
 		return
 	}
@@ -474,6 +480,7 @@ func (h *AssetHandler) List(c *gin.Context) {
 
 		// 授權集合內套用篩選與分頁（P2-1）：前端篩選/分頁控制項須在此生效
 		filtered := filterAuthorizedAssets(assets, c.Query("search"), c.Query("protocol"), c.Query("active"))
+		filtered = keepExactName(filtered, exactName, func(a *authz.AuthorizedAssetDTO) string { return a.Name })
 
 		// 節點過濾在授權集合內生效（收斂樹點選同樣過濾右表）
 		if nodeID != nil || ungrouped {
@@ -552,6 +559,7 @@ func (h *AssetHandler) List(c *gin.Context) {
 		IncludeSubtree: includeSubtree,
 		Ungrouped:      ungrouped,
 		Tags:           tagFilters,
+		ExactName:      exactName,
 
 		CredentialPending: credentialPending,
 	}
@@ -638,8 +646,14 @@ func (h *AssetHandler) Get(c *gin.Context) {
 
 	// 逐資產授權由 RequireAssetVisible 中介層守門
 
-	// 查詢資產
-	assetRow, err := h.assetService.GetByID(uint(id))
+	// 查詢資產：服務提供詳情讀取時用它（帶與列表同一份計算的待配憑證）
+	get := h.assetService.GetByID
+	if d, ok := h.assetService.(interface {
+		GetDetail(id uint) (*model.Asset, error)
+	}); ok {
+		get = d.GetDetail
+	}
+	assetRow, err := get(uint(id))
 	if err != nil {
 		if errors.Is(err, asset.ErrAssetNotFound) {
 			middleware.RespondTargetNotFound(c, authz.ScopeTargetAsset, authz.ScopeLayerAsset)

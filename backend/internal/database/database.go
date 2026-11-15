@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/model"
@@ -14,6 +15,25 @@ import (
 
 // DB 全域資料庫實例
 var DB *gorm.DB
+
+// StorageNow ORM 自動填入時刻（建立、更新、軟刪除時間）的取值：現在時刻截到微秒。
+//
+// PostgreSQL 的時間欄位保存到微秒，驅動在送出前直接捨去微秒以下的部分。若記憶體中的值保留奈秒，
+// 寫入端點回傳的時間戳就會比隨後讀取多出幾位，同一時刻兩邊字串不同。截到微秒後，寫入當下記憶體中
+// 的值與資料庫實際保存的值相同；PostgreSQL 上保存的值不變（原本就是同樣的捨去），只是記憶體這一側
+// 不再多帶資料庫存不下的位數。
+//
+// 只影響 ORM 自動填入的欄位。稽核列的建立時刻在寫入前由模型自行定值（逐列完整性驗證與檢查點本來就
+// 以微秒取值），不經這裡。
+func StorageNow() time.Time {
+	return time.Now().Local().Truncate(time.Microsecond)
+}
+
+// NewGormConfig 資料庫連線共用的 ORM 設定。正式啟動與需要與正式設定一致的測試環境都由此取得，
+// 避免時間取值等行為在兩邊分歧。
+func NewGormConfig(l logger.Interface) *gorm.Config {
+	return &gorm.Config{Logger: l, NowFunc: StorageNow}
+}
 
 // InitDatabase 初始化資料庫連線
 func InitDatabase(cfg *config.Config) error {
@@ -62,9 +82,7 @@ func InitDatabase(cfg *config.Config) error {
 	if cfg.IsReleaseMode() {
 		gormLogLevel = logger.Error
 	}
-	DB, err = gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(gormLogLevel),
-	})
+	DB, err = gorm.Open(dialector, NewGormConfig(logger.Default.LogMode(gormLogLevel)))
 	if err != nil {
 		return fmt.Errorf("無法連線資料庫: %w", err)
 	}

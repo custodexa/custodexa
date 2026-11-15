@@ -83,6 +83,17 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
 
+	// 以 API token 匯入且有列引用既有憑證：那些列的帳號建立稽核帶同一個關聯識別，整批一則告警
+	attach, err := newCredentialAttachRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range prepared {
+		if p.sharedCredentialID != 0 {
+			p.attachCorrelationID = attach.auditCorrelation()
+		}
+	}
+
 	result := &ImportResult{AssetIDs: make([]uint, 0, len(prepared))}
 	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if s.importTxStartHook != nil {
@@ -118,6 +129,8 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 			}
 		}
 		var currentPaths map[uint]string
+		// 實際引用既有憑證的列數與涉及的憑證（只計引用，內嵌秘密與不帶憑證的列不算）
+		attachedRows, attachedCreds := 0, map[uint]bool{}
 		for i, p := range prepared {
 			if paths := preview.Rows[i].Values.NodePaths; len(paths) > 0 {
 				if currentPaths == nil {
@@ -134,9 +147,16 @@ func (s *AssetService) ImportAssets(ctx context.Context, batch *ImportBatch,
 				return &importTxRowError{index: i, err: cerr}
 			}
 			result.AssetIDs = append(result.AssetIDs, p.asset.ID)
-			if !created {
+			if !created.accountCreated {
 				result.CredentialPending++
 			}
+			if created.attached != nil {
+				attachedRows++
+				attachedCreds[created.attached.ID] = true
+			}
+		}
+		if err := attach.raiseImport(s.alerts, tx, createdBy, createdByName, attachedRows, len(attachedCreds)); err != nil {
+			return err
 		}
 		if anyMounted {
 			return s.advanceTopologyVersionTx(tx)

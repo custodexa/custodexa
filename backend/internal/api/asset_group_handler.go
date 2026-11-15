@@ -130,25 +130,88 @@ func (h *AssetGroupHandler) List(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
+	var perm *authz.Permission
+	if hasPurpose {
+		perm = &purposePerm
+	}
+	// 名稱精確查找：在完整的可見節點集合（含定位用的祖先）算出之後篩選，只留名稱相同者，
+	// 不另帶不相符的祖先列；名稱只在同一層唯一，可能回多筆，以 parent_id 區分
+	exactName, ok := exactNameQuery(c, "name")
+	if !ok {
+		return
+	}
+	filtered, proj, ok := h.visibleNodes(c, perm)
+	if !ok {
+		return
+	}
+	filtered = keepExactName(filtered, exactName, func(g asset.GroupWithAssets) string { return g.Name })
+	resp := gin.H{"data": filtered, "total": len(filtered)}
+	if proj != nil {
+		all := proj.State == authz.ScopeSetUnlimited
+		for i := range filtered {
+			sel := all || proj.Selectable[filtered[i].ID]
+			filtered[i].Selectable = &sel
+		}
+		resp["selectable_all"] = all
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// nodeSingleView 節點單筆讀取的回應：列表元素去掉直掛資產清單與用途旗標。
+type nodeSingleView struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ParentID    *uint  `json:"parent_id,omitempty"`
+	Path        string `json:"path"`
+	*asset.NodeRowFlags
+}
+
+// Get 節點單筆讀取：先算出與未帶用途參數的列表相同的可見節點集合（含定位用的祖先與列級旗標），
+// 再以識別篩選。用途參數不是本端點的參數，帶了也不影響結果。列表看不到的節點與不存在的節點同一回應。
+func (h *AssetGroupHandler) Get(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidNodeID, nil)
+		return
+	}
+	nodes, _, ok := h.visibleNodes(c, nil)
+	if !ok {
+		return
+	}
+	for _, g := range nodes {
+		if g.ID == uint(id) {
+			c.JSON(http.StatusOK, nodeSingleView{ID: g.ID, Name: g.Name, Description: g.Description,
+				ParentID: g.ParentID, Path: g.Path, NodeRowFlags: g.NodeRowFlags})
+			return
+		}
+	}
+	middleware.RespondTargetNotFound(c, authz.ScopeTargetNode, authz.ScopeLayerNode)
+}
+
+// visibleNodes 請求主體在節點平面列表中看得到的節點（列表與單筆讀取共用）：
+// 檢視捷徑主體回全量；其餘主體收斂為連線可視直掛資產的節點、範圍化檢視者管理可視的節點與兩者的祖先鏈，
+// 範圍化檢視者另附列級旗標。purpose 非 nil 時另依用途投影擴入範圍內節點，並回傳該投影供呼叫端附可選旗標。
+// 第三個回傳值為 false 表示已寫出錯誤回應。
+func (h *AssetGroupHandler) visibleNodes(c *gin.Context, purpose *authz.Permission) ([]asset.GroupWithAssets, *authz.NodeProjection, bool) {
 	groups, err := h.groupService.ListWithAssets()
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetNodeQuery, err)
-		return
+		return nil, nil, false
 	}
 
 	if isPrivilegedRole(c) {
-		c.JSON(http.StatusOK, gin.H{"data": groups, "total": len(groups)})
-		return
+		return groups, nil, true
 	}
 	userID, exists := middleware.GetCurrentUserID(c)
 	if !exists {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
-		return
+		return nil, nil, false
 	}
 	authorized, err := h.authz.GetAuthorizedAssets(scopedContext(c), userID, model.PermissionView)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizedAssetQuery, err)
-		return
+		return nil, nil, false
 	}
 	connAllowed := make(map[uint]bool, len(authorized))
 	for _, a := range authorized {
@@ -159,12 +222,12 @@ func (h *AssetGroupHandler) List(c *gin.Context) {
 	if h.treeScope != nil {
 		if view, err = h.treeScope.TreeView(scopedContext(c)); err != nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizedAssetQuery, err)
-			return
+			return nil, nil, false
 		}
-		if hasPurpose {
-			if proj, err = h.treeScope.PurposeProjection(scopedContext(c), purposePerm); err != nil {
+		if purpose != nil {
+			if proj, err = h.treeScope.PurposeProjection(scopedContext(c), *purpose); err != nil {
 				apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizedAssetQuery, err)
-				return
+				return nil, nil, false
 			}
 		}
 	}
@@ -229,23 +292,14 @@ func (h *AssetGroupHandler) List(c *gin.Context) {
 		flags, err := view.Flags(ids)
 		if err != nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetNodeQuery, err)
-			return
+			return nil, nil, false
 		}
 		for i := range filtered {
 			f := flags[filtered[i].ID].WithLocator(connDirect[filtered[i].ID])
 			filtered[i].NodeRowFlags = &f
 		}
 	}
-	resp := gin.H{"data": filtered, "total": len(filtered)}
-	if proj != nil {
-		all := proj.State == authz.ScopeSetUnlimited
-		for i := range filtered {
-			sel := all || proj.Selectable[filtered[i].ID]
-			filtered[i].Selectable = &sel
-		}
-		resp["selectable_all"] = all
-	}
-	c.JSON(http.StatusOK, resp)
+	return filtered, proj, true
 }
 
 // Tree 樹導覽端點（惰性載入，parent_id 空＝根層）。
@@ -305,6 +359,40 @@ func (h *AssetGroupHandler) Tree(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// nodeWriteWithPath 節點寫入並在同一交易內讀出寫入後的完整路徑（服務實作；與列表的 path 同一份
+// 計算）。路徑讀不到時整筆不寫，回應不會出現「寫入已成功卻回失敗」。
+type nodeWriteWithPath interface {
+	CreateWithPath(ctx context.Context, req *asset.AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, string, error)
+	UpdateWithPath(ctx context.Context, id uint, req *asset.AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, string, error)
+	MoveWithPath(ctx context.Context, id uint, newParentID *uint, actorID uint, actorName, clientIP string) (*model.AssetGroup, string, error)
+}
+
+// nodeWriteView 節點寫入回應：寫入後的節點列加上完整路徑。
+type nodeWriteView struct {
+	*model.AssetGroup
+	Path string `json:"path"`
+}
+
+// nodeWrite 執行一筆節點寫入。服務提供帶路徑的寫入時回應為節點列加路徑（與隨後讀取該節點所得相同）；
+// 否則（測試替身）回應為節點列本身。
+func (h *AssetGroupHandler) nodeWrite(
+	withPath func(nodeWriteWithPath) (*model.AssetGroup, string, error),
+	plain func() (*model.AssetGroup, error),
+) (any, error) {
+	if p, ok := h.groupService.(nodeWriteWithPath); ok {
+		group, path, err := withPath(p)
+		if err != nil {
+			return nil, err
+		}
+		return nodeWriteView{AssetGroup: group, Path: path}, nil
+	}
+	group, err := plain()
+	if err != nil {
+		return nil, err
+	}
+	return group, nil
+}
+
 // Create 建立節點（含 parent_id；深度/同層同名由 service 驗證）
 func (h *AssetGroupHandler) Create(c *gin.Context) {
 	var req asset.AssetGroupRequest
@@ -318,12 +406,17 @@ func (h *AssetGroupHandler) Create(c *gin.Context) {
 		return
 	}
 	actorName, _ := middleware.GetCurrentUsername(c)
-	group, err := h.groupService.Create(scopedContext(c), &req, actorID, actorName, sourceip.Of(c))
+	ctx, ip := scopedContext(c), sourceip.Of(c)
+	resp, err := h.nodeWrite(
+		func(p nodeWriteWithPath) (*model.AssetGroup, string, error) {
+			return p.CreateWithPath(ctx, &req, actorID, actorName, ip)
+		},
+		func() (*model.AssetGroup, error) { return h.groupService.Create(ctx, &req, actorID, actorName, ip) })
 	if err != nil {
 		respondGroupError(c, apierror.CodeInternalAssetNodeCreate, err)
 		return
 	}
-	c.JSON(http.StatusCreated, group)
+	c.JSON(http.StatusCreated, resp)
 }
 
 // Update 更新節點名稱/描述（位置不動，搬移走 Move）
@@ -344,12 +437,19 @@ func (h *AssetGroupHandler) Update(c *gin.Context) {
 		return
 	}
 	actorName, _ := middleware.GetCurrentUsername(c)
-	group, err := h.groupService.Update(scopedContext(c), uint(id), &req, actorID, actorName, sourceip.Of(c))
+	ctx, ip := scopedContext(c), sourceip.Of(c)
+	resp, err := h.nodeWrite(
+		func(p nodeWriteWithPath) (*model.AssetGroup, string, error) {
+			return p.UpdateWithPath(ctx, uint(id), &req, actorID, actorName, ip)
+		},
+		func() (*model.AssetGroup, error) {
+			return h.groupService.Update(ctx, uint(id), &req, actorID, actorName, ip)
+		})
 	if err != nil {
 		respondGroupError(c, apierror.CodeInternalAssetNodeUpdate, err)
 		return
 	}
-	c.JSON(http.StatusOK, group)
+	c.JSON(http.StatusOK, resp)
 }
 
 // moveRequest 搬移請求：parent_id null＝搬到根層
@@ -375,12 +475,19 @@ func (h *AssetGroupHandler) Move(c *gin.Context) {
 		return
 	}
 	actorName, _ := middleware.GetCurrentUsername(c)
-	group, err := h.groupService.Move(scopedContext(c), uint(id), req.ParentID, actorID, actorName, sourceip.Of(c))
+	ctx, ip := scopedContext(c), sourceip.Of(c)
+	resp, err := h.nodeWrite(
+		func(p nodeWriteWithPath) (*model.AssetGroup, string, error) {
+			return p.MoveWithPath(ctx, uint(id), req.ParentID, actorID, actorName, ip)
+		},
+		func() (*model.AssetGroup, error) {
+			return h.groupService.Move(ctx, uint(id), req.ParentID, actorID, actorName, ip)
+		})
 	if err != nil {
 		respondGroupError(c, apierror.CodeInternalAssetNodeMove, err)
 		return
 	}
-	c.JSON(http.StatusOK, group)
+	c.JSON(http.StatusOK, resp)
 }
 
 // Delete 刪除節點（僅空節點；掛該節點的授權與審核範圍連動撤銷）
@@ -416,6 +523,7 @@ func (h *AssetGroupHandler) RegisterRoutes(r *gin.RouterGroup, authService *iden
 	{
 		groups.GET("", middleware.EnforceRegistry(), h.List)
 		groups.GET("/tree", middleware.EnforceRegistry(), h.Tree)
+		groups.GET("/:id", middleware.EnforceRegistry(), h.Get)
 		groups.POST("", middleware.EnforceRegistry(), h.Create)
 		groups.PUT("/:id", middleware.EnforceRegistry(), h.Update)
 		groups.PUT("/:id/move", middleware.EnforceRegistry(), h.Move)

@@ -12,10 +12,11 @@ type ScopedOutputExit struct {
 	Via string
 }
 
-// ScopedOutputExits 20 個登錄出口：帳號列 8（含執行身分讀取與設定）、輪替 5、改密 7。
+// ScopedOutputExits 21 個登錄出口：帳號列 9（含帳號單筆讀取、執行身分讀取與設定）、輪替 5、改密 7。
 func ScopedOutputExits() []ScopedOutputExit {
 	return []ScopedOutputExit{
 		{Fn: "AssetAccountHandler.List", Group: "account"},
+		{Fn: "AssetAccountHandler.Get", Group: "account"},
 		{Fn: "AssetAccountHandler.Create", Group: "account"},
 		{Fn: "AssetAccountHandler.Update", Group: "account"},
 		{Fn: "AssetAccountHandler.SetDefault", Group: "account"},
@@ -56,7 +57,7 @@ func ScopedOutputProjections() []ScopedOutputProjection {
 	return []ScopedOutputProjection{
 		{"CredentialHandler.projectRotation", ProjectionEntry, "輪替回應：成員只含請求主體可見者"},
 		{"accountRowProjector.rows", ProjectionEntry, "帳號列表回應"},
-		{"accountRowProjector.one", ProjectionEntry, "帳號寫入回應（單列）"},
+		{"accountRowProjector.one", ProjectionEntry, "帳號寫入回應與單筆讀取回應（單列）"},
 		{"AssetExecutorHandler.projectExecutor", ProjectionEntry, "執行身分讀取與設定回應：credential 欄由帳號列投影器產生"},
 		{"ChangeSecretHandler.projectBatchTargets", ProjectionEntry, "批次目標回應"},
 		{"ChangeSecretHandler.projectRecords", ProjectionEntry, "改密紀錄回應（批次明細與計畫紀錄共用）"},
@@ -71,6 +72,7 @@ func ScopedOutputProjections() []ScopedOutputProjection {
 		{"accountRowProjector.credentialRow", ProjectionHelper, "單一帳號列的投影，只被 AssetExecutorHandler.projectExecutor 呼叫（執行身分回應的 credential 欄）"},
 		{"withOutOfScopeCount", ProjectionHelper, "於輪替對外型別加範圍外台數，只被 projectRotation 呼叫"},
 		{"accountRowActions", ProjectionHelper, "範圍外帳號列的動作判定轉換，只被 row 呼叫"},
+		{"AssetAccountHandler.visibleAccounts", ProjectionHelper, "請求主體在帳號列表中看得到的帳號（帳號範圍過濾），只被帳號列表與帳號單筆讀取呼叫，結果一律交給 rows 或 one 投影"},
 		{"ChangeSecretHandler.maskPlans", ProjectionHelper, "計畫列的遮蔽判定，只被 projectPlanList、projectPlan 呼叫"},
 		{"maskPlanRow", ProjectionHelper, "單一計畫列的遮蔽轉換，只被 maskPlans 呼叫"},
 		{"newChangeSecretRecordDTO", ProjectionHelper, "改密紀錄對外型別的組裝，只被 projectRecords 呼叫"},

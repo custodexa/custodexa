@@ -34,6 +34,7 @@ const (
 	EventSystemAlertConcurrentInstanceDetected   Event = "concurrent_instance_detected"
 	EventSystemAlertUnmanagedPrivilegedAccount   Event = "unmanaged_privileged_account"
 	EventSystemAlertPrivilegedAPITokenCreated    Event = "privileged_api_token_created"
+	EventSystemAlertAPITokenCredentialAttached   Event = "api_token_credential_attached"
 )
 
 func systemAlertEventSpecs() map[Event]EventSpec {
@@ -193,6 +194,17 @@ func systemAlertEventSpecs() map[Event]EventSpec {
 			{Name: "expiry", Kind: KindEnum, Required: true, Enum: []string{"at", "never"}},
 			{Name: "expires_at", Kind: KindOpaque},
 		}, VariantParam: "expiry"},
+		// entry 同時決定模板（單筆四種入口共用同一句、匯入另一句）與括號內的掛載方式短語
+		EventSystemAlertAPITokenCredentialAttached: {Params: []ParamSpec{
+			{Name: "actor", Kind: KindOpaque, Required: true},
+			{Name: "severity", Kind: KindEnum, Required: true, Enum: systemAlertSeverityEnum(), Lexicon: LexiconSeverity},
+			{Name: "token_name", Kind: KindOpaque, Required: true},
+			{Name: "entry", Kind: KindEnum, Required: true, Enum: []string{"asset_create", "account_create", "bind", "rebind", "import"}, Lexicon: LexiconCredentialAttachEntry},
+			{Name: "credential_name", Kind: KindOpaque},
+			{Name: "asset_name", Kind: KindOpaque},
+			{Name: "asset_count", Kind: KindInt},
+			{Name: "credential_count", Kind: KindInt},
+		}, VariantParam: "entry"},
 	}
 }
 

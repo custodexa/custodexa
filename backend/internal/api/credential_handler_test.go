@@ -447,6 +447,56 @@ func TestAssetAccountCreateAcceptsEitherCredentialSource(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS")
 }
 
+// TestAssetAccountCreateDuplicateBindingConflicts 對已掛載某筆共用憑證的資產，再以同一筆
+// 憑證建立帳號回 409 CONFLICT_CREDENTIAL_BINDING，與憑證側掛載入口對同一情形的回應逐位元組
+// 相同，且不寫入任何掛載列。
+//
+// 這是呼叫端可預期的衝突（宣告式工具重送同一筆即會遇到），落到 500 會與真的伺服端錯誤無從區分。
+func TestAssetAccountCreateDuplicateBindingConflicts(t *testing.T) {
+	f := setupCredentialAPIEnv(t)
+	countBindings := func() int64 {
+		var n int64
+		require.NoError(t, f.db.Model(&model.AssetAccount{}).
+			Where("asset_id = ? AND credential_id = ?", f.assetIDs[0], f.sharedID).Count(&n).Error)
+		return n
+	}
+	require.EqualValues(t, 1, countBindings(), "前提：共用憑證已掛在第一台")
+	var totalBefore int64
+	require.NoError(t, f.db.Model(&model.AssetAccount{}).Count(&totalBefore).Error)
+
+	w := credentialCall(t, f.accounts.Create, "POST",
+		"/assets/"+uintToStr(f.assetIDs[0])+"/accounts",
+		`{"credential_id":`+uintToStr(f.sharedID)+`}`, f.assetIDs[0], 0)
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	var env struct {
+		Code string `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	assert.Equal(t, "CONFLICT_CREDENTIAL_BINDING", env.Code)
+
+	// 對照：憑證側掛載入口對同一情形的回應
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/api/v1/credentials/:id/bindings", func(c *gin.Context) {
+		c.Set("userID", uint(1))
+		c.Set("username", "admin")
+		middleware.SetPrincipal(c, legacyPrincipal(model.RoleAdmin))
+		f.handler.Bind(c)
+	})
+	wb := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/credentials/"+uintToStr(f.sharedID)+"/bindings",
+		strings.NewReader(`{"asset_id":`+uintToStr(f.assetIDs[0])+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(wb, req)
+	assert.Equal(t, wb.Code, w.Code, "兩個掛載入口對同一衝突的狀態碼應相同")
+	assert.Equal(t, wb.Body.String(), w.Body.String(), "兩個掛載入口對同一衝突的本文應相同")
+
+	assert.EqualValues(t, 1, countBindings(), "被拒的請求不得多寫掛載列")
+	var totalAfter int64
+	require.NoError(t, f.db.Model(&model.AssetAccount{}).Count(&totalAfter).Error)
+	assert.Equal(t, totalBefore, totalAfter, "被拒的請求不得寫入任何帳號列")
+}
+
 // TestAssetAccountCreateRejectsCopyFromParam 已退場的複製參數帶值即回機器碼。
 //
 // 靜默忽略會讓舊呼叫端以為複製成立，實際建出來的是一筆沒有秘密的掛載——

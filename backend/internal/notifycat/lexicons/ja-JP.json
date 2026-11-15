@@ -351,5 +351,12 @@
   },
   "date_list": {
     "more": "ほか {n} 日（一覧外）"
+  },
+  "credential_attach_entry": {
+    "asset_create": "資産の作成時に参照",
+    "account_create": "資産アカウントの作成時に参照",
+    "bind": "資産に割り当て",
+    "rebind": "認証情報の変更",
+    "import": "資産のインポート"
   }
 }

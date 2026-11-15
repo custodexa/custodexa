@@ -16,6 +16,7 @@ import (
 // UserGroupServiceInterface 使用者群組服務接口（用於測試注入）
 type UserGroupServiceInterface interface {
 	List() ([]model.UserGroup, error)
+	Get(id uint) (*model.UserGroup, error)
 	Create(req *identity.UserGroupRequest) (*model.UserGroup, error)
 	Update(id uint, req *identity.UserGroupRequest) (*model.UserGroup, error)
 	Delete(id uint, actorID uint, actorName, clientIP string) (int64, error)
@@ -73,12 +74,33 @@ func parseUserGroupID(c *gin.Context) (uint, bool) {
 
 // List 群組列表（含成員）
 func (h *UserGroupHandler) List(c *gin.Context) {
+	// 名稱精確查找：列表只含未刪除的群組，篩選在其上進行，已刪除的同名群組不會被找到
+	exactName, ok := exactNameQuery(c, "name")
+	if !ok {
+		return
+	}
 	groups, err := h.groups.List()
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserGroupQuery, err)
 		return
 	}
+	groups = keepExactName(groups, exactName, func(g model.UserGroup) string { return g.Name })
 	c.JSON(http.StatusOK, gin.H{"data": groups, "total": len(groups)})
+}
+
+// Get 單一群組（含成員），與列表元素同形。群組沒有列級範圍：入口權限與列表相同，
+// 通過入口者看得到的群組即列表中的全部群組；不存在與已刪除同回群組不存在。
+func (h *UserGroupHandler) Get(c *gin.Context) {
+	id, ok := parseUserGroupID(c)
+	if !ok {
+		return
+	}
+	group, err := h.groups.Get(id)
+	if err != nil {
+		respondUserGroupError(c, apierror.CodeInternalUserGroupQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, group)
 }
 
 // Create 建立群組
@@ -211,6 +233,7 @@ func (h *UserGroupHandler) RegisterRoutes(r *gin.RouterGroup, authService *ident
 	groups.Use(middleware.AuthMiddleware(authService), middleware.EnforceRegistry())
 	{
 		groups.GET("", h.List)
+		groups.GET("/:id", h.Get)
 		groups.POST("", h.Create)
 		groups.PUT("/:id", h.Update)
 		groups.DELETE("/:id", h.Delete)

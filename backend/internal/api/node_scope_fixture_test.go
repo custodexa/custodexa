@@ -191,6 +191,7 @@ func (e *nodeScopeEnv) routerFor(h *AssetGroupHandler, userID uint) *gin.Engine 
 	g := r.Group("/asset-groups")
 	g.GET("", h.List)
 	g.GET("/tree", h.Tree)
+	g.GET("/:id", h.Get)
 	g.POST("", h.Create)
 	g.PUT("/:id", h.Update)
 	g.PUT("/:id/move", h.Move)

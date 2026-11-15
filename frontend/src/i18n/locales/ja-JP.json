@@ -5639,7 +5639,6 @@
     "CONFLICT_API_TOKEN_NAME": "同じ名前の API token がすでにあります。別の名前にしてください",
     "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API token ではこの機能を使えません",
     "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "API token では所属アカウント本人のこの設定を変更できません",
-    "AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN": "API token ではシステムに保存済みの認証情報を参照できません。パスワードまたは鍵をリクエストに含めてください",
     "NOTFOUND_API_TOKEN": "API token が存在しません"
   },
   "warnings": {
@@ -8901,6 +8900,10 @@
       "privileged_api_token_created": {
         "name": "高権限 API token の作成",
         "description": "作成された API token の付与ロールにスーパー管理者またはシステムセキュリティ管理者が含まれています"
+      },
+      "api_token_credential_attached": {
+        "name": "API token による保存済み認証情報の割り当て",
+        "description": "API token で、システムに保存済みの認証情報を資産に割り当てました"
       }
     },
     "groups": {
@@ -8984,7 +8987,32 @@
       "createdNeverExpires": "無期限",
       "createdNeverExpiresHint": "自動的には失効しません",
       "createdSuperRole": "{role}（スーパー管理者）",
-      "viewTokens": "{user} の API token を表示"
+      "viewTokens": "{user} の API token を表示",
+      "attachSummary": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました",
+      "attachImportSummary": "{actor} が API token「{token_name}」で資産をインポートし、そのうち {asset_count} 台が保存済みの認証情報 {credential_count} 件を参照しています",
+      "attachWarnTitle": "この認証情報は、今後この資産へのサインインに使われます",
+      "attachWarnBody": "スケジュールされたパスワード変更や接続の際に、システムはこれを使って資産の接続先アドレスにサインインします。アドレスが正しいこと、この割り当てが承認済みであることを確認してください。",
+      "attachImportWarnTitle": "これらの認証情報は、今後これらの資産へのサインインに使われます",
+      "attachImportWarnBody": "スケジュールされたパスワード変更や接続の際に、システムはこれらを使って各資産の接続先アドレスにサインインします。このインポートが承認済みであることを確認し、操作ログで各資産のアドレスを確認してください。",
+      "attachTitle": "割り当ての内容",
+      "attachImportTitle": "インポートの内容",
+      "attachToken": "使用した API token",
+      "attachCredential": "認証情報",
+      "attachAsset": "資産",
+      "attachEntry": "割り当て方法",
+      "attachAssetCount": "保存済み認証情報を参照する資産",
+      "attachCredentialCount": "対象の認証情報",
+      "attachSharedHint": "（共有認証情報）",
+      "attachCredentialCountValue": "{count} 件",
+      "attachViewAccounts": "{asset_name} のアカウントを表示",
+      "attachViewImportAudit": "このインポートの各資産を操作ログで確認",
+      "attachEntries": {
+        "asset_create": "資産の作成時に参照",
+        "account_create": "資産アカウントの作成時に参照",
+        "bind": "資産に割り当て",
+        "rebind": "認証情報の変更",
+        "import": "資産のインポート"
+      }
     },
     "targetKinds": {
       "asset": "資産",

@@ -1,6 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-11-13（`20261113_api_tokens`：新表 `api_tokens`（個人 API 憑證，只存明文摘要，見第 80 節）與 `api_token_roles`（建立時授權的角色，見第 81 節）；`audit_logs` 加可為 NULL 的 `api_token_id`、`api_token_name` 兩欄與複合索引 `idx_audit_api_token_created`，兩欄納入逐列完整性驗證碼的涵蓋範圍（值為 NULL 時不進入簽章內容，既有列的驗證碼不變）。純新增、無資料步驟；不提供 Down。同步更正正文的總數：migration 共五十八條（baseline 加五十七條增量）、應用資料表 93 張、全庫 96 張表）
+> **最後更新**：2026-11-15（`20261115_user_group_name_live_unique`：`user_groups` 的名稱唯一索引 `idx_user_groups_name` 改為只計未刪除列的部分唯一索引（`WHERE deleted_at IS NULL`），群組刪除後可用同名重建；只換索引、無資料步驟、既有列不變。Down 重建涵蓋全部列的唯一索引，已出現同名列時拒絕並維持現狀。migration 總數 +1，表數不變）
+> 前次更新：2026-11-13（`20261113_api_tokens`：新表 `api_tokens`（個人 API 憑證，只存明文摘要，見第 80 節）與 `api_token_roles`（建立時授權的角色，見第 81 節）；`audit_logs` 加可為 NULL 的 `api_token_id`、`api_token_name` 兩欄與複合索引 `idx_audit_api_token_created`，兩欄納入逐列完整性驗證碼的涵蓋範圍（值為 NULL 時不進入簽章內容，既有列的驗證碼不變）。純新增、無資料步驟；不提供 Down。同步更正正文的總數：migration 共五十八條（baseline 加五十七條增量）、應用資料表 93 張、全庫 96 張表）
 > 前次更新：2026-11-06（政策鍵表補 `retention_keystroke_days` 一列，無 schema 變更）
 > 前次更新：2026-11-05（`20261105_keystroke_records`：新表 `keystroke_records`（鍵盤紀錄中繼資料，一個會話一列，見第 79 節），只建表與三條索引、不回填、不改既有表、不設外鍵；不提供 Down；檔案金鑰欄 `file_key_enc` 登記於信封加密的欄位登記表。新增保留天數政策鍵 `retention_keystroke_days`（出廠 0，不受檢查點跨鍵約束）。migration 總數 +1、應用資料表 +1）
 > 前次更新：2026-11-05（指令稽核降級原因新增 `echo_incomplete_at_close`：會話結束時該輪已收到部分回顯、但 Enter 的回顯換行未抵達，記為無文字的降級列；無 migration，表數不變）
@@ -2309,8 +2310,7 @@ per user×asset 一列（唯一索引冪等更新）。不存 `expires_at`——
 
 **表名**: `user_groups`（成員關聯表 `user_group_members` 由 baseline 顯式建表，見 `backend/internal/database/baseline_schema_identity.go`；程式碼中零 `AutoMigrate`——改 model 不會自動建表或加欄）
 **檔案**: `backend/internal/model/user_group.go`
-**建表方式**: baseline（`baseline_schema_identity.go`），含 `idx_user_groups_name` 唯一索引
-（**非** partial：本表雖有 `deleted_at`，軟刪除的群組名仍佔用該名稱）；
+**建表方式**: baseline（`baseline_schema_identity.go`）建 `idx_user_groups_name` 唯一索引；增量 `20261115_user_group_name_live_unique` 把它換成部分唯一索引 `(name) WHERE deleted_at IS NULL`（與 `idx_users_username` 同型）：名稱的唯一性只計未刪除列，軟刪除的群組保留原名但不再佔用該名稱；
 成員關聯表 `user_group_members` 另見 29b
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -2754,6 +2754,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20261103_executor_login_checks` | 堡壘機專用帳號測試登入結果：建 `executor_login_checks`（第 78 節），共 **2 條 DDL**（1 建表＋1 一般索引 `idx_executor_login_checks_asset`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackExecutorLoginChecks`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 | `20261105_keystroke_records` | 鍵盤紀錄中繼資料：建 `keystroke_records`（第 79 節），共 **4 條 DDL**（1 建表＋2 唯一索引 `idx_keystroke_records_record_uuid`／`idx_keystroke_records_session_id`＋1 一般索引 `idx_keystroke_records_status`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackKeystrokeRecords`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新目錄 |
 | `20261113_api_tokens` | 個人 API 憑證：建 `api_tokens`（第 80 節，主鍵、`fk_api_tokens_user`／`fk_api_tokens_revoker` 兩條外鍵、唯一索引 `idx_api_tokens_token_hash`、一般索引 `idx_api_tokens_user_revoked`）與 `api_token_roles`（第 81 節，複合主鍵、`fk_api_token_roles_token`（ON DELETE CASCADE）／`fk_api_token_roles_role` 兩條外鍵）；`audit_logs` 加 `api_token_id bigint`、`api_token_name character varying(100)` 兩個可為 NULL 的欄位與索引 `idx_audit_api_token_created`＝`(api_token_id, created_at)`，共 **7 條 DDL**（2 建表＋2 索引＋2 加欄＋1 稽核索引）。純新增、無資料步驟、既有列不變（新欄為 NULL）；無 CHECK。稽核索引建在既有的 `audit_logs` 上，依 PostgreSQL 的一般行為需掃描該表的既有列，耗時可能隨其列數增加 | `rollbackAPITokens`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新欄 |
+| `20261115_user_group_name_live_unique` | 使用者群組名稱的唯一性只計未刪除列：`DROP INDEX idx_user_groups_name` 後建 `CREATE UNIQUE INDEX idx_user_groups_name ON user_groups (name) WHERE (deleted_at IS NULL)`，共 **2 條 DDL**。無資料步驟、既有列不變；新索引比舊索引寬鬆，既有資料必然成立 | `rollbackUserGroupNameLiveUnique`：先檢查 `user_groups` 是否有同名的多列（含已刪除）；有則在任何 DDL 之前回錯並列出重複名稱的樣本，索引與版本紀錄維持不變，回退只走還原升級前備份；沒有則重建涵蓋全部列的唯一索引 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 

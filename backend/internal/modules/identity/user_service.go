@@ -253,8 +253,11 @@ type ListUsersRequest struct {
 	ProvisioningOrigin string
 	// AuthProviderID 依已綁定的 OIDC provider 實例篩選（0＝不篩）
 	AuthProviderID uint
-	Page           int // 頁碼（從 1 開始）
-	PageSize       int // 每頁大小
+	// ExactUsername 非 nil＝只列使用者名稱與其完全相同者（原樣等值，與建立時的使用者名稱判重同一比對）；
+	// 其他篩選照常生效，例如未要求包含自動化帳號時不回自動化帳號
+	ExactUsername *string
+	Page          int // 頁碼（從 1 開始）
+	PageSize      int // 每頁大小
 }
 
 // UserListResponse 使用者列表回應
@@ -369,6 +372,10 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 	if req.Search != "" {
 		query = query.Where("username LIKE ? OR email LIKE ?",
 			"%"+req.Search+"%", "%"+req.Search+"%")
+	}
+
+	if req.ExactUsername != nil {
+		query = query.Where("username = ?", *req.ExactUsername)
 	}
 
 	// 啟用狀態篩選
@@ -526,8 +533,9 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	}
 
 	// 創建使用者。last_login_at 以建立時間起算（閒置停用以「距最後登入」判定，
-	// 新建卻未登入者若 last_login_at 為 NULL 亦以 created_at 起算，此處顯式填入更直觀）
-	now := time.Now()
+	// 新建卻未登入者若 last_login_at 為 NULL 亦以 created_at 起算，此處顯式填入更直觀）。
+	// 取到微秒：資料庫只保存到微秒，建立回應帶的值才與隨後讀取相同
+	now := time.Now().Truncate(time.Microsecond)
 	// 身分欄位顯式賦值：GORM 對 struct literal 未列的
 	// 欄位交由 DB default，雖然本路徑的值恰與 default 相同，仍顯式寫出——
 	// 三個建號路徑各自顯式賦值是不變式守衛的前提，靠 default 巧合成立的語義

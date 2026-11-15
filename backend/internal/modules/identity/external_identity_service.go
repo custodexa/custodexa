@@ -698,7 +698,7 @@ func (s *UserService) writeIdentityAudit(actor IdentityAdminActor, targetUserID 
 		Status:     status,
 		ClientIP:   actor.ClientIP,
 		Details:    mustJSON(details),
-	}).WithAPIToken(actor.APIToken.ID, actor.APIToken.Name))
+	}).WithAPIToken(actor.APIToken.ID, actor.APIToken.Name).WithAPITokenOrigin(actor.APIToken.RequestID, actor.APIToken.ClientIP))
 }
 
 // auditIdentityFailure 拒絕與失敗一律留痕（規則拒絕是稽核關注的事件本身，

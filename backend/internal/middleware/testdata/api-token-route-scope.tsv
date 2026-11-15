@@ -40,6 +40,7 @@ DELETE	/api/v1/asset-groups/:id	open
 PUT	/api/v1/asset-groups/:id	open
 PUT	/api/v1/asset-groups/:id/move	open
 GET	/api/v1/asset-groups/tree	open
+GET	/api/v1/asset-groups/:id	open
 GET	/api/v1/assets	open
 POST	/api/v1/assets	open
 DELETE	/api/v1/assets/:id	open
@@ -50,10 +51,11 @@ POST	/api/v1/assets/:id/account-inventory/findings/:findingId/ignore	open
 POST	/api/v1/assets/:id/account-inventory/findings/:findingId/reopen	open
 POST	/api/v1/assets/:id/account-inventory/scans	closed
 GET	/api/v1/assets/:id/accounts	open
+GET	/api/v1/assets/:id/accounts/:accountId	open
 POST	/api/v1/assets/:id/accounts	open
 DELETE	/api/v1/assets/:id/accounts/:accountId	open
 PUT	/api/v1/assets/:id/accounts/:accountId	open
-PUT	/api/v1/assets/:id/accounts/:accountId/credential	closed
+PUT	/api/v1/assets/:id/accounts/:accountId/credential	open
 POST	/api/v1/assets/:id/accounts/:accountId/set-default	open
 DELETE	/api/v1/assets/:id/executor	open
 GET	/api/v1/assets/:id/executor	open
@@ -121,6 +123,7 @@ POST	/api/v1/auth/refresh	closed
 GET	/api/v1/authorizations	open
 POST	/api/v1/authorizations	open
 DELETE	/api/v1/authorizations/:id	open
+GET	/api/v1/authorizations/:id	open
 PUT	/api/v1/authorizations/:id/accounts	open
 POST	/api/v1/authorizations/batch	open
 GET	/api/v1/authorizations/effective-assets	open
@@ -156,7 +159,7 @@ POST	/api/v1/credentials	open
 DELETE	/api/v1/credentials/:id	open
 GET	/api/v1/credentials/:id	open
 PUT	/api/v1/credentials/:id	open
-POST	/api/v1/credentials/:id/bindings	closed
+POST	/api/v1/credentials/:id/bindings	open
 DELETE	/api/v1/credentials/:id/bindings/:accountId	open
 POST	/api/v1/credentials/:id/bindings/:accountId/detach	closed
 POST	/api/v1/credentials/:id/impact-confirmations	open
@@ -322,6 +325,7 @@ GET	/api/v1/user-groups	open
 POST	/api/v1/user-groups	open
 DELETE	/api/v1/user-groups/:id	open
 PUT	/api/v1/user-groups/:id	open
+GET	/api/v1/user-groups/:id	open
 GET	/api/v1/user-groups/:id/authorization-count	open
 GET	/api/v1/user-groups/:id/external-mappings	open
 PUT	/api/v1/user-groups/:id/members	open

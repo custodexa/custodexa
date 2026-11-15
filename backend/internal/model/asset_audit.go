@@ -195,7 +195,7 @@ func getUserFromContext(ctx context.Context) (userID uint, username string) {
 func (a *Asset) AfterCreate(tx *gorm.DB) error {
 	userID, username := getUserFromContext(tx.Statement.Context)
 
-	// 創建操作不需要 diff，只記錄創建事件
+	// 創建操作不需要 diff，只記錄創建事件（建立時即為停用者另記明細，見 assetCreateDetails）
 	auditLog := &AuditLog{
 		CreatedAt:  time.Now(),
 		UserID:     userID,
@@ -207,11 +207,20 @@ func (a *Asset) AfterCreate(tx *gorm.DB) error {
 		// AssetID，靠 (Resource, ResourceID) 反推會把改密計畫／授權列的同號 id 一併撈進來
 		AssetID: &a.ID,
 		Status:  StatusSuccess,
-		Details: "", // 創建操作不需要詳情
+		Details: assetCreateDetails(a),
 	}
 
 	// 使用新的 session 避免嵌套事務問題
 	return tx.Session(&gorm.Session{NewDB: true}).Create(auditLog).Error
+}
+
+// assetCreateDetails 建立事件的明細：一般建立不帶明細；建立時即為停用者記 {"active":false}，
+// 稽核者不必另查後續事件即可分辨該資產自建立起就不可連線。
+func assetCreateDetails(a *Asset) string {
+	if a.Active {
+		return ""
+	}
+	return `{"active":false}`
 }
 
 // AfterUpdate Hook - 記錄資產變更

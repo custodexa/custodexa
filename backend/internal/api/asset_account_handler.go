@@ -92,8 +92,6 @@ func respondAccountError(c *gin.Context, internalCode apierror.ErrCode, err erro
 		return
 	}
 	switch {
-	case errors.Is(err, asset.ErrAPITokenCredentialReference):
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAPITokenCredentialReferenceForbidden, nil)
 	case errors.Is(err, asset.ErrAssetNotFound):
 		middleware.RespondTargetNotFound(c, authz.ScopeTargetAssetAccount, authz.ScopeLayerAsset)
 	case errors.Is(err, asset.ErrAssetAccountNotFound):
@@ -125,6 +123,9 @@ func respondAccountError(c *gin.Context, internalCode apierror.ErrCode, err erro
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeCredentialNotFound, nil)
 	case errors.Is(err, asset.ErrCredentialDedicatedSingleBinding):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialDedicatedSingle, nil)
+	// 同一資產再掛同一筆共用憑證：呼叫端可預期的衝突，與憑證側掛載入口同碼
+	case errors.Is(err, asset.ErrCredentialBindingExists):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialBindingExists, nil)
 	case errors.Is(err, asset.ErrCredentialProtocolMismatch):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialProtocolMismatch, nil)
 	case errors.Is(err, asset.ErrCredentialRotationActive):
@@ -212,28 +213,10 @@ func (h *AssetAccountHandler) List(c *gin.Context) {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
 		return
 	}
-	accounts, err := h.accountService.List(assetID)
+	filtered, err := h.visibleAccounts(c, userID, assetID)
 	if err != nil {
 		respondAccountError(c, apierror.CodeInternalAssetAccountList, err)
 		return
-	}
-
-	scope, err := h.scopeResolver.EffectiveViewAccountScope(accountAuthzContext(c), userID, assetID)
-	if err != nil {
-		respondAccountError(c, apierror.CodeInternalAssetAccountList, err)
-		return
-	}
-	// 資產管理可視：管理視圖回該資產全部帳號，不經連線帳號範圍過濾（憑證身分欄位仍照下方欄位能力）
-	managed, err := h.managedVisible(c, assetID)
-	if err != nil {
-		respondAccountError(c, apierror.CodeInternalAssetAccountList, err)
-		return
-	}
-	filtered := make([]*asset.AssetAccountDTO, 0, len(accounts))
-	for _, a := range accounts {
-		if managed || scope.Allows(a.Username) {
-			filtered = append(filtered, a)
-		}
 	}
 	// 憑證身分只給具憑證檢視能力者：本端點同時服務管理視圖（帳號表格）與連線
 	// 選帳號，而後者只需要挑一個名字。回精簡版而非「回完整版但前端不顯示」——
@@ -244,6 +227,68 @@ func (h *AssetAccountHandler) List(c *gin.Context) {
 		return
 	}
 	respondScoped(c, http.StatusOK, out)
+}
+
+// Get 帳號單筆讀取：取請求主體在帳號列表中看得到的那些列（同一個帳號範圍過濾，只含登入用途帳號），
+// 以識別挑出一列，再經列表同一個投影器輸出。資產層的可見性由路由的同一個中介層守門；
+// 範圍外、不存在、屬於他台與系統專用帳號的識別都不在可見列中，同回帳號不存在。
+func (h *AssetAccountHandler) Get(c *gin.Context) {
+	assetID, accountID, ok := accountParams(c, true)
+	if !ok {
+		return
+	}
+	userID, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
+		return
+	}
+	visible, err := h.visibleAccounts(c, userID, assetID)
+	if err != nil {
+		respondAccountError(c, apierror.CodeInternalAssetAccountList, err)
+		return
+	}
+	var match *asset.AssetAccountDTO
+	for _, a := range visible {
+		if a.ID == accountID {
+			match = a
+			break
+		}
+	}
+	if match == nil {
+		respondAccountError(c, apierror.CodeInternalAssetAccountList, asset.ErrAssetAccountNotFound)
+		return
+	}
+	out, err := h.accountProjector().one(c, match)
+	if err != nil {
+		respondAccountError(c, apierror.CodeInternalAssetAccountList, err)
+		return
+	}
+	respondScoped(c, http.StatusOK, out)
+}
+
+// visibleAccounts 請求主體在帳號列表中看得到的帳號（列表與單筆讀取共用）：服務層只列登入用途帳號；
+// 資產經管理可視者回全部，其餘依請求主體的有效帳號範圍過濾。
+func (h *AssetAccountHandler) visibleAccounts(c *gin.Context, userID, assetID uint) ([]*asset.AssetAccountDTO, error) {
+	accounts, err := h.accountService.List(assetID)
+	if err != nil {
+		return nil, err
+	}
+	scope, err := h.scopeResolver.EffectiveViewAccountScope(accountAuthzContext(c), userID, assetID)
+	if err != nil {
+		return nil, err
+	}
+	// 資產管理可視：管理視圖回該資產全部帳號，不經連線帳號範圍過濾（憑證身分欄位仍照投影器的欄位能力）
+	managed, err := h.managedVisible(c, assetID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]*asset.AssetAccountDTO, 0, len(accounts))
+	for _, a := range accounts {
+		if managed || scope.Allows(a.Username) {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 // accountProjector 帳號列投影器：與憑證 handler 的 bind、rebind 共用同一個判定。
@@ -287,8 +332,7 @@ func accountRowAction(err error) (asset.CredentialAction, error) {
 		return asset.CredentialAction{Reason: asset.CredentialActionOutOfScope}, nil
 	}
 	var write *authz.AssetWriteCapabilityError
-	if errors.As(err, &write) || errors.Is(err, asset.ErrCredentialBindForbidden) ||
-		errors.Is(err, asset.ErrAPITokenCredentialReference) {
+	if errors.As(err, &write) || errors.Is(err, asset.ErrCredentialBindForbidden) {
 		return asset.CredentialAction{Reason: asset.CredentialActionNoCapability}, nil
 	}
 	return asset.CredentialAction{}, err
@@ -420,6 +464,7 @@ func (h *AssetAccountHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 	}
 
 	accounts.GET("", middleware.EnforceRegistry(h.scopeGate), visible, h.List)
+	accounts.GET("/:accountId", middleware.EnforceRegistry(h.scopeGate), visible, h.Get)
 	accounts.POST("", middleware.EnforceRegistry(h.scopeGate), h.Create)
 	accounts.PUT("/:accountId", middleware.EnforceRegistry(h.scopeGate), h.Update)
 	accounts.DELETE("/:accountId", middleware.EnforceRegistry(h.scopeGate), h.Delete)

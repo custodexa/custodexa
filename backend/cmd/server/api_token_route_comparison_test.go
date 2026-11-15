@@ -83,6 +83,7 @@ func TestAPITokenRouteComparisonAndScope(t *testing.T) {
 
 	t.Run("APIToken 開放端點與只持有授權角色的本人相同", func(t *testing.T) {
 		covered := map[string]bool{}
+		attachSeen := map[string]bool{}
 		specificSeen := map[string]bool{}
 		tokenOnlySeen := map[string]bool{}
 		for _, p := range pairs {
@@ -101,6 +102,28 @@ func TestAPITokenRouteComparisonAndScope(t *testing.T) {
 					e.issueDynamic(p.human)
 				}
 				hr := e.cmpRun(p.human, e.request(r), p.humanSelf, p.tokenSelf)
+				// 帶 token 標示的每一列都帶該次請求的請求識別與來源位址（成功、被拒皆然）
+				for _, g := range tr.originGaps {
+					t.Errorf("[%s] %s：稽核列帶 token 標示卻缺該次請求的請求識別或來源位址：%s", p.name, key, g)
+				}
+				for _, g := range tr.unstamped {
+					t.Errorf("[%s] %s：token 請求寫下的稽核列不帶 token 標示：%s", p.name, key, g)
+				}
+				// 掛載與更換憑證：token 成功時多出恰一則掛載告警（預期差異，內容由引用既有憑證的對照測試驗證），
+				// 先取出再比對其餘結果；人類請求、或 token 未成功時都不得有這則告警
+				if apiTokenAttachAlertRoutes[key] {
+					want := 0
+					if is2xx(tr.Status) {
+						want = 1
+					}
+					if n := cmpTakeAttachAlert(&tr); n != want {
+						t.Errorf("[%s] %s：token 的掛載告警 %d 則，應為 %d（狀態 %d）", p.name, key, n, want, tr.Status)
+					}
+					if n := cmpTakeAttachAlert(&hr); n != 0 {
+						t.Errorf("[%s] %s：人類請求不應有掛載告警（%d 則）", p.name, key, n)
+					}
+					attachSeen[p.name+" "+key] = is2xx(tr.Status)
+				}
 				covered[key] = true
 				classes[hr.Status/100]++
 				if len(hr.DB) > 0 {
@@ -137,6 +160,12 @@ func TestAPITokenRouteComparisonAndScope(t *testing.T) {
 				if !tokenOnlySeen[p.name+" "+k] {
 					t.Errorf("[%s] %s 應為 token 成功、人類工作階段被拒", p.name, k)
 				}
+			}
+		}
+		// 授權超級管理者的 token 掛載與更換憑證應走到成功分支（否則告警的預期差異沒有被驗到）
+		for k := range apiTokenAttachAlertRoutes {
+			if !attachSeen["super "+k] {
+				t.Errorf("[super] %s：token 應成功並產生掛載告警", k)
 			}
 		}
 		// 預期差異沒有出現＝token 專屬限制失效（或清單過期）

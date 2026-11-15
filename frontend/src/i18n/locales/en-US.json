@@ -5639,7 +5639,6 @@
     "CONFLICT_API_TOKEN_NAME": "You already have an API token with this name. Choose another name.",
     "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API tokens cannot use this function",
     "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "An API token cannot change this setting of the account it belongs to",
-    "AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN": "An API token cannot reference a credential already stored in the system. Include the password or key in the request instead.",
     "NOTFOUND_API_TOKEN": "API token does not exist"
   },
   "warnings": {
@@ -8901,6 +8900,10 @@
       "privileged_api_token_created": {
         "name": "High-privilege API token created",
         "description": "An API token was created with the super administrator or system security administrator role"
+      },
+      "api_token_credential_attached": {
+        "name": "API token attached a stored credential",
+        "description": "An API token attached a credential already stored in the system to an asset"
       }
     },
     "groups": {
@@ -8984,7 +8987,32 @@
       "createdNeverExpires": "Never expires",
       "createdNeverExpiresHint": "Never stops working on its own",
       "createdSuperRole": "{role} (super administrator)",
-      "viewTokens": "View {user}'s API tokens"
+      "viewTokens": "View {user}'s API tokens",
+      "attachSummary": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\"",
+      "attachImportSummary": "{actor} used API token \"{token_name}\" to import assets; {asset_count} of them reference {credential_count} stored credential(s)",
+      "attachWarnTitle": "This credential will be used to sign in to this asset",
+      "attachWarnBody": "When a scheduled rotation runs or someone connects, the system signs in to the asset's address with it. Confirm the address is correct and that this attachment was approved.",
+      "attachImportWarnTitle": "These credentials will be used to sign in to these assets",
+      "attachImportWarnBody": "When a scheduled rotation runs or someone connects, the system signs in to each asset's address with them. Confirm this import was approved and check each asset's address in the operation log.",
+      "attachTitle": "Attachment",
+      "attachImportTitle": "Import",
+      "attachToken": "Via API token",
+      "attachCredential": "Credential",
+      "attachAsset": "Asset",
+      "attachEntry": "How it was attached",
+      "attachAssetCount": "Assets referencing stored credentials",
+      "attachCredentialCount": "Credentials involved",
+      "attachSharedHint": " (shared credential)",
+      "attachCredentialCountValue": "{count}",
+      "attachViewAccounts": "View {asset_name}'s accounts",
+      "attachViewImportAudit": "View every asset from this import in the operation log",
+      "attachEntries": {
+        "asset_create": "Referenced when creating the asset",
+        "account_create": "Referenced when creating the asset account",
+        "bind": "Attached to asset",
+        "rebind": "Credential replaced",
+        "import": "Asset import"
+      }
     },
     "targetKinds": {
       "asset": "Asset",

@@ -127,7 +127,7 @@ const nodeCoverageCondition = "(asset_group_id IN " + nodeStructuralNodesSubquer
 	" OR asset_id IN " + nodeSubtreeAssetsSubquery + ")"
 
 // List 查詢授權列表（支援過濾和分頁）
-// filters 支援的鍵: "user_id", "user_group_id", "asset_id", "node_id"（涵蓋盤點）,
+// filters 支援的鍵: "id"（單筆讀取）, "user_id", "user_group_id", "asset_id", "node_id"（涵蓋盤點）,
 // "permission", "source", "validity"（ValidityFilter）, "object_scope"（AuthorizationListScope）；
 // 空 map＝全量
 func (r *assetAuthorizationRepository) List(
@@ -139,6 +139,9 @@ func (r *assetAuthorizationRepository) List(
 	// 應用過濾條件
 	for key, value := range filters {
 		switch key {
+		case "id":
+			// 單筆讀取：與列表同一個查詢再加識別條件，範圍條件照常套用
+			query = query.Where("asset_authorizations.id = ?", value)
 		case "user_id":
 			query = query.Where("user_id = ?", value)
 		case "user_group_id":

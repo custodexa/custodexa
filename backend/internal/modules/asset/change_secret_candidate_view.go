@@ -55,9 +55,9 @@ func (s *ChangeSecretCandidateService) GetFor(ctx context.Context, actorID, id u
 // 判定的拒絕值（與不存在同形，由 handler 交範圍拒絕出口）。未注入範圍判定時與 DiscardByAdmin 相同。
 func (s *ChangeSecretCandidateService) DiscardFor(ctx context.Context, actorID, id uint, operator string) (uint, error) {
 	if s.scope == nil {
-		return s.discard(id, actorID, operator, nil)
+		return s.discard(ctx, id, actorID, operator, nil)
 	}
-	return s.discard(id, actorID, operator, func(tx *gorm.DB) error {
+	return s.discard(ctx, id, actorID, operator, func(tx *gorm.DB) error {
 		if err := s.scope.LockTopology(tx); err != nil {
 			return err
 		}

@@ -533,17 +533,18 @@ func truncateCandidateError(msg string) string {
 // 若遠端確實已改密，該帳號只能由管理員以帶外途徑（主機 console）重設憑證救回。
 // 故必須留痕——審計只記欄位名，不記任何秘密材料。
 func (s *ChangeSecretCandidateService) DiscardByAdmin(id uint, userID uint, operator string) error {
-	_, err := s.discard(id, userID, operator, nil)
+	_, err := s.discard(context.Background(), id, userID, operator, nil)
 	return err
 }
 
 // discard 刪除候選並留痕（同一交易），回傳被清除候選所屬的資產。guard 非 nil 時是交易的第一個動作
-// （範圍判定：先取拓撲鎖再判定），候選在其後以交易內視圖讀出。
-func (s *ChangeSecretCandidateService) discard(id, userID uint, operator string,
+// （範圍判定：先取拓撲鎖再判定），候選在其後以交易內視圖讀出。交易綁上 ctx 的稽核歸因標示：
+// 經 API token 的請求，留痕列帶 token 標示與該次請求的識別、來源位址。
+func (s *ChangeSecretCandidateService) discard(ctx context.Context, id, userID uint, operator string,
 	guard func(tx *gorm.DB) error) (uint, error) {
 
 	var assetID uint
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		if guard != nil {
 			if err := guard(tx); err != nil {
 				return err

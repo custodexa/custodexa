@@ -306,7 +306,39 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "expires_at", Kind: SystemAlertParamOpaque, Required: false},
 			},
 		},
+		{
+			// 以 API token 把系統保存的既有憑證掛到資產。entry 為入口：單筆（asset_create、account_create、bind、rebind）
+			// 目標為該資產，帶 credential_name 與 asset_name；匯入（import）一次一則、目標為操作者，帶引用了既有憑證的
+			// 資產數與涉及的憑證數，不列舉名稱。參數不含秘密、密文、token 明文或雜湊，也不含連線位址
+			Type:            port.SystemAlertAPITokenCredentialAttached,
+			Group:           SystemAlertGroupIdentityPrivilege,
+			DefaultSeverity: model.AlertSeverityMedium,
+			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetAsset, port.SystemAlertTargetUser},
+			Params: []SystemAlertParamSpec{
+				{Name: "token_name", Kind: SystemAlertParamOpaque, Required: true},
+				{Name: "entry", Kind: SystemAlertParamEnum, Required: true, Enum: CredentialAttachEntries()},
+				{Name: "credential_name", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "asset_name", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "asset_count", Kind: SystemAlertParamInt, Required: false},
+				{Name: "credential_count", Kind: SystemAlertParamInt, Required: false},
+			},
+		},
 	}
+}
+
+// 以 API token 掛載既有憑證告警的入口值域。
+const (
+	CredentialAttachEntryAssetCreate   = "asset_create"
+	CredentialAttachEntryAccountCreate = "account_create"
+	CredentialAttachEntryBind          = "bind"
+	CredentialAttachEntryRebind        = "rebind"
+	CredentialAttachEntryImport        = "import"
+)
+
+// CredentialAttachEntries 入口值域（順序固定）。
+func CredentialAttachEntries() []string {
+	return []string{CredentialAttachEntryAssetCreate, CredentialAttachEntryAccountCreate,
+		CredentialAttachEntryBind, CredentialAttachEntryRebind, CredentialAttachEntryImport}
 }
 
 const systemAlertMaxTokens = 12

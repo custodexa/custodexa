@@ -105,6 +105,20 @@ type GroupWithAssets struct {
 	Selectable *bool `json:"selectable,omitempty"`
 }
 
+// nodePathTx 節點的完整路徑，與節點列表的 path 同一份計算（NodePathMap）；在寫入的同一交易內讀，
+// 回應的路徑與寫入結果同成敗。out 為 nil 時不讀（呼叫端不需要路徑）。
+func nodePathTx(tx *gorm.DB, id uint, out *string) error {
+	if out == nil {
+		return nil
+	}
+	paths, err := NodePathMap(tx)
+	if err != nil {
+		return fmt.Errorf("讀取寫入後的節點路徑失敗: %w", err)
+	}
+	*out = paths[id]
+	return nil
+}
+
 // ListWithAssets 全節點＋直掛資產（成員經 asset_nodes M2M）
 func (s *AssetGroupService) ListWithAssets() ([]GroupWithAssets, error) {
 	groups, err := s.List()
@@ -412,6 +426,17 @@ func (s *AssetGroupService) nodeAudit(tx *gorm.DB, action model.AuditAction, nod
 
 // Create 建立節點（任意層，深度上限 10、同層同名 409）；審計留痕
 func (s *AssetGroupService) Create(ctx context.Context, req *AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
+	return s.create(ctx, req, actorID, actorName, clientIP, nil)
+}
+
+// CreateWithPath 同 Create，另回寫入後的完整路徑（同一交易內讀出，讀不到即整筆不寫）。
+func (s *AssetGroupService) CreateWithPath(ctx context.Context, req *AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, string, error) {
+	var path string
+	g, err := s.create(ctx, req, actorID, actorName, clientIP, &path)
+	return g, path, err
+}
+
+func (s *AssetGroupService) create(ctx context.Context, req *AssetGroupRequest, actorID uint, actorName, clientIP string, pathOut *string) (*model.AssetGroup, error) {
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
 
@@ -447,8 +472,11 @@ func (s *AssetGroupService) Create(ctx context.Context, req *AssetGroupRequest, 
 			}
 			return err
 		}
-		return s.nodeAudit(tx, model.ActionCreate, group.ID, actorID, actorName, clientIP,
-			fmt.Sprintf(`{"asset_node_name":%q,"parent_id":%v}`, group.Name, ptrOrNull(req.ParentID)))
+		if err := s.nodeAudit(tx, model.ActionCreate, group.ID, actorID, actorName, clientIP,
+			fmt.Sprintf(`{"asset_node_name":%q,"parent_id":%v}`, group.Name, ptrOrNull(req.ParentID))); err != nil {
+			return err
+		}
+		return nodePathTx(tx, group.ID, pathOut)
 	})
 	if err != nil {
 		return nil, err
@@ -458,6 +486,17 @@ func (s *AssetGroupService) Create(ctx context.Context, req *AssetGroupRequest, 
 
 // Update 更新節點名稱/描述（位置不動——搬移走 Move）；改名與改描述皆入審計
 func (s *AssetGroupService) Update(ctx context.Context, id uint, req *AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
+	return s.update(ctx, id, req, actorID, actorName, clientIP, nil)
+}
+
+// UpdateWithPath 同 Update，另回寫入後的完整路徑（同一交易內讀出，讀不到即整筆不寫）。
+func (s *AssetGroupService) UpdateWithPath(ctx context.Context, id uint, req *AssetGroupRequest, actorID uint, actorName, clientIP string) (*model.AssetGroup, string, error) {
+	var path string
+	g, err := s.update(ctx, id, req, actorID, actorName, clientIP, &path)
+	return g, path, err
+}
+
+func (s *AssetGroupService) update(ctx context.Context, id uint, req *AssetGroupRequest, actorID uint, actorName, clientIP string, pathOut *string) (*model.AssetGroup, error) {
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
 
@@ -491,11 +530,13 @@ func (s *AssetGroupService) Update(ctx context.Context, id uint, req *AssetGroup
 			}
 			return err
 		}
-		details := nodeUpdateDetails(oldName, req.Name, oldDesc, req.Description)
-		if details == "" {
-			return nil // 名稱與描述皆未改變：不留痕
+		// 名稱與描述皆未改變：不留痕
+		if details := nodeUpdateDetails(oldName, req.Name, oldDesc, req.Description); details != "" {
+			if err := s.nodeAudit(tx, model.ActionUpdate, group.ID, actorID, actorName, clientIP, details); err != nil {
+				return err
+			}
 		}
-		return s.nodeAudit(tx, model.ActionUpdate, group.ID, actorID, actorName, clientIP, details)
+		return nodePathTx(tx, group.ID, pathOut)
 	})
 	if err != nil {
 		return nil, err
@@ -508,6 +549,17 @@ func (s *AssetGroupService) Update(ctx context.Context, id uint, req *AssetGroup
 // 並發互搬建環/超深窗口。搬移即子樹授權涵蓋變更，入審計。
 // newParentID nil＝搬到根層
 func (s *AssetGroupService) Move(ctx context.Context, id uint, newParentID *uint, actorID uint, actorName, clientIP string) (*model.AssetGroup, error) {
+	return s.move(ctx, id, newParentID, actorID, actorName, clientIP, nil)
+}
+
+// MoveWithPath 同 Move，另回搬移後的完整路徑（同一交易內讀出，讀不到即整筆不寫）。
+func (s *AssetGroupService) MoveWithPath(ctx context.Context, id uint, newParentID *uint, actorID uint, actorName, clientIP string) (*model.AssetGroup, string, error) {
+	var path string
+	g, err := s.move(ctx, id, newParentID, actorID, actorName, clientIP, &path)
+	return g, path, err
+}
+
+func (s *AssetGroupService) move(ctx context.Context, id uint, newParentID *uint, actorID uint, actorName, clientIP string, pathOut *string) (*model.AssetGroup, error) {
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
 
@@ -532,7 +584,7 @@ func (s *AssetGroupService) Move(ctx context.Context, id uint, newParentID *uint
 		// 目的父節點與現行相同：授權判定已通過，沒有任何變動可寫，直接結束
 		// （不更新、不推進拓撲版本、不寫節點審計；環路、深度、同名在原地時不可能成立）
 		if sameParent(oldParent, newParentID) {
-			return nil
+			return nodePathTx(tx, group.ID, pathOut)
 		}
 
 		targetDepth := 0
@@ -600,7 +652,10 @@ func (s *AssetGroupService) Move(ctx context.Context, id uint, newParentID *uint
 		if err != nil {
 			return err
 		}
-		return s.nodeAudit(tx, model.ActionUpdate, group.ID, actorID, actorName, clientIP, details)
+		if err := s.nodeAudit(tx, model.ActionUpdate, group.ID, actorID, actorName, clientIP, details); err != nil {
+			return err
+		}
+		return nodePathTx(tx, group.ID, pathOut)
 	})
 	if err != nil {
 		return nil, err

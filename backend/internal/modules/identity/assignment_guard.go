@@ -166,7 +166,7 @@ func requestAPIToken(ctx context.Context) model.APITokenRef {
 
 // AttributedMeta 在呼叫端自組的請求欄位上補這次請求經由的 API token（只補歸因，不改其他欄位）。
 func (o Operator) AttributedMeta(m gatewayapi.RequestMeta) gatewayapi.RequestMeta {
-	return m.WithAPIToken(o.APIToken.ID, o.APIToken.Name)
+	return m.WithAPIToken(o.APIToken.ID, o.APIToken.Name).WithAPITokenOrigin(o.APIToken.RequestID, o.APIToken.ClientIP)
 }
 
 // AuditContext 回傳帶有請求脈絡的 context，供資料層在交易內寫審計列時指認操作者。

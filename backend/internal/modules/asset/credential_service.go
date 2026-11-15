@@ -152,6 +152,9 @@ type CredentialFilter struct {
 	Ownership string
 	// OwnerNodeID 歸屬節點篩選；範圍化檢視者於範圍外的節點自然回空
 	OwnerNodeID *uint
+	// ExactName 非 nil＝只列名稱與其完全相同的憑證（呼叫端已依建立時的判重規則去頭尾空白）；
+	// 與其他條件同一查詢、在可見範圍之內套用。專用憑證的名稱為 NULL，不會命中
+	ExactName *string
 }
 
 // CredentialService 憑證的管理面服務。
@@ -580,6 +583,9 @@ func (s *CredentialService) List(ctx context.Context, filter CredentialFilter) (
 	}
 	if filter.Username != "" {
 		q = q.Where("username = ?", filter.Username)
+	}
+	if filter.ExactName != nil {
+		q = q.Where("credentials.name = ?", *filter.ExactName)
 	}
 	if filter.Search != "" {
 		pattern := "%" + strings.ToLower(filter.Search) + "%"

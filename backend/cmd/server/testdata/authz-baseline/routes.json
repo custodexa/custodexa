@@ -440,6 +440,16 @@
   },
   {
    "method": "GET",
+   "path": "/api/v1/asset-groups/:id",
+   "params": {
+    "id": "{assetGroup.1}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Single node read: the node as the caller's unfiltered node list shows it, without the member asset list; nodes outside that list answer like a missing node."
+  },
+  {
+   "method": "GET",
    "path": "/api/v1/asset-groups/tree",
    "subject_hint": "S02",
    "body_mode": "full"
@@ -468,6 +478,17 @@
    "subject_hint": "S02",
    "body_mode": "full",
    "note": "Non-credential-managers receive the slim DTO."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/assets/:id/accounts/:accountId",
+   "params": {
+    "id": "{asset.ssh}",
+    "accountId": "{account.ssh2}"
+   },
+   "subject_hint": "S02",
+   "body_mode": "full",
+   "note": "Single account read: the row as the caller's account list shows it, in the same slim or full shape; accounts outside that list answer like a missing account."
   },
   {
    "method": "GET",
@@ -752,6 +773,16 @@
    "subject_hint": "S01",
    "body_mode": "full",
    "note": "At most one of user_id/user_group_id/asset_id/node_id."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/authorizations/:id",
+   "params": {
+    "id": "{authorization.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Single rule read: the row as the caller's authorization list shows it; rules outside the caller's management scope answer like a missing rule."
   },
   {
    "method": "GET",
@@ -1387,6 +1418,16 @@
    "path": "/api/v1/user-groups",
    "subject_hint": "S01",
    "body_mode": "full"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/user-groups/:id",
+   "params": {
+    "id": "{userGroup.1}"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full",
+   "note": "Single group read with the same member fields as the group list."
   },
   {
    "method": "GET",

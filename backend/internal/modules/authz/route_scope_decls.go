@@ -104,6 +104,7 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 		{Method: "GET", Path: "/api/v1/approver-scopes/approver-options", Source: ReqSourcePerm, Perm: PermApproverScopeManage, Kind: ScopeDeclSubjectDirectory, Owner: approverSubjects},
 		{Method: "GET", Path: "/api/v1/approver-scopes/target-options", Source: ReqSourcePerm, Perm: PermApproverScopeManage, Kind: ScopeDeclListProjection, Owner: approverTargets},
 		{Method: "GET", Path: "/api/v1/authorizations", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: ruleList},
+		{Method: "GET", Path: "/api/v1/authorizations/:id", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclListProjection, Owner: ruleList},
 		{Method: "POST", Path: "/api/v1/authorizations", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
 		{Method: "DELETE", Path: "/api/v1/authorizations/:id", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
 		{Method: "PUT", Path: "/api/v1/authorizations/:id/accounts", Source: ReqSourcePerm, Perm: PermAuthorizationManage, Kind: ScopeDeclServiceTx, Owner: ruleWrites},
@@ -116,6 +117,7 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 		{Method: "GET", Path: "/api/v1/assets/:id", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclRouteGuard, Owner: assetRead},
 		{Method: "GET", Path: "/api/v1/assets/:id/k8s/pods", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclRouteGuard, Owner: assetRead},
 		{Method: "GET", Path: "/api/v1/assets/:id/accounts", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclListProjection, Owner: accountList},
+		{Method: "GET", Path: "/api/v1/assets/:id/accounts/:accountId", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclListProjection, Owner: accountList},
 		{Method: "GET", Path: "/api/v1/assets/tags", Source: ReqSourcePerm, Perm: PermAssetView, Kind: ScopeDeclListProjection, Owner: tagDictionary},
 		{Method: "POST", Path: "/api/v1/assets", Source: ReqSourcePerm, Perm: PermAssetCreate, Kind: ScopeDeclServiceTx, Owner: assetWrites},
 		{Method: "PUT", Path: "/api/v1/assets/:id", Source: ReqSourceFields, Perm: PermAssetUpdate, Field: FieldWildcard, Kind: ScopeDeclServiceTx, Owner: assetWrites},
@@ -231,6 +233,7 @@ func RouteScopeDeclarations() []RouteScopeDecl {
 		{"PUT", "/api/v1/assets/:id", "sftp_username", PermCredentialUpdate, ScopeDeclServiceTx, assetWrites},
 		{"PUT", "/api/v1/assets/:id", "sftp_password", PermCredentialSetSecret, ScopeDeclServiceTx, assetWrites},
 		{"GET", "/api/v1/assets/:id/accounts", "credential_identity_fields", PermCredentialView, ScopeDeclListProjection, accountList},
+		{"GET", "/api/v1/assets/:id/accounts/:accountId", "credential_identity_fields", PermCredentialView, ScopeDeclListProjection, accountList},
 		{"POST", "/api/v1/assets/:id/accounts", "username", PermCredentialCreate, ScopeDeclServiceTx, accountWrites},
 		{"PUT", "/api/v1/assets/:id/accounts/:accountId", "username", PermCredentialUpdate, ScopeDeclServiceTx, accountWrites},
 	} {

@@ -42,6 +42,21 @@ func (m RequestMeta) WithAPIToken(id uint, name string) RequestMeta {
 	return m
 }
 
+// WithAPITokenOrigin 已帶 API token 標示時，請求識別、來源位址為空者補上經由 token 的那一次請求的值
+// （已有值的欄位不覆寫）；不帶標示時原樣回傳。凡因經 token 而標上標示的稽核列，都帶同一次請求的這兩欄。
+func (m RequestMeta) WithAPITokenOrigin(requestID, clientIP string) RequestMeta {
+	if m.APITokenID == nil {
+		return m
+	}
+	if m.RequestID == "" {
+		m.RequestID = requestID
+	}
+	if m.ClientIP == "" {
+		m.ClientIP = clientIP
+	}
+	return m
+}
+
 // AuditEvent 是 audit_logs 一列的傳輸形狀，AsyncSink 與 TxSink 共用。
 // 欄位對齊 internal/service/AuditLogEntry 與 internal/model.AuditLog，差異只在去 GORM 化。
 //

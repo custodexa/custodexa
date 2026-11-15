@@ -613,6 +613,10 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 	}
 
 	userID, operator := model.UserFromContext(ctx)
+	attach, err := newCredentialAttachRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	txErr := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 拓撲序列化鎖與範圍判定：交易第一個動作，早於資產列鎖與憑證列鎖
@@ -710,7 +714,11 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 			return ferr
 		}
 		credID, credScope := credentialAuditRef(tx, account.CredentialID)
-		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
+		corr := ""
+		if shared != nil {
+			corr = attach.auditCorrelation()
+		}
+		if err := writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
 			AssetID:         assetID,
 			AccountID:       account.ID,
 			Username:        account.Username,
@@ -718,7 +726,15 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 			Fields:          changedSecretFields(flags.HasPassword, flags.HasPrivateKey, account.IsDefault),
 			CredentialID:    credID,
 			CredentialScope: credScope,
-		}, userID, operator)
+			CorrelationID:   corr,
+		}, userID, operator); err != nil {
+			return err
+		}
+		// 以 API token 引用既有憑證：同交易產生告警（內嵌秘密新建的專用憑證不算引用）
+		if shared == nil {
+			return nil
+		}
+		return attach.raiseSingle(s.alerts, tx, attachEntryAccountCreate, userID, operator, assetID, assetRow.Name, shared)
 	})
 	if txErr != nil {
 		return nil, txErr

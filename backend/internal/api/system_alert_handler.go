@@ -163,6 +163,7 @@ func (h *SystemAlertHandler) SystemDetail(c *gin.Context) {
 		"severity": v.Severity, "triggered_at": v.TriggeredAt, "actor": v.ActorName,
 		"target_kind": v.TargetKind, "target_id": v.TargetID, "params": v.Params,
 		"correlation_id": v.CorrelationID, "audit_log_id": v.AuditLogID, "client_ip": v.ClientIP,
+		"request_id": v.RequestID, "actor_user_id": v.ActorUserID,
 		"deliveries": deliveries,
 	}
 	// 節點範圍：只在參數帶 scope_node_ids 時出現；已刪除的節點 path 為空

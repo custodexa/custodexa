@@ -130,6 +130,10 @@ type cmpRecord struct {
 	Remote []string                  `json:"remote,omitempty"`
 	// Audit 只記筆數：稽核列帶有經由哪把 token 的標示，兩邊本來就不同
 	Audit int `json:"audit"`
+	// originGaps 帶 token 標示卻缺（或不同於該次請求的）請求識別、來源位址的稽核列；不參與兩邊的比對
+	originGaps []string
+	// unstamped 不帶 token 標示的稽核列（只對 token 送出的請求有意義）；不參與兩邊的比對
+	unstamped []string
 }
 
 // cmpTelemetryColumns 比對時不看的欄位：token 的最近使用時間與來源只在 token 呼叫時更新（遙測，不是請求的副作用）。
@@ -205,6 +209,11 @@ func (e *baselineEnv) cmpRun(subj *baselineSubject, br baselineRequest, self, pe
 	touched := e.touched()
 	diff := e.diffTables(touched)
 	cmpDropTelemetry(diff)
+	// 在正規化（請求識別換成佔位值）之前取原值
+	if d, ok := diff["audit_logs"]; ok {
+		rec.originGaps = cmpAuditOriginGaps(d.Added, requestPathOf(br.Path))
+		rec.unstamped = cmpAuditUnstamped(d.Added)
+	}
 	var split baselineRecord
 	e.splitDiff(&split, diff)
 	rec.Audit = len(split.Audit)

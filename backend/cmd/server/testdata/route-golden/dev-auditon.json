@@ -283,6 +283,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/asset-groups/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Get-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/asset-groups/tree",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Tree-fm"
     },
@@ -305,6 +310,11 @@
       "method": "GET",
       "path": "/api/v1/assets/:id/accounts",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/accounts/:accountId",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Get-fm"
     },
     {
       "method": "GET",
@@ -465,6 +475,11 @@
       "method": "GET",
       "path": "/api/v1/authorizations",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).Get-fm"
     },
     {
       "method": "GET",
@@ -915,6 +930,11 @@
       "method": "GET",
       "path": "/api/v1/user-groups",
       "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/user-groups/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserGroupHandler).Get-fm"
     },
     {
       "method": "GET",
@@ -1895,7 +1915,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func7",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func8",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Delete-fm"
       ]
     },
@@ -1939,7 +1959,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func5",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Delete-fm"
       ]
     },
@@ -3054,6 +3074,23 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/asset-groups/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/asset-groups/tree",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -3166,8 +3203,26 @@
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func2",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func7",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func8",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assets/:id/accounts/:accountId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.RequireAssetVisible.requireAssetVisible.func8",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Get-fm"
       ]
     },
     {
@@ -3858,6 +3913,23 @@
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/authorizations/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).Get-fm"
       ]
     },
     {
@@ -5700,6 +5772,23 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/user-groups/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*UserGroupHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/user-groups/:id/authorization-count",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -6341,7 +6430,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Create-fm"
       ]
     },
@@ -6436,7 +6525,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func4",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Create-fm"
       ]
     },
@@ -6453,7 +6542,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func7",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).SetDefault-fm"
       ]
     },
@@ -8701,7 +8790,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func5",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func6",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Update-fm"
       ]
     },
@@ -8728,7 +8817,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func6",
+        "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).RegisterRoutes.EnforceRegistry.func7",
         "github.com/custodexa/backend/internal/api.(*AssetGroupHandler).Move-fm"
       ]
     },
@@ -8772,7 +8861,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func4",
+        "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).RegisterRoutes.EnforceRegistry.func5",
         "github.com/custodexa/backend/internal/api.(*AssetAccountHandler).Update-fm"
       ]
     },

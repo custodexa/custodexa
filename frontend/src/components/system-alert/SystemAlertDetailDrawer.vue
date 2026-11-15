@@ -44,6 +44,12 @@
             {{ tokenCreated.summary }}
           </p>
           <p
+            v-else-if="attach"
+            data-test="sa-first-layer"
+          >
+            {{ attach.summary }}
+          </p>
+          <p
             v-else
             data-test="sa-first-layer"
           >
@@ -52,11 +58,70 @@
             </template>{{ typeDescription }}
           </p>
           <el-alert
+            v-if="attach"
+            type="warning"
+            :closable="false"
+            show-icon
+            :title="attach.warnTitle"
+            :description="attach.warnBody"
+            data-test="sa-attach-warning"
+          />
+          <el-alert
+            v-else
             type="warning"
             :closable="false"
             show-icon
             :title="$t('systemAlerts.detail.notice')"
           />
+        </section>
+
+        <!-- 以 API token 掛載既有憑證：單筆列出 token、憑證、資產與掛載方式；匯入只寫台數與憑證數，逐台到操作日誌看 -->
+        <section
+          v-if="attach"
+          data-test="sa-attach"
+        >
+          <h4>{{ attach.title }}</h4>
+          <dl class="sa-dl">
+            <dt>{{ $t('systemAlerts.detail.actorLabel') }}</dt>
+            <dd data-test="sa-attach-operator">
+              {{ attach.operator }}
+            </dd>
+            <dt>{{ $t('systemAlerts.detail.attachToken') }}</dt>
+            <dd data-test="sa-attach-token">
+              {{ attach.token }}
+            </dd>
+            <template v-if="attach.isImport">
+              <dt>{{ $t('systemAlerts.detail.attachAssetCount') }}</dt>
+              <dd data-test="sa-attach-asset-count">
+                {{ attach.assetCount }}
+              </dd>
+              <dt>{{ $t('systemAlerts.detail.attachCredentialCount') }}</dt>
+              <dd data-test="sa-attach-credential-count">
+                {{ attach.credentialCount }}
+              </dd>
+            </template>
+            <template v-else>
+              <dt>{{ $t('systemAlerts.detail.attachCredential') }}</dt>
+              <dd data-test="sa-attach-credential">
+                {{ attach.credential }}<span class="sa-muted">{{ $t('systemAlerts.detail.attachSharedHint') }}</span>
+              </dd>
+              <dt>{{ $t('systemAlerts.detail.attachAsset') }}</dt>
+              <dd data-test="sa-attach-asset">
+                {{ attach.asset }}
+              </dd>
+            </template>
+            <dt>{{ $t('systemAlerts.detail.attachEntry') }}</dt>
+            <dd data-test="sa-attach-entry">
+              {{ attach.entry }}
+            </dd>
+          </dl>
+          <router-link
+            v-if="attach.link"
+            :to="attach.link.to"
+            data-test="sa-attach-link"
+          >
+            {{ attach.link.text }}
+          </router-link>
         </section>
 
         <!-- 管理類發放：受領對象、新增的角色與範圍（不是操作者自己的權限變化） -->
@@ -291,6 +356,9 @@ const LEVELS = ['high', 'medium', 'low']
 const DELIVERY_STATES = ['pending', 'retrying', 'delivered', 'abandoned']
 // 權限變化區塊只對這三類呈現
 const PRIVILEGE_TYPES = ['self_privilege_increased', 'self_privilege_decreased']
+// 以 API token 掛載既有憑證：類型鍵與掛載方式（entry）的值域
+const ATTACH_TYPE = 'api_token_credential_attached'
+const ATTACH_ENTRIES = ['asset_create', 'account_create', 'bind', 'rebind', 'import']
 
 const detail = ref(null)
 const loading = ref(false)
@@ -307,8 +375,12 @@ const targetName = (d) => {
   if (d.alert_type === 'management_role_granted') return d.params?.recipient || ''
   if (d.target_kind === 'user' && PRIVILEGE_TYPES.includes(d.alert_type)) return d.actor || ''
   if (d.target_kind === 'user' && d.alert_type === 'privileged_api_token_created') return d.actor || d.params?.actor || ''
+  if (d.target_kind === 'user' && d.alert_type === ATTACH_TYPE) return d.actor || d.params?.actor || ''
   return ''
 }
+// 資產目標的名稱：只有以 API token 掛載既有憑證的單筆告警帶資產名稱
+const assetTargetName = (d) =>
+  d.target_kind === 'asset' && d.alert_type === ATTACH_TYPE ? d.params?.asset_name || '' : ''
 
 // 目標：種類以文字呈現，識別附在後面；未知種類原樣顯示
 const TARGET_KINDS = ['asset', 'credential', 'user', 'user_group', 'role_mapping', 'role', 'identity_source', 'notification_channel', 'session', 'system_setting']
@@ -316,7 +388,7 @@ const targetText = computed(() => {
   const d = detail.value
   if (!d || !d.target_kind) return t('systemAlerts.detail.none')
   const kind = TARGET_KINDS.includes(d.target_kind) ? t(`systemAlerts.targetKinds.${d.target_kind}`) : d.target_kind
-  const named = targetName(d)
+  const named = targetName(d) || assetTargetName(d)
   if (named && d.target_id && d.target_id !== '0') {
     return t('systemAlerts.detail.targetNamed', { name: named, kind, id: d.target_id })
   }
@@ -431,6 +503,74 @@ const tokenCreated = computed(() => {
     grantedRoles: p.granted_roles ? tokenRoleListText(String(p.granted_roles)) : t('systemAlerts.detail.none'),
     expires: expiresAt,
     link: validId && canEnter(ENTRY_RULES['/users']) ? { path: `/users/${d.target_id}`, query: { tab: 'apiTokens' } } : null,
+  }
+})
+
+// 以 API token 掛載既有憑證：參數為 token_name、entry（掛載方式）；單筆另帶 credential_name、asset_name，
+// 目標為該資產；匯入帶 asset_count、credential_count，目標為操作者（使用者編號取 target_id）。
+// 操作者帶使用者編號：匯入取 target_id（目標即操作者），單筆取明細的 actor_user_id。
+// 單筆的連結開該資產的編輯框（帳號在其中）；匯入的連結以那一次請求的請求識別篩選操作日誌，
+// 恰好列出那一次匯入寫下的每一列（明細沒有請求識別或不能進操作日誌時不呈現）
+const attach = computed(() => {
+  const d = detail.value
+  if (!d || d.alert_type !== ATTACH_TYPE) return null
+  const p = d.params || {}
+  const actor = d.actor || p.actor || ''
+  const validId = /^[1-9][0-9]*$/.test(String(d.target_id ?? ''))
+  const entry = ATTACH_ENTRIES.includes(p.entry) ? t(`systemAlerts.detail.attachEntries.${p.entry}`) : p.entry || ''
+  const base = { token: p.token_name || '', entry }
+  if (p.entry === 'import') {
+    return {
+      ...base,
+      isImport: true,
+      title: t('systemAlerts.detail.attachImportTitle'),
+      summary: t('systemAlerts.detail.attachImportSummary', {
+        actor,
+        token_name: p.token_name || '',
+        asset_count: p.asset_count ?? '',
+        credential_count: p.credential_count ?? '',
+      }),
+      warnTitle: t('systemAlerts.detail.attachImportWarnTitle'),
+      warnBody: t('systemAlerts.detail.attachImportWarnBody'),
+      operator:
+        d.target_kind === 'user' && validId
+          ? t('systemAlerts.detail.createdCreatorValue', { name: actor, id: d.target_id })
+          : actor,
+      assetCount: t('systemAlerts.detail.count', { count: p.asset_count ?? '' }),
+      credentialCount: t('systemAlerts.detail.attachCredentialCountValue', { count: p.credential_count ?? '' }),
+      link:
+        d.request_id && canEnter(ENTRY_RULES['/audit-logs'])
+          ? {
+              to: { path: '/audit-logs', query: { tab: 'logs', request_id: d.request_id } },
+              text: t('systemAlerts.detail.attachViewImportAudit'),
+            }
+          : null,
+    }
+  }
+  return {
+    ...base,
+    isImport: false,
+    title: t('systemAlerts.detail.attachTitle'),
+    summary: t('systemAlerts.detail.attachSummary', {
+      actor,
+      token_name: p.token_name || '',
+      credential_name: p.credential_name || '',
+      asset_name: p.asset_name || '',
+    }),
+    warnTitle: t('systemAlerts.detail.attachWarnTitle'),
+    warnBody: t('systemAlerts.detail.attachWarnBody'),
+    operator: /^[1-9][0-9]*$/.test(String(d.actor_user_id ?? ''))
+      ? t('systemAlerts.detail.createdCreatorValue', { name: actor, id: d.actor_user_id })
+      : actor,
+    credential: p.credential_name || '',
+    asset: p.asset_name || '',
+    link:
+      d.target_kind === 'asset' && validId && canEnter(ENTRY_RULES['/assets'])
+        ? {
+            to: { path: '/assets', query: { edit: String(d.target_id) } },
+            text: t('systemAlerts.detail.attachViewAccounts', { asset_name: p.asset_name || '' }),
+          }
+        : null,
   }
 })
 

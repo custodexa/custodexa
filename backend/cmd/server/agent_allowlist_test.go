@@ -39,7 +39,7 @@ func TestAgentAllowlistCoversAllRoutes(t *testing.T) {
 			expected := map[string]bool{
 				"POST /api/v1/mcp":                        true,
 				"GET /api/v1/access-requests/:id/reports": true, "POST /api/v1/access-requests/:id/reports": true,
-				"GET /api/v1/assets": true, "GET /api/v1/assets/tags": true, "GET /api/v1/assets/:id": true, "GET /api/v1/assets/:id/accounts": true, "GET /api/v1/assets/:id/k8s/pods": true,
+				"GET /api/v1/assets": true, "GET /api/v1/assets/tags": true, "GET /api/v1/assets/:id": true, "GET /api/v1/assets/:id/accounts": true, "GET /api/v1/assets/:id/accounts/:accountId": true, "GET /api/v1/assets/:id/k8s/pods": true,
 				"GET /api/v1/access-requests/mine": true, "GET /api/v1/access-requests/mine/tickets": true, "POST /api/v1/access-requests": true, "POST /api/v1/access-requests/:id/cancel": true, "GET /api/v1/my/connections": true,
 			}
 			for _, route := range g.Routes {

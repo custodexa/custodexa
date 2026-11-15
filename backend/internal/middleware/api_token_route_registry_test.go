@@ -115,3 +115,57 @@ func TestAPITokenRouteDecisionDefaultDeny(t *testing.T) {
 		}
 	}
 }
+
+// TestAPITokenRouteScopeCredentialAttachOpen 把既有憑證掛到資產（掛載）與更換一筆掛載所引用的憑證開放；
+// 讓一筆掛載脫離共用憑證（系統須以保存的秘密登入資產並改寫密碼）不開放。
+func TestAPITokenRouteScopeCredentialAttachOpen(t *testing.T) {
+	cases := []struct {
+		method, path string
+		allowed      bool
+	}{
+		{"POST", "/api/v1/credentials/:id/bindings", true},
+		{"PUT", "/api/v1/assets/:id/accounts/:accountId/credential", true},
+		{"POST", "/api/v1/credentials/:id/bindings/:accountId/detach", false},
+	}
+	for _, c := range cases {
+		allowed, registered := APITokenRouteDecision(c.method, c.path)
+		if !registered || allowed != c.allowed {
+			t.Errorf("%s %s：得到 (開放=%v, 登錄=%v)，應為 (開放=%v, 登錄=true)", c.method, c.path, allowed, registered, c.allowed)
+		}
+	}
+}
+
+// TestAPITokenDialOutRoutesClosed 會讓平台立刻以保存的秘密對外連線的動作對 API token 不開放：
+// 脫離共用、資產連線測試、立即改密（整組輪替、成員重試、計劃立即執行、建立改密批次、候選重試）、
+// 專用帳號的設定或更換與登入測試。專用帳號的清除與讀取開放。
+func TestAPITokenDialOutRoutesClosed(t *testing.T) {
+	closed := []string{
+		"POST /api/v1/credentials/:id/bindings/:accountId/detach",
+		"POST /api/v1/assets/:id/test-connection",
+		"POST /api/v1/credentials/:id/rotations",
+		"POST /api/v1/credentials/:id/rotations/:rid/members/:mid/retry",
+		"POST /api/v1/change-secret-plans/:id/run",
+		"POST /api/v1/change-secret-batches",
+		"POST /api/v1/change-secret-candidates/:id/retry",
+		"PUT /api/v1/assets/:id/executor",
+		"POST /api/v1/assets/:id/executor/login-check",
+	}
+	open := []string{
+		"DELETE /api/v1/assets/:id/executor",
+		"GET /api/v1/assets/:id/executor",
+		"GET /api/v1/assets/:id/executor/login-check",
+	}
+	check := func(key string, want bool) {
+		method, path, _ := strings.Cut(key, " ")
+		allowed, registered := APITokenRouteDecision(method, path)
+		if !registered || allowed != want {
+			t.Errorf("%s：得到 (開放=%v, 登錄=%v)，應為 (開放=%v, 登錄=true)", key, allowed, registered, want)
+		}
+	}
+	for _, k := range closed {
+		check(k, false)
+	}
+	for _, k := range open {
+		check(k, true)
+	}
+}

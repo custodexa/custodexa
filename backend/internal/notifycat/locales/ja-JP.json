@@ -230,5 +230,27 @@
       "title": "高権限 API トークンの作成",
       "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロール（{privileged_roles}）を付与しました。付与したロール：{granted_roles}；有効期限なし（レベル：{severity}）。"
     }
+  },
+  "api_token_credential_attached": {
+    "asset_create": {
+      "title": "API token による保存済み認証情報の割り当て",
+      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+    },
+    "account_create": {
+      "title": "API token による保存済み認証情報の割り当て",
+      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+    },
+    "bind": {
+      "title": "API token による保存済み認証情報の割り当て",
+      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+    },
+    "rebind": {
+      "title": "API token による保存済み認証情報の割り当て",
+      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+    },
+    "import": {
+      "title": "API token による保存済み認証情報の割り当て",
+      "text": "{actor} が API token「{token_name}」で資産をインポートし、そのうち {asset_count} 台が保存済みの認証情報 {credential_count} 件を参照しています（レベル：{severity}）。"
+    }
   }
 }

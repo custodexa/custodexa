@@ -80,7 +80,7 @@ func newSealIntegrationEnvWith(t *testing.T, mutate func(*stage1), opts ...func(
 
 	dir := t.TempDir()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(dir, "seal_test.db")),
-		&gorm.Config{Logger: logger.Discard})
+		database.NewGormConfig(logger.Discard))
 	if err != nil {
 		t.Fatalf("開啟測試 DB 失敗: %v", err)
 	}

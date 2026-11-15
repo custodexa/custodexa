@@ -53,7 +53,7 @@ type InventoryActor struct {
 
 // requestMeta 稽核列的請求欄位：來源位址與經由的 API token。
 func (a InventoryActor) requestMeta() gatewayapi.RequestMeta {
-	return gatewayapi.RequestMeta{ClientIP: a.ClientIP}.WithAPIToken(a.APIToken.ID, a.APIToken.Name)
+	return gatewayapi.RequestMeta{ClientIP: a.ClientIP}.WithAPIToken(a.APIToken.ID, a.APIToken.Name).WithAPITokenOrigin(a.APIToken.RequestID, a.APIToken.ClientIP)
 }
 
 // InventoryPolicyReader 讀取政策鍵現值的窄介面（*policy.SecurityPolicyService 實作）。

@@ -35,6 +35,7 @@ var frozenSystemAlertTable = map[port.SystemAlertType][2]string{
 	port.SystemAlertConcurrentInstanceDetected:   {"security_settings", "high"},
 	port.SystemAlertUnmanagedPrivilegedAccount:   {"identity_privilege", "high"},
 	port.SystemAlertPrivilegedAPITokenCreated:    {"identity_privilege", "high"},
+	port.SystemAlertAPITokenCredentialAttached:   {"identity_privilege", "medium"},
 }
 
 // nonSecretParamNames 名稱含秘密字樣但值不是秘密的參數：逐一列出並寫明理由，不放寬字樣判準本身。
@@ -101,7 +102,7 @@ func TestSystemAlertCatalogRegistry(t *testing.T) {
 			}
 		}
 	}
-	if groups["address_transport"] != 5 || groups["secret"] != 1 || groups["identity_privilege"] != 7 ||
+	if groups["address_transport"] != 5 || groups["secret"] != 1 || groups["identity_privilege"] != 8 ||
 		groups["security_settings"] != 7 || groups["notification"] != 1 {
 		t.Errorf("分組計數不符: %v", groups)
 	}
@@ -111,6 +112,8 @@ func TestSystemAlertCatalogRegistry(t *testing.T) {
 		port.SystemAlertSelfPrivilegeDecreased: model.AlertSeverityLow,
 		port.SystemAlertManagementRoleGranted:  model.AlertSeverityMedium,
 		port.SystemAlertHostKeyRecordChanged:   model.AlertSeverityMedium,
+		// 以 API token 掛載既有憑證：預設中，可由管理者覆寫
+		port.SystemAlertAPITokenCredentialAttached: model.AlertSeverityMedium,
 	} {
 		if d, _ := LookupSystemAlertType(key); d.DefaultSeverity != sev {
 			t.Errorf("%s 預設分級 %s，應為 %s", key, d.DefaultSeverity, sev)
@@ -206,5 +209,89 @@ func TestSystemAlertUnmanagedPrivilegedIdentityModes(t *testing.T) {
 	}
 	if _, err := validateSystemAlertEvent(mk("other")); err == nil {
 		t.Fatal("未知的 identity_mode 應被擋")
+	}
+}
+
+// TestSystemAlertCatalogCredentialAttachedEntries 以 API token 掛載既有憑證：入口值域與出站規格一致、
+// 單筆與匯入兩種句型照核可的文案渲染、目標只接受資產或使用者、未知入口被擋。
+func TestSystemAlertCatalogCredentialAttachedEntries(t *testing.T) {
+	def, ok := LookupSystemAlertType(port.SystemAlertAPITokenCredentialAttached)
+	if !ok {
+		t.Fatal("類型未登錄")
+	}
+	var catalogEnum []string
+	for _, p := range def.Params {
+		if p.Name == "entry" {
+			catalogEnum = p.Enum
+		}
+	}
+	ev, _ := notifycat.SystemAlertEvent(string(def.Type))
+	spec, _ := notifycat.Spec(ev)
+	var wireEnum []string
+	for _, p := range spec.Params {
+		if p.Name == "entry" {
+			wireEnum = p.Enum
+		}
+	}
+	if strings.Join(catalogEnum, ",") != strings.Join(wireEnum, ",") ||
+		strings.Join(catalogEnum, ",") != "asset_create,account_create,bind,rebind,import" {
+		t.Fatalf("入口值域不一致：目錄 %v、出站 %v", catalogEnum, wireEnum)
+	}
+
+	single := map[string]string{"actor": "ops-chen", "severity": "medium", "token_name": "tf-prod-apply",
+		"entry": "asset_create", "credential_name": "prod-linux-root", "asset_name": "web-21"}
+	clean, err := notifycat.Validate(ev, single)
+	if err != nil {
+		t.Fatalf("單筆參數未通過出站規格：%v", err)
+	}
+	// 分級短語沿用全站共用的分級詞庫
+	sevZh := notifycat.Phrase("zh-TW", notifycat.LexiconSeverity, "medium")
+	title, text := notifycat.Render("zh-TW", ev, clean)
+	if title != "API token 掛載既有憑證" ||
+		text != "ops-chen 以 API token「tf-prod-apply」把憑證「prod-linux-root」掛到資產「web-21」（建立資產時引用；分級："+sevZh+"）。" {
+		t.Errorf("單筆渲染：%q / %q", title, text)
+	}
+	imp := map[string]string{"actor": "ops-chen", "severity": "medium", "token_name": "tf-prod-apply",
+		"entry": "import", "asset_count": "6", "credential_count": "2"}
+	clean, err = notifycat.Validate(ev, imp)
+	if err != nil {
+		t.Fatalf("匯入參數未通過出站規格：%v", err)
+	}
+	_, text = notifycat.Render("zh-TW", ev, clean)
+	if text != "ops-chen 以 API token「tf-prod-apply」匯入資產，其中 6 台引用了 2 筆系統已保存的憑證（分級："+sevZh+"）。" {
+		t.Errorf("匯入渲染：%q", text)
+	}
+	for _, lang := range notifycat.SupportedLangs {
+		for _, entry := range catalogEnum {
+			p := map[string]string{"actor": "a", "severity": "medium", "token_name": "t", "entry": entry,
+				"credential_name": "c", "asset_name": "n", "asset_count": "1", "credential_count": "1"}
+			_, text := notifycat.Render(lang, ev, p)
+			if strings.ContainsAny(text, "{}") {
+				t.Errorf("%s/%s 渲染含未代入的佔位符：%q", lang, entry, text)
+			}
+			// 單筆四種入口在括號內寫出掛載方式的短語（不是機器碼）
+			if entry != "import" && !strings.Contains(text, notifycat.Phrase(lang, notifycat.LexiconCredentialAttachEntry, entry)) {
+				t.Errorf("%s/%s 渲染缺掛載方式短語：%q", lang, entry, text)
+			}
+		}
+	}
+
+	mk := func(kind port.SystemAlertTargetKind, entry string) port.SystemAlertEvent {
+		return port.SystemAlertEvent{
+			Type: port.SystemAlertAPITokenCredentialAttached, Actor: port.SystemAlertActor{UserID: 1, Username: "ops"},
+			Target: port.SystemAlertTarget{Kind: kind, ID: "7"},
+			Params: map[string]string{"token_name": "t", "entry": entry, "credential_name": "c", "asset_name": "n"},
+		}
+	}
+	for _, k := range []port.SystemAlertTargetKind{port.SystemAlertTargetAsset, port.SystemAlertTargetUser} {
+		if _, err := validateSystemAlertEvent(mk(k, "bind")); err != nil {
+			t.Errorf("目標 %s 應通過：%v", k, err)
+		}
+	}
+	if _, err := validateSystemAlertEvent(mk(port.SystemAlertTargetCredential, "bind")); err == nil {
+		t.Error("目標為憑證應被擋")
+	}
+	if _, err := validateSystemAlertEvent(mk(port.SystemAlertTargetAsset, "detach")); err == nil {
+		t.Error("未知入口應被擋")
 	}
 }

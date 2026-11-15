@@ -136,7 +136,7 @@ func (s *RecordingService) DeleteRecording(sessionID uint, actor RecordingDelete
 			Actor:  gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
 			Action: string(model.ActionDelete), Resource: string(model.ResourceRecording),
 			ResourceID: &deleteID, AssetID: assetID, Status: string(model.StatusSuccess),
-			Request: gatewayapi.RequestMeta{ClientIP: actor.ClientIP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name), Details: string(details),
+			Request: gatewayapi.RequestMeta{ClientIP: actor.ClientIP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name).WithAPITokenOrigin(actor.APIToken.RequestID, actor.APIToken.ClientIP), Details: string(details),
 		}); err != nil {
 			return fmt.Errorf("寫入刪除錄影審計失敗: %w", err)
 		}
@@ -173,7 +173,7 @@ func (s *RecordingService) DeleteRecording(sessionID uint, actor RecordingDelete
 				Actor:  gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
 				Action: string(model.ActionDelete), Resource: string(model.ResourceRecording),
 				ResourceID: &deleteID, AssetID: assetID, Status: string(model.StatusFailure),
-				Request: gatewayapi.RequestMeta{ClientIP: actor.ClientIP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name), Details: string(failed),
+				Request: gatewayapi.RequestMeta{ClientIP: actor.ClientIP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name).WithAPITokenOrigin(actor.APIToken.RequestID, actor.APIToken.ClientIP), Details: string(failed),
 			})
 		}); aerr != nil {
 			log.Printf("[Recording] 刪錄影：資料庫已清空但檔案移除失敗，失敗審計亦寫入失敗 session=%d: %v", sessionID, aerr)

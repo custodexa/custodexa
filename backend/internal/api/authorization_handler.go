@@ -601,8 +601,11 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	// 每頁筆數：小於 1 或非數字套用預設；超過上限套用上限（不退回預設），回應帶實際套用的值
+	if pageSize < 1 {
 		pageSize = 20
+	} else if pageSize > 100 {
+		pageSize = 100
 	}
 
 	parseID := func(s, field string) (uint, bool) {
@@ -653,16 +656,55 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 		}
 	}
 
+	result, total, ok := h.scopedRows(c, filters, page, pageSize, now)
+	if !ok {
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":      result,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// Get 授權規則單筆讀取：在列表所用的同一個受範圍限制的查詢上加識別條件，序列化與列級旗標同列表。
+// 客體在檢視者範圍外的規則與不存在的規則同一回應。
+func (h *AuthorizationHandler) Get(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidAuthorizationID, nil)
+		return
+	}
+	rows, _, ok := h.scopedRows(c, map[string]interface{}{"id": uint(id)}, 1, 1, time.Now())
+	if !ok {
+		return
+	}
+	if len(rows) == 0 {
+		// 與寫入端點的不存在、範圍外同一個對照（同碼、同本文）
+		middleware.RespondTargetNotFound(c, authz.ScopeTargetAuthorizationRule, authz.ScopeLayerTarget)
+		return
+	}
+	c.JSON(http.StatusOK, rows[0])
+}
+
+// scopedRows 授權列表與單筆讀取共用的查詢與序列化：範圍化組裝下加上檢視者的客體範圍條件
+// （全域檢視者為不限），於篩選、計數與分頁之前生效；每列以同一時刻序列化並附列級旗標。
+// 第三個回傳值為 false 表示已寫出錯誤回應。
+func (h *AuthorizationHandler) scopedRows(c *gin.Context, filters map[string]interface{}, page, pageSize int,
+	now time.Time) ([]gin.H, int64, bool) {
+
 	// 範圍化組裝下，客體在檢視者管理範圍內的規則才進入結果；全域檢視者的條件為不限
 	if h.scopedWrites {
 		if h.scopedViews == nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, errScopedViewsMissing)
-			return
+			return nil, 0, false
 		}
 		scope, err := h.scopedViews.ListObjectScope(operatorContext(c))
 		if err != nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, err)
-			return
+			return nil, 0, false
 		}
 		filters["object_scope"] = scope
 	}
@@ -670,7 +712,7 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 	auths, total, err := h.authorizationService.ListAuthorizations(filters, page, pageSize)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, err)
-		return
+		return nil, 0, false
 	}
 
 	// 格式化返回數據：主體與客體皆可辨識（serializeAuthorizationAt 統一序列化）
@@ -681,7 +723,7 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 		actions, err = h.rowActions.For(operatorContext(c), auths, now)
 		if err != nil {
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuthorizationQuery, err)
-			return
+			return nil, 0, false
 		}
 	}
 	for _, auth := range auths {
@@ -691,13 +733,7 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 		}
 		result = append(result, row)
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data":      result,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	return result, total, true
 }
 
 // EffectiveAssets 主體視角有效權限
@@ -769,6 +805,7 @@ func (h *AuthorizationHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 		authorizations.PUT("/:id/accounts", h.UpdateAccounts)
 		authorizations.DELETE("/:id", h.Delete)
 		authorizations.GET("", h.List)
+		authorizations.GET("/:id", h.Get)
 		// 有效權限雙視角：唯讀溯因，admin only 隨群組守門
 		authorizations.GET("/effective-assets", h.EffectiveAssets)
 		authorizations.GET("/effective-users", h.EffectiveUsers)

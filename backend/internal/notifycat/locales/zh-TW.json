@@ -230,5 +230,27 @@
       "title": "建立高權限 API token",
       "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色（{privileged_roles}）；全部授權角色：{granted_roles}；永不到期（分級：{severity}）。"
     }
+  },
+  "api_token_credential_attached": {
+    "asset_create": {
+      "title": "API token 掛載既有憑證",
+      "text": "{actor} 以 API token「{token_name}」把憑證「{credential_name}」掛到資產「{asset_name}」（{entry}；分級：{severity}）。"
+    },
+    "account_create": {
+      "title": "API token 掛載既有憑證",
+      "text": "{actor} 以 API token「{token_name}」把憑證「{credential_name}」掛到資產「{asset_name}」（{entry}；分級：{severity}）。"
+    },
+    "bind": {
+      "title": "API token 掛載既有憑證",
+      "text": "{actor} 以 API token「{token_name}」把憑證「{credential_name}」掛到資產「{asset_name}」（{entry}；分級：{severity}）。"
+    },
+    "rebind": {
+      "title": "API token 掛載既有憑證",
+      "text": "{actor} 以 API token「{token_name}」把憑證「{credential_name}」掛到資產「{asset_name}」（{entry}；分級：{severity}）。"
+    },
+    "import": {
+      "title": "API token 掛載既有憑證",
+      "text": "{actor} 以 API token「{token_name}」匯入資產，其中 {asset_count} 台引用了 {credential_count} 筆系統已保存的憑證（分級：{severity}）。"
+    }
   }
 }

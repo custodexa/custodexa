@@ -28,6 +28,14 @@ func (m *MockUserGroupService) List() ([]model.UserGroup, error) {
 	return args.Get(0).([]model.UserGroup), args.Error(1)
 }
 
+func (m *MockUserGroupService) Get(id uint) (*model.UserGroup, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.UserGroup), args.Error(1)
+}
+
 func (m *MockUserGroupService) Create(req *identity.UserGroupRequest) (*model.UserGroup, error) {
 	args := m.Called(req)
 	if args.Get(0) == nil {

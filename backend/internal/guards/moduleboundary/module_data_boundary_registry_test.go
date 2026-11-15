@@ -213,6 +213,9 @@ var nonTableModelStructs = map[string]bool{
 	"background_initiator_keys":      true, // backgroundInitiatorKey：背景發起者標示的 context 鍵型別，不是表
 	"api_token_refs":                 true, // APITokenRef：請求所用 API token 的識別值物件（放在 context），不是表
 	"api_token_ref_keys":             true, // apiTokenRefKey：API token 識別的 context 鍵型別，不是表
+	"request_origins":                true, // RequestOrigin：請求識別與來源位址的值物件（放在 context），不是表
+	"request_origin_keys":            true, // requestOriginKey：請求識別與來源位址的 context 鍵型別，不是表
+	"audit_attributions":             true, // auditAttribution：稽核歸因標示的值物件（放在交易 context），不是表
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。

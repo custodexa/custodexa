@@ -30114,6 +30114,892 @@
       },
       "require_all_keys": true,
       "reason": "The system alert type list gains one type for an access token created with privileged roles; every existing type is unchanged apart from the types already approved for this record."
+    },
+    {
+      "id": "AD-50a-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "GET /api/v1/system-alert-types"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body_edit": {
+          "added_items": [
+            {
+              "path": "types",
+              "match": {
+                "key": "concurrent_instance_detected"
+              },
+              "count": 1
+            },
+            {
+              "path": "types",
+              "match": {
+                "key": "unmanaged_privileged_account"
+              },
+              "count": 1
+            },
+            {
+              "path": "types",
+              "match": {
+                "key": "privileged_api_token_created"
+              },
+              "count": 1
+            },
+            {
+              "path": "types",
+              "match": {
+                "key": "api_token_credential_attached"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The system alert type list gains one type for an existing stored credential attached to an asset by a request authenticated with an access token; every existing type is unchanged apart from the types already approved for this record."
+    },
+    {
+      "id": "AD-50b-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "GET /api/v1/users"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "data": [
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "admin@custodexa.local",
+              "external_credential": false,
+              "full_name": "Administrator",
+              "id": 1,
+              "inactivity_exempt": true,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": true,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "系統管理員，擁有所有權限",
+                  "id": 1,
+                  "name": "admin",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "admin"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "auth_provider_names": [
+                "baseline-idp"
+              ],
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-ext-target@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-ext-target",
+              "id": 17,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-ext-target"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s01@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s01",
+              "id": 2,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "系統管理員，擁有所有權限",
+                  "id": 1,
+                  "name": "admin",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s01"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s02@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s02",
+              "id": 3,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s02"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s03@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s03",
+              "id": 4,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "稽核人員，可以檢視所有稽核日誌和連線記錄",
+                  "id": 3,
+                  "name": "auditor",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s03"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": true,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s04@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s04",
+              "id": 5,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "審核人員，可核准/拒絕審核範圍內的連線申請",
+                  "id": 4,
+                  "name": "approver",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s04"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s05@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s05",
+              "id": 6,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                },
+                {
+                  "created_at": "<time>",
+                  "description": "審核人員，可核准/拒絕審核範圍內的連線申請",
+                  "id": 4,
+                  "name": "approver",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s05"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s06@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s06",
+              "id": 7,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "系統管理員，擁有所有權限",
+                  "id": 1,
+                  "name": "admin",
+                  "updated_at": "<time>"
+                },
+                {
+                  "created_at": "<time>",
+                  "description": "審核人員，可核准/拒絕審核範圍內的連線申請",
+                  "id": 4,
+                  "name": "approver",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s06"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s07@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s07",
+              "id": 8,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                },
+                {
+                  "created_at": "<time>",
+                  "description": "稽核人員，可以檢視所有稽核日誌和連線記錄",
+                  "id": 3,
+                  "name": "auditor",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s07"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s08@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s08",
+              "id": 9,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s08"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s09@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s09",
+              "id": 10,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s09"
+            },
+            {
+              "active": false,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s10@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s10",
+              "id": 11,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s10"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s13@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s13",
+              "id": 13,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "系統管理員，擁有所有權限",
+                  "id": 1,
+                  "name": "admin",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s13"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s14@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s14",
+              "id": 14,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s14"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": [],
+              "allowed_cidrs_status": "unrestricted",
+              "approver_only": false,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-target@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-target",
+              "id": 16,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "roles": [
+                {
+                  "created_at": "<time>",
+                  "description": "一般使用者，可以連線到已授權的資產",
+                  "id": 2,
+                  "name": "user",
+                  "updated_at": "<time>"
+                }
+              ],
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-target"
+            }
+          ],
+          "page": 1,
+          "page_size": 20,
+          "total": 15
+        },
+        "body_added_keys": [
+          "page",
+          "page_size"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The user list reports the page number and page size it applied (the defaults, as the request names neither); every listed account and every other field is unchanged apart from the approver-only marker already approved for this record."
+    },
+    {
+      "id": "AD-50b-02",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "T/T04"
+        ],
+        "fields": [
+          "steps"
+        ]
+      },
+      "expect": {
+        "steps": [
+          {
+            "body": {
+              "data": [
+                {
+                  "active": true,
+                  "allowed_cidrs": [],
+                  "allowed_cidrs_status": "unrestricted",
+                  "approver_only": false,
+                  "breaker_pending_at": null,
+                  "created_at": "<time>",
+                  "email": "admin@custodexa.local",
+                  "external_credential": false,
+                  "full_name": "Administrator",
+                  "id": 1,
+                  "inactivity_exempt": true,
+                  "is_ldap": false,
+                  "kind": "human",
+                  "local_display_name": null,
+                  "must_change_password": true,
+                  "owner_user_id": null,
+                  "provisioning_origin": "local",
+                  "roles": [
+                    {
+                      "created_at": "<time>",
+                      "description": "系統管理員，擁有所有權限",
+                      "id": 1,
+                      "name": "admin",
+                      "updated_at": "<time>"
+                    }
+                  ],
+                  "totp_enabled": false,
+                  "updated_at": "<time>",
+                  "username": "admin"
+                }
+              ],
+              "page": 1,
+              "page_size": 1,
+              "total": 15
+            },
+            "name": "before",
+            "status": 200
+          },
+          {
+            "name": "remove-mapping",
+            "status": 204
+          },
+          {
+            "body": {
+              "data": [
+                {
+                  "active": true,
+                  "allowed_cidrs": [],
+                  "allowed_cidrs_status": "unrestricted",
+                  "approver_only": false,
+                  "breaker_pending_at": null,
+                  "created_at": "<time>",
+                  "email": "admin@custodexa.local",
+                  "external_credential": false,
+                  "full_name": "Administrator",
+                  "id": 1,
+                  "inactivity_exempt": true,
+                  "is_ldap": false,
+                  "kind": "human",
+                  "local_display_name": null,
+                  "must_change_password": true,
+                  "owner_user_id": null,
+                  "provisioning_origin": "local",
+                  "roles": [
+                    {
+                      "created_at": "<time>",
+                      "description": "系統管理員，擁有所有權限",
+                      "id": 1,
+                      "name": "admin",
+                      "updated_at": "<time>"
+                    }
+                  ],
+                  "totp_enabled": false,
+                  "updated_at": "<time>",
+                  "username": "admin"
+                }
+              ],
+              "page": 1,
+              "page_size": 1,
+              "total": 15
+            },
+            "name": "after",
+            "status": 200
+          }
+        ]
+      },
+      "reason": "The user list reads inside this flow report the page number and page size they applied; every other step and field is unchanged apart from the approver-only marker already approved for this flow."
+    },
+    {
+      "id": "AD-50c-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/asset-groups",
+          "PUT /api/v1/asset-groups/:id",
+          "PUT /api/v1/asset-groups/:id/move"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": "additive",
+        "body_added_keys": [
+          "path"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "Node create, rename and move responses carry the full node path after the write, the same value the node read returns; every other field keeps its value."
+    },
+    {
+      "id": "AD-50c-02",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/assets"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": "additive",
+        "body_added_keys": [
+          "node_paths"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The asset create response carries the node paths of the new asset, the same value the asset read returns; every other field keeps its value."
+    },
+    {
+      "id": "AD-50c-03",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "PUT /api/v1/user-groups/:id"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "created_at": "<time>",
+          "description": "updated by baseline",
+          "id": 1,
+          "manual_user_ids": [
+            9
+          ],
+          "mapped_user_ids": null,
+          "member_sources": [
+            {
+              "manual": true,
+              "mapped": false,
+              "user_id": 9
+            }
+          ],
+          "name": "baseline-group-1-renamed",
+          "updated_at": "<time>",
+          "user_ids": [
+            9
+          ],
+          "users": [
+            {
+              "active": true,
+              "allowed_cidrs": null,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s08@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s08",
+              "id": 9,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s08"
+            }
+          ]
+        },
+        "body_added_keys": [
+          "users"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The user group update response carries the group's members, member ids and member sources as the group read returns them, instead of empty member fields; the name and description written are unchanged."
+    },
+    {
+      "id": "AD-50c-04",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "PUT /api/v1/user-groups/:id/members"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "created_at": "<time>",
+          "description": "baseline",
+          "id": 1,
+          "manual_user_ids": [
+            9,
+            16
+          ],
+          "mapped_user_ids": null,
+          "member_sources": [
+            {
+              "manual": true,
+              "mapped": false,
+              "user_id": 9
+            },
+            {
+              "manual": true,
+              "mapped": false,
+              "user_id": 16
+            }
+          ],
+          "name": "baseline-group-1",
+          "updated_at": "<time>",
+          "user_ids": [
+            9,
+            16
+          ],
+          "users": [
+            {
+              "active": true,
+              "allowed_cidrs": null,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-s08@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-s08",
+              "id": 9,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-s08"
+            },
+            {
+              "active": true,
+              "allowed_cidrs": null,
+              "breaker_pending_at": null,
+              "created_at": "<time>",
+              "email": "baseline-target@baseline.test",
+              "external_credential": false,
+              "full_name": "baseline-target",
+              "id": 16,
+              "inactivity_exempt": false,
+              "is_ldap": false,
+              "kind": "human",
+              "local_display_name": null,
+              "must_change_password": false,
+              "owner_user_id": null,
+              "provisioning_origin": "local",
+              "totp_enabled": false,
+              "updated_at": "<time>",
+              "username": "baseline-target"
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The member replacement response carries the member ids and member sources of the replaced set as the group read returns them, instead of empty member id fields; the member objects already returned are unchanged."
     }
   ]
 }

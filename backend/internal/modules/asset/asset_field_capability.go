@@ -117,7 +117,7 @@ var UpdateRequestFieldCaps = map[string]FieldCapClass{
 var CreateRequestFieldCaps = map[string]FieldCapClass{
 	"name": FieldCapNone, "protocol": FieldCapNone, "host": FieldCapNone, "port": FieldCapNone,
 	"username": FieldCapCredential, "password": FieldCapCredential, "private_key": FieldCapCredential,
-	"description": FieldCapNone, "tags": FieldCapNone, "node_ids": FieldCapNone,
+	"description": FieldCapNone, "tags": FieldCapNone, "active": FieldCapNone, "node_ids": FieldCapNone,
 	"access_policy": FieldCapAccessPolicy,
 	"rdp_security":  FieldCapNone, "rdp_verify_cert": FieldCapNone,
 	"db_name": FieldCapNone, "db_tls_mode": FieldCapNone, "db_ca_cert": FieldCapNone, "allowed_databases": FieldCapNone,

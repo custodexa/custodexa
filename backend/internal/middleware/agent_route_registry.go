@@ -34,7 +34,7 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return true, true
 	case "GET /api/v1/assets/:id":
 		return true, true
-	case "GET /api/v1/assets/:id/accounts":
+	case "GET /api/v1/assets/:id/accounts", "GET /api/v1/assets/:id/accounts/:accountId":
 		return true, true
 	case "GET /api/v1/assets/:id/k8s/pods":
 		return true, true
@@ -138,6 +138,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/asset-groups/tree":
 		return false, true
+	case "GET /api/v1/asset-groups/:id":
+		return false, true
 	case "GET /api/v1/assets/access-policy-overrides":
 		return false, true
 	case "GET /api/v1/assets/:id/files":
@@ -192,7 +194,7 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/auth/oidc/callback":
 		return false, true
-	case "GET /api/v1/authorizations":
+	case "GET /api/v1/authorizations", "GET /api/v1/authorizations/:id":
 		return false, true
 	case "GET /api/v1/authorizations/effective-assets":
 		return false, true
@@ -361,7 +363,7 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/transmission-inventory":
 		return false, true
-	case "GET /api/v1/user-groups":
+	case "GET /api/v1/user-groups", "GET /api/v1/user-groups/:id":
 		return false, true
 	case "GET /api/v1/user-groups/:id/authorization-count":
 		return false, true

@@ -351,5 +351,12 @@
   },
   "date_list": {
     "more": "另有 {n} 天未列出"
+  },
+  "credential_attach_entry": {
+    "asset_create": "建立資產時引用",
+    "account_create": "建立資產帳號時引用",
+    "bind": "掛到資產",
+    "rebind": "更換憑證",
+    "import": "匯入資產"
   }
 }

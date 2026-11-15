@@ -230,5 +230,27 @@
       "title": "Privileged API token created",
       "text": "{actor} created API token \"{token_name}\" granting privileged roles ({privileged_roles}); all granted roles: {granted_roles}; never expires (severity: {severity})."
     }
+  },
+  "api_token_credential_attached": {
+    "asset_create": {
+      "title": "API token attached a stored credential",
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+    },
+    "account_create": {
+      "title": "API token attached a stored credential",
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+    },
+    "bind": {
+      "title": "API token attached a stored credential",
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+    },
+    "rebind": {
+      "title": "API token attached a stored credential",
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+    },
+    "import": {
+      "title": "API token attached a stored credential",
+      "text": "{actor} used API token \"{token_name}\" to import assets; {asset_count} of them reference {credential_count} stored credential(s) (severity: {severity})."
+    }
   }
 }

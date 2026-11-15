@@ -88,9 +88,6 @@ type CredentialManagementRequest struct {
 	// 範圍內，任一不涵蓋即整筆拒絕；NodeIDs 為空時只認全域來源。是否走節點目標只看這個旗標，不看 NodeIDs 長度
 	NodeTarget bool
 	NodeIDs    []uint
-	// AttachesExisting 這次操作把系統保存的既有憑證掛到資產上（建立資產或帳號時引用、匯入引用、掛載、改綁）。
-	// 卸載與其他憑證管理操作不帶此標示。
-	AttachesExisting bool
 }
 
 // CredentialManagementDecision 判定結果。Missing 為第一個缺少的能力鍵（供日誌，不外露）；
@@ -170,14 +167,8 @@ func (g credentialManagementGate) require(ctx context.Context, db *gorm.DB,
 		// 沒有宣告任何能力的請求是程式錯誤，不能因此當作「不需要授權」
 		return CredentialManagementDecision{}, fmt.Errorf("%w: 管理操作 %s 未宣告能力", ErrCredentialAuthzUnavailable, req.Operation)
 	}
-	// 以 API token 認證的請求不能把系統保存的既有憑證掛到資產上（建立資產、建立資產帳號、匯入、掛載、改綁皆經此判定，見 AttachesExisting）；
-	// 以請求自帶的秘密建立走建立憑證的判定，不受影響。依據是請求脈絡上明確的請求憑證種類。
-	if req.AttachesExisting {
-		if kind, ok := model.RequestCredentialFrom(ctx); ok && kind == model.RequestCredentialAPIToken {
-			log.Printf("[Credential] API token 請求引用既有憑證，拒絕操作: op=%s", req.Operation)
-			return CredentialManagementDecision{}, ErrAPITokenCredentialReference
-		}
-	}
+	// 請求憑證種類（登入工作階段或 API token）不另設分支：API token 的有效能力已由判定器以
+	// token 授權的角色求出，兩者走同一段能力與範圍判定
 	userID, username := model.UserFromContext(ctx)
 	if userID == 0 {
 		log.Printf("[Credential] 空主體，拒絕操作: op=%s", req.Operation)
@@ -298,11 +289,10 @@ func requireCreateCredentialCaps(g credentialManagementGate, ctx context.Context
 	}
 	if len(credentialIDs) > 0 {
 		if _, err := g.require(ctx, db, CredentialManagementRequest{
-			Operation:        CredOpBind,
-			Capabilities:     []string{CredCapBind},
-			CredentialIDs:    credentialIDs,
-			AssetIDs:         assetIDs,
-			AttachesExisting: true,
+			Operation:     CredOpBind,
+			Capabilities:  []string{CredCapBind},
+			CredentialIDs: credentialIDs,
+			AssetIDs:      assetIDs,
 		}); err != nil {
 			return err
 		}

@@ -58,41 +58,76 @@ type UserGroupRequest struct {
 // List 全部群組（含成員）
 func (s *UserGroupService) List() ([]model.UserGroup, error) {
 	var groups []model.UserGroup
-	if err := s.db.Preload("Users").Order("id").Find(&groups).Error; err != nil {
+	if err := withMembers(s.db).Order("id").Find(&groups).Error; err != nil {
 		return nil, err
 	}
 	for i := range groups {
-		var members []model.UserGroupMember
-		if err := s.db.Where("user_group_id=?", groups[i].ID).Order("user_id").Find(&members).Error; err != nil {
+		if err := fillMemberFields(s.db, &groups[i]); err != nil {
 			return nil, err
-		}
-		for _, m := range members {
-			groups[i].UserIDs = append(groups[i].UserIDs, m.UserID)
-			source := struct {
-				UserID uint `json:"user_id"`
-				Manual bool `json:"manual"`
-				Mapped bool `json:"mapped"`
-			}{UserID: m.UserID, Manual: m.Manual}
-			if m.Manual {
-				groups[i].ManualUserIDs = append(groups[i].ManualUserIDs, m.UserID)
-			}
-			var n int64
-			if err := s.db.Table("user_group_mapping_rule_supports").Where("user_group_id=? AND user_id=?", groups[i].ID, m.UserID).Count(&n).Error; err != nil {
-				return nil, err
-			}
-			if n > 0 {
-				groups[i].MappedUserIDs = append(groups[i].MappedUserIDs, m.UserID)
-				source.Mapped = true
-			}
-			groups[i].MemberSources = append(groups[i].MemberSources, source)
 		}
 	}
 	return groups, nil
 }
 
+// Get 單一群組（含成員），與 List 的元素同形。不存在與已刪除皆回 ErrUserGroupNotFound。
+func (s *UserGroupService) Get(id uint) (*model.UserGroup, error) {
+	group, err := loadGroupView(s.db, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrUserGroupNotFound
+	}
+	return group, err
+}
+
+// loadGroupView 讀出一個群組並填好成員欄位，形狀與 List 的元素相同；讀取與寫入回應共用。
+func loadGroupView(db *gorm.DB, id uint) (*model.UserGroup, error) {
+	var group model.UserGroup
+	if err := withMembers(db).First(&group, id).Error; err != nil {
+		return nil, err
+	}
+	if err := fillMemberFields(db, &group); err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
+// withMembers 預載成員物件並依使用者識別排序；列表與單筆共用，同一群組的 users 陣列順序不隨查詢計畫而變。
+func withMembers(db *gorm.DB) *gorm.DB {
+	return db.Preload("Users", func(q *gorm.DB) *gorm.DB { return q.Order("users.id") })
+}
+
+// fillMemberFields 填入成員欄位（user_ids、manual_user_ids、mapped_user_ids、member_sources）。
+func fillMemberFields(db *gorm.DB, group *model.UserGroup) error {
+	var members []model.UserGroupMember
+	if err := db.Where("user_group_id=?", group.ID).Order("user_id").Find(&members).Error; err != nil {
+		return err
+	}
+	for _, m := range members {
+		group.UserIDs = append(group.UserIDs, m.UserID)
+		source := struct {
+			UserID uint `json:"user_id"`
+			Manual bool `json:"manual"`
+			Mapped bool `json:"mapped"`
+		}{UserID: m.UserID, Manual: m.Manual}
+		if m.Manual {
+			group.ManualUserIDs = append(group.ManualUserIDs, m.UserID)
+		}
+		var n int64
+		if err := db.Table("user_group_mapping_rule_supports").Where("user_group_id=? AND user_id=?", group.ID, m.UserID).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			group.MappedUserIDs = append(group.MappedUserIDs, m.UserID)
+			source.Mapped = true
+		}
+		group.MemberSources = append(group.MemberSources, source)
+	}
+	return nil
+}
+
 // Create 建立群組
 func (s *UserGroupService) Create(req *UserGroupRequest) (*model.UserGroup, error) {
 	group := &model.UserGroup{Name: req.Name, Description: req.Description}
+	var view *model.UserGroup
 	// 建群組改變權限快照的 groups 集合，但此路徑不推進權限版本（空群組不改變任何人的授權）。
 	// 外層交易開頭 Begin、結尾 Settle，使事件鏈涵蓋這筆合法寫入。
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -102,7 +137,12 @@ func (s *UserGroupService) Create(req *UserGroupRequest) (*model.UserGroup, erro
 		if err := tx.Create(group).Error; err != nil {
 			return err
 		}
-		return authz.SettlePermissionChange(tx)
+		if err := authz.SettlePermissionChange(tx); err != nil {
+			return err
+		}
+		var verr error
+		view, verr = loadGroupView(tx, group.ID)
+		return verr
 	})
 	if err != nil {
 		if dberr.IsUniqueViolation(err) {
@@ -110,27 +150,37 @@ func (s *UserGroupService) Create(req *UserGroupRequest) (*model.UserGroup, erro
 		}
 		return nil, err
 	}
-	return group, nil
+	return view, nil
 }
 
-// Update 更新群組
+// Update 更新群組。回應（與列表元素同形）在同一交易內讀出：讀不到即整筆不寫，
+// 不會出現寫入已提交卻回失敗。
 func (s *UserGroupService) Update(id uint, req *UserGroupRequest) (*model.UserGroup, error) {
-	var group model.UserGroup
-	if err := s.db.First(&group, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserGroupNotFound
+	var view *model.UserGroup
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var group model.UserGroup
+		if err := tx.First(&group, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrUserGroupNotFound
+			}
+			return err
 		}
+		group.Name = req.Name
+		group.Description = req.Description
+		if err := tx.Save(&group).Error; err != nil {
+			if dberr.IsUniqueViolation(err) {
+				return ErrUserGroupNameExists
+			}
+			return err
+		}
+		var verr error
+		view, verr = loadGroupView(tx, id)
+		return verr
+	})
+	if err != nil {
 		return nil, err
 	}
-	group.Name = req.Name
-	group.Description = req.Description
-	if err := s.db.Save(&group).Error; err != nil {
-		if dberr.IsUniqueViolation(err) {
-			return nil, ErrUserGroupNameExists
-		}
-		return nil, err
-	}
-	return &group, nil
+	return view, nil
 }
 
 // AuthorizationCount 掛在群組上的有效授權筆數（刪除確認 UI 用）
@@ -498,7 +548,12 @@ func (s *UserGroupService) replaceMembers(id uint, manualIDs, legacyIDs *[]uint,
 		if err := tr.finishGroup(tx, id, group.Name, addedOthers); err != nil {
 			return err
 		}
-		return tx.Preload("Users").First(&group, id).Error
+		view, verr := loadGroupView(tx, id)
+		if verr != nil {
+			return verr
+		}
+		group = *view
+		return nil
 	})
 	authz.NotifyVersionCommittedAfter(s.db, err)
 	if err != nil {

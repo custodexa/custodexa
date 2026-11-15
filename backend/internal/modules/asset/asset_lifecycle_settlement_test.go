@@ -44,7 +44,7 @@ func setupLifecycleDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.Asset{}, &model.AuditLog{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAuthorization{},
+		&model.AssetAuthorization{}, &model.AssetAccount{}, // 更新回應在交易內讀待配憑證
 	))
 	oldDB := database.DB
 	database.DB = db

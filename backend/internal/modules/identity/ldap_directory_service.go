@@ -833,7 +833,7 @@ func (s *LDAPDirectoryService) ldapDirectoryAuditLog(db *gorm.DB, actor LDAPDire
 		ResourceID: resourceID,
 		Status:     string(status),
 		Actor:      gatewayapi.Actor{UserID: actor.ID, Username: actor.Name},
-		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name),
+		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name).WithAPITokenOrigin(actor.APIToken.RequestID, actor.APIToken.ClientIP),
 		Details:    string(payload),
 	}); err != nil {
 		return fmt.Errorf("寫入 LDAP 目錄設定稽核失敗: %w", err)

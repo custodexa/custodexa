@@ -154,6 +154,9 @@ func TestCreate(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
+	// 回應的節點歸屬在同一交易內讀出（讀不到即整筆回滾），提交之前
+	mock.ExpectQuery(`SELECT \* FROM "asset_nodes" WHERE asset_id IN`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id", "node_id"}))
 	mock.ExpectCommit()
 
 	asset, err := service.Create(WithSystemCaller(context.Background()), req)
@@ -212,6 +215,9 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
+	// 回應的節點歸屬在同一交易內讀出（讀不到即整筆回滾），提交之前
+	mock.ExpectQuery(`SELECT \* FROM "asset_nodes" WHERE asset_id IN`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id", "node_id"}))
 	mock.ExpectCommit()
 
 	asset, err := service.Create(WithSystemCaller(context.Background()), req)
@@ -269,6 +275,9 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
+	// 回應的節點歸屬在同一交易內讀出（讀不到即整筆回滾），提交之前
+	mock.ExpectQuery(`SELECT \* FROM "asset_nodes" WHERE asset_id IN`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id", "node_id"}))
 	mock.ExpectCommit()
 
 	asset, err := service.Create(WithSystemCaller(context.Background()), req)
@@ -511,6 +520,11 @@ func TestUpdate(t *testing.T) {
 	// AfterUpdate hook 在交易內插入 audit_log（GORM/Postgres 用 RETURNING，走 Query）
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	// 回應的節點歸屬與待配憑證在同一交易內讀出（讀不到即整筆回滾），提交之前
+	mock.ExpectQuery(`SELECT \* FROM "asset_nodes" WHERE asset_id IN`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id", "node_id"}))
+	mock.ExpectQuery(`SELECT DISTINCT "asset_id" FROM "asset_accounts"`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id"}))
 	mock.ExpectCommit()
 
 	asset, err := service.Update(WithSystemCaller(context.Background()), 1, req)
@@ -590,6 +604,11 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(5, 1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
+	// 回應的節點歸屬與待配憑證在同一交易內讀出（讀不到即整筆回滾），提交之前
+	mock.ExpectQuery(`SELECT \* FROM "asset_nodes" WHERE asset_id IN`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id", "node_id"}))
+	mock.ExpectQuery(`SELECT DISTINCT "asset_id" FROM "asset_accounts"`).
+		WillReturnRows(sqlmock.NewRows([]string{"asset_id"}))
 	mock.ExpectCommit()
 
 	asset, err := service.Update(WithSystemCaller(adminCtx()), 1, req)

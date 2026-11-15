@@ -138,7 +138,7 @@ func (s *SystemAlertCatalogService) SetSeverity(key, severity string, actor Syst
 			Action:   string(model.ActionUpdate),
 			Resource: string(model.ResourceSystemAlertType),
 			Status:   string(model.StatusSuccess),
-			Request:  gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name),
+			Request:  gatewayapi.RequestMeta{ClientIP: actor.IP}.WithAPIToken(actor.APIToken.ID, actor.APIToken.Name).WithAPITokenOrigin(actor.APIToken.RequestID, actor.APIToken.ClientIP),
 			Details:  string(raw),
 		}); err != nil {
 			return fmt.Errorf("分級調整審計留痕失敗: %w", err)
@@ -182,8 +182,13 @@ type SystemAlertDetailView struct {
 	// AuditLogID 同交易審計列（以 correlation_id 對應）；找不到為 nil。
 	AuditLogID *uint
 	// ClientIP 來源位址，取自同交易審計列（告警明細不另存一份）；找不到對應審計列時為空。
-	ClientIP   string
-	Deliveries []SystemAlertDeliveryView
+	ClientIP string
+	// RequestID 同交易審計列的請求識別：同一次請求寫下的稽核列共用它，可據以回查那一次請求的每一列；
+	// 審計列沒有請求識別時為空。
+	RequestID string
+	// ActorUserID 操作者的使用者編號（告警列記錄的操作者）；系統動作為 0。
+	ActorUserID uint
+	Deliveries  []SystemAlertDeliveryView
 	// ScopeNodes 管理類發放的節點範圍（由接入層依參數 scope_node_ids 換算路徑後填入）；
 	// 沒有節點範圍時為空。
 	ScopeNodes []SystemAlertScopeNode
@@ -219,19 +224,20 @@ func (s *SystemAlertCatalogService) Detail(alertID uint) (*SystemAlertDetailView
 	delete(params, "severity")
 	view := &SystemAlertDetailView{
 		AlertID: alert.ID, AlertType: detail.AlertType, Severity: alert.Severity,
-		TriggeredAt: alert.TriggeredAt, ActorName: actor,
+		TriggeredAt: alert.TriggeredAt, ActorName: actor, ActorUserID: alert.UserID,
 		TargetKind: detail.TargetKind, TargetID: detail.TargetID,
 		Params: params, CorrelationID: detail.CorrelationID,
 	}
 	if def, ok := LookupSystemAlertType(port.SystemAlertType(detail.AlertType)); ok {
 		view.Group = def.Group
 	}
-	auditID, clientIP, err := s.auditLogByCorrelation(detail.CorrelationID)
+	auditID, clientIP, requestID, err := s.auditLogByCorrelation(detail.CorrelationID)
 	if err != nil {
 		return nil, err
 	}
 	view.AuditLogID = auditID
 	view.ClientIP = clientIP
+	view.RequestID = requestID
 	var outbox []model.SystemAlertOutbox
 	if err := s.db.Where("alert_id = ?", alertID).Find(&outbox).Error; err != nil {
 		return nil, fmt.Errorf("讀取投遞狀態失敗: %w", err)
@@ -246,20 +252,20 @@ func (s *SystemAlertCatalogService) Detail(alertID uint) (*SystemAlertDetailView
 	return view, nil
 }
 
-// auditLogByCorrelation 以關聯識別找同交易審計列，回傳其編號與來源位址。
-func (s *SystemAlertCatalogService) auditLogByCorrelation(corr string) (*uint, string, error) {
+// auditLogByCorrelation 以關聯識別找同交易審計列，回傳其編號、來源位址與請求識別。
+func (s *SystemAlertCatalogService) auditLogByCorrelation(corr string) (*uint, string, string, error) {
 	if corr == "" {
-		return nil, "", nil
+		return nil, "", "", nil
 	}
 	pattern := `%"correlation_id":"` + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(corr) + `"%`
 	var rows []model.AuditLog
-	if err := s.db.Select("id", "client_ip").Where("details LIKE ? ESCAPE '\\'", pattern).
+	if err := s.db.Select("id", "client_ip", "request_id").Where("details LIKE ? ESCAPE '\\'", pattern).
 		Order("id ASC").Limit(1).Find(&rows).Error; err != nil {
-		return nil, "", fmt.Errorf("對應操作日誌失敗: %w", err)
+		return nil, "", "", fmt.Errorf("對應操作日誌失敗: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, "", nil
+		return nil, "", "", nil
 	}
 	id := rows[0].ID
-	return &id, rows[0].ClientIP, nil
+	return &id, rows[0].ClientIP, rows[0].RequestID, nil
 }

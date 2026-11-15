@@ -2,6 +2,116 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.25.0 — API for declarative tools, and API tokens attach stored credentials (2026-11-15)
+
+Schema change. Upgrading runs one migration. It replaces the index that keeps user group names
+unique with one that counts only groups that have not been deleted; no table or record is
+changed. A 1.17.x to 1.24.x package deployment upgrades with `custodexa.sh upgrade 1.25.0`.
+Coming from 1.23.x or earlier, the upgrade also runs the migrations of the releases in between
+and, from 1.22.x or earlier with the bundled database, converts it to PostgreSQL 18, so read
+"What you need to do" in each of those releases' notes below before you start. Coming from
+1.23.x or 1.24.x, or with an external database, `custodexa.sh rollback` does not switch back
+once the migration has run, and going back means restoring the backup taken before the upgrade
+([Upgrading to 1.25.0][1250-sop]). With the bundled database coming from 1.22.x or earlier,
+`rollback` goes back on the PostgreSQL 16 data folder the upgrade kept, as long as that folder is
+still there, and what the new version wrote is not in it; the details are under 1.23.0 below.
+
+### What you need to do
+
+- API tokens can now attach credentials that are already stored in the platform, and tokens
+  created on 1.24.0 gain this with the upgrade. It applies to a token whose granted roles allow
+  attaching credentials, in the scope the account holds those roles. Such a token can attach a
+  shared credential to an asset, and later connections and scheduled change-secret jobs sign
+  in to the asset's address with that credential. Together with roles that manage assets and
+  change-secret plans, the same token can set that address and create the schedule. Review
+  which accounts hold tokens with these roles, and grant a token only the roles its tool needs.
+- Every attachment made with a token raises a system security alert, medium by default, that
+  goes to every enabled notification channel; an import that attaches stored credentials raises
+  one alert for the whole import.
+  Check that those channels reach the people who should see it, and raise the severity under
+  System Alerts if your procedures call for it.
+- `GET /api/v1/authorizations` applies 100 when `page_size` is above 100. It used to fall back
+  to 20.
+- `PUT /api/v1/assets/:id` checks the port and the account name when a request changes them. A
+  new port has to be within 1 to 65535. When the protocol, the account name, or whether a
+  password or key is stored changes, the account name may not be empty on a protocol that signs
+  in by account name while a password or key is stored. A request that breaks one of these gets
+  400 and the asset stays as it was; earlier versions saved the value. A value that is already
+  stored is not checked when a request changes other fields.
+- The user list always returns `page` and `page_size`, and the shared credential list returns
+  them when the request asks for a page. Responses to creating, renaming and moving a node
+  carry `path`, and responses to creating or updating a user group and replacing its members
+  carry the member fields. A client that rejects unknown fields needs to accept these.
+- Restoring a backup takes identifiers back to the time of the backup, so a resource created
+  after a restore can receive an identifier that was in use before it. When a tool outside the
+  platform keeps identifiers, such as the state of a declarative configuration tool, compare
+  its records with the platform after a restore before applying anything
+  ([Upgrading to 1.25.0][1250-sop]).
+
+### New capabilities
+
+#### Reading and finding one resource
+
+- **Read by identifier.** `GET /asset-groups/:id`, `GET /user-groups/:id`,
+  `GET /authorizations/:id` and `GET /assets/:id/accounts/:accountId` return one node, user
+  group, authorization rule or asset account. Each follows the permissions and the visibility
+  of the corresponding list, for sign-in sessions and for API tokens: a caller who may not use
+  the list gets the same refusal, and a resource outside what the caller sees in the list
+  answers 404 exactly as one that does not exist. The fields are those of the list entry,
+  except that a node comes without the assets attached to it and without the fields that depend
+  on the list's purpose parameter.
+- **Find by exact name.** The asset, node, user group and shared credential lists accept
+  `name`, and the user list accepts `username`. Only a resource whose name equals the value is
+  returned, compared the way the platform decides that a name is already taken when the
+  resource is created. The filter works inside what the caller can see and combines with the
+  other filters. Node names are unique only under the same parent, so a node lookup can return
+  several nodes.
+- **Creating an asset as disabled.** `POST /assets` accepts `active`. With `false` the asset is
+  disabled from the moment it exists, and the operation log record of the creation says so.
+- **Reusing a user group name.** After a user group is deleted, a new group can take its name.
+  The new group has its own identifier, and the authorization rules revoked with the old group
+  stay revoked. The operation log keeps showing the deleted group under the name it had.
+
+#### API tokens and stored credentials
+
+- **Attaching a stored credential.** A request with a token can name a stored credential when
+  it creates or imports assets and creates asset accounts, can attach a credential to an asset,
+  and can change which credential an asset account uses. Whether it is allowed follows the
+  permissions and node scope that the token's granted roles give its account, the same as for a
+  sign-in session. The code `AUTH_API_TOKEN_CREDENTIAL_REFERENCE_FORBIDDEN` is gone.
+- **The alert.** The new alert type "API token attached a stored credential" is in the Identity
+  and privileges group. It names the account, the token, the credential and the asset. For an
+  import it gives the number of assets that reference stored credentials and the number of
+  credentials they involve. It carries no secret. From an import alert, a link opens the
+  operation log on the records of that import.
+- **Operation log.** Every record written by a request with a token now carries the source
+  address and the request identifier of that request, so filtering the operation log by a
+  request shows all of them.
+- The endpoints are described in the [API reference][1250-api].
+
+### Fixes
+
+- Asset update: saving an asset while its default account was being changed through the asset
+  account endpoints could put the account name and the "password set" marker shown on the asset
+  back to their earlier values. The update now works from the asset as it is at the moment it
+  is saved.
+- Asset responses: after an update that removed an asset from all nodes, the response still
+  listed the nodes it had before. The response now shows the state after the update.
+- Asset detail: `credential_pending` was always `false` on `GET /assets/:id`. It now follows
+  the same rule as the asset list.
+- User group and node responses: the response to creating or updating a user group or
+  replacing its members had empty member fields, and the response to creating, renaming or
+  moving a node had no `path`. Both now match what a read returns right after.
+- Asset accounts: creating an asset account with a stored credential that is already attached
+  to the asset answered 500. It now answers 409 `CONFLICT_CREDENTIAL_BINDING`, the same as
+  attaching through the credential, and writes nothing.
+- Timestamps in write responses: a timestamp in the response to a create or update could carry
+  more digits than the same field in a read right after. A field that appears in both now has
+  the same text in both.
+
+[1250-sop]: docs/ops/upgrade-sop.md#upgrading-to-1250
+[1250-api]: docs/API_SPEC.md
+
 ## 1.24.0 — personal API tokens for the management API (2026-11-14)
 
 Schema change. Upgrading runs one migration. It adds two tables, and two fields with an index to

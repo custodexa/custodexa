@@ -237,6 +237,8 @@ type scopedListQuery struct {
 	tags              []string
 	// connectionOnly 為真時候選集只取連線可視；管理可視照算，只用來決定每列怎麼揭露（遮罩、旗標不變）。
 	connectionOnly bool
+	// exactName 非 nil 時只留名稱完全相同的資產（在可視聯集之內、計數與分頁之前）
+	exactName *string
 }
 
 // scopedList 非檢視捷徑的範圍化檢視者的資產列表。
@@ -264,7 +266,7 @@ func (h *AssetHandler) scopedList(c *gin.Context, v *authz.AssetScopeView, q sco
 	filter := &asset.AssetFilter{
 		Search: c.Query("search"), Protocol: model.ProtocolType(c.Query("protocol")),
 		Page: q.page, PageSize: q.pageSize, CredentialPending: q.credentialPending, RestrictIDs: union,
-		Tags: q.tags,
+		Tags: q.tags, ExactName: q.exactName,
 	}
 	if activeStr := c.Query("active"); activeStr != "" {
 		active := activeStr == "true"

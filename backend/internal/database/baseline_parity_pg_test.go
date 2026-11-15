@@ -224,6 +224,10 @@ var baselineStructuralAssertions = map[string]string{
 	// 拿掉 UNIQUE 則兩筆列可共用同一個 ID，而匯出、轉錄、詳情錨點全部以它定址
 	"idx_session_commands_event_id": "CREATE UNIQUE INDEX idx_session_commands_event_id " +
 		"ON %s.session_commands USING btree (event_id) WHERE ((event_id)::text <> ''::text)",
+	// 使用者群組名稱只在未刪除列之間唯一（增量 migration 換成部分唯一）。partial 條件被拿掉
+	// 會讓已刪除的群組永久佔用名稱而無法同名重建；UNIQUE 被拿掉則現存群組可以重名
+	"idx_user_groups_name": "CREATE UNIQUE INDEX idx_user_groups_name ON %s.user_groups " +
+		"USING btree (name) WHERE (deleted_at IS NULL)",
 }
 
 // baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 21 條）。

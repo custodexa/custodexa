@@ -65,6 +65,10 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		// 生成 Request ID（用於追蹤）
 		requestID := uuid.New().String()
 		c.Set("request_id", requestID)
+		// 請求識別與來源位址也放進請求 context：經由 API token 的請求在交易內寫下的稽核列據此補上
+		// 同一個 request_id 與來源位址（來源位址與本中介層寫的那一列同一取法）
+		c.Request = c.Request.WithContext(model.WithRequestOrigin(c.Request.Context(),
+			model.RequestOrigin{RequestID: requestID, ClientIP: sourceip.From(c, anon.trustProxy)}))
 
 		// 有界預讀並回放；關閉回放本文時仍須關閉原串流。
 		var bodyBytes []byte

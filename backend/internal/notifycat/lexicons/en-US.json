@@ -351,5 +351,12 @@
   },
   "date_list": {
     "more": "{n} more days not listed"
+  },
+  "credential_attach_entry": {
+    "asset_create": "Referenced when creating the asset",
+    "account_create": "Referenced when creating the asset account",
+    "bind": "Attached to asset",
+    "rebind": "Credential replaced",
+    "import": "Asset import"
   }
 }
