@@ -416,13 +416,29 @@ git clone をルートとする古いデプロイは `custodexa.sh` でその場
 
 **ロールバックには 2 つのものが要り、どちらが欠けても戻れません。アップグレード前のバックアップと、旧バージョンのイメージです。** バックアップは §2.1 を参照してください。イメージのほうは特に漏れやすい箇所です。本プロジェクトがビルドする backend と frontend の 2 つのイメージの参照はいずれも `custodexa/*:latest` であり、新しいバージョンをビルドするか、受け渡されたイメージファイルを読み込んだ時点で同名の tag が上書きされます。旧バージョンのイメージに別の名前が付いていなければ、取り戻せません。1.13.0 からこの 2 つのイメージは GitHub Container Registry にも公開され、Docker Hub へミラーされます（[README](../README.md#ビルド済みイメージ) の「ビルド済みイメージ」を参照）。ただしリポジトリの compose ファイルは公開イメージを参照しないため、この SOP に従うデプロイでは、イメージは引き続きソースツリーからのビルドか、受け渡されたイメージファイルのどちらかから得られます。自分でビルドする場合は §2.2 の tag の別名保存を参照してください。受け渡されたイメージでデプロイする場合は、旧バージョンのイメージファイルが手元に残っていることを先に確認してください。guacd サービスは本プロジェクトではビルドしません。1.13.0 から compose ファイルは公式イメージ `guacamole/guacd:1.6.0` をバージョンと digest で参照しており、旧バージョンのイメージは自分の名前を保ちます。イメージをファイルで受け渡す場合は、この公式イメージも受け渡すイメージに含まれます。
 
-> **本節が適用される範囲**：`Custodexa 1.0` のデータベースの schema は単一の baseline（`20260816_schema_baseline`）を起点とし、その後は**増分の migration** で進んでいきます（本バージョンの 58 件は下の §2.5 を参照）。したがって本節は、1.0 の baseline の世代に属するバージョンの入れ替え、すなわちデータベースにその baseline が適用済みのデプロイに適用されます。
+> **本節が適用される範囲**：`Custodexa 1.0` のデータベースの schema は単一の baseline（`20260816_schema_baseline`）を起点とし、その後は**増分の migration** で進んでいきます（本バージョンの 59 件は下の §2.5 を参照）。したがって本節は、1.0 の baseline の世代に属するバージョンの入れ替え、すなわちデータベースにその baseline が適用済みのデプロイに適用されます。
 >
 > データベースの `schema_migrations` テーブルに本バージョンのコードが認識しないバージョンの値が含まれ、かつ baseline が未適用の場合、バックエンドは起動を拒否します（§2.6 参照）。この種の baseline の世代をまたぐアップグレードは「新規導入＋データ移行のプロジェクト」として扱ってください。移行の範囲とツールは受け渡し側と別途協議する必要があり、本 SOP の範囲外です。
 >
 > アップグレードを計画する前に、貴組織の元のバージョンを確認してください。
 
 > **単一インスタンスのガードが保証する範囲**：本バージョンから、2 つめのアプリケーションインスタンスが同じデータベースに対して起動すると停止させられ、確認を求められます（§2.6b）。この排他は**ガードを備えたバージョン同士でのみ成立します**。ガードを含まない旧バージョンはロックを保持しないため、ガードのないバージョンから本バージョンへ初めて上げるとき、新しいバージョンがロックを取得できたことは旧バージョンが停止していることを**意味しません**。§2.3 の手順 5 の初回アップグレードのチェックはそのために設けられており、省略できません。
+
+#### 1.26.0 へ上げる場合
+
+新しいマイグレーションが 1 件実行されます（`20261118_api_token_role_level`）。既定値つきの列を 2 つ追加します。`api_token_roles` の `level` と、`api_tokens` の `levels_recorded` です。データ処理はなく、どの行も書き換えません。どちらのテーブルも小さいものです。適用した後に戻すには、アップグレード前のバックアップをリストアします（§4.1）。`custodexa.sh rollback` は何も停止せず、終了コード 3 で終わり、アップグレード時のバックアップに対する `restore` のコマンドを表示します。同じアップグレードで同梱データベースを PostgreSQL 18 に変換した場合の例外は、「1.24.0 へ上げる場合」に記載のものです。
+
+- **既存の API token はこれまでどおり動作します。** アップグレード前に作成した token では、付与されたロールはすべて読み書きのままで、token の一覧にはアップグレード前に作成したものであることが表示されます。1.26.0 からは、token の作成時に付与するロールごとに読み取り専用か読み書きかを選び、画面の既定は読み取り専用です。`role_ids` で token を作成するリクエストは、これまでどおり列挙したロールをすべて読み書きで付与します。`roles` ではロールごとにレベルを指定できます。付与されたロールがすべて読み取り専用の token は、データを変更するエンドポイントで 403 `AUTH_API_TOKEN_READ_ONLY` により拒否されます。
+- **1.26.0 がマイグレーションしたデータベースで、それより前のリリースを起動しないでください。** 前のリリースはレベルを認識せず、付与されたロールをすべて読み書きとして扱うため、読み取り専用の token でデータを変更できてしまいます。サポートされている戻し方ではこの問題は起きません。アップグレード時のバックアップにはアップグレード後に作成した token が含まれず、管理スクリプトによるリストアは、リストア前に存在した API token をすべて終了させます。やむを得ず前のリリースをマイグレーション済みのデータベースで動かす場合は、先に、読み取り専用のロールを含む token をすべて取り消してください。
+- **API の呼び出し側から見えるコードと上限。** 次の応答が変わります。
+  - すでに使われている名前でユーザーを作成すると、400 ではなく 409 が返ります。コードは `CONFLICT_USERNAME_EXISTS` のままです。
+  - ほかのアカウントが使っているメールアドレスでユーザーを作成すると、ユーザーを編集するときと同じく 409 `CONFLICT_EMAIL` が返ります。これまでは 500 でした。比較では大文字と小文字を区別しません。
+  - 2 つのリクエストが同じユーザー名、同じメールアドレス、同じカスタムロール名を同時に作成したとき、または 2 つのカスタムロールを同時に同じ名前へ変更したとき、競合に負けた側には 500 ではなく上記の 409 が返ります。
+  - 途中でほかの人が変更したカスタムロールを保存または削除すると、409 `ROLE_DEFINITION_VERSION_CONFLICT` が返ります。`ROLE_DEFINITION_CONFLICT` は、名前がすでに使われていることだけを表すようになりました。
+  - まだ割り当てられている共有認証情報を削除すると、これまでと同じ 409 `RULE_CREDENTIAL_IN_USE` に、標準の `error` フィールドが加わります。`code`、`assets`、呼び出し元の範囲外にある台数は、引き続き最上位にあります。
+  - 資産一覧とユーザー一覧の `page_size` は上限が 1000 です。1000 を超える整数は 1000 に下げられ、応答には実際に適用した値が返ります。1 ページでそれ以上を取得していた呼び出し側は、続くページを読む必要があります。整数でない値は、桁数が多すぎて数値として読めない値も含め、これまでどおり既定の 20 になります。
+- **秘密鍵の公開鍵の指紋。** 資産のアカウントの行と共有認証情報は、アップグレード後に書き込んだ、または置き換えた秘密鍵について、公開鍵の指紋を返します。アップグレード前に保存した秘密鍵には指紋がなく、その鍵での接続に影響はありません。例外は、プラットフォームが踏み台専用アカウント用に生成した鍵で、これは以前から指紋があり、アップグレード後もそのままです。DSA の秘密鍵はこれまでどおり受け付けられ使用できますが、公開鍵を秘密鍵そのものから確認できないため、指紋は常にありません。同じ秘密鍵をもう一度設定すると記録されます。人が設定するほかのシークレットと同じく、新しいシークレットのバージョンが作成され、システムアラート「カスタムシークレットが使用されました」が発生します。共有認証情報が返すのは現行バージョンの指紋です。ローテーションの実行中や中断後は、ある資産のアカウントの行が別の指紋を返すことがあり、その資産が実際に使う鍵はアカウントの行のほうで確認します。
+- **秘密鍵を設定するときの検査が厳しくなりました。** 公開鍵の部分と秘密鍵の部分が一致しない秘密鍵は、無効な秘密鍵として拒否されます。保存済みの鍵を改めて検査することはありません。
 
 #### 1.25.0 へ上げる場合
 
@@ -819,7 +835,7 @@ guacd サービスには build の区画がありません。イメージは公�
 所有 migrations 都已執行，無需更新
 ```
 
-**新しい増分の migration を導入するバージョンへ上げる場合**、1 件適用するごとに `執行 migration: <バージョン> (<名前>)` の行が増えます。その増分は同一のトランザクション内で適用されます。対応する行が見えなければ、その増分は**実行されていない**ということであり（多くは元のバージョンがすでに含んでいるためです）、異常ではありません。本バージョンの 58 件の増分に対応するログの行は、そのまま次のとおりです。
+**新しい増分の migration を導入するバージョンへ上げる場合**、1 件適用するごとに `執行 migration: <バージョン> (<名前>)` の行が増えます。その増分は同一のトランザクション内で適用されます。対応する行が見えなければ、その増分は**実行されていない**ということであり（多くは元のバージョンがすでに含んでいるためです）、異常ではありません。本バージョンの 59 件の増分に対応するログの行は、そのまま次のとおりです。
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -880,6 +896,7 @@ guacd サービスには build の区画がありません。イメージは公�
   執行 migration: 20261105_keystroke_records (keystroke_records)
   執行 migration: 20261113_api_tokens (api_tokens)
   執行 migration: 20261115_user_group_name_live_unique (user_group_name_live_unique)
+  執行 migration: 20261118_api_token_role_level (api_token_role_level)
 ```
 
 `20260825_evidence_offsite` はオフサイト保管の 2 つのテーブル（設定世代のテーブルと保管台帳）を作成し、セッションとエクスポートのジョブにそれぞれ 2 つの列を加えます。**追加のみで、データの埋め戻しも codec への依存もありません。** 所要時間は蓄積量に依存しません。**その Down はデータの追跡が不可逆です。** ロールバックの前に台帳の一覧をエクスポートする必要があります。第 4 節を参照してください。
@@ -1430,9 +1447,9 @@ docker compose logs backend | tail -20   # 「關閉過程有未完成項目」�
 
 アップグレードの後に旧バージョンへ戻す場合、通るのは「旧バージョンのイメージをデプロイし直し、アップグレード前のバックアップをリストアする」経路です。手順は §4.2 を参照してください。
 
-本バージョンのデータベースには schema baseline（`20260816_schema_baseline`）と、その後の 58 件の増分があります。そのうち 32 件をここに挙げます（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、`20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、`20260909_policy_groups`、`20260913_kek_topology`、`20260921_alert_rule_direction`、`20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`、`20261115_user_group_name_live_unique`）。
+本バージョンのデータベースには schema baseline（`20260816_schema_baseline`）と、その後の 59 件の増分があります。そのうち 32 件をここに挙げます（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、`20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、`20260909_policy_groups`、`20260913_kek_topology`、`20260921_alert_rule_direction`、`20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、`20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`、`20261115_user_group_name_live_unique`）。
 
-残りの 26 件の増分は、いずれも本番環境でのダウングレード手段を提供しないため上の一覧には含まれません。1.18.0 の 18 件（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）、1.21.0 の 6 件（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method`、`20261103_executor_login_checks`）、1.22.0 の 1 件（`20261105_keystroke_records`）、および 1.24.0 の 1 件（`20261113_api_tokens`）です。これらを適用済みのデータベースは、管理スクリプトを前のバージョンに向けても戻せません。アップグレード前のバックアップをリストアしてください（§2.0 の「1.18.0 へ上げる場合」、「1.21.0 へ上げる場合」、「1.22.0 へ上げる場合」と「1.24.0 へ上げる場合」を参照）。1.18.0 より前のバージョンへ戻す場合は、そこに書かれたとおり `JWT_SECRET` の入れ替えと長期のサインインの失効も必要です。
+残りの 27 件の増分は、いずれも本番環境でのダウングレード手段を提供しないため上の一覧には含まれません。1.18.0 の 18 件（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）、1.21.0 の 6 件（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method`、`20261103_executor_login_checks`）、1.22.0 の 1 件（`20261105_keystroke_records`）、1.24.0 の 1 件（`20261113_api_tokens`）、および 1.26.0 の 1 件（`20261118_api_token_role_level`）です。これらを適用済みのデータベースは、管理スクリプトを前のバージョンに向けても戻せません。アップグレード前のバックアップをリストアしてください（§2.0 の「1.18.0 へ上げる場合」、「1.21.0 へ上げる場合」、「1.22.0 へ上げる場合」、「1.24.0 へ上げる場合」と「1.26.0 へ上げる場合」を参照）。1.18.0 より前のバージョンへ戻す場合は、そこに書かれたとおり `JWT_SECRET` の入れ替えと長期のサインインの失効も必要です。
 
 **増分の migration の `Down` は本番のロールバックの手段としません。** これは本製品の一貫した立場であり、バージョンの増減によって変わりません。`Down` が戻すのは**構造**であって、データではありません。それが削除する列やテーブルの中身は、実行した後に補う第 2 の出所がありません。再びアップグレードすれば、それらの列は空の値で現れ直し、「戻ってきた」ように見えますが、実際には空の新しい構造です。ロールバックの方針を計画するとき、選択肢に入れられるのは**アップグレード前のバックアップのリストア**だけです。1 件ずつの具体的な代償は次のとおりです。
 

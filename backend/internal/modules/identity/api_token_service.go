@@ -79,6 +79,12 @@ var (
 	ErrAPITokenNoteTooLong = &APITokenError{Code: apierror.CodeBadParams, Status: 400}
 	// ErrAPITokenOperatorRequired 操作者不是由請求建構（缺主體、主體不符或為系統操作者）
 	ErrAPITokenOperatorRequired = &APITokenError{Code: apierror.CodePermissionDenied, Status: 403}
+	// ErrAPITokenRolesConflict 建立請求同時帶逐角色層級（roles）與只列角色識別（role_ids）兩種寫法
+	ErrAPITokenRolesConflict = &APITokenError{Code: apierror.CodeBadParams, Status: 400}
+	// ErrAPITokenRoleDuplicate 逐角色層級的寫法中同一個角色出現兩次（不論層級是否相同，不去重）
+	ErrAPITokenRoleDuplicate = &APITokenError{Code: apierror.CodeBadParams, Status: 400}
+	// ErrAPITokenLevelInvalid 層級不是系統認得的值（輸入不套用「不認得即唯讀」的讀取規則）
+	ErrAPITokenLevelInvalid = &APITokenError{Code: apierror.CodeBadParams, Status: 400}
 )
 
 // ErrAPITokenNotFound token 不存在或不屬於指定帳號（兩者同形，不洩漏他人 token 的存在）。
@@ -116,11 +122,13 @@ type APITokenEventRecorder interface {
 	APITokenRevoked(tx *gorm.DB, ev APITokenRevokedEvent) error
 }
 
-// APITokenRoleRef 角色的識別、名稱與內建識別（自訂角色的內建識別為空）。
+// APITokenRoleRef 角色的識別、名稱與內建識別（自訂角色的內建識別為空）。作為 token 的授權角色時另帶層級
+// （model.APITokenLevel*，已正規化）；不是授權角色的場合（例如可勾選的角色）層級為空且不輸出。
 type APITokenRoleRef struct {
 	RoleID     uint   `json:"role_id"`
 	Name       string `json:"name"`
 	BuiltinKey string `json:"builtin_key"`
+	Level      string `json:"level,omitempty"`
 }
 
 // APITokenService token 的建立、撤銷與清單投影。
@@ -142,11 +150,21 @@ func NewAPITokenService(db *gorm.DB, recorder APITokenEventRecorder) *APITokenSe
 func (s *APITokenService) SetRestoreGenerationSource(src RestoreGenerationSource) { s.restoreGen = src }
 
 // CreateAPITokenInput 建立請求。ExpiresAt 與 NeverExpires 恰擇一。
+//
+// 授權角色有兩種寫法，只能用一種：Roles 逐角色指定層級；RoleIDs 只列角色識別，等同各角色皆為讀寫
+// （沿用先前的寫法，行為不變）。兩者皆非空即拒絕；請求是否同時帶了兩個鍵（含空陣列與 null）由端點判定。
 type CreateAPITokenInput struct {
 	Name         string
 	RoleIDs      []uint
+	Roles        []APITokenRoleGrant
 	ExpiresAt    *time.Time
 	NeverExpires bool
+}
+
+// APITokenRoleGrant 建立時授權的一個角色與其層級（必填，須為 model.APITokenLevel* 之一）。
+type APITokenRoleGrant struct {
+	RoleID uint
+	Level  string
 }
 
 // CreatedAPIToken 建立結果：清單投影加一次性明文。明文只在這個回傳值中出現。
@@ -211,6 +229,40 @@ func uniqueRoleIDs(ids []uint) []uint {
 	return out
 }
 
+// resolveAPITokenGrants 由建立請求求出授權角色與層級（依角色識別升冪）。
+// RoleIDs 寫法去重並略過 0，各角色為讀寫；Roles 寫法不去重：同一角色出現兩次即拒絕，層級須為認得的值，
+// 角色識別不做過濾（0 或不可授權者由鎖內的可授權判定拒絕）。兩者皆無即回「至少要一個角色」。
+func resolveAPITokenGrants(in CreateAPITokenInput) ([]APITokenRoleGrant, error) {
+	if len(in.Roles) > 0 && len(in.RoleIDs) > 0 {
+		return nil, ErrAPITokenRolesConflict
+	}
+	if len(in.Roles) == 0 {
+		ids := uniqueRoleIDs(in.RoleIDs)
+		if len(ids) == 0 {
+			return nil, ErrAPITokenRoleRequired
+		}
+		out := make([]APITokenRoleGrant, 0, len(ids))
+		for _, id := range ids {
+			out = append(out, APITokenRoleGrant{RoleID: id, Level: model.APITokenLevelReadWrite})
+		}
+		return out, nil
+	}
+	seen := map[uint]bool{}
+	out := make([]APITokenRoleGrant, 0, len(in.Roles))
+	for _, r := range in.Roles {
+		if seen[r.RoleID] {
+			return nil, ErrAPITokenRoleDuplicate
+		}
+		seen[r.RoleID] = true
+		if !model.IsAPITokenLevel(r.Level) {
+			return nil, ErrAPITokenLevelInvalid
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RoleID < out[j].RoleID })
+	return out, nil
+}
+
 // apiTokenPreWriteHook 測試用同步點：建立流程在鎖內完成全部判定之後、寫入之前呼叫。
 // 讓並發測試在精確位置製造交錯；生產路徑恆為 nil，改寫者僅限測試。
 var apiTokenPreWriteHook func()
@@ -224,9 +276,9 @@ func (s *APITokenService) Create(op Operator, in CreateAPITokenInput) (*CreatedA
 	if err != nil {
 		return nil, err
 	}
-	roleIDs := uniqueRoleIDs(in.RoleIDs)
-	if len(roleIDs) == 0 {
-		return nil, ErrAPITokenRoleRequired
+	grants, err := resolveAPITokenGrants(in)
+	if err != nil {
+		return nil, err
 	}
 	now := s.now().UTC()
 	expiresAt, err := resolveAPITokenExpiry(in, now)
@@ -253,12 +305,13 @@ func (s *APITokenService) Create(op Operator, in CreateAPITokenInput) (*CreatedA
 		for _, r := range elig.GrantableRoles {
 			grantable[r.RoleID] = r
 		}
-		granted := make([]APITokenRoleView, 0, len(roleIDs))
-		for _, id := range roleIDs {
-			r, ok := grantable[id]
+		granted := make([]APITokenRoleView, 0, len(grants))
+		for _, g := range grants {
+			r, ok := grantable[g.RoleID]
 			if !ok {
 				return ErrAPITokenRoleNotGrantable
 			}
+			r.Level = g.Level
 			granted = append(granted, r)
 		}
 		gen, err := currentRestoreGeneration(s.restoreGen, tx)
@@ -275,14 +328,14 @@ func (s *APITokenService) Create(op Operator, in CreateAPITokenInput) (*CreatedA
 		if apiTokenPreWriteHook != nil {
 			apiTokenPreWriteHook()
 		}
-		row := model.APIToken{UserID: op.UserID, Name: name, TokenHash: digest, CreatedAt: now, ExpiresAt: expiresAt, RestoreGeneration: gen}
+		row := model.APIToken{UserID: op.UserID, Name: name, TokenHash: digest, CreatedAt: now, ExpiresAt: expiresAt, RestoreGeneration: gen, LevelsRecorded: true}
 		// 參數含 token 雜湊：這條語句的 SQL 紀錄不帶參數值
 		if err := database.WithheldSQLParams(tx).Create(&row).Error; err != nil {
 			return fmt.Errorf("寫入 API token 失敗: %w", err)
 		}
-		links := make([]model.APITokenRole, 0, len(roleIDs))
-		for _, id := range roleIDs {
-			links = append(links, model.APITokenRole{APITokenID: row.ID, RoleID: id})
+		links := make([]model.APITokenRole, 0, len(grants))
+		for _, g := range grants {
+			links = append(links, model.APITokenRole{APITokenID: row.ID, RoleID: g.RoleID, Level: g.Level})
 		}
 		if err := tx.Create(&links).Error; err != nil {
 			return fmt.Errorf("寫入 API token 授權角色失敗: %w", err)

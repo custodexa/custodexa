@@ -401,11 +401,11 @@ func (s *CredentialRotationService) lockTopologyTx(tx *gorm.DB) error {
 func (s *CredentialRotationService) buildRotationVersion(ctx context.Context, tx *gorm.DB,
 	cred *model.Credential, req StartRotationRequest) (*model.CredentialSecretVersion, error) {
 
-	var passwordEnc, privateKeyEnc string
+	var next versionSecret
 	switch cred.SecretType {
 	case model.ChangeSecretTypeSSHKey:
 		comment := fmt.Sprintf("%s-credential-%d", branding.Slug, cred.ID)
-		newPrivate, _, err := GenerateSSHKeyPair(comment)
+		newPrivate, newLine, err := GenerateSSHKeyPair(comment)
 		if err != nil {
 			return nil, fmt.Errorf("產生金鑰對失敗: %w", err)
 		}
@@ -413,7 +413,8 @@ func (s *CredentialRotationService) buildRotationVersion(ctx context.Context, tx
 		if err != nil {
 			return nil, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
-		privateKeyEnc = enc
+		// 公鑰取產生當下的那一行（去掉註解），與私鑰同列保存
+		next.PrivateKeyEnc, next.PublicKey = enc, versionPublicKeyFromLine(newLine)
 	default:
 		password, err := GeneratePassword(normalizeRotationPolicy(req.Policy))
 		if err != nil {
@@ -423,19 +424,19 @@ func (s *CredentialRotationService) buildRotationVersion(ctx context.Context, tx
 		if err != nil {
 			return nil, fmt.Errorf("加密密碼失敗: %w", err)
 		}
-		passwordEnc = enc
+		next.PasswordEnc = enc
 	}
 
 	if cred.CurrentVersionID != nil {
 		var err error
-		passwordEnc, privateKeyEnc, err = carryOverVersionCiphertext(tx, cred.ID,
-			*cred.CurrentVersionID, passwordEnc, privateKeyEnc)
+		next, err = carryOverVersionSecret(tx, cred.ID, *cred.CurrentVersionID, next)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return appendCredentialVersion(tx, cred.ID, cred.SecretType,
-		passwordEnc, privateKeyEnc, model.CredentialVersionReasonRotation)
+		next.PasswordEnc, next.PrivateKeyEnc, model.CredentialVersionReasonRotation,
+		withVersionPublicKey(next.PublicKey))
 }
 
 // normalizeRotationPolicy 長度為 0（未設）時取預設值，讀取端不因缺欄生出長度 0 的密碼。

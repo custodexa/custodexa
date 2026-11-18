@@ -231,14 +231,14 @@ func respondCredentialError(c *gin.Context, internalCode apierror.ErrCode, err e
 	}
 	var inUse *asset.CredentialInUseError
 	if errors.As(err, &inUse) {
-		// 名單走回應 body 而非錯誤 params：params 只收受控值域，資產名是自由字串。
-		// 名單本身只對具憑證管理權限者可見，而本端點已在該授權點之後
-		body := gin.H{"code": string(apierror.CodeCredentialInUse), "assets": inUse.Assets}
+		// 經統一錯誤出口產生封套（error、code）；名單走頂層的非文字欄位而非錯誤 params：
+		// params 只收受控值域，資產名是自由字串。名單本身只對具憑證管理權限者可見，而本端點已在該授權點之後
+		meta := map[string]any{"assets": inUse.Assets}
 		if inUse.Scoped {
 			// 範圍化檢視者：名單只含範圍內資產名，範圍外只給台數（揭露登錄固定欄名與函式）
-			body[disclosure.FieldOutOfScopeAssetCount] = disclosure.Count(disclosure.OutOfScopeAssetCount, inUse.OutOfScopeAssets)
+			meta[disclosure.FieldOutOfScopeAssetCount] = disclosure.Count(disclosure.OutOfScopeAssetCount, inUse.OutOfScopeAssets)
 		}
-		c.JSON(http.StatusConflict, body)
+		apierror.Write(c, http.StatusConflict, apierror.ErrorResponse{Code: apierror.CodeCredentialInUse, Meta: meta})
 		return
 	}
 	var impactRequired *asset.CredentialImpactConfirmationRequiredError

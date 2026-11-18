@@ -396,13 +396,37 @@ func TestUserHandler_Create(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+		// 改前回 400；名稱重複屬衝突，改為 409，機器碼不變
+		assert.Equal(t, http.StatusConflict, w.Code)
 
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 		assert.Contains(t, response["error"], "使用者名稱已存在")
+		assert.Equal(t, "CONFLICT_USERNAME_EXISTS", response["code"])
 
+		mockUserService.AssertExpectations(t)
+	})
+
+	t.Run("電子郵件已被使用", func(t *testing.T) {
+		mockUserService := new(MockUserService)
+		mockUserService.On("Create", mock.AnythingOfType("*identity.CreateUserRequest")).
+			Return(nil, identity.ErrEmailConflict)
+		handler := newTestUserHandler(mockUserService)
+		router := setupTestRouter()
+		router.POST("/users", handler.Create)
+		jsonBody, _ := json.Marshal(map[string]any{"username": "dup-mail", "password": "password123", "email": "Taken@Example.com"})
+		req := httptest.NewRequest("POST", "/users", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// 與修改路徑相同：409 與電子郵件衝突碼，不是內部錯誤
+		assert.Equal(t, http.StatusConflict, w.Code)
+		var response map[string]string
+		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.Equal(t, "CONFLICT_EMAIL", response["code"])
+		assert.NotEmpty(t, response["error"])
 		mockUserService.AssertExpectations(t)
 	})
 

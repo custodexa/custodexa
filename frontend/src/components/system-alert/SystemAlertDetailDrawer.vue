@@ -166,15 +166,49 @@
             </dd>
             <dt>{{ $t('systemAlerts.detail.createdPrivRoles') }}</dt>
             <dd data-test="sa-token-priv-roles">
-              {{ tokenCreated.privRoles }}
+              <template v-if="tokenCreated.privRoles.length">
+                <div
+                  v-for="(item, i) in tokenCreated.privRoles"
+                  :key="`p${i}`"
+                  class="sa-token-role"
+                >
+                  <span>{{ item.label }}</span>
+                  <ApiTokenLevelTag
+                    v-if="item.level"
+                    :level="item.level"
+                  />
+                </div>
+              </template>
+              <template v-else>
+                {{ $t('systemAlerts.detail.none') }}
+              </template>
             </dd>
             <dt>{{ $t('systemAlerts.detail.createdTokenName') }}</dt>
             <dd data-test="sa-token-name">
               {{ tokenCreated.name }}
             </dd>
+            <dt>{{ $t('systemAlerts.detail.createdAccess') }}</dt>
+            <dd data-test="sa-token-access">
+              <ApiTokenAccessBadge :value="tokenCreated.access" />
+            </dd>
             <dt>{{ $t('systemAlerts.detail.createdGrantedRoles') }}</dt>
             <dd data-test="sa-token-granted-roles">
-              {{ tokenCreated.grantedRoles }}
+              <template v-if="tokenCreated.grantedRoles.length">
+                <div
+                  v-for="(item, i) in tokenCreated.grantedRoles"
+                  :key="`g${i}`"
+                  class="sa-token-role"
+                >
+                  <span>{{ item.label }}</span>
+                  <ApiTokenLevelTag
+                    v-if="item.level"
+                    :level="item.level"
+                  />
+                </div>
+              </template>
+              <template v-else>
+                {{ $t('systemAlerts.detail.none') }}
+              </template>
             </dd>
             <dt>{{ $t('systemAlerts.detail.createdExpiry') }}</dt>
             <dd data-test="sa-token-expiry">
@@ -341,7 +375,15 @@ import { ref, computed, watch } from 'vue'
 import { getSystemAlertDetail } from '@/api/systemAlerts'
 import { formatDateTime } from '@/utils/format'
 import { roleLabel } from '@/constants/roles'
-import { roleValueLabel, SUPER_ROLE_KEY } from '@/constants/apiTokens'
+import {
+  API_TOKEN_ACCESS_VALUES,
+  accessLabel,
+  normalizeLevel,
+  roleValueLabel,
+  SUPER_ROLE_KEY,
+} from '@/constants/apiTokens'
+import ApiTokenAccessBadge from '@/components/api-token/ApiTokenAccessBadge.vue'
+import ApiTokenLevelTag from '@/components/api-token/ApiTokenLevelTag.vue'
 import { canEnter, ENTRY_RULES } from '@/router/entryRules'
 import { t } from '@/i18n'
 
@@ -427,12 +469,22 @@ const tokenRoleLabel = (value) => {
     ? t('systemAlerts.detail.createdSuperRole', { role: label })
     : label
 }
-const tokenRoleListText = (csv) =>
-  csv
-    .split(',')
-    .map(tokenRoleLabel)
-    .filter(Boolean)
-    .join(t('common.listSeparator'))
+// 角色清單與同序的層級清單（皆為逗號分隔）配成「角色＋層級」。
+// 兩邊項數不同時不冒配錯角色的風險，只列角色名、不帶層級；沒有層級參數的舊告警同樣只列名稱
+const tokenRoleItems = (rolesCsv, levelsCsv) => {
+  if (!rolesCsv) return []
+  const names = String(rolesCsv).split(',')
+  const levels = levelsCsv ? String(levelsCsv).split(',').map((v) => v.trim()) : []
+  const paired = levels.length === names.length
+  return names
+    .map((value, i) => ({ label: tokenRoleLabel(value), level: paired ? normalizeLevel(levels[i]) : '' }))
+    .filter((item) => item.label)
+}
+// 告警參數的權限總結：不認得的值當唯讀；沒有這個參數的告警是本功能之前產生的，當時每個角色都是讀寫
+const tokenAlertAccess = (value) => {
+  if (value === undefined || value === null || value === '') return 'read_write'
+  return API_TOKEN_ACCESS_VALUES.includes(value) ? value : 'read'
+}
 const listText = (csv) => (csv ? roleListText(csv) : t('systemAlerts.detail.none'))
 const countText = (n) => (n === undefined || n === '' ? '' : t('systemAlerts.detail.count', { count: n }))
 
@@ -490,17 +542,20 @@ const tokenCreated = computed(() => {
   if (!d || d.alert_type !== 'privileged_api_token_created') return null
   const p = d.params || {}
   const actor = d.actor || p.actor || ''
-  const privRoles = p.privileged_roles ? tokenRoleListText(String(p.privileged_roles)) : t('systemAlerts.detail.none')
+  const privRoles = tokenRoleItems(p.privileged_roles, p.privileged_role_levels)
+  const privText = privRoles.length ? privRoles.map((r) => r.label).join(t('common.listSeparator')) : t('systemAlerts.detail.none')
+  const access = tokenAlertAccess(p.access)
   const validId = d.target_kind === 'user' && /^[1-9][0-9]*$/.test(String(d.target_id ?? ''))
   const neverExpires = p.expiry === 'never' || (p.expiry !== 'at' && !p.expires_at)
   const expiresAt = !neverExpires && p.expires_at ? formatDateTime(p.expires_at) : ''
   return {
     actor,
-    summary: t('systemAlerts.detail.createdSummary', { actor, roles: privRoles }),
+    summary: t('systemAlerts.detail.createdSummary', { actor, roles: privText, access: accessLabel(access) }),
     creator: validId ? t('systemAlerts.detail.createdCreatorValue', { name: actor, id: d.target_id }) : actor,
     privRoles,
+    access,
     name: p.token_name || '',
-    grantedRoles: p.granted_roles ? tokenRoleListText(String(p.granted_roles)) : t('systemAlerts.detail.none'),
+    grantedRoles: tokenRoleItems(p.granted_roles, p.granted_role_levels),
     expires: expiresAt,
     link: validId && canEnter(ENTRY_RULES['/users']) ? { path: `/users/${d.target_id}`, query: { tab: 'apiTokens' } } : null,
   }
@@ -675,6 +730,15 @@ watch(() => [props.modelValue, props.alertId], load, { immediate: true })
   margin-left: var(--ot-space-xs);
   color: var(--ot-text-secondary);
   font-size: 12px;
+}
+.sa-token-role {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-sm);
+  flex-wrap: wrap;
+}
+.sa-token-role + .sa-token-role {
+  margin-top: 4px;
 }
 .sa-muted {
   color: var(--ot-text-secondary);

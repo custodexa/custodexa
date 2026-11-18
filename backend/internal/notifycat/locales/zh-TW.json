@@ -224,11 +224,11 @@
   "privileged_api_token_created": {
     "at": {
       "title": "建立高權限 API token",
-      "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色（{privileged_roles}）；全部授權角色：{granted_roles}；到期時刻：{expires_at}（分級：{severity}）。"
+      "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色：{privileged_roles}；全部授權角色：{granted_roles}；到期時刻：{expires_at}（分級：{severity}）。"
     },
     "never": {
       "title": "建立高權限 API token",
-      "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色（{privileged_roles}）；全部授權角色：{granted_roles}；永不到期（分級：{severity}）。"
+      "text": "{actor} 建立了 API token「{token_name}」，授權的角色含高權限角色：{privileged_roles}；全部授權角色：{granted_roles}；永不到期（分級：{severity}）。"
     }
   },
   "api_token_credential_attached": {

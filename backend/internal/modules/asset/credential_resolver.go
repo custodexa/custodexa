@@ -253,6 +253,9 @@ type accountSecretFlags struct {
 	HasPassword   bool
 	HasPrivateKey bool
 	Shared        bool
+	// PrivateKeyFingerprint 版本私鑰的公鑰指紋（由版本列保存的公鑰計算，不解密）；
+	// 沒有私鑰或公鑰未知時為空。是否對外提供由各回應的揭露判定決定
+	PrivateKeyFingerprint string
 
 	// CredentialID 該掛載引用的憑證識別；0＝資料狀態異常（掛載必有憑證）
 	CredentialID uint
@@ -328,16 +331,22 @@ func versionSecretFlags(db *gorm.DB, versionIDs []uint) (map[uint]accountSecretF
 		ID            uint
 		HasPassword   bool
 		HasPrivateKey bool
+		PublicKey     string
 	}
 	var rows []flagRow
 	err := db.Model(&model.CredentialSecretVersion{}).
-		Select("id, password_enc <> '' AS has_password, private_key_enc <> '' AS has_private_key").
+		Select("id, password_enc <> '' AS has_password, private_key_enc <> '' AS has_private_key, "+
+			"COALESCE(public_key, '') AS public_key").
 		Where("id IN ?", ids).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("查詢憑證持有狀態失敗: %w", err)
 	}
 	for _, r := range rows {
-		out[r.ID] = accountSecretFlags{HasPassword: r.HasPassword, HasPrivateKey: r.HasPrivateKey}
+		f := accountSecretFlags{HasPassword: r.HasPassword, HasPrivateKey: r.HasPrivateKey}
+		if r.HasPrivateKey {
+			f.PrivateKeyFingerprint = PrivateKeyFingerprint(r.PublicKey)
+		}
+		out[r.ID] = f
 	}
 	return out, nil
 }
@@ -465,7 +474,8 @@ func createDedicatedCredential(tx *gorm.DB, username, secretType, authMethod, pr
 // 凡要與密文同列記錄的值（如公鑰）都必須經此在 Create 前填好。
 type credentialVersionOption func(*model.CredentialSecretVersion)
 
-// withVersionPublicKey 版本列一併記錄公鑰（authorized_keys 行；公鑰非機密）。
+// withVersionPublicKey 版本列一併記錄這一版私鑰對應的公鑰（authorized_keys 行；公鑰非機密）。
+// 空字串＝公鑰未知，版本列的公鑰欄維持空值。
 func withVersionPublicKey(publicKey string) credentialVersionOption {
 	return func(v *model.CredentialSecretVersion) { v.PublicKey = publicKey }
 }
@@ -491,6 +501,10 @@ func appendCredentialVersion(tx *gorm.DB, credentialID uint, secretType, passwor
 	}
 	for _, opt := range opts {
 		opt(version)
+	}
+	// 公鑰只描述這一版的私鑰：沒有私鑰的版本不得帶公鑰
+	if version.PrivateKeyEnc == "" {
+		version.PublicKey = ""
 	}
 	if err := tx.Create(version).Error; err != nil {
 		return nil, fmt.Errorf("建立憑證密文版本失敗: %w", err)
@@ -586,42 +600,50 @@ func lockAssetsOfCredential(tx *gorm.DB, credentialID uint) error {
 	return nil
 }
 
-// carryOverVersionCiphertext 把某一版尚未被本次更動的那一欄原樣帶出來。
+// versionSecret 一筆版本的秘密欄位組：兩個密文與私鑰對應的公鑰同進同出。
+//
+// 公鑰（authorized_keys 行的型別與 base64 兩段）只描述 PrivateKeyEnc 那一把鑰，
+// 兩者必須來自同一個來源：私鑰密文自前一版原樣搬時公鑰一併搬，私鑰換新時公鑰由新私鑰取得；
+// 取不到就留空（未知），不得以其他版本的公鑰代替——公鑰會成為對外的公鑰指紋。
+type versionSecret struct {
+	PasswordEnc   string
+	PrivateKeyEnc string
+	PublicKey     string
+}
+
+// carryOverVersionSecret 把某一版尚未被本次更動的那一欄原樣帶出來。
 //
 // **密文原樣搬、不解密**：信封 AAD 綁 表|欄 而非列，來源與去向同為
 // credential_secret_versions 的同一欄，跨列可解。本函式故不屬於解封出口的射程。
 //
 // 用途：系統路徑只改一種秘密時保住另一種（金鑰輪替不得順手清掉密碼備援，
 // 只補登密碼同樣不得清掉私鑰）。
-func carryOverVersionCiphertext(db *gorm.DB, credentialID, versionID uint,
-	passwordEnc, privateKeyEnc string) (string, string, error) {
-
+//
+// 私鑰欄自前一版搬過來時，**公鑰跟著同一版搬**，並覆蓋呼叫端帶入的公鑰：搬來的是哪一把私鑰，
+// 公鑰就必須是那一把的。私鑰欄由呼叫端提供時，公鑰原樣採用呼叫端的值（可為空＝未知），
+// 絕不取前一版的公鑰。
+func carryOverVersionSecret(db *gorm.DB, credentialID, versionID uint, in versionSecret) (versionSecret, error) {
 	if credentialID == 0 || versionID == 0 {
-		return passwordEnc, privateKeyEnc, nil
+		return in, nil
 	}
 	prev, err := loadCredentialVersion(db, credentialID, versionID)
 	if err != nil {
 		if errors.Is(err, ErrCredentialVersionNotFound) {
-			return passwordEnc, privateKeyEnc, nil
+			return in, nil
 		}
-		return "", "", err
+		return versionSecret{}, err
 	}
-	if passwordEnc == "" {
-		passwordEnc = prev.PasswordEnc
+	if in.PasswordEnc == "" {
+		in.PasswordEnc = prev.PasswordEnc
 	}
-	if privateKeyEnc == "" {
-		privateKeyEnc = prev.PrivateKeyEnc
+	if in.PrivateKeyEnc == "" {
+		in.PrivateKeyEnc = prev.PrivateKeyEnc
+		in.PublicKey = ""
+		if prev.PrivateKeyEnc != "" {
+			in.PublicKey = prev.PublicKey
+		}
 	}
-	return passwordEnc, privateKeyEnc, nil
-}
-
-// bindingCiphertext 取某掛載就位版本的兩個密文欄（原樣，不解密）。
-// 掛載尚無就位版本時回兩個空字串。
-func bindingCiphertext(db *gorm.DB, account *model.AssetAccount) (string, string, error) {
-	if account == nil || account.EffectiveVersionID == nil || *account.EffectiveVersionID == 0 {
-		return "", "", nil
-	}
-	return carryOverVersionCiphertext(db, account.CredentialID, *account.EffectiveVersionID, "", "")
+	return in, nil
 }
 
 // bindNewDedicatedCredential 為一筆**尚未寫入**的掛載列配上新的專用憑證。
@@ -692,7 +714,7 @@ func bindNewDedicatedCredential(tx *gorm.DB, account *model.AssetAccount, asset 
 // 唯一寫入面，也是取憑證列鎖的地方，判定放在呼叫端就會多一份、而漏掉的那一份在
 // 資料庫狀態上看不出來——它會在改密的目標集合底下換掉全部掛載的就位版本，
 // 於是那一輪改密收斂到一個沒有人宣告過的秘密上。
-func appendDeclaredSecret(tx *gorm.DB, account *model.AssetAccount, passwordEnc, privateKeyEnc string) (uint, error) {
+func appendDeclaredSecret(tx *gorm.DB, account *model.AssetAccount, secret versionSecret) (uint, error) {
 	if account == nil {
 		return 0, ErrAssetAccountNotFound
 	}
@@ -711,15 +733,15 @@ func appendDeclaredSecret(tx *gorm.DB, account *model.AssetAccount, passwordEnc,
 		return 0, err
 	}
 	if account.EffectiveVersionID != nil {
-		passwordEnc, privateKeyEnc, err = carryOverVersionCiphertext(tx, cred.ID,
-			*account.EffectiveVersionID, passwordEnc, privateKeyEnc)
+		secret, err = carryOverVersionSecret(tx, cred.ID, *account.EffectiveVersionID, secret)
 		if err != nil {
 			return 0, err
 		}
 	}
-	secretType := credentialSecretTypeFor(passwordEnc != "", privateKeyEnc != "")
+	secretType := credentialSecretTypeFor(secret.PasswordEnc != "", secret.PrivateKeyEnc != "")
 	version, err := appendCredentialVersion(tx, cred.ID, secretType,
-		passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual)
+		secret.PasswordEnc, secret.PrivateKeyEnc, model.CredentialVersionReasonManual,
+		withVersionPublicKey(secret.PublicKey))
 	if err != nil {
 		return 0, err
 	}

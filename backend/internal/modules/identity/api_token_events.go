@@ -28,19 +28,47 @@ func NewAPITokenEventRecorder(auditTx port.TxSink, alerts port.SystemAlertSink) 
 func apiTokenRoleRefsJSON(roles []APITokenRoleRef) []map[string]any {
 	out := make([]map[string]any, 0, len(roles))
 	for _, r := range roles {
-		out = append(out, map[string]any{"role_id": r.RoleID, "name": r.Name, "builtin_key": r.BuiltinKey})
+		out = append(out, map[string]any{"role_id": r.RoleID, "name": r.Name, "builtin_key": r.BuiltinKey,
+			"level": model.NormalizeAPITokenLevel(r.Level)})
+	}
+	return out
+}
+
+// apiTokenRoleLevels 各授權角色的層級（已正規化），順序與 apiTokenRoleLabels 相同。
+func apiTokenRoleLevels(roles []APITokenRoleRef) []string {
+	out := make([]string, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, model.NormalizeAPITokenLevel(r.Level))
 	}
 	return out
 }
 
 // apiTokenRoleLabels 角色的呈現值：內建角色用內建鍵，自訂角色用角色名稱。
+// apiTokenPrivilegedLevels 高權限角色（內建鍵，順序同 keys）各自的層級；查無對應授權角色時視為唯讀。
+func apiTokenPrivilegedLevels(keys []string, roles []APITokenRoleRef) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		lv := model.APITokenLevelRead
+		for _, r := range roles {
+			if r.BuiltinKey == k {
+				lv = model.NormalizeAPITokenLevel(r.Level)
+				break
+			}
+		}
+		out = append(out, lv)
+	}
+	return out
+}
+
+// apiTokenRoleLabels 告警參數用的角色標示：內建角色為鍵，自訂角色為名稱。清單以半形逗號連接、與層級清單
+// 逐項對應，自訂名稱內的半形逗號因此換成全形，項數才不會錯位。
 func apiTokenRoleLabels(roles []APITokenRoleRef) []string {
 	out := make([]string, 0, len(roles))
 	for _, r := range roles {
 		if r.BuiltinKey != "" {
 			out = append(out, r.BuiltinKey)
 		} else {
-			out = append(out, r.Name)
+			out = append(out, strings.ReplaceAll(r.Name, ",", "，"))
 		}
 	}
 	return out
@@ -69,6 +97,7 @@ func (r apiTokenEventRecorder) APITokenCreated(tx *gorm.DB, ev APITokenCreatedEv
 		"granted_roles": apiTokenRoleRefsJSON(ev.GrantedRoles),
 		"expires_at":    apiTokenExpiryValue(ev.ExpiresAt), "never_expires": ev.ExpiresAt == nil,
 		"privileged": len(ev.PrivilegedKeys) > 0,
+		"access":     model.APITokenAccessOf(apiTokenRoleLevels(ev.GrantedRoles)),
 	}
 	if corr != "" {
 		detail["correlation_id"] = corr
@@ -85,8 +114,13 @@ func (r apiTokenEventRecorder) APITokenCreated(tx *gorm.DB, ev APITokenCreatedEv
 	}
 	params := map[string]string{
 		"privileged_roles": strings.Join(ev.PrivilegedKeys, ","),
-		"token_name":       ev.Name,
-		"granted_roles":    strings.Join(apiTokenRoleLabels(ev.GrantedRoles), ","),
+		// 與 privileged_roles 同序的層級
+		"privileged_role_levels": strings.Join(apiTokenPrivilegedLevels(ev.PrivilegedKeys, ev.GrantedRoles), ","),
+		"token_name":             ev.Name,
+		"granted_roles":          strings.Join(apiTokenRoleLabels(ev.GrantedRoles), ","),
+		// 與 granted_roles 同序的層級（read｜read_write）；高權限角色設為唯讀時告警照發，分級不變
+		"granted_role_levels": strings.Join(apiTokenRoleLevels(ev.GrantedRoles), ","),
+		"access":              model.APITokenAccessOf(apiTokenRoleLevels(ev.GrantedRoles)),
 	}
 	// 到期一律明寫：expiry 為 at（另帶 expires_at）或 never，收件人分得出永不到期與資料缺漏
 	if ev.ExpiresAt != nil {

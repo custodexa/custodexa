@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mount, enableAutoUnmount } from '@vue/test-utils'
+import { flushPromises, mount, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import ApiTokenList from '../ApiTokenList.vue'
 import {
@@ -145,10 +145,98 @@ describe('API token 清單', () => {
 
   it('本人模式：底部常駐「建立後不能修改」說明，名稱可聚焦看如何修改；管理者模式沒有', () => {
     const self = mountList({ showEditHint: true })
-    expect(self.get('[data-test="edit-hint"]').text()).toContain('建立後不能修改名稱、授權角色或到期時間')
+    expect(self.get('[data-test="edit-hint"]').text()).toContain('建立後不能修改名稱、授權角色、權限或到期時間')
     expect(self.get('[data-test="token-row-2"] [data-test="token-name"]').attributes('tabindex')).toBe('0')
     const admin = mountList({ mode: 'admin' })
     expect(admin.find('[data-test="edit-hint"]').exists()).toBe(false)
     expect(admin.get('[data-test="token-row-2"] [data-test="token-name"]').attributes('tabindex')).toBeUndefined()
+  })
+})
+
+describe('API token 清單的權限欄', () => {
+  const rw = (extra = {}) => ({ level: 'read_write', ...extra })
+  const ro = (extra = {}) => ({ level: 'read', ...extra })
+
+  it('三種總結：全部唯讀為灰色唯讀、全部讀寫為琥珀讀寫、兩者皆有為虛線框部分讀寫並寫出幾個角色讀寫', () => {
+    const tokens = [
+      tokenDrift({ id: 31, access: 'read', granted_roles: [roleAsset(ro()), roleAuthz(ro())] }),
+      tokenProdApply({ id: 32, access: 'read_write', granted_roles: [roleAsset(rw()), roleAuthz(rw())] }),
+      tokenProdApply({ id: 33, name: 'terraform-prod-apply-2', access: 'mixed', granted_roles: [roleAsset(rw()), roleAuthz(ro())] }),
+    ]
+    const w = mountList({ tokens })
+    const cell = (id) => w.get(`[data-test="access-${id}"]`)
+    expect(cell(31).get('[data-test="access-tag"]').text()).toBe('唯讀')
+    expect(cell(31).get('[data-test="access-tag"]').classes()).toContain('ot-tag-neutral')
+    expect(cell(31).find('[data-test="access-sub"]').exists()).toBe(false)
+    expect(cell(32).get('[data-test="access-tag"]').text()).toBe('讀寫')
+    expect(cell(32).get('[data-test="access-tag"]').attributes('data-access')).toBe('read_write')
+    expect(cell(32).get('[data-test="access-tag"]').classes()).not.toContain('ot-tag-neutral')
+    expect(cell(33).get('[data-test="access-tag"]').text()).toBe('部分讀寫')
+    expect(cell(33).get('[data-test="access-tag"]').classes()).toContain('is-mixed')
+    expect(cell(33).get('[data-test="access-sub"]').text()).toBe('1 個角色讀寫')
+  })
+
+  it('授權角色欄每個角色後面帶自己的權限小標', () => {
+    const w = mountList({ tokens: [tokenProdApply({ id: 33, access: 'mixed', granted_roles: [roleAsset(rw()), roleAuthz(ro())] })] })
+    expect(w.get('[data-test="granted-role-33-5"] [data-test="level-tag"]').text()).toBe('讀寫')
+    expect(w.get('[data-test="granted-role-33-5"] [data-test="level-tag"]').attributes('data-level')).toBe('read_write')
+    expect(w.get('[data-test="granted-role-33-9"] [data-test="level-tag"]').text()).toBe('唯讀')
+  })
+
+  it('升級前建立的 token：權限照實為讀寫，第二行以小字標出「升級前建立」', () => {
+    const w = mountList({
+      tokens: [
+        tokenPlanCi({ id: 41, access: 'read_write', created_before_levels: true, granted_roles: [roleAsset(rw())] }),
+        tokenDrift({ id: 42, access: 'read', created_before_levels: false, granted_roles: [roleAsset(ro())] }),
+      ],
+    })
+    expect(w.get('[data-test="access-41"] [data-test="access-tag"]').text()).toBe('讀寫')
+    expect(w.get('[data-test="access-41"] [data-test="access-sub"]').text()).toBe('升級前建立')
+    expect(w.find('[data-test="access-42"] [data-test="access-sub"]').exists()).toBe(false)
+  })
+
+  it('總結依建立時的選擇：角色被收回後仍顯示部分讀寫，收回的角色劃線並保留權限小標', () => {
+    const w = mountList({
+      tokens: [tokenProdApply({ id: 33, access: 'mixed', granted_roles: [roleAsset(rw()), roleAuthz(ro({ effective: false, scope: null }))] })],
+    })
+    expect(w.get('[data-test="access-33"] [data-test="access-tag"]').text()).toBe('部分讀寫')
+    const lost = w.get('[data-test="granted-role-33-9"]')
+    expect(lost.get('[data-test="role-revoked"]').text()).toBe('已收回')
+    expect(lost.get('[data-test="level-tag"]').text()).toBe('唯讀')
+  })
+
+  it('讀到不認得的層級或總結值：一律顯示為唯讀；沒有總結欄位時由各角色層級算出', () => {
+    const w = mountList({
+      tokens: [
+        tokenDrift({ id: 51, access: 'admin', granted_roles: [roleAsset({ level: 'admin' })] }),
+        tokenProdApply({ id: 52, granted_roles: [roleAsset(rw()), roleAuthz(ro())] }),
+      ],
+    })
+    expect(w.get('[data-test="access-51"] [data-test="access-tag"]').text()).toBe('唯讀')
+    expect(w.get('[data-test="granted-role-51-5"] [data-test="level-tag"]').text()).toBe('唯讀')
+    expect(w.get('[data-test="access-52"] [data-test="access-tag"]').text()).toBe('部分讀寫')
+  })
+
+  it('欄頭「權限」旁有說明提示，內容與建立對話框的說明同一段', () => {
+    const w = mountList({ tokens: [tokenDrift()] })
+    expect(w.get('[data-test="col-access"]').text()).toContain('權限')
+    expect(w.find('[data-test="col-access-help"]').attributes('tabindex')).toBe('0')
+  })
+
+  // 擋：說明元件的文字色與預設 dark 提示框的底色相同，滑過只看得到標籤與結尾句
+  it('欄頭說明放在 light 提示框，提示框裡是說明元件', async () => {
+    const w = mountList({ tokens: [tokenDrift()] })
+    const tip = w.findAllComponents({ name: 'ElTooltip' })
+      .find((c) => c.props('popperClass') === 'atl-explain-popper')
+    expect(tip).toBeTruthy()
+    expect(tip.props('effect')).toBe('light')
+    await w.get('[data-test="col-access-help"]').trigger('mouseenter')
+    await new Promise((r) => setTimeout(r, 300))
+    await flushPromises()
+    const popper = document.querySelector('.atl-explain-popper')
+    expect(popper).not.toBeNull()
+    expect(popper.classList.contains('is-light')).toBe(true)
+    expect(popper.classList.contains('is-dark')).toBe(false)
+    expect(popper.querySelector('[data-test="level-explain"]')).not.toBeNull()
   })
 })

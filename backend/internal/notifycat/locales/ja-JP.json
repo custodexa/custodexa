@@ -224,11 +224,11 @@
   "privileged_api_token_created": {
     "at": {
       "title": "高権限 API トークンの作成",
-      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロール（{privileged_roles}）を付与しました。付与したロール：{granted_roles}；有効期限：{expires_at}（レベル：{severity}）。"
+      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロールを付与しました：{privileged_roles}。付与したロール：{granted_roles}；有効期限：{expires_at}（レベル：{severity}）。"
     },
     "never": {
       "title": "高権限 API トークンの作成",
-      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロール（{privileged_roles}）を付与しました。付与したロール：{granted_roles}；有効期限なし（レベル：{severity}）。"
+      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロールを付与しました：{privileged_roles}。付与したロール：{granted_roles}；有効期限なし（レベル：{severity}）。"
     }
   },
   "api_token_credential_attached": {

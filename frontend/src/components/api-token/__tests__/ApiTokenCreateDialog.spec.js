@@ -49,7 +49,7 @@ describe('建立 API token 對話框', () => {
     expect(w.get('[data-test="expiry-hint"]').text()).toContain('選一個期限')
     expect(w.findAll('[data-test="expiry-options"] .is-active')).toHaveLength(0)
     const summary = w.get('[data-test="create-summary"]').text()
-    expect(summary).toContain('你選了：資產管理員（研發三處、研發四處）、授權管理員（全系統）。')
+    expect(summary).toContain('只能讀取：資產管理員（研發三處、研發四處）、授權管理員（全系統）。不會新增、修改或刪除任何資料。')
     expect(summary).toContain('角色指派回來時一併恢復')
     expect(summary).toContain('只限管理與設定 API')
     expect(w.get('[data-test="summary-cidr"]').text()).toContain('203.0.113.0/24、198.51.100.0/24')
@@ -60,7 +60,7 @@ describe('建立 API token 對話框', () => {
     const w = mountDialog()
     await w.get('[data-test="role-9"] input').setValue(false)
     expect(w.get('[data-test="roles-count"]').text()).toBe('已選 1 個')
-    expect(w.get('[data-test="summary-roles"]').text()).toContain('你選了：資產管理員（研發三處、研發四處）。')
+    expect(w.get('[data-test="summary-roles"]').text()).toContain('只能讀取：資產管理員（研發三處、研發四處）。')
     expect(w.get('[data-test="summary-roles"]').text()).not.toContain('授權管理員')
     await w.get('[data-test="role-5"] input').setValue(false)
     expect(w.get('[data-test="summary-none"]').text()).toBe('還沒有選任何角色，這把 API token 什麼都不能做。')
@@ -107,11 +107,34 @@ describe('建立 API token 對話框', () => {
     expect(w.get('[data-test="summary-cidr"]').text()).toContain('沒有設定允許來源網段，任何位址都能使用')
   })
 
-  it('勾選的角色含超級管理者：頂端黃框說明會發告警，摘要改寫成超級管理者能做的事', () => {
+  it('勾選的角色含超級管理者：頂端黃框照樣出現並依權限換標題，摘要改寫成超級管理者看得到／能做的事', async () => {
     const w = mountDialog({ eligibility: eligibility({ grantable_roles: [roleAdmin()] }) })
-    expect(w.get('[data-test="create-privilege-super"]').text()).toContain('這把 API token 授權了超級管理者角色')
-    expect(w.get('[data-test="create-privilege-super"]').text()).toContain('建立高權限 API token')
-    expect(w.get('[data-test="summary-roles"]').text()).toContain('也就是超級管理者能做的所有管理與設定')
+    const read = w.get('[data-test="create-privilege-super"]').text()
+    expect(read).toContain('這把 API token 授權了超級管理者角色（唯讀）')
+    expect(read).toContain('設為唯讀時不能改變任何資料，但讀得到你看得到的所有管理與設定資料')
+    expect(read).toContain('建立高權限 API token')
+    expect(w.get('[data-test="summary-super"]').text()).toBe('只能讀取：管理員（全系統），也就是超級管理者看得到的所有管理與設定資料。不會新增、修改或刪除任何資料。')
+    await w.get('[data-test="level-1-read_write"] input').setValue(true)
+    const write = w.get('[data-test="create-privilege-super"]').text()
+    expect(write).toContain('這把 API token 授權了超級管理者角色，並設為讀寫')
+    expect(write).toContain('用它可以做你能做的所有管理與設定')
+    expect(w.get('[data-test="summary-super"]').text()).toContain('也就是超級管理者能做的所有管理與設定')
+    expect(w.get('[data-test="summary-super"] .is-write').text()).toBe('可以讀取，也可以修改：')
+  })
+
+  it('超級管理者唯讀、另一個角色讀寫：摘要逐角色寫出，不說成不能修改資料', async () => {
+    const w = mountDialog({ eligibility: eligibility({ grantable_roles: [roleAdmin(), roleAsset()] }) })
+    const adminId = roleAdmin().role_id
+    const assetId = roleAsset().role_id
+    for (const id of [adminId, assetId]) {
+      const box = w.get(`[data-test="role-${id}"] input`)
+      if (!box.element.checked) await box.setValue(true)
+    }
+    await w.get(`[data-test="level-${assetId}-read_write"] input`).setValue(true)
+    expect(w.find('[data-test="summary-super"]').exists()).toBe(false)
+    expect(w.get('[data-test="summary-write"] .is-write').text()).toBe('可以讀取，也可以修改：')
+    expect(w.get('[data-test="summary-read"]').text()).not.toContain('不會新增、修改或刪除任何資料')
+    expect(w.get('[data-test="create-summary"]').text()).not.toContain('不會新增、修改或刪除任何資料')
   })
 
   it('勾選系統安全管理員才出現黃框，取消勾選即消失', async () => {
@@ -130,7 +153,8 @@ describe('建立 API token 對話框', () => {
     await flushPromises()
     const payload = api.create.mock.calls[0][0]
     expect(payload.name).toBe('tf-new')
-    expect(payload.role_ids).toEqual([5, 9])
+    expect(payload.roles).toEqual([{ role_id: 5, level: 'read' }, { role_id: 9, level: 'read' }])
+    expect(payload).not.toHaveProperty('role_ids')
     expect(payload.never_expires).toBeUndefined()
     const at = new Date(payload.expires_at)
     expect([at.getHours(), at.getMinutes(), at.getSeconds()]).toEqual([23, 59, 59])
@@ -240,6 +264,130 @@ describe('建立 API token 對話框', () => {
   })
 })
 
+describe('每個角色的權限', () => {
+  const activeLevel = (w, id) => w.get(`[data-test="level-${id}"] .is-active input`).element.value
+
+  it('預設唯讀：每個勾選的角色都停在唯讀，摘要只有「只能讀取」一句', () => {
+    const w = mountDialog()
+    expect(activeLevel(w, 5)).toBe('read')
+    expect(activeLevel(w, 9)).toBe('read')
+    expect(w.find('[data-test="summary-write"]').exists()).toBe(false)
+    expect(w.get('[data-test="summary-read"]').text()).toContain('不會新增、修改或刪除任何資料。')
+    expect(w.get('[data-test="roles-hint"]').text()).toMatch(/^每個角色各選「唯讀」或「讀寫」，預設唯讀。只能從你自己的管理角色中選/)
+  })
+
+  it('把一個角色切成讀寫：該段轉琥珀色，摘要第一句以「可以讀取，也可以修改」列出它，第二句只列唯讀的', async () => {
+    const w = mountDialog()
+    await w.get('[data-test="level-5-read_write"] input').setValue(true)
+    expect(activeLevel(w, 5)).toBe('read_write')
+    expect(w.get('[data-test="level-5"]').classes()).toContain('is-write')
+    expect(w.get('[data-test="level-9"]').classes()).not.toContain('is-write')
+    expect(w.get('[data-test="summary-write"]').text()).toBe('可以讀取，也可以修改：資產管理員（研發三處、研發四處）。')
+    expect(w.get('[data-test="summary-write"] .is-write').text()).toBe('可以讀取，也可以修改：')
+    expect(w.get('[data-test="summary-read"]').text()).toBe('只能讀取：授權管理員（全系統）。')
+  })
+
+  it('全部設為讀寫：只改已勾選的角色，不會勾選未勾的；再按全部設為唯讀可一次改回', async () => {
+    const w = mountDialog()
+    await w.get('[data-test="role-9"] input').setValue(false)
+    await w.get('[data-test="level-set-all-read_write"]').trigger('click')
+    expect(activeLevel(w, 5)).toBe('read_write')
+    expect(activeLevel(w, 9)).toBe('read')
+    expect(w.get('[data-test="roles-count"]').text()).toBe('已選 1 個')
+    await w.get('[data-test="role-9"] input').setValue(true)
+    await w.get('[data-test="level-set-all-read_write"]').trigger('click')
+    expect(activeLevel(w, 9)).toBe('read_write')
+    await w.get('[data-test="level-set-all-read"]').trigger('click')
+    expect(activeLevel(w, 5)).toBe('read')
+    expect(activeLevel(w, 9)).toBe('read')
+  })
+
+  it('取消勾選再勾回：回到唯讀，不記得先前選的讀寫；未勾選時切換整組變灰不能按', async () => {
+    const w = mountDialog()
+    await w.get('[data-test="level-9-read_write"] input').setValue(true)
+    expect(activeLevel(w, 9)).toBe('read_write')
+    await w.get('[data-test="role-9"] input').setValue(false)
+    expect(w.get('[data-test="level-9-read"] input').element.disabled).toBe(true)
+    expect(w.get('[data-test="level-9-read_write"] input').element.disabled).toBe(true)
+    expect(w.get('[data-test="level-9"]').classes()).not.toContain('is-write')
+    await w.get('[data-test="role-9"] input').setValue(true)
+    expect(activeLevel(w, 9)).toBe('read')
+    expect(w.get('[data-test="level-9-read"] input').element.disabled).toBe(false)
+  })
+
+  it('用「全部」取消後再全選：每個角色都回到唯讀；全部取消時「全部設為」變灰', async () => {
+    const w = mountDialog()
+    await w.get('[data-test="level-set-all-read_write"]').trigger('click')
+    await w.get('[data-test="roles-all"] input').setValue(false)
+    expect(w.get('[data-test="level-set-all-read"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-test="level-set-all-read_write"]').attributes('disabled')).toBeDefined()
+    await w.get('[data-test="roles-all"] input').setValue(true)
+    expect(activeLevel(w, 5)).toBe('read')
+    expect(activeLevel(w, 9)).toBe('read')
+  })
+
+  it('送出時每個勾選的角色各帶自己的層級', async () => {
+    api.create.mockResolvedValue({ ...tokenDrift({ id: 11 }), token: FAKE_PLAINTEXT })
+    const w = mountDialog()
+    await w.get('[data-test="create-name"]').setValue('terraform-prod-apply-2')
+    await w.get('[data-test="level-5-read_write"] input').setValue(true)
+    await choose(w, 'd90')
+    await w.get('[data-test="create-submit"]').trigger('click')
+    await flushPromises()
+    expect(api.create.mock.calls[0][0].roles).toEqual([
+      { role_id: 5, level: 'read_write' },
+      { role_id: 9, level: 'read' },
+    ])
+  })
+
+  it('只有一個管理角色：沒有勾選框也沒有「全部設為」，仍要選權限，預設唯讀', async () => {
+    api.create.mockResolvedValue({ ...tokenDrift(), token: FAKE_PLAINTEXT })
+    const w = mountDialog({ eligibility: eligibility({ grantable_roles: [roleAsset()] }) })
+    expect(w.find('[data-test="level-set-all"]').exists()).toBe(false)
+    expect(w.get('[data-test="roles-single"]').text()).toContain('範圍：研發三處、研發四處')
+    expect(activeLevel(w, 5)).toBe('read')
+    await w.get('[data-test="level-5-read_write"] input').setValue(true)
+    await w.get('[data-test="create-name"]').setValue('asset-sync')
+    await choose(w, 'never')
+    await w.get('[data-test="create-submit"]').trigger('click')
+    await flushPromises()
+    expect(api.create.mock.calls[0][0].roles).toEqual([{ role_id: 5, level: 'read_write' }])
+  })
+
+  it('系統安全管理員設讀寫、資產管理員唯讀：黃框只講高權限的那個角色與它的權限', async () => {
+    const w = mountDialog({ eligibility: eligibility({ grantable_roles: [roleSecurity(), roleAsset()] }) })
+    expect(w.get('[data-test="create-privilege-security"]').text()).toContain('這把 API token 授權了系統安全管理員角色（唯讀）')
+    expect(w.get('[data-test="create-privilege-security"]').text()).toContain('讀得到全系統安全政策、通知與告警設定')
+    await w.get('[data-test="level-2-read_write"] input').setValue(true)
+    expect(w.get('[data-test="create-privilege-security"]').text()).toContain('這把 API token 授權了系統安全管理員角色，並設為讀寫')
+    expect(w.get('[data-test="create-privilege-security"]').text()).toContain('用它可以變更全系統安全政策')
+    expect(w.get('[data-test="summary-write"]').text()).toBe('可以讀取，也可以修改：系統安全管理員（全系統）。')
+    expect(w.get('[data-test="summary-read"]').text()).toBe('只能讀取：資產管理員（研發三處、研發四處）。')
+  })
+
+  it('「唯讀與讀寫有什麼不同？」就地展開說明，右上可關閉', async () => {
+    const w = mountDialog()
+    expect(w.find('[data-test="level-explain"]').exists()).toBe(false)
+    await w.get('[data-test="level-help"]').trigger('click')
+    const text = w.get('[data-test="level-explain"]').text()
+    expect(text).toContain('唯讀與讀寫有什麼不同')
+    expect(text).toContain('也可以使用預覽、試算這類不會存下任何變更的功能')
+    expect(text).toContain('這時兩個角色都要設為讀寫才做得到')
+    expect(text).toContain('平台會拒絕這次呼叫，資料不會有任何變動')
+    await w.get('[data-test="level-explain-close"]').trigger('click')
+    expect(w.find('[data-test="level-explain"]').exists()).toBe(false)
+  })
+
+  it('全部取消就按建立：只有角色框紅字，權限不另驗證', async () => {
+    const w = mountDialog()
+    await w.get('[data-test="roles-all"] input').setValue(false)
+    await w.get('[data-test="create-submit"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-test="err-roles"]').text()).toBe('請至少選擇一個角色')
+    expect(w.findAll('.atc-error')).toHaveLength(3)
+  })
+})
+
 describe('句子之間的空白', () => {
   afterEach(() => {
     i18n.global.locale.value = 'zh-TW'
@@ -257,9 +405,12 @@ describe('句子之間的空白', () => {
     const hint = w.get('[data-test="roles-hint"]').text()
     expect(hint).not.toMatch(/\.[A-Z]/)
     expect(hint).toMatch(/yours\. \S/)
-    const summary = w.get('[data-test="summary-roles"]').text()
-    expect(summary).not.toMatch(/\.[A-Z]/)
-    expect(summary).not.toMatch(/\. {2}/)
+    for (const p of w.findAll('[data-test="summary-roles"] p')) {
+      expect(p.text()).not.toMatch(/\.[A-Z]/)
+      expect(p.text()).not.toMatch(/\. {2}/)
+    }
+    expect(w.get('[data-test="summary-read"]').text()).toMatch(/^Can only read: \S/)
+    expect(w.get('[data-test="summary-read"]').text()).toMatch(/\. It will not/)
   })
 
   it('日文：句號後不留空白', () => {

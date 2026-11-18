@@ -222,10 +222,8 @@ func (h *UserHandler) List(c *gin.Context) {
 		req.Page = page
 	}
 
-	// 解析每頁大小
-	if pageSize, err := strconv.Atoi(c.Query("page_size")); err == nil && pageSize > 0 {
-		req.PageSize = pageSize
-	}
+	// 解析每頁大小：不合法沿用預設，超過上限套用上限
+	req.PageSize = parseListPageSize(c.Query("page_size"), req.PageSize)
 
 	// 解析 active 狀態
 	if activeStr := c.Query("active"); activeStr != "" {
@@ -282,8 +280,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 		if respondPrincipalError(c, err) {
 			return
 		}
-		if errors.Is(err, identity.ErrUsernameExists) {
-			apierror.Respond(c, http.StatusBadRequest, apierror.CodeUsernameExists, nil)
+		if code, ok := userCreateConflictCode(err); ok {
+			// 使用者名稱或電子郵件已被使用是衝突，不是請求格式錯誤：回 409，機器碼沿用各自既有的衝突碼
+			apierror.Respond(c, http.StatusConflict, code, nil)
 			return
 		}
 		if errors.Is(err, identity.ErrRoleNotFound) {

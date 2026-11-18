@@ -243,7 +243,8 @@ type preparedSecret struct {
 	publicKey     string
 }
 
-func (s *AssetExecutorService) prepareSecret(ctx context.Context, req *SetExecutorRequest) (preparedSecret, error) {
+// inlinePublicKey 為直填私鑰經驗證取得的公鑰（直填以外的來源不使用）。
+func (s *AssetExecutorService) prepareSecret(ctx context.Context, req *SetExecutorRequest, inlinePublicKey string) (preparedSecret, error) {
 	var out preparedSecret
 	codec := s.accounts.crypto
 	switch req.Source {
@@ -274,6 +275,8 @@ func (s *AssetExecutorService) prepareSecret(ctx context.Context, req *SetExecut
 				return out, fmt.Errorf("加密私鑰失敗: %w", err)
 			}
 			out.privateKeyEnc = enc
+			// 直填的私鑰同樣保存公鑰：由寫入前的驗證取得（已確認與私鑰相符）
+			out.publicKey = inlinePublicKey
 		}
 	}
 	return out, nil
@@ -294,15 +297,18 @@ func (s *AssetExecutorService) Set(ctx context.Context, assetID uint, req *SetEx
 	if err := s.requireSourceCaps(ctx, nil, req, assetID, 0); err != nil {
 		return nil, err
 	}
+	var inlinePublicKey string
 	if req.Source == ExecutorSourceGenerate || req.Source == ExecutorSourceInline {
 		if err := ValidateAccountUsername(req.Username); err != nil {
 			return nil, err
 		}
-		if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+		pub, err := ValidatePrivateKey(req.PrivateKey)
+		if err != nil {
 			return nil, err
 		}
+		inlinePublicKey = pub
 	}
-	secret, err := s.prepareSecret(ctx, req)
+	secret, err := s.prepareSecret(ctx, req, inlinePublicKey)
 	if err != nil {
 		return nil, err
 	}

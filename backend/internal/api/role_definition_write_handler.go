@@ -83,6 +83,8 @@ func respondRoleDefinitionWriteError(c *gin.Context, err error) {
 		apierror.Respond(c, http.StatusConflict, apierror.CodeRoleDefinitionLocked, nil)
 	case errors.Is(err, identity.ErrRoleDefinitionInUse):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeRoleDefinitionInUse, nil)
+	case errors.Is(err, identity.ErrRoleDefinitionVersionConflict):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeRoleDefinitionVersionConflict, nil)
 	case errors.Is(err, identity.ErrRoleDefinitionConflict):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeRoleDefinitionConflict, nil)
 	case errors.Is(err, identity.ErrRoleDefinitionInput):

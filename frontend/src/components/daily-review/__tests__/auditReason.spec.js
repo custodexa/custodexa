@@ -188,6 +188,13 @@ describe('logDetailBlocks', () => {
     expect(blocks.raw).toBe('{\n  "target": "audit_logs",\n  "deleted": 3\n}')
   })
 
+  // 擋：沒有原因碼的列把請求路徑或錯誤訊息以「原因」為名再列一次（兩者各有自己的列）
+  it('有 details 但沒有原因碼：只列格式化的 details，不列原因', () => {
+    const blocks = logDetailBlocks({ path: '/api/v1/my/api-tokens', error_msg: 'x', details: '{"token_name":"t"}' })
+    expect(blocks.showReason).toBe(false)
+    expect(blocks.raw).toBe('{\n  "token_name": "t"\n}')
+  })
+
   it('details 不是 JSON 時原樣列出；沒有 details 也沒有碼時兩塊都不列', () => {
     expect(logDetailBlocks({ details: 'plain text' }).raw).toBe('plain text')
     expect(logDetailBlocks({ path: '/api/v1/assets' })).toEqual({ changes: [], showReason: false, raw: '' })

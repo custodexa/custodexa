@@ -172,13 +172,27 @@
     </div>
 
     <div class="name-row">
-      <el-input
-        v-model="draftName"
-        :disabled="readonly"
-        maxlength="64"
-        :placeholder="$t('roles.create.name')"
-        data-test="editor-name"
-      />
+      <div class="name-field">
+        <el-input
+          v-model="draftName"
+          :disabled="readonly"
+          maxlength="64"
+          :placeholder="$t('roles.create.name')"
+          :class="{ 'name-input-error': nameError }"
+          data-test="editor-name"
+        />
+        <p
+          v-if="nameError"
+          class="name-error"
+          role="alert"
+          data-test="editor-name-error"
+        >
+          <CircleX
+            :size="13"
+            aria-hidden="true"
+          />{{ nameError }}
+        </p>
+      </div>
       <el-input
         v-model="draftDescription"
         :disabled="readonly"
@@ -197,7 +211,13 @@
       data-test="editor-conflict"
     >
       <p>{{ $t('roles.editor.conflict.body') }}</p>
-      <div v-if="!conflictStay">
+      <p
+        v-if="conflictStay"
+        data-test="editor-conflict-draft-kept"
+      >
+        {{ $t('roles.editor.conflict.draftKept') }}
+      </p>
+      <div>
         <el-button
           size="small"
           type="primary"
@@ -207,6 +227,7 @@
           {{ $t('roles.editor.conflict.reload') }}
         </el-button>
         <el-button
+          v-if="!conflictStay"
           size="small"
           data-test="editor-conflict-stay"
           @click="conflictStay = true"
@@ -214,9 +235,6 @@
           {{ $t('roles.editor.conflict.stay') }}
         </el-button>
       </div>
-      <p v-else>
-        {{ $t('roles.editor.conflict.draftKept') }}
-      </p>
     </el-alert>
 
     <el-alert
@@ -594,7 +612,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Eye, Trash2 } from 'lucide-vue-next'
+import { CircleX, Eye, Trash2 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -623,7 +641,8 @@ import {
   createRoleDefinition,
   updateRoleDefinition,
   roleErrorCode,
-  ROLE_ERROR_CONFLICT,
+  ROLE_ERROR_NAME_CONFLICT,
+  ROLE_ERROR_VERSION_CONFLICT,
   getRolePreviewCapabilities,
 } from '@/api/roleDefinitions'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
@@ -647,6 +666,11 @@ const loadedReady = ref(false)
 const saving = ref(false)
 const conflict = ref(false)
 const conflictStay = ref(false)
+// 名稱重複就地標在名稱欄；改動名稱即清除，不影響儲存鈕
+const nameError = ref('')
+watch(draftName, () => {
+  nameError.value = ''
+})
 const openDetails = ref({})
 
 const locked = computed(() => !isNew.value && detail.value?.locked === true)
@@ -909,9 +933,12 @@ const persist = async () => {
     ElMessage.success(t('roles.create.updated'))
     await loadAll()
   } catch (error) {
-    if (roleErrorCode(error) === ROLE_ERROR_CONFLICT) {
+    const code = roleErrorCode(error)
+    if (code === ROLE_ERROR_VERSION_CONFLICT) {
       conflict.value = true
       conflictStay.value = false
+    } else if (code === ROLE_ERROR_NAME_CONFLICT) {
+      nameError.value = t('apiError.ROLE_DEFINITION_CONFLICT')
     } else {
       console.error('儲存角色失敗:', error)
     }
@@ -1080,6 +1107,7 @@ const loadAll = async () => {
     }
     conflict.value = false
     conflictStay.value = false
+    nameError.value = ''
   } catch (error) {
     loadFailed.value = true
     console.error('載入角色失敗:', error)
@@ -1153,6 +1181,23 @@ onBeforeUnmount(() => {
   grid-template-columns: 1fr 2fr;
   gap: var(--ot-space-sm);
   margin-bottom: var(--ot-space-md);
+}
+.name-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-xs);
+  min-width: 0;
+}
+.name-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-danger);
+}
+.name-input-error :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--ot-danger) inset;
 }
 .editor-grid {
   display: grid;

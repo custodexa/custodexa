@@ -293,7 +293,8 @@ func (h *AssetAccountHandler) visibleAccounts(c *gin.Context, userID, assetID ui
 
 // accountProjector 帳號列投影器：與憑證 handler 的 bind、rebind 共用同一個判定。
 func (h *AssetAccountHandler) accountProjector() *accountRowProjector {
-	return &accountRowProjector{credScope: h.credScope, rowActions: h.rowActions}
+	return &accountRowProjector{credScope: h.credScope, rowActions: h.rowActions,
+		fingerprints: fingerprintGateOf(h.accountService)}
 }
 
 // AccountRowProjectorWired 帳號列投影來源已注入（組裝自檢用）。

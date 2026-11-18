@@ -10,9 +10,12 @@ var (
 	// CodeRoleDefinitionInUse 角色仍有直接指派、群組指派或有效的外部群組映射。
 	CodeRoleDefinitionInUse = register("ROLE_DEFINITION_IN_USE",
 		Descriptor{ZhFallback: "此角色仍在使用中，請先移除指派或映射再刪除"})
-	// CodeRoleDefinitionConflict 版本已變動（有人先修改過）或名稱已被使用。
+	// CodeRoleDefinitionConflict 名稱已被使用（新增、修改、複製）。
 	CodeRoleDefinitionConflict = register("ROLE_DEFINITION_CONFLICT",
-		Descriptor{ZhFallback: "角色已被其他人修改，或名稱已被使用，請重新載入後再試"})
+		Descriptor{ZhFallback: "已有同名的角色，請換一個名稱"})
+	// CodeRoleDefinitionVersionConflict 修改或刪除時送出的版本已不是最新（有人先修改過），應重新讀取後再送。
+	CodeRoleDefinitionVersionConflict = register("ROLE_DEFINITION_VERSION_CONFLICT",
+		Descriptor{ZhFallback: "角色已被其他人修改，請重新載入後再試"})
 	// CodeRolePermissionInvalid 權限集合含不合法的項目（整筆拒絕）。
 	CodeRolePermissionInvalid = register("ROLE_PERMISSION_INVALID",
 		Descriptor{ZhFallback: "權限集合含不合法的項目"})

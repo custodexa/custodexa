@@ -30,9 +30,13 @@ var (
 	ErrRoleDefinitionForbidden = errors.New("role definition: forbidden")
 	ErrRoleDefinitionLocked    = errors.New("role definition: locked")
 	ErrRoleDefinitionInUse     = errors.New("role definition: in use")
-	ErrRoleDefinitionConflict  = errors.New("role definition: conflict")
-	ErrRoleDefinitionNotFound  = errors.New("role definition: not found")
-	ErrRoleDefinitionInput     = errors.New("role definition: invalid input")
+	// ErrRoleDefinitionConflict 名稱已被使用（呼叫端應改名稱）。
+	ErrRoleDefinitionConflict = errors.New("role definition: conflict")
+	// ErrRoleDefinitionVersionConflict 送出的版本已不是最新（呼叫端應重新讀取後再送）；與名稱重複分開，
+	// 讓呼叫端分得出該改名稱還是該重讀。
+	ErrRoleDefinitionVersionConflict = errors.New("role definition: version conflict")
+	ErrRoleDefinitionNotFound        = errors.New("role definition: not found")
+	ErrRoleDefinitionInput           = errors.New("role definition: invalid input")
 	// ErrRoleStateEventWriterMissing 狀態事件寫入面未注入（fail-close，不當成功略過）。
 	ErrRoleStateEventWriterMissing = errors.New("role definition: state event writer missing")
 	// ErrRoleGraderMissing 授權變更分級器未注入，而被修改的角色有持有者或引用（fail-close）。
@@ -134,8 +138,12 @@ func permStrings(ps []authz.Permission) []string {
 	return out
 }
 
+// NormalizeRoleName 角色名稱的正規化：去除前後空白。名稱唯一性判定與名稱精確查找共用這一個定義，
+// 兩者因此不會對「同一個名稱」各有解讀。
+func NormalizeRoleName(name string) string { return strings.TrimSpace(name) }
+
 func validateRoleText(name, desc string) (string, string, error) {
-	name = strings.TrimSpace(name)
+	name = NormalizeRoleName(name)
 	if name == "" || utf8.RuneCountInString(name) > roleNameMaxRunes || utf8.RuneCountInString(desc) > roleDescriptionMaxRunes {
 		return "", "", ErrRoleDefinitionInput
 	}
@@ -518,7 +526,7 @@ func (s *RoleDefinitionService) insertRole(tx *gorm.DB, in RoleInput, template *
 	role := &model.Role{Name: name, Description: desc, DefinitionVersion: 1, TemplateRoleID: template}
 	// 保留名稱的 BeforeCreate 會帶入內建識別；此處已因名稱唯一而擋下同名，這裡再確認不會冒認。
 	if err := tx.Create(role).Error; err != nil {
-		return nil, fmt.Errorf("建立角色失敗: %w", err)
+		return nil, roleWriteError("建立", err)
 	}
 	if role.BuiltinKey != nil {
 		return nil, ErrRoleDefinitionLocked
@@ -529,7 +537,7 @@ func (s *RoleDefinitionService) insertRole(tx *gorm.DB, in RoleInput, template *
 	return &writeResult{role: role, before: []string{}, after: permStrings(perms), template: template}, nil
 }
 
-// lockCustomRole 交易內重讀目標並鎖列；內建、範本與存量角色一律鎖定；版本不符為衝突。
+// lockCustomRole 交易內重讀目標並鎖列；內建、範本與存量角色一律鎖定；版本不符為版本衝突。
 func lockCustomRole(tx *gorm.DB, roleID uint, expected int64) (*model.Role, error) {
 	var r model.Role
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&r, roleID).Error; err != nil {
@@ -542,7 +550,7 @@ func lockCustomRole(tx *gorm.DB, roleID uint, expected int64) (*model.Role, erro
 		return nil, ErrRoleDefinitionLocked
 	}
 	if r.DefinitionVersion != expected {
-		return nil, fmt.Errorf("%w: 版本已變動", ErrRoleDefinitionConflict)
+		return nil, fmt.Errorf("%w: 版本已變動", ErrRoleDefinitionVersionConflict)
 	}
 	return &r, nil
 }
@@ -552,10 +560,10 @@ func bumpDefinition(tx *gorm.DB, r *model.Role, set map[string]any) error {
 	set["definition_version"] = r.DefinitionVersion + 1
 	res := tx.Model(&model.Role{}).Where("id = ? AND definition_version = ?", r.ID, r.DefinitionVersion).Updates(set)
 	if res.Error != nil {
-		return fmt.Errorf("更新角色失敗: %w", res.Error)
+		return roleWriteError("更新", res.Error)
 	}
 	if res.RowsAffected != 1 {
-		return fmt.Errorf("%w: 版本已變動", ErrRoleDefinitionConflict)
+		return fmt.Errorf("%w: 版本已變動", ErrRoleDefinitionVersionConflict)
 	}
 	r.DefinitionVersion++
 	return nil

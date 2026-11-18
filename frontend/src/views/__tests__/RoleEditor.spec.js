@@ -353,7 +353,7 @@ describe('RoleEditor', () => {
   })
 
   it('版本衝突：提示重新載入、草稿保留且不再送出', async () => {
-    setup({ putError: { response: { status: 409, data: { error: { code: 'ROLE_DEFINITION_CONFLICT' } } } } })
+    setup({ putError: { response: { status: 409, data: { error: { code: 'ROLE_DEFINITION_VERSION_CONFLICT' } } } } })
     const w = await mountEditor()
     await w.get('[data-test="capability-role_assign"]').setValue(true)
     await w.get('[data-test="editor-save"]').trigger('click')
@@ -365,6 +365,80 @@ describe('RoleEditor', () => {
     await w.get('[data-test="editor-save"]').trigger('click')
     await flushPromises()
     expect(calls('PUT', '/role-definitions/10')).toHaveLength(1)
+  })
+
+  it('版本過期：不出現名稱欄錯誤', async () => {
+    setup({ putError: { response: { status: 409, data: { error: '角色已被其他人修改，請重新載入後再試', code: 'ROLE_DEFINITION_VERSION_CONFLICT' } } } })
+    const w = await mountEditor()
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="editor-conflict"]').exists()).toBe(true)
+    expect(w.find('[data-test="editor-name-error"]').exists()).toBe(false)
+  })
+
+  it('按「留在這裡」之後仍保留重新載入按鈕與完整指示，按下即換成最新版本', async () => {
+    setup({ putError: { response: { status: 409, data: { code: 'ROLE_DEFINITION_VERSION_CONFLICT' } } } })
+    const w = await mountEditor()
+    await w.get('[data-test="capability-role_assign"]').setValue(true)
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="editor-conflict-draft-kept"]').exists()).toBe(false)
+    await w.get('[data-test="editor-conflict-stay"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="editor-conflict-stay"]').exists()).toBe(false)
+    expect(w.get('[data-test="editor-conflict-draft-kept"]').text()).toBe(t('roles.editor.conflict.draftKept'))
+    expect(w.get('[data-test="editor-conflict-reload"]').text()).toBe(t('roles.editor.conflict.reload'))
+    expect(w.get('[data-test="capability-role_assign"]').element.checked).toBe(true)
+    expect(w.get('[data-test="editor-save"]').attributes('disabled')).toBeDefined()
+    const detailGets = calls('GET', '/role-definitions/10').length
+    await w.get('[data-test="editor-conflict-reload"]').trigger('click')
+    await flushPromises()
+    expect(calls('GET', '/role-definitions/10').length).toBe(detailGets + 1)
+    expect(w.find('[data-test="editor-conflict"]').exists()).toBe(false)
+    expect(w.get('[data-test="capability-role_assign"]').element.checked).toBe(false)
+  })
+
+  it('修改時名稱重複：名稱欄紅框紅字、不出現版本過期提示、儲存仍可按，改名後紅字消失', async () => {
+    setup({ putError: { response: { status: 409, data: { error: '已有同名的角色，請換一個名稱', code: 'ROLE_DEFINITION_CONFLICT' } } } })
+    const w = await mountEditor()
+    await w.get('[data-test="capability-role_assign"]').setValue(true)
+    await w.get('input[data-test="editor-name"]').setValue('dup-name')
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="editor-conflict"]').exists()).toBe(false)
+    expect(w.get('[data-test="editor-name-error"]').text()).toBe(t('apiError.ROLE_DEFINITION_CONFLICT'))
+    expect(w.find('.name-input-error input[data-test="editor-name"]').exists()).toBe(true)
+    expect(w.get('[data-test="capability-role_assign"]').element.checked).toBe(true)
+    expect(w.get('[data-test="editor-save"]').attributes('disabled')).toBeUndefined()
+    await w.get('input[data-test="editor-name"]').setValue('fresh-name')
+    expect(w.find('[data-test="editor-name-error"]').exists()).toBe(false)
+    cfg.putError = null
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    const puts = calls('PUT', '/role-definitions/10')
+    expect(puts).toHaveLength(2)
+    expect(puts[1].data.name).toBe('fresh-name')
+  })
+
+  it('新增時名稱重複：名稱欄紅字，不跳「有人修改過」的提示、不導航', async () => {
+    setup()
+    h.request.mockImplementation(async (c) => {
+      const key = `${c.method.toUpperCase()} ${c.url}`
+      if (key === 'GET /role-definitions/descriptors') return descriptorsFixture
+      if (key === 'GET /role-definitions') return { data: cfg.rows, total: cfg.rows.length, can_define: true }
+      if (key === 'POST /role-definitions/summary') return cfg.summary
+      if (key === 'POST /role-definitions') {
+        throw { response: { status: 409, data: { error: '已有同名的角色，請換一個名稱', code: 'ROLE_DEFINITION_CONFLICT' } } }
+      }
+      throw new Error(`unexpected request ${key}`)
+    })
+    const w = await mountEditor({}, { name: 'ops-custom' })
+    await w.get('[data-test="editor-save"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="editor-conflict"]').exists()).toBe(false)
+    expect(w.get('[data-test="editor-name-error"]').text()).toBe(t('apiError.ROLE_DEFINITION_CONFLICT'))
+    expect(h.replace).not.toHaveBeenCalled()
+    expect(w.get('[data-test="editor-save"]').attributes('disabled')).toBeUndefined()
   })
 
   it('修改既有自訂角色：不論人數與引用都先預覽一次，確認框出現會通知安全人員', async () => {

@@ -1106,6 +1106,8 @@
       "audit_export_requester_revoked": "申請者已失去權限，系統取消匯出工作 #{job_id}",
       "authz_capability_denied": "權限不足，操作被拒絕",
       "authz_scope_denied": "目標不在可管理的範圍內，操作被拒絕",
+      "authz_api_token_forbidden_route": "API token 不能使用這個功能",
+      "authz_api_token_read_only": "這個 API token 設為唯讀，不能執行會改變資料的操作",
       "auto_disabled_inactive_account": "帳號逾 {days} 天未登入，系統自動停用",
       "auto_disabled_inactive_account_nodays": "帳號逾期未登入，系統自動停用",
       "credential_abandon": "放棄進行中的憑證輪替",
@@ -1305,7 +1307,9 @@
       "rebindSubmit": "確定更換",
       "rebindDone": "已更換憑證",
       "outOfScopeCredential": "範圍外的共用憑證",
-      "outOfScopeNote": "這台用的共用憑證不在你的管理範圍內：不能更正登記值或脫離共用，仍可更換憑證或移除。"
+      "outOfScopeNote": "這台用的共用憑證不在你的管理範圍內：不能更正登記值或脫離共用，仍可更換憑證或移除。",
+      "fingerprintPrefix": "指紋",
+      "outOfScopeNoteKey": "這台用的共用憑證不在你的管理範圍內：看不到公鑰指紋，不能更正登記值或脫離共用，仍可更換憑證或移除。"
     },
     "headerDescAdmin": "管理遠端主機、資料庫與 K8s 資產（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
     "headerDescUser": "你可以使用或管理的資產。能連線的資產會顯示「連線」；需要審核的資產可以提出申請",
@@ -2769,8 +2773,15 @@
     },
     "expand": {
       "apiTokens": "API token",
-      "apiTokensValue": "{n} 把可用 · 最近使用 {time}",
-      "apiTokensValueNeverUsed": "{n} 把可用 · 尚未使用",
+      "apiTokensValue": "{n} 把可用（{breakdown}） · 最近使用 {time}",
+      "apiTokensValueNeverUsed": "{n} 把可用（{breakdown}） · 尚未使用",
+      "apiTokensValuePlain": "{n} 把可用 · 最近使用 {time}",
+      "apiTokensValuePlainNeverUsed": "{n} 把可用 · 尚未使用",
+      "breakdownRead": "唯讀 {n}",
+      "breakdownMixed": "部分讀寫 {n}",
+      "breakdownReadWrite": "讀寫 {n}",
+      "breakdownAllRead": "全部唯讀",
+      "breakdownAllWrite": "全部讀寫",
       "apiTokensNone": "無",
       "apiTokensLink": "查看與撤銷"
     },
@@ -2946,6 +2957,10 @@
         "reloaded": "列表已重新載入，人數與操作已更新。",
         "ack": "知道了"
       },
+      "versionConflict": {
+        "body": "在你確認刪除之前，有人修改過這個角色，所以沒有刪除。",
+        "next": "列表已重新載入。請看過最新內容，再決定是否刪除。"
+      },
       "scopeAtAssignment": "指派時選節點"
     },
     "create": {
@@ -3039,7 +3054,7 @@
         "body": "你的修改沒有送出，也沒有蓋掉對方的內容，目前仍留在這個畫面上。重新載入會換成對方修改後的版本；想保留你的修改，請先記下再重新載入。",
         "reload": "重新載入最新版本",
         "stay": "留在這裡",
-        "draftKept": "（下方仍是你尚未送出的修改）"
+        "draftKept": "下方仍是你尚未送出的修改，記下要保留的內容後，再按「重新載入最新版本」。"
       },
       "effectiveNow": "儲存後立即生效，並記入操作日誌。",
       "entry": {
@@ -4311,6 +4326,15 @@
     "createdAt": "建立於 {date}",
     "detailUsername": "帳號名",
     "detailSecretType": "型別",
+    "detailFingerprint": "公鑰指紋",
+    "fingerprintHelpTitle": "公鑰指紋是什麼",
+    "fingerprintHelp": "公鑰指紋是由這把私鑰對應的公鑰算出來的識別碼，用來核對平台上存的是哪一把私鑰。它可以公開，無法用來還原私鑰。",
+    "fingerprintHelpLocal": "在自己的電腦上執行 ssh-keygen -lf 金鑰檔，會得到同一格式的指紋，可以拿來比對。",
+    "fingerprintHelpVersion": "這裡是平台登記的現行版本；某一台資產實際用的是哪一把，以那台帳號列的指紋為準。",
+    "fingerprintUnrecorded": "未記錄",
+    "fingerprintWhy": "平台沒有這把私鑰的指紋紀錄，通常是因為它在系統升級前就已設定。不影響連線。",
+    "fingerprintHowTo": "用「{entry}」重新填入同一把私鑰後就會顯示。",
+    "fingerprintHowToDedicated": "到資產的帳號列用「編輯憑證」重新填入同一把私鑰後就會顯示。",
     "detailProtocol": "協定",
     "detailVersion": "現行版本",
     "detailRotation": "輪替狀態",
@@ -4777,7 +4801,8 @@
     "INTERNAL_SYSTEM_ALERT_RAISE": "系統告警處理失敗，變更已取消",
     "NOTFOUND_SYSTEM_ALERT_TYPE": "系統告警類型不存在",
     "RESOURCE_KEYSTROKE_NOT_VIEWABLE": "此連線沒有可查看的鍵盤紀錄內容",
-    "ROLE_DEFINITION_CONFLICT": "角色已被其他人修改，或名稱已被使用，請重新載入後再試",
+    "ROLE_DEFINITION_CONFLICT": "已有同名的角色，請換一個名稱",
+    "ROLE_DEFINITION_VERSION_CONFLICT": "角色已被其他人修改，請重新載入後再試",
     "ROLE_DEFINITION_IN_USE": "此角色仍在使用中，請先移除指派或映射再刪除",
     "ROLE_DEFINITION_LOCKED": "此角色為系統內建範本，不能修改、刪除或複製",
     "AUTH_PROTECTED_ROLE_ASSIGNMENT": "這個指派涉及受保護的角色，你無法執行此操作",
@@ -5640,6 +5665,7 @@
     "CONFLICT_API_TOKEN_NAME": "你已經有同名的 API token，請換一個名稱",
     "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API token 不能使用這個功能",
     "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "API token 不能變更所屬帳號本人的這項設定",
+    "AUTH_API_TOKEN_READ_ONLY": "這個 API token 設為唯讀，不能執行會改變資料的操作",
     "NOTFOUND_API_TOKEN": "API token 不存在"
   },
   "warnings": {
@@ -8977,12 +9003,13 @@
       "targetNamed": "{name}（{kind} #{id}）",
       "viewPermissionOverview": "查看 {name} 的權限一覽",
       "viewHostInventory": "查看這台的主機帳號盤點",
-      "createdSummary": "{actor} 建立了一把 API token，授權角色含{roles}",
+      "createdSummary": "{actor} 建立了一把 API token，授權角色含{roles}，權限為{access}",
       "createdTitle": "建立內容",
       "createdCreator": "建立者（本人）",
       "createdCreatorValue": "{name}（使用者 #{id}）",
       "createdPrivRoles": "授權的高權限角色",
       "createdTokenName": "API token 名稱",
+      "createdAccess": "權限",
       "createdGrantedRoles": "授權角色",
       "createdExpiry": "到期時間",
       "createdNeverExpires": "永不到期",
@@ -9176,14 +9203,17 @@
       "pendingRemove": "將移除",
       "undoRemove": "取消移除",
       "apiTokenLoseTitle": "尚未儲存：{user} 的 API token 會同步失去「{role}」",
-      "apiTokenLoseBody": "授權了這個角色的 API token 有 {n} 把：{names}，儲存後只剩「{remaining}」，仍可使用。沒有任何一把只授權了「{role}」，所以不會有 API token 暫停。之後再把角色指派回來，會自動恢復「{role}」。",
+      "apiTokenLoseBody": "授權了這個角色的 API token 有 {n} 把（括號內是這個角色在那把上的權限）：{names}。儲存後它們只剩「{remaining}」，仍可使用。沒有任何一把只授權了「{role}」，所以不會有 API token 暫停。之後再把角色指派回來，會依原本的權限自動恢復。",
       "apiTokenLoseBodyMixed": "授權了這個角色的 API token 有 {n} 把：{names}。儲存後其中 {m} 把會暫停（角色指派回來即恢復），其餘仍可使用。",
       "apiTokenAllLostTitle": "尚未儲存：{user} 將沒有任何管理權限，名下 {n} 把 API token 會全部暫停",
       "apiTokenAllLostBody": "這 {n} 把授權的角色都會被收回，儲存後狀態變成「暫停（角色已收回）」，呼叫一律被拒絕；之後重新指派角色，它們會自動恢復。要永久停止，請到「API token」分頁撤銷。{user} 也不能再建立新的。",
       "apiTokenNoGrowTitle": "{user} 現有的 API token 不會自動得到「{role}」",
       "apiTokenNoGrowBody": "每把 API token 只能做建立時勾選的角色；本人多了新角色，現有的 token 不會跟著得到。要用新角色，得由 {user} 另建一把；授權角色含「管理員」的 API token 建立時會發出系統告警。",
       "apiTokenRegainTitle": "尚未儲存：{user} 的 API token 會恢復「{role}」",
-      "apiTokenRegainBody": "授權過這個角色、目前不生效的 API token 有 {n} 把：{names}。儲存後會立即恢復「{role}」，用到它的工具可以再做這個角色能做的事；不想恢復的，請先到「API token」分頁撤銷。",
+      "apiTokenRegainBody": "授權過這個角色、目前不生效的 API token 有 {n} 把，會依建立時選的權限恢復。",
+      "apiTokenRegainWriteLine": "可以修改資料（讀寫）：{names}。",
+      "apiTokenRegainReadLine": "只能讀取（唯讀）：{names}。",
+      "apiTokenRegainTail": "儲存後立即生效，用到它們的工具可以再做這個角色能做的事；不想恢復的，請先到「API token」分頁撤銷。",
       "apiTokenRegainActive": "其中 {m} 把原本暫停，儲存後恢復為可用：{names}。",
       "apiTokenRegainUnknownTitle": "尚未儲存：無法確認 {user} 現有的 API token 是否會恢復「{role}」",
       "apiTokenRegainUnknownBody": "API token 授權過的角色，指派回來時會自動恢復。目前讀不到 {user} 的 API token 清單，無法確認有沒有這種情形；儲存後請到「API token」分頁確認。"
@@ -9201,20 +9231,22 @@
       "effectiveNow": "儲存後立即生效，並記入操作日誌。",
       "unavailable": "預覽暫時無法取得",
       "apiToken": "API token",
-      "apiTokenLose": "{n} 把會失去這個角色，{m} 把暫停",
+      "apiTokenLose": "{n} 把會失去這個角色（{breakdown}），{m} 把暫停",
       "apiTokenAllLost": "{n} 把將暫停（角色指派回來即恢復）",
       "apiTokenUnchanged": "不變（現有 {n} 把沒有勾選這個角色）",
       "apiTokenFirst": "目前沒有。儲存後，{user} 可以在個人資料頁自己建立",
-      "apiTokenRegain": "{n} 把會恢復這個角色",
-      "apiTokenRegainActive": "{n} 把會恢復這個角色，其中 {m} 把恢復可用",
+      "apiTokenRegain": "{n} 把會恢復這個角色（{breakdown}）",
+      "apiTokenRegainActive": "{n} 把會恢復這個角色（{breakdown}），其中 {m} 把恢復可用",
+      "apiTokenLevelCountWrite": "{n} 把讀寫",
+      "apiTokenLevelCountRead": "{n} 把唯讀",
       "apiTokenCheckAfterSave": "無法預先確認，儲存後請到「API token」分頁查看",
       "apiTokenPartsSeparator": "；",
       "viewApiTokens": "查看 API token"
     },
     "loadFailed": "無法載入這位使用者",
     "apiTokens": {
-      "desc": "這是 {user} 本人建立的 API token，各自只能做「授權角色」欄列出的事（不會超過 {user} 目前的角色），只限管理與設定 API。只有本人能建立；你可以撤銷，撤銷後用它的工具會立即無法呼叫。",
-      "descProtected": "這是 {user} 本人建立的 API token，各自只能做「授權角色」欄列出的事，只限管理與設定 API。只有本人能建立。",
+      "desc": "這是 {user} 本人建立的 API token，各自只能做「授權角色」欄列出的事（不會超過 {user} 目前的角色），只限管理與設定 API；設為唯讀的角色只能讀取，不能改變資料。只有本人能建立；你可以撤銷，撤銷後用它的工具會立即無法呼叫。",
+      "descProtected": "這是 {user} 本人建立的 API token，各自只能做「授權角色」欄列出的事，只限管理與設定 API；設為唯讀的角色只能讀取，不能改變資料。只有本人能建立。",
       "protectedTitle": "只有超級管理者能撤銷 {user} 的 API token",
       "protectedBody": "{user} 持有超級管理者角色，撤銷它的 API token 與停用、刪除受保護帳號是同一條規則。需要緊急停用時，請聯絡其他超級管理者。",
       "protectedBodySecurity": "{user} 持有系統安全管理員角色，撤銷它的 API token 與停用、刪除受保護帳號是同一條規則。需要緊急停用時，請聯絡超級管理者。",
@@ -9517,14 +9549,14 @@
     "justSet": "剛設定",
     "justConverted": "剛轉換",
     "immediateNote": "這一區的動作按下即生效，與下方的「儲存」無關。",
-    "outOfScopeNote": "這組共用憑證不在你的管理範圍內，看不到金鑰指紋，也不能取得公鑰；仍可更換或清除。",
+    "outOfScopeNote": "這組共用憑證不在你的管理範圍內，看不到公鑰指紋，也不能取得公鑰；仍可更換或清除。",
     "credentialLink": "到憑證庫改密或設定排程",
     "convertedRotateHint": "{account} 的密碼過去可能有人知道，建議到憑證庫改一次密碼。",
     "fields": {
       "account": "帳號名稱",
       "secretSource": "秘密來源",
       "secretType": "型別",
-      "fingerprint": "金鑰指紋"
+      "fingerprint": "公鑰指紋"
     },
     "sourceLabel": {
       "generate": "平台產生的金鑰",
@@ -10291,7 +10323,7 @@
   },
   "apiTokens": {
     "title": "API token",
-    "desc": "讓 Terraform 等工具代表你呼叫管理 API。建立時從你自己的管理角色中選擇要授權哪些，它能做的事不會超過你；只限管理與設定，不能建立連線、看錄影、調閱機敏內容，也不能解封或操作金鑰。明文只在建立時顯示一次。",
+    "desc": "讓 Terraform 等工具代表你呼叫管理 API。建立時從你自己的管理角色中選擇要授權哪些，並為每個角色選「唯讀」或「讀寫」，它能做的事不會超過你；只限管理與設定，不能建立連線、看錄影、調閱機敏內容，也不能解封或操作金鑰。明文只在建立時顯示一次。",
     "create": "建立 API token",
     "summary": {
       "active": "可用",
@@ -10301,6 +10333,7 @@
     },
     "col": {
       "name": "名稱",
+      "access": "權限",
       "grantedRoles": "授權角色",
       "status": "狀態",
       "expiresAt": "到期時間",
@@ -10316,15 +10349,34 @@
     "justCreated": "剛建立",
     "inactiveSection": "已失效的 API token（{n}）",
     "inactiveHint": "已到期、已撤銷或已因還原失效，留作紀錄，不能再使用",
-    "editHint": "建立後不能修改名稱、授權角色或到期時間。要調整時，請建立一把新的換到工具上，確認可用後再撤銷舊的。",
+    "editHint": "建立後不能修改名稱、授權角色、權限或到期時間。要調整時，請建立一把新的換到工具上，確認可用後再撤銷舊的。",
     "roleWithScope": "{role}（{scope}）",
+    "level": {
+      "read": "唯讀",
+      "read_write": "讀寫"
+    },
+    "access": {
+      "read": "唯讀",
+      "read_write": "讀寫",
+      "mixed": "部分讀寫",
+      "mixedCount": "{n} 個角色讀寫",
+      "legacy": "升級前建立"
+    },
+    "explain": {
+      "title": "唯讀與讀寫有什麼不同",
+      "read": "可以查看這個角色看得到的資料，也可以使用預覽、試算這類不會存下任何變更的功能。不能新增、修改、刪除，也不能執行任何會改變資料的動作。",
+      "readWrite": "除了唯讀能做的，也能新增、修改與刪除。能做的事仍以這個角色本來的權限為限。",
+      "twoRolesLabel": "兩個角色",
+      "twoRoles": "有些動作同時用到兩個角色的權限，這時兩個角色都要設為讀寫才做得到。",
+      "foot": "用唯讀的角色去做會改變資料的動作，平台會拒絕這次呼叫，資料不會有任何變動。"
+    },
     "empty": {
       "title": "你還沒有 API token",
       "desc": "建立一把交給 Terraform 等工具，它就能代表你呼叫管理 API。"
     },
     "howToChange": {
-      "title": "想改授權角色或到期時間？",
-      "body": "建立後不能修改。請按卡片右上「建立 API token」，選好新的授權與期限，把新的換到工具上、確認可用後，再回來撤銷舊的這把。"
+      "title": "想改授權角色、權限或到期時間？",
+      "body": "建立後不能修改。請按卡片右上「建立 API token」，選好新的授權、權限與期限，把新的換到工具上、確認可用後，再回來撤銷舊的這把。"
     },
     "revokeAction": "撤銷",
     "status": {
@@ -10343,13 +10395,16 @@
       "name": "名稱",
       "namePlaceholder": "例如 terraform-prod-apply",
       "nameHint": "寫出要用它的工具與環境，例如 terraform-prod-apply。操作日誌會記下每次呼叫用的是哪一把。",
-      "roles": "授權角色",
+      "roles": "授權角色與權限",
       "rolesAll": "全部（{n} 個管理角色）",
       "rolesSelected": "已選 {n} 個",
+      "setAll": "已勾選的角色全部設為：",
       "scope": "範圍：{scope}",
       "scopeAll": "全系統",
       "rolesHint": "只能從你自己的管理角色中選；範圍跟著你的角色走，不會超過你。",
       "rolesHintNonGrantable": "你另外持有的「{roles}」不屬於管理類角色，不能授權給 API token。",
+      "levelHint": "每個角色各選「唯讀」或「讀寫」，預設唯讀。",
+      "levelHelp": "唯讀與讀寫有什麼不同？",
       "singleRole": "你只有這一個管理角色，會授權給它",
       "expiry": "到期時間",
       "expiryOption": {
@@ -10370,8 +10425,12 @@
       "datePlaceholder": "選擇日期",
       "neverHint": "這個 API token 不會自動失效。不再使用時，請自己撤銷。",
       "summaryTitle": "這個 API token 能做什麼",
-      "summaryRoles": "你選了：{roles}。",
-      "summaryRolesSuper": "你選了：管理員（全系統），也就是超級管理者能做的所有管理與設定。",
+      "summaryWriteLabel": "可以讀取，也可以修改：",
+      "summaryReadLabel": "只能讀取：",
+      "summaryRoleList": "{roles}。",
+      "summaryAllReadTail": "不會新增、修改或刪除任何資料。",
+      "summarySuperRead": "只能讀取：管理員（全系統），也就是超級管理者看得到的所有管理與設定資料。不會新增、修改或刪除任何資料。",
+      "summarySuperWrite": "可以讀取，也可以修改：管理員（全系統），也就是超級管理者能做的所有管理與設定。",
       "summarySync": "之後若你的某個角色被收回，它也會同步失去那個角色；角色指派回來時一併恢復。",
       "summaryNone": "還沒有選任何角色，這把 API token 什麼都不能做。",
       "summaryScope": "只限管理與設定 API：不能建立連線、看錄影、調閱機敏內容，也不能解封或操作金鑰。",
@@ -10388,12 +10447,16 @@
         "server": "沒有建立 API token。你填的內容還在，可以直接再按一次。"
       },
       "privSuper": {
-        "title": "這把 API token 授權了超級管理者角色",
-        "body": "用它可以做你能做的所有管理與設定。授權角色含超級管理者，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。"
+        "body": "用它可以做你能做的所有管理與設定。授權角色含超級管理者，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。",
+        "titleRead": "這把 API token 授權了超級管理者角色（唯讀）",
+        "bodyRead": "設為唯讀時不能改變任何資料，但讀得到你看得到的所有管理與設定資料。授權角色含超級管理者，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。",
+        "titleWrite": "這把 API token 授權了超級管理者角色，並設為讀寫"
       },
       "privSec": {
-        "title": "這把 API token 授權了系統安全管理員角色",
-        "body": "用它可以變更全系統安全政策、通知與告警設定。授權角色含系統安全管理員，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。"
+        "body": "用它可以變更全系統安全政策、通知與告警設定。授權角色含系統安全管理員，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。",
+        "titleRead": "這把 API token 授權了系統安全管理員角色（唯讀）",
+        "bodyRead": "設為唯讀時不能改變任何資料，但讀得到全系統安全政策、通知與告警設定。授權角色含系統安全管理員，建立後會發出系統告警「建立高權限 API token」，送到每一個啟用中的通知通道，並記入操作日誌。",
+        "titleWrite": "這把 API token 授權了系統安全管理員角色，並設為讀寫"
       }
     },
     "reveal": {
@@ -10401,8 +10464,14 @@
       "onceTitle": "這個 API token 只顯示這一次",
       "onceBody": "請立即複製，交給要用它的工具保存（例如 CI 的機密變數）。關閉後無法再次取得；沒存到的話，請撤銷後重新建立一把。不要貼在聊天或文件裡：拿到它的人能以你的身分做管理操作。",
       "testTitle": "測試這個 API token",
-      "testBody": "要確認它可用，把下面的指令貼到終端機執行。回應會列出它代表的帳號、授權角色與到期時間。",
+      "testBody": "要確認它可用，把下面的指令貼到終端機執行。回應會列出它代表的帳號、授權角色與各自的權限、到期時間。",
       "represents": "代表",
+      "access": "權限",
+      "accessHint": {
+        "read": "只能讀取，不能改變任何資料",
+        "read_write": "每個授權角色都可以讀取與修改",
+        "mixed": "會改變資料的動作只能用設為讀寫的角色做"
+      },
       "self": "{user}（你本人）",
       "neverExpires": "不會自動失效；不再使用時請自己撤銷",
       "close": "我已保存，關閉",

@@ -2,7 +2,9 @@ package database
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/custodexa/backend/config"
@@ -33,6 +35,25 @@ func StorageNow() time.Time {
 // 避免時間取值等行為在兩邊分歧。
 func NewGormConfig(l logger.Interface) *gorm.Config {
 	return &gorm.Config{Logger: l, NowFunc: StorageNow}
+}
+
+// NewGormLogger 資料庫日誌：release 只記錯誤，且失敗語句不帶參數值（只留佔位符）；
+// 非 release 逐條記 SQL 並帶參數值（開發用）。
+//
+// 寫入的欄位值（稽核內容、憑證的公鑰等）不應因語句失敗而複寫到正式環境的日誌：
+// 那份副本不受保留政策與完整性控制，揭露範圍也與產品的檢視授權不同。
+func NewGormLogger(release bool, w io.Writer) logger.Interface {
+	cfg := logger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  logger.Info,
+		IgnoreRecordNotFoundError: false,
+		Colorful:                  true,
+	}
+	if release {
+		cfg.LogLevel = logger.Error
+		cfg.ParameterizedQueries = true
+	}
+	return logger.New(log.New(w, "\r\n", log.LstdFlags), cfg)
 }
 
 // InitDatabase 初始化資料庫連線
@@ -77,12 +98,9 @@ func InitDatabase(cfg *config.Config) error {
 	// 也不隨保留政策清除，等於在產品自己的護欄外再開一份明文。
 	//
 	// release 取 `logger.Error`：連線與查詢失敗仍會留下訊號（診斷能力不失），
-	// 但不再逐條輸出 SQL 與參數。非 release（debug／test）維持 `Info` 以利開發。
-	gormLogLevel := logger.Info
-	if cfg.IsReleaseMode() {
-		gormLogLevel = logger.Error
-	}
-	DB, err = gorm.Open(dialector, NewGormConfig(logger.Default.LogMode(gormLogLevel)))
+	// 但不再逐條輸出 SQL；失敗語句也只記帶佔位符的 SQL，不帶參數值（見 NewGormLogger）。
+	// 非 release（debug／test）維持 `Info` 以利開發，該模式的日誌含參數值。
+	DB, err = gorm.Open(dialector, NewGormConfig(NewGormLogger(cfg.IsReleaseMode(), os.Stdout)))
 	if err != nil {
 		return fmt.Errorf("無法連線資料庫: %w", err)
 	}

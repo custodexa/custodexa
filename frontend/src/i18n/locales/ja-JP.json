@@ -1106,6 +1106,8 @@
       "audit_export_requester_revoked": "申請者が権限を失ったため、エクスポートジョブ #{job_id} を取り消し",
       "authz_capability_denied": "権限が不足しているため、操作が拒否されました",
       "authz_scope_denied": "対象が管理可能な範囲外のため、操作が拒否されました",
+      "authz_api_token_forbidden_route": "API token ではこの機能を使えません",
+      "authz_api_token_read_only": "この API token は参照のみに設定されているため、データを変更する操作は実行できません",
       "auto_disabled_inactive_account": "{days} 日以上ログインがないため、アカウントを自動で無効化",
       "auto_disabled_inactive_account_nodays": "一定期間ログインがないため、アカウントを自動で無効化",
       "credential_abandon": "進行中の資格情報ローテーションを中止",
@@ -1305,7 +1307,9 @@
       "rebindSubmit": "変更する",
       "rebindDone": "認証情報を変更しました",
       "outOfScopeCredential": "範囲外の共用認証情報",
-      "outOfScopeNote": "このホストの共用認証情報は管理範囲外のため、登録値の訂正や共用からの離脱はできません。認証情報の変更とアカウントの削除は可能です。"
+      "outOfScopeNote": "このホストの共用認証情報は管理範囲外のため、登録値の訂正や共用からの離脱はできません。認証情報の変更とアカウントの削除は可能です。",
+      "fingerprintPrefix": "フィンガープリント",
+      "outOfScopeNoteKey": "このホストの共用認証情報は管理範囲外のため、公開鍵フィンガープリントは表示できず、登録値の訂正や共用からの離脱もできません。認証情報の変更とアカウントの削除は可能です。"
     },
     "headerDescAdmin": "リモートホスト、データベース、K8s 資産を管理します（SSH、RDP、VNC、MySQL、PostgreSQL、Redis、K8s）",
     "headerDescUser": "利用または管理できる資産です。接続できる資産には「接続」が表示され、承認が必要な資産には接続申請を出せます",
@@ -2769,8 +2773,15 @@
     },
     "expand": {
       "apiTokens": "API token",
-      "apiTokensValue": "使用可能 {n} 個 · 最終使用 {time}",
-      "apiTokensValueNeverUsed": "使用可能 {n} 個 · 未使用",
+      "apiTokensValue": "使用可能 {n} 個（{breakdown}） · 最終使用 {time}",
+      "apiTokensValueNeverUsed": "使用可能 {n} 個（{breakdown}） · 未使用",
+      "apiTokensValuePlain": "使用可能 {n} 個 · 最終使用 {time}",
+      "apiTokensValuePlainNeverUsed": "使用可能 {n} 個 · 未使用",
+      "breakdownRead": "参照のみ {n}",
+      "breakdownMixed": "一部参照・変更 {n}",
+      "breakdownReadWrite": "参照・変更 {n}",
+      "breakdownAllRead": "すべて参照のみ",
+      "breakdownAllWrite": "すべて参照・変更",
       "apiTokensNone": "なし",
       "apiTokensLink": "表示・取り消し"
     },
@@ -2946,6 +2957,10 @@
         "reloaded": "一覧を再読み込みしました。人数と操作は最新です。",
         "ack": "了解"
       },
+      "versionConflict": {
+        "body": "削除を確認する前に、誰かがこのロールを変更したため、削除しませんでした。",
+        "next": "一覧を再読み込みしました。最新の内容を確認してから、削除するかどうか決めてください。"
+      },
       "scopeAtAssignment": "割り当て時にノードを選択"
     },
     "create": {
@@ -3039,7 +3054,7 @@
         "body": "あなたの変更は送信されておらず、相手の内容を上書きしてもいません。この画面にそのまま残っています。再読み込みすると相手が変更した版に置き換わるため、残したい内容は先に控えてください。",
         "reload": "最新版を再読み込み",
         "stay": "このまま残る",
-        "draftKept": "（下は、まだ送信していないあなたの変更です）"
+        "draftKept": "下は、まだ送信していないあなたの変更です。残したい内容を控えてから「最新版を再読み込み」を押してください。"
       },
       "effectiveNow": "保存後すぐに反映され、操作ログに記録されます。",
       "entry": {
@@ -4311,6 +4326,15 @@
     "createdAt": "作成日 {date}",
     "detailUsername": "アカウント名",
     "detailSecretType": "形式",
+    "detailFingerprint": "公開鍵フィンガープリント",
+    "fingerprintHelpTitle": "公開鍵フィンガープリントとは",
+    "fingerprintHelp": "公開鍵フィンガープリントは、この秘密鍵に対応する公開鍵から算出した識別子で、プラットフォームに保存されている秘密鍵がどれかを確認するために使います。公開しても問題なく、秘密鍵を復元することはできません。",
+    "fingerprintHelpLocal": "自分のコンピューターで ssh-keygen -lf 鍵ファイル を実行すると、同じ形式のフィンガープリントが得られ、比較に使えます。",
+    "fingerprintHelpVersion": "ここに表示されるのはプラットフォームに登録された現行版です。各資産が実際に使っている鍵は、その資産のアカウント一覧のフィンガープリントで確認してください。",
+    "fingerprintUnrecorded": "未記録",
+    "fingerprintWhy": "この秘密鍵のフィンガープリントは記録されていません。多くの場合、システムのアップグレード前に設定された鍵です。接続には影響しません。",
+    "fingerprintHowTo": "「{entry}」で同じ秘密鍵を入力し直すと表示されます。",
+    "fingerprintHowToDedicated": "資産のアカウント一覧で「認証情報を編集」から同じ秘密鍵を入力し直すと表示されます。",
     "detailProtocol": "プロトコル",
     "detailVersion": "現行バージョン",
     "detailRotation": "変更状況",
@@ -4777,7 +4801,8 @@
     "INTERNAL_SYSTEM_ALERT_RAISE": "システムアラートの処理に失敗したため、変更は取り消されました",
     "NOTFOUND_SYSTEM_ALERT_TYPE": "システムアラートの種類が見つかりません",
     "RESOURCE_KEYSTROKE_NOT_VIEWABLE": "この接続には表示できるキー入力記録の内容がありません",
-    "ROLE_DEFINITION_CONFLICT": "ロールが他のユーザーによって変更されたか、名前がすでに使用されています。再読み込みしてやり直してください",
+    "ROLE_DEFINITION_CONFLICT": "同じ名前のロールがすでにあります。別の名前にしてください",
+    "ROLE_DEFINITION_VERSION_CONFLICT": "ロールが他のユーザーによって変更されました。再読み込みしてやり直してください",
     "ROLE_DEFINITION_IN_USE": "このロールは使用中です。割り当てまたはマッピングを解除してから削除してください",
     "ROLE_DEFINITION_LOCKED": "このロールは組み込みテンプレートのため、変更・削除・複製できません",
     "AUTH_PROTECTED_ROLE_ASSIGNMENT": "この割り当ては保護されたロールを含むため、実行できません",
@@ -5640,6 +5665,7 @@
     "CONFLICT_API_TOKEN_NAME": "同じ名前の API token がすでにあります。別の名前にしてください",
     "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API token ではこの機能を使えません",
     "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "API token では所属アカウント本人のこの設定を変更できません",
+    "AUTH_API_TOKEN_READ_ONLY": "この API token は参照のみに設定されているため、データを変更する操作は実行できません",
     "NOTFOUND_API_TOKEN": "API token が存在しません"
   },
   "warnings": {
@@ -8977,12 +9003,13 @@
       "targetNamed": "{name}（{kind} #{id}）",
       "viewPermissionOverview": "{name} の権限一覧を見る",
       "viewHostInventory": "このホストのアカウント棚卸しを見る",
-      "createdSummary": "{actor} が API token を作成しました。付与ロールに{roles}が含まれます",
+      "createdSummary": "{actor} が API token を作成しました。付与ロールに{roles}が含まれ、権限は{access}です",
       "createdTitle": "作成内容",
       "createdCreator": "作成者（本人）",
       "createdCreatorValue": "{name}（ユーザー #{id}）",
       "createdPrivRoles": "付与された高権限ロール",
       "createdTokenName": "API token の名前",
+      "createdAccess": "権限",
       "createdGrantedRoles": "付与ロール",
       "createdExpiry": "有効期限",
       "createdNeverExpires": "無期限",
@@ -9176,14 +9203,17 @@
       "pendingRemove": "削除予定",
       "undoRemove": "削除を取り消す",
       "apiTokenLoseTitle": "未保存：{user} の API token も「{role}」を失います",
-      "apiTokenLoseBody": "このロールを付与された API token は {n} 個あります：{names}。保存後は「{remaining}」だけが残り、引き続き使えます。「{role}」だけを付与されたものはないため、一時停止になる API token はありません。後でロールを再び割り当てると、自動的に「{role}」が戻ります。",
+      "apiTokenLoseBody": "このロールを付与された API token は {n} 個あります（括弧内はそのトークンでのこのロールの権限）：{names}。保存後は「{remaining}」だけが残り、引き続き使えます。「{role}」だけを付与されたものはないため、一時停止になる API token はありません。後でロールを再び割り当てると、元の権限のまま自動的に戻ります。",
       "apiTokenLoseBodyMixed": "このロールを付与された API token は {n} 個あります：{names}。保存後、そのうち {m} 個は一時停止になり（ロールを再び割り当てると戻ります）、残りは引き続き使えます。",
       "apiTokenAllLostTitle": "未保存：{user} は管理権限をすべて失い、API token {n} 個はすべて一時停止になります",
       "apiTokenAllLostBody": "これら {n} 個に付与されたロールはすべて解除されます。保存後の状態は「一時停止（ロール解除）」になり、呼び出しはすべて拒否されます。後でロールを再び割り当てると自動的に戻ります。恒久的に止めるには「API token」タブで取り消してください。{user} は新しいトークンも作成できなくなります。",
       "apiTokenNoGrowTitle": "{user} の既存の API token に「{role}」が自動で付くことはありません",
       "apiTokenNoGrowBody": "各 API token は作成時に選んだロールしか使えません。本人に新しいロールが加わっても、既存のトークンには付きません。新しいロールを使うには {user} が別のトークンを作成する必要があります。「管理者」を付与した API token を作成するとシステムアラートが発生します。",
       "apiTokenRegainTitle": "未保存：{user} の API token に「{role}」が戻ります",
-      "apiTokenRegainBody": "このロールを付与されていて、現在は有効でない API token は {n} 個あります：{names}。保存するとすぐに「{role}」が戻り、それを使うツールはこのロールでできることを再び行えます。戻したくないものは、先に「API token」タブで取り消してください。",
+      "apiTokenRegainBody": "このロールを付与されていて、現在は有効でない API token は {n} 個あります。作成時に選んだ権限のまま戻ります。",
+      "apiTokenRegainWriteLine": "データを変更できる（参照・変更）：{names}。",
+      "apiTokenRegainReadLine": "参照だけできる（参照のみ）：{names}。",
+      "apiTokenRegainTail": "保存するとすぐに有効になり、それらを使うツールはこのロールでできることを再び行えます。戻したくないものは、先に「API token」タブで取り消してください。",
       "apiTokenRegainActive": "そのうち {m} 個は現在一時停止中で、保存後に使えるようになります：{names}。",
       "apiTokenRegainUnknownTitle": "未保存：{user} の既存の API token に「{role}」が戻るか確認できません",
       "apiTokenRegainUnknownBody": "API token に付与されたロールは、再び割り当てると自動的に戻ります。{user} の API token 一覧を読み込めないため、現在は確認できません。保存後に「API token」タブで確認してください。"
@@ -9201,20 +9231,22 @@
       "effectiveNow": "保存後すぐに有効になり、操作ログに記録されます。",
       "unavailable": "プレビューを一時的に取得できません",
       "apiToken": "API token",
-      "apiTokenLose": "{n} 個がこのロールを失い、{m} 個が一時停止",
+      "apiTokenLose": "{n} 個がこのロールを失い（{breakdown}）、{m} 個が一時停止",
       "apiTokenAllLost": "{n} 個が一時停止（ロールを再び割り当てると戻ります）",
       "apiTokenUnchanged": "変更なし（既存の {n} 個はこのロールを付与されていません）",
       "apiTokenFirst": "現在はありません。保存後、{user} はプロフィール画面で自分で作成できます",
-      "apiTokenRegain": "{n} 個にこのロールが戻る",
-      "apiTokenRegainActive": "{n} 個にこのロールが戻り、そのうち {m} 個が使えるようになる",
+      "apiTokenRegain": "{n} 個にこのロールが戻る（{breakdown}）",
+      "apiTokenRegainActive": "{n} 個にこのロールが戻り（{breakdown}）、そのうち {m} 個が使えるようになる",
+      "apiTokenLevelCountWrite": "参照・変更 {n} 個",
+      "apiTokenLevelCountRead": "参照のみ {n} 個",
       "apiTokenCheckAfterSave": "事前に確認できません。保存後に「API token」タブで確認してください",
       "apiTokenPartsSeparator": "；",
       "viewApiTokens": "API token を表示"
     },
     "loadFailed": "このユーザーを読み込めませんでした",
     "apiTokens": {
-      "desc": "これらは {user} 本人が作成した API token です。それぞれ「付与ロール」列に記載された範囲だけを行え（{user} の現在のロールを超えることはありません）、管理と設定の API に限られます。作成できるのは本人だけです。あなたは取り消すことができ、取り消すとそのトークンを使うツールは直ちに呼び出せなくなります。",
-      "descProtected": "これらは {user} 本人が作成した API token です。それぞれ「付与ロール」列に記載された範囲だけを行え、管理と設定の API に限られます。作成できるのは本人だけです。",
+      "desc": "これらは {user} 本人が作成した API token です。それぞれ「付与ロール」列に記載された範囲だけを行え（{user} の現在のロールを超えることはありません）、管理と設定の API に限られます。「参照のみ」のロールは参照だけでき、データは変更できません。作成できるのは本人だけです。あなたは取り消すことができ、取り消すとそのトークンを使うツールは直ちに呼び出せなくなります。",
+      "descProtected": "これらは {user} 本人が作成した API token です。それぞれ「付与ロール」列に記載された範囲だけを行え、管理と設定の API に限られます。「参照のみ」のロールは参照だけでき、データは変更できません。作成できるのは本人だけです。",
       "protectedTitle": "{user} の API token を取り消せるのはスーパー管理者だけです",
       "protectedBody": "{user} はスーパー管理者ロールを持っています。その API token の取り消しは、保護対象アカウントの無効化や削除と同じルールに従います。緊急に停止する必要がある場合は、他のスーパー管理者に連絡してください。",
       "protectedBodySecurity": "{user} はシステムセキュリティ管理者ロールを持っています。その API token の取り消しは、保護対象アカウントの無効化や削除と同じルールに従います。緊急に停止する必要がある場合は、スーパー管理者に連絡してください。",
@@ -9517,14 +9549,14 @@
     "justSet": "設定しました",
     "justConverted": "変換しました",
     "immediateNote": "このセクションの操作はすぐに反映され、下の「保存」とは関係ありません。",
-    "outOfScopeNote": "この共有認証情報は管理範囲外のため、鍵フィンガープリントと公開鍵は表示できません。変更と解除は可能です。",
+    "outOfScopeNote": "この共有認証情報は管理範囲外のため、公開鍵フィンガープリントと公開鍵は表示できません。変更と解除は可能です。",
     "credentialLink": "認証情報ライブラリでパスワード変更・スケジュール設定",
     "convertedRotateHint": "{account} のパスワードを知っている人がいる可能性があります。認証情報ライブラリで変更することをおすすめします。",
     "fields": {
       "account": "アカウント名",
       "secretSource": "シークレットの出所",
       "secretType": "種別",
-      "fingerprint": "鍵フィンガープリント"
+      "fingerprint": "公開鍵フィンガープリント"
     },
     "sourceLabel": {
       "generate": "プラットフォーム生成の鍵",
@@ -10291,7 +10323,7 @@
   },
   "apiTokens": {
     "title": "API token",
-    "desc": "Terraform などのツールがあなたの代わりに管理 API を呼び出せるようにします。作成時に自分の管理ロールから付与するものを選ぶため、あなたにできる範囲を超えることはありません。管理と設定に限られ、接続の確立、録画の閲覧、機密内容の閲覧、アンシールや鍵の操作はできません。トークンの値は作成時に一度だけ表示されます。",
+    "desc": "Terraform などのツールがあなたの代わりに管理 API を呼び出せるようにします。作成時に自分の管理ロールから付与するものを選び、ロールごとに「参照のみ」か「参照・変更」を設定するため、あなたにできる範囲を超えることはありません。管理と設定に限られ、接続の確立、録画の閲覧、機密内容の閲覧、アンシールや鍵の操作はできません。トークンの値は作成時に一度だけ表示されます。",
     "create": "API token を作成",
     "summary": {
       "active": "使用可能",
@@ -10301,6 +10333,7 @@
     },
     "col": {
       "name": "名前",
+      "access": "権限",
       "grantedRoles": "付与ロール",
       "status": "状態",
       "expiresAt": "有効期限",
@@ -10316,15 +10349,34 @@
     "justCreated": "作成直後",
     "inactiveSection": "失効した API token（{n}）",
     "inactiveHint": "期限切れ、取り消し済み、または復元により失効したもの。記録として残り、再び使うことはできません",
-    "editHint": "作成後は名前、付与ロール、有効期限を変更できません。変更したい場合は新しいトークンを作成してツールに設定し、動作を確認してから古いものを取り消してください。",
+    "editHint": "作成後は名前、付与ロール、権限、有効期限を変更できません。変更したい場合は新しいトークンを作成してツールに設定し、動作を確認してから古いものを取り消してください。",
     "roleWithScope": "{role}（{scope}）",
+    "level": {
+      "read": "参照のみ",
+      "read_write": "参照・変更"
+    },
+    "access": {
+      "read": "参照のみ",
+      "read_write": "参照・変更",
+      "mixed": "一部参照・変更",
+      "mixedCount": "{n} 個のロールが参照・変更",
+      "legacy": "アップグレード前に作成"
+    },
+    "explain": {
+      "title": "「参照のみ」と「参照・変更」の違い",
+      "read": "このロールで見られるデータの閲覧と、プレビューや試算など変更を保存しない機能を使えます。作成、変更、削除や、データを変更する操作は一切できません。",
+      "readWrite": "参照のみでできることに加えて、作成、変更、削除ができます。できる範囲はこのロール本来の権限までです。",
+      "twoRolesLabel": "2 つのロール",
+      "twoRoles": "2 つのロールの権限を同時に使う操作もあります。その場合は両方のロールを「参照・変更」にする必要があります。",
+      "foot": "参照のみのロールでデータを変更する操作を行うと、プラットフォームはその呼び出しを拒否し、データは一切変わりません。"
+    },
     "empty": {
       "title": "API token はまだありません",
       "desc": "作成して Terraform などのツールに渡すと、あなたの代わりに管理 API を呼び出せるようになります。"
     },
     "howToChange": {
-      "title": "付与ロールや有効期限を変更したい場合",
-      "body": "作成後は変更できません。カード右上の「API token を作成」から新しいロールと期限を選び、新しいトークンをツールに設定して動作を確認してから、ここに戻ってこのトークンを取り消してください。"
+      "title": "付与ロール、権限、有効期限を変更したい場合",
+      "body": "作成後は変更できません。カード右上の「API token を作成」から新しいロール、権限、期限を選び、新しいトークンをツールに設定して動作を確認してから、ここに戻ってこのトークンを取り消してください。"
     },
     "revokeAction": "取り消す",
     "status": {
@@ -10343,13 +10395,16 @@
       "name": "名前",
       "namePlaceholder": "例：terraform-prod-apply",
       "nameHint": "使うツールと環境がわかる名前にしてください（例：terraform-prod-apply）。操作ログには呼び出しごとにどのトークンを使ったかが記録されます。",
-      "roles": "付与ロール",
+      "roles": "付与ロールと権限",
       "rolesAll": "すべて（管理ロール {n} 個）",
       "rolesSelected": "{n} 個選択中",
+      "setAll": "選択したロールをすべて次に設定：",
       "scope": "範囲：{scope}",
       "scopeAll": "システム全体",
       "rolesHint": "自分の管理ロールからのみ選べます。範囲はあなたのロールに従い、あなたを超えることはありません。",
       "rolesHintNonGrantable": "あなたが持つ「{roles}」は管理ロールではないため、API token に付与できません。",
+      "levelHint": "ロールごとに「参照のみ」か「参照・変更」を選びます。初期値は参照のみです。",
+      "levelHelp": "「参照のみ」と「参照・変更」の違いは？",
       "singleRole": "管理ロールはこれだけのため、このロールを付与します",
       "expiry": "有効期限",
       "expiryOption": {
@@ -10370,8 +10425,12 @@
       "datePlaceholder": "日付を選択",
       "neverHint": "この API token は自動的に失効しません。使わなくなったら自分で取り消してください。",
       "summaryTitle": "この API token でできること",
-      "summaryRoles": "選択したロール：{roles}。",
-      "summaryRolesSuper": "選択したロール：管理者（システム全体）。つまりスーパー管理者が行えるすべての管理と設定です。",
+      "summaryWriteLabel": "参照と変更ができる：",
+      "summaryReadLabel": "参照のみ：",
+      "summaryRoleList": "{roles}。",
+      "summaryAllReadTail": "データの作成、変更、削除は一切行いません。",
+      "summarySuperRead": "参照のみ：管理者（システム全体）。つまりスーパー管理者が見られるすべての管理と設定のデータです。データの作成、変更、削除は一切行いません。",
+      "summarySuperWrite": "参照と変更ができる：管理者（システム全体）。つまりスーパー管理者が行えるすべての管理と設定です。",
       "summarySync": "今後あなたのロールが解除されると、このトークンもそのロールを失い、ロールが再び割り当てられると元に戻ります。",
       "summaryNone": "ロールがまだ選ばれていないため、この API token では何もできません。",
       "summaryScope": "管理と設定の API に限られます。接続の確立、録画の閲覧、機密内容の閲覧、アンシールや鍵の操作はできません。",
@@ -10388,12 +10447,16 @@
         "server": "API token は作成されませんでした。入力内容は残っているので、そのままもう一度お試しください。"
       },
       "privSuper": {
-        "title": "この API token にはスーパー管理者ロールが付与されます",
-        "body": "あなたが行えるすべての管理と設定ができます。付与ロールにスーパー管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。"
+        "body": "あなたが行えるすべての管理と設定ができます。付与ロールにスーパー管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。",
+        "titleRead": "この API token にはスーパー管理者ロールが付与されます（参照のみ）",
+        "bodyRead": "参照のみの場合はデータを一切変更できませんが、あなたが見られるすべての管理と設定のデータを参照できます。付与ロールにスーパー管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。",
+        "titleWrite": "この API token にはスーパー管理者ロールが参照・変更で付与されます"
       },
       "privSec": {
-        "title": "この API token にはシステムセキュリティ管理者ロールが付与されます",
-        "body": "システム全体のセキュリティポリシー、通知、アラート設定を変更できます。付与ロールにシステムセキュリティ管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。"
+        "body": "システム全体のセキュリティポリシー、通知、アラート設定を変更できます。付与ロールにシステムセキュリティ管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。",
+        "titleRead": "この API token にはシステムセキュリティ管理者ロールが付与されます（参照のみ）",
+        "bodyRead": "参照のみの場合はデータを一切変更できませんが、システム全体のセキュリティポリシー、通知、アラート設定を参照できます。付与ロールにシステムセキュリティ管理者が含まれるため、作成するとシステムアラート「高権限 API token の作成」が発生し、有効なすべての通知チャネルに送られ、操作ログに記録されます。",
+        "titleWrite": "この API token にはシステムセキュリティ管理者ロールが参照・変更で付与されます"
       }
     },
     "reveal": {
@@ -10401,8 +10464,14 @@
       "onceTitle": "この API token が表示されるのは今回だけです",
       "onceBody": "今すぐコピーして、使うツールに保存してください（例：CI のシークレット変数）。閉じると二度と取得できません。保存できなかった場合は取り消して作り直してください。チャットや文書には貼らないでください。これを手に入れた人は、あなたとして管理操作ができます。",
       "testTitle": "この API token をテストする",
-      "testBody": "使えることを確認するには、次のコマンドをターミナルに貼り付けて実行してください。応答には、代理するアカウント、付与ロール、有効期限が表示されます。",
+      "testBody": "使えることを確認するには、次のコマンドをターミナルに貼り付けて実行してください。応答には、代理するアカウント、付与ロールとそれぞれの権限、有効期限が表示されます。",
       "represents": "代理",
+      "access": "権限",
+      "accessHint": {
+        "read": "参照のみで、データは一切変更できません",
+        "read_write": "すべての付与ロールで参照と変更ができます",
+        "mixed": "データを変更する操作には「参照・変更」のロールだけが使われます"
+      },
       "self": "{user}（あなた本人）",
       "neverExpires": "自動的には失効しません。使わなくなったら自分で取り消してください",
       "close": "保存しました。閉じる",

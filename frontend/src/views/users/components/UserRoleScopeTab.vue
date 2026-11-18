@@ -290,9 +290,43 @@
         :closable="false"
         show-icon
         :title="alert.title"
-        :description="alert.body"
+        :description="alert.lines ? undefined : alert.body"
         :data-test="`api-token-impact-${alert.kind}`"
-      />
+      >
+        <template
+          v-if="alert.lines"
+          #default
+        >
+          <div
+            v-for="(line, li) in alert.lines"
+            :key="li"
+            class="token-impact-line"
+          >
+            <template
+              v-for="(seg, si) in line"
+              :key="si"
+            >
+              <template v-if="seg.tokens">
+                <template
+                  v-for="(tk, ti) in seg.tokens"
+                  :key="ti"
+                >
+                  <span v-if="ti > 0">{{ listSeparator }}</span><span
+                    class="token-impact-token"
+                    data-test="api-token-impact-token"
+                  >{{ tk.name }}<ApiTokenLevelTag
+                    v-for="lv in tk.levels"
+                    :key="lv"
+                    :level="lv"
+                    class="token-impact-level"
+                  /></span>
+                </template>
+              </template>
+              <span v-else>{{ seg.text }}</span>
+            </template>
+          </div>
+        </template>
+      </el-alert>
       <section
         v-if="activeRole && isAssignable(activeRole)"
         class="range-panel"
@@ -628,7 +662,8 @@ import { getUserGroups, getUserGroupRoleBindings } from '@/api/userGroups'
 import { useAssignmentPreview } from '@/composables/useAssignmentPreview'
 import { needsDangerConfirm } from '@/utils/dangerCombo'
 import { roleLabel, roleTagType } from '@/constants/roles'
-import { grantedRoleLabel, isInactive } from '@/constants/apiTokens'
+import { API_TOKEN_LEVELS, LEVEL_READ_WRITE, grantedRoleLabel, isInactive, normalizeLevel } from '@/constants/apiTokens'
+import ApiTokenLevelTag from '@/components/api-token/ApiTokenLevelTag.vue'
 import { getUserApiTokens } from '@/api/apiTokens'
 import { formatDateTime } from '@/utils/format'
 import { apiErrorSummary } from '@/api/redact'
@@ -968,6 +1003,34 @@ const regain = computed(() => {
   return { known: true, entries }
 })
 
+const listSeparator = computed(() => t('common.listSeparator'))
+// 受影響角色在那把 token 上的層級（去重，讀寫在前）；讀到不認得的值當唯讀
+const distinctLevels = (roles) => {
+  const set = new Set((roles || []).map((r) => normalizeLevel(r?.level)))
+  return API_TOKEN_LEVELS.filter((lv) => set.has(lv)).reverse()
+}
+// 把句子裡的 {names} 換成「token 名稱＋層級小標」的片段；文字其餘部分照譯文原樣
+const TOKEN_MARK = '\u0000'
+const withTokens = (key, params, tokens) => {
+  const parts = t(key, { ...params, names: TOKEN_MARK }).split(TOKEN_MARK)
+  const out = []
+  parts.forEach((text, i) => {
+    if (i > 0) out.push({ tokens })
+    if (text) out.push({ text })
+  })
+  return out
+}
+// 「儲存後的變化」的括號：會受影響的 token 依層級分出讀寫與唯讀各幾把。
+// 一把 token 受影響的角色裡有任一個是讀寫，就算讀寫的那一把
+const levelBreakdown = (entries) => {
+  let write = 0
+  for (const e of entries) if (distinctLevels(e).includes(LEVEL_READ_WRITE)) write += 1
+  const read = entries.length - write
+  const parts = []
+  if (write) parts.push(t('userDetail.change.apiTokenLevelCountWrite', { n: write }))
+  if (read) parts.push(t('userDetail.change.apiTokenLevelCountRead', { n: read }))
+  return parts.join(t('common.listSeparator'))
+}
 const apiTokenAlerts = computed(() => {
   if (!dirty.value) return []
   const api = apiTokenImpact.value
@@ -985,32 +1048,36 @@ const apiTokenAlerts = computed(() => {
     } else if (loseEntries.value.length) {
       const lose = loseEntries.value
       const role = joinLabels(lose.flatMap((a) => a.loses_roles || []))
-      const names = lose.map((a) => a.name).join(sep)
-      const body = api.suspended_count > 0
-        ? t('userDetail.roles.apiTokenLoseBodyMixed', { n: lose.length, names, m: api.suspended_count })
-        : t('userDetail.roles.apiTokenLoseBody', {
+      // 每把 token 後面帶「被收回的那個角色」在那把上的層級，不是整把的總結
+      const tokens = lose.map((a) => ({ name: a.name, levels: distinctLevels(a.loses_roles) }))
+      const line = api.suspended_count > 0
+        ? withTokens('userDetail.roles.apiTokenLoseBodyMixed', { n: lose.length, m: api.suspended_count }, tokens)
+        : withTokens('userDetail.roles.apiTokenLoseBody', {
             n: lose.length,
-            names,
             role,
             remaining: joinLabels(lose.flatMap((a) => a.remaining_roles || [])),
-          })
-      out.push({ kind: 'lose', type: 'warning', title: t('userDetail.roles.apiTokenLoseTitle', { user, role }), body })
+          }, tokens)
+      out.push({ kind: 'lose', type: 'warning', title: t('userDetail.roles.apiTokenLoseTitle', { user, role }), lines: [line] })
     }
   }
   const { known, entries } = regain.value
   if (entries.length) {
-    // 工具的權限會因這次變更擴大：以警示色呈現，並點名哪幾把、恢復哪些角色、哪幾把恢復可用
+    // 工具的權限會因這次變更擴大：以警示色呈現，並點名哪幾把、恢復哪些角色、哪幾把恢復可用。
+    // 最需要判斷的是「會不會又能寫入」，所以會恢復讀寫的列在第一行，唯讀的在下一行
     const role = joinLabels(entries.flatMap((e) => e.roles))
     const active = entries.filter((e) => e.becomesActive)
-    let body = t('userDetail.roles.apiTokenRegainBody', {
-      n: entries.length,
-      names: entries.map((e) => e.name).join(sep),
-      role,
-    })
+    const tokens = entries.map((e) => ({ name: e.name, levels: distinctLevels(e.roles) }))
+    const writeTokens = tokens.filter((tk) => tk.levels.includes(LEVEL_READ_WRITE))
+    const readTokens = tokens.filter((tk) => !tk.levels.includes(LEVEL_READ_WRITE))
+    const lines = [[{ text: t('userDetail.roles.apiTokenRegainBody', { n: entries.length, role }) }]]
+    if (writeTokens.length) lines.push(withTokens('userDetail.roles.apiTokenRegainWriteLine', {}, writeTokens))
+    if (readTokens.length) lines.push(withTokens('userDetail.roles.apiTokenRegainReadLine', {}, readTokens))
+    let tail = t('userDetail.roles.apiTokenRegainTail')
     if (active.length) {
-      body += t('userDetail.roles.apiTokenRegainActive', { m: active.length, names: active.map((e) => e.name).join(sep) })
+      tail += t('userDetail.roles.apiTokenRegainActive', { m: active.length, names: active.map((e) => e.name).join(sep) })
     }
-    out.push({ kind: 'regain', type: 'warning', title: t('userDetail.roles.apiTokenRegainTitle', { user, role }), body })
+    lines.push([{ text: tail }])
+    out.push({ kind: 'regain', type: 'warning', title: t('userDetail.roles.apiTokenRegainTitle', { user, role }), lines })
   } else if (addedManagementRoles.value.length && !(known && hasNoTokens.value)) {
     // 名下沒有任何 token 時兩種說法都不需要（變化列另有「目前沒有…」）
     const role = addedManagementRoles.value.map(roleLabel).join(sep)
@@ -1043,9 +1110,10 @@ const apiTokenRegainRow = computed(() => {
   const { known, entries } = regain.value
   if (entries.length) {
     const m = entries.filter((e) => e.becomesActive).length
+    const breakdown = levelBreakdown(entries.map((e) => e.roles))
     return m
-      ? t('userDetail.change.apiTokenRegainActive', { n: entries.length, m })
-      : t('userDetail.change.apiTokenRegain', { n: entries.length })
+      ? t('userDetail.change.apiTokenRegainActive', { n: entries.length, m, breakdown })
+      : t('userDetail.change.apiTokenRegain', { n: entries.length, breakdown })
   }
   if (!known && addedManagementRoles.value.length) return t('userDetail.change.apiTokenCheckAfterSave')
   return ''
@@ -1067,7 +1135,13 @@ const apiTokenLoseRow = computed(() => {
     return api.eligible_after && !hadManagement && hasNoTokens.value ? t('userDetail.change.apiTokenFirst', { user: props.username }) : ''
   }
   if (api.eligible_after === false && api.suspended_count > 0) return t('userDetail.change.apiTokenAllLost', { n: api.suspended_count })
-  if (loseEntries.value.length) return t('userDetail.change.apiTokenLose', { n: loseEntries.value.length, m: api.suspended_count || 0 })
+  if (loseEntries.value.length) {
+    return t('userDetail.change.apiTokenLose', {
+      n: loseEntries.value.length,
+      m: api.suspended_count || 0,
+      breakdown: levelBreakdown(loseEntries.value.map((a) => a.loses_roles || [])),
+    })
+  }
   // 「不變」只在確定沒有任何一把會恢復角色時才說
   const { known, entries } = regain.value
   if (entries.length || !known) return ''
@@ -1422,6 +1496,15 @@ onMounted(() => {
 .group-link {
   color: var(--ot-primary);
   font-size: var(--ot-font-size-sm);
+}
+.token-impact-line + .token-impact-line {
+  margin-top: 2px;
+}
+.token-impact-token {
+  white-space: nowrap;
+}
+.token-impact-level {
+  margin-left: 4px;
 }
 .actions {
   display: flex;

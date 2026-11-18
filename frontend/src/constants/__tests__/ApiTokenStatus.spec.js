@@ -14,6 +14,12 @@ import {
   splitTokens,
   summarize,
   latestUse,
+  API_TOKEN_LEVELS,
+  API_TOKEN_ACCESS_VALUES,
+  accessOfLevels,
+  normalizeLevel,
+  tokenAccess,
+  usableAccessBreakdown,
 } from '../apiTokens'
 import { roleAdmin, roleAsset, roleSecurity, standardTokens } from '@/__fixtures__/apiTokens'
 
@@ -107,5 +113,43 @@ describe('API token 狀態值域與呈現', () => {
     expect(roleValueLabel('super_admin')).toBe('管理員')
     expect(roleValueLabel('asset_admin')).toBe('資產管理員')
     expect(roleValueLabel('ci-reader')).toBe('ci-reader')
+  })
+})
+
+describe('API token 權限的值域與呈現', () => {
+  it('層級與總結的值域硬拷回應契約，三語都有譯名', () => {
+    expect([...API_TOKEN_LEVELS].sort()).toEqual(['read', 'read_write'])
+    expect([...API_TOKEN_ACCESS_VALUES].sort()).toEqual(['mixed', 'read', 'read_write'])
+    for (const [locale, messages] of LOCALES) {
+      for (const v of API_TOKEN_LEVELS) expect(messages.apiTokens.level[v], `${locale} level.${v}`).toBeTruthy()
+      for (const v of API_TOKEN_ACCESS_VALUES) expect(messages.apiTokens.access[v], `${locale} access.${v}`).toBeTruthy()
+    }
+  })
+
+  it('不認得的層級當唯讀；總結由層級算出時空集合歸唯讀', () => {
+    expect(normalizeLevel('read_write')).toBe('read_write')
+    expect(normalizeLevel('admin')).toBe('read')
+    expect(normalizeLevel(undefined)).toBe('read')
+    expect(accessOfLevels([])).toBe('read')
+    expect(accessOfLevels(['read_write', 'read_write'])).toBe('read_write')
+    expect(accessOfLevels(['read', 'read_write'])).toBe('mixed')
+    expect(accessOfLevels(['read', 'x'])).toBe('read')
+  })
+
+  it('總結以後端的 access 為準，不隨角色是否生效改變；值不認得時當唯讀', () => {
+    const roles = [{ level: 'read_write', effective: true }, { level: 'read', effective: false }]
+    expect(tokenAccess({ access: 'mixed', granted_roles: roles })).toBe('mixed')
+    expect(tokenAccess({ granted_roles: roles })).toBe('mixed')
+    expect(tokenAccess({ access: 'superuser', granted_roles: roles })).toBe('read')
+  })
+
+  it('使用者列表的分類只數可用的 token', () => {
+    const list = [
+      { status: 'active', access: 'read' },
+      { status: 'expiring_soon', access: 'read' },
+      { status: 'revoked', access: 'read_write' },
+    ]
+    expect(usableAccessBreakdown(list)).toBe('全部唯讀')
+    expect(usableAccessBreakdown([{ status: 'expired', access: 'read' }])).toBe('')
   })
 })

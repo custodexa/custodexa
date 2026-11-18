@@ -32,9 +32,9 @@ export const createRoleDefinition = ({ name, description, permissions, templateR
   return request({ url: '/role-definitions', method: 'post', data, skipErrorToast: roleErrorHandledByCaller })
 }
 
-/** 複製：本文恰為 { name } */
+/** 複製：本文恰為 { name }；名稱重複由對話框就地呈現 */
 export const copyRoleDefinition = (id, name) =>
-  request({ url: `/role-definitions/${id}/copy`, method: 'post', data: { name } })
+  request({ url: `/role-definitions/${id}/copy`, method: 'post', data: { name }, skipErrorToast: roleErrorHandledByCaller })
 
 /** 修改：{ name, description, permissions, expected_version } */
 export const updateRoleDefinition = (id, { name, description, permissions, expectedVersion }) =>
@@ -54,21 +54,23 @@ export const deleteRoleDefinition = (id, expectedVersion) =>
     skipErrorToast: roleErrorHandledByCaller,
   })
 
-/** 版本衝突與使用中由頁面自行呈現，其餘錯誤照常 toast */
-export const ROLE_ERROR_CONFLICT = 'ROLE_DEFINITION_CONFLICT'
+/**
+ * 名稱重複、版本過期與使用中由頁面自行呈現，其餘錯誤照常 toast。
+ * ROLE_DEFINITION_CONFLICT 只代表名稱已被使用；版本過期另有專屬碼。
+ */
+export const ROLE_ERROR_NAME_CONFLICT = 'ROLE_DEFINITION_CONFLICT'
+export const ROLE_ERROR_VERSION_CONFLICT = 'ROLE_DEFINITION_VERSION_CONFLICT'
 export const ROLE_ERROR_IN_USE = 'ROLE_DEFINITION_IN_USE'
+const ROLE_CALLER_HANDLED_CODES = new Set([ROLE_ERROR_NAME_CONFLICT, ROLE_ERROR_VERSION_CONFLICT, ROLE_ERROR_IN_USE])
 function roleErrorHandledByCaller(error) {
-  const data = error?.response?.data
-  const body = data && typeof data.error === 'object' ? data.error : data
-  const code = body && typeof body.code === 'string' ? body.code : ''
-  return code === ROLE_ERROR_CONFLICT || code === ROLE_ERROR_IN_USE
+  return ROLE_CALLER_HANDLED_CODES.has(roleErrorCode(error))
 }
 
 /** 影響預覽（建議性）：失敗不 toast，由呼叫端標示「暫時無法取得」 */
 export const previewRoleAssignment = (body) =>
   request({ url: '/role-assignment-previews', method: 'post', data: body, skipErrorToast: true })
 
-export const roleErrorCode = (error) => {
+export function roleErrorCode(error) {
   const data = error?.response?.data
   const body = data && typeof data.error === 'object' ? data.error : data
   return body && typeof body.code === 'string' ? body.code : ''

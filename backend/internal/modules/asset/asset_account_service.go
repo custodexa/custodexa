@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/custodexa/backend/internal/material"
 	"strings"
+	"time"
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/kernel/dberr"
@@ -105,6 +106,10 @@ type AssetAccountDTO struct {
 	Note          string `json:"note"`
 	HasPassword   bool   `json:"has_password"`
 	HasPrivateKey bool   `json:"has_private_key"`
+	// PrivateKeyFingerprint 就位版本私鑰的公鑰指紋（SHA256: 開頭），由版本保存的公鑰計算、不解密私鑰。
+	// 只在算得出來時出現；沒有私鑰、公鑰未知時都不出現。對外只出現在完整版與範圍內的帳號列，
+	// 且只給對該憑證具檢視能力的呼叫者（判定在帳號列投影）；精簡版與範圍外收窄的帳號列沒有這個欄位
+	PrivateKeyFingerprint string `json:"private_key_fingerprint,omitempty"`
 	// SharedCredential 本掛載引用的憑證範圍為共用（即 CredentialScope == shared）。
 	// 保留布林形式供管理視圖直接判斷，真相與 CredentialScope 同一個來源
 	SharedCredential bool `json:"shared_credential"`
@@ -163,23 +168,24 @@ func SlimAssetAccountDTO(d *AssetAccountDTO) *AssetAccountSlimDTO {
 // 不在這個結構的輸入裡。
 func NewAssetAccountDTO(a *model.AssetAccount, secrets accountSecretFlags) *AssetAccountDTO {
 	return &AssetAccountDTO{
-		ID:                 a.ID,
-		AssetID:            a.AssetID,
-		Username:           a.Username,
-		IsDefault:          a.IsDefault,
-		Privileged:         a.Privileged,
-		AuthMethod:         a.AuthMethod,
-		Note:               a.Note,
-		HasPassword:        secrets.HasPassword,
-		HasPrivateKey:      secrets.HasPrivateKey,
-		SharedCredential:   secrets.Shared,
-		CredentialID:       secrets.CredentialID,
-		CredentialName:     secrets.CredentialName,
-		CredentialScope:    secrets.CredentialScope,
-		EffectiveVersionNo: secrets.EffectiveVersionNo,
-		BindingCount:       secrets.BindingCount,
-		CreatedAt:          a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:          a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:                    a.ID,
+		AssetID:               a.AssetID,
+		Username:              a.Username,
+		IsDefault:             a.IsDefault,
+		Privileged:            a.Privileged,
+		AuthMethod:            a.AuthMethod,
+		Note:                  a.Note,
+		HasPassword:           secrets.HasPassword,
+		HasPrivateKey:         secrets.HasPrivateKey,
+		SharedCredential:      secrets.Shared,
+		PrivateKeyFingerprint: secrets.PrivateKeyFingerprint,
+		CredentialID:          secrets.CredentialID,
+		CredentialName:        secrets.CredentialName,
+		CredentialScope:       secrets.CredentialScope,
+		EffectiveVersionNo:    secrets.EffectiveVersionNo,
+		BindingCount:          secrets.BindingCount,
+		CreatedAt:             a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:             a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
@@ -283,6 +289,12 @@ type AssetAccountService struct {
 func (s *AssetAccountService) WithManagementAuthorizer(a CredentialManagementAuthorizer) *AssetAccountService {
 	s.mgmt = credentialManagementGate{authorizer: a}
 	return s
+}
+
+// ViewableCredentialIDs ids 中請求主體具檢視能力的憑證（帳號列的公鑰指紋揭露用），
+// 與憑證讀取的指紋揭露同一個判定。判定器未注入時一律不可檢視。
+func (s *AssetAccountService) ViewableCredentialIDs(ctx context.Context, ids []uint) map[uint]bool {
+	return s.mgmt.viewableCredentials(ctx, nil, ids)
 }
 
 // WithSystemAlertSink 注入交易內系統告警落地面（組裝根）。
@@ -577,8 +589,9 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 	if err := validateAccountNote(req.Note); err != nil {
 		return nil, err
 	}
-	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查
-	if err := ValidatePrivateKey(source.PrivateKey); err != nil {
+	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查（並取得其公鑰）
+	privateKeyPublic, err := ValidatePrivateKey(source.PrivateKey)
+	if err != nil {
 		return nil, err
 	}
 	authMethod, authErr := normalizeAccountAuthMethod(source.AuthMethod)
@@ -697,7 +710,8 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 		} else {
 			// 這台專用：同交易建專用憑證與 v1，就位版本立即指向它
 			if err := bindNewDedicatedCredential(tx, account, &assetRow, authMethod,
-				passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+				passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual,
+				withVersionPublicKey(privateKeyPublic)); err != nil {
 				return err
 			}
 		}
@@ -810,10 +824,13 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		return nil, err
 	}
 	// 只在本次帶了非空私鑰時驗證；未帶或空字串＝沿用現行私鑰，不重驗庫內既有的
+	var privateKeyPublic string
 	if req.PrivateKey != nil {
-		if err := ValidatePrivateKey(*req.PrivateKey); err != nil {
+		pub, err := ValidatePrivateKey(*req.PrivateKey)
+		if err != nil {
 			return nil, err
 		}
+		privateKeyPublic = pub
 	}
 	// 加密在交易外先做（純 CPU／可能觸及 KMS，不佔 DB 交易與資產鎖）
 	var passwordEnc, privateKeyEnc string
@@ -955,13 +972,18 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 			// 操作者宣告的密文：憑證追加版本、憑證的現行版本與本掛載的就位版本
 			// 同交易指向它。未被本次更動的那一欄自就位版本原樣帶過來，
 			// 只改密碼不得順手清掉私鑰（反之亦然）
-			versionID, serr := appendDeclaredSecret(tx, account, passwordEnc, privateKeyEnc)
+			versionID, serr := appendDeclaredSecret(tx, account, versionSecret{
+				PasswordEnc: passwordEnc, PrivateKeyEnc: privateKeyEnc, PublicKey: privateKeyPublic,
+			})
 			if serr != nil {
 				return serr
 			}
 			updates["effective_version_id"] = versionID
 		}
 
+		// 修改時間由這裡定值：寫入回應要回報與隨後讀取相同的修改時間，交給 ORM 自動填值的話
+		// 回應只拿得到交易前的舊值
+		updates["updated_at"] = time.Now()
 		res := tx.Model(&model.AssetAccount{}).Where("id = ?", account.ID).Updates(updates)
 		if res.Error != nil {
 			return accountUniqueViolation(res.Error, "更新資產帳號失敗")
@@ -1181,6 +1203,10 @@ func applyAccountUpdates(account *model.AssetAccount, updates map[string]interfa
 	}
 	// 就位版本改指新版本時一併帶過來：鏡射與回應的持有布林都讀它，
 	// 沿用交易前的舊值會讓剛設好的密碼在同一次回應裡顯示成「未設定」
+	updatedAt := account.UpdatedAt
+	if v, ok := updates["updated_at"].(time.Time); ok {
+		updatedAt = v
+	}
 	effective := account.EffectiveVersionID
 	if v, ok := updates["effective_version_id"].(uint); ok {
 		id := v
@@ -1189,7 +1215,7 @@ func applyAccountUpdates(account *model.AssetAccount, updates map[string]interfa
 	return &model.AssetAccount{
 		ID:                 account.ID,
 		CreatedAt:          account.CreatedAt,
-		UpdatedAt:          account.UpdatedAt,
+		UpdatedAt:          updatedAt,
 		AssetID:            account.AssetID,
 		Username:           pick("username", account.Username),
 		CredentialID:       account.CredentialID,
@@ -1250,7 +1276,8 @@ func mirrorDefaultAccountToAsset(tx *gorm.DB, account *model.AssetAccount) error
 // 不是清空。資產原本零帳號時就地建一筆 default——否則舊表單改了 username／密碼，
 // 連線端（讀帳號）卻什麼都拿不到。
 func syncDefaultAccountFromAsset(auditTx port.TxSink, alerts port.SystemAlertSink, tx *gorm.DB, asset *model.Asset,
-	passwordEnc, privateKeyEnc string, userID uint, operator string) error {
+	secret versionSecret, userID uint, operator string) error {
+	passwordEnc, privateKeyEnc := secret.PasswordEnc, secret.PrivateKeyEnc
 	if err := ValidateAccountUsername(asset.Username); err != nil {
 		return err
 	}
@@ -1277,7 +1304,8 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, alerts port.SystemAlertSin
 			IsDefault: true,
 		}
 		if err := bindNewDedicatedCredential(tx, account, asset, "",
-			passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+			passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual,
+			withVersionPublicKey(secret.PublicKey)); err != nil {
 			return err
 		}
 		if err := tx.Create(account).Error; err != nil {
@@ -1325,7 +1353,7 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, alerts port.SystemAlertSin
 		return nil
 	}
 	if secretChanged {
-		versionID, serr := appendDeclaredSecret(tx, account, passwordEnc, privateKeyEnc)
+		versionID, serr := appendDeclaredSecret(tx, account, secret)
 		if serr != nil {
 			return serr
 		}

@@ -47,6 +47,7 @@ const detail = (params = {}, over = {}) => ({
 })
 
 const q = (sel) => document.body.querySelector(sel)
+const rows = (sel) => [...document.body.querySelectorAll(`${sel} .sa-token-role`)].map((el) => el.textContent.replace(/[\s\u00a0\u202f]+/g, ' ').trim())
 const text = (sel) => q(sel)?.textContent.replace(/[\s\u00a0\u202f]+/g, ' ').trim()
 
 const mountDrawer = async () => {
@@ -70,11 +71,13 @@ describe('系統告警明細：建立高權限 API token', () => {
     setCapabilitiesForTests(['user:manage'])
     getDetailMock.mockResolvedValue(detail())
     await mountDrawer()
-    expect(text('[data-test="sa-first-layer"]')).toBe('root-lin 建立了一把 API token，授權角色含管理員（超級管理者）')
+    // 本功能之前產生的告警沒有權限參數：當時每個角色都是讀寫，照實寫讀寫、角色不帶小標
+    expect(text('[data-test="sa-first-layer"]')).toBe('root-lin 建立了一把 API token，授權角色含管理員（超級管理者），權限為讀寫')
     expect(text('[data-test="sa-token-creator"]')).toBe('root-lin（使用者 #3）')
     expect(text('[data-test="sa-token-priv-roles"]')).toBe('管理員（超級管理者）')
     expect(text('[data-test="sa-token-name"]')).toBe('tf-bootstrap')
-    expect(text('[data-test="sa-token-granted-roles"]')).toBe('管理員（超級管理者）、資產管理員')
+    expect(rows('[data-test="sa-token-granted-roles"]')).toEqual(['管理員（超級管理者）', '資產管理員'])
+    expect(q('[data-test="sa-token-granted-roles"] [data-test="level-tag"]')).toBeNull()
     expect(text('[data-test="sa-token-expiry"]')).toBe('永不到期（不會自動失效）')
   })
 
@@ -83,7 +86,7 @@ describe('系統告警明細：建立高權限 API token', () => {
     await mountDrawer()
     expect(Object.prototype.hasOwnProperty.call(getDetailMock.mock.results[0].value, 'expires_at')).toBe(false)
     expect(text('[data-test="sa-token-expiry"]')).toBe('永不到期（不會自動失效）')
-    expect(text('[data-test="sa-token-granted-roles"]')).toBe('系統安全管理員、ci-reader')
+    expect(rows('[data-test="sa-token-granted-roles"]')).toEqual(['系統安全管理員', 'ci-reader'])
   })
 
   it('有到期時間（expiry=at）：顯示格式化後的時間', async () => {
@@ -119,6 +122,46 @@ describe('系統告警明細：建立高權限 API token', () => {
     await mountDrawer()
     expect(q('[data-test="sa-view-api-tokens"]')).toBeNull()
     expect(q('[data-test="sa-token-created"]')).not.toBeNull()
+  })
+
+  it('唯讀的高權限 token：告警照發，第一層寫出權限為唯讀，建立內容多一列權限，角色後面帶權限小標', async () => {
+    getDetailMock.mockResolvedValue(detail({
+      privileged_roles: 'super_admin',
+      privileged_role_levels: 'read',
+      granted_roles: 'super_admin',
+      granted_role_levels: 'read',
+      access: 'read',
+    }))
+    await mountDrawer()
+    expect(text('[data-test="sa-first-layer"]')).toBe('root-lin 建立了一把 API token，授權角色含管理員（超級管理者），權限為唯讀')
+    expect(text('[data-test="sa-token-access"]')).toBe('唯讀')
+    expect(text('[data-test="sa-token-priv-roles"] [data-test="level-tag"]')).toBe('唯讀')
+    expect(text('[data-test="sa-token-granted-roles"] [data-test="level-tag"]')).toBe('唯讀')
+  })
+
+  it('部分讀寫：每個角色依同序的層級帶小標；項數對不上時不冒配，只列角色名', async () => {
+    getDetailMock.mockResolvedValue(detail({
+      privileged_roles: 'security_admin',
+      privileged_role_levels: 'read_write',
+      granted_roles: 'security_admin,asset_admin',
+      granted_role_levels: 'read_write,read',
+      access: 'mixed',
+    }))
+    await mountDrawer()
+    expect(text('[data-test="sa-first-layer"]')).toContain('權限為部分讀寫')
+    expect(text('[data-test="sa-token-access"]')).toBe('部分讀寫')
+    expect(rows('[data-test="sa-token-granted-roles"]')).toEqual(['系統安全管理員讀寫', '資產管理員唯讀'])
+    getDetailMock.mockResolvedValue(detail({ granted_roles: 'super_admin,asset_admin', granted_role_levels: 'read', access: 'mixed' }))
+    await mountDrawer()
+    const all = document.body.querySelectorAll('[data-test="sa-token-granted-roles"]')
+    expect(all[all.length - 1].querySelector('[data-test="level-tag"]')).toBeNull()
+  })
+
+  it('權限參數是不認得的值：當唯讀呈現', async () => {
+    getDetailMock.mockResolvedValue(detail({ access: 'admin', granted_role_levels: 'admin,read', privileged_role_levels: 'admin' }))
+    await mountDrawer()
+    expect(text('[data-test="sa-token-access"]')).toBe('唯讀')
+    expect(text('[data-test="sa-token-priv-roles"] [data-test="level-tag"]')).toBe('唯讀')
   })
 
   it('其他型別不出現建立內容', async () => {

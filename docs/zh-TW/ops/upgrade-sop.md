@@ -492,7 +492,7 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 舊版映像保有自己的名字。以映像檔交付時，交付的映像也包含這顆官方映像。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
-> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的五十八條見下 §2.5）；
+> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的五十九條見下 §2.5）；
 > 因此本節適用於同屬 1.0 baseline 世代的版本更替，
 > 也就是資料庫已套用過該 baseline 的部署。
 >
@@ -505,6 +505,22 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 > **單實例守衛的保證範圍**：本版起，第二個應用實例對同一資料庫啟動會被攔下並要求確認（§2.6b）。
 > 這道互斥**只在守衛版之間成立**：不含守衛的舊版本不持鎖，首次自無守衛版升級到本版時，
 > 新版能取得鎖**不代表**舊版已停。§2.3 步驟 5 的首次升級檢核就是為此而設，不可略過。
+
+#### 升到 1.26.0
+
+新增一條遷移 `20261118_api_token_role_level`。它加上兩個帶預設值的欄位：`api_token_roles` 的 `level` 與 `api_tokens` 的 `levels_recorded`。沒有資料步驟，不改寫任何一列，兩張表都很小。套用之後，回退的方式是還原升級前備份（§4.1）：`custodexa.sh rollback` 不停止任何服務，以結束碼 3 結束，並印出升級備份的 `restore` 指令。同一次升級也把內建資料庫轉換到 PostgreSQL 18 時的例外，即「升到 1.24.0」所述的那一條。
+
+- **既有的 API token 照常運作。** 升級前建立的 token，每個授權角色都維持讀寫，token 清單會標出它是升級前建立的。1.26.0 起建立 token 時，每個授權角色各設為唯讀或讀寫，畫面預設唯讀。以 `role_ids` 建立 token 的請求仍把列出的每個角色授權為讀寫；`roles` 可為每個角色指定層級。授權角色全部為唯讀的 token，呼叫任何會改變資料的端點都會被 403 `AUTH_API_TOKEN_READ_ONLY` 拒絕。
+- **不要讓較早的版本直接跑在 1.26.0 遷移過的資料庫上。** 較早的版本不認得層級，會把每個授權角色都當成讀寫，唯讀的 token 就能改變資料。支援的回退方式沒有這個問題：升級備份裡沒有升級後才建立的 token，而且以管理腳本還原時，還原前已存在的 API token 會全部終止。非得讓較早的版本跑在遷移過的資料庫上時，先撤銷每一把含有唯讀角色的 token。
+- **API 呼叫端看到的機器碼與上限。** 下列回應改變：
+  - 以已被使用的名稱建立使用者，由 400 改回 409，機器碼維持 `CONFLICT_USERNAME_EXISTS`。
+  - 以其他帳號使用中的電子郵件建立使用者，回 409 `CONFLICT_EMAIL`，與修改使用者時相同；原本回 500。比對時不分大小寫。
+  - 兩個請求同時建立同一個使用者名稱、同一個電子郵件或同一個自訂角色名稱，或同時把兩個自訂角色改成同一個名稱時，沒搶到的那一個回上述的 409，不再回 500。
+  - 儲存或刪除一個期間被別人改過的自訂角色，回 409 `ROLE_DEFINITION_VERSION_CONFLICT`。`ROLE_DEFINITION_CONFLICT` 現在只表示名稱已被使用。
+  - 刪除仍有掛載的共用憑證，回的仍是 409 `RULE_CREDENTIAL_IN_USE`，另外多了標準的 `error` 欄位；`code`、`assets` 與呼叫者範圍外的台數仍在頂層。
+  - 資產列表與使用者列表的 `page_size` 上限為 1000。超過 1000 的整數會降為 1000，回應回報實際套用的值；原本一頁取更多筆的呼叫端要改為讀取後續各頁。不是整數的值，包括位數多到無法當成數字讀取的值，與先前一樣套用預設的 20。
+- **私鑰的公鑰指紋。** 資產的帳號列與共用憑證會回報公鑰指紋，對象是升級後寫入或更換的私鑰。升級前保存的私鑰沒有指紋，以它連線不受影響；例外是平台為堡壘機專用帳號產生的金鑰，它原本就有指紋，升級後照舊。DSA 私鑰照常接受、照常可用，但一律沒有指紋，因為它的公鑰無法由私鑰本身確認。重新設定同一把私鑰就會記錄；與任何由人設定的秘密一樣，這會建立新的秘密版本，並產生系統告警「使用了自訂秘密」。共用憑證回報的是現行版本的指紋；輪替進行中或中斷之後，某一台資產的帳號列可能回報不同的指紋，那一台實際用哪一把鑰以帳號列為準。
+- **設定私鑰時的檢查更嚴格。** 公鑰部分與私鑰部分不相符的私鑰，會被當成無效私鑰拒絕。已保存的金鑰不會重新檢查。
 
 #### 升到 1.25.0
 
@@ -1018,7 +1034,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
 
 **升級到引入新增量 migration 的版本時**，每套用一條就多出一行 `執行 migration: <版本> (<名稱>)`，
 該增量在同一交易內套用；未見對應行即代表該增量**未跑**（多半是來源版本已含它），非異常。
-本版的五十八條增量對應的日誌行逐字為：
+本版的五十九條增量對應的日誌行逐字為：
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -1079,6 +1095,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
   執行 migration: 20261105_keystroke_records (keystroke_records)
   執行 migration: 20261113_api_tokens (api_tokens)
   執行 migration: 20261115_user_group_name_live_unique (user_group_name_live_unique)
+  執行 migration: 20261118_api_token_role_level (api_token_role_level)
 ```
 
 `20260825_evidence_offsite` 建立離機儲存的兩張表（設定世代表與保管帳冊）並對會話與匯出 job
@@ -1946,7 +1963,7 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 
 升級後若要退回舊版本，走的是「部署回舊版映像，再還原升級前的備份」，程序見 §4.2。
 
-本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的五十八條增量。
+本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的五十九條增量。
 其中三十二條列在這裡（`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
 `20260826_db_query_console`、`20260903_security_policies_value_text`、
 `20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、
@@ -1960,7 +1977,7 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 `20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`、`20261012_daily_review_signoff`、
 `20261115_user_group_name_live_unique`）。
 
-另外二十六條增量不在上面的清單中，因為它們都不提供正式環境的降版路徑：1.18.0 的十八條遷移（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）、1.21.0 的六條遷移（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method` 與 `20261103_executor_login_checks`）、1.22.0 的一條遷移（`20261105_keystroke_records`），以及 1.24.0 的一條遷移（`20261113_api_tokens`）。已套用它們的資料庫不能用管理腳本指回上一版；請還原升級前備份（見 §2.0 的「升到 1.18.0」、「升到 1.21.0」、「升到 1.22.0」與「升到 1.24.0」）。要回到 1.18.0 之前的版本，還須照該處說明更換 `JWT_SECRET` 並撤銷長效登入。
+另外二十七條增量不在上面的清單中，因為它們都不提供正式環境的降版路徑：1.18.0 的十八條遷移（`20261016_authz_permission_model`、`20261017_permission_state_attestation`、`20261017_permission_state_event_integrity`、`20261017_role_definitions`、`20261018_system_security_alerts`、`20261019_asset_host_key_address`、`20261020_mapping_observation_times`、`20261018_checkpoint_v4_attestation`、`20261022_credential_job_authorization`、`20261023_credential_recovery_alert`、`20261024_system_alert_delivery_key`、`20261025_host_key_mismatch`、`20261026_security_policy_floor_raises`、`20261027_credential_host_identity`、`20261028_user_release_guidance`、`20261029_credential_ownership`、`20261031_change_secret_scope_columns`、`20261101_scoped_template_builtin_keys`）、1.21.0 的六條遷移（`20261102_db_account_rotation`、`20261102_host_account_inventory`、`20261102_asset_account_purpose`、`20261103_asset_account_executor_source`、`20261103_change_secret_execution_method` 與 `20261103_executor_login_checks`）、1.22.0 的一條遷移（`20261105_keystroke_records`）、1.24.0 的一條遷移（`20261113_api_tokens`），以及 1.26.0 的一條遷移（`20261118_api_token_role_level`）。已套用它們的資料庫不能用管理腳本指回上一版；請還原升級前備份（見 §2.0 的「升到 1.18.0」、「升到 1.21.0」、「升到 1.22.0」、「升到 1.24.0」與「升到 1.26.0」）。要回到 1.18.0 之前的版本，還須照該處說明更換 `JWT_SECRET` 並撤銷長效登入。
 
 **增量 migration 的 `Down` 不作為生產回退手段**，這是本產品的一貫立場，不隨版本增減而改變：
 `Down` 還原的是**結構**，不是資料。它刪掉的欄位與資料表裡有什麼，執行後就沒有第二個來源可補；

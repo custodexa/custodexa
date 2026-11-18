@@ -67,7 +67,7 @@ func TestAPITokenValidateAcceptsAndCarriesGrantedRoles(t *testing.T) {
 	assert.Equal(t, tokenID, id.TokenID)
 	assert.Equal(t, "terraform", id.TokenName)
 	assert.Equal(t, "owner", id.Username)
-	assert.Equal(t, []uint{e.roles["security_admin"]}, id.GrantedRoleIDs)
+	assert.Equal(t, []APITokenGrantedRole{{RoleID: e.roles["security_admin"], Level: model.APITokenLevelReadWrite}}, id.GrantedRoles)
 }
 
 func TestAPITokenValidateNotFound(t *testing.T) {

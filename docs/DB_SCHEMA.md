@@ -1,6 +1,8 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-11-15（`20261115_user_group_name_live_unique`：`user_groups` 的名稱唯一索引 `idx_user_groups_name` 改為只計未刪除列的部分唯一索引（`WHERE deleted_at IS NULL`），群組刪除後可用同名重建；只換索引、無資料步驟、既有列不變。Down 重建涵蓋全部列的唯一索引，已出現同名列時拒絕並維持現狀。migration 總數 +1，表數不變）
+> **最後更新**：2026-11-18（`credential_secret_versions.public_key` 的語義改寫：由「系統推送的新公鑰行」擴為「這一版私鑰對應的公鑰」，寫入私鑰的每條路徑都填入、只改密碼時隨私鑰沿用，對外的公鑰指紋由此欄計算，見第 49 節。無 migration、無 schema 變更、不回填既有列）
+> 前次更新：2026-11-18（`20261118_api_token_role_level`：`api_token_roles` 加 `level character varying(16) DEFAULT 'read_write' NOT NULL`（個人 API token 每個授權角色的層級，`read` 或 `read_write`，見第 81 節）；`api_tokens` 加 `levels_recorded boolean DEFAULT false NOT NULL`（本版起建立的 token 寫為 true，供呈現「升級前建立」，見第 80 節）。純加法、無資料步驟：既有列由預設值取得 `read_write` 與 false，升級前建立的 token 行為不變。Down 刪欄（有損，只供 parity 守衛與開發環境）。同步更正正文的 migration 總數：共六十條（baseline 加五十九條增量）；表數不變）
+> 前次更新：2026-11-15（`20261115_user_group_name_live_unique`：`user_groups` 的名稱唯一索引 `idx_user_groups_name` 改為只計未刪除列的部分唯一索引（`WHERE deleted_at IS NULL`），群組刪除後可用同名重建；只換索引、無資料步驟、既有列不變。Down 重建涵蓋全部列的唯一索引，已出現同名列時拒絕並維持現狀。migration 總數 +1，表數不變）
 > 前次更新：2026-11-13（`20261113_api_tokens`：新表 `api_tokens`（個人 API 憑證，只存明文摘要，見第 80 節）與 `api_token_roles`（建立時授權的角色，見第 81 節）；`audit_logs` 加可為 NULL 的 `api_token_id`、`api_token_name` 兩欄與複合索引 `idx_audit_api_token_created`，兩欄納入逐列完整性驗證碼的涵蓋範圍（值為 NULL 時不進入簽章內容，既有列的驗證碼不變）。純新增、無資料步驟；不提供 Down。同步更正正文的總數：migration 共五十八條（baseline 加五十七條增量）、應用資料表 93 張、全庫 96 張表）
 > 前次更新：2026-11-06（政策鍵表補 `retention_keystroke_days` 一列，無 schema 變更）
 > 前次更新：2026-11-05（`20261105_keystroke_records`：新表 `keystroke_records`（鍵盤紀錄中繼資料，一個會話一列，見第 79 節），只建表與三條索引、不回填、不改既有表、不設外鍵；不提供 Down；檔案金鑰欄 `file_key_enc` 登記於信封加密的欄位登記表。新增保留天數政策鍵 `retention_keystroke_days`（出廠 0，不受檢查點跨鍵約束）。migration 總數 +1、應用資料表 +1）
@@ -198,7 +200,7 @@ agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_even
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含五十七條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含五十九條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -209,7 +211,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共五十八條：baseline 加五十七條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共六十條：baseline 加五十九條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -1408,7 +1410,7 @@ const (
 **狀態語義與拒絕細節**（`backend/internal/middleware/denial_audit.go`）:
 
 `status` 由審計中介層單點判定，順序如下：
-1. 請求脈絡上有拒絕分類標記者記 `denied`。標記由能力拒絕與範圍拒絕的寫出函式設定，寫出函式本身不寫審計列；該請求的審計列由審計中介層讀取標記後寫入；範圍拒絕對外回 404，仍記 `denied`，不依狀態碼記為 `failure`。整批無法操作（對外回 `NOTFOUND_BATCH_ITEMS_UNAVAILABLE`）同樣記 `denied`。
+1. 請求脈絡上有拒絕分類標記者記 `denied`。標記由能力拒絕、範圍拒絕與 API token 閘門拒絕的寫出函式設定，寫出函式本身不寫審計列；該請求的審計列由審計中介層讀取標記後寫入；範圍拒絕對外回 404，仍記 `denied`，不依狀態碼記為 `failure`。整批無法操作（對外回 `NOTFOUND_BATCH_ITEMS_UNAVAILABLE`）同樣記 `denied`。
 2. 無標記：HTTP 2xx 記 `success`，403 記 `denied`，其餘記 `failure`。非由範圍判定產生的 404（例如全域主體查無資源）因此維持 `failure`，且不帶 `denial` 鍵。
 
 規則拒絕（主體具備能力，被業務規則、目標狀態或主體類別擋下；含與能力拒絕共用 `AUTH_PERMISSION_DENIED` 者）不留分類標記，`details` 沿用各自的原因鍵（例如 `deny_reason`），不會被記成缺少某個權限點。
@@ -1417,13 +1419,13 @@ const (
 
 | 鍵 | 出現於 | 值 |
 |---|---|---|
-| `denial` | 所有帶標記的拒絕 | `capability`（能力拒絕）或 `scope`（範圍拒絕） |
-| `basis` | `denial=capability` | 判定依據：`all_of`（需全部所列權限點）、`any_of`（持其一即可）、`reserved`（保留給特定內建身分或資格的操作）、`unregistered`（未登錄路由的預設拒絕） |
+| `denial` | 所有帶標記的拒絕 | `capability`（能力拒絕）、`scope`（範圍拒絕）或 `api_token`（API token 閘門拒絕） |
+| `basis` | `denial=capability`、`denial=api_token` | 能力拒絕的判定依據：`all_of`（需全部所列權限點）、`any_of`（持其一即可）、`reserved`（保留給特定內建身分或資格的操作）、`unregistered`（未登錄路由的預設拒絕）。API token 閘門拒絕的依據：`read_only`（每個授權角色皆為唯讀而端點性質不是讀）、`forbidden_route`（端點不對 API token 開放、未登錄或查無） |
 | `required` | `denial=capability` | 逗號分隔：`all_of`／`any_of` 為權限點鍵；`reserved` 為受控條件值 `superadmin`、`superadmin_or_auditor`、`approver_eligibility`、`revoke_eligibility` 之一；`unregistered` 為空字串 |
 | `scope_reason` | `denial=scope` | 受控原因碼：`out_of_scope`（範圍外、已刪除與不存在同一值）、`resolver_missing`、`topology_unavailable`、`kind_unmapped`（資源種類未登記，對外回能力拒絕的 403 單一形狀）、`batch_items_unavailable`（整批無法操作） |
 | `count` | `scope_reason=batch_items_unavailable` | 無法操作的筆數（十進位整數字串） |
 
-新增的拒絕細節不含目標、節點、使用者或群組的名稱或識別碼；此限制不及於同一列原有的 `details`。所需權限點與保留條件只在這裡出現，不在對外回應中。操作日誌與每日審閱把 `denial=capability` 與 `denial=scope` 分別歸為可讀原因 `authz_capability_denied`、`authz_scope_denied`（三語文案齊備），其餘原因分類不受影響。
+新增的拒絕細節不含目標、節點、使用者或群組的名稱或識別碼；此限制不及於同一列原有的 `details`。所需權限點與保留條件只在這裡出現，不在對外回應中。操作日誌與每日審閱把 `denial=capability` 與 `denial=scope` 分別歸為可讀原因 `authz_capability_denied`、`authz_scope_denied`，`denial=api_token` 依 `basis` 歸為 `authz_api_token_read_only`、`authz_api_token_forbidden_route`（三語文案齊備），其餘原因分類不受影響。
 
 本節只描述 `details` 的內容與 `status` 的判定，不改欄位、索引與 migration。
 
@@ -2691,7 +2693,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共五十八條**：baseline 一條，其後的增量五十七條
+**現行 migration 共六十條**：baseline 一條，其後的增量五十九條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2755,10 +2757,11 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20261105_keystroke_records` | 鍵盤紀錄中繼資料：建 `keystroke_records`（第 79 節），共 **4 條 DDL**（1 建表＋2 唯一索引 `idx_keystroke_records_record_uuid`／`idx_keystroke_records_session_id`＋1 一般索引 `idx_keystroke_records_status`）；只建表與索引，不回填、不改既有表、不設外鍵、無 CHECK | `rollbackKeystrokeRecords`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新目錄 |
 | `20261113_api_tokens` | 個人 API 憑證：建 `api_tokens`（第 80 節，主鍵、`fk_api_tokens_user`／`fk_api_tokens_revoker` 兩條外鍵、唯一索引 `idx_api_tokens_token_hash`、一般索引 `idx_api_tokens_user_revoked`）與 `api_token_roles`（第 81 節，複合主鍵、`fk_api_token_roles_token`（ON DELETE CASCADE）／`fk_api_token_roles_role` 兩條外鍵）；`audit_logs` 加 `api_token_id bigint`、`api_token_name character varying(100)` 兩個可為 NULL 的欄位與索引 `idx_audit_api_token_created`＝`(api_token_id, created_at)`，共 **7 條 DDL**（2 建表＋2 索引＋2 加欄＋1 稽核索引）。純新增、無資料步驟、既有列不變（新欄為 NULL）；無 CHECK。稽核索引建在既有的 `audit_logs` 上，依 PostgreSQL 的一般行為需掃描該表的既有列，耗時可能隨其列數增加 | `rollbackAPITokens`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新欄 |
 | `20261115_user_group_name_live_unique` | 使用者群組名稱的唯一性只計未刪除列：`DROP INDEX idx_user_groups_name` 後建 `CREATE UNIQUE INDEX idx_user_groups_name ON user_groups (name) WHERE (deleted_at IS NULL)`，共 **2 條 DDL**。無資料步驟、既有列不變；新索引比舊索引寬鬆，既有資料必然成立 | `rollbackUserGroupNameLiveUnique`：先檢查 `user_groups` 是否有同名的多列（含已刪除）；有則在任何 DDL 之前回錯並列出重複名稱的樣本，索引與版本紀錄維持不變，回退只走還原升級前備份；沒有則重建涵蓋全部列的唯一索引 |
+| `20261118_api_token_role_level` | 個人 API token 授權角色的層級：`ALTER TABLE api_token_roles ADD COLUMN level character varying(16) DEFAULT 'read_write'::character varying NOT NULL` 與 `ALTER TABLE api_tokens ADD COLUMN levels_recorded boolean DEFAULT false NOT NULL`，共 **2 條 DDL**。無資料步驟；既有列由預設值取得 `read_write`（升級前的 token 每個授權角色皆可讀寫，行為不變）與 `levels_recorded = false`（標為升級前建立）；無 CHECK，值域由程式把關（讀到 `read_write` 以外的值一律視為唯讀） | `rollbackAPITokenRoleLevel`：先刪 `api_tokens.levels_recorded`，再刪 `api_token_roles.level`。有損（層級遺失，所有授權角色回到可讀寫），只供 parity 守衛與開發環境；生產回退只走還原升級前備份，回退前須先撤銷含唯讀角色的 token（彙總為唯讀或混合者） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的五十七條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的五十九條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
 > - **讀寫存量資料列，耗時隨對應表的列數成長（12 條）**：
@@ -3579,7 +3582,7 @@ pending → uploading → uploaded → local_purged
 | `SecretType` | string | `size:16;not null` | `secret_type` | `password`／`ssh_key` |
 | `PasswordEnc` | string | `type:text` | `-` | 信封加密密碼，**絕不出站** |
 | `PrivateKeyEnc` | string | `type:text` | `-` | 信封加密 SSH 私鑰，同上 |
-| `PublicKey` | string | `type:text` | `public_key` | 新公鑰的 authorized_keys 行（公鑰非機密，明文保存供刪舊／還原比對） |
+| `PublicKey` | string | `type:text` | `public_key` | 這一版私鑰對應的公鑰，authorized_keys 行的型別與 base64 兩段、不含註解（公鑰非機密，明文保存）。寫入私鑰的每條路徑在建立版本時填入（人工輸入、平台產生、改密與輪替轉正）；只改密碼而私鑰原樣沿用時一併沿用；換了私鑰絕不沿用舊值。空值＝這一版沒有私鑰，或公鑰未知（升級前寫入、寫入當下無法由私鑰取得，或私鑰是公鑰無法由私鑰本體確定的 DSA），不得以其他版本的公鑰代替。對外的公鑰指紋 `private_key_fingerprint` 由此欄計算，不解密私鑰；列本身不直接作為 API 回應 |
 | `PreviousPublicKey` | string | `type:text` | `previous_public_key` | 本系統先前推送的公鑰行；空值＝先前無系統推送鑰 |
 | `CreatedReason` | string | `size:16;not null` | `created_reason` | 這一版從哪來：`manual`（操作者宣告）／`rotation`（系統改密產生）／`migration`（既有帳號資料轉換時原樣搬入）／`detach`（單台脫離共用時產生）／`generated`（設定堡壘機專用帳號時由平台產生的金鑰） |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
@@ -4341,7 +4344,7 @@ pending → uploading → uploaded → local_purged
 
 ### 80. api_tokens（個人 API 憑證）
 
-**表名**: `api_tokens`；**檔案**: `backend/internal/model/api_token.go`（`model.APIToken`）。**建表方式**: 增量 migration `20261113_api_tokens`。
+**表名**: `api_tokens`；**檔案**: `backend/internal/model/api_token.go`（`model.APIToken`）。**建表方式**: 增量 migration `20261113_api_tokens`；`levels_recorded` 欄由增量 `20261118_api_token_role_level` 加入。
 
 人類帳號為自己建立的管理 API 憑證，一把一列。**只存明文的 SHA-256 摘要**，明文只在建立回應中出現一次、不入庫。有效權限＝建立時授權的角色（第 81 節）與帳號當下的指派取交集，每次請求重新解析。名稱占用（未撤銷、未到期、還原世代與目前相同）的唯一性**不以索引表達**——是否到期隨時間改變，由建立流程在帳號層級鎖內判定。
 
@@ -4358,17 +4361,19 @@ pending → uploading → uploaded → local_purged
 | `revoked_by` | bigint，外鍵 `fk_api_tokens_revoker` → `users(id)` | 撤銷者 |
 | `revoke_note` | text NOT NULL DEFAULT '' | 撤銷說明 |
 | `restore_generation` | varchar(64) NOT NULL DEFAULT '' | 建立當下的還原世代；與目前世代不同即視為已因還原失效 |
+| `levels_recorded` | boolean NOT NULL DEFAULT false | 建立時已逐角色記下層級；層級功能生效後建立的每一把（不論請求用哪一種寫法）皆為 true，加欄前的既有列由預設值取得 false，呈現為「升級前建立」。只供呈現，不參與任何判定。由增量 `20261118_api_token_role_level` 加入 |
 
 ### 81. api_token_roles（API 憑證授權的角色）
 
-**表名**: `api_token_roles`；**檔案**: `backend/internal/model/api_token.go`（`model.APITokenRole`）。**建表方式**: 增量 migration `20261113_api_tokens`。
+**表名**: `api_token_roles`；**檔案**: `backend/internal/model/api_token.go`（`model.APITokenRole`）。**建表方式**: 增量 migration `20261113_api_tokens`；`level` 欄由增量 `20261118_api_token_role_level` 加入。
 
-一把 API token 建立時授權的角色集合，以角色識別為準（不以名稱）。角色被刪除或帳號不再持有該角色時列仍保留，解析器取交集後自然不產生權限。
+一把 API token 建立時授權的角色集合與各角色的層級，以角色識別為準（不以名稱）。角色被刪除或帳號不再持有該角色時列仍保留，解析器取交集後自然不產生權限。層級決定該角色為哪一類請求提供能力：性質為讀的請求計入全部授權角色，性質為寫的請求只計入 `read_write` 的角色。
 
 | 欄位 | 型別／約束 | 說明 |
 |---|---|---|
 | `api_token_id` | bigint NOT NULL，複合主鍵 `api_token_roles_pkey` 第一欄；外鍵 `fk_api_token_roles_token` → `api_tokens(id)` ON DELETE CASCADE | |
 | `role_id` | bigint NOT NULL，複合主鍵第二欄；外鍵 `fk_api_token_roles_role` → `roles(id)` | |
+| `level` | character varying(16) NOT NULL DEFAULT 'read_write' | 層級：`read`（唯讀）或 `read_write`（讀寫）；建立後不修改。讀取時 `read_write` 以外的值（含不認得的值）一律視為唯讀。加欄前的既有列由預設值取得 `read_write` |
 
 ---
 

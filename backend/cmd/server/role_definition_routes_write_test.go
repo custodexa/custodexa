@@ -191,11 +191,20 @@ func runRoleDefinitionWriteRouteCases(t *testing.T, env *baselineEnv) {
 		assert.Equal(t, before, snap(target))
 	})
 
-	t.Run("舊版本修改回 ROLE_DEFINITION_CONFLICT", func(t *testing.T) {
+	t.Run("舊版本修改與刪除回 ROLE_DEFINITION_VERSION_CONFLICT，名稱重複回 ROLE_DEFINITION_CONFLICT", func(t *testing.T) {
 		target := f.role("rw-stale", "asset:view")
 		c, out := env.api("S01", "PUT", path(target), map[string]any{"name": "rw-stale", "permissions": []string{"asset:view"}, "expected_version": 7})
 		assert.Equal(t, http.StatusConflict, c, "%v", out)
-		assert.Equal(t, string(apierror.CodeRoleDefinitionConflict), codeOf(out))
+		assert.Equal(t, string(apierror.CodeRoleDefinitionVersionConflict), codeOf(out))
+		c, out = env.api("S01", "DELETE", path(target)+"?expected_version=7", nil)
+		assert.Equal(t, http.StatusConflict, c, "%v", out)
+		assert.Equal(t, string(apierror.CodeRoleDefinitionVersionConflict), codeOf(out))
+		f.role("rw-stale-other", "asset:view")
+		c, out = env.api("S01", "PUT", path(target), map[string]any{"name": "rw-stale-other", "permissions": []string{"asset:view"}, "expected_version": 1})
+		assert.Equal(t, http.StatusConflict, c, "%v", out)
+		assert.Equal(t, string(apierror.CodeRoleDefinitionConflict), codeOf(out), "改成他人已用的名稱：名稱衝突碼")
+		c, _ = env.api("S01", "GET", path(target), nil)
+		assert.Equal(t, http.StatusOK, c, "兩種衝突都不刪除、不改動角色")
 	})
 
 	t.Run("有直接指派、只有無成員群組指派、只有停用映射規則引用的三個角色刪除各回 ROLE_DEFINITION_IN_USE", func(t *testing.T) {

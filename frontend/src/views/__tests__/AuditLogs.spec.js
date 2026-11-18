@@ -248,7 +248,7 @@ describe('AuditLogs', () => {
       resource: 'asset',
       api_token_id: 9,
       api_token_name: 'ci-legacy',
-      api_token: { id: 9, name: 'ci-legacy', granted_roles: [{ role_id: 5, name: '資產管理員' }], expires_at: null, owner_deleted: true },
+      api_token: { id: 9, name: 'ci-legacy', granted_roles: [{ role_id: 5, name: '資產管理員', level: 'read_write' }], access: 'read_write', expires_at: null, owner_deleted: true },
     })
     const wrapper = mountAuditLogs()
     await flushPromises()
@@ -258,8 +258,10 @@ describe('AuditLogs', () => {
     expect(wrapper.find('[data-test="audit-detail-via-token"]').text()).toContain('API token「ci-legacy」')
     const meta = wrapper.find('[data-test="audit-detail-via-token-meta"]').text()
     expect(meta).toContain('API token 編號 9')
-    expect(meta).toContain('授權角色：資產管理員')
+    expect(meta).not.toContain('授權角色')
     expect(meta).toContain('到期 永不到期')
+    expect(wrapper.get('[data-test="audit-detail-via-token-access"]').text()).toBe('權限讀寫')
+    expect(wrapper.get('[data-test="audit-detail-via-token-roles"]').text()).toBe('授權角色：資產管理員 讀寫')
     expect(meta).toContain('名稱為當時紀錄；帳號已刪除')
   })
 
@@ -269,13 +271,16 @@ describe('AuditLogs', () => {
       id: 36,
       api_token_id: 41,
       api_token_name: 'terraform-prod-apply',
-      api_token: { id: 41, name: 'terraform-prod-apply', granted_roles: [{ role_id: 1, name: 'admin' }, { role_id: 12, name: 'ci-reader' }], expires_at: '2027-02-11T15:59:59Z', owner_deleted: false },
+      api_token: { id: 41, name: 'terraform-prod-apply', granted_roles: [{ role_id: 1, name: 'admin', level: 'read_write' }, { role_id: 12, name: 'ci-reader', level: 'read' }], access: 'mixed', expires_at: '2027-02-11T15:59:59Z', owner_deleted: false },
     })
     const wrapper = mountAuditLogs()
     await flushPromises()
     wrapper.vm.showDetails({ id: 36, status: 'success', action: 'create', resource: 'asset', created_at: '2026-11-13T05:58:02Z', user_id: 57, api_token_id: 41, api_token_name: 'terraform-prod-apply' })
     await flushPromises()
-    expect(wrapper.find('[data-test="audit-detail-via-token-meta"]').text()).toContain('授權角色：管理員、ci-reader')
+    // 「經由」拆成三行：編號與到期、權限總結、每個授權角色與它的層級
+    expect(wrapper.get('[data-test="audit-detail-via-token-access"] [data-test="access-tag"]').text()).toBe('部分讀寫')
+    const roleTags = wrapper.findAll('[data-test="audit-detail-via-token-roles"] .via-token__role')
+    expect(roleTags.map((r) => r.text())).toEqual(['管理員 讀寫', 'ci-reader 唯讀'])
 
     getAuditLogMock.mockResolvedValueOnce({
       id: 37,
@@ -288,6 +293,97 @@ describe('AuditLogs', () => {
     const meta = wrapper.find('[data-test="audit-detail-via-token-meta"]').text()
     expect(meta).not.toContain('永不到期')
     expect(meta).toBe('API token 編號 9 · 名稱為當時紀錄；帳號已刪除')
+    expect(wrapper.find('[data-test="audit-detail-via-token-access"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="audit-detail-via-token-roles"]').exists()).toBe(false)
+  })
+
+  it('建立 API token 的事件：變更詳情列出名稱、權限、每個授權角色與層級、到期，不另列原始 details', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.showDetails({
+      id: 51,
+      status: 'success',
+      action: 'create',
+      resource: 'api_token',
+      resource_id: 52,
+      created_at: '2026-11-27T02:12:40Z',
+      user_id: 57,
+      username: 'ops-chen',
+      details: JSON.stringify({
+        token_id: 52,
+        token_name: 'terraform-prod-apply-2',
+        owner_user_id: 57,
+        owner_username: 'ops-chen',
+        granted_roles: [
+          { role_id: 5, name: '資產管理員', builtin_key: 'asset_admin', level: 'read_write' },
+          { role_id: 9, name: '授權管理員', builtin_key: 'authz_admin', level: 'read' },
+        ],
+        expires_at: '2027-02-25T15:59:59Z',
+        never_expires: false,
+        privileged: false,
+        access: 'mixed',
+      }),
+    })
+    await flushPromises()
+    const block = wrapper.get('[data-test="audit-detail-token-create"]')
+    expect(block.text()).toContain('terraform-prod-apply-2')
+    expect(block.get('[data-test="audit-detail-token-create-access"]').text()).toBe('部分讀寫')
+    const roles = block.findAll('[data-test="audit-detail-token-create-roles"] .via-token__role').map((r) => r.text())
+    expect(roles).toEqual(['資產管理員 讀寫', '授權管理員 唯讀'])
+    expect(wrapper.find('[data-test="log-details-raw"]').exists()).toBe(false)
+    // 這一列沒有原因碼：不得把請求路徑當成「原因」列出
+    expect(wrapper.find('[data-test="log-reason"]').exists()).toBe(false)
+    expect(wrapper.findAll('.el-descriptions__label').map((n) => n.text())).not.toContain('原因')
+  })
+
+  // 擋：唯讀 token 被拒與端點不開放的拒絕在詳情裡分不出來
+  it('API token 在閘門被拒的紀錄：原因列分別寫出唯讀與端點不開放', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    const cases = [
+      ['authz_api_token_read_only', 'read_only', '這個 API token 設為唯讀，不能執行會改變資料的操作'],
+      ['authz_api_token_forbidden_route', 'forbidden_route', 'API token 不能使用這個功能'],
+    ]
+    for (const [code, basis, text] of cases) {
+      wrapper.vm.showDetails({
+        id: 60,
+        status: 'denied',
+        status_code: 403,
+        method: 'POST',
+        action: 'create',
+        resource: 'asset',
+        path: '/api/v1/assets',
+        created_at: '2026-12-02T06:00:03Z',
+        user_id: 57,
+        username: 'ops-chen',
+        api_token_id: 49,
+        api_token_name: 'drift-check',
+        details: JSON.stringify({ denial: 'api_token', basis }),
+        reason_code: code,
+      })
+      await flushPromises()
+      expect(wrapper.get('[data-test="log-reason"]').text()).toBe(text)
+    }
+  })
+
+  it('撤銷 API token 的事件不帶權限：照舊列原始 details', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    wrapper.vm.showDetails({
+      id: 52,
+      status: 'success',
+      action: 'api_token_revoked',
+      resource: 'api_token',
+      created_at: '2026-11-27T02:12:40Z',
+      user_id: 57,
+      details: JSON.stringify({ token_id: 52, token_name: 'terraform-prod-apply-2', owner_user_id: 57, owner_username: 'ops-chen', revoke_note: '' }),
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-test="audit-detail-token-create"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="log-details-raw"]').exists()).toBe(true)
   })
 
   it('資源是 API token 本身的列：本人的寫名稱、他人的寫所屬帳號／名稱；全部撤銷的列資源是使用者', async () => {

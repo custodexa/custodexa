@@ -1,0 +1,2456 @@
+{
+  "rules": [
+    "single_read",
+    "single_read_matches_list",
+    "hidden_target_not_found",
+    "list_data_total",
+    "list_paging",
+    "exact_lookup",
+    "create_201",
+    "same_envelope_read_write",
+    "write_response_equals_read",
+    "update_missing_fields_unchanged",
+    "update_keeps_identity",
+    "delete_204",
+    "recreate_same_name",
+    "identity_globally_unique",
+    "time_fields_rfc3339",
+    "server_rewrite_returned",
+    "secret_write_only",
+    "secret_clear_path",
+    "duplicate_409",
+    "concurrent_write_no_500",
+    "error_envelope",
+    "resend_no_change"
+  ],
+  "exceptions": {
+    "concurrent_write_retriable_conflict": {
+      "rule": "concurrent_write_no_500",
+      "initial_only": true,
+      "description": "並行寫入不排隊，回可重試的衝突"
+    },
+    "create_returns_200": {
+      "rule": "create_201",
+      "initial_only": true,
+      "description": "建立成功回 200，而非 201"
+    },
+    "delete_response_shape": {
+      "rule": "delete_204",
+      "initial_only": true,
+      "description": "刪除成功回 200 與本文，而非 204"
+    },
+    "detail_projection_differs": {
+      "rule": "single_read_matches_list",
+      "initial_only": true,
+      "description": "單筆讀取的投影與列表不同，只比對登錄的共同欄位"
+    },
+    "identity_unique_within_kind": {
+      "rule": "identity_globally_unique",
+      "initial_only": true,
+      "description": "識別只在同類資源內唯一，匯入時要帶上類別"
+    },
+    "list_without_total": {
+      "rule": "list_data_total",
+      "initial_only": true,
+      "description": "列表沒有總數"
+    },
+    "lookup_not_unique": {
+      "rule": "exact_lookup",
+      "initial_only": true,
+      "description": "有精確查找參數，但唯一性的範圍比參數窄，一次查找可能回多筆"
+    },
+    "no_exact_lookup": {
+      "rule": "exact_lookup",
+      "initial_only": true,
+      "description": "列表沒有精確查找參數"
+    },
+    "no_single_read": {
+      "rule": "single_read",
+      "initial_only": true,
+      "description": "沒有依識別讀取單筆的端點"
+    },
+    "no_time_fields": {
+      "rule": "time_fields_rfc3339",
+      "initial_only": true,
+      "description": "沒有時間欄位，或缺少修改時間"
+    },
+    "resend_advances_time_or_version": {
+      "rule": "resend_no_change",
+      "initial_only": true,
+      "description": "原樣重送會推進時間或版本"
+    },
+    "response_envelope_mixed": {
+      "rule": "same_envelope_read_write",
+      "initial_only": true,
+      "description": "同一資源的讀取與寫入回應外層不同（裸物件或包在 data 內）"
+    },
+    "secret_no_clear_path": {
+      "rule": "secret_clear_path",
+      "initial_only": true,
+      "description": "秘密欄位沒有明確的清除途徑"
+    },
+    "secret_state_implicit": {
+      "rule": "secret_write_only",
+      "initial_only": true,
+      "description": "讀取不含秘密，但沒有直接回報是否已設定的欄位，要由其他欄位推得"
+    },
+    "secret_without_fingerprint": {
+      "rule": "secret_write_only",
+      "initial_only": true,
+      "description": "讀取只回是否已設定，部分秘密沒有可比對的指紋"
+    },
+    "server_rewrites_input": {
+      "rule": "server_rewrite_returned",
+      "initial_only": true,
+      "description": "伺服器改寫輸入而寫入回應未完整反映"
+    },
+    "time_field_format": {
+      "rule": "time_fields_rfc3339",
+      "initial_only": true,
+      "description": "時間欄位是合法的 RFC 3339，但只到秒，精度與其他資源（到微秒）不同"
+    },
+    "update_full_replace": {
+      "rule": "update_missing_fields_unchanged",
+      "initial_only": true,
+      "description": "修改為整筆替換：請求中沒有出現的欄位會被清除或必填"
+    },
+    "update_reissues_identity": {
+      "rule": "update_keeps_identity",
+      "initial_only": true,
+      "description": "修改特定欄位時以新識別取代舊識別"
+    },
+    "write_response_shape_differs": {
+      "rule": "write_response_equals_read",
+      "initial_only": true,
+      "description": "寫入回應與讀取的形狀不同"
+    }
+  },
+  "initial_names": [
+    "asset_node",
+    "asset",
+    "asset_account",
+    "credential",
+    "user",
+    "user_group",
+    "user_group_role_binding",
+    "authorization",
+    "role_definition",
+    "group_role_mapping",
+    "group_user_group_mapping"
+  ],
+  "resources": [
+    {
+      "name": "asset_node",
+      "title": "節點",
+      "list": [
+        "GET /api/v1/asset-groups",
+        "GET /api/v1/asset-groups/tree"
+      ],
+      "read": [
+        "GET /api/v1/asset-groups/:id"
+      ],
+      "create": [
+        "POST /api/v1/asset-groups"
+      ],
+      "update": [
+        "PUT /api/v1/asset-groups/:id",
+        "PUT /api/v1/asset-groups/:id/move"
+      ],
+      "delete": [
+        "DELETE /api/v1/asset-groups/:id"
+      ],
+      "paged": false,
+      "read_wrapped": false,
+      "lookup": {
+        "params": [
+          "name"
+        ],
+        "match": "逐字相等（不去空白、不改大小寫）"
+      },
+      "identity_scope": "名稱在同一個上層節點之下唯一；識別全域唯一",
+      "common_fields": [
+        "id",
+        "name",
+        "description",
+        "parent_id",
+        "path"
+      ],
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "conforms",
+          "note": "交易內取拓撲序列化鎖，阻塞排隊"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "exception",
+          "exception": "delete_response_shape",
+          "note": "200 並回報連帶撤銷的授權筆數"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "exception",
+          "exception": "lookup_not_unique",
+          "note": "名稱只在同一個上層節點之下唯一，以名稱查找可能回多筆，帶上層識別也不會縮小結果"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "conforms",
+          "note": "沒有時間與版本欄位，原樣重送後讀取沒有差異"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "不改寫輸入：名稱與說明的前後空白原樣保存與回傳"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "exception",
+          "exception": "detail_projection_differs",
+          "note": "列表另帶直掛資產與用途旗標，單筆讀取不帶"
+        },
+        "time_fields_rfc3339": {
+          "status": "exception",
+          "exception": "no_time_fields",
+          "note": "單筆讀取與列表都沒有時間欄位"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "exception",
+          "exception": "update_full_replace",
+          "note": "名稱必填，說明送空字串即清空"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "asset",
+      "title": "資產",
+      "list": [
+        "GET /api/v1/assets"
+      ],
+      "read": [
+        "GET /api/v1/assets/:id"
+      ],
+      "create": [
+        "POST /api/v1/assets"
+      ],
+      "update": [
+        "PUT /api/v1/assets/:id"
+      ],
+      "delete": [
+        "DELETE /api/v1/assets/:id"
+      ],
+      "paged": true,
+      "read_wrapped": false,
+      "list_query": "page_size=1000",
+      "lookup": {
+        "params": [
+          "name"
+        ],
+        "match": "逐字相等（不去空白、不改大小寫）"
+      },
+      "identity_scope": "全域",
+      "secrets": [
+        {
+          "field": "password",
+          "read_as": "has_password"
+        },
+        {
+          "field": "private_key",
+          "read_as": "has_private_key"
+        },
+        {
+          "field": "sftp_password",
+          "read_as": "has_sftp_password"
+        }
+      ],
+      "list_only_fields": [
+        "permission",
+        "access_state"
+      ],
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "conforms",
+          "note": "拓撲序列化鎖，阻塞排隊"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "exception",
+          "exception": "delete_response_shape",
+          "note": "200 並回空物件"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "conforms",
+          "note": "每頁上限 1000，回報實際套用的值"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "exception",
+          "exception": "resend_advances_time_or_version",
+          "note": "同一個說明原樣重送也會推進修改時間"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms"
+        },
+        "secret_clear_path": {
+          "status": "exception",
+          "exception": "secret_no_clear_path",
+          "note": "密碼、私鑰沒有清除途徑"
+        },
+        "secret_write_only": {
+          "status": "exception",
+          "exception": "secret_without_fingerprint",
+          "note": "只回是否已設定；資產本身的讀取不帶私鑰指紋（指紋在帳號列），密碼與檔案傳輸密碼沒有可比對的指紋"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "標籤正規化後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "exception",
+          "exception": "detail_projection_differs",
+          "note": "只有連線授權的一般使用者，列表那一筆另帶授權等級與存取狀態，單筆讀取不帶；管理者讀到的兩者相同"
+        },
+        "time_fields_rfc3339": {
+          "status": "conforms"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "conforms",
+          "note": "全部為選填欄位，缺欄位代表不動"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "asset_account",
+      "title": "資產帳號",
+      "list": [
+        "GET /api/v1/assets/:id/accounts"
+      ],
+      "read": [
+        "GET /api/v1/assets/:id/accounts/:accountId"
+      ],
+      "create": [
+        "POST /api/v1/assets/:id/accounts"
+      ],
+      "update": [
+        "PUT /api/v1/assets/:id/accounts/:accountId",
+        "POST /api/v1/assets/:id/accounts/:accountId/set-default"
+      ],
+      "delete": [
+        "DELETE /api/v1/assets/:id/accounts/:accountId"
+      ],
+      "paged": false,
+      "read_wrapped": false,
+      "lookup": {},
+      "identity_scope": "帳號名稱在同一台資產內唯一；識別全域唯一，路由掛在資產之下",
+      "secrets": [
+        {
+          "field": "password",
+          "read_as": "has_password"
+        },
+        {
+          "field": "private_key",
+          "read_as": "has_private_key"
+        }
+      ],
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "conforms",
+          "note": "拓撲序列化鎖；改密進行中回可辨識的衝突"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "conforms"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "exception",
+          "exception": "no_exact_lookup",
+          "note": "沒有以帳號名稱查找的參數"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "exception",
+          "exception": "resend_advances_time_or_version",
+          "note": "同一個密碼重送也會推進版本"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms"
+        },
+        "secret_clear_path": {
+          "status": "exception",
+          "exception": "secret_no_clear_path",
+          "note": "密碼、私鑰沒有清除途徑"
+        },
+        "secret_write_only": {
+          "status": "exception",
+          "exception": "secret_without_fingerprint",
+          "note": "只回是否已設定與生效版本；私鑰回報公鑰指紋，未保存公鑰的既有私鑰、DSA 型別的私鑰、呼叫者沒有該憑證檢視能力時與範圍外收窄的帳號列不帶；密碼沒有可比對的指紋"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "不改寫輸入：帳號名與備註的前後空白原樣保存與回傳"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "conforms"
+        },
+        "time_fields_rfc3339": {
+          "status": "exception",
+          "exception": "time_field_format",
+          "note": "時間只到秒（合法的 RFC 3339）"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "conforms",
+          "note": "選填欄位，缺欄位代表不動"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "credential",
+      "title": "共用憑證",
+      "list": [
+        "GET /api/v1/credentials"
+      ],
+      "read": [
+        "GET /api/v1/credentials/:id"
+      ],
+      "create": [
+        "POST /api/v1/credentials"
+      ],
+      "update": [
+        "PUT /api/v1/credentials/:id",
+        "POST /api/v1/credentials/:id/secret"
+      ],
+      "delete": [
+        "DELETE /api/v1/credentials/:id"
+      ],
+      "paged": true,
+      "read_wrapped": true,
+      "lookup": {
+        "params": [
+          "name"
+        ],
+        "match": "去除前後空白後逐字相等"
+      },
+      "identity_scope": "共用範圍的憑證名稱唯一；識別全域唯一",
+      "secrets": [
+        {
+          "field": "password",
+          "read_as": "has_password"
+        },
+        {
+          "field": "private_key",
+          "read_as": "has_private_key"
+        }
+      ],
+      "common_fields": [
+        "id",
+        "name",
+        "note",
+        "username",
+        "scope",
+        "protocol_family",
+        "secret_type",
+        "has_password",
+        "has_private_key",
+        "created_at",
+        "updated_at"
+      ],
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "pending",
+          "note": "改密進行中回可辨識的衝突；並行修改備註抽樣未見內部錯誤，並行改密未查證"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "conforms"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "conforms",
+          "note": "選用分頁，每頁上限 200，回報實際套用的值"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "conforms",
+          "note": "同一個備註原樣重送後修改時間不變"
+        },
+        "same_envelope_read_write": {
+          "status": "exception",
+          "exception": "response_envelope_mixed",
+          "note": "單筆讀取包在 data 內，建立回裸物件"
+        },
+        "secret_clear_path": {
+          "status": "exception",
+          "exception": "secret_no_clear_path",
+          "note": "密碼、私鑰沒有清除途徑"
+        },
+        "secret_write_only": {
+          "status": "exception",
+          "exception": "secret_without_fingerprint",
+          "note": "只回是否已設定；私鑰回報公鑰指紋，未保存公鑰的既有私鑰、DSA 型別的私鑰，以及呼叫者沒有該憑證檢視能力時不帶；密碼沒有可比對的指紋"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "名稱去除前後空白後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "exception",
+          "exception": "detail_projection_differs",
+          "note": "單筆讀取為含掛載的詳情投影"
+        },
+        "time_fields_rfc3339": {
+          "status": "exception",
+          "exception": "time_field_format",
+          "note": "時間只到秒（合法的 RFC 3339）"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "conforms",
+          "note": "選填欄位，缺欄位代表不動；秘密另走專屬路由"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "user",
+      "title": "使用者",
+      "list": [
+        "GET /api/v1/users"
+      ],
+      "read": [
+        "GET /api/v1/users/:id"
+      ],
+      "create": [
+        "POST /api/v1/users"
+      ],
+      "update": [
+        "PUT /api/v1/users/:id"
+      ],
+      "delete": [
+        "DELETE /api/v1/users/:id"
+      ],
+      "paged": true,
+      "read_wrapped": true,
+      "list_query": "page_size=1000",
+      "lookup": {
+        "params": [
+          "username"
+        ],
+        "match": "逐字相等（不去空白、不改大小寫）"
+      },
+      "identity_scope": "全域",
+      "secrets": [
+        {
+          "field": "password",
+          "read_as": "不輸出"
+        }
+      ],
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "conforms",
+          "note": "並行建立撞唯一索引時回與預查相同的衝突碼；並行修改電子郵件撞唯一索引回電子郵件衝突碼"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "exception",
+          "exception": "delete_response_shape",
+          "note": "200 並回空物件"
+        },
+        "duplicate_409": {
+          "status": "conforms",
+          "note": "建立時使用者名稱重複回名稱衝突碼、電子郵件重複回電子郵件衝突碼，修改時電子郵件重複回電子郵件衝突碼，皆為 409"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "conforms",
+          "note": "每頁上限 1000，回報實際套用的值"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "conforms",
+          "note": "同一個電子郵件與全名原樣重送後修改時間不變"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms",
+          "note": "單筆讀取與建立都包在 data 內"
+        },
+        "secret_clear_path": {
+          "status": "exception",
+          "exception": "secret_no_clear_path",
+          "note": "本地密碼沒有單獨的清除途徑"
+        },
+        "secret_write_only": {
+          "status": "exception",
+          "exception": "secret_state_implicit",
+          "note": "密碼永不輸出，也沒有是否已設定的欄位：本地的人類帳號建立時必設密碼，自動化帳號（kind 為 agent）與憑證外部化的帳號（external_credential 為真）沒有可用的本地密碼"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "電子郵件與來源網段正規化後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "conforms"
+        },
+        "time_fields_rfc3339": {
+          "status": "conforms"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "conforms",
+          "note": "空字串與缺欄位代表不動"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "user_group",
+      "title": "使用者群組",
+      "list": [
+        "GET /api/v1/user-groups"
+      ],
+      "read": [
+        "GET /api/v1/user-groups/:id"
+      ],
+      "create": [
+        "POST /api/v1/user-groups"
+      ],
+      "update": [
+        "PUT /api/v1/user-groups/:id",
+        "PUT /api/v1/user-groups/:id/members"
+      ],
+      "delete": [
+        "DELETE /api/v1/user-groups/:id"
+      ],
+      "paged": false,
+      "read_wrapped": false,
+      "lookup": {
+        "params": [
+          "name"
+        ],
+        "match": "逐字相等（不去空白、不改大小寫）"
+      },
+      "identity_scope": "全域",
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "pending",
+          "note": "並行修改、並行替換成員與並行同名建立抽樣未見內部錯誤；群組列鎖是否排隊未查證"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "exception",
+          "exception": "delete_response_shape",
+          "note": "200 並回報連帶撤銷的授權筆數"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "exception",
+          "exception": "resend_advances_time_or_version",
+          "note": "同樣的名稱與說明原樣重送也會推進修改時間"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "不改寫輸入：名稱與說明的前後空白原樣保存與回傳"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "conforms"
+        },
+        "time_fields_rfc3339": {
+          "status": "conforms"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "exception",
+          "exception": "update_full_replace",
+          "note": "名稱必填，說明直接覆寫；成員為整組替換"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "user_group_role_binding",
+      "title": "使用者群組角色指派",
+      "list": [
+        "GET /api/v1/user-groups/:id/role-bindings"
+      ],
+      "read": null,
+      "create": null,
+      "update": [
+        "PUT /api/v1/user-groups/:id/role-bindings"
+      ],
+      "delete": null,
+      "paged": false,
+      "read_wrapped": false,
+      "lookup": {},
+      "identity_scope": "以群組識別定位整組指派，沒有自有識別",
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "pending",
+          "note": "並行替換抽樣未見內部錯誤，鎖未查證"
+        },
+        "create_201": {
+          "status": "not_applicable",
+          "note": "沒有建立路由，整組以修改替換"
+        },
+        "delete_204": {
+          "status": "not_applicable",
+          "note": "沒有刪除路由，以空集合替換"
+        },
+        "duplicate_409": {
+          "status": "conforms",
+          "note": "沒有建立路由也沒有自有識別，整組替換不會產生重複；請求內重複的角色由伺服器去重"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "exception",
+          "exception": "no_exact_lookup",
+          "note": "沒有以角色查找的參數"
+        },
+        "hidden_target_not_found": {
+          "status": "not_applicable",
+          "note": "沒有單筆讀取；看不到的群組其指派列表另由群組的範圍規則約束"
+        },
+        "identity_globally_unique": {
+          "status": "conforms",
+          "note": "沒有自有識別，以群組與角色定位"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "not_applicable",
+          "note": "沒有刪除路由"
+        },
+        "resend_no_change": {
+          "status": "conforms",
+          "note": "原樣重送相同的角色集合，回應相同"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms",
+          "note": "讀取與修改都回 data 與總數"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "請求內重複的角色去重並排序，寫入回應即為改寫後的值"
+        },
+        "single_read": {
+          "status": "exception",
+          "exception": "no_single_read",
+          "note": "整組指派以群組讀取，沒有單筆讀取"
+        },
+        "single_read_matches_list": {
+          "status": "not_applicable",
+          "note": "沒有單筆讀取"
+        },
+        "time_fields_rfc3339": {
+          "status": "exception",
+          "exception": "no_time_fields",
+          "note": "每一筆指派只有角色與範圍，沒有時間欄位"
+        },
+        "update_keeps_identity": {
+          "status": "conforms",
+          "note": "沒有自有識別"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "exception",
+          "exception": "update_full_replace",
+          "note": "整組替換"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "authorization",
+      "title": "授權規則",
+      "list": [
+        "GET /api/v1/authorizations"
+      ],
+      "read": [
+        "GET /api/v1/authorizations/:id"
+      ],
+      "create": [
+        "POST /api/v1/authorizations",
+        "POST /api/v1/authorizations/batch"
+      ],
+      "update": [
+        "PUT /api/v1/authorizations/:id/accounts"
+      ],
+      "delete": [
+        "DELETE /api/v1/authorizations/:id"
+      ],
+      "paged": true,
+      "read_wrapped": false,
+      "list_query": "page_size=100",
+      "lookup": {},
+      "identity_scope": "同一主體、客體、等級唯一；識別全域唯一",
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "pending",
+          "note": "並行重複建立抽樣回一筆成功、其餘為可辨識的衝突；交易內先查再建，鎖未查證"
+        },
+        "create_201": {
+          "status": "exception",
+          "exception": "create_returns_200",
+          "note": "建立與批次建立都回 200"
+        },
+        "delete_204": {
+          "status": "exception",
+          "exception": "delete_response_shape",
+          "note": "200 並回空物件"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "exception",
+          "exception": "no_exact_lookup",
+          "note": "沒有名稱；自然鍵只能以篩選參數近似"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "conforms",
+          "note": "每頁上限 100，回報實際套用的值"
+        },
+        "recreate_same_name": {
+          "status": "conforms",
+          "note": "同一主體、客體、等級可重建"
+        },
+        "resend_no_change": {
+          "status": "pending",
+          "note": "修改帳號範圍的原樣重送是否產生差異未查證"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "帳號範圍正規化後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "conforms"
+        },
+        "time_fields_rfc3339": {
+          "status": "exception",
+          "exception": "no_time_fields",
+          "note": "沒有修改時間"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "conforms",
+          "note": "只能修改帳號範圍這一個欄位"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "role_definition",
+      "title": "自訂角色",
+      "list": [
+        "GET /api/v1/role-definitions"
+      ],
+      "read": [
+        "GET /api/v1/role-definitions/:id"
+      ],
+      "create": [
+        "POST /api/v1/role-definitions",
+        "POST /api/v1/role-definitions/:id/copy"
+      ],
+      "update": [
+        "PUT /api/v1/role-definitions/:id"
+      ],
+      "delete": [
+        "DELETE /api/v1/role-definitions/:id"
+      ],
+      "paged": false,
+      "read_wrapped": false,
+      "lookup": {
+        "params": [
+          "name"
+        ],
+        "match": "去除前後空白後逐字相等"
+      },
+      "identity_scope": "全域",
+      "common_fields": [
+        "id",
+        "name",
+        "description",
+        "builtin_key",
+        "locked",
+        "definition_version",
+        "template_role_id",
+        "summary"
+      ],
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "conforms",
+          "note": "修改與刪除為樂觀鎖，版本過期回專屬機器碼；並行建立或改成同一個名稱撞唯一索引時回名稱衝突碼"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "conforms"
+        },
+        "duplicate_409": {
+          "status": "conforms",
+          "note": "名稱重複與版本過期各有專屬機器碼"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "conforms"
+        },
+        "list_data_total": {
+          "status": "conforms"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "conforms",
+          "note": "刪除時釋出名稱"
+        },
+        "resend_no_change": {
+          "status": "exception",
+          "exception": "resend_advances_time_or_version",
+          "note": "原樣重送會推進定義版本"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "名稱去空白、權限去重排序後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "exception",
+          "exception": "detail_projection_differs",
+          "note": "列表另帶唯讀判定欄位，單筆讀取另帶權限與依賴"
+        },
+        "time_fields_rfc3339": {
+          "status": "exception",
+          "exception": "no_time_fields",
+          "note": "沒有時間欄位"
+        },
+        "update_keeps_identity": {
+          "status": "conforms"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "exception",
+          "exception": "update_full_replace",
+          "note": "權限與期望版本必填"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "group_role_mapping",
+      "title": "外部群組對應到角色的規則",
+      "list": [
+        "GET /api/v1/identity-sources/:type/:sourceId/role-mappings",
+        "GET /api/v1/identity-sources/:type/:sourceId/mappings"
+      ],
+      "read": [
+        "GET /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId"
+      ],
+      "create": [
+        "POST /api/v1/identity-sources/:type/:sourceId/role-mappings",
+        "POST /api/v1/identity-sources/:type/:sourceId/mappings"
+      ],
+      "update": [
+        "PUT /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+        "PUT /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId"
+      ],
+      "delete": [
+        "DELETE /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+        "DELETE /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId"
+      ],
+      "paged": false,
+      "read_wrapped": true,
+      "lookup": {
+        "params": [
+          "match_value",
+          "role"
+        ],
+        "match": "去除前後空白後逐字相等"
+      },
+      "identity_scope": "同一來源內群組值與目標角色的組合唯一；識別只在同類規則內唯一",
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "exception",
+          "exception": "concurrent_write_retriable_conflict",
+          "note": "目錄型來源不排隊，回可重試的衝突"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "conforms"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms",
+          "note": "同一參數出現多次回 400"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "exception",
+          "exception": "identity_unique_within_kind",
+          "note": "識別只在同類規則內唯一"
+        },
+        "list_data_total": {
+          "status": "exception",
+          "exception": "list_without_total",
+          "note": "列表只回 data"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "exception",
+          "exception": "resend_advances_time_or_version",
+          "note": "原樣重送會推進修改時間"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms",
+          "note": "讀取與寫入都包在 data 內"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "群組值去除前後空白後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "conforms"
+        },
+        "time_fields_rfc3339": {
+          "status": "conforms"
+        },
+        "update_keeps_identity": {
+          "status": "exception",
+          "exception": "update_reissues_identity",
+          "note": "修改群組值或目標時以新規則取代舊規則"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "exception",
+          "exception": "update_full_replace",
+          "note": "整筆替換"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    },
+    {
+      "name": "group_user_group_mapping",
+      "title": "外部群組對應到使用者群組的規則",
+      "list": [
+        "GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings"
+      ],
+      "read": [
+        "GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"
+      ],
+      "create": [
+        "POST /api/v1/identity-sources/:type/:sourceId/user-group-mappings"
+      ],
+      "update": [
+        "PUT /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"
+      ],
+      "delete": [
+        "DELETE /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"
+      ],
+      "paged": false,
+      "read_wrapped": true,
+      "lookup": {
+        "params": [
+          "match_value",
+          "user_group_id"
+        ],
+        "match": "去除前後空白後逐字相等"
+      },
+      "identity_scope": "同一來源內群組值與目標群組的組合唯一；識別只在同類規則內唯一",
+      "cells": {
+        "concurrent_write_no_500": {
+          "status": "exception",
+          "exception": "concurrent_write_retriable_conflict",
+          "note": "目錄型來源不排隊，回可重試的衝突"
+        },
+        "create_201": {
+          "status": "conforms"
+        },
+        "delete_204": {
+          "status": "conforms"
+        },
+        "duplicate_409": {
+          "status": "conforms"
+        },
+        "error_envelope": {
+          "status": "conforms"
+        },
+        "exact_lookup": {
+          "status": "conforms",
+          "note": "同一參數出現多次回 400"
+        },
+        "hidden_target_not_found": {
+          "status": "conforms"
+        },
+        "identity_globally_unique": {
+          "status": "exception",
+          "exception": "identity_unique_within_kind",
+          "note": "識別只在同類規則內唯一"
+        },
+        "list_data_total": {
+          "status": "exception",
+          "exception": "list_without_total",
+          "note": "列表只回 data"
+        },
+        "list_paging": {
+          "status": "not_applicable",
+          "note": "列表不分頁"
+        },
+        "recreate_same_name": {
+          "status": "conforms"
+        },
+        "resend_no_change": {
+          "status": "exception",
+          "exception": "resend_advances_time_or_version",
+          "note": "原樣重送會推進修改時間"
+        },
+        "same_envelope_read_write": {
+          "status": "conforms",
+          "note": "讀取與寫入都包在 data 內"
+        },
+        "secret_clear_path": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "secret_write_only": {
+          "status": "not_applicable",
+          "note": "沒有秘密欄位"
+        },
+        "server_rewrite_returned": {
+          "status": "conforms",
+          "note": "群組值去除前後空白後的值出現在寫入回應"
+        },
+        "single_read": {
+          "status": "conforms"
+        },
+        "single_read_matches_list": {
+          "status": "conforms"
+        },
+        "time_fields_rfc3339": {
+          "status": "conforms"
+        },
+        "update_keeps_identity": {
+          "status": "exception",
+          "exception": "update_reissues_identity",
+          "note": "修改群組值或目標時以新規則取代舊規則"
+        },
+        "update_missing_fields_unchanged": {
+          "status": "exception",
+          "exception": "update_full_replace",
+          "note": "整筆替換"
+        },
+        "write_response_equals_read": {
+          "status": "conforms"
+        }
+      }
+    }
+  ],
+  "exception_triples": [
+    {
+      "resource": "asset_node",
+      "rule": "single_read_matches_list",
+      "exception": "detail_projection_differs"
+    },
+    {
+      "resource": "asset_node",
+      "rule": "exact_lookup",
+      "exception": "lookup_not_unique"
+    },
+    {
+      "resource": "asset_node",
+      "rule": "update_missing_fields_unchanged",
+      "exception": "update_full_replace"
+    },
+    {
+      "resource": "asset_node",
+      "rule": "delete_204",
+      "exception": "delete_response_shape"
+    },
+    {
+      "resource": "asset_node",
+      "rule": "time_fields_rfc3339",
+      "exception": "no_time_fields"
+    },
+    {
+      "resource": "asset",
+      "rule": "single_read_matches_list",
+      "exception": "detail_projection_differs"
+    },
+    {
+      "resource": "asset",
+      "rule": "delete_204",
+      "exception": "delete_response_shape"
+    },
+    {
+      "resource": "asset",
+      "rule": "secret_write_only",
+      "exception": "secret_without_fingerprint"
+    },
+    {
+      "resource": "asset",
+      "rule": "secret_clear_path",
+      "exception": "secret_no_clear_path"
+    },
+    {
+      "resource": "asset",
+      "rule": "resend_no_change",
+      "exception": "resend_advances_time_or_version"
+    },
+    {
+      "resource": "asset_account",
+      "rule": "exact_lookup",
+      "exception": "no_exact_lookup"
+    },
+    {
+      "resource": "asset_account",
+      "rule": "time_fields_rfc3339",
+      "exception": "time_field_format"
+    },
+    {
+      "resource": "asset_account",
+      "rule": "secret_write_only",
+      "exception": "secret_without_fingerprint"
+    },
+    {
+      "resource": "asset_account",
+      "rule": "secret_clear_path",
+      "exception": "secret_no_clear_path"
+    },
+    {
+      "resource": "asset_account",
+      "rule": "resend_no_change",
+      "exception": "resend_advances_time_or_version"
+    },
+    {
+      "resource": "credential",
+      "rule": "single_read_matches_list",
+      "exception": "detail_projection_differs"
+    },
+    {
+      "resource": "credential",
+      "rule": "same_envelope_read_write",
+      "exception": "response_envelope_mixed"
+    },
+    {
+      "resource": "credential",
+      "rule": "time_fields_rfc3339",
+      "exception": "time_field_format"
+    },
+    {
+      "resource": "credential",
+      "rule": "secret_write_only",
+      "exception": "secret_without_fingerprint"
+    },
+    {
+      "resource": "credential",
+      "rule": "secret_clear_path",
+      "exception": "secret_no_clear_path"
+    },
+    {
+      "resource": "user",
+      "rule": "delete_204",
+      "exception": "delete_response_shape"
+    },
+    {
+      "resource": "user",
+      "rule": "secret_write_only",
+      "exception": "secret_state_implicit"
+    },
+    {
+      "resource": "user",
+      "rule": "secret_clear_path",
+      "exception": "secret_no_clear_path"
+    },
+    {
+      "resource": "user_group",
+      "rule": "update_missing_fields_unchanged",
+      "exception": "update_full_replace"
+    },
+    {
+      "resource": "user_group",
+      "rule": "delete_204",
+      "exception": "delete_response_shape"
+    },
+    {
+      "resource": "user_group",
+      "rule": "resend_no_change",
+      "exception": "resend_advances_time_or_version"
+    },
+    {
+      "resource": "user_group_role_binding",
+      "rule": "single_read",
+      "exception": "no_single_read"
+    },
+    {
+      "resource": "user_group_role_binding",
+      "rule": "exact_lookup",
+      "exception": "no_exact_lookup"
+    },
+    {
+      "resource": "user_group_role_binding",
+      "rule": "update_missing_fields_unchanged",
+      "exception": "update_full_replace"
+    },
+    {
+      "resource": "user_group_role_binding",
+      "rule": "time_fields_rfc3339",
+      "exception": "no_time_fields"
+    },
+    {
+      "resource": "authorization",
+      "rule": "exact_lookup",
+      "exception": "no_exact_lookup"
+    },
+    {
+      "resource": "authorization",
+      "rule": "create_201",
+      "exception": "create_returns_200"
+    },
+    {
+      "resource": "authorization",
+      "rule": "delete_204",
+      "exception": "delete_response_shape"
+    },
+    {
+      "resource": "authorization",
+      "rule": "time_fields_rfc3339",
+      "exception": "no_time_fields"
+    },
+    {
+      "resource": "role_definition",
+      "rule": "single_read_matches_list",
+      "exception": "detail_projection_differs"
+    },
+    {
+      "resource": "role_definition",
+      "rule": "update_missing_fields_unchanged",
+      "exception": "update_full_replace"
+    },
+    {
+      "resource": "role_definition",
+      "rule": "time_fields_rfc3339",
+      "exception": "no_time_fields"
+    },
+    {
+      "resource": "role_definition",
+      "rule": "resend_no_change",
+      "exception": "resend_advances_time_or_version"
+    },
+    {
+      "resource": "group_role_mapping",
+      "rule": "list_data_total",
+      "exception": "list_without_total"
+    },
+    {
+      "resource": "group_role_mapping",
+      "rule": "update_missing_fields_unchanged",
+      "exception": "update_full_replace"
+    },
+    {
+      "resource": "group_role_mapping",
+      "rule": "update_keeps_identity",
+      "exception": "update_reissues_identity"
+    },
+    {
+      "resource": "group_role_mapping",
+      "rule": "identity_globally_unique",
+      "exception": "identity_unique_within_kind"
+    },
+    {
+      "resource": "group_role_mapping",
+      "rule": "concurrent_write_no_500",
+      "exception": "concurrent_write_retriable_conflict"
+    },
+    {
+      "resource": "group_role_mapping",
+      "rule": "resend_no_change",
+      "exception": "resend_advances_time_or_version"
+    },
+    {
+      "resource": "group_user_group_mapping",
+      "rule": "list_data_total",
+      "exception": "list_without_total"
+    },
+    {
+      "resource": "group_user_group_mapping",
+      "rule": "update_missing_fields_unchanged",
+      "exception": "update_full_replace"
+    },
+    {
+      "resource": "group_user_group_mapping",
+      "rule": "update_keeps_identity",
+      "exception": "update_reissues_identity"
+    },
+    {
+      "resource": "group_user_group_mapping",
+      "rule": "identity_globally_unique",
+      "exception": "identity_unique_within_kind"
+    },
+    {
+      "resource": "group_user_group_mapping",
+      "rule": "concurrent_write_no_500",
+      "exception": "concurrent_write_retriable_conflict"
+    },
+    {
+      "resource": "group_user_group_mapping",
+      "rule": "resend_no_change",
+      "exception": "resend_advances_time_or_version"
+    }
+  ],
+  "pending_cells": [
+    {
+      "resource": "credential",
+      "rule": "concurrent_write_no_500",
+      "exception": ""
+    },
+    {
+      "resource": "user_group",
+      "rule": "concurrent_write_no_500",
+      "exception": ""
+    },
+    {
+      "resource": "user_group_role_binding",
+      "rule": "concurrent_write_no_500",
+      "exception": ""
+    },
+    {
+      "resource": "authorization",
+      "rule": "concurrent_write_no_500",
+      "exception": ""
+    },
+    {
+      "resource": "authorization",
+      "rule": "resend_no_change",
+      "exception": ""
+    }
+  ],
+  "unmanaged_families": {
+    "account_inventory": "帳號盤點",
+    "alert_rules": "告警規則",
+    "approver_scopes": "簽核範圍",
+    "asset_bulk": "資產批次操作與匯入",
+    "asset_executor": "堡壘機專用帳號",
+    "asset_tags": "資產標籤",
+    "change_secret_candidates": "改密候選",
+    "change_secret_plans": "改密計劃",
+    "credential_mounts": "共用憑證的掛載、範圍、歸屬與輪替",
+    "external_groups": "外部群組字典",
+    "notification_channels": "通知通道",
+    "oidc_providers": "OIDC 身分提供者",
+    "policy_groups": "政策群組",
+    "rotation_report_schedules": "輪替報表排程",
+    "security_policies": "安全政策",
+    "syslog_settings": "日誌轉發",
+    "user_actions": "使用者的狀態類動作",
+    "user_external_identities": "使用者外部身分綁定",
+    "user_role_assignments": "使用者角色指派"
+  },
+  "route_attribution": {
+    "DELETE /api/v1/alert-rules/:id": {
+      "category": "unmanaged_family",
+      "family": "alert_rules"
+    },
+    "DELETE /api/v1/approver-scopes/:id": {
+      "category": "unmanaged_family",
+      "family": "approver_scopes"
+    },
+    "DELETE /api/v1/asset-groups/:id": {
+      "category": "managed_resource",
+      "family": "asset_node delete"
+    },
+    "DELETE /api/v1/assets/:id": {
+      "category": "managed_resource",
+      "family": "asset delete"
+    },
+    "DELETE /api/v1/assets/:id/accounts/:accountId": {
+      "category": "managed_resource",
+      "family": "asset_account delete"
+    },
+    "DELETE /api/v1/assets/:id/executor": {
+      "category": "unmanaged_family",
+      "family": "asset_executor"
+    },
+    "DELETE /api/v1/authorizations/:id": {
+      "category": "managed_resource",
+      "family": "authorization delete"
+    },
+    "DELETE /api/v1/change-secret-candidates/:id": {
+      "category": "unmanaged_family",
+      "family": "change_secret_candidates"
+    },
+    "DELETE /api/v1/change-secret-plans/:id": {
+      "category": "unmanaged_family",
+      "family": "change_secret_plans"
+    },
+    "DELETE /api/v1/credentials/:id": {
+      "category": "managed_resource",
+      "family": "credential delete"
+    },
+    "DELETE /api/v1/credentials/:id/bindings/:accountId": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "DELETE /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_role_mapping delete"
+    },
+    "DELETE /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_role_mapping delete"
+    },
+    "DELETE /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_user_group_mapping delete"
+    },
+    "DELETE /api/v1/notification-channels/:id": {
+      "category": "unmanaged_family",
+      "family": "notification_channels"
+    },
+    "DELETE /api/v1/oidc-providers/:id": {
+      "category": "unmanaged_family",
+      "family": "oidc_providers"
+    },
+    "DELETE /api/v1/policy-groups/:code": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "DELETE /api/v1/policy-groups/:code/clauses/:clause_no": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "DELETE /api/v1/role-definitions/:id": {
+      "category": "managed_resource",
+      "family": "role_definition delete"
+    },
+    "DELETE /api/v1/rotation-report/schedules/:id": {
+      "category": "unmanaged_family",
+      "family": "rotation_report_schedules"
+    },
+    "DELETE /api/v1/user-groups/:id": {
+      "category": "managed_resource",
+      "family": "user_group delete"
+    },
+    "DELETE /api/v1/users/:id": {
+      "category": "managed_resource",
+      "family": "user delete"
+    },
+    "DELETE /api/v1/users/:id/external-identities/:identityId": {
+      "category": "unmanaged_family",
+      "family": "user_external_identities"
+    },
+    "GET /api/v1/account-inventory/findings": {
+      "category": "unmanaged_family",
+      "family": "account_inventory"
+    },
+    "GET /api/v1/alert-rules": {
+      "category": "unmanaged_family",
+      "family": "alert_rules"
+    },
+    "GET /api/v1/api-tokens/verify": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/approver-scopes": {
+      "category": "unmanaged_family",
+      "family": "approver_scopes"
+    },
+    "GET /api/v1/approver-scopes/approver-options": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/approver-scopes/target-options": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/asset-groups": {
+      "category": "managed_resource",
+      "family": "asset_node list"
+    },
+    "GET /api/v1/asset-groups/:id": {
+      "category": "managed_resource",
+      "family": "asset_node read"
+    },
+    "GET /api/v1/asset-groups/tree": {
+      "category": "managed_resource",
+      "family": "asset_node list"
+    },
+    "GET /api/v1/assets": {
+      "category": "managed_resource",
+      "family": "asset list"
+    },
+    "GET /api/v1/assets/:id": {
+      "category": "managed_resource",
+      "family": "asset read"
+    },
+    "GET /api/v1/assets/:id/account-inventory": {
+      "category": "unmanaged_family",
+      "family": "account_inventory"
+    },
+    "GET /api/v1/assets/:id/accounts": {
+      "category": "managed_resource",
+      "family": "asset_account list"
+    },
+    "GET /api/v1/assets/:id/accounts/:accountId": {
+      "category": "managed_resource",
+      "family": "asset_account read"
+    },
+    "GET /api/v1/assets/:id/executor": {
+      "category": "unmanaged_family",
+      "family": "asset_executor"
+    },
+    "GET /api/v1/assets/:id/executor/login-check": {
+      "category": "unmanaged_family",
+      "family": "asset_executor"
+    },
+    "GET /api/v1/assets/:id/executor/public-key": {
+      "category": "unmanaged_family",
+      "family": "asset_executor"
+    },
+    "GET /api/v1/assets/:id/host-key": {
+      "category": "read_only_family",
+      "family": "host_keys"
+    },
+    "GET /api/v1/assets/access-policy-overrides": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/assets/tags": {
+      "category": "unmanaged_family",
+      "family": "asset_tags"
+    },
+    "GET /api/v1/authorizations": {
+      "category": "managed_resource",
+      "family": "authorization list"
+    },
+    "GET /api/v1/authorizations/:id": {
+      "category": "managed_resource",
+      "family": "authorization read"
+    },
+    "GET /api/v1/authorizations/effective-assets": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/authorizations/effective-users": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/authorizations/self-subjects": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/authorizations/subject-options": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/authorizations/target-options": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/change-secret-batches": {
+      "category": "read_only_family",
+      "family": "change_secret_batches"
+    },
+    "GET /api/v1/change-secret-batches/:id": {
+      "category": "read_only_family",
+      "family": "change_secret_batches"
+    },
+    "GET /api/v1/change-secret-batches/targets": {
+      "category": "read_only_family",
+      "family": "change_secret_batches"
+    },
+    "GET /api/v1/change-secret-batches/usernames": {
+      "category": "read_only_family",
+      "family": "change_secret_batches"
+    },
+    "GET /api/v1/change-secret-candidates": {
+      "category": "unmanaged_family",
+      "family": "change_secret_candidates"
+    },
+    "GET /api/v1/change-secret-plans": {
+      "category": "unmanaged_family",
+      "family": "change_secret_plans"
+    },
+    "GET /api/v1/change-secret-plans/:id/records": {
+      "category": "unmanaged_family",
+      "family": "change_secret_plans"
+    },
+    "GET /api/v1/credentials": {
+      "category": "managed_resource",
+      "family": "credential list"
+    },
+    "GET /api/v1/credentials/:id": {
+      "category": "managed_resource",
+      "family": "credential read"
+    },
+    "GET /api/v1/credentials/:id/rotations/:rid": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "GET /api/v1/dashboard/retention-adjustments": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/identity-sources": {
+      "category": "read_only_family",
+      "family": "identity_sources"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/external-groups": {
+      "category": "unmanaged_family",
+      "family": "external_groups"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/mappings": {
+      "category": "managed_resource",
+      "family": "group_role_mapping list"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/role-mappings": {
+      "category": "managed_resource",
+      "family": "group_role_mapping list"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_role_mapping read"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings": {
+      "category": "managed_resource",
+      "family": "group_user_group_mapping list"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_user_group_mapping read"
+    },
+    "GET /api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/ldap-directory": {
+      "category": "read_only_family",
+      "family": "ldap_directory"
+    },
+    "GET /api/v1/ldap-directory/status": {
+      "category": "read_only_family",
+      "family": "ldap_directory"
+    },
+    "GET /api/v1/notification-channels": {
+      "category": "unmanaged_family",
+      "family": "notification_channels"
+    },
+    "GET /api/v1/offsite-storage/failures": {
+      "category": "read_only_family",
+      "family": "offsite_storage"
+    },
+    "GET /api/v1/offsite-storage/profiles": {
+      "category": "read_only_family",
+      "family": "offsite_storage"
+    },
+    "GET /api/v1/offsite-storage/settings": {
+      "category": "read_only_family",
+      "family": "offsite_storage"
+    },
+    "GET /api/v1/offsite-storage/status": {
+      "category": "read_only_family",
+      "family": "offsite_storage"
+    },
+    "GET /api/v1/oidc-providers": {
+      "category": "unmanaged_family",
+      "family": "oidc_providers"
+    },
+    "GET /api/v1/oidc-providers/:id": {
+      "category": "unmanaged_family",
+      "family": "oidc_providers"
+    },
+    "GET /api/v1/oidc-providers/:id/status": {
+      "category": "unmanaged_family",
+      "family": "oidc_providers"
+    },
+    "GET /api/v1/policy-groups": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "GET /api/v1/policy-groups/:code": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "GET /api/v1/role-assignment-options": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/role-definitions": {
+      "category": "managed_resource",
+      "family": "role_definition list"
+    },
+    "GET /api/v1/role-definitions/:id": {
+      "category": "managed_resource",
+      "family": "role_definition read"
+    },
+    "GET /api/v1/role-definitions/:id/preview-capabilities": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/role-definitions/descriptors": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/roles": {
+      "category": "read_only_family",
+      "family": "roles"
+    },
+    "GET /api/v1/rotation-report/schedules": {
+      "category": "unmanaged_family",
+      "family": "rotation_report_schedules"
+    },
+    "GET /api/v1/security-policies": {
+      "category": "unmanaged_family",
+      "family": "security_policies"
+    },
+    "GET /api/v1/security-policies/defs/:key": {
+      "category": "unmanaged_family",
+      "family": "security_policies"
+    },
+    "GET /api/v1/syslog-settings": {
+      "category": "unmanaged_family",
+      "family": "syslog_settings"
+    },
+    "GET /api/v1/system-alert-types": {
+      "category": "read_only_family",
+      "family": "system_alert_types"
+    },
+    "GET /api/v1/user-groups": {
+      "category": "managed_resource",
+      "family": "user_group list"
+    },
+    "GET /api/v1/user-groups/:id": {
+      "category": "managed_resource",
+      "family": "user_group read"
+    },
+    "GET /api/v1/user-groups/:id/authorization-count": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/user-groups/:id/external-mappings": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/user-groups/:id/role-bindings": {
+      "category": "managed_resource",
+      "family": "user_group_role_binding list"
+    },
+    "GET /api/v1/users": {
+      "category": "managed_resource",
+      "family": "user list"
+    },
+    "GET /api/v1/users/:id": {
+      "category": "managed_resource",
+      "family": "user read"
+    },
+    "GET /api/v1/users/:id/external-identities": {
+      "category": "unmanaged_family",
+      "family": "user_external_identities"
+    },
+    "GET /api/v1/users/:id/permission-overview": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/users/:id/permission-overview/assets/:asset_id": {
+      "category": "non_resource"
+    },
+    "GET /api/v1/users/:id/role-bindings": {
+      "category": "unmanaged_family",
+      "family": "user_role_assignments"
+    },
+    "GET /api/v1/users/local-admin-count": {
+      "category": "non_resource"
+    },
+    "POST /api/v1/alert-rules": {
+      "category": "unmanaged_family",
+      "family": "alert_rules"
+    },
+    "POST /api/v1/approver-scopes": {
+      "category": "unmanaged_family",
+      "family": "approver_scopes"
+    },
+    "POST /api/v1/asset-groups": {
+      "category": "managed_resource",
+      "family": "asset_node create"
+    },
+    "POST /api/v1/assets": {
+      "category": "managed_resource",
+      "family": "asset create"
+    },
+    "POST /api/v1/assets/:id/account-inventory/findings/:findingId/ignore": {
+      "category": "unmanaged_family",
+      "family": "account_inventory"
+    },
+    "POST /api/v1/assets/:id/account-inventory/findings/:findingId/reopen": {
+      "category": "unmanaged_family",
+      "family": "account_inventory"
+    },
+    "POST /api/v1/assets/:id/accounts": {
+      "category": "managed_resource",
+      "family": "asset_account create"
+    },
+    "POST /api/v1/assets/:id/accounts/:accountId/set-default": {
+      "category": "managed_resource",
+      "family": "asset_account update"
+    },
+    "POST /api/v1/assets/batch/delete": {
+      "category": "unmanaged_family",
+      "family": "asset_bulk"
+    },
+    "POST /api/v1/assets/batch/move": {
+      "category": "unmanaged_family",
+      "family": "asset_bulk"
+    },
+    "POST /api/v1/assets/batch/tags": {
+      "category": "unmanaged_family",
+      "family": "asset_bulk"
+    },
+    "POST /api/v1/assets/import": {
+      "category": "unmanaged_family",
+      "family": "asset_bulk"
+    },
+    "POST /api/v1/assets/import/preview": {
+      "category": "unmanaged_family",
+      "family": "asset_bulk"
+    },
+    "POST /api/v1/assets/tags/delete": {
+      "category": "unmanaged_family",
+      "family": "asset_tags"
+    },
+    "POST /api/v1/assets/tags/rename": {
+      "category": "unmanaged_family",
+      "family": "asset_tags"
+    },
+    "POST /api/v1/authorizations": {
+      "category": "managed_resource",
+      "family": "authorization create"
+    },
+    "POST /api/v1/authorizations/batch": {
+      "category": "managed_resource",
+      "family": "authorization create"
+    },
+    "POST /api/v1/change-secret-plans": {
+      "category": "unmanaged_family",
+      "family": "change_secret_plans"
+    },
+    "POST /api/v1/change-secret-plans/reauthorize": {
+      "category": "unmanaged_family",
+      "family": "change_secret_plans"
+    },
+    "POST /api/v1/credentials": {
+      "category": "managed_resource",
+      "family": "credential create"
+    },
+    "POST /api/v1/credentials/:id/bindings": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "POST /api/v1/credentials/:id/impact-confirmations": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "POST /api/v1/credentials/:id/rotations/:rid/abandon": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "POST /api/v1/credentials/:id/scope": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "POST /api/v1/credentials/:id/secret": {
+      "category": "managed_resource",
+      "family": "credential update"
+    },
+    "POST /api/v1/credentials/ownership": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "POST /api/v1/identity-sources/:type/:sourceId/mappings": {
+      "category": "managed_resource",
+      "family": "group_role_mapping create"
+    },
+    "POST /api/v1/identity-sources/:type/:sourceId/role-mappings": {
+      "category": "managed_resource",
+      "family": "group_role_mapping create"
+    },
+    "POST /api/v1/identity-sources/:type/:sourceId/user-group-mappings": {
+      "category": "managed_resource",
+      "family": "group_user_group_mapping create"
+    },
+    "POST /api/v1/notification-channels": {
+      "category": "unmanaged_family",
+      "family": "notification_channels"
+    },
+    "POST /api/v1/oidc-providers": {
+      "category": "unmanaged_family",
+      "family": "oidc_providers"
+    },
+    "POST /api/v1/policy-groups": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "POST /api/v1/policy-groups/:code/clauses/:clause_no/confirm": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "POST /api/v1/role-assignment-previews": {
+      "category": "non_resource"
+    },
+    "POST /api/v1/role-definitions": {
+      "category": "managed_resource",
+      "family": "role_definition create"
+    },
+    "POST /api/v1/role-definitions/:id/copy": {
+      "category": "managed_resource",
+      "family": "role_definition create"
+    },
+    "POST /api/v1/role-definitions/summary": {
+      "category": "non_resource"
+    },
+    "POST /api/v1/rotation-report/schedules": {
+      "category": "unmanaged_family",
+      "family": "rotation_report_schedules"
+    },
+    "POST /api/v1/schedules/next-runs": {
+      "category": "non_resource"
+    },
+    "POST /api/v1/user-groups": {
+      "category": "managed_resource",
+      "family": "user_group create"
+    },
+    "POST /api/v1/users": {
+      "category": "managed_resource",
+      "family": "user create"
+    },
+    "POST /api/v1/users/:id/external-identities": {
+      "category": "unmanaged_family",
+      "family": "user_external_identities"
+    },
+    "POST /api/v1/users/:id/external-identities/:identityId/unbind-and-disable": {
+      "category": "unmanaged_family",
+      "family": "user_external_identities"
+    },
+    "POST /api/v1/users/:id/external-only": {
+      "category": "unmanaged_family",
+      "family": "user_actions"
+    },
+    "POST /api/v1/users/:id/mfa/disable": {
+      "category": "unmanaged_family",
+      "family": "user_actions"
+    },
+    "POST /api/v1/users/:id/roles/:role": {
+      "category": "unmanaged_family",
+      "family": "user_role_assignments"
+    },
+    "POST /api/v1/users/:id/roles/pin": {
+      "category": "unmanaged_family",
+      "family": "user_role_assignments"
+    },
+    "POST /api/v1/users/:id/unlock": {
+      "category": "unmanaged_family",
+      "family": "user_actions"
+    },
+    "POST /api/v1/users/source-policy/check": {
+      "category": "non_resource"
+    },
+    "PUT /api/v1/alert-rules/:id": {
+      "category": "unmanaged_family",
+      "family": "alert_rules"
+    },
+    "PUT /api/v1/asset-groups/:id": {
+      "category": "managed_resource",
+      "family": "asset_node update"
+    },
+    "PUT /api/v1/asset-groups/:id/move": {
+      "category": "managed_resource",
+      "family": "asset_node update"
+    },
+    "PUT /api/v1/assets/:id": {
+      "category": "managed_resource",
+      "family": "asset update"
+    },
+    "PUT /api/v1/assets/:id/accounts/:accountId": {
+      "category": "managed_resource",
+      "family": "asset_account update"
+    },
+    "PUT /api/v1/assets/:id/accounts/:accountId/credential": {
+      "category": "unmanaged_family",
+      "family": "credential_mounts"
+    },
+    "PUT /api/v1/authorizations/:id/accounts": {
+      "category": "managed_resource",
+      "family": "authorization update"
+    },
+    "PUT /api/v1/change-secret-plans/:id": {
+      "category": "unmanaged_family",
+      "family": "change_secret_plans"
+    },
+    "PUT /api/v1/credentials/:id": {
+      "category": "managed_resource",
+      "family": "credential update"
+    },
+    "PUT /api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId": {
+      "category": "unmanaged_family",
+      "family": "external_groups"
+    },
+    "PUT /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_role_mapping update"
+    },
+    "PUT /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_role_mapping update"
+    },
+    "PUT /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId": {
+      "category": "managed_resource",
+      "family": "group_user_group_mapping update"
+    },
+    "PUT /api/v1/notification-channels/:id": {
+      "category": "unmanaged_family",
+      "family": "notification_channels"
+    },
+    "PUT /api/v1/oidc-providers/:id": {
+      "category": "unmanaged_family",
+      "family": "oidc_providers"
+    },
+    "PUT /api/v1/policy-groups/:code": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "PUT /api/v1/policy-groups/:code/clauses/:clause_no": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "PUT /api/v1/policy-groups/:code/clauses/:clause_no/annotation": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "PUT /api/v1/policy-groups/:code/enabled": {
+      "category": "unmanaged_family",
+      "family": "policy_groups"
+    },
+    "PUT /api/v1/role-definitions/:id": {
+      "category": "managed_resource",
+      "family": "role_definition update"
+    },
+    "PUT /api/v1/rotation-report/schedules/:id": {
+      "category": "unmanaged_family",
+      "family": "rotation_report_schedules"
+    },
+    "PUT /api/v1/security-policies": {
+      "category": "unmanaged_family",
+      "family": "security_policies"
+    },
+    "PUT /api/v1/syslog-settings": {
+      "category": "unmanaged_family",
+      "family": "syslog_settings"
+    },
+    "PUT /api/v1/user-groups/:id": {
+      "category": "managed_resource",
+      "family": "user_group update"
+    },
+    "PUT /api/v1/user-groups/:id/members": {
+      "category": "managed_resource",
+      "family": "user_group update"
+    },
+    "PUT /api/v1/user-groups/:id/role-bindings": {
+      "category": "managed_resource",
+      "family": "user_group_role_binding update"
+    },
+    "PUT /api/v1/users/:id": {
+      "category": "managed_resource",
+      "family": "user update"
+    },
+    "PUT /api/v1/users/:id/inactivity-exempt": {
+      "category": "unmanaged_family",
+      "family": "user_actions"
+    },
+    "PUT /api/v1/users/:id/password": {
+      "category": "unmanaged_family",
+      "family": "user_actions"
+    },
+    "PUT /api/v1/users/:id/roles": {
+      "category": "unmanaged_family",
+      "family": "user_role_assignments"
+    },
+    "PUT /api/v1/users/:id/status": {
+      "category": "unmanaged_family",
+      "family": "user_actions"
+    }
+  }
+}

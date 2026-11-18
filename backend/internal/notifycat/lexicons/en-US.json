@@ -358,5 +358,11 @@
     "bind": "Attached to asset",
     "rebind": "Credential replaced",
     "import": "Asset import"
+  },
+  "api_token_level": {
+    "read": "read-only",
+    "read_write": "read-write",
+    "item": "{role} ({level})",
+    "sep": ", "
   }
 }

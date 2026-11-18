@@ -2,6 +2,154 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.26.0 — read-only API tokens, and public key fingerprints for private keys (2026-11-19)
+
+Schema change. Upgrading runs one migration. It adds two fields to the tables of API tokens,
+rewrites no record and takes a moment. A 1.17.x to 1.25.x package deployment upgrades with
+`custodexa.sh upgrade 1.26.0`. Coming from 1.24.x or earlier, the upgrade also runs the
+migrations of the releases in between and, with the bundled database on 1.22.x or earlier,
+converts it to PostgreSQL 18, so read "What you need to do" in each of those releases' notes
+below before you start, and on 1.17.x also [Upgrading to 1.18.0][1180-sop] in the upgrade SOP.
+Once the migration has run, `custodexa.sh rollback` does not switch back, and going back means
+restoring the backup taken before the upgrade ([Upgrading to 1.26.0][1260-sop]). With the
+bundled database coming from 1.22.x or earlier, `rollback` goes back on the PostgreSQL 16 data
+folder the upgrade kept, as described under 1.23.0 below.
+
+### What you need to do
+
+- API tokens created before the upgrade keep working, and every role granted to them stays
+  read and write. The token lists mark them "Created before upgrade". A token's permissions are
+  set when it is created, so to replace one with a read-only token, create a new token and
+  revoke the old one.
+- A script that creates tokens with `role_ids` still grants every listed role as read and write.
+  To choose per role, send `roles` instead, with the level inside each entry, as in
+  `"roles": [{"role_id": 12, "level": "read"}]`. A `level` placed anywhere else in the request
+  is ignored, so check `access` and `granted_roles[].level` in the response. A request that
+  carries both `roles` and `role_ids` is refused with 400 `VALIDATION_BAD_PARAMS`.
+- Do not start an earlier release on a database that 1.26.0 has migrated. An earlier release
+  does not know the permissions of a token and treats every granted role as read and write.
+  Restoring the upgrade backup does not have this problem: it holds no token created after the
+  upgrade, and a restore by the management script ends every API token that existed before it.
+- Some responses of the management API change. Check scripts of your own that call it:
+  - Creating a user with a name that is taken returns 409 instead of 400. The code stays
+    `CONFLICT_USERNAME_EXISTS`.
+  - Creating a user with an email address that another account uses returns 409
+    `CONFLICT_EMAIL`, as editing a user already did. It used to return 500.
+  - Two requests that create the same user name, email address or custom role name at the same
+    moment, or rename two custom roles to the same name, no longer end in a 500 for the one that
+    loses. It gets 409 with `CONFLICT_USERNAME_EXISTS`, `CONFLICT_EMAIL` or
+    `ROLE_DEFINITION_CONFLICT`.
+  - Saving or deleting a custom role that someone else changed in the meantime returns 409
+    `ROLE_DEFINITION_VERSION_CONFLICT`. `ROLE_DEFINITION_CONFLICT` now means only that the name
+    is taken.
+  - Deleting a shared credential that is still attached returns the same 409
+    `RULE_CREDENTIAL_IN_USE`, now with the `error` field every other error carries. `code`,
+    `assets` and the count of assets outside the caller's scope stay where they were.
+  - `page_size` on the asset list and the user list has an upper limit of 1000. A larger whole
+    number is lowered to 1000 and the response reports the value that was applied. A script that
+    read everything in one large page has to read the following pages. A value that is not a
+    whole number, is below 1, or is too long to be read as a number still falls back to the
+    default of 20.
+- A private key stored before the upgrade has no public key fingerprint, and connections that
+  use it are unaffected. A key the platform generated for a bastion service account is the
+  exception: it had a fingerprint before and keeps it. To record one, set the same private key
+  again. Like any secret a person sets, this creates a new version of the secret and raises the
+  "Custom secret used" system alert.
+
+### New capabilities
+
+#### Read-only and read-write API tokens
+
+- When a token is created, each granted role is set to Read only or Read and write. The dialog
+  starts every role at Read only and has a shortcut that sets all of them at once. The summary
+  at the bottom of the dialog says what the token will be able to read and what it will be able
+  to change.
+- Reading counts every role of a token. On an endpoint that changes data, a token uses only
+  its roles set to Read and write, and a token whose roles are all Read only is refused with
+  403 `AUTH_API_TOKEN_READ_ONLY`. An endpoint that is not open to API tokens answers 403
+  `AUTH_API_TOKEN_FORBIDDEN_ROUTE` to any token, as before. Both refusals are recorded in the
+  operation log with the token's name and the reason.
+- An endpoint counts as changing data when it changes anything the system keeps, whatever its
+  HTTP method. Writing audit records and the last-used time of the token does not count, and a
+  preview or trial calculation that is open to API tokens stores nothing and counts as reading.
+- A token with both kinds of role is shown as "Partly read and write". Its Read and write roles
+  have to hold every permission a write needs; otherwise the write is refused with the usual
+  permission error. The response to a write is built from those roles only, and a read that
+  follows can show more. For a tool that applies changes, set every role it needs to Read and
+  write.
+- The permissions of a token appear wherever the token does: the token lists, the panel shown
+  once after creation, the API token tab of a user, the "via" line of an operation log record,
+  the prompt shown before a role change that affects tokens, and the response of the
+  self-check endpoint. They show what was chosen when the token was created and do not change
+  when one of your roles is taken away later; `effective` on each granted role tells whether
+  that role still counts.
+- The "Privileged API token created" system alert is raised as before when the
+  privileged role is set to Read only, and the alert states each role's setting.
+
+#### Public key fingerprints of private keys
+
+- The account rows of an asset and shared credentials report the public key fingerprint of
+  their private key as `private_key_fingerprint`, in the SHA256 form that `ssh-keygen -lf`
+  prints. The credential library shows it in full in the detail of a credential, with a copy
+  button. The account list of an asset shows the last eight characters under the credential
+  name, and the full value on hover.
+- The fingerprint is computed from the public key the system saves when a private key is set
+  or replaced. Saved private keys are not decrypted for it. The pages show "Not recorded" for
+  a key without one.
+- `private_key_fingerprint` is left out of a response when there is no public key to report or
+  when the caller may not view the credential. Its absence does not mean there is no private
+  key; `has_private_key` tells that.
+- A shared credential reports the fingerprint of its current version. During a rotation, or
+  after one that stopped partway, the account row of one asset can report a different
+  fingerprint; the account row is the one that tells which key that asset uses.
+- Only someone who may view a credential gets its fingerprint, in read responses and in the
+  response of a write alike. A person who may change a credential without being allowed to view
+  it gets no fingerprint back.
+- A bastion service account whose RSA, ECDSA or Ed25519 private key is entered by hand after
+  the upgrade has a fingerprint and a public key to export, as one with a generated key already
+  had. When the account uses a shared
+  credential, the fingerprint and the export are given only to someone who may view that
+  credential.
+- When an RSA, ECDSA or Ed25519 private key is set, the system works out the public key from
+  the private key itself and refuses, as an invalid private key, a file whose recorded public
+  key is a different one.
+- A DSA private key is accepted and connects as before, and has no fingerprint.
+- The label is "Public key fingerprint" everywhere, including on bastion service accounts.
+
+#### Finding a role by name
+
+- `GET /api/v1/role-definitions` takes `name` and returns the one role with exactly that name,
+  after leading and trailing whitespace is removed as it is when a role is saved. The result
+  can be a built-in role, which cannot be changed. A name that matches nothing returns an empty
+  list. `name` sent empty or twice gets 400.
+
+### Fixes
+
+- The role editor tells two failures apart. When someone else changed the role while it was
+  open, it shows the notice that offers to reload, as before. When the new name is taken, it
+  marks the name field and says so; it used to show the reload notice for this as well, also
+  when creating a new role.
+- After choosing "Stay here" on that notice, the button that reloads the latest version stays
+  on the page. It used to disappear, which left reloading the browser page as the only way on.
+- Deleting a custom role that someone else changed in the meantime shows a dialog that says the
+  role was not deleted, and reloads the list. It used to show nothing.
+- Copying a custom role to a name that is taken marks the name field and keeps the dialog open.
+  It used to show a message that faded while the dialog stayed as it was.
+- In a "Privileged API token created" alert raised after the upgrade, a custom role whose name
+  contains a comma is shown as one role. It used to be split into several.
+- The detail of an operation log record shows the "Reason" line only when the record has a
+  reason. For a record without one it used to show the request path there.
+- The response to editing an asset account carries the time of that edit in `updated_at`. It
+  used to carry the time of the previous change.
+- In release mode, a database statement that fails is written to the application log without
+  the values it carried. The log used to include them.
+
+The request and response details are in the [API reference][1260-api], and the upgrade steps in
+the [upgrade SOP][1260-sop].
+
+[1260-api]: docs/API_SPEC.md
+[1260-sop]: docs/ops/upgrade-sop.md#upgrading-to-1260
+
 ## 1.25.1 — external group mapping rules for declarative tools (2026-11-15)
 
 No schema change. A 1.25.0 package deployment upgrades with `custodexa.sh upgrade 1.25.1` and

@@ -236,7 +236,9 @@ type credentialGroupMember struct {
 	VersionID     uint
 	PasswordEnc   string
 	PrivateKeyEnc string
-	Note          string
+	// PublicKey 現行版本私鑰的公鑰（明文、非機密；空＝未知）。合併時隨私鑰密文同一來源搬
+	PublicKey string
+	Note      string
 }
 
 // mergeAttribute 一致判準涵蓋的一個憑證屬性（名稱是機器碼，會落進審計列）。
@@ -304,6 +306,7 @@ func credentialGroupsForMerge(tx *gorm.DB) ([]credentialGroup, error) {
 		VersionID       uint
 		PasswordEnc     string
 		PrivateKeyEnc   string
+		PublicKey       string
 		CredentialGroup string
 		Note            string
 	}
@@ -316,6 +319,7 @@ func credentialGroupsForMerge(tx *gorm.DB) ([]credentialGroup, error) {
 		COALESCE(v.id, 0) AS version_id,
 		COALESCE(v.password_enc, '') AS password_enc,
 		COALESCE(v.private_key_enc, '') AS private_key_enc,
+		COALESCE(v.public_key, '') AS public_key,
 		COALESCE(a.credential_group, '') AS credential_group,
 		COALESCE(c.note, '') AS note
 		FROM asset_accounts a
@@ -343,6 +347,7 @@ func credentialGroupsForMerge(tx *gorm.DB) ([]credentialGroup, error) {
 			VersionID:      r.VersionID,
 			PasswordEnc:    r.PasswordEnc,
 			PrivateKeyEnc:  r.PrivateKeyEnc,
+			PublicKey:      r.PublicKey,
 			Note:           r.Note,
 		})
 	}
@@ -527,6 +532,10 @@ func mergeGroupIntoSharedCredential(tx *gorm.DB, g credentialGroup, seq int) err
 			PasswordEnc:   first.PasswordEnc,
 			PrivateKeyEnc: first.PrivateKeyEnc,
 			CreatedReason: model.CredentialVersionReasonMigration,
+		}
+		// 公鑰隨私鑰密文取自同一個成員版本（沒有私鑰就不帶）
+		if first.PrivateKeyEnc != "" {
+			version.PublicKey = first.PublicKey
 		}
 		if err := tx.Create(&version).Error; err != nil {
 			return fmt.Errorf("建立群組 %s 的密文版本失敗: %w", g.Value, err)

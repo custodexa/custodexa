@@ -203,7 +203,10 @@ type CredentialSecretVersion struct {
 	PasswordEnc   string `gorm:"type:text" json:"-"`
 	PrivateKeyEnc string `gorm:"type:text" json:"-"`
 
-	// PublicKey 新公鑰的 authorized_keys 行（公鑰非機密，明文保存供刪舊／還原比對）
+	// PublicKey 本版本私鑰所對應的公鑰：authorized_keys 行的型別與 base64 兩段（公鑰非機密，明文保存）。
+	// 寫入私鑰的每條路徑在建立版本時一併填入；私鑰原樣沿用自前一版時公鑰跟著沿用；
+	// 私鑰換新時只取自新私鑰。空值＝公鑰未知（例如欄位語義擴大前寫入的私鑰；公鑰無法由私鑰本體確定的 DSA 私鑰也不保存），讀取端不得以其他版本
+	// 的公鑰代替。對外的公鑰指紋由此欄計算，不解密私鑰；本列不得直接作為 API 回應輸出。
 	PublicKey string `gorm:"type:text" json:"public_key"`
 	// PreviousPublicKey 本系統先前推送的公鑰行；空值＝先前無系統推送鑰
 	PreviousPublicKey string `gorm:"type:text" json:"previous_public_key"`

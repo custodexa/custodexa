@@ -195,6 +195,14 @@ func TestClassifyAuditReason(t *testing.T) {
 			AuditReasonInput{Action: "delete", Resource: "user", Status: "success", Path: "/api/v1/users/42",
 				Details: `{"event":"user_deleted","target_username":"alice","external_identities_revoked":"2"}`},
 			"event.user_deleted", map[string]string{"username": "alice", "identities": "2"}},
+		{"API token 全唯讀被擋（middleware/api_token_gate.go rejectAPIToken）",
+			AuditReasonInput{Action: "create", Resource: "asset", Status: "denied", Path: "/api/v1/assets",
+				Details: `{"denial":"api_token","basis":"read_only"}`},
+			"authz_api_token_read_only", nil},
+		{"API token 路由不開放被擋（同上）",
+			AuditReasonInput{Action: "read", Resource: "session", Status: "denied", Path: "/api/v1/sessions",
+				Details: `{"denial":"api_token","basis":"forbidden_route"}`},
+			"authz_api_token_forbidden_route", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,6 +237,18 @@ func registered(code string) bool {
 
 // TestClassifyAuditReasonFallbacks 擋：鑑識原文被改寫、未登記事件空白、自由字串夾帶控制字元
 func TestClassifyAuditReasonFallbacks(t *testing.T) {
+	// API token 拒絕：依據不認得、或 denial 不是 api_token 時不給專屬碼（照舊顯示原文）
+	for _, details := range []string{
+		`{"denial":"api_token","basis":"all_of"}`,
+		`{"denial":"api_token"}`,
+		`{"denial":"other","basis":"read_only"}`,
+		`{"basis":"read_only"}`,
+	} {
+		if code, _ := ClassifyAuditReason(AuditReasonInput{Action: "create", Resource: "asset", Status: "denied",
+			Path: "/api/v1/assets", Details: details}); code != "" {
+			t.Fatalf("%s: 不該給原因碼，得到 %q", details, code)
+		}
+	}
 	// 自由文字 error_msg：不給碼，畫面照舊顯示原文
 	if code, _ := ClassifyAuditReason(AuditReasonInput{Action: "update", Resource: "asset", Status: "failure",
 		ErrorMsg: "Error #01: record not found", Path: "/api/v1/assets/3"}); code != "" {

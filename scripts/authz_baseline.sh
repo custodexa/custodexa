@@ -3,9 +3,10 @@
 #
 #   scripts/authz_baseline.sh compare
 #       Runs the backend baseline comparisons (route group, flow groups,
-#       coverage, approved-difference self-check) and the front-end entry
-#       group inside the dev compose stack. Exit code 0 means no unapproved
-#       difference.
+#       coverage, approved-difference self-check), the deferred end-to-end
+#       scenarios listed in backend/cmd/server/testdata/ci-deferred-scenarios.txt
+#       and the front-end entry group inside the dev compose stack. Exit code 0
+#       means no unapproved difference and every deferred scenario passed.
 #
 #   scripts/authz_baseline.sh report <output.json>
 #       Same runs, and additionally writes every difference (scenario,
@@ -20,6 +21,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BACKEND_TESTS='^TestAuthzBaseline(Routes|Flows|Coverage|ApprovedDiffs|ToolingCases)$'
+DEFERRED_LIST='backend/cmd/server/testdata/ci-deferred-scenarios.txt'
 
 usage() {
   sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
@@ -36,6 +38,15 @@ run_backend() {
     go test ./cmd/server/ -run "$BACKEND_TESTS" -count=1 -timeout 30m
 }
 
+# Deferred end-to-end scenarios: skipped where AUTHZ_BASELINE=deferred, run here.
+run_deferred() {
+  local names
+  names="$(grep -v '^#' "$DEFERRED_LIST" | grep -v '^[[:space:]]*$' | paste -sd'|' -)"
+  [[ -n "$names" ]] || { echo "no deferred scenarios listed in $DEFERRED_LIST" >&2; return 1; }
+  docker compose exec -T -e AUTHZ_BASELINE=1 backend \
+    go test ./cmd/server/ -run "^(${names})\$" -count=1 -timeout 30m
+}
+
 run_frontend() {
   docker compose exec -T frontend npm run test -- authz-baseline-entries
 }
@@ -45,6 +56,7 @@ case "$cmd" in
   compare)
     rc=0
     run_backend || rc=1
+    run_deferred || rc=1
     run_frontend || rc=1
     exit "$rc"
     ;;
@@ -55,6 +67,7 @@ case "$cmd" in
     docker compose exec -T backend sh -c "rm -rf '$container_dir' && mkdir -p '$container_dir'"
     rc=0
     run_backend "$container_dir" || rc=1
+    run_deferred || rc=1
     fe_rc=0
     run_frontend || { fe_rc=1; rc=1; }
     tmp="$(mktemp -d)"

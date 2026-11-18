@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
 	"github.com/custodexa/backend/internal/branding"
@@ -17,9 +16,8 @@ import (
 // 堡壘機專用帳號的公鑰：讀取回應只帶 has_public_key／fingerprint，公鑰本體只能經匯出取得，
 // 每次匯出留一筆讀取審計。
 //
-// 可見性：專用憑證隨資產範圍可見；共用憑證依主體的憑證可見集合判定。範圍外的共用憑證不給指紋也不給匯出：
-// 同一把共用金鑰在每台的指紋相同，範圍化主體拿多台一比就能推出哪些資產共用同一把範圍外的金鑰。
-// 非金鑰型、沒有公鑰、不可見三者對外同形。
+// 可見性：專用憑證隨資產範圍可見；共用憑證須同時落在主體的憑證可見集合內、且主體對該憑證具檢視能力
+// （與憑證讀取同一個判定），否則不給指紋也不給匯出。非金鑰型、沒有公鑰、不可見三者對外同形。
 
 // ExecutorCredentialVisibility 共用憑證是否在主體的憑證可見集合內（消費者側窄介面）。
 type ExecutorCredentialVisibility interface {
@@ -52,7 +50,7 @@ func (s *AssetExecutorService) executorPublicKey(ctx context.Context, db *gorm.D
 		if err != nil {
 			return "", err
 		}
-		if !visible {
+		if !visible || !s.accounts.mgmt.viewableCredentials(ctx, db, []uint{cred.ID})[cred.ID] {
 			return "", nil
 		}
 	}
@@ -64,10 +62,15 @@ func (s *AssetExecutorService) executorPublicKey(ctx context.Context, db *gorm.D
 		return "", fmt.Errorf("查詢執行身分版本失敗: %w", err)
 	}
 	fields := strings.Fields(version.PublicKey)
-	if len(fields) < 2 {
+	if len(fields) < 2 || PrivateKeyFingerprint(version.PublicKey) == "" {
 		return "", nil
 	}
 	return fields[0] + " " + fields[1], nil
+}
+
+// ViewableCredentialIDs ids 中請求主體具檢視能力的憑證（回應巢狀帳號列的公鑰指紋揭露用）。
+func (s *AssetExecutorService) ViewableCredentialIDs(ctx context.Context, ids []uint) map[uint]bool {
+	return s.accounts.ViewableCredentialIDs(ctx, ids)
 }
 
 // fillPublicKeyView 讀取回應補上 has_public_key 與 fingerprint（只在可揭露時出現）。
@@ -76,13 +79,13 @@ func (s *AssetExecutorService) fillPublicKeyView(ctx context.Context, dto *Asset
 	if err != nil || key == "" {
 		return err
 	}
-	pub, _, _, _, perr := ssh.ParseAuthorizedKey([]byte(key))
-	if perr != nil {
+	fp := PrivateKeyFingerprint(key)
+	if fp == "" {
 		return nil
 	}
 	has := true
 	dto.HasPublicKey = &has
-	dto.Fingerprint = ssh.FingerprintSHA256(pub)
+	dto.Fingerprint = fp
 	return nil
 }
 

@@ -112,6 +112,85 @@
         </dd>
         <dt>{{ t('credentials.detailSecretType') }}</dt>
         <dd>{{ secretTypeLabel }}</dd>
+        <!-- 含私鑰時多一列公鑰指紋：欄位缺席即平台沒有這把私鑰的公鑰（這個面板只對看得到憑證的人開放） -->
+        <template v-if="credential.has_private_key">
+          <dt>
+            <el-tooltip
+              placement="bottom-start"
+              :show-after="200"
+              popper-class="fingerprint-help-popper"
+            >
+              <template #content>
+                <div
+                  class="fingerprint-help"
+                  data-test="detail-fingerprint-help"
+                >
+                  <div class="fingerprint-help-title">
+                    {{ t('credentials.fingerprintHelpTitle') }}
+                  </div>
+                  <p class="fingerprint-help-lead">
+                    {{ t('credentials.fingerprintHelp') }}
+                  </p>
+                  <p>{{ t('credentials.fingerprintHelpLocal') }}</p>
+                  <p>{{ t('credentials.fingerprintHelpVersion') }}</p>
+                </div>
+              </template>
+              <span
+                class="fingerprint-label"
+                tabindex="0"
+                data-test="detail-fingerprint-label"
+              >
+                {{ t('credentials.detailFingerprint') }}
+                <CircleHelp
+                  :size="12"
+                  aria-hidden="true"
+                />
+              </span>
+            </el-tooltip>
+          </dt>
+          <dd
+            v-if="credential.private_key_fingerprint"
+            class="fingerprint-row"
+            data-test="detail-fingerprint"
+          >
+            <code
+              class="mono"
+              data-test="detail-fingerprint-value"
+            >{{ credential.private_key_fingerprint }}</code>
+            <el-tooltip
+              :content="t('assetExecutor.copyFingerprint')"
+              placement="top"
+            >
+              <el-button
+                link
+                type="primary"
+                size="small"
+                :aria-label="t('assetExecutor.copyFingerprint')"
+                data-test="detail-copy-fingerprint"
+                @click="copyFingerprint"
+              >
+                <el-icon><Copy /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </dd>
+          <dd
+            v-else
+            data-test="detail-fingerprint-unrecorded"
+          >
+            <span class="fingerprint-unrecorded">
+              <Info
+                :size="12"
+                aria-hidden="true"
+              />{{ t('credentials.fingerprintUnrecorded') }}
+            </span>
+            <p
+              class="fingerprint-unrecorded-hint"
+              data-test="detail-fingerprint-unrecorded-hint"
+            >
+              {{ t('credentials.fingerprintWhy') }}{{ fingerprintHowTo }}
+            </p>
+          </dd>
+        </template>
         <dt>{{ t('credentials.detailProtocol') }}</dt>
         <dd>{{ t(`enum.credentialProtocolFamily.${credential.protocol_family}`) }}</dd>
         <template v-if="ownershipText">
@@ -373,7 +452,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { CircleCheck, Copy, X } from 'lucide-vue-next'
+import { CircleCheck, CircleHelp, Copy, Info, X } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import CredentialBindingList from './CredentialBindingList.vue'
 import CredentialRotationProgress from './CredentialRotationProgress.vue'
@@ -472,6 +551,10 @@ const secretTypeLabel = computed(() => {
 const secretKind = computed(() => credentialSecretKind(props.credential))
 const secretNoun = computed(() => t(`credentials.secretFix.noun.${secretKind.value}`))
 const secretFixEntry = computed(() => t('credentials.secretFix.entry', { noun: secretNoun.value }))
+// 沒有指紋時的做法依憑證種類指到現行入口：共用憑證用本面板的更正鈕（字與按鈕相同），專用憑證在資產的帳號列編輯
+const fingerprintHowTo = computed(() => (isShared.value
+  ? t('credentials.fingerprintHowTo', { entry: secretFixEntry.value })
+  : t('credentials.fingerprintHowToDedicated')))
 
 // 伺服端同一道輪替閘門（SetSecret 內 assertNoActiveRotation）：提早說，不是唯一防線
 const secretFixBlockedReason = computed(() => {
@@ -557,6 +640,16 @@ async function copyId() {
   try {
     await navigator.clipboard.writeText(String(props.credential.id))
     ElMessage.success(t('profile.copiedToClipboard'))
+  } catch {
+    ElMessage.error(t('common.copyFailed'))
+  }
+}
+
+// 指紋可以公開；複製失敗時明說，讓使用者改用手動選取
+async function copyFingerprint() {
+  try {
+    await navigator.clipboard.writeText(props.credential.private_key_fingerprint)
+    ElMessage.success(t('assetExecutor.fingerprintCopied'))
   } catch {
     ElMessage.error(t('common.copyFailed'))
   }
@@ -761,6 +854,38 @@ defineExpose({
   gap: var(--ot-space-xs);
 }
 
+.fingerprint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+}
+
+.fingerprint-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ot-space-xs);
+}
+
+.fingerprint-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fingerprint-unrecorded {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ot-text-secondary);
+}
+
+.fingerprint-unrecorded-hint {
+  margin: var(--ot-space-xs) 0 0;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+  line-height: 1.6;
+}
+
 .actions {
   display: flex;
   gap: var(--ot-space-sm);
@@ -852,5 +977,26 @@ defineExpose({
   margin: 0;
   font-size: var(--ot-font-size-xs);
   color: var(--el-color-danger);
+}
+</style>
+
+<style>
+/* 提示框掛在 body 下，scoped 樣式碰不到 */
+.fingerprint-help-popper {
+  max-width: 22rem;
+}
+
+.fingerprint-help-popper .fingerprint-help-title {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.fingerprint-help-popper .fingerprint-help p {
+  margin: 4px 0 0;
+  line-height: 1.6;
+}
+
+.fingerprint-help-popper .fingerprint-help .fingerprint-help-lead {
+  font-weight: 600;
 }
 </style>

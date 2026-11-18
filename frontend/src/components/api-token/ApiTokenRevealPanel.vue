@@ -116,9 +116,24 @@
       <dd data-test="reveal-name">
         {{ created.name }}
       </dd>
+      <dt>{{ $t('apiTokens.reveal.access') }}</dt>
+      <dd data-test="reveal-access">
+        <ApiTokenAccessBadge
+          :value="tokenAccess(created)"
+          explain
+        />
+      </dd>
       <dt>{{ $t('apiTokens.col.grantedRoles') }}</dt>
       <dd data-test="reveal-roles">
-        {{ rolesWithScopeText(created.granted_roles) }}
+        <div
+          v-for="role in created.granted_roles || []"
+          :key="role.role_id"
+          class="atr-role"
+          :data-test="`reveal-role-${role.role_id}`"
+        >
+          <strong>{{ rolesWithScopeText([role]) }}</strong>
+          <ApiTokenLevelTag :level="role.level" />
+        </div>
       </dd>
       <dt>{{ $t('apiTokens.col.expiresAt') }}</dt>
       <dd data-test="reveal-expiry">
@@ -144,8 +159,10 @@
 import { computed, nextTick, ref } from 'vue'
 import { Check, CircleX, Copy } from 'lucide-vue-next'
 import { formatDateTime } from '@/utils/format'
-import { rolesWithScopeText } from '@/constants/apiTokens'
+import { rolesWithScopeText, tokenAccess } from '@/constants/apiTokens'
 import { API_TOKEN_VERIFY_PATH } from '@/api/apiTokens'
+import ApiTokenAccessBadge from './ApiTokenAccessBadge.vue'
+import ApiTokenLevelTag from './ApiTokenLevelTag.vue'
 
 /**
  * 建立完成後的一次性明文顯示。明文只經由屬性從建立對話框的區域狀態傳入，
@@ -315,5 +332,14 @@ const copyCommand = async () => {
 .atr-details dd {
   color: var(--ot-text-primary);
   overflow-wrap: anywhere;
+}
+.atr-role {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-sm);
+  flex-wrap: wrap;
+}
+.atr-role + .atr-role {
+  margin-top: 4px;
 }
 </style>

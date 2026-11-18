@@ -86,8 +86,9 @@ describe('角色變動對 API token 的影響提示', () => {
     const box = w.get('[data-test="api-token-impact-lose"]').text()
     expect(box).toContain('尚未儲存：ops-chen 的 API token 會同步失去「授權管理員」')
     expect(box).toContain('terraform-prod-apply')
-    expect(box).toContain('儲存後只剩「資產管理員」')
-    expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會失去這個角色，0 把暫停')
+    expect(box).toContain('儲存後它們只剩「資產管理員」')
+    expect(box).toContain('會依原本的權限自動恢復')
+    expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會失去這個角色（1 把唯讀），0 把暫停')
     expect(w.find('[data-test="change-view-api-tokens"]').exists()).toBe(true)
   })
 
@@ -105,7 +106,7 @@ describe('角色變動對 API token 的影響提示', () => {
     await w.get('[data-test="remove-authz_admin"]').trigger('click')
     await settle()
     expect(w.get('[data-test="api-token-impact-lose"]').text()).toContain('儲存後其中 1 把會暫停')
-    expect(w.get('[data-test="change-api-token-value"]').text()).toBe('2 把會失去這個角色，1 把暫停')
+    expect(w.get('[data-test="change-api-token-value"]').text()).toBe('2 把會失去這個角色（2 把唯讀），1 把暫停')
   })
 
   it('收回全部管理角色：黃框說明全部暫停，變化列寫幾把將暫停', async () => {
@@ -148,7 +149,7 @@ describe('角色變動對 API token 的影響提示', () => {
       expect(w.find('[data-test="api-token-impact-lose"]').exists()).toBe(false)
       const alert = w.findAllComponents({ name: 'ElAlert' }).find((c) => c.attributes('data-test') === 'api-token-impact-regain')
       expect(alert.props('type')).toBe('warning')
-      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會恢復這個角色')
+      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會恢復這個角色（1 把唯讀）')
       expect(w.find('[data-test="change-view-api-tokens"]').exists()).toBe(true)
     })
 
@@ -164,7 +165,7 @@ describe('角色變動對 API token 的影響提示', () => {
       await settle()
       const box = w.get('[data-test="api-token-impact-regain"]').text()
       expect(box).toContain('其中 1 把原本暫停，儲存後恢復為可用：tf-plan')
-      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會恢復這個角色，其中 1 把恢復可用')
+      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會恢復這個角色（1 把唯讀），其中 1 把恢復可用')
       expect(w.get('[data-test="change-api-token-value"]').text()).not.toContain('目前沒有')
     })
 
@@ -180,7 +181,7 @@ describe('角色變動對 API token 的影響提示', () => {
       expect(box).toContain('tf-apply')
       expect(box).not.toContain('drift')
       expect(w.find('[data-test="api-token-impact-no-grow"]').exists()).toBe(false)
-      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會恢復這個角色')
+      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會恢復這個角色（1 把唯讀）')
     })
 
     it('已失效（撤銷、到期）的 token 不算會恢復', async () => {
@@ -222,12 +223,54 @@ describe('角色變動對 API token 的影響提示', () => {
       await settle()
       expect(w.find('[data-test="api-token-impact-lose"]').exists()).toBe(true)
       expect(w.find('[data-test="api-token-impact-regain"]').exists()).toBe(true)
-      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會失去這個角色，0 把暫停；1 把會恢復這個角色')
+      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('1 把會失去這個角色（1 把唯讀），0 把暫停；1 把會恢復這個角色（1 把唯讀）')
+    })
+
+    it('受影響的 token 帶上那個角色在那把上的層級：收回時逐把標出，變化列分出讀寫與唯讀各幾把', async () => {
+      setup({
+        total_usable: 3,
+        affected: [
+          { id: 2, name: 'terraform-prod-apply', loses_roles: [{ ...AUTHZ, level: 'read_write' }], remaining_roles: [ASSET], becomes_suspended: false },
+          { id: 3, name: 'drift-check', loses_roles: [{ ...AUTHZ, level: 'read' }], remaining_roles: [ASSET], becomes_suspended: false },
+          { id: 4, name: 'terraform-prod-apply-2', loses_roles: [{ ...AUTHZ, level: 'read' }], remaining_roles: [ASSET], becomes_suspended: false },
+        ],
+        suspended_count: 0,
+        eligible_after: true,
+      })
+      const w = await mountTab()
+      await w.get('[data-test="remove-authz_admin"]').trigger('click')
+      await settle()
+      const tokens = w.findAll('[data-test="api-token-impact-lose"] [data-test="api-token-impact-token"]')
+      expect(tokens.map((tk) => tk.text())).toEqual(['terraform-prod-apply讀寫', 'drift-check唯讀', 'terraform-prod-apply-2唯讀'])
+      expect(w.get('[data-test="api-token-impact-lose"]').text()).toContain('括號內是這個角色在那把上的權限')
+      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('3 把會失去這個角色（1 把讀寫、2 把唯讀），0 把暫停')
+    })
+
+    it('加回角色：會恢復讀寫的列在第一行，唯讀的在下一行，權限照建立時的選擇', async () => {
+      setup({
+        total_usable: 0,
+        affected: [
+          { id: 2, name: 'terraform-prod-apply', loses_roles: [], remaining_roles: [], regains_roles: [{ ...AUTHZ, level: 'read_write' }], becomes_suspended: false, becomes_active: true },
+          { id: 3, name: 'drift-check', loses_roles: [], remaining_roles: [], regains_roles: [{ ...AUTHZ, level: 'read' }], becomes_suspended: false, becomes_active: true },
+        ],
+        suspended_count: 0,
+        eligible_after: true,
+      })
+      const w = await mountTab(['user'])
+      w.vm.addPicked('authz_admin')
+      await settle()
+      const lines = w.findAll('[data-test="api-token-impact-regain"] .token-impact-line').map((l) => l.text())
+      expect(lines[0]).toBe('授權過這個角色、目前不生效的 API token 有 2 把，會依建立時選的權限恢復。')
+      expect(lines[1]).toBe('可以修改資料（讀寫）：terraform-prod-apply讀寫。')
+      expect(lines[2]).toBe('只能讀取（唯讀）：drift-check唯讀。')
+      expect(lines[3]).toContain('儲存後立即生效')
+      expect(lines[3]).toContain('其中 2 把原本暫停，儲存後恢復為可用')
+      expect(w.get('[data-test="change-api-token-value"]').text()).toBe('2 把會恢復這個角色（1 把讀寫、1 把唯讀），其中 2 把恢復可用')
     })
 
     it('三語都有恢復角色的文字', () => {
       for (const lang of ['zh-TW', 'en-US', 'ja-JP']) {
-        for (const k of ['roles.apiTokenRegainTitle', 'roles.apiTokenRegainBody', 'roles.apiTokenRegainActive', 'roles.apiTokenRegainUnknownTitle', 'roles.apiTokenRegainUnknownBody', 'change.apiTokenRegain', 'change.apiTokenRegainActive', 'change.apiTokenCheckAfterSave', 'change.apiTokenPartsSeparator']) {
+        for (const k of ['roles.apiTokenRegainTitle', 'roles.apiTokenRegainBody', 'roles.apiTokenRegainWriteLine', 'roles.apiTokenRegainReadLine', 'roles.apiTokenRegainTail', 'roles.apiTokenRegainActive', 'change.apiTokenLevelCountWrite', 'change.apiTokenLevelCountRead', 'roles.apiTokenRegainUnknownTitle', 'roles.apiTokenRegainUnknownBody', 'change.apiTokenRegain', 'change.apiTokenRegainActive', 'change.apiTokenCheckAfterSave', 'change.apiTokenPartsSeparator']) {
           expect(i18n.global.te(`userDetail.${k}`, lang), `${lang} ${k}`).toBe(true)
         }
       }

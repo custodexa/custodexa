@@ -208,6 +208,68 @@ describe('Roles 角色列表', () => {
     expect(api.listRoleDefinitions).toHaveBeenCalledTimes(2)
   })
 
+  it('刪除時版本過期：無法刪除對話框只有知道了、說明沒有刪除，背景列表重新載入', async () => {
+    api.confirmDestructive.mockResolvedValue(undefined)
+    api.deleteRoleDefinition.mockRejectedValue({
+      response: { status: 409, data: { error: '角色已被其他人修改，請重新載入後再試', code: 'ROLE_DEFINITION_VERSION_CONFLICT' } },
+    })
+    const w = await load(fixture())
+    await w.get('[data-test="role-delete-10"]').trigger('click')
+    await flushPromises()
+    expect(api.deleteRoleDefinition).toHaveBeenCalledWith(10, 5)
+    const dlg = w.get('[data-test="role-version-conflict"]')
+    expect(dlg.text()).toContain(t('roles.list.inUse.conflictTitle', { name: 'ops-custom' }))
+    expect(dlg.text()).toContain(t('roles.list.versionConflict.body'))
+    expect(dlg.text()).toContain(t('roles.list.versionConflict.next'))
+    expect(dlg.text()).not.toContain(t('roles.list.inUse.conflictBody'))
+    expect(w.find('[data-test="role-in-use-conflict"]').exists()).toBe(false)
+    const buttons = dlg.findAll('button')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0].text()).toBe(t('roles.list.inUse.ack'))
+    expect(api.listRoleDefinitions).toHaveBeenCalledTimes(2)
+    expect(api.deleteRoleDefinition).toHaveBeenCalledTimes(1)
+    await w.get('[data-test="role-version-ack"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="role-version-conflict"]').exists()).toBe(false)
+    expect(api.deleteRoleDefinition).toHaveBeenCalledTimes(1)
+  })
+
+  it('複製時名稱重複：名稱欄紅字、對話框不關、不重新載入；改名後紅字消失', async () => {
+    api.copyRoleDefinition.mockRejectedValueOnce({
+      response: { status: 409, data: { error: '已有同名的角色，請換一個名稱', code: 'ROLE_DEFINITION_CONFLICT' } },
+    })
+    const w = await load(fixture())
+    await w.get('[data-test="role-copy-10"]').trigger('click')
+    await w.get('input[data-test="role-copy-name"]').setValue('mapped-only')
+    await w.get('[data-test="role-copy-submit"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="role-copy-dialog"]').exists()).toBe(true)
+    expect(w.get('[data-test="role-copy-name-error"]').text()).toBe(t('apiError.ROLE_DEFINITION_CONFLICT'))
+    expect(w.find('.name-input-error input[data-test="role-copy-name"]').exists()).toBe(true)
+    expect(w.get('input[data-test="role-copy-name"]').element.value).toBe('mapped-only')
+    expect(api.listRoleDefinitions).toHaveBeenCalledTimes(1)
+    await w.get('input[data-test="role-copy-name"]').setValue('ops-copy')
+    expect(w.find('[data-test="role-copy-name-error"]').exists()).toBe(false)
+    api.copyRoleDefinition.mockResolvedValueOnce({})
+    await w.get('[data-test="role-copy-submit"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="role-copy-dialog"]').exists()).toBe(false)
+    expect(api.listRoleDefinitions).toHaveBeenCalledTimes(2)
+  })
+
+  it('重新開啟複製對話框時不殘留上一次的名稱錯誤', async () => {
+    api.copyRoleDefinition.mockRejectedValueOnce({ response: { status: 409, data: { code: 'ROLE_DEFINITION_CONFLICT' } } })
+    const w = await load(fixture())
+    await w.get('[data-test="role-copy-10"]').trigger('click')
+    await w.get('input[data-test="role-copy-name"]').setValue('mapped-only')
+    await w.get('[data-test="role-copy-submit"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="role-copy-name-error"]').exists()).toBe(true)
+    await w.get('[data-test="role-copy-10"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="role-copy-name-error"]').exists()).toBe(false)
+  })
+
   it('新增對話框以範本起手，下一步導向編輯頁並帶範本 ID', async () => {
     const w = await load(fixture())
     await w.get('[data-test="role-template-2"]').trigger('click')

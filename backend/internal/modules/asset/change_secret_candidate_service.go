@@ -301,9 +301,10 @@ func (s *ChangeSecretCandidateService) promote(ctx context.Context, cand *model.
 	// 目的欄位加密在開交易之前做完：加密可能查資料金鑰表、呼叫外部保管處解封，
 	// 不得發生在持有資產列鎖與主機金鑰鎖的交易內（比照拆分路徑）
 	var encrypted string
+	var encryptedKey versionSecret
 	switch cand.SecretType {
 	case model.ChangeSecretTypeSSHKey:
-		encrypted, err = s.assetService.encryptOwnedPrivateKey(secret.PrivateKey)
+		encryptedKey, err = s.assetService.encryptOwnedPrivateKey(secret.PrivateKey)
 	default:
 		encrypted, err = s.assetService.encryptOwnedPassword(secret.Password)
 	}
@@ -321,7 +322,7 @@ func (s *ChangeSecretCandidateService) promote(ctx context.Context, cand *model.
 		}
 		switch cand.SecretType {
 		case model.ChangeSecretTypeSSHKey:
-			err = s.assetService.updateOwnedPrivateKeyTx(tx, cand.AssetID, cand.AccountID, cand.AccountUsername, encrypted)
+			err = s.assetService.updateOwnedPrivateKeyTx(tx, cand.AssetID, cand.AccountID, cand.AccountUsername, encryptedKey)
 		default:
 			err = s.assetService.updateOwnedPasswordTx(tx, cand.AssetID, cand.AccountID, cand.AccountUsername, encrypted)
 		}

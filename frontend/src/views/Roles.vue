@@ -281,8 +281,20 @@
           <el-input
             v-model="copyName"
             maxlength="64"
+            :class="{ 'name-input-error': copyNameError }"
             data-test="role-copy-name"
           />
+          <p
+            v-if="copyNameError"
+            class="name-error"
+            role="alert"
+            data-test="role-copy-name-error"
+          >
+            <CircleX
+              :size="13"
+              aria-hidden="true"
+            />{{ copyNameError }}
+          </p>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -301,22 +313,30 @@
       </template>
     </el-dialog>
 
-    <!-- 刪除當下發現已被使用 -->
+    <!-- 刪除當下發現已被使用，或已被他人修改 -->
     <el-dialog
       v-model="conflictOpen"
       :title="$t('roles.list.inUse.conflictTitle', { name: conflictName })"
       width="440px"
       :append-to-body="false"
-      data-test="role-in-use-conflict"
+      :data-test="conflictKind === 'version' ? 'role-version-conflict' : 'role-in-use-conflict'"
     >
-      <p>{{ $t('roles.list.inUse.conflictBody') }}</p>
-      <p class="muted">
-        {{ $t('roles.list.inUse.reloaded') }}
-      </p>
+      <template v-if="conflictKind === 'version'">
+        <p>{{ $t('roles.list.versionConflict.body') }}</p>
+        <p class="muted">
+          {{ $t('roles.list.versionConflict.next') }}
+        </p>
+      </template>
+      <template v-else>
+        <p>{{ $t('roles.list.inUse.conflictBody') }}</p>
+        <p class="muted">
+          {{ $t('roles.list.inUse.reloaded') }}
+        </p>
+      </template>
       <template #footer>
         <el-button
           type="primary"
-          data-test="role-in-use-ack"
+          :data-test="conflictKind === 'version' ? 'role-version-ack' : 'role-in-use-ack'"
           @click="conflictOpen = false"
         >
           {{ $t('roles.list.inUse.ack') }}
@@ -327,9 +347,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { CircleX } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { t, te } from '@/i18n'
@@ -341,6 +362,8 @@ import {
   deleteRoleDefinition,
   roleErrorCode,
   ROLE_ERROR_IN_USE,
+  ROLE_ERROR_NAME_CONFLICT,
+  ROLE_ERROR_VERSION_CONFLICT,
 } from '@/api/roleDefinitions'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
@@ -457,9 +480,15 @@ const copyOpen = ref(false)
 const copyName = ref('')
 const copyTarget = ref(null)
 const copying = ref(false)
+// 名稱重複留在對話框內標在名稱欄；改動名稱即清除
+const copyNameError = ref('')
+watch(copyName, () => {
+  copyNameError.value = ''
+})
 const openCopy = (row) => {
   copyTarget.value = row
   copyName.value = ''
+  copyNameError.value = ''
   copyOpen.value = true
 }
 const submitCopy = async () => {
@@ -471,7 +500,11 @@ const submitCopy = async () => {
     copyOpen.value = false
     await load()
   } catch (error) {
-    console.error('複製角色失敗:', error)
+    if (roleErrorCode(error) === ROLE_ERROR_NAME_CONFLICT) {
+      copyNameError.value = t('apiError.ROLE_DEFINITION_CONFLICT')
+    } else {
+      console.error('複製角色失敗:', error)
+    }
   } finally {
     copying.value = false
   }
@@ -479,6 +512,7 @@ const submitCopy = async () => {
 
 const conflictOpen = ref(false)
 const conflictName = ref('')
+const conflictKind = ref('in-use')
 const removeRole = async (row) => {
   if (inUse(row)) return
   try {
@@ -491,7 +525,10 @@ const removeRole = async (row) => {
     ElMessage.success(t('roles.list.deleted'))
     await load()
   } catch (error) {
-    if (roleErrorCode(error) === ROLE_ERROR_IN_USE) {
+    const code = roleErrorCode(error)
+    if (code === ROLE_ERROR_IN_USE || code === ROLE_ERROR_VERSION_CONFLICT) {
+      // 沒有提供直接重送：背景列表重新載入，由使用者看過最新內容再決定
+      conflictKind.value = code === ROLE_ERROR_IN_USE ? 'in-use' : 'version'
       conflictName.value = row.name
       conflictOpen.value = true
       await load()
@@ -539,6 +576,18 @@ onMounted(load)
   display: flex;
   flex-wrap: wrap;
   gap: var(--ot-space-xs);
+}
+.name-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: var(--ot-space-xs) 0 0;
+  font-size: var(--ot-font-size-xs);
+  line-height: 1.5;
+  color: var(--ot-danger);
+}
+.name-input-error :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--ot-danger) inset;
 }
 .in-use {
   margin-top: var(--ot-space-xs);

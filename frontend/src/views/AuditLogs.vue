@@ -609,6 +609,29 @@
             >
               {{ viaTokenMeta }}
             </div>
+            <div
+              v-if="viaTokenLevels"
+              class="via-token__meta via-token__line"
+              data-test="audit-detail-via-token-access"
+            >
+              <span>{{ $t('apiTokens.col.access') }}</span>
+              <ApiTokenAccessBadge :value="viaTokenLevels.access" />
+            </div>
+            <i18n-t
+              v-if="viaTokenLevels && viaTokenLevels.roles.length"
+              keypath="auditLogs.viaTokenRoles"
+              tag="div"
+              class="via-token__meta via-token__line"
+              data-test="audit-detail-via-token-roles"
+            >
+              <template #roles>
+                <span
+                  v-for="(r, i) in viaTokenLevels.roles"
+                  :key="i"
+                  class="via-token__role"
+                >{{ r.label }} <ApiTokenLevelTag :level="r.level" /></span>
+              </template>
+            </i18n-t>
           </div>
           <span
             v-else
@@ -693,6 +716,36 @@
           <pre class="json-content">{{ formatJSON(selectedLog.request_body) }}</pre>
         </el-descriptions-item>
 
+        <el-descriptions-item
+          v-if="tokenCreateDetail"
+          :label="$t('auditLogs.changeDetails')"
+          :span="2"
+        >
+          <dl
+            class="token-create-detail"
+            data-test="audit-detail-token-create"
+          >
+            <dt>{{ $t('apiTokens.form.name') }}</dt>
+            <dd>{{ tokenCreateDetail.name }}</dd>
+            <dt>{{ $t('apiTokens.col.access') }}</dt>
+            <dd data-test="audit-detail-token-create-access">
+              <ApiTokenAccessBadge :value="tokenCreateDetail.access" />
+            </dd>
+            <dt>{{ $t('apiTokens.col.grantedRoles') }}</dt>
+            <dd data-test="audit-detail-token-create-roles">
+              <div
+                v-for="(r, i) in tokenCreateDetail.roles"
+                :key="i"
+                class="via-token__role"
+              >
+                {{ r.label }} <ApiTokenLevelTag :level="r.level" />
+              </div>
+            </dd>
+            <dt>{{ $t('apiTokens.col.expiresAt') }}</dt>
+            <dd>{{ tokenCreateDetail.expires || $t('apiTokens.neverExpires') }}</dd>
+          </dl>
+        </el-descriptions-item>
+
         <!-- 沒有變更明細時不留空區塊，改列原因與原始 details -->
         <el-descriptions-item
           v-if="detailBlocks.changes.length"
@@ -720,7 +773,7 @@
           <span data-test="log-reason">{{ reasonText(selectedLog) }}</span>
         </el-descriptions-item>
         <el-descriptions-item
-          v-if="detailBlocks.raw"
+          v-if="detailBlocks.raw && !tokenCreateDetail"
           :label="$t('auditLogs.detailsRaw')"
           :span="2"
         >
@@ -893,6 +946,9 @@ import { can } from '@/composables/useCapabilities'
 import { settingLabel } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
 import { roleLabel } from '@/constants/roles'
+import { grantedRoleLabel, normalizeLevel, tokenAccess } from '@/constants/apiTokens'
+import ApiTokenAccessBadge from '@/components/api-token/ApiTokenAccessBadge.vue'
+import ApiTokenLevelTag from '@/components/api-token/ApiTokenLevelTag.vue'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const route = useRoute()
@@ -1056,10 +1112,7 @@ const viaTokenMeta = computed(() => {
   const parts = [t('auditLogs.viaTokenId', { id: log.api_token_id })]
   const tk = selectedToken.value
   if (tk) {
-    // 授權角色只有識別與名稱：內建角色的名稱轉成當前語言的譯名，自訂角色原樣
     const granted = Array.isArray(tk.granted_roles) ? tk.granted_roles : []
-    const roles = granted.map((r) => (r?.name ? roleLabel(r.name) : '')).filter(Boolean)
-    if (roles.length) parts.push(t('auditLogs.viaTokenRoles', { roles: roles.join(t('common.listSeparator')) }))
     // token 列已不存在時授權角色為空陣列、到期為 null，無從得知到期，不寫「永不到期」
     const tokenRowGone = tk.owner_deleted === true && granted.length === 0
     if (!tokenRowGone) {
@@ -1068,6 +1121,37 @@ const viaTokenMeta = computed(() => {
     if (tk.owner_deleted) parts.push(t('auditLogs.viaTokenDeleted'))
   }
   return parts.join(sep)
+})
+// 「經由」的權限總結與每個授權角色的層級（建立後不變，取自 token 本身）。
+// 授權角色只有識別與名稱：內建角色的名稱轉成當前語言的譯名，自訂角色原樣。
+// token 已不存在時沒有授權角色、總結為 null，不顯示這兩行
+const viaTokenLevels = computed(() => {
+  const tk = selectedToken.value
+  if (!selectedLog.value?.api_token_id || !tk) return null
+  const granted = Array.isArray(tk.granted_roles) ? tk.granted_roles : []
+  const roles = granted
+    .map((r) => ({ label: r?.name ? roleLabel(r.name) : '', level: normalizeLevel(r?.level) }))
+    .filter((r) => r.label)
+  if (!roles.length && (tk.access === null || tk.access === undefined)) return null
+  return { access: tokenAccess(tk), roles }
+})
+
+// 建立 API token 的事件：細節寫的是建立當下的名稱、每個授權角色與層級、總結與到期，
+// 整理成「變更詳情」的幾列；撤銷事件不帶授權角色（層級查同一把的建立事件即可）
+const tokenCreateDetail = computed(() => {
+  const log = selectedLog.value
+  if (log?.resource !== 'api_token' || log?.action !== 'create') return null
+  const d = parseDetailsObject(log)
+  if (!d || !Array.isArray(d.granted_roles)) return null
+  const roles = d.granted_roles
+    .map((r) => ({ label: grantedRoleLabel(r), level: normalizeLevel(r?.level) }))
+    .filter((r) => r.label)
+  return {
+    name: typeof d.token_name === 'string' ? d.token_name : '',
+    access: tokenAccess({ access: d.access, granted_roles: d.granted_roles }),
+    roles,
+    expires: d.never_expires === true || !d.expires_at ? '' : formatDateTime(d.expires_at),
+  }
 })
 
 // 稽核證據匯出（audit-workflows）：證據包只走非同步 job
@@ -1535,5 +1619,30 @@ watch(() => route?.query, (query) => applyQuery(query || {}), { immediate: true 
 .via-token__meta {
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-secondary);
+}
+.via-token__line {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-sm);
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.via-token__role {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: var(--ot-space-sm);
+}
+.token-create-detail {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+.token-create-detail dt {
+  color: var(--ot-text-secondary);
+}
+.token-create-detail dd {
+  margin: 0;
 }
 </style>

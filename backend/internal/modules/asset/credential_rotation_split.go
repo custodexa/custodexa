@@ -386,7 +386,7 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 	confirm *model.CredentialHostIdentityConfirmation, applied memberTransition) error {
 
 	userID, operator := model.UserFromContext(ctx)
-	passwordEnc, privateKeyEnc, err := s.encryptRotationSecret(ctx, mc)
+	encrypted, err := s.encryptRotationSecret(ctx, mc)
 	if err != nil {
 		return err
 	}
@@ -426,16 +426,17 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 		}
 		// 未被本次更動的那一欄自原就位版本原樣帶過來（同一張表的同一欄，密文原樣搬、
 		// 不解密）：只換密碼不得順手清掉私鑰備援入口
-		pwEnc, keyEnc := passwordEnc, privateKeyEnc
+		// 私鑰搬過來時公鑰跟著同一版搬；私鑰換新時公鑰只取自新私鑰，絕不沿用原就位版本的
+		next := encrypted
 		if account.EffectiveVersionID != nil {
-			pwEnc, keyEnc, err = carryOverVersionCiphertext(tx, source.ID,
-				*account.EffectiveVersionID, pwEnc, keyEnc)
+			next, err = carryOverVersionSecret(tx, source.ID, *account.EffectiveVersionID, next)
 			if err != nil {
 				return err
 			}
 		}
 		version, err := appendCredentialVersion(tx, dedicated.ID, mc.secretType,
-			pwEnc, keyEnc, model.CredentialVersionReasonDetach)
+			next.PasswordEnc, next.PrivateKeyEnc, model.CredentialVersionReasonDetach,
+			withVersionPublicKey(next.PublicKey))
 		if err != nil {
 			return err
 		}
@@ -501,26 +502,31 @@ func (s *CredentialRotationService) commitSplitApplied(ctx context.Context,
 //
 // **不自候選列原樣搬**：信封的附加驗證資料綁「表｜欄」，候選列與版本列是不同的表與欄，
 // 原樣搬過去會解不開。同表同欄之間的原樣搬（未更動的那一欄）另由
-// carryOverVersionCiphertext 承擔，那條路徑確實不解密。
+// carryOverVersionSecret 承擔，那條路徑確實不解密。
+//
+// 私鑰的公鑰由這裡已持有的明文取得（隨機產生、自訂秘密、升級前建立而沒有保存公鑰的候選
+// 都走同一處）：轉正本來就為了加密而持有明文，不另開解密途徑。取不到時公鑰留空（未知）。
 func (s *CredentialRotationService) encryptRotationSecret(ctx context.Context,
-	mc *memberContext) (string, string, error) {
+	mc *memberContext) (versionSecret, error) {
 
 	if mc.secretType == model.ChangeSecretTypeSSHKey {
+		var publicKey string
 		enc, err := material.Use(mc.newPrivateKey, func(raw []byte) (string, error) {
+			publicKey = versionPublicKeyFromPlaintext(raw)
 			return s.assets.bytesCrypto.EncryptBytesFor(ctx, keyvault.RefCredentialVersionPrivateKey, raw)
 		})
 		if err != nil {
-			return "", "", fmt.Errorf("加密私鑰失敗: %w", err)
+			return versionSecret{}, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
-		return "", enc, nil
+		return versionSecret{PrivateKeyEnc: enc, PublicKey: publicKey}, nil
 	}
 	enc, err := material.Use(mc.newPassword, func(raw []byte) (string, error) {
 		return s.assets.bytesCrypto.EncryptBytesFor(ctx, keyvault.RefCredentialVersionPassword, raw)
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("加密密碼失敗: %w", err)
+		return versionSecret{}, fmt.Errorf("加密密碼失敗: %w", err)
 	}
-	return enc, "", nil
+	return versionSecret{PasswordEnc: enc}, nil
 }
 
 // settleSourceCredential 拆離之後對原憑證的收尾。
@@ -644,7 +650,8 @@ func detachFixedSecret(cred *model.Credential, req DetachCredentialRequest) (*Ca
 				return nil, ErrCredentialSecretRequired
 			}
 			// 操作者貼上的私鑰：先擋下解析不了的，免得進了改密流程才在遠端操作途中失敗
-			if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+			// （含公私鑰一致性；公鑰於轉正時由同一份明文取得）
+			if _, err := ValidatePrivateKey(req.PrivateKey); err != nil {
 				return nil, err
 			}
 			return &CandidateSecret{PrivateKey: material.Adopt([]byte(req.PrivateKey))}, nil

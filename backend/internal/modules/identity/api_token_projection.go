@@ -56,14 +56,17 @@ type APITokenView struct {
 	Name         string             `json:"name"`
 	Status       APITokenStatus     `json:"status"`
 	GrantedRoles []APITokenRoleView `json:"granted_roles"`
-	Privileged   bool               `json:"privileged"`
-	CreatedAt    time.Time          `json:"created_at"`
-	ExpiresAt    *time.Time         `json:"expires_at"`
-	LastUsedAt   *time.Time         `json:"last_used_at"`
-	LastUsedIP   string             `json:"last_used_ip"`
-	RevokedAt    *time.Time         `json:"revoked_at"`
-	RevokedBy    *APITokenActorRef  `json:"revoked_by"`
-	RevokeNote   string             `json:"revoke_note"`
+	Access       string             `json:"access"` // 授權角色層級的彙總（model.APITokenAccess*），含目前不生效的角色
+	// CreatedBeforeLevels 層級功能生效前建立（各角色皆為讀寫）；只供呈現
+	CreatedBeforeLevels bool              `json:"created_before_levels"`
+	Privileged          bool              `json:"privileged"`
+	CreatedAt           time.Time         `json:"created_at"`
+	ExpiresAt           *time.Time        `json:"expires_at"`
+	LastUsedAt          *time.Time        `json:"last_used_at"`
+	LastUsedIP          string            `json:"last_used_ip"`
+	RevokedAt           *time.Time        `json:"revoked_at"`
+	RevokedBy           *APITokenActorRef `json:"revoked_by"`
+	RevokeNote          string            `json:"revoke_note"`
 }
 
 // APITokenEligibility 建立資格與可勾選的角色。
@@ -257,7 +260,8 @@ func grantedRolesOf(db *gorm.DB, tokens []model.APIToken) (map[uint][]APITokenRo
 	out := map[uint][]APITokenRoleView{}
 	for _, l := range links {
 		r := roles[l.RoleID]
-		ref := APITokenRoleRef{RoleID: l.RoleID, Name: grantedRoleName(l.RoleID, r.Name, r.DeletedAt.Valid)}
+		ref := APITokenRoleRef{RoleID: l.RoleID, Name: grantedRoleName(l.RoleID, r.Name, r.DeletedAt.Valid),
+			Level: model.NormalizeAPITokenLevel(l.Level)}
 		if r.BuiltinKey != nil {
 			ref.BuiltinKey = *r.BuiltinKey
 		}
@@ -287,21 +291,26 @@ func revokerNamesOf(db *gorm.DB, tokens []model.APIToken) (map[uint]string, erro
 	return out, nil
 }
 
-// projectAPIToken 組出一把 token 的投影。granted 只需帶角色的識別、名稱與內建識別，有效與範圍依 state 填入。
+// projectAPIToken 組出一把 token 的投影。granted 只需帶角色的識別、名稱、內建識別與層級，有效與範圍依 state 填入。
+// 層級一律再正規化一次（不認得的值為唯讀），彙總由全部授權角色的層級求得。
 func projectAPIToken(t model.APIToken, granted []APITokenRoleView, state apiTokenOwnerState, gen string, now time.Time) APITokenView {
 	roles := make([]APITokenRoleView, 0, len(granted))
 	anyEffective := false
 	refs := make([]APITokenRoleRef, 0, len(granted))
+	levels := make([]string, 0, len(granted))
 	for _, g := range granted {
 		v := APITokenRoleView{APITokenRoleRef: g.APITokenRoleRef}
+		v.Level = model.NormalizeAPITokenLevel(g.Level)
+		levels = append(levels, v.Level)
 		if cur, ok := state.Effective[g.RoleID]; ok && cur.Effective {
 			v.Effective, v.Scope = true, cur.Scope
 			anyEffective = true
 		}
 		roles = append(roles, v)
-		refs = append(refs, g.APITokenRoleRef)
+		refs = append(refs, v.APITokenRoleRef)
 	}
 	return APITokenView{ID: t.ID, UserID: t.UserID, Name: t.Name, GrantedRoles: roles, Privileged: len(privilegedKeys(refs)) > 0,
+		Access: model.APITokenAccessOf(levels), CreatedBeforeLevels: !t.LevelsRecorded,
 		CreatedAt: t.CreatedAt, ExpiresAt: t.ExpiresAt, LastUsedAt: t.LastUsedAt, LastUsedIP: t.LastUsedIP,
 		RevokedAt: t.RevokedAt, RevokeNote: t.RevokeNote,
 		Status: apiTokenStatusOf(t, state.Active, anyEffective, gen, now)}

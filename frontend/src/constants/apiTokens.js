@@ -111,6 +111,54 @@ export const rolesWithScopeText = (roles) =>
 export const rolesText = (roles) =>
   (roles || []).map(grantedRoleLabel).join(t('common.listSeparator'))
 
+// 授權角色的層級與整把的總結。值域硬拷後端回應契約：層級為 read／read_write，
+// 總結為 read／read_write／mixed。讀到不認得的層級值一律當唯讀呈現，與後端讀取時的正規化一致
+export const LEVEL_READ = 'read'
+export const LEVEL_READ_WRITE = 'read_write'
+export const API_TOKEN_LEVELS = [LEVEL_READ, LEVEL_READ_WRITE]
+export const API_TOKEN_ACCESS_VALUES = ['read', 'read_write', 'mixed']
+
+export const normalizeLevel = (level) => (level === LEVEL_READ_WRITE ? LEVEL_READ_WRITE : LEVEL_READ)
+
+// 由各角色層級算出總結：全部讀寫為 read_write、全部唯讀為 read、兩者皆有為 mixed；空集合歸唯讀
+export const accessOfLevels = (levels) => {
+  const list = (levels || []).map(normalizeLevel)
+  if (!list.length) return 'read'
+  const rw = list.filter((l) => l === LEVEL_READ_WRITE).length
+  if (rw === list.length) return 'read_write'
+  return rw === 0 ? 'read' : 'mixed'
+}
+
+// 整把的總結：以後端給的 access 為準（依建立時的選擇，不隨角色收回而變）；
+// 沒有這個欄位時由授權角色的層級算出，值不認得時當唯讀
+export const tokenAccess = (token) => {
+  const v = token?.access
+  if (v === undefined || v === null || v === '') return accessOfLevels((token?.granted_roles || []).map((r) => r?.level))
+  return API_TOKEN_ACCESS_VALUES.includes(v) ? v : 'read'
+}
+
+export const readWriteCount = (token) =>
+  (token?.granted_roles || []).filter((r) => normalizeLevel(r?.level) === LEVEL_READ_WRITE).length
+
+export const levelLabel = (level) => t(`apiTokens.level.${normalizeLevel(level)}`)
+export const accessLabel = (access) => t(`apiTokens.access.${API_TOKEN_ACCESS_VALUES.includes(access) ? access : 'read'}`)
+
+// 使用者列表展開列：可用的 token 依總結分成唯讀、部分讀寫、讀寫各幾把（只列不為 0 者）；
+// 全部同一種時寫「全部唯讀」「全部讀寫」。沒有可用的回空字串
+export const usableAccessBreakdown = (tokens) => {
+  const usable = (tokens || []).filter(isUsable)
+  if (!usable.length) return ''
+  const counts = { read: 0, mixed: 0, read_write: 0 }
+  for (const tk of usable) counts[tokenAccess(tk)] += 1
+  if (counts.read === usable.length) return t('users.expand.breakdownAllRead')
+  if (counts.read_write === usable.length) return t('users.expand.breakdownAllWrite')
+  const keys = { read: 'breakdownRead', mixed: 'breakdownMixed', read_write: 'breakdownReadWrite' }
+  return ['read', 'mixed', 'read_write']
+    .filter((k) => counts[k] > 0)
+    .map((k) => t(`users.expand.${keys[k]}`, { n: counts[k] }))
+    .join(t('common.listSeparator'))
+}
+
 // 授權角色含超級管理者或系統安全管理員：建立前的提示用（是否發告警由後端決定）
 export const SUPER_ROLE_KEY = 'super_admin'
 export const SECURITY_ROLE_KEY = 'security_admin'

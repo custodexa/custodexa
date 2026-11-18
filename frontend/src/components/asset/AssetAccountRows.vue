@@ -127,6 +127,88 @@
           >
             {{ t('enum.credentialScope.dedicated') }}
           </el-tag>
+          <!-- 第二行：公鑰指紋末 8 碼，滑過或聚焦看完整值；欄位缺席表示平台沒有這把私鑰的公鑰。
+               範圍外與精簡形狀的列伺服器本來就不給，不顯示這一行，避免寫出無從得知的「未記錄」 -->
+          <div
+            v-if="showFingerprint(row)"
+            class="fingerprint-line"
+            :data-test="`account-fingerprint-${row.id}`"
+          >
+            <template v-if="row.private_key_fingerprint">
+              <!-- 前綴與「末 8 碼加複製鈕」是兩段：放不下時只在兩段之間換行（日文前綴較長），
+                   複製鈕一律跟著末 8 碼，不單獨掉到下一行 -->
+              <span class="fingerprint-prefix">{{ t('assets.editDrawer.fingerprintPrefix') }}</span>
+              <span
+                class="fingerprint-value"
+                :data-test="`account-fingerprint-value-${row.id}`"
+              >
+                <el-tooltip
+                  placement="bottom-start"
+                  :show-after="120"
+                >
+                  <template #content>
+                    <div
+                      class="fingerprint-tip"
+                      :data-test="`account-fingerprint-full-${row.id}`"
+                    >
+                      <div>{{ t('credentials.detailFingerprint') }}</div>
+                      <code class="mono">{{ row.private_key_fingerprint }}</code>
+                    </div>
+                  </template>
+                  <span
+                    class="fingerprint-short mono"
+                    tabindex="0"
+                    :aria-label="`${t('credentials.detailFingerprint')} ${row.private_key_fingerprint}`"
+                    :data-test="`account-fingerprint-short-${row.id}`"
+                  >…{{ fingerprintTail(row) }}</span>
+                </el-tooltip>
+                <el-tooltip
+                  :content="t('assetExecutor.copyFingerprint')"
+                  placement="top"
+                >
+                  <el-button
+                    link
+                    type="primary"
+                    size="small"
+                    class="fingerprint-copy"
+                    :aria-label="t('assetExecutor.copyFingerprint')"
+                    :data-test="`account-copy-fingerprint-${row.id}`"
+                    @click="copyFingerprint(row)"
+                  >
+                    <el-icon><Copy /></el-icon>
+                  </el-button>
+                </el-tooltip>
+              </span>
+            </template>
+            <template v-else>
+              <span
+                class="fingerprint-unrecorded"
+                :data-test="`account-fingerprint-unrecorded-${row.id}`"
+              >{{ t('assets.editDrawer.fingerprintPrefix') }} {{ t('credentials.fingerprintUnrecorded') }}</span>
+              <el-tooltip
+                placement="bottom-start"
+                :show-after="120"
+              >
+                <template #content>
+                  <span
+                    class="fingerprint-tip"
+                    :data-test="`account-fingerprint-why-${row.id}`"
+                  >{{ fingerprintUnrecordedHint(row) }}</span>
+                </template>
+                <button
+                  type="button"
+                  class="fingerprint-help"
+                  :aria-label="fingerprintUnrecordedHint(row)"
+                  :data-test="`account-fingerprint-help-${row.id}`"
+                >
+                  <CircleHelp
+                    :size="12"
+                    aria-hidden="true"
+                  />
+                </button>
+              </el-tooltip>
+            </template>
+          </div>
         </template>
       </el-table-column>
       <el-table-column
@@ -263,7 +345,9 @@
             class="row-note"
             :data-test="`account-out-of-scope-note-${row.id}`"
           >
-            {{ t('assets.editDrawer.outOfScopeNote') }}
+            {{ row.has_private_key
+              ? t('assets.editDrawer.outOfScopeNoteKey')
+              : t('assets.editDrawer.outOfScopeNote') }}
           </div>
           <!-- 輪替進行中：同一個理由只寫一次，並說明它擋住哪些動作 -->
           <div
@@ -420,7 +504,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Star } from 'lucide-vue-next'
+import { CircleHelp, Copy, Plus, Star } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import {
   listAssetAccounts,
@@ -497,6 +581,24 @@ const rowDeniedCodes = (row) => {
 }
 
 const credentialName = (row) => row.credential_name || row.username || ''
+
+// 公鑰指紋只在完整形狀（帶憑證識別）、含私鑰、且憑證在檢視者範圍內的列出現
+const showFingerprint = (row) =>
+  !!row.has_private_key && !row.credential_out_of_scope && row.credential_id != null
+const fingerprintTail = (row) => String(row.private_key_fingerprint || '').slice(-8)
+// 做法指到這一列現有的入口：共用列是「更正私鑰」，專用列是「編輯憑證」
+const fingerprintUnrecordedHint = (row) => {
+  const entry = row.shared_credential ? secretFixLabel(row) : t('assets.editDrawer.editSecret')
+  return `${t('credentials.fingerprintWhy')}${t('credentials.fingerprintHowTo', { entry })}`
+}
+async function copyFingerprint(row) {
+  try {
+    await navigator.clipboard.writeText(row.private_key_fingerprint)
+    ElMessage.success(t('assetExecutor.fingerprintCopied'))
+  } catch {
+    ElMessage.error(t('common.copyFailed'))
+  }
+}
 
 const rotationActive = (row) => rotatingIds.value.has(String(row.credential_id))
 
@@ -824,6 +926,65 @@ defineExpose({
 
 .cred-name {
   margin-right: var(--ot-space-xs);
+}
+
+/* 指紋行可以伸進儲存格的右側內距（儲存格在內距外緣才裁切）：中文的「指紋 …末 8 碼」加複製鈕
+   比憑證欄的內容寬度略寬，借用內距才放得進同一行 */
+.fingerprint-line {
+  display: flex;
+  align-items: center;
+  column-gap: 4px;
+  margin-top: 2px;
+  margin-right: -12px; /* 表格儲存格的右側內距 */
+  font-size: var(--ot-font-size-xs);
+  color: var(--el-text-color-secondary);
+  flex-wrap: wrap;
+}
+
+.fingerprint-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.fingerprint-short {
+  cursor: default;
+}
+
+.fingerprint-copy.el-button {
+  height: auto;
+  padding: 0;
+  font-size: 13px;
+}
+
+.fingerprint-unrecorded {
+  color: var(--el-text-color-secondary);
+}
+
+.fingerprint-help {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--el-text-color-secondary);
+  cursor: help;
+}
+
+.fingerprint-help:hover,
+.fingerprint-help:focus-visible {
+  color: var(--ot-primary);
+}
+
+.fingerprint-tip {
+  display: block;
+  max-width: 22rem;
+  line-height: 1.6;
+}
+
+.fingerprint-tip code {
+  white-space: nowrap;
 }
 
 .version {

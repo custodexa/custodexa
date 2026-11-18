@@ -68,7 +68,7 @@ func TestAuditLogListDetailAndTimelineCarryAPIToken(t *testing.T) {
 	viaToken, human, other := seedTokenAuditRows(t, db)
 	exp := time.Date(2027, 1, 1, 15, 59, 59, 0, time.UTC)
 	h := NewAuditLogHandler(audit.NewAuditLogService(&config.FeatureFlags{}), nil).WithAPITokenRefs(fakeAuditRefs{
-		12: {Found: true, GrantedRoles: []identity.APITokenAuditRole{{RoleID: 5, Name: "身分管理員"}}, ExpiresAt: &exp},
+		12: {Found: true, GrantedRoles: []identity.APITokenAuditRole{{RoleID: 5, Name: "身分管理員", Level: model.APITokenLevelRead}}, Access: model.APITokenAccessRead, ExpiresAt: &exp},
 	})
 
 	// 列表：依 token 篩選只回該 token 的列，且列上帶識別與名稱
@@ -132,14 +132,21 @@ func TestAuditLogListDetailAndTimelineCarryAPIToken(t *testing.T) {
 		t.Fatalf("token 物件：%v", tok)
 	}
 	roles, _ := tok["granted_roles"].([]any)
-	if len(roles) != 1 || roles[0].(map[string]any)["role_id"] != float64(5) || roles[0].(map[string]any)["name"] != "身分管理員" {
+	if len(roles) != 1 || roles[0].(map[string]any)["role_id"] != float64(5) || roles[0].(map[string]any)["name"] != "身分管理員" ||
+		roles[0].(map[string]any)["level"] != model.APITokenLevelRead {
 		t.Fatalf("授權角色：%v", tok["granted_roles"])
+	}
+	if tok["access"] != model.APITokenAccessRead {
+		t.Fatalf("token 物件應帶權限彙總：%v", tok)
 	}
 	if detail["api_token_id"] != float64(12) || detail["api_token_name"] != "terraform-prod" {
 		t.Fatalf("詳情列應帶 token 欄位：%v", detail)
 	}
 	// token 列已不存在：仍附物件（名稱取快照），授權角色為空、所屬帳號視同已刪除
 	gone := auditGet(t, h, other)["api_token"].(map[string]any)
+	if v, has := gone["access"]; !has || v != nil {
+		t.Fatalf("token 列不存在時權限彙總應為 null：%v", gone)
+	}
 	if gone["name"] != "other-tool" || gone["owner_deleted"] != true || len(gone["granted_roles"].([]any)) != 0 {
 		t.Fatalf("token 列不存在時：%v", gone)
 	}

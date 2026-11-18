@@ -37,8 +37,8 @@
         type="warning"
         :closable="false"
         show-icon
-        :title="privilege === 'super' ? $t('apiTokens.form.privSuper.title') : $t('apiTokens.form.privSec.title')"
-        :description="privilege === 'super' ? $t('apiTokens.form.privSuper.body') : $t('apiTokens.form.privSec.body')"
+        :title="privilegeTitle"
+        :description="privilegeBody"
         :data-test="`create-privilege-${privilege}`"
       />
 
@@ -98,7 +98,36 @@
             >
               {{ grantedRoleLabel(grantable[0]) }}
             </el-tag>
-            <span class="atc-role-scope">{{ scopeText(grantable[0].scope) }}</span>
+            <span
+              v-if="scopeText(grantable[0].scope)"
+              class="atc-role-scope"
+            >{{ $t('apiTokens.form.scope', { scope: scopeText(grantable[0].scope) }) }}</span>
+            <el-radio-group
+              :model-value="levelOf(grantable[0].role_id)"
+              size="small"
+              class="atc-level"
+              :class="{ 'is-write': levelOf(grantable[0].role_id) === LEVEL_READ_WRITE }"
+              :disabled="submitting"
+              :aria-label="levelGroupLabel(grantable[0])"
+              :data-test="`level-${grantable[0].role_id}`"
+              @update:model-value="(v) => setLevel(grantable[0].role_id, v)"
+            >
+              <el-radio-button
+                v-for="lv in API_TOKEN_LEVELS"
+                :key="lv"
+                :value="lv"
+                :data-test="`level-${grantable[0].role_id}-${lv}`"
+              >
+                <component
+                  :is="lv === LEVEL_READ_WRITE ? PenLine : Eye"
+                  :size="12"
+                  aria-hidden="true"
+                  class="atc-level__icon"
+                />{{ $t(`apiTokens.level.${lv}`) }}
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="atc-role-row atc-role-note-row">
             <span class="atc-role-note">{{ $t('apiTokens.form.singleRole') }}</span>
           </div>
         </div>
@@ -146,6 +175,56 @@
                 class="atc-role-scope"
               >{{ $t('apiTokens.form.scope', { scope: scopeText(role.scope) }) }}</span>
             </el-checkbox>
+            <!-- 未勾選的角色保留切換的位置但整組變灰，勾選時版面不跳動 -->
+            <el-radio-group
+              :model-value="levelOf(role.role_id)"
+              size="small"
+              class="atc-level"
+              :class="{ 'is-write': selectedIds.includes(role.role_id) && levelOf(role.role_id) === LEVEL_READ_WRITE }"
+              :disabled="submitting || !selectedIds.includes(role.role_id)"
+              :aria-label="levelGroupLabel(role)"
+              :data-test="`level-${role.role_id}`"
+              @update:model-value="(v) => setLevel(role.role_id, v)"
+            >
+              <el-radio-button
+                v-for="lv in API_TOKEN_LEVELS"
+                :key="lv"
+                :value="lv"
+                :data-test="`level-${role.role_id}-${lv}`"
+              >
+                <component
+                  :is="lv === LEVEL_READ_WRITE ? PenLine : Eye"
+                  :size="12"
+                  aria-hidden="true"
+                  class="atc-level__icon"
+                />{{ $t(`apiTokens.level.${lv}`) }}
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+          <div
+            class="atc-role-row atc-set-all"
+            data-test="level-set-all"
+          >
+            <span class="atc-set-all__label">{{ $t('apiTokens.form.setAll') }}</span>
+            <template
+              v-for="(lv, i) in API_TOKEN_LEVELS"
+              :key="lv"
+            >
+              <span
+                v-if="i > 0"
+                class="atc-set-all__sep"
+                aria-hidden="true"
+              >|</span>
+              <el-button
+                link
+                type="primary"
+                :disabled="submitting || !selectedIds.length"
+                :data-test="`level-set-all-${lv}`"
+                @click="setAllLevels(lv)"
+              >
+                {{ $t(`apiTokens.level.${lv}`) }}
+              </el-button>
+            </template>
           </div>
         </div>
         <p
@@ -165,6 +244,23 @@
         >
           {{ rolesHintText }}
         </p>
+        <button
+          type="button"
+          class="atc-help-link"
+          :aria-expanded="explainOpen ? 'true' : 'false'"
+          data-test="level-help"
+          @click="explainOpen = !explainOpen"
+        >
+          <CircleHelp
+            :size="13"
+            aria-hidden="true"
+          />{{ $t('apiTokens.form.levelHelp') }}
+        </button>
+        <ApiTokenLevelExplain
+          v-if="explainOpen"
+          closable
+          @close="explainOpen = false"
+        />
       </div>
 
       <div class="atc-field">
@@ -243,18 +339,43 @@
         data-test="create-summary"
       >
         <h4>{{ $t('apiTokens.form.summaryTitle') }}</h4>
-        <p
+        <div
           class="atc-summary__roles"
           data-test="summary-roles"
         >
-          <span
+          <p
             v-if="!selectedRoles.length"
             class="is-none"
             data-test="summary-none"
-          >{{ $t('apiTokens.form.summaryNone') }}</span><template v-else>
-            {{ summaryRolesText }}
-          </template>{{ sentenceSeparator }}{{ $t('apiTokens.form.summarySync') }}
-        </p>
+          >
+            {{ $t('apiTokens.form.summaryNone') }}
+          </p>
+          <template v-else-if="superOnlySummary">
+            <p data-test="summary-super">
+              <span
+                v-if="superLine.label"
+                class="is-write"
+              >{{ superLine.label }}</span>{{ superLine.rest }}
+            </p>
+          </template>
+          <template v-else>
+            <p
+              v-if="writeRoles.length"
+              data-test="summary-write"
+            >
+              <span class="is-write">{{ $t('apiTokens.form.summaryWriteLabel') }}</span>{{ writeLineRest }}
+            </p>
+            <p
+              v-if="readRoles.length"
+              data-test="summary-read"
+            >
+              {{ readLine }}
+            </p>
+          </template>
+          <p data-test="summary-sync">
+            {{ $t('apiTokens.form.summarySync') }}
+          </p>
+        </div>
         <p>{{ $t('apiTokens.form.summaryScope') }}</p>
         <p data-test="summary-cidr">
           {{ cidrs.length ? $t('apiTokens.form.summaryCidr', { cidrs: cidrs.join(listSeparator) }) : $t('apiTokens.form.summaryNoCidr') }}
@@ -296,14 +417,18 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
-import { CircleX } from 'lucide-vue-next'
+import { CircleHelp, CircleX, Eye, PenLine } from 'lucide-vue-next'
 import { t, te, currentLocale } from '@/i18n'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'
 import { createMyApiToken } from '@/api/apiTokens'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 import {
+  API_TOKEN_LEVELS,
   EXPIRY_OPTIONS,
+  LEVEL_READ,
+  LEVEL_READ_WRITE,
+  SECURITY_ROLE_KEY,
   SUPER_ROLE_KEY,
   endOfDay,
   grantedRoleLabel,
@@ -316,6 +441,7 @@ import {
   scopeText,
 } from '@/constants/apiTokens'
 import ApiTokenRevealPanel from './ApiTokenRevealPanel.vue'
+import ApiTokenLevelExplain from './ApiTokenLevelExplain.vue'
 
 /**
  * 建立 API token 的對話框。送出成功後同一個對話框換成一次性明文顯示；
@@ -345,15 +471,22 @@ const nonGrantableText = computed(() => rolesText(props.eligibility?.non_grantab
 // 兩句接在同一段時的分隔：中文與日文句號後不留空白，英文要一個空白。
 // 不能靠模板換行產生空白——編譯時會被壓掉或多出一格，三語結果不同
 const sentenceSeparator = computed(() => (currentLocale().startsWith('en') ? ' ' : ''))
+// 標籤（「只能讀取：」）與後面的角色清單之間：英文冒號後留一個空白，中日文全形冒號不留
+const labelSeparator = computed(() => (currentLocale().startsWith('en') ? ' ' : ''))
 const rolesHintText = computed(() =>
-  nonGrantableText.value
-    ? `${t('apiTokens.form.rolesHint')}${sentenceSeparator.value}${t('apiTokens.form.rolesHintNonGrantable', { roles: nonGrantableText.value })}`
-    : t('apiTokens.form.rolesHint')
+  [
+    t('apiTokens.form.levelHint'),
+    t('apiTokens.form.rolesHint'),
+    ...(nonGrantableText.value ? [t('apiTokens.form.rolesHintNonGrantable', { roles: nonGrantableText.value })] : []),
+  ].join(sentenceSeparator.value)
 )
 
 const step = ref('form')
 const name = ref('')
 const selectedIds = ref([])
+// 每個角色的層級：預設唯讀；取消勾選即回到唯讀，再勾回時不記得先前選的讀寫
+const levels = ref({})
+const explainOpen = ref(false)
 const expiry = ref('')
 const customDate = ref(null)
 const errors = ref({ name: '', roles: '', expiry: '' })
@@ -365,13 +498,62 @@ const created = ref(null)
 const selectedRoles = computed(() => grantable.value.filter((r) => selectedIds.value.includes(r.role_id)))
 const allSelected = computed(() => grantable.value.length > 0 && selectedIds.value.length === grantable.value.length)
 const someSelected = computed(() => selectedIds.value.length > 0 && !allSelected.value)
+const levelOf = (id) => (levels.value[id] === LEVEL_READ_WRITE ? LEVEL_READ_WRITE : LEVEL_READ)
+const setLevel = (id, level) => {
+  levels.value = { ...levels.value, [id]: level === LEVEL_READ_WRITE ? LEVEL_READ_WRITE : LEVEL_READ }
+}
+// 「全部設為」只改已勾選的角色，不會順便勾選未勾的
+const setAllLevels = (level) => {
+  const next = { ...levels.value }
+  for (const id of selectedIds.value) next[id] = level
+  levels.value = next
+}
+const resetLevel = (ids) => {
+  const next = { ...levels.value }
+  for (const id of ids) delete next[id]
+  levels.value = next
+}
+const levelGroupLabel = (role) => `${grantedRoleLabel(role)} ${t('apiTokens.col.access')}`
+
+const writeRoles = computed(() => selectedRoles.value.filter((r) => levelOf(r.role_id) === LEVEL_READ_WRITE))
+const readRoles = computed(() => selectedRoles.value.filter((r) => levelOf(r.role_id) !== LEVEL_READ_WRITE))
+const roleListText = (roles) => t('apiTokens.form.summaryRoleList', { roles: rolesWithScopeText(roles) })
+const writeLineRest = computed(() => `${labelSeparator.value}${roleListText(writeRoles.value)}`)
+const readLine = computed(() => {
+  const line = `${t('apiTokens.form.summaryReadLabel')}${labelSeparator.value}${roleListText(readRoles.value)}`
+  return writeRoles.value.length ? line : `${line}${sentenceSeparator.value}${t('apiTokens.form.summaryAllReadTail')}`
+})
+
 const privilege = computed(() => privilegeLevel(selectedRoles.value))
-const privilegeKeys = computed(() => new Set(selectedRoles.value.map((r) => r.builtin_key)))
-const summaryRolesText = computed(() =>
-  privilegeKeys.value.has(SUPER_ROLE_KEY)
-    ? t('apiTokens.form.summaryRolesSuper')
-    : t('apiTokens.form.summaryRoles', { roles: rolesWithScopeText(selectedRoles.value) })
+const levelOfKey = (key) => {
+  const role = selectedRoles.value.find((r) => r.builtin_key === key)
+  return role ? levelOf(role.role_id) : ''
+}
+// 勾選了超級管理者時，摘要只寫它（它涵蓋全部），並依它的層級擇句
+const superLevel = computed(() => levelOfKey(SUPER_ROLE_KEY))
+// 只寫超級管理者那一句的條件：它是讀寫（涵蓋全部），或它是唯讀且沒有其他讀寫角色。
+// 它是唯讀而另有角色設為讀寫時，改用逐角色的兩行，摘要才不會說成不能修改資料。
+const superOnlySummary = computed(() =>
+  superLevel.value === LEVEL_READ_WRITE || (superLevel.value && !writeRoles.value.length))
+// 讀寫時句首的「可以讀取，也可以修改：」以琥珀色標出，與一般角色的摘要同一種寫法
+const superLine = computed(() => {
+  if (superLevel.value !== LEVEL_READ_WRITE) return { label: '', rest: t('apiTokens.form.summarySuperRead') }
+  const text = t('apiTokens.form.summarySuperWrite')
+  const label = t('apiTokens.form.summaryWriteLabel')
+  return text.startsWith(label) ? { label, rest: text.slice(label.length) } : { label: '', rest: text }
+})
+// 高權限提示不因唯讀而取消（告警照發），只依該角色的層級換標題與內文
+const privilegeLevelValue = computed(() =>
+  privilege.value === 'super' ? superLevel.value : levelOfKey(SECURITY_ROLE_KEY)
 )
+const privilegeTitle = computed(() => {
+  const base = privilege.value === 'super' ? 'privSuper' : 'privSec'
+  return t(`apiTokens.form.${base}.${privilegeLevelValue.value === LEVEL_READ_WRITE ? 'titleWrite' : 'titleRead'}`)
+})
+const privilegeBody = computed(() => {
+  const base = privilege.value === 'super' ? 'privSuper' : 'privSec'
+  return t(`apiTokens.form.${base}.${privilegeLevelValue.value === LEVEL_READ_WRITE ? 'body' : 'bodyRead'}`)
+})
 
 const startOfToday = () => {
   const d = new Date()
@@ -389,6 +571,8 @@ const resetForm = () => {
   step.value = 'form'
   name.value = ''
   selectedIds.value = grantable.value.map((r) => r.role_id)
+  levels.value = {}
+  explainOpen.value = false
   expiry.value = ''
   customDate.value = null
   errors.value = { name: '', roles: '', expiry: '' }
@@ -423,9 +607,11 @@ watch(selectedIds, () => { errors.value.roles = '' })
 watch([expiry, customDate], () => { errors.value.expiry = '' })
 
 const toggleAll = (checked) => {
+  if (!checked) resetLevel(selectedIds.value)
   selectedIds.value = checked ? grantable.value.map((r) => r.role_id) : []
 }
 const toggleRole = (id, checked) => {
+  if (!checked) resetLevel([id])
   selectedIds.value = checked
     ? [...selectedIds.value.filter((v) => v !== id), id]
     : selectedIds.value.filter((v) => v !== id)
@@ -490,7 +676,11 @@ const submit = async () => {
   if (submitting.value) return
   serverError.value = ''
   if (!validate()) return
-  const payload = { name: name.value.trim(), role_ids: [...selectedIds.value] }
+  // 每個勾選的角色各帶一個層級；不再送只列角色識別的舊寫法（那等同全部讀寫）
+  const payload = {
+    name: name.value.trim(),
+    roles: selectedIds.value.map((id) => ({ role_id: id, level: levelOf(id) })),
+  }
   if (expiry.value === 'never') payload.never_expires = true
   else payload.expires_at = expiryDate.value.toISOString()
   submitting.value = true
@@ -585,8 +775,53 @@ defineExpose({ submit, step })
 .atc-role-scope {
   margin-left: var(--ot-space-sm);
 }
-.atc-role-note {
+.atc-level {
   margin-left: auto;
+  flex-wrap: nowrap;
+}
+.atc-level__icon {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+/* 讀寫選中時整段轉琥珀色，與唯讀的品牌色一眼可分 */
+.atc-level.is-write :deep(.el-radio-button) {
+  --el-radio-button-checked-bg-color: var(--ot-warning);
+  --el-radio-button-checked-border-color: var(--ot-warning);
+  --el-radio-button-checked-text-color: var(--ot-text-inverse);
+}
+.atc-roles.is-single .atc-role-row {
+  border-bottom: none;
+}
+.atc-role-note-row {
+  padding-top: 0;
+}
+.atc-set-all {
+  gap: var(--ot-space-xs);
+  font-size: var(--ot-font-size-xs);
+}
+.atc-set-all__label {
+  color: var(--ot-text-secondary);
+  margin-right: var(--ot-space-xs);
+}
+.atc-set-all__sep {
+  color: var(--ot-text-secondary);
+}
+.atc-help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-primary);
+  cursor: pointer;
+}
+.atc-help-link:focus-visible {
+  outline: 2px solid var(--ot-primary);
+  outline-offset: 2px;
 }
 .atc-expiry {
   flex-wrap: wrap;
@@ -628,7 +863,8 @@ defineExpose({ submit, step })
   font-weight: 600;
   color: var(--ot-text-primary);
 }
-.atc-summary__roles .is-none {
+.atc-summary__roles .is-none,
+.atc-summary__roles .is-write {
   color: var(--ot-warning);
 }
 </style>

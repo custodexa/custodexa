@@ -1080,7 +1080,7 @@ describe('Users 展開列：API token 摘要', () => {
     w.vm.onExpandChange(row, [row])
     await flushPromises()
     expect(getUserApiTokensMock).toHaveBeenCalledTimes(1)
-    expect(w.vm.tokenInfo[7]).toEqual({ state: 'ok', total: 2, usable: 1, lastUsed: '2026-11-13T05:58:02Z' })
+    expect(w.vm.tokenInfo[7]).toMatchObject({ state: 'ok', total: 2, usable: 1, lastUsed: '2026-11-13T05:58:02Z' })
   })
 
   it('收合、agent 不讀；讀取失敗記為失敗，展開列不顯示這一項', async () => {
@@ -1124,9 +1124,9 @@ describe('Users 展開列：API token 摘要的畫面呈現', () => {
     getUserListMock.mockResolvedValue({ data: [human], total: 1 })
     getUserApiTokensMock.mockResolvedValue({
       data: [
-        { id: 1, status: 'active', last_used_at: '2026-11-13T05:58:02Z' },
-        { id: 2, status: 'expiring_soon', last_used_at: null },
-        { id: 3, status: 'revoked', last_used_at: '2025-09-29T00:12:19Z' },
+        { id: 1, status: 'active', access: 'read', last_used_at: '2026-11-13T05:58:02Z' },
+        { id: 2, status: 'expiring_soon', access: 'read_write', last_used_at: null },
+        { id: 3, status: 'revoked', access: 'read_write', last_used_at: '2025-09-29T00:12:19Z' },
       ],
     })
     const w = mountView()
@@ -1139,7 +1139,8 @@ describe('Users 展開列：API token 摘要的畫面呈現', () => {
     // 摘要句含時間與連結，佔滿一整列才不會在窄格裡拆行
     expect(item.classes()).toContain('row-detail__item--wide')
     const value = squash(w.get('[data-test="row-api-tokens-value"]').text())
-    expect(value).toContain('2 把可用 · 最近使用')
+    // 括號只數可用的那幾把：已撤銷的讀寫不算
+    expect(value).toContain('2 把可用（唯讀 1、讀寫 1） · 最近使用')
     expect(value).not.toBe('')
     const link = w.get('[data-test="row-api-tokens-link"]')
     expect(link.text()).toBe('查看與撤銷')
@@ -1149,14 +1150,14 @@ describe('Users 展開列：API token 摘要的畫面呈現', () => {
   it('從沒用過：寫尚未使用；沒有任何 token：寫無且不給連結', async () => {
     getUserListMock.mockResolvedValue({ data: [human, { ...human, id: 9, username: 'dave' }], total: 2 })
     getUserApiTokensMock.mockImplementation(async (id) =>
-      id === 7 ? { data: [{ id: 1, status: 'active', last_used_at: null }] } : { data: [] })
+      id === 7 ? { data: [{ id: 1, status: 'active', access: 'read_write', last_used_at: null }] } : { data: [] })
     const w = mountView()
     await flushPromises()
     await expandFirst(w, 0)
     await expandFirst(w, 1)
     const items = w.findAll('[data-test="row-api-tokens"]')
     expect(items).toHaveLength(2)
-    expect(squash(items[0].text())).toContain('1 把可用 · 尚未使用')
+    expect(squash(items[0].text())).toContain('1 把可用（全部讀寫） · 尚未使用')
     expect(squash(items[1].get('.row-detail__value').text())).toBe('無')
     expect(items[1].find('[data-test="row-api-tokens-link"]').exists()).toBe(false)
   })
@@ -1170,11 +1171,31 @@ describe('Users 展開列：API token 摘要的畫面呈現', () => {
     await expandFirst(w)
     expect(w.find('.row-detail').exists()).toBe(true)
     expect(w.find('[data-test="row-api-tokens"]').exists()).toBe(false)
-    getUserApiTokensMock.mockResolvedValueOnce({ data: [{ id: 1, status: 'active', last_used_at: null }] })
+    getUserApiTokensMock.mockResolvedValueOnce({ data: [{ id: 1, status: 'active', access: 'read', last_used_at: null }] })
     await expandFirst(w)
     await expandFirst(w)
     expect(getUserApiTokensMock).toHaveBeenCalledTimes(2)
-    expect(squash(w.get('[data-test="row-api-tokens-value"]').text())).toBe('1 把可用 · 尚未使用')
+    expect(squash(w.get('[data-test="row-api-tokens-value"]').text())).toBe('1 把可用（全部唯讀） · 尚未使用')
+  })
+
+  it('三種總結都有：依唯讀、部分讀寫、讀寫的順序列出不為 0 者；沒有可用的不帶括號', async () => {
+    getUserListMock.mockResolvedValue({ data: [human, { ...human, id: 9, username: 'dave' }], total: 2 })
+    getUserApiTokensMock.mockImplementation(async (id) =>
+      id === 7
+        ? { data: [
+            { id: 1, status: 'active', access: 'read_write', last_used_at: null },
+            { id: 2, status: 'active', access: 'mixed', last_used_at: null },
+            { id: 3, status: 'expiring_soon', access: 'read', last_used_at: null },
+            { id: 4, status: 'active', access: 'read_write', last_used_at: null },
+          ] }
+        : { data: [{ id: 5, status: 'expired', access: 'read_write', last_used_at: null }] })
+    const w = mountView()
+    await flushPromises()
+    await expandFirst(w, 0)
+    await expandFirst(w, 1)
+    const values = w.findAll('[data-test="row-api-tokens-value"]').map((v) => squash(v.text()))
+    expect(values[0]).toBe('4 把可用（唯讀 1、部分讀寫 1、讀寫 2） · 尚未使用')
+    expect(values[1]).toBe('0 把可用 · 尚未使用')
   })
 
   it('AI agent 列：展開不讀也不顯示 API token 一行', async () => {

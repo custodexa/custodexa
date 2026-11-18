@@ -194,6 +194,60 @@ func (g credentialManagementGate) require(ctx context.Context, db *gorm.DB,
 	return decision, nil
 }
 
+// permits 與 require 同一個判定，只回是否放行，不回錯誤也不寫拒絕日誌。
+// 用於「看得到才多給」的回應欄位（例如寫入回應的公鑰指紋）：不放行只代表不給，不是拒絕操作。
+// 判定器缺席、無主體、判定失敗、範圍拒絕一律回 false（fail closed）。
+func (g credentialManagementGate) permits(ctx context.Context, db *gorm.DB, req CredentialManagementRequest) bool {
+	if g.authorizer == nil || len(req.Capabilities) == 0 {
+		return false
+	}
+	userID, username := model.UserFromContext(ctx)
+	if userID == 0 {
+		return false
+	}
+	decision, err := g.authorizer.AuthorizeCredentialManagement(ctx, db,
+		CredentialManagementActor{UserID: userID, Username: username}, req)
+	if err != nil {
+		log.Printf("[Credential] 揭露判定失敗，不提供附帶欄位: op=%s err=%v", req.Operation, err)
+		return false
+	}
+	return decision.Allowed && decision.ScopeDenial == nil && !decision.ScopeNarrowingRequired
+}
+
+// viewableCredentials ids 中呼叫者具檢視能力（目標為該筆憑證）的憑證，與憑證詳情讀取同一個能力判定。
+// 用於公鑰指紋這類「看得到憑證才多給」的欄位；判定失敗或判定器缺席時該筆視為不可檢視（fail closed）。
+// 先以整批判定，整批不通過再逐筆判定，常見情形（全部可檢視）只解析一次主體。
+func (g credentialManagementGate) viewableCredentials(ctx context.Context, db *gorm.DB, ids []uint) map[uint]bool {
+	out := make(map[uint]bool, len(ids))
+	uniq := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id != 0 && !out[id] {
+			out[id] = false
+			uniq = append(uniq, id)
+		}
+	}
+	if len(uniq) == 0 {
+		return map[uint]bool{}
+	}
+	view := func(targets []uint) bool {
+		return g.permits(ctx, db, CredentialManagementRequest{
+			Operation: CredOpView, Capabilities: []string{CredCapView}, CredentialIDs: targets,
+		})
+	}
+	if view(uniq) {
+		for _, id := range uniq {
+			out[id] = true
+		}
+		return out
+	}
+	if len(uniq) > 1 {
+		for _, id := range uniq {
+			out[id] = view([]uint{id})
+		}
+	}
+	return out
+}
+
 // deniedCapabilityKeys 拒絕依據的權限點鍵：判定器回報的缺漏是本次要求的能力之一即記該項；
 // 缺漏不是能力（主體不存在或停用等）時無從得知缺哪一項，記本操作要求的全部能力。
 func deniedCapabilityKeys(required []string, missing string) []string {

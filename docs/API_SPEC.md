@@ -1,6 +1,9 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-15（外部群組映射規則的宣告式契約：新增兩條單筆讀取路由 `GET /identity-sources/:type/:sourceId/role-mappings/:ruleId`、`GET /identity-sources/:type/:sourceId/user-group-mappings/:ruleId`；兩類規則的列表新增精確查找參數 `match_value`，以及目標參數 `role`、`user_group_id`；同一來源內群組值與目標皆相同的規則，建立與修改改回 409 `MAPPING_RULE_EXISTS`，原為 500）
+> 最後更新：2026-11-18（私鑰的公鑰指紋：憑證列表、詳情與四個憑證寫入回應的 `CredentialDTO`，以及完整形狀的資產帳號列（列表、單筆讀取與五個帳號寫入端點）新增選用欄位 `private_key_fingerprint`（`SHA256:` 開頭），只在私鑰的公鑰已知時出現；憑證寫入回應只在呼叫者能檢視該筆憑證時帶此欄；精簡形狀與引用範圍外憑證的收窄列不帶。人工輸入私鑰的寫入端點改為另檢查私鑰與其內含公鑰是否相符，不相符時與其他無法解析的私鑰同一個錯誤碼。帳號列的指紋與憑證讀取同一個檢視判定：有完整形狀而沒有 `credential:view` 者不帶。DSA 私鑰照常接受但沒有指紋。路由未變）
+> 前次更新：2026-11-18（管理 API 的設計規則對齊：`POST /users` 使用者名稱重複由 400 改為 409，機器碼仍為 `CONFLICT_USERNAME_EXISTS`；自訂角色修改與刪除時版本過期改回新錯誤碼 `ROLE_DEFINITION_VERSION_CONFLICT`，`ROLE_DEFINITION_CONFLICT` 只表示名稱重複；`DELETE /credentials/:id` 仍有掛載時的 409 本文改走統一錯誤封套，新增 `error` 欄，`code`、`assets`、`out_of_scope_asset_count` 照舊；`GET /assets` 與 `GET /users` 的 `page_size` 上限 1000，超過時套用 1000 並在回應回報；`GET /role-definitions` 新增名稱精確查找參數 `name`；`POST /users` 電子郵件已被其他帳號使用由 500 改為 409 `CONFLICT_EMAIL`；同名或同一電子郵件的使用者並行建立、自訂角色同名的並行建立或改名，未搶到的請求改回對應的 409，不再回 500；`page_size` 超出整數範圍時套用預設 20 的說明補上。路由未變）
+> 前次更新：2026-11-18（個人 API token 的權限：每個授權角色各自帶層級 `read`（唯讀）或 `read_write`（讀寫）；`POST /my/api-tokens` 新增 `roles`（逐角色指定層級，與 `role_ids` 二擇一，`role_ids` 等同各角色皆為讀寫）；TokenView 的 `granted_roles` 每項新增 `level`、TokenView 新增彙總 `access`（`read`、`read_write`、`mixed`）與升級前建立的標記 `created_before_levels`，`GET /api-tokens/verify` 的 `token` 新增 `access`；以 token 認證的寫入請求只計入層級為讀寫的授權角色；每個授權角色皆為唯讀的 token 呼叫寫入端點回 403 新錯誤碼 `AUTH_API_TOKEN_READ_ONLY`；建立 token 的稽核細節、高權限告警（新參數 `privileged_role_levels`、`granted_role_levels`、`access`）、角色指派預覽的 `api_tokens` 與操作日誌詳情的 `api_token` 物件（新增 `access`）帶層級。路由未變）
+> 前次更新：2026-11-15（外部群組映射規則的宣告式契約：新增兩條單筆讀取路由 `GET /identity-sources/:type/:sourceId/role-mappings/:ruleId`、`GET /identity-sources/:type/:sourceId/user-group-mappings/:ruleId`；兩類規則的列表新增精確查找參數 `match_value`，以及目標參數 `role`、`user_group_id`；同一來源內群組值與目標皆相同的規則，建立與修改改回 409 `MAPPING_RULE_EXISTS`，原為 500）
 > 前次更新：2026-11-15（宣告式管理的契約補強：新增四條單筆讀取路由 `GET /asset-groups/:id`、`GET /user-groups/:id`、`GET /authorizations/:id`、`GET /assets/:id/accounts/:accountId`；資產、節點、使用者群組、共用憑證列表新增精確查找參數 `name`，使用者列表新增 `username`；授權列表的 `page_size` 超過 100 時套用 100，使用者列表與有分頁的共用憑證列表回報實際套用的分頁值；節點與使用者群組的寫入回應補上路徑與成員欄位，資產更新回應的節點歸屬與單筆讀取的待配憑證欄位如實回報；`PUT /assets/:id` 套用建立時的埠號與帳號名稱規則，`POST /assets` 接受選用的 `active`；使用者群組刪除後可用同名重建；節點、資產、資產帳號、使用者、使用者群組、授權規則與共用憑證的建立與更新回應，與讀取共有的時間欄位字串相同。個人 API token 可引用既有憑證：認證機制的「個人 API token」一節補上引用規則與仍只接受登入工作階段的動作；新增系統告警類型 `api_token_credential_attached`，系統告警登錄補至 22 種；系統告警明細回應新增 `request_id` 與 `actor_user_id`；經個人 API token 的請求寫下的每一列稽核帶同一個 `request_id` 與來源位址；`POST /assets/:id/accounts` 對重複掛載同一筆憑證回 409 `CONFLICT_CREDENTIAL_BINDING`。未新增路由與錯誤碼）
 > 前次更新：2026-11-14（個人 API token：新增七條路由，本人的列表、建立、撤銷，管理端的列表、單把撤銷、全部撤銷，以及以 token 自我檢查的 `GET /api-tokens/verify`；認證機制新增「個人 API token」一節；新增錯誤碼 `NOTFOUND_API_TOKEN`；審計動作 `api_token_revoked`、審計資源 `api_token`；系統告警類型 `privileged_api_token_created`；稽核列表、詳情與調查工作台的操作日誌事件新增 `api_token_id`、`api_token_name`，詳情另附 `api_token` 物件，列表新增查詢參數 `api_token_id`；角色指派預覽新增 `api_tokens`（以 API token 呼叫時不附；受影響的 token 含恢復角色者，帶 `regains_roles`、`becomes_active`）；高權限告警參數 `expiry`。路由新增七條）
 > 前次更新：2026-11-08（`POST /auth/mfa/setup` 新增選填 `code`：已啟用 MFA 時必填，新增錯誤碼 `RULE_MFA_CURRENT_CODE_REQUIRED`；檔案端點與傳輸能力查詢端點新增來源網段限制的 403 `AUTH_SOURCE_NOT_ALLOWED`；連線申請：提出申請須先持有常設連線權限，新增 403 `RULE_ACCESS_REQUEST_CONNECT_REQUIRED`，`reason` 段與 agent 的 `open` 段自動核准限於常設帳號範圍、超出者維持 pending，破窗票證帳號範圍同限，核准與拒絕的自核判定擴及執行者 agent 的擁有者；檢查點驗證：區間狀態新增 `rows_hidden`，鏈報告新增 `trim_disclosure`、`trim_unverified_segments`、`trim_paused`；終端新增通知碼 `RULE_COMMAND_BLOCKED_MULTILINE`，`run_command` 只收單行。路由未變）
@@ -605,12 +608,14 @@ refresh cookie，重新載入即無從恢復，使用者每次重新載入都要
 人類帳號可替程式化工具（例如基礎設施即程式碼的工具）建立個人 API token，以本人的部分管理角色呼叫管理 API。
 
 - **Header**：`Authorization: Bearer cxp_...`，與 JWT 共用同一個 header，以前綴區分。
-- **授權**：建立時勾選本人持有的管理類角色；每次請求以「授權角色」與「所屬帳號當下仍持有的角色」的交集為限定解析請求主體，所屬帳號失去某角色後該角色即不再生效，恢復後隨之恢復。
-- **開放範圍**：只有登錄為開放的管理端點可用 token 呼叫；其餘端點（含登入、自助改密、兩步驟驗證、連線入口與 token 自身的管理端點）一律回 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`。以 token 變更所屬帳號本人的受限項目（密碼、兩步驟驗證、來源網段、角色等）回 403 `AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN`。
+- **授權**：建立時勾選本人持有的管理類角色；每次請求以「這次請求計入的授權角色」與「所屬帳號當下仍持有的角色」的交集為限定解析請求主體，所屬帳號失去某角色後該角色即不再生效，恢復後隨之恢復。
+- **權限（層級）**：每個授權角色各自帶層級 `read`（唯讀）或 `read_write`（讀寫），建立後不能修改。每條開放的端點都登錄了性質：請求會改變系統保存的資料為寫，稽核留痕與最近使用時間不算；不改變資料的預覽與試算（例如資產匯入預檢、角色指派預覽、排程試算）為讀。性質為讀的請求計入全部授權角色；性質為寫的請求只計入層級為讀寫的角色，層級為唯讀的角色不為寫入提供任何能力、節點範圍或內建身分（唯讀的超級管理者角色在寫入時不是超級管理者）。一個寫入需要多個能力時（例如外部群組映射規則同時要身分來源管理與角色指派），每個能力都要來自讀寫的角色。每個授權角色皆為唯讀的 token 呼叫寫入端點時，在端點處理之前回 403 `AUTH_API_TOKEN_READ_ONLY`；同時有唯讀與讀寫角色的 token 照常進入端點，能力只由讀寫的角色算出，不足時是一般的 403 `AUTH_PERMISSION_DENIED`，可用 `GET /api-tokens/verify` 查每個角色的層級。判定順序為認證失敗 401、端點不開放 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`、全唯讀 403 `AUTH_API_TOKEN_READ_ONLY`。本功能上線前建立的 token 與只帶 `role_ids` 建立的 token，各角色皆為讀寫，行為不變。
+- **層級與回應內容**：讀取回應裡的列級旗標（例如 `actions`）與可見範圍依計入的角色計算，代表角色的能力，不因 token 的層級為唯讀而標成不可操作；token 的呼叫端應以自我查驗為準。同一把 token 同時有唯讀與讀寫的角色時，寫入回應只依讀寫的角色產生，隨後的讀取計入全部角色，同名欄位（例如可見的節點歸屬、`actions`）可能比寫入回應多；用於套用變更的 token 建議把需要的角色都設成讀寫。以 token 建立的改密計劃等排程工作歸屬於所屬帳號，日後依帳號的角色執行，撤銷該 token 或改用唯讀的 token 不會停止這些計劃。
+- **開放範圍**：只有登錄為開放的管理端點可用 token 呼叫；其餘端點（含登入、自助改密、兩步驟驗證、連線入口與 token 自身的管理端點）一律回 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`。讀取離機儲存狀態（`GET /offsite-storage/status`）會對管理者設定的目的地做唯讀探測，是開放端點中唯一在請求處理中即對外連線者：目的地只能由登入工作階段設定，回應不含憑證。以 token 變更所屬帳號本人的受限項目（密碼、兩步驟驗證、來源網段、角色等）回 403 `AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN`。
 - **認證失敗**：不存在、已撤銷、已到期、因備份還原失效、所屬帳號停用或刪除、來源不在所屬帳號允許網段，對外一律回與其他無效 token 相同的 401；真實原因只記在稽核側，沿用未認證請求的有界匿名留痕（同來源大量失敗會限流並聚合成摘要列）。
 - **明文只出現一次**：建立回應（201，帶 `Cache-Control: no-store`）的 `token` 是唯一一次回傳明文；伺服端只存雜湊，任何列表、詳情、稽核與告警都不含明文或雜湊。
 - **稽核歸因**：以 token 進行的操作，該次請求落地的每一筆稽核列都帶 `api_token_id` 與寫入當下的 `api_token_name`，兩欄納入逐列完整性驗證；親自在畫面操作的列不帶這兩個鍵。排程日後執行的工作所產生的列不帶。以 token 進行的請求，帶 token 標示的每一列稽核另帶與該次請求相同的 `request_id` 與來源位址，以操作日誌列表的 `request_id` 篩選可取回同一次請求寫下的每一列。
-- **高權限告警**：授權角色含超級管理者或系統安全管理員時，建立的同一交易產生系統告警 `privileged_api_token_created`（預設 high，可覆寫分級）。參數為 `actor`、`privileged_roles`、`token_name`、`granted_roles`、`expiry`（`at` 或 `never`），`expiry` 為 `at` 時另帶 `expires_at`（RFC 3339）；通知文案依 `expiry` 寫出到期時刻或「永不到期」。參數不含明文或雜湊。
+- **高權限告警**：授權角色含超級管理者或系統安全管理員時，建立的同一交易產生系統告警 `privileged_api_token_created`（預設 high，可覆寫分級）。參數為 `actor`、`privileged_roles`、`privileged_role_levels`（與 `privileged_roles` 同序的層級，半形逗號分隔）、`token_name`、`granted_roles`、`granted_role_levels`（與 `granted_roles` 同序的層級）、`access`（層級彙總，值同 TokenView）、`expiry`（`at` 或 `never`），`expiry` 為 `at` 時另帶 `expires_at`（RFC 3339）；通知文案依 `expiry` 寫出到期時刻或「永不到期」，高權限角色與全部授權角色逐一附上層級（例如「super_admin（唯讀）」）。高權限角色設為唯讀時照樣產生，分級不變。參數不含明文或雜湊。
 - **引用既有憑證**：以 token 認證的請求可以引用系統已保存的憑證，入口為建立資產（`POST /assets` 帶 `credential_id`）、匯入資產（預覽與提交）、建立資產帳號、掛到資產（`POST /credentials/:id/bindings`）與更換掛載的憑證（`PUT /assets/:id/accounts/:accountId/credential`）。判定與只持有同一組授權角色的登入工作階段相同：沒有掛載能力（`credential:bind`）時，建立資產、匯入與建立資產帳號回 403 `AUTH_PERMISSION_DENIED`，掛到資產與更換回 404 `NOTFOUND_CREDENTIAL`；憑證在呼叫者的節點範圍外時與憑證不存在同形（404 `NOTFOUND_CREDENTIAL`，匯入以該列的錯誤回報）。
 - **仍只接受登入工作階段的動作**：與憑證有關而會讓系統立即對資產連線的動作，包括單台脫離共用、資產連線測試、改密計畫的立即執行、整組改密與其逐台補跑、堡壘機專用帳號的設定與更換、專用帳號的登入測試，以 token 呼叫回 403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`。專用帳號的讀取與清除可用 token 呼叫。
 - **掛載告警**：以 token 每成功引用一筆既有憑證，同一交易產生系統告警 `api_token_credential_attached`（身分與權限組，預設 medium，可覆寫分級）；一次匯入不論幾台只產生一則。單筆的目標是該資產（`target_kind` 為 `asset`），匯入的目標是操作者（`user`）。參數為 `token_name` 與 `entry`（`asset_create`、`account_create`、`bind`、`rebind`、`import`）；單筆另帶 `credential_name`、`asset_name`，匯入另帶 `asset_count`、`credential_count`（只計引用既有憑證的資產與其涉及的憑證）。操作者在明細的 `actor`、`actor_user_id` 與 webhook 的 `alert.actor`，不在參數內。同交易的稽核列在 `details` 帶與告警相同的 `correlation_id`。參數不含憑證內容、token 明文或雜湊，也不含資產的連線位址。下列情形不產生：以登入工作階段掛載、匯入預覽、匯入中沒有任何一列引用既有憑證、更換成原本的同一筆憑證、在請求中自帶密碼或金鑰的新建、寫入失敗。
@@ -2082,7 +2087,7 @@ GET /api/v1/assets
 | `tags` | string | 標籤篩選（逗號分隔多值 AND；整詞比對、大小寫不敏感、`%`/`_`/`\` 跳脫不作萬用字元；空 token 丟棄、超 20 個 400；**僅 admin/auditor 與範圍化檢視者**——其他非特權角色帶此參數 400，不靜默忽略；範圍化檢視者的篩選見下節） |
 | `credential_pending` | bool | `true`＝只列待配憑證資產（沒有任何未刪除的掛載列）；**僅 admin/auditor**——非特權角色帶此參數回 400 `VALIDATION_BAD_PARAMS`，不靜默忽略 |
 | `page` | int | 頁碼（從 1 開始，預設 1） |
-| `page_size` | int | 每頁數量（預設 20） |
+| `page_size` | int | 每頁數量（預設 20，上限 1000）。超過 1000 的整數套用 1000，回應的 `page_size` 為實際套用的值；小於 1、不是整數或超出整數範圍（例如 23 位數）時套用預設 20。範圍化、授權集合與全量三種查詢一致。（2026-11-18 以前沒有上限，大於 1000 的值原樣套用） |
 
 **回應** (200): `{"data": [Asset], "total": N, "page": 1, "page_size": 20}`（兩分支同格式，篩選與分頁在授權分支同樣生效）
 
@@ -2559,15 +2564,16 @@ POST   /api/v1/assets/:id/accounts/:accountId/set-default  （asset:update）
 
 **單筆讀取**回該帳號在列表中的那一列，欄位與投影都和列表相同（回應本文即該列）。只涵蓋登入用途的帳號：不在呼叫者帳號範圍內、已刪除、不存在、屬於另一台資產，或是堡壘機專用帳號的識別，都回與帳號不存在相同的 404；資產本身不可見時，回與列表相同的資產層 404。權限、對個人 API token 與自動化帳號的開放程度與列表相同。
 
-**投影只發生在列表與單筆讀取**：建立、更新與設預設一律回完整版
-（這三支的授權點是 `asset:update`）。
+**寫入回應走同一份投影**：建立、更新與設預設的回應，依呼叫者對該列的欄位條件回完整版、精簡版或範圍外收窄的形狀，與列表及單筆讀取相同
+（這三支的授權點是 `asset:update`，它本身不使憑證識別欄位可見）。
 
 ```json
 // 憑證識別欄位可見：完整版 AssetAccountDTO
 {
   "id": 3, "asset_id": 1, "username": "app",
   "is_default": false, "privileged": false, "auth_method": "sql", "note": "",
-  "has_password": true, "has_private_key": false,
+  "has_password": true, "has_private_key": true,
+  "private_key_fingerprint": "SHA256:…",
   "shared_credential": false,
   "credential_id": 106, "credential_name": "prod-01 / app",
   "credential_scope": "dedicated", "effective_version_no": 4, "binding_count": 1,
@@ -2585,7 +2591,7 @@ POST   /api/v1/assets/:id/accounts/:accountId/set-default  （asset:update）
 `privileged`／`asset_id`／`note`／任何 `credential_*` 欄位。
 
 **憑證絕不出站**：密文欄於 model 標 `json:"-"`，兩種投影都只降為 `has_password`／
-`has_private_key` 布林。列表為 `{"data":[...],"total":N}`，排序 `is_default DESC, username ASC, id ASC`；
+`has_private_key` 布林。完整版另帶 `private_key_fingerprint`（該帳號就位版本私鑰的公鑰指紋，三種狀態與 `CredentialDTO` 的同名欄位相同：沒有私鑰或公鑰未知時不出現），且只在呼叫者能以詳情讀取該帳號引用的憑證時帶（與憑證讀取同一個檢視判定，列表、單筆讀取與五個寫入端點相同）：完整版的欄位條件也接受全域的 `credential:manage`，只持該能力而沒有 `credential:view` 者拿到完整版但不帶此欄，其他欄位照舊；精簡版與下方引用範圍外憑證的收窄列一律不帶。列表為 `{"data":[...],"total":N}`，排序 `is_default DESC, username ASC, id ASC`；
 建立回 201，更新與 set-default 回 200。
 
 **引用範圍外憑證的帳號列**（列表端點與五個寫入端點，僅限範圍化檢視者；寫入端點為 `POST /assets/:id/accounts`、`PUT /assets/:id/accounts/:accountId`、`POST /assets/:id/accounts/:accountId/set-default`、`POST /credentials/:id/bindings`、`PUT /assets/:id/accounts/:accountId/credential`，成功回應與列表同一份判定、同形）：帳號列所引用的憑證不在其可見集合內（含歸屬全域者）時，該列收窄為不帶 `credential_id`、`credential_name` 與 `binding_count` 的形狀，並帶 `"credential_out_of_scope": true`；其餘欄位（`id`、`asset_id`、`username`、`is_default`、`privileged`、`auth_method`、`note`、`has_password`、`has_private_key`、`shared_credential`、`credential_scope`、`effective_version_no`、時間戳）照舊。該列另帶 `actions`，鍵為 `rebind`（更換憑證）、`remove`（移除帳號）、`secret_fix`（更正登記值）、`detach`（脫離共用），值 `{"allowed": bool, "reason"?: string}`，`reason` 為 `no_capability` 或 `out_of_scope`。每個旗標與對應寫入端點使用同一個判定函式：更換憑證與移除照所屬資產的能力與範圍，更正與脫離需該憑證歸屬在主體範圍內，範圍外憑證不可執行。範圍內憑證的帳號列與非範圍化檢視者的列不變、不帶 `actions`。旗標只決定畫面，每個寫入端點照常自行裁決。
@@ -2696,7 +2702,7 @@ GET    /api/v1/assets/:id/executor/login-check （asset:executor-manage；最近
 
 **讀取**：未設定時回 `{"configured": false}`。已設定時回 `configured`、`account_id`、`username`、
 `secret_type`；金鑰型且就位版本有公鑰、所引用憑證又在讀取者的憑證可見集合內時，另回
-`has_public_key` 與 `fingerprint`（SHA256）。所引用的共用憑證不在可見集合內時兩欄都不出現。
+`has_public_key` 與 `fingerprint`（SHA256）。所引用的是共用憑證時，另須讀取者能以詳情讀取該筆憑證（`credential:view` 且在其檢視範圍內）；不在可見集合內或沒有檢視能力時兩欄都不出現。DSA 金鑰沒有公鑰，兩欄不出現。
 讀取與設定的回應都不含私鑰與公鑰本體。
 
 **來源與憑證歸屬**：已設定時另回 `source`（`generate`／`inline`／`shared`／`convert`，記在掛載列，不由審計反查；
@@ -2736,8 +2742,8 @@ GET    /api/v1/assets/:id/executor/login-check （asset:executor-manage；最近
 `NOTFOUND_ASSET_EXECUTOR`。平台只移除掛載與回收專用憑證，**不會刪除目標機上的帳號或金鑰**。
 
 **公鑰匯出**：回 `text/plain` 單行 authorized_keys 格式，`Content-Disposition: attachment`；comment 為
-`<產品代號>-credential-<憑證識別>`，不帶資產識別。非金鑰型、沒有公鑰、或所引用的共用憑證不在可見集合內，
-一律 404 `NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY`。每次匯出留一筆讀取審計。
+`<產品代號>-credential-<憑證識別>`，不帶資產識別。非金鑰型、沒有公鑰、或所引用的共用憑證不在可見集合內或讀取者
+沒有該憑證的檢視能力，一律 404 `NOTFOUND_ASSET_EXECUTOR_PUBLIC_KEY`。每次匯出留一筆讀取審計。
 
 **測試登入**（`POST`／`GET /assets/:id/executor/login-check`）：以專用帳號實際登入目標主機一次，確認「能登入」與
 「有代改所需的權限」，非 root 時另確認能不能讀取 sudo 規則；只讀不寫：執行與代改相同的改密程式但不送任何帳號列，
@@ -2969,6 +2975,7 @@ GET  /api/v1/assets/:id/k8s/download    （已認證；資料面裁決；query: 
   "note": "",
   "has_password": true,          // 密文本體永不出站，只投影布林
   "has_private_key": false,
+  "private_key_fingerprint": "SHA256:…",  // 現行版本私鑰的公鑰指紋；公鑰未知或沒有私鑰時不出現
   "binding_count": 2,            // 掛在幾台資產上
   "current_version_no": 1,       // 0＝尚無任何密文
   "rotation_active": false,
@@ -2979,6 +2986,8 @@ GET  /api/v1/assets/:id/k8s/download    （已認證；資料面裁決；query: 
   "updated_at": "2026-09-06T16:29:00Z"
 }
 ```
+
+**公鑰指紋 `private_key_fingerprint`**：現行版本私鑰對應公鑰的 SHA-256 指紋，格式與 `ssh-keygen -lf` 相同（`SHA256:` 加不帶補位的 base64），可用來比對目標主機 `authorized_keys` 中的是哪一把鑰。三種狀態：沒有私鑰時 `has_private_key` 為 `false`、不帶此欄；有私鑰且公鑰已知時帶此欄；有私鑰但公鑰未知時 `has_private_key` 為 `true`、不帶此欄。公鑰在寫入私鑰的當下保存，升級前寫入、之後未再更換的私鑰其公鑰未知，重新設定一次私鑰即可取得。DSA 私鑰照常接受，但其公鑰無法由私鑰本體確定，不保存公鑰、不帶此欄。列表與詳情對同一筆憑證回報相同的值。`POST /credentials`、`PUT /credentials/:id`、`POST /credentials/:id/secret`、`POST /credentials/:id/scope` 的成功回應，只在呼叫者能以詳情讀取這筆憑證時（`credential:view` 且憑證在其檢視範圍內）帶此欄；只有修改能力者不帶。指紋不寫入審計紀錄、告警與應用程式日誌；正式部署模式的資料庫日誌只記錯誤，且不帶語句的參數值。
 
 **用途 `purpose`**：同一筆憑證的未刪除掛載用途一致（見「堡壘機專用帳號」），所以憑證層是單值：`login` 為人員連線用的帳號，`executor` 為堡壘機專用帳號。用途是憑證屬性，與掛載是否在檢視範圍內無關，範圍化檢視者的回應照帶，不因此多出範圍外資產的識別或台數；沒有任何未刪除掛載的憑證不帶此欄。
 
@@ -3127,8 +3136,9 @@ SSH 金鑰）是兩件事。值域 `sql`｜`domain`，未帶＝`sql`；**1.0 只
   明確分開。卸載專用憑證的唯一掛載時，該憑證於同一交易被刪。
 - 掛載與卸載的稽核列除憑證外另帶受影響的資產識別，使同一個動作在資產樞紐上也查得到——
   改變的是秘密在哪些主機上生效，只掛在憑證下會讓「這台機器的登入身分被誰換掉」查不出來。
-- 憑證仍有掛載時刪除回 409，並於回應 body 帶受影響的資產名單：
-  `{"code": "RULE_CREDENTIAL_IN_USE", "assets": ["ssh-multi-test", "web-01"]}`。
+- 憑證仍有掛載時刪除回 409，回應為統一錯誤封套，另於頂層帶受影響的資產名單：
+  `{"error": "憑證仍被資產掛載，請先卸載後再刪除", "code": "RULE_CREDENTIAL_IN_USE", "assets": ["ssh-multi-test", "web-01"]}`；
+  範圍化檢視者另帶 `out_of_scope_asset_count`。2026-11-18 以前本文沒有 `error` 欄，其餘欄位不變。
   名單走 body 而非錯誤 `params`（後者只收受控值域），且本端點已在憑證管理授權點之後。
 - 仍有未決候選秘密時刪除回 409 `RULE_CREDENTIAL_PENDING_CANDIDATE`：那台機器現在吃哪一組秘密
   尚未確定，刪掉憑證即失去追回的依據。與前一碼分流，因為操作者的下一步不同——
@@ -4483,26 +4493,28 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 
 ## 個人 API token API
 
-TokenView：`{id, user_id, name, status, granted_roles, privileged, created_at, expires_at, last_used_at, last_used_ip, revoked_at, revoked_by, revoke_note}`。
+TokenView：`{id, user_id, name, status, granted_roles, access, privileged, created_at, expires_at, last_used_at, last_used_ip, revoked_at, revoked_by, revoke_note}`。
+`access` 為授權角色層級的彙總：全部為讀寫時 `read_write`、全部為唯讀時 `read`、兩者皆有時 `mixed`；依建立時的選擇計算，目前不生效的授權角色也計入，不隨角色被收回而改變。`created_before_levels` 為真表示這把 token 在層級功能生效前建立（各角色皆為讀寫），只供呈現；自我查驗不帶此欄。
 `status` 為 `active`、`expiring_soon`、`expired`、`revoked`、`invalidated_by_restore`、`suspended_account_disabled`、`suspended_roles_revoked` 之一。
-`granted_roles` 每項為 `{role_id, name, builtin_key, effective, scope}`：`effective` 表示所屬帳號目前是否仍持有此角色；`scope` 為 `{"kind": "global"}` 或 `{"kind": "nodes", "nodes": [{"id", "name"}]}`，不生效時為 `null`。`revoked_by` 為 `{user_id, username}` 或 `null`。授權角色已被刪除時仍列出，`effective` 為 `false`；`name` 通常是刪除前的名稱，但原名接近名稱長度上限（50 字）時，刪除當下為了釋出名稱已截去尾端，這時只會顯示原名的前段。
+`granted_roles` 每項為 `{role_id, name, builtin_key, level, effective, scope}`：`level` 為 `read` 或 `read_write`（保存的值不是這兩者時呈現為 `read`）；`effective` 表示所屬帳號目前是否仍持有此角色；`scope` 為 `{"kind": "global"}` 或 `{"kind": "nodes", "nodes": [{"id", "name"}]}`，不生效時為 `null`。`revoked_by` 為 `{user_id, username}` 或 `null`。授權角色已被刪除時仍列出，`effective` 為 `false`；`name` 通常是刪除前的名稱，但原名接近名稱長度上限（50 字）時，刪除當下為了釋出名稱已截去尾端，這時只會顯示原名的前段。
 
 | 端點 | 權限 | 請求 | 成功回應 | 失敗 |
 |---|---|---|---|---|
 | `GET /my/api-tokens` | 登入即可（人類工作階段） | — | 200 `{"data": [TokenView], "eligibility": {...}, "restore": {"invalidated_count", "restored_at"}}` | — |
-| `POST /my/api-tokens` | 同上 | `{"name", "role_ids", "expires_at"}` 或 `{"name", "role_ids", "never_expires": true}`，兩種到期恰擇一 | 201 TokenView 加 `token`（明文，僅此一次） | 400 `API_TOKEN_NAME_INVALID`、`API_TOKEN_ROLE_REQUIRED`、`API_TOKEN_ROLE_NOT_GRANTABLE`、`API_TOKEN_EXPIRY_REQUIRED`、`API_TOKEN_EXPIRY_INVALID`；403 `API_TOKEN_NOT_ELIGIBLE`；409 `CONFLICT_API_TOKEN_NAME` |
+| `POST /my/api-tokens` | 同上 | `{"name", "roles", "expires_at"}` 或 `{"name", "roles", "never_expires": true}`，兩種到期恰擇一；`roles` 每項為 `{"role_id", "level"}`，`level` 必填（`read` 或 `read_write`）。舊寫法以 `role_ids` 取代 `roles`，等同各角色皆為 `read_write`。層級只由 `roles` 內每一項的 `level` 決定：本文其他位置的同名欄位會被忽略，建立回應的 `access` 與各角色的 `level` 是實際建立的結果，呼叫端應據此確認 | 201 TokenView 加 `token`（明文，僅此一次） | 400 `VALIDATION_BAD_PARAMS`（`roles` 與 `role_ids` 兩個鍵同時出現，即使其中一個是空陣列或 `null`；`roles` 內同一個角色出現兩次，不論層級；`level` 缺漏或不是認得的值）、`API_TOKEN_NAME_INVALID`、`API_TOKEN_ROLE_REQUIRED`、`API_TOKEN_ROLE_NOT_GRANTABLE`、`API_TOKEN_EXPIRY_REQUIRED`、`API_TOKEN_EXPIRY_INVALID`；403 `API_TOKEN_NOT_ELIGIBLE`；409 `CONFLICT_API_TOKEN_NAME` |
 | `DELETE /my/api-tokens/:id` | 同上 | 可帶 `{"note"}`（至多 2000 字元） | 204 | 400 `VALIDATION_BAD_PARAMS`（本文不是合法 JSON）；404 `NOTFOUND_API_TOKEN`（不是自己的、不存在與識別不合法同形） |
 | `GET /users/:id/api-tokens` | `user:manage` | — | 200 `{"data": [TokenView], "can_revoke", "protected", "account_active"}` | 404 `NOTFOUND_USER` |
 | `DELETE /users/:id/api-tokens/:tokenId` | `user:manage` | 可帶 `{"note"}` | 204 | 403 `AUTH_PROTECTED_ACCOUNT_OPERATION`（受保護帳號而操作者不是超級管理者）；404 `NOTFOUND_API_TOKEN`、`NOTFOUND_USER` |
 | `POST /users/:id/api-tokens/revoke-all` | `user:manage` | 可帶 `{"note"}` | 200 `{"revoked": N}` | 同上 |
-| `GET /api-tokens/verify` | 以 API token 認證 | — | 200 `{"valid": true, "token": {"id", "name", "expires_at"}, "user": {"id", "username"}, "granted_roles", "effective_roles"}`，帶 `Cache-Control: no-store`；`granted_roles` 形狀同 TokenView，`effective_roles` 為其中 `effective` 為真者 | 以人類工作階段呼叫回 403 `AUTH_PERMISSION_DENIED`；token 無效回 401（與其他認證失敗相同） |
+| `GET /api-tokens/verify` | 以 API token 認證 | — | 200 `{"valid": true, "token": {"id", "name", "expires_at", "access"}, "user": {"id", "username"}, "granted_roles", "effective_roles"}`，帶 `Cache-Control: no-store`；`granted_roles` 形狀同 TokenView（含 `level`），`effective_roles` 為其中 `effective` 為真者 | 以人類工作階段呼叫回 403 `AUTH_PERMISSION_DENIED`；token 無效回 401（與其他認證失敗相同） |
 
 - `API_TOKEN_EXPIRY_INVALID`：到期時刻不在未來，或同時送出 `expires_at` 與 `never_expires: true`。
 - `eligibility`：`can_create`、`reason`（不能建立時為 `no_management_role` 或 `not_human`）、`grantable_roles`、`non_grantable_roles`（本人持有但不屬管理類、不能授權的角色）、`allowed_cidrs`。
 - `restore`：備份還原後，還原前建立的 token 全部失效；`invalidated_count` 為因此失效的把數，`restored_at` 為最近一次還原完成的時刻（未還原過為 `null`）。
 - 受保護帳號（持有超級管理者或系統安全管理員角色）的 token 只有超級管理者能撤銷；本人一律可撤銷自己的 token。列表的 `can_revoke` 即此判定。
 - 重複撤銷回成功、不改原撤銷時間與原因、不另寫稽核。
-- 建立與撤銷各寫一筆稽核（資源 `api_token`，建立為 `create`、撤銷為 `api_token_revoked`），與建立、撤銷同交易提交，不受稽核開關影響；細節含名稱、所屬帳號、授權角色、到期與撤銷原因。
+- 建立與撤銷各寫一筆稽核（資源 `api_token`，建立為 `create`、撤銷為 `api_token_revoked`），與建立、撤銷同交易提交，不受稽核開關影響；細節含名稱、所屬帳號、授權角色、到期與撤銷原因。建立的細節中每個授權角色帶 `level`，另帶彙總 `access`；撤銷的細節不含授權角色，撤銷當時的層級由同一把 token 的建立稽核查得（層級建立後不能修改）。
+- 每個授權角色皆為唯讀的 token 呼叫寫入端點被拒（403 `AUTH_API_TOKEN_READ_ONLY`）時，留痕方式與端點不開放的拒絕（403 `AUTH_API_TOKEN_FORBIDDEN_ROUTE`）相同：該次請求在操作日誌落地一列，狀態為 `denied`，帶 token 識別與名稱。兩種拒絕的 `details` 帶 `denial` 為 `api_token`、`basis` 為 `read_only`（全唯讀）或 `forbidden_route`（端點不開放、未登錄或查無），操作日誌列表與詳情的 `reason_code` 分別為 `authz_api_token_read_only`、`authz_api_token_forbidden_route`。細節不含 token 明文或雜湊。
 
 ## 用戶 API
 
@@ -4510,8 +4522,8 @@ TokenView：`{id, user_id, name, status, granted_roles, privileged, created_at, 
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/users` | 列表 → `{data, total, page, page_size}`（`page`、`page_size` 是實際套用的值；小於 1 或不是數字時套用預設）；query: `search`（用戶名/郵箱）、`username`（精確查找：完全相同才命中，區分大小寫、不去頭尾空白；與其他篩選取交集，例如未帶 `include_agents=true` 時不回自動化帳號；空值回 400 `VALIDATION_INVALID_QUERY_PARAM`，`params.field="username"`）、`active`、`page`、`page_size`、`include_agents=true`（預設只含 human） |
-| POST | `/users` | 創建 → 201 `{data: User}` |
+| GET | `/users` | 列表 → `{data, total, page, page_size}`（`page`、`page_size` 是實際套用的值；小於 1、不是整數或超出整數範圍時套用預設；`page_size` 上限 1000，超過 1000 的整數套用 1000，2026-11-18 以前沒有上限）；query: `search`（用戶名/郵箱）、`username`（精確查找：完全相同才命中，區分大小寫、不去頭尾空白；與其他篩選取交集，例如未帶 `include_agents=true` 時不回自動化帳號；空值回 400 `VALIDATION_INVALID_QUERY_PARAM`，`params.field="username"`）、`active`、`page`、`page_size`、`include_agents=true`（預設只含 human） |
+| POST | `/users` | 創建 → 201 `{data: User}`；使用者名稱已存在回 409 `CONFLICT_USERNAME_EXISTS`（2026-11-18 以前為 400，機器碼相同）；電子郵件已被其他帳號使用（不分大小寫）回 409 `CONFLICT_EMAIL`；前後帶空白的電子郵件在格式檢查即回 400 `VALIDATION_BAD_PARAMS`，與修改時相同（2026-11-18 以前回 500 `INTERNAL_USER_CREATE`）。同名或同一電子郵件的並行建立恰一筆成功，其餘回上述兩個 409 之一 |
 | GET | `/users/:id` | 詳情 → `{data: User}` |
 | PUT | `/users/:id` | 更新基本資訊（不含密碼/角色） |
 | DELETE | `/users/:id` | 軟刪除，同一交易內作廢該帳號的外部身分綁定；不能刪除最後一個管理員（400）。目標帳號持有超級管理者或系統安全管理員身分（任一來源）時只有超級管理者能刪，其他操作者回 403 `AUTH_PROTECTED_ACCOUNT_OPERATION`，該次審計列 `details` 帶 `event=user_delete_rejected`、`deny_reason=protected_account`。審計列帶被刪帳號名稱與作廢的外部身分數（`details` 的 `target_username`、`external_identities_revoked`），`username` 仍是操作者 |
@@ -4851,7 +4863,7 @@ GET /api/v1/roles
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/role-definitions` | 列表 → `{data, total, can_define}` |
+| GET | `/role-definitions` | 列表 → `{data, total, can_define}`；選填 `name`：名稱精確查找，去除前後空白後與角色名稱逐字相等才命中（與名稱重複判定同一規則），在可見範圍之內套用，`total` 只計命中的列；查不到回空列表與 `total` 0；參數重複出現或去除空白後為空回 400 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="name"`）。所需權限與可見範圍與不帶參數時相同 |
 | GET | `/role-definitions/:id` | 單筆 |
 | GET | `/role-definitions/descriptors` | 編輯器用的描述資料（三組） |
 | POST | `/role-definitions/summary` | 以一組權限鍵試算摘要，不寫資料 |
@@ -4910,7 +4922,8 @@ GET /api/v1/roles
 | 404 | 角色不存在 | 目標角色不存在 |
 | 409 | `ROLE_DEFINITION_LOCKED` | 內建角色與鎖定範本不可修改、刪除 |
 | 409 | `ROLE_DEFINITION_IN_USE` | 刪除時仍有未刪除帳號的直接指派（停用中的帳號計入）、群組指派或有效的外部群組映射 |
-| 409 | `ROLE_DEFINITION_CONFLICT` | 期望版本已過期，或名稱已被使用 |
+| 409 | `ROLE_DEFINITION_VERSION_CONFLICT` | 修改或刪除時帶的期望版本已不是最新（有人先修改過）；應重新讀取後再送，角色不變 |
+| 409 | `ROLE_DEFINITION_CONFLICT` | 新增、複製或修改時名稱已被使用，包括兩個請求同時建立或改成同一個名稱時未搶到的那一個（2026-11-18 以前版本過期也回這個碼，並行撞名回 500） |
 | 500 | `INTERNAL_ROLE_DEFINITION_WRITE` | 內部失敗；原因只進伺服器日誌，回應不帶角色名或權限名 |
 
 測試：`TestRoleDefinitionRoutes`、`TestRoleDefinitionWriteWiring`、`TestRoleDefinitionExposureBoundary`。
@@ -5745,7 +5758,7 @@ body：`{"kind": "direct_roles" | "group_roles" | "group_members" | "role_defini
 
 回應：`{total, matched, truncated, operation, subjects: [{user_id, self, assign_capable, entries_gained, entries_lost, routes_gained, routes_lost, combos, new_combos, self_direction, management_granted, marks}]}`。頂層 `operation`（`marks`、`self_direction`、`management_granted`、`routes_gained`、`routes_lost`、`entries_gained`、`entries_lost`、`evaluated`）以與寫入相同的分類函式求得，不受逐人列出條件與 100 筆上限影響。每位主體的 `routes_gained`／`routes_lost` 與前端導覽使用同一份入口規則，登入即可與依本人資格的入口不列入。測試：`TestRoleAssignmentPreviewContract`。清單只列操作者本人與變更後新命中危險組合者，上限 100 筆，其餘只計入 `total`。種類不明或對象不存在回 400 `VALIDATION_BAD_PARAMS`，失敗 500 `INTERNAL_ROLE_ASSIGNMENT_PREVIEW`。寫入路徑不要求先預覽。
 
-**個人 API token 的影響**：`direct_roles` 預覽在對象帳號有可用的個人 API token 時，回應另附 `api_tokens`：`{"total_usable", "affected": [{"id", "name", "loses_roles": [{"role_id", "name", "builtin_key"}], "regains_roles": [...], "remaining_roles": [...], "becomes_suspended", "becomes_active"}], "suspended_count", "eligible_after"}`。token 的有效角色是授權角色與帳號當下有效角色的交集，所以 `affected` 列出這次變更後失去或恢復任何授權角色的 token：`loses_roles` 是變更後不再生效的授權角色，`regains_roles` 是變更前不生效、變更後重新生效的授權角色（沒有時為空陣列），`remaining_roles` 是變更後生效的授權角色全集（含重新生效的）。`becomes_suspended` 表示變更後該 token 的授權角色全部不再生效（暫停，角色恢復後隨之恢復）；`becomes_active` 表示該 token 原本因授權角色全部不生效而暫停、變更後恢復可用（帳號停用中的不算）。`suspended_count` 是這次變更使其暫停的 token 數（變更前就已暫停的不計）；`eligible_after` 表示變更後該帳號是否仍有建立資格。失去與恢復都以變更前後帳號實際有效的角色計算：經群組或外部映射取得的角色不受直接指派變更影響，角色原本就經群組或映射有效時，加上直接指派不算恢復；帳號新增沒有任何 token 被授權的角色時，token 不會取得它，不列入。對象沒有可用 token、其他種類的預覽，或以 API token 呼叫時（查看他人 token 的端點不對 API token 開放），不出現此鍵。
+**個人 API token 的影響**：`direct_roles` 預覽在對象帳號有可用的個人 API token 時，回應另附 `api_tokens`：`{"total_usable", "affected": [{"id", "name", "loses_roles": [{"role_id", "name", "builtin_key", "level"}], "regains_roles": [...], "remaining_roles": [...], "becomes_suspended", "becomes_active"}], "suspended_count", "eligible_after"}`。token 的有效角色是授權角色與帳號當下有效角色的交集，所以 `affected` 列出這次變更後失去或恢復任何授權角色的 token：`loses_roles` 是變更後不再生效的授權角色，`regains_roles` 是變更前不生效、變更後重新生效的授權角色（沒有時為空陣列），`remaining_roles` 是變更後生效的授權角色全集（含重新生效的）。`becomes_suspended` 表示變更後該 token 的授權角色全部不再生效（暫停，角色恢復後隨之恢復）；`becomes_active` 表示該 token 原本因授權角色全部不生效而暫停、變更後恢復可用（帳號停用中的不算）。`suspended_count` 是這次變更使其暫停的 token 數（變更前就已暫停的不計）；`eligible_after` 表示變更後該帳號是否仍有建立資格。失去與恢復都以變更前後帳號實際有效的角色計算：經群組或外部映射取得的角色不受直接指派變更影響，角色原本就經群組或映射有效時，加上直接指派不算恢復；帳號新增沒有任何 token 被授權的角色時，token 不會取得它，不列入。對象沒有可用 token、其他種類的預覽，或以 API token 呼叫時（查看他人 token 的端點不對 API token 開放），不出現此鍵。
 
 ---
 
@@ -6169,7 +6182,7 @@ GET /api/v1/audit-logs/:id                        → AuditLog（不存在回 40
 GET /api/v1/audit-logs/resource/:resource/:id     → {"resource": "asset", "resource_id": 1, "total": N, "logs": [...]}
 ```
 
-單筆詳情在帶 `api_token_id` 的列上另附 `api_token` 物件：`{"id", "name", "granted_roles": [{"role_id", "name"}], "expires_at", "owner_deleted"}`。名稱取該列的快照；授權角色與到期取自 token（建立後不變）；`owner_deleted` 表示所屬帳號已刪除，token 本身已不存在時授權角色為空陣列、`owner_deleted` 為 true。其他列不出現 `api_token` 鍵。
+單筆詳情在帶 `api_token_id` 的列上另附 `api_token` 物件：`{"id", "name", "granted_roles": [{"role_id", "name", "level"}], "access", "expires_at", "owner_deleted"}`。名稱取該列的快照；授權角色、層級、彙總 `access` 與到期取自 token（建立後不變）；`owner_deleted` 表示所屬帳號已刪除，token 本身已不存在時授權角色為空陣列、`access` 為 null、`owner_deleted` 為 true。其他列不出現 `api_token` 鍵。
 
 `:resource` 僅接受 `asset`/`session`/`user`（其餘 400）。
 `recording` **不是合法樞紐型別**：該分類的

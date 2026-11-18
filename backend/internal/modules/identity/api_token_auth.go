@@ -35,8 +35,37 @@ type APITokenIdentity struct {
 	// CredentialEpoch 所屬帳號當下的憑證世代（與其他欄位同一次查詢讀出）；只用於下游的認證脈絡，
 	// 驗證本身不比對世代：改密等推進世代的事件不影響 token。
 	CredentialEpoch int
-	// GrantedRoleIDs 建立時授權的角色；可能為空集合（角色列遺失時），呼叫端仍須以非 nil 的限定傳入解析器。
-	GrantedRoleIDs []uint
+	// GrantedRoles 建立時授權的角色與層級（層級已正規化：不認得的值為唯讀）；可能為空集合（角色列遺失時），
+	// 呼叫端仍須以非 nil 的限定傳入解析器。
+	GrantedRoles []APITokenGrantedRole
+}
+
+// APITokenGrantedRole 一個授權角色與其層級（model.APITokenLevel*）。
+type APITokenGrantedRole struct {
+	RoleID uint
+	Level  string
+}
+
+// RoleIDsCounted 這次請求計入的授權角色：countAll 為真（路由性質恰為讀）時為全部授權角色，
+// 否則只含層級為讀寫者。回傳值永不為 nil，呼叫端據此建立非 nil 的限定。
+func (id *APITokenIdentity) RoleIDsCounted(countAll bool) []uint {
+	out := []uint{}
+	for _, r := range id.GrantedRoles {
+		if countAll || model.NormalizeAPITokenLevel(r.Level) == model.APITokenLevelReadWrite {
+			out = append(out, r.RoleID)
+		}
+	}
+	return out
+}
+
+// HasReadWriteRole 是否至少有一個層級為讀寫的授權角色（不論該角色目前是否在所屬帳號上生效）。
+func (id *APITokenIdentity) HasReadWriteRole() bool {
+	for _, r := range id.GrantedRoles {
+		if model.NormalizeAPITokenLevel(r.Level) == model.APITokenLevelReadWrite {
+			return true
+		}
+	}
+	return false
 }
 
 // apiTokenAuthRow 一次查詢讀出 token 與所屬帳號的授權事實。帳號以未過濾軟刪除的方式聯結，
@@ -95,9 +124,13 @@ func (s *AuthService) ValidateAPIToken(plaintext, ip string) (*APITokenIdentity,
 	if verdict := sourceip.Evaluate(row.OwnerCIDRs, nil, ip); !verdict.Allowed {
 		return nil, verdict.Reason
 	}
-	roleIDs := []uint{}
-	if err := db.Model(&model.APITokenRole{}).Where("api_token_id = ?", row.ID).Order("role_id").Pluck("role_id", &roleIDs).Error; err != nil {
+	var links []model.APITokenRole
+	if err := db.Where("api_token_id = ?", row.ID).Order("role_id").Find(&links).Error; err != nil {
 		return nil, APITokenReasonRolesUnreadable
+	}
+	granted := make([]APITokenGrantedRole, 0, len(links))
+	for _, l := range links {
+		granted = append(granted, APITokenGrantedRole{RoleID: l.RoleID, Level: model.NormalizeAPITokenLevel(l.Level)})
 	}
 	touchAPITokenLastUsed(db, row.ID, row.LastUsedAt, row.LastUsedIP, ip, now)
 	email := ""
@@ -105,7 +138,7 @@ func (s *AuthService) ValidateAPIToken(plaintext, ip string) (*APITokenIdentity,
 		email = *row.OwnerEmail
 	}
 	return &APITokenIdentity{TokenID: row.ID, TokenName: row.Name, UserID: row.UserID, Username: row.OwnerUsername,
-		Email: email, CredentialEpoch: row.OwnerEpoch, GrantedRoleIDs: roleIDs}, ""
+		Email: email, CredentialEpoch: row.OwnerEpoch, GrantedRoles: granted}, ""
 }
 
 // touchAPITokenLastUsed 更新最近使用時間與來源。間隔內且來源相同時不寫；條件式更新讓多副本不重複寫。

@@ -224,11 +224,11 @@
   "privileged_api_token_created": {
     "at": {
       "title": "Privileged API token created",
-      "text": "{actor} created API token \"{token_name}\" granting privileged roles ({privileged_roles}); all granted roles: {granted_roles}; expires at {expires_at} (severity: {severity})."
+      "text": "{actor} created API token \"{token_name}\" granting privileged roles: {privileged_roles}; all granted roles: {granted_roles}; expires at {expires_at} (severity: {severity})."
     },
     "never": {
       "title": "Privileged API token created",
-      "text": "{actor} created API token \"{token_name}\" granting privileged roles ({privileged_roles}); all granted roles: {granted_roles}; never expires (severity: {severity})."
+      "text": "{actor} created API token \"{token_name}\" granting privileged roles: {privileged_roles}; all granted roles: {granted_roles}; never expires (severity: {severity})."
     }
   },
   "api_token_credential_attached": {

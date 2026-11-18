@@ -129,6 +129,8 @@ const parseDetails = (details) => {
 
 /**
  * 操作日誌詳情：`details.changes` 非空時照舊列變更；否則改列原因與格式化的 details。
+ * 「原因」列只在後端給了原因碼時出現：沒有碼時 reasonText 退回的是 error_msg 或請求路徑，
+ * 兩者在詳情裡各有自己的列，再以「原因」為名列一次會把路徑讀成原因。
  * @returns {{ changes: Array, showReason: boolean, raw: string }}
  */
 export function logDetailBlocks(log) {
@@ -136,5 +138,5 @@ export function logDetailBlocks(log) {
   const changes = Array.isArray(parsed?.changes) ? parsed.changes : []
   if (changes.length) return { changes, showReason: false, raw: '' }
   const raw = parsed ? JSON.stringify(parsed, null, 2) : String(log?.details || '')
-  return { changes, showReason: Boolean(log?.reason_code || raw), raw }
+  return { changes, showReason: Boolean(log?.reason_code), raw }
 }

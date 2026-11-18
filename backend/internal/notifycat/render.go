@@ -121,9 +121,30 @@ func renderValues(lang string, event Event, params map[string]string) map[string
 			out[k] = renderDateList(lang, p, v, params)
 			continue
 		}
+		if p, ok := spec.param(k); ok && p.Levels != "" {
+			out[k] = renderLeveledList(lang, v, params[p.Levels])
+			continue
+		}
 		out[k] = slackEscape(SanitizeOpaque(v))
 	}
 	return out
+}
+
+// renderLeveledList 名稱清單逐項附上層級短語（ParamSpec.Levels）。名稱與層級項數不同、或層級為空時
+// 退回原樣只列名稱：寧可少一個註記，不可把層級配錯角色。每一段都各自淨化。
+func renderLeveledList(lang, names, levels string) string {
+	ns := strings.Split(names, ",")
+	ls := strings.Split(levels, ",")
+	if levels == "" || len(ns) != len(ls) {
+		return slackEscape(SanitizeOpaque(names))
+	}
+	item := Phrase(lang, LexiconAPITokenLevel, APITokenLevelKeyItem)
+	parts := make([]string, 0, len(ns))
+	for i, n := range ns {
+		label := Phrase(lang, LexiconAPITokenLevel, ls[i])
+		parts = append(parts, strings.NewReplacer("{role}", SanitizeOpaque(n), "{level}", SanitizeOpaque(label)).Replace(item))
+	}
+	return slackEscape(SanitizeOpaque(strings.Join(parts, Phrase(lang, LexiconAPITokenLevel, APITokenLevelKeySep))))
 }
 
 // RenderDegraded 目錄無鍵／參數不合契約時的 generic 文案。

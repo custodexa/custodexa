@@ -31000,6 +31000,245 @@
       },
       "require_all_keys": true,
       "reason": "The member replacement response carries the member ids and member sources of the replaced set as the group read returns them, instead of empty member id fields; the member objects already returned are unchanged."
+    },
+    {
+      "id": "AD-51a-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/my/api-tokens"
+        ],
+        "fields": [
+          "audit"
+        ]
+      },
+      "expect": {
+        "audit_edit": {
+          "removed_rows": [
+            {
+              "count": 1,
+              "match": {
+                "action": "create",
+                "resource": "api_token",
+                "details.token_id": 1
+              }
+            }
+          ],
+          "added_rows": [
+            {
+              "count": 1,
+              "row": {
+                "action": "create",
+                "asset_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "deleted_at": null,
+                "details": {
+                  "access": "read_write",
+                  "correlation_id": "<nonce>",
+                  "expires_at": null,
+                  "granted_roles": [
+                    {
+                      "builtin_key": "super_admin",
+                      "level": "read_write",
+                      "name": "admin",
+                      "role_id": 1
+                    }
+                  ],
+                  "never_expires": true,
+                  "owner_user_id": "<subject.id>",
+                  "owner_username": "<subject.username>",
+                  "privileged": true,
+                  "token_id": 1,
+                  "token_name": "baseline-api-token"
+                },
+                "error_msg": "",
+                "idempotency_uuid": null,
+                "integrity_hmac": "<digest>",
+                "key_version": 1,
+                "method": "POST",
+                "path": "/api/v1/my/api-tokens",
+                "request_body": "",
+                "request_id": "<nonce>",
+                "resource": "api_token",
+                "resource_id": 1,
+                "status": "success",
+                "status_code": 0,
+                "updated_at": "<time>",
+                "user_id": "<subject.id>",
+                "username": "<subject.username>"
+              }
+            }
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The audit record of creating an API token states the access of the token and the level of each granted role; every other column and detail keeps its value."
+    },
+    {
+      "id": "AD-51a-02",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01"
+        ],
+        "keys": [
+          "POST /api/v1/my/api-tokens"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "access": "read_write",
+          "created_at": "<time>",
+          "created_before_levels": false,
+          "expires_at": null,
+          "granted_roles": [
+            {
+              "builtin_key": "super_admin",
+              "effective": true,
+              "level": "read_write",
+              "name": "admin",
+              "role_id": 1,
+              "scope": {
+                "kind": "global"
+              }
+            }
+          ],
+          "id": 1,
+          "last_used_at": null,
+          "last_used_ip": "",
+          "name": "baseline-api-token",
+          "privileged": true,
+          "revoke_note": "",
+          "revoked_at": null,
+          "revoked_by": null,
+          "status": "active",
+          "token": "<token>",
+          "user_id": 2
+        },
+        "body_added_keys": [
+          "access",
+          "created_before_levels"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The API token create response states the access of the token, whether it was created before role levels were recorded, and the level of each granted role; every other field keeps its value."
+    },
+    {
+      "id": "AD-51a-03",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S06"
+        ],
+        "keys": [
+          "POST /api/v1/my/api-tokens"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "access": "read_write",
+          "created_at": "<time>",
+          "created_before_levels": false,
+          "expires_at": null,
+          "granted_roles": [
+            {
+              "builtin_key": "super_admin",
+              "effective": true,
+              "level": "read_write",
+              "name": "admin",
+              "role_id": 1,
+              "scope": {
+                "kind": "global"
+              }
+            }
+          ],
+          "id": 1,
+          "last_used_at": null,
+          "last_used_ip": "",
+          "name": "baseline-api-token",
+          "privileged": true,
+          "revoke_note": "",
+          "revoked_at": null,
+          "revoked_by": null,
+          "status": "active",
+          "token": "<token>",
+          "user_id": 7
+        },
+        "body_added_keys": [
+          "access",
+          "created_before_levels"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The API token create response states the access of the token, whether it was created before role levels were recorded, and the level of each granted role; every other field keeps its value."
+    },
+    {
+      "id": "AD-51a-04",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/my/api-tokens"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "access": "read_write",
+          "created_at": "<time>",
+          "created_before_levels": false,
+          "expires_at": null,
+          "granted_roles": [
+            {
+              "builtin_key": "super_admin",
+              "effective": true,
+              "level": "read_write",
+              "name": "admin",
+              "role_id": 1,
+              "scope": {
+                "kind": "global"
+              }
+            }
+          ],
+          "id": 1,
+          "last_used_at": null,
+          "last_used_ip": "",
+          "name": "baseline-api-token",
+          "privileged": true,
+          "revoke_note": "",
+          "revoked_at": null,
+          "revoked_by": null,
+          "status": "active",
+          "token": "<token>",
+          "user_id": 13
+        },
+        "body_added_keys": [
+          "access",
+          "created_before_levels"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The API token create response states the access of the token, whether it was created before role levels were recorded, and the level of each granted role; every other field keeps its value."
     }
   ]
 }

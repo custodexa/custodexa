@@ -266,8 +266,9 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 	if req.Password == "" && req.PrivateKey == "" {
 		return nil, ErrCredentialSecretRequired
 	}
-	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查
-	if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查（並取得其公鑰）
+	privateKeyPublic, err := ValidatePrivateKey(req.PrivateKey)
+	if err != nil {
 		return nil, err
 	}
 
@@ -319,7 +320,8 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 			return credentialUniqueViolation(err, "建立憑證失敗")
 		}
 		version, verr := appendCredentialVersion(tx, cred.ID, secretType,
-			passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual)
+			passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual,
+			withVersionPublicKey(privateKeyPublic))
 		if verr != nil {
 			return verr
 		}
@@ -341,7 +343,7 @@ func (s *CredentialService) Create(ctx context.Context, req *CreateCredentialReq
 	if txErr != nil {
 		return nil, txErr
 	}
-	return s.credentialDTO(database.DB, cred)
+	return s.writeResponseDTO(ctx, cred)
 }
 
 // Update 更新憑證的名稱、備註與（僅專用憑證的）登入帳號名。
@@ -491,7 +493,7 @@ func (s *CredentialService) Update(ctx context.Context, id uint, req *UpdateCred
 	if err != nil {
 		return nil, err
 	}
-	return s.credentialDTO(database.DB, result)
+	return s.writeResponseDTO(ctx, result)
 }
 
 // renameDedicatedCredential 專用憑證改名：於其唯一掛載所屬的資產內重驗不撞名，
@@ -611,6 +613,8 @@ func (s *CredentialService) List(ctx context.Context, filter CredentialFilter) (
 		if err != nil {
 			return nil, err
 		}
+		// 列表只含呼叫者看得到的憑證（全域檢視或已套檢視集合），指紋直接帶
+		dto.discloseFingerprint()
 		out = append(out, dto)
 		ids = append(ids, creds[i].ID)
 	}
@@ -643,6 +647,8 @@ func (s *CredentialService) Get(ctx context.Context, id uint) (*CredentialDetail
 	if err != nil {
 		return nil, err
 	}
+	// 詳情已通過檢視判定（本方法開頭），指紋直接帶
+	base.discloseFingerprint()
 	bindings, err := credentialBindingDTOs(database.DB, cred)
 	if err != nil {
 		return nil, err
@@ -671,6 +677,16 @@ func (s *CredentialService) Get(ctx context.Context, id uint) (*CredentialDetail
 		return nil, err
 	}
 	return &CredentialDetailDTO{CredentialDTO: *base, Bindings: bindings, UnsettledRotationID: unsettled}, nil
+}
+
+// writeResponseDTO 寫入回應的憑證投影：公鑰指紋另經檢視判定才帶（見 discloseFingerprintIfViewable）。
+func (s *CredentialService) writeResponseDTO(ctx context.Context, cred *model.Credential) (*CredentialDTO, error) {
+	dto, err := s.credentialDTO(database.DB, cred)
+	if err != nil {
+		return nil, err
+	}
+	s.discloseFingerprintIfViewable(ctx, dto)
+	return dto, nil
 }
 
 // ConvertScope 顯式的範圍轉換。
@@ -795,7 +811,7 @@ func (s *CredentialService) ConvertScope(ctx context.Context, id uint, req *Conv
 	if err != nil {
 		return nil, err
 	}
-	return s.credentialDTO(database.DB, result)
+	return s.writeResponseDTO(ctx, result)
 }
 
 // SetCredentialSecretRequest 對既有憑證直接寫入新密文（補登遠端現況用）。
@@ -818,8 +834,9 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 	if req == nil || (req.Password == "" && req.PrivateKey == "") {
 		return nil, ErrCredentialSecretRequired
 	}
-	// 只驗本次帶來的私鑰；私鑰為空＝自現行版本原樣帶過，不重驗庫內既有的
-	if err := ValidatePrivateKey(req.PrivateKey); err != nil {
+	// 只驗本次帶來的私鑰；私鑰為空＝自現行版本原樣帶過（公鑰跟著同一版搬），不重驗庫內既有的
+	privateKeyPublic, err := ValidatePrivateKey(req.PrivateKey)
+	if err != nil {
 		return nil, err
 	}
 	// 能力判定先於任何查表（同修改）：交易內以全部影響集合再判一次照舊
@@ -849,7 +866,7 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 		return nil, cerr
 	}
 	var result *model.Credential
-	err := database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
+	err = database.DB.WithContext(model.AuditAttributionContext(ctx)).Transaction(func(tx *gorm.DB) error {
 		// 第一個動作取拓撲序列化鎖，其後才取憑證列鎖：與改歸、節點刪除承接同一序列化點，
 		// 範圍外影響集合的重算不會與歸屬或拓撲變更交錯
 		if err := s.assets.lockTopologyTx(tx); err != nil {
@@ -873,17 +890,21 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 		if err != nil {
 			return err
 		}
-		pwEnc, keyEnc := passwordEnc, privateKeyEnc
+		next := versionSecret{PasswordEnc: passwordEnc, PrivateKeyEnc: privateKeyEnc}
+		if privateKeyEnc != "" {
+			next.PublicKey = privateKeyPublic
+		}
 		if cred.CurrentVersionID != nil {
 			var cerr error
-			pwEnc, keyEnc, cerr = carryOverVersionCiphertext(tx, cred.ID, *cred.CurrentVersionID, pwEnc, keyEnc)
+			next, cerr = carryOverVersionSecret(tx, cred.ID, *cred.CurrentVersionID, next)
 			if cerr != nil {
 				return cerr
 			}
 		}
-		secretType := credentialSecretTypeFor(pwEnc != "", keyEnc != "")
+		secretType := credentialSecretTypeFor(next.PasswordEnc != "", next.PrivateKeyEnc != "")
 		version, verr := appendCredentialVersion(tx, cred.ID, secretType,
-			pwEnc, keyEnc, model.CredentialVersionReasonManual)
+			next.PasswordEnc, next.PrivateKeyEnc, model.CredentialVersionReasonManual,
+			withVersionPublicKey(next.PublicKey))
 		if verr != nil {
 			return verr
 		}
@@ -929,7 +950,7 @@ func (s *CredentialService) SetSecret(ctx context.Context, id uint, req *SetCred
 	if err != nil {
 		return nil, err
 	}
-	return s.credentialDTO(database.DB, result)
+	return s.writeResponseDTO(ctx, result)
 }
 
 // Delete 軟刪憑證（引用檢查）。

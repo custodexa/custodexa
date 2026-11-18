@@ -293,15 +293,22 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 		},
 		{
 			// 建立的個人 API token 授權角色含超級管理者或系統安全管理員；目標為建立者本人。
-			// 參數不含明文或雜湊；角色以內建鍵或自訂角色名稱、半形逗號分隔；expiry 為 at（另帶到期時刻）或 never
+			// 參數不含明文或雜湊；角色以內建鍵或自訂角色名稱、半形逗號分隔，另以 *_role_levels 帶同序的層級、
+			// access 帶彙總（高權限角色設為唯讀時仍發，分級不變）；expiry 為 at（另帶到期時刻）或 never
 			Type:            port.SystemAlertPrivilegedAPITokenCreated,
 			Group:           SystemAlertGroupIdentityPrivilege,
 			DefaultSeverity: model.AlertSeverityHigh,
 			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetUser},
 			Params: []SystemAlertParamSpec{
 				{Name: "privileged_roles", Kind: SystemAlertParamOpaque, Required: true},
+				// 與 privileged_roles 同序的層級（read｜read_write，半形逗號分隔）
+				{Name: "privileged_role_levels", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "token_name", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "granted_roles", Kind: SystemAlertParamOpaque, Required: true},
+				// 與 granted_roles 同序的層級（read｜read_write，半形逗號分隔）；本欄出現前的告警沒有這個鍵
+				{Name: "granted_role_levels", Kind: SystemAlertParamOpaque, Required: true},
+				// 授權角色層級的彙總，依建立時的選擇
+				{Name: "access", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"read", "read_write", "mixed"}},
 				{Name: "expiry", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"at", "never"}},
 				{Name: "expires_at", Kind: SystemAlertParamOpaque, Required: false},
 			},

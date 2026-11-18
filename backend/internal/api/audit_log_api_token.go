@@ -24,8 +24,10 @@ type apiTokenAuditDTO struct {
 	ID           uint                         `json:"id"`
 	Name         string                       `json:"name"`
 	GrantedRoles []identity.APITokenAuditRole `json:"granted_roles"`
-	ExpiresAt    *time.Time                   `json:"expires_at"`
-	OwnerDeleted bool                         `json:"owner_deleted"`
+	// Access 授權角色層級的彙總；token 列已不存在時為 null（無從得知）
+	Access       *string    `json:"access"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	OwnerDeleted bool       `json:"owner_deleted"`
 }
 
 // auditLogDetailResponse 稽核詳情：列本身加上經由的 token（非 token 請求的列不出現 api_token 鍵）。
@@ -51,6 +53,8 @@ func (h *AuditLogHandler) apiTokenRefOf(l *model.AuditLog) (*apiTokenAuditDTO, e
 	if ref.GrantedRoles != nil {
 		dto.GrantedRoles = ref.GrantedRoles
 	}
+	access := ref.Access
+	dto.Access = &access
 	dto.ExpiresAt, dto.OwnerDeleted = ref.ExpiresAt, ref.OwnerDeleted
 	return dto, nil
 }

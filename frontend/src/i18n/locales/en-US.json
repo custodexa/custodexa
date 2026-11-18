@@ -1106,6 +1106,8 @@
       "audit_export_requester_revoked": "Export job #{job_id} cancelled: the requester no longer has access",
       "authz_capability_denied": "Operation denied: insufficient permission",
       "authz_scope_denied": "Operation denied: the target is outside the allowed management scope",
+      "authz_api_token_forbidden_route": "API tokens cannot use this function",
+      "authz_api_token_read_only": "This API token is read-only and cannot perform actions that change data",
       "auto_disabled_inactive_account": "Account disabled automatically after {days} days without sign-in",
       "auto_disabled_inactive_account_nodays": "Account disabled automatically after a period without sign-in",
       "credential_abandon": "In-progress credential rotation abandoned",
@@ -1305,7 +1307,9 @@
       "rebindSubmit": "Change credential",
       "rebindDone": "Credential changed",
       "outOfScopeCredential": "Shared credential out of scope",
-      "outOfScopeNote": "The shared credential on this host is outside your scope: you cannot correct its stored value or leave shared, but you can still change the credential or remove the account."
+      "outOfScopeNote": "The shared credential on this host is outside your scope: you cannot correct its stored value or leave shared, but you can still change the credential or remove the account.",
+      "fingerprintPrefix": "Fingerprint",
+      "outOfScopeNoteKey": "The shared credential on this host is outside your scope: its public key fingerprint isn't available, and you cannot correct its stored value or leave shared, but you can still change the credential or remove the account."
     },
     "headerDescAdmin": "Manage remote hosts, databases, and K8s assets (SSH, RDP, VNC, MySQL, PostgreSQL, Redis, K8s)",
     "headerDescUser": "Assets you can use or manage. Assets you can connect to show Connect; assets that need approval accept access requests",
@@ -2769,8 +2773,15 @@
     },
     "expand": {
       "apiTokens": "API token",
-      "apiTokensValue": "{n} usable · last used {time}",
-      "apiTokensValueNeverUsed": "{n} usable · never used",
+      "apiTokensValue": "{n} usable ({breakdown}) · last used {time}",
+      "apiTokensValueNeverUsed": "{n} usable ({breakdown}) · never used",
+      "apiTokensValuePlain": "{n} usable · last used {time}",
+      "apiTokensValuePlainNeverUsed": "{n} usable · never used",
+      "breakdownRead": "Read only {n}",
+      "breakdownMixed": "Partly read and write {n}",
+      "breakdownReadWrite": "Read and write {n}",
+      "breakdownAllRead": "all read only",
+      "breakdownAllWrite": "all read and write",
       "apiTokensNone": "None",
       "apiTokensLink": "View and revoke"
     },
@@ -2946,6 +2957,10 @@
         "reloaded": "The list was reloaded; counts and actions are up to date.",
         "ack": "Got it"
       },
+      "versionConflict": {
+        "body": "Someone changed this role before you confirmed, so it was not deleted.",
+        "next": "The list was reloaded. Review the latest version before deciding whether to delete it."
+      },
       "scopeAtAssignment": "Pick nodes when assigning"
     },
     "create": {
@@ -3039,7 +3054,7 @@
         "body": "Your changes were not sent and did not overwrite theirs; they are still on this screen. Reloading replaces them with the other person's version, so note down what you want to keep first.",
         "reload": "Reload latest version",
         "stay": "Stay here",
-        "draftKept": "(Below are still your unsent changes)"
+        "draftKept": "Below are still your unsent changes. Note down what you want to keep, then select \"Reload latest version\"."
       },
       "effectiveNow": "Takes effect right after saving and is recorded in the audit log.",
       "entry": {
@@ -4311,6 +4326,15 @@
     "createdAt": "Created {date}",
     "detailUsername": "Account name",
     "detailSecretType": "Type",
+    "detailFingerprint": "Public key fingerprint",
+    "fingerprintHelpTitle": "What is a public key fingerprint?",
+    "fingerprintHelp": "A public key fingerprint is an identifier calculated from the public key that matches this private key. Use it to check which private key the platform holds. It is safe to share and cannot be used to recover the private key.",
+    "fingerprintHelpLocal": "On your own computer, run ssh-keygen -lf with the key file to get a fingerprint in the same format for comparison.",
+    "fingerprintHelpVersion": "This is the current version registered on the platform. To see which key a specific asset actually uses, check the fingerprint in that asset's account list.",
+    "fingerprintUnrecorded": "Not recorded",
+    "fingerprintWhy": "The platform has no fingerprint on record for this private key, usually because it was set before the system upgrade. Connections are not affected.",
+    "fingerprintHowTo": "Re-enter the same private key with \"{entry}\" and it will appear.",
+    "fingerprintHowToDedicated": "Re-enter the same private key with \"Edit credential\" in the asset's account list and it will appear.",
     "detailProtocol": "Protocol",
     "detailVersion": "Current version",
     "detailRotation": "Rotation",
@@ -4777,7 +4801,8 @@
     "INTERNAL_SYSTEM_ALERT_RAISE": "System alert handling failed; the change was cancelled",
     "NOTFOUND_SYSTEM_ALERT_TYPE": "System alert type not found",
     "RESOURCE_KEYSTROKE_NOT_VIEWABLE": "This connection has no keystroke record content to view",
-    "ROLE_DEFINITION_CONFLICT": "The role was changed by someone else, or the name is already taken. Reload and try again",
+    "ROLE_DEFINITION_CONFLICT": "A role with this name already exists. Choose another name.",
+    "ROLE_DEFINITION_VERSION_CONFLICT": "The role was changed by someone else. Reload and try again",
     "ROLE_DEFINITION_IN_USE": "This role is still in use. Remove its assignments or mappings before deleting it",
     "ROLE_DEFINITION_LOCKED": "This role is a built-in template and cannot be modified, deleted or copied",
     "AUTH_PROTECTED_ROLE_ASSIGNMENT": "This assignment involves a protected role. You cannot perform this operation",
@@ -5640,6 +5665,7 @@
     "CONFLICT_API_TOKEN_NAME": "You already have an API token with this name. Choose another name.",
     "AUTH_API_TOKEN_FORBIDDEN_ROUTE": "API tokens cannot use this function",
     "AUTH_API_TOKEN_SELF_CHANGE_FORBIDDEN": "An API token cannot change this setting of the account it belongs to",
+    "AUTH_API_TOKEN_READ_ONLY": "This API token is read-only and cannot perform actions that change data",
     "NOTFOUND_API_TOKEN": "API token does not exist"
   },
   "warnings": {
@@ -8977,12 +9003,13 @@
       "targetNamed": "{name} ({kind} #{id})",
       "viewPermissionOverview": "View {name}'s permission overview",
       "viewHostInventory": "View this host's account inventory",
-      "createdSummary": "{actor} created an API token whose roles include {roles}",
+      "createdSummary": "{actor} created an API token whose roles include {roles}, with {access} permissions",
       "createdTitle": "What was created",
       "createdCreator": "Created by (owner)",
       "createdCreatorValue": "{name} (user #{id})",
       "createdPrivRoles": "High-privilege roles granted",
       "createdTokenName": "API token name",
+      "createdAccess": "Permissions",
       "createdGrantedRoles": "Granted roles",
       "createdExpiry": "Expiry",
       "createdNeverExpires": "Never expires",
@@ -9176,14 +9203,17 @@
       "pendingRemove": "To be removed",
       "undoRemove": "Undo removal",
       "apiTokenLoseTitle": "Not saved yet: {user}'s API tokens will also lose \"{role}\"",
-      "apiTokenLoseBody": "{n} API token(s) are granted this role: {names}. After saving, only \"{remaining}\" remains and they still work. None is granted only \"{role}\", so no API token will be suspended. If the role is assigned again later, they get \"{role}\" back automatically.",
+      "apiTokenLoseBody": "{n} API token(s) are granted this role (the mark after each name is this role's permission on that token): {names}. After saving, only \"{remaining}\" remains and they still work. None is granted only \"{role}\", so no API token will be suspended. If the role is assigned again later, they get it back automatically with the permission they had before.",
       "apiTokenLoseBodyMixed": "{n} API token(s) are granted this role: {names}. After saving, {m} of them will be suspended (they recover when the role is assigned again); the rest still work.",
       "apiTokenAllLostTitle": "Not saved yet: {user} will have no management permissions, and all {n} of their API tokens will be suspended",
       "apiTokenAllLostBody": "Every role granted to these {n} tokens will be removed. After saving their status becomes \"Suspended (roles removed)\" and every call is rejected; if the roles are assigned again later, they recover automatically. To stop them permanently, revoke them on the \"API token\" tab. {user} also will not be able to create new ones.",
       "apiTokenNoGrowTitle": "{user}'s existing API tokens will not get \"{role}\" automatically",
       "apiTokenNoGrowBody": "Each API token can only use the roles selected when it was created; when the owner gains a new role, existing tokens do not get it. To use the new role, {user} has to create another token; creating an API token granted \"Administrator\" raises a system alert.",
       "apiTokenRegainTitle": "Not saved yet: {user}'s API tokens will get \"{role}\" back",
-      "apiTokenRegainBody": "{n} API token(s) are granted this role but it is not in effect now: {names}. After saving they get \"{role}\" back immediately, and tools using them can again do what this role allows. To keep any of them from recovering, revoke it on the \"API token\" tab first.",
+      "apiTokenRegainBody": "{n} API token(s) are granted this role but it is not in effect now. They get it back with the permission chosen when they were created.",
+      "apiTokenRegainWriteLine": "Can change data (Read and write): {names}.",
+      "apiTokenRegainReadLine": "Can only read (Read only): {names}.",
+      "apiTokenRegainTail": "This takes effect as soon as you save, and tools using them can again do what this role allows. To keep any of them from recovering, revoke it on the \"API token\" tab first.",
       "apiTokenRegainActive": " {m} of them are suspended now and will work again after saving: {names}.",
       "apiTokenRegainUnknownTitle": "Not saved yet: cannot confirm whether {user}'s existing API tokens will get \"{role}\" back",
       "apiTokenRegainUnknownBody": "An API token gets a granted role back automatically when the role is assigned again. {user}'s API token list could not be read, so this cannot be checked now; after saving, check the \"API token\" tab."
@@ -9201,20 +9231,22 @@
       "effectiveNow": "Takes effect immediately after saving and is recorded in the operation log.",
       "unavailable": "Preview is temporarily unavailable",
       "apiToken": "API token",
-      "apiTokenLose": "{n} will lose this role, {m} suspended",
+      "apiTokenLose": "{n} will lose this role ({breakdown}), {m} suspended",
       "apiTokenAllLost": "{n} will be suspended (they recover when the roles are assigned again)",
       "apiTokenUnchanged": "Unchanged (none of the {n} existing tokens is granted this role)",
       "apiTokenFirst": "None yet. After saving, {user} can create one on their profile page",
-      "apiTokenRegain": "{n} will get this role back",
-      "apiTokenRegainActive": "{n} will get this role back, {m} of them will work again",
+      "apiTokenRegain": "{n} will get this role back ({breakdown})",
+      "apiTokenRegainActive": "{n} will get this role back ({breakdown}), {m} of them will work again",
+      "apiTokenLevelCountWrite": "{n} read and write",
+      "apiTokenLevelCountRead": "{n} read only",
       "apiTokenCheckAfterSave": "Cannot be confirmed in advance; check the \"API token\" tab after saving",
       "apiTokenPartsSeparator": "; ",
       "viewApiTokens": "View API tokens"
     },
     "loadFailed": "Could not load this user",
     "apiTokens": {
-      "desc": "These API tokens were created by {user}. Each can only do what its \"Granted roles\" column lists (never more than {user}'s current roles), and only through the management and settings API. Only {user} can create them; you can revoke them, and tools using a revoked token immediately lose access.",
-      "descProtected": "These API tokens were created by {user}. Each can only do what its \"Granted roles\" column lists, and only through the management and settings API. Only {user} can create them.",
+      "desc": "These API tokens were created by {user}. Each can only do what its \"Granted roles\" column lists (never more than {user}'s current roles), and only through the management and settings API; roles set to Read only can read but not change data. Only {user} can create them; you can revoke them, and tools using a revoked token immediately lose access.",
+      "descProtected": "These API tokens were created by {user}. Each can only do what its \"Granted roles\" column lists, and only through the management and settings API; roles set to Read only can read but not change data. Only {user} can create them.",
       "protectedTitle": "Only a super administrator can revoke {user}'s API tokens",
       "protectedBody": "{user} holds the super administrator role. Revoking their API tokens follows the same rule as disabling or deleting a protected account. If you need to stop them urgently, contact another super administrator.",
       "protectedBodySecurity": "{user} holds the system security administrator role. Revoking their API tokens follows the same rule as disabling or deleting a protected account. If you need to stop them urgently, contact a super administrator.",
@@ -9517,14 +9549,14 @@
     "justSet": "Just set",
     "justConverted": "Just converted",
     "immediateNote": "Actions in this section take effect immediately and are not part of Save below.",
-    "outOfScopeNote": "This shared credential is outside your scope, so its key fingerprint and public key aren't available. You can still replace or clear it.",
+    "outOfScopeNote": "This shared credential is outside your scope, so its public key fingerprint and public key aren't available. You can still replace or clear it.",
     "credentialLink": "Change password or schedule in Credentials",
     "convertedRotateHint": "People may already know the {account} password. We recommend changing it in Credentials.",
     "fields": {
       "account": "Account name",
       "secretSource": "Secret source",
       "secretType": "Type",
-      "fingerprint": "Key fingerprint"
+      "fingerprint": "Public key fingerprint"
     },
     "sourceLabel": {
       "generate": "Platform-generated key",
@@ -10291,7 +10323,7 @@
   },
   "apiTokens": {
     "title": "API token",
-    "desc": "Lets tools such as Terraform call the management API on your behalf. When you create one, you choose which of your own management roles it gets, so it can never do more than you can. It is limited to management and settings: it cannot open connections, view recordings, retrieve sensitive content, unseal, or operate keys. The token value is shown only once, when it is created.",
+    "desc": "Lets tools such as Terraform call the management API on your behalf. When you create one, you choose which of your own management roles it gets and set each to Read only or Read and write, so it can never do more than you can. It is limited to management and settings: it cannot open connections, view recordings, retrieve sensitive content, unseal, or operate keys. The token value is shown only once, when it is created.",
     "create": "Create API token",
     "summary": {
       "active": "Usable",
@@ -10301,6 +10333,7 @@
     },
     "col": {
       "name": "Name",
+      "access": "Permissions",
       "grantedRoles": "Granted roles",
       "status": "Status",
       "expiresAt": "Expires",
@@ -10316,15 +10349,34 @@
     "justCreated": "Just created",
     "inactiveSection": "API tokens no longer valid ({n})",
     "inactiveHint": "Expired, revoked, or invalidated by a restore. Kept for the record and cannot be used again.",
-    "editHint": "The name, granted roles, and expiry cannot be changed after creation. To change them, create a new token, switch your tool to it, confirm it works, then revoke the old one.",
+    "editHint": "The name, granted roles, permissions, and expiry cannot be changed after creation. To change them, create a new token, switch your tool to it, confirm it works, then revoke the old one.",
     "roleWithScope": "{role} ({scope})",
+    "level": {
+      "read": "Read only",
+      "read_write": "Read and write"
+    },
+    "access": {
+      "read": "Read only",
+      "read_write": "Read and write",
+      "mixed": "Partly read and write",
+      "mixedCount": "{n} role(s) with read and write",
+      "legacy": "Created before upgrade"
+    },
+    "explain": {
+      "title": "Read only and Read and write",
+      "read": "Can view the data this role can see, and use features such as previews and estimates that do not save any change. Cannot create, change, or delete anything, or run any action that changes data.",
+      "readWrite": "Everything Read only allows, plus creating, changing, and deleting. It is still limited to what the role itself can do.",
+      "twoRolesLabel": "Two roles",
+      "twoRoles": "Some actions need permissions from two roles at once. Both roles must be set to Read and write for those actions.",
+      "foot": "If a read-only role is used for an action that changes data, the platform rejects the call and no data changes."
+    },
     "empty": {
       "title": "You have no API tokens yet",
       "desc": "Create one and give it to a tool such as Terraform so it can call the management API on your behalf."
     },
     "howToChange": {
-      "title": "Want to change the roles or expiry?",
-      "body": "They cannot be changed after creation. Use \"Create API token\" at the top right of this card, choose the new roles and expiry, switch your tool to the new token and confirm it works, then come back and revoke this one."
+      "title": "Want to change the roles, permissions, or expiry?",
+      "body": "They cannot be changed after creation. Use \"Create API token\" at the top right of this card, choose the new roles, permissions, and expiry, switch your tool to the new token and confirm it works, then come back and revoke this one."
     },
     "revokeAction": "Revoke",
     "status": {
@@ -10343,13 +10395,16 @@
       "name": "Name",
       "namePlaceholder": "e.g. terraform-prod-apply",
       "nameHint": "Name the tool and environment that will use it, e.g. terraform-prod-apply. The audit log records which token each call used.",
-      "roles": "Granted roles",
+      "roles": "Granted roles and permissions",
       "rolesAll": "All ({n} management roles)",
       "rolesSelected": "{n} selected",
+      "setAll": "Set all selected roles to:",
       "scope": "Scope: {scope}",
       "scopeAll": "Entire system",
       "rolesHint": "You can only choose from your own management roles. The scope follows your roles and never exceeds yours.",
       "rolesHintNonGrantable": "Your other role \"{roles}\" is not a management role and cannot be granted to an API token.",
+      "levelHint": "Choose Read only or Read and write for each role. The default is Read only.",
+      "levelHelp": "What is the difference between Read only and Read and write?",
       "singleRole": "This is your only management role, so it will be granted",
       "expiry": "Expiry",
       "expiryOption": {
@@ -10370,8 +10425,12 @@
       "datePlaceholder": "Pick a date",
       "neverHint": "This API token never stops working on its own. Revoke it yourself when it is no longer needed.",
       "summaryTitle": "What this API token can do",
-      "summaryRoles": "You selected: {roles}.",
-      "summaryRolesSuper": "You selected: Administrator (entire system), which means every management and settings action a super administrator can take.",
+      "summaryWriteLabel": "Can read and change:",
+      "summaryReadLabel": "Can only read:",
+      "summaryRoleList": "{roles}.",
+      "summaryAllReadTail": "It will not create, change, or delete any data.",
+      "summarySuperRead": "Can only read: Administrator (entire system), which means all management and settings data a super administrator can see. It will not create, change, or delete any data.",
+      "summarySuperWrite": "Can read and change: Administrator (entire system), which means every management and settings action a super administrator can take.",
       "summarySync": "If one of your roles is later removed, the token loses that role too, and gets it back when the role is assigned to you again.",
       "summaryNone": "No role selected yet, so this API token cannot do anything.",
       "summaryScope": "Management and settings API only: it cannot open connections, view recordings, retrieve sensitive content, unseal, or operate keys.",
@@ -10388,12 +10447,16 @@
         "server": "The API token was not created. What you entered is still here, so you can try again."
       },
       "privSuper": {
-        "title": "This API token is granted the super administrator role",
-        "body": "It can do every management and settings action you can. Because its roles include super administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log."
+        "body": "It can do every management and settings action you can. Because its roles include super administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log.",
+        "titleRead": "This API token is granted the super administrator role (read only)",
+        "bodyRead": "Set to read only, it cannot change any data, but it can read all management and settings data you can see. Because its roles include super administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log.",
+        "titleWrite": "This API token is granted the super administrator role with read and write"
       },
       "privSec": {
-        "title": "This API token is granted the system security administrator role",
-        "body": "It can change system-wide security policies, notifications, and alert settings. Because its roles include system security administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log."
+        "body": "It can change system-wide security policies, notifications, and alert settings. Because its roles include system security administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log.",
+        "titleRead": "This API token is granted the system security administrator role (read only)",
+        "bodyRead": "Set to read only, it cannot change any data, but it can read system-wide security policies, notifications, and alert settings. Because its roles include system security administrator, creating it raises the system alert \"High-privilege API token created\", sent to every enabled notification channel and recorded in the audit log.",
+        "titleWrite": "This API token is granted the system security administrator role with read and write"
       }
     },
     "reveal": {
@@ -10401,8 +10464,14 @@
       "onceTitle": "This API token is shown only this once",
       "onceBody": "Copy it now and store it in the tool that will use it (for example, a CI secret variable). It cannot be retrieved again after you close this; if you did not save it, revoke it and create a new one. Do not paste it into chats or documents: anyone who has it can perform management actions as you.",
       "testTitle": "Test this API token",
-      "testBody": "To check that it works, paste the command below into a terminal. The response lists the account it represents, its granted roles, and its expiry.",
+      "testBody": "To check that it works, paste the command below into a terminal. The response lists the account it represents, its granted roles with each role's permission, and its expiry.",
       "represents": "Acts as",
+      "access": "Permissions",
+      "accessHint": {
+        "read": "Can only read; cannot change any data",
+        "read_write": "Every granted role can read and change",
+        "mixed": "Actions that change data can only use roles set to Read and write"
+      },
       "self": "{user} (you)",
       "neverExpires": "Never stops working on its own; revoke it yourself when no longer needed",
       "close": "I have saved it, close",

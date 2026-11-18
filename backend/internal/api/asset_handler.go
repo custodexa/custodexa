@@ -380,9 +380,8 @@ func (h *AssetHandler) List(c *gin.Context) {
 	if p, err := strconv.Atoi(c.Query("page")); err == nil && p > 0 {
 		page = p
 	}
-	if ps, err := strconv.Atoi(c.Query("page_size")); err == nil && ps > 0 {
-		pageSize = ps
-	}
+	// 每頁筆數有上限：三條查詢路徑（範圍化、授權集合、全量）都用這個值，回應回報實際套用的值
+	pageSize = parseListPageSize(c.Query("page_size"), pageSize)
 	// 名稱精確查找：三條路徑都在可見範圍收斂之後、計數與分頁之前套用
 	exactName, ok := exactNameQuery(c, "name")
 	if !ok {

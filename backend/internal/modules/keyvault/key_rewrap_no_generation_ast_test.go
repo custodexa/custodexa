@@ -633,6 +633,8 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 			"（自 change_secret_runner.go 遷入本檔並改為策略驅動）"},
 	{File: "internal/modules/asset/change_secret_password_policy.go", Func: "pickChar",
 		Reason: "上者的字元取樣輔助（自字集均勻取一字元），非金鑰材料。"},
+	{File: "internal/modules/asset/private_key.go", Func: "verifyKeyPairConsistent",
+		Reason: "確認私鑰與其公鑰成對用的一次性簽章資料（32 bytes，簽完驗完即丟、不持久化），非加密材料、從不安裝為 KEK。"},
 	{File: "internal/modules/asset/ssh_authorized_keys.go", Func: "GenerateSSHKeyPair",
 		Reason: "改密期 1 為**目標主機帳號**產生的 Ed25519 登入金鑰對（產品功能本體，等同人工 ssh-keygen 的自動化）；" +
 			"私鑰經 ColumnCodec 以 KEK 包覆後落庫，本身不是 KEK 也不參與包覆任何其他金鑰。"},

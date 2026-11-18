@@ -500,14 +500,13 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	if err := GuardAgentRoles(s.db, &model.User{Kind: kind}, req.Roles); err != nil {
 		return nil, err
 	}
-	// 檢查使用者名稱是否已存在
-	var existingUser model.User
-	err := s.db.Where("username = ?", req.Username).First(&existingUser).Error
-	if err == nil {
-		return nil, ErrUsernameExists
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Printf("[UserService] Create: Check username error: %v", err)
-		return nil, fmt.Errorf("檢查使用者名稱失敗: %w", err)
+	// 檢查使用者名稱與電子郵件是否已被使用；兩個請求同時通過預查時，由寫入撞唯一索引轉成同一個衝突
+	err := s.ensureCreateIdentityFree(req.Username, req.Email)
+	if err != nil {
+		if !errors.Is(err, ErrUsernameExists) && !errors.Is(err, ErrEmailConflict) {
+			log.Printf("[UserService] Create: Check identity error: %v", err)
+		}
+		return nil, err
 	}
 
 	// 密碼政策驗證（單一 validator；新帳號無歷史，userID=0 跳過歷史比對）
@@ -584,7 +583,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
 		log.Printf("[UserService] Create: Create user error: %v", err)
-		return nil, fmt.Errorf("建立使用者失敗: %w", err)
+		return nil, userCreateError(err)
 	}
 
 	// 初始密碼寫入歷史（否則首次改密可設回原密碼）

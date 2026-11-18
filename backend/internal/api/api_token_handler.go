@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/custodexa/backend/internal/apierror"
@@ -80,19 +83,22 @@ type apiTokenRoleDTO struct {
 
 // apiTokenViewDTO 一把 token 的呈現物件。
 type apiTokenViewDTO struct {
-	ID           uint                       `json:"id"`
-	UserID       uint                       `json:"user_id"`
-	Name         string                     `json:"name"`
-	Status       identity.APITokenStatus    `json:"status"`
-	GrantedRoles []apiTokenRoleDTO          `json:"granted_roles"`
-	Privileged   bool                       `json:"privileged"`
-	CreatedAt    time.Time                  `json:"created_at"`
-	ExpiresAt    *time.Time                 `json:"expires_at"`
-	LastUsedAt   *time.Time                 `json:"last_used_at"`
-	LastUsedIP   string                     `json:"last_used_ip"`
-	RevokedAt    *time.Time                 `json:"revoked_at"`
-	RevokedBy    *identity.APITokenActorRef `json:"revoked_by"`
-	RevokeNote   string                     `json:"revoke_note"`
+	ID           uint                    `json:"id"`
+	UserID       uint                    `json:"user_id"`
+	Name         string                  `json:"name"`
+	Status       identity.APITokenStatus `json:"status"`
+	GrantedRoles []apiTokenRoleDTO       `json:"granted_roles"`
+	Access       string                  `json:"access"`
+	// CreatedBeforeLevels 層級功能生效前建立（只供呈現）
+	CreatedBeforeLevels bool                       `json:"created_before_levels"`
+	Privileged          bool                       `json:"privileged"`
+	CreatedAt           time.Time                  `json:"created_at"`
+	ExpiresAt           *time.Time                 `json:"expires_at"`
+	LastUsedAt          *time.Time                 `json:"last_used_at"`
+	LastUsedIP          string                     `json:"last_used_ip"`
+	RevokedAt           *time.Time                 `json:"revoked_at"`
+	RevokedBy           *identity.APITokenActorRef `json:"revoked_by"`
+	RevokeNote          string                     `json:"revoke_note"`
 }
 
 // apiTokenCreatedDTO 建立回應：呈現物件加一次性明文。
@@ -138,7 +144,7 @@ func (s apiTokenShaper) roles(in []identity.APITokenRoleView) []apiTokenRoleDTO 
 
 func (s apiTokenShaper) view(v identity.APITokenView) apiTokenViewDTO {
 	return apiTokenViewDTO{ID: v.ID, UserID: v.UserID, Name: v.Name, Status: v.Status, GrantedRoles: s.roles(v.GrantedRoles),
-		Privileged: v.Privileged, CreatedAt: v.CreatedAt, ExpiresAt: v.ExpiresAt, LastUsedAt: v.LastUsedAt,
+		Access: v.Access, CreatedBeforeLevels: v.CreatedBeforeLevels, Privileged: v.Privileged, CreatedAt: v.CreatedAt, ExpiresAt: v.ExpiresAt, LastUsedAt: v.LastUsedAt,
 		LastUsedIP: v.LastUsedIP, RevokedAt: v.RevokedAt, RevokedBy: v.RevokedBy, RevokeNote: v.RevokeNote}
 }
 
@@ -206,23 +212,70 @@ func (h *APITokenHandler) ListMine(c *gin.Context) {
 	})
 }
 
-// createAPITokenRequest 建立請求；expires_at 與 never_expires=true 恰擇一。
+// createAPITokenRequest 建立請求；expires_at 與 never_expires=true 恰擇一。授權角色二擇一：roles 逐角色指定層級
+// （level 必填，read 或 read_write）；role_ids 只列角色識別，等同各角色皆為讀寫。
 type createAPITokenRequest struct {
-	Name         string     `json:"name"`
-	RoleIDs      []uint     `json:"role_ids"`
-	ExpiresAt    *time.Time `json:"expires_at"`
-	NeverExpires bool       `json:"never_expires"`
+	Name         string                      `json:"name"`
+	RoleIDs      []uint                      `json:"role_ids"`
+	Roles        []createAPITokenRoleRequest `json:"roles"`
+	ExpiresAt    *time.Time                  `json:"expires_at"`
+	NeverExpires bool                        `json:"never_expires"`
+}
+
+// createAPITokenRoleRequest 一個授權角色與其層級。
+type createAPITokenRoleRequest struct {
+	RoleID uint   `json:"role_id"`
+	Level  string `json:"level"`
+}
+
+// bindCreateAPITokenRequest 解析建立請求。roles 與 role_ids 兩個鍵同時出現即拒絕（即使其中一個是空陣列或 null），
+// 以鍵是否存在判定，不以解析後的長度判定。
+func bindCreateAPITokenRequest(c *gin.Context) (createAPITokenRequest, error) {
+	var req createAPITokenRequest
+	raw, err := c.GetRawData()
+	if err != nil {
+		return req, err
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return req, err
+	}
+	// 鍵名比對不分大小寫：之後的解碼接受大小寫變體，互斥判定必須用同一個口徑
+	hasRoles, hasRoleIDs := false, false
+	for k := range keys {
+		switch strings.ToLower(k) {
+		case "roles":
+			hasRoles = true
+		case "role_ids":
+			hasRoleIDs = true
+		}
+	}
+	if hasRoles && hasRoleIDs {
+		return req, identity.ErrAPITokenRolesConflict
+	}
+	if err := json.NewDecoder(bytes.NewReader(raw)).Decode(&req); err != nil {
+		return req, err
+	}
+	return req, nil
 }
 
 // CreateMine POST /my/api-tokens：為本人建立，回一次性明文（201，不快取）。
 func (h *APITokenHandler) CreateMine(c *gin.Context) {
-	var req createAPITokenRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	req, err := bindCreateAPITokenRequest(c)
+	if err != nil {
+		if errors.Is(err, identity.ErrAPITokenRolesConflict) {
+			respondAPITokenError(c, err)
+			return
+		}
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
+	roles := make([]identity.APITokenRoleGrant, 0, len(req.Roles))
+	for _, r := range req.Roles {
+		roles = append(roles, identity.APITokenRoleGrant{RoleID: r.RoleID, Level: r.Level})
+	}
 	created, err := h.tokens.Create(operatorFromRequest(c), identity.CreateAPITokenInput{
-		Name: req.Name, RoleIDs: req.RoleIDs, ExpiresAt: req.ExpiresAt, NeverExpires: req.NeverExpires})
+		Name: req.Name, RoleIDs: req.RoleIDs, Roles: roles, ExpiresAt: req.ExpiresAt, NeverExpires: req.NeverExpires})
 	if err != nil {
 		respondAPITokenError(c, err)
 		return
@@ -385,7 +438,7 @@ func (h *APITokenHandler) Verify(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"valid":           true,
-		"token":           gin.H{"id": self.ID, "name": self.Name, "expires_at": self.ExpiresAt},
+		"token":           gin.H{"id": self.ID, "name": self.Name, "expires_at": self.ExpiresAt, "access": self.Access},
 		"user":            gin.H{"id": userID, "username": username},
 		"granted_roles":   granted,
 		"effective_roles": effective,

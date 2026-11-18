@@ -358,5 +358,11 @@
     "bind": "掛到資產",
     "rebind": "更換憑證",
     "import": "匯入資產"
+  },
+  "api_token_level": {
+    "read": "唯讀",
+    "read_write": "讀寫",
+    "item": "{role}（{level}）",
+    "sep": "、"
   }
 }

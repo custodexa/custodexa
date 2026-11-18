@@ -174,6 +174,12 @@ func reasonContains(values []string, v string) bool {
 
 var principalStateActions = []string{string(model.ActionCreate), string(model.ActionUpdate), string(model.ActionDelete)}
 
+// apiTokenDenialReasons API token 閘門拒絕的依據 → 原因碼（細節由中介層寫入：denial＝api_token、basis＝依據）
+var apiTokenDenialReasons = map[string]string{
+	"read_only":       "authz_api_token_read_only",
+	"forbidden_route": "authz_api_token_forbidden_route",
+}
+
 var auditReasonShapes = append(roleAssignmentShapes(), []auditReasonShape{
 	{Codes: reasonPrefixed("principal_state_", principalStateActions),
 		Match: func(in AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
@@ -251,6 +257,15 @@ var auditReasonShapes = append(roleAssignmentShapes(), []auditReasonShape{
 	{Codes: []string{"authz_scope_denied"},
 		Match: func(_ AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
 			return "authz_scope_denied", nil, d.str("denial") == "scope"
+		}},
+	// API token 在閘門被擋（denial＝api_token，basis 為依據）：全唯讀呼叫寫入路由，或路由不對 API token 開放
+	{Codes: []string{"authz_api_token_forbidden_route", "authz_api_token_read_only"},
+		Match: func(_ AuditReasonInput, d reasonDetails) (string, reasonParams, bool) {
+			if d.str("denial") != "api_token" {
+				return "", nil, false
+			}
+			code, ok := apiTokenDenialReasons[d.str("basis")]
+			return code, nil, ok
 		}},
 	// 資產刪除時資料層留下的列：沒有 details、沒有路徑
 	{Codes: []string{"asset_deleted"},

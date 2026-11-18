@@ -3,9 +3,7 @@
 ## Purpose
 
 HTTP API 錯誤回應的統一封套（`{error, code?, params?}`）、機器碼＋前端查譯的錯誤訊息 i18n（三語完備性守門）、資訊洩漏防護與前端單一 toast 來源。
-
 ## Requirements
-
 ### Requirement: 統一錯誤封套格式
 所有 HTTP API 端點的錯誤回應 SHALL 使用 JSON 封套，其中錯誤**文字**僅由 `error` 欄承載（繁中 legacy fallback），並 SHALL 附加機器可讀的 `code`（以及需要時的插值 `params`）成為 `{"error": <繁中訊息>, "code": <機器碼>, "params": <受控值>}`。`error` 欄 SHALL 必填且為非空字串，作為未在地化錯誤的 fallback。`code` SHALL 為集中登記的穩定識別字並符合 grammar `^[A-Z][A-Z0-9_]{0,63}$`（全大寫）；**系統中無 out-of-system 例外**——原有的小寫 legacy code（`break_glass_disabled`、傳輸閘 `ack_required`/`strict_reject`）已全數改為登記碼（`RULE_BREAK_GLASS_DISABLED`、`VALIDATION_TRANSMISSION_ACK_REQUIRED`/`VALIDATION_TRANSMISSION_STRICT_REJECT`），前端控制流分支同步改值，守衛的 legacy 豁免清單 SHALL 保持為空（新增條目須附書面理由）。`params` 存在時 SHALL 依其 code 登記的 schema 驗證，僅含受控值（數值與語義 ID，如 `resource`、`role`），SHALL NOT 含後端任意字串或已翻譯文字。HTTP status code SHALL 正確反映錯誤類別（4xx 客戶端錯誤、5xx 伺服器錯誤）；**syslog 轉發測試端點的 HTTP 200 `{data:{success:false}}` 例外已解除——該端點送達失敗 SHALL 回 502＋registered `code`，與通知通道測試端點同語義，錯誤封套不再有結果契約型例外**。錯誤**文字** SHALL NOT 由 `detail`、`success`、`message` 等其他欄位承載；但結構化、非文字的 metadata 欄（`code`、`params`、`required_permission`、`kind`、`risks`、`reason`、`policy`）MAY 與 `error` 並存。**使用者可見的 HTTP 錯誤回應 SHALL 全域帶 registered `code`**——凡由 `internal/{api,middleware,sshproxy,proxy,k8sproxy,dbproxy}` 與 `cmd/server` 產生的錯誤回應皆在此範圍內；過渡期未遷移者 SHALL 僅以 grandfather allowlist 列管並以清單歸零為收斂目標。
 
@@ -308,3 +306,36 @@ HTTP 錯誤回應 SHALL 僅由 `apierror` 的三個出口產生：`apierror.Resp
 #### Scenario: 名稱衝突不分範圍內外
 - **WHEN** 範圍化主體建立資產，名稱分別與一筆範圍內既有資產、一筆範圍外既有資產相同
 - **THEN** 兩次都回 HTTP 409，回應逐位元相同，不含衝突資產的識別碼或節點
+
+### Requirement: 重複與版本衝突的回應可由機器辨識
+
+使用者名稱重複 SHALL 回 409，機器碼維持既有的名稱衝突碼。建立使用者時電子郵件已被其他帳號使用（不分大小寫後相同）SHALL 回 409，機器碼與修改時的電子郵件衝突碼相同。同名或同一電子郵件的使用者、同名的自訂角色並行寫入時，未搶到的請求 SHALL 得到與單一請求相同的 409，SHALL NOT 回 500。自訂角色的版本過期（修改或刪除時帶的版本與目前不符）SHALL 回 409 與專屬的機器碼，SHALL NOT 與角色名稱重複共用同一個機器碼；角色名稱重複 SHALL 沿用既有的衝突碼。共用憑證仍有掛載而被拒絕刪除時，409 的回應 SHALL 經統一的錯誤出口產生並帶統一封套的欄位，既有的頂層機器碼、資產名單與範圍外台數 SHALL 保留。
+
+#### Scenario: 使用者名稱重複
+- **WHEN** 以已存在的使用者名稱建立使用者
+- **THEN** 系統回 409，機器碼為既有的使用者名稱衝突碼
+
+#### Scenario: 建立使用者時電子郵件重複
+- **WHEN** 以另一個帳號使用中的電子郵件（大小寫不同亦同）建立使用者
+- **THEN** 系統回 409，機器碼為既有的電子郵件衝突碼，不寫入任何帳號
+
+#### Scenario: 同名並行建立
+- **WHEN** 多個請求同時以同一個使用者名稱建立使用者，或同時以同一個名稱建立自訂角色
+- **THEN** 恰一個請求成功，其餘回 409 與名稱衝突碼，沒有請求回 500
+
+#### Scenario: 自訂角色版本過期
+- **WHEN** 兩位管理者先後修改同一個自訂角色，後送出者帶的是舊版本
+- **THEN** 系統回 409 與版本過期專屬的機器碼
+
+#### Scenario: 自訂角色名稱重複
+- **WHEN** 把自訂角色改成另一個角色已使用的名稱
+- **THEN** 系統回 409 與名稱衝突的機器碼，與版本過期的機器碼不同
+
+#### Scenario: 刪除角色時版本過期
+- **WHEN** 刪除自訂角色時帶的版本與目前不符
+- **THEN** 系統回 409 與版本過期專屬的機器碼，角色不被刪除
+
+#### Scenario: 共用憑證仍有掛載時刪除
+- **WHEN** 刪除一筆仍掛在資產上的共用憑證
+- **THEN** 系統回 409，本文含統一封套的欄位，並保留頂層的機器碼與資產名單
+

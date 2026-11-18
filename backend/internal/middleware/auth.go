@@ -337,18 +337,33 @@ func AttributeAuditMeta(c *gin.Context, m gatewayapi.RequestMeta) gatewayapi.Req
 	return m.WithAPIToken(ref.ID, ref.Name).WithAPITokenOrigin(ref.RequestID, ref.ClientIP)
 }
 
-// gin 脈絡中 API token 的識別與名稱快照鍵。
+// gin 脈絡中 API token 的識別與名稱快照鍵，以及這把 token 是否有層級為讀寫的授權角色。
 const (
-	apiTokenIDContextKey   = "api_token_id"
-	apiTokenNameContextKey = "api_token_name"
+	apiTokenIDContextKey        = "api_token_id"
+	apiTokenNameContextKey      = "api_token_name"
+	apiTokenReadWriteContextKey = "api_token_has_read_write_role"
 )
 
-// authenticateAPIToken API token 的認證：現查 token、所屬帳號與來源，以授權角色為限定解析請求主體。
+// apiTokenHasReadWriteRole 這次請求的 API token 是否至少有一個層級為讀寫的授權角色（不論目前是否生效）。
+// 脈絡中沒有這項事實時回 false：寧可以唯讀拒絕，也不放行寫入。
+func apiTokenHasReadWriteRole(c *gin.Context) bool {
+	v, ok := c.Get(apiTokenReadWriteContextKey)
+	if !ok {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
+}
+
+// authenticateAPIToken API token 的認證：現查 token、所屬帳號與來源，以這次請求計入的授權角色為限定解析請求主體。
+//
+// 計入的授權角色依路由性質決定（verdict 與閘門的開放判定是同一次查登錄的結果）：性質恰為讀時為全部授權角色；
+// 其他一律只含層級為讀寫的角色。之後的能力、範圍、內建身分與交易內重解都由這個限定算出，不再知道層級。
 //
 // 任何失敗都經唯一的未認證出口回同一個錯誤碼，真實原因只進稽核；全部步驟成功之前不在 gin 脈絡或
 // request context 留下任何身分（含已撤銷的 token），失敗請求因此走匿名留痕的有限流分支。
-// 授權角色即使為空集合也以非 nil 的限定傳入：限定為無與未限定是兩種不同的輸入。
-func authenticateAPIToken(c *gin.Context, auth *identity.AuthService, token string) bool {
+// 計入的角色即使為空集合也以非 nil 的限定傳入：限定為無與未限定是兩種不同的輸入。
+func authenticateAPIToken(c *gin.Context, auth *identity.AuthService, token string, verdict APITokenRouteVerdict) bool {
 	if auth == nil {
 		abortUnauthenticated(c, apierror.CodeTokenInvalid, "api_token_auth_unavailable")
 		return false
@@ -362,7 +377,7 @@ func authenticateAPIToken(c *gin.Context, auth *identity.AuthService, token stri
 		SubjectKind: model.KindHuman,
 		AuthMethod:  identity.APITokenAuthMethod,
 		CredEpoch:   id.CredentialEpoch,
-		RoleFilter:  authz.NewRoleFilter(id.GrantedRoleIDs),
+		RoleFilter:  authz.NewRoleFilter(id.RoleIDsCounted(verdict.CountsAllGrantedRoles())),
 	})
 	if err != nil || principal == nil {
 		abortUnauthenticated(c, apierror.CodeTokenInvalid, "api_token_principal_unavailable")
@@ -371,6 +386,7 @@ func authenticateAPIToken(c *gin.Context, auth *identity.AuthService, token stri
 	c.Set("principal_kind", model.KindHuman)
 	c.Set(apiTokenIDContextKey, id.TokenID)
 	c.Set(apiTokenNameContextKey, id.TokenName)
+	c.Set(apiTokenReadWriteContextKey, id.HasReadWriteRole())
 	c.Set("userID", id.UserID)
 	c.Set("username", id.Username)
 	c.Set("email", id.Email)

@@ -299,3 +299,77 @@ UI／互動類修正容易漏的是「**動作 × 狀態**」的其他格（例�
   每新增一個匯出符號都要說得出唯一消費者；優先窄 façade、消費者側宣告的介面、
   或組裝根 adapter（詳見 `docs/dev/testing.md` §11.3 export budget）。
 - 產品程式碼須有測試覆蓋關鍵行為（詳見 `docs/dev/testing.md`）。
+
+## 12. 管理 API 的開放與設計規則
+
+新增或開放一條管理 API 之前先讀本節。規則的權威條文在 `openspec/specs/api-token/spec.md`（路由分類）與
+`openspec/specs/declarative-api-contract/spec.md`（納管資源規則）；本節說明要改哪些地方、守衛會檢查什麼。
+
+### 12.1 路由登錄的三項分類
+
+每一條已註冊的路由都要登錄在 `backend/internal/middleware/api_token_route_registry.go`，三項都填具名值：
+
+| 項目 | 值 | 判準 |
+|---|---|---|
+| 開放 | `open`／`closed` | 只有程式化管理所需、且不會讓平台以保存的秘密對外連線、不回傳機敏內容的管理與設定端點才開放。新路由預設 `closed` |
+| 性質 | `read`／`write` | 請求會改變保存下來的資料為 `write`；稽核留痕與最近使用時間不算。不改變資料的預覽與試算為 `read`，方法不是 GET 時另列入方法與性質不符清單 |
+| 對外連線 | `none`／`immediate`／`deferred` | 請求處理中就連出去為 `immediate`（開放者要列入例外清單並附理由）；改變平台日後會連去的位址、送往目的地的是哪一筆秘密、或會讓平台主動對外連線的排程與觸發條件為 `deferred` |
+
+不開放的路由兩項分類可以是 `unclassified`；要開放就必須先分類。性質填錯的後果是唯讀的 API token 可以寫入，
+審查時以這個後果檢視。改了登錄要同步 `backend/internal/middleware/testdata/api-token-route-scope.tsv`。
+
+### 12.2 納管資源的設計規則
+
+可由宣告式工具建立、讀取、修改、刪除的資源列在納管資源登錄表
+（`backend/internal/guards/managedapi/registry.go`）。列入的資源要滿足：
+
+- 依識別讀取單筆；單筆讀取含同一位呼叫者在列表看到的每個欄位且值相同，詳情可以多欄位。
+- 呼叫者在列表看不到的資源，單筆讀取回 404，狀態碼、機器碼與本文都與識別不存在時相同。
+- 列表回 `data` 與 `total`；分頁時每頁筆數有上限，超過時套用上限，回應帶實際套用的 `page` 與 `page_size`。
+- 有名稱或自然鍵者，列表提供可唯一定位一筆的查詢參數，參數名等於欄位名，比對規則與唯一性判定一致
+  （唯一性只在某個上層之下成立時，查找參數要包含那個上層）；同一參數出現多次回 400。
+- 建立回 201；修改時請求中沒有出現的欄位代表不動，清除要明確表示；修改不換發識別；刪除回 204
+  （有連帶效果要回報時回 200 加本文）；刪除後可以用同一個名稱重建；同一資源的讀取與寫入使用相同的回應外層。
+- 寫入回應與同一位呼叫者隨後讀取的同名欄位相同；伺服器改寫輸入時回改寫後的值，原樣重送不再產生差異。
+- 時間欄位為 RFC 3339。秘密只寫不讀：讀取回報是否已設定，可比對者回指紋；寫入時空值代表不動，清除有明確途徑。
+- 重複回 409 與專屬機器碼；先查再寫的預查擋不住兩個同時送出的請求，寫入撞唯一索引時要轉成同一個 409；
+  樂觀鎖的版本過期另有專屬機器碼，不與名稱重複共用；並行寫入不回 500；錯誤一律經 `apierror` 的統一出口。
+
+### 12.3 新增一個納管資源
+
+1. 先照 12.1 把這個資源的每條路由在 API token 路由登錄設為開放並分類。登錄表引用不開放或未分類的路由時，
+   `TestRegistryRoutesOpenAndClassified` 失敗。
+2. 在 `laterResources` 加一列：各操作的路由、精確查找的參數與比對規則、識別的唯一範圍、秘密欄位，
+   以及每一條規則的狀態。狀態只能是「符合」或「不適用」（只在規則依賴的操作或欄位不存在時可用）；
+   現有的已知例外只限初始名單，新資源不得引用，確有需要時新增一個例外種類並同步規格。
+3. 這些路由原本在 `attributions` 裡（例如把一個尚未納管的家族改為納管）時，從 `attributions` 移除；
+   家族因此沒有任何路由時，同時從 `frozenUnmanagedFamilies` 移除。一條路由同時出現在登錄表與歸屬表，
+   或凍結名單留著沒有路由的家族，`TestRouteAttributionMatchesTokenRegistry` 都會失敗。
+4. 在 `backend/cmd/server/managed_resource_read_contract_test.go` 提供兩份測試資料：`mrFixtureTable`
+   放讀取面的資料（建立一筆並回傳識別、精確查找的命中值與不存在的值、受限呼叫者，以及範圍內、範圍外、
+   不存在的識別）；`mrWriteFixtures` 放寫入面的 `mrWriteFixture`，建立、修改、刪除三個函式都要提供。
+   缺讀取面的資料、或寫入面少任何一個函式，`TestManagedResourceReadContract` 失敗。寫入面的共用檢查
+   （寫入回應等於隨後讀取、刪除後同名重建、缺欄位不動、原樣重送不變）在第一個新資源加入時一併實作，
+   在那之前這道閘門只確認三個函式都有提供。
+5. 重生機器可讀副本並逐條審視 diff：
+   `docker compose exec backend go test ./internal/guards/managedapi -run '^TestRegistryJSONCopyUpToDate$' -update`。
+6. 驗證。結構面的守衛不需要資料庫，CI 每次都會跑：
+   `docker compose exec backend go test ./internal/guards/managedapi/`。
+   讀取面的共用測試是端到端情境，在 CI 含競態偵測的整包步驟裡略過（`AUTHZ_BASELINE=deferred`），
+   改在 CI 的授權基準步驟與 `scripts/authz_baseline.sh compare` 執行；這兩處執行的名單在
+   `backend/cmd/server/testdata/ci-deferred-scenarios.txt`，`TestDeferredScenariosAreScheduled` 確認名單與
+   測試同步。本機直接跑：
+   `docker compose exec backend go test ./cmd/server -run '^TestManagedResourceReadContract$'`。
+
+讀取面的共用測試以三位呼叫者比對單筆讀取與列表：超級管理者、節點範圍的管理者、只有連線授權的一般使用者。
+呼叫者的列表看得到剛建立的那一筆，單筆讀取就必須回 200 且欄位一致。
+
+### 12.4 路由歸屬
+
+對 API token 開放的每一條路由都要有一個歸屬：某個納管資源的某個操作（由登錄表導出）、非資源的查詢或動作、
+唯讀的資源家族，或已開放寫入但尚未納管的既有家族（家族名在凍結名單內）。歸屬表在同一個檔案的 `attributions`。
+守衛檢查的是：新開放的路由沒有歸屬時失敗；歸到非資源或唯讀家族的路由，性質必須是讀；尚未納管的家族名必須在
+凍結名單內。新增尚未納管的家族要改凍結名單，屬於規則的變更，要經明確的審查。
+
+守衛分不出語義。一條新的可寫路由歸到凍結名單內既有的家族，守衛會放行；這類改動要在審查時對照機器可讀副本
+（`route_attribution`）的 diff，確認它確實屬於那個家族，而不是一個應該列入登錄表的新資源。

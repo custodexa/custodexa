@@ -18,6 +18,10 @@ import (
 //     既有的 deny_reason 與查詢摘要不被覆寫。
 //
 // 規則拒絕（含與能力拒絕同碼者）不經這兩個寫出函式，不留標記。
+//
+// API token 閘門的兩種拒絕（路由不對 API token 開放、全唯讀的 token 呼叫寫入路由）同樣留標記，
+// details 帶 denial＝api_token 與 basis（forbidden_route 或 read_only），稽核者據此分辨被擋的原因；
+// 不含 token 明文、雜湊或請求內容。
 
 // authzDenialKey 拒絕分類標記在請求脈絡中的鍵；值為 denialKindCapability 或 denialKindScope。
 const authzDenialKey = "authz_denial"
@@ -25,7 +29,27 @@ const authzDenialKey = "authz_denial"
 const (
 	denialKindCapability = "capability"
 	denialKindScope      = "scope"
+	denialKindAPIToken   = "api_token"
 )
+
+// API token 閘門拒絕的依據（details.basis 的值）。
+const (
+	apiTokenDenialForbiddenRoute = "forbidden_route" // 路由不對 API token 開放、未登錄或查無
+	apiTokenDenialReadOnly       = "read_only"       // 每個授權角色皆為唯讀而路由性質不是讀
+)
+
+// apiTokenDenialBasisKey API token 閘門拒絕的依據在請求脈絡中的鍵。
+const apiTokenDenialBasisKey = "authz_api_token_denial_basis"
+
+// markAPITokenDenial 記下 API token 閘門的拒絕：分類標記與依據一起存，審計中介層據此組出細節。
+// 已有分類標記時不改（與其他拒絕同一規則：以先寫出者為準）。
+func markAPITokenDenial(c *gin.Context, basis string) {
+	if _, exists := c.Get(authzDenialKey); exists {
+		return
+	}
+	c.Set(apiTokenDenialBasisKey, basis)
+	markAuthzDenial(c, denialKindAPIToken)
+}
 
 // markAuthzDenial 設分類標記。已設過者不改：回應以先寫出者為準，標記與依據跟著先寫出者。
 func markAuthzDenial(c *gin.Context, kind string) {
@@ -60,7 +84,7 @@ func determineStatus(c *gin.Context, statusCode int) model.AuditStatus {
 }
 
 // denialAuditDetails 依分類標記組出拒絕細節；未標記回 nil。值只取受控集合：
-// basis 為四種依據之一、required 為權限點鍵或保留條件值（逗號分隔，unregistered 為空字串）、
+// API token 閘門的拒絕為 denial＝api_token 與 basis＝forbidden_route／read_only；能力拒絕的 basis 為四種依據之一、required 為權限點鍵或保留條件值（逗號分隔，unregistered 為空字串）、
 // scope_reason 為受控原因碼、count 為整數。不含目標、節點、使用者或群組的名稱或識別碼。
 func denialAuditDetails(c *gin.Context) map[string]string {
 	kind, ok := authzDenialKind(c)
@@ -78,6 +102,10 @@ func denialAuditDetails(c *gin.Context) map[string]string {
 	case denialKindScope:
 		d, _ := ScopeDenialFrom(c)
 		return d.AuditDetails()
+	case denialKindAPIToken:
+		v, _ := c.Get(apiTokenDenialBasisKey)
+		basis, _ := v.(string)
+		return map[string]string{"denial": denialKindAPIToken, "basis": basis}
 	}
 	return nil
 }

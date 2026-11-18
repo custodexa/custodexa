@@ -509,8 +509,10 @@ type preparedAsset struct {
 	sharedCredentialID uint
 	passwordEnc        string
 	privateKeyEnc      string
-	createdBy          uint
-	createdByName      string
+	// privateKeyPublic 私鑰對應的公鑰（隨私鑰密文寫入版本列；無私鑰時為空）
+	privateKeyPublic string
+	createdBy        uint
+	createdByName    string
 	// coverageAudit 初始掛載審計附拓撲涵蓋（單筆建立；批次匯入不經此）
 	coverageAudit bool
 	// attachCorrelationID 引用既有憑證時寫入預設帳號建立稽核的關聯識別（由外層的告警決定；空＝不寫）
@@ -725,8 +727,9 @@ func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetReques
 		return nil, ErrUsernameRequired
 	}
 
-	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查
-	if err := ValidatePrivateKey(privateKey); err != nil {
+	// 人工輸入的私鑰在任何寫入之前先以連線用的同一個解析函式檢查（並取得其公鑰）
+	privateKeyPublic, err := ValidatePrivateKey(privateKey)
+	if err != nil {
 		return nil, err
 	}
 
@@ -797,7 +800,7 @@ func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetReques
 	// 的內嵌憑證欄位都不再寫入。assets 上仍維護 HasPassword/HasPrivateKey 顯示
 	// 旗標——它們不是憑證本體，而是列表與表單的「已設定憑證」標記，不同步會讓
 	// 既有畫面說謊。
-	var passwordEnc, privateKeyEnc string
+	var passwordEnc, privateKeyEnc, versionPublicKey string
 	if password != "" {
 		encryptedPassword, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, password)
 		if err != nil {
@@ -814,6 +817,7 @@ func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetReques
 			return nil, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
 		privateKeyEnc = encryptedKey
+		versionPublicKey = privateKeyPublic
 		asset.HasPrivateKey = true
 	}
 
@@ -846,12 +850,13 @@ func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetReques
 	}
 
 	p := &preparedAsset{
-		asset:         asset,
-		nodeIDs:       nodeIDs,
-		passwordEnc:   passwordEnc,
-		privateKeyEnc: privateKeyEnc,
-		createdBy:     req.CreatedBy,
-		createdByName: req.CreatedByName,
+		asset:            asset,
+		nodeIDs:          nodeIDs,
+		passwordEnc:      passwordEnc,
+		privateKeyEnc:    privateKeyEnc,
+		privateKeyPublic: versionPublicKey,
+		createdBy:        req.CreatedBy,
+		createdByName:    req.CreatedByName,
 	}
 	if sharedCredential != nil {
 		p.sharedCredentialID = sharedCredential.ID
@@ -980,7 +985,8 @@ func (s *AssetService) createPreparedTx(ctx context.Context, tx *gorm.DB, p *pre
 			account.CredentialID = cred.ID
 			account.EffectiveVersionID = cred.CurrentVersionID
 		} else if err := bindNewDedicatedCredential(tx, account, asset, "",
-			p.passwordEnc, p.privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+			p.passwordEnc, p.privateKeyEnc, model.CredentialVersionReasonManual,
+			withVersionPublicKey(p.privateKeyPublic)); err != nil {
 			return preparedCreateResult{}, err
 		}
 		if err := tx.Create(account).Error; err != nil {
@@ -1176,7 +1182,7 @@ func (s *AssetService) UpdatePassword(assetID, accountID uint, pinnedUsername, n
 		return fmt.Errorf("加密密碼失敗: %w", err)
 	}
 	return s.commitBindingSecret(assetID, accountID, pinnedUsername,
-		model.ChangeSecretTypePassword, encrypted, "", "password", "更新帳號密碼失敗")
+		model.ChangeSecretTypePassword, versionSecret{PasswordEnc: encrypted}, "password", "更新帳號密碼失敗")
 }
 
 // UpdatePrivateKey 系統路徑更新帳號私鑰（金鑰輪替）。
@@ -1196,8 +1202,10 @@ func (s *AssetService) UpdatePrivateKey(assetID, accountID uint, pinnedUsername,
 	if err != nil {
 		return fmt.Errorf("加密私鑰失敗: %w", err)
 	}
-	return s.commitBindingSecret(assetID, accountID, pinnedUsername,
-		model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
+	// 公鑰由呼叫端交來的同一份明文取得；取不到即留空（未知）
+	return s.commitBindingSecret(assetID, accountID, pinnedUsername, model.ChangeSecretTypeSSHKey,
+		versionSecret{PrivateKeyEnc: encrypted, PublicKey: versionPublicKeyFromPlaintext([]byte(newPrivateKey))},
+		"private_key", "更新帳號私鑰失敗")
 }
 
 // commitBindingSecret 系統路徑寫入面的共同實作：建新版本 → 就位。
@@ -1229,20 +1237,20 @@ func (s *AssetService) UpdatePrivateKey(assetID, accountID uint, pinnedUsername,
 //
 // 秘密本體以**新增一筆密文版本**落地，既有版本列不被就地覆寫——就位指標之所
 // 以能表達「這台用舊版、那台用新版」，前提正是舊版列的密文原封不動。
-func (s *AssetService) commitBindingSecret(assetID, accountID uint, pinnedUsername,
-	secretType, passwordEnc, privateKeyEnc, auditField, failMsg string) error {
+func (s *AssetService) commitBindingSecret(assetID, accountID uint, pinnedUsername, secretType string,
+	secret versionSecret, auditField, failMsg string) error {
 
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		return s.commitBindingSecretTx(tx, assetID, accountID, pinnedUsername,
-			secretType, passwordEnc, privateKeyEnc, auditField, failMsg)
+			secretType, secret, auditField, failMsg)
 	})
 }
 
 // commitBindingSecretTx 是 commitBindingSecret 在呼叫端已開啟的交易內的實作：版本新增、就位、
 // 預設帳號鏡像與審計全部寫進 tx，不自開交易。呼叫端須自行保證交易內只有這一條提交鏈
 // （候選轉正在同一交易內接著刪候選，並在取憑證列之前先做主機身分比對）。
-func (s *AssetService) commitBindingSecretTx(tx *gorm.DB, assetID, accountID uint, pinnedUsername,
-	secretType, passwordEnc, privateKeyEnc, auditField, failMsg string) error {
+func (s *AssetService) commitBindingSecretTx(tx *gorm.DB, assetID, accountID uint, pinnedUsername, secretType string,
+	secret versionSecret, auditField, failMsg string) error {
 
 	if err := lockAssetForAccountMutation(tx, assetID); err != nil {
 		return err
@@ -1268,18 +1276,18 @@ func (s *AssetService) commitBindingSecretTx(tx *gorm.DB, assetID, accountID uin
 
 	// 未被本次更動的那一欄自就位版本原樣帶過來（密文原樣搬、不解密）：
 	// 金鑰輪替只動私鑰，把密碼一併清掉會讓原本密碼可登入的帳號在金鑰失效時
-	// 失去唯一的備援入口；密碼輪替對私鑰同理
+	// 失去唯一的備援入口；密碼輪替對私鑰同理（私鑰搬過來時公鑰跟著同一版搬）
 	if account.EffectiveVersionID != nil {
 		var cerr error
-		passwordEnc, privateKeyEnc, cerr = carryOverVersionCiphertext(tx, cred.ID,
-			*account.EffectiveVersionID, passwordEnc, privateKeyEnc)
+		secret, cerr = carryOverVersionSecret(tx, cred.ID, *account.EffectiveVersionID, secret)
 		if cerr != nil {
 			return cerr
 		}
 	}
 
 	version, err := appendCredentialVersion(tx, cred.ID, secretType,
-		passwordEnc, privateKeyEnc, model.CredentialVersionReasonRotation)
+		secret.PasswordEnc, secret.PrivateKeyEnc, model.CredentialVersionReasonRotation,
+		withVersionPublicKey(secret.PublicKey))
 	if err != nil {
 		return fmt.Errorf("%s: %w", failMsg, err)
 	}
@@ -1545,6 +1553,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	}
 	asset := out.asset
 	passwordEnc, privateKeyEnc, newNodeIDs := out.passwordEnc, out.privateKeyEnc, out.newNodeIDs
+	privateKeyPublic := out.privateKeyPublic
 
 	// 提取用戶資訊並儲存到 context（供 GORM Hooks 使用）
 	userID, _ := ctx.Value("userID").(uint)
@@ -1594,6 +1603,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		}
 		asset = rebased.asset
 		passwordEnc, privateKeyEnc, newNodeIDs = rebased.passwordEnc, rebased.privateKeyEnc, rebased.newNodeIDs
+		privateKeyPublic = rebased.privateKeyPublic
 		oldAsset = fresh
 		semantic, err := requireFieldCapabilities(ctx, updateRestrictedFields(fresh.Username, fresh.SftpUsername, req))
 		if err != nil {
@@ -1638,7 +1648,9 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 					return err
 				}
 			}
-			if err := syncDefaultAccountFromAsset(s.auditTx, s.alerts, tx, asset, passwordEnc, privateKeyEnc, userID, username); err != nil {
+			if err := syncDefaultAccountFromAsset(s.auditTx, s.alerts, tx, asset,
+				versionSecret{PasswordEnc: passwordEnc, PrivateKeyEnc: privateKeyEnc, PublicKey: privateKeyPublic},
+				userID, username); err != nil {
 				return err
 			}
 		}
@@ -1781,12 +1793,14 @@ func lockAssetForUpdateTx(tx *gorm.DB, id uint) (*model.Asset, error) {
 
 // updateOutcome 套用更新請求到某個基底列後的結果。
 type updateOutcome struct {
-	asset           *model.Asset
-	passwordEnc     string
-	privateKeyEnc   string
-	sftpPasswordEnc string
-	tags            string
-	newNodeIDs      []uint
+	asset         *model.Asset
+	passwordEnc   string
+	privateKeyEnc string
+	// privateKeyPublic 本次帶入私鑰的公鑰（隨私鑰密文寫入版本列；沒有帶私鑰時為空）
+	privateKeyPublic string
+	sftpPasswordEnc  string
+	tags             string
+	newNodeIDs       []uint
 }
 
 // applyUpdate 把更新請求套用到 base 的副本上（驗證、加密、清殘值），不碰資料庫寫入。
@@ -1841,10 +1855,13 @@ func (s *AssetService) applyUpdate(ctx context.Context, id uint, base *model.Ass
 	// password/private_key，語義不變，但密文只落**憑證的密文版本列**，
 	// assets 與掛載列的內嵌憑證欄位都不再寫入。
 	// 只在本次帶了非空私鑰時驗證；未帶或空字串＝沿用現行私鑰，不重驗庫內既有的
+	var privateKeyPublic string
 	if req.PrivateKey != nil {
-		if err := ValidatePrivateKey(*req.PrivateKey); err != nil {
+		pub, err := ValidatePrivateKey(*req.PrivateKey)
+		if err != nil {
 			return nil, err
 		}
+		privateKeyPublic = pub
 	}
 	var passwordEnc, privateKeyEnc string
 	if req.Password != nil && *req.Password != "" {
@@ -1863,6 +1880,7 @@ func (s *AssetService) applyUpdate(ctx context.Context, id uint, base *model.Ass
 	if req.PrivateKey != nil && *req.PrivateKey != "" {
 		if prior != nil {
 			privateKeyEnc = prior.privateKeyEnc
+			privateKeyPublic = prior.privateKeyPublic
 		} else {
 			encryptedKey, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, *req.PrivateKey)
 			if err != nil {
@@ -2029,8 +2047,11 @@ func (s *AssetService) applyUpdate(ctx context.Context, id uint, base *model.Ass
 		clearRotationChannel(asset)
 	}
 
+	if privateKeyEnc == "" {
+		privateKeyPublic = ""
+	}
 	return &updateOutcome{asset: asset, passwordEnc: passwordEnc, privateKeyEnc: privateKeyEnc,
-		sftpPasswordEnc: sftpPasswordEnc, tags: tags, newNodeIDs: newNodeIDs}, nil
+		privateKeyPublic: privateKeyPublic, sftpPasswordEnc: sftpPasswordEnc, tags: tags, newNodeIDs: newNodeIDs}, nil
 }
 
 // validateUpdateFieldRules 資產更新套用建立時的欄位規則。每條規則有自己的依賴欄位：本次更新使任一
@@ -2584,14 +2605,20 @@ func (s *AssetService) encryptOwnedPassword(secret *material.Secret) (string, er
 }
 
 // encryptOwnedPrivateKey 私鑰版的 encryptOwnedPassword，同樣必須在開交易之前呼叫。
-func (s *AssetService) encryptOwnedPrivateKey(secret *material.Secret) (string, error) {
+//
+// 同時回傳這把私鑰對應的公鑰：轉正本來就為了加密而持有明文，在同一處取得公鑰，
+// 不另開解密途徑；取不到時為空（未知）。候選列上的公鑰欄不在此採用——版本列保存的
+// 必須是實際加密進去的那一把私鑰的公鑰。
+func (s *AssetService) encryptOwnedPrivateKey(secret *material.Secret) (versionSecret, error) {
+	var publicKey string
 	encrypted, err := material.Use(secret, func(raw []byte) (string, error) {
+		publicKey = versionPublicKeyFromPlaintext(raw)
 		return s.bytesCrypto.EncryptBytesFor(context.Background(), keyvault.RefCredentialVersionPrivateKey, raw)
 	})
 	if err != nil {
-		return "", fmt.Errorf("加密私鑰失敗: %w", err)
+		return versionSecret{}, fmt.Errorf("加密私鑰失敗: %w", err)
 	}
-	return encrypted, nil
+	return versionSecret{PrivateKeyEnc: encrypted, PublicKey: publicKey}, nil
 }
 
 // updateOwnedPasswordTx 候選轉正的密碼提交：在呼叫端的交易內建新版本、就位、鏡像並寫審計。
@@ -2600,16 +2627,19 @@ func (s *AssetService) updateOwnedPasswordTx(tx *gorm.DB, assetID, accountID uin
 	if accountID == 0 {
 		return ErrAssetAccountNotFound
 	}
-	return s.commitBindingSecretTx(tx, assetID, accountID, username, model.ChangeSecretTypePassword, encrypted, "", "password", "更新帳號密碼失敗")
+	return s.commitBindingSecretTx(tx, assetID, accountID, username, model.ChangeSecretTypePassword,
+		versionSecret{PasswordEnc: encrypted}, "password", "更新帳號密碼失敗")
 }
 
 // updateOwnedPrivateKeyTx 候選轉正的私鑰提交：在呼叫端的交易內建新版本、就位、鏡像並寫審計。
 // 密文由呼叫端在開交易前以 encryptOwnedPrivateKey 備好，交易內不做加密。
-func (s *AssetService) updateOwnedPrivateKeyTx(tx *gorm.DB, assetID, accountID uint, username, encrypted string) error {
+func (s *AssetService) updateOwnedPrivateKeyTx(tx *gorm.DB, assetID, accountID uint, username string, encrypted versionSecret) error {
 	if accountID == 0 {
 		return ErrAssetAccountNotFound
 	}
-	return s.commitBindingSecretTx(tx, assetID, accountID, username, model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
+	encrypted.PasswordEnc = ""
+	return s.commitBindingSecretTx(tx, assetID, accountID, username, model.ChangeSecretTypeSSHKey,
+		encrypted, "private_key", "更新帳號私鑰失敗")
 }
 
 // dialSSHProbe 撥測撥號：password 與 privateKey 的所有權移交本函式，返回前一律銷毀。

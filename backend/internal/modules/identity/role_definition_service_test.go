@@ -297,6 +297,7 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		for _, n := range []string{"admin", "identity_admin", "security_admin"} {
 			_, err := e.svc.Create(asSession(ctx, e.admin), e.admin, RoleInput{Name: n})
 			assert.ErrorIs(t, err, ErrRoleDefinitionConflict, n)
+			assert.NotErrorIs(t, err, ErrRoleDefinitionVersionConflict, n)
 		}
 		var key *string
 		require.NoError(t, e.db.Raw("SELECT builtin_key FROM roles WHERE name = 'identity_admin'").Scan(&key).Error)
@@ -319,8 +320,12 @@ func TestRoleDefinitionMutations(t *testing.T) {
 		_, err := e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "c", Permissions: []string{"asset:view", "session:view"}})
 		require.NoError(t, err)
 		_, err = e.svc.Update(asSession(ctx, e.admin), e.admin, d.ID, 1, RoleInput{Name: "c", Permissions: []string{}})
-		assert.ErrorIs(t, err, ErrRoleDefinitionConflict)
-		assert.ErrorIs(t, e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 1), ErrRoleDefinitionConflict)
+		// 版本過期與名稱重複是兩個不同的哨兵：呼叫端要分得出該重讀還是該改名
+		assert.ErrorIs(t, err, ErrRoleDefinitionVersionConflict)
+		assert.NotErrorIs(t, err, ErrRoleDefinitionConflict)
+		delErr := e.svc.Delete(asSession(ctx, e.admin), e.admin, d.ID, 1)
+		assert.ErrorIs(t, delErr, ErrRoleDefinitionVersionConflict)
+		assert.NotErrorIs(t, delErr, ErrRoleDefinitionConflict)
 		got, _ := e.svc.GetDefinition(ctx, d.ID)
 		assert.Equal(t, []string{"asset:view", "session:view"}, got.Permissions)
 		assert.Equal(t, int64(2), got.DefinitionVersion)

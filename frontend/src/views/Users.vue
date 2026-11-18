@@ -193,9 +193,7 @@
                 <span class="row-detail__value">
                   <template v-if="tokenInfo[row.id].total === 0">{{ $t('users.expand.apiTokensNone') }}</template>
                   <template v-else>
-                    <span data-test="row-api-tokens-value">{{ tokenInfo[row.id].lastUsed
-                      ? $t('users.expand.apiTokensValue', { n: tokenInfo[row.id].usable, time: formatDateTime(tokenInfo[row.id].lastUsed) })
-                      : $t('users.expand.apiTokensValueNeverUsed', { n: tokenInfo[row.id].usable }) }}</span>
+                    <span data-test="row-api-tokens-value">{{ rowTokenValue(tokenInfo[row.id]) }}</span>
                     <a
                       class="row-detail__link"
                       :href="`/users/${row.id}?tab=apiTokens`"
@@ -618,7 +616,7 @@ import {
 } from 'lucide-vue-next'
 import { getUserList, getUserDetail, setInactivityExempt } from '@/api/user'
 import { getUserApiTokens } from '@/api/apiTokens'
-import { latestUse, summarize } from '@/constants/apiTokens'
+import { latestUse, summarize, usableAccessBreakdown } from '@/constants/apiTokens'
 import PageHeader from '@/components/PageHeader.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
 import TokenDrawer from '@/components/agent/TokenDrawer.vue'
@@ -685,11 +683,24 @@ const loadRowTokens = async (id) => {
   try {
     const res = await getUserApiTokens(id)
     const list = Array.isArray(res?.data) ? res.data : []
-    tokenInfo[id] = { state: 'ok', total: list.length, usable: summarize(list).usable, lastUsed: latestUse(list) }
+    tokenInfo[id] = { state: 'ok', total: list.length, usable: summarize(list).usable, lastUsed: latestUse(list), list }
   } catch (error) {
     tokenInfo[id] = { state: 'failed' }
     console.error(...apiErrorSummary('user_api_token_list_failed', error))
   }
+}
+// 可用數量後面括號分出唯讀、部分讀寫、讀寫各幾把；沒有可用的（全部已失效或暫停）不帶括號
+const rowTokenValue = (info) => {
+  const breakdown = usableAccessBreakdown(info.list)
+  const time = info.lastUsed ? formatDateTime(info.lastUsed) : ''
+  if (!breakdown) {
+    return time
+      ? t('users.expand.apiTokensValuePlain', { n: info.usable, time })
+      : t('users.expand.apiTokensValuePlainNeverUsed', { n: info.usable })
+  }
+  return time
+    ? t('users.expand.apiTokensValue', { n: info.usable, breakdown, time })
+    : t('users.expand.apiTokensValueNeverUsed', { n: info.usable, breakdown })
 }
 const goApiTokens = (row) => {
   if (router) void router.push({ path: `/users/${row.id}`, query: { tab: 'apiTokens' } })

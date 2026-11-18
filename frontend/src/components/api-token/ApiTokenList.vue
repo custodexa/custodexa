@@ -44,6 +44,34 @@
             <th class="atl-col-name">
               {{ $t('apiTokens.col.name') }}
             </th>
+            <th
+              class="atl-col-access"
+              data-test="col-access"
+            >
+              <!-- 說明元件自帶文字色（主要與次要），要放在以頁面浮層色為底的 light 提示框；
+                   預設的 dark 提示框底色與主要文字色相同，文字會看不見 -->
+              <el-tooltip
+                placement="bottom-start"
+                :show-after="200"
+                effect="light"
+                popper-class="atl-explain-popper"
+              >
+                <template #content>
+                  <ApiTokenLevelExplain />
+                </template>
+                <span
+                  class="atl-col-help"
+                  tabindex="0"
+                  data-test="col-access-help"
+                >
+                  {{ $t('apiTokens.col.access') }}
+                  <CircleHelp
+                    :size="12"
+                    aria-hidden="true"
+                  />
+                </span>
+              </el-tooltip>
+            </th>
             <th class="atl-col-roles">
               {{ $t('apiTokens.col.grantedRoles') }}
             </th>
@@ -71,7 +99,7 @@
               class="atl-section"
               data-test="inactive-section"
             >
-              <td colspan="6">
+              <td colspan="7">
                 <button
                   type="button"
                   class="atl-section__toggle"
@@ -135,6 +163,16 @@
                   {{ $t('apiTokens.createdAt', { time: formatDateTime(row.token.created_at) }) }}
                 </div>
               </td>
+              <td
+                class="atl-col-access"
+                :data-test="`access-${row.token.id}`"
+              >
+                <ApiTokenAccessBadge
+                  :value="tokenAccess(row.token)"
+                  :write-count="readWriteCount(row.token)"
+                  :legacy="row.token.created_before_levels === true"
+                />
+              </td>
               <td class="atl-col-roles">
                 <div
                   v-for="role in row.token.granted_roles || []"
@@ -149,6 +187,7 @@
                   >
                     {{ grantedRoleLabel(role) }}
                   </el-tag>
+                  <ApiTokenLevelTag :level="role.level" />
                   <span
                     v-if="lostRole(row, role)"
                     class="atl-role__lost"
@@ -265,13 +304,18 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { ChevronDown, ChevronRight, Clock, Info, TriangleAlert } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, CircleHelp, Clock, Info, TriangleAlert } from 'lucide-vue-next'
 import { formatDateTime } from '@/utils/format'
 import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
+import ApiTokenAccessBadge from './ApiTokenAccessBadge.vue'
+import ApiTokenLevelExplain from './ApiTokenLevelExplain.vue'
+import ApiTokenLevelTag from './ApiTokenLevelTag.vue'
 import {
   grantedRoleLabel,
   grantedRoleTagType,
+  readWriteCount,
   scopeText,
+  tokenAccess,
   splitTokens,
   statusLabel,
   statusTagClass,
@@ -363,7 +407,7 @@ const lostRole = (row, role) => !row.inactive && role.effective === false
 }
 .atl-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 880px;
   border-collapse: collapse;
   font-size: var(--ot-font-size-sm);
   color: var(--ot-text-primary);
@@ -385,12 +429,23 @@ const lostRole = (row, role) => !row.inactive && role.effective === false
 .atl-table tbody tr:last-child td {
   border-bottom: none;
 }
-.atl-col-name { width: 22%; }
+.atl-col-name { width: 19%; }
+.atl-col-access { width: 11%; }
 .atl-col-roles { width: 24%; }
-.atl-col-status { width: 15%; }
-.atl-col-expiry { width: 15%; }
-.atl-col-used { width: 16%; }
-.atl-col-actions { width: 8%; }
+.atl-col-status { width: 12%; }
+.atl-col-expiry { width: 13%; }
+.atl-col-used { width: 14%; }
+.atl-col-actions { width: 7%; }
+.atl-col-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+}
+.atl-col-help:focus-visible {
+  outline: 2px solid var(--ot-primary);
+  outline-offset: 2px;
+}
 .atl-row.is-inactive td {
   color: var(--ot-text-secondary);
 }

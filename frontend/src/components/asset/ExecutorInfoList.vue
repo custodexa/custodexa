@@ -1,5 +1,5 @@
 <!--
-  ExecutorInfoList：已設定時的資訊列（帳號名稱、秘密來源、型別、金鑰指紋）。
+  ExecutorInfoList：已設定時的資訊列（帳號名稱、秘密來源、型別、公鑰指紋）。
   只讀 executor（最近一次 GET 的回應），不含任何秘密。
 -->
 <template>

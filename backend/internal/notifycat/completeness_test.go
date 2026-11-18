@@ -129,6 +129,16 @@ func checkCatalog(
 			}
 		}
 		for _, p := range spec.Params {
+			if p.Levels == "" {
+				continue
+			}
+			if p.Kind != KindOpaque {
+				add(vSpecInvalid, "%s 參數 %s 非 opaque 卻宣告層級參數", ev, p.Name)
+			} else if lp, ok := spec.param(p.Levels); !ok || lp.Kind != KindOpaque || lp.Required != p.Required {
+				add(vSpecInvalid, "%s 參數 %s 的層級參數 %s 須為已宣告、必要性相同的 opaque 參數", ev, p.Name, p.Levels)
+			}
+		}
+		for _, p := range spec.Params {
 			if p.Total == "" {
 				continue
 			}
@@ -248,15 +258,22 @@ func checkCatalog(
 						usedAnywhere[ph] = true
 					}
 				}
+				// 層級參數隨其名稱清單一併渲染：名稱清單現身即視同已使用
 				for _, p := range spec.Params {
-					if p.Required && p.Name != spec.VariantParam && !used[p.Name] {
+					if p.Levels != "" && used[p.Name] {
+						used[p.Levels] = true
+						usedAnywhere[p.Levels] = true
+					}
+				}
+				for _, p := range spec.Params {
+					if p.Required && !p.WireOnly && p.Name != spec.VariantParam && !used[p.Name] {
 						add(vRequiredUnused, "語系 %s %s/%s 未使用必要參數 %s",
 							lang, ev, variant, p.Name)
 					}
 				}
 			}
 			for _, p := range spec.Params {
-				if p.Name == spec.VariantParam {
+				if p.Name == spec.VariantParam || p.WireOnly {
 					continue
 				}
 				if !usedAnywhere[p.Name] {
@@ -368,6 +385,42 @@ func TestCatalogGuardSensitivity(t *testing.T) {
 			spec.Params = append(append([]ParamSpec(nil), spec.Params...),
 				ParamSpec{Name: "broken", Kind: KindEnum})
 			reg[EventTest] = spec
+		}},
+		{"層級參數未宣告", vSpecInvalid, func(reg map[Event]EventSpec, _ map[string]map[Event]map[string]message) {
+			ev := EventSystemAlertPrivilegedAPITokenCreated
+			spec := reg[ev]
+			params := append([]ParamSpec(nil), spec.Params...)
+			for i := range params {
+				if params[i].Name == "granted_roles" {
+					params[i].Levels = "no_such_levels"
+				}
+			}
+			spec.Params = params
+			reg[ev] = spec
+		}},
+		{"層級參數失去名稱清單後成為死參數", vDeadParam, func(reg map[Event]EventSpec, _ map[string]map[Event]map[string]message) {
+			ev := EventSystemAlertPrivilegedAPITokenCreated
+			spec := reg[ev]
+			params := append([]ParamSpec(nil), spec.Params...)
+			for i := range params {
+				if params[i].Name == "granted_roles" {
+					params[i].Levels = ""
+				}
+			}
+			spec.Params = params
+			reg[ev] = spec
+		}},
+		{"只給 webhook 的標記被拿掉後成為死參數", vDeadParam, func(reg map[Event]EventSpec, _ map[string]map[Event]map[string]message) {
+			ev := EventSystemAlertPrivilegedAPITokenCreated
+			spec := reg[ev]
+			params := append([]ParamSpec(nil), spec.Params...)
+			for i := range params {
+				if params[i].Name == "access" {
+					params[i].WireOnly = false
+				}
+			}
+			spec.Params = params
+			reg[ev] = spec
 		}},
 	}
 

@@ -108,7 +108,7 @@ describe('ExecutorHostCountInPlace', () => {
 })
 
 describe('ExecutorGenerateResult', () => {
-  it('結果頁有金鑰指紋列與複製圖示、公鑰框、有樣式的複製／下載鈕、警示框與日誌句，焦點在結果開頭', async () => {
+  it('結果頁有公鑰指紋列與複製圖示、公鑰框、有樣式的複製／下載鈕、警示框與日誌句，焦點在結果開頭', async () => {
     putMock.mockResolvedValue({ configured: true, username: 'cx-exec', fingerprint: 'SHA256:7QmZ' })
     const w = await mountDialog()
     await w.get('input[data-test="dlg-username"]').setValue('cx-exec')

@@ -49,6 +49,12 @@ type ParamSpec struct {
 	// Total 僅 KindDateList：另一個 int 參數的名字，其值是清單的真實總數。
 	// 總數多於清單元素時，Slack 渲染在清單後加「另有 N 天」
 	Total string
+	// Levels 僅 KindOpaque 的逗號分隔清單：另一個 opaque 參數的名字，其值是同序的 API token 層級
+	// （read｜read_write，逗號分隔）。渲染時每一項寫成該語系的「名稱（層級）」並以語系的分隔符連接
+	// （詞庫 LexiconAPITokenLevel）；兩者項數不同時退回只列名稱。被指名的參數視同已被模板使用
+	Levels string
+	// WireOnly 只給 webhook 的結構化參數：模板不使用，不受「未被任何 variant 使用」的檢查
+	WireOnly bool
 }
 
 // EventSpec 單一事件的參數契約。

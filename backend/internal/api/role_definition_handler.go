@@ -35,13 +35,45 @@ func NewRoleDefinitionHandler(r RoleDefinitionReader, w RoleDefinitionWriter) *R
 }
 
 // List 角色列表：每列含摘要與唯讀判定，頂層帶 can_define。
+//
+// 名稱精確查找 name：與名稱唯一性判定同一個比對（去除前後空白後逐字相等），在可見範圍收斂之後套用，
+// 總數只計符合的列；所需權限與可見範圍與不帶參數的列表相同。參數重複出現、或去除空白後為空字串回 400，
+// 在讀取任何資料之前寫出，與名稱是否存在無關。
 func (h *RoleDefinitionHandler) List(c *gin.Context) {
+	name, ok := roleDefinitionNameQuery(c)
+	if !ok {
+		return
+	}
 	out, err := h.reader.List(c.Request.Context(), middleware.PrincipalFrom(c))
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleQuery, err)
 		return
 	}
+	if name != nil {
+		out.Data = keepExactName(out.Data, name, func(r identity.RoleDefinitionRow) string { return r.Name })
+		out.Total = len(out.Data)
+	}
 	c.JSON(http.StatusOK, out)
+}
+
+// roleDefinitionNameQuery 解析角色列表的 name：沒帶回 (nil, true)；帶一次回正規化後的值；
+// 重複出現或正規化後為空回 400（重複時不取其中一個，取哪一個都會讓結果隨參數順序改變）。
+// 第二個回傳值為 false 表示已寫出錯誤回應。
+func roleDefinitionNameQuery(c *gin.Context) (*string, bool) {
+	vals, present := c.GetQueryArray("name")
+	if !present {
+		return nil, true
+	}
+	if len(vals) != 1 {
+		respondInvalidQueryParam(c, "name")
+		return nil, false
+	}
+	name := identity.NormalizeRoleName(vals[0])
+	if name == "" {
+		respondInvalidQueryParam(c, "name")
+		return nil, false
+	}
+	return &name, true
 }
 
 type entryStateView struct {

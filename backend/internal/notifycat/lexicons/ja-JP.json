@@ -358,5 +358,11 @@
     "bind": "資産に割り当て",
     "rebind": "認証情報の変更",
     "import": "資産のインポート"
+  },
+  "api_token_level": {
+    "read": "参照のみ",
+    "read_write": "参照・変更",
+    "item": "{role}（{level}）",
+    "sep": "、"
   }
 }

@@ -72,10 +72,39 @@ func TestUserHandler_ListPaging(t *testing.T) {
 		assert.EqualValues(t, 1, resp["page"], "%s", q)
 		assert.EqualValues(t, 20, resp["page_size"], "%s", q)
 	}
-	// 沒有上限：大的每頁筆數原樣套用（畫面以每頁 1000 取全量）
+	// 每頁筆數上限 1000：上限以內原樣套用；超過時套用上限並回報（改前 5000 原樣套用）
 	code, resp, _ = getJSON(t, r, "/users?page=1&page_size=1000")
 	require.Equal(t, http.StatusOK, code)
 	assert.EqualValues(t, 1000, resp["page_size"])
+	for _, q := range []string{"/users?page=1&page_size=5000", "/users?page_size=1001", "/users?page_size=99999999999"} {
+		code, resp, raw = getJSON(t, r, q)
+		require.Equal(t, http.StatusOK, code, raw)
+		assert.EqualValues(t, 1000, resp["page_size"], "%s：回報實際套用的上限", q)
+		assert.EqualValues(t, 5, resp["total"], "%s：總數為全部符合條件的筆數", q)
+	}
+	// 資料確實以上限切頁：補到 1005 位，每頁 5000 只回 1000 筆，總數仍為全部
+	extra := make([]model.User, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		extra = append(extra, model.User{Username: fmt.Sprintf("paging-cap-%04d", i), Password: "!", Kind: model.KindHuman, Active: true})
+	}
+	require.NoError(t, db.CreateInBatches(&extra, 200).Error)
+	code, resp, raw = getJSON(t, r, "/users?page=1&page_size=5000")
+	require.Equal(t, http.StatusOK, code, raw)
+	assert.EqualValues(t, 1000, resp["page_size"])
+	assert.Len(t, resp["data"], 1000, "資料至多 1000 筆")
+	assert.EqualValues(t, 1005, resp["total"])
+	code, resp, _ = getJSON(t, r, "/users?page=2&page_size=5000")
+	require.Equal(t, http.StatusOK, code)
+	assert.Len(t, resp["data"], 5, "第 2 頁以上限為每頁筆數接續")
+}
+
+func TestParseListPageSize(t *testing.T) {
+	for raw, want := range map[string]int{
+		"": 20, "abc": 20, "0": 20, "-1": 20, "1.5": 20,
+		"1": 1, "999": 999, "1000": 1000, "1001": 1000, "5000": 1000, "99999999999999999999": 20,
+	} {
+		assert.Equal(t, want, parseListPageSize(raw, 20), "page_size=%q", raw)
+	}
 }
 
 func TestCredentialListPagingReportsApplied(t *testing.T) {

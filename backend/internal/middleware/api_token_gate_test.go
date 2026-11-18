@@ -58,7 +58,10 @@ func newAPITokenGateFixture(t *testing.T) *apiTokenGateFixture {
 	return f
 }
 
-func allowAllAPITokenRoutes(string, string) (bool, bool) { return true, true }
+// allowAllAPITokenRoutes 每條路由都開放且性質為讀（計入全部授權角色）：只測認證與主體的建立。
+func allowAllAPITokenRoutes(string, string) APITokenRouteVerdict {
+	return APITokenRouteVerdict{Registered: true, Open: true, Nature: RouteNatureRead}
+}
 
 // gateRouter 審計 → agent 閘門 → API token 閘門 → 路由，與正式鏈同序。
 func (f *apiTokenGateFixture) gateRouter(decide APITokenRouteDecider, observe func(*gin.Context)) *gin.Engine {
@@ -185,7 +188,7 @@ func TestAPITokenGateInvalidTokenReturns401WithoutIdentity(t *testing.T) {
 // （含公開路由）與查無的路徑，有效 token 皆回 403。
 func TestAPITokenGateFollowsRouteRegistry(t *testing.T) {
 	f := newAPITokenGateFixture(t)
-	r := f.gateRouter(APITokenRouteDecision, nil)
+	r := f.gateRouter(LookupAPITokenRoute, nil)
 	if w := bearerRequest(r, "GET", "/api/v1/assets", f.plain); w.Code != 200 {
 		t.Fatalf("/api/v1/assets（登錄為開放）: %d %s", w.Code, w.Body)
 	}
@@ -219,7 +222,7 @@ func TestAPITokenGateHumanSessionUnchanged(t *testing.T) {
 		return func(c *gin.Context) { *dst, _ = GetRequestCredential(c) }
 	}
 	var withGate, without model.RequestCredential
-	gated := f.gateRouter(APITokenRouteDecision, observeKind(&withGate))
+	gated := f.gateRouter(LookupAPITokenRoute, observeKind(&withGate))
 	plain := gin.New()
 	plain.Use(func(c *gin.Context) { c.Next(); observeKind(&without)(c) })
 	plain.Use(AuditLogMiddleware(newAnonAuditService()), AgentRouteAllowlist(f.auth))
@@ -242,9 +245,9 @@ func TestAPITokenGateHumanSessionUnchanged(t *testing.T) {
 func TestAPITokenGateAgentKeyUnchanged(t *testing.T) {
 	f := newAPITokenGateFixture(t)
 	var kind model.RequestCredential
-	r := f.gateRouter(func(string, string) (bool, bool) {
+	r := f.gateRouter(func(string, string) APITokenRouteVerdict {
 		t.Fatal("agent request must not reach the API token route decision")
-		return false, false
+		return APITokenRouteVerdict{}
 	}, func(c *gin.Context) { kind, _ = GetRequestCredential(c) })
 	r.DELETE("/api/v1/users/:id", func(c *gin.Context) { c.Status(204) })
 	if w := bearerRequest(r, "GET", "/api/v1/assets", f.token.Token); w.Code != 200 {

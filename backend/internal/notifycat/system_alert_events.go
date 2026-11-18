@@ -188,9 +188,14 @@ func systemAlertEventSpecs() map[Event]EventSpec {
 		EventSystemAlertPrivilegedAPITokenCreated: {Params: []ParamSpec{
 			{Name: "actor", Kind: KindOpaque, Required: true},
 			{Name: "severity", Kind: KindEnum, Required: true, Enum: systemAlertSeverityEnum(), Lexicon: LexiconSeverity},
-			{Name: "privileged_roles", Kind: KindOpaque, Required: true},
+			// 角色清單逐項附層級（{role}（唯讀）／{role}（讀寫））；層級參數與名稱清單同序
+			{Name: "privileged_roles", Kind: KindOpaque, Required: true, Levels: "privileged_role_levels"},
+			{Name: "privileged_role_levels", Kind: KindOpaque, Required: true},
 			{Name: "token_name", Kind: KindOpaque, Required: true},
-			{Name: "granted_roles", Kind: KindOpaque, Required: true},
+			{Name: "granted_roles", Kind: KindOpaque, Required: true, Levels: "granted_role_levels"},
+			{Name: "granted_role_levels", Kind: KindOpaque, Required: true},
+			// 層級彙總（read｜read_write｜mixed），只給 webhook
+			{Name: "access", Kind: KindEnum, Required: true, Enum: []string{"read", "read_write", "mixed"}, WireOnly: true},
 			{Name: "expiry", Kind: KindEnum, Required: true, Enum: []string{"at", "never"}},
 			{Name: "expires_at", Kind: KindOpaque},
 		}, VariantParam: "expiry"},

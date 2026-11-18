@@ -448,6 +448,14 @@ var migrations = []Migration{
 		Up:      applyUserGroupNameLiveUnique,
 		Down:    rollbackUserGroupNameLiveUnique,
 	},
+	{
+		// API token 授權角色的層級：api_token_roles 加 level（NOT NULL、預設 read_write，既有列因此維持讀寫）。
+		// 純加法，無資料步驟。Down 刪欄（有損，只供 parity 守衛與開發環境）。
+		Version: "20261118_api_token_role_level",
+		Name:    "api_token_role_level",
+		Up:      applyAPITokenRoleLevel,
+		Down:    rollbackAPITokenRoleLevel,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -520,7 +528,8 @@ func schemaDDLStatements() []string {
 	out = append(out, executorLoginChecksDDL()...)
 	out = append(out, keystrokeRecordsDDL()...)
 	out = append(out, apiTokensDDL()...)
-	return append(out, userGroupNameLiveUniqueDDL()...)
+	out = append(out, userGroupNameLiveUniqueDDL()...)
+	return append(out, apiTokenRoleLevelDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

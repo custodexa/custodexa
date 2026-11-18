@@ -1,0 +1,8 @@
+# Deferred end-to-end scenarios that the CI "Authorization baseline" step and
+# scripts/authz_baseline.sh run after the baseline comparison (one test name
+# per line). They skip in the race-detector step (AUTHZ_BASELINE=deferred) and
+# run here instead. TestDeferredScenariosAreScheduled keeps this list and the
+# gated tests in sync.
+TestManagedResourceReadContract
+TestAssetListPageSizeCapAcrossPaths
+TestSingleReadMatchesList

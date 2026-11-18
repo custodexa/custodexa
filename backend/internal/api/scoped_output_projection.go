@@ -55,7 +55,7 @@ func (h *CredentialHandler) RotationProjectionWired() bool {
 
 // SetAccountRowProjector 以與帳號 handler 相同的兩個來源建立帳號列投影器（組裝時）。
 func (h *CredentialHandler) SetAccountRowProjector(scope AccountCredentialScope, actions AccountRowActionSource) {
-	h.accountRows = &accountRowProjector{credScope: scope, rowActions: actions}
+	h.accountRows = &accountRowProjector{credScope: scope, rowActions: actions, fingerprints: fingerprintGateOf(h.credentials)}
 }
 
 // AccountRowProjectorWired 帳號列投影器已注入且憑證投影來源存在（組裝自檢用）。
@@ -127,6 +127,49 @@ func (h *CredentialHandler) projectRotation(ctx context.Context, rot *model.Cred
 type accountRowProjector struct {
 	credScope  AccountCredentialScope
 	rowActions AccountRowActionSource
+	// fingerprints 帳號列公鑰指紋的檢視判定；缺席時一律不帶指紋（fail closed）
+	fingerprints AccountFingerprintVisibility
+}
+
+// AccountFingerprintVisibility 帳號列公鑰指紋的揭露判定：ids 中請求主體對該憑證具檢視能力者，
+// 與憑證讀取的指紋揭露同一個判定（asset 的帳號、憑證與執行身分服務實作）。
+//
+// 帳號列的完整形狀由憑證識別欄位的欄位條件決定，而該條件也接受沒有檢視能力的管理能力；
+// 指紋只屬看得到憑證的人，所以在形狀之外另判一次，不改變其他欄位的可見性。
+type AccountFingerprintVisibility interface {
+	ViewableCredentialIDs(ctx context.Context, ids []uint) map[uint]bool
+}
+
+// fingerprintGateOf 服務實作了指紋揭露判定時取用；未實作（測試替身）回 nil，帳號列不帶指紋。
+func fingerprintGateOf(svc any) AccountFingerprintVisibility {
+	if g, ok := svc.(AccountFingerprintVisibility); ok {
+		return g
+	}
+	return nil
+}
+
+// fingerprintView 這批帳號列中可帶指紋的憑證：只對帶指紋的列判定。ctx 為帶請求主體與操作者識別的服務層脈絡。
+func (p *accountRowProjector) fingerprintView(ctx context.Context, accounts []*asset.AssetAccountDTO) map[uint]bool {
+	ids := make([]uint, 0, len(accounts))
+	for _, a := range accounts {
+		if a != nil && a.PrivateKeyFingerprint != "" && a.CredentialID != 0 {
+			ids = append(ids, a.CredentialID)
+		}
+	}
+	if len(ids) == 0 || p == nil || p.fingerprints == nil {
+		return map[uint]bool{}
+	}
+	return p.fingerprints.ViewableCredentialIDs(ctx, ids)
+}
+
+// withFingerprintGate 完整或範圍內的列：呼叫者對該憑證不具檢視能力時，回不含指紋的副本（不改動原 DTO）。
+func withFingerprintGate(a *asset.AssetAccountDTO, viewable map[uint]bool) *asset.AssetAccountDTO {
+	if a.PrivateKeyFingerprint == "" || viewable[a.CredentialID] {
+		return a
+	}
+	cp := *a
+	cp.PrivateKeyFingerprint = ""
+	return &cp
 }
 
 // shape 以投影來源決定回應形狀與範圍化時 ids 中可見的憑證。
@@ -152,7 +195,7 @@ func (p *accountRowProjector) shape(c *gin.Context, accounts []*asset.AssetAccou
 
 // row 單列依形狀轉成對外型別。
 func (p *accountRowProjector) row(c *gin.Context, shape authz.AccountCredentialShape, inView map[uint]bool,
-	a *asset.AssetAccountDTO) (any, error) {
+	fpView map[uint]bool, a *asset.AssetAccountDTO) (any, error) {
 
 	switch {
 	case shape == authz.AccountCredentialSlim:
@@ -168,7 +211,7 @@ func (p *accountRowProjector) row(c *gin.Context, shape authz.AccountCredentialS
 		}
 		return row, nil
 	default:
-		return a, nil
+		return withFingerprintGate(a, fpView), nil
 	}
 }
 
@@ -178,9 +221,10 @@ func (p *accountRowProjector) rows(c *gin.Context, accounts []*asset.AssetAccoun
 	if err != nil {
 		return scopedOutput{}, err
 	}
+	fpView := p.fingerprintView(accountContext(c), accounts)
 	out := make([]any, 0, len(accounts))
 	for _, a := range accounts {
-		r, err := p.row(c, shape, inView, a)
+		r, err := p.row(c, shape, inView, fpView, a)
 		if err != nil {
 			return scopedOutput{}, err
 		}
@@ -195,7 +239,7 @@ func (p *accountRowProjector) one(c *gin.Context, a *asset.AssetAccountDTO) (sco
 	if err != nil {
 		return scopedOutput{}, err
 	}
-	r, err := p.row(c, shape, inView, a)
+	r, err := p.row(c, shape, inView, p.fingerprintView(accountContext(c), []*asset.AssetAccountDTO{a}), a)
 	if err != nil {
 		return scopedOutput{}, err
 	}
@@ -219,7 +263,7 @@ func (p *accountRowProjector) credentialRow(c *gin.Context, a *asset.AssetAccoun
 	if err != nil {
 		return nil, err
 	}
-	return p.row(c, shape, inView, a)
+	return p.row(c, shape, inView, p.fingerprintView(accountContext(c), []*asset.AssetAccountDTO{a}), a)
 }
 
 // executorBody 執行身分讀取與設定的回應本文：服務層 DTO 的欄位平鋪，加 credential（帳號列投影）。
@@ -232,7 +276,7 @@ type executorBody struct {
 // 不注入動作判定：執行身分的更換與清除走專屬端點，帳號列的 rebind／remove 旗標對它沒有意義，
 // 範圍外列因此不帶 actions。
 func (h *AssetExecutorHandler) SetAccountRowProjector(scope AccountCredentialScope) {
-	h.accountRows = &accountRowProjector{credScope: scope}
+	h.accountRows = &accountRowProjector{credScope: scope, fingerprints: fingerprintGateOf(h.svc)}
 }
 
 // AccountRowProjectorWired 帳號列投影器已注入且憑證投影來源存在（組裝自檢用）。

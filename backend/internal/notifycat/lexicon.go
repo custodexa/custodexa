@@ -81,6 +81,15 @@ const (
 	LexiconHostKeyPath Lexicon = "host_key_path"
 	// LexiconCredentialAttachEntry 以 API token 掛載既有憑證的掛載方式（入口）
 	LexiconCredentialAttachEntry Lexicon = "credential_attach_entry"
+	// LexiconAPITokenLevel API token 授權角色的層級短語（read、read_write），與 ParamSpec.Levels 的
+	// 渲染格式：item 為一項的寫法（{role}、{level} 由渲染端代入），sep 為項與項之間的分隔符
+	LexiconAPITokenLevel Lexicon = "api_token_level"
+)
+
+// API token 層級詞庫的版面鍵（層級值本身即 read、read_write 兩鍵）
+const (
+	APITokenLevelKeyItem = "item"
+	APITokenLevelKeySep  = "sep"
 )
 
 // DateListKeyMore 「另有 N 天」的詞庫鍵
@@ -207,7 +216,7 @@ func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
 		LexiconEntity, LexiconRotationReport, LexiconComplianceReport, LexiconAlertKind,
 		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList, LexiconHostKeyOutcome, LexiconHostKeyPath,
-		LexiconCredentialAttachEntry}
+		LexiconCredentialAttachEntry, LexiconAPITokenLevel}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

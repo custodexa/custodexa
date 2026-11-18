@@ -46,7 +46,8 @@ func setupSSHProbeFixture(t *testing.T) *sshProbeFixture {
 func (f *sshProbeFixture) sshAsset(t *testing.T, name, host string, port int, password, privateKey string) uint {
 	t.Helper()
 	createKey := privateKey
-	unparsable := ValidatePrivateKey(privateKey) != nil
+	_, verr := ValidatePrivateKey(privateKey)
+	unparsable := verr != nil
 	if unparsable {
 		createKey, _ = testKeyPair(t, "probe-placeholder")
 	}

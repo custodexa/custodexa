@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -36,6 +37,12 @@ type CredentialDTO struct {
 
 	HasPassword   bool `json:"has_password"`
 	HasPrivateKey bool `json:"has_private_key"`
+	// PrivateKeyFingerprint 現行版本私鑰的公鑰指紋（SHA256: 開頭），由版本保存的公鑰計算、不解密私鑰。
+	// 只在算得出來、且呼叫者對這筆憑證具檢視可見性時出現（見 discloseFingerprint）；
+	// 欄位不出現不足以區分「公鑰未知」與「不提供」。代表平台登記的現行版本，不代表每一台都已換成這把鑰
+	PrivateKeyFingerprint string `json:"private_key_fingerprint,omitempty"`
+	// fingerprint 投影時算出、尚未經揭露判定的指紋；只有 discloseFingerprint 會把它放上對外欄位
+	fingerprint string
 	// BindingCount 掛載此憑證的資產數
 	BindingCount int `json:"binding_count"`
 	// CurrentVersionNo 現行版本序號；0＝尚無任何密文
@@ -188,8 +195,47 @@ func credentialDTOFrom(db *gorm.DB, cred *model.Credential) (*CredentialDTO, err
 		}
 		f := flags[*cred.CurrentVersionID]
 		dto.HasPassword, dto.HasPrivateKey = f.HasPassword, f.HasPrivateKey
+		dto.fingerprint = f.PrivateKeyFingerprint
 	}
 	return dto, nil
+}
+
+// discloseFingerprint 把投影時算出的公鑰指紋放上對外欄位。
+//
+// **預設不帶**：投影本身不知道呼叫者是誰，只有確定呼叫者對這筆憑證具檢視可見性的出口才呼叫本方法——
+// 列表與詳情（本來就只回給看得到的人）直接呼叫；寫入回應經 discloseFingerprintIfViewable，
+// 因為寫入動作各依自己的能力授權，不等於檢視可見性。
+func (d *CredentialDTO) discloseFingerprint() {
+	if d == nil {
+		return
+	}
+	d.PrivateKeyFingerprint = d.fingerprint
+}
+
+// discloseFingerprintIfViewable 寫入回應的公鑰指紋揭露：與憑證詳情的讀取用同一個判定
+// （檢視能力，目標為這一筆憑證），通過才帶。判定失敗、判定器缺席、無主體一律不帶（fail closed），
+// 寫入本身的結果不受影響。以請求主體當下的狀態判定，API token 的寫入請求只計入讀寫的角色。
+func (s *CredentialService) discloseFingerprintIfViewable(ctx context.Context, dto *CredentialDTO) {
+	if dto == nil || dto.fingerprint == "" {
+		return
+	}
+	if !s.mgmt.viewableCredentials(ctx, nil, []uint{dto.ID})[dto.ID] {
+		return
+	}
+	view, err := s.scopeView(ctx)
+	if err != nil {
+		return
+	}
+	if view == nil && s.requireFullWhenUnscoped(ctx, view) != nil {
+		return
+	}
+	dto.discloseFingerprint()
+}
+
+// ViewableCredentialIDs ids 中請求主體具檢視能力的憑證（帳號列的公鑰指紋揭露用），
+// 與憑證讀取、寫入回應的指紋揭露同一個判定。
+func (s *CredentialService) ViewableCredentialIDs(ctx context.Context, ids []uint) map[uint]bool {
+	return s.mgmt.viewableCredentials(ctx, nil, ids)
 }
 
 // dedicatedDisplayName 專用憑證的計算顯示名：「資產名 / 帳號名」。
