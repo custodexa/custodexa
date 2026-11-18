@@ -45,13 +45,13 @@ func NewGormConfig(l logger.Interface) *gorm.Config {
 func NewGormLogger(release bool, w io.Writer) logger.Interface {
 	cfg := logger.Config{
 		SlowThreshold:             200 * time.Millisecond,
-		LogLevel:                  logger.Info,
+		LogLevel:                  logger.Error,
 		IgnoreRecordNotFoundError: false,
 		Colorful:                  true,
+		ParameterizedQueries:      true,
 	}
-	if release {
-		cfg.LogLevel = logger.Error
-		cfg.ParameterizedQueries = true
+	if !release {
+		cfg.LogLevel, cfg.ParameterizedQueries = developmentLogLevel(), false
 	}
 	return logger.New(log.New(w, "\r\n", log.LstdFlags), cfg)
 }
@@ -295,3 +295,7 @@ func Close() error {
 	}
 	return nil
 }
+
+// developmentLogLevel 非 release 的資料庫日誌等級：逐條記 SQL（開發用）。
+// 預設值是只記錯誤且不帶參數值；只有明確判定為非 release 時才放寬到這個等級。
+func developmentLogLevel() logger.LogLevel { return logger.Info }
