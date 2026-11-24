@@ -112,7 +112,7 @@ func subjectOf(eventKey, rawParams string, now time.Time) TargetedSubject {
 		_ = json.Unmarshal([]byte(rawParams), &params)
 	}
 	s := TargetedSubject{Event: notifycat.Event(eventKey), Params: params, Now: now}
-	if n, err := strconv.ParseUint(params["request_id"], 10, 64); err == nil {
+	if n, err := strconv.ParseUint(params["request_id"], 10, strconv.IntSize); err == nil {
 		s.RequestID = uint(n)
 	}
 	return s

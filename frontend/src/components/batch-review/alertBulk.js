@@ -136,7 +136,7 @@ export function summarizeByType(rows, { me = null, dayOf = null } = {}) {
         const day = dayOf(row)
         counts.set(day, (counts.get(day) || 0) + 1)
       }
-      for (const [day, count] of [...counts.entries()].sort()) days.push({ day, count })
+      for (const [day, count] of [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) days.push({ day, count })
     }
     return { key: group.key, name: group.name, severity: group.severity, count: group.rows.length, selfCount: group.selfCount, days }
   })

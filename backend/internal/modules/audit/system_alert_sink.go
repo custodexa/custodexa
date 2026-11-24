@@ -349,7 +349,7 @@ func withSystemAlertTargetNames(tx *gorm.DB, ev port.SystemAlertEvent) port.Syst
 			if !declared[key] || params[key] != "" {
 				continue
 			}
-			if uid, err := strconv.ParseUint(ev.Target.ID, 10, 64); err == nil && uid > 0 {
+			if uid, err := strconv.ParseUint(ev.Target.ID, 10, strconv.IntSize); err == nil && uid > 0 {
 				if name := lookupUserNamesDB(tx, []uint{uint(uid)})[uint(uid)]; name != "" {
 					params[key] = name
 				}

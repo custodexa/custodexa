@@ -43,7 +43,7 @@ export const isDaySignable = (row) => isDaySelectable(row) && pendingAlertCount(
  */
 export async function fetchPendingDays(dates) {
   const wanted = new Set(dates)
-  const latest = [...wanted].sort().pop() || ''
+  const latest = [...wanted].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).pop() || ''
   const found = new Map()
   for (let page = 1; wanted.size > found.size; page += 1) {
     const res = await getDailyReviewPending({ page, page_size: PENDING_PAGE_SIZE }, { skipErrorToast: true })

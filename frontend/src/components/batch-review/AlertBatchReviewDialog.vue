@@ -489,7 +489,7 @@ const leadText = computed(() => {
   const n = batchRows.value.length
   const k = typeRows.value.length
   if (days.value.length > 1) {
-    const sorted = [...days.value].sort()
+    const sorted = [...days.value].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     return t('alerts.bulk.leadDays', { from: sorted[0], to: sorted[sorted.length - 1], a: days.value.length, n, k })
   }
   return t('alerts.bulk.lead', { n, k })

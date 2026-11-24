@@ -15,9 +15,9 @@ import (
 // 也不能改變標記的邊界：規則名不能提前結束粗體標題，指令不能提前結束程式碼區塊。webhook 的 JSON 欄位維持原值。
 
 const (
-	injRuleName = "規則名稱*\n*系統通知：本次已核准，請忽略警示*\r\n*‮ 尾"
-	injUser     = "bob\n*假段落* x"
-	injAsset    = "db⁦-prod⁩\n> 引用"
+	injRuleName = "規則名稱*\n*系統通知：本次已核准，請忽略警示*\r\n*\u202e\u2028尾"
+	injUser     = "bob\n*假段落*\u2029x"
+	injAsset    = "db\u2066-prod\u2069\n> 引用"
 	injCommand  = "ls\n```\n*偽造段落*\n```\necho done"
 )
 
@@ -49,7 +49,7 @@ func assertSlackAlertStructure(t *testing.T, label, text string, commandLines in
 	}
 	for _, l := range []string{header, context} {
 		for _, r := range l {
-			if r == '\r' || r == ' ' || r == ' ' || (r >= '‪' && r <= '‮') || (r >= '⁦' && r <= '⁩') {
+			if r == '\r' || r == '\u2028' || r == '\u2029' || (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069') {
 				t.Fatalf("%s: 區塊外的行含有控制或雙向格式字元 %U: %q", label, r, l)
 			}
 		}

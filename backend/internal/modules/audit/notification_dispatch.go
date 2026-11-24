@@ -319,7 +319,7 @@ func lookupChannelNamesDB(db *gorm.DB, ids []uint) map[uint]string {
 
 // resolveTargetName 依目標的種類與識別碼解析名稱；識別碼不是正整數或種類不支援時回空。
 func resolveTargetName(tx *gorm.DB, kind, id string) string {
-	n, err := strconv.ParseUint(id, 10, 64)
+	n, err := strconv.ParseUint(id, 10, strconv.IntSize)
 	if err != nil || n == 0 {
 		return ""
 	}

@@ -579,7 +579,7 @@ const removedText = (date, row) => {
 // 取得前不能送出。不做版本比對：簽核紀錄記下的是受理當下重算的數字
 async function refetch() {
   const seq = ++openSeq
-  const dates = [...new Set(props.selected.map((row) => row.date))].sort()
+  const dates = [...new Set(props.selected.map((row) => row.date))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   refetching.value = true
   refetchError.value = false
   days.value = []
