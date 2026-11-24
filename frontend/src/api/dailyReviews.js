@@ -81,8 +81,9 @@ export function getDailyReviewStats(params, options = {}) {
 /**
  * 簽核指定所屬日（alert:manage 權限）。簽核時刻由伺服器寫入，請求沒有這個欄位。
  * 409 CONFLICT_DAILY_REVIEW_SIGNED（params：date、signer、signed_at、timezone）；
- * 400 規則錯誤碼見抽屜的處理。
- * @param {Object} data - { review_date, note?, delay_reason? }
+ * 400 規則錯誤碼見抽屜的處理。batch_id 是多日簽核同一批共用的關聯碼（UUID），只記入稽核紀錄；
+ * 格式不合整筆回 400。
+ * @param {Object} data - { review_date, note?, delay_reason?, batch_id? }
  * @returns {Promise} { data: 簽核列 }
  */
 export function signDailyReview(data, options = {}) {

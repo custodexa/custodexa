@@ -16,7 +16,8 @@ describe('多項我的申請', () => {
     const w = await open(); await w.get('.el-table__expand-icon').trigger('click'); await flushPromises()
     expect(w.getComponent(RequestItems).findAll('[data-test="request-item-state"]')).toHaveLength(2)
     expect(w.getComponent(RequestItems).text()).toContain('ops'); expect(w.getComponent(RequestItems).text()).toContain('db')
-    expect(w.getComponent(RequestItems).text()).toContain('未核准')
+    // 項目的拒絕狀態與整張的拒絕狀態用同一個詞
+    expect(w.getComponent(RequestItems).text()).toContain('已拒絕')
     expect(w.text()).toContain('2 項資產')
   })
   it('單項被拒不使整單顯示失效', async () => {

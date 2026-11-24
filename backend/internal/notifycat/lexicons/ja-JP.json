@@ -41,7 +41,9 @@
     "KEYSTROKE_KEY_SEAL_FAILED": "キー入力記録のファイル鍵を封印できません（鍵マテリアル未解錠、または鍵管理の失敗）",
     "KEYSTROKE_FILE_CREATE_FAILED": "キー入力記録ファイルを作成できません",
     "KEYSTROKE_WRITE_FAILED": "キー入力記録の書き込みに失敗しました",
-    "KEYSTROKE_WRITER_STALLED": "キー入力記録の書き込みが停止しました（長時間進行なし）"
+    "KEYSTROKE_WRITER_STALLED": "キー入力記録の書き込みが停止しました（長時間進行なし）",
+    "notification_enqueue_failed": "通知内容を書き込めませんでした（操作自体は完了しています。この通知は失われました）",
+    "notification_dispatch_failed": "通知の振り分けが上限まで失敗したため停止しました"
   },
   "severity": {
     "high": "高",
@@ -364,5 +366,228 @@
     "read_write": "参照・変更",
     "item": "{role}（{level}）",
     "sep": "、"
+  },
+  "mechanism": {
+    "audit_write": "監査書き込み",
+    "syslog_forward": "Syslog 転送",
+    "recording_probe": "録画事前チェック",
+    "recording_text": "テキスト録画",
+    "recording_graphics": "グラフィック録画",
+    "session_record": "セッション記録",
+    "command_blocking": "コマンドブロック照合器",
+    "kek_retirement": "KEK 退役収束",
+    "aad_residue": "AAD 暗号文の残存",
+    "checkpoint_anchor": "チェックポイントの外部保管",
+    "audit_chain_structure": "監査チェーン構造検証",
+    "audit_chain_content": "監査チェーン内容検証",
+    "audit_chain_verify": "監査チェーン自動検証処理",
+    "source_policy": "送信元範囲ポリシー",
+    "offsite_upload": "オフサイト保管へのアップロード",
+    "role_state_integrity": "ロール割り当てと監査チェーンの整合性",
+    "principal_state_integrity": "主体と資格情報の状態の整合性",
+    "dek_unwrap": "データ鍵の再取得",
+    "restore_seal": "復元後の封印",
+    "keystroke_probe": "キー入力記録の事前確認",
+    "keystroke_record": "キー入力記録",
+    "notification_delivery": "通知の登録",
+    "notification_dispatch": "通知の振り分け"
+  },
+  "notify_footer": {
+    "occurred": "発生日時",
+    "action": "対応画面を開く",
+    "view": "詳細画面を開く"
+  },
+  "delivery_reason": {
+    "http_404": "受信側でこの URL が見つかりません（HTTP 404）",
+    "http_401": "受信側が拒否しました。署名シークレットが一致していない可能性があります（HTTP 401／403）",
+    "http_5xx": "受信側でエラーが発生しました（HTTP 5xx）",
+    "http_other": "受信側がエラーを返しました",
+    "timeout": "タイムアウト：受信側から応答がありません",
+    "connect": "受信側に接続できません",
+    "slack_channel": "Slack でこのチャンネルが見つかりません",
+    "slack_not_in": "ボットがこのチャンネルに参加していません",
+    "slack_auth": "トークンが無効か取り消されています",
+    "slack_scope": "トークンにメッセージ送信の権限がありません",
+    "slack_rate": "Slack が一時的に送信頻度を制限しています",
+    "slack_other": "Slack がエラーを返しました",
+    "snapshot_unreadable": "URL またはシークレットを復号できず、未試行",
+    "channel_unreadable": "チャネル設定を読み取れません（URL またはシークレットを復号できません）",
+    "policy": "このアドレスは通知の通信ポリシーを満たしていません",
+    "redirect_not_followed": "受信側がリダイレクトを返しました（HTTP 3xx、リダイレクトには従いません）",
+    "redirect_policy": "リダイレクト先が通信ポリシーを満たしていません",
+    "redirect_too_many": "リダイレクトの回数が多すぎます",
+    "rate_limited": "受信側が送信頻度を制限し続けました",
+    "type_unregistered": "チャネルの種類がサポート対象外になりました",
+    "render_failed": "通知内容を組み立てられませんでした"
+  },
+  "policy_relax_type": {
+    "override_lowered": "この資産の個別設定を引き下げました",
+    "override_cleared": "この資産の個別設定を解除し、既定値に戻しました",
+    "default_lowered": "既定値を引き下げました"
+  },
+  "custom_secret_entry": {
+    "change_password": "パスワード変更時に独自のパスワードを指定",
+    "detach_shared": "共有認証情報から切り離し",
+    "declare_new_secret": "新しいパスワードを申告"
+  },
+  "identity_source_kind": {
+    "ldap": "LDAP",
+    "oidc": "OIDC"
+  },
+  "yes_no": {
+    "true": "はい",
+    "false": "いいえ"
+  },
+  "security_admin_action": {
+    "password_change": "パスワード変更",
+    "mfa_disabled": "多要素認証の無効化",
+    "external_bound": "外部 ID の連携",
+    "external_unbound": "外部 ID の連携解除",
+    "rescue": "救済ログイン"
+  },
+  "retention_data_class": {
+    "audit_log": "操作ログ",
+    "session_command": "セッションのコマンド記録",
+    "alert": "アラート記録",
+    "recording": "セッション録画"
+  },
+  "offsite_subject": {
+    "offsite": "オフサイトコピー",
+    "syslog": "syslog 転送"
+  },
+  "offsite_change": {
+    "disabled": "無効化",
+    "destination_changed": "送信先の変更"
+  },
+  "host_key_record_source": {
+    "own": "この資産自身の記録",
+    "address": "同じアドレスの別資産の記録"
+  },
+  "host_key_record_change": {
+    "adopted": "新しいキーの採用",
+    "reset": "記録のリセット"
+  },
+  "channel_change": {
+    "created": "追加",
+    "updated": "変更",
+    "disabled": "無効化",
+    "enabled": "有効化",
+    "deleted": "削除"
+  },
+  "peers_query": {
+    "ok": "成功",
+    "failed": "失敗"
+  },
+  "confirm_source": {
+    "env": "環境変数",
+    "page": "管理画面"
+  },
+  "identity_mode": {
+    "default_account": "既定のアカウント",
+    "executor": "踏み台専用アカウント"
+  },
+  "rotation_alert_kind": {
+    "authz_stopped": "認可が無効になったため、パスワード変更ジョブを停止しました",
+    "plan_failed": "パスワード変更計画が失敗しました",
+    "recovery_verify": "認可が失われた後、パスワード変更ジョブは限定的な検証に移行しました",
+    "candidate_abandoned": "パスワード変更の候補資格情報は再試行を断念しました",
+    "cleanup_pending": "パスワード変更の候補は検証済みですが、古い公開鍵の削除が残っています",
+    "restart_interrupted": "サービスの再起動により、パスワード変更ジョブが中断されました",
+    "plan_reauth_incomplete": "パスワード変更計画の再認可が完了していません",
+    "schedule_reauth_required": "スケジュールされたパスワード変更計画の再認可が必要です",
+    "host_identity_stopped": "ホストの識別情報が変わったため、パスワード変更ジョブを停止しました"
+  },
+  "access_tier": {
+    "open": "申請不要",
+    "reason": "理由の入力で接続可",
+    "approval": "承認者の承認が必要"
+  },
+  "asset_field": {
+    "host": "ホストアドレス",
+    "port": "ポート",
+    "protocol": "プロトコル",
+    "rotation_channel": "パスワード変更の経路",
+    "winrm_scheme": "WinRM スキーム",
+    "winrm_port": "WinRM ポート",
+    "rotation_ssh_port": "パスワード変更用 SSH ポート",
+    "sftp_port": "SFTP ポート",
+    "sftp_enabled": "SFTP の有効化",
+    "rdp_verify_cert": "RDP 証明書の検証",
+    "rdp_security": "RDP セキュリティレイヤー",
+    "db_tls_mode": "データベース TLS モード",
+    "k8s_insecure_skip_tls": "Kubernetes の TLS 検証スキップ",
+    "winrm_tls_mode": "WinRM TLS モード",
+    "db_ca_cert": "データベース CA 証明書",
+    "k8s_ca_cert": "Kubernetes CA 証明書",
+    "winrm_ca_cert": "WinRM CA 証明書"
+  },
+  "channel_field": {
+    "name": "名前",
+    "type": "種類",
+    "url": "URL",
+    "target": "送信先チャンネル",
+    "secret": "シークレットまたはトークン",
+    "enabled": "有効状態",
+    "language": "言語",
+    "min_severity": "通知レベル",
+    "direct_message_enabled": "個人への送信の設定"
+  },
+  "identity_source_field": {
+    "created": "新規作成",
+    "deleted": "削除",
+    "name": "名前",
+    "url": "サーバーアドレス",
+    "bind_dn": "バインドアカウント",
+    "base_dn": "検索ベース",
+    "user_filter": "ユーザーフィルター",
+    "attr_email": "メール属性",
+    "attr_fullname": "氏名属性",
+    "attr_group": "グループ属性",
+    "tls_verify": "TLS 検証",
+    "enabled": "有効状態",
+    "bind_password": "バインドパスワード",
+    "scopes": "スコープ",
+    "groups_claim": "グループクレーム",
+    "username_claim": "ユーザー名クレーム",
+    "email_claim": "メールクレーム",
+    "display_name_claim": "表示名クレーム",
+    "admission_mode": "受け入れ方式",
+    "admission_rules": "受け入れルール",
+    "force_shared": "共有の強制",
+    "client_secret": "クライアントシークレット"
+  },
+  "list_format": {
+    "sep": "、"
+  },
+  "duration": {
+    "hour": "{h} 時間",
+    "hours": "{h} 時間",
+    "minute": "{m} 分",
+    "minutes": "{m} 分",
+    "combined": "{hours} {minutes}"
+  },
+  "dm_title": {
+    "access_request": "あなたの審査待ち",
+    "break_glass": "あなたの事後審査待ち",
+    "daily_review": "あなたの承認待ち"
+  },
+  "dm_undelivered_reason": {
+    "no_email": "受信者のメールアドレスがシステムに登録されていません。",
+    "email_ambiguous": "受信者のメールアドレスが別のアカウントと重複しています。",
+    "recipient_not_found": "該当する Slack アカウントがないか、無効になっています。",
+    "max_attempts": "上限まで再送しても届きませんでした。",
+    "rate_limited": "Slack の送信頻度制限が続き、72 時間以内に送信できませんでした。",
+    "no_recipient": "対応が必要な審査担当者が見つかりませんでした。",
+    "resolve_failed": "受信者の判定中にエラーが発生しました。"
+  },
+  "dm_event_kind": {
+    "access_request": "接続申請の審査待ち",
+    "break_glass": "緊急接続",
+    "break_glass_overdue": "緊急接続の事後審査期限超過",
+    "daily_review": "日次レビュー期限超過"
+  },
+  "dm_auto_off": {
+    "host": "アドレスが許可リストにないため、個人への送信を自動的にオフにし、未送信のダイレクトメッセージを取り消しました",
+    "type": "ダイレクトメッセージを送信できない種類に変更されたため、個人への送信を自動的にオフにし、未送信のダイレクトメッセージを取り消しました"
   }
 }

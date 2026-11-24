@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"

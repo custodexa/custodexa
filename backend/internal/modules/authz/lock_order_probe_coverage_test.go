@@ -83,6 +83,8 @@ var lockSitesOtherLayers = map[string]struct {
 	"internal/modules/audit/principal_failure.go:AuditFailureService.ReportStateMismatch":      {1, "審計主體失敗彙總列"},
 	"internal/modules/audit/agent_tool_call_ledger.go:AgentToolCallLedger.Begin":               {1, "agent 工具呼叫序號的 advisory 鎖（以使用者編號雜湊，非使用者憑證互斥鎖）"},
 	"internal/modules/audit/notification_channel_service.go:NotificationChannelService.Update": {1, "通知管道設定列"},
+	"internal/modules/audit/notification_channel_dm.go:lockChannelsForDirectMessage":           {1, "開啟對個人派送時依編號鎖住全部通知管道設定列"},
+	"internal/modules/audit/command_alert_batch_review.go:CommandAlertService.reviewBatchInTx": {1, "告警批次審閱依告警編號遞增鎖住所選告警列（不鎖使用者表）"},
 	"internal/modules/authz/authz_state.go:LockStateForPermissionActivation":                   {1, "authz_state 單列（附證啟用交界）"},
 	"internal/modules/authz/agent_task_source.go:ReadAgentTaskForReport":                       {1, "agent 任務列"},
 	"internal/modules/authz/agent_session_task.go:BindAgentSessionTask":                        {1, "agent 任務列"},

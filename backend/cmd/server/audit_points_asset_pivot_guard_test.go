@@ -91,6 +91,8 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-110": {pivotNotAsset, false, "外部群組字典備註更新，主體是外部群組，不指定資產"},
 	"AP-277": {pivotNotAsset, false, "個人 API token 建立的交易內留痕，主體是 token 與所屬帳號，不指定資產"},
 	"AP-278": {pivotNotAsset, false, "個人 API token 撤銷的交易內留痕，主體是 token 與所屬帳號，不指定資產"},
+	"AP-279": {pivotNotAsset, false, "告警批次審閱的逐筆處置留痕，主體是告警，不指定資產"},
+	"AP-280": {pivotNotAsset, false, "告警批次審閱的請求摘要留痕，主體是一次批次請求，不指定資產"},
 	"AP-140": {pivotNotAsset, false, "系統告警類型分級調整，主體是告警類型，不指定資產"},
 	"AP-115": {pivotNotAsset, false, "自訂角色定義寫入，主體是角色定義，不指定資產"},
 	"AP-108": {pivotNotAsset, false, "使用者群組映射規則管理，主體是規則與目標使用者群組，不指定資產"},

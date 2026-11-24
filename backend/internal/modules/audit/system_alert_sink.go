@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,16 +34,22 @@ import (
 
 // systemAlertDestination 一個投遞目的地的明文快照（只在記憶體內短暫存在，落庫前即信封加密）。
 type systemAlertDestination struct {
-	Type            string
-	Name            string
+	Type string
+	Name string
+	// Target 收件目標（slack_app 的頻道）；webhook 與 slack 為空字串
+	Target          string
 	Language        string
 	SourceChannelID *uint
 	URL             string
 	Secret          string
+	// Version 這份快照對應的通道目的地版本（通道的 destination_version）；寫入紀錄的 dest_version，
+	// 投遞程序以（通道, 版本）分組。通道變更告警寫給變更前目的地的那一筆是變更前的版本。
+	Version int
 }
 
+// key 去重鍵：型別、網址、秘密加目標（slack_app 同一個 token 送不同頻道算兩個目的地）。
 func (d systemAlertDestination) key() string {
-	return d.Type + "\x00" + d.URL + "\x00" + d.Secret
+	return d.Type + "\x00" + d.URL + "\x00" + d.Secret + "\x00" + d.Target
 }
 
 type systemAlertSink struct {
@@ -64,11 +71,12 @@ func (s *systemAlertSink) RaiseInTx(tx *gorm.DB, ev port.SystemAlertEvent) (port
 }
 
 // raise 與 RaiseInTx 相同，另可加入額外的目的地快照（通道變更時的變更前後快照）。
-// 額外目的地與啟用中通道以（類型、網址、密鑰）去重。
+// 額外目的地與啟用中通道以（類型、網址、密鑰、目標）去重。
 func (s *systemAlertSink) raise(tx *gorm.DB, ev port.SystemAlertEvent, extra []systemAlertDestination) (port.SystemAlertReceipt, error) {
 	if s == nil || tx == nil {
 		return port.SystemAlertReceipt{}, errors.New("系統告警落地面未取得交易控制代碼")
 	}
+	ev = withSystemAlertTargetNames(tx, ev)
 	def, err := validateSystemAlertEvent(ev)
 	if err != nil {
 		return port.SystemAlertReceipt{}, err
@@ -125,6 +133,7 @@ func (s *systemAlertSink) raise(tx *gorm.DB, ev port.SystemAlertEvent, extra []s
 	}
 	dests = mergeSystemAlertDestinations(dests, extra)
 	now := s.now()
+	alertID := row.ID
 	for _, d := range dests {
 		sealedURL, err := sealChannelValue(s.codec, keyvault.RefSystemAlertOutboxURL, d.URL)
 		if err != nil {
@@ -138,15 +147,19 @@ func (s *systemAlertSink) raise(tx *gorm.DB, ev port.SystemAlertEvent, extra []s
 		if err != nil {
 			return port.SystemAlertReceipt{}, err
 		}
-		out := model.SystemAlertOutbox{
-			AlertID:         row.ID,
+		out := model.NotificationDelivery{
+			Category:        model.NotificationCategorySystemSecurityAlert,
+			AlertID:         &alertID,
+			Severity:        severity,
 			DestType:        d.Type,
+			DestTarget:      d.Target,
 			DestName:        truncateRunes(d.Name, 100),
 			DestLanguage:    d.Language,
 			SourceChannelID: d.SourceChannelID,
+			DestVersion:     d.Version,
 			URLEnc:          sealedURL,
 			SecretEnc:       sealedSecret,
-			State:           model.SystemAlertOutboxPending,
+			State:           model.NotificationDeliveryPending,
 			NextAttemptAt:   now,
 			CreatedAt:       now,
 			DeliveryKey:     key,
@@ -163,13 +176,18 @@ func (s *systemAlertSink) raise(tx *gorm.DB, ev port.SystemAlertEvent, extra []s
 			return port.SystemAlertReceipt{}, err
 		}
 		id := u.ch.ID
-		out := model.SystemAlertOutbox{
-			AlertID:         row.ID,
+		out := model.NotificationDelivery{
+			Category:        model.NotificationCategorySystemSecurityAlert,
+			AlertID:         &alertID,
+			Severity:        severity,
 			DestType:        u.ch.Type,
 			DestName:        truncateRunes(u.ch.Name, 100),
 			DestLanguage:    u.ch.Language,
 			SourceChannelID: &id,
-			State:           model.SystemAlertOutboxAbandoned,
+			DestVersion:     u.ch.DestinationVersion,
+			State:           model.NotificationDeliveryAbandoned,
+			EndReason:       model.NotificationEndSnapshotUnreadable,
+			EndedAt:         &now,
 			NextAttemptAt:   now,
 			CreatedAt:       now,
 			LastError:       truncateRunes(u.reason, systemAlertErrMax),
@@ -237,12 +255,12 @@ func channelDestination(codec crypto.ColumnCodec, ch model.NotificationChannel) 
 	}
 	id := ch.ID
 	return systemAlertDestination{
-		Type: ch.Type, Name: ch.Name, Language: ch.Language,
-		SourceChannelID: &id, URL: plainURL, Secret: plainSecret,
+		Type: ch.Type, Name: ch.Name, Language: ch.Language, Target: ch.Target,
+		SourceChannelID: &id, URL: plainURL, Secret: plainSecret, Version: ch.DestinationVersion,
 	}, nil
 }
 
-// mergeSystemAlertDestinations 依序併入並以（類型、網址、密鑰）去重，保留先出現者。
+// mergeSystemAlertDestinations 依序併入並以（類型、網址、密鑰、目標）去重，保留先出現者。
 func mergeSystemAlertDestinations(base, extra []systemAlertDestination) []systemAlertDestination {
 	seen := make(map[string]bool, len(base)+len(extra))
 	out := make([]systemAlertDestination, 0, len(base)+len(extra))
@@ -291,6 +309,55 @@ func sanitizeSystemAlertParams(ev port.SystemAlertEvent, severity string) (map[s
 	// 分級已在告警列上，不重複存。
 	delete(clean, "severity")
 	return clean, nil
+}
+
+// withSystemAlertTargetNames 補上產生點只給了識別碼的目標名稱（同一交易內查，含已軟刪的列）：
+// 類型目錄宣告了 asset_name 而產生點沒帶時，以事件的資產識別碼查資產名稱；宣告了 session_username 時，
+// 以目標會話查會話使用者的登入帳號；宣告了 owner_username 或 target_username 且目標為使用者時，以目標使用者
+// 查登入帳號。產生點已帶的值不覆寫；查不到就不帶（句子以可選段承接）。
+func withSystemAlertTargetNames(tx *gorm.DB, ev port.SystemAlertEvent) port.SystemAlertEvent {
+	def, ok := LookupSystemAlertType(ev.Type)
+	if !ok {
+		return ev
+	}
+	declared := map[string]bool{}
+	for _, p := range def.Params {
+		declared[p.Name] = true
+	}
+	params := make(map[string]string, len(ev.Params)+2)
+	for k, v := range ev.Params {
+		params[k] = v
+	}
+	if declared["asset_name"] && params["asset_name"] == "" && ev.AssetID != nil && *ev.AssetID != 0 {
+		if name := lookupAssetNamesDB(tx, []uint{*ev.AssetID})[*ev.AssetID]; name != "" {
+			params["asset_name"] = name
+		}
+	}
+	if declared["session_username"] && params["session_username"] == "" && ev.Target.Kind == port.SystemAlertTargetSession {
+		if sid, err := strconv.ParseUint(ev.Target.ID, 10, 64); err == nil && sid > 0 {
+			var userID uint
+			if err := tx.Unscoped().Model(&model.Session{}).Select("user_id").Where("id = ?", sid).Limit(1).Scan(&userID).Error; err == nil && userID != 0 {
+				if name := lookupUserNamesDB(tx, []uint{userID})[userID]; name != "" {
+					params["session_username"] = name
+				}
+			}
+		}
+	}
+	// 目標為使用者的事件：宣告了 owner_username 或 target_username 而產生點沒帶時，以目標使用者查登入帳號
+	if ev.Target.Kind == port.SystemAlertTargetUser {
+		for _, key := range []string{"owner_username", "target_username"} {
+			if !declared[key] || params[key] != "" {
+				continue
+			}
+			if uid, err := strconv.ParseUint(ev.Target.ID, 10, 64); err == nil && uid > 0 {
+				if name := lookupUserNamesDB(tx, []uint{uint(uid)})[uint(uid)]; name != "" {
+					params[key] = name
+				}
+			}
+		}
+	}
+	ev.Params = params
+	return ev
 }
 
 func truncateRunes(s string, max int) string {

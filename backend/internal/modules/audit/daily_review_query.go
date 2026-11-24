@@ -70,6 +70,9 @@ type DailyReviewPendingDay struct {
 	LateDays         int                  `json:"late_days"`
 	EnabledBasis     string               `json:"enabled_basis"`
 	Counts           *DailyReviewSnapshot `json:"counts,omitempty"`
+	// UnreviewedAlertTypes 未審閱告警的不同類型數；告警來源已清除時為 null。
+	// 不放進 Counts：Counts 的結構會固化進簽核紀錄
+	UnreviewedAlertTypes *int64 `json:"unreviewed_alert_types"`
 }
 
 func pendingDayOf(d reviewcal.Day, now time.Time) DailyReviewPendingDay {
@@ -160,6 +163,9 @@ func (s *DailyReviewService) Pending(page, pageSize int) ([]DailyReviewPendingDa
 		item := pendingDayOf(d, now)
 		if item.Counts, err = computeSnapshot(s.db, d.Date, d.Start, d.End, watermarks); err != nil {
 			return nil, 0, err
+		}
+		if item.UnreviewedAlertTypes, err = unreviewedAlertTypes(s.db, d.Start, d.End, item.Counts.AlertsSource); err != nil {
+			return nil, 0, fmt.Errorf("統計未審閱告警類型數: %w", err)
 		}
 		items = append(items, item)
 	}

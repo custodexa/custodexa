@@ -41,7 +41,9 @@
     "KEYSTROKE_KEY_SEAL_FAILED": "鍵盤紀錄的檔案金鑰無法封存（金鑰材料尚未解封或金鑰管理失敗）",
     "KEYSTROKE_FILE_CREATE_FAILED": "鍵盤紀錄檔無法建立",
     "KEYSTROKE_WRITE_FAILED": "鍵盤紀錄寫入失敗",
-    "KEYSTROKE_WRITER_STALLED": "鍵盤紀錄寫入端停擺（長時間沒有進展）"
+    "KEYSTROKE_WRITER_STALLED": "鍵盤紀錄寫入端停擺（長時間沒有進展）",
+    "notification_enqueue_failed": "通知內容寫不進去（業務操作已照常完成，這則通知遺失）",
+    "notification_dispatch_failed": "通知內容分派失敗達上限而終止"
   },
   "severity": {
     "high": "高風險",
@@ -364,5 +366,228 @@
     "read_write": "讀寫",
     "item": "{role}（{level}）",
     "sep": "、"
+  },
+  "mechanism": {
+    "audit_write": "稽核寫入",
+    "syslog_forward": "Syslog 轉發",
+    "recording_probe": "錄影前置檢查",
+    "recording_text": "文字錄影",
+    "recording_graphics": "圖形錄影",
+    "session_record": "會話記錄",
+    "command_blocking": "指令阻斷比對器",
+    "kek_retirement": "金鑰退役收斂",
+    "aad_residue": "AAD 密文殘餘",
+    "checkpoint_anchor": "檢查點離機備份",
+    "audit_chain_structure": "稽核鏈結構驗證",
+    "audit_chain_content": "稽核鏈內容驗證",
+    "audit_chain_verify": "稽核鏈自動驗證作業",
+    "source_policy": "來源網段限定政策",
+    "offsite_upload": "離機儲存上傳",
+    "role_state_integrity": "角色指派與稽核鏈的一致性",
+    "principal_state_integrity": "主體與憑證狀態完整性",
+    "dek_unwrap": "資料金鑰的重新取得",
+    "restore_seal": "還原後封章",
+    "keystroke_probe": "鍵盤紀錄前置檢查",
+    "keystroke_record": "鍵盤紀錄",
+    "notification_delivery": "通知排入",
+    "notification_dispatch": "通知分派"
+  },
+  "notify_footer": {
+    "occurred": "發生時間",
+    "action": "前往處理",
+    "view": "前往查看"
+  },
+  "delivery_reason": {
+    "http_404": "收端回應找不到這個網址（HTTP 404）",
+    "http_401": "收端拒絕，可能是簽名密鑰不一致（HTTP 401／403）",
+    "http_5xx": "收端發生錯誤（HTTP 5xx）",
+    "http_other": "收端回應錯誤",
+    "timeout": "連線逾時，收端沒有回應",
+    "connect": "連不上收端",
+    "slack_channel": "Slack 找不到這個頻道",
+    "slack_not_in": "機器人不在這個頻道",
+    "slack_auth": "token 無效或已撤銷",
+    "slack_scope": "token 缺少送訊息的權限",
+    "slack_rate": "Slack 暫時限制送出頻率",
+    "slack_other": "Slack 回報錯誤",
+    "snapshot_unreadable": "網址或密鑰解不開，沒有嘗試",
+    "channel_unreadable": "通道設定無法讀取（網址或密鑰解不開）",
+    "policy": "這個位址不符合通知傳輸政策",
+    "redirect_not_followed": "收端回應轉址（HTTP 3xx，不跟隨轉址）",
+    "redirect_policy": "轉址目的地不符傳輸政策",
+    "redirect_too_many": "轉址次數過多",
+    "rate_limited": "收端持續限制送出頻率",
+    "type_unregistered": "通道型別已不在支援範圍內",
+    "render_failed": "通知內容無法組成"
+  },
+  "policy_relax_type": {
+    "override_lowered": "調低了這台資產的個別設定",
+    "override_cleared": "清除了這台資產的個別設定，改用預設值",
+    "default_lowered": "調低了預設值"
+  },
+  "custom_secret_entry": {
+    "change_password": "改密碼時自訂新密碼",
+    "detach_shared": "脫離共用憑證",
+    "declare_new_secret": "宣告新的密碼"
+  },
+  "identity_source_kind": {
+    "ldap": "LDAP",
+    "oidc": "OIDC"
+  },
+  "yes_no": {
+    "true": "是",
+    "false": "否"
+  },
+  "security_admin_action": {
+    "password_change": "變更密碼",
+    "mfa_disabled": "停用多因素驗證",
+    "external_bound": "綁定外部身分",
+    "external_unbound": "解除外部身分綁定",
+    "rescue": "救援登入"
+  },
+  "retention_data_class": {
+    "audit_log": "操作日誌",
+    "session_command": "會話指令紀錄",
+    "alert": "告警記錄",
+    "recording": "會話錄影"
+  },
+  "offsite_subject": {
+    "offsite": "離機副本",
+    "syslog": "syslog 轉發"
+  },
+  "offsite_change": {
+    "disabled": "已停用",
+    "destination_changed": "目的地已變更"
+  },
+  "host_key_record_source": {
+    "own": "這台資產自己的記錄",
+    "address": "同位址其他資產的記錄"
+  },
+  "host_key_record_change": {
+    "adopted": "採用新金鑰",
+    "reset": "重設記錄"
+  },
+  "channel_change": {
+    "created": "新增",
+    "updated": "修改",
+    "disabled": "停用",
+    "enabled": "啟用",
+    "deleted": "刪除"
+  },
+  "peers_query": {
+    "ok": "成功",
+    "failed": "失敗"
+  },
+  "confirm_source": {
+    "env": "環境變數",
+    "page": "管理頁面"
+  },
+  "identity_mode": {
+    "default_account": "預設帳號",
+    "executor": "堡壘機專用帳號"
+  },
+  "rotation_alert_kind": {
+    "authz_stopped": "改密工作因授權失效停止",
+    "plan_failed": "改密計畫執行失敗",
+    "recovery_verify": "改密工作於授權失效後進入有限驗證",
+    "candidate_abandoned": "改密候選憑證已放棄重試",
+    "cleanup_pending": "改密候選已驗證，但舊公鑰待清理",
+    "restart_interrupted": "改密工作因服務重啟中斷",
+    "plan_reauth_incomplete": "改密計畫重新授權未完成",
+    "schedule_reauth_required": "改密排程計畫需要重新授權",
+    "host_identity_stopped": "改密工作因主機身分異動停止"
+  },
+  "access_tier": {
+    "open": "不需申請",
+    "reason": "填寫理由即可連線",
+    "approval": "需審核人核准"
+  },
+  "asset_field": {
+    "host": "主機位址",
+    "port": "連接埠",
+    "protocol": "協定",
+    "rotation_channel": "改密通道",
+    "winrm_scheme": "WinRM 協定",
+    "winrm_port": "WinRM 連接埠",
+    "rotation_ssh_port": "改密用 SSH 連接埠",
+    "sftp_port": "SFTP 連接埠",
+    "sftp_enabled": "SFTP 開啟",
+    "rdp_verify_cert": "RDP 憑證驗證",
+    "rdp_security": "RDP 安全層級",
+    "db_tls_mode": "資料庫 TLS 模式",
+    "k8s_insecure_skip_tls": "Kubernetes 略過 TLS 驗證",
+    "winrm_tls_mode": "WinRM TLS 模式",
+    "db_ca_cert": "資料庫 CA 憑證",
+    "k8s_ca_cert": "Kubernetes CA 憑證",
+    "winrm_ca_cert": "WinRM CA 憑證"
+  },
+  "channel_field": {
+    "name": "名稱",
+    "type": "類型",
+    "url": "網址",
+    "target": "目標頻道",
+    "secret": "密鑰或 token",
+    "enabled": "啟用狀態",
+    "language": "語系",
+    "min_severity": "推送等級",
+    "direct_message_enabled": "對個人派送設定"
+  },
+  "identity_source_field": {
+    "created": "新建立",
+    "deleted": "已刪除",
+    "name": "名稱",
+    "url": "伺服器位址",
+    "bind_dn": "綁定帳號",
+    "base_dn": "搜尋起點",
+    "user_filter": "使用者篩選條件",
+    "attr_email": "電子郵件屬性",
+    "attr_fullname": "姓名屬性",
+    "attr_group": "群組屬性",
+    "tls_verify": "TLS 驗證",
+    "enabled": "啟用狀態",
+    "bind_password": "綁定密碼",
+    "scopes": "授權範圍",
+    "groups_claim": "群組宣告",
+    "username_claim": "帳號宣告",
+    "email_claim": "電子郵件宣告",
+    "display_name_claim": "顯示名稱宣告",
+    "admission_mode": "准入方式",
+    "admission_rules": "准入規則",
+    "force_shared": "強制共用",
+    "client_secret": "用戶端密鑰"
+  },
+  "list_format": {
+    "sep": "、"
+  },
+  "duration": {
+    "hour": "{h} 小時",
+    "hours": "{h} 小時",
+    "minute": "{m} 分鐘",
+    "minutes": "{m} 分鐘",
+    "combined": "{hours} {minutes}"
+  },
+  "dm_title": {
+    "access_request": "待你審核",
+    "break_glass": "待你補審",
+    "daily_review": "待你簽核"
+  },
+  "dm_undelivered_reason": {
+    "no_email": "收件人在系統裡沒有電子郵件。",
+    "email_ambiguous": "收件人的電子郵件與另一個帳號相同，無法確定要送給誰。",
+    "recipient_not_found": "Slack 查無這個電子郵件的帳號，或那個帳號已停用。",
+    "max_attempts": "重送到上限仍沒送到。",
+    "rate_limited": "Slack 一直限制送出頻率，72 小時內都沒送出。",
+    "no_recipient": "找不到需要處理的審核人。",
+    "resolve_failed": "判定收件人時發生錯誤。"
+  },
+  "dm_event_kind": {
+    "access_request": "連線申請待審",
+    "break_glass": "破窗緊急連線",
+    "break_glass_overdue": "破窗逾期未補審",
+    "daily_review": "每日審閱逾期"
+  },
+  "dm_auto_off": {
+    "host": "因網址不在允許清單而自動關閉對個人派送，尚未送出的私訊已取消",
+    "type": "因類型改為不能送私訊的類型而自動關閉對個人派送，尚未送出的私訊已取消"
   }
 }

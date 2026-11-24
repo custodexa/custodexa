@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"strconv"
 	"time"
@@ -39,7 +40,7 @@ const (
 const hostIdentityCommitGenerationChanged = "commit_generation_changed"
 
 // hostIdentityStopRule 停止通知的規則名稱（與授權失效的停止通知分開）
-const hostIdentityStopRule = "改密工作因主機身分異動停止"
+const hostIdentityStopRule = notifycat.RotationAlertHostIdentityStopped
 
 // hostIdentityVerificationSent 由階段與預期身分回呼的放行計數算 verification_sent：
 // precheck 尚未撥號為 false；commit 驗證已成功為 true；handshake 看回呼放行過幾次

@@ -14,7 +14,12 @@ func ReadAgentTaskForReport(tx *gorm.DB, id uint) (audit.AgentTaskFacts, error) 
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&task, id).Error; err != nil {
 		return audit.AgentTaskFacts{}, err
 	}
-	return audit.AgentTaskFacts{ID: task.ID, RequesterID: task.RequesterID, ExecutorID: executorIDValue(task.ExecutorUserID, task.RequesterID), ClosedAt: task.ClosedAt}, nil
+	var items int64
+	if err := tx.Model(&model.AccessRequestItem{}).Where("request_id = ?", task.ID).Count(&items).Error; err != nil {
+		return audit.AgentTaskFacts{}, err
+	}
+	return audit.AgentTaskFacts{ID: task.ID, RequesterID: task.RequesterID, ExecutorID: executorIDValue(task.ExecutorUserID, task.RequesterID), ClosedAt: task.ClosedAt,
+		AssetID: task.AssetID, AssetCount: int(items)}, nil
 }
 
 // CloseAgentTask is called under ReadAgentTaskForReport's lock and executor check.

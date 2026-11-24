@@ -90,18 +90,18 @@ func TestAuditToDisplayMasksUndecryptable(t *testing.T) {
 	}
 }
 
-// TestAuditUndecryptableChannelSkipped 解不開的通道 url，setChannels 必須跳過
+// TestAuditUndecryptableChannelSkipped 解不開的通道 url，稽核失效退路讀通道時必須跳過
 // （不以密文當 URL 投遞）
 func TestAuditUndecryptableChannelSkipped(t *testing.T) {
 	svc, km, db := setupEnvelopeChannelSvc(t)
 	svc.Create(&NotificationChannelRequest{ActorID: 1, ActorName: "tester", Name: "ok", URL: "https://example.com/hook", Secret: "sk"})
 	// 密文引用不存在版本
 	db.Create(&model.NotificationChannel{Name: "bad", Type: "webhook", URL: "enc:v42:aGVsbG8=", Enabled: true})
-	n := NewAlertNotifier(db, km)
-	if err := n.LoadChannels(); err != nil {
-		t.Fatalf("load: %v", err)
+	plain, err := loadEnabledChannelsPlain(db, km)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, ch := range n.snapshotChannels() {
+	for _, ch := range plain {
 		if strings.HasPrefix(ch.URL, "enc:v") {
 			t.Fatalf("密文洩漏為投遞 URL: %q", ch.URL)
 		}

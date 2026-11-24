@@ -166,9 +166,6 @@ func (e *baselineEnv) resetInProcess(touched []string) {
 	if tset["alert_rules"] {
 		audit.ReloadAlertMatcher()
 	}
-	if tset["notification_channels"] {
-		audit.ReloadAlertNotifier()
-	}
 	if tset["syslog_settings"] {
 		if f := audit.GetSyslogForwarder(); f != nil {
 			f.Reload()

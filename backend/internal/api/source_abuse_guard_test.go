@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/custodexa/backend/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
-	"github.com/custodexa/backend/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

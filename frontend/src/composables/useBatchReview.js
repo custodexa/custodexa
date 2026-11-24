@@ -28,6 +28,24 @@ export const BATCH_STATE = Object.freeze({
   REJECTED: 'rejected',
   NOT_SENT: 'notSent',
   UNCONFIRMED: 'unconfirmed',
+  // 送出前就判定不送（例如開啟確認時已不在待審）：沒有發出請求
+  SKIPPED: 'skipped',
+  // 一次送出的批次：伺服端受理了這次請求，但這一筆沒有生效（原因記在 reason）
+  NOT_APPLIED: 'notApplied',
+})
+
+/**
+ * 一次送出的批次在整批層級的結果（runBulk 的回傳 outcome）：
+ *   done         伺服端回 2xx，逐筆結果已寫入
+ *   rejected     伺服端整批拒收（4xx），一筆都沒有寫；呼叫端回到填寫畫面
+ *   failed       伺服端明說交易無法提交、整批沒有生效（只限呼叫端指定的錯誤碼）
+ *   unconfirmed  沒有收到可判定的回應：整批標為待確認，交給查回
+ */
+export const BULK_OUTCOME = Object.freeze({
+  DONE: 'done',
+  REJECTED: 'rejected',
+  FAILED: 'failed',
+  UNCONFIRMED: 'unconfirmed',
 })
 
 const STORAGE_PREFIX = 'ot-batch-review:'
@@ -57,6 +75,7 @@ export function classifyBatchError(error) {
     const data = error.response.data
     return {
       state: BATCH_STATE.REJECTED,
+      status,
       code: typeof data?.code === 'string' ? data.code : '',
       reason: resolveApiError(data, status),
     }
@@ -92,6 +111,14 @@ function removeStorage(key) {
   }
 }
 
+/**
+ * 清掉某個面保存在分頁暫存裡的批次進度（例如會話結束時）。
+ * 只動該面自己的鍵，其他面的進度不受影響。
+ */
+export function clearBatchProgress(surface) {
+  removeStorage(`${STORAGE_PREFIX}${surface}`)
+}
+
 const countBy = (items, state) => items.filter((item) => item.state === state).length
 
 /**
@@ -115,6 +142,8 @@ export function useBatchReview({ surface, userId, reconcile }) {
     rejected: countBy(items.value, BATCH_STATE.REJECTED),
     notSent: countBy(items.value, BATCH_STATE.NOT_SENT),
     unconfirmed: countBy(items.value, BATCH_STATE.UNCONFIRMED),
+    skipped: countBy(items.value, BATCH_STATE.SKIPPED),
+    notApplied: countBy(items.value, BATCH_STATE.NOT_APPLIED),
   }))
 
   const persist = () => {
@@ -148,7 +177,7 @@ export function useBatchReview({ surface, userId, reconcile }) {
    * @param {Object} args
    * @param {string} args.kind    批次種類（alert / approve / reject / review）
    * @param {Object} args.params  共用參數（處置、理由）；收尾比對會用到
-   * @param {Array<{id, label, meta?}>} args.entries
+   * @param {Array<{id, label, meta?, skip?}>} args.entries  skip＝不送出，直接記為略過
    * @param {(entry, batchId) => Promise<{message?, waiting?}|void>} args.send  送出單筆
    */
   async function run({ kind, params, entries, send }) {
@@ -160,7 +189,11 @@ export function useBatchReview({ surface, userId, reconcile }) {
       params,
       userId: userId?.value ?? null,
       startedAt: new Date().toISOString(),
-      items: entries.map((entry) => ({ ...entry, state: BATCH_STATE.QUEUED, message: '' })),
+      items: entries.map(({ skip, ...entry }) => ({
+        ...entry,
+        state: skip ? BATCH_STATE.SKIPPED : BATCH_STATE.QUEUED,
+        message: '',
+      })),
     }
     phase.value = 'running'
     current.value = 0
@@ -172,6 +205,7 @@ export function useBatchReview({ surface, userId, reconcile }) {
         // 元件已卸載（使用者離開頁面）：剩下的不再送，留 queued 由下次收尾標成未送出
         if (disposed) break
         current.value = index + 1
+        if (batch.value.items[index].state === BATCH_STATE.SKIPPED) continue
         patchItem(index, { state: BATCH_STATE.INFLIGHT })
         try {
           const outcome = await send(batch.value.items[index], batchId)
@@ -184,6 +218,80 @@ export function useBatchReview({ surface, userId, reconcile }) {
       window.removeEventListener('beforeunload', guardUnload)
     }
     if (!disposed) phase.value = 'result'
+  }
+
+  /**
+   * 一次送出：整批只發一個請求，進度紀錄只有一筆（整批），沒有逐筆進度。
+   * 回應前頁面被關掉：下次掛載時整批標為待確認並查回，**不自動重送**。
+   * @param {Object} args
+   * @param {string} args.kind
+   * @param {Object} args.params  共用參數（處置、理由）；查回比對會用到
+   * @param {Array<{id}>} args.entries  依送出順序
+   * @param {(entries, batchId) => Promise<Object<string, Object>>} args.send
+   *   送出整批，回傳 { [id]: 該筆的狀態 }；沒有涵蓋的筆維持待確認
+   * @param {(error) => boolean} [args.isDefiniteFailure]  伺服端明說整批沒有生效的錯誤
+   * @returns {Promise<{outcome: string, error?: any}>}
+   */
+  async function runBulk({ kind, params, entries, send, isDefiniteFailure = () => false }) {
+    if (phase.value === 'running' || !entries.length) return { outcome: BULK_OUTCOME.REJECTED }
+    batch.value = {
+      v: STORAGE_VERSION,
+      batchId: generateBatchId(),
+      kind,
+      mode: 'bulk',
+      params,
+      userId: userId?.value ?? null,
+      startedAt: new Date().toISOString(),
+      items: entries.map((entry) => ({ ...entry, state: BATCH_STATE.INFLIGHT, message: '' })),
+    }
+    phase.value = 'running'
+    current.value = 0
+    persist()
+    window.addEventListener('beforeunload', guardUnload)
+    const batchId = batch.value.batchId
+    const own = batch.value
+    const settle = (patchOf) => {
+      own.items = own.items.map((item) => {
+        const patch = patchOf(item)
+        return patch ? { ...item, ...patch } : item
+      })
+      if (!disposed) {
+        batch.value = { ...own }
+        persist()
+        return
+      }
+      // 已卸載後才回來的回應：只在紀錄仍是這一批時回寫
+      const saved = readStorage(storageKey)
+      if (saved && saved.batchId === batchId) writeStorage(storageKey, own)
+    }
+    const drop = () => {
+      removeStorage(storageKey)
+      if (!disposed) {
+        batch.value = null
+        phase.value = 'idle'
+      }
+    }
+    try {
+      const patches = (await send(own.items, batchId)) || {}
+      settle((item) => patches[item.id] || { state: BATCH_STATE.UNCONFIRMED })
+      if (!disposed) phase.value = 'result'
+      return { outcome: BULK_OUTCOME.DONE }
+    } catch (error) {
+      const status = error?.response?.status
+      if (isDefiniteFailure(error)) {
+        drop()
+        return { outcome: BULK_OUTCOME.FAILED, error }
+      }
+      if (status >= 400 && status < 500) {
+        drop()
+        return { outcome: BULK_OUTCOME.REJECTED, error }
+      }
+      settle(() => ({ state: BATCH_STATE.UNCONFIRMED }))
+      if (!disposed) phase.value = 'result'
+      return { outcome: BULK_OUTCOME.UNCONFIRMED, error }
+    } finally {
+      window.removeEventListener('beforeunload', guardUnload)
+    }
   }
 
   async function applyReconcile() {
@@ -247,27 +355,31 @@ export function useBatchReview({ surface, userId, reconcile }) {
     window.removeEventListener('beforeunload', guardUnload)
   })
 
-  return { phase, batch, items, current, total, summary, run, recover, recheck, finish }
+  return { phase, batch, items, current, total, summary, run, runBulk, recover, recheck, finish }
 }
 
 /**
- * 勾選狀態：以 id 去重、上限 BATCH_LIMIT。「全選」只取本頁可勾者，
+ * 勾選狀態：以識別去重、上限 BATCH_LIMIT。「全選」只取本頁可勾者，
  * 達上限即停，並記下是否因上限而少勾。
+ *
+ * 識別預設是 row.id；沒有 id 的列（例如以日期為單位的每日簽核待簽日）由
+ * keyOf 指定。
  */
-export function useBatchSelection({ limit = BATCH_LIMIT } = {}) {
+export function useBatchSelection({ limit = BATCH_LIMIT, keyOf = (row) => row.id } = {}) {
   const selected = ref([])
   const truncated = ref(false)
-  const selectedIds = computed(() => new Set(selected.value.map((row) => row.id)))
+  const selectedIds = computed(() => new Set(selected.value.map(keyOf)))
   const atLimit = computed(() => selected.value.length >= limit)
 
-  const isSelected = (row) => selectedIds.value.has(row.id)
+  const isSelected = (row) => selectedIds.value.has(keyOf(row))
   const canToggle = (row, canSelect) =>
     canSelect(row) && (isSelected(row) || !atLimit.value)
 
   function toggle(row, checked) {
     truncated.value = false
     if (!checked) {
-      selected.value = selected.value.filter((item) => item.id !== row.id)
+      const key = keyOf(row)
+      selected.value = selected.value.filter((item) => keyOf(item) !== key)
       return
     }
     if (isSelected(row) || atLimit.value) return
@@ -290,8 +402,8 @@ export function useBatchSelection({ limit = BATCH_LIMIT } = {}) {
   function toggleAll(rows, canSelect) {
     const state = pageState(rows, canSelect)
     if (state.checked) {
-      const pageIds = new Set(rows.map((row) => row.id))
-      selected.value = selected.value.filter((row) => !pageIds.has(row.id))
+      const pageIds = new Set(rows.map(keyOf))
+      selected.value = selected.value.filter((row) => !pageIds.has(keyOf(row)))
       truncated.value = false
       return
     }

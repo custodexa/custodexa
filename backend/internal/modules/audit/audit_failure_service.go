@@ -36,7 +36,7 @@ type AuditFailureService struct {
 	// ReconcileOnStartup 兜底（其語義不變）
 	pendingClose map[string]time.Time
 	// notify 通知出口（測試注入；nil 走 AlertNotifier）。
-	// 型別與 NotifyEvent 一致——散文自簽名消失，編譯期擋回潮
+	// 型別與 EnqueueAuditFailureNotice 一致——散文自簽名消失，編譯期擋回潮
 	notify func(event notifycat.Event, params map[string]string)
 }
 
@@ -77,7 +77,7 @@ func (s *AuditFailureService) sendNotify(event notifycat.Event, params map[strin
 		return
 	}
 	if notifier := GetAlertNotifier(); notifier != nil {
-		notifier.NotifyEvent(event, params)
+		notifier.EnqueueAuditFailureNotice(event, params)
 	}
 }
 
@@ -334,8 +334,36 @@ func (s *AuditFailureService) AdoptOpenEvent(mechanism string) bool {
 // 不經 Report——Report 的進行中去重語義
 // 就是不重發。本方法不動狀態機也不動事件列，只走通知出口，
 // 投遞仍受 failure_alert_enabled 政策與通道配置節制（無通道即無外送）
+//
+// 寫入前以該機制未結束的事件列補查失效起點（params 的 started_at）：補列事件的起點是補列時刻、
+// 不是真實起點，不帶；查不到也不帶。這一查不持 s.mu。
 func (s *AuditFailureService) NotifyOngoing(event notifycat.Event, params map[string]string) {
-	s.sendNotify(event, params)
+	out := make(map[string]string, len(params)+1)
+	for k, v := range params {
+		out[k] = v
+	}
+	if out["started_at"] == "" {
+		if started, ok := s.ongoingStartedAt(out["mechanism"]); ok {
+			out["started_at"] = started.Format(time.RFC3339)
+		}
+	}
+	s.sendNotify(event, out)
+}
+
+// ongoingStartedAt 機制未結束事件的真實起點；補列事件或查不到時回 false。
+func (s *AuditFailureService) ongoingStartedAt(mechanism string) (time.Time, bool) {
+	if s.db == nil || mechanism == "" {
+		return time.Time{}, false
+	}
+	var existing model.AuditFailureEvent
+	if err := s.db.Where("mechanism = ? AND ended_at IS NULL", mechanism).
+		Order("started_at").First(&existing).Error; err != nil {
+		return time.Time{}, false
+	}
+	if existing.Details == failureEventBackfillDetails {
+		return time.Time{}, false
+	}
+	return existing.StartedAt, true
 }
 
 // EnsureEventRow 確保進行中失效有事件列：Report 當時

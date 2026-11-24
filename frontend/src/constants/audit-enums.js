@@ -191,6 +191,9 @@ export const AUDIT_MECHANISM_VALUES = [
   // 鍵盤紀錄：簽發點目錄探測與逐會話紀錄各自成機制，恢復只配對自己
   'keystroke_probe',
   'keystroke_record',
+  // 通知排入與分派：產生點寫不進通知內容、通知內容分派失敗而終止，各自開關與結束
+  'notification_delivery',
+  'notification_dispatch',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -290,6 +293,9 @@ export const AUDIT_CAUSE_VALUES = [
   'KEYSTROKE_FILE_CREATE_FAILED',
   'KEYSTROKE_WRITE_FAILED',
   'KEYSTROKE_WRITER_STALLED',
+  // 通知排入與分派失敗
+  'notification_enqueue_failed',
+  'notification_dispatch_failed',
 ]
 
 // 鍵盤紀錄「不涵蓋」的原因碼（紀錄列 coverage_reason；呈現端查譯）

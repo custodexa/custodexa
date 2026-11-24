@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/authz"
+	"github.com/gin-gonic/gin"
 )
 
 // AuditFailureHandler 審計機制失效事件查詢 API

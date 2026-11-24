@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
@@ -26,23 +27,48 @@ import (
 var (
 	ErrChannelNotFound   = errors.New("通知通道不存在")
 	ErrInvalidChannelURL = errors.New("URL 必須為 http 或 https")
-	ErrInvalidChannelTyp = errors.New("通道類型必須為 webhook 或 slack")
+	ErrInvalidChannelTyp = errors.New("通道類型必須為 webhook、slack 或 slack_app")
 	// ErrInvalidChannelLanguage 語系非白名單三值；
 	// Update 顯式給空字串或白名單外值都回此錯——省略（nil）才是「保留舊值」
 	ErrInvalidChannelLanguage = errors.New("語系必須為 zh-TW、en-US 或 ja-JP")
 	// ErrInvalidChannelMinSeverity 推送門檻非 low／medium／high；
 	// 語義同 language：省略（nil）＝保留舊值，顯式空字串或白名單外都拒
 	ErrInvalidChannelMinSeverity = errors.New("推送門檻必須為 low、medium 或 high")
+	// ErrChannelSecretRequired 型別需要秘密（slack_app 的機器人 token）而請求沒有給：建立時未填、
+	// 改成這個型別時未在同一次請求輸入，或要清除它。
+	ErrChannelSecretRequired = errors.New("這個通道型別需要秘密，請在同一次請求輸入")
+	// ErrChannelTypeChangeNeedsURL 改變型別時請求沒有給網址（網址在回應中是遮罩過的，空值代表沿用；
+	// 型別改變而沿用舊網址會把新型別的秘密送到舊收端）。
+	ErrChannelTypeChangeNeedsURL = errors.New("改變通道型別時必須同時給出網址")
+	// ErrChannelURLChangeNeedsSecret 帶授權標頭送出秘密的型別改網址時沒有同時輸入秘密：
+	// 已保存的 token 只送往保存它時的網址。
+	ErrChannelURLChangeNeedsSecret = errors.New("改變這個通道的網址時必須同時輸入 token")
+	// ErrDirectMessageUnsupportedType 型別描述不能以個人為對象，卻要求開啟對個人派送。
+	ErrDirectMessageUnsupportedType = errors.New("這個通道型別不能開啟對個人派送")
+	// ErrDirectMessageURLNotAllowed 網址主機不在對個人派送的允許清單內，卻要求開啟對個人派送。
+	ErrDirectMessageURLNotAllowed = errors.New("通道網址不在對個人派送的允許清單內")
+	// ErrDirectMessageConflict 已有另一個通道開啟對個人派送（錯誤值為 *DirectMessageConflictError，帶那個通道的名稱）。
+	ErrDirectMessageConflict = errors.New("已有其他通道開啟對個人派送")
 )
+
+// DirectMessageConflictError 已有另一個通道開啟對個人派送；Name 是那個通道的名稱。
+type DirectMessageConflictError struct{ Name string }
+
+func (e *DirectMessageConflictError) Error() string { return ErrDirectMessageConflict.Error() }
+
+// Is 讓 errors.Is(err, ErrDirectMessageConflict) 成立。
+func (e *DirectMessageConflictError) Is(target error) bool { return target == ErrDirectMessageConflict }
 
 // NotificationChannelRequest 通道建立/更新請求（Create 與 Update 欄位相同，共用一個結構）。
 // URL 不再 binding 必填：回應已遮罩、前端無從回填，
 // Update 時空字串＝沿用既有（與 secret 同語義）；Create 時空 URL 由 validate 擋下
 type NotificationChannelRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Type        string `json:"type"` // 未傳預設 webhook
-	URL         string `json:"url"`
-	Secret      string `json:"secret"`       // Update 時空字串＝沿用既有（secret 不回傳，前端無從回填）
+	Name   string `json:"name" binding:"required"`
+	Type   string `json:"type"` // 未傳預設 webhook
+	URL    string `json:"url"`
+	Secret string `json:"secret"` // Update 時空字串＝沿用既有（secret 不回傳，前端無從回填）
+	// Target 目標（slack_app 的頻道識別碼；非秘密）。Update 時空字串＝沿用既有；不需要目標的型別一律清空
+	Target      string `json:"target"`
 	ClearSecret bool   `json:"clear_secret"` // Update 時顯式清除簽名（改為不簽名推送）；Create 忽略
 	Enabled     *bool  `json:"enabled"`      // 指標區分「未傳」與「false」；未傳預設啟用
 
@@ -51,6 +77,10 @@ type NotificationChannelRequest struct {
 	// nil＝省略＝Create 預設 zh-TW／Update 保留舊值；非 nil 一律驗證，
 	// 空字串或白名單外值都拒（ErrInvalidChannelLanguage），不可能靜默留下非法值
 	Language *string `json:"language"`
+
+	// DirectMessageEnabled 對個人派送。nil＝省略（Create 為關閉；Update 保留現值，但型別或網址改到不能派送時
+	// 自動關閉）；true 時型別須能以個人為對象、網址主機須屬允許清單、且沒有其他通道開啟。
+	DirectMessageEnabled *bool `json:"direct_message_enabled"`
 
 	// MinSeverity 推送門檻。語義同 Language：nil＝省略＝Create 預設 low／
 	// Update 保留舊值（列表的啟用開關只送 name、type、enabled，不得因此重設門檻）；
@@ -176,6 +206,8 @@ type channelAuditDetails struct {
 	URLBefore        string                 `json:"url_before,omitempty"`
 	URLAfter         string                 `json:"url_after,omitempty"`
 	TransportRiskAck []policy.RiskItem      `json:"transport_risk_ack,omitempty"`
+	// DirectMessageAutoOff 對個人派送被自動關閉的原因（host＝網址不在允許清單；type＝型別不能以個人為對象）。
+	DirectMessageAutoOff string `json:"direct_message_auto_off,omitempty"`
 }
 
 // channelAlertRaiser 系統告警落地面的內部變體：可附加額外目的地快照。
@@ -250,12 +282,18 @@ func diffChannels(before, after *plainChannel) (changes []channelSettingChange, 
 		add("name", "", after.row.Name)
 		add("type", "", after.row.Type)
 		add("url", "", maskChannelURL(after.url))
+		if after.row.Target != "" {
+			add("target", "", after.row.Target)
+		}
 		if after.secret != "" {
 			add("secret", "", "set")
 		}
 		add("enabled", "", strconv.FormatBool(after.row.Enabled))
 		add("language", "", after.row.Language)
 		add("min_severity", "", after.row.MinSeverity)
+		if after.row.DirectMessageEnabled {
+			add("direct_message_enabled", "", "true")
+		}
 		return changes, fields, kind
 	case before != nil && after == nil:
 		kind = channelChangeDeleted
@@ -273,6 +311,9 @@ func diffChannels(before, after *plainChannel) (changes []channelSettingChange, 
 	}
 	if before.url != after.url {
 		add("url", maskChannelURL(before.url), maskChannelURL(after.url))
+	}
+	if before.row.Target != after.row.Target {
+		add("target", before.row.Target, after.row.Target)
 	}
 	if before.secret != after.secret {
 		switch {
@@ -293,6 +334,9 @@ func diffChannels(before, after *plainChannel) (changes []channelSettingChange, 
 	if before.row.MinSeverity != after.row.MinSeverity {
 		add("min_severity", before.row.MinSeverity, after.row.MinSeverity)
 	}
+	if before.row.DirectMessageEnabled != after.row.DirectMessageEnabled {
+		add("direct_message_enabled", strconv.FormatBool(before.row.DirectMessageEnabled), strconv.FormatBool(after.row.DirectMessageEnabled))
+	}
 	kind = channelChangeUpdated
 	if before.row.Enabled != after.row.Enabled {
 		if after.row.Enabled {
@@ -310,7 +354,7 @@ func diffChannels(before, after *plainChannel) (changes []channelSettingChange, 
 // 告警目的地＝其他啟用通道 ∪ 本通道變更前快照 ∪ 本通道變更後快照（由落地面去重）：
 // 停用或刪除時舊目的地仍收到通知，建立即停用的通道也收到「已建立」。
 func (s *NotificationChannelService) recordChannelChange(tx *gorm.DB, actor ChannelActor, action model.AuditAction,
-	channelID uint, before, after *plainChannel, riskAck []policy.RiskItem) error {
+	channelID uint, before, after *plainChannel, riskAck []policy.RiskItem, dmAutoOff string) error {
 	changes, fields, kind := diffChannels(before, after)
 	corr, err := newChannelCorrelationID()
 	if err != nil {
@@ -318,7 +362,7 @@ func (s *NotificationChannelService) recordChannelChange(tx *gorm.DB, actor Chan
 	}
 	name := ""
 	details := channelAuditDetails{Event: "notification_channel_change", Change: kind, CorrelationID: corr,
-		Changes: changes, TransportRiskAck: riskAck}
+		Changes: changes, TransportRiskAck: riskAck, DirectMessageAutoOff: dmAutoOff}
 	if before != nil {
 		name = before.row.Name
 		details.URLBefore = maskChannelURL(before.url)
@@ -358,19 +402,26 @@ func (s *NotificationChannelService) recordChannelChange(tx *gorm.DB, actor Chan
 		}
 		id := side.row.ID
 		extra = append(extra, systemAlertDestination{
-			Type: side.row.Type, Name: side.row.Name, Language: side.row.Language,
-			SourceChannelID: &id, URL: side.url, Secret: side.secret,
+			Type: side.row.Type, Name: side.row.Name, Language: side.row.Language, Target: side.row.Target,
+			SourceChannelID: &id, URL: side.url, Secret: side.secret, Version: side.row.DestinationVersion,
 		})
 	}
 	params := map[string]string{"change": kind}
+	if name != "" {
+		params["channel_name"] = name
+	}
 	if kind != channelChangeCreated && kind != channelChangeDeleted && len(fields) > 0 {
 		params["changed_fields"] = strings.Join(fields, ",")
 	}
+	// webhook 參數照舊每次都帶前後網址；網址未變時 Slack 文字略過網址段（事件規格的 PairWith）
 	if details.URLBefore != "" {
 		params["url_before"] = details.URLBefore
 	}
 	if details.URLAfter != "" {
 		params["url_after"] = details.URLAfter
+	}
+	if dmAutoOff != "" {
+		params["dm_auto_off"] = dmAutoOff
 	}
 	ev := port.SystemAlertEvent{
 		Type:          port.SystemAlertNotificationChannelChanged,
@@ -442,8 +493,10 @@ func (s *NotificationChannelService) toDisplay(ch *model.NotificationChannel) er
 	if err != nil {
 		// 解不開的 url 不阻列表，以全遮罩呈現（清冊/遷移告警另行提示）
 		ch.URL = "****"
+		ch.DirectMessageURLAllowed = false
 		return nil
 	}
+	ch.DirectMessageURLAllowed = directMessageHostAllowed(plainURL)
 	// 傳輸偏離標示（3.1）：存量 http 通道誠實標示，不回溯停用
 	if s.transmission != nil {
 		ch.TransmissionDeviation = len(s.transmission.NotifyRisks(plainURL)) > 0
@@ -495,8 +548,12 @@ func (s *NotificationChannelService) List() ([]model.NotificationChannel, error)
 	if err := s.db.Order("id ASC").Find(&channels).Error; err != nil {
 		return nil, fmt.Errorf("查詢通知通道失敗: %w", err)
 	}
+	now := time.Now()
 	for i := range channels {
 		_ = s.toDisplay(&channels[i])
+		if err := s.fillChannelHealth(&channels[i], now); err != nil {
+			log.Printf("[NotificationChannel] 通道 %d 的送達狀況查詢失敗，列表不帶這一欄: %v", channels[i].ID, err)
+		}
 	}
 	return channels, nil
 }
@@ -544,8 +601,20 @@ func (s *NotificationChannelService) GetForDelivery(id uint) (*model.Notificatio
 	return channel, nil
 }
 
-// Create 建立通道；成功後刷新推送快取
+// Create 建立通道
 func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*model.NotificationChannel, error) {
+	channelType := req.Type
+	if channelType == "" {
+		channelType = channelTypeDefault
+	}
+	desc, ok := ChannelType(channelType)
+	if !ok {
+		return nil, ErrInvalidChannelTyp
+	}
+	// 未填網址而型別有預設值（slack_app 的 Slack API 位址）時帶入預設值
+	if req.URL == "" && desc.Fields.DefaultURL != "" {
+		req.URL = desc.Fields.DefaultURL
+	}
 	if err := validateChannel(req); err != nil {
 		return nil, err
 	}
@@ -565,18 +634,30 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		minSeverity = *req.MinSeverity
 	}
 
-	channelType := req.Type
-	if channelType == "" {
-		channelType = model.NotificationChannelTypeWebhook
-	}
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-	// slack 不簽名，secret 對其無意義——強制清空使 has_secret 恆 false
+	// 沒有秘密的型別（slack）不簽名，secret 對其無意義——強制清空使 has_secret 恆 false
 	secret := req.Secret
-	if channelType == model.NotificationChannelTypeSlack {
+	if desc.Fields.Secret == ChannelSecretNone {
 		secret = ""
+	}
+	if desc.Fields.SecretRequired && secret == "" {
+		return nil, ErrChannelSecretRequired
+	}
+	dmEnabled := req.DirectMessageEnabled != nil && *req.DirectMessageEnabled
+	if dmEnabled {
+		if err := checkDirectMessageAllowed(desc, req.URL); err != nil {
+			return nil, err
+		}
+	}
+	target := ""
+	if desc.Fields.NeedsTarget {
+		target = req.Target
+	}
+	if err := desc.Validate(ChannelDestination{Type: channelType, URL: req.URL, Secret: secret, Target: target}); err != nil {
+		return nil, err
 	}
 	// 傳輸政策閘：驗證之後、落庫之前
 	riskAck, err := s.checkTransmissionGate(req.URL, req)
@@ -597,16 +678,26 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		Type:        channelType,
 		URL:         sealedURL,
 		Secret:      sealedSecret,
+		Target:      target,
 		Enabled:     enabled,
 		Language:    language,
 		MinSeverity: minSeverity,
 	}
-	// 寫入、服務層審計與系統告警同一個交易：任一步失敗整筆回滾，推送快取不重載。
+	channel.DirectMessageEnabled = dmEnabled
+	// 寫入、服務層審計與系統告警同一個交易：任一步失敗整筆回滾。
 	//
 	// `Enabled` 欄帶 default:true，而 GORM 對帶 default 的欄位遇零值會改用預設值
 	// ——直接 Create 會讓「建立時就停用」靜默變成啟用、照常推送。落庫後在同一交易內
 	// 補寫請求值（沿 rotation_report_schedule_service.Create 的作法）
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if dmEnabled {
+			if err := lockChannelsForDirectMessage(tx); err != nil {
+				return err
+			}
+			if err := directMessageConflict(tx, 0); err != nil {
+				return err
+			}
+		}
 		if err := tx.Create(&channel).Error; err != nil {
 			return fmt.Errorf("建立通知通道失敗: %w", err)
 		}
@@ -621,19 +712,162 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		if perr != nil {
 			return perr
 		}
-		return s.recordChannelChange(tx, req.actor(), model.ActionCreate, channel.ID, nil, &after, riskAck)
+		return s.recordChannelChange(tx, req.actor(), model.ActionCreate, channel.ID, nil, &after, riskAck, "")
 	}); err != nil {
 		return nil, err
 	}
 
 	_ = s.toDisplay(&channel)
-	ReloadAlertNotifier()
 	return &channel, nil
 }
 
-// Update 更新通道；成功後刷新推送快取。
-// url 空字串＝沿用既有（G8：回應已遮罩，前端無從回填，
-// 語義與 secret 一致），有帶值才驗證、加密、落庫
+// channelUpdatePlan 依加鎖讀到的現值與請求算出的更新內容。
+type channelUpdatePlan struct {
+	updates map[string]interface{}
+	riskAck []policy.RiskItem
+	// dmAutoOff 對個人派送被自動關閉的原因（空字串＝沒有）；dmTurnedOff 這次更新把對個人派送由開改為關。
+	dmAutoOff   string
+	dmTurnedOff bool
+	dmTurnedOn  bool
+}
+
+// planChannelUpdate 在交易內、以 FOR UPDATE 讀到的 current 為準判斷更新規則並組出 updates：
+//   - 型別改變時請求必須帶網址；舊型別的秘密一律清除不沿用；新型別需要秘密時必須同次輸入；
+//     改成簽章密鑰型別時秘密選填。
+//   - 帶授權標頭送出秘密的型別（slack_app）改網址時必須同次輸入 token；不能清除 token。
+//   - 網址、秘密、目標、型別任一實際改變時，同一交易更新目的地最後變更時間並遞增目的地版本。
+//
+// 兩個並行更新因此依序判斷：後者看到的是前者提交後的型別與網址。
+func (s *NotificationChannelService) planChannelUpdate(current model.NotificationChannel, req *NotificationChannelRequest, now time.Time) (channelUpdatePlan, error) {
+	currentType := current.Type
+	if currentType == "" {
+		currentType = channelTypeDefault
+	}
+	effectiveType := currentType
+	if req.Type != "" {
+		effectiveType = req.Type
+	}
+	desc, ok := ChannelType(effectiveType)
+	if !ok {
+		return channelUpdatePlan{}, ErrInvalidChannelTyp
+	}
+	typeChanged := effectiveType != currentType
+	if typeChanged && req.URL == "" {
+		return channelUpdatePlan{}, ErrChannelTypeChangeNeedsURL
+	}
+	currentURL, urlErr := readChannelValue(s.codec, keyvault.RefChannelURL, current.URL)
+	currentSecret, secretErr := readChannelValue(s.codec, keyvault.RefChannelSecret, current.Secret)
+	urlChanged := req.URL != "" && (urlErr != nil || req.URL != currentURL)
+
+	// 秘密：nil＝沿用；非 nil＝存檔後的明文（空字串＝清除）
+	var newSecret *string
+	set := func(v string) { newSecret = &v }
+	switch desc.Fields.Secret {
+	case ChannelSecretNone:
+		set("")
+	case ChannelSecretBearerToken:
+		switch {
+		case req.Secret == "" && (req.ClearSecret || typeChanged):
+			return channelUpdatePlan{}, ErrChannelSecretRequired
+		case req.Secret == "" && urlChanged:
+			return channelUpdatePlan{}, ErrChannelURLChangeNeedsSecret
+		case req.Secret != "":
+			set(req.Secret)
+		}
+	default: // 簽章密鑰：選填
+		switch {
+		case typeChanged:
+			set(req.Secret)
+		case req.ClearSecret:
+			set("")
+		case req.Secret != "":
+			set(req.Secret)
+		}
+	}
+	target := ""
+	if desc.Fields.NeedsTarget {
+		target = current.Target
+		if typeChanged {
+			target = ""
+		}
+		if req.Target != "" {
+			target = req.Target
+		}
+	}
+	check := ChannelDestination{Type: effectiveType, Target: target}
+	if newSecret != nil {
+		check.Secret = *newSecret
+	}
+	if err := desc.Validate(check); err != nil {
+		return channelUpdatePlan{}, err
+	}
+
+	// 傳輸政策閘：以存檔後生效的 URL 判定——未帶 URL＝沿用既有（解不開的殘留列跳過閘，缺陷已由列表全遮罩呈現）。
+	// 存量不安全通道不被回溯停用，但「再次存檔」即受閘（spec 場景鎖定此語義）
+	effectiveURL := req.URL
+	if effectiveURL == "" && urlErr == nil {
+		effectiveURL = currentURL
+	}
+	riskAck, err := s.checkTransmissionGate(effectiveURL, req)
+	if err != nil {
+		return channelUpdatePlan{}, err
+	}
+
+	updates := map[string]interface{}{"name": req.Name}
+	if req.URL != "" {
+		sealedURL, err := sealChannelValue(s.codec, keyvault.RefChannelURL, req.URL)
+		if err != nil {
+			return channelUpdatePlan{}, fmt.Errorf("加密通道 URL 失敗: %w", err)
+		}
+		updates["url"] = sealedURL
+	}
+	if req.Type != "" {
+		updates["type"] = effectiveType
+	}
+	secretChanged := false
+	if newSecret != nil {
+		secretChanged = secretErr != nil || *newSecret != currentSecret
+		sealedSecret, err := sealChannelValue(s.codec, keyvault.RefChannelSecret, *newSecret)
+		if err != nil {
+			return channelUpdatePlan{}, fmt.Errorf("加密通道 secret 失敗: %w", err)
+		}
+		updates["secret"] = sealedSecret
+	}
+	if target != current.Target {
+		updates["target"] = target
+	}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.Language != nil {
+		updates["language"] = *req.Language
+	}
+	if req.MinSeverity != nil {
+		updates["min_severity"] = *req.MinSeverity
+	}
+	if typeChanged || urlChanged || secretChanged || target != current.Target {
+		updates["destination_changed_at"] = now
+		updates["destination_version"] = gorm.Expr("destination_version + 1")
+	}
+	plan := channelUpdatePlan{updates: updates, riskAck: riskAck}
+	// 對個人派送：不屬目的地設定，不遞增目的地版本
+	urlKnown := req.URL != "" || urlErr == nil
+	dmAfter, autoOff, err := planDirectMessage(current.DirectMessageEnabled, req.DirectMessageEnabled, desc, effectiveURL, urlKnown)
+	if err != nil {
+		return channelUpdatePlan{}, err
+	}
+	if dmAfter != current.DirectMessageEnabled {
+		updates["direct_message_enabled"] = dmAfter
+	}
+	plan.dmAutoOff = autoOff
+	plan.dmTurnedOff = current.DirectMessageEnabled && !dmAfter
+	plan.dmTurnedOn = !current.DirectMessageEnabled && dmAfter
+	return plan, nil
+}
+
+// Update 更新通道。
+// url 空字串＝沿用既有（G8：回應已遮罩，前端無從回填，語義與 secret 一致），有帶值才驗證、加密、落庫。
+// 不依賴現值的格式驗證在交易外；依賴現值的規則在交易內以加鎖讀到的列判斷（planChannelUpdate）。
 func (s *NotificationChannelService) Update(id uint, req *NotificationChannelRequest) (*model.NotificationChannel, error) {
 	if req.Type != "" && !model.ValidNotificationChannelType(req.Type) {
 		return nil, ErrInvalidChannelTyp
@@ -656,74 +890,25 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 		}
 	}
 
-	channel, err := s.getStored(id)
-	if err != nil {
-		return nil, err
+	// 傳輸政策的等級先在交易外讀一次（政策服務以自己的連線讀並快取）：交易內的存檔閘因此不必在持有
+	// 列鎖時另開連線讀政策；單一連線的測試資料庫也不會因交易佔住連線而讀不到政策。
+	if s.transmission != nil {
+		_ = s.transmission.ChannelLevel(policy.TransportChannelNotify)
 	}
 
-	// 傳輸政策閘：以存檔後生效的 URL 判定——
-	// 未帶 URL＝沿用既有（解密評估；解不開的殘留列跳過閘，缺陷已由列表全遮罩呈現）。
-	// 存量不安全通道不被回溯停用，但「再次存檔」即受閘（spec 場景鎖定此語義）
-	effectiveURL := req.URL
-	if effectiveURL == "" {
-		if plain, readErr := readChannelValue(s.codec, keyvault.RefChannelURL, channel.URL); readErr == nil {
-			effectiveURL = plain
-		}
-	}
-	riskAck, err := s.checkTransmissionGate(effectiveURL, req)
-	if err != nil {
-		return nil, err
-	}
-
-	updates := map[string]interface{}{
-		"name": req.Name,
-	}
-	if req.URL != "" {
-		sealedURL, err := sealChannelValue(s.codec, keyvault.RefChannelURL, req.URL)
-		if err != nil {
-			return nil, fmt.Errorf("加密通道 URL 失敗: %w", err)
-		}
-		updates["url"] = sealedURL
-	}
-	if req.Type != "" {
-		updates["type"] = req.Type
-	}
-	// 更新後的生效類型（未帶 type 則沿用既有）決定 secret 處理
-	effectiveType := channel.Type
-	if req.Type != "" {
-		effectiveType = req.Type
-	}
-	// slack 恆無 secret（含 webhook→slack 轉換時清掉殘留）；
-	// webhook 則：空字串＝沿用既有（secret 不回傳、編輯表單無從回填，避免任何編輯靜默清空），
-	// clear_secret＝顯式清除
-	switch {
-	case effectiveType == model.NotificationChannelTypeSlack:
-		updates["secret"] = ""
-	case req.ClearSecret:
-		updates["secret"] = ""
-	case req.Secret != "":
-		sealedSecret, err := sealChannelValue(s.codec, keyvault.RefChannelSecret, req.Secret)
-		if err != nil {
-			return nil, fmt.Errorf("加密通道 secret 失敗: %w", err)
-		}
-		updates["secret"] = sealedSecret
-	}
-	if req.Enabled != nil {
-		updates["enabled"] = *req.Enabled
-	}
-	if req.Language != nil {
-		updates["language"] = *req.Language
-	}
-	if req.MinSeverity != nil {
-		updates["min_severity"] = *req.MinSeverity
-	}
-
-	// 讀前列、更新、審計與系統告警同一個交易：任一步失敗整筆回滾，推送快取不重載
+	// 讀前列、規則判斷、更新、審計與系統告警同一個交易：任一步失敗整筆回滾
 	var stored model.NotificationChannel
+	turnedOff := false
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		// 變更前快照在交易內讀（PostgreSQL 加列鎖）：兩人同時改同一通道時，
-		// 後者的「變更前」是前者提交後的值，實際的前一個目的地才會收到通知。
-		// 解不開的通道仍可修復。
+		// 後者的「變更前」與規則判斷都以前者提交後的值為準。解不開的通道仍可修復。
+		// 要開啟對個人派送時，先依編號鎖住全部通道列再判斷「已有其他通道開啟」：兩個請求並行在兩個通道開啟時，
+		// 後者等前者提交後讀到前者的值而收到可讀的錯誤。依編號取鎖，與只鎖本通道的更新不形成循環。
+		if req.DirectMessageEnabled != nil && *req.DirectMessageEnabled {
+			if err := lockChannelsForDirectMessage(tx); err != nil {
+				return err
+			}
+		}
 		q := tx
 		if tx.Dialector.Name() == "postgres" {
 			q = tx.Clauses(clause.Locking{Strength: "UPDATE"})
@@ -735,27 +920,47 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 			}
 			return fmt.Errorf("查詢通知通道失敗: %w", err)
 		}
+		if channelUpdateLockedHook != nil {
+			channelUpdateLockedHook(id)
+		}
+		plan, err := s.planChannelUpdate(current, req, time.Now())
+		if err != nil {
+			return err
+		}
+		if plan.dmTurnedOn {
+			if err := directMessageConflict(tx, id); err != nil {
+				return err
+			}
+		}
+		turnedOff = plan.dmTurnedOff
 		before := s.plainOrUnreadable(current)
-		if err := tx.Model(&model.NotificationChannel{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := tx.Model(&model.NotificationChannel{}).Where("id = ?", id).Updates(plan.updates).Error; err != nil {
 			return fmt.Errorf("更新通知通道失敗: %w", err)
 		}
 		if err := tx.First(&stored, id).Error; err != nil {
 			return fmt.Errorf("讀回通知通道失敗: %w", err)
 		}
 		after := s.plainOrUnreadable(stored)
-		return s.recordChannelChange(tx, req.actor(), model.ActionUpdate, id, &before, &after, riskAck)
+		return s.recordChannelChange(tx, req.actor(), model.ActionUpdate, id, &before, &after, plan.riskAck, plan.dmAutoOff)
 	}); err != nil {
 		return nil, err
+	}
+	// 任何更新都清掉這個通道的帳號對應快取；關閉對個人派送時，在途的個人訊息在提交之後另以短交易取消
+	invalidateDMAddressCache(id)
+	if turnedOff {
+		s.cancelPendingDirectMessages(id)
 	}
 
 	// 回應用落庫後的列（沿用時保留的舊值已隨讀回一併呈現）
 	result := stored
 	_ = s.toDisplay(&result)
-	ReloadAlertNotifier()
 	return &result, nil
 }
 
-// Delete 刪除通道；成功後刷新推送快取。
+// channelUpdateLockedHook 測試掛鉤：更新交易取得列鎖之後、判斷規則之前呼叫（正式組裝為 nil）。
+var channelUpdateLockedHook func(id uint)
+
+// Delete 刪除通道。
 // 刪除前的快照併入告警目的地，故舊目的地在通道列已不存在之後仍會收到「已刪除」通知。
 func (s *NotificationChannelService) Delete(id uint, actor ChannelActor) error {
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -775,11 +980,11 @@ func (s *NotificationChannelService) Delete(id uint, actor ChannelActor) error {
 		if res.RowsAffected == 0 {
 			return ErrChannelNotFound
 		}
-		return s.recordChannelChange(tx, actor, model.ActionDelete, id, &before, nil, nil)
+		return s.recordChannelChange(tx, actor, model.ActionDelete, id, &before, nil, nil, "")
 	}); err != nil {
 		return err
 	}
+	invalidateDMAddressCache(id)
 
-	ReloadAlertNotifier()
 	return nil
 }

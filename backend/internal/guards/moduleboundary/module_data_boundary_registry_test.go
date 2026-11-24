@@ -98,10 +98,12 @@ var tableOwner = map[string]string{
 	"command_alerts":        "audit",
 	"alert_rules":           "audit",
 	"notification_channels": "audit",
-	// 系統告警明細、持久投遞佇列與分級覆寫：產生、投遞與調整都在 audit
+	// 系統告警明細、持久投遞佇列與分級覆寫：產生、投遞與調整都在 audit。
+	// 通知內容（指令告警與系統事件）：產生點經 audit 模組的排入介面寫入，分派、投遞與清除都在 audit
 	"system_alert_details":            "audit",
 	"system_alert_outbox":             "audit",
 	"system_alert_severity_overrides": "audit",
+	"notification_messages":           "audit",
 	"session_commands":                "audit",
 	"audit_failure_events":            "audit",
 	"daily_review_logs":               "audit",
@@ -157,9 +159,9 @@ var tableOwner = map[string]string{
 	"policy_clause_controls":    "policy",
 	"policy_clause_annotations": "policy",
 	// session
-	"sessions":         "session",
-	"snippets":         "session",
-	"clipboard_events": "session",
+	"sessions":          "session",
+	"snippets":          "session",
+	"clipboard_events":  "session",
 	"keystroke_records": "session",
 	// offsite（evidence-offsite-storage）：離機儲存的保管帳冊與設定世代表。
 	//
@@ -197,6 +199,7 @@ var nonModelTables = map[string]bool{
 // 新增此類型別 SHALL 在此具名登記，否則反向核對轉紅——這是刻意的：讓「它是不是表」成為顯式決定。
 var nonTableModelStructs = map[string]bool{
 	"nullable_alert_session_ids":     true, // serializer value object; no table
+	"notification_channel_healths":   true, // NotificationChannelHealth：通道送達狀況的回應形狀（由待投遞紀錄彙總），不是表
 	"tool_call_completion_keys":      true, // Context result-write scope, not a database model.
 	"tool_call_stamp_keys":           true, // Context stamp provider, not a database model.
 	"audit_stamp_reservation_keys":   true, // Context key for an admitted audit write, not a database model.

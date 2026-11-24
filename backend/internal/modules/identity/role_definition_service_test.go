@@ -61,7 +61,7 @@ func newRoleDefEnvOn(t *testing.T, db *gorm.DB) *roleDefEnv {
 	require.NoError(t, migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{},
 		&model.UserGroupRole{}, &model.RoleBindingNode{}, &model.RolePermission{}, &model.ExternalGroup{}, &model.GroupRoleMapping{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserChannelObservation{}, &model.PermissionStateEvent{},
-		&model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{}, &model.NotificationChannel{},
+		&model.SystemAlertDetail{}, &model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{}, &model.NotificationChannel{},
 		&model.CommandAlert{}, &model.AssetAuthorization{}, &model.APIToken{}, &model.APITokenRole{}))
 	seedAuthzState(t, db)
 	ev := &fakeRoleEvents{}

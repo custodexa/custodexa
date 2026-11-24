@@ -43,7 +43,7 @@ func newRecordingDeleteEnv(t *testing.T) *recordingDeleteEnv {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&model.Session{}, &model.AuditLog{}, &model.CommandAlert{}, &model.NotificationChannel{},
-		&model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{}); err != nil {
+		&model.SystemAlertDetail{}, &model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{}); err != nil {
 		t.Fatal(err)
 	}
 	prev := database.DB

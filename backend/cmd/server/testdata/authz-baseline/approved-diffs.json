@@ -4339,6 +4339,33 @@
               }
             ]
           },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"plan=baseline-flow-t07 asset_id=9 account=Administrator reason=CHANGE_SECRET_AUTHZ_REVOKED（此目標與其後的目標遠端未被觸碰，需具權者重新授權或調整權限）\",\"kind\":\"authz_stopped\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              }
+            ]
+          },
           "refresh_tokens": {
             "modified": [
               {
@@ -4402,11 +4429,9 @@
             ]
           }
         },
-        "remote": [
-          "notify x1"
-        ]
+        "remote": null
       },
-      "reason": "The stopped scheduled job is recorded as skipped with the revoked-permission reason and makes no remote call; only the failure notice is sent. The role change in this flow also assigns the general user role, which adds one user role row; the scheduled job outcome is unchanged."
+      "reason": "The stopped scheduled job is recorded as skipped with the revoked-permission reason and makes no remote call. The role change in this flow also assigns the general user role, which adds one user role row; the scheduled job outcome is unchanged. The failure notice is no longer sent to the channel during the run: it is written as one notification content row (credential_rotation_alert, kind authz_stopped, carrying the revoked-permission reason) and delivered afterwards from the persistent outbox, so the flow makes no outbound call at all; every other expected row is unchanged."
     },
     {
       "id": "AD-11",
@@ -31239,6 +31264,2706 @@
       },
       "require_all_keys": true,
       "reason": "The API token create response states the access of the token, whether it was created before role levels were recorded, and the level of each granted role; every other field keeps its value."
+    },
+    {
+      "id": "AD-ndl-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "DELETE /api/v1/notification-channels/:id"
+        ],
+        "fields": [
+          "db"
+        ]
+      },
+      "expect": {
+        "db": {
+          "notification_channels": {
+            "removed": [
+              {
+                "abandon_notified_at": null,
+                "created_at": "<time>",
+                "destination_changed_at": null,
+                "destination_version": 0,
+                "direct_message_enabled": 0,
+                "dm_issue_notified_at": null,
+                "enabled": 1,
+                "id": "{notificationChannel.1}",
+                "language": "en-US",
+                "min_severity": "low",
+                "name": "baseline-channel-1",
+                "secret": "",
+                "target": "",
+                "type": "webhook",
+                "updated_at": "<time>",
+                "url": "<enc>"
+              }
+            ]
+          }
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The notification channel row carries the new destination columns (destination change time, destination version, target channel identifier, last abandon notice time) at their initial values; every existing column keeps its value and the address stays encrypted. The row also carries the two direct-message columns (the direct-message switch, off, and the last undelivered-notice time, empty) at their initial values."
+    },
+    {
+      "id": "AD-ndl-02",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "GET /api/v1/notification-channels"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "data": [
+            {
+              "created_at": "<time>",
+              "destination_changed_at": null,
+              "destination_version": 0,
+              "direct_message_enabled": false,
+              "direct_message_url_allowed": false,
+              "enabled": true,
+              "has_secret": false,
+              "health": {
+                "abandoned_7d": 0,
+                "last_delivered_at": null,
+                "last_failed_at": null,
+                "last_failure_code": "",
+                "last_failure_reason": ""
+              },
+              "id": 1,
+              "language": "en-US",
+              "min_severity": "low",
+              "name": "baseline-channel-1",
+              "target": "",
+              "transmission_deviation": true,
+              "type": "webhook",
+              "updated_at": "<time>",
+              "url": "http://127.0.0.1:46109"
+            }
+          ],
+          "total": 1
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The notification channel list adds, per channel, the non-secret destination fields (destination change time, destination version, target channel identifier) and the delivery health summary (last delivered, last failed with its reason code, deliveries abandoned in the last 7 days); every existing field keeps its value and no address in clear text or secret is returned. The response also carries the direct-message switch (off by default). The response also carries the read-only direct_message_url_allowed flag (whether the current address may be used for direct messages; false here because the baseline address is not on the allowlist)."
+    },
+    {
+      "id": "AD-ndl-03",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S02"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": null,
+                "approved_duration_minutes": null,
+                "asset_id": 11,
+                "authorization_id": null,
+                "created_at": "<time>",
+                "decided_at": null,
+                "decided_by": null,
+                "deleted_at": null,
+                "id": 5,
+                "policy_snapshot": "json:{}",
+                "request_id": "<nonce>",
+                "requester_id": 3,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "pending",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "access_requests": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": null,
+                "approved_duration_minutes": null,
+                "approver_id": null,
+                "asset_id": 11,
+                "authorization_id": null,
+                "auto_approved": 0,
+                "closed_at": null,
+                "created_at": "<time>",
+                "decided_at": null,
+                "decision_note": "",
+                "deleted_at": null,
+                "executor_user_id": null,
+                "id": 5,
+                "kind": "normal",
+                "pending_expires_at": "<time>",
+                "reason": "baseline access request",
+                "requested_date_start": null,
+                "requested_duration_minutes": 60,
+                "requester_id": 3,
+                "review_disposition": "",
+                "review_note": "",
+                "review_overdue_notified_at": null,
+                "review_status": "",
+                "reviewed_at": null,
+                "reviewed_by": null,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "pending",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 3,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.created",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":11,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "11",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-04",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S04"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/approve"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_approvals": {
+            "added": [
+              {
+                "approver_id": 5,
+                "created_at": "<time>",
+                "id": 2,
+                "item_id": 2,
+                "note": "approved in baseline",
+                "request_id": "<nonce>"
+              }
+            ]
+          },
+          "access_request_items": {
+            "modified": [
+              {
+                "@rowid": [
+                  2,
+                  2
+                ],
+                "approved_date_start": [
+                  null,
+                  "\"<time>\""
+                ],
+                "approved_duration_minutes": [
+                  null,
+                  60
+                ],
+                "authorization_id": [
+                  null,
+                  6
+                ],
+                "decided_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "decided_by": [
+                  null,
+                  5
+                ],
+                "policy_snapshot": [
+                  "json:{}",
+                  "json:{\"requested_accounts\":[\"@ALL\"],\"required_approvals\":1,\"segment\":\"approval\"}"
+                ],
+                "status": [
+                  "pending",
+                  "approved"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "access_requests": {
+            "modified": [
+              {
+                "@rowid": [
+                  "{accessRequest.pending}",
+                  "{accessRequest.pending}"
+                ],
+                "approved_date_start": [
+                  null,
+                  "\"<time>\""
+                ],
+                "approved_duration_minutes": [
+                  null,
+                  60
+                ],
+                "approver_id": [
+                  null,
+                  5
+                ],
+                "authorization_id": [
+                  null,
+                  6
+                ],
+                "decided_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "decision_note": [
+                  "",
+                  "approved in baseline"
+                ],
+                "status": [
+                  "pending",
+                  "approved"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "asset_group_id": null,
+                "asset_id": 10,
+                "created_at": "<time>",
+                "date_expired": "<time>",
+                "date_start": "<time>",
+                "deleted_at": null,
+                "granted_by": 5,
+                "id": 6,
+                "permission": "connect",
+                "source": "ticket",
+                "updated_at": "<time>",
+                "user_group_id": null,
+                "user_id": 3
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 5,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.approved",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":10,\"kind\":\"asset\"},\"decider_name\":{\"id\":5,\"kind\":\"user\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"mode\":\"manual\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "low",
+                "state": "pending",
+                "target_id": "10",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The content row's actor is the person who decided or revoked (the requester is carried as a separate name), and the request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-05",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S04"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/reject"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "modified": [
+              {
+                "@rowid": [
+                  2,
+                  2
+                ],
+                "decided_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "decided_by": [
+                  null,
+                  5
+                ],
+                "policy_snapshot": [
+                  "json:{}",
+                  "json:{\"requested_accounts\":[\"@ALL\"],\"required_approvals\":1,\"segment\":\"approval\"}"
+                ],
+                "status": [
+                  "pending",
+                  "rejected"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "access_requests": {
+            "modified": [
+              {
+                "@rowid": [
+                  "{accessRequest.pending}",
+                  "{accessRequest.pending}"
+                ],
+                "approver_id": [
+                  null,
+                  5
+                ],
+                "decided_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "decision_note": [
+                  "",
+                  "rejected in baseline"
+                ],
+                "status": [
+                  "pending",
+                  "rejected"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 5,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.rejected",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":10,\"kind\":\"asset\"},\"decider_name\":{\"id\":5,\"kind\":\"user\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "low",
+                "state": "pending",
+                "target_id": "10",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The content row's actor is the person who decided or revoked (the requester is carried as a separate name), and the request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-06",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S12"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/reports"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "agent_task_reports": {
+            "added": [
+              {
+                "access_request_id": 4,
+                "body": "baseline task report",
+                "id": 1,
+                "submitted_at": "<time>",
+                "user_id": 15,
+                "version": 1
+              }
+            ]
+          },
+          "agent_tokens": {
+            "modified": [
+              {
+                "@rowid": [
+                  1,
+                  1
+                ],
+                "last_used_at": [
+                  null,
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 15,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "agent_task_report_submitted",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"agent_name\":{\"id\":15,\"kind\":\"user\"},\"asset_name\":{\"id\":1,\"kind\":\"asset\"},\"owner_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"owner_id\":\"3\",\"report_id\":\"1\",\"request_id\":\"\\u003cnonce\\u003e\",\"user_id\":\"15\",\"version\":\"1\"}",
+                "severity": "low",
+                "state": "pending",
+                "target_id": "15",
+                "target_kind": "user",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged."
+    },
+    {
+      "id": "AD-ndl-07",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/revoke"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "modified": [
+              {
+                "@rowid": [
+                  1,
+                  1
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  2
+                ],
+                "status": [
+                  "approved",
+                  "revoked"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "access_requests": {
+            "modified": [
+              {
+                "@rowid": [
+                  "{accessRequest.approved}",
+                  "{accessRequest.approved}"
+                ],
+                "closed_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  2
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "modified": [
+              {
+                "@rowid": [
+                  4,
+                  4
+                ],
+                "deleted_at": [
+                  null,
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 2,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "ticket_revoked",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":10,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"},\"revoker_name\":{\"id\":2,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "10",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The content row's actor is the person who decided or revoked (the requester is carried as a separate name), and the request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-08",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S04"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/revoke"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "modified": [
+              {
+                "@rowid": [
+                  1,
+                  1
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  5
+                ],
+                "status": [
+                  "approved",
+                  "revoked"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "access_requests": {
+            "modified": [
+              {
+                "@rowid": [
+                  "{accessRequest.approved}",
+                  "{accessRequest.approved}"
+                ],
+                "closed_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  5
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "modified": [
+              {
+                "@rowid": [
+                  4,
+                  4
+                ],
+                "deleted_at": [
+                  null,
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 5,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "ticket_revoked",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":10,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"},\"revoker_name\":{\"id\":5,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "10",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The content row's actor is the person who decided or revoked (the requester is carried as a separate name), and the request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-09",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S06"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/revoke"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "modified": [
+              {
+                "@rowid": [
+                  1,
+                  1
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  7
+                ],
+                "status": [
+                  "approved",
+                  "revoked"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "access_requests": {
+            "modified": [
+              {
+                "@rowid": [
+                  "{accessRequest.approved}",
+                  "{accessRequest.approved}"
+                ],
+                "closed_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  7
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "modified": [
+              {
+                "@rowid": [
+                  4,
+                  4
+                ],
+                "deleted_at": [
+                  null,
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 7,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "ticket_revoked",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":10,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"},\"revoker_name\":{\"id\":7,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "10",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The content row's actor is the person who decided or revoked (the requester is carried as a separate name), and the request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-10",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/access-requests/:id/revoke"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "modified": [
+              {
+                "@rowid": [
+                  1,
+                  1
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  13
+                ],
+                "status": [
+                  "approved",
+                  "revoked"
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "access_requests": {
+            "modified": [
+              {
+                "@rowid": [
+                  "{accessRequest.approved}",
+                  "{accessRequest.approved}"
+                ],
+                "closed_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoke_note": [
+                  "",
+                  "revoked in baseline"
+                ],
+                "revoked_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "revoked_by": [
+                  null,
+                  13
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "modified": [
+              {
+                "@rowid": [
+                  4,
+                  4
+                ],
+                "deleted_at": [
+                  null,
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 13,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "ticket_revoked",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":10,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"},\"revoker_name\":{\"id\":13,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "10",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged. The content row's actor is the person who decided or revoked (the requester is carried as a separate name), and the request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-11",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01"
+        ],
+        "keys": [
+          "POST /api/v1/change-secret-batches"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "change_secret_batches": {
+            "added": [
+              {
+                "created_at": "<time>",
+                "failed_count": 2,
+                "finished_at": "<time>",
+                "id": 2,
+                "password_exclude_ambiguous": 1,
+                "password_include_symbol": 1,
+                "password_length": 16,
+                "password_mode": "per_target",
+                "requested_by": 2,
+                "requested_by_name": "baseline-s01",
+                "skipped_count": 1,
+                "started_at": "<time>",
+                "status": "completed",
+                "success_count": 0,
+                "target_count": 3,
+                "unverified_count": 0,
+                "updated_at": "<time>",
+                "username": "baseline-root"
+              }
+            ]
+          },
+          "change_secret_records": {
+            "added": [
+              {
+                "account_id": 1,
+                "account_username": "baseline-root",
+                "asset_id": 1,
+                "batch_id": 2,
+                "credential_id": 1,
+                "credential_name": "baseline-ssh / baseline-root",
+                "error": "CHANGE_SECRET_CANDIDATE_PENDING",
+                "executed_at": "<time>",
+                "id": 2,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "skipped",
+                "target_version_id": 0
+              },
+              {
+                "account_id": 10,
+                "account_username": "baseline-root",
+                "asset_id": 10,
+                "batch_id": 2,
+                "credential_id": 10,
+                "credential_name": "baseline-approval / baseline-root",
+                "error": "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED",
+                "executed_at": "<time>",
+                "id": 3,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              },
+              {
+                "account_id": 11,
+                "account_username": "baseline-root",
+                "asset_id": 11,
+                "batch_id": 2,
+                "credential_id": 11,
+                "credential_name": "baseline-request / baseline-root",
+                "error": "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED",
+                "executed_at": "<time>",
+                "id": 4,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=baseline-root asset_id=10 account=baseline-root reason=CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              },
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 6,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=baseline-root asset_id=11 account=baseline-root reason=CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "ssh x2"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged."
+    },
+    {
+      "id": "AD-ndl-12",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S06"
+        ],
+        "keys": [
+          "POST /api/v1/change-secret-batches"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "change_secret_batches": {
+            "added": [
+              {
+                "created_at": "<time>",
+                "failed_count": 2,
+                "finished_at": "<time>",
+                "id": 2,
+                "password_exclude_ambiguous": 1,
+                "password_include_symbol": 1,
+                "password_length": 16,
+                "password_mode": "per_target",
+                "requested_by": 7,
+                "requested_by_name": "baseline-s06",
+                "skipped_count": 1,
+                "started_at": "<time>",
+                "status": "completed",
+                "success_count": 0,
+                "target_count": 3,
+                "unverified_count": 0,
+                "updated_at": "<time>",
+                "username": "baseline-root"
+              }
+            ]
+          },
+          "change_secret_records": {
+            "added": [
+              {
+                "account_id": 1,
+                "account_username": "baseline-root",
+                "asset_id": 1,
+                "batch_id": 2,
+                "credential_id": 1,
+                "credential_name": "baseline-ssh / baseline-root",
+                "error": "CHANGE_SECRET_CANDIDATE_PENDING",
+                "executed_at": "<time>",
+                "id": 2,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "skipped",
+                "target_version_id": 0
+              },
+              {
+                "account_id": 10,
+                "account_username": "baseline-root",
+                "asset_id": 10,
+                "batch_id": 2,
+                "credential_id": 10,
+                "credential_name": "baseline-approval / baseline-root",
+                "error": "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED",
+                "executed_at": "<time>",
+                "id": 3,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              },
+              {
+                "account_id": 11,
+                "account_username": "baseline-root",
+                "asset_id": 11,
+                "batch_id": 2,
+                "credential_id": 11,
+                "credential_name": "baseline-request / baseline-root",
+                "error": "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED",
+                "executed_at": "<time>",
+                "id": 4,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=baseline-root asset_id=10 account=baseline-root reason=CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              },
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 6,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=baseline-root asset_id=11 account=baseline-root reason=CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "ssh x2"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged."
+    },
+    {
+      "id": "AD-ndl-13",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/change-secret-batches"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "change_secret_batches": {
+            "added": [
+              {
+                "created_at": "<time>",
+                "failed_count": 2,
+                "finished_at": "<time>",
+                "id": 2,
+                "password_exclude_ambiguous": 1,
+                "password_include_symbol": 1,
+                "password_length": 16,
+                "password_mode": "per_target",
+                "requested_by": 13,
+                "requested_by_name": "baseline-s13",
+                "skipped_count": 1,
+                "started_at": "<time>",
+                "status": "completed",
+                "success_count": 0,
+                "target_count": 3,
+                "unverified_count": 0,
+                "updated_at": "<time>",
+                "username": "baseline-root"
+              }
+            ]
+          },
+          "change_secret_records": {
+            "added": [
+              {
+                "account_id": 1,
+                "account_username": "baseline-root",
+                "asset_id": 1,
+                "batch_id": 2,
+                "credential_id": 1,
+                "credential_name": "baseline-ssh / baseline-root",
+                "error": "CHANGE_SECRET_CANDIDATE_PENDING",
+                "executed_at": "<time>",
+                "id": 2,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "skipped",
+                "target_version_id": 0
+              },
+              {
+                "account_id": 10,
+                "account_username": "baseline-root",
+                "asset_id": 10,
+                "batch_id": 2,
+                "credential_id": 10,
+                "credential_name": "baseline-approval / baseline-root",
+                "error": "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED",
+                "executed_at": "<time>",
+                "id": 3,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              },
+              {
+                "account_id": 11,
+                "account_username": "baseline-root",
+                "asset_id": 11,
+                "batch_id": 2,
+                "credential_id": 11,
+                "credential_name": "baseline-request / baseline-root",
+                "error": "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED",
+                "executed_at": "<time>",
+                "id": 4,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=baseline-root asset_id=10 account=baseline-root reason=CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              },
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 6,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=baseline-root asset_id=11 account=baseline-root reason=CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "ssh x2"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "Notifications are now written as a notification content row in the same request instead of being sent to the channel during the request; delivery happens afterwards from the persistent outbox, so the request makes no outbound notification call and the database gains exactly this content row. Every other remote call and row is unchanged."
+    },
+    {
+      "id": "AD-ndl-14",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "POST /api/v1/notification-channels"
+        ],
+        "fields": [
+          "body",
+          "db"
+        ]
+      },
+      "expect": {
+        "body": "additive",
+        "body_added_keys": [
+          "destination_changed_at",
+          "destination_version",
+          "direct_message_enabled",
+          "direct_message_url_allowed",
+          "target"
+        ],
+        "db": {
+          "notification_channels": {
+            "added": [
+              {
+                "abandon_notified_at": null,
+                "created_at": "<time>",
+                "destination_changed_at": null,
+                "destination_version": 0,
+                "direct_message_enabled": 0,
+                "dm_issue_notified_at": null,
+                "enabled": 1,
+                "id": 2,
+                "language": "en-US",
+                "min_severity": "low",
+                "name": "baseline-channel-new",
+                "secret": "",
+                "target": "",
+                "type": "webhook",
+                "updated_at": "<time>",
+                "url": "<enc>"
+              }
+            ]
+          }
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The notification channel response adds the non-secret destination fields (destination change time, destination version and the target channel identifier); every existing field keeps its value and the response still carries no address in clear text and no secret. The notification channel row carries the new destination columns (destination change time, destination version, target channel identifier, last abandon notice time) at their initial values; every existing column keeps its value and the address stays encrypted. The response also carries the direct-message switch (off by default). The row also carries the two direct-message columns (the direct-message switch, off, and the last undelivered-notice time, empty) at their initial values. The response also carries the read-only direct_message_url_allowed flag (whether the current address may be used for direct messages; false here because the baseline address is not on the allowlist)."
+    },
+    {
+      "id": "AD-ndl-15",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "PUT /api/v1/notification-channels/:id"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": "additive",
+        "body_added_keys": [
+          "destination_changed_at",
+          "destination_version",
+          "direct_message_enabled",
+          "direct_message_url_allowed",
+          "target"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "The notification channel response adds the non-secret destination fields (destination change time, destination version and the target channel identifier); every existing field keeps its value and the response still carries no address in clear text and no secret. The response also carries the direct-message switch (off by default). The response also carries the read-only direct_message_url_allowed flag (whether the current address may be used for direct messages; false here because the baseline address is not on the allowlist)."
+    },
+    {
+      "id": "AD-ndl-16",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S01",
+          "S06",
+          "S13"
+        ],
+        "keys": [
+          "GET /api/v1/notification-channels/:id/deliveries"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": {
+          "data": [
+            {
+              "attempts": 0,
+              "audience": "channel",
+              "category": "system_security_alert",
+              "created_at": "<time>",
+              "delivered_at": null,
+              "end_reason": "",
+              "ended_at": null,
+              "event_key": "notification_channel_changed",
+              "id": 1,
+              "last_error": "",
+              "last_failed_at": null,
+              "next_attempt_at": "<time>",
+              "reason_code": "",
+              "severity": "high",
+              "snapshot_before_change": false,
+              "state": "pending",
+              "throttled_since": null
+            }
+          ],
+          "pending_counts": {
+            "general": 0,
+            "system_security_alert": 1
+          },
+          "total": 1
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The delivery records response adds the channel's pending and retrying counts (general notifications and system security alerts, independent of the state filter) and, per record, the time it has been deferred by platform rate limiting since; every existing field keeps its value and no address, secret or notification parameter is returned. Each record also states its recipient type (audience: channel here; individual direct-message records carry the recipient's username and Slack user ID instead of any email address)."
+    },
+    {
+      "id": "AD-tnl-01",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": [
+          "S00",
+          "S01",
+          "S02",
+          "S03",
+          "S04",
+          "S05",
+          "S06",
+          "S07",
+          "S08",
+          "S09",
+          "S10",
+          "S11",
+          "S13",
+          "S14"
+        ],
+        "keys": [
+          "POST /api/v1/auth/login"
+        ],
+        "fields": [
+          "body"
+        ]
+      },
+      "expect": {
+        "body": "additive",
+        "body_added_keys": [
+          "redirect_next"
+        ]
+      },
+      "require_all_keys": true,
+      "reason": "Password sign-in now returns the server-validated return path after sign-in (redirect_next). The baseline request carries no destination, so the value is the default path; every existing field keeps its value, and failure responses, rate limiting and the sign-in audit row are unchanged."
+    },
+    {
+      "id": "AD-ndl-17",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "B2/S02/approval-valid-ticket"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_approvals": {
+            "added": [
+              {
+                "approver_id": 5,
+                "created_at": "<time>",
+                "id": 2,
+                "item_id": 5,
+                "note": "baseline",
+                "request_id": "<nonce>"
+              }
+            ]
+          },
+          "access_request_items": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": "<time>",
+                "approved_duration_minutes": 60,
+                "asset_id": 12,
+                "authorization_id": 7,
+                "created_at": "<time>",
+                "decided_at": "<time>",
+                "decided_by": 5,
+                "deleted_at": null,
+                "id": 5,
+                "policy_snapshot": "json:{\"requested_accounts\":[\"@ALL\"],\"required_approvals\":1,\"segment\":\"approval\"}",
+                "request_id": "<nonce>",
+                "requester_id": 3,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "approved",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "access_requests": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": "<time>",
+                "approved_duration_minutes": 60,
+                "approver_id": 5,
+                "asset_id": 12,
+                "authorization_id": 7,
+                "auto_approved": 0,
+                "closed_at": null,
+                "created_at": "<time>",
+                "decided_at": "<time>",
+                "decision_note": "baseline",
+                "deleted_at": null,
+                "executor_user_id": null,
+                "id": 5,
+                "kind": "normal",
+                "pending_expires_at": "<time>",
+                "reason": "baseline approval",
+                "requested_date_start": null,
+                "requested_duration_minutes": 60,
+                "requester_id": 3,
+                "review_disposition": "",
+                "review_note": "",
+                "review_overdue_notified_at": null,
+                "review_status": "",
+                "reviewed_at": null,
+                "reviewed_by": null,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "approved",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "asset_group_id": null,
+                "asset_id": 12,
+                "created_at": "<time>",
+                "date_expired": "<time>",
+                "date_start": "<time>",
+                "deleted_at": null,
+                "granted_by": 5,
+                "id": 7,
+                "permission": "connect",
+                "source": "ticket",
+                "updated_at": "<time>",
+                "user_group_id": null,
+                "user_id": 3
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 3,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.created",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":12,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "12",
+                "target_kind": "asset",
+                "target_name": ""
+              },
+              {
+                "actor_name": "",
+                "actor_user_id": 5,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.approved",
+                "fail_reason": "",
+                "id": 6,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":12,\"kind\":\"asset\"},\"decider_name\":{\"id\":5,\"kind\":\"user\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"mode\":\"manual\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "low",
+                "state": "pending",
+                "target_id": "12",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "ssh x1"
+        ]
+      },
+      "reason": "In this flow the request creation and its approval no longer send their two notices to the channel during the requests; each writes one notification content row instead (access_request.created with the requester as actor, access_request.approved in manual mode with the deciding approver as actor), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The approval row, the item decision, the granted authorization and the connection step keep their values, and the SSH connection is the only remaining remote call. The request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-18",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "B2/S02/quorum-unmet"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_approvals": {
+            "added": [
+              {
+                "approver_id": 5,
+                "created_at": "<time>",
+                "id": 2,
+                "item_id": 5,
+                "note": "baseline",
+                "request_id": "<nonce>"
+              }
+            ]
+          },
+          "access_request_items": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": null,
+                "approved_duration_minutes": null,
+                "asset_id": 12,
+                "authorization_id": null,
+                "created_at": "<time>",
+                "decided_at": null,
+                "decided_by": null,
+                "deleted_at": null,
+                "id": 5,
+                "policy_snapshot": "json:{}",
+                "request_id": "<nonce>",
+                "requester_id": 3,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "pending",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "access_requests": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": null,
+                "approved_duration_minutes": null,
+                "approver_id": null,
+                "asset_id": 12,
+                "authorization_id": null,
+                "auto_approved": 0,
+                "closed_at": null,
+                "created_at": "<time>",
+                "decided_at": null,
+                "decision_note": "baseline",
+                "deleted_at": null,
+                "executor_user_id": null,
+                "id": 5,
+                "kind": "normal",
+                "pending_expires_at": "<time>",
+                "reason": "baseline quorum",
+                "requested_date_start": null,
+                "requested_duration_minutes": 60,
+                "requester_id": 3,
+                "review_disposition": "",
+                "review_note": "",
+                "review_overdue_notified_at": null,
+                "review_status": "",
+                "reviewed_at": null,
+                "reviewed_by": null,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "pending",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 3,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.created",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":12,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "12",
+                "target_kind": "asset",
+                "target_name": ""
+              },
+              {
+                "actor_name": "",
+                "actor_user_id": 5,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.approval_progress",
+                "fail_reason": "",
+                "id": 6,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":12,\"kind\":\"asset\"},\"decider_name\":{\"id\":5,\"kind\":\"user\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"request_id\":\"\\u003cnonce\\u003e\",\"required\":\"2\",\"votes\":\"1\"}",
+                "severity": "low",
+                "state": "pending",
+                "target_id": "12",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "reason": "In this flow the request creation and the first of two required approvals no longer send their two notices to the channel during the requests; each writes one notification content row instead (access_request.created with the requester as actor, access_request.approval_progress with 1 of 2 votes and the approver as actor), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The approval row and the still-pending request and item keep their values; no authorization is granted. The request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-19",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "B2/S02/reason-given"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": "<time>",
+                "approved_duration_minutes": 60,
+                "asset_id": 12,
+                "authorization_id": 7,
+                "created_at": "<time>",
+                "decided_at": "<time>",
+                "decided_by": null,
+                "deleted_at": null,
+                "id": 5,
+                "policy_snapshot": "json:{\"auto_basis\":\"reason\",\"requested_accounts\":[\"@ALL\"],\"required_approvals\":0,\"segment\":\"reason\"}",
+                "request_id": "<nonce>",
+                "requester_id": 3,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "approved",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "access_requests": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": "<time>",
+                "approved_duration_minutes": 60,
+                "approver_id": null,
+                "asset_id": 12,
+                "authorization_id": 7,
+                "auto_approved": 1,
+                "closed_at": null,
+                "created_at": "<time>",
+                "decided_at": "<time>",
+                "decision_note": "system",
+                "deleted_at": null,
+                "executor_user_id": null,
+                "id": 5,
+                "kind": "normal",
+                "pending_expires_at": "<time>",
+                "reason": "baseline reason",
+                "requested_date_start": null,
+                "requested_duration_minutes": 60,
+                "requester_id": 3,
+                "review_disposition": "",
+                "review_note": "",
+                "review_overdue_notified_at": null,
+                "review_status": "",
+                "reviewed_at": null,
+                "reviewed_by": null,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "approved",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "asset_authorizations": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "asset_group_id": null,
+                "asset_id": 12,
+                "created_at": "<time>",
+                "date_expired": "<time>",
+                "date_start": "<time>",
+                "deleted_at": null,
+                "granted_by": 3,
+                "id": 7,
+                "permission": "connect",
+                "source": "ticket",
+                "updated_at": "<time>",
+                "user_group_id": null,
+                "user_id": 3
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.approved",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":12,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"mode\":\"auto\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "low",
+                "state": "pending",
+                "target_id": "12",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "ssh x1"
+        ]
+      },
+      "reason": "In this flow the automatically approved request no longer sends its notice to the channel during the request; it writes one notification content row instead (access_request.approved in auto mode, no actor), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The request, the item decision, the granted authorization and the connection step keep their values, and the SSH connection is the only remaining remote call. The request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-20",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "B2/S02/self-approval"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "access_request_items": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": null,
+                "approved_duration_minutes": null,
+                "asset_id": 12,
+                "authorization_id": null,
+                "created_at": "<time>",
+                "decided_at": null,
+                "decided_by": null,
+                "deleted_at": null,
+                "id": 5,
+                "policy_snapshot": "json:{}",
+                "request_id": "<nonce>",
+                "requester_id": 3,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "pending",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "access_requests": {
+            "added": [
+              {
+                "accounts": "json:[\"@ALL\"]",
+                "approved_date_start": null,
+                "approved_duration_minutes": null,
+                "approver_id": null,
+                "asset_id": 12,
+                "authorization_id": null,
+                "auto_approved": 0,
+                "closed_at": null,
+                "created_at": "<time>",
+                "decided_at": null,
+                "decision_note": "",
+                "deleted_at": null,
+                "executor_user_id": null,
+                "id": 5,
+                "kind": "normal",
+                "pending_expires_at": "<time>",
+                "reason": "baseline self approval",
+                "requested_date_start": null,
+                "requested_duration_minutes": 60,
+                "requester_id": 3,
+                "review_disposition": "",
+                "review_note": "",
+                "review_overdue_notified_at": null,
+                "review_status": "",
+                "reviewed_at": null,
+                "reviewed_by": null,
+                "revoke_note": "",
+                "revoked_at": null,
+                "revoked_by": null,
+                "status": "pending",
+                "updated_at": "<time>"
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 3,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "access_request.created",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{\"asset_name\":{\"id\":12,\"kind\":\"asset\"},\"requester_name\":{\"id\":3,\"kind\":\"user\"}}",
+                "occurred_at": "<time>",
+                "params": "json:{\"duration_hours\":\"1\",\"duration_minutes\":\"60\",\"request_id\":\"\\u003cnonce\\u003e\"}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "12",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": null
+      },
+      "reason": "In this flow the request creation no longer sends its notice to the channel during the request; it writes one notification content row instead (access_request.created with the requester as actor), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The refused self-approval step and the still-pending request and item keep their values; no authorization is granted. The request duration is also carried in minutes."
+    },
+    {
+      "id": "AD-ndl-21",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "B3/S02/db-allow"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "assets": {
+            "modified": [
+              {
+                "@rowid": [
+                  6,
+                  6
+                ],
+                "last_test_at": [
+                  null,
+                  "\"<time>\""
+                ],
+                "last_test_status": [
+                  "",
+                  "reachable"
+                ]
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": 3,
+                "alert_id": 6,
+                "category": "command_alert",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "command_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{}",
+                "severity": "medium",
+                "state": "pending",
+                "target_id": "4",
+                "target_kind": "asset",
+                "target_name": ""
+              }
+            ]
+          },
+          "sessions": {
+            "added": [
+              {
+                "access_request_id": null,
+                "account_id": 4,
+                "account_username": "baseline-db",
+                "actor_kind": null,
+                "agent_token_id": null,
+                "agent_token_name": null,
+                "asset_id": 4,
+                "auth_epoch": 0,
+                "auth_provider_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "db_console": 0,
+                "deleted_at": null,
+                "end_reason": "normal",
+                "end_time": null,
+                "has_recording": 0,
+                "id": 3,
+                "k8s_container": "",
+                "k8s_image": "",
+                "k8s_namespace": "",
+                "k8s_node": "",
+                "k8s_pod": "",
+                "k8s_pod_uid": "",
+                "offsite_object_id": null,
+                "offsite_status": "",
+                "on_behalf_of_user_id": null,
+                "owner_user_id": null,
+                "protocol": "mysql",
+                "recording_error": "",
+                "recording_path": "",
+                "recording_size": 0,
+                "recording_started_at": null,
+                "revoked_during_session_at": null,
+                "session_id": "sess_<clock>_3",
+                "start_time": "<time>",
+                "status": "active",
+                "updated_at": "<time>",
+                "user_id": 3
+              },
+              {
+                "access_request_id": null,
+                "account_id": 5,
+                "account_username": "baseline-db",
+                "actor_kind": null,
+                "agent_token_id": null,
+                "agent_token_name": null,
+                "asset_id": 5,
+                "auth_epoch": 0,
+                "auth_provider_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "db_console": 0,
+                "deleted_at": null,
+                "end_reason": "normal",
+                "end_time": null,
+                "has_recording": 0,
+                "id": 4,
+                "k8s_container": "",
+                "k8s_image": "",
+                "k8s_namespace": "",
+                "k8s_node": "",
+                "k8s_pod": "",
+                "k8s_pod_uid": "",
+                "offsite_object_id": null,
+                "offsite_status": "",
+                "on_behalf_of_user_id": null,
+                "owner_user_id": null,
+                "protocol": "postgres",
+                "recording_error": "",
+                "recording_path": "",
+                "recording_size": 0,
+                "recording_started_at": null,
+                "revoked_during_session_at": null,
+                "session_id": "sess_<clock>_3",
+                "start_time": "<time>",
+                "status": "active",
+                "updated_at": "<time>",
+                "user_id": 3
+              },
+              {
+                "access_request_id": null,
+                "account_id": 6,
+                "account_username": "",
+                "actor_kind": null,
+                "agent_token_id": null,
+                "agent_token_name": null,
+                "asset_id": 6,
+                "auth_epoch": 0,
+                "auth_provider_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "db_console": 0,
+                "deleted_at": null,
+                "end_reason": "normal",
+                "end_time": null,
+                "has_recording": 0,
+                "id": 5,
+                "k8s_container": "",
+                "k8s_image": "",
+                "k8s_namespace": "",
+                "k8s_node": "",
+                "k8s_pod": "",
+                "k8s_pod_uid": "",
+                "offsite_object_id": null,
+                "offsite_status": "",
+                "on_behalf_of_user_id": null,
+                "owner_user_id": null,
+                "protocol": "redis",
+                "recording_error": "",
+                "recording_path": "",
+                "recording_size": 0,
+                "recording_started_at": null,
+                "revoked_during_session_at": null,
+                "session_id": "sess_<clock>_3",
+                "start_time": "<time>",
+                "status": "active",
+                "updated_at": "<time>",
+                "user_id": 3
+              },
+              {
+                "access_request_id": null,
+                "account_id": 7,
+                "account_username": "baseline-db",
+                "actor_kind": null,
+                "agent_token_id": null,
+                "agent_token_name": null,
+                "asset_id": 7,
+                "auth_epoch": 0,
+                "auth_provider_id": null,
+                "client_ip": "192.0.2.1",
+                "created_at": "<time>",
+                "db_console": 0,
+                "deleted_at": null,
+                "end_reason": "normal",
+                "end_time": null,
+                "has_recording": 0,
+                "id": 6,
+                "k8s_container": "",
+                "k8s_image": "",
+                "k8s_namespace": "",
+                "k8s_node": "",
+                "k8s_pod": "",
+                "k8s_pod_uid": "",
+                "offsite_object_id": null,
+                "offsite_status": "",
+                "on_behalf_of_user_id": null,
+                "owner_user_id": null,
+                "protocol": "mssql",
+                "recording_error": "",
+                "recording_path": "",
+                "recording_size": 0,
+                "recording_started_at": null,
+                "revoked_during_session_at": null,
+                "session_id": "sess_<clock>_3",
+                "start_time": "<time>",
+                "status": "active",
+                "updated_at": "<time>",
+                "user_id": 3
+              }
+            ]
+          },
+          "user_source_ips": {
+            "added": [
+              {
+                "client_ip": "192.0.2.1",
+                "first_seen_at": "<time>",
+                "first_session_at": "<time>",
+                "first_session_id": 3,
+                "last_seen_at": "<time>",
+                "user_id": 3
+              }
+            ]
+          }
+        },
+        "remote": [
+          "db-mssql x1",
+          "db-postgres x2",
+          "db-redis x1",
+          "proc-mariadb x1",
+          "proc-psql x1",
+          "proc-redis-cli x1",
+          "proc-sqlcmd x1"
+        ]
+      },
+      "reason": "In this flow the command alert raised during the database session no longer notifies the channel during the session; it writes one notification content row instead (category command_alert, linked to the alert row, severity medium), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The session rows, the asset test status and every database protocol remote call keep their values."
+    },
+    {
+      "id": "AD-ndl-22",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "I/S01/batch-rotate-all"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "change_secret_batches": {
+            "added": [
+              {
+                "created_at": "<time>",
+                "failed_count": 1,
+                "finished_at": "<time>",
+                "id": 2,
+                "password_exclude_ambiguous": 1,
+                "password_include_symbol": 1,
+                "password_length": 16,
+                "password_mode": "per_target",
+                "requested_by": 2,
+                "requested_by_name": "baseline-s01",
+                "skipped_count": 0,
+                "started_at": "<time>",
+                "status": "completed",
+                "success_count": 0,
+                "target_count": 1,
+                "unverified_count": 0,
+                "updated_at": "<time>",
+                "username": "Administrator"
+              }
+            ]
+          },
+          "change_secret_records": {
+            "added": [
+              {
+                "account_id": 9,
+                "account_username": "Administrator",
+                "asset_id": 9,
+                "batch_id": 2,
+                "credential_id": 9,
+                "credential_name": "baseline-winrm / Administrator",
+                "error": "CHANGE_SECRET_REMOTE_UNREACHABLE",
+                "executed_at": "<time>",
+                "id": 2,
+                "plan_id": 0,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"batch=2 username=Administrator asset_id=9 account=Administrator reason=CHANGE_SECRET_REMOTE_UNREACHABLE（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "winrm x1"
+        ]
+      },
+      "reason": "In this flow the change-secret batch failure no longer notifies the channel during the request; it writes one notification content row instead (credential_rotation_alert, kind plan_failed, carrying the existing failure reason code), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The batch and record rows keep their values, and the WinRM call is the only remaining remote call."
+    },
+    {
+      "id": "AD-ndl-23",
+      "status": "active",
+      "selector": {
+        "scenarios": [
+          "I/S01/plan-scheduled-run"
+        ],
+        "fields": [
+          "db",
+          "remote"
+        ]
+      },
+      "expect": {
+        "db": {
+          "change_secret_plans": {
+            "modified": [
+              {
+                "@rowid": [
+                  1,
+                  1
+                ],
+                "accounts": [
+                  "json:[\"baseline-root\"]",
+                  "json:[\"Administrator\"]"
+                ],
+                "asset_ids": [
+                  "json:[1]",
+                  "json:[9]"
+                ],
+                "cron": [
+                  "",
+                  "0 3 * * *"
+                ],
+                "enabled": [
+                  0,
+                  1
+                ],
+                "updated_at": [
+                  "\"<time>\"",
+                  "\"<time>\""
+                ]
+              }
+            ]
+          },
+          "change_secret_records": {
+            "added": [
+              {
+                "account_id": 9,
+                "account_username": "Administrator",
+                "asset_id": 9,
+                "batch_id": 0,
+                "credential_id": 9,
+                "credential_name": "baseline-winrm / Administrator",
+                "error": "CHANGE_SECRET_REMOTE_UNREACHABLE",
+                "executed_at": "<time>",
+                "id": 2,
+                "plan_id": 1,
+                "secret_type": "password",
+                "status": "failed",
+                "target_version_id": 0
+              }
+            ]
+          },
+          "notification_messages": {
+            "added": [
+              {
+                "actor_name": "",
+                "actor_user_id": null,
+                "alert_id": null,
+                "category": "system_event",
+                "created_at": "<time>",
+                "degraded": 0,
+                "dispatch_attempts": 0,
+                "dispatched_at": null,
+                "event_key": "credential_rotation_alert",
+                "fail_reason": "",
+                "id": 5,
+                "lease_until": null,
+                "link_path": "",
+                "name_refs": "json:{}",
+                "occurred_at": "<time>",
+                "params": "json:{\"detail\":\"plan=baseline-plan-1 asset_id=9 account=Administrator reason=CHANGE_SECRET_REMOTE_UNREACHABLE（詳細遠端訊息見伺服器日誌）\",\"kind\":\"plan_failed\"}",
+                "severity": "high",
+                "state": "pending",
+                "target_id": "",
+                "target_kind": "",
+                "target_name": ""
+              }
+            ]
+          }
+        },
+        "remote": [
+          "winrm x1"
+        ]
+      },
+      "reason": "In this flow the scheduled change-secret run failure no longer notifies the channel during the run; it writes one notification content row instead (credential_rotation_alert, kind plan_failed, carrying the existing failure reason code), and delivery happens afterwards from the persistent outbox, so the flow makes no outbound notification call. The plan and record rows keep their values, and the WinRM call is the only remaining remote call."
+    },
+    {
+      "id": "AD-drb-1",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": ["S01", "S03", "S06", "S07", "S13"],
+        "keys": ["GET /api/v1/daily-reviews/pending"],
+        "fields": ["body"]
+      },
+      "expect": {
+        "body_edit": {
+          "item_edits": [
+            {"path": "data.items", "match": {"timezone": "UTC"}, "count": 5, "added": {"unreviewed_alert_types": 0}}
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "Each pending day gains unreviewed_alert_types (the number of distinct alert types still unreviewed that day; 0 here because the fixture has no alerts in these days). Nothing else in the body changes, and counts keeps the shape that is fixed into a sign-off."
+    },
+    {
+      "id": "AD-drb-2",
+      "status": "active",
+      "selector": {
+        "group": "R",
+        "subjects": ["S01", "S03", "S06", "S07", "S13"],
+        "keys": ["POST /api/v1/command-alerts/:id/review"],
+        "fields": ["audit"]
+      },
+      "expect": {
+        "audit_edit": {
+          "details_added_keys": [
+            {"count": 1, "match": {"error_msg": "alert_disposition_benign"}, "keys": ["self_review"]}
+          ]
+        }
+      },
+      "require_all_keys": true,
+      "reason": "The explicit disposition row of a single review now records self_review in its details (whether the reviewer triggered the alert; false here). The request row and every other column of both rows are unchanged."
     }
   ]
 }

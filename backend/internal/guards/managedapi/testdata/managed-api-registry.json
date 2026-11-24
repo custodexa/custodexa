@@ -2016,6 +2016,10 @@
       "category": "unmanaged_family",
       "family": "notification_channels"
     },
+    "GET /api/v1/notification-channels/:id/deliveries": {
+      "category": "unmanaged_family",
+      "family": "notification_channels"
+    },
     "GET /api/v1/offsite-storage/failures": {
       "category": "read_only_family",
       "family": "offsite_storage"

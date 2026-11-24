@@ -184,11 +184,11 @@ func TestPurgeableIntervalsConditions(t *testing.T) {
 	fresh := time.Now().Add(-1 * time.Hour)
 	cutoff := time.Now().Add(-365 * 24 * time.Hour)
 
-	expired := f.sealInterval(t, 3, old)         // seq=2：全部過期 → 可清
-	notExpired := f.sealInterval(t, 2, fresh)    // seq=3：未過期 → 不可清
-	alreadyPurged := f.sealInterval(t, 2, old)   // seq=4：已有 tombstone → 不可清
-	tampered := f.sealInterval(t, 2, old)        // seq=5：簽章被改 → 不可清
-	emptyWithTime := f.sealInterval(t, 2, old)   // seq=6：改造成 row_count=0 → 不可清
+	expired := f.sealInterval(t, 3, old)       // seq=2：全部過期 → 可清
+	notExpired := f.sealInterval(t, 2, fresh)  // seq=3：未過期 → 不可清
+	alreadyPurged := f.sealInterval(t, 2, old) // seq=4：已有 tombstone → 不可清
+	tampered := f.sealInterval(t, 2, old)      // seq=5：簽章被改 → 不可清
+	emptyWithTime := f.sealInterval(t, 2, old) // seq=6：改造成 row_count=0 → 不可清
 
 	// seq=4：直接標記已清（走白名單 map 形式，與生產路徑同一入口）
 	if err := f.db.Model(&model.AuditCheckpoint{}).Where("seq = ?", alreadyPurged.Seq).

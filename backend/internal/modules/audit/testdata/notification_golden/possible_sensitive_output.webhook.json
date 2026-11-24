@@ -1,0 +1,21 @@
+{
+  "alert": {
+    "blocked": false,
+    "command": "cat /etc/shadow",
+    "id": 1,
+    "kind": "rule",
+    "possible_sensitive_output": {
+      "count": 3
+    },
+    "reason_code": "o1:3",
+    "rule_name": "output-rule",
+    "severity": "high",
+    "triggered_at": "2026-11-20T00:00:00Z"
+  },
+  "event": "command_alert",
+  "session": {
+    "asset_id": null,
+    "id": 31,
+    "user_id": 3
+  }
+}

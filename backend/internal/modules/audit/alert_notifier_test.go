@@ -22,13 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// newTestNotifier 建立測試用 notifier：極短退避——重試次數的驗證不需要真實等待
-func newTestNotifier() *AlertNotifier {
-	n := NewAlertNotifier(nil, nil)
-	n.backoff = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
-	return n
-}
-
 func sampleAlert() model.CommandAlert {
 	assetID := uint(3)
 	ruleID := uint(1)
@@ -125,7 +118,7 @@ func TestAlertNotifier_Notify(t *testing.T) {
 		assert.False(t, hasSignature)
 	})
 
-	t.Run("收端 500 時重試 3 次（共 4 次嘗試）", func(t *testing.T) {
+	t.Run("收端 500 時持久重送：每輪一次、次數記在紀錄上", func(t *testing.T) {
 		var attempts int32
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&attempts, 1)
@@ -139,8 +132,16 @@ func TestAlertNotifier_Notify(t *testing.T) {
 		})
 
 		n.notify(sampleAlert())
-
+		assert.Equal(t, int32(1), atomic.LoadInt32(&attempts), "一輪只送一次")
+		for i := 0; i < 3; i++ {
+			time.Sleep(10 * time.Millisecond)
+			n.run()
+		}
 		assert.Equal(t, int32(4), atomic.LoadInt32(&attempts))
+		var row model.NotificationDelivery
+		assert.NoError(t, n.db.First(&row).Error)
+		assert.Equal(t, 4, row.Attempts)
+		assert.Equal(t, model.NotificationDeliveryRetrying, row.State)
 	})
 
 	t.Run("成功後不再重試", func(t *testing.T) {
@@ -186,7 +187,7 @@ func TestAlertNotifier_Notify(t *testing.T) {
 			// 169.254.0.1 link-local 不可路由，配合短退避快速走完重試
 			{ID: 1, Name: "unreachable", URL: "http://169.254.0.1:1/hook", Enabled: true},
 		})
-		n.client.Timeout = 200 * time.Millisecond
+		n.w.httpTimeout = 200 * time.Millisecond
 
 		// 不 panic、不回傳錯誤即為「失敗僅 log」語意成立
 		assert.NotPanics(t, func() { n.notify(sampleAlert()) })
@@ -240,7 +241,7 @@ func TestAlertNotifier_Notify(t *testing.T) {
 
 		n.notify(alert)
 
-		var payload map[string]string
+		var payload slackBodyFields
 		assert.NoError(t, json.Unmarshal(gotBody, &payload))
 		// & < > 應轉為 HTML 實體，不得殘留裸字元
 		assert.Contains(t, payload["text"], "&gt;")
@@ -375,7 +376,7 @@ func TestNotifyEvent(t *testing.T) {
 			"username": "alice", "duration_minutes": "15",
 		})
 
-		var payload map[string]string
+		var payload slackBodyFields
 		assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 		text := payload["text"]
 		// en-US 目錄命中：英文文案＋原樣使用者資料，且不得殘留 zh 文案
@@ -400,7 +401,7 @@ func TestNotifyEvent(t *testing.T) {
 
 		texts := make([]string, 0, 2)
 		for i := 0; i < 2; i++ {
-			var payload map[string]string
+			var payload slackBodyFields
 			assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 			texts = append(texts, payload["text"])
 		}
@@ -421,7 +422,7 @@ func TestNotifyEvent(t *testing.T) {
 			"cause_code": model.CauseRecordingFileMissing,
 		})
 
-		var payload map[string]string
+		var payload slackBodyFields
 		assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 		assert.Contains(t, payload["text"],
 			notifycat.Phrase(model.NotificationChannelLanguageEnUS,
@@ -461,9 +462,10 @@ func TestNotifyEvent(t *testing.T) {
 
 		n.NotifyEvent(notifycat.Event("ghost.event"), map[string]string{"who": "alice"})
 
-		var payload map[string]string
+		var payload slackBodyFields
 		assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
-		assert.Contains(t, payload["text"], ":warning:")
+		// 未登錄事件沒有宣告分級，內容列以中等分級處理，開頭符號隨之為中等
+		assert.True(t, strings.HasPrefix(payload["text"], notifycat.SymbolMedium+" "), payload["text"])
 		assert.Contains(t, payload["text"], "ghost.event")
 		assert.NotContains(t, payload["text"], "alice", "未註冊 event 的 params 值不得出站")
 	})
@@ -528,7 +530,7 @@ func TestNotifyEvent(t *testing.T) {
 			"detail":     leakyDetail,
 		})
 
-		var payload map[string]string
+		var payload slackBodyFields
 		assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 		text := payload["text"]
 		assert.NotContains(t, text, "10.0.0.5", "forensic detail 不得出現在 Slack 文字")
@@ -550,7 +552,7 @@ func TestNotifyEvent(t *testing.T) {
 
 		texts := map[string]bool{}
 		for i := 0; i < 2; i++ {
-			var payload map[string]string
+			var payload slackBodyFields
 			assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 			texts[payload["text"]] = true
 		}
@@ -583,53 +585,6 @@ func TestSlackEscape(t *testing.T) {
 	// & 必須先轉，否則會二次轉義後續實體
 	assert.Equal(t, "a &amp;&lt;&gt; b", slackEscape("a &<> b"))
 	assert.Equal(t, "no metachar", slackEscape("no metachar"))
-}
-
-func TestAlertNotifier_Enqueue(t *testing.T) {
-	t.Run("佇列滿載時不阻塞", func(t *testing.T) {
-		// 不啟動 worker：佇列只進不出，灌超過容量驗證 Enqueue 的非阻塞語意
-		n := newTestNotifier()
-
-		done := make(chan struct{})
-		go func() {
-			for i := 0; i < notifyQueueSize*2; i++ {
-				n.Enqueue(sampleAlert())
-			}
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// 滿載後多餘告警被丟棄，佇列維持在容量上限
-			assert.Equal(t, notifyQueueSize, len(n.queue))
-		case <-time.After(2 * time.Second):
-			t.Fatal("Enqueue 在佇列滿載時阻塞")
-		}
-	})
-
-	t.Run("worker 消費佇列並送達", func(t *testing.T) {
-		var attempts int32
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			atomic.AddInt32(&attempts, 1)
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
-		n := newTestNotifier()
-		n.setChannels([]model.NotificationChannel{
-			{ID: 1, Name: "async", URL: server.URL, Enabled: true},
-		})
-		n.Start()
-
-		n.Enqueue(sampleAlert())
-
-		// 異步投遞：輪詢等待 worker 完成（上限 2s 避免測試卡死）
-		deadline := time.Now().Add(2 * time.Second)
-		for atomic.LoadInt32(&attempts) == 0 && time.Now().Before(deadline) {
-			time.Sleep(10 * time.Millisecond)
-		}
-		assert.Equal(t, int32(1), atomic.LoadInt32(&attempts))
-	})
 }
 
 func TestSendTestNotification(t *testing.T) {
@@ -665,7 +620,7 @@ func TestSendTestNotification(t *testing.T) {
 			t.Fatalf("send: %v", err)
 		}
 
-		var payload map[string]string
+		var payload slackBodyFields
 		assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 		enTitle, enText := notifycat.Render(model.NotificationChannelLanguageEnUS,
 			notifycat.EventTest, map[string]string{"product": branding.Name})
@@ -760,7 +715,7 @@ func TestAlertContextReadability(t *testing.T) {
 		assert.Contains(t, got, "使用者 alice (#9)")
 		assert.Contains(t, got, "資產 web-prod-01 (#3)")
 		assert.Contains(t, got, "會話 #7")
-		assert.Contains(t, got, "2026-06-12T08:00:00Z")
+		assert.Contains(t, got, "<!date^1781251200^{date_num} {time_secs}|2026-06-12 08:00:00 UTC>")
 
 		// 順序：使用者在資產之前、資產在會話之前
 		assert.Less(t, strings.Index(got, "使用者"), strings.Index(got, "資產"),
@@ -787,7 +742,7 @@ func TestAlertContextReadability(t *testing.T) {
 		assert.NotContains(t, got, "()", "空名稱不得留下殘缺的括號")
 		// 時間與會話仍在——通知不因名稱缺失而少資訊
 		assert.Contains(t, got, "會話 #7")
-		assert.Contains(t, got, "2026-06-12T08:00:00Z")
+		assert.Contains(t, got, "<!date^1781251200^{date_num} {time_secs}|2026-06-12 08:00:00 UTC>")
 	})
 
 	t.Run("實體標籤隨通道語系", func(t *testing.T) {

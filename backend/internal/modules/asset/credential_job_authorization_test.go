@@ -683,13 +683,13 @@ func TestCredentialWorkRevalidation(t *testing.T) {
 		a1, acc1 := f.addHost(t, "h1", "10.9.11.1", "ops")
 		plan, err := f.plans.Create(userCtx(5, "creator"), planRequest("未注入", []uint{a1}, "ops"))
 		require.NoError(t, err)
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.runner.notifier = notifier
 		f.retry.notifier = notifier
 
 		f.runner.mgmt = credentialManagementGate{}
 		assert.Empty(t, f.runner.RunPlan(plan), "判定器未注入：計畫不執行")
-		assert.EqualValues(t, 1, notifier.PendingNotifications(), "停止走既有告警通道")
+		assert.EqualValues(t, 1, rotationAlertCount(f.db), "停止走既有告警通道")
 		_, calls, _ := rec.snapshotCalls()
 		assert.Empty(t, calls, "遠端零觸碰")
 		batch, ids, err := f.batches.Create(batchRequest("ops", model.BatchPasswordPerTarget, true), 7, "batcher")
@@ -700,10 +700,10 @@ func TestCredentialWorkRevalidation(t *testing.T) {
 
 		cand := model.ChangeSecretCandidate{AssetID: a1, AccountID: acc1, AccountUsername: "ops", PlanID: plan.ID, CreatedAt: time.Now()}
 		f.retry.mgmt = credentialManagementGate{}
-		before := notifier.PendingNotifications()
+		before := rotationAlertCount(f.db)
 		assert.Equal(t, model.ChangeSecretReasonAuthzUnavailable, f.retry.revalidateCandidate(context.Background(), &cand))
 		assert.False(t, f.retry.RetryOne(&cand))
-		assert.Equal(t, before+1, notifier.PendingNotifications(), "重試拒絕同樣告警")
+		assert.Equal(t, before+1, rotationAlertCount(f.db), "重試拒絕同樣告警")
 	})
 
 	t.Run("升級前的舊候選：背景擋下並告警，無權者手動被擋，具權者手動通過並留痕", func(t *testing.T) {
@@ -723,12 +723,12 @@ func TestCredentialWorkRevalidation(t *testing.T) {
 			Update("authorization_id", nil).Error)
 		cand.AuthorizationID = nil
 		rec.verifyErr["10.9.12.2"] = nil
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		_, _, verifyBefore := rec.snapshotCalls()
 
 		assert.False(t, f.retry.RetryOne(&cand), "背景重試不送出")
-		assert.GreaterOrEqual(t, notifier.PendingNotifications(), int64(1), "背景被擋要告警")
+		assert.GreaterOrEqual(t, rotationAlertCount(f.db), int64(1), "背景被擋要告警")
 		_, _, v := rec.snapshotCalls()
 		assert.Equal(t, verifyBefore, v, "遠端零觸碰")
 		var kept model.ChangeSecretCandidate

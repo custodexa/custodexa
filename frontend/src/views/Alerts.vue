@@ -102,10 +102,10 @@
         </div>
 
         <div class="list-card">
-          <!-- 批次審閱列：勾選後出現；只收未審閱且非本人觸發的告警 -->
+          <!-- 批次處置列：勾選後出現；收未審閱的告警（本人觸發的也可以，送出前要確認） -->
           <BatchSelectionBar
             v-if="canReview && alertSelection.selected.value.length"
-            :count-text="$t('alerts.batch.selectedCount', { n: alertSelection.selected.value.length })"
+            :count-text="alertBatchCountText"
             :clear-text="$t('alerts.batch.clear')"
             :limit-text="alertBatchLimitText"
             @clear="alertSelection.clear()"
@@ -114,9 +114,9 @@
               v-preview-write
               type="primary"
               data-test="batch-open"
-              @click="alertBatchDialogRef?.open()"
+              @click="openAlertBatch"
             >
-              {{ $t('alerts.batch.open') }}
+              {{ $t('alerts.batch.open', { n: alertSelection.selected.value.length }) }}
             </el-button>
           </BatchSelectionBar>
           <el-table
@@ -593,13 +593,14 @@
       </template>
     </el-dialog>
 
-    <!-- 告警批次審閱：逐筆呼叫單筆審閱端點（非原子），結果逐筆列出 -->
+    <!-- 告警批次處置：一次請求送出，結果逐筆判定（與每日簽核共用同一個對話框） -->
     <AlertBatchReviewDialog
       v-if="canReview"
       ref="alertBatchDialogRef"
-      :alerts="alertSelection.selected.value"
       :current-user-id="currentUserId"
       :label-for="alertBatchLabel"
+      :result-note="alertBatchResultNote"
+      @settled="handleAlertBatchSettled"
       @finished="handleAlertBatchFinished"
     />
 
@@ -784,6 +785,7 @@ import BatchSelectionBar from '@/components/batch-review/BatchSelectionBar.vue'
 import BatchCheckbox from '@/components/batch-review/BatchCheckbox.vue'
 import AlertBatchReviewDialog from '@/components/batch-review/AlertBatchReviewDialog.vue'
 import { useBatchSelection } from '@/composables/useBatchReview'
+import { ALERT_BULK_LIMIT, alertTypeKey, isSelfTriggered } from '@/components/batch-review/alertBulk'
 import { formatDateTime } from '@/utils/format'
 import { can } from '@/composables/useCapabilities'
 import { useRoles } from '@/composables/useRoles'
@@ -937,16 +939,35 @@ const submitReview = async () => {
     reviewSubmitting.value = false
   }
 }
-// --- 批次審閱（勾選多筆 → 共用理由 → 逐筆送出） ---
-// 只收未審閱、且不是自己連線觸發的告警；目前使用者不明時一律不給勾（後端也會擋）
-const alertSelection = useBatchSelection()
+// --- 批次處置（勾選多筆 → 共用處置與理由 → 一次送出） ---
+// 收未審閱的告警；本人觸發的也可以勾（對話框要求確認，伺服端核對筆數）。
+// 目前使用者不明時一律不給勾。上限是伺服端的單次上限，實際受每頁筆數限制
+const alertSelection = useBatchSelection({ limit: ALERT_BULK_LIMIT })
 const alertBatchDialogRef = ref(null)
-const isAlertBatchSelectable = (row) =>
-  !row.reviewed_at && currentUserId.value != null && row.user_id !== currentUserId.value
-const alertSelectBlockedReason = (row) => {
-  if (row.reviewed_at) return t('alerts.batch.reviewedTip')
-  if (currentUserId.value != null && row.user_id === currentUserId.value) return t('alerts.batch.selfTriggeredTip')
-  return ''
+const isAlertBatchSelectable = (row) => !row.reviewed_at && currentUserId.value != null
+const alertSelectBlockedReason = (row) => (row.reviewed_at ? t('alerts.batch.reviewedTip') : '')
+// 依表格順序送出
+const orderedAlertSelection = computed(() => alerts.value.filter((row) => alertSelection.isSelected(row)))
+const alertBatchCountText = computed(() => {
+  const picked = alertSelection.selected.value
+  const k = new Set(picked.map(alertTypeKey)).size
+  const s = picked.filter((row) => isSelfTriggered(row, currentUserId.value)).length
+  return s
+    ? t('alerts.batch.selectedSelf', { n: picked.length, k, s })
+    : t('alerts.batch.selectedCount', { n: picked.length, k })
+})
+const openAlertBatch = () => {
+  const rows = orderedAlertSelection.value.length ? orderedAlertSelection.value : alertSelection.selected.value
+  alertBatchDialogRef.value?.open(rows)
+}
+// 結果畫面：只看未審閱時，處置過的已離開清單，表格是下一批
+const alertBatchResultNote = ref('')
+const handleAlertBatchSettled = async () => {
+  alertSelection.clear()
+  await fetchAlerts()
+  alertBatchResultNote.value = filters.value.unreviewed && alerts.value.length
+    ? t('alerts.bulk.alertsPageNote', { n: alerts.value.length })
+    : ''
 }
 const alertPageState = computed(() => alertSelection.pageState(alerts.value, isAlertBatchSelectable))
 const alertBatchLimitText = computed(() =>
@@ -956,6 +977,7 @@ const alertBatchLimitText = computed(() =>
 // 規則名稱欄的同一套散文改用共用函式（constants/command-degrade）：非規則類告警的 rule_name 是機器碼，不直接顯示
 const alertBatchLabel = (row) => `${alertRuleText(row)} · ${formatDateTime(row.triggered_at)}`
 const handleAlertBatchFinished = () => {
+  alertBatchResultNote.value = ''
   alertSelection.clear()
   void fetchAlerts()
 }

@@ -58,7 +58,7 @@ type AuditEvent = gatewayapi.AuditEvent
 // # 誰該走這個介面
 //
 // openspec/changes/archive/2026-08-11-modular-architecture/research/manifest-audit-points.md
-//（隨公開快照出門，唯一權威）逐點分派：**凡「呼叫方交易內＝是」者
+// （隨公開快照出門，唯一權威）逐點分派：**凡「呼叫方交易內＝是」者
 // 一律 TxSink**，實測 19 點，零例外。分派規則不看 fail-close 與否——只要寫入吃的是
 // `tx`，它就需要 `*gorm.DB` 參數，AsyncSink 的簽名表達不了。其中 3 點
 // （AP-39／AP-41／AP-42）呼叫方現況刻意 fail-open，收口時保持現況，不得順手改判。

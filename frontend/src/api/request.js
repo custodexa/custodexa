@@ -5,6 +5,7 @@ import { resolveApiError } from './error'
 import { redactAxiosError } from './redact'
 import { SEAL_GATE_CODE, UNSEAL_PATH, markSealed } from '@/utils/sealPhase'
 import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
+import { LOGIN_PATH, loginHrefForCurrentPage } from '@/router/loginRedirect'
 import { shouldBlockInPreview } from '@/utils/previewOverlay'
 import {
   clearSession,
@@ -131,8 +132,9 @@ const clearSessionAndRedirect = () => {
   // 續期憑證是 httpOnly cookie，本地清不到；它由登出回應清除，
   // 而過期／被撤銷的憑證在伺服器端已不具授權——cookie 存在不等於授權
   clearSession()
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
+  // 當下頁面屬「登入後可回到的路由」時帶目的地（登入後的落點仍由伺服端判定）
+  if (window.location.pathname !== LOGIN_PATH) {
+    window.location.href = loginHrefForCurrentPage()
   }
 }
 

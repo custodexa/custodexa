@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"time"
 
@@ -473,7 +474,7 @@ func (s *CredentialRotationService) stopMember(rot *model.CredentialRotation,
 	logJobStop(fmt.Sprintf("rotation=%d member=%d", rot.ID, member.ID), reason, rot.RequestedBy)
 	s.auditMemberStop(rot, member, reason)
 	if s.stopNotify != nil {
-		s.stopNotify("改密工作因授權失效停止",
+		s.stopNotify(notifycat.RotationAlertAuthzStopped,
 			fmt.Sprintf("rotation=%d asset_id=%d account=%s reason=%s（遠端未被觸碰，需具權者重新發起）",
 				rot.ID, member.AssetID, member.Username, reason))
 	}

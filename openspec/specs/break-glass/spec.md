@@ -61,7 +61,7 @@ break-glass 功能 SHALL 由安全政策鍵 `break_glass_enabled` 控制且出�
 - **THEN** 審計日誌出現破窗建單記錄（獨立標記），與 admin 豁免（`policy_exemption='admin'`）及一般核准可區分
 
 ### Requirement: 破窗通知
-破窗成功 SHALL 即時發出破窗事件（`break_glass_used`）。v1 交付＝廣播至既有 alert-notifications 通道（best-effort 外送）＋審核中心「待補審」視圖為**權威保底可見面**（範圍命中的**有效審核者**於此必見該單，即使外送通道未配置或失敗；`admin` 角色本身 SHALL NOT 構成可見資格——審核中心對僅具 admin 者不開放，其全域檢視經超級管理者或持對應權限點者可入的管理與稽核頁面取得）——收件人層級的定向通知（僅推給範圍命中的有效審核者）屬站內通知系統，列為後續版本工作。事件類型 SHALL 獨立且 SHALL NOT 被告警規則靜默過濾；payload SHALL 最小化（單號/資產名/破窗人/事件/連結，無事由全文）。通知外送失敗 SHALL NOT 阻斷破窗（緊急通道不被通知堵死）。**無任何有效審核者可見該單時**，逾期告警 SHALL 為其可見性保底（見「事後補審閉環」），SHALL NOT 以 admin 兜底可見性替代。
+破窗成功 SHALL 即時發出破窗事件（`break_glass_used`）。v1 交付＝廣播至既有 alert-notifications 通道（best-effort 外送）＋審核中心「待補審」視圖為**權威保底可見面**（範圍命中的**有效審核者**於此必見該單，即使外送通道未配置或失敗；`admin` 角色本身 SHALL NOT 構成可見資格——審核中心對僅具 admin 者不開放，其全域檢視經超級管理者或持對應權限點者可入的管理與稽核頁面取得）。部署開啟對個人派送時，破窗事件與補審逾期事件 SHALL 另以個人訊息送給補審得了該單的人（判定與補審端點同一來源：範圍命中的有效審核者、不是破窗人；見 `targeted-notification`），通道廣播照舊；個人訊息的成敗 SHALL NOT 影響破窗與通道廣播。事件類型 SHALL 獨立且 SHALL NOT 被告警規則靜默過濾；payload SHALL 最小化（單號/資產名/破窗人/事件/連結，無事由全文）。通知外送失敗 SHALL NOT 阻斷破窗（緊急通道不被通知堵死）。**無任何有效審核者可見該單時**，逾期告警 SHALL 為其可見性保底（見「事後補審閉環」），SHALL NOT 以 admin 兜底可見性替代。
 
 #### Scenario: 破窗事件外送並進待補審視圖
 - **WHEN** 使用者對範圍命中的資產破窗成功
@@ -78,6 +78,14 @@ break-glass 功能 SHALL 由安全政策鍵 `break_glass_enabled` 控制且出�
 #### Scenario: 前端資格閘與後端同一述詞（403 SHALL NOT 呈現為空佇列）
 - **WHEN** 僅具 `admin` 角色者登入，或以任何方式（快取過期、直接輸入網址）抵達審核中心
 - **THEN** 入口 SHALL NOT 出現於導覽；直接輸入網址 SHALL 不進入該頁；縱使繞過前端閘而載入該頁，頁面 SHALL 明示「不具審核資格」，且 SHALL NOT 把 403 呈現為空列表——把「你看不到」顯示成「沒有東西」會使管理員誤判待審佇列已清空。前端可見性 SHALL 取自後端現算的有效審核資格（`is_approver`），SHALL NOT 另立一份靜態角色述詞
+
+#### Scenario: 破窗以個人訊息送給補審得了的人
+- **WHEN** 部署已開啟對個人派送，使用者對資產破窗成功；該資產在兩位有效審核者的範圍內，其中一位就是破窗人
+- **THEN** 另一位審核者收到一則個人訊息，帶單號、資產名、破窗人名稱與直達該單補審的連結；破窗人不收到；通道廣播照常送出
+
+#### Scenario: 補審逾期的重發也送給個人
+- **WHEN** 該破窗單逾期未補審並歷經兩個節流間隔
+- **THEN** 每次重發時重新求一次收件人，當下補審得了的人各收到一則個人訊息；期間已被移出範圍的人不再收到
 
 ### Requirement: 事後補審閉環
 破窗單 SHALL 帶補審狀態（建立即 `pending_review`）；補審資格＝範圍命中的**有效審核者**（具 `approver` 角色 OR 屬任一審核方群組；`admin` 角色本身 SHALL NOT 構成補審資格，須明確被指派 approver 角色或納入審核方群組——與 access-request 的審核資格同一判定來源），破窗人 SHALL NOT 補審自己的破窗單（硬擋，含破窗人兼具 admin 身分之自審）。補審 SHALL 記錄處置（confirmed／violation）與備註，狀態轉移 SHALL 為 CAS（僅 `pending_review` 可補審、補審後不可重複）。超過政策鍵 `break_glass_review_timeout_hours`（預設 24）未補審 SHALL 觸發升級告警事件（`break_glass_review_overdue`）；該告警 SHALL **週期重發**至該單離開 `pending_review` 為止，並 SHALL 以「最近告警時刻」節流（節流間隔與逾期超時窗解耦，實作為固定 24 小時，使超時窗設得很短的部署不被同倍數放大轟炸）——**每單至多一次的一次性告警 SHALL NOT 視為滿足本條**：當可見性保底所依賴的正是這道告警時，只響一次意味著一封通知被漏看該單即永久沉沒。未逾期的破窗單 SHALL NOT 進入告警集合（正常有審核者的部署不因本條產生噪音）；審核中心 SHALL 提供待補審視圖與計數。無有效審核者可補審時，該單 SHALL 維持 `pending_review` 並持續累計逾期告警，SHALL NOT 因無人可審而被自動結案；解除方式 SHALL 為 admin 以管理路徑指派 approver 角色或補建審核範圍（該路徑僅需 admin 權限、永遠可用）。

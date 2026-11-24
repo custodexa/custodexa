@@ -1,0 +1,19 @@
+{
+  "alert": {
+    "blocked": false,
+    "command": "",
+    "id": 1,
+    "kind": "new_source_ip",
+    "rule_name": "new_source_ip",
+    "severity": "medium",
+    "triggered_at": "2026-11-20T00:00:00Z"
+  },
+  "event": "command_alert",
+  "session": {
+    "asset_id": null,
+    "client_ip": "203.0.113.7",
+    "id": 31,
+    "user_id": 3,
+    "username": "alice"
+  }
+}

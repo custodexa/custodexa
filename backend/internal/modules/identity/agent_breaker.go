@@ -47,6 +47,16 @@ func (s *AgentTokenService) TripProbeBreakerInTx(tx *gorm.DB, userID, tokenID ui
 	}
 	return true, nil
 }
+
+// AgentTokenNameInTx 交易內讀 agent token 的名稱（熔斷通知用）；讀不到回空字串。
+func AgentTokenNameInTx(tx *gorm.DB, tokenID uint) string {
+	var name string
+	if err := tx.Model(&model.AgentToken{}).Select("name").Where("id = ?", tokenID).Limit(1).Scan(&name).Error; err != nil {
+		return ""
+	}
+	return name
+}
+
 func (s *AgentTokenService) FinishProbeBreaker(tokenID uint) {
 	s.finishTermination(tokenID, gatewayapi.Actor{Username: "system"})
 }

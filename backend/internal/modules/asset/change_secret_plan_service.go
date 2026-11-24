@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"sort"
 	"time"
@@ -270,7 +271,7 @@ func (s *ChangeSecretPlanService) ReauthorizePending(ctx context.Context) (done,
 			skipped = append(skipped, plan.ID)
 			s.auditReauthorizeSkipped(plan.ID, uid, uname, model.ChangeSecretReasonAuthzUnavailable)
 			if s.alert != nil {
-				s.alert("改密計畫重新授權未完成",
+				s.alert(notifycat.RotationAlertPlanReauthIncomplete,
 					fmt.Sprintf("plan_id=%d 承接的審計寫不進去，計畫維持暫停（未承接、未執行），請確認審計儲存後再承接", plan.ID))
 			}
 			continue

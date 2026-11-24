@@ -1,0 +1,18 @@
+{
+  "alert": {
+    "blocked": false,
+    "command": "",
+    "id": 1,
+    "kind": "sensitive_reveal",
+    "rule_name": "sensitive_reveal",
+    "severity": "medium",
+    "triggered_at": "2026-11-20T00:00:00Z"
+  },
+  "event": "command_alert",
+  "session": {
+    "asset_id": null,
+    "id": 31,
+    "user_id": 3,
+    "username": "alice"
+  }
+}

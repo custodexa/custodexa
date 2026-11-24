@@ -148,6 +148,7 @@ POST	/api/v1/change-secret-plans/:id/run	closed	unclassified	unclassified
 POST	/api/v1/change-secret-plans/reauthorize	open	write	deferred
 GET	/api/v1/command-alerts	closed	unclassified	unclassified
 POST	/api/v1/command-alerts/:id/review	closed	unclassified	unclassified
+POST	/api/v1/command-alerts/batch-review	closed	unclassified	unclassified
 GET	/api/v1/command-alerts/:id/system-detail	closed	unclassified	unclassified
 GET	/api/v1/commands	closed	unclassified	unclassified
 POST	/api/v1/compliance/report-jobs	closed	unclassified	unclassified
@@ -227,6 +228,7 @@ POST	/api/v1/notification-channels	open	write	deferred
 DELETE	/api/v1/notification-channels/:id	open	write	deferred
 PUT	/api/v1/notification-channels/:id	open	write	deferred
 POST	/api/v1/notification-channels/:id/test	closed	unclassified	unclassified
+GET	/api/v1/notification-channels/:id/deliveries	open	read	none
 GET	/api/v1/offsite-storage/failures	open	read	none
 POST	/api/v1/offsite-storage/objects/:id/retry	closed	unclassified	unclassified
 GET	/api/v1/offsite-storage/profiles	open	read	none

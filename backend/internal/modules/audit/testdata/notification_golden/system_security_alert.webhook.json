@@ -1,0 +1,24 @@
+{
+  "alert": {
+    "actor": {
+      "user_id": 0,
+      "username": ""
+    },
+    "id": 1,
+    "occurred_at": "2026-11-20T00:00:00Z",
+    "params": {
+      "path": "direct_assign",
+      "recipient": "bob",
+      "role_name": "asset_admin"
+    },
+    "severity": "high",
+    "target": {
+      "id": "",
+      "kind": ""
+    },
+    "type": "management_role_granted"
+  },
+  "delivery_id": "\u003cdelivery_id\u003e",
+  "event": "system_security_alert",
+  "sent_at": "2026-11-20T00:00:00Z"
+}

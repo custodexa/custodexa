@@ -882,6 +882,14 @@ var txTakingCalleeDirs = []string{authzModuleDir, offsiteModuleDir}
 // **本表不是豁免**：登記在此的方法一旦真的被呼叫，A 軸仍要求該呼叫點進
 // txTakingWhitelist。本表只回答「這個方法為什麼可以把交易收進來」。
 var txTakingMethodsWithoutCallers = map[string]string{
+	"TargetedAccessRequestRecipients": "定向通知的連線申請收件人求得：與待審清單、核決路徑同一組範圍判定，句柄由呼叫方給，" +
+		"分派在交易外求得、投遞在送出前重驗都呼叫同一函式。只讀、不取鎖、不寫表；呼叫點只在本模組的 targeted_judges.go" +
+		"（包成投遞程序的判定，由組裝根登錄，傳入的是一般連線），沒有外部呼叫點。",
+	"TargetedAccessRequestVerdict": "定向通知送出前對單一收件人的重驗，與 TargetedAccessRequestRecipients 同一判定，" +
+		"句柄可為取件後的交易。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"TargetedBreakGlassRecipients": "定向通知的破窗補審收件人求得，與待補審清單同一過濾。只讀、不取鎖、不寫表；現況無外部呼叫點。",
+	"TargetedBreakGlassVerdict": "定向通知送出前對破窗補審收件人的重驗，與 TargetedBreakGlassRecipients 同一判定。" +
+		"只讀、不取鎖、不寫表；現況無外部呼叫點。",
 	"HasAllCapabilities": "HasAllCapabilitiesFiltered 不帶角色限定的形式（限定為 nil），讀取點與交易語義相同：" +
 		"只讀使用者、角色與權限世代，不取鎖、不寫表；現況無外部呼叫點（轉接頭改呼叫帶限定的形式）。",
 	"Decide": "節點範圍授權判定，須在呼叫方的寫入交易內現查指派與目標，與寫入同一交易，" +

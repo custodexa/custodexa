@@ -1,70 +1,134 @@
 {
   "access_request.created": {
     "default": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "新規申請が審査待ちです（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} が]接続を申請しました[（{duration_minutes}）]。審査待ちです（審査センターをご確認ください）。"
+    },
+    "default_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} が]接続を申請しました[（{duration_minutes}）]。審査待ちです。"
     }
   },
   "access_request.approved": {
     "auto": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "自動承認されました（理由記入ティア）（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請は自動承認されました（この資産は理由の記入だけで接続できます）[。接続できる時間は {duration_minutes}です]（審査センターをご確認ください）。"
     },
     "manual": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "申請が承認されました（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請が[ {decider_name} により]承認されました[。接続できる時間は {duration_minutes}です]（審査センターをご確認ください）。"
+    },
+    "auto_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請は自動承認されました（この資産は理由の記入だけで接続できます）[。接続できる時間は {duration_minutes}です]。"
+    },
+    "manual_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請が[ {decider_name} により]承認されました[。接続できる時間は {duration_minutes}です]。"
+    },
+    "auto_item": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請のうち {item_asset_name} [ほか計 {approved_item_count} 項目]が自動承認されました（この資産は理由の記入だけで接続できます）。今回の承認にほかの項目は含まれません[。接続できる時間は {duration_minutes}です][。同じ申請のほかの {pending_item_count} 項目はまだ審査待ちです]（審査センターをご確認ください）。"
+    },
+    "auto_item_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請のうち {item_asset_name} [ほか計 {approved_item_count} 項目]が自動承認されました（この資産は理由の記入だけで接続できます）。今回の承認にほかの項目は含まれません[。接続できる時間は {duration_minutes}です][。同じ申請のほかの {pending_item_count} 項目はまだ審査待ちです]。"
+    },
+    "manual_item": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請のうち {item_asset_name} [ほか計 {approved_item_count} 項目]が[ {decider_name} により]承認されました。今回の承認にほかの項目は含まれません[。接続できる時間は {duration_minutes}です][。同じ申請のほかの {pending_item_count} 項目はまだ審査待ちです]（審査センターをご確認ください）。"
+    },
+    "manual_item_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請のうち {item_asset_name} [ほか計 {approved_item_count} 項目]が[ {decider_name} により]承認されました。今回の承認にほかの項目は含まれません[。接続できる時間は {duration_minutes}です][。同じ申請のほかの {pending_item_count} 項目はまだ審査待ちです]。"
     }
   },
   "access_request.approval_progress": {
     "default": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "承認 {votes}/{required} 件。残りの承認者の対応待ちです（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請が[ {decider_name} により]承認されました（現在 {votes}/{required}）。残りの承認者の対応待ちです（審査センターをご確認ください）。"
+    },
+    "default_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請が[ {decider_name} により]承認されました（現在 {votes}/{required}）。残りの承認者の対応待ちです。"
     }
   },
   "access_request.rejected": {
     "default": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "申請が却下されました（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請が[ {decider_name} により]却下されました（審査センターをご確認ください）。"
+    },
+    "item": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請のうち {item_asset_name} が[ {decider_name} により]却下されました（審査センターをご確認ください）。"
+    },
+    "default_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請が[ {decider_name} により]却下されました。"
+    },
+    "item_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]申請のうち {item_asset_name} が[ {decider_name} により]却下されました。"
     }
   },
   "break_glass_used": {
     "default": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "{username} が緊急接続（ブレークグラス）を開始しました（{duration_minutes} 分）。速やかに事後審査を行ってください（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "{username} が緊急接続（ブレークグラス）を {duration_minutes} 分間開始しました。速やかに事後審査を行ってください（審査センターをご確認ください）。"
+    },
+    "default_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "{username} が緊急接続（ブレークグラス）を {duration_minutes} 分間開始しました。速やかに事後審査を行ってください。"
     }
   },
   "ticket_revoked": {
     "default": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "期限付き接続が繰り上げで取り消されました（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]期限付き接続が[ {revoker_name} により]繰り上げで取り消され[、接続 {disconnected_count} 件が切断され]ました（審査センターをご確認ください）。"
+    },
+    "item": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の ]{item_asset_name} への期限付き接続が[ {revoker_name} により]繰り上げで取り消され[、接続 {disconnected_count} 件が切断され]ました（審査センターをご確認ください）。"
+    },
+    "default_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]期限付き接続が[ {revoker_name} により]繰り上げで取り消され[、接続 {disconnected_count} 件が切断され]ました。"
+    },
+    "item_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の ]{item_asset_name} への期限付き接続が[ {revoker_name} により]繰り上げで取り消され[、接続 {disconnected_count} 件が切断され]ました。"
     }
   },
   "break_glass_review_overdue": {
     "default": {
-      "title": "接続申請 #{request_id}[：{asset_name}]",
-      "text": "緊急接続から {timeout_hours} 時間が経過しても事後審査が未実施です。速やかに対応してください（審査センターをご確認ください）。"
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]緊急接続から {timeout_hours} 時間が経過しても事後審査が未実施です。速やかに対応してください（審査センターをご確認ください）。"
+    },
+    "default_linked": {
+      "title": "接続申請 #{request_id}[：{asset_name}][ ほか計 {asset_count} 台]",
+      "text": "[{requester_name} の]緊急接続から {timeout_hours} 時間が経過しても事後審査が未実施です。速やかに対応してください。"
     }
   },
   "audit_failure": {
     "default": {
       "title": "監査メカニズム障害",
-      "text": "メカニズム {mechanism} が {started_at} に障害（PCI 10.7.2）：{cause_code}[（異常チェックポイント {failed_points} 件）][（異常区間 {failed_intervals} 件）]"
+      "text": "{mechanism}が {started_at} に障害（PCI 10.7.2）：{cause_code}[（異常チェックポイント {failed_points} 件）][（異常区間 {failed_intervals} 件）]。"
     }
   },
   "audit_failure_resolved": {
     "known": {
       "title": "監査メカニズム復旧",
-      "text": "メカニズム {mechanism} が復旧しました。障害区間 {started_at} ~ {ended_at}。"
+      "text": "{mechanism}が復旧しました。障害期間 {started_at} ～ {ended_at}。"
     },
     "unknown": {
       "title": "監査メカニズム復旧",
-      "text": "メカニズム {mechanism} が復旧しました。開始時刻は不明です（障害記録がデータベースに残っていません）。"
+      "text": "{mechanism}が復旧しました。障害の開始時刻は記録されていません。"
     }
   },
   "audit_failure_ongoing": {
     "default": {
       "title": "監査メカニズム障害継続中",
-      "text": "メカニズム {mechanism} は未復旧です：{cause_code}[（未処理 {backlog} 件）][（異常チェックポイント {failed_points} 件）][（異常区間 {failed_intervals} 件）]（{reported_at}）"
+      "text": "{mechanism}は未復旧です：{cause_code}[（未処理 {backlog} 件）][（異常チェックポイント {failed_points} 件）][（異常区間 {failed_intervals} 件）]。"
     }
   },
   "daily_review_overdue": {
@@ -75,8 +139,8 @@
   },
   "test": {
     "default": {
-      "title": "{product} テスト通知",
-      "text": "これは通知チャネルの設定が正しいか確認するためのテスト通知です。"
+      "title": "{product} テスト通知（テストのため対応不要）",
+      "text": "これは通知チャネルの設定が正しいか確認するためのテスト通知です。[チャネル：{channel_name}。]"
     }
   },
   "kek_topology_changed": {
@@ -87,170 +151,196 @@
   },
   "agent_task_report_submitted": {
     "default": {
-      "title": "タスク報告",
-      "text": "主体 {user_id} がタスク {request_id} の報告 {report_id}、版 {version} を提出しました。責任者：{owner_id}。"
+      "title": "AI agent タスク報告",
+      "text": "AI agent[ {agent_name}] (#{user_id})[（責任者：{owner_name}）]が[ API トークン「{token_name}」で]タスク #{request_id} の報告（第 {version} 版）を提出しました[。対象資産：{asset_name}][ ほか計 {asset_count} 台]。"
     }
   },
   "agent_breaker_tripped": {
     "default": {
-      "title": "自動化主体の探索遮断",
-      "text": "主体 {user_id} のトークン {token_id} を探索遮断により停止しました。責任者：{owner_id}。"
+      "title": "AI agent の探索遮断",
+      "text": "AI agent[ {agent_name}] (#{user_id})[（責任者：{owner_name}）]の API トークン[「{token_name}」] (#{token_id}) が参照できない資産を繰り返し参照したため停止しました[：{window_minutes} 分間に][ {distinct_count} 台の異なる資産][、最後は {asset_name}]。責任者または管理者が対処してください。"
     }
   },
   "asset_address_changed": {
     "default": {
       "title": "資産の接続先が変更されました",
-      "text": "{actor} が[資産 {asset_name} の]接続先設定を変更しました：{changed_fields}（レベル：{severity}）。"
+      "text": "{actor} が[資産 {asset_name} の]接続先設定を変更しました：{changed_fields}。"
     }
   },
   "transport_verification_relaxed": {
     "default": {
       "title": "通信の検証が緩和されました",
-      "text": "{actor} が[資産 {asset_name} の]通信検証設定を緩和しました：{relaxed_settings}（レベル：{severity}）。"
+      "text": "{actor} が[資産 {asset_name} の]通信検証設定を緩和しました：{relaxed_settings}。"
     }
   },
   "access_policy_relaxed": {
     "default": {
       "title": "アクセスポリシーが引き下げられました",
-      "text": "{actor} が[資産 {asset_name} の]アクセスポリシーを引き下げました（{relax_type}）：{before_level} → {after_level}[、上書きのない資産 {affected_assets} 台に影響]（レベル：{severity}）。"
+      "text": "{actor} が[資産 {asset_name} の]アクセスポリシーを引き下げました（{relax_type}）：{before_level} → {after_level}[、上書きのない資産 {affected_assets} 台に影響]。"
     }
   },
   "custom_secret_used": {
     "default": {
       "title": "カスタムシークレットが使用されました",
-      "text": "{actor} が[資産 {asset_name} の]パスワードをカスタム方式で処理しました（{entry}）（レベル：{severity}）。"
+      "text": "{actor} が[資産 {asset_name} の]パスワードをカスタム方式で処理しました（{entry}）。"
     }
   },
   "identity_source_changed": {
     "default": {
       "title": "ID ソースの設定が変更されました",
-      "text": "{actor} が {source_kind} ID ソースを変更しました：{changed_fields}[；バインドパスワード変更：{bind_password_changed}][；このソースのスーパー管理者数：{super_admin_count}]（レベル：{severity}）。"
+      "text": "{actor} が {source_kind} ID ソースを変更しました：{changed_fields}[；バインドパスワード変更：{bind_password_changed}][；このソースのスーパー管理者数：{super_admin_count}]。"
     }
   },
   "security_admin_account_operated": {
     "default": {
       "title": "セキュリティ管理者アカウントが操作されました",
-      "text": "{actor} がセキュリティ管理者アカウントに対して「{action}」を実行しました（レベル：{severity}）。"
+      "text": "{actor} がセキュリティ管理者アカウント[「{target_username}」]に対して「{action}」を実行しました。"
     }
   },
   "self_privilege_increased": {
     "default": {
       "title": "自身の権限が増加しました",
-      "text": "{actor} が自身の権限を増やしました（{path}）：ロール {roles_before} → {roles_after}[；管理可能 {manageable_before} → {manageable_after}][；接続可能 {connectable_before} → {connectable_after}]（レベル：{severity}）。"
+      "text": "{actor} が自身の権限を増やしました（{path}）：ロール {roles_before} → {roles_after}[；管理可能 {manageable_before} → {manageable_after}][；接続可能 {connectable_before} → {connectable_after}][；影響を受ける他の保持者 {other_holder_count} 人]。"
     }
   },
   "self_privilege_decreased": {
     "default": {
       "title": "自身の権限が減少しました",
-      "text": "{actor} が自身の権限を減らしました（{path}）：ロール {roles_before} → {roles_after}[；管理可能 {manageable_before} → {manageable_after}][；接続可能 {connectable_before} → {connectable_after}]（レベル：{severity}）。"
+      "text": "{actor} が自身の権限を減らしました（{path}）：ロール {roles_before} → {roles_after}[；管理可能 {manageable_before} → {manageable_after}][；接続可能 {connectable_before} → {connectable_after}][；影響を受ける他の保持者 {other_holder_count} 人]。"
     }
   },
   "management_role_granted": {
     "default": {
       "title": "管理系ロールが付与されました",
-      "text": "{actor} が管理系ロール {role_name} を {recipient} に付与しました（{path}）[；範囲：{scope_summary}][（ノード {scope_node_ids}、計 {scope_node_count} 件）]（レベル：{severity}）。"
+      "text": "{actor} が管理系ロール {role_name} を {recipient} に付与しました（{path}）[；範囲：{scope_summary}][（ノード {scope_node_ids}、計 {scope_node_count} 件）]。"
+    },
+    "role_definition": {
+      "title": "管理系ロールが付与されました",
+      "text": "{actor} が管理系ロール {role_name} の定義を変更しました（{path}）。影響を受ける他の保持者は {other_holder_count} 人です[；範囲：{scope_summary}][（ノード {scope_node_ids}、計 {scope_node_count} 件）]。"
     }
   },
   "retention_shortened": {
     "default": {
       "title": "保存期間が短縮されました",
-      "text": "{actor} が {data_class} の保存日数を短縮しました：{days_before} → {days_after}（0 は無期限）（レベル：{severity}）。"
+      "text": "{actor} が {data_class} の保存日数を短縮しました：{days_before} → {days_after}（0 は無期限）。"
     }
   },
   "offsite_or_syslog_changed": {
     "default": {
       "title": "オフサイトコピーまたは syslog が変更されました",
-      "text": "{actor} が {subject} の設定を変更しました：{change}（レベル：{severity}）。"
+      "text": "{actor} が {subject} の設定を変更しました：{change}。"
     }
   },
   "key_topology_changed": {
     "default": {
       "title": "鍵管理構成が変更されました",
-      "text": "{actor} が鍵管理構成を変更しました：{change_kind}（レベル：{severity}）。"
+      "text": "{actor} が鍵管理構成を変更しました：{change_kind}。"
     }
   },
   "recording_failclose_disabled": {
     "default": {
       "title": "録画失敗時の遮断が無効化されました",
-      "text": "{actor} が録画失敗時の遮断保護を無効化しました（レベル：{severity}）。"
+      "text": "{actor} が録画失敗時の遮断保護を無効化しました。"
     }
   },
   "recording_deleted": {
     "default": {
       "title": "録画が削除されました",
-      "text": "{actor} がセッション {session_id} の録画を削除しました（レベル：{severity}）。"
+      "text": "{actor} がセッション {session_id}[（ユーザー {session_username}）][（資産 {asset_name}）]の録画を削除しました。"
     }
   },
   "mapping_revalidation_relaxed": {
     "default": {
       "title": "外部メンバー再検証の期限が緩和されました",
-      "text": "{actor} が外部メンバー再検証の期限を緩和しました：{hours_before} → {hours_after} 時間（0 は無制限）（レベル：{severity}）。"
+      "text": "{actor} が外部メンバー再検証の期限を緩和しました：{hours_before} → {hours_after} 時間（0 は無制限）。"
     }
   },
   "host_key_mismatch": {
     "default": {
       "title": "ホストキーが記録と一致しません",
-      "text": "{actor} の {path} 接続でホストキーが記録と一致しませんでした（処置：{outcome}；記録元：{record_source}）：記録 {recorded_fingerprint}、実際 {observed_fingerprint}（{observed_algorithm}）[；接続識別 {connection_ref}]（レベル：{severity}）。"
+      "text": "{actor} の[資産 {asset_name} への ]{path} 接続でホストキーが記録と一致しませんでした（処置：{outcome}；記録元：{record_source}）：記録 {recorded_fingerprint}、実際 {observed_fingerprint}（{observed_algorithm}）[；接続識別 {connection_ref}]。"
     }
   },
   "host_key_record_changed": {
     "default": {
       "title": "ホストキー記録が変更されました",
-      "text": "{actor} がホストキー記録に対して「{change}」を実行しました：以前の記録 {previous_fingerprint}、採用 {adopted_fingerprint}（レベル：{severity}）。"
+      "text": "{actor} が[資産 {asset_name} の]ホストキー記録に対して「{change}」を実行しました：以前の記録 {previous_fingerprint}、採用 {adopted_fingerprint}。"
     }
   },
   "notification_channel_changed": {
     "default": {
       "title": "通知チャネルが変更されました",
-      "text": "{actor} が通知チャネルに対して「{change}」を実行しました[；変更項目：{changed_fields}][；URL {url_before} → {url_after}]（レベル：{severity}）。"
+      "text": "{actor} が通知チャネル[「{channel_name}」]を{change}しました[；変更項目：{changed_fields}][；URL {url_before} → {url_after}][；チャンネル {target_before} → {target_after}][；{dm_auto_off}]。"
     }
   },
   "concurrent_instance_detected": {
     "overridden": {
       "title": "並行して動作するインスタンスの可能性を検出しました（確認による上書き起動）",
-      "text": "起動時チェック（{actor}）：このインスタンスは確認による上書きで起動しました。ロック取得時に、別のインスタンスが単一インスタンスロックを保持していました[；確認元：{confirm_source}][；確認者：{confirmed_by}][；起動時に確認したガード対応の接続数：{peers}]（ピア数の照会：{peers_query}）（レベル：{severity}）。"
+      "text": "起動時チェック（{actor}）：このインスタンスは確認による上書きで起動しました。ロック取得時に、別のインスタンスが単一インスタンスロックを保持していました[；確認元：{confirm_source}][；確認者：{confirmed_by}][；起動時に確認したガード対応の接続数：{peers}]（ピア数の照会：{peers_query}）。"
     },
     "peers": {
       "title": "並行して動作するインスタンスの可能性を検出しました（他の接続）",
-      "text": "起動時チェック（{actor}）：起動時に、同じデータベースへ接続しているガード対応の別インスタンスの接続を確認しました[（{peers} 件）]（ピア数の照会：{peers_query}）（レベル：{severity}）。"
+      "text": "起動時チェック（{actor}）：起動時に、同じデータベースへ接続しているガード対応の別インスタンスの接続を確認しました[（{peers} 件）]（ピア数の照会：{peers_query}）。"
     }
   },
   "unmanaged_privileged_account": {
     "default": {
       "title": "ホストに未管理の特権アカウントがあります",
-      "text": "{actor} が開始したホストアカウント棚卸で、未管理の特権アカウントが新たに {new_count} 件見つかりました（ログイン ID：{identity_mode}）（レベル：{severity}）。"
+      "text": "{actor} が開始した[資産 {asset_name} の]ホストアカウント棚卸で、未管理の特権アカウントが新たに {new_count} 件見つかりました（ログイン ID：{identity_mode}）。"
     }
   },
   "privileged_api_token_created": {
     "at": {
       "title": "高権限 API トークンの作成",
-      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロールを付与しました：{privileged_roles}。付与したロール：{granted_roles}；有効期限：{expires_at}（レベル：{severity}）。"
+      "text": "{actor} が API トークン「{token_name}」[（所有者 {owner_username}）]を作成し、高権限ロールを付与しました：{privileged_roles}。付与したロール：{granted_roles}；有効期限：{expires_at}。"
     },
     "never": {
       "title": "高権限 API トークンの作成",
-      "text": "{actor} が API トークン「{token_name}」を作成し、高権限ロールを付与しました：{privileged_roles}。付与したロール：{granted_roles}；有効期限なし（レベル：{severity}）。"
+      "text": "{actor} が API トークン「{token_name}」[（所有者 {owner_username}）]を作成し、高権限ロールを付与しました：{privileged_roles}。付与したロール：{granted_roles}；有効期限なし。"
     }
   },
   "api_token_credential_attached": {
     "asset_create": {
-      "title": "API token による保存済み認証情報の割り当て",
-      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+      "title": "API トークンによる保存済み認証情報の割り当て",
+      "text": "{actor} が API トークン「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}）。"
     },
     "account_create": {
-      "title": "API token による保存済み認証情報の割り当て",
-      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+      "title": "API トークンによる保存済み認証情報の割り当て",
+      "text": "{actor} が API トークン「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}）。"
     },
     "bind": {
-      "title": "API token による保存済み認証情報の割り当て",
-      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+      "title": "API トークンによる保存済み認証情報の割り当て",
+      "text": "{actor} が API トークン「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}）。"
     },
     "rebind": {
-      "title": "API token による保存済み認証情報の割り当て",
-      "text": "{actor} が API token「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}；レベル：{severity}）。"
+      "title": "API トークンによる保存済み認証情報の割り当て",
+      "text": "{actor} が API トークン「{token_name}」で認証情報「{credential_name}」を資産「{asset_name}」に割り当てました（{entry}）。"
     },
     "import": {
-      "title": "API token による保存済み認証情報の割り当て",
-      "text": "{actor} が API token「{token_name}」で資産をインポートし、そのうち {asset_count} 台が保存済みの認証情報 {credential_count} 件を参照しています（レベル：{severity}）。"
+      "title": "API トークンによる保存済み認証情報の割り当て",
+      "text": "{actor} が API トークン「{token_name}」で資産をインポートし、そのうち {asset_count} 台が保存済みの認証情報 {credential_count} 件を参照しています。"
+    }
+  },
+  "notification_delivery_abandoned": {
+    "default": {
+      "title": "通知の配信を断念しました",
+      "text": "現時点で、チャネル[「{channel_name}」]への通知のうち直近 24 時間で {abandoned_24h} 件の配信を断念しました（上限まで再送しても届きませんでした）。直近の原因：{reason}。最新の件数と対処は通知チャネルページで確認してください。\n24 時間以内にこのチャネルで再び届かない通知があっても、このお知らせは重ねて送信しません。"
+    }
+  },
+  "credential_rotation_alert": {
+    "default": {
+      "title": "パスワード変更ジョブの通知",
+      "text": "{kind}[：{detail}]。"
+    }
+  },
+  "targeted_notification_undelivered": {
+    "default": {
+      "title": "一部のダイレクトメッセージが届きませんでした",
+      "text": "現時点で、チャネル[「{channel_name}」]から直近 24 時間に {count} 人の審査担当者へ審査通知のダイレクトメッセージが届いていません。直近の原因：{reason}チャンネルへのメッセージは通常どおり送信されています。\n最新の人数と対処は通知チャネルページの配信履歴で確認してください。24 時間以内にこのチャネルで再び届かないダイレクトメッセージがあっても、このお知らせは重ねて送信しません。"
+    },
+    "no_recipient": {
+      "title": "一部のダイレクトメッセージが届きませんでした",
+      "text": "チャネル[「{channel_name}」]は「{event_kind}」[ #{request_id}]のダイレクトメッセージを 1 件も送信していません。原因：{reason}チャンネルへのメッセージは通常どおり送信されています。\n最新の状況は通知チャネルページで確認してください。24 時間以内にこのチャネルで再び届かないダイレクトメッセージがあっても、このお知らせは重ねて送信しません。"
     }
   }
 }

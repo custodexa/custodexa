@@ -238,7 +238,12 @@ func TestCheckpointTrimPermHistory(t *testing.T) {
 			func() { tr.Format = 7 },
 			func() { tr.Format = model.CheckpointTrimFormatV2; tr.PermHistory = nil },
 			func() { tr.Format = model.CheckpointTrimFormatV2; x := "maybe"; tr.PermHistory = &x },
-			func() { tr.Format = model.CheckpointTrimFormatV2; tr.PermHistory = &h; m := int64(-1); tr.UnverifiedCount = &m },
+			func() {
+				tr.Format = model.CheckpointTrimFormatV2
+				tr.PermHistory = &h
+				m := int64(-1)
+				tr.UnverifiedCount = &m
+			},
 		} {
 			bad()
 			_, err := audit.CheckpointTrimSignBytes(tr)

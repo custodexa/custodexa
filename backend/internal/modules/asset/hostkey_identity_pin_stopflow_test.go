@@ -160,7 +160,7 @@ func runRetryStopTokens(t *testing.T) {
 
 	t.Run("同一token退避多輪恰一筆且通知一次", func(t *testing.T) {
 		s := newRetryScenario(t)
-		notifier := audit.NewAlertNotifier(s.f.db, nil)
+		notifier := newRotationNotifier(t, s.f.db)
 		s.f.retry.notifier = notifier
 		adoptRemoteKey(t, s.f.server, s.f.db, s.f.assetID, true)
 		attempts := candidateOfAccount(t, s.f).AttemptCount
@@ -168,14 +168,14 @@ func runRetryStopTokens(t *testing.T) {
 			assert.False(t, s.retry(t, i%2 == 1))
 		}
 		requireStopSeq(t, stopAuditDetails(t, s.f), prec(hostIdentityGenerationChanged))
-		assert.EqualValues(t, 1, notifier.PendingNotifications(), "退避多輪只通知一次")
+		assert.EqualValues(t, 1, rotationAlertCount(s.f.db), "退避多輪只通知一次")
 		assert.EqualValues(t, attempts+4, candidateOfAccount(t, s.f).AttemptCount, "每輪都仍停止、仍累計次數")
 		s.requireStopped(t, model.ChangeSecretReasonHostIdentityChanged)
 	})
 
 	t.Run("A到B再回A寫兩筆", func(t *testing.T) {
 		s := newRetryScenario(t)
-		notifier := audit.NewAlertNotifier(s.f.db, nil)
+		notifier := newRotationNotifier(t, s.f.db)
 		s.f.retry.notifier = notifier
 		orig := s.f.server.currentHostKey()
 		adoptRemoteKey(t, s.f.server, s.f.db, s.f.assetID, true)
@@ -185,13 +185,13 @@ func runRetryStopTokens(t *testing.T) {
 		assert.False(t, s.retry(t, false))
 		assert.False(t, s.retry(t, false))
 		requireStopSeq(t, stopAuditDetails(t, s.f), prec(hostIdentityGenerationChanged), prec(hostIdentityGenerationChanged))
-		assert.EqualValues(t, 2, notifier.PendingNotifications())
+		assert.EqualValues(t, 2, rotationAlertCount(s.f.db))
 		s.requireStopped(t, model.ChangeSecretReasonHostIdentityChanged)
 	})
 
 	t.Run("record_missing首次一筆與刪列重建各一筆", func(t *testing.T) {
 		s := newRetryScenario(t)
-		notifier := audit.NewAlertNotifier(s.f.db, nil)
+		notifier := newRotationNotifier(t, s.f.db)
 		s.f.retry.notifier = notifier
 		require.NoError(t, s.f.db.Where("asset_id = ?", s.f.assetID).Delete(&model.AssetHostKey{}).Error)
 		assert.False(t, s.retry(t, false))
@@ -201,13 +201,13 @@ func runRetryStopTokens(t *testing.T) {
 		assert.False(t, s.retry(t, false))
 		assert.False(t, s.retry(t, false))
 		requireStopSeq(t, stopAuditDetails(t, s.f), prec(hostIdentityRecordMissing), prec(hostIdentityGenerationChanged))
-		assert.EqualValues(t, 2, notifier.PendingNotifications())
+		assert.EqualValues(t, 2, rotationAlertCount(s.f.db))
 		s.requireStopped(t, model.ChangeSecretReasonHostIdentityChanged)
 	})
 
 	t.Run("審計寫入失敗仍停止且去重鍵不前進", func(t *testing.T) {
 		s := newRetryScenario(t)
-		notifier := audit.NewAlertNotifier(s.f.db, nil)
+		notifier := newRotationNotifier(t, s.f.db)
 		s.f.retry.notifier = notifier
 		adoptRemoteKey(t, s.f.server, s.f.db, s.f.assetID, true)
 		s.f.retry.auditTx = failingAuditTxSink{}
@@ -215,14 +215,14 @@ func runRetryStopTokens(t *testing.T) {
 		s.requireStopped(t, model.ChangeSecretReasonHostIdentityChanged)
 		assert.Empty(t, stopAuditDetails(t, s.f), "審計寫不進去：不留半筆")
 		assert.Nil(t, candidateOfAccount(t, s.f).HostIdentityAlertedKey, "去重鍵不前進")
-		assert.EqualValues(t, 0, notifier.PendingNotifications(), "審計失敗不通知")
+		assert.EqualValues(t, 0, rotationAlertCount(s.f.db), "審計失敗不通知")
 
 		s.f.retry.auditTx = audit.NewTxSink()
 		assert.False(t, s.retry(t, false))
 		s.requireStopped(t, model.ChangeSecretReasonHostIdentityChanged)
 		requireStopSeq(t, stopAuditDetails(t, s.f), prec(hostIdentityGenerationChanged))
 		assert.NotNil(t, candidateOfAccount(t, s.f).HostIdentityAlertedKey)
-		assert.EqualValues(t, 1, notifier.PendingNotifications())
+		assert.EqualValues(t, 1, rotationAlertCount(s.f.db))
 	})
 }
 

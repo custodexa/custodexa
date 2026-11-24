@@ -29,9 +29,9 @@ export function searchAlerts(params, options = {}) {
 
 /**
  * 審閱處置一筆告警（audit-workflows，alert:manage 權限）
- * 批次審閱逐筆呼叫同一端點：data 多帶 batch_id（UUID v4，同批共用）且 note 必填；
- * 送出時已有審閱結果回 409 CONFLICT_ALERT_ALREADY_REVIEWED、自己連線觸發者回
- * 403 RULE_ALERT_BATCH_SELF_TRIGGERED。
+ * 帶 batch_id 的逐筆送出（既有 API 呼叫端的路徑，介面已改走 batchReviewAlerts）：note 必填；
+ * 送出時已有審閱結果回 409 CONFLICT_ALERT_ALREADY_REVIEWED、本人觸發者回
+ * 403 RULE_ALERT_BATCH_SELF_TRIGGERED。不帶 batch_id 時理由選填、可重新審閱。
  * @param {number} id - 告警 ID
  * @param {Object} data - { disposition: 'benign'|'escalated', note?: string, batch_id?: string }
  * @param {Object} [options] - { skipErrorToast }
@@ -43,6 +43,26 @@ export function reviewAlert(id, data, options = {}) {
     method: 'post',
     data,
     // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
+  })
+}
+
+/**
+ * 一次請求審閱多筆告警（audit-workflows「告警批次審閱」，alert:manage 權限）。
+ * 伺服端在一個交易內逐筆判定、逐筆寫入與留稽核，回逐筆結果；單次上限以回應的 limit 為準。
+ * 用戶端逾時長於伺服端交易逾時：伺服端仍在處理時不先放棄（放棄＝待確認，不是失敗）。
+ * @param {Object} data - { alert_ids: number[], disposition: 'benign'|'escalated', note: string,
+ *   batch_id: string, self_triggered_ack: number }
+ * @param {Object} [options] - { skipErrorToast, timeout }
+ * @returns {Promise} { batch_id, limit, summary: { reviewed, already_reviewed, not_found, self_triggered },
+ *   items: [{ id, result, self_triggered, reviewed_by_you?, existing_disposition? }] }
+ */
+export function batchReviewAlerts(data, options = {}) {
+  return request({
+    url: '/command-alerts/batch-review',
+    method: 'post',
+    data,
+    timeout: options.timeout ?? 45_000,
     ...skipToast(options),
   })
 }
@@ -149,13 +169,32 @@ export function deleteChannel(id) {
 }
 
 /**
- * 測試發送（admin 權限）；回 {success, status_code 或 error}
+ * 測試發送（admin 權限）；回 {success, status_code}，連線層失敗回 502 與錯誤碼。
+ * 本文只帶 shape（webhook 的內容格式）；目的地一律是通道已存的設定。
+ * 錯誤一律由測試對話框呈現（不跳全域訊息）。
  * @param {number} id - 通道 ID
+ * @param {{shape?: string}} [data]
  * @returns {Promise}
  */
-export function testChannel(id) {
+export function testChannel(id, data) {
   return request({
     url: `/notification-channels/${id}/test`,
     method: 'post',
+    data,
+    skipErrorToast: true,
+  })
+}
+
+/**
+ * 通道的投遞紀錄（唯讀、分頁、依排入時間倒序）；回 {data, total}
+ * @param {number} id - 通道 ID
+ * @param {{page?: number, page_size?: number}} params
+ * @returns {Promise}
+ */
+export function getChannelDeliveries(id, params) {
+  return request({
+    url: `/notification-channels/${id}/deliveries`,
+    method: 'get',
+    params,
   })
 }

@@ -26,11 +26,11 @@ import (
 	"github.com/custodexa/backend/internal/api"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/k8sproxy"
+	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/keyvault"
-	"github.com/custodexa/backend/internal/keystroke"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/observability"
 	"github.com/custodexa/backend/internal/offsite"
@@ -819,18 +819,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	})
 	mark("alertMatcher")
 
-	// 註冊告警通知通道路由（alert-notifications）：
-	// 啟動即載入通道快取並起推送 worker；載入失敗不致命（無快取=不推送）
+	// 通知的排入介面（alert-notifications）：產生點經它寫通知內容，投遞由持久投遞程序進行。
 	if err := seal.CheckCancelStep(ctx, "alertNotifier"); err != nil {
 		return fail("alertNotifier", err)
 	}
 	alertNotifier := audit.InitAlertNotifier(database.DB, keyManager)
-	if err := alertNotifier.LoadChannels(); err != nil {
-		log.Printf("通知通道快取載入失敗（推送暫不生效，通道變更時重試）: %v", err)
-	}
-	// 釋放 SHALL 停 worker、歸零通道明文並解除單例（見 session.StopAlertNotifierForRelease）：
-	// 已啟動的 worker 持有解密後的通道 URL／secret（KEK 衍生材料），
-	// 段 2 重試時每一代都會多留一份，且舊單例仍會被 GORM／告警路徑取用。
+	// 釋放 SHALL 解除單例（見 audit.StopAlertNotifierForRelease）：
+	// 段 2 重試時舊單例仍會被告警路徑取用。
 	g.bag.AddFunc("alertNotifier", func(context.Context) error {
 		audit.StopAlertNotifierForRelease(alertNotifier)
 		return nil
@@ -893,6 +888,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	userService.SetPinAuditSink(auditTxSink)
 	identitySourceService.SetGrantGrader(grantGrader)
 	identitySourceService.SetPublicBaseURL(cfg.OIDC.PublicBaseURL)
+	// 通知連結沿用同一個對外基準網址；驗證規則只決定通知要不要附連結，不合格時記一行警告、通知照送
+	_ = audit.SetNotificationBaseURL(cfg.OIDC.PublicBaseURL)
 	// 身分來源設定變更的留痕落地面（審計與告警）缺任一個即拒絕啟動：
 	// 設定變更不加權限門檻，留痕是它唯一的補償控制，不得在缺落地面時靜默略過
 	if err := verifyIdentitySourceSinks(ldapDirectoryService, oidcProviderService, identitySourceService, userService); err != nil {
@@ -1555,6 +1552,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	starts[9].stop = rotationReportScheduler.Stop
 
 	systemAlertOutboxWorker := audit.NewSystemAlertOutboxWorker(database.DB, keyManager)
+	systemAlertOutboxWorker.UseEnqueueStats(alertNotifier.EnqueueStats())
+	systemAlertOutboxWorker.UseAuditFallback(alertNotifier.AuditFallbackList())
+	if err := registerTargetedJudges(systemAlertOutboxWorker, accessRequestService, dailyReviewService); err != nil {
+		return fail("targetedJudges", err)
+	}
+	audit.SetNotificationTransmissionPolicy(transmissionPolicy)
 	starts[10].start = func() error {
 		systemAlertOutboxWorker.Start()
 		return nil
@@ -2113,8 +2116,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	sessionCommandHandler := api.NewSessionCommandHandler(sessionCommandService)
 
 	alertRuleHandler := api.NewAlertRuleHandler(audit.NewAlertRuleService(database.DB))
-	commandAlertHandler := api.NewCommandAlertHandler(audit.NewCommandAlertService(database.DB))
-	commandAlertHandler.SetAuditService(s.auditService) // 審閱處置留痕（audit-workflows）
+	commandAlertHandler := newCommandAlertHandler(database.DB, s.auditTxSink, s.auditService)
 
 	// 角色指派類審計列的原因參數讀取期換名（操作日誌、每日簽核與系統告警詳情共用同一個換算器）
 	auditReasonNamer := api.NewAuditReasonNamer(s.userService, s.userGroupService)
@@ -2385,4 +2387,15 @@ func newScopeEvaluator() *authz.ScopeEvaluator {
 // newScopeEvaluatorOn 同 newScopeEvaluator，但使用呼叫端給的拓撲讀取器（讓組裝根的其他消費者共用同一個實例）。
 func newScopeEvaluatorOn(topo *asset.ScopeTopologyReader) *authz.ScopeEvaluator {
 	return authz.NewScopeEvaluator(authz.ProductCatalogue(), topo, authz.ProductScopeResolvers()...)
+}
+
+// newCommandAlertHandler 告警查詢與審閱 handler 的組裝：批次審閱的逐筆稽核與處置同交易
+// （交易內稽核落地面），逐筆審閱的顯式留痕走稽核服務（audit-workflows）。
+// 抽成函式讓組裝根測試以同一份組裝驗接線
+func newCommandAlertHandler(db *gorm.DB, auditTxSink port.TxSink, auditService *audit.AuditLogService) *api.CommandAlertHandler {
+	commandAlertService := audit.NewCommandAlertService(db)
+	commandAlertService.SetAuditTxSink(auditTxSink)
+	commandAlertHandler := api.NewCommandAlertHandler(commandAlertService)
+	commandAlertHandler.SetAuditService(auditService)
+	return commandAlertHandler
 }

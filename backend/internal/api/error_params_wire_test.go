@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/custodexa/backend/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
-	"github.com/custodexa/backend/internal/model"
 	"github.com/stretchr/testify/mock"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -82,6 +82,10 @@ func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB, time.Time) {
 	}
 	if err := migrateWithAuthz(db, &model.DailyReviewLog{}, &model.AuditLog{}, &model.SecurityPolicy{},
 		&model.SecurityPolicyHistory{}, &model.AuditRetentionWatermark{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	// 單日明細的告警項目 LEFT JOIN users、assets、system_alert_details（正式環境三表皆存在）
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.SystemAlertDetail{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// command_alerts 生產為 timestamptz，sqlite 以 datetime 等價表手建（scan 才讀得回 time.Time）

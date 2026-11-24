@@ -85,7 +85,7 @@ func (s *RetentionWatermarkService) Load() (map[model.RetentionClass]model.Audit
 
 // retentionClassForTable 把 retention 的目標表名對應到水位類別。
 // 未登記的表回空字串——新增清除目標而忘了對應時，寧可不寫水位
-//（缺水位＝present＝可能過度樂觀），也不亂掛到別的類別上造成錯誤標記
+// （缺水位＝present＝可能過度樂觀），也不亂掛到別的類別上造成錯誤標記
 func retentionClassForTable(table string) model.RetentionClass {
 	switch table {
 	case "audit_logs":

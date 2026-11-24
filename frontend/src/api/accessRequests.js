@@ -237,8 +237,8 @@ export function getPendingReviews(options = {}) {
 }
 
 /** Reject a single request item; the whole-request API above is unchanged. */
-export function rejectAccessRequestItem(id, itemId, note) {
-  return request({ url: `/access-requests/${id}/reject`, method: 'post', data: { item_id: itemId, note } })
+export function rejectAccessRequestItem(id, itemId, note, options = {}) {
+  return request({ url: `/access-requests/${id}/reject`, method: 'post', data: { item_id: itemId, note }, ...skipToast(options) })
 }
 
 /** Revoke a single approved item without revoking its siblings. */

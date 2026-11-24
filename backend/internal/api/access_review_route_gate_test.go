@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -30,7 +30,7 @@ func setupAccessReviewGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *g
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	assert.NoError(t, err)
-	assert.NoError(t, migrateWithAuthz(db, 
+	assert.NoError(t, migrateWithAuthz(db,
 		&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
 		&model.AssetAuthorization{}, &model.AccessReview{}, &model.AuditLog{}, &model.UserRole{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 

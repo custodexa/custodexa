@@ -57,3 +57,47 @@ func TestDailyReviewSignAuditDetails(t *testing.T) {
 		t.Errorf("延遲原因或備註全文進了審計: %s", entry.Details)
 	}
 }
+
+// TestDailyReviewSignAuditBatchID 擋：服務收到批次關聯碼卻沒寫進該筆的稽核紀錄，或不帶時
+// 多出空的 batch_id 鍵。關聯碼不進簽核紀錄本身
+func TestDailyReviewSignAuditBatchID(t *testing.T) {
+	const tz = "Asia/Taipei"
+	const batch = "5b0c4f7e-1d2a-4c3b-9e8f-7a6b5c4d3e2f"
+	_, db, _ := setupDailyReviewDB(t)
+	old := database.DB
+	database.DB = db
+	t.Cleanup(func() { database.DB = old })
+	auditSvc := NewAuditLogService(&config.FeatureFlags{AuditLogEnabled: true, AsyncAuditEnabled: false})
+	svc := NewDailyReviewService(db, policy.NewSecurityPolicyService(db), auditSvc)
+	enableFrom(t, db, tz, at(t, tz, "2026-10-01", 0, 0, 0))
+	fixedClock(svc, at(t, tz, "2026-10-11", 10, 0, 0))
+
+	if _, err := svc.Sign(SignRequest{ReviewDate: "2026-10-07", DelayReason: "補簽", BatchID: batch, ReviewerID: 5, ReviewerName: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Sign(SignRequest{ReviewDate: "2026-10-08", DelayReason: "補簽", ReviewerID: 5, ReviewerName: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	var entries []model.AuditLog
+	db.Where("resource = ?", model.ResourceDailyReview).Order("id").Find(&entries)
+	if len(entries) != 2 {
+		t.Fatalf("稽核列 %d 筆, want 2", len(entries))
+	}
+	var withBatch, without map[string]any
+	_ = json.Unmarshal([]byte(entries[0].Details), &withBatch)
+	_ = json.Unmarshal([]byte(entries[1].Details), &without)
+	if withBatch["batch_id"] != batch {
+		t.Errorf("帶關聯碼的稽核紀錄 batch_id = %v, want %s", withBatch["batch_id"], batch)
+	}
+	if _, ok := without["batch_id"]; ok {
+		t.Errorf("不帶關聯碼的稽核紀錄不應有 batch_id: %s", entries[1].Details)
+	}
+	var rows []model.DailyReviewLog
+	db.Find(&rows)
+	for _, r := range rows {
+		b, _ := json.Marshal(r)
+		if strings.Contains(string(b), batch) {
+			t.Errorf("關聯碼進了簽核紀錄本身: %s", b)
+		}
+	}
+}

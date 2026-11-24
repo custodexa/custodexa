@@ -1,11 +1,12 @@
 package main
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/notifycat"
 )
 
 // failCatcher turns Fatalf into a recorded panic so a test can assert that the
@@ -38,28 +39,29 @@ func runWait(timeout time.Duration, pending func() int64) (failed bool) {
 	return false
 }
 
-// An alert sits in the notifier queue and has not entered the delivery
-// function: no goroutine carries a marker, so a stack scan alone sees nothing
-// and would return early. The wait must hold until the worker has finished it.
-func TestAwaitBackgroundWaitsForQueuedNotification(t *testing.T) {
-	n := audit.NewAlertNotifier(nil, nil) // worker not started: the alert stays queued
-	n.Enqueue(model.CommandAlert{})
+// Counted background work keeps the wait open even when no goroutine carries a
+// marker, and the wait returns once the counter drops to zero.
+func TestAwaitBackgroundWaitsForCountedWork(t *testing.T) {
+	var pending atomic.Int64
+	pending.Store(1)
+	if !runWait(150*time.Millisecond, pending.Load) {
+		t.Fatal("wait returned while counted work was still in flight")
+	}
+	pending.Store(0)
+	if runWait(10*time.Second, pending.Load) {
+		t.Fatal("wait did not return after counted work finished")
+	}
+}
 
-	if hits := inflightBackground(); len(hits) != 0 {
-		t.Fatalf("precondition: a stack scan must see nothing for queued work, got %d", len(hits))
+// An audit-failure notice is written (or sent directly) in a goroutine the
+// notifier counts; the wait holds until that work has finished.
+func TestAwaitBackgroundWaitsForAuditNotice(t *testing.T) {
+	n := audit.NewAlertNotifier(nil, nil) // no database: the write fails, no channels to send to
+	n.EnqueueAuditFailureNotice(notifycat.EventAuditFailure, map[string]string{"mechanism": "audit_write"})
+	if runWait(10*time.Second, n.BackgroundInFlight) {
+		t.Fatal("wait did not return after the audit-failure notice finished")
 	}
-	if got := n.PendingNotifications(); got != 1 {
-		t.Fatalf("precondition: queued alert must be counted, got %d", got)
-	}
-	if !runWait(150*time.Millisecond, n.PendingNotifications) {
-		t.Fatal("wait returned while an alert was still queued")
-	}
-
-	n.Start() // worker takes the alert and delivers (no channels: returns at once)
-	if runWait(10*time.Second, n.PendingNotifications) {
-		t.Fatal("wait did not return after the worker drained the queue")
-	}
-	if got := n.PendingNotifications(); got != 0 {
+	if got := n.BackgroundInFlight(); got != 0 {
 		t.Fatalf("pending after drain = %d, want 0", got)
 	}
 }

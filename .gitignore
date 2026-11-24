@@ -137,3 +137,6 @@ backend/cmd/server/testdata/deploy/
 
 # 本機工具產物（可重建，不入版控）
 graphify-out/
+
+# Python 位元組碼快取（畫稿產生腳本執行時產生）
+__pycache__/

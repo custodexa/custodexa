@@ -40,7 +40,7 @@ func newAcctEnv(t *testing.T, alerts port.SystemAlertSink) *acctEnv {
 		blocked BOOLEAN NOT NULL DEFAULT 0,
 		kind TEXT NOT NULL DEFAULT 'rule', reason_code TEXT NOT NULL DEFAULT ''
 	)`).Error)
-	require.NoError(t, g.db.AutoMigrate(&model.SystemAlertDetail{}, &model.SystemAlertOutbox{},
+	require.NoError(t, g.db.AutoMigrate(&model.SystemAlertDetail{}, &model.NotificationDelivery{},
 		&model.SystemAlertSeverityOverride{}, &model.NotificationChannel{},
 		&model.OIDCProvider{}, &model.RoleBindingNode{}, &model.UserExternalIdentity{}, &model.AssetAuthorization{}))
 	if alerts == nil {

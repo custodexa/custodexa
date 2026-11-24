@@ -62,6 +62,14 @@
         v-loading="loading"
         class="dr-drawer__content"
       >
+        <!-- 從多日簽核的確認清單打開：只供查看，不在多日流程中途單獨簽掉一天 -->
+        <div
+          v-if="fromBatch"
+          class="dr-banner dr-banner--info"
+          data-test="dr-from-batch"
+        >
+          {{ $t('dailyReview.drawer.fromBatchNotice') }}
+        </div>
         <p
           v-if="loadError"
           class="dr-drawer__error"
@@ -177,7 +185,7 @@
                 {{ sourceNotice }}
               </div>
               <div
-                v-if="willBeLate && canSign"
+                v-if="willBeLate && signHere"
                 class="dr-banner dr-banner--warning"
                 data-test="dr-late-notice"
               >
@@ -191,9 +199,26 @@
                 :benign="detail.counts?.alerts_benign ?? 0"
                 :escalated="detail.counts?.alerts_escalated ?? 0"
                 :timezone="detail.timezone"
-                :can-sign="canSign"
+                :can-sign="signHere"
                 @reviewed="onAlertsReviewed"
+                @open-batch="(rows) => $emit('open-alert-batch', { rows, date })"
               />
+              <!-- 這一天處置完：就地接下一個有告警的待簽日 -->
+              <div
+                v-if="handledHere && unreviewedCount === 0 && nextAlertDay"
+                class="dr-banner dr-banner--info dr-next-alert"
+                data-test="dr-next-alert-day"
+              >
+                <span>{{ $t('dailyReview.drawer.alerts.nextDay', { date: dateWithWeekday(nextAlertDay.date), n: nextAlertDay.n }) }}</span>
+                <el-button
+                  link
+                  type="primary"
+                  data-test="dr-next-alert-open"
+                  @click="openDay(nextAlertDay.date)"
+                >
+                  {{ $t('dailyReview.drawer.alerts.nextDayOpen') }}
+                </el-button>
+              </div>
               <DailyReviewEventsSection
                 kind="login_failures"
                 :list="detail.login_failures || { total: 0, items: [] }"
@@ -215,7 +240,7 @@
 
               <!-- 簽核表單：只給有簽核權限的人 -->
               <div
-                v-if="canSign"
+                v-if="signHere"
                 class="dr-form"
                 data-test="dr-form"
               >
@@ -244,6 +269,9 @@
                   class="dr-form__hint"
                 >
                   {{ $t('dailyReview.drawer.delayWrittenTo') }}
+                  <template v-if="handledHere && unreviewedCount === 0">
+                    {{ $t('dailyReview.drawer.alerts.signLaterHint') }}
+                  </template>
                   <template v-if="alertsSource === 'purged' || logSource === 'purged'">
                     {{ $t('dailyReview.drawer.purgedDelayHint') }}
                   </template>
@@ -261,7 +289,15 @@
       </div>
 
       <footer class="dr-drawer__foot">
-        <template v-if="mode === 'result' || mode === 'conflict'">
+        <el-button
+          v-if="fromBatch"
+          type="primary"
+          data-test="dr-back-to-batch"
+          @click="close"
+        >
+          {{ $t('dailyReview.drawer.backToBatch') }}
+        </el-button>
+        <template v-else-if="mode === 'result' || mode === 'conflict'">
           <el-button
             data-test="dr-back"
             @click="close"
@@ -277,7 +313,7 @@
             {{ $t('dailyReview.drawer.next', { date: nextDate }) }}
           </el-button>
         </template>
-        <template v-else-if="canSign && detail && !isSigned && signableStatus">
+        <template v-else-if="signHere && detail && !isSigned && signableStatus">
           <span
             v-if="blockText"
             class="dr-drawer__block"
@@ -338,13 +374,14 @@ import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 
 const TEXT_MAX = 500
 
-defineProps({
+const props = defineProps({
   modelValue: { type: Boolean, default: false },
   // 有簽核權限（alert:manage）才有處置、備註與簽核欄位
   canSign: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:modelValue', 'changed'])
+// open-alert-batch：抽屜的告警區要開處置對話框（對話框在工作區，與跨日處置共用）
+const emit = defineEmits(['update:modelValue', 'changed', 'open-alert-batch'])
 
 const router = useRouter()
 
@@ -365,6 +402,13 @@ const settlingAt = ref('')
 const submitting = ref(false)
 const nextDate = ref('')
 const remaining = ref(0)
+// 從多日簽核的確認清單打開：唯讀，底部只有「回到確認清單」
+const fromBatch = ref(false)
+// 這一次打開後在抽屜裡處置過告警：處置完時就地提供下一個要處置的日子
+const handledHere = ref(false)
+const nextAlertDay = ref(null)
+// 這一次打開能不能處置與簽核
+const signHere = computed(() => props.canSign && !fromBatch.value)
 
 const isSigned = computed(() => detail.value?.status === 'signed')
 const signableStatus = computed(() => ['pending', 'settling'].includes(detail.value?.status))
@@ -485,10 +529,13 @@ function reset(day) {
   settlingAt.value = ''
   nextDate.value = ''
   remaining.value = 0
+  handledHere.value = false
+  nextAlertDay.value = null
 }
 
-async function openDay(day) {
+async function openDay(day, { readOnlyFromBatch = false } = {}) {
   reset(day)
+  fromBatch.value = readOnlyFromBatch
   emit('update:modelValue', true)
   await load()
 }
@@ -502,9 +549,22 @@ function go(location) {
   router?.push(location)
 }
 
+// 下一個要處置的日子：待簽清單中（由最早排起）其他還有未審閱告警的第一天
+async function loadNextAlertDay() {
+  try {
+    const res = await getDailyReviewPending({ page: 1, page_size: 31 }, { skipErrorToast: true })
+    const next = (res?.data?.items || []).find((item) => item.date !== date.value && (item.counts?.unreviewed_alerts || 0) > 0)
+    nextAlertDay.value = next ? { date: next.date, n: next.counts.unreviewed_alerts } : null
+  } catch {
+    nextAlertDay.value = null
+  }
+}
+
 async function onAlertsReviewed() {
+  handledHere.value = true
   await load()
   changed()
+  if (unreviewedCount.value === 0) await loadNextAlertDay()
 }
 
 async function submit() {
@@ -569,7 +629,7 @@ async function handleSignError(error) {
   }
 }
 
-defineExpose({ openDay, close, detail, mode })
+defineExpose({ openDay, close, detail, mode, date, afterAlertBatch: onAlertsReviewed })
 </script>
 
 <style scoped>
@@ -692,6 +752,14 @@ defineExpose({ openDay, close, detail, mode })
 
 .dr-banner--info {
   border-color: var(--ot-info);
+}
+
+.dr-next-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ot-space-xs) var(--ot-space-sm);
 }
 
 .dr-form__label {

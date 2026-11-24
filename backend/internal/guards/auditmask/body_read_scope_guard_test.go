@@ -33,6 +33,10 @@ var rawRequestBodyReaders = map[string]string{
 		"多一個鍵（含 force、自稱的操作者）即以請求格式錯誤拒收，gin binding 表達不了「多一個鍵就拒絕」；" +
 		"本文只有傳輸種類與端點公開的金鑰指紋，不含秘密，" +
 		"課責由承接建立交易內同寫的主機身分確認審計列承擔",
+	"internal/api/command_alert_handler.go": "POST /command-alerts/batch-review：以 64 KiB 上限讀入本文，" +
+		"超過上限回請求格式錯誤（gin binding 不設本文上限），讀入後照常解析並以 binding 驗證；" +
+		"本文只有告警編號、處置、說明、批次識別與確認筆數，不含秘密，審計本文經該端點的放行集合遮罩，" +
+		"課責由同交易的逐筆處置與摘要審計列承擔",
 	"internal/api/asset_handler.go": "PUT /assets/:id 的欄位閘：只讀出本文頂層鍵名決定所需能力，" +
 		"讀完原樣放回，鍵值不解析也不落地；同一 handler 隨後仍以 gin binding 綁定本文，" +
 		"該綁定點照常在 G1／G2 射程內，審計本文的遮罩判定不因此改變",

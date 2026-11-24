@@ -142,7 +142,7 @@ func TestChannelGetForDelivery(t *testing.T) {
 	}
 }
 
-// TestNotifierCacheDecryptsChannels 推送快取載入時解密；解不開的通道跳過
+// TestNotifierCacheDecryptsChannels 借道路徑讀通道時解密；解不開的通道跳過
 func TestNotifierCacheDecryptsChannels(t *testing.T) {
 	svc, km, db := setupEnvelopeChannelSvc(t)
 
@@ -155,11 +155,10 @@ func TestNotifierCacheDecryptsChannels(t *testing.T) {
 	// 損毀密文通道：應被跳過不入快取
 	db.Create(&model.NotificationChannel{Name: "broken", Type: "webhook", URL: "enc:v99:aGVsbG8=", Enabled: true})
 
-	n := NewAlertNotifier(db, km)
-	if err := n.LoadChannels(); err != nil {
-		t.Fatalf("load: %v", err)
+	cached, err := loadEnabledChannelsPlain(db, km)
+	if err != nil {
+		t.Fatal(err)
 	}
-	cached := n.snapshotChannels()
 	if len(cached) != 1 {
 		t.Fatalf("快取應僅含可解密通道，得 %d", len(cached))
 	}

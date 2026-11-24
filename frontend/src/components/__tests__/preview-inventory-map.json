@@ -770,7 +770,7 @@
    18
   ],
   "file": "views/Alerts.vue",
-  "match": "@click=\"alertBatchDialogRef\\?\\.open\\(\\)\"",
+  "match": "@click=\"openAlertBatch\"",
   "kind": "plain"
  },
  {
@@ -806,7 +806,7 @@
    18
   ],
   "file": "components/daily-review/DailyReviewAlertsSection.vue",
-  "match": "@click=\"batchDialogRef\\?\\.open\\(\\)\"",
+  "match": "@click=\"openBatch\"",
   "kind": "plain"
  },
  {

@@ -41,7 +41,9 @@
     "KEYSTROKE_KEY_SEAL_FAILED": "The keystroke record file key could not be sealed (key material not unsealed or key management failed)",
     "KEYSTROKE_FILE_CREATE_FAILED": "The keystroke record file could not be created",
     "KEYSTROKE_WRITE_FAILED": "Writing the keystroke record failed",
-    "KEYSTROKE_WRITER_STALLED": "The keystroke record writer stalled (no progress for a long time)"
+    "KEYSTROKE_WRITER_STALLED": "The keystroke record writer stalled (no progress for a long time)",
+    "notification_enqueue_failed": "The notification could not be written (the operation itself completed; this notification was lost)",
+    "notification_dispatch_failed": "Notification dispatch failed repeatedly and was stopped"
   },
   "severity": {
     "high": "High",
@@ -364,5 +366,228 @@
     "read_write": "read-write",
     "item": "{role} ({level})",
     "sep": ", "
+  },
+  "mechanism": {
+    "audit_write": "Audit Write",
+    "syslog_forward": "Syslog Forwarding",
+    "recording_probe": "Recording Preflight",
+    "recording_text": "Text Recording",
+    "recording_graphics": "Graphics Recording",
+    "session_record": "Session Record",
+    "command_blocking": "Command blocking matcher",
+    "kek_retirement": "KEK Retirement Convergence",
+    "aad_residue": "AAD ciphertext residue",
+    "checkpoint_anchor": "Checkpoint off-box copy",
+    "audit_chain_structure": "Audit chain structure verification",
+    "audit_chain_content": "Audit chain content verification",
+    "audit_chain_verify": "Audit chain automatic verification",
+    "source_policy": "Source Range Policy",
+    "offsite_upload": "Offsite storage upload",
+    "role_state_integrity": "Role assignment consistency with the audit chain",
+    "principal_state_integrity": "Principal and credential state integrity",
+    "dek_unwrap": "Data key re-unwrap",
+    "restore_seal": "Seal after restore",
+    "keystroke_probe": "Keystroke record pre-check",
+    "keystroke_record": "Keystroke record",
+    "notification_delivery": "Notification enqueue",
+    "notification_dispatch": "Notification dispatch"
+  },
+  "notify_footer": {
+    "occurred": "Occurred",
+    "action": "Take action in Custodexa",
+    "view": "View in Custodexa"
+  },
+  "delivery_reason": {
+    "http_404": "The receiver could not find this URL (HTTP 404)",
+    "http_401": "The receiver refused; the signing secret may not match (HTTP 401/403)",
+    "http_5xx": "The receiver returned an error (HTTP 5xx)",
+    "http_other": "The receiver responded with an error",
+    "timeout": "Timed out; the receiver did not respond",
+    "connect": "Cannot connect to the receiver",
+    "slack_channel": "Slack could not find this channel",
+    "slack_not_in": "The bot is not in this channel",
+    "slack_auth": "The token is invalid or revoked",
+    "slack_scope": "The token lacks permission to post",
+    "slack_rate": "Slack is temporarily limiting the sending rate",
+    "slack_other": "Slack reported an error",
+    "snapshot_unreadable": "URL or secret could not be decrypted; not attempted",
+    "channel_unreadable": "Channel settings could not be read (URL or secret could not be decrypted)",
+    "policy": "This address does not meet the notification transport policy",
+    "redirect_not_followed": "The receiver responded with a redirect (HTTP 3xx, redirects are not followed)",
+    "redirect_policy": "The redirect target does not meet the transport policy",
+    "redirect_too_many": "Too many redirects",
+    "rate_limited": "The receiver kept limiting the sending rate",
+    "type_unregistered": "The channel type is no longer supported",
+    "render_failed": "The notification content could not be built"
+  },
+  "policy_relax_type": {
+    "override_lowered": "lowered this asset's own setting",
+    "override_cleared": "cleared this asset's own setting and fell back to the default",
+    "default_lowered": "lowered the default"
+  },
+  "custom_secret_entry": {
+    "change_password": "custom password when changing the password",
+    "detach_shared": "detached from the shared credential",
+    "declare_new_secret": "declared a new password"
+  },
+  "identity_source_kind": {
+    "ldap": "LDAP",
+    "oidc": "OIDC"
+  },
+  "yes_no": {
+    "true": "yes",
+    "false": "no"
+  },
+  "security_admin_action": {
+    "password_change": "password change",
+    "mfa_disabled": "MFA disabled",
+    "external_bound": "external identity linked",
+    "external_unbound": "external identity unlinked",
+    "rescue": "rescue sign-in"
+  },
+  "retention_data_class": {
+    "audit_log": "operation logs",
+    "session_command": "session command records",
+    "alert": "alert records",
+    "recording": "session recordings"
+  },
+  "offsite_subject": {
+    "offsite": "off-site copy",
+    "syslog": "syslog forwarding"
+  },
+  "offsite_change": {
+    "disabled": "disabled",
+    "destination_changed": "destination changed"
+  },
+  "host_key_record_source": {
+    "own": "this asset's own record",
+    "address": "record of another asset at the same address"
+  },
+  "host_key_record_change": {
+    "adopted": "adopted the new key",
+    "reset": "reset the record"
+  },
+  "channel_change": {
+    "created": "created",
+    "updated": "updated",
+    "disabled": "disabled",
+    "enabled": "enabled",
+    "deleted": "deleted"
+  },
+  "peers_query": {
+    "ok": "succeeded",
+    "failed": "failed"
+  },
+  "confirm_source": {
+    "env": "environment variable",
+    "page": "admin page"
+  },
+  "identity_mode": {
+    "default_account": "default account",
+    "executor": "bastion service account"
+  },
+  "rotation_alert_kind": {
+    "authz_stopped": "Credential rotation stopped because its authorization is no longer valid",
+    "plan_failed": "Credential rotation plan failed",
+    "recovery_verify": "Credential rotation entered limited verification after its authorization was lost",
+    "candidate_abandoned": "Credential rotation candidate abandoned after retries",
+    "cleanup_pending": "Credential rotation candidate verified; the old public key still needs cleanup",
+    "restart_interrupted": "Credential rotation interrupted by a service restart",
+    "plan_reauth_incomplete": "Credential rotation plan re-authorization did not complete",
+    "schedule_reauth_required": "Scheduled credential rotation plans need re-authorization",
+    "host_identity_stopped": "Credential rotation stopped because the host identity changed"
+  },
+  "access_tier": {
+    "open": "no request needed",
+    "reason": "reason required",
+    "approval": "approval required"
+  },
+  "asset_field": {
+    "host": "host address",
+    "port": "port",
+    "protocol": "protocol",
+    "rotation_channel": "password change channel",
+    "winrm_scheme": "WinRM scheme",
+    "winrm_port": "WinRM port",
+    "rotation_ssh_port": "SSH port for password changes",
+    "sftp_port": "SFTP port",
+    "sftp_enabled": "SFTP turned on",
+    "rdp_verify_cert": "RDP certificate verification",
+    "rdp_security": "RDP security layer",
+    "db_tls_mode": "database TLS mode",
+    "k8s_insecure_skip_tls": "Kubernetes skipping TLS verification",
+    "winrm_tls_mode": "WinRM TLS mode",
+    "db_ca_cert": "database CA certificate",
+    "k8s_ca_cert": "Kubernetes CA certificate",
+    "winrm_ca_cert": "WinRM CA certificate"
+  },
+  "channel_field": {
+    "name": "name",
+    "type": "type",
+    "url": "URL",
+    "target": "target channel",
+    "secret": "secret or token",
+    "enabled": "enabled state",
+    "language": "language",
+    "min_severity": "minimum severity",
+    "direct_message_enabled": "sending to individuals"
+  },
+  "identity_source_field": {
+    "created": "newly created",
+    "deleted": "deleted",
+    "name": "name",
+    "url": "server address",
+    "bind_dn": "bind account",
+    "base_dn": "search base",
+    "user_filter": "user filter",
+    "attr_email": "email attribute",
+    "attr_fullname": "full name attribute",
+    "attr_group": "group attribute",
+    "tls_verify": "TLS verification",
+    "enabled": "enabled state",
+    "bind_password": "bind password",
+    "scopes": "scopes",
+    "groups_claim": "groups claim",
+    "username_claim": "username claim",
+    "email_claim": "email claim",
+    "display_name_claim": "display name claim",
+    "admission_mode": "admission mode",
+    "admission_rules": "admission rules",
+    "force_shared": "forced sharing",
+    "client_secret": "client secret"
+  },
+  "list_format": {
+    "sep": ", "
+  },
+  "duration": {
+    "hour": "1 hour",
+    "hours": "{h} hours",
+    "minute": "1 minute",
+    "minutes": "{m} minutes",
+    "combined": "{hours} {minutes}"
+  },
+  "dm_title": {
+    "access_request": "Needs your review",
+    "break_glass": "Needs your follow-up review",
+    "daily_review": "Needs your sign-off"
+  },
+  "dm_undelivered_reason": {
+    "no_email": "The recipient has no email address in Custodexa.",
+    "email_ambiguous": "The recipient's email address is also used by another account.",
+    "recipient_not_found": "Slack has no matching account, or it is deactivated.",
+    "max_attempts": "It was retried up to the limit without being delivered.",
+    "rate_limited": "Slack kept limiting the send rate and it was not sent within 72 hours.",
+    "no_recipient": "No reviewer who needs to act was found.",
+    "resolve_failed": "An error occurred while determining recipients."
+  },
+  "dm_event_kind": {
+    "access_request": "Access request pending",
+    "break_glass": "Break-glass access",
+    "break_glass_overdue": "Break-glass follow-up review overdue",
+    "daily_review": "Daily review overdue"
+  },
+  "dm_auto_off": {
+    "host": "sending to individuals was turned off automatically because the address is not on the allowlist; direct messages not yet sent were canceled",
+    "type": "sending to individuals was turned off automatically because the type was changed to one that cannot send direct messages; direct messages not yet sent were canceled"
   }
 }

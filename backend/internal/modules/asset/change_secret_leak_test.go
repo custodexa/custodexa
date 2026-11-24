@@ -1,16 +1,15 @@
 package asset
 
 import (
+	"github.com/custodexa/backend/internal/modules/audit"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,9 +148,7 @@ func TestChangeSecretAlertPayloadHasNoRemoteText(t *testing.T) {
 		Name: "ops", Type: "webhook", URL: srv.URL, Enabled: true, Language: "zh-TW",
 	}).Error)
 
-	notifier := audit.NewAlertNotifier(f.db, nil)
-	require.NoError(t, notifier.LoadChannels())
-	notifier.Start()
+	notifier := newRotationNotifier(t, f.db)
 	runner := NewChangeSecretRunner(f.db, f.assets, f.candidates, f.hostKeys, notifier).WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer())
 
 	f.server.mu.Lock()
@@ -165,18 +162,12 @@ func TestChangeSecretAlertPayloadHasNoRemoteText(t *testing.T) {
 	require.Positive(t, f.server.chpasswdEchoFired.Load(), "stderr 回吐注入器未觸發：本測試不成立")
 	newPassword := newPasswordFromServer(t, f.server)
 
-	// 告警由背景 worker 非同步送出，等實際離開產品邊界的位元組落袋
-	deadline := time.Now().Add(5 * time.Second)
-	var got []string
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		got = append([]string(nil), bodies...)
-		mu.Unlock()
-		if len(got) > 0 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// 提醒排入通知投遞層；跑一輪投遞程序（分派與送出在同一輪），攔下實際離開產品邊界的位元組
+	require.NoError(t, f.db.AutoMigrate(&model.NotificationDelivery{}))
+	audit.NewSystemAlertOutboxWorker(f.db, nil).RunOnce()
+	mu.Lock()
+	got := append([]string(nil), bodies...)
+	mu.Unlock()
 	require.NotEmpty(t, got, "告警未送達 webhook：本測試不成立（未攔到任何實際送出的內容）")
 
 	for _, body := range got {

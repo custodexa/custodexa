@@ -3,6 +3,7 @@ package asset
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"io"
 	"log"
 	"net/http"
@@ -11,13 +12,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/audit"
 )
 
 // 改密記錄的執行方式四欄：代改不論成敗都記下是哪一個專用帳號；自改與選路前跳過的記錄為零值。
@@ -194,9 +193,7 @@ func TestDelegatedRotationSecretsStayOutOfAllSinks(t *testing.T) {
 		require.NoError(t, e.db.Create(&model.NotificationChannel{
 			Name: "ops", Type: "webhook", URL: hook.URL, Enabled: true, Language: "zh-TW",
 		}).Error)
-		notifier := audit.NewAlertNotifier(e.db, nil)
-		require.NoError(t, notifier.LoadChannels())
-		notifier.Start()
+		notifier := newRotationNotifier(t, e.db)
 		e.runner = NewChangeSecretRunner(e.db, e.assets, e.candidates, e.hostKeys, notifier).
 			WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer())
 		e.srv.addAccount(delegExecutorUser, delegExecutorSecret, sudo)
@@ -223,17 +220,12 @@ func TestDelegatedRotationSecretsStayOutOfAllSinks(t *testing.T) {
 	badSecrets := targetSecretsSent(badEnv.srv)
 	require.NotEmpty(t, badSecrets, "失敗案靶機應收到含新密碼的 stdin：本測試不成立")
 
-	deadline := time.Now().Add(5 * time.Second)
-	var alerts []string
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		alerts = append([]string(nil), bodies...)
-		mu.Unlock()
-		if len(alerts) > 0 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// 提醒已排入通知投遞層：跑一輪投遞程序（分派與送出同一輪）
+	require.NoError(t, badEnv.db.AutoMigrate(&model.NotificationDelivery{}))
+	audit.NewSystemAlertOutboxWorker(badEnv.db, nil).RunOnce()
+	mu.Lock()
+	alerts := append([]string(nil), bodies...)
+	mu.Unlock()
 	require.NotEmpty(t, alerts, "告警未送達：本測試不成立")
 	require.Contains(t, logs.String(), "rejected by pam", "回吐的 stderr 未進入伺服器日誌路徑：本測試不成立")
 

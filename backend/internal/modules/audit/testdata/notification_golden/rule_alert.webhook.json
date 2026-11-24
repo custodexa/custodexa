@@ -1,0 +1,20 @@
+{
+  "alert": {
+    "blocked": true,
+    "command": "rm -rf / \u0026\u0026 echo \u003cx\u003e",
+    "id": 1,
+    "kind": "rule",
+    "rule_name": "rm-root",
+    "severity": "high",
+    "triggered_at": "2026-11-20T00:00:00Z"
+  },
+  "event": "command_alert",
+  "session": {
+    "asset_id": 7,
+    "asset_name": "db-prod-01",
+    "client_ip": "203.0.113.7",
+    "id": 31,
+    "user_id": 3,
+    "username": "alice"
+  }
+}

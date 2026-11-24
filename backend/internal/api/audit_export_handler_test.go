@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/gin-gonic/gin"
 )
 
 // 匯出端點的查詢參數解析。

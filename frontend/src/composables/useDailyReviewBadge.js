@@ -1,6 +1,9 @@
 import { ref } from 'vue'
 import { getDailyReviewPendingCount } from '@/api/dailyReviews'
 import { DAILY_REVIEWS_CHANGED } from '@/components/daily-review/dailyReviewFormat'
+// 多日簽核的批次進度在會話結束時清除：註冊寫在 multiSign 模組層，這裡引入是因為
+// 本模組由側欄常駐載入，登出時不論每日簽核頁面是否開著都已註冊
+import '@/components/daily-review/multiSign'
 
 // 每日簽核的待簽天數徽章（側欄「操作日誌」與每日簽核分頁標籤共用同一份數字）。
 //

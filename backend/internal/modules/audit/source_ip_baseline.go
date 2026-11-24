@@ -47,6 +47,8 @@ type SourceIPBaseline struct {
 	// 回錯即讓交易失敗，用來證明回滾語義且注入點確實走到（鉤子內自計數）
 	beforeAlertWrite func() error
 	beforeAuditWrite func() error
+	// afterAlertWrite 於交易內寫完告警列與通知內容之後呼叫；回錯即讓交易回滾（證明內容列隨業務交易消失）
+	afterAlertWrite func() error
 }
 
 // txAlertSink 告警落地面的交易內能力（alert_sink.go 的 alertRecorder 實作）。
@@ -132,6 +134,16 @@ func (b *SourceIPBaseline) ObserveSession(ctx context.Context, userID uint, ip s
 		if err != nil {
 			return fmt.Errorf("新來源位址告警落地失敗: %w", err)
 		}
+		// 通知內容與基準、告警列同交易（以 savepoint 包住）：寫不進去只回到 savepoint，
+		// 基準轉態與告警列照常提交，建線不受影響；交易回滾時這一列一起消失。
+		if notifier := GetAlertNotifier(); notifier != nil {
+			_ = notifier.EnqueueInTx(tx, commandAlertNotice(row))
+		}
+		if b.afterAlertWrite != nil {
+			if err := b.afterAlertWrite(); err != nil {
+				return err
+			}
+		}
 		winner = true
 		return nil
 	})
@@ -139,7 +151,7 @@ func (b *SourceIPBaseline) ObserveSession(ctx context.Context, userID uint, ip s
 		return false, err
 	}
 	if winner {
-		// 提交之後才推送與 tee：入庫成功才發，不發幽靈告警
+		// 提交之後才離機轉發：入庫成功才發，不發幽靈告警
 		b.alerts.PublishCommitted([]model.CommandAlert{row})
 	}
 	return winner, nil

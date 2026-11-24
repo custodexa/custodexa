@@ -6,7 +6,6 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
-	"github.com/custodexa/backend/internal/notifycat"
 	"github.com/custodexa/backend/internal/proxy"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
@@ -48,7 +47,7 @@ func TestProbeBreakerTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	breaker := audit.NewProbeBreaker(db, audit.NewTxSink(), audit.NewAlertRecorder(db), audit.ProbeBreakerDependencies{LockPrincipal: identity.LockProbePrincipal, Classify: authz.ClassifyAgentProbe, Trip: tokens.TripProbeBreakerInTx, Finish: func(id uint) { grants.InvalidateByAgentToken(id); tokens.FinishProbeBreaker(id) }, Limits: func() (int, int) { return 1, 300 }, Notify: func(uint, notifycat.Event, map[string]string) {}})
+	breaker := audit.NewProbeBreaker(db, audit.NewTxSink(), audit.NewAlertRecorder(db), audit.ProbeBreakerDependencies{LockPrincipal: identity.LockProbePrincipal, Classify: authz.ClassifyAgentProbe, Trip: tokens.TripProbeBreakerInTx, Finish: func(id uint) { grants.InvalidateByAgentToken(id); tokens.FinishProbeBreaker(id) }, Limits: func() (int, int) { return 1, 300 }, Notify: func(*gorm.DB, audit.AgentOwnerNotice) {}})
 	if r, err := breaker.RecordDenied(context.Background(), agent.ID, token.ID, 77, "GET /assets/:id"); err != nil || !r.Tripped {
 		t.Fatal(r, err)
 	}

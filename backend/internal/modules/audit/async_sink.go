@@ -45,11 +45,11 @@ func (s *AuditLogService) Submit(_ context.Context, ev gatewayapi.AuditEvent) er
 // entryOf 由傳輸形狀組出 AuditLogEntry（欄位對應同 tx_sink.go 的 auditRowOf）。
 func entryOf(ev gatewayapi.AuditEvent) *AuditLogEntry {
 	e := &AuditLogEntry{
-		UserID:      ev.Actor.UserID,
-		Username:    ev.Actor.Username,
-		Action:      model.AuditAction(ev.Action),
-		Resource:    model.AuditResource(ev.Resource),
-		ResourceID:  ev.ResourceID,
+		UserID:     ev.Actor.UserID,
+		Username:   ev.Actor.Username,
+		Action:     model.AuditAction(ev.Action),
+		Resource:   model.AuditResource(ev.Resource),
+		ResourceID: ev.ResourceID,
 		// 資產主體鍵：漏這一行，走 sink 的產生點
 		// 就算在上游填了 asset_id 也會在此被靜默丟棄，而資產樞紐只會少事件、
 		// 不會報錯——是最難察覺的一種缺口

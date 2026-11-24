@@ -52,10 +52,14 @@ var baselineShapeExceptions = map[string]string{
 		"**空庫（嚴格）才是全新部署拿到的形狀**：既有部署因 GORM 對已存在的表新增欄位時" +
 		"不補 NOT NULL/DEFAULT，永久停在寬鬆定義（對照組 manifest 第 6 節實測）。" +
 		"baseline 取嚴格版本，故此處與 model tag 不同。",
-	"audit_logs.key_version|default":          "同上（DEFAULT 0）",
-	"integrity_baselines.max_log_id|nullable": "同 audit_logs.key_version（20260715_integrity_baseline_max_log_id）",
-	"integrity_baselines.max_log_id|default":  "同上（DEFAULT 0）",
-	"ldap_directories.singleton|type":         "舊鏈由 20260804_ldap_directories 的原生 SQL 建為 `INTEGER`，而 `model.LDAPDirectory.Singleton` 是 Go `int` → GORM 在 pg 上映射為 `bigint`。兩者語義等價（值恆為 1，由 CHECK 約束釘住），差異自壓縮前即存在。改型別會使等價驗證出現預期外差異，屬獨立裁決。",
+	"audit_logs.key_version|default":            "同上（DEFAULT 0）",
+	"integrity_baselines.max_log_id|nullable":   "同 audit_logs.key_version（20260715_integrity_baseline_max_log_id）",
+	"integrity_baselines.max_log_id|default":    "同上（DEFAULT 0）",
+	"notification_channels.created_at|nullable": "baseline 原本即 `created_at timestamp with time zone DEFAULT now() NOT NULL`（壓縮前既有）；model 的 CreatedAt 由 GORM 自動填值、未宣告 not null/default。通知投遞層把本 model 納入 parity 時照實登記，不改既有欄位；在 tag 加 default:now() 會讓 sqlite 測試的 AutoMigrate 無法建表。",
+	"notification_channels.created_at|default":  "同上（DEFAULT now()）",
+	"notification_channels.updated_at|nullable": "同 notification_channels.created_at（baseline 為 DEFAULT now() NOT NULL）",
+	"notification_channels.updated_at|default":  "同上（DEFAULT now()）",
+	"ldap_directories.singleton|type":           "舊鏈由 20260804_ldap_directories 的原生 SQL 建為 `INTEGER`，而 `model.LDAPDirectory.Singleton` 是 Go `int` → GORM 在 pg 上映射為 `bigint`。兩者語義等價（值恆為 1，由 CHECK 約束釘住），差異自壓縮前即存在。改型別會使等價驗證出現預期外差異，屬獨立裁決。",
 }
 
 func columnShapes(t *testing.T, db *gorm.DB, pgSchema string) map[string]columnShape {
@@ -228,6 +232,18 @@ var baselineStructuralAssertions = map[string]string{
 	// 會讓已刪除的群組永久佔用名稱而無法同名重建；UNIQUE 被拿掉則現存群組可以重名
 	"idx_user_groups_name": "CREATE UNIQUE INDEX idx_user_groups_name ON %s.user_groups " +
 		"USING btree (name) WHERE (deleted_at IS NULL)",
+	// 定向通知：對個人派送至多開在一個通道。部分條件被拿掉時所有通道（含關閉的）互相衝突、
+	// 第二個通道建不出來；UNIQUE 被拿掉時兩個通道同時開啟，同一位審核者收到兩則相同的私訊
+	"idx_notification_channels_direct_message": "CREATE UNIQUE INDEX idx_notification_channels_direct_message " +
+		"ON %s.notification_channels USING btree ((1)) WHERE direct_message_enabled",
+	// 同一則內容對同一位收件人至多一筆個人訊息紀錄。部分條件被拿掉時頻道紀錄（收件人皆為空）不受影響
+	// 但語義變成全表；UNIQUE 被拿掉時重複分派會讓同一人收到兩則
+	"idx_system_alert_outbox_message_recipient": "CREATE UNIQUE INDEX idx_system_alert_outbox_message_recipient " +
+		"ON %s.system_alert_outbox USING btree (message_id, recipient_user_id) WHERE ((audience)::text = 'user'::text)",
+	// 到期部分索引含收件對象：投遞程序以（通道, 目的地版本, 收件對象）分組輪流取件
+	"idx_system_alert_outbox_due": "CREATE INDEX idx_system_alert_outbox_due ON %s.system_alert_outbox " +
+		"USING btree (source_channel_id, dest_version, audience, next_attempt_at) " +
+		"WHERE ((state)::text = ANY ((ARRAY['pending'::character varying, 'retrying'::character varying])::text[]))",
 }
 
 // baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 21 條）。
@@ -312,6 +328,26 @@ var baselineCheckConstraints = map[string]string{
 	// 委託拓撲的單列常數載體：拓撲是「上鎖的資料金鑰送去哪裡解」的唯一事實源，
 	// 兩列並存時讀取順序決定目的地，而那是一個沒有訊號的錯誤
 	"kek_topologies_singleton_check": "kek_topologies",
+	// 通知投遞層：通知內容的類別、分級、狀態、分派失敗原因值域與「指令告警必指向告警列」；
+	// 待投遞紀錄的類別、分級、終態原因值域，以及區分帶快照與不帶快照的兩條約束。
+	// 後兩條被放寬時，不帶快照的紀錄可帶密文快照（通道停用後仍送往舊網址），
+	// 或系統安全告警可沒有快照（改址後改送新網址，產生當下的目的地失去意義）
+	"notification_messages_category_check":    "notification_messages",
+	"notification_messages_severity_check":    "notification_messages",
+	"notification_messages_state_check":       "notification_messages",
+	"notification_messages_fail_reason_check": "notification_messages",
+	"notification_messages_alert_ref":         "notification_messages",
+	"system_alert_outbox_category_check":      "system_alert_outbox",
+	"system_alert_outbox_severity_check":      "system_alert_outbox",
+	"system_alert_outbox_end_reason_check":    "system_alert_outbox",
+	"system_alert_outbox_snapshot_ref":        "system_alert_outbox",
+	"system_alert_outbox_live_ref":            "system_alert_outbox",
+	// 定向通知：對個人派送只限能以個人為對象的型別（被放寬時 webhook 通道帶著旗標，分派會為它建立
+	// 送不出去的個人訊息紀錄）；收件對象值域與「個人訊息必有收件人、頻道紀錄必無收件人、只用於系統事件」
+	// （被放寬時收件人為空的個人訊息會被當成頻道紀錄送進頻道）
+	"notification_channels_direct_message_type_check": "notification_channels",
+	"system_alert_outbox_audience_check":              "system_alert_outbox",
+	"system_alert_outbox_recipient_ref":               "system_alert_outbox",
 }
 
 func TestBaselineStructuralInvariantsPostgres(t *testing.T) {

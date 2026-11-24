@@ -39,9 +39,9 @@ func seedRawChannel(t *testing.T, db *gorm.DB, name, rawURL, rawSecret string) m
 	return ch
 }
 
-func outboxOf(t *testing.T, db *gorm.DB, channelID uint) model.SystemAlertOutbox {
+func outboxOf(t *testing.T, db *gorm.DB, channelID uint) model.NotificationDelivery {
 	t.Helper()
-	var rows []model.SystemAlertOutbox
+	var rows []model.NotificationDelivery
 	if err := db.Where("source_channel_id = ?", channelID).Find(&rows).Error; err != nil || len(rows) != 1 {
 		t.Fatalf("通道 %d 應恰有一筆投遞列: %d %v", channelID, len(rows), err)
 	}
@@ -81,11 +81,11 @@ func TestSystemAlertUnreadableChannel(t *testing.T) {
 
 		// 好通道照常排入；壞通道留下一筆立即放棄、帶原因、不含任何密文殘值的紀錄。
 		g := outboxOf(t, db, good.ID)
-		if g.State != model.SystemAlertOutboxPending {
+		if g.State != model.NotificationDeliveryPending {
 			t.Fatalf("好通道應為待投遞: %+v", g)
 		}
 		b := outboxOf(t, db, bad.ID)
-		if b.State != model.SystemAlertOutboxAbandoned || b.Attempts != 0 || b.LastError == "" ||
+		if b.State != model.NotificationDeliveryAbandoned || b.Attempts != 0 || b.LastError == "" ||
 			b.URLEnc != "" || b.SecretEnc != "" || b.DestName != "bad" {
 			t.Fatalf("壞通道的放棄紀錄不符: %+v", b)
 		}
@@ -102,7 +102,7 @@ func TestSystemAlertUnreadableChannel(t *testing.T) {
 		for _, d := range view.Deliveries {
 			seen[d.DestName] = d.State
 		}
-		if seen["bad"] != model.SystemAlertOutboxAbandoned || seen["good"] != model.SystemAlertOutboxPending {
+		if seen["bad"] != model.NotificationDeliveryAbandoned || seen["good"] != model.NotificationDeliveryPending {
 			t.Fatalf("明細投遞狀態不符: %v", seen)
 		}
 
@@ -113,7 +113,7 @@ func TestSystemAlertUnreadableChannel(t *testing.T) {
 		if stub.count() != 1 {
 			t.Fatalf("好通道應收到 1 則: %d", stub.count())
 		}
-		if after := outboxOf(t, db, bad.ID); after.State != model.SystemAlertOutboxAbandoned || after.Attempts != 0 {
+		if after := outboxOf(t, db, bad.ID); after.State != model.NotificationDeliveryAbandoned || after.Attempts != 0 {
 			t.Fatalf("放棄列不應被投遞程序認領: %+v", after)
 		}
 	})
@@ -132,7 +132,7 @@ func TestSystemAlertUnreadableChannel(t *testing.T) {
 		if receipt.Destinations != 0 || receipt.Unreadable != 1 || systemAlertRowCount(t, db, "command_alerts") != 1 {
 			t.Fatalf("回執 %+v、告警 %d", receipt, systemAlertRowCount(t, db, "command_alerts"))
 		}
-		if b := outboxOf(t, db, bad.ID); b.State != model.SystemAlertOutboxAbandoned {
+		if b := outboxOf(t, db, bad.ID); b.State != model.NotificationDeliveryAbandoned {
 			t.Fatalf("應有放棄紀錄: %+v", b)
 		}
 	})
@@ -224,11 +224,11 @@ func unreadableSecretKeepsURLChange(t *testing.T) {
 		t.Fatalf("告警參數應帶前後網址: %s", detail.Params)
 	}
 	// 密鑰解不開的一側不作為額外目的地（不以空密鑰送出未簽章通知）；啟用中的本通道留放棄紀錄。
-	var rows []model.SystemAlertOutbox
+	var rows []model.NotificationDelivery
 	if err := db.Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].State != model.SystemAlertOutboxAbandoned || rows[0].URLEnc != "" {
+	if len(rows) != 1 || rows[0].State != model.NotificationDeliveryAbandoned || rows[0].URLEnc != "" {
 		t.Fatalf("投遞列應只有本通道的一筆放棄紀錄: %+v", rows)
 	}
 }
@@ -259,7 +259,7 @@ func TestSystemAlertDeliveryKey(t *testing.T) {
 		}
 		lost := before[1]
 		// 模擬還原到只含第一列的備份：第二列消失、序列退回。
-		if err := db.Delete(&model.SystemAlertOutbox{}, lost.ID).Error; err != nil {
+		if err := db.Delete(&model.NotificationDelivery{}, lost.ID).Error; err != nil {
 			t.Fatal(err)
 		}
 		db.Exec(`UPDATE sqlite_sequence SET seq = ? WHERE name = 'system_alert_outbox'`, before[0].ID)

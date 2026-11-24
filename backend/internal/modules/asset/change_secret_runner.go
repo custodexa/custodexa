@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/notifycat"
 	"github.com/custodexa/backend/internal/sshmaterial"
 	"log"
 	"strings"
@@ -424,11 +425,7 @@ func (r *ChangeSecretRunner) stopJobAt(job rotationJob, reason string, stop *tar
 	if r.notifier == nil {
 		return
 	}
-	r.notifier.Enqueue(model.CommandAlert{
-		RuleName: "改密工作因授權失效停止",
-		Command:  stopAlertText(job, reason, stop),
-		Severity: "high",
-	})
+	enqueueRotationAlert(r.notifier, notifycat.RotationAlertAuthzStopped, stopAlertText(job, reason, stop))
 }
 
 // stopAlertText 授權停止告警的內文（機器碼＋固定文案，見 alertFailure）。
@@ -1317,35 +1314,36 @@ func logRemoteCause(tgt changeSecretTarget, stage string, err error) {
 // ChangeSecretStopNotifier 改密停止類事件的推送函式，供組裝根注入計畫承接、輪替授權停止與
 // 排程暫停三處（WithAlertNotifier／WithStopNotifier／WithPausedPlanNotifier）。
 //
-// 與 alertFailure、stopJob 同一條借道：只把 CommandAlert 的**通知格式**送進告警推送佇列
-// （AlertNotifier.Enqueue 只入記憶體佇列、由 worker 送 webhook，不寫任何資料列），
-// 不入 command_alerts、不 tee，SHALL NOT 改走 AlertSink——這些事件沒有對應的告警規則，
-// 入庫即成為審閱流程要處置的幽靈告警列。事件本身的留痕由各呼叫端的審計負責。
-// 構造點收在本檔，是為了讓「借道通知」只存在於告警收口守衛已登記理由的檔內。
-// n 為 nil（告警推送未啟用）時回傳的函式不做任何事。
-func ChangeSecretStopNotifier(n *audit.AlertNotifier) func(rule, message string) {
-	return func(rule, message string) {
-		if n == nil {
-			return
-		}
-		n.Enqueue(model.CommandAlert{RuleName: rule, Command: message, Severity: "high"})
+// kind 是改密工作提醒的種類（notifycat.RotationAlert*），message 是處置說明（機器碼與識別碼）。
+// 這些事件沒有對應的告警規則，不寫 command_alerts（入庫即成為審閱流程要處置的幽靈告警列）；
+// 改以系統事件 credential_rotation_alert 排入通知投遞層，持久投遞。事件本身的留痕由各呼叫端的審計負責。
+// n 為 nil（通知未啟用）時回傳的函式不做任何事。
+func ChangeSecretStopNotifier(n *audit.AlertNotifier) func(kind, message string) {
+	return func(kind, message string) {
+		enqueueRotationAlert(n, kind, message)
 	}
 }
 
-// alertFailure 失敗推送告警通道（復用 CommandAlert 通道格式）。
+// enqueueRotationAlert 排入一則改密工作提醒（獨立寫一筆；排入失敗只記 log，不影響改密流程）。
+func enqueueRotationAlert(n *audit.AlertNotifier, kind, detail string) {
+	if n == nil {
+		return
+	}
+	params := map[string]string{"kind": kind}
+	if detail != "" {
+		params["detail"] = detail
+	}
+	_ = n.EnqueueStandalone(audit.SystemEventNotice(notifycat.EventCredentialRotationAlert, params))
+}
+
+// alertFailure 失敗推送告警通道。
 //
 // 告警離開產品邊界（webhook／Slack），故內容一律是機器碼＋固定文案；
 // 遠端原文只留在後端 log
 func (r *ChangeSecretRunner) alertFailure(job rotationJob, rec model.ChangeSecretRecord) {
-	if r.notifier == nil {
-		return
-	}
-	r.notifier.Enqueue(model.CommandAlert{
-		RuleName: "改密計劃失敗",
-		Command: fmt.Sprintf("%s asset_id=%d account=%s reason=%s（詳細遠端訊息見伺服器日誌）",
-			job.source, rec.AssetID, rec.AccountUsername, rec.Error),
-		Severity: "high",
-	})
+	enqueueRotationAlert(r.notifier, notifycat.RotationAlertPlanFailed,
+		fmt.Sprintf("%s asset_id=%d account=%s reason=%s（詳細遠端訊息見伺服器日誌）",
+			job.source, rec.AssetID, rec.AccountUsername, rec.Error))
 }
 
 // applySSHKeyOnTargetChecked SSH 金鑰輪替的遠端段：加新 → 驗新 → 刪舊。

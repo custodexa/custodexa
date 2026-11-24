@@ -119,6 +119,8 @@ type RetentionService struct {
 	// 不在檢查點跨鍵約束內（鍵盤紀錄檔不在鏈內），也不記保留水位
 	keystrokes KeystrokeRetention
 
+	// clock 本次執行的時間基準；nil＝time.Now（測試注入可控時鐘）
+	clock func() time.Time
 	// watermarks 保留期清除水位。nil＝不記水位
 	//（單元測試與 scripts/retention_smoke.go），此時工作台一律回 present——
 	// 那是冷啟動語義，不是錯誤
@@ -218,6 +220,9 @@ func (s *RetentionService) PurgeAll() []PurgeResult {
 	// 單一時間基準：各目標若各自呼叫 time.Now()，水位上界會因執行耗時而
 	// 逐類漂移，跨類別比對時看起來像是清除進度不一致
 	runAt := time.Now()
+	if s.clock != nil {
+		runAt = s.clock()
+	}
 	for _, target := range retentionTargets {
 		days := s.policy.GetInt(target.policyKey)
 		result := PurgeResult{Target: target.table, Days: days}
@@ -233,6 +238,12 @@ func (s *RetentionService) PurgeAll() []PurgeResult {
 		results = append(results, result)
 		s.logPurge(result, target.label)
 		s.recordWatermark(target.table, days, partial, runAt)
+	}
+
+	// 通知內容與一般通知的待投遞紀錄：固定 30 天（程式常數，不是政策鍵），與告警記錄保留天數脫鉤
+	if result, ran := s.purgeNotificationMessages(runAt); ran {
+		results = append(results, result)
+		s.logPurge(result, "通知投遞紀錄")
 	}
 
 	// 檢查點鏈自身的到期修剪（log-retention「檢查點自身的保留與鏈修剪」）。

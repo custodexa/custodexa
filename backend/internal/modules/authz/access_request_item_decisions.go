@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/custodexa/backend/internal/kernel/dberr"
@@ -235,6 +236,10 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 	now := time.Now()
 	reached := false
 	var maxVotes int64
+	// decided 本次投下核准票的項目資產（依處理順序）；以移除方式拒掉的項目不計，也不產生通知
+	var decided []uint
+	// 這次呼叫中達門檻而核准的各項的核准時長（審核人可以下修，不一定等於申請時長）
+	var approvedMinutes []int
 	required := s.policies.GetInt(policy.PolicyAccessRequestMinApprovals)
 	if required < 1 {
 		required = 1
@@ -329,6 +334,7 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 				}
 				return err
 			}
+			decided = append(decided, item.AssetID)
 			vote := model.AccessRequestApproval{RequestID: req.ID, ItemID: &item.ID, ApproverID: actorID, Note: input.Note}
 			if err := tx.Create(&vote).Error; err != nil {
 				if dberr.IsUniqueViolation(err) {
@@ -349,6 +355,10 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 				if err := s.approveInTx(tx, req, &actorID, inForItem(in, item.ID), false, now); err != nil {
 					return err
 				}
+				// 與 approveItemInTx 同一組輸入、同一個算法；上面已驗證過不會回錯
+				if minutes, _, _, e := decisionValues(req, item, in, now); e == nil {
+					approvedMinutes = append(approvedMinutes, minutes)
+				}
 			}
 		}
 		if selected == 0 || input.Items != nil && selected != len(input.Items) {
@@ -357,19 +367,62 @@ func (s *AccessRequestService) approveRequestItems(actorID uint, isAdmin bool, r
 		if err := s.aggregateItems(tx, req, now); err != nil {
 			return err
 		}
-		return tx.Model(req).Update("decision_note", input.Note).Error
+		if err := tx.Model(req).Update("decision_note", input.Note).Error; err != nil {
+			return err
+		}
+		// 一次呼叫一則：標題是整張申請（資產與總台數，與拒絕、撤銷相同）。這次核准沒有涵蓋整張申請的全部項目時
+		// （其他項目不論是待審、已拒絕或已移除），以逐項句型指明被核准的那一項（取第一個被決定的項目），
+		// 這次核准多於一項時帶項數，仍有待審項時帶待審項數；不以整單措辭表述
+		if len(decided) > 0 {
+			notice := requestNotice{requestID: req.ID, assetID: req.AssetID, assetCount: len(items),
+				requesterID: req.RequesterID, partyKey: "decider_name", partyID: actorID, actorIsParty: true}
+			if reached {
+				notice.event = notifycat.EventAccessRequestApproved
+				// 通知寫的是「可連線多久」，以核准時長為準；這次核准的各項時長不同時不帶，
+				// 不以申請時長或其中一項的時長代表全部
+				notice.extra = durationParams(uniformMinutes(approvedMinutes))
+				notice.extra["mode"] = notifycat.ApprovalModeManual
+				var stillPending int64
+				if err := tx.Model(&model.AccessRequestItem{}).Where("request_id = ? AND status = ?", req.ID, model.AccessRequestPending).
+					Count(&stillPending).Error; err != nil {
+					return err
+				}
+				if len(decided) < len(items) {
+					notice.itemAssetID = decided[0]
+					if len(decided) > 1 {
+						notice.extra["approved_item_count"] = strconv.Itoa(len(decided))
+					}
+					if stillPending > 0 {
+						notice.extra["pending_item_count"] = strconv.FormatInt(stillPending, 10)
+					}
+				}
+			} else {
+				notice.event = notifycat.EventAccessRequestApprovalProgress
+				notice.extra = map[string]string{"votes": fmt.Sprint(maxVotes), "required": fmt.Sprint(required)}
+			}
+			s.notifyInTx(tx, notice)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	if reached {
-		s.notify(notifycat.EventAccessRequestApproved, req.ID, s.assetName(req.AssetID), map[string]string{"mode": notifycat.ApprovalModeManual})
-	} else {
-		s.notify(notifycat.EventAccessRequestApprovalProgress, req.ID, s.assetName(req.AssetID), map[string]string{"votes": fmt.Sprint(maxVotes), "required": fmt.Sprint(required)})
-	}
 	return s.reload(requestID)
 }
 func inForItem(in DecideInput, id uint) DecideInput { in.ItemID = id; in.Items = nil; return in }
+
+// uniformMinutes 各項的值都相同時回該值，否則（含沒有任何一項）回 0。
+func uniformMinutes(values []int) int {
+	if len(values) == 0 {
+		return 0
+	}
+	for _, v := range values[1:] {
+		if v != values[0] {
+			return 0
+		}
+	}
+	return values[0]
+}
 
 // approveInTx is shared by manual approval, reason/open auto approval and break-glass.
 func (s *AccessRequestService) approveInTx(tx *gorm.DB, req *model.AccessRequest, actor *uint, input DecideInput, auto bool, now time.Time) error {
@@ -439,6 +492,7 @@ func (s *AccessRequestService) RejectItem(actorID uint, isAdmin bool, requestID,
 			return err
 		}
 		count := 0
+		var rejectedAsset uint
 		for i := range items {
 			item := &items[i]
 			if itemID != 0 && item.ID != itemID {
@@ -448,6 +502,7 @@ func (s *AccessRequestService) RejectItem(actorID uint, isAdmin bool, requestID,
 				continue
 			}
 			count++
+			rejectedAsset = item.AssetID
 			if !isAdmin {
 				covered, e := s.authzRepo.ApproverScopeCoversRequestTx(tx, actorID, item.AssetID, req.RequesterID)
 				if e != nil {
@@ -471,11 +526,21 @@ func (s *AccessRequestService) RejectItem(actorID uint, isAdmin bool, requestID,
 		if err := s.aggregateItems(tx, req, now); err != nil {
 			return err
 		}
-		return tx.Model(req).Update("decision_note", note).Error
+		if err := tx.Model(req).Update("decision_note", note).Error; err != nil {
+			return err
+		}
+		// 整單拒絕：整單資產加總台數；逐項拒絕另帶被拒那一項的資產
+		notice := requestNotice{event: notifycat.EventAccessRequestRejected, requestID: req.ID,
+			assetID: req.AssetID, assetCount: len(items), requesterID: req.RequesterID,
+			partyKey: "decider_name", partyID: actorID, actorIsParty: true}
+		if itemID != 0 {
+			notice.itemAssetID = rejectedAsset
+		}
+		s.notifyInTx(tx, notice)
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	s.notify(notifycat.EventAccessRequestRejected, req.ID, s.assetName(req.AssetID), nil)
 	return s.reload(req.ID)
 }

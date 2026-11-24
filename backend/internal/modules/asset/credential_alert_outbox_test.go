@@ -28,7 +28,7 @@ func ensureRealAlertTables(t *testing.T, db *gorm.DB) {
 		blocked BOOLEAN NOT NULL DEFAULT 0,
 		kind TEXT NOT NULL DEFAULT 'rule', reason_code TEXT NOT NULL DEFAULT ''
 	)`).Error)
-	require.NoError(t, db.AutoMigrate(&model.SystemAlertDetail{}, &model.SystemAlertOutbox{},
+	require.NoError(t, db.AutoMigrate(&model.SystemAlertDetail{}, &model.NotificationDelivery{},
 		&model.SystemAlertSeverityOverride{}, &model.NotificationChannel{}))
 }
 
@@ -83,7 +83,7 @@ func TestCredentialAlertOutboxIntegration(t *testing.T) {
 		}).Error)
 		credID, accounts := f.sharedOn(t, "resend-shared", "ops", "old-shared", "10.52.1.1", "10.52.1.2")
 
-		require.NoError(t, f.db.Migrator().DropTable(&model.SystemAlertOutbox{}))
+		require.NoError(t, f.db.Migrator().DropTable(&model.NotificationDelivery{}))
 		_, err := f.rotations.Detach(adminCtx(), credID, accounts[0],
 			DetachCredentialRequest{Source: DetachSourceCustom, Password: "Declared-Secret-9x"})
 		require.Error(t, err, "佇列寫入失敗必須讓整筆失敗")
@@ -93,7 +93,7 @@ func TestCredentialAlertOutboxIntegration(t *testing.T) {
 		assert.EqualValues(t, 0, tableRows(t, f.db, "change_secret_candidates"), "沒有候選")
 		assert.Equal(t, credID, f.binding(t, accounts[0]).CredentialID)
 
-		require.NoError(t, f.db.AutoMigrate(&model.SystemAlertOutbox{}))
+		require.NoError(t, f.db.AutoMigrate(&model.NotificationDelivery{}))
 		_, err = f.rotations.Detach(adminCtx(), credID, accounts[0],
 			DetachCredentialRequest{Source: DetachSourceCustom, Password: "Declared-Secret-9x"})
 		require.NoError(t, err)

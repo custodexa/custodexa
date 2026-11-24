@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/session"
+	"github.com/gin-gonic/gin"
 )
 
 // MyConnectionServiceInterface 自助連線服務接口（用於測試注入）

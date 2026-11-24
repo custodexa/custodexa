@@ -59,6 +59,19 @@ func openDailyReviewPG(t *testing.T) *gorm.DB {
 // 或看不到是誰先簽。兩個交易都先通過「查無」才放行寫入，恰一筆成功、另一筆撞唯一
 // 索引並轉為 409，回應帶贏家的完整紀錄
 func TestDailyReviewSignConflictReturnsRecord(t *testing.T) {
+	runDailyReviewSignConflict(t, map[string]string{"review_date": "2026-10-10"})
+}
+
+// TestDailyReviewSignConflictWithBatchID 擋：多日簽核的請求（帶批次關聯碼）同時簽同一天時
+// 唯一性失守、兩筆都成功。兩個請求各帶不同批次的關聯碼，模擬兩位稽核員各自的批次
+func TestDailyReviewSignConflictWithBatchID(t *testing.T) {
+	runDailyReviewSignConflict(t, map[string]string{"review_date": "2026-10-10", "batch_id": "PER_USER"})
+}
+
+// runDailyReviewSignConflict 兩個請求同時簽 10-10；payload 的 batch_id 為 PER_USER 時
+// 每個請求各帶一個不同的關聯碼
+func runDailyReviewSignConflict(t *testing.T, payload map[string]string) {
+	t.Helper()
 	db := openDailyReviewPG(t)
 	taipei, _ := time.LoadLocation("Asia/Taipei")
 	since := time.Date(2026, 10, 1, 0, 0, 0, 0, taipei)
@@ -102,7 +115,17 @@ func TestDailyReviewSignConflictReturnsRecord(t *testing.T) {
 	for _, user := range []string{"auditor-a", "auditor-b"} {
 		user := user
 		go func() {
-			body, _ := json.Marshal(map[string]string{"review_date": "2026-10-10"})
+			p := map[string]string{}
+			for k, v := range payload {
+				p[k] = v
+			}
+			if p["batch_id"] == "PER_USER" {
+				p["batch_id"] = map[string]string{
+					"auditor-a": "0d6f8b1c-2a3e-4f50-8a61-7b8c9d0e1f2a",
+					"auditor-b": "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
+				}[user]
+			}
+			body, _ := json.Marshal(p)
 			req := httptest.NewRequest(http.MethodPost, "/daily-reviews", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Test-User", user)

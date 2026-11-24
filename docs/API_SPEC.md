@@ -1,6 +1,9 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-11-18（私鑰的公鑰指紋：憑證列表、詳情與四個憑證寫入回應的 `CredentialDTO`，以及完整形狀的資產帳號列（列表、單筆讀取與五個帳號寫入端點）新增選用欄位 `private_key_fingerprint`（`SHA256:` 開頭），只在私鑰的公鑰已知時出現；憑證寫入回應只在呼叫者能檢視該筆憑證時帶此欄；精簡形狀與引用範圍外憑證的收窄列不帶。人工輸入私鑰的寫入端點改為另檢查私鑰與其內含公鑰是否相符，不相符時與其他無法解析的私鑰同一個錯誤碼。帳號列的指紋與憑證讀取同一個檢視判定：有完整形狀而沒有 `credential:view` 者不帶。DSA 私鑰照常接受但沒有指紋。路由未變）
+> 最後更新：2026-11-23（每日簽核大量處理：新增路由 `POST /command-alerts/batch-review`（一次請求審閱至多 500 筆告警，`alert:manage`；可含審閱者本人觸發的告警，須明示確認筆數；逐筆回報結果，已有審閱結果者帶既有處置分類；交易 30 秒時限、不因用戶端中斷而中止；新增錯誤碼 `VALIDATION_ALERT_BATCH_TOO_LARGE`、`CONFLICT_ALERT_BATCH_SELF_ACK`）；`GET /daily-reviews/days/:date` 的未審閱告警新增 `reason_code`、`username`、`asset_name`、`target_kind`、`target_id`、`params`；`GET /daily-reviews/pending` 每一天新增 `unreviewed_alert_types`；單筆審閱的稽核列 details 新增 `self_review`；`RULE_ALERT_BATCH_SELF_TRIGGERED` 的說明改寫。路由新增一條）
+> 前次更新：2026-11-21（登入後回到原頁：`POST /auth/login` 新增選填 `next`，成功與三種中間狀態回應帶 `redirect_next`；單一登入發起的 `next` 改用同一個較窄的判準，只收七個站內頁面與 `tab`、`request`、`user_id` 三個查詢鍵，其他路徑改回 `/`。定向通知：新增系統事件 `targeted_notification_undelivered`，`notification_channel_changed` 新增 `dm_auto_off`；改密工作提醒改以系統事件 `credential_rotation_alert` 送出，不再是指令告警的形狀；通道新增 `direct_message_enabled`（對個人派送）與唯讀的 `direct_message_url_allowed`；投遞紀錄新增 `audience` 篩選與每列 `audience`、`recipient_username`、`recipient_slack_id`；測試發送新增 `to_self`；新增錯誤碼 `VALIDATION_CHANNEL_DM_CONFLICT`、`VALIDATION_CHANNEL_DM_URL_NOT_ALLOWED`、`VALIDATION_CHANNEL_DM_TYPE_UNSUPPORTED`、`VALIDATION_DELIVERY_AUDIENCE`；路由不變。通知投遞層：新增路由 `GET /notification-channels/:id/deliveries`（投遞紀錄，分頁，`state` 篩選，回應帶 `pending_counts` 與每列 `throttled_since`）；通道新增類型 `slack_app` 與欄位 `target`，回應新增 `destination_changed_at`、`destination_version`，列表另帶 `health`；更新改為在交易內依現值判斷：改型別須同時帶網址、`slack_app` 改網址須同時帶 token；測試發送本文新增可選的 `shape`，平台回報的失敗回 200 帶 `platform_error`；新增錯誤碼 `VALIDATION_CHANNEL_TARGET`、`VALIDATION_CHANNEL_SECRET`、`VALIDATION_CHANNEL_SECRET_REQUIRED`、`VALIDATION_CHANNEL_TYPE_CHANGE_NEEDS_URL`、`VALIDATION_CHANNEL_URL_CHANGE_NEEDS_SECRET`、`VALIDATION_DELIVERY_STATE`；webhook 三種形狀新增頂層 `notification` 物件，既有欄位不變，`management_role_granted`（角色定義變更）不再把角色名稱放在 `recipient`（值的更正），連線申請的逐項拒絕與逐項撤銷新增 `item_asset_name`；系統告警明細的送達項新增 `reason_code`、`last_error`、`end_reason`、`channel_disabled`；投遞規則改為最多嘗試 48 次，指令告警與系統事件改為持久投遞；連線申請的逐項核准新增 `item_asset_name`、`approved_item_count` 與 `pending_item_count`，建立與核准新增 `duration_minutes`（`duration_hours` 維持只在整小時時帶），核准、拒絕、撤銷的 `notification.actor` 改為做決定或撤銷的人；投遞紀錄、通道健康與系統告警明細的錯誤文字只留 HTTP 狀態碼與平台錯誤碼；測試發送被轉址規則擋下時回 200 帶 `reason_code`。路由新增一條）
+> 前次更新：2026-11-20（每日簽核可以多日一起簽：`POST /daily-reviews` 新增選填的 `batch_id`（UUID），同一批逐日送出的請求帶同一個值，記入該筆稽核列的 details；格式不合回 400 `VALIDATION_BAD_REQUEST` 且不產生簽核紀錄。簽核紀錄、Review 與證據包的欄位不變。路由未變）
+> 前次更新：2026-11-18（私鑰的公鑰指紋：憑證列表、詳情與四個憑證寫入回應的 `CredentialDTO`，以及完整形狀的資產帳號列（列表、單筆讀取與五個帳號寫入端點）新增選用欄位 `private_key_fingerprint`（`SHA256:` 開頭），只在私鑰的公鑰已知時出現；憑證寫入回應只在呼叫者能檢視該筆憑證時帶此欄；精簡形狀與引用範圍外憑證的收窄列不帶。人工輸入私鑰的寫入端點改為另檢查私鑰與其內含公鑰是否相符，不相符時與其他無法解析的私鑰同一個錯誤碼。帳號列的指紋與憑證讀取同一個檢視判定：有完整形狀而沒有 `credential:view` 者不帶。DSA 私鑰照常接受但沒有指紋。路由未變）
 > 前次更新：2026-11-18（管理 API 的設計規則對齊：`POST /users` 使用者名稱重複由 400 改為 409，機器碼仍為 `CONFLICT_USERNAME_EXISTS`；自訂角色修改與刪除時版本過期改回新錯誤碼 `ROLE_DEFINITION_VERSION_CONFLICT`，`ROLE_DEFINITION_CONFLICT` 只表示名稱重複；`DELETE /credentials/:id` 仍有掛載時的 409 本文改走統一錯誤封套，新增 `error` 欄，`code`、`assets`、`out_of_scope_asset_count` 照舊；`GET /assets` 與 `GET /users` 的 `page_size` 上限 1000，超過時套用 1000 並在回應回報；`GET /role-definitions` 新增名稱精確查找參數 `name`；`POST /users` 電子郵件已被其他帳號使用由 500 改為 409 `CONFLICT_EMAIL`；同名或同一電子郵件的使用者並行建立、自訂角色同名的並行建立或改名，未搶到的請求改回對應的 409，不再回 500；`page_size` 超出整數範圍時套用預設 20 的說明補上。路由未變）
 > 前次更新：2026-11-18（個人 API token 的權限：每個授權角色各自帶層級 `read`（唯讀）或 `read_write`（讀寫）；`POST /my/api-tokens` 新增 `roles`（逐角色指定層級，與 `role_ids` 二擇一，`role_ids` 等同各角色皆為讀寫）；TokenView 的 `granted_roles` 每項新增 `level`、TokenView 新增彙總 `access`（`read`、`read_write`、`mixed`）與升級前建立的標記 `created_before_levels`，`GET /api-tokens/verify` 的 `token` 新增 `access`；以 token 認證的寫入請求只計入層級為讀寫的授權角色；每個授權角色皆為唯讀的 token 呼叫寫入端點回 403 新錯誤碼 `AUTH_API_TOKEN_READ_ONLY`；建立 token 的稽核細節、高權限告警（新參數 `privileged_role_levels`、`granted_role_levels`、`access`）、角色指派預覽的 `api_tokens` 與操作日誌詳情的 `api_token` 物件（新增 `access`）帶層級。路由未變）
 > 前次更新：2026-11-15（外部群組映射規則的宣告式契約：新增兩條單筆讀取路由 `GET /identity-sources/:type/:sourceId/role-mappings/:ruleId`、`GET /identity-sources/:type/:sourceId/user-group-mappings/:ruleId`；兩類規則的列表新增精確查找參數 `match_value`，以及目標參數 `role`、`user_group_id`；同一來源內群組值與目標皆相同的規則，建立與修改改回 409 `MAPPING_RULE_EXISTS`，原為 500）
@@ -136,8 +139,8 @@
 | 稽核匯出 | 4 | `/api/v1/audit-export` | 事件報告同步匯出＋證據包非同步 job（發起/清單/下載）（PCI 10.5.1） |
 | 存取複審 | 4 | `/api/v1/access-reviews` | 存取矩陣/複審歷史/單筆快照/簽核（PCI 7.2.4；全端點無條件守門） |
 | 告警規則 | 4 | `/api/v1/alert-rules` | 輸入指令／輸出敏感資料規則 CRUD |
-| 告警查詢 / 審閱 | 2 | `/api/v1/command-alerts` | 告警記錄查詢 + 審閱處置（PCI 10.4.1） |
-| 通知通道 | 5 | `/api/v1/notification-channels` | webhook 通道 CRUD + 測試 |
+| 告警查詢 / 審閱 | 3 | `/api/v1/command-alerts` | 告警記錄查詢 + 審閱處置與批次審閱（PCI 10.4.1） |
+| 通知通道 | 6 | `/api/v1/notification-channels` | 通道 CRUD（webhook／Slack Incoming Webhook／Slack 應用程式）、測試發送、投遞紀錄 |
 | 命令片段 | 4 | `/api/v1/snippets` | user-scoped 片段 CRUD |
 | 改密 | 15 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates`、`/api/v1/change-secret-batches` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除；以帳號為主軸的批次改密 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
@@ -317,6 +320,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/command-alerts` | always |
 | POST | `/api/v1/command-alerts/:id/review` | always |
 | GET | `/api/v1/command-alerts/:id/system-detail` | always |
+| POST | `/api/v1/command-alerts/batch-review` | always |
 | GET | `/api/v1/commands` | always |
 | POST | `/api/v1/compliance/report-jobs` | always |
 | GET | `/api/v1/compliance/snapshot` | always |
@@ -394,6 +398,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/notification-channels` | always |
 | DELETE | `/api/v1/notification-channels/:id` | always |
 | PUT | `/api/v1/notification-channels/:id` | always |
+| GET | `/api/v1/notification-channels/:id/deliveries` | always |
 | POST | `/api/v1/notification-channels/:id/test` | always |
 | GET | `/api/v1/offsite-storage/failures` | always |
 | POST | `/api/v1/offsite-storage/objects/:id/retry` | always |
@@ -1039,8 +1044,10 @@ POST /api/v1/auth/login
 
 **請求**:
 ```json
-{"username": "admin", "password": "admin123"}
+{"username": "admin", "password": "admin123", "next": "/approvals?tab=pending&request=17"}
 ```
+
+`next`（選填）：登入後要回到的站內頁面。不是 JSON 字串（數字、物件、陣列、`null`）時視為未帶，不會因此回 400。它只影響成功與中間狀態回應的 `redirect_next`，不改變任何錯誤回應、限流或稽核；稽核列不記 `next`。判準見下方「登入後的目的地」。
 
 登入為固定順序的 gate chain（登入狀態機）：
 **來源限流 → 鎖定檢查 → 密碼/LDAP 驗證 → 帳號啟用檢查 → 允許來源網段判定 →
@@ -1119,6 +1126,11 @@ MFA 分流（驗證或強制註冊）→ 強制改密 → 發正式 token**。
 `password_max_age_days` 政策（NULL 改密時間戳視為已過期）。合規偵測同時落稽核動作
 `pw_noncompliant`（僅違規類別，無密碼材料）。MFA 用戶的偵測發生在第一階段，第二階段以
 `must_change` 呈現）
+
+**登入後的目的地**（`redirect_next`）：全數通過、`mfa_required`、`mfa_enrollment_required`、`password_change_required` 四種 200 回應都帶 `redirect_next`，值是伺服端判準後的 `next`；沒帶或不合格時為 `"/"`。錯誤回應不帶。前端只採用這個回傳值，在驗證碼、強制註冊、強制改密完成後導向它。判準（帳密登入與單一登入發起共用）：
+- 帶 scheme、主機或使用者資訊，以 `//` 開頭，含反斜線或控制字元，或超過 255 字：回 `"/"`。
+- 路徑（不解碼）須完整符合下列之一，否則回 `"/"`：`/approvals`、`/audit-logs`、`/audit/agent-tasks/{1 到 10 位數字}`、`/agent-breakers`、`/alerts`、`/sessions/{1 到 10 位數字}`、`/notification-channels`。會建立連線或加入會話的頁面（連線頁、工作區、分享頁、即時監看、按鍵紀錄）都不在其中。
+- 查詢字串只保留 `tab`、`request`、`user_id`，依此順序重組；任何值解碼一次後仍含 `%`，或這三個鍵重複出現、值不符 `^[A-Za-z0-9_-]{1,32}$`，整個回 `"/"`；其他鍵與片段丟棄。
 
 **錯誤**: 401 認證失敗、403 帳號已停用（`AUTH_USER_INACTIVE`）或來源不在允許網段
 （`AUTH_SOURCE_NOT_ALLOWED`）、423 帳號已鎖定（連續失敗達門檻，PCI 8.3.4；
@@ -1424,8 +1436,9 @@ POST /api/v1/auth/oidc/exchange
 1. **begin**：前端產生隨機 browser secret 存 `sessionStorage`，只把其 SHA-256 以 `binding`
    查詢參數送出（**明文不離開瀏覽器**）。後端建立流程狀態（state／nonce／PKCE verifier／
    binding hash／redirect_next／簽發當下的 provider 世代）後 **302** 導向 IdP 的授權端點。
-   `binding` 缺漏回 400。`next` 經白名單化：只接受同源相對路徑，scheme-relative（`//evil`）、
-   絕對 URL、反斜線與多重編碼一律退回 `/`（防開放重導向）。
+   `binding` 缺漏回 400。`next` 與帳密登入用同一個判準（見「登入」的「登入後的目的地」）：只接受七個站內頁面樣式與
+   `tab`、`request`、`user_id` 三個查詢鍵，scheme-relative（`//evil`）、絕對 URL、反斜線、多重編碼，以及會建立連線的頁面
+   （例如 `/terminal/7`）一律退回 `/`（防開放重導向）。不合格不回錯誤。
    redirect_uri 固定為 `${PUBLIC_BASE_URL}/api/v1/auth/oidc/callback`（不從請求 Host 推導）。
 
 2. **callback**：IdP 導回。後端以 state **原子消費**流程狀態（僅在未過期時取用並失效），
@@ -1458,7 +1471,7 @@ POST /api/v1/auth/oidc/exchange
    **回應** (200)：
    ```json
    {"login": { "...與 POST /auth/login 完全同形（含 mfa_required／mfa_enrollment_required／password_change_required 分支）..." },
-    "redirect_next": "/assets"}
+    "redirect_next": "/approvals?tab=pending&request=17"}
    ```
 
    `redirect_next` 取自 begin 階段**已驗證**的值，**不於兌換階段重新採信前端提交值**。
@@ -3851,7 +3864,10 @@ POST /api/v1/command-alerts/:id/review
 
 標記告警已審閱並記處置分類與備註；動作入稽核（`resource=command_alert`、`action=update`，
 `error_msg=alert_disposition_<disposition>`）。冪等：重覆審閱同一告警視為更新處置（可修正誤判），
-`reviewed_at` 刷新為最新。
+`reviewed_at` 刷新為最新。這一列的 `details` 帶 `{"self_review": true|false}`（告警的觸發者是否為審閱者本人）；
+讀不到觸發者時不帶這個鍵；帶 `batch_id` 的請求不收本人觸發的告警，`self_review` 恆為 `false`。
+這一列經非同步稽核佇列寫入（與批次審閱端點在交易內寫入的逐筆列不同）。
+不帶 `batch_id` 的請求可以重新審閱，因此也會覆蓋批次審閱端點剛寫下的處置（重新審閱的語義）。
 
 **請求**:
 ```json
@@ -3861,15 +3877,68 @@ POST /api/v1/command-alerts/:id/review
 
 `note` 與 `batch_id` 原樣記入請求的稽核列。
 
-**批次審閱**：前端批次審閱對同一批的每筆告警逐筆呼叫本端點，帶同一個 `batch_id`。帶 `batch_id` 時另有三個條件：
-`note` 去除空白後不得為空且不超過 500 字（400 `VALIDATION_ALERT_BATCH_NOTE`）；審閱者自己連線觸發的告警不收
-（403 `RULE_ALERT_BATCH_SELF_TRIGGERED`，請改用單筆審閱）；只處置送出當下仍未審閱的告警，已有審閱結果者回
-409 `CONFLICT_ALERT_ALREADY_REVIEWED` 且既有處置不變。不帶 `batch_id` 時維持上述冪等語義。批次是逐筆處理，
-可能部分完成；`batch_id` 只讓同批送出的各筆稽核列可辨認，未送出的項目不會有紀錄。
+**帶 `batch_id` 逐筆送出**（既有呼叫端的路徑；介面已改用下方的批次審閱端點）：帶 `batch_id` 時另有三個條件：
+`note` 去除空白後不得為空且不超過 500 字（400 `VALIDATION_ALERT_BATCH_NOTE`）；審閱者本人觸發的告警（不論來自連線中的指令或管理動作）不收
+（403 `RULE_ALERT_BATCH_SELF_TRIGGERED`：這種請求無法表達已確認的本人觸發筆數，請改用批次審閱端點並確認，或不帶 `batch_id` 逐筆審閱）；
+只處置送出當下仍未審閱的告警，已有審閱結果者回 409 `CONFLICT_ALERT_ALREADY_REVIEWED` 且既有處置不變。不帶 `batch_id` 時維持上述冪等語義。
+逐筆送出可能部分完成；`batch_id` 只讓同批送出的各筆稽核列可辨認，未送出的項目不會有紀錄。
 
 **回應** (200): `{"success": true}`
 
-**錯誤**: 400 無效告警 ID、`disposition` 非 `benign`/`escalated`、`batch_id` 非 UUID、`note` 超過 500 字或批次理由不合、403 批次中的本人觸發告警、404 告警不存在、409 批次送出時已有審閱結果、500 內部錯誤。
+**錯誤**: 400 無效告警 ID、`disposition` 非 `benign`/`escalated`、`batch_id` 非 UUID、`note` 超過 500 字或批次理由不合、403 帶 `batch_id` 的本人觸發告警、404 告警不存在、409 帶 `batch_id` 送出時已有審閱結果、500 內部錯誤。
+
+### 告警批次審閱
+
+```
+POST /api/v1/command-alerts/batch-review
+```
+
+**權限**: `alert:manage`（與單筆審閱相同）。API token 與 agent 不開放（與同群組路由一致）。
+
+一次請求以同一處置與同一理由審閱多筆告警，可以包含審閱者本人觸發的告警（不論來自連線中的指令或管理動作），條件是請求明示的本人觸發筆數與伺服端計得的相同。請求本文上限 64 KiB，超過回 400 `VALIDATION_ALERT_REVIEW_REQUEST`。
+
+**請求**:
+```json
+{"alert_ids": [101, 102, 103], "disposition": "benign", "note": "對應變更單 CHG-1123",
+ "batch_id": "6f1c2a0e-8a4b-4c1d-9e2f-0a1b2c3d4e5f", "self_triggered_ack": 2}
+```
+- `alert_ids` 必填，正整數；依首次出現的順序去重，去重後 1 到 500 筆。
+- `disposition` 必填，`benign` 或 `escalated`。
+- `note` 必填，去除空白後不得為空且不超過 500 字。
+- `batch_id` 必填，UUID 格式。由用戶端產生、伺服端不檢查重用；同一次請求的依據是伺服端的請求識別（見下方稽核）。
+- `self_triggered_ack`：請求中由審閱者本人觸發的筆數；沒有本人觸發時為 0 或不帶。伺服端的計數範圍是請求中存在的告警，不論目前是否已審閱；不存在的不計。
+
+**處理**：一個交易、時限 30 秒，不因用戶端中斷連線而中止。交易內以告警編號遞增的順序鎖定請求中存在的告警，核對本人觸發筆數，再依同一順序逐筆以「仍未審閱」為條件寫入處置，全部寫完後集中寫稽核列。已有審閱結果的告警不覆蓋。重疊的批次同時送出時依同一順序取鎖，不互相卡死；後完成的一方對重疊的筆回已有審閱結果。
+
+**回應** (200；通過整批檢查即為 200，業務規則逐筆判定):
+```json
+{"batch_id": "6f1c2a0e-8a4b-4c1d-9e2f-0a1b2c3d4e5f", "limit": 500,
+ "summary": {"reviewed": 2, "already_reviewed": 1, "not_found": 0, "self_triggered": 2},
+ "items": [
+   {"id": 101, "result": "reviewed", "self_triggered": true},
+   {"id": 102, "result": "reviewed", "self_triggered": true},
+   {"id": 103, "result": "already_reviewed", "self_triggered": false, "reviewed_by_you": false, "existing_disposition": "escalated"}
+ ]}
+```
+- `items` 依請求去重後的順序；`result` 為 `reviewed`（這一次寫入）、`already_reviewed`（送出前已有審閱結果，既有處置不變）、`not_found`（告警不存在）。
+- `reviewed_by_you`（既有結果是否由本人處置）與 `existing_disposition`（既有處置分類）只在 `already_reviewed` 出現；不回既有審閱者的名稱。`not_found` 的 `self_triggered` 為 `false`。
+- 同一批再送一次：每一筆回 `already_reviewed`、`reviewed_by_you: true`，既有處置、理由與審閱時間不變，不新增處置稽核列（只多一列摘要）。
+- 用戶端等待這個呼叫的時限應長於伺服端交易時限（介面為 45 秒）。
+
+**整批拒收**（任何一筆都不寫）:
+
+| HTTP | code | 頂層附帶欄位 | 情況 |
+|---|---|---|---|
+| 400 | `VALIDATION_ALERT_REVIEW_REQUEST` | — | 本文不是 JSON 或超過 64 KiB、缺欄位、`alert_ids` 為空或含 0 或負數、`batch_id` 不是 UUID |
+| 400 | `VALIDATION_ALERT_DISPOSITION` | — | 處置分類不合法 |
+| 400 | `VALIDATION_ALERT_BATCH_NOTE` | — | 理由去空白後為空或超過 500 字 |
+| 400 | `VALIDATION_ALERT_BATCH_TOO_LARGE` | `limit`（500） | 去重後超過 500 筆 |
+| 409 | `CONFLICT_ALERT_BATCH_SELF_ACK` | `self_triggered`（伺服端計得的筆數） | `self_triggered_ack` 與本人觸發筆數不符，含沒有本人觸發卻帶非零值 |
+| 403 | 權限閘既有碼 | — | 沒有 `alert:manage` |
+| 500 | `INTERNAL_ALERT_REVIEW` | — | 交易在提交前失敗（資料庫錯誤或 30 秒時限在提交前到期），確定已回滾，整批沒有生效 |
+| 500 | `INTERNAL_COMMAND_ALERT_QUERY` | — | 提交階段出錯，無法確定是否已提交；呼叫端應以 `GET /command-alerts?ids=` 查回實際結果，不可當成沒有生效 |
+
+**稽核**：同一交易內，每一筆寫入的告警一列（`action=update`、`resource=command_alert`、`resource_id=告警編號`、`error_msg=alert_disposition_<disposition>`，`details` 為 `{batch_id, batch_size, note, disposition, self_review}`；`batch_size` 是這一次請求去重後的筆數，同一關聯碼的處置列數可以少於它，差額是被拒的筆），另一列這次請求的摘要（`action=review`、`resource=command_alert`、沒有 `resource_id`，`details` 為 `{event: "alert_batch_review", batch_id, batch_size, reviewed, already_reviewed, not_found, self_triggered, self_triggered_ack, disposition, note, request_id}`）。這些列都帶伺服端的請求識別、來源位址、方法與路徑，請求識別與稽核中介層為這次請求寫的請求列相同。請求列的動作為 `review`，`request_body` 放行 `note`、`batch_id`、`self_triggered_ack`，`alert_ids` 遮罩。被拒的筆不寫處置稽核列。`self_review` 只在稽核紀錄，簽核紀錄與告警清單不另加欄位；操作日誌隨證據包匯出時，其 `details` 照常收錄。
 
 ### 系統告警目錄與明細
 
@@ -3883,14 +3952,14 @@ POST /api/v1/command-alerts/:id/review
 |---|---|---|---|
 | GET | `/system-alert-types` | `systemalert:manage` | 依登錄順序回 `{types: [{key, group, default_severity, effective_severity, adjusted, recent_30d?}]}`；呼叫者另有 `audit:view` 時才帶 `recent_30d`（近 30 天該類型筆數） |
 | PUT | `/system-alert-types/:key` | `systemalert:manage` | 只接受 `{"severity": "high" \| "medium" \| "low"}`，回 `{key, severity_before, severity_after}` |
-| GET | `/command-alerts/:id/system-detail` | `audit:view` | 一筆系統告警的明細：類型、分組、產生當下的分級、操作者、目標、宣告參數、`correlation_id` 對應的操作日誌 `audit_log_id`（找不到為 null）、該筆的來源位址 `client_ip` 與請求識別 `request_id`（找不到或該筆沒有時為空字串）、操作者的使用者編號 `actor_user_id`（系統動作為 0）、各目的地的 `deliveries[]{dest_type, dest_name, state, attempts, delivered_at?, next_attempt_at}`；`management_role_granted` 另帶 `scope_nodes[]{id, path}`（發放含節點範圍時的節點清單，節點已刪除時 `path` 為空字串），其宣告參數新增 `scope_node_ids`（升冪逗號接）與 `scope_node_count`（不重複節點數，清單被截短時仍為實際數量） |
+| GET | `/command-alerts/:id/system-detail` | `audit:view` | 一筆系統告警的明細：類型、分組、產生當下的分級、操作者、目標、宣告參數、`correlation_id` 對應的操作日誌 `audit_log_id`（找不到為 null）、該筆的來源位址 `client_ip` 與請求識別 `request_id`（找不到或該筆沒有時為空字串）、操作者的使用者編號 `actor_user_id`（系統動作為 0）、各目的地的 `deliveries[]{dest_type, dest_name, state, attempts, delivered_at?, next_attempt_at, reason_code, last_error, end_reason, channel_disabled}`（後四欄與投遞紀錄路由同名同語義；`channel_disabled` 為來源通道目前已停用，通道已刪除時為 `false`）；`management_role_granted` 另帶 `scope_nodes[]{id, path}`（發放含節點範圍時的節點清單，節點已刪除時 `path` 為空字串），其宣告參數新增 `scope_node_ids`（升冪逗號接）與 `scope_node_count`（不重複節點數，清單被截短時仍為實際數量） |
 
 - `PUT` 嚴格解碼：主體帶 `severity` 以外的任何欄位（含啟停或刪除意圖）回 400 `VALIDATION_SYSTEM_ALERT_LOCKED`；
   值不在三值內回 400 `VALIDATION_SYSTEM_ALERT_SEVERITY`；未登錄的鍵回 404 `NOTFOUND_SYSTEM_ALERT_TYPE`。
   分級覆寫與審計（`resource=system_alert_type`、`action=update`，details 記類型鍵與前後分級）同一交易，
   審計寫不進去即不改分級。沒有刪除或停用的路由。
 - `system-detail` 對不存在或不是系統告警的列回 404 `NOTFOUND_COMMAND_ALERT`。投遞狀態 `state`
-  四值：`pending`／`retrying`／`delivered`／`abandoned`；明細不含目的地網址、密鑰或錯誤原文。
+  四值：`pending`／`retrying`／`delivered`／`abandoned`（系統安全告警不會被取消）；明細不含目的地網址或密鑰；`last_error` 只留 HTTP 狀態碼與平台錯誤碼（例如 `HTTP 404`、`HTTP 200, platform error: not_in_channel`），連線錯誤為空字串、以 `reason_code` 表達，與投遞紀錄相同。
 - 產生告警的業務寫入若告警寫不進去，整筆回滾，回該端點既有的 500 內部錯誤碼（`INTERNAL_SYSTEM_ALERT_RAISE` 用於分級調整寫入失敗）。
 
 **分級只影響呈現與送出順序，不決定是否產生或送出**：每筆系統告警在產生當下為**每一個啟用中的通知通道**
@@ -3899,74 +3968,193 @@ POST /api/v1/command-alerts/:id/review
 syslog 轉發照常。啟用中但網址或密鑰密文解不開的通道不擋下產生告警的業務寫入：告警與其他目的地照常，
 該通道在 `deliveries` 中是一筆 `abandoned`、`attempts` 為 0 的投遞（伺服器日誌另記原因）；這樣的通道仍可修改或刪除。
 
-**投遞語義**：投遞佇列存在資料庫，由背景程序每 2 秒處理一輪，服務重啟後依資料庫狀態續送。
-送達以對端回 2xx 為準。失敗以 1 秒起倍增、上限 10 分鐘的間隔重試，自排入起 72 小時仍未送達即標為
-`abandoned`（明細可見，並記伺服器日誌），不提供人工重送。語義為**至少一次**：重試可能讓收端收到重複，
-收端以 `delivery_id` 去重：它是排入當下給每筆投遞的隨機識別（32 個十六進位字元的字串，不是佇列列編號），
-重送不變；還原備份後新產生的投遞必為新值，不會與還原前發出的識別重複，收端已見識別的紀錄不必重設。重送一律用排入當下的目的地快照，通道之後改址或刪除不影響已排入的投遞。
+**投遞語義**：系統安全告警與指令告警、系統事件共用同一套持久投遞（規則見「通知通道 API」的「投遞規則」）。
+系統安全告警在產生當下為每個目的地建立一筆帶快照的投遞：目的地的類型、網址、secret（Slack 應用程式為 token）、
+目標與語系都取產生當下的值，之後通道改設定、停用或刪除都不影響已排入的投遞，照常依快照送出。
+啟用中且類型、網址、secret、目標都相同的多個通道只排一筆（去重）。送達以對端回 2xx 為準
+（Slack 應用程式另需回應本文的 `ok` 為 `true`）。每筆最多嘗試 48 次，失敗後等待 1 秒起倍增、上限 2 小時，
+約在第一次失敗後 70 小時標為 `abandoned`（明細可見，並記伺服器日誌），不提供人工重送。語義為**至少一次**：
+重試可能讓收端收到重複，收端以 `delivery_id` 去重：它是排入當下給每筆投遞的隨機識別（32 個十六進位字元的字串，
+不是佇列列編號），重送不變；還原備份後新產生的投遞必為新值，不會與還原前發出的識別重複，收端已見識別的紀錄不必重設。
+升級前已排入的投遞原地沿用，保留快照、投遞識別與嘗試次數，受同一個次數上限約束。
 syslog 轉發由同一背景程序對每筆告警做一次。
 
-webhook 通道收到的形狀（散文不入 payload；有 secret 時沿用 `X-OT-Signature`）：
+webhook 通道收到的形狀（散文不入 payload；有 secret 時沿用 `X-OT-Signature`）。`notification` 物件的欄位見「通知通道 API」：
 
 ```json
 {"event": "system_security_alert",
  "alert": {"id": 88, "type": "notification_channel_changed", "severity": "high",
            "occurred_at": "…", "actor": {"user_id": 1, "username": "admin"},
            "target": {"kind": "notification_channel", "id": "3"}, "params": {"change": "updated"}},
- "delivery_id": "3f9c2a7e0b1d4c6e8a5f7b9d1e3c5a70", "sent_at": "…"}
+ "delivery_id": "3f9c2a7e0b1d4c6e8a5f7b9d1e3c5a70", "sent_at": "…",
+ "notification": {"version": 1, "category": "system_security_alert", "type": "notification_channel_changed",
+                  "severity": "high", "occurred_at": "2026-11-21T02:00:00Z", "sent_at": "2026-11-21T02:00:01Z",
+                  "delivery_id": "3f9c2a7e0b1d4c6e8a5f7b9d1e3c5a70",
+                  "actor": {"user_id": 1, "name": "admin"},
+                  "target": {"kind": "notification_channel", "id": "3", "name": "ops-webhook"},
+                  "params": {"change": "updated", "channel_name": "ops-webhook"}}}
 ```
 
-Slack 通道依該通道的 `language` 由伺服端翻譯目錄渲染類型名稱、分級與參數。
+類型未登錄或明細無法解析時照樣送這個形狀：`alert.params` 為空物件，`notification.params` 為空物件且 `notification.degraded` 為 `true`；Slack 兩型改送降級文字。
+
+**參數的值的更正**（欄位名稱與型別不變）：角色定義變更所產生的 `management_role_granted`（`path` 為 `role_definition`）
+先前把角色名稱放在 `recipient`；現在不帶 `recipient`，改帶 `other_holder_count`（受影響的其他持有者人數，排除操作者本人）。
+`self_privilege_*` 由角色定義變更產生時同樣新增 `other_holder_count`。其餘類型只新增名稱參數（例如 `asset_name`、`session_username`、`channel_name`），既有參數的值不變；人員名稱一律是登入帳號。
+
+Slack 兩型依該通道的 `language` 由伺服端翻譯目錄渲染類型名稱、分級與參數。
 
 ---
 
 ## 通知通道 API
 
-**權限**：本節路由（含測試發送）需 `notification_channel:manage`，缺此能力回 403 `AUTH_PERMISSION_DENIED`（單一形狀）。
+**權限**：本節路由（含測試發送與投遞紀錄）需 `notification_channel:manage`，缺此能力回 403 `AUTH_PERMISSION_DENIED`（單一形狀）。
 
-一般告警（指令規則、稽核降級等）產生時異步推送 JSON payload 至推送門檻放行的啟用通道（見下方 `min_severity`）；設定 secret 時以
-HMAC-SHA256 簽名（`X-OT-Signature` header）。失敗重試 3 次（1s/2s/4s）後放棄並記 log。
-系統安全告警不走這條路徑，見「系統告警目錄與明細」。
+**通道類型**：`webhook`（JSON 本文，設定 secret 時以 HMAC-SHA256 簽名，`X-OT-Signature` header）、
+`slack`（Slack Incoming Webhook，送文字，沒有 secret）、`slack_app`（Slack 應用程式：以機器人 token 呼叫
+Slack Web API 送到 `target` 指定的頻道，`Authorization: Bearer <token>`，不附簽章；同一目的地每秒最多送出一則）。
+
+**投遞規則**（三類通知共用：系統安全告警、指令告警、系統事件）：
+- 產生點只寫一筆通知內容（系統安全告警另在產生交易內直接建立帶快照的投遞，見「系統告警目錄與明細」）；
+  背景程序每 2 秒一輪，把指令告警與系統事件分派到當下啟用中的通道（指令告警另依 `min_severity` 門檻，
+  門檻只在分派時判斷一次），每個通道一筆投遞，並在分派時以識別碼解析人員、資產、通道等名稱（人員名稱一律是登入帳號），
+  之後不再變動。通知內容寫不進去時，產生它的操作照常完成，這則通知遺失並開啟稽核失效事件（機制 `notification_delivery`）；
+  分派持續失敗的內容會被終止（機制 `notification_dispatch`）。
+- 指令告警與系統事件的投遞**不帶快照**：每次送出時讀通道當下的網址、secret、token、目標與語系；通道停用或刪除後，
+  仍在等待的投遞標為 `canceled`（`end_reason` 為 `channel_disabled`／`channel_deleted`），不計次。
+- 每筆投遞最多嘗試 48 次（含第一次），第 n 次失敗後等待 `min(1 秒 × 2^(n-1), 2 小時)`，約在第一次失敗後 70 小時以
+  `max_attempts` 放棄。4xx 與平台錯誤碼同樣計次。連線錯誤、逾時與 5xx 為目的地層級失敗：該目的地此刻所有到期的投遞
+  各計一次；其他失敗只計那一筆。HTTP 429 只計被拒的一筆，下一次等待取退避與 `Retry-After` 較長者（上限 2 小時），
+  同目的地其他到期投遞延後、不計次並記下第一次被延後的時刻 `throttled_since`；自該時刻起 72 小時仍未送出即以
+  `rate_limited` 放棄。型別已不在登錄中、帶快照的目的地解不開、內容無法渲染時直接放棄，不嘗試。
+- 轉址：`slack_app` 不跟隨，3xx 計一次失敗；`webhook` 與 `slack` 最多跟隨 5 次，每一跳都須符合通知的傳輸政策
+  （不得由 https 轉 http；這一跳的傳輸風險項須是通道保存網址風險項的子集合），並移除 `Referer`；不符或超過次數即停止、
+  計一次失敗。投遞、測試發送與稽核失效通知的直接送出三條路徑套同一套規則。
+- 稽核失效三則（`audit_failure`／`audit_failure_resolved`／`audit_failure_ongoing`）寫不進資料庫時改為直接送往
+  啟用中的通道（短重試 1、2、4 秒），盡力送出、不持久、不出現在投遞紀錄。
+- 某筆投遞被放棄時，系統另產生系統事件 `notification_delivery_abandoned`（分級中，不送往該通道本身；每個通道 24 小時內
+  至多一則；這個事件自己的投遞被放棄時不再產生）。
+- 指令告警與系統事件的通知內容及其投遞，在建立 30 天後且投遞皆已終態時由每日保留清理刪除（固定期限，非政策鍵）；
+  系統安全告警的投遞隨告警記錄保存。
 
 **通道變更本身會產生系統告警**：新增、修改、停用、啟用、刪除通道時，在同一交易內寫審計
 （`resource=notify_channel`，沿用 create／update／delete；details 記變更的欄位與遮罩後的前後網址，
 不含 secret 與完整網址；傳輸風險確認與門檻前後值併入同一列）並產生 `notification_channel_changed`。
-這筆告警除了送到其他啟用通道，**也送到本通道變更前與變更後的目的地**（以類型、網址、secret 去重；
+這筆告警除了送到其他啟用通道，**也送到本通道變更前與變更後的目的地**（以類型、網址、secret、目標去重；
 停用與刪除時舊目的地仍會收到）。任一步失敗整筆回滾，通道設定不變。沒有任何欄位實際變動的重複存檔
 只寫審計、不產生告警。刪除不等外部回應：通道列在同一交易刪除，通知由投遞佇列在提交後自快照送出。
 測試發送不是變更，不產生告警。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/notification-channels` | 列表 → `{data, total}`（`secret` 不隨 JSON 輸出） |
+| GET | `/notification-channels` | 列表 → `{data, total}`（`secret` 不隨 JSON 輸出；每列帶 `health`） |
 | POST | `/notification-channels` | 新增 → 201；URL 僅允許 http/https，非法回 400 |
 | PUT | `/notification-channels/:id` | 更新 |
 | DELETE | `/notification-channels/:id` | 刪除 |
-| POST | `/notification-channels/:id/test` | 同步測試發送 |
+| POST | `/notification-channels/:id/test` | 同步測試發送（本文可省略或只帶 `shape`） |
+| GET | `/notification-channels/:id/deliveries` | 該通道的投遞紀錄（唯讀，分頁，可依 `state` 篩選） |
 
-**請求**: `{"name": "...", "type": "webhook", "url": "https://...", "secret": "", "enabled": true, "language": "zh-TW", "min_severity": "low"}`
-（`type` 為 `webhook`／`slack`，未傳預設 webhook；`enabled` 未傳預設啟用；
+**請求**: `{"name": "...", "type": "webhook", "url": "https://...", "secret": "", "target": "", "enabled": true, "language": "zh-TW", "min_severity": "low"}`
+（`type` 為 `webhook`／`slack`／`slack_app`，未傳預設 webhook；`enabled` 未傳預設啟用；
 Update 另可傳 `clear_secret: true` 顯式清除簽名密鑰，Create 忽略此欄）
+
+**`slack_app` 的欄位**：
+- `secret`：機器人 token，須以 `xoxb-` 開頭且不含空白，否則 400 `VALIDATION_CHANNEL_SECRET`。必填：建立時未帶、
+  改型別成 `slack_app` 時未帶，或帶 `clear_secret: true` 而沒有新 token，皆回 400 `VALIDATION_CHANNEL_SECRET_REQUIRED`。
+  與簽名密鑰一樣信封加密、不回傳，回應以 `has_secret` 表示是否已設定。
+- `target`：頻道識別碼，1 到 64 個英數字，否則 400 `VALIDATION_CHANNEL_TARGET`。Update 傳空字串＝沿用既有；
+  其他類型的 `target` 一律存為空字串。
+- `url`：Slack Web API 的基底網址，Create 未傳時預設 `https://slack.com/api`，送出時接上 `/chat.postMessage`
+  （保存的網址已以 `/chat.postMessage` 結尾時原樣使用）。可改寫，同樣受傳輸政策閘約束。
+
+**依現值判斷的更新規則**（在交易內以加鎖讀到的通道列判斷，任一條不成立時拒絕且不變更任何欄位）：
+- 改變 `type` 時必須同一次帶 `url`，否則 400 `VALIDATION_CHANNEL_TYPE_CHANGE_NEEDS_URL`（回應中的 `url` 是遮罩過的，空值代表沿用）。
+  型別改變時舊型別的 secret 一律清除；改成 `webhook` 時簽名密鑰選填，改成 `slack` 一律無 secret，改成 `slack_app` 須帶 token。
+- `slack_app` 通道的 `url` 改變時必須同一次帶 token，否則 400 `VALIDATION_CHANNEL_URL_CHANGE_NEEDS_SECRET`。
+  只改名稱、目標、語系、門檻或啟用狀態時保留既有 token。
+- 網址、secret、目標、型別任一變更時，通道的 `destination_changed_at` 設為當下、`destination_version` 加 1。
+- `type` 不在三值內回 400 `VALIDATION_CHANNEL_TYPE`。
 
 **`language`（per-channel 語系）**: 三值 `zh-TW`／`en-US`／`ja-JP`，
 Create 未傳預設 `zh-TW`；Update **省略＝保留舊值**，顯式傳空字串或白名單外值一律拒
-（400＋`VALIDATION_CHANNEL_LANGUAGE`）。僅影響 Slack 通道的伺服端組字語言
-（webhook 通道可設但目前無作用，UI 已註明）；列表與詳情回應皆帶此欄。
+（400＋`VALIDATION_CHANNEL_LANGUAGE`）。影響 Slack 兩型的伺服端組字語言
+（webhook 本文不隨語系改變）；列表與詳情回應皆帶此欄。
 
 **`min_severity`（推送門檻）**: 三值 `low`（全部告警）／`medium`（中、高等級）／`high`（只有高等級），
 Create 未傳預設 `low`；Update **省略＝保留舊值**，顯式傳空字串或白名單外值一律拒
-（400＋`VALIDATION_CHANNEL_MIN_SEVERITY`）。只作用於告警推送：告警等級不低於門檻才推送到該通道，
-等級為空或不在三值內照送；系統事件推送與測試發送不受影響。列表與詳情回應皆帶此欄。
+（400＋`VALIDATION_CHANNEL_MIN_SEVERITY`）。只作用於指令告警，在分派到各通道時判斷：告警等級不低於門檻才分派到該通道，
+等級為空或不在三值內照送；系統安全告警、系統事件與測試發送不受影響。列表與詳情回應皆帶此欄。
 門檻實際改變時另寫一筆稽核列（`resource=notify_channel`、details 帶 `changes[]{field,old,new}`）。
 
-**測試回應**:
-- 送達對端 (200): `{"success": true, "status_code": 200}`（對端 2xx 才算 success）
+**回應的新欄位**（列表、新增與更新回應）：
+- `target`：同請求。
+- `destination_changed_at`：目的地（網址、secret、目標、型別）最後變更的時間；升級後沒變過為 `null`。
+- `destination_version`：目的地版本，與 `destination_changed_at` 同時遞增。
+- `health`（只在列表回應）：`{last_delivered_at, last_failed_at, last_failure_reason, last_failure_code, abandoned_7d}`，
+  只統計 `created_at` 不早於 `destination_changed_at`（為 `null` 時全部）的投遞；最近失敗取帶有錯誤文字的最新一筆，
+  那一筆後來送達也照樣保留；`last_failure_reason` 只留 HTTP 狀態碼與平台錯誤碼（例如 `HTTP 404`，連線錯誤為空字串），
+  `last_failure_code` 是原因的語句代碼（與投遞紀錄的 `reason_code` 同一組），
+  `abandoned_7d` 是近 7 天放棄筆數。查詢失敗時該列不帶 `health`，不擋列表。
+  只統計送到頻道的紀錄（`audience` 為 `channel`），個人訊息不計入。
+- `direct_message_enabled`：是否開啟對個人派送（見下方）。
+- `direct_message_url_allowed`（唯讀，單筆回應也帶）：目前網址的主機是否在對個人派送的允許清單內。允許清單是
+  `slack.com` 加上部署環境變數 `NOTIFY_DM_EXTRA_HOSTS`（逗號分隔，主機名稱完全相符）；網址無法讀取時為 `false`。
+  畫面據此在開啟前停用開關。請求中帶這個欄位不會被讀取。
+
+**對個人派送**（`direct_message_enabled`，建立與更新皆可帶，更新時省略＝不變）：
+- 開啟後，連線申請待審、破窗使用、破窗逾期未補審、每日審閱逾期四種通知，除了照常送到頻道，另以 Slack 私訊送給需要處理的人；
+  以使用者在本系統的電子郵件查詢 Slack 帳號。
+- 只有 `slack_app` 可以開啟，其他型別回 400 `VALIDATION_CHANNEL_DM_TYPE_UNSUPPORTED`；網址主機不在允許清單回 400
+  `VALIDATION_CHANNEL_DM_URL_NOT_ALLOWED`；同一時間只能有一個通道開啟，已有其他通道開啟時回 400
+  `VALIDATION_CHANNEL_DM_CONFLICT`，`params.name` 為那個通道的名稱。
+- 已開啟的通道改網址到清單外、或改成其他型別時，儲存照常成功，旗標自動變為 `false`，尚未送出的私訊取消；
+  通道變更告警註明自動關閉。
+- 關閉時尚未送出的私訊取消（`end_reason` 為 `direct_message_disabled`），正在送出的那一筆以送出結果收尾；
+  重新開啟不補送。開關不改變 `destination_version`。
+
+**投遞紀錄** `GET /notification-channels/:id/deliveries?page=&page_size=&state=&audience=`：
+- `page_size` 預設 20、上限 100；`state` 可省略，或為 `pending`／`retrying`／`delivered`／`abandoned`／`canceled`
+  其中之一，多個以逗號分隔（例如 `pending,retrying`）；任一值不在值域內回 400 `VALIDATION_DELIVERY_STATE`。
+  通道不存在回 404 `NOTFOUND_NOTIFICATION_CHANNEL`。依建立時間倒序。
+- `audience` 可省略（全部），或為 `channel`（送到頻道）／`user`（以私訊送給個人）；其他值回 400 `VALIDATION_DELIVERY_AUDIENCE`。
+- 回應 `{data, total, pending_counts}`：`total` 為篩選後的筆數；`pending_counts` 為
+  `{general, system_security_alert}`，是該通道等待中加重送中的筆數，依類別分兩類，不受 `state` 篩選影響。
+- 每列：`id`、`category`（`system_security_alert`／`command_alert`／`system_event`）、`event_key`（系統安全告警為類型鍵）、
+  `severity`、`state`、`attempts`、`next_attempt_at`（只在 `pending`／`retrying` 時有值）、`delivered_at`、`last_failed_at`、
+  `last_error`（只留 HTTP 狀態碼與平台錯誤碼，連線錯誤為空字串；送達後仍保留最近一次失敗的文字）、
+  `reason_code`（放棄或有最近錯誤時，送達的紀錄若曾失敗也帶）、`end_reason`、`ended_at`、
+  `throttled_since`（第一次因限流被延後的時刻，沒有被限流時為 `null`）、`created_at`、
+  `snapshot_before_change`（帶快照且建立早於 `destination_changed_at` 的系統安全告警，依排入當時的設定投遞）。
+  不含網址、secret 與通知參數的值。
+- 每列另帶 `audience`；個人紀錄（`user`）另帶 `recipient_username`（收件人的登入帳號，帳號已刪除仍顯示）與
+  `recipient_slack_id`（查到的 Slack 使用者識別碼，查到之前不帶）。不含電子郵件。
+- `end_reason` 值域：`max_attempts`、`snapshot_unreadable`、`type_unregistered`、`render_failed`、`channel_disabled`、
+  `channel_deleted`、`precheck_canceled`、`rate_limited`；個人紀錄另有 `request_resolved`（不再需要他處理）、
+  `recipient_ineligible`（收件人已不具資格）、`direct_message_disabled`、`no_email`、`email_ambiguous`、
+  `recipient_not_found`，這六個原因不帶 `reason_code`。未結束時為空字串。
+
+**測試發送** `POST /notification-channels/:id/test`：
+- 本文可省略，或為 `{"shape": "command_alert" | "system_security_alert" | "system_event"}`；`shape` 只對 webhook 有作用，
+  省略時為指令告警形狀；其他值或不合法的 JSON 回 400 `VALIDATION_BAD_PARAMS`。目的地一律是路徑上通道識別碼的已存設定，
+  本文的其他鍵（網址、secret、目標、型別）不讀取；存檔前無法測試。只試一次、不重試、不建立投遞紀錄。
+  三種形狀都帶 `category` 為 `test` 的 `notification` 物件。
+- 送達對端 (200): `{"success": true, "status_code": 200}`（對端 2xx 才算 success；其他狀態碼為 `success: false`）
+- 平台回報失敗 (200): `{"success": false, "status_code": 200, "platform_error": "invalid_auth"}`（`slack_app` 回應的 `ok`
+  不是 `true` 或無法判讀；錯誤碼只留 `[a-z0-9_]`、最長 64 字元，否則為 `unparseable_response`）
+- 不跟隨轉址的型別收到 3xx (200): `{"success": false, "status_code": 302, "reason_code": "redirect_not_followed"}`，不帶 `platform_error`
+- 轉址規則擋下 (200): `{"success": false, "reason_code": "redirect_too_many"}`（轉址次數過多）或 `"redirect_policy"`
+  （轉址目的地不符傳輸政策），原因代碼與投遞紀錄相同
 - 連線層失敗 (502): `{"error": ..., "code": "INTERNAL_CHANNEL_TEST_CONN_FAILED"}`；
   逾時為 `INTERNAL_CHANNEL_TEST_TIMEOUT`（原始錯誤僅留伺服器日誌，URL 可能含 secret 不回傳原文）
+- **傳給我自己** `{"to_self": true}`：以請求者自己在本系統的電子郵件查詢 Slack 帳號，送一則寫明是測試的私訊給請求者本人。
+  只有 `slack_app` 可用，其他型別回 400 `VALIDATION_CHANNEL_DM_TYPE_UNSUPPORTED`；網址主機不在允許清單回 400
+  `VALIDATION_CHANNEL_DM_URL_NOT_ALLOWED`。不需要先開啟對個人派送。本文其他鍵（電子郵件、使用者、網址）一律不讀取。
+  回應 (200)：`{"success": bool, "result": ..., "display_name"?, "status_code"?, "platform_error"?}`，`result` 為
+  `delivered`／`no_email`／`email_ambiguous`／`recipient_not_found`／`platform_error`；`display_name` 只在 `delivered` 時帶
+  （Slack 顯示名稱，最長 80 字元）。不含電子郵件與 Slack 識別碼。不重試、不建立投遞紀錄、不使用查詢快取。
 
 **推送 payload 形狀（散文零入 payload）**
 
-webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測試發送同形狀但 `event` 為 `test`）：
+webhook 通道的本文依類別分三種形狀，系統安全告警的形狀見「系統告警目錄與明細」。三種形狀的既有欄位不改名、不改型別、不改語義，都多一個頂層 `notification` 物件（見下方）。**指令告警**（`event` 為 `command_alert`；測試發送同形狀但 `event` 為 `test`）：
 
 ```json
 {
@@ -3994,7 +4182,8 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
 - `event`：具名機器識別字（`access_request.created`／`access_request.approved`／
   `access_request.approval_progress`／`access_request.rejected`／`break_glass_used`／
   `ticket_revoked`／`break_glass_review_overdue`／`audit_failure`／`audit_failure_resolved`／
-  `audit_failure_ongoing`／`daily_review_overdue`／`test`）。
+  `audit_failure_ongoing`／`daily_review_overdue`／`agent_task_report_submitted`／`agent_breaker_tripped`／
+  `credential_rotation_alert`／`notification_delivery_abandoned`／`targeted_notification_undelivered`／`test` 等）。
 - `params`：結構化參數，每個 event 由 `EventSpec` 宣告值層契約（`enum`／`int`／`opaque`／`date_list` 四 kind）；
   opaque 值原樣傳遞不翻譯，經淨化（限長 128 rune、去換行/ANSI/控制字元，超限可見截斷）。
   `date_list` 在 webhook payload 中是 `YYYY-MM-DD` 字串的 JSON 陣列，其餘 kind 的值都是字串。
@@ -4015,12 +4204,44 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
 - `degraded`（可選布林）：event 未註冊或 params 不合契約時降級投遞並附此旗標——
   合規告警不因目錄問題靜默消失。
 - 舊形狀 `{event, title, text}`（散文 title/text）**已移除**（BREAKING，dev 階段不設相容期）。
+- 連線申請族的參數：產生點只帶識別碼，名稱在分派時解析，新增 `requester_name`、`decider_name`（核准、拒絕）、
+  `revoker_name`（撤銷）與 `asset_count`（申請單的總台數，等於 1 時不帶）；逐項核准（`access_request.approved`，一次核准
+  沒有涵蓋整張申請的全部項目時，其他項目不論待審、已拒絕或已移除）、逐項拒絕（`access_request.rejected`）與逐項撤銷（`ticket_revoked`）另帶 `item_asset_name`，
+  是被決定的那一項的資產；`asset_name` 仍是申請單的資產（新增參數，不是既有參數的值的更正）。逐項核准另帶
+  `approved_item_count`（這次核准的項數，大於 1 才帶）與 `pending_item_count`（核准之後仍待審的項數，大於 0 才帶）。建立與核准新增 `duration_minutes`（分鐘數，不足一小時或
+  非整小時也帶）：建立時是申請時長；核准時是核准的時長（審核人可以下修），一次核准多項而各項核准的時長不同時不帶。
+  既有的 `duration_hours` 與 `duration_minutes` 同一個值，只在整小時時帶。撤銷有回報被中斷的連線時另帶 `disconnected_count`。
+  `notification.actor`：建立為申請人；核准（人工）、核准進度、拒絕為做決定的人；撤銷為撤銷的人；自動核准沒有做決定的人，
+  省略。破窗的 `username` 一律是登入帳號。
+- 新增的事件：`notification_delivery_abandoned`（參數 `channel_name`、`abandoned_24h`：截至產生當下該通道近 24 小時被放棄的筆數、
+  `reason`：原因的語句代碼）；`credential_rotation_alert`（改密工作停止或失敗的提醒，參數 `kind` 與可選的 `detail`）；`targeted_notification_undelivered`（個人訊息未能送達，分級中，送往每個啟用中通道的頻道，每個通道 24 小時內至多一則；參數 `channel_name`、`reason`（`no_email`／`email_ambiguous`／`recipient_not_found`／`max_attempts`／`rate_limited`／`no_recipient`／`resolve_failed`）、`count`（整數）、`event_kind`（`access_request`／`break_glass`／`break_glass_overdue`／`daily_review`）與 `request_id`（整數），依原因帶其中一部分）。
+- **改密工作提醒改為系統事件**：改密工作停止或失敗的提醒先前以指令告警的形狀送出（`event` 為 `command_alert`，`alert.rule_name` 是一句中文說明、`alert.command` 是處置說明）；現在以系統事件的形狀送出，`event` 為 `credential_rotation_alert`，`params.kind` 是機器碼（`authz_stopped`、`plan_failed`、`recovery_verify`、`candidate_abandoned`、`cleanup_pending`、`restart_interrupted`、`plan_reauth_incomplete`、`schedule_reauth_required`、`host_identity_stopped`），處置說明放在 `params.detail`。依 `rule_name` 辨識這類提醒的收端需要改讀 `event` 與 `params.kind`。
+- `notification_channel_changed` 在對個人派送因網址或型別被自動關閉時另帶 `dm_auto_off`（`host`／`type`）。
+- 人員名稱一律是登入帳號。
 
-**Slack 通道**：送 `{"text": "<mrkdwn>"}`，系統文案（測試通知標題內文、等級與「已阻斷」標示）
-一律由伺服端翻譯目錄 `internal/notifycat` 依**該通道的 `language` 欄**渲染；使用者資料
-（規則名、指令）原樣呈現只做 Slack `&<>` 跳脫。目錄無鍵時走 generic 降級渲染，仍投遞。
+**`notification` 物件**（三種形狀與測試發送都有；既有欄位不動，簽章覆蓋整個本文）：
 
-**遮罩**: `secret` 與 `url` 信封加密落庫；回應 `url` 遮罩為
+| 欄位 | 說明 |
+|---|---|
+| `version` | 整數，目前為 1；欄位有不相容的變動才遞增 |
+| `category` | `command_alert`、`system_security_alert`、`system_event`；測試發送為 `test` |
+| `type` | 系統安全告警為類型鍵、系統事件為事件鍵、指令告警為 `command_alert`、測試發送為 `test` |
+| `severity` | `high`、`medium`、`low` |
+| `occurred_at`、`sent_at` | RFC 3339、UTC（`Z` 結尾）。既有的 `sent_at` 欄位維持原本的時區格式 |
+| `delivery_id` | 32 個十六進位字元；同一筆投遞重送不變。指令告警與系統事件在分派時產生；測試發送每次新產生 |
+| `actor` | `{user_id, name}`，沒有操作者時省略。連線申請族為做決定或撤銷的人（見上方「連線申請族的參數」） |
+| `target` | `{kind, id, name}`，`id` 為字串，`name` 查不到時省略；沒有目標時整個省略 |
+| `link` | 相關頁面的完整網址，只在設定了合格的 `PUBLIC_BASE_URL` 且該事件有連結時出現 |
+| `params` | 依事件規格的型別輸出：整數是數字、日期清單是陣列、其餘是字串（指令告警為空物件）。既有頂層 `params` 維持字串 |
+| `degraded` | 降級投遞時為 `true`，否則省略 |
+
+**Slack 兩型**：`slack` 送 `{"text": "<mrkdwn>", "unfurl_links": false, "unfurl_media": false}`，`slack_app` 另帶 `channel`
+（通道的 `target`）。系統文案（測試通知標題內文、等級與「已阻斷」標示）一律由伺服端翻譯目錄 `internal/notifycat`
+依**該通道的 `language` 欄**渲染；使用者資料（規則名、指令）原樣呈現只做 Slack `&<>` 跳脫。最後一行是發生時間
+（Slack 的日期語法，延後送達時仍看得出發生時間），設定了合格的 `PUBLIC_BASE_URL` 時再附相關頁面的連結。
+目錄無鍵時走 generic 降級渲染，仍投遞。對個人派送的私訊以 `channel` 帶收件人的 Slack 使用者識別碼，內容與頻道訊息相同，只有第一行改用定向的標題；人員一律以登入帳號呈現。
+
+**遮罩**: `secret`（含 `slack_app` 的 token）與 `url` 信封加密落庫；回應 `url` 遮罩為
 `scheme://host/****末4碼`，全文不外洩。更新時空 `url`／空 `secret` 皆＝沿用既有值
 （前端無從回填遮罩值）。
 
@@ -5479,7 +5700,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | GET | `/daily-reviews/days/:date` | 單日明細（見下）；`:date` 為 `YYYY-MM-DD`，格式不合回 400 `VALIDATION_DAILY_REVIEW_DATE_INVALID`，晚於明天回 400 `RULE_DAILY_REVIEW_DAY_NOT_ENDED` |
 | GET | `/daily-reviews/stats` | 期間統計（見下） |
 | GET | `/daily-reviews` | 已簽紀錄，新到舊；`page`／`page_size`、`late_only=true` 只列遲簽 → `{data: {items: [Review], total}}` |
-| POST | `/daily-reviews` | 簽核指定所屬日，body `{"review_date": "YYYY-MM-DD", "note": "...", "delay_reason": "..."}` → `{data: 簽核列}`（Review 的欄位，不含 `late_days`）；簽核入稽核（`action=create`、`resource=daily_review`） |
+| POST | `/daily-reviews` | 簽核指定所屬日，body `{"review_date": "YYYY-MM-DD", "note": "...", "delay_reason": "...", "batch_id": "..."}` → `{data: 簽核列}`（Review 的欄位，不含 `late_days`）；簽核入稽核（`action=create`、`resource=daily_review`）。`batch_id` 選填，見下方「多日一起簽核」 |
 
 全部查詢端點（六支 GET）的權限檢查在處理之前：無權者對任何日期都得到同一個 403。
 
@@ -5507,7 +5728,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 - `pending_dates` 至多 10 個（由最早排起）；`stats_30d` 同 `GET /daily-reviews/stats?period=30d`。
 - 功能關閉時 `enabled=false`，仍回 `timezone_state`；`pending_count`／`overdue_count` 為 0、`pending_dates` 為空陣列，`yesterday`／`earliest_pending_date`／`stats_30d` 為 `null`。
 
-**PendingDay**：`{date, timezone, timezone_inferred, window_start, window_end, due_at, signable_at, signable, overdue, late_days, enabled_basis, counts}`。`timezone_inferred=true` 表示該日的切日時區是升級時以當時設定推得的。`counts` 見下方計數物件。
+**PendingDay**：`{date, timezone, timezone_inferred, window_start, window_end, due_at, signable_at, signable, overdue, late_days, enabled_basis, counts, unreviewed_alert_types}`。`unreviewed_alert_types` 是該日未審閱告警的不同類型數（不同 `rule_name` 的數目）；告警來源已依保留政策清除時為 `null`，部分清除時是下限。它不在 `counts` 內（`counts` 與簽核快照同形）。`timezone_inferred=true` 表示該日的切日時區是升級時以當時設定推得的。`counts` 見下方計數物件。
 
 **計數物件**（`counts`，與簽核快照同形）：`{date, login_failures, login_failures_source, high_risk_ops, high_risk_ops_source, high_risk_criteria, unreviewed_alerts, alerts_total, alerts_benign, alerts_escalated, alerts_source}`。`*_source` 為 `complete`／`partial`／`purged`：依保留期清除的水位判定，`purged` 時該項計數為 `null`（不以 0 冒充），`partial` 時計數是下限。`high_risk_criteria` 是 `high_risk_ops` 所依據的高危判準版本（整數）：即時計數與新簽核為現行版本 `2`；簽核快照沒有此鍵者（1.17.2 之前簽核）讀出為 `1`。版本 `2` 不計入保留期限清除、外部登入時沒有角色增減的映射重算，以及同一件事除帶請求路徑那一列以外的重複紀錄；這些紀錄仍在操作日誌。已簽日的快照不重算，與即時計數版本不同時兩者依不同判準計算。
 
@@ -5522,7 +5743,9 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
   "sources": {"audit_log": "complete", "command_alert": "complete"},
   "counts": {…},
   "unreviewed_alerts": [{"id": 12, "rule_name": "…", "kind": "rule", "severity": "high", "command": "…",
-                         "user_id": 3, "asset_id": 5, "triggered_at": "…", "disposition": "pending"}],
+                         "user_id": 3, "asset_id": 5, "triggered_at": "…", "disposition": "pending",
+                         "reason_code": "", "username": "ops-lee", "asset_name": "db-prod-01",
+                         "target_kind": "", "target_id": "", "params": {}}],
   "login_failures": {"total": 25, "items": [Event], "source_status": "complete"},
   "high_risk_ops": {"total": 7, "items": [Event], "source_status": "complete"},
   "review": null, "signed_snapshot": null, "alerts_after_sign": null
@@ -5530,7 +5753,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 ```
 
 - `status`：`pending`（待簽）、`settling`（已結束、寬限內）、`signed`、`out_of_scope`（不在範圍或改時區時被跳過的日期；功能關閉時，所有尚未簽核的日子都回此值，已簽日仍回 `signed`）、`not_ended`（今天或明天）。
-- `unreviewed_alerts` 全部列出；`login_failures`／`high_risk_ops` 各列前 20 筆，`total` 是此刻查得到的筆數（來源已清除時為 0，並以 `source_status=purged` 標示）。Event 為 `{id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg, reason_code, reason_params}`。明細與計數使用同一組查詢條件。`reason_code`（字串）與 `reason_params`（字串對字串的物件）是伺服器對該列的原因分類，供前端組出原因句；無法分類、而列本身已帶請求路徑或錯誤訊息時沒有碼，兩鍵皆不出現（前端照舊顯示 `error_msg` 或 `path`），有碼但無參數時只出現 `reason_code`。原因碼值域為封閉集合，前端以 `dailyReview.reason.<code>` 對應三語文案。分類所用的紀錄細節不隨本回應出站。
+- `unreviewed_alerts` 全部列出，由早到晚。每一筆的 `reason_code` 同告警列表；`username` 是觸發者的使用者名稱（使用者列不存在時為空字串，該筆照常列出）；`asset_name` 是資產名稱（沒有資產時為空字串）；`target_kind`、`target_id` 是系統告警的對象，`params` 是系統告警類型宣告的參數（與 `system-detail` 同一投影，不含 `actor`、`severity`）；非系統告警時兩者為空字串、`params` 為 `{}`。這些欄位都是告警列表與系統告警明細已經給同一權限看的內容。`login_failures`／`high_risk_ops` 各列前 20 筆，`total` 是此刻查得到的筆數（來源已清除時為 0，並以 `source_status=purged` 標示）。Event 為 `{id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg, reason_code, reason_params}`。明細與計數使用同一組查詢條件。`reason_code`（字串）與 `reason_params`（字串對字串的物件）是伺服器對該列的原因分類，供前端組出原因句；無法分類、而列本身已帶請求路徑或錯誤訊息時沒有碼，兩鍵皆不出現（前端照舊顯示 `error_msg` 或 `path`），有碼但無參數時只出現 `reason_code`。原因碼值域為封閉集合，前端以 `dailyReview.reason.<code>` 對應三語文案。分類所用的紀錄細節不隨本回應出站。
 - 已簽日：時區、起訖與 `enabled_basis` 取簽核時固化的值；`review` 為簽核紀錄，`signed_snapshot` 為簽核時固化的計數，`alerts_after_sign` 為簽核後才出現、觸發時刻屬於該日的未審閱告警數，只對 `coverage=full_day` 的簽核計算（簽核當時該日未審閱告警必須為 0，此刻仍未審閱者必然是事後寫入）。`coverage=until_signed` 的升級前簽核不檢查告警處置，無法區分簽核前後，`alerts_after_sign` 一律為 `null`；此刻仍未審閱的告警照常列在 `unreviewed_alerts`。
 
 **`GET /daily-reviews/stats`**：`period=30d`（預設）或 `90d`；或以 `from`／`to`（業務時區日期，含頭尾，最長 366 天，`to` 不得晚於今天）自訂。不合法回 400 `VALIDATION_DAILY_REVIEW_PERIOD_INVALID`。近 N 天以昨天為 `to`；今天尚未結束，不計入。
@@ -5564,10 +5787,13 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | 400 | `VALIDATION_DAILY_REVIEW_DELAY_REASON_REQUIRED` | 遲簽而延遲原因為空白 |
 | 400 | `RULE_DAILY_REVIEW_ALERTS_PENDING` | 該日仍有未審閱的告警；params `{count}` |
 | 400 | `RULE_DAILY_REVIEW_DISABLED` | 功能未啟用 |
+| 400 | `VALIDATION_BAD_REQUEST` | 本文不是合法 JSON、欄位型別不符，或帶了 `batch_id` 而它不是標準格式的 UUID（含空字串）；不產生簽核紀錄 |
 
 查詢端點的內部錯誤分別為 `INTERNAL_DAILY_REVIEW_PENDING_QUERY`、`INTERNAL_DAILY_REVIEW_DAY_QUERY`、`INTERNAL_DAILY_REVIEW_STATS_QUERY`（500）。
 
-簽核的稽核列 details 為 `{review_date, timezone, signed_at, late, late_days, snapshot}`，不含備註與延遲原因全文。
+簽核的稽核列 details 為 `{review_date, timezone, signed_at, late, late_days, snapshot}`，請求帶了 `batch_id` 時另有 `batch_id`；不含備註與延遲原因全文。
+
+**多日一起簽核**：介面上勾選多個待簽日後，前端對每一天各呼叫一次 `POST /daily-reviews`，由最早的一天開始依序送出，同一批的每個請求帶同一個 `batch_id`（UUID，8-4-4-4-12 的十六進位格式）。每一天各自檢查上表的所有規則、各自寫入一筆簽核紀錄與一列稽核，任何一天被拒不影響其他天；沒有一次簽多天的端點。`batch_id` 只記入該筆的稽核列 details，不寫入簽核紀錄、不出現在 Review 與證據包，也不改變任何判定；沒有送出的日子不會有稽核列，所以它只能說明哪幾筆是同一批，不是完整的批次清單。不帶 `batch_id`（或為 JSON `null`）時行為與單日簽核相同。一次最多 50 天由介面執行，伺服器端每個請求只簽一天。
 
 高危操作計數白名單（以審計列的 `action` 判斷，不看 HTTP 方法）：任何資源的 `delete`；`security_policy`／`syslog_setting`／`audit_export` 的
 `create`／`update`／`delete`；同步匯出（`GET /api/v1/audit-export`，審計記為 `read`＋`audit_export`，因為它把稽核證據帶出系統而收錄）；

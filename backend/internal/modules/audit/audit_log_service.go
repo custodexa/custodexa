@@ -1309,6 +1309,11 @@ func endpointAuditFieldSet(endpoint string) map[string]bool {
 	case "POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
 		"POST /api/v1/command-alerts/:id/review":
 		return map[string]bool{"note": true, "batch_id": true}
+	// 批次審閱端點：`note`、`batch_id` 同上；`self_triggered_ack` 是請求明示已確認的本人觸發筆數，
+	// 是「審閱者即觸發者」標示的對應明示。`alert_ids` 不放行：逐筆處置的稽核列已以 resource_id
+	// 記下每一筆，請求列不必再存一份至多上限筆數的編號
+	case "POST /api/v1/command-alerts/batch-review":
+		return map[string]bool{"note": true, "batch_id": true, "self_triggered_ack": true}
 	case "POST /api/v1/users/:id/agent-tokens":
 		// 憑證有效期限屬課責事實，明文與雜湊仍不放行。
 		return map[string]bool{"expires_at": true}
@@ -1323,6 +1328,10 @@ func endpointAuditFieldSet(endpoint string) map[string]bool {
 		return map[string]bool{"url": true}
 	case "PUT /api/v1/user-groups/:id/members":
 		return map[string]bool{"manual_user_ids": true}
+	// 測試送出：`shape` 只選樣本內容的形狀（命令告警／系統安全告警／系統事件），
+	// 不含位址或憑證；它回答「這次測試送出的是哪一種樣本」。
+	case "POST /api/v1/notification-channels/:id/test":
+		return map[string]bool{"shape": true}
 
 	// 委託拓撲：位址、服務區域與角色識別皆為非秘密，且它們承載的正是
 	// 「上鎖的資料金鑰送去哪裡解」——只記「拓撲已變更」不成立。
@@ -1377,11 +1386,12 @@ func AuditMaskEndpoints() []string {
 		"POST /api/v1/assets/:id/account-inventory/findings/:findingId/ignore",
 		"POST /api/v1/access-requests/:id/revoke",
 		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
-		"POST /api/v1/command-alerts/:id/review",
+		"POST /api/v1/command-alerts/:id/review", "POST /api/v1/command-alerts/batch-review",
 		"POST /api/v1/users/:id/agent-tokens",
 		"POST /api/v1/my/api-tokens",
 		"PUT /api/v1/ldap-directory",
 		"PUT /api/v1/user-groups/:id/members",
+		"POST /api/v1/notification-channels/:id/test",
 		"PUT /api/v1/keys/topology",
 		"PUT /api/v1/credentials/:id", "POST /api/v1/credentials/ownership",
 		"POST /api/v1/credentials/:id/impact-confirmations",

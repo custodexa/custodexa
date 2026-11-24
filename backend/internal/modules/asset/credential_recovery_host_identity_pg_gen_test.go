@@ -413,7 +413,7 @@ func (e *pgIdentityEnv) secondRetryRunner(t *testing.T, notifier *audit.AlertNot
 // 兩邊都沒有送出新認證。
 func runDuplicateWorkers(t *testing.T, e *pgIdentityEnv) {
 	s := newPGRetryScenario(t, e)
-	notifier := audit.NewAlertNotifier(e.f.db, nil)
+	notifier := newRotationNotifier(t, e.f.db)
 	e.f.retry.notifier = notifier
 	r2 := e.secondRetryRunner(t, notifier)
 	adoptRemoteKey(t, e.f.server, e.db2, e.f.assetID, true) // 身分異動：採用 B
@@ -421,7 +421,7 @@ func runDuplicateWorkers(t *testing.T, e *pgIdentityEnv) {
 	rdv := &stopKeyRendezvous{gate: make(chan struct{})}
 	rdv.install(t, e.f.db)
 	rdv.install(t, e.db2)
-	basePending := notifier.PendingNotifications()
+	basePending := rotationAlertCount(e.f.db)
 
 	var wg sync.WaitGroup
 	results := make([]bool, 2)
@@ -445,14 +445,14 @@ func runDuplicateWorkers(t *testing.T, e *pgIdentityEnv) {
 	key := e.candidateAlertedKey(t)
 	require.NotNil(t, key)
 	assert.Equal(t, rdv.tokens[0], *key, "去重鍵就是那個 token")
-	assert.EqualValues(t, 1, notifier.PendingNotifications()-basePending, "通知恰一次")
+	assert.EqualValues(t, 1, rotationAlertCount(e.f.db)-basePending, "通知恰一次")
 }
 
 // 注入審計失敗：停止審計與去重鍵同交易回滾（鍵不前進、無審計、無通知、authAttempts 0）；
 // 換回好的落地面後同一狀態仍會被寫入並通知一次。
 func runStopAuditFailure(t *testing.T, e *pgIdentityEnv) {
 	s := newPGRetryScenario(t, e)
-	notifier := audit.NewAlertNotifier(e.f.db, nil)
+	notifier := newRotationNotifier(t, e.f.db)
 	e.f.retry.notifier = notifier
 	adoptRemoteKey(t, e.f.server, e.db2, e.f.assetID, true)
 	require.Nil(t, e.candidateAlertedKey(t))
@@ -461,7 +461,7 @@ func runStopAuditFailure(t *testing.T, e *pgIdentityEnv) {
 	assert.False(t, s.retry(t, false))
 	assert.Nil(t, e.candidateAlertedKey(t), "審計失敗：去重鍵不前進")
 	assert.Empty(t, stopAuditDetails(t, e.f), "審計失敗：沒有停止審計列")
-	assert.EqualValues(t, 0, notifier.PendingNotifications(), "審計沒落地不通知")
+	assert.EqualValues(t, 0, rotationAlertCount(e.f.db), "審計沒落地不通知")
 	assert.EqualValues(t, s.baseAuth, e.f.server.authAttempts.Load(), "authAttempts 0")
 
 	e.f.retry.WithAuditSink(audit.NewTxSink())
@@ -469,7 +469,7 @@ func runStopAuditFailure(t *testing.T, e *pgIdentityEnv) {
 	s.requireStopped(t, model.ChangeSecretReasonHostIdentityChanged)
 	s.requireStopAudit(t, hostIdentityGenerationChanged, hostIdentityPhasePrecheck, verificationSentFalse)
 	assert.NotNil(t, e.candidateAlertedKey(t), "好的落地面：同一狀態仍被寫入（沒有被誤判為已留痕）")
-	assert.EqualValues(t, 1, notifier.PendingNotifications())
+	assert.EqualValues(t, 1, rotationAlertCount(e.f.db))
 }
 
 // 採用交易在審計寫入失敗：金鑰、世代、重置旗標與觀察紀錄同時回滾；之後同一觀察仍可採用。

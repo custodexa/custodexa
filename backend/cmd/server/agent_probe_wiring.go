@@ -17,7 +17,7 @@ func wireAgentProbeBreaker(db *gorm.DB, sink port.TxSink, alerts gatewayapi.Aler
 		LockPrincipal: identity.LockProbePrincipal, Classify: authz.ClassifyAgentProbe,
 		Trip:   tokens.TripProbeBreakerInTx,
 		Finish: func(id uint) { grants.InvalidateByAgentToken(id); tokens.FinishProbeBreaker(id) },
-		Limits: limits, Notify: notify,
+		Limits: limits, Notify: notify, TokenName: identity.AgentTokenNameInTx,
 	})
 	authorization.SetAgentProbeRecorder(func(ctx context.Context, u, t, a uint, endpoint string) error {
 		_, err := breaker.RecordDenied(ctx, u, t, a, endpoint)

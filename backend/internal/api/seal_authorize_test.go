@@ -183,7 +183,7 @@ func TestSealAuthorizeMalformedBodyIsIndistinguishable(t *testing.T) {
 	for _, body := range []string{
 		``,
 		`not json`,
-		`{"username":"admin"}`,                                // 缺鍵
+		`{"username":"admin"}`, // 缺鍵
 		`{"username":"admin","password":"x","extra":1}`,       // 未知鍵
 		`{"username":"admin","password":"x","password":"y"}`,  // 重複鍵
 		`{"username":"admin","password":"x"}{"username":"b"}`, // 尾隨內容

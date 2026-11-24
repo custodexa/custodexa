@@ -302,12 +302,28 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 					return err
 				}
 			}
+			notice := requestNotice{event: notifycat.EventAccessRequestCreated, requestID: req.ID,
+				assetID: prepared[0].asset.ID, assetCount: len(prepared), requesterID: requesterID,
+				extra: durationParams(input.DurationMinutes)}
 			if pending {
-				return tx.Model(req).Updates(map[string]any{"status": model.AccessRequestPending, "auto_approved": false}).Error
+				if err := tx.Model(req).Updates(map[string]any{"status": model.AccessRequestPending, "auto_approved": false}).Error; err != nil {
+					return err
+				}
+				// 交易閉包尾端排入：唯一鍵重試時隨第一次的回滾一起消失，不重複
+				s.notifyInTx(tx, notice)
+				return nil
 			}
 			req.Status = model.AccessRequestApproved
 			req.AutoApproved = true
-			return tx.Model(req).Updates(map[string]any{"status": req.Status, "auto_approved": true}).Error
+			if err := tx.Model(req).Updates(map[string]any{"status": req.Status, "auto_approved": true}).Error; err != nil {
+				return err
+			}
+			notice.event = notifycat.EventAccessRequestApproved
+			notice.extra["mode"] = notifycat.ApprovalModeAuto
+			// 自動核准由政策決定，沒有做決定的人
+			notice.noActor = true
+			s.notifyInTx(tx, notice)
+			return nil
 		})
 	}
 	err = create()
@@ -341,9 +357,6 @@ func (s *AccessRequestService) submitItems(requesterID uint, username string, re
 	}
 	if req.AutoApproved {
 		s.logAudit(requesterID, username, model.ActionApprove, req.ID, `{"auto":true,"decided_by":"system"}`)
-		s.notify(notifycat.EventAccessRequestApproved, req.ID, prepared[0].asset.Name, map[string]string{"mode": notifycat.ApprovalModeAuto})
-	} else {
-		s.notify(notifycat.EventAccessRequestCreated, req.ID, prepared[0].asset.Name, nil)
 	}
 	result, err := s.reload(req.ID)
 	if err != nil {

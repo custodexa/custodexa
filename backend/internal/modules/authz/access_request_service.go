@@ -291,7 +291,7 @@ func (s *AccessRequestService) Cancel(requesterID uint, requestID uint) (*model.
 // 逐筆 CAS＋審計：與人工決定併發時僅一方成立，單輪上限有界
 func (s *AccessRequestService) ExpireOverdue(now time.Time) (int, error) {
 	var overdue []model.AccessRequest
-	err := s.db.Select("id", "requester_id", "asset_id").
+	err := s.db.Select("id", "requester_id", "asset_id", "created_at").
 		Where("status = ? AND pending_expires_at < ?", model.AccessRequestPending, now).
 		Limit(expireBatchLimit).
 		Find(&overdue).Error
@@ -354,13 +354,15 @@ func (s *AccessRequestService) MyActiveTickets(requesterID uint, now time.Time) 
 // 方向＋申請人側成員展開），與單筆資格判定 ApproverScopeCoversRequest 同源家族。
 // 禁在本檔另寫等價 SQL；涵蓋規則變更一律改 repository 家族區
 
-// pendingScopeFilter 待審查詢共用條件：pending＋未逾期（惰性過濾）＋範圍過濾＋
+// pendingScopeFilterOn 待審查詢共用條件：pending＋未逾期（惰性過濾）＋範圍過濾＋
 // 排除本人單、執行者本人的單，且範圍內須仍有 pending 項目（對抗驗收 UX 修正：自己的申請自己不能核，出現在待審只會誤導、
 // 且核准鈕點了必 403；禁自核在待審視圖就先過濾掉，admin 亦然——admin 不申請故無影響）
-func (s *AccessRequestService) pendingScopeFilter(actorID uint, isAdmin bool, now time.Time) *gorm.DB {
+// 查詢在呼叫端給的連線上執行（可為交易句柄）：核決路徑傳 s.db，定向通知的收件人判定傳投遞程序的句柄，
+// 兩者是同一份條件。
+func pendingScopeFilterOn(db *gorm.DB, actorID uint, isAdmin bool, now time.Time) *gorm.DB {
 	// 申請人為本人擁有的 agent 的單同樣排除：對它核准必回自核禁止，列出只會誤導
 	//（單筆判定見 selfDecisionBlocked，兩者同一判定式）
-	q := s.db.Model(&model.AccessRequest{}).
+	q := db.Model(&model.AccessRequest{}).
 		Where("status = ? AND pending_expires_at > ? AND requester_id <> ?",
 			model.AccessRequestPending, now, actorID).
 		Where(ownAgentRequesterCondition+" AND "+executorExclusionCondition+" AND "+ownAgentExecutorCondition, actorID, actorID, actorID)
@@ -375,7 +377,7 @@ func (s *AccessRequestService) pendingScopeFilter(actorID uint, isAdmin bool, no
 // ListPending 待審列表（approver 依範圍過濾；admin 全量）
 func (s *AccessRequestService) ListPending(actorID uint, isAdmin bool, now time.Time) ([]*model.AccessRequest, error) {
 	var reqs []*model.AccessRequest
-	err := s.pendingScopeFilter(actorID, isAdmin, now).
+	err := pendingScopeFilterOn(s.db, actorID, isAdmin, now).
 		Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Requester").Preload("Asset").
 		Order("created_at ASC").Limit(200).
 		Find(&reqs).Error
@@ -392,7 +394,7 @@ func (s *AccessRequestService) ListPending(actorID uint, isAdmin bool, now time.
 // PendingCount 待審計數（導航 badge）
 func (s *AccessRequestService) PendingCount(actorID uint, isAdmin bool, now time.Time) (int64, error) {
 	var count int64
-	if err := s.pendingScopeFilter(actorID, isAdmin, now).Count(&count).Error; err != nil {
+	if err := pendingScopeFilterOn(s.db, actorID, isAdmin, now).Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("查詢待審核數失敗: %w", err)
 	}
 	return count, nil
@@ -561,25 +563,105 @@ func (s *AccessRequestService) logAudit(userID uint, username string, action mod
 	})
 }
 
-// notify 事件廣播（決議 F）：payload 最小化——單號/資產名/事件類型/事件專屬
-// 結構化參數，不帶事由全文（出站去識別紅線）；通道未配置時 NotifyEvent
-// 自然 no-op，保底＝審核中心必見＋badge。
-//
-// 簽名不收散文：導引文字與標題一律由 notifycat 依通道語系渲染，
-// 呼叫端只提供事實。extra 為該事件 EventSpec 宣告的專屬參數（可為 nil）
-func (s *AccessRequestService) notify(event notifycat.Event, requestID uint, assetName string, extra map[string]string) {
+// requestNotice 連線申請族一則通知的事實（只放識別碼與數字；名稱由投遞層分派時解析成登入帳號）。
+type requestNotice struct {
+	event     notifycat.Event
+	requestID uint
+	// assetID、assetCount 標題的資產與總台數（台數大於 1 才帶）
+	assetID    uint
+	assetCount int
+	// requesterID 申請人；partyKey／partyID 決定者或撤銷者的名稱參數與識別碼（可空）
+	requesterID uint
+	// omitRequesterName 事件沒有 requester_name 參數（破窗以 username 帶破窗人）
+	omitRequesterName bool
+	partyKey          string
+	partyID           uint
+	// itemAssetID 逐項核准、拒絕或撤銷時被決定的那一項（0＝整單）
+	itemAssetID uint
+	// actorIsParty 通知的操作者是決定者或撤銷者（partyID）；否則是申請人。核准、拒絕、撤銷為 true
+	actorIsParty bool
+	// noActor 沒有人為操作者（自動核准由政策決定）：通知不帶操作者
+	noActor bool
+	// extra 事件專屬的參數（已是字串）
+	extra map[string]string
+}
+
+// noticeOf 組出排入用的通知內容：參數只帶單號、台數與事件專屬值，名稱以識別碼參照交給分派解析。
+// 不帶申請事由（出站去識別紅線）。
+func (n requestNotice) noticeOf() audit.NotificationNotice {
+	params := map[string]string{"request_id": strconv.FormatUint(uint64(n.requestID), 10)}
+	if n.assetCount > 1 {
+		params["asset_count"] = strconv.Itoa(n.assetCount)
+	}
+	for k, v := range n.extra {
+		params[k] = v
+	}
+	refs := map[string]audit.NotificationNameRef{}
+	if n.assetID != 0 {
+		refs["asset_name"] = audit.NotificationNameRef{Kind: notifycat.IDKindAsset, ID: n.assetID}
+	}
+	if n.requesterID != 0 && !n.omitRequesterName {
+		refs["requester_name"] = audit.NotificationNameRef{Kind: notifycat.IDKindUser, ID: n.requesterID}
+	}
+	if n.partyKey != "" && n.partyID != 0 {
+		refs[n.partyKey] = audit.NotificationNameRef{Kind: notifycat.IDKindUser, ID: n.partyID}
+	}
+	if n.itemAssetID != 0 {
+		refs["item_asset_name"] = audit.NotificationNameRef{Kind: notifycat.IDKindAsset, ID: n.itemAssetID}
+	}
+	notice := audit.SystemEventNotice(n.event, params)
+	notice.NameRefs = refs
+	switch {
+	case n.noActor:
+	case n.actorIsParty && n.partyID != 0:
+		uid := n.partyID
+		notice.ActorUserID = &uid
+	case n.requesterID != 0:
+		uid := n.requesterID
+		notice.ActorUserID = &uid
+	}
+	if n.assetID != 0 {
+		notice.TargetKind = string(notifycat.IDKindAsset)
+		notice.TargetID = strconv.FormatUint(uint64(n.assetID), 10)
+	}
+	return notice
+}
+
+// notifyInTx 在業務交易內排入（以 savepoint 包住）：寫不進去只記 log，業務交易照常提交；
+// 業務交易回滾時這一列一起消失。保底＝審核中心必見＋badge。
+func (s *AccessRequestService) notifyInTx(tx *gorm.DB, n requestNotice) {
 	if s.notifier == nil {
 		return
 	}
-	params := map[string]string{"request_id": strconv.FormatUint(uint64(requestID), 10)}
-	if assetName != "" {
-		params["asset_name"] = assetName
+	_ = s.notifier.EnqueueInTx(tx, n.noticeOf())
+}
+
+// notifyStandalone 業務交易提交之後獨立排入一筆（撤銷、補審逾期以外的提交後路徑）。
+func (s *AccessRequestService) notifyStandalone(n requestNotice) {
+	if s.notifier == nil {
+		return
 	}
-	for k, v := range extra {
-		params[k] = v
+	_ = s.notifier.EnqueueStandalone(n.noticeOf())
+}
+
+// breakGlassNotice 破窗的通知事實：破窗人即申請人，以 username 參數的識別碼參照帶出登入帳號。
+func breakGlassNotice(req *model.AccessRequest, requesterID uint, duration int) requestNotice {
+	return requestNotice{event: notifycat.EventBreakGlassUsed, requestID: req.ID, assetID: req.AssetID,
+		requesterID: requesterID, omitRequesterName: true, partyKey: "username", partyID: requesterID,
+		extra: map[string]string{"duration_minutes": strconv.Itoa(duration)}}
+}
+
+// durationParams 申請時長的參數：duration_minutes 一律帶（文字以它呈現，不足一小時或非整小時都照實寫）；
+// duration_hours 維持既有語義，只在整小時時帶（不以四捨五入的值冒充）。時長不是正數時都不帶。
+func durationParams(minutes int) map[string]string {
+	if minutes <= 0 {
+		return map[string]string{}
 	}
-	s.notifier.NotifyEvent(event, params)
-	log.Printf("[AccessRequest] 事件廣播: %s request=%d", event, requestID)
+	out := map[string]string{"duration_minutes": strconv.Itoa(minutes)}
+	if minutes%60 == 0 {
+		out["duration_hours"] = strconv.Itoa(minutes / 60)
+	}
+	return out
 }
 
 // ---- 破窗、提前撤銷、補審 ----
@@ -708,7 +790,14 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username string, req
 			return fmt.Errorf("建立破窗單失敗: %w", err)
 		}
 		// 即時核准（同 reason 段自動核准軌跡：pending→approved 同交易，決定者 system）
-		return s.approveInTx(tx, req, nil, DecideInput{}, true, now)
+		if err := s.approveInTx(tx, req, nil, DecideInput{}, true, now); err != nil {
+			return err
+		}
+		// 通知不可被靜默過濾且失敗不阻斷（緊急通道不被通知堵死，F 決議）：以 savepoint 排入，
+		// 寫不進去只回到 savepoint，破窗照常完成；審核中心待補審視圖為保底。
+		// 帶單號、資產、破窗人（以識別碼參照，分派時解析成登入帳號）與時長，無事由全文
+		s.notifyInTx(tx, breakGlassNotice(req, requesterID, duration))
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -718,13 +807,6 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username string, req
 	// 及一般核准可區分
 	s.logAudit(requesterID, username, model.ActionApprove, req.ID,
 		`{"auto":true,"break_glass":true,"decided_by":"system"}`)
-	// 通知不可被靜默過濾且失敗不阻斷（緊急通道不被通知堵死，F 決議；
-	// notifier 廣播全通道，審核中心待補審視圖為保底）。payload 帶破窗人（單號/
-	// 資產名/破窗人/時長；username 非敏感、per-spec），無事由全文
-	s.notify(notifycat.EventBreakGlassUsed, req.ID, asset.Name, map[string]string{
-		"username":         username,
-		"duration_minutes": strconv.Itoa(duration),
-	})
 	return s.reload(req.ID)
 }
 
@@ -785,7 +867,7 @@ func (s *AccessRequestService) Review(actorID uint, isAdmin bool, requestID uint
 // 排除本人單——自審必 403，列出只會誤導；admin 全量亦排除本人單）
 func (s *AccessRequestService) ListPendingReview(actorID uint, isAdmin bool) ([]*model.AccessRequest, error) {
 	var reqs []*model.AccessRequest
-	err := s.pendingReviewFilter(actorID, isAdmin).
+	err := pendingReviewFilterOn(s.db, actorID, isAdmin).
 		Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Requester").Preload("Asset").Preload("Authorization").
 		Order("created_at ASC").Limit(200).
 		Find(&reqs).Error
@@ -801,15 +883,15 @@ func (s *AccessRequestService) ListPendingReview(actorID uint, isAdmin bool) ([]
 // PendingReviewCount 待補審計數（併入導航 badge 輪詢回應）
 func (s *AccessRequestService) PendingReviewCount(actorID uint, isAdmin bool) (int64, error) {
 	var count int64
-	if err := s.pendingReviewFilter(actorID, isAdmin).Count(&count).Error; err != nil {
+	if err := pendingReviewFilterOn(s.db, actorID, isAdmin).Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("查詢待補審核數失敗: %w", err)
 	}
 	return count, nil
 }
 
-// pendingReviewFilter 待補審查詢共用條件（與 pendingScopeFilter 同構）
-func (s *AccessRequestService) pendingReviewFilter(actorID uint, isAdmin bool) *gorm.DB {
-	q := s.db.Model(&model.AccessRequest{}).
+// pendingReviewFilterOn 待補審查詢共用條件（與 pendingScopeFilterOn 同構；查詢在呼叫端給的連線上執行）
+func pendingReviewFilterOn(db *gorm.DB, actorID uint, isAdmin bool) *gorm.DB {
+	q := db.Model(&model.AccessRequest{}).
 		Where("kind = ? AND review_status = ? AND requester_id <> ?",
 			model.AccessRequestKindBreakGlass, model.BreakGlassReviewPending, actorID)
 	if !isAdmin {
@@ -845,7 +927,7 @@ func (s *AccessRequestService) NotifyOverdueReviews(now time.Time) (int, error) 
 	renotifyBefore := now.Add(-overdueRenotifyInterval)
 
 	var overdue []model.AccessRequest
-	err := s.db.Select("id", "requester_id", "asset_id").
+	err := s.db.Select("id", "requester_id", "asset_id", "created_at").
 		Where("kind = ? AND review_status = ? AND created_at < ? AND (review_overdue_notified_at IS NULL OR review_overdue_notified_at < ?)",
 			model.AccessRequestKindBreakGlass, model.BreakGlassReviewPending, cutoff, renotifyBefore).
 		Limit(expireBatchLimit).
@@ -856,20 +938,43 @@ func (s *AccessRequestService) NotifyOverdueReviews(now time.Time) (int, error) 
 
 	notified := 0
 	for i := range overdue {
-		// CAS 節流：條件重述於 UPDATE，併發輪只有一方能推進時間戳
-		res := s.db.Model(&model.AccessRequest{}).
-			Where("id = ? AND (review_overdue_notified_at IS NULL OR review_overdue_notified_at < ?)",
-				overdue[i].ID, renotifyBefore).
-			Update("review_overdue_notified_at", now)
-		if res.Error != nil {
-			return notified, fmt.Errorf("逾期告警節流標記失敗 (id=%d): %w", overdue[i].ID, res.Error)
+		// 每單一個短交易：節流欄的條件更新與通知內容同交易。內容寫不進去時
+		// 節流欄一起回滾，下一輪（排程週期後）重試；節流欄不是業務資料，回滾不影響業務。
+		sent := false
+		err := s.db.Transaction(func(tx *gorm.DB) error {
+			// CAS 節流：條件重述於 UPDATE，併發輪只有一方能推進時間戳
+			res := tx.Model(&model.AccessRequest{}).
+				Where("id = ? AND (review_overdue_notified_at IS NULL OR review_overdue_notified_at < ?)",
+					overdue[i].ID, renotifyBefore).
+				Update("review_overdue_notified_at", now)
+			if res.Error != nil {
+				return fmt.Errorf("逾期告警節流標記失敗 (id=%d): %w", overdue[i].ID, res.Error)
+			}
+			if res.RowsAffected == 0 {
+				return nil // 併發輪已發
+			}
+			if s.notifier == nil {
+				sent = true
+				return nil
+			}
+			notice := requestNotice{event: notifycat.EventBreakGlassReviewOverdue, requestID: overdue[i].ID,
+				assetID: overdue[i].AssetID, requesterID: overdue[i].RequesterID,
+				extra: map[string]string{"timeout_hours": strconv.Itoa(timeoutHours)}}.noticeOf()
+			notice.OccurredAt = now
+			// 回傳的錯誤讓整個短交易回滾（含節流欄），不是只回到 savepoint
+			if err := s.notifier.EnqueueInTx(tx, notice); err != nil {
+				return err
+			}
+			sent = true
+			return nil
+		})
+		if err != nil {
+			log.Printf("[AccessRequest] 破窗補審逾期通知未排入，節流欄維持原值待下一輪重試 (id=%d): %v", overdue[i].ID, err)
+			continue
 		}
-		if res.RowsAffected == 0 {
-			continue // 併發輪已發
+		if sent {
+			notified++
 		}
-		notified++
-		s.notify(notifycat.EventBreakGlassReviewOverdue, overdue[i].ID, s.assetName(overdue[i].AssetID),
-			map[string]string{"timeout_hours": strconv.Itoa(timeoutHours)})
 	}
 	return notified, nil
 }

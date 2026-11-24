@@ -37,7 +37,7 @@ vi.mock('@/api/dailyReviews', () => ({
 const TZ = 'Asia/Taipei'
 const counts = { login_failures: 3, login_failures_source: 'complete', high_risk_ops: 5, high_risk_ops_source: 'complete', unreviewed_alerts: 1, alerts_source: 'complete' }
 // 所屬日（UTC+8）的起點是前一日 16:00Z，準時期限是次日 16:00Z
-const pendingDay = (date, { overdue = true, lateDays = 0, basis = 'recorded' } = {}) => {
+const pendingDay = (date, { overdue = true, lateDays = 0, basis = 'recorded', alerts = 1, types = 1 } = {}) => {
   const start = new Date(`${date}T00:00:00+08:00`)
   const iso = (offsetDays) => new Date(start.getTime() + offsetDays * 86400000).toISOString()
   return {
@@ -52,7 +52,8 @@ const pendingDay = (date, { overdue = true, lateDays = 0, basis = 'recorded' } =
     overdue,
     late_days: lateDays,
     enabled_basis: basis,
-    counts,
+    counts: { ...counts, unreviewed_alerts: alerts },
+    unreviewed_alert_types: alerts > 0 ? types : 0,
   }
 }
 
@@ -88,7 +89,7 @@ const status = (overrides = {}) => ({
 const mountWorkspace = (props = {}) =>
   mount(DailyReviewWorkspace, {
     props: { canSign: true, ...props },
-    global: { plugins: [ElementPlus] },
+    global: { plugins: [ElementPlus], stubs: { RouterLink: true, 'router-link': true } },
   })
 
 describe('DailyReviewWorkspace', () => {
@@ -108,10 +109,10 @@ describe('DailyReviewWorkspace', () => {
     getDailyReviewPendingMock.mockResolvedValue({
       data: {
         items: [
-          pendingDay('2026-10-07', { lateDays: 3 }),
-          pendingDay('2026-10-08', { lateDays: 2 }),
-          pendingDay('2026-10-09', { lateDays: 1 }),
-          pendingDay('2026-10-10', { overdue: false }),
+          pendingDay('2026-10-07', { lateDays: 3, alerts: 0 }),
+          pendingDay('2026-10-08', { lateDays: 2, alerts: 0 }),
+          pendingDay('2026-10-09', { lateDays: 1, alerts: 0 }),
+          pendingDay('2026-10-10', { overdue: false, alerts: 0 }),
         ],
         total: 4,
       },
@@ -278,5 +279,45 @@ describe('DailyReviewWorkspace', () => {
     mountWorkspace({ openDate: '2026-10-07' })
     await flushPromises()
     expect(getDailyReviewDayMock).toHaveBeenCalledWith('2026-10-07')
+  })
+
+  // 有告警的日子以處置告警為動作，寫筆數與類數；不放前往告警頁的連結
+  it('有 75 筆、4 類告警的日子動作是處置告警；沒有告警的逾期日仍是補簽；操作欄不固定；沒有到告警頁的連結', async () => {
+    getDailyReviewStatusMock.mockResolvedValue({ data: status({ pending_count: 2, overdue_count: 2 }) })
+    getDailyReviewPendingMock.mockResolvedValue({
+      data: {
+        items: [
+          pendingDay('2026-11-13', { lateDays: 9, alerts: 75, types: 4 }),
+          pendingDay('2026-11-14', { lateDays: 8, alerts: 0 }),
+        ],
+        total: 2,
+      },
+    })
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    const actions = wrapper.findAll('[data-test="dr-pending-action"]').map((n) => n.text())
+    expect(actions).toEqual(['處置告警', '補簽'])
+    expect(wrapper.findAll('[data-test="dr-pending-alerts"]')[0].text()).toBe('75 筆')
+    expect(wrapper.find('[data-test="dr-pending-alert-types"]').text()).toBe('4 類')
+    expect(wrapper.findAll('[data-test="dr-select-blocked"]')[0].text()).toBe('有 75 筆告警，處置完才能簽核')
+    expect(wrapper.find('.el-table-fixed-column--right').exists()).toBe(false)
+    expect(wrapper.find('.el-table-fixed-column--left').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('到告警頁')
+    expect(wrapper.find('a[href*="alerts"]').exists()).toBe(false)
+  })
+
+  it('窄視窗（1280 以下）：登入失敗與高危併成「供查閱」一欄', async () => {
+    const mql = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    vi.stubGlobal('matchMedia', vi.fn(() => mql))
+    window.matchMedia = globalThis.matchMedia
+    getDailyReviewPendingMock.mockResolvedValue({ data: { items: [pendingDay('2026-11-13', { alerts: 75, types: 4 })], total: 1 } })
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    const head = wrapper.find('[data-test="dr-pending-table"] thead').text()
+    expect(head).toContain('供查閱')
+    expect(head).not.toContain('登入失敗')
+    expect(wrapper.find('[data-test="dr-pending-reference"]').text()).toBe('登入失敗 3高危 5')
+    vi.unstubAllGlobals()
+    vi.stubGlobal('MutationObserver', MutationObserverStub)
   })
 })

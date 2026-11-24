@@ -1,0 +1,18 @@
+{
+  "alert": {
+    "blocked": false,
+    "command": "",
+    "id": 1,
+    "kind": "audit_degraded",
+    "reason_code": "audit_degraded_span",
+    "rule_name": "audit_degraded_span",
+    "severity": "medium",
+    "triggered_at": "2026-11-20T00:00:00Z"
+  },
+  "event": "command_alert",
+  "session": {
+    "asset_id": null,
+    "id": 40,
+    "user_id": 1
+  }
+}

@@ -141,8 +141,8 @@ services:
       #
       # 唯讀是刻意的信任邊界：守衛不得具備修改其驗證對象的能力（重生索引見 API_SPEC.md）。
       - ./docs:/app/cmd/server/testdata/docs:ro
-      # 唯讀掛入前端 router 供 oidc_redirect_test.go 的路由枚舉防漂移守衛比對
-      #（登入後重導向目標須匹配前端既有路由；後端枚舉與 router 雙向核對）。
+      # 唯讀掛入前端 router 供 login_return_path_test.go 比對登入後導回的路由清單
+      #（導回目的地須是前端既有路由；後端判準與 router 雙向核對）。
       # 目錄掛載＋掛在 /app 內，理由同上兩則（inode 假綠、go test 快取追蹤）。
       - ./frontend/src/router:/app/internal/api/testdata/router:ro
       # 唯讀掛入 openspec/ 供兩份 manifest 守衛比對

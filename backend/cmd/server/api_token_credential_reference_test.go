@@ -114,7 +114,7 @@ func (e *baselineEnv) apiTokenAttachAlerts() []apiTokenAttachAlertRow {
 			e.t.Fatalf("讀取告警列：%v（%d 筆）", err, len(sev))
 		}
 		row.severity = sev[0]
-		if err := e.db.Model(&model.SystemAlertOutbox{}).Where("alert_id = ?", d.AlertID).Count(&row.outbox).Error; err != nil {
+		if err := e.db.Model(&model.NotificationDelivery{}).Where("alert_id = ?", d.AlertID).Count(&row.outbox).Error; err != nil {
 			e.t.Fatalf("計數投遞：%v", err)
 		}
 		out = append(out, row)

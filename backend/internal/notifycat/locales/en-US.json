@@ -1,70 +1,134 @@
 {
   "access_request.created": {
     "default": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "New request awaiting review (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "New access request[ from {requester_name}][ for {duration_minutes}]; awaiting review (see the review center)."
+    },
+    "default_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "New access request[ from {requester_name}][ for {duration_minutes}]; awaiting review."
     }
   },
   "access_request.approved": {
     "auto": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "Auto-approved (reason-only tier) (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was auto-approved (this asset only requires a reason to connect)[; access for {duration_minutes}] (see the review center)."
     },
     "manual": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "Request approved (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was approved[ by {decider_name}][; access for {duration_minutes}] (see the review center)."
+    },
+    "auto_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was auto-approved (this asset only requires a reason to connect)[; access for {duration_minutes}]."
+    },
+    "manual_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was approved[ by {decider_name}][; access for {duration_minutes}]."
+    },
+    "auto_item": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The {item_asset_name} item[ (with others, {approved_item_count} items in total)] of the request[ from {requester_name}] was auto-approved (this asset only requires a reason to connect); this approval does not cover the other items[; access for {duration_minutes}][; other items of the same request still awaiting review: {pending_item_count}] (see the review center)."
+    },
+    "auto_item_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The {item_asset_name} item[ (with others, {approved_item_count} items in total)] of the request[ from {requester_name}] was auto-approved (this asset only requires a reason to connect); this approval does not cover the other items[; access for {duration_minutes}][; other items of the same request still awaiting review: {pending_item_count}]."
+    },
+    "manual_item": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The {item_asset_name} item[ (with others, {approved_item_count} items in total)] of the request[ from {requester_name}] was approved[ by {decider_name}]; this approval does not cover the other items[; access for {duration_minutes}][; other items of the same request still awaiting review: {pending_item_count}] (see the review center)."
+    },
+    "manual_item_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The {item_asset_name} item[ (with others, {approved_item_count} items in total)] of the request[ from {requester_name}] was approved[ by {decider_name}]; this approval does not cover the other items[; access for {duration_minutes}][; other items of the same request still awaiting review: {pending_item_count}]."
     }
   },
   "access_request.approval_progress": {
     "default": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "Approved {votes}/{required}; waiting for the remaining approvers (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was approved[ by {decider_name}] ({votes}/{required} so far); waiting for the remaining approvers (see the review center)."
+    },
+    "default_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was approved[ by {decider_name}] ({votes}/{required} so far); waiting for the remaining approvers."
     }
   },
   "access_request.rejected": {
     "default": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "Request rejected (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was rejected[ by {decider_name}] (see the review center)."
+    },
+    "item": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The {item_asset_name} item of the request[ from {requester_name}] was rejected[ by {decider_name}] (see the review center)."
+    },
+    "default_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The request[ from {requester_name}] was rejected[ by {decider_name}]."
+    },
+    "item_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The {item_asset_name} item of the request[ from {requester_name}] was rejected[ by {decider_name}]."
     }
   },
   "break_glass_used": {
     "default": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "{username} started a break-glass emergency session ({duration_minutes} minutes); post-review is required as soon as possible (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "{username} started a break-glass emergency session for {duration_minutes} minutes; post-review is required as soon as possible (see the review center)."
+    },
+    "default_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "{username} started a break-glass emergency session for {duration_minutes} minutes; post-review is required as soon as possible."
     }
   },
   "ticket_revoked": {
     "default": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "The time-limited access has been revoked early (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The time-limited access[ of {requester_name}] was revoked early[ by {revoker_name}][, ending {disconnected_count} connections] (see the review center)."
+    },
+    "item": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The time-limited access[ of {requester_name}] to {item_asset_name} was revoked early[ by {revoker_name}][, ending {disconnected_count} connections] (see the review center)."
+    },
+    "default_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The time-limited access[ of {requester_name}] was revoked early[ by {revoker_name}][, ending {disconnected_count} connections]."
+    },
+    "item_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The time-limited access[ of {requester_name}] to {item_asset_name} was revoked early[ by {revoker_name}][, ending {disconnected_count} connections]."
     }
   },
   "break_glass_review_overdue": {
     "default": {
-      "title": "Access request #{request_id}[: {asset_name}]",
-      "text": "A break-glass session has gone {timeout_hours} hours without post-review; please handle it as soon as possible (see the review center)."
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The break-glass session[ of {requester_name}] has gone {timeout_hours} hours without post-review; please handle it as soon as possible (see the review center)."
+    },
+    "default_linked": {
+      "title": "Access request #{request_id}[: {asset_name}][ and others ({asset_count} assets)]",
+      "text": "The break-glass session[ of {requester_name}] has gone {timeout_hours} hours without post-review; please handle it as soon as possible."
     }
   },
   "audit_failure": {
     "default": {
       "title": "Audit mechanism failure",
-      "text": "Mechanism {mechanism} failed at {started_at} (PCI 10.7.2): {cause_code}[ ({failed_points} failed checkpoints)][ ({failed_intervals} failed intervals)]"
+      "text": "{mechanism} failed at {started_at} (PCI 10.7.2): {cause_code}[ ({failed_points} failed checkpoints)][ ({failed_intervals} failed intervals)]."
     }
   },
   "audit_failure_resolved": {
     "known": {
       "title": "Audit mechanism recovered",
-      "text": "Mechanism {mechanism} has recovered; outage window {started_at} ~ {ended_at}."
+      "text": "{mechanism} has recovered; outage from {started_at} to {ended_at}."
     },
     "unknown": {
       "title": "Audit mechanism recovered",
-      "text": "Mechanism {mechanism} has recovered; start time unknown (the failure record never reached the database)."
+      "text": "{mechanism} has recovered; the start of the outage was not recorded."
     }
   },
   "audit_failure_ongoing": {
     "default": {
       "title": "Audit mechanism still failing",
-      "text": "Mechanism {mechanism} has not recovered: {cause_code}[ ({backlog} pending)][ ({failed_points} failed checkpoints)][ ({failed_intervals} failed intervals)] ({reported_at})"
+      "text": "{mechanism} has not recovered: {cause_code}[ ({backlog} pending)][ ({failed_points} failed checkpoints)][ ({failed_intervals} failed intervals)]."
     }
   },
   "daily_review_overdue": {
@@ -75,8 +139,8 @@
   },
   "test": {
     "default": {
-      "title": "{product} test notification",
-      "text": "This is a test notification used to verify that the channel is configured correctly."
+      "title": "{product} test notification (test only, no action needed)",
+      "text": "This is a test notification used to verify that the channel is configured correctly.[ Channel: {channel_name}.]"
     }
   },
   "kek_topology_changed": {
@@ -87,170 +151,196 @@
   },
   "agent_task_report_submitted": {
     "default": {
-      "title": "Task report",
-      "text": "Agent {user_id} submitted report {report_id}, version {version}, for task {request_id}. Owner: {owner_id}."
+      "title": "AI agent task report",
+      "text": "AI agent[ {agent_name}] (#{user_id})[ (owner: {owner_name})] submitted version {version} of the report for task #{request_id}[ using API token \"{token_name}\"][. Assets involved: {asset_name}][ and others ({asset_count} assets)]."
     }
   },
   "agent_breaker_tripped": {
     "default": {
-      "title": "Agent probe breaker",
-      "text": "Agent {user_id} token {token_id} suspended by probe breaker. Owner: {owner_id}."
+      "title": "AI agent probe breaker",
+      "text": "The API token[ \"{token_name}\"] (#{token_id}) of AI agent[ {agent_name}] (#{user_id})[ (owner: {owner_name})] kept referring to assets it cannot see and has been suspended[: {distinct_count} different assets][ within {window_minutes} minutes][, most recently {asset_name}]. The owner or an administrator should take action."
     }
   },
   "asset_address_changed": {
     "default": {
       "title": "Asset connection address changed",
-      "text": "{actor} changed the connection address settings[ of asset {asset_name}]: {changed_fields} (severity: {severity})."
+      "text": "{actor} changed the connection address settings[ of asset {asset_name}]: {changed_fields}."
     }
   },
   "transport_verification_relaxed": {
     "default": {
       "title": "Transport verification relaxed",
-      "text": "{actor} relaxed the transport verification settings[ of asset {asset_name}]: {relaxed_settings} (severity: {severity})."
+      "text": "{actor} relaxed the transport verification settings[ of asset {asset_name}]: {relaxed_settings}."
     }
   },
   "access_policy_relaxed": {
     "default": {
       "title": "Access policy lowered",
-      "text": "{actor} lowered the access policy[ of asset {asset_name}] ({relax_type}): {before_level} -> {after_level}[, affecting {affected_assets} assets without an override] (severity: {severity})."
+      "text": "{actor} lowered the access policy[ of asset {asset_name}] ({relax_type}): {before_level} -> {after_level}[, affecting {affected_assets} assets without an override]."
     }
   },
   "custom_secret_used": {
     "default": {
       "title": "Custom secret used",
-      "text": "{actor} handled a password[ of asset {asset_name}] with a custom secret ({entry}) (severity: {severity})."
+      "text": "{actor} handled a password[ of asset {asset_name}] with a custom secret ({entry})."
     }
   },
   "identity_source_changed": {
     "default": {
       "title": "Identity source changed",
-      "text": "{actor} changed the {source_kind} identity source: {changed_fields}[; bind password changed: {bind_password_changed}][; super administrators from this source: {super_admin_count}] (severity: {severity})."
+      "text": "{actor} changed the {source_kind} identity source: {changed_fields}[; bind password changed: {bind_password_changed}][; super administrators from this source: {super_admin_count}]."
     }
   },
   "security_admin_account_operated": {
     "default": {
       "title": "Security administrator account operated",
-      "text": "{actor} performed \"{action}\" on a security administrator account (severity: {severity})."
+      "text": "{actor} performed \"{action}\" on a security administrator account[ ({target_username})]."
     }
   },
   "self_privilege_increased": {
     "default": {
       "title": "Own privileges increased",
-      "text": "{actor} increased their own privileges ({path}): roles {roles_before} -> {roles_after}[; manageable {manageable_before} -> {manageable_after}][; connectable {connectable_before} -> {connectable_after}] (severity: {severity})."
+      "text": "{actor} increased their own privileges ({path}): roles {roles_before} -> {roles_after}[; manageable {manageable_before} -> {manageable_after}][; connectable {connectable_before} -> {connectable_after}][; {other_holder_count} other holders affected]."
     }
   },
   "self_privilege_decreased": {
     "default": {
       "title": "Own privileges decreased",
-      "text": "{actor} decreased their own privileges ({path}): roles {roles_before} -> {roles_after}[; manageable {manageable_before} -> {manageable_after}][; connectable {connectable_before} -> {connectable_after}] (severity: {severity})."
+      "text": "{actor} decreased their own privileges ({path}): roles {roles_before} -> {roles_after}[; manageable {manageable_before} -> {manageable_after}][; connectable {connectable_before} -> {connectable_after}][; {other_holder_count} other holders affected]."
     }
   },
   "management_role_granted": {
     "default": {
       "title": "Management role granted",
-      "text": "{actor} granted the management role {role_name} to {recipient} ({path})[; scope: {scope_summary}][ (nodes {scope_node_ids}, {scope_node_count} in total)] (severity: {severity})."
+      "text": "{actor} granted the management role {role_name} to {recipient} ({path})[; scope: {scope_summary}][ (nodes {scope_node_ids}, {scope_node_count} in total)]."
+    },
+    "role_definition": {
+      "title": "Management role granted",
+      "text": "{actor} changed the definition of the management role {role_name} ({path}), affecting {other_holder_count} other holders[; scope: {scope_summary}][ (nodes {scope_node_ids}, {scope_node_count} in total)]."
     }
   },
   "retention_shortened": {
     "default": {
       "title": "Retention shortened",
-      "text": "{actor} shortened the retention of {data_class}: {days_before} -> {days_after} days (0 means keep forever) (severity: {severity})."
+      "text": "{actor} shortened the retention of {data_class}: {days_before} -> {days_after} days (0 means keep forever)."
     }
   },
   "offsite_or_syslog_changed": {
     "default": {
       "title": "Off-site copy or syslog changed",
-      "text": "{actor} changed the {subject} setting: {change} (severity: {severity})."
+      "text": "{actor} changed the {subject} setting: {change}."
     }
   },
   "key_topology_changed": {
     "default": {
       "title": "Key custody topology changed",
-      "text": "{actor} changed the key custody topology: {change_kind} (severity: {severity})."
+      "text": "{actor} changed the key custody topology: {change_kind}."
     }
   },
   "recording_failclose_disabled": {
     "default": {
       "title": "Recording fail-close disabled",
-      "text": "{actor} disabled the fail-close protection for recording (severity: {severity})."
+      "text": "{actor} disabled the fail-close protection for recording."
     }
   },
   "recording_deleted": {
     "default": {
       "title": "Recording deleted",
-      "text": "{actor} deleted the recording of session {session_id} (severity: {severity})."
+      "text": "{actor} deleted the recording of session {session_id}[ (user {session_username})][ (asset {asset_name})]."
     }
   },
   "mapping_revalidation_relaxed": {
     "default": {
       "title": "External membership revalidation relaxed",
-      "text": "{actor} relaxed the external membership revalidation window: {hours_before} -> {hours_after} hours (0 means no limit) (severity: {severity})."
+      "text": "{actor} relaxed the external membership revalidation window: {hours_before} -> {hours_after} hours (0 means no limit)."
     }
   },
   "host_key_mismatch": {
     "default": {
       "title": "Host key does not match the record",
-      "text": "The host key did not match the record on a {path} connection by {actor} (outcome: {outcome}; record source: {record_source}): recorded {recorded_fingerprint}, observed {observed_fingerprint} ({observed_algorithm})[; connection {connection_ref}] (severity: {severity})."
+      "text": "The host key did not match the record on a {path} connection[ to asset {asset_name}] by {actor} (outcome: {outcome}; record source: {record_source}): recorded {recorded_fingerprint}, observed {observed_fingerprint} ({observed_algorithm})[; connection {connection_ref}]."
     }
   },
   "host_key_record_changed": {
     "default": {
       "title": "Host key record changed",
-      "text": "{actor} performed \"{change}\" on the host key record: previous {previous_fingerprint}, adopted {adopted_fingerprint} (severity: {severity})."
+      "text": "{actor} performed \"{change}\" on the host key record[ of asset {asset_name}]: previous {previous_fingerprint}, adopted {adopted_fingerprint}."
     }
   },
   "notification_channel_changed": {
     "default": {
       "title": "Notification channel changed",
-      "text": "{actor} performed \"{change}\" on a notification channel[; changed fields: {changed_fields}][; URL {url_before} -> {url_after}] (severity: {severity})."
+      "text": "{actor} {change} a notification channel[ \"{channel_name}\"][; changed fields: {changed_fields}][; URL {url_before} -> {url_after}][; channel {target_before} -> {target_after}][; {dm_auto_off}]."
     }
   },
   "concurrent_instance_detected": {
     "overridden": {
       "title": "Possible concurrent instance detected (started with confirmed override)",
-      "text": "Startup check ({actor}): this instance started with a confirmed override, and another instance held the single-instance lock when this one tried to take it[; confirmation source: {confirm_source}][; confirmed by: {confirmed_by}][; guard-enabled connections found at startup: {peers}] (peer query: {peers_query}) (severity: {severity})."
+      "text": "Startup check ({actor}): this instance started with a confirmed override, and another instance held the single-instance lock when this one tried to take it[; confirmation source: {confirm_source}][; confirmed by: {confirmed_by}][; guard-enabled connections found at startup: {peers}] (peer query: {peers_query})."
     },
     "peers": {
       "title": "Possible concurrent instance detected (other connections)",
-      "text": "Startup check ({actor}): at startup, other guard-enabled instance connections were found on the same database[ ({peers} connections)] (peer query: {peers_query}) (severity: {severity})."
+      "text": "Startup check ({actor}): at startup, other guard-enabled instance connections were found on the same database[ ({peers} connections)] (peer query: {peers_query})."
     }
   },
   "unmanaged_privileged_account": {
     "default": {
       "title": "Unmanaged privileged accounts on a host",
-      "text": "The host account inventory started by {actor} found {new_count} new unmanaged privileged accounts (login identity: {identity_mode}) (severity: {severity})."
+      "text": "The host account inventory[ of asset {asset_name}] started by {actor} found {new_count} new unmanaged privileged accounts (login identity: {identity_mode})."
     }
   },
   "privileged_api_token_created": {
     "at": {
       "title": "Privileged API token created",
-      "text": "{actor} created API token \"{token_name}\" granting privileged roles: {privileged_roles}; all granted roles: {granted_roles}; expires at {expires_at} (severity: {severity})."
+      "text": "{actor} created API token \"{token_name}\"[ owned by {owner_username}] granting privileged roles: {privileged_roles}; all granted roles: {granted_roles}; expires at {expires_at}."
     },
     "never": {
       "title": "Privileged API token created",
-      "text": "{actor} created API token \"{token_name}\" granting privileged roles: {privileged_roles}; all granted roles: {granted_roles}; never expires (severity: {severity})."
+      "text": "{actor} created API token \"{token_name}\"[ owned by {owner_username}] granting privileged roles: {privileged_roles}; all granted roles: {granted_roles}; never expires."
     }
   },
   "api_token_credential_attached": {
     "asset_create": {
       "title": "API token attached a stored credential",
-      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry})."
     },
     "account_create": {
       "title": "API token attached a stored credential",
-      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry})."
     },
     "bind": {
       "title": "API token attached a stored credential",
-      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry})."
     },
     "rebind": {
       "title": "API token attached a stored credential",
-      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry}; severity: {severity})."
+      "text": "{actor} used API token \"{token_name}\" to attach credential \"{credential_name}\" to asset \"{asset_name}\" ({entry})."
     },
     "import": {
       "title": "API token attached a stored credential",
-      "text": "{actor} used API token \"{token_name}\" to import assets; {asset_count} of them reference {credential_count} stored credential(s) (severity: {severity})."
+      "text": "{actor} used API token \"{token_name}\" to import assets; {asset_count} of them reference {credential_count} stored credential(s)."
+    }
+  },
+  "notification_delivery_abandoned": {
+    "default": {
+      "title": "Notification delivery abandoned",
+      "text": "As of now, {abandoned_24h} notifications to channel[ \"{channel_name}\"] were abandoned in the last 24 hours (retried up to the limit without being delivered). Most recent reason: {reason}. See the Notification Channels page for the latest count and next steps.\nIf more notifications to this channel fail within 24 hours, this reminder will not be sent again."
+    }
+  },
+  "credential_rotation_alert": {
+    "default": {
+      "title": "Credential rotation alert",
+      "text": "{kind}[: {detail}]."
+    }
+  },
+  "targeted_notification_undelivered": {
+    "default": {
+      "title": "Some direct messages were not delivered",
+      "text": "As of now, {count} reviewer(s) did not receive a direct message for a review notification through channel[ \"{channel_name}\"] in the last 24 hours. Most recent reason: {reason} Channel messages were sent as usual.\nSee the delivery log on the Notification Channels page for the latest count and next steps. If more direct messages fail through this channel within 24 hours, this reminder will not be sent again."
+    },
+    "no_recipient": {
+      "title": "Some direct messages were not delivered",
+      "text": "Channel[ \"{channel_name}\"] sent no direct message for \"{event_kind}\"[ #{request_id}]. Reason: {reason} Channel messages were sent as usual.\nSee the Notification Channels page for the latest status. If more direct messages fail through this channel within 24 hours, this reminder will not be sent again."
     }
   }
 }

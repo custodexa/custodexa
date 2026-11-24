@@ -52,27 +52,27 @@ var kindTextLangs = []string{
 
 // 以下為改動前的實際輸出（逐字），規則類 Slack 與全部 webhook body 必須與之相同。
 var baselineRuleSlack = []struct{ kase, lang, want string }{
-	{"rule", "zh-TW", "🔴 *rm &amp; &lt;x&gt;* · 高風險\n```\nrm -rf / &gt; /dev/null &amp;&amp; echo &lt;ok&gt;\n```\n使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · 2026-09-24T08:14:48Z"},
-	{"rule", "en-US", "🔴 *rm &amp; &lt;x&gt;* · High\n```\nrm -rf / &gt; /dev/null &amp;&amp; echo &lt;ok&gt;\n```\nuser alice@example.com (#2) · asset files-01 (#6) · session #19 · 2026-09-24T08:14:48Z"},
-	{"rule", "ja-JP", "🔴 *rm &amp; &lt;x&gt;* · 高\n```\nrm -rf / &gt; /dev/null &amp;&amp; echo &lt;ok&gt;\n```\nユーザー alice@example.com (#2) · 資産 files-01 (#6) · セッション #19 · 2026-09-24T08:14:48Z"},
-	{"rule_blocked", "zh-TW", "🟠 *block* · 中風險 · 已阻斷\n```\nshutdown -h now\n```\n使用者 alice@example.com (#2) · 會話 #19 · 2026-09-24T08:14:48Z"},
-	{"rule_blocked", "en-US", "🟠 *block* · Medium · Blocked\n```\nshutdown -h now\n```\nuser alice@example.com (#2) · session #19 · 2026-09-24T08:14:48Z"},
-	{"rule_blocked", "ja-JP", "🟠 *block* · 中 · ブロック済み\n```\nshutdown -h now\n```\nユーザー alice@example.com (#2) · セッション #19 · 2026-09-24T08:14:48Z"},
-	{"rule_output", "zh-TW", "🟡 *out* · 低風險\n輸出可能含敏感資料 (3)\n使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · 2026-09-24T08:14:48Z"},
-	{"rule_output", "en-US", "🟡 *out* · Low\nOutput may contain sensitive data (3)\nuser alice@example.com (#2) · asset files-01 (#6) · session #19 · 2026-09-24T08:14:48Z"},
-	{"rule_output", "ja-JP", "🟡 *out* · 低\n出力に機密情報が含まれる可能性 (3)\nユーザー alice@example.com (#2) · 資産 files-01 (#6) · セッション #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind", "zh-TW", "⚪ *legacy* · \n```\nls\n```\n使用者 alice@example.com (#2) · 會話 #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind", "en-US", "⚪ *legacy* · \n```\nls\n```\nuser alice@example.com (#2) · session #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind", "ja-JP", "⚪ *legacy* · \n```\nls\n```\nユーザー alice@example.com (#2) · セッション #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind_empty", "zh-TW", "🟡 *legacy-empty* · 低風險\n```\n\n```\n使用者 alice@example.com (#2) · 會話 #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind_empty", "en-US", "🟡 *legacy-empty* · Low\n```\n\n```\nuser alice@example.com (#2) · session #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind_empty", "ja-JP", "🟡 *legacy-empty* · 低\n```\n\n```\nユーザー alice@example.com (#2) · セッション #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind_output", "zh-TW", "🟠 *legacy-out* · 中風險\n輸出可能含敏感資料 (2)\n使用者 alice@example.com (#2) · 會話 #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind_output", "en-US", "🟠 *legacy-out* · Medium\nOutput may contain sensitive data (2)\nuser alice@example.com (#2) · session #19 · 2026-09-24T08:14:48Z"},
-	{"legacy_nokind_output", "ja-JP", "🟠 *legacy-out* · 中\n出力に機密情報が含まれる可能性 (2)\nユーザー alice@example.com (#2) · セッション #19 · 2026-09-24T08:14:48Z"},
-	{"test", "zh-TW", "🔔 *Custodexa 測試通知*\n這是一則測試通知，用於驗證通知通道設定是否正確。\n```\necho x\n```\n使用者 #0 · 會話 #0 · 2026-09-24T08:14:48Z"},
-	{"test", "en-US", "🔔 *Custodexa test notification*\nThis is a test notification used to verify that the channel is configured correctly.\n```\necho x\n```\nuser #0 · session #0 · 2026-09-24T08:14:48Z"},
-	{"test", "ja-JP", "🔔 *Custodexa テスト通知*\nこれは通知チャネルの設定が正しいか確認するためのテスト通知です。\n```\necho x\n```\nユーザー #0 · セッション #0 · 2026-09-24T08:14:48Z"},
+	{"rule", "zh-TW", "🔴 *rm &amp; &lt;x&gt;* · 高風險\n```\nrm -rf / &gt; /dev/null &amp;&amp; echo &lt;ok&gt;\n```\n使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule", "en-US", "🔴 *rm &amp; &lt;x&gt;* · High\n```\nrm -rf / &gt; /dev/null &amp;&amp; echo &lt;ok&gt;\n```\nuser alice@example.com (#2) · asset files-01 (#6) · session #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule", "ja-JP", "🔴 *rm &amp; &lt;x&gt;* · 高\n```\nrm -rf / &gt; /dev/null &amp;&amp; echo &lt;ok&gt;\n```\nユーザー alice@example.com (#2) · 資産 files-01 (#6) · セッション #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule_blocked", "zh-TW", "🟠 *block* · 中風險 · 已阻斷\n```\nshutdown -h now\n```\n使用者 alice@example.com (#2) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule_blocked", "en-US", "🟠 *block* · Medium · Blocked\n```\nshutdown -h now\n```\nuser alice@example.com (#2) · session #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule_blocked", "ja-JP", "🟠 *block* · 中 · ブロック済み\n```\nshutdown -h now\n```\nユーザー alice@example.com (#2) · セッション #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule_output", "zh-TW", "🟡 *out* · 低風險\n輸出可能含敏感資料 (3)\n使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule_output", "en-US", "🟡 *out* · Low\nOutput may contain sensitive data (3)\nuser alice@example.com (#2) · asset files-01 (#6) · session #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"rule_output", "ja-JP", "🟡 *out* · 低\n出力に機密情報が含まれる可能性 (3)\nユーザー alice@example.com (#2) · 資産 files-01 (#6) · セッション #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind", "zh-TW", "⚪ *legacy* · \n```\nls\n```\n使用者 alice@example.com (#2) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind", "en-US", "⚪ *legacy* · \n```\nls\n```\nuser alice@example.com (#2) · session #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind", "ja-JP", "⚪ *legacy* · \n```\nls\n```\nユーザー alice@example.com (#2) · セッション #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind_empty", "zh-TW", "🟡 *legacy-empty* · 低風險\n```\n\n```\n使用者 alice@example.com (#2) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind_empty", "en-US", "🟡 *legacy-empty* · Low\n```\n\n```\nuser alice@example.com (#2) · session #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind_empty", "ja-JP", "🟡 *legacy-empty* · 低\n```\n\n```\nユーザー alice@example.com (#2) · セッション #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind_output", "zh-TW", "🟠 *legacy-out* · 中風險\n輸出可能含敏感資料 (2)\n使用者 alice@example.com (#2) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind_output", "en-US", "🟠 *legacy-out* · Medium\nOutput may contain sensitive data (2)\nuser alice@example.com (#2) · session #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"legacy_nokind_output", "ja-JP", "🟠 *legacy-out* · 中\n出力に機密情報が含まれる可能性 (2)\nユーザー alice@example.com (#2) · セッション #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"test", "zh-TW", "🔔 *Custodexa 測試通知（測試，不需處理）*\n這是一則測試通知，用於驗證通知通道設定是否正確。\n發生時間 <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"test", "en-US", "🔔 *Custodexa test notification (test only, no action needed)*\nThis is a test notification used to verify that the channel is configured correctly.\nOccurred <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
+	{"test", "ja-JP", "🔔 *Custodexa テスト通知（テストのため対応不要）*\nこれは通知チャネルの設定が正しいか確認するためのテスト通知です。\n発生日時 <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"},
 }
 
 var baselineWebhook = map[string]string{
@@ -108,7 +108,7 @@ func TestWebhookBodyUnchangedForAllKinds(t *testing.T) {
 	names.DegradeReason = model.DegradeAltScreen
 	ch := &model.NotificationChannel{Type: model.NotificationChannelTypeWebhook, Language: model.NotificationChannelLanguageZhTW}
 	for kase, alert := range kindTextCases() {
-		body, err := buildChannelBody(ch, alertEventCommandAlert, alert, names)
+		body, err := buildChannelBody(ch, alertEventCommandAlert, alert, names, nil)
 		require.NoError(t, err)
 		assert.Equal(t, baselineWebhook[kase], string(body), "%s 的 webhook body 與改動前不同", kase)
 	}
@@ -126,7 +126,7 @@ func TestDegradedSlackTextPlainLanguage(t *testing.T) {
 		want := "🟠 *無法還原指令內容* · 中風險\n" +
 			"這段輸入無法可靠還原成指令文字。實際內容請查看該會話的錄影。\n" +
 			"當時畫面在全螢幕程式中（例如編輯器、分頁器）。\n" +
-			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · 2026-09-24T08:14:48Z"
+			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"
 		assert.Equal(t, want, got)
 	})
 
@@ -134,7 +134,7 @@ func TestDegradedSlackTextPlainLanguage(t *testing.T) {
 		got := buildSlackText(model.NotificationChannelLanguageZhTW, alertEventCommandAlert, alert, kindTextNames())
 		want := "🟠 *無法還原指令內容* · 中風險\n" +
 			"這段輸入無法可靠還原成指令文字。實際內容請查看該會話的錄影。\n" +
-			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · 2026-09-24T08:14:48Z"
+			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"
 		assert.Equal(t, want, got)
 	})
 
@@ -177,7 +177,7 @@ func TestOtherNonRuleKindsSlackTextPlainLanguage(t *testing.T) {
 		want := "🟠 *帳號自新的來源位址連線* · 中風險\n" +
 			"這個帳號首次自這個位址建立連線。如需確認，請以這個位址查看當日的紀錄。\n" +
 			"來源位址 203.0.113.42\n" +
-			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · 2026-09-24T08:14:48Z"
+			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"
 		assert.Equal(t, want, got)
 
 		noIP := kindTextNames()
@@ -190,7 +190,7 @@ func TestOtherNonRuleKindsSlackTextPlainLanguage(t *testing.T) {
 		got := buildSlackText(model.NotificationChannelLanguageZhTW, alertEventCommandAlert, cases["sensitive"], kindTextNames())
 		want := "🟠 *有人調閱了敏感原文* · 中風險\n" +
 			"詳情請查看該筆調閱的稽核紀錄。\n" +
-			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · 2026-09-24T08:14:48Z"
+			"使用者 alice@example.com (#2) · 資產 files-01 (#6) · 會話 #19 · <!date^1790237688^{date_num} {time_secs}|2026-09-24 08:14:48 UTC>"
 		assert.Equal(t, want, got)
 	})
 
@@ -257,21 +257,19 @@ func TestLookupDegradeReason(t *testing.T) {
 // TestNotifyDegradedAlertToSlackEndToEnd 經 worker 同一路徑（解析主體與降級原因）
 // 實際投遞到 Slack 型收端，檢查收端拿到的文字。
 func TestNotifyDegradedAlertToSlackEndToEnd(t *testing.T) {
-	db := setupTimelineDB(t)
-	require.NoError(t, db.Exec(`INSERT INTO session_commands
-		(session_id, user_id, command, seq, executed_at, degraded, degrade_reason)
-		VALUES (19, 2, '', 1, ?, 1, ?)`, kindTextTS, model.DegradeAltScreen).Error)
+	n := newNotifyPipeline(t)
+	require.NoError(t, n.db.Exec(`INSERT INTO session_commands
+		(session_id, executed_at, degraded, degrade_reason)
+		VALUES (19, ?, 1, ?)`, kindTextTS, model.DegradeAltScreen).Error)
 
 	url, received := captureOne(t)
-	n := NewAlertNotifier(db, nil)
-	n.backoff = []time.Duration{time.Millisecond}
 	n.setChannels([]model.NotificationChannel{
 		{ID: 1, Name: "ops", Type: model.NotificationChannelTypeSlack, URL: url, Enabled: true,
 			Language: model.NotificationChannelLanguageZhTW},
 	})
 	n.notify(kindTextCases()["degraded"])
 
-	var payload map[string]string
+	var payload slackBodyFields
 	require.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 	text := payload["text"]
 	assert.Contains(t, text, "*無法還原指令內容* · 中風險")

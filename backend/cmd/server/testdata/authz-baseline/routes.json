@@ -1134,6 +1134,19 @@
   },
   {
    "method": "GET",
+   "path": "/api/v1/notification-channels/:id/deliveries",
+   "params": {
+    "id": "{notificationChannel.1}"
+   },
+   "query": {
+    "page": "1",
+    "page_size": "20"
+   },
+   "subject_hint": "S01",
+   "body_mode": "full"
+  },
+  {
+   "method": "GET",
    "path": "/api/v1/offsite-storage/failures",
    "query": {
     "page": "1",
@@ -2086,6 +2099,21 @@
    "body": {
     "disposition": "benign",
     "note": "baseline review"
+   },
+   "subject_hint": "S03",
+   "body_mode": "full"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/command-alerts/batch-review",
+   "body": {
+    "alert_ids": [
+     "{commandAlert.1}"
+    ],
+    "disposition": "benign",
+    "note": "baseline batch review",
+    "batch_id": "5d1c0b7a-2e3f-4a5b-9c8d-7e6f5a4b3c2d",
+    "self_triggered_ack": 0
    },
    "subject_hint": "S03",
    "body_mode": "full"

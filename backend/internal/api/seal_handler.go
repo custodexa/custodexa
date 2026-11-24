@@ -132,7 +132,7 @@ func (h *SealHandler) SetTopologyProbe(fn func() (SealTopologyView, bool)) { h.t
 func (h *SealHandler) SetAuthLimiter(l *seal.Limiter) { h.authLimiter = l }
 
 // authorizeLimiter 取得授權端點的退避器；未注入時以預設組態就地建一份
-//（僅單測情境；正式路徑一律由組裝根注入與解封端點相同的組態）。
+// （僅單測情境；正式路徑一律由組裝根注入與解封端點相同的組態）。
 func (h *SealHandler) authorizeLimiter() *seal.Limiter {
 	h.authLimiterMu.Lock()
 	defer h.authLimiterMu.Unlock()

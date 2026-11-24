@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -107,7 +107,7 @@ func TestSessionHubIncludesClipboardEvidenceReads(t *testing.T) {
 	db := installAuditHubDB(t)
 	base := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
 
-	seedAuditRow(t, db, model.ResourceSession, 7, base)                    // 看了一眼連線詳情
+	seedAuditRow(t, db, model.ResourceSession, 7, base)                           // 看了一眼連線詳情
 	seedAuditRow(t, db, model.ResourceClipboardEvent, 7, base.Add(2*time.Minute)) // 取走剪貼簿證物
 	seedAuditRow(t, db, model.ResourceSession, 7, base.Add(4*time.Minute))
 	// 干擾組：同分類但別場連線，樞紐不得撈到

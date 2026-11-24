@@ -13,6 +13,7 @@ import { ensureSession } from '../utils/session'
 import { parseLoginTestSource } from '../composables/useLoginTestSource'
 import { canEnter, entryMeta, hasEntryRule, needsCapabilities } from './entryRules'
 import { loadCapabilities } from '../composables/useCapabilities'
+import { loginLocationFor, rememberCurrentRoute } from './loginRedirect'
 
 const routes = [
   {
@@ -478,7 +479,8 @@ export function createAuthGuard() {
     const authed = await ensureSession()
 
     if (to.meta.requiresAuth && !authed) {
-      next('/login')
+      // 「登入後可回到的路由」才帶目的地（loginRedirect.js），其餘照舊只導向登入頁
+      next(loginLocationFor(to))
     } else if (to.path === '/login' && authed && !parseLoginTestSource(to.query?.source)) {
       // 帶合法 source 的登入測試連結放行：由登入頁說明要改用無痕視窗，不掛載任何登入操作
       next('/dashboard')
@@ -491,7 +493,7 @@ export function createAuthGuard() {
       // 使用者回到儀表板後由版面的重試提示再取一次。
       // fail-closed：沒有會話一律去登入，不得跳過規則放行
       if (!authed) {
-        next('/login')
+        next(loginLocationFor(to))
         return
       }
       if (needsCapabilities(to.meta)) await loadCapabilities()
@@ -510,5 +512,7 @@ export function createAuthGuard() {
 // 先讓認證守衛把人送去一個打不通的登入頁，等於重現本次要修的鎖死。
 router.beforeEach(createSealGuard())
 router.beforeEach(createAuthGuard())
+// API 認證失敗的整頁導向（api/request.js）要知道當下停在哪個路由，才能決定要不要帶目的地
+router.afterEach((to) => rememberCurrentRoute(to))
 
 export default router

@@ -3,9 +3,49 @@
     :model-value="modelValue"
     :title="$t('systemAlerts.detail.title')"
     size="480px"
+    :append-to-body="appendToBody"
     data-test="system-alert-drawer"
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
+    <!-- 從每日簽核的分組開啟：標題列帶這一組的位置與上一筆、下一筆 -->
+    <template
+      v-if="position"
+      #header
+    >
+      <div class="sa-drawer__header">
+        <span class="sa-drawer__header-title">{{ $t('systemAlerts.detail.title') }}</span>
+        <span
+          class="sa-drawer__pos"
+          data-test="sa-position"
+        >{{ $t('systemAlerts.detail.position', { i: position.index, n: position.total }) }}</span>
+        <el-button
+          link
+          type="primary"
+          size="small"
+          data-test="sa-prev"
+          :disabled="position.index <= 1"
+          @click="emit('prev')"
+        >
+          <ChevronLeft
+            :size="14"
+            aria-hidden="true"
+          />{{ $t('systemAlerts.detail.prev') }}
+        </el-button>
+        <el-button
+          link
+          type="primary"
+          size="small"
+          data-test="sa-next"
+          :disabled="position.index >= position.total"
+          @click="emit('next')"
+        >
+          {{ $t('systemAlerts.detail.next') }}<ChevronRight
+            :size="14"
+            aria-hidden="true"
+          />
+        </el-button>
+      </div>
+    </template>
     <div
       v-loading="loading"
       class="sa-drawer"
@@ -338,14 +378,28 @@
                 v-for="(d, i) in detail.deliveries"
                 :key="i"
               >
-                {{ d.dest_name }} {{ deliveryLabel(d.state) }}<template v-if="d.attempts > 1">
-                  （{{ $t('systemAlerts.detail.attempts', { count: d.attempts }) }}）
+                {{ d.dest_name }}<template v-if="d.channel_disabled">
+                  {{ $t('systemAlerts.delivery.disabledTag') }}
                 </template>
+                <span
+                  class="sa-delivery-state"
+                  :class="`is-${d.state}`"
+                >{{ deliveryLabel(d.state) }}</span>
+                <span
+                  v-if="deliveryBefore(d)"
+                  class="sa-delivery-detail"
+                  data-test="sa-delivery-detail"
+                >{{ deliveryBefore(d) }}</span>
                 <span
                   v-if="deliveryTime(d)"
                   class="sa-delivery-time"
                   data-test="sa-delivery-time"
                 >{{ deliveryTime(d) }}</span>
+                <span
+                  v-if="deliveryAfter(d)"
+                  class="sa-delivery-detail"
+                  data-test="sa-delivery-after"
+                >{{ deliveryAfter(d) }}</span>
               </div>
               <div v-if="!detail.deliveries.length">
                 {{ $t('systemAlerts.delivery.noDestination') }}
@@ -367,11 +421,73 @@
         </section>
       </template>
     </div>
+    <!-- 這一筆的處置：單筆審閱（不帶批次關聯碼，處置說明選填）；只給有處置權限者 -->
+    <template
+      v-if="reviewable && detail"
+      #footer
+    >
+      <div
+        class="sa-review"
+        data-test="sa-review"
+      >
+        <div class="sa-review__title">
+          {{ $t('systemAlerts.detail.reviewTitle') }}
+        </div>
+        <el-radio-group
+          v-model="reviewForm.disposition"
+          data-test="sa-review-disposition"
+        >
+          <el-radio
+            value="benign"
+            data-test="sa-review-benign"
+          >
+            {{ $t('alerts.dispositionBenign') }}
+          </el-radio>
+          <el-radio
+            value="escalated"
+            data-test="sa-review-escalated"
+          >
+            {{ $t('alerts.dispositionEscalated') }}
+          </el-radio>
+        </el-radio-group>
+        <div class="sa-review__label">
+          {{ $t('dailyReview.drawer.single.noteLabel') }}
+        </div>
+        <el-input
+          v-model="reviewForm.note"
+          type="textarea"
+          :rows="2"
+          maxlength="500"
+          show-word-limit
+          data-test="sa-review-note"
+        />
+        <div class="sa-review__actions">
+          <el-button
+            data-test="sa-review-close"
+            @click="emit('update:modelValue', false)"
+          >
+            {{ $t('dailyReview.drawer.single.close') }}
+          </el-button>
+          <el-button
+            v-preview-write
+            type="primary"
+            :loading="reviewSubmitting"
+            data-test="sa-review-submit"
+            @click="submitReview"
+          >
+            {{ $t('dailyReview.drawer.single.submit') }}
+          </el-button>
+        </div>
+      </div>
+    </template>
   </el-drawer>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { reviewAlert } from '@/api/alerts'
+import { previewWrite as vPreviewWrite } from '@/directives/previewWrite'
 import { getSystemAlertDetail } from '@/api/systemAlerts'
 import { formatDateTime } from '@/utils/format'
 import { roleLabel } from '@/constants/roles'
@@ -386,12 +502,41 @@ import ApiTokenAccessBadge from '@/components/api-token/ApiTokenAccessBadge.vue'
 import ApiTokenLevelTag from '@/components/api-token/ApiTokenLevelTag.vue'
 import { canEnter, ENTRY_RULES } from '@/router/entryRules'
 import { t } from '@/i18n'
+import { DELIVERY_MAX_ATTEMPTS } from '@/constants/notification-channels'
+import { reasonText, remainingAttempts } from '@/components/alerts/channelDelivery'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   alertId: { type: Number, default: null },
+  appendToBody: { type: Boolean, default: false },
+  // 這一組的位置 { index, total }：有值時標題列帶上一筆、下一筆
+  position: { type: Object, default: null },
+  // 可在明細處置這一筆（呼叫端依處置權限決定）
+  reviewable: { type: Boolean, default: false },
 })
-const emit = defineEmits(['update:modelValue'])
+// prev／next：換上一筆、下一筆；reviewed：這一筆已處置（呼叫端重取並換下一筆）
+const emit = defineEmits(['update:modelValue', 'prev', 'next', 'reviewed'])
+
+const reviewForm = ref({ disposition: 'benign', note: '' })
+const reviewSubmitting = ref(false)
+
+// 單筆審閱：規則與告警頁的逐筆審閱相同（理由選填，本人觸發者亦同）
+const submitReview = async () => {
+  if (!props.alertId || reviewSubmitting.value) return
+  reviewSubmitting.value = true
+  try {
+    await reviewAlert(props.alertId, {
+      disposition: reviewForm.value.disposition,
+      note: reviewForm.value.note.trim(),
+    })
+    emit('reviewed', props.alertId)
+  } catch (error) {
+    // 錯誤由全域攔截器提示
+    console.error('審閱告警失敗:', error?.response?.status)
+  } finally {
+    reviewSubmitting.value = false
+  }
+}
 
 const TAG_TYPES = { high: 'danger', medium: 'warning', low: 'info' }
 const LEVELS = ['high', 'medium', 'low']
@@ -454,6 +599,44 @@ const deliveryTime = (d) => {
     return t('systemAlerts.detail.nextAttemptAt', { time: formatDateTime(d.next_attempt_at) })
   }
   return ''
+}
+
+// 時間之前的說明：重送中寫已試次數與最近原因；放棄寫原因句子與下一步
+const deliveryBefore = (d) => {
+  if (d.state === 'retrying' && d.attempts > 0) {
+    return d.reason_code
+      ? t('systemAlerts.delivery.triedWithReason', { attempts: d.attempts, reason: reasonText(d.reason_code, d.last_error) })
+      : t('systemAlerts.delivery.tried', { attempts: d.attempts })
+  }
+  if (d.state === 'abandoned') {
+    switch (d.end_reason) {
+      case 'snapshot_unreadable':
+        return t('systemAlerts.delivery.abandonedReason.unreadable')
+      case 'rate_limited':
+        return t('systemAlerts.delivery.abandonedReason.rateLimited')
+      case 'type_unregistered':
+        return t('systemAlerts.delivery.abandonedReason.type')
+      case 'render_failed':
+        return t('systemAlerts.delivery.abandonedReason.render')
+      case 'max_attempts':
+        return t('systemAlerts.delivery.abandonedReason.max', {
+          max: DELIVERY_MAX_ATTEMPTS,
+          reason: reasonText(d.reason_code, d.last_error),
+        })
+      default:
+        return ''
+    }
+  }
+  return ''
+}
+// 時間之後的說明：重送中寫最多再試幾次；非第一次送達寫第幾次；停用的通道照送
+const deliveryAfter = (d) => {
+  const parts = []
+  if (d.state === 'retrying' && d.attempts > 0) parts.push(t('systemAlerts.delivery.remaining', { remaining: remainingAttempts(d.attempts) }))
+  if (d.state === 'delivered' && d.attempts > 1) parts.push(t('systemAlerts.delivery.deliveredNth', { n: d.attempts }))
+  if (d.channel_disabled) parts.push(t('systemAlerts.delivery.disabledStillSent'))
+  // 各句自帶前導標點（接在時間或狀態之後）
+  return parts.join('')
 }
 
 const roleListText = (csv) =>
@@ -667,6 +850,7 @@ const inventoryLink = computed(() => {
 
 const load = async () => {
   if (!props.modelValue || !props.alertId) return
+  reviewForm.value = { disposition: 'benign', note: '' }
   loading.value = true
   failed.value = false
   detail.value = null
@@ -686,6 +870,58 @@ watch(() => [props.modelValue, props.alertId], load, { immediate: true })
 </script>
 
 <style scoped>
+.sa-drawer__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ot-space-xs) var(--ot-space-sm);
+}
+
+.sa-drawer__header-title {
+  flex: 1;
+  font-size: var(--ot-font-size-lg);
+  font-weight: 600;
+  color: var(--ot-text-primary);
+}
+
+.sa-drawer__pos {
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
+.sa-drawer__header :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.sa-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-xs);
+  padding-top: var(--ot-space-sm);
+  border-top: 1px solid var(--ot-border-subtle);
+  text-align: left;
+}
+
+.sa-review__title {
+  font-weight: 600;
+  color: var(--ot-text-primary);
+}
+
+.sa-review__label {
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+}
+
+.sa-review__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ot-space-sm);
+}
+
+.sa-review__actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
 .sa-drawer__headline {
   display: flex;
   align-items: center;
@@ -724,6 +960,24 @@ watch(() => [props.modelValue, props.alertId], load, { immediate: true })
 .sa-dl dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.sa-delivery-state {
+  margin: 0 4px;
+  font-weight: 600;
+}
+
+.sa-delivery-state.is-retrying {
+  color: var(--ot-warning);
+}
+
+.sa-delivery-state.is-abandoned {
+  color: var(--ot-danger);
+}
+
+.sa-delivery-detail {
+  margin-right: 4px;
+  color: var(--ot-text-secondary);
 }
 
 .sa-delivery-time {

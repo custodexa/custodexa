@@ -723,6 +723,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/notification-channels/:id/deliveries",
+      "handler": "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Deliveries-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/offsite-storage/failures",
       "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Failures-fm"
     },
@@ -1290,6 +1295,11 @@
       "method": "POST",
       "path": "/api/v1/command-alerts/:id/review",
       "handler": "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).Review-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/command-alerts/batch-review",
+      "handler": "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).BatchReview-fm"
     },
     {
       "method": "POST",
@@ -4209,7 +4219,7 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).registerOn.EnforceRegistry.func1",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).List-fm"
       ]
     },
@@ -4868,6 +4878,23 @@
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notification-channels/:id/deliveries",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.EnforceRegistry.func2",
+        "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Deliveries-fm"
       ]
     },
     {
@@ -7354,8 +7381,25 @@
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).registerOn.EnforceRegistry.func2",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).Review-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/command-alerts/batch-review",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/middleware.(*apiTokenGate).Handle-fm",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).registerOn.EnforceRegistry.func3",
+        "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).BatchReview-fm"
       ]
     },
     {

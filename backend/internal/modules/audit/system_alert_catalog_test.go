@@ -244,11 +244,10 @@ func TestSystemAlertCatalogCredentialAttachedEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("單筆參數未通過出站規格：%v", err)
 	}
-	// 分級短語沿用全站共用的分級詞庫
-	sevZh := notifycat.Phrase("zh-TW", notifycat.LexiconSeverity, "medium")
+	// 分級只在 Slack 文字的第一行呈現一次（由投遞層加上），句尾不再重複
 	title, text := notifycat.Render("zh-TW", ev, clean)
 	if title != "API token 掛載既有憑證" ||
-		text != "ops-chen 以 API token「tf-prod-apply」把憑證「prod-linux-root」掛到資產「web-21」（建立資產時引用；分級："+sevZh+"）。" {
+		text != "ops-chen 以 API token「tf-prod-apply」把憑證「prod-linux-root」掛到資產「web-21」（建立資產時引用）。" {
 		t.Errorf("單筆渲染：%q / %q", title, text)
 	}
 	imp := map[string]string{"actor": "ops-chen", "severity": "medium", "token_name": "tf-prod-apply",
@@ -258,7 +257,7 @@ func TestSystemAlertCatalogCredentialAttachedEntries(t *testing.T) {
 		t.Fatalf("匯入參數未通過出站規格：%v", err)
 	}
 	_, text = notifycat.Render("zh-TW", ev, clean)
-	if text != "ops-chen 以 API token「tf-prod-apply」匯入資產，其中 6 台引用了 2 筆系統已保存的憑證（分級："+sevZh+"）。" {
+	if text != "ops-chen 以 API token「tf-prod-apply」匯入資產，其中 6 台引用了 2 筆系統已保存的憑證。" {
 		t.Errorf("匯入渲染：%q", text)
 	}
 	for _, lang := range notifycat.SupportedLangs {

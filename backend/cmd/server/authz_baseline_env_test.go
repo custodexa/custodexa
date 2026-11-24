@@ -178,7 +178,7 @@ func baselineExtraModels() []any {
 	return []any{
 		&model.UserGroupMember{}, &model.AlertRule{}, &model.ApproverScope{}, &model.CommandAlert{},
 		&model.NotificationChannel{}, &model.SessionCommand{},
-		&model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{},
+		&model.SystemAlertDetail{}, &model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{},
 		&model.CredentialJobAuthorization{},
 	}
 }

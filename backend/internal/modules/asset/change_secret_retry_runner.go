@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"time"
 
@@ -223,7 +224,7 @@ func (r *ChangeSecretRetryRunner) RetryOneAsResult(caller context.Context, cand 
 			} else {
 				recovery = true
 				if r.notifier != nil && claimRecoveryAlert(r.db, &model.ChangeSecretCandidate{}, cand.ID) {
-					r.alert("改密工作於授權失效後進入有限驗證",
+					r.alert(notifycat.RotationAlertRecoveryVerify,
 						fmt.Sprintf("candidate=%d asset_id=%d account=%s 發起者已失權，因遠端變更已送出，僅做驗證與本地提交（不再下達新變更），請具權者知悉",
 							cand.ID, cand.AssetID, cand.AccountUsername))
 				}
@@ -337,7 +338,7 @@ func (r *ChangeSecretRetryRunner) alertStopOnce(cand *model.ChangeSecretCandidat
 	if reason == model.ChangeSecretReasonAuthzRestored {
 		r.auditRestoredStop(cand)
 	}
-	r.alert("改密工作因授權失效停止",
+	r.alert(notifycat.RotationAlertAuthzStopped,
 		fmt.Sprintf("retry candidate=%d reason=%s（遠端未被新增變更，候選保留，需具權者處置）", cand.ID, reason))
 }
 
@@ -354,7 +355,7 @@ func (r *ChangeSecretRetryRunner) noteFailure(cand *model.ChangeSecretCandidate,
 		return
 	}
 	if abandoned {
-		r.alert("改密候選憑證已放棄重試",
+		r.alert(notifycat.RotationAlertCandidateAbandoned,
 			fmt.Sprintf("asset_id=%d account=%s 已逾重試期限仍無法驗證，需管理員以帶外途徑處置",
 				cand.AssetID, cand.AccountUsername))
 	}
@@ -391,7 +392,7 @@ func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandid
 	}
 	if recovery {
 		if cleanupPending {
-			r.alert("改密候選已驗證但舊公鑰待清理",
+			r.alert(notifycat.RotationAlertCleanupPending,
 				fmt.Sprintf("asset_id=%d account=%s 已於失權後完成有限驗證，目標機上的舊公鑰尚未清除，請具權者手動處置",
 					cand.AssetID, cand.AccountUsername))
 		}
@@ -399,10 +400,7 @@ func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandid
 }
 
 func (r *ChangeSecretRetryRunner) alert(rule, msg string) {
-	if r.notifier == nil {
-		return
-	}
-	r.notifier.Enqueue(model.CommandAlert{RuleName: rule, Command: msg, Severity: "high"})
+	enqueueRotationAlert(r.notifier, rule, msg)
 }
 
 // recoveryAudit 有限驗證的結果留痕（發起者取自候選的授權脈絡）。

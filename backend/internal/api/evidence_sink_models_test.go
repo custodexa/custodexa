@@ -6,6 +6,6 @@ import "github.com/custodexa/backend/internal/model"
 func evidenceSinkModels() []any {
 	return []any{
 		&model.AuditLog{}, &model.CommandAlert{}, &model.NotificationChannel{},
-		&model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{},
+		&model.SystemAlertDetail{}, &model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{},
 	}
 }

@@ -58,7 +58,7 @@ func newSystemAlertRouteDB(t *testing.T) *gorm.DB {
 	)`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemAlertDetail{}, &model.SystemAlertOutbox{},
+	if err := db.AutoMigrate(&model.SystemAlertDetail{}, &model.NotificationDelivery{},
 		&model.SystemAlertSeverityOverride{}, &model.NotificationChannel{}, &model.AuditLog{}); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func runSystemAlertCatalogRouteCases(t *testing.T) {
 			t.Fatalf("調為低後仍應產生系統告警列: %+v %v", alert, err)
 		}
 		var outbox int64
-		db.Model(&model.SystemAlertOutbox{}).Where("alert_id = ?", alertID).Count(&outbox)
+		db.Model(&model.NotificationDelivery{}).Where("alert_id = ?", alertID).Count(&outbox)
 		if outbox != 1 {
 			t.Fatalf("調為低後 outbox 應有 1 列，實為 %d", outbox)
 		}
@@ -350,6 +350,19 @@ func runSystemAlertCatalogRouteCases(t *testing.T) {
 			d.AuditLogID == nil || len(d.Deliveries) != 1 || d.Deliveries[0].State == "" || d.Params["recipient"] != "bob" ||
 			d.TargetKind != "user" || d.TargetID != "9" {
 			t.Fatalf("明細不符: %s", w.Body.String())
+		}
+		// 送達項帶與投遞紀錄路由同名的唯讀欄位（新排入、尚未嘗試：原因為空、通道啟用中）
+		var generic struct {
+			Deliveries []map[string]any `json:"deliveries"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &generic)
+		for _, k := range []string{"reason_code", "last_error", "end_reason", "channel_disabled"} {
+			if _, ok := generic.Deliveries[0][k]; !ok {
+				t.Fatalf("送達項應帶 %s: %s", k, w.Body.String())
+			}
+		}
+		if generic.Deliveries[0]["channel_disabled"] != false || generic.Deliveries[0]["reason_code"] != "" {
+			t.Fatalf("新排入的送達項不應帶原因或停用: %v", generic.Deliveries[0])
 		}
 		// 來源位址取自同交易的審計列。
 		if d.ClientIP != "203.0.113.7" {

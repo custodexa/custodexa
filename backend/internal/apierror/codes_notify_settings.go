@@ -36,7 +36,7 @@ var (
 	CodeInvalidChannelURL = register("VALIDATION_CHANNEL_URL", Descriptor{
 		ZhFallback: "URL 必須為 http 或 https"})
 	CodeInvalidChannelType = register("VALIDATION_CHANNEL_TYPE", Descriptor{
-		ZhFallback: "通道類型必須為 webhook 或 slack"})
+		ZhFallback: "通道類型必須為 webhook、slack 或 slack_app"})
 	// CodeInvalidChannelLanguage 映射 service.ErrInvalidChannelLanguage sentinel
 	// （語系空值或白名單外皆拒，服務層不區分兩種成因）
 	CodeInvalidChannelLanguage = register("VALIDATION_CHANNEL_LANGUAGE", Descriptor{
@@ -47,6 +47,37 @@ var (
 		ZhFallback: "推送等級必須為 low、medium 或 high"})
 	CodeInvalidChannelID = register("VALIDATION_INVALID_CHANNEL_ID", Descriptor{
 		ZhFallback: "無效的通道 ID"})
+	// CodeInvalidChannelTarget 映射 audit.ErrInvalidChannelTarget（slack_app 的頻道識別碼格式）
+	CodeInvalidChannelTarget = register("VALIDATION_CHANNEL_TARGET", Descriptor{
+		ZhFallback: "頻道識別碼須為 1 到 64 個英數字"})
+	// CodeInvalidChannelSecret 映射 audit.ErrInvalidChannelSecret（機器人 token 格式）
+	CodeInvalidChannelSecret = register("VALIDATION_CHANNEL_SECRET", Descriptor{
+		ZhFallback: "機器人 token 須以 xoxb- 開頭且不含空白"})
+	// CodeChannelSecretRequired 映射 audit.ErrChannelSecretRequired（型別需要秘密而請求沒有給，或要清除它）
+	CodeChannelSecretRequired = register("VALIDATION_CHANNEL_SECRET_REQUIRED", Descriptor{
+		ZhFallback: "儲存失敗：Slack 應用程式需要機器人 token，請在同一次儲存時輸入。通道維持原狀。"})
+	// CodeChannelTypeChangeNeedsURL 映射 audit.ErrChannelTypeChangeNeedsURL
+	CodeChannelTypeChangeNeedsURL = register("VALIDATION_CHANNEL_TYPE_CHANGE_NEEDS_URL", Descriptor{
+		ZhFallback: "儲存失敗：改了類型時要同時填入網址。通道維持原狀。"})
+	// CodeChannelURLChangeNeedsSecret 映射 audit.ErrChannelURLChangeNeedsSecret
+	CodeChannelURLChangeNeedsSecret = register("VALIDATION_CHANNEL_URL_CHANGE_NEEDS_SECRET", Descriptor{
+		ZhFallback: "儲存失敗：改了 Slack 位址或改成 Slack 應用程式時，要同時輸入 token。通道維持原狀。"})
+	// CodeChannelDMConflict 映射 audit.ErrDirectMessageConflict：已有另一個通道開啟對個人派送（name 為那個通道的名稱）
+	CodeChannelDMConflict = register("VALIDATION_CHANNEL_DM_CONFLICT", Descriptor{
+		ZhFallback: "已有通道「{name}」開啟對個人派送。同一時間只能有一個通道開啟；要改用這個通道，請先到「{name}」關閉這個設定。",
+		Params:     []ParamSpec{{Key: "name", Kind: ParamOpaque}}})
+	// CodeChannelDMURLNotAllowed 映射 audit.ErrDirectMessageURLNotAllowed 與 audit.ErrSelfTestURLNotAllowed
+	CodeChannelDMURLNotAllowed = register("VALIDATION_CHANNEL_DM_URL_NOT_ALLOWED", Descriptor{
+		ZhFallback: "這個網址不能用於對個人派送，需由部署者設定允許。"})
+	// CodeChannelDMTypeUnsupported 映射 audit.ErrDirectMessageUnsupportedType 與 audit.ErrSelfTestUnsupportedType
+	CodeChannelDMTypeUnsupported = register("VALIDATION_CHANNEL_DM_TYPE_UNSUPPORTED", Descriptor{
+		ZhFallback: "這個通道類型不能送私訊給個人。"})
+	// CodeInvalidDeliveryAudience 投遞紀錄的收件對象篩選不在值域內
+	CodeInvalidDeliveryAudience = register("VALIDATION_DELIVERY_AUDIENCE", Descriptor{
+		ZhFallback: "無法篩選：收件對象只能是頻道或個人。"})
+	// CodeInvalidDeliveryState 投遞紀錄的狀態篩選不在值域內
+	CodeInvalidDeliveryState = register("VALIDATION_DELIVERY_STATE", Descriptor{
+		ZhFallback: "無法篩選：狀態只能是等待中、重送中、已送達、已放棄或已取消。"})
 
 	CodeChannelNotFound = register("NOTFOUND_NOTIFICATION_CHANNEL", Descriptor{
 		ZhFallback: "通知通道不存在"})
@@ -113,12 +144,18 @@ var (
 	CodeCommandAlertNotFound = register("NOTFOUND_COMMAND_ALERT", Descriptor{
 		ZhFallback: "告警不存在"})
 
-	// 批次審閱：逐筆送出時每筆各自的被拒原因。
-	// 理由碼另供單筆審閱的字數上限共用（兩條路徑同一上限）
+	// 批次審閱：理由碼供批次審閱端點、逐筆送出的批次與單筆審閱的字數上限共用（同一上限）。
+	// 本人觸發碼只用於以單筆端點帶批次關聯碼逐筆送出的請求：這種請求無法表達確認筆數
 	CodeAlertBatchNote = register("VALIDATION_ALERT_BATCH_NOTE", Descriptor{
 		ZhFallback: "審閱理由不得超過 500 字，批次審閱另須填寫理由"})
 	CodeAlertBatchSelfTriggered = register("RULE_ALERT_BATCH_SELF_TRIGGERED", Descriptor{
-		ZhFallback: "自己連線觸發的告警不納入批次，請逐筆審閱"})
+		ZhFallback: "你自己觸發的告警不能以逐筆送出的批次處置，請改用批次審閱並確認，或逐筆審閱"})
+	// 批次審閱端點的整批拒收：筆數超過單次上限（meta 帶 limit），
+	// 或請求明示的本人觸發筆數與伺服端計得的不符（meta 帶 self_triggered）
+	CodeAlertBatchTooLarge = register("VALIDATION_ALERT_BATCH_TOO_LARGE", Descriptor{
+		ZhFallback: "一次批次審閱的告警筆數超過上限，請分次送出"})
+	CodeAlertBatchSelfAck = register("CONFLICT_ALERT_BATCH_SELF_ACK", Descriptor{
+		ZhFallback: "這一批中你自己觸發的告警筆數與確認的筆數不符，請重新確認後再送出"})
 	CodeAlertAlreadyReviewed = register("CONFLICT_ALERT_ALREADY_REVIEWED", Descriptor{
 		ZhFallback: "送出時已有審閱結果"})
 

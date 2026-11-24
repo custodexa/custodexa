@@ -222,6 +222,30 @@ func WireParams(event Event, params map[string]string) map[string]any {
 	return out
 }
 
+// TypedWireParams 新版 webhook 物件用的參數：依事件規格的型別輸出——KindInt 為 JSON 數字、KindDateList 為
+// 字串陣列、其餘為字串。整數參數的值無法解析時保留字串（輸入應為 Validate 或 FilterDeclared 的回傳值，
+// 正常情況不會發生）。既有的 params 欄位仍用 WireParams，型別不變。
+func TypedWireParams(event Event, params map[string]string) map[string]any {
+	spec := registry[event]
+	out := make(map[string]any, len(params))
+	for k, v := range params {
+		p, ok := spec.param(k)
+		switch {
+		case ok && p.Kind == KindDateList:
+			out[k] = splitDateList(v)
+		case ok && p.Kind == KindInt:
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+				out[k] = n
+			} else {
+				out[k] = v
+			}
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func splitDateList(v string) []string {
 	if v == "" {
 		return []string{}

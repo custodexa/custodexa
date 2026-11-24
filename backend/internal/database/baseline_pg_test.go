@@ -142,14 +142,19 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 鍵盤紀錄增 1 表（keystroke_records）、4 索引（pkey、record_uuid 唯一、session_id 唯一、status），無 CHECK、無外鍵。
 	// 個人 API token 增 2 表（api_tokens、api_token_roles）、5 索引（兩張 pkey、摘要唯一、(user_id, revoked_at)、
 	// audit_logs 的 (api_token_id, created_at)），無 CHECK。
-	if got.Tables != 96 {
-		t.Errorf("表數 = %d, want 96（個人 API token 2 表 ＋ 鍵盤紀錄 1 表 ＋ 堡壘機專用帳號測試登入結果 1 表 ＋ 主機帳號盤點 2 表 ＋ 憑證影響確認 1 表 ＋ 憑證主機身分承接紀錄 1 表 ＋ 使用者版本說明關閉狀態 1 表 ＋ 保留下限抬升紀錄 1 表 ＋ 主機金鑰不符觀察 1 表 ＋ 憑證工作授權表 ＋ 系統安全告警 3 表、通道觀測時間 1 表 ＋ 既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表 ＋ 政策變更歷史 ＋ 權限模型三表 ＋ 權限狀態事件 ＋ 角色權限）", got.Tables)
+	// 通知投遞層增 1 表（notification_messages）、6 索引（該表 pkey、待分派部分索引、(state, created_at)、
+	// alert_id；system_alert_outbox 的 (source_channel_id, created_at) 與 message_id；到期索引重建不增減）、
+	// 10 CHECK（內容表 5 條、待投遞表新增 5 條；既有的狀態、型別、語系與通道型別約束重建不增減）。
+	// 定向通知增 2 索引（通道的「至多一列開啟對個人派送」、待投遞表的（內容, 收件人）部分唯一；到期索引重建不增減）、
+	// 3 CHECK（通道的對個人派送限型別、待投遞表的收件對象值域與收件人對應；終態原因約束重建不增減）。
+	if got.Tables != 97 {
+		t.Errorf("表數 = %d, want 97（通知投遞層 1 表 ＋ 個人 API token 2 表 ＋ 鍵盤紀錄 1 表 ＋ 堡壘機專用帳號測試登入結果 1 表 ＋ 主機帳號盤點 2 表 ＋ 憑證影響確認 1 表 ＋ 憑證主機身分承接紀錄 1 表 ＋ 使用者版本說明關閉狀態 1 表 ＋ 保留下限抬升紀錄 1 表 ＋ 主機金鑰不符觀察 1 表 ＋ 憑證工作授權表 ＋ 系統安全告警 3 表、通道觀測時間 1 表 ＋ 既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表 ＋ 政策變更歷史 ＋ 權限模型三表 ＋ 權限狀態事件 ＋ 角色權限）", got.Tables)
 	}
-	if got.Indexes != 298 {
-		t.Errorf("索引數 = %d, want 298（個人 API token 5 ＋ 鍵盤紀錄 pkey、record_uuid 唯一、session_id 唯一與 status 4 ＋ 測試登入結果 pkey 與資產索引 2 ＋ 資產帳號執行身分部分唯一索引 1 ＋ 主機帳號盤點 6 ＋ 憑證影響確認 pkey 與唯一索引、憑證歸屬複合索引 3、憑證主機身分承接紀錄 pkey、唯一索引與消耗索引 3、使用者版本說明關閉狀態 pkey 1、保留下限抬升紀錄 pkey 1、主機金鑰不符觀察 pkey 與唯一索引 2、系統告警投遞識別唯一索引 1、檢查點附證痕跡部分索引 1、憑證工作授權表 pkey 與來源索引 ＋ 系統安全告警 7、通道觀測時間 pkey 1、資產主機指紋撥號位址 1 ＋ 角色權限表主鍵 ＋ 權限狀態事件 pkey 與 seq 唯一索引 ＋ 既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4 ＋ 政策變更歷史 2）", got.Indexes)
+	if got.Indexes != 306 {
+		t.Errorf("索引數 = %d, want 306（定向通知 2 ＋ 通知投遞層 6 ＋ 個人 API token 5 ＋ 鍵盤紀錄 pkey、record_uuid 唯一、session_id 唯一與 status 4 ＋ 測試登入結果 pkey 與資產索引 2 ＋ 資產帳號執行身分部分唯一索引 1 ＋ 主機帳號盤點 6 ＋ 憑證影響確認 pkey 與唯一索引、憑證歸屬複合索引 3、憑證主機身分承接紀錄 pkey、唯一索引與消耗索引 3、使用者版本說明關閉狀態 pkey 1、保留下限抬升紀錄 pkey 1、主機金鑰不符觀察 pkey 與唯一索引 2、系統告警投遞識別唯一索引 1、檢查點附證痕跡部分索引 1、憑證工作授權表 pkey 與來源索引 ＋ 系統安全告警 7、通道觀測時間 pkey 1、資產主機指紋撥號位址 1 ＋ 角色權限表主鍵 ＋ 權限狀態事件 pkey 與 seq 唯一索引 ＋ 既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4 ＋ 政策變更歷史 2）", got.Indexes)
 	}
-	if got.Checks != 53 {
-		t.Errorf("CHECK 約束數 = %d, want 53（主機帳號盤點 4 ＋ 憑證影響確認動作值域 ＋ 憑證工作授權來源種類 ＋ 系統安全告警 4 ＋ 權限狀態事件種類 ＋ 既有 34 ＋ 外部群組來源、備註長度、使用者群組規則來源）", got.Checks)
+	if got.Checks != 66 {
+		t.Errorf("CHECK 約束數 = %d, want 66（定向通知 3 ＋ 通知投遞層 10 ＋ 主機帳號盤點 4 ＋ 憑證影響確認動作值域 ＋ 憑證工作授權來源種類 ＋ 系統安全告警 4 ＋ 權限狀態事件種類 ＋ 既有 34 ＋ 外部群組來源、備註長度、使用者群組規則來源）", got.Checks)
 	}
 
 	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。

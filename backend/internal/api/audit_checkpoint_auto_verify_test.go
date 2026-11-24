@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 

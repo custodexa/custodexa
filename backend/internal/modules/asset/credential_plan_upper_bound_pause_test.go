@@ -35,7 +35,7 @@ func newPbFixture(t *testing.T, inHosts, outHosts []string) *pbFixture {
 	g.az.targetlessGlobalOnly = true
 	g.az.grant(CredCapRotate, g.in)
 	g.runner.WithAuditSink(audit.NewTxSink())
-	p := &pbFixture{rtFixture: g, notifier: audit.NewAlertNotifier(g.db, nil), hosts: map[string]uint{}, tt: t}
+	p := &pbFixture{rtFixture: g, notifier: newRotationNotifier(t, g.db), hosts: map[string]uint{}, tt: t}
 	g.runner.notifier = p.notifier
 	g.plans.WithAuthorizer(g.az)
 	all := append(append([]string{}, inHosts...), outHosts...)
@@ -165,7 +165,7 @@ func TestCredentialPlanUpperBoundPause(t *testing.T) {
 		p := newPbFixture(t, in, out)
 		plan := p.plan(t, rtScopedUser, p.mounts[:3])
 		p.mount(t, "10.61.0.4", p.out)
-		before, calls, alerts := p.counts(t), p.remoteCalls(), p.notifier.PendingNotifications()
+		before, calls, alerts := p.counts(t), p.remoteCalls(), rotationAlertCount(p.db)
 
 		assert.Empty(t, p.runner.RunPlan(plan), "排程：任何候選建立前停止")
 		assert.Equal(t, before, p.counts(t))
@@ -173,7 +173,7 @@ func TestCredentialPlanUpperBoundPause(t *testing.T) {
 		plan = p.reload(t, plan.ID)
 		assert.Equal(t, model.PlanAuthNeedsReconfirmation, plan.AuthorizationState)
 		assert.EqualValues(t, 1, p.boundStopAudits(t))
-		assert.Equal(t, alerts+1, p.notifier.PendingNotifications(), "沿既有停止告警通道，轉入當下一次")
+		assert.Equal(t, alerts+1, rotationAlertCount(p.db), "沿既有停止告警通道，轉入當下一次")
 
 		// 之後的排程時點不執行、不再告警與留痕
 		assert.Empty(t, p.runner.RunPlan(plan))
@@ -182,7 +182,7 @@ func TestCredentialPlanUpperBoundPause(t *testing.T) {
 		assert.Equal(t, before, p.counts(t))
 		assert.Equal(t, calls, p.remoteCalls())
 		assert.EqualValues(t, 1, p.boundStopAudits(t))
-		assert.Equal(t, alerts+1, p.notifier.PendingNotifications())
+		assert.Equal(t, alerts+1, rotationAlertCount(p.db))
 
 		// 範圍化點擊者一鍵重新授權：列在 skipped、狀態不變
 		done, skipped, err := p.plans.ReauthorizePending(userCtx(rtScopedUser, "scoped"))
@@ -271,11 +271,11 @@ func TestCredentialPlanUpperBoundPause(t *testing.T) {
 				p := newPbFixture(t, in, out)
 				plan := p.plan(t, rtScopedUser, p.mounts[:3])
 				tc.grow(p)
-				alerts := p.notifier.PendingNotifications()
+				alerts := rotationAlertCount(p.db)
 				requireRanAll(t, p.runner.RunPlan(plan), 4)
 				assert.Empty(t, p.reload(t, plan.ID).AuthorizationState)
 				assert.Zero(t, p.boundStopAudits(t))
-				assert.Equal(t, alerts, p.notifier.PendingNotifications())
+				assert.Equal(t, alerts, rotationAlertCount(p.db))
 			})
 		}
 	})

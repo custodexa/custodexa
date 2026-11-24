@@ -62,18 +62,18 @@ func TestProbeBreakerTripProductionWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	notified := 0
-	wireAgentProbeBreaker(db, audit.NewTxSink(), audit.NewAlertRecorder(db), authorization, tokens, grants, func() (int, int) { return 1, 300 }, func(id uint, event notifycat.Event, params map[string]string) {
+	wireAgentProbeBreaker(db, audit.NewTxSink(), audit.NewAlertRecorder(db), authorization, tokens, grants, func() (int, int) { return 1, 300 }, func(tx *gorm.DB, n audit.AgentOwnerNotice) {
 		notified++
-		if id != owner || event != notifycat.EventAgentBreakerTripped || params["owner_id"] != "1" {
-			t.Error(id, event, params)
+		if n.OwnerID != owner || n.Event != notifycat.EventAgentBreakerTripped {
+			t.Error(n.OwnerID, n.Event, n.Params)
 		}
-		// Notification runs only after the same transaction has committed its alert and token state.
-		var n int64
-		db.Model(&model.CommandAlert{}).Where("kind=?", model.AlertKindAgentBreaker).Count(&n)
+		// The notice is enqueued inside the breaker transaction, after the alert and token state were written.
+		var c int64
+		tx.Model(&model.CommandAlert{}).Where("kind=?", model.AlertKindAgentBreaker).Count(&c)
 		var saved model.AgentToken
-		db.First(&saved, token.ID)
-		if n != 1 || saved.SuspendedAt == nil {
-			t.Error(n, saved)
+		tx.First(&saved, token.ID)
+		if c != 1 || saved.SuspendedAt == nil {
+			t.Error(c, saved)
 		}
 	})
 	for _, id := range []uint{10, 999, 11} {

@@ -6,15 +6,17 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
 )
 
 // NotificationChannelServiceInterface 通知通道服務接口（用於測試注入）
@@ -26,21 +28,25 @@ type NotificationChannelServiceInterface interface {
 	Create(req *audit.NotificationChannelRequest) (*model.NotificationChannel, error)
 	Update(id uint, req *audit.NotificationChannelRequest) (*model.NotificationChannel, error)
 	Delete(id uint, actor audit.ChannelActor) error
+	// ListDeliveries 某個通道的投遞紀錄（唯讀；不含網址、秘密與通知參數的值）
+	ListDeliveries(channelID uint, q audit.ChannelDeliveryQuery) (*audit.ChannelDeliveryPage, error)
+	// TestToSelf 「傳給我自己」：以請求者自己的電子郵件與通道已存設定完成一次對應與私訊（同步、不重試、不排入）
+	TestToSelf(ch *model.NotificationChannel, requesterID uint) (audit.SelfTestResult, error)
 }
 
 // NotificationChannelHandler 通知通道 API handler（alert-notifications）。
 // 權限依通知通道管理權限點（notification_channel:manage），由路由登錄表裁決。
 type NotificationChannelHandler struct {
 	channelService NotificationChannelServiceInterface
-	// testSender 可注入：handler 測試不該真的發 HTTP，預設為 service.SendTestNotification
-	testSender func(ch *model.NotificationChannel) (int, error)
+	// testSender 可注入：handler 測試不該真的發 HTTP，預設為 audit.SendTestNotificationShape
+	testSender func(ch *model.NotificationChannel, shape string) (int, error)
 }
 
 // NewNotificationChannelHandler 創建通知通道 handler
 func NewNotificationChannelHandler(channelService NotificationChannelServiceInterface) *NotificationChannelHandler {
 	return &NotificationChannelHandler{
 		channelService: channelService,
-		testSender:     audit.SendTestNotification,
+		testSender:     audit.SendTestNotificationShape,
 	}
 }
 
@@ -61,8 +67,29 @@ func respondChannelError(c *gin.Context, err error) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelLanguage, nil)
 	case errors.Is(err, audit.ErrInvalidChannelMinSeverity):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelMinSeverity, nil)
+	case errors.Is(err, audit.ErrInvalidChannelTarget):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelTarget, nil)
+	case errors.Is(err, audit.ErrInvalidChannelSecret):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelSecret, nil)
+	case errors.Is(err, audit.ErrChannelSecretRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChannelSecretRequired, nil)
+	case errors.Is(err, audit.ErrChannelTypeChangeNeedsURL):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChannelTypeChangeNeedsURL, nil)
+	case errors.Is(err, audit.ErrChannelURLChangeNeedsSecret):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChannelURLChangeNeedsSecret, nil)
 	case errors.Is(err, audit.ErrChannelNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeChannelNotFound, nil)
+	case errors.Is(err, audit.ErrDirectMessageConflict):
+		name := ""
+		var conflict *audit.DirectMessageConflictError
+		if errors.As(err, &conflict) {
+			name = conflict.Name
+		}
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChannelDMConflict, map[string]any{"name": name})
+	case errors.Is(err, audit.ErrDirectMessageURLNotAllowed), errors.Is(err, audit.ErrSelfTestURLNotAllowed):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChannelDMURLNotAllowed, nil)
+	case errors.Is(err, audit.ErrDirectMessageUnsupportedType), errors.Is(err, audit.ErrSelfTestUnsupportedType):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChannelDMTypeUnsupported, nil)
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChannelOp, err)
 	}
@@ -148,6 +175,13 @@ func (h *NotificationChannelHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// notificationTestRequest 測試發送的請求本文：shape（webhook 的形狀，可省略）與 to_self（傳給我自己）。
+// 目的地一律是路徑上通道識別碼的已存設定；本文即使帶了網址、秘密、目標、型別、電子郵件或使用者識別碼也不會被讀取。
+type notificationTestRequest struct {
+	Shape  string `json:"shape"`
+	ToSelf bool   `json:"to_self"`
+}
+
 // Test 對指定通道同步發送測試 payload：
 // admin 即時回饋——投遞結果直接回傳而非丟佇列。
 // 送達對端：HTTP 200 + body success/status_code（對端 2xx 才算成功）；
@@ -158,6 +192,18 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelID, nil)
 		return
 	}
+	// 本文可省略（升級前的呼叫方式）；有帶就必須是合法 JSON 且 shape 在三個值之內
+	var req notificationTestRequest
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+	}
+	if !audit.ValidTestShape(req.Shape) {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
 
 	// 投遞需要明文 url/secret；此物件不得入回應
 	channel, err := h.channelService.GetForDelivery(uint(id))
@@ -165,8 +211,28 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 		respondChannelError(c, err)
 		return
 	}
+	if req.ToSelf {
+		h.testToSelf(c, channel)
+		return
+	}
 
-	status, err := h.testSender(channel)
+	status, err := h.testSender(channel, req.Shape)
+	// 平台已回應但表明失敗（例如 token 無效、頻道不存在）：請求有送到，回 200 並帶淨化後的平台錯誤碼，
+	// 讓操作者看到平台的原因，而不是被引導去查網路
+	var platformErr *audit.ChannelPlatformError
+	if errors.As(err, &platformErr) {
+		c.JSON(http.StatusOK, gin.H{
+			"success":        false,
+			"status_code":    platformErr.Status,
+			"platform_error": platformErr.Code,
+		})
+		return
+	}
+	// 轉址規則擋下（次數過多、目的地不符傳輸政策）：請求有送出，回 200 並帶與投遞紀錄相同的原因代碼
+	if reason := audit.ChannelTestRedirectReason(err); reason != "" {
+		c.JSON(http.StatusOK, gin.H{"success": false, "reason_code": reason})
+		return
+	}
 	if err != nil {
 		// 連線層失敗（DNS/逾時/拒連）：回 502 與分類摘要。err 原文含完整
 		// URL（webhook secret 在路徑），回應與日誌都只落脫敏版——sanitized cause
@@ -177,14 +243,89 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 			code = apierror.CodeChannelTestTimeout
 		}
 		cause := fmt.Errorf("channel id=%d type=%s: %s",
-			channel.ID, channel.Type, audit.SanitizeDeliveryError(err, channel.URL))
+			channel.ID, channel.Type, audit.SanitizeChannelError(err, channel.URL, channel.Secret))
 		apierror.RespondInternal(c, http.StatusBadGateway, code, cause)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	body := gin.H{
 		"success":     status >= 200 && status < 300,
 		"status_code": status,
-	})
+	}
+	if reason := audit.ChannelTestStatusReason(status); reason != "" {
+		body["reason_code"] = reason
+	}
+	c.JSON(http.StatusOK, body)
+}
+
+// testToSelf 「傳給我自己」：結果碼為 delivered、no_email、email_ambiguous、recipient_not_found、platform_error；
+// 成功時帶對到的平台顯示名稱（請求者本人的）。回應不含電子郵件與平台使用者識別碼。連線層失敗回 502。
+func (h *NotificationChannelHandler) testToSelf(c *gin.Context, channel *model.NotificationChannel) {
+	userID, _ := middleware.GetCurrentUserID(c)
+	res, err := h.channelService.TestToSelf(channel, userID)
+	if err != nil {
+		if errors.Is(err, audit.ErrSelfTestUnsupportedType) || errors.Is(err, audit.ErrSelfTestURLNotAllowed) {
+			respondChannelError(c, err)
+			return
+		}
+		code := apierror.CodeChannelTestConnFailed
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			code = apierror.CodeChannelTestTimeout
+		}
+		cause := fmt.Errorf("channel id=%d type=%s to_self: %s",
+			channel.ID, channel.Type, audit.SanitizeChannelError(err, channel.URL, channel.Secret))
+		apierror.RespondInternal(c, http.StatusBadGateway, code, cause)
+		return
+	}
+	body := gin.H{"success": res.Outcome == audit.SelfTestDelivered, "result": res.Outcome}
+	if res.Status != 0 {
+		body["status_code"] = res.Status
+	}
+	if res.PlatformError != "" {
+		body["platform_error"] = res.PlatformError
+	}
+	if res.DisplayName != "" {
+		body["display_name"] = res.DisplayName
+	}
+	c.JSON(http.StatusOK, body)
+}
+
+// Deliveries 列出某個通道的投遞紀錄（唯讀、分頁、依建立時間倒序、可依狀態篩選），另帶該通道等待中與重送中的筆數。
+// 回應不含網址、秘密與通知參數的值；帶快照且早於目的地最後變更時間的列以 snapshot_before_change 標示。
+func (h *NotificationChannelHandler) Deliveries(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelID, nil)
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	// state：可省略；多個狀態以逗號分隔（例如 pending,retrying），每個都要在值域內
+	var states []string
+	if raw := strings.TrimSpace(c.Query("state")); raw != "" {
+		for _, v := range strings.Split(raw, ",") {
+			states = append(states, strings.TrimSpace(v))
+		}
+	}
+	audience := strings.TrimSpace(c.Query("audience"))
+	result, err := h.channelService.ListDeliveries(uint(id), audit.ChannelDeliveryQuery{Page: page, PageSize: pageSize, States: states, Audience: audience})
+	if err != nil {
+		if errors.Is(err, audit.ErrChannelNotFound) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeChannelNotFound, nil)
+			return
+		}
+		if errors.Is(err, audit.ErrInvalidDeliveryState) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidDeliveryState, nil)
+			return
+		}
+		if errors.Is(err, audit.ErrInvalidDeliveryAudience) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidDeliveryAudience, nil)
+			return
+		}
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalChannelQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result.Rows, "total": result.Total, "pending_counts": result.PendingCounts})
 }
 
 // RegisterRoutes 註冊通知通道路由：
@@ -200,5 +341,6 @@ func (h *NotificationChannelHandler) RegisterRoutes(r *gin.RouterGroup, authServ
 		channels.PUT("/:id", h.Update)
 		channels.DELETE("/:id", h.Delete)
 		channels.POST("/:id/test", h.Test)
+		channels.GET("/:id/deliveries", h.Deliveries)
 	}
 }

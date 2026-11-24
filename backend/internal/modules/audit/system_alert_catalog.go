@@ -127,6 +127,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetUser},
 			Params: []SystemAlertParamSpec{
 				{Name: "action", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"password_change", "mfa_disabled", "external_bound", "external_unbound", "rescue"}},
+				// 被操作帳號的登入帳號（落地面以目標使用者識別碼在同一交易補查）
+				{Name: "target_username", Kind: SystemAlertParamOpaque, Required: false},
 			},
 		},
 		{
@@ -142,6 +144,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "manageable_after", Kind: SystemAlertParamInt, Required: false},
 				{Name: "connectable_before", Kind: SystemAlertParamInt, Required: false},
 				{Name: "connectable_after", Kind: SystemAlertParamInt, Required: false},
+				// 角色定義變更時受影響的其他持有者人數（排除操作者本人）
+				{Name: "other_holder_count", Kind: SystemAlertParamInt, Required: false},
 			},
 		},
 		{
@@ -157,6 +161,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "manageable_after", Kind: SystemAlertParamInt, Required: false},
 				{Name: "connectable_before", Kind: SystemAlertParamInt, Required: false},
 				{Name: "connectable_after", Kind: SystemAlertParamInt, Required: false},
+				// 角色定義變更時受影響的其他持有者人數（排除操作者本人）
+				{Name: "other_holder_count", Kind: SystemAlertParamInt, Required: false},
 			},
 		},
 		{
@@ -166,11 +172,13 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetUser, port.SystemAlertTargetUserGroup, port.SystemAlertTargetRoleMapping, port.SystemAlertTargetRole},
 			Params: []SystemAlertParamSpec{
 				{Name: "path", Kind: SystemAlertParamOpaque, Required: true},
-				{Name: "recipient", Kind: SystemAlertParamOpaque, Required: true},
+				{Name: "recipient", Kind: SystemAlertParamOpaque, Required: false},
 				{Name: "role_name", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "scope_summary", Kind: SystemAlertParamOpaque, Required: false},
 				{Name: "scope_node_ids", Kind: SystemAlertParamOpaque, Required: false},
 				{Name: "scope_node_count", Kind: SystemAlertParamInt, Required: false},
+				// 角色定義變更時受影響的其他持有者人數（排除操作者本人）；帶值時通知改用角色定義變更的句型
+				{Name: "other_holder_count", Kind: SystemAlertParamInt, Required: false},
 			},
 		},
 		{
@@ -217,6 +225,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 			Targets:         []port.SystemAlertTargetKind{port.SystemAlertTargetSession},
 			Params: []SystemAlertParamSpec{
 				{Name: "session_id", Kind: SystemAlertParamInt, Required: true},
+				{Name: "session_username", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "asset_name", Kind: SystemAlertParamOpaque, Required: false},
 			},
 		},
 		{
@@ -242,6 +252,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "observed_fingerprint", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "observed_algorithm", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "connection_ref", Kind: SystemAlertParamOpaque, Required: false},
+				// 資產名稱（產生點在交易內帶入；位址與埠不出站）
+				{Name: "asset_name", Kind: SystemAlertParamOpaque, Required: false},
 			},
 		},
 		{
@@ -253,6 +265,7 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "change", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"adopted", "reset"}},
 				{Name: "previous_fingerprint", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "adopted_fingerprint", Kind: SystemAlertParamOpaque, Required: true},
+				{Name: "asset_name", Kind: SystemAlertParamOpaque, Required: false},
 			},
 		},
 		{
@@ -265,6 +278,10 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				{Name: "changed_fields", Kind: SystemAlertParamTokens, Required: false},
 				{Name: "url_before", Kind: SystemAlertParamOpaque, Required: false},
 				{Name: "url_after", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "channel_name", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "target_before", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "target_after", Kind: SystemAlertParamOpaque, Required: false},
+				{Name: "dm_auto_off", Kind: SystemAlertParamEnum, Required: false, Enum: []string{"host", "type"}},
 			},
 		},
 		{
@@ -289,6 +306,7 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 			Params: []SystemAlertParamSpec{
 				{Name: "new_count", Kind: SystemAlertParamInt, Required: true},
 				{Name: "identity_mode", Kind: SystemAlertParamEnum, Required: true, Enum: []string{"default_account", "executor"}},
+				{Name: "asset_name", Kind: SystemAlertParamOpaque, Required: false},
 			},
 		},
 		{
@@ -304,6 +322,8 @@ func systemAlertCatalogData() []SystemAlertTypeDef {
 				// 與 privileged_roles 同序的層級（read｜read_write，半形逗號分隔）
 				{Name: "privileged_role_levels", Kind: SystemAlertParamOpaque, Required: true},
 				{Name: "token_name", Kind: SystemAlertParamOpaque, Required: true},
+				// token 擁有者的登入帳號（落地面以目標使用者識別碼在同一交易補查）
+				{Name: "owner_username", Kind: SystemAlertParamOpaque, Required: false},
 				{Name: "granted_roles", Kind: SystemAlertParamOpaque, Required: true},
 				// 與 granted_roles 同序的層級（read｜read_write，半形逗號分隔）；本欄出現前的告警沒有這個鍵
 				{Name: "granted_role_levels", Kind: SystemAlertParamOpaque, Required: true},

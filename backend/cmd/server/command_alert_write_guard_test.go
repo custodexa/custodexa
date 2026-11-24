@@ -43,23 +43,15 @@ var commandAlertLiteralAllowlist = map[string]string{
 		"`Model(&model.CommandAlert{})` 是事件報告匯出取窗的**查詢型別標記**，" +
 		"writeReportAlerts 只 Find 後寫進 CSV，函式內零 GORM 寫入呼叫——" +
 		"匯出是把既有告警**讀出去**，本來就不該生出告警列。層 2 的無寫入斷言即此宣稱的機器化",
-	"internal/modules/asset/change_secret_runner.go": "改密失敗借道告警**通知**通道：" +
-		"不入庫、不 tee，且 SHALL NOT 併入 AlertSink——併入會產生無對應規則的幽靈告警列。" +
-		"組裝根注入的改密停止推送（ChangeSecretStopNotifier：計畫承接未完成、輪替授權失效停止、" +
-		"排程暫停）同一條借道、同一理由，構造點收在本檔而不在 cmd/server/stage2.go，" +
-		"組裝根因此不必列入本表",
-	"internal/modules/asset/change_secret_retry_runner.go": "同上：候選憑證逾期放棄重試時的通知。" +
-		"與 change_secret_runner.go 走同一條借道，" +
-		"理由與邊界完全相同——不入庫、不 tee、不併入 AlertSink",
 }
 
 // commandAlertWriteFile 唯一可以把 command_alerts 列寫進 DB 的檔。
 const commandAlertWriteFile = "internal/modules/audit/alert_sink.go"
 
 // minCommandAlertLiteralSites 下限。登記檔現況各有構造點（alert_sink／alert_notifier／
-// command_alert_service／daily_review_scope／audit_export_report／
-// change_secret_runner 3 處：stopJob、alertFailure、ChangeSecretStopNotifier／
-// change_secret_retry_runner）。
+// command_alert_service／daily_review_scope／audit_export_report）。
+// 改密工作的停止與失敗提醒已改為系統事件通知（credential_rotation_alert），
+// 不再構造 CommandAlert，兩個改密檔的豁免隨之撤除。
 // timeline_service 的兩處已隨位址樞紐消失——`Model(&model.CommandAlert{})` 改為
 // `Table("command_alerts AS sc")` 加 LEFT JOIN sessions 取建線當下的來源位址，
 // 型別標記不再出現，故該檔的豁免已撤（燒盡制：構造點沒了就不留無主的例外）。
@@ -255,8 +247,8 @@ func TestCommandAlertsHaveNoRawSQLInsert(t *testing.T) {
 
 // TestChangeSecretAlertFailureStaysOffAlertSink 5.5：改密失敗借道**不得**併入落地面。
 //
-// `ChangeSecretRunner.alertFailure` 復用 CommandAlert 的**通知**格式把改密失敗推給
-// webhook，它沒有對應的告警規則、也不該出現在告警清單裡。看到它「也在處理 CommandAlert」
+// `ChangeSecretRunner.alertFailure` 經 enqueueRotationAlert 把改密失敗排成系統事件通知
+// （credential_rotation_alert），它沒有對應的告警規則、也不該出現在告警清單裡。看到它「也在處理 CommandAlert」
 // 而順手改走 AlertSink，會在 command_alerts 產生一批 rule_id=0 的幽靈列——
 // 審閱流程要處置它們、PCI 10.4.1 的未審閱計數要算它們，而它們根本不是指令告警。
 func TestChangeSecretAlertFailureStaysOffAlertSink(t *testing.T) {
@@ -294,22 +286,27 @@ func TestChangeSecretAlertFailureStaysOffAlertSink(t *testing.T) {
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
+		var name string
+		switch f := call.Fun.(type) {
+		case *ast.Ident:
+			name = f.Name
+		case *ast.SelectorExpr:
+			name = f.Sel.Name
+		default:
 			return true
 		}
-		switch sel.Sel.Name {
-		case "Enqueue":
+		switch name {
+		case "enqueueRotationAlert", "EnqueueStandalone":
 			sawEnqueue = true
-		case "RecordAlert", "RecordAlerts":
-			t.Errorf("%s:%d alertFailure 呼叫了 %s：改密失敗借道的是告警**通知**通道，"+
+		case "RecordAlert", "RecordAlerts", "RecordAlertInTx":
+			t.Errorf("%s:%d alertFailure 呼叫了 %s：改密失敗走的是系統事件通知，"+
 				"併入 AlertSink 會在 command_alerts 產生無對應規則的幽靈列",
-				target, pf.Fset.Position(call.Pos()).Line, sel.Sel.Name)
+				target, pf.Fset.Position(call.Pos()).Line, name)
 		}
 		return true
 	})
 	if !sawEnqueue {
-		t.Errorf("%s 的 alertFailure 不再呼叫 Enqueue：本守衛的前提（它走通知通道而非落地面）"+
+		t.Errorf("%s 的 alertFailure 不再呼叫 enqueueRotationAlert／EnqueueStandalone：本守衛的前提（它走通知通道而非落地面）"+
 			"已不成立，SHALL 重新檢視這條路徑要往哪裡去，不得讓守衛在前提消失後繼續假綠", target)
 	}
 }

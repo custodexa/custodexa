@@ -24,6 +24,9 @@ var ErrAgentReportBody = errors.New("agent report body required or too long")
 type AgentTaskFacts struct {
 	ID, RequesterID, ExecutorID uint
 	ClosedAt                    *time.Time
+	// AssetID、AssetCount 任務的資產（申請的第一項）與總台數，給通知標示涉及的資產
+	AssetID    uint
+	AssetCount int
 }
 type AgentPrincipalFacts struct {
 	Kind    string
@@ -32,8 +35,8 @@ type AgentPrincipalFacts struct {
 type AgentTaskSource func(*gorm.DB, uint) (AgentTaskFacts, error)
 type AgentPrincipalSource func(*gorm.DB, uint) (AgentPrincipalFacts, error)
 
-// OwnerEventWriter publishes through existing channels after commit, with owner_id.
-type OwnerEventWriter func(uint, notifycat.Event, map[string]string)
+// OwnerEventWriter enqueues an owner-routed notification inside the caller's transaction.
+type OwnerEventWriter func(*gorm.DB, AgentOwnerNotice)
 
 type AgentTaskReports struct {
 	db        *gorm.DB
@@ -113,13 +116,34 @@ func (s *AgentTaskReports) submit(ctx context.Context, requestID uint, actor gat
 			}
 		}
 		ownerID = principal.OwnerID
+		// 報告與通知內容同交易（savepoint）：通知寫不進去只回到 savepoint，報告照常提交，
+		// MCP 收尾不會因通知錯誤回錯。提交報告所用的 API token 不在這條路徑上，不帶 token 名稱。
+		s.notify(tx, agentTaskReportNotice(ownerID, actor.UserID, requestID, result, task))
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	s.notify(ownerID, notifycat.EventAgentTaskReport, map[string]string{"owner_id": fmt.Sprint(ownerID), "request_id": fmt.Sprint(requestID), "report_id": fmt.Sprint(result.ID), "version": fmt.Sprint(result.Version), "user_id": fmt.Sprint(actor.UserID)})
 	return &result, nil
+}
+
+// agentTaskReportNotice 任務報告的通知事實（不帶報告內文）。
+func agentTaskReportNotice(ownerID, agentID, requestID uint, report model.AgentTaskReport, task AgentTaskFacts) AgentOwnerNotice {
+	params := map[string]string{
+		"request_id": fmt.Sprint(requestID), "report_id": fmt.Sprint(report.ID),
+		"version": fmt.Sprint(report.Version), "user_id": fmt.Sprint(agentID),
+	}
+	if task.AssetCount > 1 {
+		params["asset_count"] = fmt.Sprint(task.AssetCount)
+	}
+	refs := map[string]NotificationNameRef{
+		"agent_name": {Kind: notifycat.IDKindUser, ID: agentID},
+		"owner_name": {Kind: notifycat.IDKindUser, ID: ownerID},
+	}
+	if task.AssetID != 0 {
+		refs["asset_name"] = NotificationNameRef{Kind: notifycat.IDKindAsset, ID: task.AssetID}
+	}
+	return AgentOwnerNotice{OwnerID: ownerID, Event: notifycat.EventAgentTaskReport, Params: params, NameRefs: refs}
 }
 
 type AgentTaskReportVersions struct {

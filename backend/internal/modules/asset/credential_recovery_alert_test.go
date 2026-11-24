@@ -2,6 +2,7 @@ package asset
 
 import (
 	"errors"
+	"github.com/custodexa/backend/internal/notifycat"
 	"sync/atomic"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-const recoveryAlertRule = "改密工作於授權失效後進入有限驗證"
+const recoveryAlertRule = notifycat.RotationAlertRecoveryVerify
 
 // failRecoveryAlertWrites 讓寫入 recovery_alerted_at 的更新一律失敗（模擬去重狀態寫不進去）。
 func failRecoveryAlertWrites(t *testing.T, db *gorm.DB) {
@@ -73,7 +74,7 @@ func TestRecoveryAlertDedup(t *testing.T) {
 		rec := newSecretRecorder()
 		cand, _ := f.revokedCandidate(t, rec, "10.21.1.1", "10.21.1.2")
 		f.retry.WithAuditSink(audit.NewTxSink())
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		rec.mu.Lock()
 		rec.verifyErr["10.21.1.2"] = errRemoteDropped
@@ -83,7 +84,7 @@ func TestRecoveryAlertDedup(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			assert.False(t, f.retry.RetryOne(f.candidateOf(t, cand.ID)), "驗證失敗，第 %d 輪", i+1)
 		}
-		assert.EqualValues(t, 1, notifier.PendingNotifications(), "三輪只發一次")
+		assert.EqualValues(t, 1, rotationAlertCount(f.db), "三輪只發一次")
 		assert.NotNil(t, f.candidateOf(t, cand.ID).RecoveryAlertedAt, "候選列記下已告警")
 	})
 
@@ -92,7 +93,7 @@ func TestRecoveryAlertDedup(t *testing.T) {
 		rec := newSecretRecorder()
 		cand, _ := f.revokedCandidate(t, rec, "10.21.2.1", "10.21.2.2")
 		f.retry.WithAuditSink(audit.NewTxSink())
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		rec.mu.Lock()
 		rec.verifyErr["10.21.2.2"] = errRemoteDropped
@@ -101,9 +102,9 @@ func TestRecoveryAlertDedup(t *testing.T) {
 		failRecoveryAlertWrites(t, f.db)
 
 		assert.False(t, f.retry.RetryOne(f.candidateOf(t, cand.ID)))
-		assert.EqualValues(t, 1, notifier.PendingNotifications(), "寫不進去也要發")
+		assert.EqualValues(t, 1, rotationAlertCount(f.db), "寫不進去也要發")
 		assert.False(t, f.retry.RetryOne(f.candidateOf(t, cand.ID)))
-		assert.EqualValues(t, 2, notifier.PendingNotifications(), "無從去重時寧可重複")
+		assert.EqualValues(t, 2, rotationAlertCount(f.db), "無從去重時寧可重複")
 	})
 
 	t.Run("輪替成員：多輪有限驗證只告警一次，去重記在成員列上", func(t *testing.T) {

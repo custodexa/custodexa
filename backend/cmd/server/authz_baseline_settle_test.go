@@ -21,10 +21,8 @@ import (
 // stack (running, or still to be scheduled: "created by ...") means work the
 // request started is in flight.
 var baselineBackgroundMarkers = []string{
-	// system-event and alert webhook deliveries (retries included)
-	"(*AlertNotifier).NotifyEvent",
-	"(*AlertNotifier).notify",
-	"(*AlertNotifier).deliverWithRetry",
+	// audit-failure notices written or sent directly in the background (retries included)
+	"(*AlertNotifier).EnqueueAuditFailureNotice",
 	// events of the sealed period replayed into the audit trail after unseal
 	"startSealJournalReplay",
 }
@@ -55,13 +53,12 @@ func inflightBackground() []string {
 	return hits
 }
 
-// pendingNotifications counts alerts handed to the notifier queue and not
-// yet delivered. The queue is consumed by a long-lived worker, so queued work
-// has no goroutine of its own and the stack scan cannot see it: the notifier
-// counts it explicitly (queued, taken by the worker, running).
+// pendingNotifications counts notifier background work not yet finished: audit-failure
+// notices still being written or sent directly. The notifier counts them explicitly so
+// the wait does not depend on the goroutine having been scheduled yet.
 func pendingNotifications() int64 {
 	if n := audit.GetAlertNotifier(); n != nil {
-		return n.PendingNotifications()
+		return n.BackgroundInFlight()
 	}
 	return 0
 }

@@ -66,7 +66,7 @@ func TestUpgradeCompatRetiredKeyRestore(t *testing.T) {
 	prep := func(t *testing.T) (*gorm.DB, *capturedRoleEvents, *identity.RoleDefinitionService) {
 		db := oneShotDB(t)
 		require.NoError(t, db.AutoMigrate(&model.AuditLog{}, &model.PermissionStateEvent{}, &model.SystemAlertDetail{},
-			&model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{}, &model.NotificationChannel{}, &model.CommandAlert{}))
+			&model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{}, &model.NotificationChannel{}, &model.CommandAlert{}))
 		ev := &capturedRoleEvents{}
 		svc := identity.NewRoleDefinitionService(db, audit.NewTxSink(), ev,
 			identity.NewGrantGrader(audit.NewTxSink(), audit.NewSystemAlertSink(nil)))

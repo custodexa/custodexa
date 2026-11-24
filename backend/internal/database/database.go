@@ -265,6 +265,12 @@ var schemaParityModels = []interface{}{
 	// 走 schemaDDLStatements() 受兩層 parity 守衛；外鍵只在 DDL
 	&model.APIToken{},
 	&model.APITokenRole{},
+	// 通知投遞層：通知通道（baseline 建表、增量加欄）、所有類別共用的待投遞紀錄
+	// （system_alert_outbox，系統安全告警增量建表）與通知內容（增量建表）。
+	// 待投遞紀錄的兩類約束與型別、語系值域只在 DDL，另由 baselineCheckConstraints 逐條比對
+	&model.NotificationChannel{},
+	&model.NotificationDelivery{},
+	&model.NotificationMessage{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

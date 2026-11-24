@@ -7,7 +7,6 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
-	"github.com/custodexa/backend/internal/notifycat"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,12 +22,13 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestUnlistedAssetOpenIsIndistinguishable(t *testing.T) {
 	f := newFixture(t)
 	tokens := identity.NewAgentTokenService(f.db, audit.NewTxSink())
-	breaker := audit.NewProbeBreaker(f.db, audit.NewTxSink(), audit.NewAlertRecorder(f.db), audit.ProbeBreakerDependencies{LockPrincipal: identity.LockProbePrincipal, Classify: authz.ClassifyAgentProbe, Trip: tokens.TripProbeBreakerInTx, Finish: func(id uint) { tokens.FinishProbeBreaker(id) }, Notify: func(uint, notifycat.Event, map[string]string) { t.Error("unexpected breaker trip") }, Limits: func() (int, int) { return 10, 300 }})
+	breaker := audit.NewProbeBreaker(f.db, audit.NewTxSink(), audit.NewAlertRecorder(f.db), audit.ProbeBreakerDependencies{LockPrincipal: identity.LockProbePrincipal, Classify: authz.ClassifyAgentProbe, Trip: tokens.TripProbeBreakerInTx, Finish: func(id uint) { tokens.FinishProbeBreaker(id) }, Notify: func(*gorm.DB, audit.AgentOwnerNotice) { t.Error("unexpected breaker trip") }, Limits: func() (int, int) { return 10, 300 }})
 	f.h.ssh.AuthorizationService.SetAgentProbeRecorder(func(ctx context.Context, u, k, a uint, endpoint string) error {
 		_, err := breaker.RecordDenied(ctx, u, k, a, endpoint)
 		require.NoError(t, err)

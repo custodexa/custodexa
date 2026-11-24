@@ -39,7 +39,9 @@ func (f *fakeKeystrokeViewer) View(_ context.Context, id uint, req session.Keyst
 
 type fakeReveal struct{ in []audit.SensitiveRevealInput }
 
-func (f *fakeReveal) Report(_ context.Context, in audit.SensitiveRevealInput) { f.in = append(f.in, in) }
+func (f *fakeReveal) Report(_ context.Context, in audit.SensitiveRevealInput) {
+	f.in = append(f.in, in)
+}
 
 func ksRouter(v *fakeKeystrokeViewer, rv *fakeReveal) *gin.Engine {
 	gin.SetMode(gin.TestMode)

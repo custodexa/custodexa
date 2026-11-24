@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"strings"
 	"sync"
 	"testing"
@@ -305,7 +306,7 @@ func runStopNotifyOnceByVerificationSent(t *testing.T) {
 	assert.Len(t, seen, 3, "三種文案互異")
 	for _, r := range cap.rule {
 		assert.Equal(t, hostIdentityStopRule, r)
-		assert.NotEqual(t, "改密工作因授權失效停止", r)
+		assert.NotEqual(t, notifycat.RotationAlertAuthzStopped, r)
 	}
 
 	// 審計失敗：不通知，去重鍵不前進，之後同一狀態仍可通知

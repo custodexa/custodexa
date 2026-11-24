@@ -23,9 +23,9 @@ import (
 // 登入前告示公開端點的形狀與副作用。
 
 type bannerTestEnv struct {
-	router  *gin.Engine
-	policy  *policy.SecurityPolicyService
-	db      *gorm.DB
+	router *gin.Engine
+	policy *policy.SecurityPolicyService
+	db     *gorm.DB
 }
 
 // setupLoginBannerRouter 真 sqlite＋真政策服務＋真審計服務（同步寫入）。

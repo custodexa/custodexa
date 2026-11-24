@@ -456,6 +456,41 @@ var migrations = []Migration{
 		Up:      applyAPITokenRoleLevel,
 		Down:    rollbackAPITokenRoleLevel,
 	},
+	{
+		// 通知投遞層：新表 notification_messages（通知內容）、system_alert_outbox 成為所有類別共用的
+		// 待投遞紀錄（類別、內容列外鍵、分級、目標快照、終態原因、限流起點、目的地版本與兩類約束）、
+		// notification_channels 加 slack_app 型別與四個欄位。資料步驟：既有紀錄的分級以告警列回填。
+		// **不提供 Down**：回退以舊版映像加升級前備份為準。
+		Version: "20261120_notification_delivery_layer",
+		Name:    "notification_delivery_layer",
+		Up:      applyNotificationDeliveryLayer,
+		Down:    rollbackNotificationDeliveryLayer,
+	},
+	{
+		// 待投遞紀錄加最近一次失敗時刻 last_failed_at（可空），供通道列表呈現最近一次失敗的時間。
+		// 純加法，無資料步驟。Down 刪欄（有損，只供 parity 守衛與開發環境）。
+		Version: "20261121_notification_delivery_last_failed",
+		Name:    "notification_delivery_last_failed",
+		Up:      applyNotificationDeliveryLastFailed,
+		Down:    rollbackNotificationDeliveryLastFailed,
+	},
+	{
+		// 待投遞紀錄加轉為放棄或已取消的時刻 ended_at（可空），供投遞放棄通知的近 24 小時筆數與
+		// 通道列表的近 7 天放棄筆數。純加法，無資料步驟。Down 刪欄（有損，只供 parity 守衛與開發環境）。
+		Version: "20261121_notification_delivery_ended_at",
+		Name:    "notification_delivery_ended_at",
+		Up:      applyNotificationDeliveryEndedAt,
+		Down:    rollbackNotificationDeliveryEndedAt,
+	},
+	{
+		// 定向通知：通道加對個人派送開關（至多一列為真、只限 slack_app）與未能送達事件的節流時刻；
+		// 待投遞紀錄加收件對象與收件人（兩條約束）、終態原因值域加六個值、同一內容對同一人至多一筆、
+		// 到期索引含收件對象。純加法加約束重建，無資料步驟。**不提供 Down**：回退以舊版映像加升級前備份為準。
+		Version: "20261121_targeted_notification",
+		Name:    "targeted_notification",
+		Up:      applyTargetedNotification,
+		Down:    rollbackTargetedNotification,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -529,7 +564,11 @@ func schemaDDLStatements() []string {
 	out = append(out, keystrokeRecordsDDL()...)
 	out = append(out, apiTokensDDL()...)
 	out = append(out, userGroupNameLiveUniqueDDL()...)
-	return append(out, apiTokenRoleLevelDDL()...)
+	out = append(out, apiTokenRoleLevelDDL()...)
+	out = append(out, notificationDeliveryLayerDDL()...)
+	out = append(out, notificationDeliveryLastFailedDDL()...)
+	out = append(out, notificationDeliveryEndedAtDDL()...)
+	return append(out, targetedNotificationDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

@@ -681,11 +681,12 @@ func TestAccessRequest_NotifyPayloadMinimized(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed channel: %v", err)
 	}
-	notifier := audit.NewAlertNotifier(db, nil)
-	if err := notifier.LoadChannels(); err != nil {
-		t.Fatalf("load channels: %v", err)
+	if err := db.AutoMigrate(&model.NotificationMessage{}, &model.NotificationDelivery{}); err != nil {
+		t.Fatal(err)
 	}
+	notifier := audit.NewAlertNotifier(db, nil)
 	svc.notifier = notifier
+	worker := audit.NewSystemAlertOutboxWorker(db, nil)
 
 	const secretReason = "極機密事由不得出站"
 	req, err := svc.Submit(1, "requester", false, SubmitAccessRequestInput{
@@ -694,6 +695,8 @@ func TestAccessRequest_NotifyPayloadMinimized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
+	// 通知內容已在建單交易內排入；跑一輪投遞程序（分派與送出同一輪）
+	worker.RunOnce()
 
 	select {
 	case body := <-received:

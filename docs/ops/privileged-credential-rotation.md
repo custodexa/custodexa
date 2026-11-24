@@ -15,8 +15,9 @@
 | Credential | Stored in | Rotation entry point | When it takes effect | Interrupts existing connections or sign-ins | External coordination needed |
 |---|---|---|---|---|---|
 | LDAP bind password | Database (envelope encrypted) | Identity & Access → Identity sources (UI) | Immediately | No | Must be changed on the directory server first |
-| Notification channel secret | Database (envelope encrypted) | Notification Channels (UI) | Immediately (same process) | Not applicable | The receiving end must be updated in step |
-| Notification channel URL | Database (envelope encrypted) | Notification Channels (UI) | Immediately (same process) | Not applicable | — |
+| Notification channel secret | Database (envelope encrypted) | Notification Channels (UI) | Immediately (no restart) | Not applicable | The receiving end must be updated in step |
+| Notification channel URL | Database (envelope encrypted) | Notification Channels (UI) | Immediately (no restart) | Not applicable | — |
+| Slack app bot token | Database (envelope encrypted, in the channel secret column) | Notification Channels (UI) | Immediately (no restart) | Not applicable | Issue the new token in Slack first and revoke the old one afterwards |
 | Offsite storage credentials (offsite evidence storage) | Database (envelope encrypted, one set per settings generation) | System Settings → Offsite storage (UI) | As soon as the save succeeds | No | The storage side must create the new credentials first and revoke the old ones afterwards |
 | KEK (key encryption key) | Depends on mode: env / memory / KMS | Key Management → KEK rewrap wizard | After the rewrap completes | No | Mode C needs a key on the KMS side |
 | DEK (data key) | Database (wrapped by the KEK) | Key Management (`POST /keys/rotate`) | Immediately | No | — |
@@ -59,34 +60,45 @@ Where the "external coordination needed" column is not empty, **if that coordina
 
 **Stored in**: the `secret` and `url` columns of the `notification_channels` table (both envelope encrypted).
 
-**What the secret is for**: computing an HMAC signature over the body of the webhook delivery request, carried in the `X-OT-Signature` header so the receiving end can verify the origin. **An empty secret means no signature.**
+**What the secret is for** depends on the channel type:
 
-- **Slack-type channels never hold a secret**: Slack does not verify custom headers, and attaching one would only mislead. When a channel is converted from webhook type to slack type, any leftover secret is cleared.
-- **Webhook type**: leaving the field empty on edit means keep the existing value (the secret is not returned, so that no edit silently clears it); you have to choose "clear" explicitly for it to be emptied.
+- **Webhook type**: computing an HMAC signature over the body of the delivery request, carried in the `X-OT-Signature` header so the receiving end can verify the origin. **An empty secret means no signature.** Leaving the field empty on edit means keep the existing value (the secret is not returned, so that no edit silently clears it); you have to choose "clear" explicitly for it to be emptied.
+- **Slack (Incoming Webhook) type never holds a secret**: Slack does not verify custom headers, and attaching one would only mislead. The address itself is the credential.
+- **Slack app type**: the secret is the bot token, sent as it is in the `Authorization` header of every request. It is required, cannot be cleared, and is never returned; the channel shows only whether a token is set. Leaving the field empty on edit keeps the stored token, except when the address changes (below).
 
-**Rotation procedure**:
+**Rules that keep a token with its address.** Changing the address of a Slack app channel requires entering the token again in the same save; otherwise the save is refused and nothing changes. Changing a channel's type clears the old secret (a signing key is never reused as a token, nor the reverse) and requires the address to be entered in the same save; a Slack app channel then also needs a token. A Slack app channel does not follow redirects. Together these keep a stored token going only to the address it was saved with.
 
-1. Notification Channels UI → edit the channel → enter the new secret → save.
-2. **Update the verification key on the receiving end in step.**
+**Rotation procedure (webhook signing key)**:
+
+1. Let the receiving end accept the new key alongside the old one.
+2. Notification Channels UI → edit the channel → enter the new secret → save.
 3. Use "Test send" to confirm the receiving end got it and the signature verified.
+4. Stop accepting the old key at the receiving end once the system security alerts queued before the save have been delivered or abandoned (see below).
 
-**When it takes effect: immediately** (the channel cache is refreshed in-process; no restart needed).
+**Rotation procedure (Slack app bot token)**:
 
-**What else a change sets off.** Saving a changed URL or secret is recorded in the audit log and raises a `notification_channel_changed` system security alert, which is sent to the other enabled channels and also to this channel's destination before and after the change; expect that notice at the receiving end during the rotation. System security alerts already queued before the save keep the URL and secret the channel had when they were queued. If the receiving end stops accepting the old secret first, those deliveries fail and are retried until they are marked abandoned 72 hours after they were queued ([Deployment Topology Limits](./deployment-topology-limits.md#system-security-alerts-and-notification-channels)), so let the receiving end accept both secrets until the queue has drained, or accept that those deliveries are lost.
+1. Issue the new token in Slack.
+2. Notification Channels UI → edit the channel → enter the new token → save. When you also change the address, the token has to be entered in the same save.
+3. Use "Test send". A failure that Slack reports, such as an invalid token or a bot that is not in the channel, is shown with Slack's reason rather than as a connection failure.
+4. Revoke the old token in Slack once the system security alerts queued before the save have been delivered or abandoned (see below).
 
-> ### A silent degradation path you have to know about
->
-> When the channel cache is refreshed, the URL and secret are decrypted into the plaintext used for delivery. **If either fails to decrypt, that channel is skipped outright with no delivery, and only a single log line is written; no alert is produced, and the channel still looks normal in the UI.**
->
-> This is a deliberate trade-off (better nothing than sending ciphertext as a URL), but the price is that **"looks fine in the interface" does not mean "is delivering."**
->
-> System security alerts take a different path. For a channel whose settings cannot be decrypted, the alert is still recorded and still sent to every other enabled channel, and that channel's entry in the alert's delivery list is marked abandoned at once with zero attempts, so the gap shows in the alert detail; the operation that raised the alert is not blocked by it. Such a channel can still be edited or deleted; to repair it, enter the URL again and set or clear the secret.
+**Rotation procedure (Slack Incoming Webhook address)**: create the new webhook address in Slack, enter it in the channel and save, and use "Test send". Remove the old address in Slack once the system security alerts queued before the save have been delivered or abandoned (see below).
+
+**When it takes effect: immediately**, with no restart. Command alerts and system events read the channel's settings each time they are sent, so deliveries still waiting use the new address, secret or token from their next attempt.
+
+**What else a change sets off.** Saving a changed address, secret, token, target or type is recorded in the audit log and raises a `notification_channel_changed` system security alert, which is sent to the other enabled channels and also to this channel's destination before and after the change; expect that notice at the receiving end during the rotation. System security alerts queued before the save keep the address, secret or token, and target the channel had when they were raised. If the receiving end stops accepting the old secret first, or the old token is revoked first, those deliveries fail and are retried until they are marked abandoned after 48 attempts, about 70 hours ([Deployment Topology Limits](./deployment-topology-limits.md#system-security-alerts-and-notification-channels)). So keep the old key or token valid until they have drained, or accept that those deliveries are lost. When you change the address, the edit form shows how many system security alerts and how many other notifications are still waiting for that channel, and the channel's delivery records list them.
+
+> ### When a channel's stored settings cannot be decrypted
 >
 > When you can hit it: after a KEK change or a change to encryption settings, when the old encrypted columns no longer decrypt.
 >
-> **How to confirm**: after changing anything related to encryption, press "Test send" once for each enabled channel and confirm the receiving end **actually received** it. Do not rely on whether the channel shows as enabled in the UI.
+> - **System security alerts**: the alert is still recorded and still sent to every other enabled channel, and that channel's entry in the alert's delivery list is marked abandoned at once with zero attempts, so the gap shows in the alert detail; the operation that raised the alert is not blocked by it.
+> - **Command alerts and system events**: every attempt to that channel counts as a failed attempt with the reason that the channel settings cannot be read, and is retried until it is abandoned after 48 attempts. The channel list shows the failure, and the abandonment sends the "Notification delivery abandoned" notice to the other channels.
+> - **Audit failure notices sent directly while the database is unavailable**: such a channel is skipped, and only a line in the server log records it.
 >
-> A related path: if the cache refresh itself fails, the old cache is kept and only a log entry is written, with the next refresh catching up. So when you change settings and do not see the behavior you expected, the log is the only clue.
+> Such a channel can still be edited or deleted. To repair it, enter the address again and set or clear the secret; a Slack app channel needs its token entered again with the address.
+>
+> **How to confirm**: after changing anything related to encryption, press "Test send" once for each enabled channel, confirm the receiving end **actually received** it, and check the delivery state in the channel list. Do not rely on whether the channel shows as enabled in the UI.
 
 ---
 

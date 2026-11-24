@@ -84,7 +84,121 @@ const (
 	// LexiconAPITokenLevel API token 授權角色的層級短語（read、read_write），與 ParamSpec.Levels 的
 	// 渲染格式：item 為一項的寫法（{role}、{level} 由渲染端代入），sep 為項與項之間的分隔符
 	LexiconAPITokenLevel Lexicon = "api_token_level"
+	// LexiconMechanism 稽核機制名稱（鍵＝mechanismEnum）
+	LexiconMechanism Lexicon = "mechanism"
+	// LexiconDeliveryReason 投遞失敗與放棄的原因語句（鍵＝deliveryReasonEnum；已遮蔽、不含網址與秘密）
+	LexiconDeliveryReason Lexicon = "delivery_reason"
+	// LexiconNotifyFooter Slack 文字最後一行的固定詞：發生時間、前往處理、前往查看
+	LexiconNotifyFooter Lexicon = "notify_footer"
+	// LexiconRotationAlertKind 改密工作提醒的種類（鍵＝rotationAlertKindEnum）
+	LexiconRotationAlertKind Lexicon = "rotation_alert_kind"
+	// 系統安全告警中原樣進句子的列舉參數（各自一個詞庫，鍵集＝該參數的允許清單）
+	LexiconPolicyRelaxType     Lexicon = "policy_relax_type"
+	LexiconCustomSecretEntry   Lexicon = "custom_secret_entry"
+	LexiconIdentitySourceKind  Lexicon = "identity_source_kind"
+	LexiconYesNo               Lexicon = "yes_no"
+	LexiconSecurityAdminAction Lexicon = "security_admin_action"
+	LexiconRetentionDataClass  Lexicon = "retention_data_class"
+	LexiconOffsiteSubject      Lexicon = "offsite_subject"
+	LexiconOffsiteChange       Lexicon = "offsite_change"
+	LexiconHostKeyRecordSource Lexicon = "host_key_record_source"
+	LexiconHostKeyRecordChange Lexicon = "host_key_record_change"
+	LexiconChannelChange       Lexicon = "channel_change"
+	LexiconPeersQuery          Lexicon = "peers_query"
+	LexiconConfirmSource       Lexicon = "confirm_source"
+	LexiconIdentityMode        Lexicon = "identity_mode"
+	// LexiconAccessTier 存取政策的段位（open、reason、approval）
+	LexiconAccessTier Lexicon = "access_tier"
+	// LexiconAssetField 資產的位址與傳輸設定欄位（位址變更與傳輸驗證放寬的欄位清單，ParamSpec.List）
+	LexiconAssetField Lexicon = "asset_field"
+	// LexiconChannelField 通知通道的欄位（通道變更的欄位清單，ParamSpec.List）
+	LexiconChannelField Lexicon = "channel_field"
+	// LexiconIdentitySourceField 身分來源（目錄服務、OIDC）的欄位（身分來源變更的欄位清單，ParamSpec.List）
+	LexiconIdentitySourceField Lexicon = "identity_source_field"
+	// LexiconListFormat 清單渲染的版面詞：sep 為項與項之間的分隔符
+	LexiconListFormat Lexicon = "list_format"
+	// LexiconDuration 時長的寫法（ParamSpec.Duration）：hour／hours 含 {h}、minute／minutes 含 {m}，
+	// combined 是小時加分鐘的寫法（{hours}、{minutes} 代入前兩者）
+	LexiconDuration Lexicon = "duration"
+	// LexiconDMTitle 個人訊息第一行的定向標題（鍵＝TargetedEventKinds 的標題種類：access_request、break_glass、
+	// daily_review），接在原標題之前
+	LexiconDMTitle Lexicon = "dm_title"
+	// LexiconDMUndeliveredReason 個人訊息未能送達的原因句（鍵＝TargetedUndeliveredReasons）
+	LexiconDMUndeliveredReason Lexicon = "dm_undelivered_reason"
+	// LexiconDMEventKind 個人訊息未能送達時的事件種類（鍵＝TargetedEventKinds）
+	LexiconDMEventKind Lexicon = "dm_event_kind"
+	// LexiconDMAutoOff 對個人派送被自動關閉的原因句（通道變更告警的 dm_auto_off 參數）
+	LexiconDMAutoOff Lexicon = "dm_auto_off"
 )
+
+// 個人訊息未能送達的原因（targeted_notification_undelivered 的 reason 參數）。
+const (
+	TargetedReasonNoEmail           = "no_email"
+	TargetedReasonEmailAmbiguous    = "email_ambiguous"
+	TargetedReasonRecipientNotFound = "recipient_not_found"
+	TargetedReasonMaxAttempts       = "max_attempts"
+	TargetedReasonRateLimited       = "rate_limited"
+	TargetedReasonNoRecipient       = "no_recipient"
+	TargetedReasonResolveFailed     = "resolve_failed"
+)
+
+// TargetedUndeliveredReasons 個人訊息未能送達的原因代碼（順序穩定）。
+func TargetedUndeliveredReasons() []string {
+	return []string{TargetedReasonNoEmail, TargetedReasonEmailAmbiguous, TargetedReasonRecipientNotFound,
+		TargetedReasonMaxAttempts, TargetedReasonRateLimited, TargetedReasonNoRecipient, TargetedReasonResolveFailed}
+}
+
+// 送個人訊息的事件種類（未能送達事件的 event_kind 參數）。
+const (
+	TargetedKindAccessRequest     = "access_request"
+	TargetedKindBreakGlass        = "break_glass"
+	TargetedKindBreakGlassOverdue = "break_glass_overdue"
+	TargetedKindDailyReview       = "daily_review"
+)
+
+// TargetedEventKinds 送個人訊息的事件種類（順序穩定）。
+func TargetedEventKinds() []string {
+	return []string{TargetedKindAccessRequest, TargetedKindBreakGlass, TargetedKindBreakGlassOverdue, TargetedKindDailyReview}
+}
+
+// 對個人派送被自動關閉的原因（通道變更告警的 dm_auto_off 參數）。
+const (
+	DMAutoOffHost = "host"
+	DMAutoOffType = "type"
+)
+
+// LexiconListFormat 的鍵。
+const ListFormatKeySep = "sep"
+
+// LexiconDuration 的鍵。
+const (
+	DurationKeyHour     = "hour"
+	DurationKeyHours    = "hours"
+	DurationKeyMinute   = "minute"
+	DurationKeyMinutes  = "minutes"
+	DurationKeyCombined = "combined"
+)
+
+// LexiconNotifyFooter 的鍵。
+const (
+	NotifyFooterKeyOccurred = "occurred"
+	NotifyFooterKeyAction   = "action"
+	NotifyFooterKeyView     = "view"
+)
+
+// deliveryReasonEnum 投遞失敗與放棄的原因代碼（通知投遞已放棄的 reason 參數；畫面以同一組代碼查譯）。
+var deliveryReasonEnum = []string{
+	"http_404", "http_401", "http_5xx", "http_other", "timeout", "connect",
+	"slack_channel", "slack_not_in", "slack_auth", "slack_scope", "slack_rate", "slack_other",
+	"snapshot_unreadable", "channel_unreadable", "policy",
+	"redirect_not_followed", "redirect_policy", "redirect_too_many",
+	"rate_limited", "type_unregistered", "render_failed",
+}
+
+// DeliveryReasonCodes 回傳投遞原因代碼的副本（投遞層與守衛用）。
+func DeliveryReasonCodes() []string {
+	return append([]string(nil), deliveryReasonEnum...)
+}
 
 // API token 層級詞庫的版面鍵（層級值本身即 read、read_write 兩鍵）
 const (
@@ -162,6 +276,8 @@ var causeEnum = []string{
 	model.CauseKeystrokeFileCreateFailed,
 	model.CauseKeystrokeWriteFailed,
 	model.CauseKeystrokeWriterStalled,
+	model.CauseNotificationEnqueueFailed,
+	model.CauseNotificationDispatchFailed,
 }
 
 //go:embed lexicons/*.json
@@ -216,7 +332,14 @@ func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
 		LexiconEntity, LexiconRotationReport, LexiconComplianceReport, LexiconAlertKind,
 		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList, LexiconHostKeyOutcome, LexiconHostKeyPath,
-		LexiconCredentialAttachEntry, LexiconAPITokenLevel}
+		LexiconCredentialAttachEntry, LexiconAPITokenLevel, LexiconMechanism, LexiconDeliveryReason,
+		LexiconNotifyFooter, LexiconPolicyRelaxType, LexiconCustomSecretEntry, LexiconIdentitySourceKind,
+		LexiconYesNo, LexiconSecurityAdminAction, LexiconRetentionDataClass, LexiconOffsiteSubject,
+		LexiconOffsiteChange, LexiconHostKeyRecordSource, LexiconHostKeyRecordChange, LexiconChannelChange,
+		LexiconPeersQuery, LexiconConfirmSource, LexiconIdentityMode, LexiconRotationAlertKind,
+		LexiconAccessTier, LexiconAssetField, LexiconChannelField, LexiconIdentitySourceField,
+		LexiconListFormat, LexiconDuration, LexiconDMTitle, LexiconDMUndeliveredReason, LexiconDMEventKind,
+		LexiconDMAutoOff}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

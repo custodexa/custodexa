@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 )
 
 // OIDC 公開端點的濫用防護。

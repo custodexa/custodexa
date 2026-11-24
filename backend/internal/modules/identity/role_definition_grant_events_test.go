@@ -112,11 +112,34 @@ func TestRoleDefinitionGrantEvents(t *testing.T) {
 		assert.Equal(t, "role", evs[0].TargetKind)
 		assert.Equal(t, sprintID(d.ID), evs[0].TargetID, "目標 ID 是角色")
 		assert.Equal(t, "role_definition", evs[0].Params["path"])
+		assert.Equal(t, "3", evs[0].Params["other_holder_count"], "受影響的其他持有者人數")
+		_, hasRecipient := evs[0].Params["recipient"]
+		assert.False(t, hasRecipient, "角色定義變更沒有單一受發放者，不得把角色名當 recipient")
 		det := e.updateAudit(t, d.ID)
 		assert.Equal(t, []any{"management_grant"}, det["grant_marks"])
 		assert.EqualValues(t, 3, det["holder_count"])
 		assert.Equal(t, evs[0].Corr, det["correlation_id"], "審計與事件共用關聯編號")
 		assert.NotEmpty(t, evs[0].Corr)
+	})
+
+	t.Run("操作者本人也持有：其他持有者人數不含操作者", func(t *testing.T) {
+		e := newRoleDefEnv(t)
+		d := e.create(t, "shared", "asset:view")
+		e.holdDirect(t, e.admin, d.ID, model.RoleSourceManual)
+		for _, n := range []string{"q1", "q2"} {
+			e.holdDirect(t, e.mkUser(t, n), d.ID, model.RoleSourceManual)
+		}
+		_, err := e.update(t, d, "shared", "asset:view", "asset:update")
+		require.NoError(t, err)
+		var mgmt *gradeEvent
+		evs := e.alertEvents(t)
+		for i := range evs {
+			if evs[i].Type == authz.AlertKeyManagementGranted {
+				mgmt = &evs[i]
+			}
+		}
+		require.NotNil(t, mgmt, "應有管理類發放事件: %+v", evs)
+		assert.Equal(t, "2", mgmt.Params["other_holder_count"], "操作者本人不計入")
 	})
 
 	t.Run("超管經群組持有：加入能力為高分級，只移除為低分級，有增有減為高分級", func(t *testing.T) {
@@ -146,6 +169,26 @@ func TestRoleDefinitionGrantEvents(t *testing.T) {
 			assert.Equal(t, []any{"self_authorization"}, e.updateAudit(t, d.ID)["grant_marks"])
 			assert.Equal(t, last.Corr, e.updateAudit(t, d.ID)["correlation_id"])
 		}
+	})
+
+	t.Run("自我授權事件帶其他持有者人數（排除操作者本人）", func(t *testing.T) {
+		e := newRoleDefEnv(t)
+		d := e.create(t, "self-shared", "asset:view")
+		e.holdDirect(t, e.admin, d.ID, model.RoleSourceManual)
+		for _, n := range []string{"s1", "s2"} {
+			e.holdDirect(t, e.mkUser(t, n), d.ID, model.RoleSourceManual)
+		}
+		_, err := e.update(t, d, "self-shared", "asset:view", "session:view")
+		require.NoError(t, err)
+		var self *gradeEvent
+		evs := e.alertEvents(t)
+		for i := range evs {
+			if evs[i].Type == authz.AlertKeySelfIncreased {
+				self = &evs[i]
+			}
+		}
+		require.NotNil(t, self, "應有自我授權增加事件: %+v", evs)
+		assert.Equal(t, "2", self.Params["other_holder_count"], "操作者本人不計入")
 	})
 
 	t.Run("超管同時經直接與映射持有：只一筆自我授權事件", func(t *testing.T) {

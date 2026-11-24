@@ -22,6 +22,8 @@ type ProbeBreakerDependencies struct {
 	Finish        func(uint)
 	Limits        func() (int, int)
 	Notify        OwnerEventWriter
+	// TokenName 交易內讀 agent token 的名稱（給通知用；可為 nil，nil 時通知不帶 token 名稱）
+	TokenName func(*gorm.DB, uint) string
 }
 type ProbeBreaker struct {
 	db     *gorm.DB
@@ -92,7 +94,17 @@ func (s *ProbeBreaker) RecordDenied(ctx context.Context, userID, tokenID, assetI
 			return err
 		}
 		details, _ = json.Marshal(map[string]any{"event": "agent_breaker_tripped", "user_id": userID, "owner_id": ownerID, "agent_token_id": tokenID, "alert_id": alert.ID, "distinct_count": result.Count})
-		return port.WriteInTx(s.sink, tx, port.AuditEvent{Actor: gatewayapi.Actor{Username: "system"}, Action: string(model.ActionSuspend), Resource: string(model.ResourceAgentToken), ResourceID: &tokenID, Status: string(model.StatusSuccess), Details: string(details)})
+		if err := port.WriteInTx(s.sink, tx, port.AuditEvent{Actor: gatewayapi.Actor{Username: "system"}, Action: string(model.ActionSuspend), Resource: string(model.ResourceAgentToken), ResourceID: &tokenID, Status: string(model.StatusSuccess), Details: string(details)}); err != nil {
+			return err
+		}
+		// 熔斷、探測紀錄、告警列與通知內容同交易（savepoint）：通知寫不進去只回到 savepoint，
+		// 熔斷照常生效，下一次被拒的探測不需重新累積
+		tokenName := ""
+		if s.deps.TokenName != nil {
+			tokenName = s.deps.TokenName(tx, tokenID)
+		}
+		s.deps.Notify(tx, agentBreakerNotice(ownerID, userID, tokenID, assetID, result.Count, window, tokenName))
+		return nil
 	})
 	if err != nil {
 		return ProbeBreakerResult{}, err
@@ -100,7 +112,25 @@ func (s *ProbeBreaker) RecordDenied(ctx context.Context, userID, tokenID, assetI
 	if result.Tripped {
 		s.deps.Finish(tokenID)
 		s.alerts.PublishCommitted([]model.CommandAlert{alert})
-		s.deps.Notify(ownerID, notifycat.EventAgentBreakerTripped, map[string]string{"owner_id": fmt.Sprint(ownerID), "user_id": fmt.Sprint(userID), "token_id": fmt.Sprint(tokenID)})
 	}
 	return result, nil
+}
+
+// agentBreakerNotice 熔斷的通知事實：agent、負責人、資產以識別碼參照交給分派解析；token 名稱由產生點帶入。
+func agentBreakerNotice(ownerID, userID, tokenID, assetID uint, count int64, windowSeconds int, tokenName string) AgentOwnerNotice {
+	params := map[string]string{
+		"user_id": fmt.Sprint(userID), "token_id": fmt.Sprint(tokenID), "distinct_count": fmt.Sprint(count),
+	}
+	if m := agentWindowMinutesParam(windowSeconds); m != "" {
+		params["window_minutes"] = m
+	}
+	refs := map[string]NotificationNameRef{
+		"agent_name": {Kind: notifycat.IDKindUser, ID: userID},
+		"owner_name": {Kind: notifycat.IDKindUser, ID: ownerID},
+	}
+	if assetID != 0 {
+		refs["asset_name"] = NotificationNameRef{Kind: notifycat.IDKindAsset, ID: assetID}
+	}
+	return AgentOwnerNotice{OwnerID: ownerID, Event: notifycat.EventAgentBreakerTripped, Params: params,
+		NameRefs: refs, Names: map[string]string{"token_name": tokenName}}
 }

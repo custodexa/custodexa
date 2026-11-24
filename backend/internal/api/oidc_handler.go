@@ -328,7 +328,9 @@ func (h *OIDCHandler) Begin(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCBindingMissing, nil)
 		return
 	}
-	next := sanitizeRedirectNext(c.Query("next"))
+	// 登入後目的地與帳號密碼登入共用同一個判準（只收通知會指到的頁面），
+	// 已判準的值隨流程狀態保存，兌換時不重新採信前端提交值
+	next := sanitizeLoginReturnPath(c.Query("next"))
 
 	res, err := h.login.Begin(c.Request.Context(), id, bindingHash, next)
 	if err != nil {
@@ -570,48 +572,6 @@ func oidcErrorSlug(err error) string {
 	default:
 		return "oidc_flow_invalid"
 	}
-}
-
-// sanitizeRedirectNext 登入後導向目標的白名單化（防開放重導向）。
-//
-// 只接受同源相對路徑；scheme-relative（//evil）、絕對 URL、反斜線與多重編碼
-// 一律拒絕並退回預設路徑
-func sanitizeRedirectNext(raw string) string {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return "/"
-	}
-	// PathUnescape 而非 QueryUnescape：後者會把 `+` 解為空白，
-	// 使 `/sessions/a+b` 被竄改成 `/sessions/a b`（第一段仍合法故不會被拒，
-	// 但回傳的已不是使用者要去的地方）
-	if decoded, err := url.PathUnescape(s); err == nil {
-		s = decoded
-	}
-	if !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") || strings.Contains(s, "\\") {
-		return "/"
-	}
-	u, err := url.Parse(s)
-	if err != nil || u.Scheme != "" || u.Host != "" {
-		return "/"
-	}
-	if len(s) > 255 {
-		return "/"
-	}
-	// **dot-segment 一律拒絕**：枚舉只看第一段，而 `/dashboard/../../api/v1/users`
-	// 的第一段是合法的 `dashboard`，瀏覽器卻會正規化成 `/api/v1/users`——
-	// 不擋則枚舉可被任意包裝繞過。逐段比對而非事後正規化：正規化後再判定會讓
-	// 「看起來合法、實際導向他處」的字串通過，此處要的是連形式都不接受
-	for _, seg := range strings.Split(u.Path, "/") {
-		if seg == "." || seg == ".." {
-			return "/"
-		}
-	}
-	// 路由枚舉比對（design 第 122 行）：同源相對路徑之外，第一段須為前端既有路由。
-	// 以 u.Path 判定而非原字串——查詢字串與片段不參與路由匹配
-	if !isAllowedRedirectRoute(u.Path) {
-		return "/"
-	}
-	return s
 }
 
 // SetIdentitySources 注入身分來源管理面服務（探索預覽與狀態彙總）

@@ -1,16 +1,16 @@
 package api
 
 import (
-	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"encoding/json"
+	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

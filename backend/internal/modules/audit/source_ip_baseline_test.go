@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/testgate"
 	"github.com/custodexa/backend/pkg/gatewayapi"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -327,7 +327,7 @@ func TestSourceIPBaselineNotWiredAndDBErrorReturnError(t *testing.T) {
 // stubAlertSink 只滿足 gatewayapi.AlertSink、不具交易內方法。
 type stubAlertSink struct{}
 
-func (stubAlertSink) RecordAlert(context.Context, gatewayapi.CommandAlert) error   { return nil }
+func (stubAlertSink) RecordAlert(context.Context, gatewayapi.CommandAlert) error    { return nil }
 func (stubAlertSink) RecordAlerts(context.Context, []gatewayapi.CommandAlert) error { return nil }
 
 // runConcurrentFirstSessions N 條 goroutine 同（帳號, 位址）、各自不同 session id

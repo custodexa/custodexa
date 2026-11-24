@@ -773,10 +773,11 @@ var attributions = map[string]Attribution{
 	r("GET", "/identity-sources/:type/:sourceId/external-groups"):                  unmanaged("external_groups"),
 	r("PUT", "/identity-sources/:type/:sourceId/external-groups/:externalGroupId"): unmanaged("external_groups"),
 
-	r("GET", "/notification-channels"):        unmanaged("notification_channels"),
-	r("POST", "/notification-channels"):       unmanaged("notification_channels"),
-	r("PUT", "/notification-channels/:id"):    unmanaged("notification_channels"),
-	r("DELETE", "/notification-channels/:id"): unmanaged("notification_channels"),
+	r("GET", "/notification-channels"):                unmanaged("notification_channels"),
+	r("POST", "/notification-channels"):               unmanaged("notification_channels"),
+	r("PUT", "/notification-channels/:id"):            unmanaged("notification_channels"),
+	r("DELETE", "/notification-channels/:id"):         unmanaged("notification_channels"),
+	r("GET", "/notification-channels/:id/deliveries"): unmanaged("notification_channels"),
 
 	r("GET", "/oidc-providers"):            unmanaged("oidc_providers"),
 	r("GET", "/oidc-providers/:id"):        unmanaged("oidc_providers"),

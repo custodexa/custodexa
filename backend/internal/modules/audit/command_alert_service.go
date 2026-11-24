@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +19,7 @@ var (
 	ErrInvalidDisposition = errors.New("處置分類不合法")
 	// ErrAlertAlreadyReviewed 批次審閱送出時該告警已有審閱結果（不覆蓋）
 	ErrAlertAlreadyReviewed = errors.New("告警已有審閱結果")
-	// ErrAlertSelfTriggered 批次審閱不收審閱者自己連線觸發的告警
+	// ErrAlertSelfTriggered 以單筆端點逐筆送出的批次不收審閱者本人觸發的告警
 	ErrAlertSelfTriggered = errors.New("自己觸發的告警須逐筆審閱")
 	// ErrAlertBatchNote 批次審閱的理由為空或超過上限
 	ErrAlertBatchNote = errors.New("批次審閱理由不合法")
@@ -70,6 +71,10 @@ type CommandAlertListResponse struct {
 // CommandAlertService 告警查詢服務
 type CommandAlertService struct {
 	db *gorm.DB
+	// auditTx 批次審閱逐筆稽核的交易內落地面；未注入時批次審閱整批回滾（見 port.WriteInTx）
+	auditTx port.TxSink
+	// batchTxTimeout 批次審閱交易的逾時；零值取 AlertBatchReviewTxTimeout（測試以較短的值驗逾時）
+	batchTxTimeout time.Duration
 }
 
 // NewCommandAlertService 創建告警查詢服務
@@ -206,11 +211,25 @@ func (s *CommandAlertService) Review(alertID, reviewerID uint, disposition, note
 	return nil
 }
 
+// IsTriggeredBy 告警的觸發者是否為指定使用者（單筆審閱的稽核標示用）；告警不存在回 ErrAlertNotFound
+func (s *CommandAlertService) IsTriggeredBy(alertID, userID uint) (bool, error) {
+	var cur struct{ UserID uint }
+	res := s.db.Model(&model.CommandAlert{}).Select("user_id").Where("id = ?", alertID).Limit(1).Scan(&cur)
+	if res.Error != nil {
+		return false, fmt.Errorf("查詢告警失敗: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return false, ErrAlertNotFound
+	}
+	return cur.UserID == userID, nil
+}
+
 // ReviewInBatch 批次審閱中的一筆。
 //
 // 與單筆 Review 的差別只在三個前置條件，其餘（處置分類、寫入欄位）相同：
 //   - 理由必填且不超過 maxAlertBatchNoteRunes：同一個理由套到多筆，空白理由答不出每筆依據；
-//   - 審閱者自己連線觸發的告警不收：這類告警須逐筆說明；
+//   - 審閱者本人觸發的告警不收：這種請求無法表達「已確認看過本人觸發的筆數」，
+//     本人觸發的告警改經批次審閱端點（ReviewBatch）確認後處置，或不帶關聯碼逐筆審閱；
 //   - 只處置送出當下仍未審閱者（`reviewed_at IS NULL` 條件更新）：已被審閱的那筆回
 //     ErrAlertAlreadyReviewed，既有處置原樣保留。單筆路徑保留「重新審閱」修正誤判的語義。
 func (s *CommandAlertService) ReviewInBatch(alertID, reviewerID uint, disposition, note string) error {

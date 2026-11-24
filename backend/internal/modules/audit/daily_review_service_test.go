@@ -27,7 +27,8 @@ func setupDailyReviewDB(t *testing.T) (*DailyReviewService, *gorm.DB, *fakeAudit
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	if err := db.AutoMigrate(&model.AuditLog{}, &model.SecurityPolicy{}, &model.SecurityPolicyHistory{},
-		&model.DailyReviewLog{}, &model.AuditRetentionWatermark{}, &model.User{}, &model.Asset{}, &model.Session{}, &model.UserRole{}); err != nil {
+		&model.DailyReviewLog{}, &model.AuditRetentionWatermark{}, &model.User{}, &model.Asset{}, &model.Session{}, &model.UserRole{},
+		&model.SystemAlertDetail{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Exec(`CREATE TABLE command_alerts (

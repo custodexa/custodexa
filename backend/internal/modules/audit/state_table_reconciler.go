@@ -138,6 +138,7 @@ type StateFailureSink interface {
 }
 
 func (r *RoleStateReconciler) SetStateFailureSink(sink StateFailureSink) { r.stateFailure = sink }
+
 // settleTable 每次對帳都經持久通道開單或結案：去重以資料庫中同識別且未結案的列為準
 // （ReportStateMismatch／ResolveStateMismatch 對同識別為 no-op），不以行程記憶代替，
 // 因此告警列被刪除或被填上結案時間，下一次對帳就重建並重新通知。

@@ -25,7 +25,7 @@ func newPreviewEnv(t *testing.T) *previewEnv {
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, migrateWithAuthz(db, &model.User{}, &model.Role{}, &model.UserRole{}, &model.UserGroup{},
 		&model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}, &model.RolePermission{},
-		&model.AssetGroup{}, &model.AssetAuthorization{}, &model.AuditLog{}, &model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.AuthzState{}))
+		&model.AssetGroup{}, &model.AssetAuthorization{}, &model.AuditLog{}, &model.SystemAlertDetail{}, &model.NotificationDelivery{}, &model.AuthzState{}))
 	require.NoError(t, db.Create(&model.AuthzState{ID: 1}).Error)
 	env := &previewEnv{db: db, roles: map[string]uint{}}
 	env.builtin(model.BuiltinSuperAdmin)
@@ -105,7 +105,7 @@ func (e *previewEnv) counts(t *testing.T) map[string]int64 {
 	out := map[string]int64{}
 	for name, m := range map[string]interface{}{"user_roles": &model.UserRole{}, "members": &model.UserGroupMember{},
 		"group_roles": &model.UserGroupRole{}, "role_perms": &model.RolePermission{}, "audit": &model.AuditLog{},
-		"alerts": &model.SystemAlertDetail{}, "alert_outbox": &model.SystemAlertOutbox{}} {
+		"alerts": &model.SystemAlertDetail{}, "alert_outbox": &model.NotificationDelivery{}} {
 		var n int64
 		require.NoError(t, e.db.Model(m).Count(&n).Error, name)
 		out[name] = n

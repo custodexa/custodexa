@@ -37,6 +37,12 @@ func (stubChannelService) Update(id uint, _ *audit.NotificationChannelRequest) (
 	return &model.NotificationChannel{ID: id}, nil
 }
 func (stubChannelService) Delete(uint, audit.ChannelActor) error { return nil }
+func (stubChannelService) ListDeliveries(uint, audit.ChannelDeliveryQuery) (*audit.ChannelDeliveryPage, error) {
+	return &audit.ChannelDeliveryPage{}, nil
+}
+func (stubChannelService) TestToSelf(*model.NotificationChannel, uint) (audit.SelfTestResult, error) {
+	return audit.SelfTestResult{}, nil
+}
 
 func principalWith(builtinKey, roleName string) *authz.Principal {
 	return authz.NewPrincipal(7, authz.TokenFacts{}, []authz.Assignment{{
@@ -116,6 +122,8 @@ var channelEndpoints = []struct{ method, path, body string }{
 	{"PUT", "/api/v1/notification-channels/3", `{"name":"n"}`},
 	{"DELETE", "/api/v1/notification-channels/3", ""},
 	{"POST", "/api/v1/notification-channels/3/test", ""},
+	// 傳給我自己：同一個端點與權限點（無通道管理能力者 403）
+	{"POST", "/api/v1/notification-channels/3/test", `{"to_self":true}`},
 }
 
 func TestSystemAlertManagementRoutes(t *testing.T) {

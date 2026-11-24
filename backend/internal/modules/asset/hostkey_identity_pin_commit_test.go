@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/audit"
 )
 
 // 輪替成員提交交易與下達標記的子案例（root：TestCredentialRecoveryHostIdentityPin，前綴 3.3/）。
@@ -131,12 +130,12 @@ func runCandidateRetryIdempotent(t *testing.T) {
 	assert.ErrorIs(t, err, ErrCandidateNotFound)
 
 	// 讀取與提交之間列已被轉正：拿過期物件（且在記憶體內已逾放棄期限，若被當作一般失敗會誤發放棄告警）再重試
-	notifier := audit.NewAlertNotifier(f.db, nil)
+	notifier := newRotationNotifier(t, f.db)
 	f.retry.notifier = notifier
 	old := stale
 	old.CreatedAt = time.Now().Add(-candidateRetryDeadline - time.Hour)
 	assert.False(t, f.retry.RetryOne(&old), "沒有東西可再提交，不宣稱轉正")
-	assert.EqualValues(t, 0, notifier.PendingNotifications(), "列已不在：不發放棄告警")
+	assert.EqualValues(t, 0, rotationAlertCount(f.db), "列已不在：不發放棄告警")
 	assert.ErrorIs(t, f.candidates.Promote(context.Background(), &stale), ErrCandidateNotFound)
 	assert.Equal(t, versions, credentialVersionCount(t, f), "不重複新增版本")
 	assert.Equal(t, password, f.storedPassword(t), "本地憑證不變")

@@ -74,7 +74,8 @@ func (g *GrantGrader) raiseRoleContent(tx *gorm.DB, op Operator, res *writeResul
 			Type: port.SystemAlertType(authz.SelfPrivilegeAlertKey(gr.op.SelfDirection)), Actor: actor,
 			ClientIP: op.ClientIP, CorrelationID: gr.corr,
 			Target: port.SystemAlertTarget{Kind: port.SystemAlertTargetUser, ID: fmt.Sprint(op.UserID)},
-			Params: map[string]string{"path": string(PathRoleDefinition), "roles_before": gr.nameOld, "roles_after": gr.nameNew},
+			Params: map[string]string{"path": string(PathRoleDefinition), "roles_before": gr.nameOld, "roles_after": gr.nameNew,
+				"other_holder_count": fmt.Sprint(otherHolderCount(gr.impact.HolderIDs, op.UserID))},
 		}); err != nil {
 			return fmt.Errorf("系統告警事件寫入失敗: %w", err)
 		}
@@ -84,10 +85,23 @@ func (g *GrantGrader) raiseRoleContent(tx *gorm.DB, op Operator, res *writeResul
 			Type: port.SystemAlertType(authz.AlertKeyManagementGranted), Actor: actor,
 			ClientIP: op.ClientIP, CorrelationID: gr.corr,
 			Target: port.SystemAlertTarget{Kind: port.SystemAlertTargetRole, ID: fmt.Sprint(gr.roleID)},
-			Params: map[string]string{"path": string(PathRoleDefinition), "recipient": gr.nameNew, "role_name": gr.nameNew},
+			// 角色定義變更沒有單一的受發放者：不帶 recipient（不把角色名當受發放者），改帶受影響的其他持有者人數
+			Params: map[string]string{"path": string(PathRoleDefinition), "role_name": gr.nameNew,
+				"other_holder_count": fmt.Sprint(otherHolderCount(gr.impact.HolderIDs, op.UserID))},
 		}); err != nil {
 			return fmt.Errorf("系統告警事件寫入失敗: %w", err)
 		}
 	}
 	return nil
+}
+
+// otherHolderCount 受影響的持有者中操作者本人以外的人數（持有者清單已去重）。
+func otherHolderCount(holderIDs []uint, operatorID uint) int {
+	n := 0
+	for _, id := range holderIDs {
+		if id != operatorID {
+			n++
+		}
+	}
+	return n
 }

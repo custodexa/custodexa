@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -226,7 +226,7 @@ func setupEnvelopeChannelSvcForAAD(t *testing.T) (*audit.NotificationChannelServ
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{},
 		// 通道變更同交易寫服務層審計與系統告警（告警列、明細、投遞佇列）
-		&model.CommandAlert{}, &model.SystemAlertDetail{}, &model.SystemAlertOutbox{},
+		&model.CommandAlert{}, &model.SystemAlertDetail{}, &model.NotificationDelivery{},
 		&model.SystemAlertSeverityOverride{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

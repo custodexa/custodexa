@@ -62,21 +62,26 @@ func (s *DailyReviewService) CheckOverdue(now time.Time) bool {
 	if overdue == 0 {
 		return false
 	}
-	s.sendOverdue(OverdueParams(dates, overdue, today.TZ))
+	// 通知內容寫入成功才推進「今天已送」：寫不進去時下一輪（排程週期後）重試
+	if err := s.sendOverdue(OverdueParams(dates, overdue, today.TZ)); err != nil {
+		log.Printf("[DailyReview] 逾期提醒未排入，下一輪重試: %v", err)
+		return false
+	}
 	s.reminderSent = today.Date
 	log.Printf("[DailyReview] %d 天未簽核（%d 天逾期，最早 %s），已發送逾期提醒", len(dates), overdue, dates[0])
 	return true
 }
 
-// sendOverdue 經通知通道送出；測試以 overdueSink 攔截參數
-func (s *DailyReviewService) sendOverdue(params map[string]string) {
+// sendOverdue 獨立寫一列通知內容；測試以 overdueSink 攔截參數。回傳寫入是否失敗。
+func (s *DailyReviewService) sendOverdue(params map[string]string) error {
 	if s.overdueSink != nil {
 		s.overdueSink(params)
-		return
+		return nil
 	}
 	if notifier := GetAlertNotifier(); notifier != nil {
-		notifier.NotifyEvent(notifycat.EventDailyReviewOverdue, params)
+		return notifier.EnqueueStandalone(SystemEventNotice(notifycat.EventDailyReviewOverdue, params))
 	}
+	return nil
 }
 
 // OverdueParams 逾期提醒的事件參數：date 保留為最早未簽日，日期清單只帶最早的 31 個，

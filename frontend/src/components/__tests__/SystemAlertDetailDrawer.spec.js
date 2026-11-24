@@ -117,6 +117,37 @@ describe('系統告警明細抽屜', () => {
     expect(rows[2].querySelector('[data-test="sa-delivery-time"]')).toBeNull()
   })
 
+  it('通知送達：重送中寫已試次數、原因與最多再試；非第一次送達寫第幾次；放棄寫原因；停用的通道照送', async () => {
+    getDetailMock.mockResolvedValue({
+      ...channelDetail,
+      deliveries: [
+        { dest_type: 'slack_app', dest_name: 'sec-oncall', state: 'delivered', attempts: 2, reason_code: 'http_5xx', last_error: 'HTTP 503',
+          delivered_at: '2026-11-20T00:48:31Z', next_attempt_at: '2026-11-20T00:48:30Z' },
+        { dest_type: 'webhook', dest_name: 'conn-hook', state: 'retrying', attempts: 3, reason_code: 'connect', last_error: '',
+          next_attempt_at: '2026-11-20T01:00:00Z' },
+        { dest_type: 'webhook', dest_name: 'legacy-hook', state: 'delivered', attempts: 1, channel_disabled: true,
+          delivered_at: '2026-11-20T00:48:30Z', next_attempt_at: '2026-11-20T00:48:30Z' },
+        { dest_type: 'slack', dest_name: 'ops-slack', state: 'retrying', attempts: 17, reason_code: 'http_404', last_error: 'HTTP 404',
+          next_attempt_at: '2026-11-20T11:05:00Z' },
+        { dest_type: 'webhook', dest_name: 'old-alerts', state: 'abandoned', attempts: 0, end_reason: 'snapshot_unreadable',
+          next_attempt_at: '2026-11-20T00:48:29Z' },
+      ],
+    })
+    mountDrawer()
+    await flushPromises()
+    const rows = [...q('[data-test="sa-deliveries"]').children].map((n) => n.textContent)
+    expect(rows[0]).toContain(t('systemAlerts.delivery.deliveredNth', { n: 2 }))
+    expect(rows[2]).toContain(t('systemAlerts.delivery.disabledTag'))
+    expect(rows[2]).toContain(t('systemAlerts.delivery.disabledStillSent'))
+    expect(rows[3]).toContain(t('systemAlerts.delivery.triedWithReason', { attempts: 17, reason: t('alerts.deliveryReason.http404') }))
+    expect(rows[3]).toContain(t('systemAlerts.delivery.remaining', { remaining: 31 }))
+    expect(rows[4]).toContain(t('systemAlerts.delivery.abandonedReason.unreadable'))
+    // 失敗過才送到：仍是送達行，不寫失敗原因
+    expect(rows[0]).not.toContain(t('alerts.deliveryReason.http5xx', { status: '503' }))
+    // 連線錯誤的原文是空字串，以原因代碼成句
+    expect(rows[1]).toContain(t('systemAlerts.delivery.triedWithReason', { attempts: 3, reason: t('alerts.deliveryReason.connect') }))
+  })
+
   it('沒有參數、沒有來源位址、目標識別為空時退回「無」與只顯示種類', async () => {
     getDetailMock.mockResolvedValue({
       ...channelDetail, alert_type: 'recording_failclose_disabled', target_kind: 'system_setting', target_id: '',

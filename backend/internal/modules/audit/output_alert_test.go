@@ -12,6 +12,9 @@ import (
 
 func TestOutputAlertNoPlaintextAndExistingTee(t *testing.T) {
 	_, db := setupAlertDB(t)
+	if err := db.AutoMigrate(&model.NotificationMessage{}); err != nil {
+		t.Fatal(err)
+	}
 	notifier := NewAlertNotifier(db, nil)
 	forwarder := NewSyslogForwarder(db)
 	forwarder.setting = model.SyslogSetting{Enabled: true, Host: "test"}
@@ -61,17 +64,19 @@ func TestOutputAlertNoPlaintextAndExistingTee(t *testing.T) {
 	if !ok || meta.Count != 2 {
 		t.Fatalf("metadata: %+v", meta)
 	}
-	select {
-	case msg := <-notifier.queue:
-		payload, _ := json.Marshal(buildAlertPayload(msg, alertSubjectNames{}))
-		if strings.Contains(string(payload), card) {
-			t.Fatal("webhook leaks original")
-		}
-		if text := buildSlackText("en-US", alertEventCommandAlert, msg, alertSubjectNames{}); !strings.Contains(text, "may contain") || strings.Contains(text, card) {
-			t.Fatalf("slack: %s", text)
-		}
-	default:
-		t.Fatal("notification not enqueued")
+	var msgs []model.NotificationMessage
+	if err := db.Find(&msgs).Error; err != nil || len(msgs) != 1 || msgs[0].AlertID == nil || *msgs[0].AlertID != row.ID {
+		t.Fatalf("notification not enqueued: %+v %v", msgs, err)
+	}
+	if strings.Contains(msgs[0].Params, card) {
+		t.Fatal("notification content leaks original")
+	}
+	payload, _ := json.Marshal(buildAlertPayload(row, alertSubjectNames{}))
+	if strings.Contains(string(payload), card) {
+		t.Fatal("webhook leaks original")
+	}
+	if text := buildSlackText("en-US", alertEventCommandAlert, row, alertSubjectNames{}); !strings.Contains(text, "may contain") || strings.Contains(text, card) {
+		t.Fatalf("slack: %s", text)
 	}
 	select {
 	case msg := <-forwarder.ch:

@@ -183,11 +183,11 @@ func TestRenderThreeLanguages(t *testing.T) {
 		wantTitle string
 		wantText  string
 	}{
-		{"zh-TW", "連線申請 #7：web-prod", "已核准 1/3，待其他審核人員補足（詳見審核中心）"},
+		{"zh-TW", "連線申請 #7：web-prod", "申請已核准（目前 1/3），待其他審核人員補足（詳見審核中心）。"},
 		{"en-US", "Access request #7: web-prod",
-			"Approved 1/3; waiting for the remaining approvers (see the review center)."},
+			"The request was approved (1/3 so far); waiting for the remaining approvers (see the review center)."},
 		{"ja-JP", "接続申請 #7：web-prod",
-			"承認 1/3 件。残りの承認者の対応待ちです（審査センターをご確認ください）。"},
+			"申請が承認されました（現在 1/3）。残りの承認者の対応待ちです（審査センターをご確認ください）。"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.lang, func(t *testing.T) {
@@ -262,7 +262,7 @@ func TestRenderVariants(t *testing.T) {
 	if !strings.Contains(knownText, "T1") || !strings.Contains(knownText, "T2") {
 		t.Fatalf("known variant 應帶起訖: %q", knownText)
 	}
-	if strings.Contains(unknownText, "T1") || !strings.Contains(unknownText, "起點不明") {
+	if strings.Contains(unknownText, "T1") || !strings.Contains(unknownText, "起點沒有記錄下來") {
 		t.Fatalf("unknown variant 文案異常: %q", unknownText)
 	}
 }
@@ -276,7 +276,7 @@ func TestRenderEscapesOpaqueValuesOnly(t *testing.T) {
 		t.Fatalf("opaque 值應經 Slack mrkdwn 轉義，實得 %q", text)
 	}
 	// 模板本體的全形括號等文案字元不受影響
-	if !strings.Contains(text, "（5 分鐘）") {
+	if !strings.Contains(text, "破窗緊急連線 5 分鐘，") {
 		t.Fatalf("模板本體不應被轉義，實得 %q", text)
 	}
 }

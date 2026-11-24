@@ -1,0 +1,5 @@
+{
+  "text": "🔴 *通知降級投遞* · 高風險\n事件 management_role_granted 的參數不合翻譯目錄契約，內容已降級為機器識別字；完整脈絡請查後端日誌與失效事件紀錄。\npath: direct_assign\nrecipient: bob\nrole_name: asset_admin\nseverity: high\n詳情請至告警記錄的系統告警明細與操作日誌查看。\n發生時間 \u003c!date^1795132800^{date_num} {time_secs}|2026-11-20 00:00:00 UTC\u003e",
+  "unfurl_links": false,
+  "unfurl_media": false
+}

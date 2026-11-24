@@ -494,7 +494,7 @@ func TestPermissionUnknownAlertAndRebase(t *testing.T) {
 	// 刪光事件（或只刪啟用事件）並清空全部附證：鏈尾的鏈接綁著前一點的附證簽章，
 	// 無法證明「從未啟用」，不回退成尚未涵蓋。
 	for name, del := range map[string]string{
-		"刪全部事件":  `DELETE FROM permission_state_events`,
+		"刪全部事件": `DELETE FROM permission_state_events`,
 		"刪啟用事件": `DELETE FROM permission_state_events WHERE kind = 'activate'`,
 	} {
 		t.Run("清空全部附證並"+name+"：無法判定", func(t *testing.T) {

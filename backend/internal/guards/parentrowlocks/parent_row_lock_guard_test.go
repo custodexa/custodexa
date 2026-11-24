@@ -75,6 +75,8 @@ var nonParentLocks = []nonParentLock{
 	{"internal/modules/asset/hostkey_identity_takeover_create.go", "lockTakeoverJob", "model:ChangeSecretCandidate+model:CredentialRotationMember", "change_secret_candidates／credential_rotation_members", "改密工作列鎖（依工作種類擇一）"},
 	{"internal/modules/asset/hostkey_identity_takeover_create.go", "checkConfirmedIdentity", "model:AssetHostKey", "asset_host_keys", "主機金鑰列鎖"},
 	{"internal/modules/audit/notification_channel_service.go", "NotificationChannelService.Update", "model:NotificationChannel", "notification_channels", "通知通道列鎖"},
+	{"internal/modules/audit/notification_channel_dm.go", "lockChannelsForDirectMessage", "model:NotificationChannel", "notification_channels", "開啟對個人派送時依編號鎖住全部通知通道列（判斷至多一個通道開啟）"},
+	{"internal/modules/audit/command_alert_batch_review.go", "CommandAlertService.reviewBatchInTx", "command_alerts", "command_alerts", "告警批次審閱依告警編號遞增鎖住所選告警列"},
 	{"internal/modules/audit/principal_failure.go", "AuditFailureService.ReportStateMismatch", "model:AuditFailureEvent", "audit_failure_events", "失敗計數列鎖"},
 	{"internal/modules/session/recording_delete.go", "RecordingService.DeleteRecording", "model:Session", "sessions", "連線紀錄列鎖"},
 }

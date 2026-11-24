@@ -122,6 +122,12 @@ const (
 	// MechanismKeystrokeRecord 逐會話鍵盤紀錄（失敗=啟動／寫入／寫入端停擺；
 	// 恢復=下一次成功啟動）。探測成功不解除本機制的失敗
 	MechanismKeystrokeRecord = "keystroke_record"
+	// MechanismNotificationDelivery 通知排入：產生點寫不進通知內容（業務操作照常完成）。
+	// 由投遞程序在每輪的回報檢查點回報；**解除判準＝之後有一次排入成功**
+	MechanismNotificationDelivery = "notification_delivery"
+	// MechanismNotificationDispatch 通知分派：通知內容分派失敗而終止（沒有通道可歸屬）。
+	// **解除判準＝某一輪有一般內容分派成功且該輪沒有新的分派失敗**；稽核失效一族的分派失敗不回報
+	MechanismNotificationDispatch = "notification_dispatch"
 )
 
 // 失效原因機器碼。
@@ -249,6 +255,11 @@ const (
 	CauseKeystrokeWriteFailed = "KEYSTROKE_WRITE_FAILED"
 	// CauseKeystrokeWriterStalled 寫入端連續一段時間沒有任何進展
 	CauseKeystrokeWriterStalled = "KEYSTROKE_WRITER_STALLED"
+
+	// CauseNotificationEnqueueFailed 通知內容寫不進去（業務操作已照常完成，這則通知遺失）
+	CauseNotificationEnqueueFailed = "notification_enqueue_failed"
+	// CauseNotificationDispatchFailed 通知內容分派失敗達上限而終止
+	CauseNotificationDispatchFailed = "notification_dispatch_failed"
 )
 
 // 鍵盤紀錄不涵蓋原因碼（keystroke_records.coverage_reason）。

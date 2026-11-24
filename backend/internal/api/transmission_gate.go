@@ -4,8 +4,8 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/gin-gonic/gin"
 )
 
 // respondTransmissionGate 傳輸政策門拒絕的統一出口（syslog 設定與通知通道共用）。

@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"github.com/gin-gonic/gin"
 )
 
 // AuditTimelineHandler 稽核調查工作台的兩支唯讀端點（auditor-workbench）。

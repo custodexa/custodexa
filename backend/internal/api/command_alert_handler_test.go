@@ -39,6 +39,19 @@ func (m *MockCommandAlertService) ReviewInBatch(alertID, reviewerID uint, dispos
 	return args.Error(0)
 }
 
+func (m *MockCommandAlertService) ReviewBatch(in audit.AlertBatchReviewInput) (*audit.AlertBatchReviewResult, error) {
+	args := m.Called(in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*audit.AlertBatchReviewResult), args.Error(1)
+}
+
+func (m *MockCommandAlertService) IsTriggeredBy(alertID, userID uint) (bool, error) {
+	args := m.Called(alertID, userID)
+	return args.Bool(0), args.Error(1)
+}
+
 func emptyAlertResponse() *audit.CommandAlertListResponse {
 	return &audit.CommandAlertListResponse{
 		Data: []audit.CommandAlertView{}, Total: 0, Page: 1, PageSize: 20,

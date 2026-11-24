@@ -45,7 +45,7 @@ func newAPITokenHTTPEnv(t *testing.T) *apiTokenHTTPEnv {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	seedAuthzState(t, db)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.RolePermission{}, &model.AuditLog{}, &model.APIToken{}, &model.APITokenRole{},
-		&model.AssetGroup{}, &model.SystemAlertDetail{}, &model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{},
+		&model.AssetGroup{}, &model.SystemAlertDetail{}, &model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{},
 		&model.NotificationChannel{}, &model.CommandAlert{}, &model.UserExternalIdentity{}, &model.OIDCProvider{}, &model.AssetAuthorization{}, &model.UserRoleMapping{}, &model.SecurityPolicy{}))
 	e := &apiTokenHTTPEnv{db: db, roles: map[string]uint{}, users: map[string]uint{}}
 	for _, name := range []string{"admin", "user"} {

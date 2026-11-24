@@ -4,9 +4,9 @@ import (
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/gin-gonic/gin"
 )
 
 // ExportSigningHandler 匯出簽章公鑰端點

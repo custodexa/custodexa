@@ -71,7 +71,7 @@ func openMirrorPG(t *testing.T) *gorm.DB {
 	})
 	if err := db.AutoMigrate(&model.AuditLog{}, &model.SecurityPolicy{}, &model.SecurityPolicyHistory{},
 		&model.DailyReviewLog{}, &model.AuditRetentionWatermark{}, &model.CommandAlert{},
-		&model.User{}, &model.Asset{}); err != nil {
+		&model.User{}, &model.Asset{}, &model.SystemAlertDetail{}); err != nil {
 		t.Fatal(err)
 	}
 	return db

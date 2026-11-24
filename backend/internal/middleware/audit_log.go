@@ -346,8 +346,9 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 		action = model.ActionCancel
 	} else if strings.HasSuffix(path, "/revoke") {
 		action = model.ActionRevoke // 臨時授權提前撤銷
-	} else if strings.HasSuffix(path, "/review") {
-		// HasSuffix：GET /reviews/pending 不含此結尾，不受影響
+	} else if strings.HasSuffix(path, "/review") || strings.HasSuffix(path, "/command-alerts/batch-review") {
+		// HasSuffix：GET /reviews/pending 不含此結尾，不受影響。
+		// 告警的批次審閱與單筆審閱同屬審閱動作；結尾是 -review，須另列，否則落到 POST 預設的建立
 		action = model.ActionReview // 破窗事後補審
 	} else if strings.HasSuffix(path, "/keystrokes/view") {
 		// 查看鍵盤紀錄是帶理由的讀取（POST 只為把理由放進本文）；不得記成建立，

@@ -466,6 +466,20 @@ const ssoErrorHint = ref('')
 // 可重新發起：跨分頁綁定遺失屬「使用者按一下就能自救」的情形，給明確出口
 const ssoCanRestart = ref(false)
 
+// 登入後回到原頁：網址上的 next 原樣交給伺服端判定，只保存回應的 redirect_next（本頁記憶體），
+// 之後的驗證碼、綁定、改密步驟完成時交給 completeLogin。不落瀏覽器儲存：下一位使用同一台
+// 電腦的人不會被帶到上一個人的頁面。帶 source 的登入測試連結不混用，忽略 next。
+// 網址以 URLSearchParams 解碼一次（與路由器的 query 相同）；同名參數取第一個
+const urlNext = () => {
+  if (testSource.source) return ''
+  const v = new URLSearchParams(window.location.search).get('next')
+  return typeof v === 'string' ? v : ''
+}
+const redirectNext = ref('')
+const keepRedirectNext = (value) => {
+  redirectNext.value = typeof value === 'string' ? value : ''
+}
+
 const stepSubtitle = computed(() => {
   if (step.value === 'mfa') return t('login.subtitleMfa')
   if (step.value === 'mfa_enrollment') return t('login.subtitleEnroll')
@@ -535,11 +549,15 @@ const handleLogin = async () => {
       loading.value = true
       lockedMessage.value = ''
       try {
-        // 呼叫登入 API
-        const response = await login({
+        // 呼叫登入 API；網址帶 next 時一併送出，由伺服端判定可回到的頁面
+        const payload = {
           username: loginForm.value.username,
           password: loginForm.value.password,
-        })
+        }
+        const next = urlNext()
+        if (next) payload.next = next
+        const response = await login(payload)
+        keepRedirectNext(response?.redirect_next)
 
         // MFA 用戶：進入第二階段驗證碼輸入
         if (response.mfa_required) {
@@ -562,7 +580,7 @@ const handleLogin = async () => {
           return
         }
 
-        completeLogin(response)
+        completeLogin(response, redirectNext.value)
       } catch (error) {
         // 帳號鎖定（423）在卡片內明示；其餘錯誤已由 axios 攔截器 toast
         if (error.response?.status === 423) {
@@ -617,7 +635,7 @@ const handleConfirmEnrollment = async () => {
       enterPasswordChangeStep(response)
       return
     }
-    completeLogin(response)
+    completeLogin(response, redirectNext.value)
   } catch (error) {
     enrollError.value =
       resolveApiError(error.response?.data, error.response?.status, t('login.enrollConfirmFailed'))
@@ -666,7 +684,7 @@ const handleChangePassword = async () => {
         },
         changeToken.value
       )
-      completeLogin(response)
+      completeLogin(response, redirectNext.value)
     } catch (error) {
       // 政策違規/token 過期等：就近顯示於表單內（skipErrorToast）
       changeError.value =
@@ -724,7 +742,7 @@ const handleVerifyMFA = async () => {
       return
     }
 
-    completeLogin(response)
+    completeLogin(response, redirectNext.value)
   } catch (error) {
     // 鎖定（TOTP 失敗共用計數）退回帳密步驟並明示；其餘清空驗證碼重試
     if (error.response?.status === 423) {
@@ -741,8 +759,10 @@ const handleVerifyMFA = async () => {
   }
 }
 
-// 返回帳號密碼輸入畫面
+// 返回帳號密碼輸入畫面。記憶體中的目的地一併清掉：下一次帳密登入重新以網址上的 next
+// 送出；單一登入兌換後返回時網址上已沒有 next，不把那一條流程的目的地帶到帳密登入
 const handleBackToCredentials = () => {
+  redirectNext.value = ''
   step.value = 'credentials'
   pendingToken.value = ''
   mfaCode.value = ''
@@ -809,7 +829,7 @@ const handleSSOLogin = async (provider) => {
   ssoStartingId.value = provider.id
   try {
     const binding = await prepareBrowserBinding()
-    window.location.assign(buildOIDCBeginURL(provider.id, binding))
+    window.location.assign(buildOIDCBeginURL(provider.id, binding, urlNext() || undefined))
   } catch (error) {
     clearBrowserSecret()
     ssoStartingId.value = 0
@@ -847,7 +867,7 @@ const exchangeSSOLogin = async (ticket) => {
   try {
     const res = await exchangeSSOTicket(ticket, secret)
     const payload = res?.login || {}
-    const next = res?.redirect_next || ''
+    keepRedirectNext(res?.redirect_next)
 
     if (payload.mfa_required) {
       pendingToken.value = payload.pending_token
@@ -865,7 +885,7 @@ const exchangeSSOLogin = async (ticket) => {
       enterPasswordChangeStep(payload)
       return
     }
-    completeLogin(payload, next)
+    completeLogin(payload, redirectNext.value)
   } catch (error) {
     if (error?.response?.status === 423) {
       lockedMessage.value =

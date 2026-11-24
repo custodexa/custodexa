@@ -94,9 +94,9 @@ func fastWorker(db *gorm.DB) *SystemAlertOutboxWorker {
 	return w
 }
 
-func outboxRows(t *testing.T, db *gorm.DB) []model.SystemAlertOutbox {
+func outboxRows(t *testing.T, db *gorm.DB) []model.NotificationDelivery {
 	t.Helper()
-	var rows []model.SystemAlertOutbox
+	var rows []model.NotificationDelivery
 	if err := db.Order("id").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestSystemAlertOutboxDelivery(t *testing.T) {
 			t.Fatalf("低與中分級都應送出: 送達 %d 收到 %d", n, stub.count())
 		}
 		for _, r := range outboxRows(t, db) {
-			if r.State != model.SystemAlertOutboxDelivered || r.DeliveredAt == nil {
+			if r.State != model.NotificationDeliveryDelivered || r.DeliveredAt == nil {
 				t.Fatalf("狀態不符: %+v", r)
 			}
 		}
@@ -132,25 +132,25 @@ func TestSystemAlertOutboxDelivery(t *testing.T) {
 		w := fastWorker(db)
 		w.RunOnce()
 		rows := outboxRows(t, db)
-		if rows[0].State != model.SystemAlertOutboxRetrying || rows[0].Attempts != 1 || rows[0].LastError == "" {
+		if rows[0].State != model.NotificationDeliveryRetrying || rows[0].Attempts != 1 || rows[0].LastError == "" {
 			t.Fatalf("第一次失敗後應為 retrying: %+v", rows[0])
 		}
 		// 重建 worker（模擬行程重啟）：依資料庫狀態續送。
 		time.Sleep(10 * time.Millisecond)
 		w2 := fastWorker(db)
 		w2.RunOnce()
-		if r := outboxRows(t, db)[0]; r.State != model.SystemAlertOutboxRetrying || r.Attempts != 2 {
+		if r := outboxRows(t, db)[0]; r.State != model.NotificationDeliveryRetrying || r.Attempts != 2 {
 			t.Fatalf("第二次失敗後應仍為 retrying: %+v", r)
 		}
 		time.Sleep(10 * time.Millisecond)
 		w2.RunOnce()
 		r := outboxRows(t, db)[0]
-		if r.State != model.SystemAlertOutboxDelivered || r.Attempts != 3 || stub.count() != 1 {
+		if r.State != model.NotificationDeliveryDelivered || r.Attempts != 3 || stub.count() != 1 {
 			t.Fatalf("第三次應成功: %+v 收到 %d", r, stub.count())
 		}
 	})
 
-	t.Run("超過時窗標 abandoned 且不再投遞", func(t *testing.T) {
+	t.Run("建立超過 72 小時但次數未滿仍會嘗試（放棄只看次數）", func(t *testing.T) {
 		stub := newStubReceiver(t, 0)
 		db, sink := outboxTestSetup(t, model.NotificationChannel{Name: "c", Type: "webhook", URL: stub.srv.URL,
 			Enabled: true, Language: "zh-TW", MinSeverity: "low"})
@@ -159,8 +159,8 @@ func TestSystemAlertOutboxDelivery(t *testing.T) {
 		w.now = func() time.Time { return time.Now().UTC().Add(73 * time.Hour) }
 		w.RunOnce()
 		r := outboxRows(t, db)[0]
-		if r.State != model.SystemAlertOutboxAbandoned || stub.count() != 0 {
-			t.Fatalf("應標記放棄且不送: %+v 收到 %d", r, stub.count())
+		if r.State != model.NotificationDeliveryDelivered || stub.count() != 1 || r.Attempts != 1 {
+			t.Fatalf("應照常送出: %+v 收到 %d", r, stub.count())
 		}
 	})
 
@@ -297,7 +297,7 @@ func TestSystemAlertOutboxDelivery(t *testing.T) {
 			Enabled: true, Language: "zh-TW", MinSeverity: "low"})
 		raiseEvent(t, db, sink, port.SystemAlertManagementRoleGranted, grant)
 		lease := time.Now().UTC().Add(time.Hour)
-		if err := db.Model(&model.SystemAlertOutbox{}).Where("1 = 1").Update("lease_until", lease).Error; err != nil {
+		if err := db.Model(&model.NotificationDelivery{}).Where("1 = 1").Update("lease_until", lease).Error; err != nil {
 			t.Fatal(err)
 		}
 		fastWorker(db).RunOnce()
@@ -314,7 +314,7 @@ func TestSystemAlertOutboxDelivery(t *testing.T) {
 		w := fastWorker(db)
 		w.Stop()
 		w.RunOnce()
-		if stub.count() != 0 || outboxRows(t, db)[0].State != model.SystemAlertOutboxPending {
+		if stub.count() != 0 || outboxRows(t, db)[0].State != model.NotificationDeliveryPending {
 			t.Fatal("停止後的 RunOnce 不應投遞，列保持待送")
 		}
 		w2 := fastWorker(db)

@@ -367,7 +367,7 @@ func TestKEKTopologyChangeAuditAndAlertDrill(t *testing.T) {
 		t.Fatalf("告警表建立失敗: %v", err)
 	}
 	if err := database.DB.AutoMigrate(&model.NotificationChannel{}, &model.SystemAlertDetail{},
-		&model.SystemAlertOutbox{}, &model.SystemAlertSeverityOverride{}); err != nil {
+		&model.NotificationDelivery{}, &model.SystemAlertSeverityOverride{}); err != nil {
 		t.Fatalf("通知通道與系統告警表建立失敗: %v", err)
 	}
 	if err := database.DB.Create(&model.NotificationChannel{
@@ -376,9 +376,7 @@ func TestKEKTopologyChangeAuditAndAlertDrill(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("通知通道建立失敗: %v", err)
 	}
-	if err := audit.InitAlertNotifier(database.DB, nil).LoadChannels(); err != nil {
-		t.Fatalf("通道快取載入失敗: %v", err)
-	}
+	audit.InitAlertNotifier(database.DB, nil)
 
 	const first = "https://vault-first.internal:8200"
 	const second = "https://vault-moved.internal:8200"

@@ -294,6 +294,19 @@ type DailyReviewAlertItem struct {
 	TriggeredAt time.Time  `json:"triggered_at"`
 	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
 	Disposition string     `json:"disposition"`
+	// 以下為讀取欄位：讓單日明細看得出每一筆是什麼事（類型、觸發者、資產與對象），
+	// 內容都是告警列表與系統告警明細已經給同一權限看的資料
+	ReasonCode string `json:"reason_code"`
+	// Username 觸發者的使用者名稱；使用者列不存在時為空字串
+	Username string `json:"username"`
+	// AssetName 資產名稱；沒有資產或資產列不存在時為空字串
+	AssetName string `json:"asset_name"`
+	// TargetKind／TargetID 系統告警的對象；非系統告警為空字串
+	TargetKind string `json:"target_kind"`
+	TargetID   string `json:"target_id"`
+	// Params 系統告警類型宣告的參數（與系統告警明細同一投影，不含 actor、severity）；非系統告警為 {}
+	Params    map[string]string `gorm:"-" json:"params"`
+	ParamsRaw string            `gorm:"column:params_raw" json:"-"`
 }
 
 // DailyReviewEventItem 單日明細中的一筆操作日誌（登入失敗或高危操作）
@@ -349,10 +362,45 @@ func eventList(scope *gorm.DB, status string) (DailyReviewEventList, error) {
 
 func unreviewedAlerts(db *gorm.DB, start, end time.Time) ([]DailyReviewAlertItem, error) {
 	items := []DailyReviewAlertItem{}
-	err := alertScope(db, start, end).Where("reviewed_at IS NULL").
-		Select("id, rule_name, kind, severity, command, user_id, asset_id, triggered_at, reviewed_at, disposition").
-		Order("triggered_at ASC, id ASC").Scan(&items).Error
-	return items, err
+	// LEFT JOIN：使用者、資產或明細列不存在時告警仍要列出，只是少了名稱或對象
+	err := db.Model(&model.CommandAlert{}).
+		Where("command_alerts.triggered_at >= ? AND command_alerts.triggered_at < ?", start.UTC(), end.UTC()).
+		Where("command_alerts.reviewed_at IS NULL").
+		Select("command_alerts.id, command_alerts.rule_name, command_alerts.kind, command_alerts.severity, " +
+			"command_alerts.command, command_alerts.user_id, command_alerts.asset_id, command_alerts.triggered_at, " +
+			"command_alerts.reviewed_at, command_alerts.disposition, command_alerts.reason_code, " +
+			"COALESCE(users.username, '') AS username, COALESCE(assets.name, '') AS asset_name, " +
+			"COALESCE(system_alert_details.target_kind, '') AS target_kind, " +
+			"COALESCE(system_alert_details.target_id, '') AS target_id, " +
+			"COALESCE(system_alert_details.params, '') AS params_raw").
+		Joins("LEFT JOIN users ON users.id = command_alerts.user_id").
+		Joins("LEFT JOIN assets ON assets.id = command_alerts.asset_id").
+		Joins("LEFT JOIN system_alert_details ON system_alert_details.alert_id = command_alerts.id").
+		Order("command_alerts.triggered_at ASC, command_alerts.id ASC").Scan(&items).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		params, _, perr := systemAlertDeclaredParams(items[i].ParamsRaw)
+		if perr != nil {
+			return nil, perr
+		}
+		items[i].Params = params
+	}
+	return items, nil
+}
+
+// unreviewedAlertTypes 一天內未審閱告警的不同類型數（rule_name）；告警來源已清除時為 null
+func unreviewedAlertTypes(db *gorm.DB, start, end time.Time, status string) (*int64, error) {
+	if status == model.DailyReviewSourcePurged {
+		return nil, nil
+	}
+	var n int64
+	if err := alertScope(db, start, end).Where("reviewed_at IS NULL").
+		Distinct("rule_name").Count(&n).Error; err != nil {
+		return nil, err
+	}
+	return &n, nil
 }
 
 // parseSnapshot 解析簽核列的快照（舊制快照的計數為整數，同樣解得出）

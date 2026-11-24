@@ -7,7 +7,6 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
-	"github.com/custodexa/backend/internal/notifycat"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -57,7 +56,7 @@ func TestAssetVisibilityProbeEvent(t *testing.T) {
 	}
 	breaker := audit.NewProbeBreaker(db, audit.NewTxSink(), audit.NewAlertRecorder(db), audit.ProbeBreakerDependencies{
 		LockPrincipal: identity.LockProbePrincipal, Classify: authz.ClassifyAgentProbe,
-		Trip: func(*gorm.DB, uint, uint, time.Time) (bool, error) { t.Fatal("unexpected trip"); return false, nil }, Finish: func(uint) {}, Limits: func() (int, int) { return 2, 300 }, Notify: func(uint, notifycat.Event, map[string]string) {},
+		Trip: func(*gorm.DB, uint, uint, time.Time) (bool, error) { t.Fatal("unexpected trip"); return false, nil }, Finish: func(uint) {}, Limits: func() (int, int) { return 2, 300 }, Notify: func(*gorm.DB, audit.AgentOwnerNotice) {},
 	})
 	svc.SetAgentProbeRecorder(func(ctx context.Context, u, k, a uint, e string) error {
 		_, err := breaker.RecordDenied(ctx, u, k, a, e)

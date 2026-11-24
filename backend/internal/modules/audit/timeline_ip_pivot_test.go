@@ -31,7 +31,7 @@ func seedIPPivot(t *testing.T, db *gorm.DB) {
 			t.Fatalf("seed %T: %v", v, err)
 		}
 	}
-	mustCreate(&model.User{Username: "alice", FullName: "Alice", Active: true})   // id 1 = tlUserID? 不依賴
+	mustCreate(&model.User{Username: "alice", FullName: "Alice", Active: true}) // id 1 = tlUserID? 不依賴
 	mustCreate(&model.Asset{Name: "srv-1", Host: "h", Protocol: "ssh", Port: 22, Active: true})
 
 	newSession := func(sid string, userID uint, ip string, at time.Time) *model.Session {
@@ -41,7 +41,7 @@ func seedIPPivot(t *testing.T, db *gorm.DB) {
 		return s
 	}
 	s1 := newSession("s1", tlUserID, ipvA, t0.Add(10*time.Minute))
-	newSession("s2", 8, ipvA, t0.Add(12*time.Minute))  // NAT：另一帳號同位址
+	newSession("s2", 8, ipvA, t0.Add(12*time.Minute)) // NAT：另一帳號同位址
 	newSession("s3", tlUserID, ipvB, t0.Add(14*time.Minute))
 	newSession("s4", tlUserID, "", t0.Add(16*time.Minute)) // 未知（unresolvable）
 	newSession("s6", 8, ipv6, t0.Add(17*time.Minute))
@@ -51,9 +51,9 @@ func seedIPPivot(t *testing.T, db *gorm.DB) {
 			Status: model.StatusSuccess, UserID: userID, Username: uname, AssetID: &aid, ClientIP: ip})
 	}
 	auditRow(tlUserID, "alice", ipvA, model.ActionUpdate, model.ResourceAsset, t0.Add(20*time.Minute))
-	auditRow(0, "", "", model.ActionExecute, model.ResourceAuditLog, t0.Add(21*time.Minute))  // system
+	auditRow(0, "", "", model.ActionExecute, model.ResourceAuditLog, t0.Add(21*time.Minute))         // system
 	auditRow(tlUserID, "alice", "", model.ActionUpdate, model.ResourceAsset, t0.Add(22*time.Minute)) // unresolvable
-	auditRow(0, "", ipvA, model.ActionLogin, model.ResourceAuth, t0.Add(23*time.Minute)) // 未認證列（有位址）
+	auditRow(0, "", ipvA, model.ActionLogin, model.ResourceAuth, t0.Add(23*time.Minute))             // 未認證列（有位址）
 	auditRow(tlUserID, "alice", ipvA, model.ActionFileUpload, model.ResourceFile, t0.Add(24*time.Minute))
 	auditRow(tlUserID, "alice", ipvB, model.ActionNewSourceIP, model.ResourceAuth, t0.Add(25*time.Minute))
 
@@ -75,7 +75,7 @@ func seedIPPivot(t *testing.T, db *gorm.DB) {
 		t.Fatalf("seed orphan alert: %v", err)
 	}
 	mustCreate(&model.ClipboardEvent{SessionID: s1.ID, Direction: "send",
-		ContentStatus: model.ClipboardContentAvailable, CreatedAt: t0.Add(33*time.Minute)})
+		ContentStatus: model.ClipboardContentAvailable, CreatedAt: t0.Add(33 * time.Minute)})
 }
 
 func ipQuery(ip string) TimelineQuery {

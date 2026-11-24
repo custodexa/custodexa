@@ -43,7 +43,7 @@ func probeFixture(t *testing.T, db *gorm.DB) *ProbeBreaker {
 			r := tx.Model(&model.User{}).Where("id=? AND breaker_pending_at IS NULL", u).Update("breaker_pending_at", at)
 			return r.RowsAffected == 1, r.Error
 		},
-		Finish: func(uint) {}, Limits: func() (int, int) { return 3, 300 }, Notify: func(uint, notifycat.Event, map[string]string) {},
+		Finish: func(uint) {}, Limits: func() (int, int) { return 3, 300 }, Notify: func(*gorm.DB, AgentOwnerNotice) {},
 	}
 	return NewProbeBreaker(db, NewTxSink(), NewAlertRecorder(db), deps)
 }
@@ -120,10 +120,11 @@ func TestBreakerAlert(t *testing.T) {
 	s := probeSQLite(t)
 	notified := 0
 	closed := 0
-	s.deps.Notify = func(owner uint, e notifycat.Event, p map[string]string) {
+	s.deps.Notify = func(_ *gorm.DB, n AgentOwnerNotice) {
 		notified++
-		if owner != 1 || e != notifycat.EventAgentBreakerTripped || p["owner_id"] != "1" || p["token_id"] != "7" {
-			t.Error(owner, e, p)
+		p := agentOwnerNotificationNotice(n).Params
+		if n.OwnerID != 1 || n.Event != notifycat.EventAgentBreakerTripped || p["owner_id"] != "1" || p["token_id"] != "7" {
+			t.Error(n.OwnerID, n.Event, p)
 		}
 	}
 	s.deps.Finish = func(id uint) {

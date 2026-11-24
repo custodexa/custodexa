@@ -115,6 +115,8 @@ var principalConstructionSites = []constructionSite{
 	// 背景作業
 	{"Principal{}", "internal/modules/authz/credential_ownership_scope.go", "CredentialActorPrincipal", 1, classBackground, dispFullIdentity,
 		"只在帶背景發起者標示（且不是請求脈絡）時以帳號完整身分重驗；其餘缺主體一律拒絕"},
+	{"TokenFacts{}", "internal/modules/authz/targeted_daily_review.go", "DailyReviewSignerAllowed", 1, classBackground, dispFullIdentity,
+		"每日簽核提醒的收件人判定與送出前重驗：沒有請求主體，以帳號完整身分判斷能否簽核且能進入簽核頁"},
 	{"TokenFacts{}", "cmd/server/stage2.go", "runStage2", 1, classBackground, dispRouteExcluded,
 		"稽核匯出工作的申請者重驗；稽核匯出路由不對 API token 開放"},
 	{"var TokenFacts", "internal/api/recording_handler.go", "RecordingHandler.IssueRecordingToken", 1, classBackground, dispRouteExcluded,

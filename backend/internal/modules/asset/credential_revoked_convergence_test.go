@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"github.com/custodexa/backend/internal/notifycat"
 	"strings"
 	"testing"
 	"time"
@@ -128,7 +129,7 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", cand.ID).
 			Update("created_at", old).Error)
 		cand.CreatedAt = old
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		_, _, verBefore := rec.snapshotCalls()
 		f.authz.deny(CredCapAccountRotate)
@@ -140,7 +141,7 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		assert.Equal(t, model.ChangeSecretReasonAuthzConvergenceExpired, kept.LastError)
 		assert.True(t, kept.Abandoned, "逾期放棄")
 		assert.WithinDuration(t, old, kept.CreatedAt, time.Second, "重試不重設期限")
-		assert.EqualValues(t, 2, notifier.PendingNotifications(), "停止告警一次、放棄告警一次")
+		assert.EqualValues(t, 2, rotationAlertCount(f.db), "停止告警一次、放棄告警一次")
 	})
 
 	t.Run("同一候選的授權停止告警只發一次，不隨退避週期重複", func(t *testing.T) {
@@ -149,14 +150,14 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		cand, _ := f.revokedCandidate(t, rec, "10.20.5.1", "10.20.5.2")
 		require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", cand.ID).
 			Update("applied", false).Error)
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		f.authz.deny(CredCapAccountRotate)
 		for i := 0; i < 4; i++ {
 			cur := f.candidateOf(t, cand.ID)
 			assert.False(t, f.retry.RetryOne(cur))
 		}
-		assert.EqualValues(t, 1, notifier.PendingNotifications())
+		assert.EqualValues(t, 1, rotationAlertCount(f.db))
 	})
 
 	t.Run("升級前的舊候選：背景告警每個候選只發一次", func(t *testing.T) {
@@ -165,19 +166,19 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		cand, _ := f.revokedCandidate(t, rec, "10.20.6.1", "10.20.6.2")
 		require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", cand.ID).
 			Update("authorization_id", nil).Error)
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		for i := 0; i < 4; i++ {
 			cur := f.candidateOf(t, cand.ID)
 			assert.False(t, f.retry.RetryOne(cur))
 		}
-		assert.EqualValues(t, 1, notifier.PendingNotifications())
+		assert.EqualValues(t, 1, rotationAlertCount(f.db))
 		// 24 小時放棄時再發一次
 		require.NoError(t, f.db.Model(&model.ChangeSecretCandidate{}).Where("id = ?", cand.ID).
 			Update("created_at", time.Now().Add(-25*time.Hour)).Error)
 		cur := f.candidateOf(t, cand.ID)
 		assert.False(t, f.retry.RetryOne(cur))
-		assert.EqualValues(t, 2, notifier.PendingNotifications())
+		assert.EqualValues(t, 2, rotationAlertCount(f.db))
 		assert.True(t, f.candidateOf(t, cand.ID).Abandoned)
 	})
 
@@ -199,7 +200,7 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		rec := newSecretRecorder()
 		cand, _ := f.revokedCandidate(t, rec, "10.20.13.1", "10.20.13.2")
 		f.retry.WithAuditSink(audit.NewTxSink())
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		rec.mu.Lock()
 		rec.verifyErr["10.20.13.2"] = errRemoteDropped
@@ -208,13 +209,13 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 
 		cur := f.candidateOf(t, cand.ID)
 		assert.False(t, f.retry.RetryOne(cur), "驗證失敗")
-		assert.EqualValues(t, 1, notifier.PendingNotifications())
+		assert.EqualValues(t, 1, rotationAlertCount(f.db))
 		rec.mu.Lock()
 		delete(rec.verifyErr, "10.20.13.2")
 		rec.mu.Unlock()
 		cur = f.candidateOf(t, cand.ID)
 		assert.True(t, f.retry.RetryOne(cur), "第二次驗證成功")
-		assert.EqualValues(t, 1, notifier.PendingNotifications(), "不重複告警")
+		assert.EqualValues(t, 1, rotationAlertCount(f.db), "不重複告警")
 
 		var logs []model.AuditLog
 		require.NoError(t, f.db.Where("details LIKE ?", "%recovery_verify%").Order("id").Find(&logs).Error)
@@ -300,7 +301,7 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, f.candidates.MarkApplied(created.ID))
 		created = bindCandidateViaCallback(t, f.db, f.runner.hostKeys, created.ID, rec.hostKey)
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		f.retry.WithAuditSink(audit.NewTxSink())
 		f.authz.deny(CredCapAccountRotate)
@@ -313,7 +314,7 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 			got = append(got, r.Error)
 		}
 		assert.Contains(t, got, model.ChangeSecretReasonRecoveredCleanupPending)
-		assert.EqualValues(t, 2, notifier.PendingNotifications(), "進入有限驗證一則、舊公鑰待清理一則")
+		assert.EqualValues(t, 2, rotationAlertCount(f.db), "進入有限驗證一則、舊公鑰待清理一則")
 	})
 
 	t.Run("輪替成員 changed_unverified：失權且目標未變時只驗證，不再下達", func(t *testing.T) {
@@ -342,7 +343,7 @@ func TestCredentialRevokedConvergence(t *testing.T) {
 		assert.Equal(t, model.CredentialMemberApplied, f.memberOf(t, rot.ID, accounts[1]).State)
 		_, rotAfter, _ := rec.snapshotCalls()
 		assert.Equal(t, rotBefore, rotAfter, "不得再下達")
-		assert.Equal(t, []string{"改密工作於授權失效後進入有限驗證"}, stops, "進入有限驗證告警一次")
+		assert.Equal(t, []string{notifycat.RotationAlertRecoveryVerify}, stops, "進入有限驗證告警一次")
 	})
 
 	t.Run("輪替成員：目標已改址則停止，成員與候選保留，告警只一次", func(t *testing.T) {

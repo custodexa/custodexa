@@ -100,7 +100,7 @@ func (f *attachFixture) requireOneAttachAlert(t *testing.T) attachAlertRow {
 	require.Len(t, rows, 1, "應恰一則告警")
 	assert.EqualValues(t, 1, tableRows(t, f.db, "command_alerts"))
 	var outbox int64
-	require.NoError(t, f.db.Model(&model.SystemAlertOutbox{}).Where("alert_id = ?", rows[0].detail.AlertID).Count(&outbox).Error)
+	require.NoError(t, f.db.Model(&model.NotificationDelivery{}).Where("alert_id = ?", rows[0].detail.AlertID).Count(&outbox).Error)
 	assert.EqualValues(t, 1, outbox, "每個啟用通道一筆投遞")
 	assert.Equal(t, model.AlertKindSystemSecurity, rows[0].alert.Kind)
 	assert.Equal(t, uint(1), rows[0].alert.UserID)
@@ -364,7 +364,7 @@ func TestAPITokenCredentialAttachAlert(t *testing.T) {
 		require.NoError(t, f.db.Where("asset_id = ?", host.ID).First(&seedAccount).Error)
 		accountsBefore := tableRows(t, f.db, "asset_accounts")
 		assetsBefore := tableRows(t, f.db, "assets")
-		require.NoError(t, f.db.Migrator().DropTable(&model.SystemAlertOutbox{}))
+		require.NoError(t, f.db.Migrator().DropTable(&model.NotificationDelivery{}))
 
 		_, err := f.assets.Create(attachTokenCtx(), &CreateAssetRequest{
 			Name: "sf-new", Protocol: model.ProtocolSSH, Host: "198.51.100.82", Port: 22,

@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -106,7 +107,15 @@ type dailyReviewSignRequest struct {
 	ReviewDate  string `json:"review_date"`
 	Note        string `json:"note"`
 	DelayReason string `json:"delay_reason"`
+	// BatchID 批次關聯碼（選填）：多日一起簽時，同一批逐日送出的每筆帶同一個值，
+	// 只供稽核紀錄辨認同批，不改變任何簽核判定。以指標區分「沒帶」與「帶了空字串」：
+	// 帶了就必須是標準格式的 UUID，否則整筆拒收
+	BatchID *string `json:"batch_id"`
 }
+
+// dailyReviewBatchIDPattern 批次關聯碼只收標準的 8-4-4-4-12 十六進位格式；
+// 空字串、過長、控制字元、大括號或 urn 前綴等變體一律不符
+var dailyReviewBatchIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Sign 簽核指定所屬日
 func (h *DailyReviewHandler) Sign(c *gin.Context) {
@@ -119,11 +128,20 @@ func (h *DailyReviewHandler) Sign(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
 		return
 	}
+	batchID := ""
+	if req.BatchID != nil {
+		// 格式驗證在進服務之前：不合格的值不會走到寫入簽核紀錄或稽核紀錄的任何路徑
+		if !dailyReviewBatchIDPattern.MatchString(*req.BatchID) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+			return
+		}
+		batchID = *req.BatchID
+	}
 	username, _ := middleware.GetCurrentUsername(c)
 	userID, _ := middleware.GetCurrentUserID(c)
 
 	row, err := h.reviewService.Sign(audit.SignRequest{
-		ReviewDate: req.ReviewDate, Note: req.Note, DelayReason: req.DelayReason,
+		ReviewDate: req.ReviewDate, Note: req.Note, DelayReason: req.DelayReason, BatchID: batchID,
 		ReviewerID: userID, ReviewerName: username,
 	})
 	if err != nil {

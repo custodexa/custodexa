@@ -45,7 +45,7 @@ func ensureSystemAlertTables(t *testing.T, db *gorm.DB) {
 	)`).Error; err != nil {
 		t.Fatalf("create command_alerts: %v", err)
 	}
-	if err := db.AutoMigrate(&model.SystemAlertDetail{}, &model.SystemAlertOutbox{},
+	if err := db.AutoMigrate(&model.SystemAlertDetail{}, &model.NotificationDelivery{},
 		&model.SystemAlertSeverityOverride{}, &model.NotificationChannel{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -148,12 +148,12 @@ func TestSystemAlertRaiseInTx(t *testing.T) {
 		if _, leaked := params["severity"]; leaked {
 			t.Fatal("明細參數不應含 severity 這類出站附加欄")
 		}
-		var outbox []model.SystemAlertOutbox
+		var outbox []model.NotificationDelivery
 		if err := db.Order("id").Find(&outbox).Error; err != nil || len(outbox) != 2 {
 			t.Fatalf("佇列列 %d: %v", len(outbox), err)
 		}
 		for _, o := range outbox {
-			if o.State != model.SystemAlertOutboxPending || o.Attempts != 0 || o.AlertID != receipt.AlertID {
+			if o.State != model.NotificationDeliveryPending || o.Attempts != 0 || derefUint(o.AlertID) != receipt.AlertID {
 				t.Fatalf("佇列列狀態不符: %+v", o)
 			}
 			if strings.Contains(o.URLEnc, "https://") && !strings.HasPrefix(o.URLEnc, "sealed:system_alert_outbox.url_enc:") {
@@ -317,11 +317,4 @@ func TestSystemAlertRaiseInTx(t *testing.T) {
 		}
 	})
 
-	t.Run("系統安全告警不進記憶體推送佇列", func(t *testing.T) {
-		n := newTestNotifier()
-		n.Enqueue(model.CommandAlert{ID: 5, Kind: model.AlertKindSystemSecurity, RuleName: "x", Severity: "low"})
-		if got := n.PendingNotifications(); got != 0 {
-			t.Fatalf("系統告警進了推送佇列: pending=%d", got)
-		}
-	})
 }

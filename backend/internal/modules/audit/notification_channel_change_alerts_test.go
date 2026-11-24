@@ -203,13 +203,6 @@ func TestNotificationChannelChangeAlerts(t *testing.T) {
 				e := newChangeEnv(t)
 				s := newStubReceiver(t, 0)
 				a := e.seed(t, "a", s.srv.URL, "", true)
-				// 推送快取：失敗路徑不得重載。
-				notifier := InitAlertNotifier(e.db, nil)
-				t.Cleanup(func() { StopAlertNotifierForRelease(notifier) })
-				if err := notifier.LoadChannels(); err != nil {
-					t.Fatal(err)
-				}
-				cacheBefore := notifier.snapshotChannels()
 				al, de, ou, au := e.counts(t)
 
 				mutate(e.svc)
@@ -241,10 +234,6 @@ func TestNotificationChannelChangeAlerts(t *testing.T) {
 				al2, de2, ou2, au2 := e.counts(t)
 				if al != al2 || de != de2 || ou != ou2 || au != au2 {
 					t.Fatalf("告警 %d→%d 明細 %d→%d 佇列 %d→%d 審計 %d→%d 應全不變", al, al2, de, de2, ou, ou2, au, au2)
-				}
-				cacheAfter := notifier.snapshotChannels()
-				if len(cacheBefore) != len(cacheAfter) || cacheAfter[0].Name != cacheBefore[0].Name {
-					t.Fatalf("推送快取應不變: %v → %v", cacheBefore, cacheAfter)
 				}
 			})
 		}

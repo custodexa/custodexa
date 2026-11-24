@@ -1,6 +1,8 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-11-18（`credential_secret_versions.public_key` 的語義改寫：由「系統推送的新公鑰行」擴為「這一版私鑰對應的公鑰」，寫入私鑰的每條路徑都填入、只改密碼時隨私鑰沿用，對外的公鑰指紋由此欄計算，見第 49 節。無 migration、無 schema 變更、不回填既有列）
+> **最後更新**：2026-11-21（`20261121_targeted_notification`：`notification_channels` 加 `direct_message_enabled`（對個人派送，至多一列為真、只限 `slack_app`）與 `dm_issue_notified_at`；`system_alert_outbox` 加 `audience`（`channel`／`user`）與 `recipient_user_id`（不設外鍵）兩條約束、`end_reason` 值域加 `request_resolved`、`recipient_ineligible`、`direct_message_disabled`、`no_email`、`email_ambiguous`、`recipient_not_found`，新增同一內容對同一人至多一筆的部分唯一索引，到期索引含 `audience`（見第 11、69 節）。無資料步驟、不提供 Down。migration 共六十四條（baseline 加六十三條增量），表數不變）
+> 前次更新：2026-11-21（通知投遞層三條增量：`20261120_notification_delivery_layer` 新表 `notification_messages`（指令告警與系統事件的通知內容，見第 82 節）；`system_alert_outbox` 成為所有通知類別共用的待投遞紀錄，加 `category`、`message_id`、`severity`（以告警列回填）、`dest_target`、`end_reason`、`throttled_since`、`dest_version`，`alert_id` 改為可空，新增帶快照與不帶快照兩條約束，`state` 值域加 `canceled`，`dest_type` 加 `slack_app` 與空字串、`dest_language` 加空字串，到期索引改為依目的地排序（見第 69 節）；`notification_channels` 型別加 `slack_app`，加 `target`、`destination_changed_at`、`destination_version`、`abandon_notified_at`（見第 11 節）。不提供 Down。`20261121_notification_delivery_last_failed`、`20261121_notification_delivery_ended_at` 各為 `system_alert_outbox` 加一個可空欄，無資料步驟，Down 刪欄（有損，只供 parity 守衛與開發環境）。migration 共六十三條（baseline 加六十二條增量）、應用資料表 94 張、全庫 97 張表）
+> 前次更新：2026-11-18（`credential_secret_versions.public_key` 的語義改寫：由「系統推送的新公鑰行」擴為「這一版私鑰對應的公鑰」，寫入私鑰的每條路徑都填入、只改密碼時隨私鑰沿用，對外的公鑰指紋由此欄計算，見第 49 節。無 migration、無 schema 變更、不回填既有列）
 > 前次更新：2026-11-18（`20261118_api_token_role_level`：`api_token_roles` 加 `level character varying(16) DEFAULT 'read_write' NOT NULL`（個人 API token 每個授權角色的層級，`read` 或 `read_write`，見第 81 節）；`api_tokens` 加 `levels_recorded boolean DEFAULT false NOT NULL`（本版起建立的 token 寫為 true，供呈現「升級前建立」，見第 80 節）。純加法、無資料步驟：既有列由預設值取得 `read_write` 與 false，升級前建立的 token 行為不變。Down 刪欄（有損，只供 parity 守衛與開發環境）。同步更正正文的 migration 總數：共六十條（baseline 加五十九條增量）；表數不變）
 > 前次更新：2026-11-15（`20261115_user_group_name_live_unique`：`user_groups` 的名稱唯一索引 `idx_user_groups_name` 改為只計未刪除列的部分唯一索引（`WHERE deleted_at IS NULL`），群組刪除後可用同名重建；只換索引、無資料步驟、既有列不變。Down 重建涵蓋全部列的唯一索引，已出現同名列時拒絕並維持現狀。migration 總數 +1，表數不變）
 > 前次更新：2026-11-13（`20261113_api_tokens`：新表 `api_tokens`（個人 API 憑證，只存明文摘要，見第 80 節）與 `api_token_roles`（建立時授權的角色，見第 81 節）；`audit_logs` 加可為 NULL 的 `api_token_id`、`api_token_name` 兩欄與複合索引 `idx_audit_api_token_created`，兩欄納入逐列完整性驗證碼的涵蓋範圍（值為 NULL 時不進入簽章內容，既有列的驗證碼不變）。純新增、無資料步驟；不提供 Down。同步更正正文的總數：migration 共五十八條（baseline 加五十七條增量）、應用資料表 93 張、全庫 96 張表）
@@ -129,9 +131,10 @@
 | AlertRule | `alert_rules` | baseline（CHECK action／severity；`uniq_alert_rules_name` 唯一索引＝種子 `ON CONFLICT` 的衝突目標）＋`baseline_seed.go` baseline 12 條輸入＋direction 增量 2 條輸出，再加 subject 增量 2 條 agent/input/block，共 16 條內建規則 | 輸入指令告警/阻斷與輸出敏感資料告警規則 |
 | CommandAlert | `command_alerts` | baseline（CHECK severity／kind／kind↔rule_id；**刻意無 FK**——rule_id/session_id 為觸發快照冗餘，規則改名或刪除不得破壞歷史告警） | 危險指令告警記錄（含審閱處置欄位） |
 | SystemAlertDetail | `system_alert_details` | 增量 `20261018_system_security_alerts`，主鍵即 `command_alerts.id`（外鍵級聯刪除） | 系統安全告警的結構化明細（見第 68 節） |
-| SystemAlertOutbox | `system_alert_outbox` | 同上，三條 CHECK、外鍵級聯刪除＋增量 `20261024_system_alert_delivery_key` 加 `delivery_key` 與唯一索引 | 系統安全告警的逐目的地持久投遞佇列（見第 69 節） |
+| NotificationDelivery | `system_alert_outbox` | 同上＋增量 `20261024_system_alert_delivery_key` 加 `delivery_key` 與唯一索引＋增量 `20261120_notification_delivery_layer` 改為所有通知類別共用（新欄、帶快照與不帶快照兩條約束）＋`20261121_notification_delivery_last_failed`／`20261121_notification_delivery_ended_at` 各加一欄＋`20261121_targeted_notification` 加收件對象與收件人 | 所有通知類別的逐目的地持久待投遞紀錄（見第 69 節） |
+| NotificationMessage | `notification_messages` | 增量 `20261120_notification_delivery_layer` | 指令告警與系統事件的通知內容（見第 82 節） |
 | SystemAlertSeverityOverride | `system_alert_severity_overrides` | 同上，主鍵為類型鍵、分級 CHECK | 系統安全告警的逐類型分級覆寫（見第 70 節） |
-| NotificationChannel | `notification_channels` | baseline（CHECK type／language）＋`20260929_notification_channel_min_severity`（`min_severity`＋CHECK） | 告警 webhook 通知通道 |
+| NotificationChannel | `notification_channels` | baseline（CHECK type／language）＋`20260929_notification_channel_min_severity`（`min_severity`＋CHECK）＋`20261120_notification_delivery_layer`（型別加 `slack_app`、四個新欄）＋`20261121_targeted_notification`（對個人派送兩欄、CHECK 與部分唯一索引） | 告警 webhook 通知通道 |
 | ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存（內容信封加密，`content_enc` 登記於 `envelopeMigrationTargets`；另存 `content_length`／`content_status`） |
 | AssetHostKey | `asset_host_keys` | baseline＋增量 `20261019_asset_host_key_address` 加 `host`、`port`、`reset_pending` 與 `(host, port)` 索引＋增量 `20261027_credential_host_identity` 加 `trust_generation` | SSH host key TOFU 記錄（帶撥號位址與主機信任世代） |
 | AssetHostKeyMismatch | `asset_host_key_mismatches` | 增量 `20261025_host_key_mismatch`（含唯一索引 `(asset_id, observed_fingerprint)`） | 連線時出現過、與記錄不符且尚未確認的主機金鑰觀察（見第 13a 節） |
@@ -183,8 +186,8 @@
 | UserGroupMappingRuleSupport | `user_group_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 使用者群組逐規則支持 |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **93 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **49 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **94 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **50 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
 `credential_job_authorizations`，`credential_impact_confirmations`，
@@ -195,12 +198,12 @@ agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_even
 權限模型三表 `user_group_roles`／`role_binding_nodes`／`authz_state`，
 `permission_state_events`、`role_permissions`，`security_policy_history`、`security_policy_floor_raises`，
 系統安全告警三表 `system_alert_outbox`／`system_alert_details`／`system_alert_severity_overrides`，
-`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，`user_release_guidance`，主機帳號盤點兩表 `host_account_scans`／`host_account_findings`，堡壘機專用帳號測試登入結果 `executor_login_checks`，鍵盤紀錄中繼資料 `keystroke_records`，與個人 API 憑證兩表 `api_tokens`／`api_token_roles`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **96 張**表
+`user_channel_observations`，`asset_host_key_mismatches`，`credential_host_identity_confirmations`，`user_release_guidance`，主機帳號盤點兩表 `host_account_scans`／`host_account_findings`，堡壘機專用帳號測試登入結果 `executor_login_checks`，鍵盤紀錄中繼資料 `keystroke_records`，個人 API 憑證兩表 `api_tokens`／`api_token_roles`，與通知內容 `notification_messages`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **97 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含五十九條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含六十三條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -211,7 +214,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共六十條：baseline 加五十九條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共六十四條：baseline 加六十三條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -572,6 +575,12 @@ erDiagram
         bool enabled
         string language
         string min_severity
+        string target
+        time destination_changed_at
+        int destination_version
+        time abandon_notified_at
+        bool direct_message_enabled
+        time dm_issue_notified_at
     }
 
     clipboard_events {
@@ -1656,27 +1665,35 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 
 **表名**: `notification_channels`
 **檔案**: `backend/internal/model/notification_channel.go`
-**建表方式**: baseline（`baseline_schema_platform.go`），含 `type`（`webhook`／`slack`）與
+**建表方式**: baseline（`baseline_schema_platform.go`），含 `type` 與
 `language`（三語）兩條 CHECK；`min_severity` 與其 CHECK `notification_channels_min_severity_check`
-由增量 migration `20260929_notification_channel_min_severity` 加入
+由增量 migration `20260929_notification_channel_min_severity` 加入；`20261120_notification_delivery_layer` 把 `type` 的 CHECK 改為
+`webhook`／`slack`／`slack_app`，並加入 `target`、`destination_changed_at`、`destination_version`、`abandon_notified_at`；`20261121_targeted_notification` 加入
+`direct_message_enabled`、`dm_issue_notified_at`、CHECK `notification_channels_direct_message_type_check` 與部分唯一索引 `idx_notification_channels_direct_message`
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `Name` | string | `size:100;not null` | `name` | 通道名稱 |
-| `Type` | string | `size:20;not null;default:webhook` | `type` | 通道類型，CHECK 約束限 `webhook`/`slack`（預留 email/SMS 擴充） |
-| `URL` | string | `type:text;not null` | `url` | webhook 端點，僅允許 http/https |
-| `Secret` | string | `type:text` | `-` | HMAC-SHA256 簽名密鑰（`X-OT-Signature`），空字串=不簽名 |
+| `Type` | string | `size:20;not null;default:webhook` | `type` | 通道類型，CHECK 約束限 `webhook`/`slack`/`slack_app`，與程式的型別登錄一致 |
+| `URL` | string | `type:text;not null` | `url` | 端點，僅允許 http/https；`slack_app` 為 Slack Web API 的基底網址（預設 `https://slack.com/api`）。信封加密 |
+| `Secret` | string | `type:text` | `-` | webhook 的 HMAC-SHA256 簽名密鑰（`X-OT-Signature`，空字串=不簽名），或 `slack_app` 的機器人 token（必填）；`slack` 恆為空。信封加密 |
 | `Enabled` | bool | `not null;default:true` | `enabled` | 啟用狀態 |
 | `Language` | string | `size:8;not null;default:zh-TW` | `language` | per-channel 語系，CHECK 約束限 `zh-TW`/`en-US`/`ja-JP`。 |
 | `MinSeverity` | string | `size:10;not null;default:low` | `min_severity` | 推送門檻（最低推送等級），CHECK 約束限 `low`/`medium`/`high`；`low`＝全部告警（預設）、`medium`＝中、高等級、`high`＝只有高等級 |
+| `Target` | string | `size:64;not null;default:''` | `target` | `slack_app` 的頻道識別碼（1 到 64 個英數字，明文、非秘密）；其他類型為空字串 |
+| `DestinationChangedAt` | *time.Time | - | `destination_changed_at` | 目的地最後變更時間：網址、秘密、目標、類型任一變更時於同一交易設為當下；升級後沒變過為 NULL。通道列表的送達狀況只統計之後建立的投遞 |
+| `DestinationVersion` | int | `type:integer;not null;default:0` | `destination_version` | 目的地版本，與 `DestinationChangedAt` 同時遞增；帶快照的待投遞紀錄記下產生當下的值（`dest_version`） |
+| `AbandonNotifiedAt` | *time.Time | - | `-` | 最近一次產生「通知投遞已放棄」的時刻（同一通道 24 小時一則，以條件更新判斷） |
+| `DirectMessageEnabled` | bool | `not null;default:false` | `direct_message_enabled` | 對個人派送：需要處理的通知另以私訊送給該處理的人。CHECK 限 `slack_app` 才可為真；部分唯一索引 `((1)) WHERE direct_message_enabled` 使至多一個通道為真 |
+| `DMIssueNotifiedAt` | *time.Time | - | `-` | 最近一次產生「個人訊息未能送達」系統事件的時刻（同一通道 24 小時一則，以條件更新判斷；不與 `abandon_notified_at` 共用） |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
 **設計說明**:
 - secret 存明文：通道整組 admin only 且需原文計算 HMAC 簽名無法雜湊；與資產憑證不同（憑證有 AES 加密），首版信任 DB 邊界（其後 改為 `url`/`secret` 信封加密落庫）
-- `language` 語義：Create 未給＝預設 `zh-TW`；Update **省略＝保留舊值**，顯式空字串或白名單外值一律拒（API 層 `VALIDATION_CHANNEL_LANGUAGE`＋DB CHECK 雙層，同 `type` 欄慣例）。只影響 Slack 通道的伺服端組字語言（`internal/notifycat` 渲染），webhook 型可設但目前無作用
-- `min_severity` 語義：Create 未給＝預設 `low`；Update **省略＝保留舊值**（列表的啟用開關只送 name、type、enabled），顯式空字串或白名單外值一律拒（`VALIDATION_CHANNEL_MIN_SEVERITY`＋DB CHECK）。只作用於告警佇列的推送：等級不低於門檻才推送，等級為空或不在三值內照送；系統事件與測試發送不受影響，告警的入庫與 syslog 轉發與門檻無關。門檻實際改變時 service 另寫一筆稽核列，details 帶 `changes[]{field,old,new}`。沒有「全部不推送」的值——要完全不收請停用通道
+- `language` 語義：Create 未給＝預設 `zh-TW`；Update **省略＝保留舊值**，顯式空字串或白名單外值一律拒（API 層 `VALIDATION_CHANNEL_LANGUAGE`＋DB CHECK 雙層，同 `type` 欄慣例）。只影響 Slack 通道的伺服端組字語言（`internal/notifycat` 渲染，Slack 兩型），webhook 本文不隨語系改變
+- `min_severity` 語義：Create 未給＝預設 `low`；Update **省略＝保留舊值**（列表的啟用開關只送 name、type、enabled），顯式空字串或白名單外值一律拒（`VALIDATION_CHANNEL_MIN_SEVERITY`＋DB CHECK）。只作用於指令告警，在分派到各通道時判斷：等級不低於門檻才分派，等級為空或不在三值內照送；系統安全告警、系統事件與測試發送不受影響，告警的入庫與 syslog 轉發與門檻無關。門檻實際改變時 service 另寫一筆稽核列，details 帶 `changes[]{field,old,new}`。沒有「全部不推送」的值——要完全不收請停用通道
 
 ---
 
@@ -2693,7 +2710,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共六十條**：baseline 一條，其後的增量五十九條
+**現行 migration 共六十四條**：baseline 一條，其後的增量六十三條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2758,13 +2775,17 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20261113_api_tokens` | 個人 API 憑證：建 `api_tokens`（第 80 節，主鍵、`fk_api_tokens_user`／`fk_api_tokens_revoker` 兩條外鍵、唯一索引 `idx_api_tokens_token_hash`、一般索引 `idx_api_tokens_user_revoked`）與 `api_token_roles`（第 81 節，複合主鍵、`fk_api_token_roles_token`（ON DELETE CASCADE）／`fk_api_token_roles_role` 兩條外鍵）；`audit_logs` 加 `api_token_id bigint`、`api_token_name character varying(100)` 兩個可為 NULL 的欄位與索引 `idx_audit_api_token_created`＝`(api_token_id, created_at)`，共 **7 條 DDL**（2 建表＋2 索引＋2 加欄＋1 稽核索引）。純新增、無資料步驟、既有列不變（新欄為 NULL）；無 CHECK。稽核索引建在既有的 `audit_logs` 上，依 PostgreSQL 的一般行為需掃描該表的既有列，耗時可能隨其列數增加 | `rollbackAPITokens`：**一律回拒絕錯誤**；回退只走還原升級前備份，舊版忽略新表與新欄 |
 | `20261115_user_group_name_live_unique` | 使用者群組名稱的唯一性只計未刪除列：`DROP INDEX idx_user_groups_name` 後建 `CREATE UNIQUE INDEX idx_user_groups_name ON user_groups (name) WHERE (deleted_at IS NULL)`，共 **2 條 DDL**。無資料步驟、既有列不變；新索引比舊索引寬鬆，既有資料必然成立 | `rollbackUserGroupNameLiveUnique`：先檢查 `user_groups` 是否有同名的多列（含已刪除）；有則在任何 DDL 之前回錯並列出重複名稱的樣本，索引與版本紀錄維持不變，回退只走還原升級前備份；沒有則重建涵蓋全部列的唯一索引 |
 | `20261118_api_token_role_level` | 個人 API token 授權角色的層級：`ALTER TABLE api_token_roles ADD COLUMN level character varying(16) DEFAULT 'read_write'::character varying NOT NULL` 與 `ALTER TABLE api_tokens ADD COLUMN levels_recorded boolean DEFAULT false NOT NULL`，共 **2 條 DDL**。無資料步驟；既有列由預設值取得 `read_write`（升級前的 token 每個授權角色皆可讀寫，行為不變）與 `levels_recorded = false`（標為升級前建立）；無 CHECK，值域由程式把關（讀到 `read_write` 以外的值一律視為唯讀） | `rollbackAPITokenRoleLevel`：先刪 `api_tokens.levels_recorded`，再刪 `api_token_roles.level`。有損（層級遺失，所有授權角色回到可讀寫），只供 parity 守衛與開發環境；生產回退只走還原升級前備份，回退前須先撤銷含唯讀角色的 token（彙總為唯讀或混合者） |
+| `20261120_notification_delivery_layer` | 通知投遞層：建 `notification_messages`（第 82 節，五條 CHECK、指向 `command_alerts` 的級聯外鍵，三條索引）；`system_alert_outbox` 加 `category`、`message_id`（級聯外鍵指向新表）、`severity`、`dest_target`、`end_reason`、`throttled_since`、`dest_version`，`alert_id` 去掉 NOT NULL，重建 `state`（加 `canceled`）、`dest_type`（加 `slack_app` 與空字串）、`dest_language`（加空字串）三條 CHECK，新增 `category`、`severity`、`end_reason`、`snapshot_ref`、`live_ref` 五條 CHECK，新增 `(source_channel_id, created_at)` 與 `message_id` 兩條索引，到期部分索引改為 `(source_channel_id, dest_version, next_attempt_at)`（第 69 節）；`notification_channels` 型別 CHECK 加 `slack_app`，加 `target`、`destination_changed_at`、`destination_version`、`abandon_notified_at`（第 11 節）。共 **34 條 DDL** 加 1 條回填（加 `severity` 欄之後、加約束之前，以 `UPDATE … FROM command_alerts` 取所屬告警的分級）；既有列的類別由預設值取得 `system_security_alert`，快照、投遞識別與嘗試次數不變 | `rollbackNotificationDeliveryLayer`：**一律回拒絕錯誤**。新欄位與新狀態值在舊結構無處存放，投遞紀錄屬證據；回退只走還原升級前備份 |
+| `20261121_notification_delivery_last_failed` | `system_alert_outbox` 加 `last_failed_at timestamp with time zone`（可空；最近一次登記失敗的時刻），共 **1 條 DDL**，無資料步驟，升級前的列為空 | `rollbackNotificationDeliveryLastFailed`：刪欄。有損（失去失敗時刻），只供 parity 守衛與開發環境 |
+| `20261121_notification_delivery_ended_at` | `system_alert_outbox` 加 `ended_at timestamp with time zone`（可空；轉為放棄或已取消的時刻，供近 24 小時與近 7 天的放棄筆數），共 **1 條 DDL**，無資料步驟，升級前已是終態的列為空、不計入上述統計 | `rollbackNotificationDeliveryEndedAt`：刪欄。有損，只供 parity 守衛與開發環境 |
+| `20261121_targeted_notification` | 定向通知：`notification_channels` 加 `direct_message_enabled boolean DEFAULT false NOT NULL` 與可空的 `dm_issue_notified_at`，CHECK `notification_channels_direct_message_type_check`（`NOT direct_message_enabled OR type = 'slack_app'`），部分唯一索引 `idx_notification_channels_direct_message`（`((1)) WHERE direct_message_enabled`，至多一個通道開啟）；`system_alert_outbox` 加 `audience character varying(16) DEFAULT 'channel' NOT NULL` 與可空的 `recipient_user_id`（不設外鍵），CHECK `system_alert_outbox_audience_check`（`channel`／`user`）與 `system_alert_outbox_recipient_ref`，重建 `end_reason` CHECK 加六個值，部分唯一索引 `idx_system_alert_outbox_message_recipient`（`(message_id, recipient_user_id) WHERE audience = 'user'`），到期部分索引改為 `(source_channel_id, dest_version, audience, next_attempt_at)`（第 11、69 節）。共 **13 條 DDL**，無資料步驟；既有通道為 false、既有紀錄 `audience = 'channel'` 且收件人為空 | `rollbackTargetedNotification`：**一律回拒絕錯誤**；回退只走還原升級前備份 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的五十九條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的六十三條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
-> - **讀寫存量資料列，耗時隨對應表的列數成長（12 條）**：
+> - **讀寫存量資料列，耗時隨對應表的列數成長（13 條）**：`20261120_notification_delivery_layer`（以 `UPDATE … FROM command_alerts` 回填 `system_alert_outbox` 既有列的分級，另在該表加欄、加約束、建索引並建一張新表；系統安全告警的投遞隨告警記錄保存，耗時隨該表的列數成長）、
 >   `20260826_source_ip_forensics`（冷啟動回填，以 `INSERT … SELECT` 彙整 `sessions` 與 `audit_logs` 的登入成功列）、
 >   `20260906_credential_library`（逐筆把存活的 `asset_accounts` 列轉為專用憑證，帳號數通常遠小於會話與稽核的存量）、
 >   `20260921_access_request_items`（以 `INSERT … SELECT` 為每張未軟刪的 `access_requests` 回填一項）、
@@ -2772,18 +2793,18 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 >   `asset_authorizations` 與 `access_request_approvals`）、`20260930_identity_group_mappings`（既有角色規則與映射事實建立字典及逐規則支持，既有群組成員標為手動）、`20261012_daily_review_signoff`（回填既有 `daily_review_logs` 列，並逐列讀取政策變更的 `audit_logs` 列重建每日審閱的啟用歷史）、`20261019_asset_host_key_address`（逐列回填 `asset_host_keys` 的撥號位址，讀 `assets`；另在該表建 `(host, port)` 索引）、`20261020_mapping_observation_times`（以 `INSERT … SELECT` 自 `users` 的群組快照與兩張映射支持表回填 `user_channel_observations`）、`20261022_credential_job_authorization`（對每個已啟用且有排程的計畫查詢 `audit_logs` 指認發起者，寫入授權列或標記暫停；耗時隨這類計畫的數量與 `audit_logs` 的存量成長）、`20261024_system_alert_delivery_key`（對 `system_alert_outbox` 的既有列各回填一個隨機投遞識別，再建唯一索引；升級時該表通常為空）、`20261027_credential_host_identity`（對 `credential_rotation_members` 的 legacy 成員做兩段條件式 `UPDATE`，相關子查詢讀 `change_secret_candidates`、`change_secret_records`、`credential_rotations`；耗時隨成員與改密紀錄的列數成長，另有 21 條 DDL 在三張既有表加欄、建一張新表）、`20261029_credential_ownership`（對 `owner_kind` 為 NULL 的 `credentials` 列做兩段條件式 `UPDATE` 回填歸屬，回填前後各算一次報告，其中一欄以相關子查詢讀 `asset_accounts`；耗時隨憑證與帳號的列數成長，另有 5 條 DDL 在 `credentials` 加兩欄與一個複合索引、建一張新表與其唯一索引）。
 > - **只寫固定少量的列，不隨存量成長（5 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
 >   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）、`20261016_authz_permission_model`（標記至多 4 個內建角色列、補建缺列的內建角色、寫 `authz_state` 一列；遷移報告需計數 `user_roles`、`roles` 與 `users`，該段耗時隨這三表的列數成長，其餘為 DDL）、`20261017_role_definitions`（補建 2 個鎖定範本；前後摘要需讀 `roles`、`user_roles`、`user_group_roles`，該段耗時隨這三表的列數成長）。
-> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（30 條）**。`20261025_host_key_mismatch`（新表＋唯一索引）、`20261026_security_policy_floor_raises`（新表）與 `20261028_user_release_guidance`（新表，含指向 `users` 的外鍵）屬此類。其中 12 條在既有表上建索引或加 CHECK／外鍵：
+> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（33 條）**。`20261025_host_key_mismatch`（新表＋唯一索引）、`20261026_security_policy_floor_raises`（新表）與 `20261028_user_release_guidance`（新表，含指向 `users` 的外鍵）屬此類。其中 13 條在既有表上建索引或加 CHECK／外鍵：
 >   `20260825_evidence_offsite`（`sessions`）、`20260826_db_query_console`（`session_commands`）、
 >   `20260903_rotation_evidence_report`（`asset_accounts`、`audit_export_jobs`）、`20260905_account_batch_rotation`（`change_secret_records`）、
 >   `20260921_identity_agent_principal`（`users`、`sessions`）、`20260921_principal_integrity`（`audit_failure_events`）、
 >   `20260921_agent_audit_ledger`（`sessions`、`alert_rules`）、`20260921_agent_breaker_alert` 與 `20260924_sensitive_reveal_alert`
->   （`command_alerts`）、`20260929_notification_channel_min_severity`（`notification_channels`，另加一個帶常數預設的欄）、`20261018_system_security_alerts`（重建 `command_alerts` 兩條 CHECK，另建三張新表）、`20261018_checkpoint_v4_attestation`（`audit_checkpoints` 建一條部分索引，另加欄、卸欄，`audit_checkpoint_trims` 加三欄）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
->   另外 15 條只建新表、加帶常數預設或可空的欄、放寬欄位型別，或卸欄與卸索引：
+>   （`command_alerts`）、`20260929_notification_channel_min_severity`（`notification_channels`，另加一個帶常數預設的欄）、`20261018_system_security_alerts`（重建 `command_alerts` 兩條 CHECK，另建三張新表）、`20261018_checkpoint_v4_attestation`（`audit_checkpoints` 建一條部分索引，另加欄、卸欄，`audit_checkpoint_trims` 加三欄）、`20261121_targeted_notification`（`notification_channels`、`system_alert_outbox` 加 CHECK 與部分索引，另加帶常數預設或可空的欄）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
+>   另外 17 條只建新表、加帶常數預設或可空的欄、放寬欄位型別，或卸欄與卸索引：
 >   `20260824_audit_export_jobs`、`20260903_security_policies_value_text`、`20260904_windows_local_account_rotation`、
 >   `20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、
 >   `20260909_policy_groups`、`20260913_kek_topology`、`20260921_agent_audit_actions`、`20260921_agent_visibility_exposures`、
 >   `20260922_agent_session_token_name`、`20260924_agent_tool_call_args_retained`、`20261017_permission_state_attestation`、
->   `20261017_permission_state_event_integrity`、`20261023_credential_recovery_alert`。依 PostgreSQL 的一般行為，
+>   `20261017_permission_state_event_integrity`、`20261023_credential_recovery_alert`、`20261121_notification_delivery_last_failed`、`20261121_notification_delivery_ended_at`。依 PostgreSQL 的一般行為，
 >   這些語句通常不需掃描或重寫既有列，耗時通常與存量無關。
 >
 > 升級程序見 `docs/ops/upgrade-sop.md`。
@@ -4116,30 +4137,47 @@ pending → uploading → uploaded → local_purged
 
 由 `20261018_system_security_alerts` 建立，升級後為空。告警列、明細與各目的地的投遞列在同一交易內寫入。
 
-### 69. system_alert_outbox（系統安全告警投遞佇列）
+### 69. system_alert_outbox（通知的待投遞紀錄）
 
-**表名**: `system_alert_outbox`；**檔案**: 同上（`model.SystemAlertOutbox`）。表所有權歸稽核模組（audit）。
+**表名**: `system_alert_outbox`；**檔案**: `backend/internal/model/notification_delivery.go`（`model.NotificationDelivery`）。表所有權歸稽核模組（audit）。
+由 `20261018_system_security_alerts` 建立；`delivery_key` 由 `20261024_system_alert_delivery_key` 補上；`20261120_notification_delivery_layer` 起成為所有通知類別共用的待投遞紀錄（表名沿用），`last_failed_at`、`ended_at` 由 `20261121_notification_delivery_last_failed`、`20261121_notification_delivery_ended_at` 補上。
+
+每個目的地一列，分兩種：
+- **帶快照**（`category = 'system_security_alert'`）：指向告警列（`alert_id`），目的地欄位（類型、名稱、語言、網址、秘密、目標、版本）是告警產生當下的快照，之後通道改設定、停用或刪除都照快照送出。由約束 `system_alert_outbox_snapshot_ref` 保證。
+- **不帶快照**（`command_alert`、`system_event`）：指向通知內容（`message_id`，見第 82 節），目的地欄位一律為空字串、`dest_version` 為 0，送出時以 `source_channel_id` 讀通道當下的設定；通道停用或刪除時標為 `canceled`。由約束 `system_alert_outbox_live_ref` 保證。
+- **個人訊息**（`audience = 'user'`，`20261121_targeted_notification` 起）：不帶快照的系統事件紀錄的一種，送往開啟對個人派送的通道、以私訊送給 `recipient_user_id` 那位使用者；同一則內容對同一人至多一筆。通道列表的送達狀況只統計 `audience = 'channel'` 的紀錄。
 
 | 欄位 | 型別／約束 | 說明 |
 |---|---|---|
 | `id` | bigserial PRIMARY KEY | 主鍵（只供內部；送給收端的投遞識別是 `delivery_key`） |
-| `alert_id` | bigint NOT NULL，索引 `idx_system_alert_outbox_alert` | 所屬告警；外鍵 `fk_system_alert_outbox_alert`，`ON DELETE CASCADE` |
-| `dest_type` | varchar(20) NOT NULL，CHECK `system_alert_outbox_dest_type_check`（`webhook`／`slack`） | 目的地類型 |
+| `category` | varchar(32) NOT NULL DEFAULT `'system_security_alert'`，CHECK `system_alert_outbox_category_check`（`system_security_alert`／`command_alert`／`system_event`） | 通知類別；升級前的既有列由預設值取得 `system_security_alert` |
+| `alert_id` | bigint NULL，索引 `idx_system_alert_outbox_alert` | 所屬告警（帶快照者必填）；外鍵 `fk_system_alert_outbox_alert`，`ON DELETE CASCADE`。`20261120_notification_delivery_layer` 去掉 NOT NULL |
+| `message_id` | bigint NULL，索引 `idx_system_alert_outbox_message` | 所屬通知內容（不帶快照者必填）；外鍵 `fk_system_alert_outbox_message` → `notification_messages(id)`，`ON DELETE CASCADE` |
+| `severity` | varchar(10) NOT NULL DEFAULT `'low'`，CHECK `system_alert_outbox_severity_check`（`high`／`medium`／`low`） | 處理先後；既有列於 migration 內以所屬告警的分級回填 |
+| `dest_type` | varchar(20) NOT NULL，CHECK `system_alert_outbox_dest_type_check`（`webhook`／`slack`／`slack_app`／空字串） | 目的地類型快照；不帶快照者為空字串 |
 | `dest_name` | varchar(100) NOT NULL DEFAULT `''` | 目的地名稱快照 |
-| `dest_language` | varchar(8) NOT NULL，CHECK `system_alert_outbox_language_check`（`zh-TW`／`en-US`／`ja-JP`） | 送出內容的語言 |
-| `source_channel_id` | bigint NULL | 產生當下對應的通知通道；之後通道改址或刪除不影響重送 |
-| `url_enc` | text NOT NULL | 目的地網址快照，信封加密（登記於 `envelopeMigrationTargets`） |
-| `secret_enc` | text NOT NULL DEFAULT `''` | 簽章密鑰快照，信封加密（同上） |
-| `state` | varchar(16) NOT NULL DEFAULT `'pending'`，CHECK `system_alert_outbox_state_check` | `pending`／`retrying`／`delivered`／`abandoned` |
-| `attempts` | integer NOT NULL DEFAULT 0 | 已嘗試次數 |
-| `next_attempt_at` | timestamptz NOT NULL，部分索引 `idx_system_alert_outbox_due`（`state IN ('pending','retrying')`） | 下次可投遞時刻（指數退避） |
+| `dest_language` | varchar(8) NOT NULL，CHECK `system_alert_outbox_language_check`（`zh-TW`／`en-US`／`ja-JP`／空字串） | 送出內容的語言快照；不帶快照者為空字串 |
+| `dest_target` | varchar(64) NOT NULL DEFAULT `''` | 目標快照（`slack_app` 的頻道識別碼）；個人訊息紀錄在解析後寫入收件人的 Slack 使用者識別碼 |
+| `dest_version` | integer NOT NULL DEFAULT 0 | 產生當下通道的 `destination_version`；不帶快照者恆為 0。投遞程序以（`source_channel_id`, `dest_version`）分組輪流取件 |
+| `audience` | varchar(16) NOT NULL DEFAULT `'channel'`，CHECK `system_alert_outbox_audience_check`（`channel`／`user`） | 收件對象：送到通道設定的頻道，或以私訊送給個人（`20261121_targeted_notification`）；升級前的列為 `channel` |
+| `recipient_user_id` | bigint NULL（不設外鍵），部分唯一索引 `idx_system_alert_outbox_message_recipient`（`message_id, recipient_user_id`，`audience = 'user'`） | 個人訊息的收件人；CHECK `system_alert_outbox_recipient_ref`：`audience = 'user'` 時必填且類別必為 `system_event`，`audience = 'channel'` 時必為空。使用者被刪除時保留識別碼，送出前查不到即以 `recipient_ineligible` 取消 |
+| `source_channel_id` | bigint NULL，索引 `idx_system_alert_outbox_source_created`（`source_channel_id, created_at`） | 來源通知通道（不帶快照者必填）；沒有外鍵，通道刪除後仍保留 |
+| `url_enc` | text NOT NULL | 目的地網址快照，信封加密（登記於 `envelopeMigrationTargets`）；不帶快照者為空字串 |
+| `secret_enc` | text NOT NULL DEFAULT `''` | 簽章密鑰或 `slack_app` token 的快照，信封加密（同上）；不帶快照者為空字串 |
+| `state` | varchar(16) NOT NULL DEFAULT `'pending'`，CHECK `system_alert_outbox_state_check` | `pending`／`retrying`／`delivered`／`abandoned`／`canceled` |
+| `attempts` | integer NOT NULL DEFAULT 0 | 已嘗試次數；認領送出時先加 1，上限 48 |
+| `next_attempt_at` | timestamptz NOT NULL，部分索引 `idx_system_alert_outbox_due`（`source_channel_id, dest_version, audience, next_attempt_at`，`state IN ('pending','retrying')`） | 下次可投遞時刻（退避 1 秒起倍增、上限 2 小時） |
 | `lease_until` | timestamptz NULL | 認領租約到期時刻 |
-| `last_error` | text NOT NULL DEFAULT `''` | 最後一次失敗的原因（已脫敏、截斷） |
+| `last_error` | text NOT NULL DEFAULT `''` | 最後一次失敗的原因（已抹除網址與 token、截斷） |
+| `last_failed_at` | timestamptz NULL | 最後一次登記失敗的時刻；送達時不清除。升級前的列為空 |
+| `throttled_since` | timestamptz NULL | 第一次因限流被延後的時刻，之後不清除；自此 72 小時仍在進行中即以 `rate_limited` 放棄 |
+| `end_reason` | varchar(32) NOT NULL DEFAULT `''`，CHECK `system_alert_outbox_end_reason_check` | 放棄或取消的原因：`max_attempts`／`snapshot_unreadable`／`type_unregistered`／`render_failed`／`channel_disabled`／`channel_deleted`／`precheck_canceled`／`rate_limited`，個人訊息另有 `request_resolved`／`recipient_ineligible`／`direct_message_disabled`／`no_email`／`email_ambiguous`／`recipient_not_found`；未結束為空字串 |
+| `ended_at` | timestamptz NULL | 轉為放棄或已取消的時刻；升級前已是終態的列為空 |
 | `delivered_at` | timestamptz NULL | 投遞成功時刻 |
 | `created_at` | timestamptz NOT NULL | 建立時間 |
-| `delivery_key` | varchar(32) NOT NULL DEFAULT `''`，唯一索引 `idx_system_alert_outbox_delivery_key` | 送給收端的投遞識別（payload 的 `delivery_id`）：排入當下隨機產生的 32 個十六進位字元，同一列重送不變；還原備份後新建的列必為新值，不會與還原前發出的識別重複。增量 `20261024_system_alert_delivery_key` |
+| `delivery_key` | varchar(32) NOT NULL DEFAULT `''`，唯一索引 `idx_system_alert_outbox_delivery_key` | 送給收端的投遞識別（payload 的 `delivery_id`）：建立當下隨機產生的 32 個十六進位字元，同一列重送不變；還原備份後新建的列必為新值，不會與還原前發出的識別重複。增量 `20261024_system_alert_delivery_key` |
 
-由 `20261018_system_security_alerts` 建立（`delivery_key` 由 `20261024_system_alert_delivery_key` 補上），升級後為空。投遞語義為至少一次：失敗以指數退避續送，重啟後依本表狀態接續，自建立起超過時窗仍未成功即標為 `abandoned`。啟用中但網址或密鑰密文解不開的通道也會得到一列：建立時即為 `abandoned`、`attempts` 為 0、`last_error` 記原因、`url_enc` 與 `secret_enc` 留空，讓明細看得到該目的地沒送，而產生告警的業務操作不受影響。分級只影響處理順序與顯示，不決定是否送出，不看通道的推送門檻。
+投遞語義為至少一次：每列最多嘗試 48 次，重啟後依本表狀態接續；到達上限、限流延後超過 72 小時、型別不在登錄中、快照解不開或內容無法渲染時標為 `abandoned`。啟用中但網址或密鑰密文解不開的通道，在產生系統安全告警時也會得到一列：建立時即為 `abandoned`、`attempts` 為 0、`end_reason` 為 `snapshot_unreadable`、`last_error` 記原因、`url_enc` 與 `secret_enc` 留空，讓明細看得到該目的地沒送，而產生告警的業務操作不受影響。系統安全告警的列隨告警記錄保存；不帶快照的列與其通知內容一起由保留清理刪除（第 82 節）。
 
 ### 70. system_alert_severity_overrides（系統安全告警分級覆寫）
 
@@ -4374,6 +4412,37 @@ pending → uploading → uploaded → local_purged
 | `api_token_id` | bigint NOT NULL，複合主鍵 `api_token_roles_pkey` 第一欄；外鍵 `fk_api_token_roles_token` → `api_tokens(id)` ON DELETE CASCADE | |
 | `role_id` | bigint NOT NULL，複合主鍵第二欄；外鍵 `fk_api_token_roles_role` → `roles(id)` | |
 | `level` | character varying(16) NOT NULL DEFAULT 'read_write' | 層級：`read`（唯讀）或 `read_write`（讀寫）；建立後不修改。讀取時 `read_write` 以外的值（含不認得的值）一律視為唯讀。加欄前的既有列由預設值取得 `read_write` |
+
+
+### 82. notification_messages（通知內容）
+
+**表名**: `notification_messages`；**檔案**: `backend/internal/model/notification_delivery.go`（`model.NotificationMessage`）。**建表方式**: 增量 migration `20261120_notification_delivery_layer`。表所有權歸稽核模組（audit），其他模組只經稽核模組的排入介面寫入。
+
+指令告警與系統事件的一則通知一列。產生點只寫識別碼與參數，狀態為 `pending`；投遞程序分派時解析名稱、決定站內路徑，為每個收得到的通道建立一筆不帶快照的待投遞紀錄（第 69 節），狀態轉為 `dispatched`。系統安全告警不寫本表。
+
+| 欄位 | 型別／約束 | 說明 |
+|---|---|---|
+| `id` | bigserial PRIMARY KEY | 主鍵 |
+| `category` | varchar(32) NOT NULL，CHECK `notification_messages_category_check`（`command_alert`／`system_event`） | 類別 |
+| `event_key` | varchar(64) NOT NULL | 事件鍵（指令告警為 `command_alert`） |
+| `alert_id` | bigint NULL，索引 `idx_notification_messages_alert` | 指令告警的告警列；外鍵 `fk_notification_messages_alert` → `command_alerts(id)`，`ON DELETE CASCADE`；CHECK `notification_messages_alert_ref`：指令告警必填 |
+| `severity` | varchar(10) NOT NULL，CHECK `notification_messages_severity_check`（`high`／`medium`／`low`） | 分級 |
+| `occurred_at` | timestamptz NOT NULL | 事件發生時間 |
+| `actor_user_id` | bigint NULL | 操作者 |
+| `actor_name` | varchar(255) NOT NULL DEFAULT `''` | 操作者名稱（分派時解析，之後不變） |
+| `target_kind`、`target_id`、`target_name` | varchar(32)／varchar(128)／varchar(255) NOT NULL DEFAULT `''` | 目標的種類、識別碼與名稱 |
+| `params` | text NOT NULL DEFAULT `'{}'` | 事件參數（JSON）；分派時補上解析出的名稱 |
+| `name_refs` | text NOT NULL DEFAULT `'{}'` | 待解析的名稱參照（JSON：參數鍵 → 識別碼種類與識別碼） |
+| `link_path` | varchar(512) NOT NULL DEFAULT `''` | 站內路徑；送出時接上對外基準網址組成連結 |
+| `degraded` | boolean NOT NULL DEFAULT false | 事件未登錄或參數不合契約時以降級內容送出 |
+| `state` | varchar(16) NOT NULL DEFAULT `'pending'`，CHECK `notification_messages_state_check`（`pending`／`dispatched`／`failed`）；部分索引 `idx_notification_messages_pending`（`created_at`，`state = 'pending'`） | 分派狀態 |
+| `dispatch_attempts` | integer NOT NULL DEFAULT 0 | 分派嘗試次數 |
+| `lease_until` | timestamptz NULL | 分派租約到期時刻 |
+| `fail_reason` | varchar(32) NOT NULL DEFAULT `''`，CHECK `notification_messages_fail_reason_check`（空字串／`category_unknown`／`dispatch_error`） | 分派失敗的原因 |
+| `dispatched_at` | timestamptz NULL | 分派完成時刻 |
+| `created_at` | timestamptz NOT NULL；索引 `idx_notification_messages_state_created`（`state, created_at`） | 建立時間 |
+
+**清除**：每日保留清理刪除 `state` 為 `dispatched` 或 `failed`、建立超過 30 天、且已沒有 `pending`／`retrying` 待投遞紀錄的內容列，連同其待投遞紀錄（同一交易）。30 天是程式常數，不是政策鍵。指令告警的內容列另隨告警列連帶刪除（外鍵）。
 
 ---
 

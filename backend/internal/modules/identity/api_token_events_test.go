@@ -44,7 +44,7 @@ func (e *tokenEnv) tokenAudits(t *testing.T, action model.AuditAction) []model.A
 func (e *tokenEnv) outboxFor(t *testing.T, alertID uint) int64 {
 	t.Helper()
 	var n int64
-	require.NoError(t, e.db.Model(&model.SystemAlertOutbox{}).Where("alert_id = ?", alertID).Count(&n).Error)
+	require.NoError(t, e.db.Model(&model.NotificationDelivery{}).Where("alert_id = ?", alertID).Count(&n).Error)
 	return n
 }
 
@@ -139,7 +139,7 @@ func TestAPITokenPrivilegedAlertRolledBackWithCreate(t *testing.T) {
 	assert.Empty(t, e.tokenAudits(t, model.ActionCreate), "稽核列一併回滾")
 	assert.Empty(t, e.tokenAlerts(t), "不留告警")
 	var outbox int64
-	require.NoError(t, e.db.Model(&model.SystemAlertOutbox{}).Count(&outbox).Error)
+	require.NoError(t, e.db.Model(&model.NotificationDelivery{}).Count(&outbox).Error)
 	assert.Zero(t, outbox, "不留通知佇列項目")
 	// 告警寫入途中失敗（告警列已寫、明細寫入被拒）：已寫的告警列隨交易回滾
 	e2 := newRecordedTokenEnv(t)

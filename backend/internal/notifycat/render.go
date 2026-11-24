@@ -52,8 +52,14 @@ func init() {
 // opaque 值在插值前仍會過 SanitizeOpaque。插值後的值一律經 Slack mrkdwn 轉義，
 // 模板本體不轉義（保留自家文案的 mrkdwn 能力）——呼叫端**不得**再對整串二次轉義。
 func Render(lang string, event Event, params map[string]string) (title, text string) {
+	return RenderLinked(lang, event, params, false)
+}
+
+// RenderLinked 同 Render；hasLink 為真且事件宣告 LinkedVariants 時改用有連結版本的模板
+// （呼叫端另在文字最後附上連結）。
+func RenderLinked(lang string, event Event, params map[string]string, hasLink bool) (title, text string) {
 	lang = resolveLang(lang)
-	msg, ok := lookup(lang, event, params)
+	msg, ok := lookup(lang, event, params, hasLink)
 	if !ok {
 		return RenderDegraded(lang, event, params)
 	}
@@ -70,7 +76,7 @@ func resolveLang(lang string) string {
 }
 
 // lookup 依 lang → event → variant 取模板（lang 已由 resolveLang 收斂）。
-func lookup(lang string, event Event, params map[string]string) (message, bool) {
+func lookup(lang string, event Event, params map[string]string, hasLink bool) (message, bool) {
 	byEvent, ok := catalog[lang]
 	if !ok {
 		byEvent = catalog[DefaultLang]
@@ -79,20 +85,48 @@ func lookup(lang string, event Event, params map[string]string) (message, bool) 
 	if !ok {
 		return message{}, false
 	}
-	msg, ok := variants[variantKey(event, params)]
+	key := variantKey(event, params)
+	if spec, ok := registry[event]; ok && hasLink && spec.LinkedVariants {
+		key += linkedSuffix
+	}
+	msg, ok := variants[key]
 	return msg, ok
 }
 
 // variantKey 依 EventSpec.VariantParam 取 variant 鍵；無宣告或值缺失即 default。
 func variantKey(event Event, params map[string]string) string {
 	spec, ok := registry[event]
-	if !ok || spec.VariantParam == "" {
+	if !ok {
 		return variantDefault
 	}
-	if v := params[spec.VariantParam]; v != "" {
-		return v
+	if spec.VariantParam == "" {
+		keys := make([]string, 0, len(spec.PresenceVariants))
+		for v := range spec.PresenceVariants {
+			keys = append(keys, v)
+		}
+		sort.Strings(keys)
+		for _, v := range keys {
+			if params[spec.PresenceVariants[v]] != "" {
+				return v
+			}
+		}
+		return variantDefault
 	}
-	return variantDefault
+	v := params[spec.VariantParam]
+	if v == "" {
+		return variantDefault
+	}
+	keys := make([]string, 0, len(spec.PresenceVariants))
+	for p := range spec.PresenceVariants {
+		keys = append(keys, p)
+	}
+	sort.Strings(keys)
+	for _, p := range keys {
+		if params[spec.PresenceVariants[p]] != "" {
+			return v + "_" + p
+		}
+	}
+	return v
 }
 
 // renderValues 將 params 轉為插值用值：
@@ -113,8 +147,16 @@ func renderValues(lang string, event Event, params map[string]string) map[string
 		if v == "" {
 			continue
 		}
+		if p, ok := spec.param(k); ok && p.Lexicon != "" && p.List {
+			out[k] = renderLexiconList(lang, p.Lexicon, v)
+			continue
+		}
 		if p, ok := spec.param(k); ok && p.Lexicon != "" {
 			out[k] = slackEscape(SanitizeOpaque(Phrase(lang, p.Lexicon, v)))
+			continue
+		}
+		if p, ok := spec.param(k); ok && p.Duration {
+			out[k] = renderDuration(lang, v)
 			continue
 		}
 		if p, ok := spec.param(k); ok && p.Kind == KindDateList {
@@ -127,7 +169,66 @@ func renderValues(lang string, event Event, params map[string]string) map[string
 		}
 		out[k] = slackEscape(SanitizeOpaque(v))
 	}
+	// 前後值成對且相同：文字略過這一對（webhook 不經這裡，照樣輸出）
+	for _, p := range spec.Params {
+		if p.PairWith == "" {
+			continue
+		}
+		if a, b := params[p.Name], params[p.PairWith]; a != "" && a == b {
+			delete(out, p.Name)
+			delete(out, p.PairWith)
+		}
+	}
 	return out
+}
+
+// renderLexiconList 逗號分隔清單逐項查詞庫（缺鍵回吐該項的機器碼），以該語系的分隔符連接；每一段各自淨化。
+func renderLexiconList(lang string, lex Lexicon, v string) string {
+	items := strings.Split(v, ",")
+	parts := make([]string, 0, len(items))
+	for _, it := range items {
+		it = strings.TrimSpace(it)
+		if it == "" {
+			continue
+		}
+		parts = append(parts, SanitizeOpaque(Phrase(lang, lex, it)))
+	}
+	return slackEscape(SanitizeOpaque(strings.Join(parts, Phrase(lang, LexiconListFormat, ListFormatKeySep))))
+}
+
+// renderDuration 分鐘數寫成該語系的時長：整小時只寫小時、不足一小時只寫分鐘、其餘寫小時加分鐘。
+// 不是正整數時原樣輸出（只淨化）。
+func renderDuration(lang, v string) string {
+	minutes, err := strconv.Atoi(v)
+	if err != nil || minutes <= 0 {
+		return slackEscape(SanitizeOpaque(v))
+	}
+	h, m := minutes/60, minutes%60
+	hourPart := func() string {
+		key := DurationKeyHours
+		if h == 1 {
+			key = DurationKeyHour
+		}
+		return strings.ReplaceAll(Phrase(lang, LexiconDuration, key), "{h}", strconv.Itoa(h))
+	}
+	minutePart := func() string {
+		key := DurationKeyMinutes
+		if m == 1 {
+			key = DurationKeyMinute
+		}
+		return strings.ReplaceAll(Phrase(lang, LexiconDuration, key), "{m}", strconv.Itoa(m))
+	}
+	var out string
+	switch {
+	case m == 0:
+		out = hourPart()
+	case h == 0:
+		out = minutePart()
+	default:
+		out = strings.NewReplacer("{hours}", hourPart(), "{minutes}", minutePart()).
+			Replace(Phrase(lang, LexiconDuration, DurationKeyCombined))
+	}
+	return slackEscape(SanitizeOpaque(out))
 }
 
 // renderLeveledList 名稱清單逐項附上層級短語（ParamSpec.Levels）。名稱與層級項數不同、或層級為空時
@@ -158,7 +259,7 @@ func renderLeveledList(lang, names, levels string) string {
 // 呼叫端多半已先過 FilterDeclared，此處重跑一次是冪等的縱深防禦——
 // Render 的目錄缺鍵分支與未來的新呼叫點都會落到這裡，不能假設誰先過濾了。
 //
-// 呼叫端既有的 Slack 外框（`:warning: *<title>*\n<text>`）套上後即為
+// 呼叫端的 Slack 外框（`<等級符號> *<title>*\n<text>`）套上後即為
 // design 所述的降級形態。
 func RenderDegraded(lang string, event Event, params map[string]string) (title, text string) {
 	lang = resolveLang(lang)

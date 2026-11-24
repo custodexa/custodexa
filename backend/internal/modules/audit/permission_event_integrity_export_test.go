@@ -111,10 +111,14 @@ func SetSealSchemeForTest(s *CheckpointService, scheme string) { s.scheme = sche
 
 // SetSealActivationBarrierForTest 在封章交易讀完權限狀態之後、取 authz_state 列鎖之前呼叫 fn
 // （僅首次啟用路徑；nil 清除）。
-func SetSealActivationBarrierForTest(s *CheckpointService, fn func()) { s.faults.beforeActivationLock = fn }
+func SetSealActivationBarrierForTest(s *CheckpointService, fn func()) {
+	s.faults.beforeActivationLock = fn
+}
 
 // SetSealAfterActivationLockForTest 在封章交易取得 authz_state 列鎖之後呼叫 fn（僅首次啟用路徑；nil 清除）。
-func SetSealAfterActivationLockForTest(s *CheckpointService, fn func()) { s.faults.afterActivationLock = fn }
+func SetSealAfterActivationLockForTest(s *CheckpointService, fn func()) {
+	s.faults.afterActivationLock = fn
+}
 
 // PermissionLineageForTest 起點判定的事實摘要（契約測試用）。
 type PermissionLineageForTest struct {
@@ -136,4 +140,6 @@ func ReadPermissionLineageForTest(db *gorm.DB, signer permissionSigner) (Permiss
 var CheckpointChainStructureForTest = checkpointChainStructure
 
 // PermissionEventDigestForTest 事件摘要的公開算法（模擬只持資料庫帳密者照算）。
-func PermissionEventDigestForTest(e *model.PermissionStateEvent) string { return permissionEventDigest(e) }
+func PermissionEventDigestForTest(e *model.PermissionStateEvent) string {
+	return permissionEventDigest(e)
+}

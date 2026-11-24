@@ -254,6 +254,10 @@ type LoginResponse struct {
 	ReasonCode           apierror.ErrCode `json:"reason_code,omitempty"`
 	ReasonParams         map[string]any   `json:"reason_params,omitempty"`
 
+	// RedirectNext 登入後的目的地（已由伺服端判準；不合格或未帶時為 "/"）。帳號密碼登入的處理器在
+	// 完成與三種中間狀態的回應上填入；前端只採用這個值，在後續步驟完成時導向它
+	RedirectNext string `json:"redirect_next,omitempty"`
+
 	// PolicyNoncompliantCategory 登入時偵測到現行密碼不符政策的違規類別
 	//（apierror 碼字串，無密碼材料），僅供 handler 落審計事件，不輸出 JSON
 	PolicyNoncompliantCategory string `json:"-"`

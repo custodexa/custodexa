@@ -7,11 +7,11 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
 )
 
 // TransmissionInventoryHandler 通道加密清冊 API（admin 限定；清冊揭露全通道

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"net"
 	"time"
@@ -388,7 +389,7 @@ func (s *CredentialRotationService) runMember(ctx context.Context, rot *model.Cr
 			if reason == "" {
 				run.recovery = true
 				if s.stopNotify != nil && claimRecoveryAlert(s.db, &model.CredentialRotationMember{}, member.ID) {
-					s.stopNotify("改密工作於授權失效後進入有限驗證",
+					s.stopNotify(notifycat.RotationAlertRecoveryVerify,
 						fmt.Sprintf("rotation=%d asset_id=%d account=%s 發起者已失權，因遠端變更已送出，僅做驗證與本地提交（不再下達新變更），請具權者知悉",
 							rot.ID, member.AssetID, member.Username))
 				}
@@ -412,14 +413,14 @@ func (s *CredentialRotationService) stopUnverifiedMember(rot *model.CredentialRo
 		return
 	}
 	if member.State == model.CredentialMemberTerminalFailed || time.Since(rot.StartedAt) >= recoveryWindow {
-		s.stopNotify("改密候選憑證已放棄重試",
+		s.stopNotify(notifycat.RotationAlertCandidateAbandoned,
 			fmt.Sprintf("rotation=%d asset_id=%d account=%s 已逾期限仍無法驗證，需管理員以帶外途徑處置",
 				rot.ID, member.AssetID, member.Username))
 		return
 	}
 	// 主機身分停止有自己的停止審計與通知（每個身分狀態一次），不套授權失效的告警
 	if first && reason != model.ChangeSecretReasonHostIdentityChanged {
-		s.stopNotify("改密工作因授權失效停止",
+		s.stopNotify(notifycat.RotationAlertAuthzStopped,
 			fmt.Sprintf("rotation=%d asset_id=%d account=%s reason=%s（遠端未被新增變更，候選保留，需具權者處置）",
 				rot.ID, member.AssetID, member.Username, reason))
 	}
@@ -931,7 +932,7 @@ func (s *CredentialRotationService) stopKeyDelivery(rot *model.CredentialRotatio
 	logJobStop(fmt.Sprintf("rotation=%d member=%d", rot.ID, member.ID), stopped.reason, rot.RequestedBy)
 	s.auditMemberStop(rot, member, stopped.reason)
 	if s.stopNotify != nil {
-		s.stopNotify("改密工作因授權失效停止",
+		s.stopNotify(notifycat.RotationAlertAuthzStopped,
 			fmt.Sprintf("rotation=%d asset_id=%d account=%s reason=%s（遠端未被新增變更，候選保留，需具權者處置）",
 				rot.ID, member.AssetID, member.Username, stopped.reason))
 	}
@@ -1209,7 +1210,7 @@ func (s *CredentialRotationService) finishRecovery(rot *model.CredentialRotation
 		return ""
 	}
 	if s.stopNotify != nil {
-		s.stopNotify("改密候選已驗證但舊公鑰待清理",
+		s.stopNotify(notifycat.RotationAlertCleanupPending,
 			fmt.Sprintf("rotation=%d asset_id=%d account=%s 已於失權後完成有限驗證，目標機上的舊公鑰尚未清除，請具權者手動處置",
 				rot.ID, member.AssetID, member.Username))
 	}

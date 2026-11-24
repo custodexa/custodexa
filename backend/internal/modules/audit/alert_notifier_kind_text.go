@@ -43,13 +43,14 @@ func lexiconPhrase(lang string, lex notifycat.Lexicon, key string) string {
 // 指令欄為空時不輸出程式碼區塊——空區塊只會被讀成「有一條空指令」或「通知壞了」。
 // 等級照告警列原值呈現，不因改寫文字而升降。
 func buildNonRuleSlackText(lang string, alert model.CommandAlert, names alertSubjectNames) string {
-	title := lexiconPhrase(lang, notifycat.LexiconAlertKind, alert.Kind)
+	title := slackEscape(lexiconPhrase(lang, notifycat.LexiconAlertKind, alert.Kind))
 	if title == "" {
-		// 尚未收錄的類別：退回既有行為（規則名欄位），寧可露出機器碼也不缺標題
-		title = alert.RuleName
+		// 尚未收錄的類別：退回既有行為（規則名欄位），寧可露出機器碼也不缺標題；規則名是使用者輸入，
+		// 經 slackBoldText 使它不能多出行或提前結束粗體
+		title = slackBoldText(alert.RuleName)
 	}
 	header := fmt.Sprintf("%s *%s* · %s",
-		severityEmoji(alert.Severity), slackEscape(title),
+		severityEmoji(alert.Severity), title,
 		notifycat.Phrase(lang, notifycat.LexiconSeverity, alert.Severity))
 	if alert.Blocked {
 		header += " · " + notifycat.Phrase(lang, notifycat.LexiconAlertState,
@@ -69,11 +70,11 @@ func buildNonRuleSlackText(lang string, alert model.CommandAlert, names alertSub
 	case model.AlertKindNewSourceIP:
 		if names.ClientIP != "" {
 			lines = append(lines, notifycat.Phrase(lang, notifycat.LexiconEntity, notifycat.EntitySourceIP)+
-				" "+slackEscape(names.ClientIP))
+				" "+slackInlineText(names.ClientIP))
 		}
 	}
 	if alert.Command != "" {
-		lines = append(lines, fmt.Sprintf("```\n%s\n```", slackEscape(alert.Command)))
+		lines = append(lines, fmt.Sprintf("```\n%s\n```", slackCodeBlockText(alert.Command)))
 	}
 	lines = append(lines, buildAlertContext(lang, alert, names))
 	return strings.Join(lines, "\n")

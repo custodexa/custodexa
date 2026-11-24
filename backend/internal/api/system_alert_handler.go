@@ -133,6 +133,11 @@ type systemAlertDeliveryItem struct {
 	Attempts      int        `json:"attempts"`
 	DeliveredAt   *time.Time `json:"delivered_at,omitempty"`
 	NextAttemptAt time.Time  `json:"next_attempt_at"`
+	// 以下與投遞紀錄路由同名同語義（唯讀）
+	ReasonCode      string `json:"reason_code"`
+	LastError       string `json:"last_error"`
+	EndReason       string `json:"end_reason"`
+	ChannelDisabled bool   `json:"channel_disabled"`
 }
 
 // SystemDetail GET /command-alerts/:id/system-detail
@@ -156,6 +161,7 @@ func (h *SystemAlertHandler) SystemDetail(c *gin.Context) {
 		deliveries = append(deliveries, systemAlertDeliveryItem{
 			DestType: d.DestType, DestName: d.DestName, State: d.State,
 			Attempts: d.Attempts, DeliveredAt: d.DeliveredAt, NextAttemptAt: d.NextAttemptAt,
+			ReasonCode: d.ReasonCode, LastError: d.LastError, EndReason: d.EndReason, ChannelDisabled: d.ChannelDisabled,
 		})
 	}
 	body := gin.H{

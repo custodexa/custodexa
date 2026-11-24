@@ -65,7 +65,7 @@ func TestAlertWebhookPayloadCarriesClientIP(t *testing.T) {
 	alert := model.CommandAlert{
 		ID: 5, SessionID: 11, UserID: 7, Command: "", Severity: "medium",
 		RuleName: model.AlertKindNewSourceIP, Kind: model.AlertKindNewSourceIP,
-		ReasonCode: model.AlertReasonNewSourceIPSession,
+		ReasonCode:  model.AlertReasonNewSourceIPSession,
 		TriggeredAt: time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC),
 	}
 	names := alertSubjectNames{User: "alice", ClientIP: "203.0.113.42"}
@@ -75,10 +75,10 @@ func TestAlertWebhookPayloadCarriesClientIP(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	var got struct {
-		Event   string                 `json:"event"`
-		Alert   map[string]any         `json:"alert"`
-		Session map[string]any         `json:"session"`
-		Extra   map[string]any         `json:"-"`
+		Event   string         `json:"event"`
+		Alert   map[string]any `json:"alert"`
+		Session map[string]any `json:"session"`
+		Extra   map[string]any `json:"-"`
 	}
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)

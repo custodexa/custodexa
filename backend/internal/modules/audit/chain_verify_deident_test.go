@@ -47,9 +47,11 @@ var chainVerifyOutboundAllowedKeys = map[notifycat.Event]map[string]bool{
 		model.FailureParamFailedIntervals: true,
 	},
 	notifycat.EventAuditFailureOngoing: {
-		"mechanism":                       true,
-		"cause_code":                      true,
-		"reported_at":                     true,
+		"mechanism":   true,
+		"cause_code":  true,
+		"reported_at": true,
+		// 失效的真實起點（時間戳；補列事件不帶）
+		"started_at":                      true,
 		model.FailureParamFailedPoints:    true,
 		model.FailureParamFailedIntervals: true,
 	},
@@ -353,6 +355,10 @@ func TestChainVerifyOutboundCountWhitelistDropsUnknownKeys(t *testing.T) {
 
 	if len(f.sent) != 1 {
 		t.Fatalf("應有一筆出站，實得 %d 筆", len(f.sent))
+	}
+	// 正向：白名單內的失敗區間數量確實出站，值等於回報的數量
+	if got := f.sent[0].params[model.FailureParamFailedIntervals]; got != "3" {
+		t.Errorf("失敗區間數量應出站且為 3，實得 %q", got)
 	}
 	if _, ok := f.sent[0].params["failed_seqs"]; ok {
 		t.Error("白名單外的計數鍵進了出站 payload：閉集合失效，" +

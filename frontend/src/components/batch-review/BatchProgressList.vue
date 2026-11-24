@@ -35,6 +35,11 @@
         <span :class="['batch-progress__status', `batch-progress__status--${item.state}`]">
           {{ describe(item) }}
         </span>
+        <!-- 呼叫端可在每一列後加入口（例如前往該筆的連結） -->
+        <slot
+          name="extra"
+          :item="item"
+        />
       </li>
     </ul>
   </div>

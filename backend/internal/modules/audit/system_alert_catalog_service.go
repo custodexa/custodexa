@@ -159,6 +159,13 @@ type SystemAlertDeliveryView struct {
 	Attempts      int
 	DeliveredAt   *time.Time
 	NextAttemptAt time.Time
+	// ReasonCode、LastError、EndReason 與投遞紀錄路由同名同語義：原因的語句代碼（放棄或有最近錯誤時）、
+	// 最近錯誤的對外版本（DisplayDeliveryError：只留狀態碼與平台錯誤碼）、終態原因。
+	ReasonCode string
+	LastError  string
+	EndReason  string
+	// ChannelDisabled 來源通道目前已停用（帶快照的紀錄照常依快照送出）；通道已刪除時為 false。
+	ChannelDisabled bool
 }
 
 // SystemAlertScopeNode 管理類發放的節點範圍中的一個節點；節點已刪除時 Path 為空。
@@ -212,16 +219,10 @@ func (s *SystemAlertCatalogService) Detail(alertID uint) (*SystemAlertDetailView
 	if res.RowsAffected == 0 {
 		return nil, ErrAlertNotFound
 	}
-	params := map[string]string{}
-	if detail.Params != "" {
-		if err := json.Unmarshal([]byte(detail.Params), &params); err != nil {
-			return nil, fmt.Errorf("解析系統告警參數失敗: %w", err)
-		}
+	params, actor, err := systemAlertDeclaredParams(detail.Params)
+	if err != nil {
+		return nil, err
 	}
-	// actor 是保留鍵：操作者名快照，另列欄位呈現，不混在宣告參數裡。
-	actor := params["actor"]
-	delete(params, "actor")
-	delete(params, "severity")
 	view := &SystemAlertDetailView{
 		AlertID: alert.ID, AlertType: detail.AlertType, Severity: alert.Severity,
 		TriggeredAt: alert.TriggeredAt, ActorName: actor, ActorUserID: alert.UserID,
@@ -238,18 +239,54 @@ func (s *SystemAlertCatalogService) Detail(alertID uint) (*SystemAlertDetailView
 	view.AuditLogID = auditID
 	view.ClientIP = clientIP
 	view.RequestID = requestID
-	var outbox []model.SystemAlertOutbox
+	var outbox []model.NotificationDelivery
 	if err := s.db.Where("alert_id = ?", alertID).Find(&outbox).Error; err != nil {
 		return nil, fmt.Errorf("讀取投遞狀態失敗: %w", err)
 	}
 	sort.Slice(outbox, func(i, j int) bool { return outbox[i].ID < outbox[j].ID })
+	disabled, err := s.disabledSourceChannels(outbox)
+	if err != nil {
+		return nil, err
+	}
 	for _, o := range outbox {
-		view.Deliveries = append(view.Deliveries, SystemAlertDeliveryView{
+		d := SystemAlertDeliveryView{
 			DestType: o.DestType, DestName: o.DestName, State: o.State,
 			Attempts: o.Attempts, DeliveredAt: o.DeliveredAt, NextAttemptAt: o.NextAttemptAt,
-		})
+			LastError: DisplayDeliveryError(o.LastError), EndReason: o.EndReason,
+		}
+		if o.State == model.NotificationDeliveryAbandoned || o.LastError != "" {
+			d.ReasonCode = DeliveryReasonOf(o.EndReason, o.LastError)
+		}
+		if o.SourceChannelID != nil {
+			d.ChannelDisabled = disabled[*o.SourceChannelID]
+		}
+		view.Deliveries = append(view.Deliveries, d)
 	}
 	return view, nil
+}
+
+// disabledSourceChannels 紀錄的來源通道中目前已停用者（已刪除的通道不在結果內）。
+func (s *SystemAlertCatalogService) disabledSourceChannels(rows []model.NotificationDelivery) (map[uint]bool, error) {
+	out := map[uint]bool{}
+	var ids []uint
+	for _, r := range rows {
+		if r.SourceChannelID != nil {
+			ids = append(ids, *r.SourceChannelID)
+		}
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var chs []model.NotificationChannel
+	if err := s.db.Select("id, enabled").Where("id IN ?", ids).Find(&chs).Error; err != nil {
+		return nil, fmt.Errorf("讀取通道狀態失敗: %w", err)
+	}
+	for _, ch := range chs {
+		if !ch.Enabled {
+			out[ch.ID] = true
+		}
+	}
+	return out, nil
 }
 
 // auditLogByCorrelation 以關聯識別找同交易審計列，回傳其編號、來源位址與請求識別。
@@ -268,4 +305,22 @@ func (s *SystemAlertCatalogService) auditLogByCorrelation(corr string) (*uint, s
 	}
 	id := rows[0].ID
 	return &id, rows[0].ClientIP, rows[0].RequestID, nil
+}
+
+// systemAlertDeclaredParams 系統告警參數的對外投影：解析 params JSON，去掉兩個保留鍵後回傳
+// 類型宣告的參數，並另回操作者名快照。明細與每日簽核的單日明細共用這一個投影。
+//
+// actor 是操作者名快照，另列欄位呈現，不混在宣告參數裡；severity 是觸發當下的等級，
+// 告警列本身已有等級欄。空字串回空集合
+func systemAlertDeclaredParams(raw string) (map[string]string, string, error) {
+	params := map[string]string{}
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &params); err != nil {
+			return nil, "", fmt.Errorf("解析系統告警參數失敗: %w", err)
+		}
+	}
+	actor := params["actor"]
+	delete(params, "actor")
+	delete(params, "severity")
+	return params, actor, nil
 }

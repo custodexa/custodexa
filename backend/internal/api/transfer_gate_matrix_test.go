@@ -1,17 +1,15 @@
 package api
 
 import (
-	"github.com/custodexa/backend/internal/middleware"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/custodexa/backend/internal/middleware"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/database"
@@ -21,6 +19,8 @@ import (
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/internal/modules/session"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

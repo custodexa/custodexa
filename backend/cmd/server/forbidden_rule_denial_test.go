@@ -63,7 +63,7 @@ var ruleDenialCases = []ruleDenialCase{
 	{"RULE_ACCOUNT_SCOPE_WIDEN_RESTRICTED", 403, classOperator, "非規則建立者只能縮小帳號範圍，不能擴大", "You can only narrow the account scope of this rule; widening it is not allowed", "ルール作成者以外はアカウント範囲を狭めることのみ可能で、広げることはできません"},
 	{"RULE_AGENT_SELF_CREATE_DISABLED", 403, classNone, "未開放自助建立自動化帳號", "Self-service agent creation is disabled", "エージェントのセルフサービス作成は無効です"},
 	{"RULE_AGENT_SELF_CREATE_LIMIT", 403, classNone, "名下自動化帳號已達自助建立上限", "Your agents have reached the self-service creation limit", "所有するエージェント数が作成上限に達しています"},
-	{"RULE_ALERT_BATCH_SELF_TRIGGERED", 403, classNone, "自己連線觸發的告警不納入批次，請逐筆審閱", "Alerts triggered by your own sessions are not included in a batch; review them one at a time", "自分の接続で発生したアラートは一括処理の対象外です。1 件ずつレビューしてください"},
+	{"RULE_ALERT_BATCH_SELF_TRIGGERED", 403, classNone, "你自己觸發的告警不能以逐筆送出的批次處置，請改用批次審閱並確認，或逐筆審閱", "Alerts you triggered yourself cannot be handled in a batch sent one at a time; use batch review and confirm them, or review them individually", "自分で発生させたアラートは 1 件ずつ送信する一括処理では処理できません。一括レビューで確認するか、1 件ずつレビューしてください"},
 	{"RULE_APPROVER_SCOPE_NOT_APPROVER_ROLE", 400, classTarget, "目標使用者不具 approver 角色", "The target user does not have the approver role", "対象ユーザーは approver ロールを持っていません"},
 	{"RULE_ASSET_DISABLED", 403, classNone, "資產已停用，無法連線", "The asset is disabled and cannot be connected to", "この資産は無効化されているため接続できません"},
 	{"RULE_AUTHORIZATION_SELF_SUBJECT", 403, classTarget, "不得對自己、自己所屬的群組或自己擁有的 agent 建立或調整授權規則", "You cannot create or modify authorization rules for yourself, a group you belong to, or an agent you own", "自分自身、所属するグループ、または所有する agent を対象とする権限付与ルールは作成・変更できません"},

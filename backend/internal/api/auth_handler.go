@@ -230,13 +230,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		defer release()
 	}
 
-	var req identity.LoginRequest
+	var body loginRequestBody
 
 	// 綁定 JSON
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&body); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
 		return
 	}
+	req := body.LoginRequest
 
 	// 執行登入
 	resp, err := h.authService.Login(&req)
@@ -277,6 +278,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 		return
 	}
+
+	// 登入後的目的地：只附加在成功與中間狀態的回應上，失敗回應、限流與審計都與目的地無關
+	resp.RedirectNext = body.redirectNext()
 
 	// 登入時政策合規偵測審計：偵測發生在憑證驗證
 	// 當下（MFA 分流前），故不論後續走 pending/enrollment/改密分支皆須落一筆
@@ -327,6 +331,23 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.refreshCookies.SetFromLogin(c, resp)
 	h.observeLoginSource(c, resp)
 	c.JSON(http.StatusOK, resp)
+}
+
+// loginRequestBody 帳號密碼登入的請求本文：帳密之外可帶選填的登入後目的地 next。
+// next 以原始 JSON 接收：不是 JSON 字串（數字、物件、陣列、null）時視為未帶，不因型別不符而回 400，
+// 使目的地不合格不改變登入的任何錯誤回應
+type loginRequestBody struct {
+	identity.LoginRequest
+	Next json.RawMessage `json:"next"`
+}
+
+// redirectNext 判準後的登入後目的地；未帶或不是字串時為預設路徑
+func (b loginRequestBody) redirectNext() string {
+	var next string
+	if len(b.Next) == 0 || json.Unmarshal(b.Next, &next) != nil {
+		return sanitizeLoginReturnPath("")
+	}
+	return sanitizeLoginReturnPath(next)
 }
 
 // loginSubject 登入回應的主體（userID, username）。

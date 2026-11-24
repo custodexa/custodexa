@@ -80,7 +80,7 @@ func newPOEnv(t *testing.T) *poEnv {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Role{}, &model.RolePermission{}, &model.UserGroup{}, &model.AssetGroup{},
 		&model.Asset{}, &model.AssetNode{}, &model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
-		&model.AuthzState{}, &model.SystemAlertDetail{}, &model.SystemAlertOutbox{}))
+		&model.AuthzState{}, &model.SystemAlertDetail{}, &model.NotificationDelivery{}))
 	require.NoError(t, db.AutoMigrate(&model.UserRole{}, &model.UserGroupMember{}, &model.UserGroupRole{}, &model.RoleBindingNode{}))
 	require.NoError(t, db.Create(&model.AuthzState{ID: 1}).Error)
 

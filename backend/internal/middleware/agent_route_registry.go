@@ -280,6 +280,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/notification-channels":
 		return false, true
+	case "GET /api/v1/notification-channels/:id/deliveries":
+		return false, true
 	case "GET /api/v1/offsite-storage/failures":
 		return false, true
 	case "GET /api/v1/offsite-storage/profiles":
@@ -490,6 +492,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	case "POST /api/v1/change-secret-plans/reauthorize":
 		return false, true
 	case "POST /api/v1/command-alerts/:id/review":
+		return false, true
+	case "POST /api/v1/command-alerts/batch-review":
 		return false, true
 	case "POST /api/v1/connect-tokens":
 		return false, true

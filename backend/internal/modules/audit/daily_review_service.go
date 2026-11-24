@@ -90,6 +90,8 @@ type DailyReviewService struct {
 	reminderSent string
 	// overdueSink 非 nil 時逾期提醒改交給它（僅測試設定；正式路徑走通知單例）
 	overdueSink func(params map[string]string)
+	// signerAccess 逾期提醒定向收件人的授權面判定（組裝根登錄；未登錄時沒有任何收件人）
+	signerAccess DailyReviewSignerAccess
 }
 
 // NewDailyReviewService 建立每日審閱服務
@@ -129,9 +131,12 @@ func (s *DailyReviewService) Calendar(now time.Time) (*reviewcal.Calendar, error
 
 // SignRequest 簽核請求。簽核時刻不在其中：一律由伺服器於受理時取當下時間
 type SignRequest struct {
-	ReviewDate   string
-	Note         string
-	DelayReason  string
+	ReviewDate  string
+	Note        string
+	DelayReason string
+	// BatchID 批次關聯碼（已由呼叫端驗證格式）；非空時記入該筆的稽核紀錄，
+	// 不參與任何判定，也不寫入簽核紀錄本身
+	BatchID      string
 	ReviewerID   uint
 	ReviewerName string
 }
@@ -252,14 +257,18 @@ func (s *DailyReviewService) Sign(req SignRequest) (*model.DailyReviewLog, error
 	}
 
 	if s.audit != nil {
-		details, _ := json.Marshal(map[string]any{
+		fields := map[string]any{
 			"review_date": row.ReviewDate,
 			"timezone":    row.Timezone,
 			"signed_at":   row.SignedAt.Format(time.RFC3339Nano),
 			"late":        row.Late,
 			"late_days":   lateDaysOf(row),
 			"snapshot":    snap,
-		})
+		}
+		if req.BatchID != "" {
+			fields["batch_id"] = req.BatchID
+		}
+		details, _ := json.Marshal(fields)
 		s.audit.Log(&AuditLogEntry{
 			UserID: req.ReviewerID, Username: req.ReviewerName,
 			Action: model.ActionCreate, Resource: model.ResourceDailyReview,

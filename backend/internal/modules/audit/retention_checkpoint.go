@@ -25,7 +25,7 @@ import (
 // ErrCheckpointChainAbsent 鏈為空：無 genesis 可界定 pre-genesis 邊界。
 //
 // **fail-close**：此時既不能走區間路徑（無區間），也不能走無上界的逐列路徑
-//（那會刪到本應由區間路徑處理的列，且不留 tombstone＝自製竄改告警）。
+// （那會刪到本應由區間路徑處理的列，且不留 tombstone＝自製竄改告警）。
 // 鏈被整套抹除正是本機制要偵測的攻擊形態，遇到它必須停手並留痕
 var ErrCheckpointChainAbsent = errors.New("檢查點鏈為空：audit_logs 清除停手（無 genesis 可界定 pre-genesis 邊界）")
 

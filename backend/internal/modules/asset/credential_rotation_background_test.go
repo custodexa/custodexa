@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/audit"
 )
 
 // 背景排程（到期成員掃描與候選重試排程）只推進本輪仍待處理的成員；最終失敗、已收束的
@@ -309,7 +308,7 @@ func TestAbandonedRotationCandidateSkipsSingleAccountRetry(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, rec, accountID := tc.setup(t)
-			notifier := audit.NewAlertNotifier(f.db, nil)
+			notifier := newRotationNotifier(t, f.db)
 			f.retry.notifier = notifier
 			before := candidateOf(t, f, accountID)
 			require.NotNil(t, before)
@@ -320,7 +319,7 @@ func TestAbandonedRotationCandidateSkipsSingleAccountRetry(t *testing.T) {
 
 			assert.Zero(t, promoted)
 			assert.Zero(t, failed, "不算一次失敗的重試")
-			assert.EqualValues(t, 0, notifier.PendingNotifications(), "不發「授權失效停止」告警")
+			assert.EqualValues(t, 0, rotationAlertCount(f.db), "不發「授權失效停止」告警")
 			_, _, verify1 := rec.snapshotCalls()
 			assert.Equal(t, verify0, verify1, "遠端零觸碰")
 			after := candidateOf(t, f, accountID)

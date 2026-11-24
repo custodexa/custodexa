@@ -31,7 +31,7 @@ func restoreGenerationCases(t *testing.T) {
 		rec := newSecretRecorder()
 		f.useExecutor(rec)
 		f.runner.WithAuditSink(audit.NewTxSink())
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.runner.notifier = notifier
 		f.authz.setRestoreGeneration("gen-1")
 		a1, _ := f.addHost(t, "h1", "10.9.30.1", "ops")
@@ -42,13 +42,13 @@ func restoreGenerationCases(t *testing.T) {
 		ok := f.runner.RunPlan(plan)
 		require.Len(t, ok, 1, "還原前正常執行")
 		_, before, _ := rec.snapshotCalls()
-		pendingBefore := notifier.PendingNotifications()
+		pendingBefore := rotationAlertCount(f.db)
 
 		f.authz.setRestoreGeneration("gen-2") // 還原
 		assert.Empty(t, f.runner.RunPlan(plan), "還原後舊意圖不派送")
 		_, after, _ := rec.snapshotCalls()
 		assert.Equal(t, before, after, "遠端零新 I/O")
-		assert.Equal(t, pendingBefore+1, notifier.PendingNotifications(), "沿既有停止告警通道")
+		assert.Equal(t, pendingBefore+1, rotationAlertCount(f.db), "沿既有停止告警通道")
 		assert.EqualValues(t, 1, f.restoreStopAudits(t))
 		got, err := f.plans.Get(plan.ID)
 		require.NoError(t, err)
@@ -57,7 +57,7 @@ func restoreGenerationCases(t *testing.T) {
 
 		// 同一計畫不隨觸發週期重複告警與留痕
 		assert.Empty(t, f.runner.RunPlan(plan))
-		assert.Equal(t, pendingBefore+1, notifier.PendingNotifications())
+		assert.Equal(t, pendingBefore+1, rotationAlertCount(f.db))
 		assert.EqualValues(t, 1, f.restoreStopAudits(t))
 	})
 
@@ -112,7 +112,7 @@ func restoreGenerationCases(t *testing.T) {
 		require.NotNil(t, cand.AuthorizationID)
 		rec.verifyErr["10.9.32.2"] = nil
 		f.retry.WithAuditSink(audit.NewTxSink())
-		notifier := audit.NewAlertNotifier(f.db, nil)
+		notifier := newRotationNotifier(t, f.db)
 		f.retry.notifier = notifier
 		_, _, verifyBefore := rec.snapshotCalls()
 
@@ -122,11 +122,11 @@ func restoreGenerationCases(t *testing.T) {
 		assert.Equal(t, verifyBefore, v, "遠端零觸碰")
 		require.NoError(t, f.db.Where("id = ?", cand.ID).First(&cand).Error)
 		assert.Equal(t, model.ChangeSecretReasonAuthzRestored, cand.LastError, "候選保留並記原因")
-		assert.EqualValues(t, 1, notifier.PendingNotifications())
+		assert.EqualValues(t, 1, rotationAlertCount(f.db))
 		assert.EqualValues(t, 1, f.restoreStopAudits(t))
 
 		assert.False(t, f.retry.RetryOne(&cand), "再次背景重試仍不送出")
-		assert.EqualValues(t, 1, notifier.PendingNotifications(), "每個候選只告警一次")
+		assert.EqualValues(t, 1, rotationAlertCount(f.db), "每個候選只告警一次")
 		assert.EqualValues(t, 1, f.restoreStopAudits(t), "每個候選只留痕一次")
 
 		assert.True(t, f.retry.RetryOneAs(userCtx(8, "operator"), &cand), "具權者手動重試重新確認後送出")

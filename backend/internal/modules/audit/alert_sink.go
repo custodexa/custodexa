@@ -69,6 +69,11 @@ func (s *alertRecorder) RecordAlerts(_ context.Context, as []gatewayapi.CommandA
 	if err := s.db.Create(&rows).Error; err != nil {
 		return err
 	}
+	// 告警列已提交（阻斷與命中的證據）；通知內容另以一次批次 INSERT 寫入，失敗只記 log 並計入排入計數，
+	// 不回錯給呼叫端，也不影響已提交的告警列。
+	if notifier := GetAlertNotifier(); notifier != nil {
+		_ = notifier.enqueueCommandAlerts(rows)
+	}
 	s.PublishCommitted(rows)
 	return nil
 }
@@ -93,31 +98,17 @@ func (s *alertRecorder) RecordAlertInTx(tx *gorm.DB, a gatewayapi.CommandAlert) 
 	return row, nil
 }
 
-// PublishCommitted 已入庫告警列的推送與離機轉發。
+// PublishCommitted 已入庫告警列的離機轉發。
 //
-// 入庫成功後才推送與 tee（沿用 alert_matcher.go 的既有順序與語義）：
-// 通知與離機轉發是下游附加價值，寫入失敗不得發出「系統裡查不到」的幽靈告警。
+// 入庫成功後才轉發（沿用 alert_matcher.go 的既有順序與語義）：寫入失敗不得發出
+// 「系統裡查不到」的幽靈告警。通知內容不在這裡排入：RecordAlerts 在告警列之後批次寫入，
+// 交易內的產生點（新來源位址）在自己的交易內以 savepoint 寫入，agent 熔斷與系統安全告警不寫指令告警的通知內容。
 // 未初始化（單測）時靜默跳過——**這條寬鬆跳過只適用於下游 tee**，
 // 不適用於 sink 本身（4.7 的 nil 自檢管的是後者）。
 func (s *alertRecorder) PublishCommitted(rows []model.CommandAlert) {
-	if notifier := GetAlertNotifier(); notifier != nil {
-		for _, row := range rows {
-			// Breaker publishes one structured event with owner_id after commit.
-			// It has no session, so the command/session notification shape does not apply.
-			if row.Kind == model.AlertKindAgentBreaker {
-				continue
-			}
-			// 系統安全告警由持久投遞程序送出：走記憶體佇列會被通道門檻過濾，
-			// 也會與投遞程序重複送出同一筆。
-			if row.Kind == model.AlertKindSystemSecurity {
-				continue
-			}
-			notifier.Enqueue(row)
-		}
-	}
 	if forwarder := GetSyslogForwarder(); forwarder != nil {
 		for i := range rows {
-			// 離機轉發同樣只由投遞程序做一次。
+			// 系統安全告警的離機轉發只由投遞程序做一次。
 			if rows[i].Kind == model.AlertKindSystemSecurity {
 				continue
 			}

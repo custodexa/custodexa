@@ -45,11 +45,11 @@ func reportFixture(t *testing.T) (*gorm.DB, *audit.AgentTaskReports, *gin.Engine
 		t.Fatal(err)
 	}
 	events := []map[string]string{}
-	svc := audit.NewAgentTaskReports(db, audit.NewTxSink(), authz.ReadAgentTaskForReport, identity.ReadAgentAuditPrincipal, func(owner uint, event notifycat.Event, p map[string]string) {
-		if owner != 1 || event != notifycat.EventAgentTaskReport || p["owner_id"] != "1" {
-			t.Error(owner, event, p)
+	svc := audit.NewAgentTaskReports(db, audit.NewTxSink(), authz.ReadAgentTaskForReport, identity.ReadAgentAuditPrincipal, func(_ *gorm.DB, n audit.AgentOwnerNotice) {
+		if n.OwnerID != 1 || n.Event != notifycat.EventAgentTaskReport {
+			t.Error(n.OwnerID, n.Event, n.Params)
 		}
-		events = append(events, p)
+		events = append(events, n.Params)
 	})
 	h := NewAccessRequestHandler(nil, nil, db)
 	h.SetAgentTaskReports(svc)

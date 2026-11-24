@@ -93,6 +93,10 @@ func routineTargetDB(t *testing.T, kind string) *gorm.DB {
 		&model.DailyReviewLog{}, &model.AuditRetentionWatermark{}); err != nil {
 		t.Fatal(err)
 	}
+	// 單日明細的告警項目 LEFT JOIN users、assets、system_alert_details（正式環境三表皆存在）
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.SystemAlertDetail{}); err != nil {
+		t.Fatal(err)
+	}
 	// sqlite 驅動讀不回生產的 timestamptz 欄，告警表手建等價表（同 audit 模組的每日簽核測試）
 	if kind == "postgres" {
 		if err := db.AutoMigrate(&model.CommandAlert{}); err != nil {

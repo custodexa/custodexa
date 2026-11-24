@@ -1,0 +1,12 @@
+{
+  "event": "access_request.approval_progress",
+  "params": {
+    "asset_name": "db-prod-01",
+    "decider_name": "bob",
+    "request_id": "12",
+    "requester_name": "alice",
+    "required": "2",
+    "votes": "1"
+  },
+  "sent_at": "2026-11-20T08:00:00+08:00"
+}

@@ -130,11 +130,15 @@ func TestTokenIssueReconcile(t *testing.T) {
 		if err := db.Create(&model.NotificationChannel{Name: "kind-integrity", Type: model.NotificationChannelTypeWebhook, URL: receiver.URL, Enabled: true, Language: model.NotificationChannelLanguageEnUS}).Error; err != nil {
 			t.Fatal(err)
 		}
-		notifier := audit.InitAlertNotifier(db, nil)
-		t.Cleanup(func() { audit.StopAlertNotifierForRelease(notifier) })
-		if err := notifier.LoadChannels(); err != nil {
+		if err := db.AutoMigrate(&model.NotificationMessage{}, &model.NotificationDelivery{}); err != nil {
 			t.Fatal(err)
 		}
+		notifier := audit.InitAlertNotifier(db, nil)
+		t.Cleanup(func() { audit.StopAlertNotifierForRelease(notifier) })
+		worker := audit.NewSystemAlertOutboxWorker(db, nil)
+		worker.SetPollInterval(20 * time.Millisecond)
+		worker.Start()
+		t.Cleanup(worker.Stop)
 		failures := audit.InitAuditFailure(db, policy.NewSecurityPolicyService(db))
 		t.Cleanup(audit.ResetAuditFailureSingleton)
 		tokens.SetIntegrityProbe(audit.NewRoleStateReconciler(db, failures))

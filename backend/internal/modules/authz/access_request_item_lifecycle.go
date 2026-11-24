@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -96,6 +97,7 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 	now := time.Now()
 	closed := false
 	var revoked []model.AccessRequestItem
+	totalItems := 0
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		// 範圍化資格（授權規則管理能力）依拓撲判定：鎖序為「拓撲序列化鎖 → 申請單與票證列 → 權限版本」，
 		// 取鎖後才讀範圍，資格判定因此與撤銷寫入、並發的拓撲或節點範圍指派變更一起序列化。
@@ -113,6 +115,7 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 		if err != nil {
 			return err
 		}
+		totalItems = len(items)
 		// 完整資格在此交易內判定：授權規則管理範圍涵蓋整個判定集合者具撤銷資格，否則逐項走既有資格
 		qualified := false
 		if scoped {
@@ -204,7 +207,18 @@ func (s *AccessRequestService) RevokeItem(actorID uint, isAdmin bool, username s
 		}
 	}
 	s.logRevokeSessionResult(actorID, username, req.ID, itemID, revoked, unique)
-	s.notify(notifycat.EventTicketRevoked, req.ID, s.assetName(req.AssetID), nil)
+	// 維持提交、收線與收線結果審計之後的時點，獨立寫一筆；撤銷本身已完成，排入失敗只記 log
+	notice := requestNotice{event: notifycat.EventTicketRevoked, requestID: req.ID,
+		assetID: req.AssetID, assetCount: totalItems, requesterID: req.RequesterID,
+		partyKey: "revoker_name", partyID: actorID, actorIsParty: true}
+	if itemID != 0 && len(revoked) > 0 {
+		notice.itemAssetID = revoked[0].AssetID
+	}
+	// 斷線數只在收線回報了被中斷的會話時帶：收線不回報識別碼（或沒有聯動收線）時不知道實際數字，不以 0 冒充
+	if len(unique) > 0 {
+		notice.extra = map[string]string{"disconnected_count": strconv.Itoa(len(unique))}
+	}
+	s.notifyStandalone(notice)
 	return s.reload(req.ID)
 }
 

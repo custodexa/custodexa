@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"sync"
 	"time"
@@ -147,12 +148,12 @@ func (s *CredentialRotationService) notifyInterrupted(member *model.CredentialRo
 		return
 	}
 	if converted {
-		s.stopNotify("改密工作因服務重啟中斷",
+		s.stopNotify(notifycat.RotationAlertRestartInterrupted,
 			fmt.Sprintf("rotation=%d asset_id=%d account=%s 服務重啟時本台正在改密，遠端是否已收下新秘密未知；已轉為已送出未驗證並保留候選，背景會以新秘密登入驗證（不再下達），也可在憑證詳情逐台補跑確認",
 				member.RotationID, member.AssetID, member.Username))
 		return
 	}
-	s.stopNotify("改密工作因服務重啟中斷",
+	s.stopNotify(notifycat.RotationAlertRestartInterrupted,
 		fmt.Sprintf("rotation=%d asset_id=%d account=%s 服務重啟時本台正在改密，但轉為已送出未驗證未完成（審計或狀態寫入失敗），本台維持改密中，下次啟動再處理",
 			member.RotationID, member.AssetID, member.Username))
 }

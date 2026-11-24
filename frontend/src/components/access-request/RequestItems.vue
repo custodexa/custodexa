@@ -8,7 +8,7 @@
     >
       <strong>{{ assetLabels[item.asset_id]?.name || t('common.assetRef', { id: item.asset_id }) }}</strong>
       <span>{{ !item.accounts?.length || item.accounts.includes('@ALL') ? t('multiRequest.allAccounts') : (item.accounts || []).join(t('common.listSeparator')) }}</span>
-      <el-tag :type="item.status === 'approved' ? 'success' : item.status === 'pending' ? 'warning' : 'info'">
+      <el-tag :type="item.status === 'approved' ? 'success' : item.status === 'pending' ? 'warning' : item.status === 'rejected' ? 'danger' : 'info'">
         {{ t(`multiRequest.state.${item.status}`) }}
       </el-tag>
       <span v-if="item.approved_duration_minutes">{{ t('common.minutesN', { n: item.approved_duration_minutes }) }}</span>

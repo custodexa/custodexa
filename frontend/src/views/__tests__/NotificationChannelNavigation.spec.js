@@ -59,6 +59,7 @@ vi.mock('@/api/alerts', () => ({
   updateChannel: vi.fn(),
   deleteChannel: vi.fn(),
   testChannel: vi.fn(),
+  getChannelDeliveries: vi.fn(),
 }))
 
 const CHANNEL_PATH = '/notification-channels'

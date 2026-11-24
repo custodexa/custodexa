@@ -4,10 +4,10 @@ import (
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 )
 
 // RoleLister 角色清單能力（消費者側窄介面）。

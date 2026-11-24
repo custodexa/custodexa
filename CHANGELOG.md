@@ -2,6 +2,390 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.27.0 — one notification queue with Slack direct messages, bulk alert review and daily sign-off (2026-11-24)
+
+Schema change. Upgrading runs four migrations. They add a table for the content of notifications and
+fields for deliveries and notification channels; existing values are not changed. The first one also
+copies each alert's severity onto the deliveries of system security alerts already held. Because
+those deliveries are kept as long as their alert records, the first migration takes longer the more
+system security alerts are held; count it into the downtime window. A 1.17.x to 1.26.x package
+deployment upgrades with `custodexa.sh upgrade 1.27.0`. Coming from 1.25.x or earlier, the upgrade
+also runs the migrations of the releases in between and, with the bundled database on 1.22.x or
+earlier, converts it to PostgreSQL 18, so read "What you need to do" in each of those releases'
+notes below before you start, and on 1.17.x also [Upgrading to 1.18.0][1270-sop-1180] in the upgrade
+SOP. Once the migrations have run, `custodexa.sh rollback` does not switch back, and going back
+means restoring the backup taken before the upgrade ([Upgrading to 1.27.0][1270-sop]). With the
+bundled database coming from 1.22.x or earlier, `rollback` goes back on the PostgreSQL 16 data
+folder the upgrade kept, as described under 1.23.0 below.
+
+### What you need to do
+
+- Stop every instance of the earlier version before 1.27.0 starts, including a standby and any
+  instance on another host or under another compose project that uses the same database. An
+  earlier version left running sends command alerts and system events by itself, so receivers can
+  get them twice, and it marks deliveries abandoned 72 hours after they were queued. If 1.27.0 is
+  stopped by the single-instance guard, another instance is still running: stop that instance
+  instead of confirming past the guard.
+- Deliveries of system security alerts still waiting at the upgrade keep their destination,
+  delivery identifier and attempt count, and continue under the new limit of 48 attempts. Earlier
+  versions retried as often as every 10 minutes for up to 72 hours, so a channel that was failing
+  at the time of the upgrade can already have deliveries that reached that limit. 1.27.0 marks them
+  abandoned shortly after it starts, and each such channel raises at most one "Notification
+  delivery abandoned" notice in 24 hours.
+- Check webhook receivers of your own:
+  - Every payload shape gains a top-level `notification` object, described under "One delivery
+    queue for every notification". The existing fields keep their names, types and meaning.
+  - The `management_role_granted` alert raised by a change to a role definition no longer puts
+    the role name in `recipient`. It carries `other_holder_count` instead: the number of other
+    people who hold the role, not counting the person who made the change.
+  - The notices for approving part of a connection request, or rejecting or revoking one of its
+    items, carry `item_asset_name`: the asset of that item, or of the first approved item for a
+    partial approval. `asset_name` is the request's asset, as before.
+  - Alerts that a credential rotation job stopped or failed arrive as the system event
+    `credential_rotation_alert`, with a code in `params.kind` and the details in `params.detail`.
+    They used to arrive in the command alert shape, so a receiver that recognized them by
+    `rule_name` has to read `event` and `params.kind` instead.
+  - Two system events are new: `notification_delivery_abandoned` and
+    `targeted_notification_undelivered`.
+- Notifications carry a link only when `PUBLIC_BASE_URL` is set to an address without user
+  information, query string or fragment, and without whitespace or the characters `<`, `>` and
+  `|`. Otherwise they are sent without links and the startup log says so.
+- Scripts that manage notification channels through the API:
+  - Changing a channel's type clears its stored secret and needs the address in the same request;
+    without it the request is refused with 400 `VALIDATION_CHANNEL_TYPE_CHANGE_NEEDS_URL`.
+  - A test send that carries a body needs valid JSON, and a `shape`, if given, must be one of the
+    three listed under API. Anything else gets 400 `VALIDATION_BAD_PARAMS`. A test send without a
+    body works as before.
+- Reviewers can now handle alerts they triggered themselves in a batch, after confirming them and
+  giving a reason. If a procedure of yours relied on those alerts being reviewed one at a time,
+  find them by the mark in their audit entries, described under "Handling daily review alerts in
+  bulk".
+- `AUDIT_CHECKPOINT_GRACE_SECONDS` defaults to 30 seconds, which needs no change. If it is set
+  lower, raise it to 30 or more before 1.27.0 starts; the value is read when the service starts. A
+  batch review can take up to 30 seconds to commit. With a shorter grace period its audit entries
+  can be committed after a checkpoint has sealed their range, and checkpoint verification then
+  reports "Extra records present (human review needed)" ([Deployment Topology Limits][1270-grace]).
+
+### New capabilities
+
+#### Handling daily review alerts in bulk
+
+- In the daily review drawer, a day's unreviewed alerts are grouped by type. Each group shows the
+  severity, the number of alerts, how many each person triggered and the time range, and each alert
+  shows who triggered it and, where there is one, what it acted on. A command alert also shows the
+  command and the asset name. A system alert opens its detail, where it can be handled on its own
+  and the previous or next alert of its group opened.
+- The whole day, a whole group or single alerts can be selected and handled with one disposition and
+  one reason. The bar with the selection and the action stays in view while the list scrolls. When a
+  day is done, the drawer points to another day that still has alerts, if one is among the 31
+  earliest days awaiting sign-off.
+- In the list of days awaiting sign-off, a day with unreviewed alerts states how many and of how
+  many types, and its action is "Handle alerts". The list fits a 1024 pixel wide window without
+  scrolling sideways.
+- A confirmation lists the selected alerts by type with their counts, and the counts per day when
+  they come from several days. The reason is required. The alerts go to the server in one request,
+  which takes up to 500. An alert that already has a review result keeps it. The result sums up
+  the alerts handled by type and lists each one not applied with the reason: it had already been
+  handled, by you or by someone else, and as what, or it no longer exists.
+- When more than 500 are selected, the first 500 are handled and the rest stay selected. "Handle the
+  remaining N" opens the confirmation for the next 500 at most, with the disposition and reason
+  filled in; alerts you triggered have to be confirmed again. The alerts beyond the submitted batch
+  are not kept across a reload, so select them again after one.
+- Alerts you triggered yourself, in a session or by an administrative action, can be part of a
+  batch. The confirmation lists them separately by type and count, and asks you to confirm that you
+  have looked at them. The server checks that the number you confirmed is the number of alerts in
+  the request that you triggered, and refuses the whole request if it is not.
+- Each alert handled in a batch gets its own audit entry with the batch identifier, the number of
+  alerts in the request, the reason and whether the reviewer triggered the alert. Each request also
+  adds one summary entry with its counts. These entries are in the operation log, and their details
+  are included when the operation log is exported in an evidence package or an event report. The
+  mark is kept in audit entries only; sign-off records, the alert list and compliance reports do
+  not show it.
+- The audit entry of a single alert review also records whether the reviewer triggered the alert.
+  A single review still takes an optional reason, for your own alerts as well.
+- While the request runs, the dialog cannot be closed and the browser asks before you leave the
+  page. Leaving or reloading does not stop the server from finishing the request. Coming back to the
+  same tab checks the batch against the server and sends nothing again. Alerts whose outcome is
+  still unknown are shown as unconfirmed with "Check again". On a check, an alert still unreviewed
+  less than 30 seconds after sending stays unconfirmed, because the server may still be working;
+  after that it is shown as not reached and can be sent again. An alert that cannot be read stays
+  unconfirmed. The dialog says the submission did not take effect only when the server answers that
+  it rolled the request back.
+- Batch review on the Alerts page uses the same confirmation and rules. It used to send up to 50
+  alerts one at a time.
+- The two dispositions are called "Benign" and "Needs escalation" wherever they appear, instead of
+  "False Positive / Benign" and "Escalate".
+
+#### Signing off several days of daily review at once
+
+- The list of days awaiting sign-off has a checkbox on each row and a "Sign off selected" action.
+  Up to 50 days can be selected at a time, and the page says to sign off the rest in another round.
+- A day that still has unreviewed alerts can be selected to handle its alerts. When the selection
+  includes such a day, the only action is "Handle alerts for these days", which opens the
+  confirmation above for the alerts of all the selected days. After the result, "Sign off these N
+  days" goes on to the sign-off confirmation with the selected days that no longer have unreviewed
+  alerts; a day that still has some is left out, and the result says so. A day that has not ended,
+  or is still within the grace period after it ended, cannot be selected.
+- Before anything is sent, a confirmation lists each day with whether it is late and by how many
+  days, and its counts of failed sign-ins, unreviewed alerts and high-risk operations, with a
+  link to that day's detail. The days are fetched again when the confirmation opens, and a day that
+  someone else signed off or that can no longer be signed is taken out with the reason. The counts
+  are those of that moment; each sign-off records the counts recalculated when it is accepted. A
+  count whose source data was already removed under a retention setting is marked as removed.
+- When a late day is selected, one delay reason is required and is kept on every late day. Days
+  signed on time do not keep it. A note is optional and is kept on every day.
+- The days are sent one at a time, earliest first, each as a separate sign-off with the checks,
+  record and audit entry a single day has. A day that is refused, or gets no answer, does not stop
+  the others. The result lists each day as signed, refused with the reason, not sent, or
+  unconfirmed when no answer came. A day someone else signed off shows who and when, and their
+  record stays as it was. An unconfirmed day can be checked again: if your sign-off is on record
+  it counts as signed.
+- The audit entry of each sign-off in one round carries the same batch identifier.
+- Reloading the tab while days are being sent shows the results so far and checks the actual
+  state of each day; the days not yet sent stay unsent. Signing out clears what the tab kept about
+  the round.
+
+#### One delivery queue for every notification
+
+- Command alerts, system events and system security alerts are all kept in the database, so their
+  deliveries survive a restart, and are delivered by one background process. Command alerts and
+  system events used to be held in memory: command alerts were dropped when that queue was full,
+  and either kind was lost when its few retries within seconds failed or the service restarted.
+- Each delivery is tried at most 48 times. The wait after a failure starts at 1 second and doubles
+  up to 2 hours, so a delivery is abandoned about 70 hours after its first failure. This replaces
+  the 72 hours after queuing that applied to system security alerts.
+- Command alerts and system events read the channel's current settings each time they are sent,
+  so a corrected address or a rotated token applies to the next attempt. Disabling or deleting a
+  channel cancels its deliveries still waiting. System security alerts keep the settings the
+  channel had when the alert was raised, as before, and are still delivered after the channel is
+  disabled or deleted.
+- When the notification of a command alert or system event cannot be written, the operation that
+  raised it still completes, and an audit failure event is opened under the new mechanism
+  "Notification enqueue". Content that keeps failing to be assigned to the channels is stopped and
+  opens one under "Notification dispatch". A system security alert is still written in the same
+  transaction as the change it reports.
+- Audit failure notices are sent directly to the enabled channels when the database cannot take
+  them, with up to three short retries. A notice sent this way is not kept and is lost if the
+  service restarts meanwhile.
+- The channel list shows each channel's delivery status, its last delivery, the time and reason of
+  its last failure, and the deliveries abandoned in the last 7 days. These count only deliveries
+  created since the channel's destination last changed. Each channel has a delivery log listing
+  every delivery with its state, attempts, next attempt and reason. The detail of a system security
+  alert shows the same reason for each destination, and whether the channel has since been
+  disabled.
+- When deliveries to a channel are abandoned, the system event "Notification delivery abandoned"
+  goes to the other enabled channels, at most once per channel in 24 hours.
+- Webhook and Slack Incoming Webhook channels still follow redirects, but at most 5 instead of 10.
+  A redirect from https to http, or to an address that the channel's transport settings would not
+  allow, counts as a failed attempt. Slack app channels do not follow redirects.
+- Every webhook payload has a top-level `notification` object with `version`, `category`, `type`,
+  `severity`, `occurred_at` and `sent_at` in UTC, `delivery_id` and `params`, and, when they apply,
+  `actor`, `target`, `link` and `degraded`. In this object's `params`, whole numbers are JSON
+  numbers and date lists are arrays; the top-level `params` keeps strings, and for command alerts
+  this object's `params` is empty. The same delivery has the same `delivery_id` on every retry.
+- The content of command alerts and system events, and their deliveries, are deleted 30 days after
+  they were created, once every delivery has ended. The period is fixed. The deliveries of system
+  security alerts are kept and removed with their alert records.
+
+#### What a notification says
+
+- Notifications name the people, assets and channels involved, alongside their identifiers.
+  People are shown by their login account names. Names are looked up once, when the notification
+  is assigned to the channels, and do not change afterwards.
+- AI agent task reports name the agent, its owner and the assets involved. The probe breaker
+  notice names the agent, its owner and its token, and says how many different assets it referred
+  to and which one was last.
+- System security alerts name their target where it is known: the channel, the account acted on,
+  the owner of a token, and the asset of a host key, an unmanaged privileged account, a secret set
+  by hand or a deleted recording.
+- Connection request notices name the requester and the person who decided or revoked, and state
+  the duration in hours and minutes: the requested one when a request is created, the approved one
+  when it is approved. A request for several assets states how many, and approving part of a
+  request, or rejecting or revoking one item, says which item.
+- Every Slack message states its severity on the first line and ends with the time the event
+  happened, which Slack shows in the reader's time zone with UTC as the fallback text.
+- A Slack message has one symbol, at the start of its first line: a red circle for high severity,
+  an orange one for medium, a yellow one for low, and a bell for a test. System notices used to
+  start with a warning sign at every severity.
+- In the message text, values that used to appear as machine codes, such as access levels and
+  lists of changed fields, are written as phrases in the channel's language.
+- In the Slack text of a command alert, line breaks and control characters in the rule name, user
+  name and asset name are removed, and an asterisk in a rule name is shown as a full-width
+  asterisk, so a name cannot add lines to the message. Webhook payloads carry the original values.
+- With `PUBLIC_BASE_URL` set, a notification links to the related page, such as the request in the
+  approval center or the session detail. A link carries the page path and numeric identifiers
+  only, and never anything that stands in for signing in. Slack messages ask Slack not to show
+  link previews, but Slack decides whether it does.
+- A test notification says it is a test.
+
+#### Slack app channels
+
+- A new channel type, Slack app, sends with a bot token to the channel you name. The token is kept
+  encrypted like a webhook secret, is never returned, and cannot be cleared; the channel shows only
+  whether one is set.
+- Changing a Slack app channel's address needs the token entered again in the same save, so a
+  token is only ever sent to the address it was saved with.
+- The address stored by default is the Slack API base, `https://slack.com/api`. A Slack app
+  channel is sent at most one channel message per second, and its direct messages at most 50 a
+  minute.
+- A test send to a Slack app channel reports the error code Slack returns, such as an invalid token
+  or a bot that is not in the channel. For a webhook channel, the test send can send any of the
+  three payload shapes.
+- Rotating the token is described in
+  [Rotating the Platform's Own Privileged Credentials][1270-rotation].
+
+#### Direct messages to the people who need to act
+
+- One Slack app channel at a time can have "Send review notifications to individuals" turned on.
+  Its channel messages are sent as before, and these notifications are also sent as direct
+  messages:
+  - a new connection request, to the reviewers whose approval it needs, except the requester, the
+    owner of an AI agent that made the request or will carry it out, and anyone who has already
+    approved every item still pending within their review scope;
+  - break-glass access and an overdue follow-up review, to the people who can complete the
+    follow-up review;
+  - an overdue daily review, to the people who can sign off and can open the sign-off page.
+- Recipients come from the same checks that decide who may approve or sign off. A locked account
+  still receives them; a disabled or deleted account does not.
+- Before each attempt, retries included, the recipient is checked again. A direct message to
+  someone who no longer needs to act, or may no longer act, is canceled; the channel message is not
+  affected.
+- The Slack account is found by the email address of the person's account in Custodexa. A person
+  without an email address, with an address another account also uses, or with no matching active
+  Slack account is listed in the delivery log with the reason, and the system event "Some direct
+  messages were not delivered" goes to the enabled channels, at most once per channel in 24 hours.
+  A Slack account that was found is remembered in memory for an hour, and one that was not found
+  for 10 minutes; changing the channel's token or address clears that. Whoever holds the matching
+  address in Slack gets the message, so check the email addresses on accounts before turning the
+  setting on.
+- The Slack app needs the permissions `users:read` and `users:read.email` in addition to
+  `chat:write`. Test send has a "Send to me" choice that looks up your own account and sends you a
+  direct message, to check the permissions and the email match.
+- The setting can be turned on only when the host of the channel's address is `slack.com` or a
+  host the deployment lists in the environment variable `NOTIFY_DM_EXTRA_HOSTS`. Recipients' email
+  addresses are sent to that address to look the accounts up.
+- Saving the channel with an address off that list, or with a type that cannot send to
+  individuals, turns the setting off, and the channel change alert says so. Turning it off, this
+  way or by hand, cancels the direct messages not yet sent.
+- The delivery log shows direct messages with their recipient and can be filtered to channel
+  messages or direct messages. The delivery status in the channel list counts channel messages
+  only.
+
+#### Deciding a request in the approval center
+
+- Each pending request has Reject and Approve on its row. Either one opens a confirmation that
+  lists the assets it covers with their accounts and durations, and confirming decides them as
+  requested. Approving a request for one asset takes two clicks.
+- Expanding a request shows its reason and its assets, read-only, with the same Reject and Approve
+  below them. Shortening the time, limiting the accounts or deciding asset by asset is a mode you
+  enter from a link in the expanded request or in the confirmation. Nothing is sent until you press
+  Submit decisions, and cancelling or switching tabs before that discards the choices. The decisions
+  then go out one asset at a time: one that fails does not undo the others, and each asset shows its
+  result.
+- Asset by asset, the choices are Approve and Reject. The screen no longer offers removing an asset
+  from a request without telling the requester. The API still supports removing an item without a
+  rejection notice.
+- After a decision the list and the counts reload and a message says what happened: who can connect
+  to which asset and for how long, how many approvals are still needed, or that the request was
+  rejected. If the request changed before your decision arrived, the message says the decision did
+  not take effect and whether the request is still pending.
+- Where a request needs two or more approvals, Approve covers the assets still waiting for your
+  vote. Reject covers every asset still pending, including those you voted to approve that are
+  waiting for other reviewers, and the confirmation says so.
+- When you decide several requests at once, the confirmation checks them again and skips the ones
+  no longer pending. The result lists each request, and one the server did not accept shows "Not
+  applied" with the reason.
+- Revoking a time-limited connection from the approval center revokes the whole request, and the
+  confirmation lists its assets.
+- The pending table fits a 1024 pixel wide window without scrolling sideways.
+
+#### Links that open the item after sign-in
+
+- The approval center reads `tab` and `request` from its address. When the request is in that
+  tab's list, the history tab included, the page scrolls to it and marks it, and a pending request
+  opens expanded with Reject and Approve below its contents. When a pending request or a
+  follow-up review is not in its list, the page says why that can happen and shows nothing about
+  the request. An address with only `request` still opens the history tab.
+- Opening one of the pages notifications link to while signed out, and signing in, returns you to
+  that page: the approval center, the operation log, an AI agent task, the AI agent breaker page,
+  the alerts page, a session's detail and the notification channels page. This holds after a
+  password sign-in, a verification code, a required authenticator setup, a required password change,
+  and after a single sign-on and the steps that follow it.
+- The server decides where you land, with the same rule for password sign-in and single sign-on,
+  and only the pages above can be a destination. If single sign-on fails or is refused, or you go
+  back from it to the password form, signing in takes you to the dashboard.
+
+### API
+
+- `GET /api/v1/notification-channels/:id/deliveries` lists the deliveries of one channel, newest
+  first, with `page` and `page_size` (default 20, at most 100). `state` takes one value or several
+  separated by commas, and `audience` takes `channel` or `user`. The response carries
+  `pending_counts` for the channel. A delivery has its state, attempts, times, reason and, for a
+  direct message, the recipient's login account name and the Slack user it was matched to; it
+  never has an address, a secret or the parameters. It needs the notification channel permission
+  and can be called with an API token.
+- Notification channels accept the type `slack_app`, its `target` (the Slack channel ID) and
+  `direct_message_enabled`. Responses add `destination_changed_at`, `destination_version`,
+  `direct_message_enabled` and `direct_message_url_allowed`, and the list adds `health`.
+- `POST /api/v1/notification-channels/:id/test` takes an optional `shape` (`command_alert`,
+  `system_security_alert` or `system_event`) or `"to_self": true`. When the receiver answers but
+  the send fails, the response is 200 with `success` false and `platform_error`, or `reason_code`
+  for a refused redirect. A connection that cannot be made still returns 502.
+- New error codes: `VALIDATION_CHANNEL_TARGET`, `VALIDATION_CHANNEL_SECRET`,
+  `VALIDATION_CHANNEL_SECRET_REQUIRED`, `VALIDATION_CHANNEL_TYPE_CHANGE_NEEDS_URL`,
+  `VALIDATION_CHANNEL_URL_CHANGE_NEEDS_SECRET`, `VALIDATION_CHANNEL_DM_CONFLICT`,
+  `VALIDATION_CHANNEL_DM_URL_NOT_ALLOWED`, `VALIDATION_CHANNEL_DM_TYPE_UNSUPPORTED`,
+  `VALIDATION_DELIVERY_STATE` and `VALIDATION_DELIVERY_AUDIENCE`.
+- The detail of a system security alert adds `reason_code`, `last_error`, `end_reason` and
+  `channel_disabled` to each delivery. Error text in deliveries, channel health and alert details
+  keeps only the HTTP status and the Slack error code.
+- `POST /api/v1/auth/login` takes an optional `next` and returns the destination it decided in
+  `redirect_next`. The `next` of `GET /api/v1/auth/oidc/:id/begin` follows the same rule, and a
+  path the rule does not accept now falls back to `/`.
+- `POST /api/v1/daily-reviews` takes an optional `batch_id`, a UUID kept in the audit entry of that
+  sign-off. A value in any other format gets 400 `VALIDATION_BAD_REQUEST` and no sign-off is
+  recorded.
+- `POST /api/v1/command-alerts/batch-review` reviews up to 500 distinct alerts in one request. It
+  takes `alert_ids`, `disposition`, a `note` that is required, a UUID `batch_id`, and
+  `self_triggered_ack`, the number of distinct existing alerts in the request that the caller
+  triggered, already reviewed ones included. It runs in one transaction with a 30 second limit and
+  is not stopped when the client disconnects. Each item of the response is `reviewed`,
+  `already_reviewed` with `reviewed_by_you` and `existing_disposition`, or `not_found`. More than
+  500 distinct alert IDs are refused with 400 `VALIDATION_ALERT_BATCH_TOO_LARGE` and `limit`. When
+  `self_triggered_ack` does not match, it is refused with 409 `CONFLICT_ALERT_BATCH_SELF_ACK` and
+  the server's count in `self_triggered`. 500 `INTERNAL_ALERT_REVIEW` means nothing was applied; 500
+  `INTERNAL_COMMAND_ALERT_QUERY` means the outcome is not known, so read the alerts back. It needs
+  `alert:manage` and is not open to API tokens or AI agents.
+- `POST /api/v1/command-alerts/:id/review` with a `batch_id` keeps its rules, including 403
+  `RULE_ALERT_BATCH_SELF_TRIGGERED` for an alert the caller triggered; the message of that code now
+  points to the batch endpoint. The audit entry of a single review carries `self_review`, left out
+  when the alert's trigger cannot be read.
+- `GET /api/v1/daily-reviews/days/:date` adds `reason_code`, `username`, `asset_name`,
+  `target_kind`, `target_id` and `params` to each unreviewed alert, and
+  `GET /api/v1/daily-reviews/pending` adds `unreviewed_alert_types` to each day.
+
+### Fixes
+
+- In the approval center, a reviewer who could not view an asset saw "Asset name unreadable" for
+  the second and later assets of a pending request. Every asset now shows its name.
+- In the history tab of the approval center, a reviewer who approved several assets of one request
+  was counted once per asset in "Approved by N people". Each person now counts once.
+- A system security alert whose type was not registered or whose detail could not be read was not
+  delivered. It is now delivered with reduced content, and webhook payloads mark it with
+  `notification.degraded` set to true.
+- The operation log named the review action "Break-Glass Review", also for alert reviews. It is
+  now "Review", for follow-up reviews of break-glass access as well.
+
+The request and response details are in the [API reference][1270-api], the delivery rules in
+[Deployment Topology Limits][1270-limits], and the upgrade steps in the [upgrade SOP][1270-sop].
+
+[1270-api]: docs/API_SPEC.md
+[1270-limits]: docs/ops/deployment-topology-limits.md#system-security-alerts-and-notification-channels
+[1270-grace]: docs/ops/deployment-topology-limits.md#checkpoint-grace-and-transactions-that-write-audit-records
+[1270-sop]: docs/ops/upgrade-sop.md#upgrading-to-1270
+[1270-sop-1180]: docs/ops/upgrade-sop.md#upgrading-to-1180-the-permission-model-migration
+[1270-rotation]: docs/ops/privileged-credential-rotation.md#3-notification-channel-secret-and-url
+
 ## 1.26.0 — read-only API tokens, and public key fingerprints for private keys (2026-11-19)
 
 Schema change. Upgrading runs one migration. It adds two fields to the tables of API tokens,

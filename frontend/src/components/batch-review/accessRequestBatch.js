@@ -72,17 +72,48 @@ export function hasMyVotes(row, itemIds, me) {
   return votedBy(row.approvals)
 }
 
-/** 已離開待審的單：是否由我做出與這一批相同方向的決定 */
-export function decidedByMe(row, kind, me) {
-  if (me == null) return false
+/**
+ * 已離開待審的單：這一次送出的決定有沒有生效。只看這一次送出的項目（itemIds），
+ * 同一張單其他項目的舊決定不算數。
+ *   mine     送出的項目都由我做出同方向的決定（核准含多人門檻下我的票已記入且已核准）
+ *   others   送出的項目都沒有我的這個決定：這一次沒有生效
+ *   unknown  資料不足或各項結果不一致：維持待確認
+ * 票與決定者不會事後消失，所以「沒有我的票也不是我決定」可以判定這一次沒有送達。
+ */
+export function historyVerdict(row, kind, itemIds, me) {
+  if (me == null || !row) return 'unknown'
   const items = row.items || []
-  if (kind === 'reject') {
-    return (row.status === 'rejected' && row.approver_id === me)
-      || items.some((item) => item.status === 'rejected' && item.decided_by === me)
+  const votes = row.approvals || []
+  const ids = itemIds || []
+  if (!ids.length) {
+    // 沒有項目的舊式單才以單頭判定；有項目卻不知道送了哪幾項，無從判定
+    if (items.length) return 'unknown'
+    if (kind === 'reject') {
+      return row.status === 'rejected' && row.approver_id === me ? 'mine' : 'others'
+    }
+    const voted = votes.some((vote) => vote.approver_id === me)
+    if (row.status === 'approved' && (voted || row.approver_id === me)) return 'mine'
+    return voted ? 'unknown' : 'others'
   }
-  return (row.approvals || []).some((vote) => vote.approver_id === me)
-    || items.some((item) => item.status === 'approved' && item.decided_by === me)
-    || (row.status === 'approved' && row.approver_id === me)
+  // 不屬於任何項目的本人票：分不出是投給哪一項，不拿來否定
+  const looseVote = votes.some((vote) => vote.approver_id === me && vote.item_id == null)
+  const verdicts = ids.map((itemId) => {
+    const item = items.find((candidate) => candidate.id === itemId)
+    if (!item) return 'unknown'
+    if (kind === 'reject') {
+      return item.status === 'rejected' && item.decided_by === me ? 'mine' : 'others'
+    }
+    const voted = (item.approvals || []).some((vote) => vote.approver_id === me)
+      || votes.some((vote) => vote.approver_id === me && vote.item_id === itemId)
+    const byMe = voted || item.decided_by === me
+    // 核准過的項目：仍為已核准，或核准後被撤銷（撤銷不清除決定者；未決定就結束的項目沒有決定者）
+    const approved = item.status === 'approved' || (item.status === 'revoked' && item.decided_by != null)
+    if (byMe) return approved ? 'mine' : 'unknown'
+    return looseVote ? 'unknown' : 'others'
+  })
+  if (verdicts.every((verdict) => verdict === 'mine')) return 'mine'
+  if (verdicts.every((verdict) => verdict === 'others')) return 'others'
+  return 'unknown'
 }
 
 // 批次情境下需要比單筆 toast 多講一句的錯誤碼：範圍外要說清楚整張沒生效；

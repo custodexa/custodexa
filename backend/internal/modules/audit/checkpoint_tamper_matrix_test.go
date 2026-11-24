@@ -254,7 +254,7 @@ func roleStateDiff(t *testing.T, f *verifyFixture, seq uint) (missing, extra []R
 //
 // 單獨成測是因為它的答案與其他六個不同，而那個不同正是本機制最容易被
 // 誇大的地方：改 `username`／`details` 之類的內容欄**不會**改動聚合輸入
-//（三元組只含 id、key_version、integrity_hmac），故檢查點內容層回報
+// （三元組只含 id、key_version、integrity_hmac），故檢查點內容層回報
 // `passed`——鏈證明的是「序列沒少沒多」，不是「每列內容沒被改」。
 // 內容真偽由列級 HMAC 承擔（不重複覆蓋的理由），本測同時
 // 斷言列級驗證確實抓得到，否則這條分工就只是說法而非事實。

@@ -126,6 +126,8 @@ var registry = map[string]registration{
 	"internal/modules/audit/async_sink.go#entryOf":                                                                       {classSink, ""},
 	"internal/modules/audit/audit_export_job_worker.go#AuditExportJobWorker.auditRevokedCancel":                          {classBackground, "啟動、排程、背景工作或系統動作，無請求"},
 	"internal/modules/audit/audit_log_service.go#AuditLogService.logAt":                                                  {classSink, ""},
+	"internal/modules/audit/command_alert_batch_review.go#CommandAlertService.writeBatchDispositionAudit":                {classNotReachable, "所在路由不開放 API token"},
+	"internal/modules/audit/command_alert_batch_review.go#CommandAlertService.writeBatchSummaryAudit":                    {classNotReachable, "所在路由不開放 API token"},
 	"internal/modules/audit/daily_review_service.go#DailyReviewService.Sign":                                             {classNotReachable, "所在路由不開放 API token"},
 	"internal/modules/audit/notification_channel_service.go#NotificationChannelService.recordChannelChange":              {classCarried, ""},
 	"internal/modules/audit/permission_accept.go#PermissionAcceptService.Accept":                                         {classNotReachable, "所在路由不開放 API token"},

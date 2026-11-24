@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount, DOMWrapper } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Alerts from '../Alerts.vue'
 import { resetCapabilities } from '@/composables/useCapabilities'
 import { grantFor } from '@/composables/__tests__/capabilityFixtures'
 
-// 告警「批次審閱」：勾選 → 共用理由 → 前端逐筆呼叫既有單筆端點（非原子）
+// 告警頁的批次處置：勾選 → 共用處置與理由 → 一次請求送出；
+// 本人觸發的也可以勾，對話框要求確認。替身端點，不打任何真實服務
 enableAutoUnmount(afterEach)
 
 class MutationObserverStub {
@@ -20,10 +21,12 @@ vi.setConfig({ testTimeout: 20_000 })
 
 const searchAlertsMock = vi.fn()
 const reviewAlertMock = vi.fn()
+const batchReviewMock = vi.fn()
 
 vi.mock('@/api/alerts', () => ({
   searchAlerts: (...args) => searchAlertsMock(...args),
   reviewAlert: (...args) => reviewAlertMock(...args),
+  batchReviewAlerts: (...args) => batchReviewMock(...args),
   getAlertRules: vi.fn().mockResolvedValue({ data: [] }),
   createAlertRule: vi.fn(),
   updateAlertRule: vi.fn(),
@@ -40,7 +43,6 @@ vi.mock('vue-router', () => ({
 }))
 
 const ME = 7
-const STORAGE_KEY = 'ot-batch-review:alerts'
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 const alertRow = (id, extra = {}) => ({
@@ -72,7 +74,8 @@ const mountAlerts = () =>
   mount(Alerts, { global: { plugins: [ElementPlus] } })
 
 const cell = (wrapper, id) => wrapper.find(`[data-test="batch-select-cell"][data-id="${id}"] input`)
-const dialog = (wrapper) => wrapper.find('[data-test="alerts-batch-dialog"]')
+// 對話框掛在 body（append-to-body）
+const dialog = () => new DOMWrapper(document.body).find('[data-test="alerts-batch-dialog"]')
 
 const selectAndOpen = async (wrapper, ids) => {
   for (const id of ids) {
@@ -83,49 +86,47 @@ const selectAndOpen = async (wrapper, ids) => {
   await flushPromises()
 }
 
-const fillAndSubmit = async (wrapper, { note = '更換筆電後首次連線', escalate = false } = {}) => {
-  if (escalate) {
-    await dialog(wrapper).find('[data-test="batch-disposition-escalated"] input').setValue(true)
-  }
-  await dialog(wrapper).find('[data-test="batch-note"] textarea').setValue(note)
-  await dialog(wrapper).find('[data-test="batch-submit"]').trigger('click')
+const fillAndSubmit = async ({ note = '更換筆電後首次連線', escalate = false, ack = true } = {}) => {
+  if (escalate) await dialog().find('[data-test="batch-disposition-escalated"] input').setValue(true)
+  const box = dialog().find('[data-test="bulk-self-ack"] input')
+  if (ack && box.exists()) await box.setValue(true)
+  await dialog().find('[data-test="batch-note"] textarea').setValue(note)
+  await dialog().find('[data-test="batch-submit"]').trigger('click')
   await flushPromises()
 }
 
-const httpError = (status, code) => ({ response: { status, data: { code, error: code } } })
+const reviewedAll = (data) => ({
+  batch_id: data.batch_id,
+  limit: 500,
+  items: data.alert_ids.map((id) => ({ id, result: 'reviewed', self_triggered: id === 1 })),
+})
 
-describe('Alerts 批次審閱', () => {
+describe('Alerts 批次處置', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // mockImplementationOnce 佇列不隨 clearAllMocks 清掉：逐一 reset，避免前一測殘留
     searchAlertsMock.mockReset()
     reviewAlertMock.mockReset()
+    batchReviewMock.mockReset()
     localStorage.clear()
     sessionStorage.clear()
+    document.body.innerHTML = ''
     resetCapabilities()
     localStorage.setItem('user', JSON.stringify({ id: ME, username: 'auditor1' }))
     grantFor(['auditor'])
     searchAlertsMock.mockResolvedValue(listResponse(sampleAlerts))
     reviewAlertMock.mockResolvedValue({})
+    batchReviewMock.mockImplementation(async (data) => reviewedAll(data))
   })
 
-  it('只能勾未審閱且非本人觸發的告警；全選只取可勾者', async () => {
+  it('未審閱的都可以勾（含本人觸發）；已審閱的不能勾；全選取全部未審閱', async () => {
     const wrapper = mountAlerts()
     await flushPromises()
-
-    expect(cell(wrapper, 1).attributes('disabled')).toBeDefined() // 本人觸發
+    expect(cell(wrapper, 1).attributes('disabled')).toBeUndefined() // 本人觸發
     expect(cell(wrapper, 4).attributes('disabled')).toBeDefined() // 已審閱
-    expect(cell(wrapper, 2).attributes('disabled')).toBeUndefined()
-    expect(cell(wrapper, 3).attributes('disabled')).toBeUndefined()
-    // 不可勾的原因要讀得到（勾選框的可讀名稱，同時是滑鼠提示）
-    expect(wrapper.find('[data-test="batch-select-cell"][data-id="1"]').text())
-      .toContain('自己連線觸發的告警請逐筆審閱')
-
+    expect(wrapper.find('[data-test="batch-select-cell"][data-id="4"]').text()).toContain('已審閱的告警請逐筆重新審閱')
     await wrapper.find('[data-test="batch-select-all"] input').setValue(true)
     await flushPromises()
-    const bar = wrapper.find('[data-test="batch-bar"]')
-    expect(bar.exists()).toBe(true)
-    expect(bar.text()).toContain('已選 2 筆未審閱告警')
+    expect(wrapper.find('[data-test="batch-bar"]').text()).toContain('已選 3 筆（3 類，其中你觸發的 1 筆）')
   })
 
   it('不具審閱權限時不顯示勾選欄', async () => {
@@ -136,208 +137,74 @@ describe('Alerts 批次審閱', () => {
     expect(wrapper.find('[data-test="batch-select-cell"]').exists()).toBe(false)
   })
 
-  it('理由必填：未填不可送出', async () => {
+  it('含本人觸發的一批：出現確認段，送出一個批次請求（依表格順序、帶本人觸發筆數）', async () => {
     const wrapper = mountAlerts()
     await flushPromises()
-    await selectAndOpen(wrapper, [2])
-    const submit = dialog(wrapper).find('[data-test="batch-submit"]')
-    expect(submit.attributes('disabled')).toBeDefined()
-    expect(dialog(wrapper).text()).toContain('送出後逐筆處理，可能部分完成')
+    await selectAndOpen(wrapper, [3, 1, 2])
+    expect(dialog().find('[data-test="bulk-self"]').text()).toContain('其中 1 筆是你自己觸發的')
+    await fillAndSubmit({ escalate: true })
+    expect(reviewAlertMock).not.toHaveBeenCalled()
+    expect(batchReviewMock).toHaveBeenCalledTimes(1)
+    const [data, options] = batchReviewMock.mock.calls[0]
+    expect(data).toMatchObject({ alert_ids: [1, 2, 3], disposition: 'escalated', note: '更換筆電後首次連線', self_triggered_ack: 1 })
+    expect(data.batch_id).toMatch(UUID_V4)
+    expect(options).toEqual({ skipErrorToast: true })
+    expect(dialog().find('[data-test="batch-summary"]').text()).toBe('成功 3 筆 · 沒有生效 0 筆')
   })
 
-  it('批次送出逐筆循序呼叫單筆端點，每筆帶同一個 batch_id', async () => {
-    let releaseFirst
-    reviewAlertMock
-      .mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve }))
-      .mockResolvedValue({})
+  it('只看未審閱時，結果說明處置過的已離開清單、表格是下一批', async () => {
     const wrapper = mountAlerts()
+    await flushPromises()
+    await wrapper.findComponent({ name: 'ElSwitch' }).vm.$emit('update:modelValue', true)
     await flushPromises()
     await selectAndOpen(wrapper, [2, 3])
-    expect(dialog(wrapper).text()).toContain('逐筆送出 2 筆')
-
-    await fillAndSubmit(wrapper, { escalate: true })
-    // 第一筆未回應前不送第二筆（循序）
-    expect(reviewAlertMock).toHaveBeenCalledTimes(1)
-    expect(dialog(wrapper).text()).toContain('第 1／2 筆')
-    releaseFirst({})
-    await flushPromises()
-
-    expect(reviewAlertMock).toHaveBeenCalledTimes(2)
-    const [firstId, firstBody, firstOpts] = reviewAlertMock.mock.calls[0]
-    const [secondId, secondBody] = reviewAlertMock.mock.calls[1]
-    expect([firstId, secondId]).toEqual([2, 3])
-    expect(firstBody).toEqual({ disposition: 'escalated', note: '更換筆電後首次連線', batch_id: firstBody.batch_id })
-    expect(firstBody.batch_id).toMatch(UUID_V4)
-    expect(secondBody.batch_id).toBe(firstBody.batch_id)
-    // 批次呼叫自行呈現錯誤：不走全域 toast
-    expect(firstOpts).toEqual({ skipErrorToast: true })
-
-    const summary = dialog(wrapper).find('[data-test="batch-summary"]')
-    expect(summary.attributes('aria-live')).toBe('polite')
-    expect(summary.text()).toContain('成功 2 筆')
+    searchAlertsMock.mockResolvedValue(listResponse([alertRow(1, { user_id: ME })]))
+    await fillAndSubmit()
+    expect(dialog().find('[data-test="bulk-result-note"]').text()).toBe('處置過的已離開「僅未審閱」的清單；表格現在是下一批 1 筆，可以再全選本頁。')
   })
 
-  // 防：嵌在每日簽核抽屜時，結果列已出現，呼叫端卻要等使用者按「完成」才知道該重取現況
-  it('結果列出現時發 settled、按完成才發 finished', async () => {
-    const wrapper = mountAlerts()
-    await flushPromises()
-    await selectAndOpen(wrapper, [2, 3])
-    const batch = wrapper.findComponent({ name: 'AlertBatchReviewDialog' })
-    expect(batch.emitted('settled')).toBeUndefined()
-
-    await fillAndSubmit(wrapper)
-    expect(dialog(wrapper).find('[data-test="batch-summary"]').text()).toContain('成功 2 筆')
-    expect(batch.emitted('settled')).toHaveLength(1)
-    expect(batch.emitted('finished')).toBeUndefined()
-
-    await dialog(wrapper).find('[data-test="batch-done"]').trigger('click')
-    await flushPromises()
-    expect(batch.emitted('finished')).toHaveLength(1)
-    expect(batch.emitted('settled')).toHaveLength(1)
-  })
-
-  it('部分失敗（409／403）不影響其他筆，逐筆呈現原因', async () => {
-    searchAlertsMock.mockResolvedValue(listResponse([...sampleAlerts, alertRow(5)]))
-    reviewAlertMock
-      .mockRejectedValueOnce(httpError(409, 'CONFLICT_ALERT_ALREADY_REVIEWED'))
-      .mockResolvedValueOnce({})
-      .mockRejectedValueOnce(httpError(403, 'RULE_ALERT_BATCH_SELF_TRIGGERED'))
-    const wrapper = mountAlerts()
-    await flushPromises()
-    await selectAndOpen(wrapper, [2, 3, 5])
-    await fillAndSubmit(wrapper)
-
-    expect(reviewAlertMock).toHaveBeenCalledTimes(3)
-    const text = dialog(wrapper).text()
-    expect(dialog(wrapper).find('[data-test="batch-summary"]').text())
-      .toContain('成功 1 筆 · 被拒 2 筆 · 未送出 0 筆 · 待確認 0 筆')
-    const item = (id) => dialog(wrapper).find(`[data-test="batch-item"][data-id="${id}"]`).text()
-    expect(item(2)).toContain('被拒：送出時已有審閱結果')
-    expect(item(3)).toContain('已標記')
-    expect(item(5)).toContain('自己連線觸發的告警不納入批次')
-    // 409 不得寫成「他人」審閱，也不得用原子語氣
-    expect(text).not.toContain('他人')
-    expect(text).not.toContain('全部完成')
-    expect(text).not.toContain('一次處置')
-  })
-
-  it('無回應記為待確認；重新掛載時查回實際狀態，不自動續送', async () => {
-    reviewAlertMock
-      .mockResolvedValueOnce({})
-      .mockRejectedValueOnce({ request: {}, message: 'Network Error' })
+  it('沒有回應：待確認；重新掛載時以 id 清單查回，不自動重送', async () => {
+    batchReviewMock.mockRejectedValue({ request: {}, message: 'Network Error' })
     const first = mountAlerts()
     await flushPromises()
     await selectAndOpen(first, [2, 3])
-    await fillAndSubmit(first, { note: '同一理由' })
-    expect(dialog(first).find('[data-test="batch-summary"]').text()).toContain('待確認 1 筆')
-
-    const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY))
-    expect(saved.items.map((i) => i.state)).toEqual(['success', 'unconfirmed'])
-    const batchId = saved.batchId
-
-    // 模擬重新整理：卸載、重新掛載
+    await fillAndSubmit({ note: '同一理由' })
+    expect(dialog().find('[data-test="batch-summary"]').text()).toBe('成功 0 筆 · 沒有生效 0 筆 · 待確認 2 筆')
     first.unmount()
-    reviewAlertMock.mockClear()
-    searchAlertsMock.mockImplementation((params) => {
-      if (params?.ids) {
-        return Promise.resolve(listResponse([
-          alertRow(3, { user_id: 9, reviewed_at: '2026-09-29T01:00:00Z', reviewed_by: ME, disposition: 'benign', note: '同一理由' }),
-        ]))
+    document.body.innerHTML = ''
+    searchAlertsMock.mockImplementation(async (params) => {
+      if (params.ids) {
+        return listResponse(params.ids.split(',').map((id) => alertRow(Number(id), { reviewed_at: 'x', reviewed_by: ME, disposition: 'benign', note: '同一理由' })))
       }
-      return Promise.resolve(listResponse(sampleAlerts))
+      return listResponse(sampleAlerts)
     })
-    const second = mountAlerts()
+    mountAlerts()
     await flushPromises()
-
-    expect(searchAlertsMock).toHaveBeenCalledWith(expect.objectContaining({ ids: '3' }), { skipErrorToast: true })
-    expect(reviewAlertMock).not.toHaveBeenCalled()
-    const summary = dialog(second).find('[data-test="batch-summary"]').text()
-    expect(summary).toContain('成功 2 筆')
-    expect(summary).toContain('待確認 0 筆')
-    expect(JSON.parse(sessionStorage.getItem(STORAGE_KEY)).batchId).toBe(batchId)
-
-    await dialog(second).find('[data-test="batch-done"]').trigger('click')
-    await flushPromises()
-    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(batchReviewMock).toHaveBeenCalledTimes(1)
+    const lookup = searchAlertsMock.mock.calls.find(([params]) => params.ids)
+    expect(lookup[0].ids).toBe('2,3')
+    expect(dialog().find('[data-test="batch-summary"]').text()).toBe('成功 2 筆 · 沒有生效 0 筆')
   })
 
-  it('執行中離開頁面：剩下的不再送出，回來時標為未送出且不自動續送', async () => {
-    let releaseFirst
-    reviewAlertMock.mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve }))
-    const first = mountAlerts()
-    await flushPromises()
-    await selectAndOpen(first, [2, 3])
-    await fillAndSubmit(first)
-    expect(reviewAlertMock).toHaveBeenCalledTimes(1)
-
-    first.unmount()
-    releaseFirst({})
-    await flushPromises()
-    // 卸載後回來的回應仍寫回該筆；第二筆沒送
-    expect(reviewAlertMock).toHaveBeenCalledTimes(1)
-    const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY))
-    expect(saved.items.map((i) => i.state)).toEqual(['success', 'queued'])
-
-    const second = mountAlerts()
-    await flushPromises()
-    expect(reviewAlertMock).toHaveBeenCalledTimes(1)
-    const item = (id) => dialog(second).find(`[data-test="batch-item"][data-id="${id}"]`).text()
-    expect(item(2)).toContain('已標記')
-    expect(item(3)).toContain('未送出')
-  })
-
-  it('掛載時收尾：送出中→查無審閱結果記未送出、排隊中→未送出、他人結果→被拒', async () => {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-      v: 1,
-      batchId: '0b8e4c0e-2f1a-4b7a-9c3d-5e6f7a8b9c0d',
-      kind: 'alert',
-      userId: ME,
-      params: { disposition: 'benign', note: '共用理由' },
-      items: [
-        { id: 2, label: '規則2 · 09/24 18:14', state: 'inflight', message: '' },
-        { id: 3, label: '規則3 · 09/24 18:14', state: 'inflight', message: '' },
-        { id: 5, label: '規則5 · 09/24 18:14', state: 'queued', message: '' },
-      ],
-    }))
-    searchAlertsMock.mockImplementation((params) => {
-      if (params?.ids) {
-        return Promise.resolve(listResponse([
-          alertRow(2),
-          alertRow(3, { reviewed_at: '2026-09-29T01:00:00Z', reviewed_by: 12, disposition: 'escalated', note: '別的理由' }),
-        ]))
-      }
-      return Promise.resolve(listResponse(sampleAlerts))
-    })
+  it('勾選上限是批次端點的單次上限（不是逐筆批次的 50 筆）：一頁 60 筆可全選', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => alertRow(i + 10))
+    searchAlertsMock.mockResolvedValue({ data: many, total: 60 })
     const wrapper = mountAlerts()
     await flushPromises()
-
-    expect(reviewAlertMock).not.toHaveBeenCalled()
-    expect(searchAlertsMock).toHaveBeenCalledWith(expect.objectContaining({ ids: '2,3' }), { skipErrorToast: true })
-    const item = (id) => dialog(wrapper).find(`[data-test="batch-item"][data-id="${id}"]`).text()
-    expect(item(2)).toContain('未送出')
-    expect(item(3)).toContain('已有審閱結果')
-    expect(item(5)).toContain('未送出')
-    expect(dialog(wrapper).find('[data-test="batch-summary"]').text())
-      .toContain('成功 0 筆 · 被拒 1 筆 · 未送出 2 筆 · 待確認 0 筆')
-  })
-
-  it('勾選達上限 50 筆後不可再勾並提示', async () => {
-    const many = Array.from({ length: 51 }, (_, i) => alertRow(i + 10))
-    searchAlertsMock.mockResolvedValue({ data: many, total: 51 })
-    const wrapper = mountAlerts()
-    await flushPromises()
-
     await wrapper.find('[data-test="batch-select-all"] input').setValue(true)
     await flushPromises()
-    expect(wrapper.find('[data-test="batch-bar"]').text()).toContain('已選 50 筆未審閱告警')
-    expect(cell(wrapper, 60).attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-test="batch-limit-hint"]').text()).toContain('50')
+    expect(wrapper.find('[data-test="batch-bar"]').text()).toContain('已選 60 筆')
+    expect(wrapper.find('[data-test="batch-limit-hint"]').exists()).toBe(false)
   })
 
-  it('單筆審閱既有流程不帶 batch_id', async () => {
+  it('單筆審閱既有流程不帶 batch_id，處置分類用「無害」「需升級處理」', async () => {
     const wrapper = mountAlerts()
     await flushPromises()
     wrapper.vm.openReviewDialog(sampleAlerts[1])
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain('需升級處理')
+    expect(text).not.toContain('誤報 / 無害')
     wrapper.vm.reviewForm.note = '單筆'
     await wrapper.vm.submitReview()
     await flushPromises()

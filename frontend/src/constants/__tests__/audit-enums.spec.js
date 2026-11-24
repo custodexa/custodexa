@@ -98,6 +98,8 @@ const BACKEND_MECHANISMS = [
   'restore_seal',
   'keystroke_probe',
   'keystroke_record',
+  'notification_delivery',
+  'notification_dispatch',
 ]
 
 // 後端↔前端雙向完備性守衛：直讀後端原始碼取
@@ -196,6 +198,8 @@ const BACKEND_CAUSES = [
   'KEYSTROKE_FILE_CREATE_FAILED',
   'KEYSTROKE_WRITE_FAILED',
   'KEYSTROKE_WRITER_STALLED',
+  'notification_enqueue_failed',
+  'notification_dispatch_failed',
 ]
 
 describe('audit-enums 完備性（前後端值域一致）', () => {
@@ -247,7 +251,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(42)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(44)
   })
 
   it.skipIf(!backendSourcePath)(

@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/audit"
 )
 
 // 代改的專用帳號一側失敗：金鑰型登入被拒、root 改密指令非零、五種失敗的告警分流，
@@ -211,17 +211,13 @@ func attachAlertHook(t *testing.T, e *delegEnv) func() []string {
 	require.NoError(t, e.db.Create(&model.NotificationChannel{
 		Name: "ops", Type: "webhook", URL: hook.URL, Enabled: true, Language: "zh-TW",
 	}).Error)
-	notifier := audit.NewAlertNotifier(e.db, nil)
-	require.NoError(t, notifier.LoadChannels())
-	notifier.Start()
+	notifier := newRotationNotifier(t, e.db)
 	e.runner = NewChangeSecretRunner(e.db, e.assets, e.candidates, e.hostKeys, notifier).
 		WithOwnershipScope(globalOwnershipScopeForTest{}).WithManagementAuthorizer(newAllowAllAuthorizer())
+	require.NoError(t, e.db.AutoMigrate(&model.NotificationDelivery{}))
 	return func() []string {
-		deadline := time.Now().Add(10 * time.Second)
-		for notifier.PendingNotifications() > 0 && time.Now().Before(deadline) {
-			time.Sleep(10 * time.Millisecond)
-		}
-		require.Zero(t, notifier.PendingNotifications(), "告警佇列未清空")
+		// 提醒已排入通知投遞層：跑一輪投遞程序（分派與送出同一輪）
+		audit.NewSystemAlertOutboxWorker(e.db, nil).RunOnce()
 		mu.Lock()
 		defer mu.Unlock()
 		return append([]string(nil), bodies...)

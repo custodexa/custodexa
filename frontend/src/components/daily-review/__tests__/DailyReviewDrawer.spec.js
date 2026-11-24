@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount, DOMWrapper } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
-import { defineComponent, h } from 'vue'
 import DailyReviewDrawer from '../DailyReviewDrawer.vue'
 
 enableAutoUnmount(afterEach)
@@ -26,18 +25,6 @@ vi.mock('@/api/alerts', () => ({
   reviewAlert: (...a) => reviewAlertMock(...a),
   searchAlerts: vi.fn(),
 }))
-
-// 批次審閱對話框的逐筆送出流程在它自己的 spec；這裡只需要它「處置完成」的事件
-const batchOpenMock = vi.fn()
-const BatchDialogStub = defineComponent({
-  name: 'AlertBatchReviewDialog',
-  props: { alerts: { type: Array, default: () => [] } },
-  emits: ['settled', 'finished'],
-  setup(_, { expose }) {
-    expose({ open: batchOpenMock })
-    return () => h('div', { 'data-test': 'batch-dialog-stub' })
-  },
-})
 
 const ME = 7
 const TZ = 'Asia/Taipei'
@@ -135,7 +122,7 @@ const mountDrawer = async ({ canSign = true, detail = dayDetail(), date = '2026-
     },
     global: {
       plugins: [ElementPlus],
-      stubs: { AlertBatchReviewDialog: BatchDialogStub },
+      stubs: { RouterLink: true, 'router-link': true },
     },
   })
   // 抽屜掛在 body（append-to-body）：查詢改從 body 找，元件樹查詢照舊
@@ -235,7 +222,7 @@ describe('DailyReviewDrawer', () => {
   })
 
   // 防：介面讓人在告警未處置時按下簽核，或處置後按鈕不恢復而卡住
-  it('告警未處置時簽核停用且說明筆數，處置後啟用', async () => {
+  it('告警未處置時簽核停用且說明筆數；勾選後帶出處置對話框，處置完重取後啟用', async () => {
     const pendingAlerts = dayDetail({
       unreviewed_alerts: [alert(1), alert(2)],
       counts: { ...dayDetail().counts, unreviewed_alerts: 2, alerts_total: 3, alerts_benign: 1 },
@@ -246,17 +233,23 @@ describe('DailyReviewDrawer', () => {
     expect(wrapper.find('[data-test="dr-block"]').text()).toBe('還有 2 筆未審閱告警，處置完才能簽核。')
     expect(wrapper.find('[data-test="dr-alerts-pending"]').text()).toBe('3 筆中還有 2 筆要處置')
 
-    // 勾兩筆、批次處置完成 → 重取明細，未審閱歸零
+    // 展開兩組、勾兩筆、按處置所選 → 抽屜請工作區開對話框，帶出這兩筆與所屬日
+    for (const toggle of wrapper.findAll('[data-test="dr-alert-group-toggle"]')) await toggle.trigger('click')
     const boxes = wrapper.findAll('[data-test="dr-alert-select"] input')
     await boxes[0].setValue(true)
     await boxes[1].setValue(true)
-    expect(wrapper.find('[data-test="dr-alerts-batch-bar"]').text()).toContain('已選 2 筆')
+    expect(wrapper.find('[data-test="dr-alerts-batch-bar"]').text()).toContain('已選 2 筆（2 類）')
+    await wrapper.find('[data-test="dr-alerts-batch-open"]').trigger('click')
+    const [payload] = wrapper.emitted('open-alert-batch')[0]
+    expect(payload.date).toBe('2026-10-07')
+    expect(payload.rows.map((r) => r.id)).toEqual([1, 2])
+
+    // 工作區在結果出現時請抽屜重取：未審閱歸零、簽核鈕可用
     getDailyReviewDayMock.mockResolvedValue({
       data: dayDetail({ counts: { ...dayDetail().counts, alerts_total: 3, alerts_benign: 2, alerts_escalated: 1 } }),
     })
-    wrapper.findComponent(BatchDialogStub).vm.$emit('finished')
+    await wrapper.vm.afterAlertBatch()
     await flushPromises()
-
     expect(getDailyReviewDayMock).toHaveBeenCalledTimes(2)
     expect(signButton(wrapper).attributes('disabled')).toBeUndefined()
     expect(wrapper.find('[data-test="dr-alerts-done"]').text()).toContain('未審閱告警：3 筆都已處置')
@@ -264,74 +257,64 @@ describe('DailyReviewDrawer', () => {
     expect(eventSpy).toHaveBeenCalledTimes(1)
   })
 
-  // 防：結果列已寫「成功 2 筆」，上方仍寫「還有 2 筆要處置」、簽核鈕停用，要按「完成」才更新
-  it('批次送完、結果列出現時就重取明細，按完成不再重取', async () => {
+  // 一天處置完就地接下一個有告警的日子
+  it('處置完這一天：說明可簽核並提供接著處置下一天，按下後換成下一天', async () => {
     const wrapper = await mountDrawer({
-      detail: dayDetail({
+      detail: lateDetail({
         unreviewed_alerts: [alert(1), alert(2)],
-        counts: { ...dayDetail().counts, unreviewed_alerts: 2, alerts_total: 3, alerts_benign: 1 },
+        counts: { ...dayDetail().counts, unreviewed_alerts: 2, alerts_total: 2 },
       }),
     })
-    const boxes = wrapper.findAll('[data-test="dr-alert-select"] input')
-    await boxes[0].setValue(true)
-    await boxes[1].setValue(true)
+    expect(wrapper.find('[data-test="dr-next-alert-day"]').exists()).toBe(false)
     getDailyReviewDayMock.mockResolvedValue({
-      data: dayDetail({ counts: { ...dayDetail().counts, alerts_total: 3, alerts_benign: 3 } }),
+      data: lateDetail({ counts: { ...dayDetail().counts, alerts_total: 2, alerts_benign: 2 } }),
     })
-    const batch = wrapper.findComponent(BatchDialogStub)
-    batch.vm.$emit('settled')
+    getDailyReviewPendingMock.mockResolvedValue({
+      data: {
+        items: [
+          { date: '2026-10-07', counts: { unreviewed_alerts: 0 } },
+          { date: '2026-10-08', counts: { unreviewed_alerts: 0 } },
+          { date: '2026-10-09', counts: { unreviewed_alerts: 106 } },
+        ],
+        total: 3,
+      },
+    })
+    await wrapper.vm.afterAlertBatch()
     await flushPromises()
-    expect(getDailyReviewDayMock).toHaveBeenCalledTimes(2)
     expect(signButton(wrapper).attributes('disabled')).toBeUndefined()
-    expect(wrapper.find('[data-test="dr-alerts-pending"]').exists()).toBe(false)
-    expect(eventSpy).toHaveBeenCalledTimes(1)
-
-    batch.vm.$emit('finished')
+    const next = wrapper.find('[data-test="dr-next-alert-day"]')
+    expect(next.text()).toContain('下一個要處置的日子：2026-10-09')
+    expect(next.text()).toContain('106 筆告警')
+    expect(wrapper.find('[data-test="dr-form"]').text()).toContain('也可以先關閉，回清單和其他處置完的日子一起簽。')
+    getDailyReviewDayMock.mockResolvedValue({ data: lateDetail({ date: '2026-10-09' }) })
+    await wrapper.find('[data-test="dr-next-alert-open"]').trigger('click')
     await flushPromises()
-    expect(getDailyReviewDayMock).toHaveBeenCalledTimes(2)
-    expect(eventSpy).toHaveBeenCalledTimes(1)
+    expect(getDailyReviewDayMock).toHaveBeenLastCalledWith('2026-10-09')
+    expect(wrapper.find('[data-test="dr-next-alert-day"]').exists()).toBe(false)
   })
 
-  it('本人觸發的告警走單筆、批次部分失敗後重取', async () => {
+  it('本人觸發的告警也可以勾；列上的處置走單筆、不帶批次關聯碼', async () => {
     const detail = dayDetail({
       unreviewed_alerts: [alert(1, { user_id: ME }), alert(2), alert(3), alert(4)],
       counts: { ...dayDetail().counts, unreviewed_alerts: 4, alerts_total: 4 },
     })
     const wrapper = await mountDrawer({ detail })
+    for (const toggle of wrapper.findAll('[data-test="dr-alert-group-toggle"]')) await toggle.trigger('click')
 
     const cells = wrapper.findAll('[data-test="dr-alert-select"]')
     const selfBox = cells.find((c) => c.attributes('data-id') === '1')
-    expect(selfBox.find('input').attributes('disabled')).toBeDefined()
-    // 本人觸發者另有逐筆審閱入口
-    const single = wrapper.find('[data-test="dr-alert-1"] [data-test="dr-alert-single"]')
-    expect(single.exists()).toBe(true)
-
-    for (const id of ['2', '3', '4']) {
+    expect(selfBox.find('input').attributes('disabled')).toBeUndefined()
+    for (const id of ['1', '2', '3', '4']) {
       await cells.find((c) => c.attributes('data-id') === id).find('input').setValue(true)
     }
-    const batch = wrapper.findComponent(BatchDialogStub)
-    expect(batch.props('alerts').map((a) => a.id)).toEqual([2, 3, 4])
+    expect(wrapper.find('[data-test="dr-alerts-selected"]').text()).toBe('已選 4 筆（4 類，其中你觸發的 1 筆）')
 
-    // 三筆其中一筆失敗：伺服器仍有本人觸發的 1 筆與失敗的 1 筆未審閱
-    getDailyReviewDayMock.mockResolvedValue({
-      data: dayDetail({
-        unreviewed_alerts: [alert(1, { user_id: ME }), alert(4)],
-        counts: { ...dayDetail().counts, unreviewed_alerts: 2, alerts_total: 4 },
-      }),
-    })
-    batch.vm.$emit('finished')
-    await flushPromises()
-    expect(getDailyReviewDayMock).toHaveBeenCalledTimes(2)
-    expect(signButton(wrapper).attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-test="dr-block"]').text()).toContain('還有 2 筆未審閱告警')
-
-    // 本人觸發的那筆逐筆審閱：不帶批次關聯碼
     reviewAlertMock.mockResolvedValue({})
     await wrapper.find('[data-test="dr-alert-1"] [data-test="dr-alert-single"]').trigger('click')
     await wrapper.find('[data-test="dr-alert-single-submit"]').trigger('click')
     await flushPromises()
     expect(reviewAlertMock).toHaveBeenCalledWith(1, { disposition: 'benign', note: '' })
-    expect(getDailyReviewDayMock).toHaveBeenCalledTimes(3)
+    expect(getDailyReviewDayMock).toHaveBeenCalledTimes(2)
   })
 
   // 防：遲簽可以不留原因就送出，或後端拒絕後使用者已填的內容被清空
@@ -446,8 +429,11 @@ describe('DailyReviewDrawer', () => {
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="dr-sign"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="dr-alert-single"]').exists()).toBe(false)
-    // 明細與處置情形仍可查看
-    expect(wrapper.find('[data-test="dr-alert-1"]').text()).toContain('未審閱')
+    // 明細仍可查看：展開組後列出該筆，沒有勾選與處置動作
+    await wrapper.find('[data-test="dr-alert-group-toggle"]').trigger('click')
+    expect(wrapper.find('[data-test="dr-alert-1"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="dr-alert-single"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('高危操作 35')
   })
 

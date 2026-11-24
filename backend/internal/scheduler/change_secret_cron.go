@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"github.com/custodexa/backend/internal/notifycat"
 	"log"
 	"strings"
 	"sync"
@@ -91,7 +92,7 @@ func (s *ChangeSecretScheduler) Reload() {
 		msg := fmt.Sprintf("%d 個排程計畫因無法歸屬發起者而暫停，需具權者重新授權: %s", len(paused), strings.Join(paused, ", "))
 		log.Printf("[ChangeSecretScheduler] %s", msg)
 		if s.notify != nil {
-			s.notify("改密排程計畫需重新授權", msg)
+			s.notify(notifycat.RotationAlertScheduleReauthRequired, msg)
 		}
 	}
 }

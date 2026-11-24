@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessageBox } from 'element-plus'
 import Alerts from '../Alerts.vue'
 import NotificationChannels from '../NotificationChannels.vue'
 import NotificationChannelPanel from '@/components/alerts/NotificationChannelPanel.vue'
@@ -51,6 +51,7 @@ vi.mock('@/api/alerts', () => ({
   updateChannel: (...args) => updateChannelMock(...args),
   deleteChannel: (...args) => deleteChannelMock(...args),
   testChannel: (...args) => testChannelMock(...args),
+  getChannelDeliveries: vi.fn().mockResolvedValue({ data: [], total: 0 }),
 }))
 
 // 儀表板落點帶入的 query：各測試自行設定，afterEach 還原
@@ -558,8 +559,11 @@ describe('Alerts', () => {
     expect(channelPanel(wrapper).channelForm.minSeverity).toBe('medium')
 
     // 列表的啟用開關只送 name／type／enabled：帶了 min_severity 就會把門檻重設
+    // 關閉啟用會先跳確認框（取消尚未送出的一般通知）；此處直接確認
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
     const row = { id: 11, name: 'p1-oncall', type: 'slack', enabled: true, min_severity: 'high' }
     await channelPanel(wrapper).handleChannelToggle(row, false)
+    confirmSpy.mockRestore()
     await flushPromises()
     const togglePayload = updateChannelMock.mock.calls.at(-1)[1]
     expect(togglePayload).not.toHaveProperty('min_severity')
